@@ -14,8 +14,26 @@ from src.analysis.models import (
 
 
 def analyze_geometry(mesh: trimesh.Trimesh) -> GeometryInfo:
-    """Extract basic geometry information from a mesh."""
-    bounds = mesh.bounds  # [[min_x, min_y, min_z], [max_x, max_y, max_z]]
+    """Extract basic geometry information from a mesh.
+
+    Safely handles empty / degenerate meshes by returning a zero-valued
+    GeometryInfo rather than propagating a None bounds crash.
+    """
+    bounds = mesh.bounds  # None for empty meshes
+    if bounds is None or len(mesh.faces) == 0:
+        bbox = BoundingBox(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        return GeometryInfo(
+            vertex_count=int(len(mesh.vertices)),
+            face_count=0,
+            volume=0.0,
+            surface_area=0.0,
+            bounding_box=bbox,
+            is_watertight=False,
+            is_manifold=False,
+            euler_number=0,
+            center_of_mass=(0.0, 0.0, 0.0),
+        )
+
     bbox = BoundingBox(
         min_x=float(bounds[0][0]),
         min_y=float(bounds[0][1]),
