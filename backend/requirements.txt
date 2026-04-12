@@ -1,0 +1,8 @@
+fastapi>=0.115.0
+uvicorn>=0.30.0
+python-multipart>=0.0.9
+trimesh[easy]>=4.4.0
+numpy>=1.26.0
+scipy>=1.13.0
+shapely>=2.0.0
+pydantic>=2.7.0

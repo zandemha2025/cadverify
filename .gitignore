@@ -1,0 +1,88 @@
+# ──────────────────────────────────────────────────────────────
+# Python
+# ──────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtualenvs
+.venv/
+venv/
+env/
+ENV/
+
+# Testing / coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+
+# Build / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+
+# ──────────────────────────────────────────────────────────────
+# Node / Next.js
+# ──────────────────────────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.*
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+
+# ──────────────────────────────────────────────────────────────
+# Environment files (commit .env.example, never .env)
+# ──────────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+
+# ──────────────────────────────────────────────────────────────
+# Editors / IDEs / tooling
+# ──────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.claude/
+
+# ──────────────────────────────────────────────────────────────
+# OS
+# ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ──────────────────────────────────────────────────────────────
+# Logs / runtime
+# ──────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+pids/
+*.pid
+*.seed
+
+# ──────────────────────────────────────────────────────────────
+# Project-specific
+# ──────────────────────────────────────────────────────────────
+uploads/
+tmp/
+*.tmp
+*.bak
