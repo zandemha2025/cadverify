@@ -1,0 +1,30 @@
+name: Duplex 2205
+aliases: [UNS S32205, 1.4462, SAF 2205]
+alloy_designation: ASTM A240
+standards: [ASTM A240, ASTM A276, ASTM A789, NACE MR0175]
+processes: [cnc_3axis, cnc_5axis, cnc_turning, forging, investment_casting]
+mechanical:
+  density_g_cm3: 7.82
+  tensile_mpa: 620
+  yield_mpa: 450
+  elongation_pct: 25
+  hardness_hrc: 31
+  thermal_conductivity_w_mk: 19
+  machinability_index: 30
+  max_temperature_c: 1350
+dfm:
+  min_wall_mm: 0.8
+  min_wall_by_process:
+    cnc_3axis: 0.8
+    cnc_5axis: 0.8
+    cnc_turning: 0.8
+    forging: 3.0
+    investment_casting: 1.5
+  cost_per_kg_usd:
+    wrought: 8
+compliance:
+  nace_mr0175: true
+  biocompatible: false
+  itar: false
+  sour_service: true
+notes: "Oil & gas standard for sour service. Twice the yield strength of 316L. NACE MR0175 compliant."

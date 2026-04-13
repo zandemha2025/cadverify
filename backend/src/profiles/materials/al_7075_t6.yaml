@@ -1,0 +1,29 @@
+name: 7075-T6 Aluminum
+aliases: [Al 7075, AA7075-T6, UNS A97075]
+alloy_designation: AMS 4045
+standards: [AMS 4045, AMS 4078, ASTM B209, QQ-A-250/12]
+processes: [cnc_3axis, cnc_5axis, cnc_turning, forging]
+mechanical:
+  density_g_cm3: 2.81
+  tensile_mpa: 570
+  yield_mpa: 503
+  elongation_pct: 11
+  hardness_hrc: null
+  thermal_conductivity_w_mk: 130
+  machinability_index: 140
+  max_temperature_c: 480
+dfm:
+  min_wall_mm: 0.5
+  min_wall_by_process:
+    cnc_3axis: 0.5
+    cnc_5axis: 0.5
+    cnc_turning: 0.5
+    forging: 2.5
+  cost_per_kg_usd:
+    wrought: 8
+compliance:
+  nace_mr0175: false
+  biocompatible: false
+  itar: false
+  aerospace_pedigree: true
+notes: "High-strength aerospace aluminum. Not weldable. Susceptible to stress corrosion cracking."

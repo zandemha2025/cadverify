@@ -1,0 +1,34 @@
+name: SS316L
+aliases: [316L, UNS S31603, 1.4404]
+alloy_designation: ASTM A240
+standards: [ASTM A240, ASTM A276, AMS 5507, ASTM F138]
+processes: [cnc_3axis, cnc_5axis, cnc_turning, dmls, slm, binder_jetting, sheet_metal, investment_casting]
+mechanical:
+  density_g_cm3: 7.99
+  tensile_mpa: 550
+  yield_mpa: 220
+  elongation_pct: 40
+  hardness_hrc: 25
+  thermal_conductivity_w_mk: 16.3
+  machinability_index: 45
+  max_temperature_c: 1400
+dfm:
+  min_wall_mm: 0.4
+  min_wall_by_process:
+    dmls: 0.4
+    slm: 0.4
+    binder_jetting: 1.0
+    cnc_3axis: 0.5
+    cnc_5axis: 0.5
+    sheet_metal: 0.5
+    investment_casting: 1.0
+  cost_per_kg_usd:
+    wrought: 5
+    powder: 100
+    sheet: 4
+compliance:
+  nace_mr0175: true
+  biocompatible: true
+  itar: false
+  aerospace_pedigree: true
+notes: "Universal stainless steel. Excellent corrosion resistance. ASTM F138 grade for medical implants."

@@ -19,6 +19,14 @@ class MaterialProfile:
     density: Optional[float]           # g/cm³
     cost_per_kg: Optional[float]       # USD/kg (approximate)
     notes: str = ""
+    # Enhanced DFM fields (v2)
+    alloy_designation: Optional[str] = None
+    standards: list[str] = field(default_factory=list)
+    compliance: dict[str, bool] = field(default_factory=dict)
+    min_wall_by_process: dict[str, float] = field(default_factory=dict)
+    machinability_index: Optional[float] = None
+    thermal_conductivity: Optional[float] = None  # W/m·K
+    hardness_hrc: Optional[float] = None
 
 
 @dataclass

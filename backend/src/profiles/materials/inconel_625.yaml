@@ -1,0 +1,33 @@
+name: Inconel 625
+aliases: [IN625, Alloy 625, UNS N06625]
+alloy_designation: AMS 5666
+standards: [AMS 5666, ASTM B443, ASTM B446, NACE MR0175]
+processes: [cnc_3axis, cnc_5axis, cnc_turning, dmls, slm, forging, investment_casting]
+mechanical:
+  density_g_cm3: 8.44
+  tensile_mpa: 930
+  yield_mpa: 517
+  elongation_pct: 42
+  hardness_hrc: 35
+  thermal_conductivity_w_mk: 9.8
+  machinability_index: 15
+  max_temperature_c: 1350
+dfm:
+  min_wall_mm: 0.4
+  min_wall_by_process:
+    dmls: 0.4
+    slm: 0.4
+    cnc_3axis: 1.0
+    cnc_5axis: 0.8
+    forging: 3.0
+    investment_casting: 1.5
+  cost_per_kg_usd:
+    wrought: 45
+    powder: 380
+compliance:
+  nace_mr0175: true
+  biocompatible: false
+  itar: false
+  sour_service: true
+  aerospace_pedigree: true
+notes: "Corrosion-resistant nickel superalloy. Excellent in sour gas and seawater. Solid-solution strengthened."

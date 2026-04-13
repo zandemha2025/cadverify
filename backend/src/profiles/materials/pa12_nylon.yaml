@@ -1,0 +1,27 @@
+name: PA12 (Nylon 12)
+aliases: [PA12, Nylon 12, PA2200]
+alloy_designation: null
+standards: [ISO 11357, ASTM D638, UL 94 HB]
+processes: [sls, mjf]
+mechanical:
+  density_g_cm3: 1.01
+  tensile_mpa: 48
+  yield_mpa: 48
+  elongation_pct: 20
+  hardness_hrc: null
+  thermal_conductivity_w_mk: 0.23
+  machinability_index: null
+  max_temperature_c: 180
+dfm:
+  min_wall_mm: 0.7
+  min_wall_by_process:
+    sls: 0.7
+    mjf: 0.5
+  cost_per_kg_usd:
+    powder: 60
+compliance:
+  nace_mr0175: false
+  biocompatible: false
+  itar: false
+  rohs: true
+notes: "Most common SLS/MJF material. Good balance of strength and flexibility. Hygroscopic."

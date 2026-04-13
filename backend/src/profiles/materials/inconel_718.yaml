@@ -1,0 +1,32 @@
+name: Inconel 718
+aliases: [IN718, Alloy 718, UNS N07718]
+alloy_designation: AMS 5662
+standards: [AMS 5662, AMS 5663, ASTM B637, API 6A718]
+processes: [cnc_3axis, cnc_5axis, cnc_turning, dmls, slm, forging, investment_casting]
+mechanical:
+  density_g_cm3: 8.19
+  tensile_mpa: 1240
+  yield_mpa: 1036
+  elongation_pct: 12
+  hardness_hrc: 44
+  thermal_conductivity_w_mk: 11.4
+  machinability_index: 12
+  max_temperature_c: 1350
+dfm:
+  min_wall_mm: 0.4
+  min_wall_by_process:
+    dmls: 0.4
+    slm: 0.4
+    cnc_3axis: 1.0
+    cnc_5axis: 0.8
+    forging: 3.0
+    investment_casting: 1.5
+  cost_per_kg_usd:
+    wrought: 50
+    powder: 400
+compliance:
+  nace_mr0175: true
+  biocompatible: false
+  itar: false
+  aerospace_pedigree: true
+notes: "High-temp nickel superalloy. Used in turbine disks and oil & gas downhole tools. Age-hardenable."

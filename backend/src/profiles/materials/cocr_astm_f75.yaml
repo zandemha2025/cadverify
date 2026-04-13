@@ -1,0 +1,32 @@
+name: CoCr ASTM F75
+aliases: [CoCrMo, Vitallium, Stellite 21]
+alloy_designation: ASTM F75
+standards: [ASTM F75, ISO 5832-4, ASTM F1537, ISO 22674]
+processes: [dmls, slm, ebm, investment_casting, cnc_5axis]
+mechanical:
+  density_g_cm3: 8.3
+  tensile_mpa: 1050
+  yield_mpa: 700
+  elongation_pct: 8
+  hardness_hrc: 38
+  thermal_conductivity_w_mk: 14.8
+  machinability_index: 15
+  max_temperature_c: 1350
+dfm:
+  min_wall_mm: 0.4
+  min_wall_by_process:
+    dmls: 0.4
+    slm: 0.4
+    ebm: 0.6
+    investment_casting: 1.0
+    cnc_5axis: 0.8
+  cost_per_kg_usd:
+    powder: 300
+    cast: 50
+compliance:
+  nace_mr0175: false
+  biocompatible: true
+  itar: false
+  fda_510k: true
+  iso_10993: true
+notes: "Medical implant standard. Used in hip/knee replacements and dental prosthetics. Excellent wear resistance."

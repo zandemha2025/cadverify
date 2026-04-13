@@ -1,0 +1,29 @@
+name: PP (Polypropylene)
+aliases: [PP, Polypropylene]
+alloy_designation: null
+standards: [ASTM D4101, ISO 1133, UL 94 HB]
+processes: [injection_molding, mjf]
+mechanical:
+  density_g_cm3: 0.9
+  tensile_mpa: 35
+  yield_mpa: 35
+  elongation_pct: 200
+  hardness_hrc: null
+  thermal_conductivity_w_mk: 0.22
+  machinability_index: null
+  max_temperature_c: 130
+dfm:
+  min_wall_mm: 0.5
+  min_wall_by_process:
+    injection_molding: 0.5
+    mjf: 0.5
+  cost_per_kg_usd:
+    pellet: 2
+    powder: 60
+compliance:
+  nace_mr0175: false
+  biocompatible: false
+  itar: false
+  rohs: true
+  fda_food_contact: true
+notes: "Lowest density common plastic. Excellent chemical resistance. Living hinge capable. FDA food-contact grades available."

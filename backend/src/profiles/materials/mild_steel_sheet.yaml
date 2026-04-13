@@ -1,0 +1,30 @@
+name: Mild Steel (Sheet)
+aliases: [A36, 1018, CR Steel, Low Carbon Steel]
+alloy_designation: ASTM A36
+standards: [ASTM A36, ASTM A1011, SAE J403-1018]
+processes: [sheet_metal, forging, cnc_3axis, cnc_turning]
+mechanical:
+  density_g_cm3: 7.85
+  tensile_mpa: 400
+  yield_mpa: 250
+  elongation_pct: 25
+  hardness_hrc: null
+  thermal_conductivity_w_mk: 51.9
+  machinability_index: 78
+  max_temperature_c: 1500
+dfm:
+  min_wall_mm: 0.5
+  min_wall_by_process:
+    sheet_metal: 0.5
+    forging: 3.0
+    cnc_3axis: 0.5
+    cnc_turning: 0.5
+  cost_per_kg_usd:
+    sheet: 1.5
+    bar: 1.2
+compliance:
+  nace_mr0175: false
+  biocompatible: false
+  itar: false
+  rohs: true
+notes: "Lowest cost structural metal. Easy to form, weld, and machine. Requires coating for corrosion protection."

@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import dynamic from "next/dynamic";
 import FileDropZone from "@/components/FileDropZone";
 import AnalysisDashboard from "@/components/AnalysisDashboard";
+import RulePackSelector from "@/components/RulePackSelector";
 import { validateFile, type ValidationResult } from "@/lib/api";
 
 const ModelViewer = dynamic(() => import("@/components/ModelViewer"), {
@@ -20,6 +21,7 @@ export default function Home() {
   const [result, setResult] = useState<ValidationResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedRulePack, setSelectedRulePack] = useState<string | null>(null);
 
   const handleFileSelect = useCallback(async (selectedFile: File) => {
     const ext = selectedFile.name.split(".").pop()?.toLowerCase();
@@ -34,14 +36,18 @@ export default function Home() {
     setIsLoading(true);
 
     try {
-      const data = await validateFile(selectedFile);
+      const data = await validateFile(
+        selectedFile,
+        undefined,
+        selectedRulePack ?? undefined
+      );
       setResult(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Analysis failed");
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [selectedRulePack]);
 
   const handleReset = useCallback(() => {
     setFile(null);
@@ -58,14 +64,21 @@ export default function Home() {
             <h1 className="text-xl font-bold text-gray-900">CADVerify</h1>
             <p className="text-xs text-gray-500">Manufacturing Validation Platform</p>
           </div>
-          {file && (
-            <button
-              onClick={handleReset}
-              className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition"
-            >
-              New Analysis
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            <RulePackSelector
+              selected={selectedRulePack}
+              onSelect={setSelectedRulePack}
+              disabled={isLoading}
+            />
+            {file && (
+              <button
+                onClick={handleReset}
+                className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition"
+              >
+                New Analysis
+              </button>
+            )}
+          </div>
         </div>
       </header>
 

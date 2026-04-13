@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
 from src.analysis.models import ProcessType
 from src.profiles.models import MachineProfile, MaterialProfile
+from src.profiles.loader import merge_materials, MATERIALS_STRUCTURED, _YAML_MATERIALS
 
 
 # ──────────────────────────────────────────────
-# Materials
+# Materials (hardcoded base)
 # ──────────────────────────────────────────────
 
-MATERIALS: list[MaterialProfile] = [
+_HARDCODED_MATERIALS: list[MaterialProfile] = [
     # FDM
     MaterialProfile("PLA", [ProcessType.FDM], 0.8, 60, 50, 6, 1.24, 25, "Easy to print, biodegradable"),
     MaterialProfile("PETG", [ProcessType.FDM], 0.8, 80, 50, 23, 1.27, 30, "Good chemical resistance"),
@@ -62,6 +65,11 @@ MATERIALS: list[MaterialProfile] = [
     MaterialProfile("Copper C110 (Sheet)", [ProcessType.SHEET_METAL], 0.5, 1080, 220, 50, 8.94, 10),
 ]
 
+
+# Merge: YAML overrides matching hardcoded entries, adds new ones
+MATERIALS: list[MaterialProfile] = merge_materials(_HARDCODED_MATERIALS, _YAML_MATERIALS)
+
+
 # ──────────────────────────────────────────────
 # Machines
 # ──────────────────────────────────────────────
@@ -95,6 +103,10 @@ MACHINES: list[MachineProfile] = [
 ]
 
 
+# ──────────────────────────────────────────────
+# Query helpers
+# ──────────────────────────────────────────────
+
 def get_materials_for_process(process: ProcessType) -> list[MaterialProfile]:
     """Get all materials compatible with a given process."""
     return [m for m in MATERIALS if process in m.process_types]
@@ -119,3 +131,27 @@ def get_all_processes() -> list[dict]:
             "machines": [m.name for m in machines],
         })
     return result
+
+
+def get_material_by_name(name: str) -> Optional[MaterialProfile]:
+    """Look up a material by exact name (case-insensitive).
+
+    Returns None if no match is found.
+    """
+    name_lower = name.lower()
+    for m in MATERIALS:
+        if m.name.lower() == name_lower:
+            return m
+    return None
+
+
+def get_compliant_materials(standard: str) -> list[MaterialProfile]:
+    """Get all materials whose compliance dict has the given key set to True.
+
+    Args:
+        standard: Compliance key, e.g. "nace_mr0175", "biocompatible".
+
+    Returns:
+        List of MaterialProfile instances that are compliant.
+    """
+    return [m for m in MATERIALS if m.compliance.get(standard) is True]

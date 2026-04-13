@@ -3,6 +3,7 @@
 import type { ValidationResult } from "@/lib/api";
 import IssueList from "./IssueList";
 import ProcessScoreCard from "./ProcessScoreCard";
+import FeaturesList from "./FeaturesList";
 
 interface AnalysisDashboardProps {
   result: ValidationResult;
@@ -43,13 +44,25 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
   const verdict = VERDICT_STYLES[result.overall_verdict] ?? VERDICT_STYLES.unknown;
   const dims = result.geometry.bounding_box_mm;
 
+  // Extract unique standard citations from all issues
+  const allIssues = [
+    ...result.universal_issues,
+    ...result.process_scores.flatMap((ps) => ps.issues),
+  ];
+  const citationTags = extractCitationTags(allIssues);
+
   return (
     <div className="space-y-6">
       {/* Verdict Banner */}
       <div className={`p-4 rounded-xl border ${verdict.bg} ${verdict.border}`}>
         <div className="flex items-center justify-between">
           <div>
-            <span className={`text-2xl font-bold ${verdict.text}`}>{verdict.label}</span>
+            <div className="flex items-center gap-2">
+              <span className={`text-2xl font-bold ${verdict.text}`}>{verdict.label}</span>
+              {result.rule_pack && (
+                <RulePackBadge name={result.rule_pack.name} version={result.rule_pack.version} />
+              )}
+            </div>
             <p className="text-sm text-gray-600 mt-1">
               {result.filename} ({result.file_type.toUpperCase()}) — analyzed in {result.analysis_time_ms}ms
             </p>
@@ -76,6 +89,11 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
           color={result.geometry.is_watertight ? "text-green-600" : "text-red-600"}
         />
       </div>
+
+      {/* Detected Features */}
+      {result.features && result.features.length > 0 && (
+        <FeaturesList features={result.features} />
+      )}
 
       {/* Universal Issues */}
       {result.universal_issues.length > 0 && (
@@ -119,9 +137,28 @@ export default function AnalysisDashboard({ result }: AnalysisDashboardProps) {
                 </div>
                 <p className="text-sm text-gray-700">{fix.message}</p>
                 {fix.fix && (
-                  <p className="text-sm text-blue-700 mt-1">{fix.fix}</p>
+                  <p className="text-sm text-blue-700 mt-1">
+                    <FixSuggestionWithCitations text={fix.fix} />
+                  </p>
                 )}
               </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Standards Referenced */}
+      {citationTags.length > 0 && (
+        <div>
+          <h3 className="font-semibold text-gray-800 mb-2">Standards Referenced</h3>
+          <div className="flex flex-wrap gap-2">
+            {citationTags.map((tag) => (
+              <span
+                key={tag}
+                className={`px-2.5 py-1 rounded-md text-xs font-mono font-medium border ${getCitationColor(tag)}`}
+              >
+                {tag}
+              </span>
             ))}
           </div>
         </div>
@@ -150,4 +187,75 @@ function SeverityBadge({ severity }: { severity: string }) {
       {severity}
     </span>
   );
+}
+
+const CITATION_COLORS: Record<string, string> = {
+  aerospace: "bg-blue-50 text-blue-700 border-blue-200",
+  automotive: "bg-green-50 text-green-700 border-green-200",
+  oil_gas: "bg-orange-50 text-orange-700 border-orange-200",
+  "oil-gas": "bg-orange-50 text-orange-700 border-orange-200",
+  medical: "bg-purple-50 text-purple-700 border-purple-200",
+};
+
+function getCitationColor(tag: string): string {
+  const key = tag.toLowerCase().replace(/[\s&]+/g, "_");
+  return CITATION_COLORS[key] ?? "bg-gray-50 text-gray-700 border-gray-200";
+}
+
+function RulePackBadge({ name, version }: { name: string; version: string }) {
+  const colorMap: Record<string, string> = {
+    aerospace: "bg-blue-100 text-blue-800",
+    automotive: "bg-green-100 text-green-800",
+    oil_gas: "bg-orange-100 text-orange-800",
+    medical: "bg-purple-100 text-purple-800",
+  };
+  const key = name.toLowerCase().replace(/[\s&-]+/g, "_");
+  const color = colorMap[key] ?? "bg-gray-100 text-gray-800";
+  return (
+    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${color}`}>
+      {name} v{version}
+    </span>
+  );
+}
+
+/** Parse `[tag]` markers from fix suggestion text and render them as badges */
+function FixSuggestionWithCitations({ text }: { text: string }) {
+  const parts = text.split(/(\[[^\]]+\])/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        const match = part.match(/^\[([^\]]+)\]$/);
+        if (match) {
+          const tag = match[1];
+          return (
+            <span
+              key={i}
+              className={`inline-block mx-0.5 px-1.5 py-0.5 rounded text-xs font-mono font-medium border ${getCitationColor(tag)}`}
+            >
+              {tag}
+            </span>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+}
+
+interface IssueWithFixSuggestion {
+  fix_suggestion: string | null;
+}
+
+/** Extract unique citation tags like [aerospace] from all issue fix_suggestions */
+function extractCitationTags(issues: IssueWithFixSuggestion[]): string[] {
+  const tags = new Set<string>();
+  for (const issue of issues) {
+    if (issue.fix_suggestion) {
+      const matches = issue.fix_suggestion.matchAll(/\[([^\]]+)\]/g);
+      for (const m of matches) {
+        tags.add(m[1]);
+      }
+    }
+  }
+  return Array.from(tags).sort();
 }

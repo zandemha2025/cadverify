@@ -1,0 +1,27 @@
+name: PLA
+aliases: [Polylactic Acid, PLA+]
+alloy_designation: null
+standards: [ASTM D638, ISO 527, EN 13432]
+processes: [fdm]
+mechanical:
+  density_g_cm3: 1.24
+  tensile_mpa: 50
+  yield_mpa: 60
+  elongation_pct: 6
+  hardness_hrc: null
+  thermal_conductivity_w_mk: 0.13
+  machinability_index: null
+  max_temperature_c: 60
+dfm:
+  min_wall_mm: 0.8
+  min_wall_by_process:
+    fdm: 0.8
+  cost_per_kg_usd:
+    filament: 25
+compliance:
+  nace_mr0175: false
+  biocompatible: true
+  itar: false
+  rohs: true
+  compostable: true
+notes: "Easiest FDM material to print. Biodegradable. Low heat resistance limits functional use."

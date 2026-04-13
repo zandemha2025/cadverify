@@ -1,0 +1,33 @@
+name: Ti-6Al-4V Grade 5
+aliases: [Ti64, TC4]
+alloy_designation: AMS 4928
+standards: [AMS 4928, AMS 4911, ASTM B348, ASTM F1472]
+processes: [cnc_3axis, cnc_5axis, cnc_turning, dmls, slm, ebm, forging, investment_casting]
+mechanical:
+  density_g_cm3: 4.43
+  tensile_mpa: 1100
+  yield_mpa: 1000
+  elongation_pct: 10
+  hardness_hrc: 36
+  thermal_conductivity_w_mk: 6.7
+  machinability_index: 25
+  max_temperature_c: 1660
+dfm:
+  min_wall_mm: 0.5
+  min_wall_by_process:
+    dmls: 0.5
+    slm: 0.5
+    ebm: 0.7
+    cnc_3axis: 0.8
+    cnc_5axis: 0.8
+    forging: 3.0
+    investment_casting: 1.5
+  cost_per_kg_usd:
+    wrought: 40
+    powder: 350
+compliance:
+  nace_mr0175: true
+  biocompatible: false
+  itar: false
+  aerospace_pedigree: true
+notes: "Aerospace workhorse. Difficult to machine (low thermal conductivity). HIP required for AM parts."

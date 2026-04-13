@@ -53,6 +53,24 @@ export interface PriorityFix {
   required_value: number | null;
 }
 
+export interface FeatureInfo {
+  kind: string;
+  face_count: number;
+  centroid: [number, number, number];
+  radius: number | null;
+  depth: number | null;
+  area: number | null;
+  confidence: number;
+}
+
+export interface RulePackInfo {
+  name: string;
+  version: string;
+  description: string;
+  override_count: number;
+  mandatory_issue_count: number;
+}
+
 export interface ValidationResult {
   filename: string;
   file_type: string;
@@ -64,6 +82,8 @@ export interface ValidationResult {
   universal_issues: Issue[];
   process_scores: ProcessScore[];
   priority_fixes: PriorityFix[];
+  features?: FeatureInfo[];
+  rule_pack?: { name: string; version: string };
 }
 
 export interface Material {
@@ -87,14 +107,24 @@ export interface Machine {
 
 export async function validateFile(
   file: File,
-  processes?: string[]
+  processes?: string[],
+  rulePack?: string
 ): Promise<ValidationResult> {
   const formData = new FormData();
   formData.append("file", file);
 
-  let url = `${API_BASE}/validate`;
+  const params = new URLSearchParams();
   if (processes && processes.length > 0) {
-    url += `?processes=${processes.join(",")}`;
+    params.set("processes", processes.join(","));
+  }
+  if (rulePack) {
+    params.set("rule_pack", rulePack);
+  }
+
+  let url = `${API_BASE}/validate`;
+  const qs = params.toString();
+  if (qs) {
+    url += `?${qs}`;
   }
 
   const res = await fetch(url, { method: "POST", body: formData });
@@ -136,5 +166,14 @@ export async function getMaterials(): Promise<{ materials: Material[] }> {
 
 export async function getMachines(): Promise<{ machines: Machine[] }> {
   const res = await fetch(`${API_BASE}/machines`);
+  return res.json();
+}
+
+export async function getRulePacks(): Promise<{ rule_packs: RulePackInfo[] }> {
+  const res = await fetch(`${API_BASE}/rule-packs`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || "Failed to fetch rule packs");
+  }
   return res.json();
 }

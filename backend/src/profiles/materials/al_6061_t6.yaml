@@ -1,0 +1,31 @@
+name: 6061-T6 Aluminum
+aliases: [Al 6061, AA6061-T6, UNS A96061]
+alloy_designation: AMS 4027
+standards: [AMS 4027, ASTM B209, ASTM B221, QQ-A-250/11]
+processes: [cnc_3axis, cnc_5axis, cnc_turning, sheet_metal, forging]
+mechanical:
+  density_g_cm3: 2.7
+  tensile_mpa: 310
+  yield_mpa: 276
+  elongation_pct: 17
+  hardness_hrc: null
+  thermal_conductivity_w_mk: 167
+  machinability_index: 180
+  max_temperature_c: 580
+dfm:
+  min_wall_mm: 0.5
+  min_wall_by_process:
+    cnc_3axis: 0.5
+    cnc_5axis: 0.5
+    cnc_turning: 0.5
+    sheet_metal: 0.5
+    forging: 2.0
+  cost_per_kg_usd:
+    wrought: 5
+    sheet: 4
+compliance:
+  nace_mr0175: false
+  biocompatible: false
+  itar: false
+  aerospace_pedigree: true
+notes: "General-purpose aerospace aluminum. Excellent machinability. Weldable with proper filler."

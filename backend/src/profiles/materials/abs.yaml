@@ -1,0 +1,29 @@
+name: ABS
+aliases: [Acrylonitrile Butadiene Styrene]
+alloy_designation: null
+standards: [ASTM D256, ASTM D638, UL 94 HB, ISO 2580]
+processes: [fdm, injection_molding]
+mechanical:
+  density_g_cm3: 1.04
+  tensile_mpa: 40
+  yield_mpa: 40
+  elongation_pct: 25
+  hardness_hrc: null
+  thermal_conductivity_w_mk: 0.17
+  machinability_index: null
+  max_temperature_c: 100
+dfm:
+  min_wall_mm: 0.5
+  min_wall_by_process:
+    fdm: 1.0
+    injection_molding: 0.5
+  cost_per_kg_usd:
+    filament: 25
+    pellet: 3
+compliance:
+  nace_mr0175: false
+  biocompatible: false
+  itar: false
+  rohs: true
+  ul94_hb: true
+notes: "Versatile thermoplastic. FDM requires heated enclosure to prevent warping. Easy to injection mold."

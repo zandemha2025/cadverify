@@ -1,0 +1,27 @@
+name: A356 Aluminum
+aliases: [A356.0, AlSi7Mg, UNS A13560]
+alloy_designation: ASTM B108
+standards: [ASTM B108, ASTM B26, AMS 4218, SAE J452]
+processes: [die_casting, sand_casting, investment_casting]
+mechanical:
+  density_g_cm3: 2.68
+  tensile_mpa: 230
+  yield_mpa: 165
+  elongation_pct: 3
+  hardness_hrc: null
+  thermal_conductivity_w_mk: 151
+  machinability_index: 160
+  max_temperature_c: 660
+dfm:
+  min_wall_mm: 1.0
+  min_wall_by_process:
+    die_casting: 0.8
+    sand_casting: 3.0
+    investment_casting: 1.0
+  cost_per_kg_usd:
+    ingot: 4
+compliance:
+  nace_mr0175: false
+  biocompatible: false
+  itar: false
+notes: "Most common aluminum casting alloy. T6 heat-treatable. Excellent fluidity for complex shapes."

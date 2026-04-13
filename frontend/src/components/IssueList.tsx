@@ -12,6 +12,39 @@ const SEVERITY_ICON = {
   info: { color: "text-blue-500", bg: "bg-blue-50", icon: "i" },
 };
 
+const CITATION_COLORS: Record<string, string> = {
+  aerospace: "bg-blue-50 text-blue-700 border-blue-200",
+  automotive: "bg-green-50 text-green-700 border-green-200",
+  oil_gas: "bg-orange-50 text-orange-700 border-orange-200",
+  "oil-gas": "bg-orange-50 text-orange-700 border-orange-200",
+  medical: "bg-purple-50 text-purple-700 border-purple-200",
+};
+
+function CitationText({ text }: { text: string }) {
+  const parts = text.split(/(\[[^\]]+\])/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        const match = part.match(/^\[([^\]]+)\]$/);
+        if (match) {
+          const tag = match[1];
+          const key = tag.toLowerCase().replace(/[\s&]+/g, "_");
+          const color = CITATION_COLORS[key] ?? "bg-gray-50 text-gray-700 border-gray-200";
+          return (
+            <span
+              key={i}
+              className={`inline-block mx-0.5 px-1.5 py-0.5 rounded text-xs font-mono font-medium border ${color}`}
+            >
+              {tag}
+            </span>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+}
+
 export default function IssueList({ issues }: IssueListProps) {
   if (issues.length === 0) return null;
 
@@ -39,7 +72,9 @@ export default function IssueList({ issues }: IssueListProps) {
                 </div>
                 <p className="text-sm text-gray-800">{issue.message}</p>
                 {issue.fix_suggestion && (
-                  <p className="text-sm text-blue-700 mt-1 whitespace-pre-line">{issue.fix_suggestion}</p>
+                  <p className="text-sm text-blue-700 mt-1 whitespace-pre-line">
+                    <CitationText text={issue.fix_suggestion} />
+                  </p>
                 )}
               </div>
             </div>
