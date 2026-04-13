@@ -17,6 +17,7 @@ from src.analysis.cnc_analyzer import CNC_PROCESSES, run_cnc_checks
 from src.analysis.context import GeometryContext
 from src.analysis.features import detect_all as detect_features
 from src.analysis.models import AnalysisResult, Issue, ProcessType, Severity
+from src.analysis.processes import get_analyzer
 from src.analysis.molding_analyzer import MOLDING_PROCESSES, run_molding_checks
 from src.analysis.sheet_metal_analyzer import run_sheet_metal_checks
 from src.fixes.fix_suggester import enhance_suggestions, get_priority_fixes
@@ -148,14 +149,23 @@ async def validate_file(
 
     process_scores = []
     for proc in target_processes:
-        analyzer = PROCESS_ANALYZERS.get(proc)
-        if analyzer is None:
-            continue
-        try:
-            proc_issues = analyzer(mesh, geometry, proc, ctx.segments)
-        except Exception:
-            logger.exception("Analyzer failed for %s", proc.value)
-            continue
+        # Prefer new registry-based analyzers (Phase 2); fall back to legacy.
+        new_analyzer = get_analyzer(proc)
+        if new_analyzer is not None:
+            try:
+                proc_issues = new_analyzer.analyze(ctx)
+            except Exception:
+                logger.exception("New analyzer failed for %s", proc.value)
+                continue
+        else:
+            legacy = PROCESS_ANALYZERS.get(proc)
+            if legacy is None:
+                continue
+            try:
+                proc_issues = legacy(mesh, geometry, proc, ctx.segments)
+            except Exception:
+                logger.exception("Legacy analyzer failed for %s", proc.value)
+                continue
         ps = score_process(proc_issues, geometry, proc)
         process_scores.append(ps)
 
