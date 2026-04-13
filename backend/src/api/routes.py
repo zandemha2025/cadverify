@@ -18,6 +18,7 @@ from src.analysis.context import GeometryContext
 from src.analysis.features import detect_all as detect_features
 from src.analysis.models import AnalysisResult, Issue, ProcessType, Severity
 from src.analysis.processes import get_analyzer
+from src.analysis.rules import available_rule_packs, get_rule_pack
 from src.analysis.molding_analyzer import MOLDING_PROCESSES, run_molding_checks
 from src.analysis.sheet_metal_analyzer import run_sheet_metal_checks
 from src.fixes.fix_suggester import enhance_suggestions, get_priority_fixes
@@ -131,10 +132,24 @@ async def validate_file(
         None,
         description="Comma-separated process types to check. Leave empty for all.",
     ),
+    rule_pack: Optional[str] = Query(
+        None,
+        description="Industry rule pack: aerospace, automotive, oil_gas, medical.",
+    ),
 ):
     """Upload a STEP or STL file and get manufacturing validation results."""
     start = time.time()
     filename = file.filename or "unknown"
+
+    # Resolve rule pack (if specified)
+    pack = None
+    if rule_pack:
+        pack = get_rule_pack(rule_pack)
+        if pack is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown rule pack '{rule_pack}'. Available: {available_rule_packs()}",
+            )
 
     data = await _read_capped(file)
     mesh, suffix = _parse_mesh(data, filename)
@@ -166,6 +181,9 @@ async def validate_file(
             except Exception:
                 logger.exception("Legacy analyzer failed for %s", proc.value)
                 continue
+        # Apply rule pack overlay (tighten thresholds, escalate severity)
+        if pack:
+            proc_issues = pack.apply(proc_issues, proc)
         ps = score_process(proc_issues, geometry, proc)
         process_scores.append(ps)
 
@@ -185,7 +203,7 @@ async def validate_file(
 
     result = enhance_suggestions(result)
 
-    return _to_response(result, features)
+    return _to_response(result, features, pack)
 
 
 @router.post("/validate/quick")
@@ -219,6 +237,23 @@ async def validate_quick(file: UploadFile = File(...)):
             for i in issues
         ],
     }
+
+
+@router.get("/rule-packs")
+async def list_rule_packs():
+    """List available industry rule packs."""
+    packs = []
+    for name in available_rule_packs():
+        p = get_rule_pack(name)
+        if p:
+            packs.append({
+                "name": p.name,
+                "version": p.version,
+                "description": p.description,
+                "override_count": len(p.overrides),
+                "mandatory_issue_count": len(p.mandatory_issues),
+            })
+    return {"rule_packs": packs}
 
 
 @router.get("/processes")
@@ -264,8 +299,8 @@ async def list_machines():
 # ──────────────────────────────────────────────────────────────
 # Serialization
 # ──────────────────────────────────────────────────────────────
-def _to_response(result: AnalysisResult, features: list | None = None) -> dict:
-    return {
+def _to_response(result: AnalysisResult, features: list | None = None, pack=None) -> dict:
+    resp = {
         "filename": result.filename,
         "file_type": result.file_type,
         "overall_verdict": result.overall_verdict,
@@ -319,6 +354,12 @@ def _to_response(result: AnalysisResult, features: list | None = None) -> dict:
         ],
         "priority_fixes": get_priority_fixes(result),
     }
+    if pack:
+        resp["rule_pack"] = {
+            "name": pack.name,
+            "version": pack.version,
+        }
+    return resp
 
 
 def _issue_to_dict(issue: Issue) -> dict:
