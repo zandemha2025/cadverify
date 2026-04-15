@@ -30,6 +30,35 @@ jobs:
       - name: Run tests
         run: pytest -v
 
+  route-auth-coverage:
+    name: Every /api/v1 route calls require_api_key
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check routes.py for auth dependency on every /api/v1/* handler
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re, sys
+          txt = open("backend/src/api/routes.py").read()
+          decorators = re.finditer(r'@router\.(post|get|put|delete|patch)\((.*?)\)', txt, flags=re.S)
+          fails = []
+          for m in decorators:
+              start = m.start()
+              block = txt[start:start+1500]
+              # skip public routes
+              if re.search(r'"(/health|/auth/|/s/)', m.group(2)):
+                  continue
+              # must reference require_api_key in the function signature block
+              if 'require_api_key' not in block:
+                  fails.append(m.group(2).splitlines()[0])
+          if fails:
+              print("ROUTE AUTH COVERAGE FAIL:")
+              for f in fails: print("  ", f)
+              sys.exit(1)
+          print("route-auth-coverage OK")
+          PY
+
   frontend:
     name: Frontend Build & Lint
     runs-on: ubuntu-latest
