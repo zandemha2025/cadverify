@@ -23,10 +23,10 @@
 - [x] **AUTH-03**: Signup issues an API key of form `cv_live_<prefix>_<secret>`, shown exactly once
 - [x] **AUTH-04**: API keys stored hashed (Argon2id) with HMAC-SHA256 prefix index for lookup
 - [x] **AUTH-05**: User can create, rotate, and revoke multiple API keys from dashboard
-- [ ] **AUTH-06**: All protected endpoints require `Authorization: Bearer cv_live_...` via FastAPI `Depends(require_api_key)`
-- [ ] **AUTH-07**: Per-API-key rate limit enforced (60/hour, 500/day) via slowapi + Redis
+- [x] **AUTH-06**: All protected endpoints require `Authorization: Bearer cv_live_...` via FastAPI `Depends(require_api_key)`
+- [x] **AUTH-07**: Per-API-key rate limit enforced (60/hour, 500/day) via slowapi + Redis
 - [ ] **AUTH-08**: Per-IP signup rate limit; Turnstile challenge on signup form
-- [ ] **AUTH-09**: `ACCEPTING_NEW_ANALYSES` kill-switch env var halts validation endpoints when disabled
+- [x] **AUTH-09**: `ACCEPTING_NEW_ANALYSES` kill-switch env var halts validation endpoints when disabled
 - [ ] **AUTH-10**: Logs and Sentry scrub API keys and bearer tokens before transport
 - [ ] **AUTH-11**: CORS tightened — explicit `allow_headers`, regex origin match, `allow_credentials=False`
 
@@ -172,10 +172,10 @@
 | AUTH-03 | Phase 2 | Complete |
 | AUTH-04 | Phase 2 | Complete |
 | AUTH-05 | Phase 2 | Complete |
-| AUTH-06 | Phase 2 | Pending |
-| AUTH-07 | Phase 2 | Pending |
+| AUTH-06 | Phase 2 | Complete |
+| AUTH-07 | Phase 2 | Complete |
 | AUTH-08 | Phase 2 | Pending |
-| AUTH-09 | Phase 2 | Pending |
+| AUTH-09 | Phase 2 | Complete |
 | AUTH-10 | Phase 2 | Pending |
 | AUTH-11 | Phase 2 | Pending |
 | PERS-01 | Phase 3 | Pending |
