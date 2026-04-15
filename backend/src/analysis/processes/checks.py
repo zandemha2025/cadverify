@@ -13,6 +13,7 @@ Design rules:
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 import numpy as np
@@ -21,6 +22,8 @@ from src.analysis.constants import STANDARD_GAUGES
 from src.analysis.context import GeometryContext
 from src.analysis.features.base import Feature, FeatureKind
 from src.analysis.models import Issue, ProcessType, Severity
+
+logger = logging.getLogger("cadverify.checks")
 
 
 # ──────────────────────────────────────────────────────────────
@@ -221,7 +224,21 @@ def check_trapped_volumes(
                     ),
                 ))
     except Exception:
-        pass
+        logger.warning(
+            "check_trapped_volumes containment test failed for %s",
+            process.value,
+            exc_info=True,
+        )
+        issues.append(Issue(
+            code="ANALYSIS_PARTIAL",
+            severity=Severity.INFO,
+            message=(
+                f"Trapped-volume check incomplete for {process.value} "
+                f"(geometry/containment error)."
+            ),
+            process=process,
+            fix_suggestion="Verify mesh integrity via /validate/quick.",
+        ))
     return issues
 
 
@@ -562,7 +579,21 @@ def check_rotational_symmetry(
                 fix_suggestion="CNC turning requires axially symmetric geometry. Use mill-turn or 3/5-axis CNC.",
             )]
     except Exception:
-        pass
+        logger.warning(
+            "check_rotational_symmetry eigen analysis failed for %s",
+            process.value,
+            exc_info=True,
+        )
+        return [Issue(
+            code="ANALYSIS_PARTIAL",
+            severity=Severity.INFO,
+            message=(
+                f"Rotational-symmetry check incomplete for {process.value} "
+                f"(eigen decomposition failed)."
+            ),
+            process=process,
+            fix_suggestion="Verify mesh integrity via /validate/quick.",
+        )]
     return []
 
 
@@ -721,7 +752,21 @@ def check_core_feasibility(
                         fix_suggestion="Reduce core aspect ratio below 4:1.",
                     ))
     except Exception:
-        pass
+        logger.warning(
+            "check_core_feasibility containment test failed for %s",
+            process.value,
+            exc_info=True,
+        )
+        issues.append(Issue(
+            code="ANALYSIS_PARTIAL",
+            severity=Severity.INFO,
+            message=(
+                f"Core feasibility check incomplete for {process.value} "
+                f"(watertightness/containment error)."
+            ),
+            process=process,
+            fix_suggestion="Verify mesh integrity via /validate/quick.",
+        ))
     return issues
 
 
