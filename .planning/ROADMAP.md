@@ -70,7 +70,7 @@ The 8-phase decomposition is derived from the research in `.planning/research/SU
 - Pitfall 5 (Zip bomb / STEP recursion bomb / pathological mesh DoS) — addressed here via magic-byte + triangle-cap, reinforced by Phase 2 rate limits
 - Technical-debt pattern: dual legacy/registry path — explicitly removed
 
-**Plans:** TBD
+**Plans:** 4 (01.A, 01.B, 01.C in Wave 1; 01.D in Wave 2) — see 01-CONTEXT.md
 
 ---
 
