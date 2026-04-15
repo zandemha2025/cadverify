@@ -9,11 +9,36 @@ still runs.
 
 from __future__ import annotations
 
+import base64
 import io
+import os
 
 import numpy as np
 import pytest
 import trimesh
+
+
+# ──────────────────────────────────────────────────────────────
+# Auth env — autouse so every test sees valid pepper/secrets
+# ──────────────────────────────────────────────────────────────
+@pytest.fixture(autouse=True)
+def _auth_env(monkeypatch):
+    monkeypatch.setenv("API_KEY_PEPPER", base64.b64encode(b"a" * 32).decode())
+    monkeypatch.setenv("MAGIC_LINK_SECRET", base64.b64encode(b"b" * 32).decode())
+    monkeypatch.setenv(
+        "DASHBOARD_SESSION_SECRET", base64.b64encode(b"c" * 32).decode()
+    )
+    monkeypatch.setenv("TURNSTILE_SECRET", "test")
+    monkeypatch.setenv("DASHBOARD_ORIGIN", "https://cadverify.com")
+    monkeypatch.setenv("SESSION_SECRET", "dev")
+    # Reset hashing pepper cache so each test gets fresh config.
+    try:
+        import src.auth.hashing as _h
+
+        _h._PEPPER = None
+    except Exception:
+        pass
+    yield
 
 
 def _try_csg(op):
