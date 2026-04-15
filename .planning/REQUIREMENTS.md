@@ -25,10 +25,10 @@
 - [x] **AUTH-05**: User can create, rotate, and revoke multiple API keys from dashboard
 - [x] **AUTH-06**: All protected endpoints require `Authorization: Bearer cv_live_...` via FastAPI `Depends(require_api_key)`
 - [x] **AUTH-07**: Per-API-key rate limit enforced (60/hour, 500/day) via slowapi + Redis
-- [ ] **AUTH-08**: Per-IP signup rate limit; Turnstile challenge on signup form
+- [x] **AUTH-08**: Per-IP signup rate limit; Turnstile challenge on signup form
 - [x] **AUTH-09**: `ACCEPTING_NEW_ANALYSES` kill-switch env var halts validation endpoints when disabled
-- [ ] **AUTH-10**: Logs and Sentry scrub API keys and bearer tokens before transport
-- [ ] **AUTH-11**: CORS tightened — explicit `allow_headers`, regex origin match, `allow_credentials=False`
+- [x] **AUTH-10**: Logs and Sentry scrub API keys and bearer tokens before transport
+- [x] **AUTH-11**: CORS tightened — explicit `allow_headers`, regex origin match, `allow_credentials=False`
 
 ### Persistence & History (Keystone)
 
@@ -174,10 +174,10 @@
 | AUTH-05 | Phase 2 | Complete |
 | AUTH-06 | Phase 2 | Complete |
 | AUTH-07 | Phase 2 | Complete |
-| AUTH-08 | Phase 2 | Pending |
+| AUTH-08 | Phase 2 | Complete |
 | AUTH-09 | Phase 2 | Complete |
-| AUTH-10 | Phase 2 | Pending |
-| AUTH-11 | Phase 2 | Pending |
+| AUTH-10 | Phase 2 | Complete |
+| AUTH-11 | Phase 2 | Complete |
 | PERS-01 | Phase 3 | Pending |
 | PERS-02 | Phase 3 | Pending |
 | PERS-03 | Phase 3 | Pending |
