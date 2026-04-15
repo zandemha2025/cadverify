@@ -11,16 +11,11 @@ from typing import Optional
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 
 from src.analysis.base_analyzer import analyze_geometry, run_universal_checks
-from src.analysis.additive_analyzer import ADDITIVE_PROCESSES, run_additive_checks
-from src.analysis.casting_analyzer import CASTING_PROCESSES, run_casting_checks
-from src.analysis.cnc_analyzer import CNC_PROCESSES, run_cnc_checks
 from src.analysis.context import GeometryContext
 from src.analysis.features import detect_all as detect_features
 from src.analysis.models import AnalysisResult, Issue, ProcessType, Severity
 from src.analysis.processes import get_analyzer
 from src.analysis.rules import available_rule_packs, get_rule_pack
-from src.analysis.molding_analyzer import MOLDING_PROCESSES, run_molding_checks
-from src.analysis.sheet_metal_analyzer import run_sheet_metal_checks
 from src.api.upload_validation import enforce_triangle_cap, validate_magic
 from src.fixes.fix_suggester import enhance_suggestions, get_priority_fixes
 from src.matcher.profile_matcher import rank_processes, score_process
@@ -31,21 +26,6 @@ from src.profiles.database import MACHINES, MATERIALS, get_all_processes
 logger = logging.getLogger("cadverify.routes")
 
 router = APIRouter()
-
-
-# ──────────────────────────────────────────────────────────────
-# Process → analyzer function map (legacy, pre-registry adapter)
-# ──────────────────────────────────────────────────────────────
-PROCESS_ANALYZERS: dict[ProcessType, callable] = {}
-for _p in ADDITIVE_PROCESSES:
-    PROCESS_ANALYZERS[_p] = run_additive_checks
-for _p in CNC_PROCESSES:
-    PROCESS_ANALYZERS[_p] = run_cnc_checks
-for _p in MOLDING_PROCESSES:
-    PROCESS_ANALYZERS[_p] = run_molding_checks
-PROCESS_ANALYZERS[ProcessType.SHEET_METAL] = run_sheet_metal_checks
-for _p in CASTING_PROCESSES:
-    PROCESS_ANALYZERS[_p] = run_casting_checks
 
 
 # ──────────────────────────────────────────────────────────────
@@ -172,23 +152,15 @@ async def validate_file(
 
     process_scores = []
     for proc in target_processes:
-        # Prefer new registry-based analyzers (Phase 2); fall back to legacy.
         new_analyzer = get_analyzer(proc)
-        if new_analyzer is not None:
-            try:
-                proc_issues = new_analyzer.analyze(ctx)
-            except Exception:
-                logger.exception("New analyzer failed for %s", proc.value)
-                continue
-        else:
-            legacy = PROCESS_ANALYZERS.get(proc)
-            if legacy is None:
-                continue
-            try:
-                proc_issues = legacy(mesh, geometry, proc, ctx.segments)
-            except Exception:
-                logger.exception("Legacy analyzer failed for %s", proc.value)
-                continue
+        if new_analyzer is None:
+            logger.warning("No registered analyzer for process %s — skipping", proc.value)
+            continue
+        try:
+            proc_issues = new_analyzer.analyze(ctx)
+        except Exception:
+            logger.exception("Analyzer failed for %s", proc.value)
+            continue
         # Apply rule pack overlay (tighten thresholds, escalate severity)
         if pack:
             proc_issues = pack.apply(proc_issues, proc)
