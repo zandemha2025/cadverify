@@ -59,6 +59,28 @@ jobs:
           print("route-auth-coverage OK")
           PY
 
+  sentry-leak-grep:
+    name: cv_live_ never appears in captured Sentry payload
+    runs-on: ubuntu-latest
+    needs: [route-auth-coverage]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: cd backend && pip install -r requirements.txt
+      - name: Capture scrubbed Sentry dump
+        run: cd backend && pytest tests/test_sentry_leak.py -q
+      - name: Grep captured Sentry dump for cv_live_ leak
+        run: |
+          if grep -q "cv_live_[A-Za-z0-9_]\+" backend/build/captured_sentry.json; then
+            echo "FAIL: cv_live_ leaked into captured Sentry payload"
+            cat backend/build/captured_sentry.json
+            exit 1
+          fi
+          echo "sentry-leak-grep OK"
+
   frontend:
     name: Frontend Build & Lint
     runs-on: ubuntu-latest
