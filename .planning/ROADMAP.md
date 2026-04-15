@@ -115,7 +115,7 @@ The 8-phase decomposition is derived from the research in `.planning/research/SU
 - Pitfall 8: Vercel ↔ Fly/Railway CORS + auth footguns
 - Blast radius if auth ships alone: a single leaked key has no rate cap. **Do not split.**
 
-**Plans:** TBD
+**Plans:** 4 (02.A in Wave 1; 02.B, 02.C in Wave 2; 02.D in Wave 2 after 02.C) — see 02-CONTEXT.md
 **UI hint:** yes
 
 ---

@@ -18,9 +18,9 @@
 
 ### Authentication & Abuse Controls
 
-- [ ] **AUTH-01**: User can sign up via Google OAuth
-- [ ] **AUTH-02**: User can sign up via magic link (email) as fallback
-- [ ] **AUTH-03**: Signup issues an API key of form `cv_live_<prefix>_<secret>`, shown exactly once
+- [x] **AUTH-01**: User can sign up via Google OAuth
+- [x] **AUTH-02**: User can sign up via magic link (email) as fallback
+- [x] **AUTH-03**: Signup issues an API key of form `cv_live_<prefix>_<secret>`, shown exactly once
 - [ ] **AUTH-04**: API keys stored hashed (Argon2id) with HMAC-SHA256 prefix index for lookup
 - [ ] **AUTH-05**: User can create, rotate, and revoke multiple API keys from dashboard
 - [ ] **AUTH-06**: All protected endpoints require `Authorization: Bearer cv_live_...` via FastAPI `Depends(require_api_key)`
@@ -167,9 +167,9 @@
 | CORE-06 | Phase 1 | Complete |
 | CORE-07 | Phase 1 | Pending |
 | CORE-08 | Phase 1 | Complete |
-| AUTH-01 | Phase 2 | Pending |
-| AUTH-02 | Phase 2 | Pending |
-| AUTH-03 | Phase 2 | Pending |
+| AUTH-01 | Phase 2 | Complete |
+| AUTH-02 | Phase 2 | Complete |
+| AUTH-03 | Phase 2 | Complete |
 | AUTH-04 | Phase 2 | Pending |
 | AUTH-05 | Phase 2 | Pending |
 | AUTH-06 | Phase 2 | Pending |
