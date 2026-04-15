@@ -9,8 +9,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
 from src.api.routes import router
+from src.auth.magic_link import router as magic_router
+from src.auth.oauth import router as oauth_router
 
 
 def _parse_origins(raw: str) -> list[str]:
@@ -53,7 +56,16 @@ app.add_middleware(
 )
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
+# authlib OAuth state/nonce persistence requires Starlette SessionMiddleware.
+# Scoped to /auth endpoints only via per-cookie SameSite=lax + backend origin.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.environ.get("SESSION_SECRET", "dev-only"),
+)
+
 app.include_router(router, prefix="/api/v1")
+app.include_router(oauth_router, prefix="/auth")
+app.include_router(magic_router, prefix="/auth")
 
 
 @app.get("/health")
