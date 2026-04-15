@@ -21,6 +21,7 @@ from src.analysis.processes import get_analyzer
 from src.analysis.rules import available_rule_packs, get_rule_pack
 from src.analysis.molding_analyzer import MOLDING_PROCESSES, run_molding_checks
 from src.analysis.sheet_metal_analyzer import run_sheet_metal_checks
+from src.api.upload_validation import enforce_triangle_cap, validate_magic
 from src.fixes.fix_suggester import enhance_suggestions, get_priority_fixes
 from src.matcher.profile_matcher import rank_processes, score_process
 from src.parsers.step_parser import is_step_supported, parse_step_from_bytes
@@ -88,15 +89,22 @@ def _parse_mesh(data: bytes, filename: str):
             status_code=400,
             detail=f"Unsupported file type: {suffix}. Use .stl, .step, or .stp",
         )
+    # CORE-07: defense-in-depth — verify magic bytes before dispatching
+    # to parser libs (cadquery/trimesh can crash on adversarial input).
+    validate_magic(data, suffix)
     try:
         if suffix == ".stl":
-            return parse_stl_from_bytes(data, filename), suffix
+            mesh = parse_stl_from_bytes(data, filename)
+            enforce_triangle_cap(mesh)
+            return mesh, suffix
         if not is_step_supported():
             raise HTTPException(
                 status_code=501,
                 detail="STEP parsing requires cadquery. Install with: pip install cadquery",
             )
-        return parse_step_from_bytes(data, filename), suffix
+        mesh = parse_step_from_bytes(data, filename)
+        enforce_triangle_cap(mesh)
+        return mesh, suffix
     except HTTPException:
         raise
     except ValueError as e:
