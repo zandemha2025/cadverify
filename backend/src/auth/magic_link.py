@@ -22,9 +22,12 @@ import resend
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
+from src.auth.dashboard_session import set_session_cookie
 from src.auth.disposable import classify, normalize_email
+from src.auth.disposable_list import get_soft_flag_set
 from src.auth.hashing import hmac_index, mint_token
 from src.auth.models import create_api_key, upsert_user
+from src.auth.signup_limits import per_email_signup_limit, per_ip_signup_limit
 from src.auth.turnstile import verify_turnstile
 
 router = APIRouter()
@@ -72,12 +75,17 @@ async def magic_start(
     email: str = Form(...),
     cf_turnstile_response: str = Form(...),
 ):
+    # AUTH-08: cheapest check first (per-IP window), then Turnstile, then
+    # per-email window. Hard-reject throwaway domains; soft-flag disposables
+    # into a tighter 1/7d cap (D-11 override).
+    await per_ip_signup_limit(request)
     await verify_turnstile(
         cf_turnstile_response,
         request.client.host if request.client else None,
     )
     email_norm = normalize_email(email)
-    verdict = classify(email_norm, set())  # 02.D wires soft_flag_set from Redis
+    soft_set = await get_soft_flag_set()
+    verdict = classify(email_norm, soft_set)
     if verdict == "hard_reject":
         raise HTTPException(
             400,
@@ -87,6 +95,7 @@ async def magic_start(
                 "doc_url": "https://docs.cadverify.com/errors#email_domain_blocked",
             },
         )
+    await per_email_signup_limit(email_norm, soft_flagged=(verdict == "soft_flag"))
     token = _mint(email_norm)
     key = f"magic_link:{hashlib.sha256(token.encode()).hexdigest()}"
     await _r().setex(key, TTL, email_norm)
@@ -135,7 +144,9 @@ async def magic_verify(token: str):
     resp = RedirectResponse(
         url=f"/dashboard/keys?new=1&prefix={prefix}", status_code=303
     )
-    # Transient reveal cookie; 02.D will add dash_session separately.
+    # 30-day dashboard session cookie (HMAC-signed, HttpOnly, Secure, SameSite=Lax).
+    set_session_cookie(resp, user_id)
+    # Transient reveal cookie for one-time key display.
     resp.set_cookie(
         "cv_mint_once",
         full_token,
