@@ -41,6 +41,71 @@ def _auth_env(monkeypatch):
     yield
 
 
+def _apply_auth_bypass(app) -> None:
+    """Install a dependency override so tests can call /api/v1/* w/o Bearer.
+
+    Used by 02.C: existing end-to-end tests (test_api, test_rule_packs,
+    test_frontend_errors, test_step_corruption, test_large_mesh) were written
+    before require_api_key existed. Rather than sprinkle Bearer headers + DB
+    mocks through every test, we bypass the dependency globally on the main
+    app instance. Tests that need to exercise the real auth enforcement build
+    their own isolated FastAPI apps (see test_require_api_key, test_rate_limit).
+    """
+    from src.auth.require_api_key import AuthedUser, require_api_key
+
+    def _fake_user():
+        return AuthedUser(user_id=1, api_key_id=1, key_prefix="testkey1")
+
+    app.dependency_overrides[require_api_key] = _fake_user
+
+
+@pytest.fixture(autouse=True)
+def _bypass_api_key_auth(monkeypatch):
+    """Re-apply the auth bypass whenever a test reloads `main` and creates
+    a new FastAPI app instance.
+
+    We wrap `importlib.reload` so that any call to reload(main) installs the
+    override on the fresh app before the test constructs a TestClient.
+    """
+    import importlib
+
+    _orig_reload = importlib.reload
+
+    def _reload_and_bypass(mod):
+        result = _orig_reload(mod)
+        try:
+            if getattr(result, "__name__", "") == "main":
+                _apply_auth_bypass(result.app)
+        except Exception:
+            pass
+        return result
+
+    monkeypatch.setattr(importlib, "reload", _reload_and_bypass)
+
+    # Also apply to any already-imported main (covers tests that don't reload).
+    try:
+        import sys
+
+        if "main" in sys.modules:
+            _apply_auth_bypass(sys.modules["main"].app)
+    except Exception:
+        pass
+
+    yield
+
+    try:
+        import sys
+
+        if "main" in sys.modules:
+            from src.auth.require_api_key import require_api_key
+
+            sys.modules["main"].app.dependency_overrides.pop(
+                require_api_key, None
+            )
+    except Exception:
+        pass
+
+
 def _try_csg(op):
     """Run a boolean-op closure, skip the test if the backend is missing."""
     try:

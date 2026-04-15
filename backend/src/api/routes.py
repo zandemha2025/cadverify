@@ -9,9 +9,21 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
 
 from src.analysis.base_analyzer import analyze_geometry, run_universal_checks
+from src.auth.kill_switch import require_kill_switch_open
+from src.auth.rate_limit import limiter
+from src.auth.require_api_key import AuthedUser, require_api_key
 from src.analysis.context import GeometryContext
 from src.analysis.features import detect_all as detect_features
 from src.analysis.models import AnalysisResult, Issue, ProcessType, Severity
@@ -122,8 +134,11 @@ def _resolve_target_processes(processes: Optional[str]) -> list[ProcessType]:
 # ──────────────────────────────────────────────────────────────
 # Routes
 # ──────────────────────────────────────────────────────────────
-@router.post("/validate")
+@router.post("/validate", dependencies=[Depends(require_kill_switch_open)])
+@limiter.limit("60/hour;500/day")
 async def validate_file(
+    request: Request,
+    response: Response,
     file: UploadFile = File(...),
     processes: Optional[str] = Query(
         None,
@@ -133,6 +148,7 @@ async def validate_file(
         None,
         description="Industry rule pack: aerospace, automotive, oil_gas, medical.",
     ),
+    user: AuthedUser = Depends(require_api_key),
 ):
     """Upload a STEP or STL file and get manufacturing validation results."""
     start = time.time()
@@ -217,8 +233,14 @@ async def validate_file(
     return _to_response(result, features, pack)
 
 
-@router.post("/validate/quick")
-async def validate_quick(file: UploadFile = File(...)):
+@router.post("/validate/quick", dependencies=[Depends(require_kill_switch_open)])
+@limiter.limit("60/hour;500/day")
+async def validate_quick(
+    request: Request,
+    response: Response,
+    file: UploadFile = File(...),
+    user: AuthedUser = Depends(require_api_key),
+):
     """Quick pass/fail check — universal checks only, no process-specific analysis."""
     filename = file.filename or "unknown"
     data = await _read_capped(file)
@@ -251,7 +273,12 @@ async def validate_quick(file: UploadFile = File(...)):
 
 
 @router.get("/rule-packs")
-async def list_rule_packs():
+@limiter.limit("60/hour;500/day")
+async def list_rule_packs(
+    request: Request,
+    response: Response,
+    user: AuthedUser = Depends(require_api_key),
+):
     """List available industry rule packs."""
     packs = []
     for name in available_rule_packs():
@@ -268,12 +295,22 @@ async def list_rule_packs():
 
 
 @router.get("/processes")
-async def list_processes():
+@limiter.limit("60/hour;500/day")
+async def list_processes(
+    request: Request,
+    response: Response,
+    user: AuthedUser = Depends(require_api_key),
+):
     return {"processes": get_all_processes()}
 
 
 @router.get("/materials")
-async def list_materials():
+@limiter.limit("60/hour;500/day")
+async def list_materials(
+    request: Request,
+    response: Response,
+    user: AuthedUser = Depends(require_api_key),
+):
     return {
         "materials": [
             {
@@ -290,7 +327,12 @@ async def list_materials():
 
 
 @router.get("/machines")
-async def list_machines():
+@limiter.limit("60/hour;500/day")
+async def list_machines(
+    request: Request,
+    response: Response,
+    user: AuthedUser = Depends(require_api_key),
+):
     return {
         "machines": [
             {
