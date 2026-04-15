@@ -12,6 +12,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from src.api.routes import router
+from src.auth.keys_api import router as keys_router
 from src.auth.magic_link import router as magic_router
 from src.auth.oauth import router as oauth_router
 
@@ -66,6 +67,7 @@ app.add_middleware(
 app.include_router(router, prefix="/api/v1")
 app.include_router(oauth_router, prefix="/auth")
 app.include_router(magic_router, prefix="/auth")
+app.include_router(keys_router)
 
 
 @app.get("/health")
