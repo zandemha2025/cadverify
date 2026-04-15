@@ -21,8 +21,8 @@
 - [x] **AUTH-01**: User can sign up via Google OAuth
 - [x] **AUTH-02**: User can sign up via magic link (email) as fallback
 - [x] **AUTH-03**: Signup issues an API key of form `cv_live_<prefix>_<secret>`, shown exactly once
-- [ ] **AUTH-04**: API keys stored hashed (Argon2id) with HMAC-SHA256 prefix index for lookup
-- [ ] **AUTH-05**: User can create, rotate, and revoke multiple API keys from dashboard
+- [x] **AUTH-04**: API keys stored hashed (Argon2id) with HMAC-SHA256 prefix index for lookup
+- [x] **AUTH-05**: User can create, rotate, and revoke multiple API keys from dashboard
 - [ ] **AUTH-06**: All protected endpoints require `Authorization: Bearer cv_live_...` via FastAPI `Depends(require_api_key)`
 - [ ] **AUTH-07**: Per-API-key rate limit enforced (60/hour, 500/day) via slowapi + Redis
 - [ ] **AUTH-08**: Per-IP signup rate limit; Turnstile challenge on signup form
@@ -170,8 +170,8 @@
 | AUTH-01 | Phase 2 | Complete |
 | AUTH-02 | Phase 2 | Complete |
 | AUTH-03 | Phase 2 | Complete |
-| AUTH-04 | Phase 2 | Pending |
-| AUTH-05 | Phase 2 | Pending |
+| AUTH-04 | Phase 2 | Complete |
+| AUTH-05 | Phase 2 | Complete |
 | AUTH-06 | Phase 2 | Pending |
 | AUTH-07 | Phase 2 | Pending |
 | AUTH-08 | Phase 2 | Pending |
