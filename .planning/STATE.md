@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Not started
-last_updated: "2026-04-15T22:09:41.683Z"
+last_updated: "2026-04-15T22:46:52.773Z"
 progress:
   total_phases: 8
   completed_phases: 1
@@ -14,7 +14,7 @@ progress:
 
 # STATE: CadVerify
 
-**Last updated:** 2026-04-15
+**Last updated:** 2026-04-15 (after `/gsd-discuss-phase 2 --auto`)
 
 ## Project Reference
 
@@ -30,12 +30,16 @@ progress:
 
 ## Current Position
 
-- **Phase:** Phase 1 — Stabilize Core
-- **Plan:** Not yet planned (run `/gsd-plan-phase 1` to decompose)
-- **Status:** Not started
-- **Progress:** [██████████] 100%
+- **Phase:** Phase 2 — Auth + Rate Limiting + Abuse Controls
+- **Plan:** Context captured in `--auto` mode; not yet decomposed into plans
+- **Status:** Context ready for planning
+- **Progress:** Phase 1 complete (4/4 plans). Phase 2 CONTEXT.md written with 19 locked decisions and 10 gray areas resolved.
 
-**Next action:** `/gsd-plan-phase 1` to decompose Phase 1 into executable plans.
+**Next action:** `/gsd-plan-phase 2` to decompose Phase 2 into executable plans (4 suggested in ROADMAP: 2.A signup + key issuance, 2.B key storage + management UI, 2.C require_api_key + rate-limit + kill-switch, 2.D Turnstile + signup IP limit + log scrubbing + CORS).
+
+**Recommendation:** Before running `/gsd-plan-phase 2`, review §"Decisions the User Should Revisit" in `.planning/phases/02-auth-rate-limiting-abuse-controls/02-CONTEXT.md` (5 items flagged for user reconsideration).
+
+**Last session (2026-04-15):** `/gsd-discuss-phase 2 --auto` — wrote 02-CONTEXT.md and 02-DISCUSSION-LOG.md.
 
 ## Milestone Progress
 
@@ -72,14 +76,15 @@ progress:
 
 ### Research Flags Pending
 
-- **Phase 2:** OAuth provider choice (Google-only vs Google+GitHub vs magic-link), Turnstile, signup abuse model → `/gsd-research-phase 2`
+- **Phase 2:** OAuth provider / Turnstile / signup abuse model — **resolved in 02-CONTEXT.md via `--auto` mode** (Google + magic link, Turnstile + per-IP + per-email + disposable-blocklist, env-var kill-switch). `/gsd-research-phase 2` still optional for deeper Argon2id/slowapi/disposable-email-list research before planning.
 - **Phase 6:** cadquery Dockerfile spike (highest-risk artifact) → `/gsd-research-phase 6`
 - **Phase 7:** arq-vs-TaskIQ recheck + SAM-3D weight size/license/provenance → `/gsd-research-phase 7`
 
 ### Open Todos
 
-- Run `/gsd-plan-phase 1` to begin execution
-- Schedule `/gsd-research-phase 2` before Phase 2 kickoff
+- Run `/gsd-plan-phase 2` to decompose Phase 2 using 02-CONTEXT.md
+- (Optional) Review §"Decisions the User Should Revisit" in 02-CONTEXT.md before planning
+- (Optional) `/gsd-research-phase 2` for deeper Argon2id / slowapi / disposable-email research
 - Schedule `/gsd-research-phase 6` before Phase 6 kickoff
 - Schedule `/gsd-research-phase 7` before Phase 7 kickoff
 
