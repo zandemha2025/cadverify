@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import time
@@ -41,6 +42,14 @@ def _max_upload_bytes() -> int:
     except ValueError:
         mb = 100
     return max(1, mb) * 1024 * 1024
+
+
+def _analysis_timeout_sec() -> float:
+    """Read ANALYSIS_TIMEOUT_SEC lazily so tests can override via monkeypatch."""
+    try:
+        return max(0.1, float(os.getenv("ANALYSIS_TIMEOUT_SEC", "60")))
+    except ValueError:
+        return 60.0
 
 
 async def _read_capped(file: UploadFile) -> bytes:
@@ -142,30 +151,52 @@ async def validate_file(
     data = await _read_capped(file)
     mesh, suffix = _parse_mesh(data, filename)
 
-    geometry = analyze_geometry(mesh)
-    ctx = GeometryContext.build(mesh, geometry)
-    features = detect_features(mesh)
-    ctx.features = features
-    universal_issues = run_universal_checks(mesh)
+    def _run_analysis_sync():
+        geometry = analyze_geometry(mesh)
+        ctx = GeometryContext.build(mesh, geometry)
+        features = detect_features(mesh)
+        ctx.features = features
+        universal_issues = run_universal_checks(mesh)
 
-    target_processes = _resolve_target_processes(processes)
+        target_processes = _resolve_target_processes(processes)
 
-    process_scores = []
-    for proc in target_processes:
-        new_analyzer = get_analyzer(proc)
-        if new_analyzer is None:
-            logger.warning("No registered analyzer for process %s — skipping", proc.value)
-            continue
-        try:
-            proc_issues = new_analyzer.analyze(ctx)
-        except Exception:
-            logger.exception("Analyzer failed for %s", proc.value)
-            continue
-        # Apply rule pack overlay (tighten thresholds, escalate severity)
-        if pack:
-            proc_issues = pack.apply(proc_issues, proc)
-        ps = score_process(proc_issues, geometry, proc)
-        process_scores.append(ps)
+        process_scores = []
+        for proc in target_processes:
+            new_analyzer = get_analyzer(proc)
+            if new_analyzer is None:
+                logger.warning("No registered analyzer for process %s — skipping", proc.value)
+                continue
+            try:
+                proc_issues = new_analyzer.analyze(ctx)
+            except Exception:
+                logger.exception("Analyzer failed for %s", proc.value)
+                continue
+            # Apply rule pack overlay (tighten thresholds, escalate severity)
+            if pack:
+                proc_issues = pack.apply(proc_issues, proc)
+            ps = score_process(proc_issues, geometry, proc)
+            process_scores.append(ps)
+        return geometry, ctx, features, universal_issues, process_scores
+
+    timeout_sec = _analysis_timeout_sec()
+    loop = asyncio.get_event_loop()
+    try:
+        # Run CPU-bound analysis in threadpool so asyncio.wait_for can
+        # enforce a wall-clock timeout without being blocked by the GIL-held
+        # synchronous work. The worker thread may keep running after timeout
+        # (Python cannot kill threads), but the request returns 504 promptly.
+        geometry, ctx, features, universal_issues, process_scores = await asyncio.wait_for(
+            loop.run_in_executor(None, _run_analysis_sync),
+            timeout=timeout_sec,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=504,
+            detail=(
+                f"Analysis exceeded ANALYSIS_TIMEOUT_SEC={timeout_sec:.0f}s. "
+                f"Reduce scope with ?processes=... or try /validate/quick."
+            ),
+        )
 
     result = AnalysisResult(
         filename=filename,
