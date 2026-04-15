@@ -1,10 +1,10 @@
-"""API-key minting. HMAC + verify are promoted to first-class in 02.B.
+"""API-key hashing: HMAC-SHA256 prefix index + Argon2id secret hash.
 
-This module exports:
-  - mint_token(): issue a fresh cv_live_<prefix>_<secret> + Argon2id hash.
-  - hmac_index(): compatibility stub used by oauth.py / magic_link.py so the
-    callback can persist a lookup index today. Plan 02.B replaces this with
-    a verified implementation that shares the same signature.
+Public API (final, promoted in 02.B):
+  - mint_token() -> (full_token, prefix, secret_hash)
+  - hmac_index(token) -> hex digest (64 chars)
+  - verify_token(secret_hash, token) -> bool (never raises to the caller)
+  - needs_rehash(secret_hash) -> bool
 """
 from __future__ import annotations
 
@@ -15,8 +15,25 @@ import os
 import secrets
 
 from argon2 import PasswordHasher
+from argon2.exceptions import (
+    InvalidHash,
+    InvalidHashError,
+    VerifyMismatchError,
+)
 
+_PEPPER: bytes | None = None
 _PH: PasswordHasher | None = None
+
+
+def _pepper() -> bytes:
+    global _PEPPER
+    if _PEPPER is None:
+        raw = os.environ["API_KEY_PEPPER"]
+        decoded = base64.b64decode(raw)
+        if len(decoded) < 32:
+            raise RuntimeError("API_KEY_PEPPER must decode to >= 32 bytes")
+        _PEPPER = decoded
+    return _PEPPER
 
 
 def _ph() -> PasswordHasher:
@@ -35,7 +52,6 @@ def _ph() -> PasswordHasher:
 def _base62_chunk(n_bytes: int, out_len: int) -> str:
     raw = secrets.token_urlsafe(n_bytes)
     cleaned = raw.replace("-", "a").replace("_", "b").replace("=", "")
-    # token_urlsafe may underfill; pad with CSPRNG alphanum if so.
     alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     while len(cleaned) < out_len:
         cleaned += secrets.choice(alphabet)
@@ -55,10 +71,21 @@ def mint_token() -> tuple[str, str, str]:
 
 
 def hmac_index(token: str) -> str:
-    """Compatibility stub — overwritten in 02.B with pepper validation.
+    """HMAC-SHA256 of the token under API_KEY_PEPPER. Deterministic lookup key."""
+    return hmac.new(_pepper(), token.encode(), hashlib.sha256).hexdigest()
 
-    Uses API_KEY_PEPPER (base64-encoded, >= 32 bytes) to produce an HMAC-SHA256
-    hex digest suitable as a unique lookup index in api_keys.hmac_index.
-    """
-    pepper = base64.b64decode(os.environ["API_KEY_PEPPER"])
-    return hmac.new(pepper, token.encode(), hashlib.sha256).hexdigest()
+
+def verify_token(secret_hash: str, token: str) -> bool:
+    """Return True iff token matches secret_hash. Never raises to the caller."""
+    try:
+        _ph().verify(secret_hash, token)
+        return True
+    except (VerifyMismatchError, InvalidHash, InvalidHashError):
+        return False
+    except Exception:
+        # Defensive: argon2-cffi may raise other errors on malformed input.
+        return False
+
+
+def needs_rehash(secret_hash: str) -> bool:
+    return _ph().check_needs_rehash(secret_hash)
