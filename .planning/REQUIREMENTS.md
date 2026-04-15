@@ -8,11 +8,11 @@
 ### Stabilize Core (Engine Trust)
 
 - [ ] **CORE-01**: STEP parser cleans up temp files via context manager (no `/tmp` leakage)
-- [ ] **CORE-02**: Bare `except Exception:` in analyzers replaced with categorized warnings + explicit `Issue` emission
+- [x] **CORE-02**: Bare `except Exception:` in analyzers replaced with categorized warnings + explicit `Issue` emission
 - [ ] **CORE-03**: Legacy `PROCESS_ANALYZERS` dual path removed; all processes served via registry
 - [ ] **CORE-04**: Manufacturing constants centralized in a single config module (not scattered per analyzer file)
-- [ ] **CORE-05**: Wall-thickness ray-cast returns typed failure (not silent `inf`) and uses scale-aware epsilon for micro/macro parts
-- [ ] **CORE-06**: Configurable `ANALYSIS_TIMEOUT_SEC` env var returns HTTP 504 on exceed
+- [x] **CORE-05**: Wall-thickness ray-cast returns typed failure (not silent `inf`) and uses scale-aware epsilon for micro/macro parts
+- [x] **CORE-06**: Configurable `ANALYSIS_TIMEOUT_SEC` env var returns HTTP 504 on exceed
 - [ ] **CORE-07**: File upload validates magic bytes (STEP/STL) and enforces triangle-count cap before parsing
 - [ ] **CORE-08**: Critical test gaps filled — large mesh (>200k faces), STEP corruption, process-scoring ties, frontend error handling
 
@@ -160,11 +160,11 @@
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | CORE-01 | Phase 1 | Pending |
-| CORE-02 | Phase 1 | Pending |
+| CORE-02 | Phase 1 | Complete |
 | CORE-03 | Phase 1 | Pending |
 | CORE-04 | Phase 1 | Pending |
-| CORE-05 | Phase 1 | Pending |
-| CORE-06 | Phase 1 | Pending |
+| CORE-05 | Phase 1 | Complete |
+| CORE-06 | Phase 1 | Complete |
 | CORE-07 | Phase 1 | Pending |
 | CORE-08 | Phase 1 | Pending |
 | AUTH-01 | Phase 2 | Pending |
