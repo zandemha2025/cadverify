@@ -6,6 +6,7 @@ stub if cadquery is not installed (it requires OpenCascade C++ libs).
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -99,7 +100,16 @@ def parse_step_from_bytes(
     import tempfile
 
     suffix = Path(filename).suffix or ".step"
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False, mode="w+b")
+    try:
+        os.chmod(tmp.name, 0o600)   # owner R/W only — CONCERNS.md security note
         tmp.write(data)
         tmp.flush()
+        tmp.close()                  # close FD before cadquery re-opens by path
         return parse_step(tmp.name, linear_deflection)
+    finally:
+        # guaranteed cleanup even if parse_step raises
+        try:
+            os.unlink(tmp.name)
+        except FileNotFoundError:
+            pass
