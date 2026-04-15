@@ -19,10 +19,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+import logging
+
 import numpy as np
 import trimesh
 
 from src.analysis.models import FeatureSegment, GeometryInfo
+
+logger = logging.getLogger("cadverify.context")
 
 if TYPE_CHECKING:  # avoid circular import at runtime
     from src.analysis.features.base import Feature
@@ -73,9 +77,10 @@ class GeometryContext:
             bbox_diag = 0.0
         else:
             bbox_diag = float(np.linalg.norm(np.asarray(extents, dtype=np.float64)))
-        # Scale-aware epsilon: avoids the old hardcoded 0.01mm that was wrong
-        # for sub-mm features and for parts measured in meters.
-        scale_eps = max(bbox_diag * 1e-5, 1e-5)
+        # Scale-aware epsilon clamped to handle sub-mm features (micro parts)
+        # and multi-meter assemblies without drifting the ray-cast origin
+        # either below numerical noise or past thin walls.
+        scale_eps = max(1e-4, min(bbox_diag * 1e-4, 0.1))
 
         normals = np.asarray(mesh.face_normals, dtype=np.float64)
         centroids = np.asarray(mesh.triangles_center, dtype=np.float64)
@@ -93,16 +98,31 @@ class GeometryContext:
             convex = np.asarray(mesh.face_adjacency_convex, dtype=bool)
             concave_mask = ~convex
         except Exception:
+            logger.warning(
+                "face_adjacency_convex failed (n_adj=%d); defaulting to all-convex",
+                len(dihedral),
+                exc_info=True,
+            )
             concave_mask = np.zeros(len(dihedral), dtype=bool)
 
         try:
             bodies = list(mesh.split(only_watertight=False))
         except Exception:
+            logger.warning(
+                "mesh.split failed (n_faces=%d); treating as single body",
+                len(mesh.faces),
+                exc_info=True,
+            )
             bodies = [mesh]
 
         try:
             facet_groups = [np.asarray(f, dtype=int) for f in mesh.facets]
         except Exception:
+            logger.warning(
+                "mesh.facets extraction failed (n_faces=%d); no facet groups",
+                len(mesh.faces),
+                exc_info=True,
+            )
             facet_groups = []
 
         return cls(
@@ -159,6 +179,12 @@ def _compute_wall_thickness(
             multiple_hits=True,
         )
     except Exception:
+        logger.warning(
+            "_compute_wall_thickness ray cast failed (n_faces=%d, eps=%.3g)",
+            len(centroids),
+            eps,
+            exc_info=True,
+        )
         return thickness
 
     if len(locs) == 0:
@@ -181,4 +207,5 @@ def _safe_attr(obj: Any, name: str, default):
     try:
         return getattr(obj, name)
     except Exception:
+        logger.warning("getattr %s failed", name, exc_info=True)
         return default
