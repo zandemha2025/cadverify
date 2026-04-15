@@ -13,18 +13,26 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
+import structlog
+
 from src.api.routes import router
 from src.auth.keys_api import router as keys_router
 from src.auth.magic_link import router as magic_router
 from src.auth.oauth import router as oauth_router
 from src.auth.rate_limit import limiter, rate_limit_handler
+from src.auth.scrubbing import scrub_processor, sentry_before_send
 
 
 def _parse_origins(raw: str) -> list[str]:
     return [o.strip() for o in raw.split(",") if o.strip()]
 
 
-ALLOWED_ORIGINS = _parse_origins(os.getenv("ALLOWED_ORIGINS", "http://localhost:3000"))
+# Default CORS regex: prod apex/www + Vercel preview subdomains.
+# Override via CORS_ORIGIN_REGEX env for dev/localhost if needed.
+CORS_ORIGIN_REGEX = os.getenv(
+    "CORS_ORIGIN_REGEX",
+    r"^https://(cadverify\.com|www\.cadverify\.com|[a-z0-9-]+\.vercel\.app)$",
+)
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
 logging.basicConfig(
@@ -33,10 +41,37 @@ logging.basicConfig(
 )
 logger = logging.getLogger("cadverify")
 
+# structlog configured with scrub_processor as the penultimate step (before
+# JSONRenderer) so cv_live_* + Authorization headers never reach stdout/Sentry.
+structlog.configure(
+    processors=[
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        scrub_processor,
+        structlog.processors.JSONRenderer(),
+    ],
+    wrapper_class=structlog.make_filtering_bound_logger(
+        getattr(logging, LOG_LEVEL, logging.INFO)
+    ),
+    logger_factory=structlog.PrintLoggerFactory(),
+    cache_logger_on_first_use=True,
+)
+
+if os.getenv("SENTRY_DSN"):
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=os.environ["SENTRY_DSN"],
+        before_send=sentry_before_send,
+        send_default_pii=False,
+        release=os.getenv("RELEASE", "dev"),
+    )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("CADVerify starting | origins=%s", ALLOWED_ORIGINS)
+    logger.info("CADVerify starting | cors_regex=%s", CORS_ORIGIN_REGEX)
     yield
     logger.info("CADVerify stopping")
 
@@ -54,14 +89,15 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 app.add_middleware(SlowAPIMiddleware)
 
-# CORS: credentials disabled because wildcard + credentials is rejected by browsers,
-# and this API is currently stateless (no cookie auth). Tighten ALLOWED_ORIGINS for prod.
+# CORS: regex origin matches prod apex/www + Vercel preview subdomains.
+# Explicit allow_headers (no wildcard); allow_credentials=False (stateless API,
+# dashboard session lives on a different subdomain).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=CORS_ORIGIN_REGEX,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
     max_age=600,
 )
 app.add_middleware(GZipMiddleware, minimum_size=1024)
