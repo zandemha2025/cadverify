@@ -14,7 +14,7 @@
 - [x] **CORE-05**: Wall-thickness ray-cast returns typed failure (not silent `inf`) and uses scale-aware epsilon for micro/macro parts
 - [x] **CORE-06**: Configurable `ANALYSIS_TIMEOUT_SEC` env var returns HTTP 504 on exceed
 - [ ] **CORE-07**: File upload validates magic bytes (STEP/STL) and enforces triangle-count cap before parsing
-- [ ] **CORE-08**: Critical test gaps filled — large mesh (>200k faces), STEP corruption, process-scoring ties, frontend error handling
+- [x] **CORE-08**: Critical test gaps filled — large mesh (>200k faces), STEP corruption, process-scoring ties, frontend error handling
 
 ### Authentication & Abuse Controls
 
@@ -166,7 +166,7 @@
 | CORE-05 | Phase 1 | Complete |
 | CORE-06 | Phase 1 | Complete |
 | CORE-07 | Phase 1 | Pending |
-| CORE-08 | Phase 1 | Pending |
+| CORE-08 | Phase 1 | Complete |
 | AUTH-01 | Phase 2 | Pending |
 | AUTH-02 | Phase 2 | Pending |
 | AUTH-03 | Phase 2 | Pending |
