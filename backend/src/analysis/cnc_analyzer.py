@@ -5,6 +5,8 @@ Covers 3-axis milling, 5-axis milling, turning, and wire EDM.
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import trimesh
 
@@ -20,6 +22,8 @@ from src.analysis.models import (
     ProcessType,
     Severity,
 )
+
+logger = logging.getLogger("cadverify.cnc_analyzer")
 
 
 def check_undercuts(
@@ -178,6 +182,23 @@ def check_thin_walls_cnc(
             ray_directions=ray_directions,
         )
     except Exception:
+        logger.warning(
+            "cnc ray cast failed for %s",
+            process.value,
+            exc_info=True,
+        )
+        issues.append(Issue(
+            code="ANALYSIS_PARTIAL",
+            severity=Severity.INFO,
+            message=(
+                f"CNC thickness/clearance check incomplete for {process.value} "
+                f"(ray cast failed)."
+            ),
+            process=process,
+            fix_suggestion=(
+                "Verify mesh is watertight; consider running /validate/quick."
+            ),
+        ))
         return issues
 
     if len(locations) == 0:

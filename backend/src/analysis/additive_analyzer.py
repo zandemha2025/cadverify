@@ -5,6 +5,8 @@ Covers FDM, SLA/DLP, SLS, MJF, DMLS/SLM, EBM, Binder Jetting, DED/WAAM.
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import trimesh
 from scipy.spatial import cKDTree
@@ -22,6 +24,8 @@ from src.analysis.models import (
     ProcessType,
     Severity,
 )
+
+logger = logging.getLogger("cadverify.additive_analyzer")
 
 
 def check_wall_thickness(
@@ -52,7 +56,24 @@ def check_wall_thickness(
             ray_directions=ray_directions,
         )
     except Exception:
-        return issues  # Skip if ray casting fails
+        logger.warning(
+            "check_wall_thickness ray cast failed for %s",
+            process.value,
+            exc_info=True,
+        )
+        issues.append(Issue(
+            code="ANALYSIS_PARTIAL",
+            severity=Severity.INFO,
+            message=(
+                f"Wall thickness check incomplete for {process.value} "
+                f"(ray cast failed)."
+            ),
+            process=process,
+            fix_suggestion=(
+                "Verify mesh is watertight; consider running /validate/quick."
+            ),
+        ))
+        return issues
 
     if len(locations) == 0:
         return issues
@@ -248,7 +269,21 @@ def check_trapped_volumes(
                             ),
                         ))
     except Exception:
-        pass  # Skip if split/containment check fails
+        logger.warning(
+            "check_trapped_volumes split/containment failed for %s",
+            process.value,
+            exc_info=True,
+        )
+        issues.append(Issue(
+            code="ANALYSIS_PARTIAL",
+            severity=Severity.INFO,
+            message=(
+                f"Trapped-volume check incomplete for {process.value} "
+                f"(split/containment error)."
+            ),
+            process=process,
+            fix_suggestion="Verify mesh integrity via /validate/quick.",
+        ))
 
     return issues
 
