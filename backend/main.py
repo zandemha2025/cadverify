@@ -9,12 +9,15 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from src.api.routes import router
 from src.auth.keys_api import router as keys_router
 from src.auth.magic_link import router as magic_router
 from src.auth.oauth import router as oauth_router
+from src.auth.rate_limit import limiter, rate_limit_handler
 
 
 def _parse_origins(raw: str) -> list[str]:
@@ -44,6 +47,12 @@ app = FastAPI(
     version="0.2.0",
     lifespan=lifespan,
 )
+
+# Rate limiting (slowapi). Must be wired before routers are included so the
+# middleware sees every request. See src/auth/rate_limit.py for the key_func.
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 # CORS: credentials disabled because wildcard + credentials is rejected by browsers,
 # and this API is currently stateless (no cookie auth). Tighten ALLOWED_ORIGINS for prod.
