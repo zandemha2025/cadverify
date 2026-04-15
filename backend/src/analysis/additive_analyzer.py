@@ -9,6 +9,12 @@ import numpy as np
 import trimesh
 from scipy.spatial import cKDTree
 
+from src.analysis.constants import (
+    BUILD_VOLUMES,
+    MIN_FEATURE_SIZE,
+    MIN_WALL_THICKNESS,
+    SUPPORT_ANGLE_THRESHOLD,
+)
 from src.analysis.models import (
     FeatureSegment,
     GeometryInfo,
@@ -16,52 +22,6 @@ from src.analysis.models import (
     ProcessType,
     Severity,
 )
-
-
-# Minimum wall thickness by process (mm)
-MIN_WALL_THICKNESS = {
-    ProcessType.FDM: 0.8,
-    ProcessType.SLA: 0.3,
-    ProcessType.DLP: 0.3,
-    ProcessType.SLS: 0.7,
-    ProcessType.MJF: 0.5,
-    ProcessType.DMLS: 0.4,
-    ProcessType.SLM: 0.4,
-    ProcessType.EBM: 0.7,
-    ProcessType.BINDER_JET: 1.0,
-    ProcessType.DED: 1.5,
-    ProcessType.WAAM: 2.0,
-}
-
-# Maximum overhang angle (degrees from vertical) before supports needed
-SUPPORT_ANGLE_THRESHOLD = {
-    ProcessType.FDM: 45.0,
-    ProcessType.SLA: 30.0,
-    ProcessType.DLP: 30.0,
-    ProcessType.SLS: 90.0,    # Self-supporting (powder bed)
-    ProcessType.MJF: 90.0,    # Self-supporting
-    ProcessType.DMLS: 45.0,
-    ProcessType.SLM: 45.0,
-    ProcessType.EBM: 50.0,
-    ProcessType.BINDER_JET: 90.0,  # Self-supporting
-    ProcessType.DED: 60.0,
-    ProcessType.WAAM: 60.0,
-}
-
-# Minimum feature size (mm) — smaller features may not resolve
-MIN_FEATURE_SIZE = {
-    ProcessType.FDM: 0.4,     # ~nozzle diameter
-    ProcessType.SLA: 0.05,
-    ProcessType.DLP: 0.05,
-    ProcessType.SLS: 0.3,
-    ProcessType.MJF: 0.2,
-    ProcessType.DMLS: 0.15,
-    ProcessType.SLM: 0.15,
-    ProcessType.EBM: 0.3,
-    ProcessType.BINDER_JET: 0.5,
-    ProcessType.DED: 1.0,
-    ProcessType.WAAM: 2.0,
-}
 
 
 def check_wall_thickness(
@@ -299,21 +259,6 @@ def check_build_volume(
 ) -> list[Issue]:
     """Check if part fits within typical build volumes for the process."""
     issues = []
-
-    # Typical max build volumes (mm) — these are approximate for common machines
-    BUILD_VOLUMES = {
-        ProcessType.FDM: (300, 300, 350),       # Bambu X1C / Prusa MK4
-        ProcessType.SLA: (145, 145, 175),        # Formlabs Form 4
-        ProcessType.DLP: (192, 120, 200),        # Elegoo Saturn
-        ProcessType.SLS: (340, 340, 600),        # EOS P 396
-        ProcessType.MJF: (380, 284, 380),        # HP Jet Fusion 5200
-        ProcessType.DMLS: (400, 400, 400),       # EOS M 400-4
-        ProcessType.SLM: (500, 280, 365),        # SLM 500
-        ProcessType.EBM: (350, 380, 380),        # Arcam Q20plus
-        ProcessType.BINDER_JET: (800, 500, 400), # ExOne S-Max
-        ProcessType.DED: (1500, 1500, 1500),     # Large format
-        ProcessType.WAAM: (5000, 3000, 3000),    # Very large format
-    }
 
     dims = geometry.bounding_box.dimensions
     max_vol = BUILD_VOLUMES.get(process)

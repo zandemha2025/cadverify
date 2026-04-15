@@ -5,6 +5,10 @@ from __future__ import annotations
 import numpy as np
 import trimesh
 
+from src.analysis.constants import (
+    MIN_DRAFT_ANGLE,
+    WALL_THICKNESS_RANGE,
+)
 from src.analysis.models import (
     FeatureSegment,
     GeometryInfo,
@@ -12,24 +16,6 @@ from src.analysis.models import (
     ProcessType,
     Severity,
 )
-
-# Minimum draft angle (degrees) by process
-MIN_DRAFT_ANGLE = {
-    ProcessType.INJECTION_MOLDING: 1.0,
-    ProcessType.DIE_CASTING: 1.0,
-    ProcessType.INVESTMENT_CASTING: 0.5,
-    ProcessType.SAND_CASTING: 3.0,
-    ProcessType.FORGING: 5.0,
-}
-
-# Wall thickness ranges (mm) — [min, max, ideal]
-WALL_THICKNESS_RANGE = {
-    ProcessType.INJECTION_MOLDING: (0.5, 6.0, 2.5),
-    ProcessType.DIE_CASTING: (0.8, 12.0, 3.0),
-    ProcessType.INVESTMENT_CASTING: (1.0, 50.0, 5.0),
-    ProcessType.SAND_CASTING: (3.0, 100.0, 8.0),
-    ProcessType.FORGING: (3.0, 200.0, 10.0),
-}
 
 
 def check_draft_angles(

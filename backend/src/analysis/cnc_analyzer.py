@@ -8,6 +8,11 @@ from __future__ import annotations
 import numpy as np
 import trimesh
 
+from src.analysis.constants import (
+    MAX_POCKET_DEPTH_RATIO,
+    MAX_WORKPIECE,
+    STANDARD_TOOL_DIAMETERS,
+)
 from src.analysis.models import (
     FeatureSegment,
     GeometryInfo,
@@ -15,23 +20,6 @@ from src.analysis.models import (
     ProcessType,
     Severity,
 )
-
-# Standard tool library — common end mill diameters (mm)
-STANDARD_TOOL_DIAMETERS = [1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 10.0, 12.0, 16.0, 20.0]
-
-# Max workpiece size (mm) for typical CNC machines
-MAX_WORKPIECE = {
-    ProcessType.CNC_3AXIS: (1000, 500, 500),
-    ProcessType.CNC_5AXIS: (800, 500, 500),
-    ProcessType.CNC_TURNING: (300, 300, 1000),  # Diameter, Diameter, Length
-    ProcessType.WIRE_EDM: (500, 350, 300),
-}
-
-# Maximum pocket depth-to-width ratio
-MAX_POCKET_DEPTH_RATIO = {
-    ProcessType.CNC_3AXIS: 4.0,
-    ProcessType.CNC_5AXIS: 6.0,
-}
 
 
 def check_undercuts(

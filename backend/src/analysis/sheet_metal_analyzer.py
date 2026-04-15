@@ -5,6 +5,10 @@ from __future__ import annotations
 import numpy as np
 import trimesh
 
+from src.analysis.constants import (
+    BEND_RADIUS_MULTIPLIER,
+    STANDARD_GAUGES,
+)
 from src.analysis.models import (
     FeatureSegment,
     GeometryInfo,
@@ -12,20 +16,6 @@ from src.analysis.models import (
     ProcessType,
     Severity,
 )
-
-
-# Common sheet metal gauges and their min bend radii (mm)
-# radius = thickness * multiplier (varies by material)
-BEND_RADIUS_MULTIPLIER = {
-    "mild_steel": 1.0,
-    "stainless_steel": 1.5,
-    "aluminum": 0.5,
-    "copper": 0.3,
-    "titanium": 3.0,
-}
-
-# Standard sheet thicknesses (mm)
-STANDARD_GAUGES = [0.5, 0.8, 1.0, 1.2, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0]
 
 # Minimum hole diameter = sheet thickness
 # Minimum hole-to-edge distance = 2x sheet thickness

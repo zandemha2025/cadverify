@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import trimesh
 
+from src.analysis.constants import MIN_FILLET_RADIUS
 from src.analysis.models import (
     FeatureSegment,
     GeometryInfo,
@@ -12,14 +13,6 @@ from src.analysis.models import (
     ProcessType,
     Severity,
 )
-
-
-# Minimum fillet radius (mm) — sharp internal corners cause stress concentration and cracking
-MIN_FILLET_RADIUS = {
-    ProcessType.INVESTMENT_CASTING: 0.5,
-    ProcessType.SAND_CASTING: 3.0,
-    ProcessType.DIE_CASTING: 1.0,
-}
 
 
 def check_fillet_requirements(

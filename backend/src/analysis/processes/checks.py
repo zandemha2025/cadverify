@@ -17,6 +17,7 @@ from typing import Optional
 
 import numpy as np
 
+from src.analysis.constants import STANDARD_GAUGES
 from src.analysis.context import GeometryContext
 from src.analysis.features.base import Feature, FeatureKind
 from src.analysis.models import Issue, ProcessType, Severity
@@ -632,9 +633,6 @@ def check_prismatic(
 # ──────────────────────────────────────────────────────────────
 # Sheet metal thickness (single gauge)
 # ──────────────────────────────────────────────────────────────
-STANDARD_GAUGES = [0.5, 0.8, 1.0, 1.2, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0]
-
-
 def check_sheet_gauge(
     ctx: GeometryContext,
     process: ProcessType,
