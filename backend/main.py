@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.middleware.gzip import GZipMiddleware
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -99,6 +100,7 @@ app.add_middleware(RequestIDMiddleware)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 app.add_exception_handler(HTTPException, structured_http_error_handler)
+app.add_exception_handler(StarletteHTTPException, structured_http_error_handler)
 app.add_exception_handler(RequestValidationError, structured_validation_error_handler)
 app.add_middleware(SlowAPIMiddleware)
 

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from fastapi import Request
-from fastapi.exceptions import HTTPException, RequestValidationError
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException
 
 # Stable error codes — do not rename or remove once published
 ERROR_CODES: dict[int, str] = {
