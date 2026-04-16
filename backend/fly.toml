@@ -4,22 +4,39 @@ primary_region = "iad"
 [build]
   dockerfile = "Dockerfile"
 
+[processes]
+  web = "uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2"
+  worker = "arq src.jobs.worker.WorkerSettings"
+
 [env]
   LOG_LEVEL = "INFO"
   MAX_UPLOAD_MB = "100"
   SAM3D_ENABLED = "false"
+  ACCEPTING_NEW_ANALYSES = "true"
+  ANALYSIS_TIMEOUT_SEC = "30"
+  BLOB_STORAGE_PATH = "/data/blobs"
 
 [http_service]
+  processes = ["web"]
   internal_port = 8000
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = "suspend"
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
 
   [http_service.concurrency]
     type = "requests"
     hard_limit = 50
     soft_limit = 25
+
+[[mounts]]
+  source = "cadverify_data"
+  destination = "/data"
+  processes = ["web"]
+  initial_size = "1gb"
+
+[deploy]
+  release_command = "sh -c 'DATABASE_URL=$DATABASE_URL_DIRECT alembic upgrade head'"
 
 [[vm]]
   memory = "1gb"
