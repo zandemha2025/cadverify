@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  // output: "standalone" is for Docker; Vercel uses its own adapter
 };
 
 export default nextConfig;
