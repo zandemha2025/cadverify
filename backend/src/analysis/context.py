@@ -16,6 +16,7 @@ Design contract:
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -23,10 +24,20 @@ import logging
 
 import numpy as np
 import trimesh
+from scipy.spatial import KDTree
 
 from src.analysis.models import FeatureSegment, GeometryInfo
 
 logger = logging.getLogger("cadverify.context")
+
+
+def _raycast_sample_threshold() -> int:
+    """Face count above which sampling is used. Env var: RAYCAST_SAMPLE_THRESHOLD."""
+    try:
+        return max(1, int(os.getenv("RAYCAST_SAMPLE_THRESHOLD", "50000")))
+    except Exception:
+        return 50000
+
 
 if TYPE_CHECKING:  # avoid circular import at runtime
     from src.analysis.features.base import Feature
@@ -169,6 +180,10 @@ def _compute_wall_thickness(
     if n == 0:
         return thickness
 
+    threshold = _raycast_sample_threshold()
+    if n > threshold:
+        return _compute_wall_thickness_sampled(mesh, normals, centroids, eps, n)
+
     origins = centroids - normals * eps  # start just inside the surface
     directions = -normals
 
@@ -200,6 +215,69 @@ def _compute_wall_thickness(
         return thickness
 
     np.minimum.at(thickness, idx_ray[valid], dists[valid])
+    return thickness
+
+
+def _compute_wall_thickness_sampled(
+    mesh: trimesh.Trimesh,
+    normals: np.ndarray,
+    centroids: np.ndarray,
+    eps: float,
+    n: int,
+) -> np.ndarray:
+    """Sampled wall thickness: ray-cast ~5000 faces, propagate via KDTree."""
+    thickness = np.full(n, np.inf, dtype=np.float64)
+    stride = max(1, n // 5000)
+    sample_idx = np.arange(0, n, stride)
+
+    origins = centroids[sample_idx] - normals[sample_idx] * eps
+    directions = -normals[sample_idx]
+
+    try:
+        locs, idx_ray, idx_tri = mesh.ray.intersects_location(
+            ray_origins=origins,
+            ray_directions=directions,
+            multiple_hits=True,
+        )
+    except Exception:
+        logger.warning(
+            "_compute_wall_thickness_sampled ray cast failed (n_sampled=%d, eps=%.3g)",
+            len(sample_idx), eps, exc_info=True,
+        )
+        return thickness
+
+    if len(locs) == 0:
+        return thickness
+
+    # Compute distances and filter self-hits
+    sampled_thickness = np.full(len(sample_idx), np.inf, dtype=np.float64)
+    dists = np.linalg.norm(locs - origins[idx_ray], axis=1)
+    # idx_tri refers to mesh face indices, not sample indices
+    # idx_ray refers to sample ray indices (0..len(sample_idx)-1)
+    valid = (idx_tri != sample_idx[idx_ray]) & (dists > 2.0 * eps)
+    if np.any(valid):
+        np.minimum.at(sampled_thickness, idx_ray[valid], dists[valid])
+
+    # Assign sampled values
+    thickness[sample_idx] = sampled_thickness
+
+    # Propagate to unsampled faces via KDTree nearest-neighbor
+    unsampled_mask = np.ones(n, dtype=bool)
+    unsampled_mask[sample_idx] = False
+    unsampled_idx = np.where(unsampled_mask)[0]
+
+    if len(unsampled_idx) > 0 and np.any(np.isfinite(sampled_thickness)):
+        finite_mask = np.isfinite(sampled_thickness)
+        if np.any(finite_mask):
+            finite_sample_idx = sample_idx[finite_mask]
+            tree = KDTree(centroids[finite_sample_idx])
+            _, nn_idx = tree.query(centroids[unsampled_idx], k=1)
+            thickness[unsampled_idx] = thickness[finite_sample_idx[nn_idx]]
+
+    logger.info(
+        "Sampled wall thickness: %d/%d faces ray-cast, %d propagated via KDTree",
+        len(sample_idx), n, len(unsampled_idx),
+    )
     return thickness
 
 
