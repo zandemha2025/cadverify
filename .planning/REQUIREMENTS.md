@@ -34,12 +34,12 @@
 
 - [x] **PERS-01**: Postgres schema created via Alembic: `users`, `api_keys`, `analyses`, `jobs`, `usage_events`
 - [x] **PERS-02**: Alembic migrations enforce expand-migrate-contract; CI runs `alembic upgrade head` on every PR
-- [ ] **PERS-03**: `services/analysis_service.py` wraps existing pipeline (hash → cache lookup → run → persist)
-- [ ] **PERS-04**: Analysis results stored keyed by `(user_id, mesh_hash, analysis_version)`
-- [ ] **PERS-05**: Identical mesh+process request returns cached result without re-running pipeline
+- [x] **PERS-03**: `services/analysis_service.py` wraps existing pipeline (hash → cache lookup → run → persist)
+- [x] **PERS-04**: Analysis results stored keyed by `(user_id, mesh_hash, analysis_version)`
+- [x] **PERS-05**: Identical mesh+process request returns cached result without re-running pipeline
 - [ ] **PERS-06**: `GET /api/v1/analyses` returns paginated user history
 - [ ] **PERS-07**: `GET /api/v1/analyses/{id}` returns full stored result
-- [ ] **PERS-08**: Every analysis writes a `usage_events` row (for dashboard + rate-limit audit)
+- [x] **PERS-08**: Every analysis writes a `usage_events` row (for dashboard + rate-limit audit)
 - [ ] **PERS-09**: Usage dashboard UI shows recent analyses, quota consumption, and API-key activity
 
 ### Shareable URLs
@@ -180,12 +180,12 @@
 | AUTH-11 | Phase 2 | Complete |
 | PERS-01 | Phase 3 | Complete |
 | PERS-02 | Phase 3 | Complete |
-| PERS-03 | Phase 3 | Pending |
-| PERS-04 | Phase 3 | Pending |
-| PERS-05 | Phase 3 | Pending |
+| PERS-03 | Phase 3 | Complete |
+| PERS-04 | Phase 3 | Complete |
+| PERS-05 | Phase 3 | Complete |
 | PERS-06 | Phase 3 | Pending |
 | PERS-07 | Phase 3 | Pending |
-| PERS-08 | Phase 3 | Pending |
+| PERS-08 | Phase 3 | Complete |
 | PERS-09 | Phase 3 | Pending |
 | SHARE-01 | Phase 4 | Pending |
 | SHARE-02 | Phase 4 | Pending |
