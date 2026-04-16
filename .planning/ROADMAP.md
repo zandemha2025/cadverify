@@ -222,7 +222,7 @@ The 8-phase decomposition is derived from the research in `.planning/research/SU
 - Pitfall 5: pathological meshes — pymeshfix is C++ and can hang; enforce subprocess timeout
 - Pitfall 1: pymeshfix adds Docker image weight — budget in Phase 6 spike
 
-**Plans:** TBD
+**Plans:** 2 (05.A in Wave 1, 05.B in Wave 2 — depends on 05.A)
 **UI hint:** yes
 
 ---
