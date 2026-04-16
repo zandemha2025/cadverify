@@ -353,7 +353,7 @@ The 8-phase decomposition is derived from the research in `.planning/research/SU
 - Performance traps (batch context, BVH, mesh cleanup) — all listed in PITFALLS Performance Traps section
 - UX pitfalls — Phase 8 closes these explicitly
 
-**Plans:** TBD
+**Plans:** 3 (08.A, 08.B, 08.C all in Wave 1 — parallel)
 **UI hint:** yes
 
 ---
@@ -369,7 +369,7 @@ The 8-phase decomposition is derived from the research in `.planning/research/SU
 | 5. Mesh Repair Endpoint | 2/2 | Complete   | 2026-04-16 |
 | 6. Packaging + Deploy + Observability + Docs | 4/5 | In Progress|  |
 | 7. Async SAM-3D | 2/3 | In Progress|  |
-| 8. Performance + Frontend Polish | 0/3 | Not started | - |
+| 8. Performance + Frontend Polish | 0/3 | Planned     | - |
 
 ## Phase Research Summary
 
