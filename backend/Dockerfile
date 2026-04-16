@@ -8,7 +8,7 @@ WORKDIR /build
 # System deps for building C extensions (pymeshfix, scipy) + WeasyPrint build deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
@@ -37,7 +37,7 @@ WORKDIR /app
 
 # Runtime-only system deps (no build-essential)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
