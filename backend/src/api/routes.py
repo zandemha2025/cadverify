@@ -253,10 +253,10 @@ async def validate_demo(
 
     from src.analysis.base_analyzer import analyze_geometry, run_universal_checks
     from src.analysis.context import GeometryContext
-    from src.analysis.features.detector import detect_features
-    from src.analysis.scoring import rank_processes, score_process
-    from src.analysis.suggestion_engine import enhance_suggestions
-    from src.profiles.database import get_analyzer
+    from src.analysis.features import detect_all as detect_features
+    from src.matcher.profile_matcher import rank_processes, score_process
+    from src.fixes.fix_suggester import enhance_suggestions
+    from src.analysis.processes.base import get_analyzer
 
     data = await _read_capped(file)
     mesh, suffix = _parse_mesh(data, file.filename or "unknown")
