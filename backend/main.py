@@ -15,6 +15,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 import structlog
 
+from src.api.health import router as health_router
 from src.api.history import router as history_router
 from src.api.middleware import RequestIDMiddleware
 from src.api.pdf import router as pdf_router
@@ -125,8 +126,4 @@ app.include_router(public_share_router, prefix="/s")
 app.include_router(oauth_router, prefix="/auth")
 app.include_router(magic_router, prefix="/auth")
 app.include_router(keys_router)
-
-
-@app.get("/health")
-async def health_check():
-    return {"status": "ok", "service": "cadverify", "version": app.version}
+app.include_router(health_router)
