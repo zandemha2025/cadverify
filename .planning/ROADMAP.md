@@ -25,7 +25,7 @@ The 8-phase decomposition is derived from the research in `.planning/research/SU
 
 - [ ] **Phase 1: Stabilize Core** — Engine trust: temp-file leak, exception swallowing, registry migration, scale-aware epsilon, timeout, DoS guards, test gaps.
 - [ ] **Phase 2: Auth + Rate Limiting + Abuse Controls** — Atomic security unit: OAuth/magic-link signup, hashed API keys, slowapi rate limits, Turnstile, kill-switch, CORS, log scrubbing.
-- [ ] **Phase 3: Persistence + analysis_service + History + Caching** — KEYSTONE: Postgres schema + Alembic, `services/analysis_service.py`, mesh-hash cache, history endpoints, usage events, dashboard.
+- [x] **Phase 3: Persistence + analysis_service + History + Caching** — KEYSTONE: Postgres schema + Alembic, `services/analysis_service.py`, mesh-hash cache, history endpoints, usage events, dashboard. (completed 2026-04-16)
 - [ ] **Phase 4: Shareable URLs + PDF Export** — Render from stored analyses: opaque share IDs, sanitized public view, WeasyPrint PDF with engine-version stamp.
 - [ ] **Phase 5: Mesh Repair Endpoint** — `trimesh.repair` pre-pass + `pymeshfix` for hard cases; `/api/v1/validate/repair` with re-analysis.
 - [ ] **Phase 6: Packaging + Deploy + Observability + Docs** — Public-URL gate: cadquery Dockerfile (<1.2 GB), docker-compose, Fly deploy, Neon Postgres, Sentry, structlog, /health, landing page, Scalar docs.
@@ -156,7 +156,7 @@ The 8-phase decomposition is derived from the research in `.planning/research/SU
 - Pitfall 7: Postgres migration breaks live beta — mitigated by expand-migrate-contract + `statement_timeout=5s` + `CREATE INDEX CONCURRENTLY`
 - Silent cache-key bugs: `(user_id, mesh_hash, analysis_version)` — `analysis_version` bump invalidates cache on engine upgrade (Pitfall recovery strategy)
 
-**Plans:** 3/5 plans executed
+**Plans:** 5/5 plans complete
 **UI hint:** yes
 
 ---
@@ -364,7 +364,7 @@ The 8-phase decomposition is derived from the research in `.planning/research/SU
 |-------|----------------|--------|-----------|
 | 1. Stabilize Core | 0/4 | Not started | - |
 | 2. Auth + Rate Limiting + Abuse Controls | 0/4 | Not started | - |
-| 3. Persistence + analysis_service + History + Caching | 3/5 | In Progress|  |
+| 3. Persistence + analysis_service + History + Caching | 5/5 | Complete   | 2026-04-16 |
 | 4. Shareable URLs + PDF Export | 0/2 | Not started | - |
 | 5. Mesh Repair Endpoint | 0/2 | Not started | - |
 | 6. Packaging + Deploy + Observability + Docs | 0/5 | Not started | - |
