@@ -247,13 +247,9 @@ async def validate_demo(
     data = await _read_capped(file)
     mesh, suffix = _parse_mesh(data, file.filename or "unknown")
 
-    from src.analysis.base_analyzer import analyze_geometry
-    from src.analysis.context import GeometryContext
-    from src.analysis.processes.checks import run_universal_checks
+    from src.analysis.base_analyzer import run_universal_checks
 
-    info = analyze_geometry(mesh)
-    ctx = GeometryContext.build(mesh, info)
-    issues = run_universal_checks(mesh, info, ctx)
+    issues = run_universal_checks(mesh)
 
     verdict = "pass" if not issues else "fail"
     return {
