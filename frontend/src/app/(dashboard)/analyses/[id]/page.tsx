@@ -3,10 +3,12 @@
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { fetchAnalysis } from "@/lib/api";
-import type { AnalysisDetail } from "@/lib/api";
+import type { AnalysisDetail, RepairResult } from "@/lib/api";
 import AnalysisDashboard from "@/components/AnalysisDashboard";
 import PdfDownloadButton from "@/components/PdfDownloadButton";
 import ShareButton from "@/components/ShareButton";
+import RepairButton from "@/components/RepairButton";
+import RepairComparison from "@/components/RepairComparison";
 
 export default function AnalysisDetailPage({
   params,
@@ -18,6 +20,7 @@ export default function AnalysisDetailPage({
   const [analysis, setAnalysis] = useState<AnalysisDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [repairResult, setRepairResult] = useState<RepairResult | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,11 +85,23 @@ export default function AnalysisDetailPage({
             initialShareUrl={analysis.share_url}
           />
           <PdfDownloadButton analysisId={id} filename={analysis.filename} />
+          <RepairButton
+            universalIssues={analysis.result_json.universal_issues}
+            file={null}
+            onRepairComplete={setRepairResult}
+          />
         </div>
       </div>
 
-      {/* Reuse existing AnalysisDashboard for the full result */}
-      <AnalysisDashboard result={analysis.result_json} />
+      {/* Show repair comparison when available, otherwise original dashboard */}
+      {repairResult ? (
+        <RepairComparison
+          result={repairResult}
+          originalFilename={analysis.filename}
+        />
+      ) : (
+        <AnalysisDashboard result={analysis.result_json} />
+      )}
     </main>
   );
 }
