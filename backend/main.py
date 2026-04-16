@@ -15,6 +15,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 import structlog
 
+from src.api.history import router as history_router
 from src.api.routes import router
 from src.auth.keys_api import router as keys_router
 from src.auth.magic_link import router as magic_router
@@ -110,6 +111,7 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api/v1")
+app.include_router(history_router, prefix="/api/v1/analyses", tags=["history"])
 app.include_router(oauth_router, prefix="/auth")
 app.include_router(magic_router, prefix="/auth")
 app.include_router(keys_router)
