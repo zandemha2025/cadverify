@@ -31,6 +31,9 @@ target_metadata = Base.metadata
 def run_migrations_online() -> None:
     async def do() -> None:
         url = os.environ["DATABASE_URL"]
+        if url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        url = url.replace("&channel_binding=require", "").replace("?channel_binding=require&", "?").replace("?channel_binding=require", "")
         engine = create_async_engine(url, poolclass=None)
         async with engine.connect() as conn:
             await conn.run_sync(

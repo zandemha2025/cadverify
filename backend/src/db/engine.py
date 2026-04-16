@@ -27,12 +27,21 @@ _ENGINE = None
 _SESSION_FACTORY: Optional[async_sessionmaker[AsyncSession]] = None
 
 
+def _async_url(url: str) -> str:
+    """Convert postgresql:// to postgresql+asyncpg:// and strip unsupported params."""
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    # asyncpg doesn't support channel_binding param (Neon adds it by default)
+    url = url.replace("&channel_binding=require", "").replace("?channel_binding=require&", "?").replace("?channel_binding=require", "")
+    return url
+
+
 def get_engine():
     """Return (and lazily create) the async engine singleton."""
     global _ENGINE
     if _ENGINE is None:
         _ENGINE = create_async_engine(
-            os.environ["DATABASE_URL"],
+            _async_url(os.environ["DATABASE_URL"]),
             pool_pre_ping=True,
             pool_size=5,
         )

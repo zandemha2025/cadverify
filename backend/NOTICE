@@ -1,0 +1,22 @@
+CadVerify -- Manufacturing Validation Service
+Copyright 2024-2026 CadVerify Contributors
+
+This product includes software developed by third parties.
+
+The following component is licensed under the GNU Lesser General Public
+License version 2.1 or later (LGPL-2.1-or-later):
+
+  - cadquery-ocp-novtk (OCP -- Open CASCADE Technology Python bindings)
+    Source: https://github.com/CadQuery/ocp-build-system
+    License: LGPL-2.1-or-later
+
+    As a user of this Docker image, you may replace this component with
+    a compatible version by running:
+      pip install cadquery-ocp-novtk==<your-version>
+    inside the container, satisfying LGPL relinking requirements.
+
+  - cadquery
+    Source: https://github.com/CadQuery/cadquery
+    License: Apache-2.0
+
+For the full list of third-party licenses, see THIRD_PARTY_LICENSES.md.
