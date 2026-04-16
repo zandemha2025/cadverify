@@ -318,7 +318,7 @@ The 8-phase decomposition is derived from the research in `.planning/research/SU
 - Pitfall 1: SAM-3D weights inflate image — embedding cache + cold-start budget
 - License risk on SAM-3D weights — **phase research mandatory** before baking
 
-**Plans:** 3 (07.A in Wave 1; 07.B, 07.C in Wave 2)
+**Plans:** 2/3 plans executed
 
 ---
 
@@ -368,7 +368,7 @@ The 8-phase decomposition is derived from the research in `.planning/research/SU
 | 4. Shareable URLs + PDF Export | 0/2 | Planned     | - |
 | 5. Mesh Repair Endpoint | 2/2 | Complete   | 2026-04-16 |
 | 6. Packaging + Deploy + Observability + Docs | 4/5 | In Progress|  |
-| 7. Async SAM-3D | 0/3 | Planned     | - |
+| 7. Async SAM-3D | 2/3 | In Progress|  |
 | 8. Performance + Frontend Polish | 0/3 | Not started | - |
 
 ## Phase Research Summary

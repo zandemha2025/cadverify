@@ -67,11 +67,11 @@
 ### Async SAM-3D
 
 - [x] **SAM-01**: `JobQueue` protocol implemented with arq as default backend; Redis configured
-- [ ] **SAM-02**: `POST /api/v1/validate?segmentation=sam3d` persists sync portion, returns 202 + `{analysis_id, job_id, poll_url}`
-- [ ] **SAM-03**: `GET /api/v1/jobs/{id}` returns job status + result URL when complete
+- [x] **SAM-02**: `POST /api/v1/validate?segmentation=sam3d` persists sync portion, returns 202 + `{analysis_id, job_id, poll_url}`
+- [x] **SAM-03**: `GET /api/v1/jobs/{id}` returns job status + result URL when complete
 - [ ] **SAM-04**: SAM-3D model weights pre-baked into worker image (no cold-start download)
 - [ ] **SAM-05**: Embedding cache in blob storage keyed by mesh hash
-- [ ] **SAM-06**: Jobs idempotent (keyed by mesh hash + params); duplicate enqueue returns existing job
+- [x] **SAM-06**: Jobs idempotent (keyed by mesh hash + params); duplicate enqueue returns existing job
 - [ ] **SAM-07**: Worker visibility timeout ≥ 10 min; ack-on-completion only
 - [ ] **SAM-08**: Graceful fallback to heuristic segmentation on SAM-3D failure; job marked `partial` not `failed`
 
@@ -218,11 +218,11 @@
 | DOC-03 | Phase 6 | Complete |
 | DOC-04 | Phase 6 | Complete |
 | SAM-01 | Phase 7 | Complete |
-| SAM-02 | Phase 7 | Pending |
-| SAM-03 | Phase 7 | Pending |
+| SAM-02 | Phase 7 | Complete |
+| SAM-03 | Phase 7 | Complete |
 | SAM-04 | Phase 7 | Pending |
 | SAM-05 | Phase 7 | Pending |
-| SAM-06 | Phase 7 | Pending |
+| SAM-06 | Phase 7 | Complete |
 | SAM-07 | Phase 7 | Pending |
 | SAM-08 | Phase 7 | Pending |
 | PERF-01 | Phase 8 | Pending |
