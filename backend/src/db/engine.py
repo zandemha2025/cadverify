@@ -39,6 +39,16 @@ def get_engine():
     return _ENGINE
 
 
+async def init_engine() -> None:
+    """Initialize the async engine and session factory.
+
+    Called by FastAPI lifespan or worker startup. Safe to call multiple
+    times -- subsequent calls are no-ops if engine already exists.
+    """
+    get_engine()
+    get_session_factory()
+
+
 def get_session_factory() -> async_sessionmaker[AsyncSession]:
     """Return (and lazily create) the async session factory singleton."""
     global _SESSION_FACTORY

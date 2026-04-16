@@ -23,10 +23,10 @@ async def startup(ctx: dict) -> None:
     else:
         logger.info("SAM-3D disabled or no model path configured")
 
-    # Eagerly initialise DB engine so worker sessions work
-    from src.db.engine import get_engine
+    # Eagerly initialise DB engine + session factory so worker sessions work
+    from src.db.engine import init_engine
 
-    get_engine()
+    await init_engine()
     ctx["db_engine"] = True
 
 
