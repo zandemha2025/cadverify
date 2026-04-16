@@ -346,6 +346,61 @@ export async function downloadPdf(
   URL.revokeObjectURL(url);
 }
 
+/* ------------------------------------------------------------------ */
+/*  Mesh Repair types & client (Phase 5 — REPAIR-01..03)              */
+/* ------------------------------------------------------------------ */
+
+export interface RepairDetails {
+  tier?: "trimesh" | "pymeshfix";
+  original_faces?: number;
+  repaired_faces?: number;
+  holes_filled?: number;
+  duration_ms?: number;
+  error?: string;
+}
+
+export interface RepairResult {
+  original_analysis: ValidationResult;
+  repair_applied: boolean;
+  repair_details: RepairDetails;
+  repaired_analysis: ValidationResult | null;
+  repaired_file_b64: string | null;
+}
+
+export async function repairAnalysis(
+  file: File,
+  processes?: string[],
+  rulePack?: string
+): Promise<RepairResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const params = new URLSearchParams();
+  if (processes && processes.length > 0) {
+    params.set("processes", processes.join(","));
+  }
+  if (rulePack) {
+    params.set("rule_pack", rulePack);
+  }
+
+  let url = `${API_BASE}/validate/repair`;
+  const qs = params.toString();
+  if (qs) {
+    url += `?${qs}`;
+  }
+
+  const res = await fetch(url, {
+    method: "POST",
+    body: formData,
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || "Repair failed");
+  }
+  return res.json();
+}
+
 export async function fetchAnalysis(id: string): Promise<AnalysisDetail> {
   const res = await fetch(`${API_BASE}/analyses/${id}`, {
     headers: authHeaders(),
