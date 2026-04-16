@@ -28,9 +28,11 @@ _SESSION_FACTORY: Optional[async_sessionmaker[AsyncSession]] = None
 
 
 def _async_url(url: str) -> str:
-    """Convert postgresql:// to postgresql+asyncpg:// and strip unsupported params."""
+    """Convert postgresql:// to postgresql+asyncpg:// and fix unsupported params."""
     if url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    # asyncpg uses 'ssl' not 'sslmode'
+    url = url.replace("sslmode=require", "ssl=require")
     # asyncpg doesn't support channel_binding param (Neon adds it by default)
     url = url.replace("&channel_binding=require", "").replace("?channel_binding=require&", "?").replace("?channel_binding=require", "")
     return url

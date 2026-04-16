@@ -33,6 +33,7 @@ def run_migrations_online() -> None:
         url = os.environ["DATABASE_URL"]
         if url.startswith("postgresql://"):
             url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        url = url.replace("sslmode=require", "ssl=require")
         url = url.replace("&channel_binding=require", "").replace("?channel_binding=require&", "?").replace("?channel_binding=require", "")
         engine = create_async_engine(url, poolclass=None)
         async with engine.connect() as conn:
