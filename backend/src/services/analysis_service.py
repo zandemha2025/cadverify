@@ -367,6 +367,27 @@ async def run_analysis(
     return result_dict
 
 
+async def get_latest_analysis_id(
+    session: AsyncSession,
+    user_id: int,
+    mesh_hash: str,
+) -> int | None:
+    """Return the most-recent analysis.id for a given user + mesh_hash.
+
+    Used by the async SAM-3D submit path to link the job to the just-persisted
+    analysis row without changing run_analysis's return signature.
+    """
+    from sqlalchemy import desc
+
+    stmt = (
+        select(Analysis.id)
+        .where(Analysis.user_id == user_id, Analysis.mesh_hash == mesh_hash)
+        .order_by(desc(Analysis.created_at))
+        .limit(1)
+    )
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
 async def run_quick_analysis(
     file_bytes: bytes,
     filename: str,

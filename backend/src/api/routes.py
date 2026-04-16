@@ -144,6 +144,10 @@ async def validate_file(
         None,
         description="Industry rule pack: aerospace, automotive, oil_gas, medical.",
     ),
+    segmentation: Optional[str] = Query(
+        None,
+        description="Segmentation method: 'sam3d' for async SAM-3D (returns 202).",
+    ),
     user: AuthedUser = Depends(require_api_key),
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -158,7 +162,7 @@ async def validate_file(
             )
 
     data = await _read_capped(file)
-    return await analysis_service.run_analysis(
+    result = await analysis_service.run_analysis(
         file_bytes=data,
         filename=file.filename or "unknown",
         processes=processes,
@@ -166,6 +170,51 @@ async def validate_file(
         user=user,
         session=session,
     )
+
+    if segmentation == "sam3d":
+        from fastapi.responses import JSONResponse
+
+        from src.jobs.arq_backend import get_job_queue
+        from src.services import job_service
+
+        # Compute mesh hash (same algorithm as analysis_service)
+        mesh_hash = analysis_service.compute_mesh_hash(data)
+
+        # Look up the just-persisted analysis row
+        analysis_id = await analysis_service.get_latest_analysis_id(
+            session, user.user_id, mesh_hash,
+        )
+        if analysis_id is None:
+            # Defensive: analysis should have been persisted by run_analysis
+            raise HTTPException(
+                status_code=500,
+                detail="Analysis row not found after persist -- cannot enqueue SAM-3D job.",
+            )
+
+        # Save mesh blob for worker retrieval
+        await job_service.save_mesh_blob(mesh_hash, data)
+
+        # Create job (idempotent by analysis_id + sam3d)
+        job = await job_service.create_sam3d_job(
+            session, analysis_id, user.user_id, mesh_hash,
+        )
+        await session.commit()
+
+        # Enqueue arq job
+        queue = await get_job_queue()
+        await queue.enqueue("sam3d", {"mesh_hash": mesh_hash}, job.ulid)
+
+        return JSONResponse(
+            status_code=202,
+            content={
+                "analysis_id": analysis_id,
+                "job_id": job.ulid,
+                "poll_url": f"/api/v1/jobs/{job.ulid}",
+                "result": result,
+            },
+        )
+
+    return result
 
 
 @router.post("/validate/quick", dependencies=[Depends(require_kill_switch_open)])
