@@ -27,3 +27,4 @@ sentry-sdk==2.18.0
 fakeredis==2.26.0
 weasyprint>=62.0
 jinja2>=3.1.0
+scalar-fastapi>=1.8.0
