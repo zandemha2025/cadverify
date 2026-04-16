@@ -37,8 +37,8 @@
 - [x] **PERS-03**: `services/analysis_service.py` wraps existing pipeline (hash → cache lookup → run → persist)
 - [x] **PERS-04**: Analysis results stored keyed by `(user_id, mesh_hash, analysis_version)`
 - [x] **PERS-05**: Identical mesh+process request returns cached result without re-running pipeline
-- [ ] **PERS-06**: `GET /api/v1/analyses` returns paginated user history
-- [ ] **PERS-07**: `GET /api/v1/analyses/{id}` returns full stored result
+- [x] **PERS-06**: `GET /api/v1/analyses` returns paginated user history
+- [x] **PERS-07**: `GET /api/v1/analyses/{id}` returns full stored result
 - [x] **PERS-08**: Every analysis writes a `usage_events` row (for dashboard + rate-limit audit)
 - [ ] **PERS-09**: Usage dashboard UI shows recent analyses, quota consumption, and API-key activity
 
@@ -183,8 +183,8 @@
 | PERS-03 | Phase 3 | Complete |
 | PERS-04 | Phase 3 | Complete |
 | PERS-05 | Phase 3 | Complete |
-| PERS-06 | Phase 3 | Pending |
-| PERS-07 | Phase 3 | Pending |
+| PERS-06 | Phase 3 | Complete |
+| PERS-07 | Phase 3 | Complete |
 | PERS-08 | Phase 3 | Complete |
 | PERS-09 | Phase 3 | Pending |
 | SHARE-01 | Phase 4 | Pending |

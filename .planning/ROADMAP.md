@@ -156,7 +156,7 @@ The 8-phase decomposition is derived from the research in `.planning/research/SU
 - Pitfall 7: Postgres migration breaks live beta — mitigated by expand-migrate-contract + `statement_timeout=5s` + `CREATE INDEX CONCURRENTLY`
 - Silent cache-key bugs: `(user_id, mesh_hash, analysis_version)` — `analysis_version` bump invalidates cache on engine upgrade (Pitfall recovery strategy)
 
-**Plans:** 5 (03.A in Wave 1; 03.B, 03.C in Wave 2; 03.D, 03.E in Wave 3)
+**Plans:** 3/5 plans executed
 **UI hint:** yes
 
 ---
@@ -364,7 +364,7 @@ The 8-phase decomposition is derived from the research in `.planning/research/SU
 |-------|----------------|--------|-----------|
 | 1. Stabilize Core | 0/4 | Not started | - |
 | 2. Auth + Rate Limiting + Abuse Controls | 0/4 | Not started | - |
-| 3. Persistence + analysis_service + History + Caching | 0/5 | Planned | - |
+| 3. Persistence + analysis_service + History + Caching | 3/5 | In Progress|  |
 | 4. Shareable URLs + PDF Export | 0/2 | Not started | - |
 | 5. Mesh Repair Endpoint | 0/2 | Not started | - |
 | 6. Packaging + Deploy + Observability + Docs | 0/5 | Not started | - |
