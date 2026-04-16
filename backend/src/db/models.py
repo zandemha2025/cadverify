@@ -10,7 +10,7 @@ Tables:
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import (
     BigInteger,
@@ -42,7 +42,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     email: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     email_lower: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
-    google_sub: Mapped[str | None] = mapped_column(Text, unique=True, nullable=True)
+    google_sub: Mapped[Optional[str]] = mapped_column(Text, unique=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
@@ -51,8 +51,8 @@ class User(Base):
     )
 
     # relationships
-    api_keys: Mapped[list[ApiKey]] = relationship(back_populates="user", lazy="selectin")
-    analyses: Mapped[list[Analysis]] = relationship(back_populates="user", lazy="selectin")
+    api_keys: Mapped[List[ApiKey]] = relationship(back_populates="user", lazy="selectin")
+    analyses: Mapped[List[Analysis]] = relationship(back_populates="user", lazy="selectin")
 
 
 class ApiKey(Base):
@@ -69,10 +69,10 @@ class ApiKey(Base):
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
-    last_used_at: Mapped[datetime | None] = mapped_column(
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
-    revoked_at: Mapped[datetime | None] = mapped_column(
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
 
@@ -111,7 +111,7 @@ class Analysis(Base):
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    api_key_id: Mapped[int | None] = mapped_column(
+    api_key_id: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("api_keys.id", ondelete="SET NULL"), nullable=True
     )
     mesh_hash: Mapped[str] = mapped_column(Text, nullable=False)
@@ -120,14 +120,14 @@ class Analysis(Base):
     filename: Mapped[str] = mapped_column(Text, nullable=False)
     file_type: Mapped[str] = mapped_column(Text, nullable=False)
     file_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    result_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    result_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
     verdict: Mapped[str] = mapped_column(Text, nullable=False)
     face_count: Mapped[int] = mapped_column(Integer, nullable=False)
     duration_ms: Mapped[float] = mapped_column(Float, nullable=False)
     is_public: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
-    share_short_id: Mapped[str | None] = mapped_column(
+    share_short_id: Mapped[Optional[str]] = mapped_column(
         Text, unique=False, nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -136,7 +136,7 @@ class Analysis(Base):
 
     # relationships
     user: Mapped[User] = relationship(back_populates="analyses")
-    jobs: Mapped[list[Job]] = relationship(back_populates="analysis", lazy="selectin")
+    jobs: Mapped[List[Job]] = relationship(back_populates="analysis", lazy="selectin")
 
 
 class Job(Base):
@@ -149,27 +149,27 @@ class Job(Base):
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    analysis_id: Mapped[int | None] = mapped_column(
+    analysis_id: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("analyses.id", ondelete="SET NULL"), nullable=True
     )
     job_type: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(
         Text, nullable=False, server_default="queued"
     )
-    params_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
-    result_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    params_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    result_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
-    started_at: Mapped[datetime | None] = mapped_column(
+    started_at: Mapped[Optional[datetime]] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
-    completed_at: Mapped[datetime | None] = mapped_column(
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
 
     # relationships
-    analysis: Mapped[Analysis | None] = relationship(back_populates="jobs")
+    analysis: Mapped[Optional[Analysis]] = relationship(back_populates="jobs")
 
 
 class UsageEvent(Base):
@@ -183,16 +183,16 @@ class UsageEvent(Base):
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    api_key_id: Mapped[int | None] = mapped_column(
+    api_key_id: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("api_keys.id", ondelete="SET NULL"), nullable=True
     )
     event_type: Mapped[str] = mapped_column(Text, nullable=False)
-    analysis_id: Mapped[int | None] = mapped_column(
+    analysis_id: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("analyses.id", ondelete="SET NULL"), nullable=True
     )
-    mesh_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
-    duration_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
-    face_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    mesh_hash: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    duration_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    face_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )

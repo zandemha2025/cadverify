@@ -1,22 +1,31 @@
-"""Alembic env.py — async engine variant.
+"""Alembic env.py — async engine variant with ORM metadata.
 
-Migrations are hand-written (no autogenerate); Phase 3 may introduce
-SQLAlchemy ORM models and promote target_metadata to a real registry.
+Uses ORM Base.metadata for autogenerate support.
 """
 from __future__ import annotations
 
 import asyncio
 import os
+import sys
 from logging.config import fileConfig
+from pathlib import Path
 
 from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
+
+# Ensure backend/src is on sys.path so ORM models can be imported
+_backend_dir = str(Path(__file__).resolve().parents[1])
+if _backend_dir not in sys.path:
+    sys.path.insert(0, _backend_dir)
+
+from src.db.engine import Base  # noqa: E402
+import src.db.models  # noqa: E402, F401 — register all models with Base.metadata
 
 config = context.config
 if config.config_file_name:
     fileConfig(config.config_file_name)
 
-target_metadata = None  # no autogenerate
+target_metadata = Base.metadata
 
 
 def run_migrations_online() -> None:

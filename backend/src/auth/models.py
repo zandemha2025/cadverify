@@ -1,40 +1,20 @@
-"""Async SQLAlchemy engine + auth-table helpers.
+"""Auth-table helpers using raw text() queries.
 
-Phase 3 will promote this module to backend/src/db/ and introduce an ORM
-registry. Phase 2 uses raw `text()` statements against the tables created
-by 0001_create_users_api_keys migration.
+Engine and session factory are now centralised in src.db.engine (Phase 3).
+This module retains its raw-SQL query functions for backward compatibility.
 """
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
-from typing import Optional
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-_ENGINE = None
-_SESSION: Optional[async_sessionmaker[AsyncSession]] = None
-
-
-def _engine():
-    global _ENGINE
-    if _ENGINE is None:
-        _ENGINE = create_async_engine(
-            os.environ["DATABASE_URL"], pool_pre_ping=True, pool_size=5
-        )
-    return _ENGINE
+from src.db.engine import get_engine as _engine, get_session_factory
 
 
 def _session() -> async_sessionmaker[AsyncSession]:
-    global _SESSION
-    if _SESSION is None:
-        _SESSION = async_sessionmaker(_engine(), expire_on_commit=False)
-    return _SESSION
+    return get_session_factory()
 
 
 @dataclass

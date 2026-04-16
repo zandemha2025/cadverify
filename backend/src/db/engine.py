@@ -7,7 +7,7 @@ engine/session singletons.
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -24,7 +24,7 @@ class Base(DeclarativeBase):
 
 
 _ENGINE = None
-_SESSION_FACTORY: async_sessionmaker[AsyncSession] | None = None
+_SESSION_FACTORY: Optional[async_sessionmaker[AsyncSession]] = None
 
 
 def get_engine():
