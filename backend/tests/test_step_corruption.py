@@ -33,7 +33,7 @@ def test_corrupted_step_returns_400(client):
     )
     # Acceptable: 400 (parse failed), 501 (cadquery not installed)
     assert r.status_code in (400, 501), f"unexpected {r.status_code}: {r.text[:200]}"
-    assert "detail" in r.json()
+    assert "message" in r.json()
 
 
 def test_non_step_magic_with_step_extension_returns_400(client):
@@ -49,9 +49,9 @@ def test_non_step_magic_with_step_extension_returns_400(client):
         },
     )
     assert r.status_code == 400
-    detail = r.json()["detail"].lower()
-    # Detail should reference STEP / ISO-10303 magic, not a generic parse error
-    assert "step" in detail or "iso-10303" in detail or "magic" in detail
+    msg = r.json()["message"].lower()
+    # Message should reference STEP / ISO-10303 magic, not a generic parse error
+    assert "step" in msg or "iso-10303" in msg or "magic" in msg
 
 
 def test_truncated_step_returns_400(client):

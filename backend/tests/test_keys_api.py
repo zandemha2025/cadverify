@@ -145,7 +145,7 @@ def test_rotate_atomic(client):
 def test_rotate_missing_returns_404(client):
     r = client.post("/api/v1/keys/9999/rotate")
     assert r.status_code == 404
-    assert r.json()["detail"]["code"] == "key_not_found"
+    assert r.json()["code"] == "key_not_found"
 
 
 def test_list_keys_returns_created(client):

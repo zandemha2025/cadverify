@@ -57,7 +57,7 @@ class TestConfig:
         monkeypatch.delenv("SAM3D_CACHE_DIR", raising=False)
         cfg = SAM3DConfig.from_env()
         assert cfg.enabled is False
-        assert cfg.model_path == ""
+        assert cfg.model_path == "/app/models/sam2_hiera_small.pt"
 
     def test_from_env_enabled(self, monkeypatch):
         monkeypatch.setenv("SAM3D_ENABLED", "true")

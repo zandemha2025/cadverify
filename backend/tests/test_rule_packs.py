@@ -125,7 +125,7 @@ def test_api_invalid_rule_pack_returns_400(monkeypatch):
         files={"file": ("cube.stl", b"\x00" * 100, "application/octet-stream")},
     )
     assert r.status_code == 400
-    assert "Unknown rule pack" in r.json()["detail"]
+    assert "Unknown rule pack" in r.json()["message"]
 
 
 def test_api_rule_packs_endpoint(monkeypatch):

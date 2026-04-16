@@ -136,6 +136,6 @@ def test_analysis_timeout_returns_504(monkeypatch):
     )
     assert r.status_code == 504, f"expected 504, got {r.status_code}: {r.text[:200]}"
     body = r.json()
-    assert "detail" in body
-    detail = body["detail"].lower()
-    assert "analysis_timeout_sec" in detail or "exceed" in detail
+    assert "message" in body
+    msg = body["message"].lower()
+    assert "analysis_timeout_sec" in msg or "exceed" in msg

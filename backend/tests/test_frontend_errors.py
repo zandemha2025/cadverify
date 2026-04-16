@@ -37,8 +37,8 @@ def test_magic_byte_rejection_returns_400_with_detail(client):
     )
     assert r.status_code == 400
     body = r.json()
-    assert "detail" in body
-    assert isinstance(body["detail"], str)
+    assert "message" in body
+    assert isinstance(body["message"], str)
 
 
 def test_triangle_cap_rejection_returns_400(monkeypatch, cube_10mm, stl_bytes_of):
@@ -55,8 +55,8 @@ def test_triangle_cap_rejection_returns_400(monkeypatch, cube_10mm, stl_bytes_of
         files={"file": ("cube.stl", data, "application/octet-stream")},
     )
     assert r.status_code == 400
-    detail = r.json()["detail"]
-    assert "triangle" in detail.lower() or "MAX_TRIANGLES" in detail
+    msg = r.json()["message"]
+    assert "triangle" in msg.lower() or "MAX_TRIANGLES" in msg
 
 
 def test_upload_size_limit_returns_413(monkeypatch):
@@ -72,7 +72,7 @@ def test_upload_size_limit_returns_413(monkeypatch):
         files={"file": ("big.stl", big, "application/octet-stream")},
     )
     assert r.status_code == 413
-    assert "detail" in r.json()
+    assert "message" in r.json()
 
 
 def test_timeout_returns_504_with_structured_detail(monkeypatch):
@@ -94,9 +94,9 @@ def test_timeout_returns_504_with_structured_detail(monkeypatch):
     assert r.status_code in (504, 200), f"unexpected {r.status_code}: {r.text[:200]}"
     if r.status_code == 504:
         body = r.json()
-        assert "detail" in body
-        detail = body["detail"].lower()
-        assert "timeout" in detail or "timed out" in detail or "exceed" in detail
+        assert "message" in body
+        msg = body["message"].lower()
+        assert "timeout" in msg or "timed out" in msg or "exceed" in msg
 
 
 def test_unknown_extension_returns_400(client):
@@ -106,4 +106,4 @@ def test_unknown_extension_returns_400(client):
         files={"file": ("foo.txt", b"plain text", "text/plain")},
     )
     assert r.status_code == 400
-    assert "detail" in r.json()
+    assert "message" in r.json()

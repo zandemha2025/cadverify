@@ -168,7 +168,7 @@ def test_repair_rejects_oversize_mesh(monkeypatch):
         files={"file": ("cube.stl", data, "application/octet-stream")},
     )
     assert r.status_code == 413, f"Expected 413, got {r.status_code}: {r.text}"
-    assert "REPAIR_MAX_FACES" in r.json()["detail"]
+    assert "REPAIR_MAX_FACES" in r.json()["message"]
 
 
 def test_repair_rejects_bad_extension(client):
@@ -178,4 +178,4 @@ def test_repair_rejects_bad_extension(client):
         files={"file": ("model.obj", b"bad data", "application/octet-stream")},
     )
     assert r.status_code == 400
-    assert "Unsupported" in r.json()["detail"]
+    assert "Unsupported" in r.json()["message"]
