@@ -236,6 +236,41 @@ async def validate_quick(
     )
 
 
+@router.post("/validate/demo", dependencies=[Depends(require_kill_switch_open)])
+@limiter.limit("10/hour")
+async def validate_demo(
+    request: Request,
+    response: Response,
+    file: UploadFile = File(...),
+):
+    """Public demo — universal checks only, no auth, no persistence, tight rate limit."""
+    data = await _read_capped(file)
+    mesh, suffix = _parse_mesh(data, file.filename or "unknown")
+
+    from src.analysis.base_analyzer import analyze_geometry
+    from src.analysis.context import GeometryContext
+    from src.analysis.processes.checks import run_universal_checks
+
+    info = analyze_geometry(mesh)
+    ctx = GeometryContext.build(mesh, info)
+    issues = run_universal_checks(mesh, info, ctx)
+
+    verdict = "pass" if not issues else "fail"
+    return {
+        "verdict": verdict,
+        "issues": [
+            {
+                "code": iss.code if hasattr(iss, "code") else str(iss.check_id),
+                "severity": iss.severity.value if hasattr(iss.severity, "value") else str(iss.severity),
+                "message": iss.message,
+            }
+            for iss in issues
+        ],
+        "face_count": len(mesh.faces),
+        "demo": True,
+    }
+
+
 @router.post("/validate/repair", dependencies=[Depends(require_kill_switch_open)])
 @limiter.limit("60/hour;500/day")
 async def validate_repair(

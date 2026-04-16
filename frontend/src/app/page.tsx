@@ -40,13 +40,13 @@ function LandingPage() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch(`${API_BASE}/validate/quick`, {
+      const res = await fetch(`${API_BASE}/validate/demo`, {
         method: "POST",
         body: formData,
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(err.detail || "Quick validation failed");
+        const err = await res.json().catch(() => ({ message: res.statusText }));
+        throw new Error(err.message || err.detail || "Validation failed");
       }
       const data: { verdict: string; issues: Issue[] } = await res.json();
       setDemoResult({ verdict: data.verdict, issueCount: data.issues.length });
