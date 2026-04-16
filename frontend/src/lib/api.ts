@@ -1,3 +1,6 @@
+import { toast } from "sonner";
+import * as Sentry from "@sentry/nextjs";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
 export interface GeometryInfo {
@@ -105,81 +108,8 @@ export interface Machine {
   notes: string;
 }
 
-export async function validateFile(
-  file: File,
-  processes?: string[],
-  rulePack?: string
-): Promise<ValidationResult> {
-  const formData = new FormData();
-  formData.append("file", file);
-
-  const params = new URLSearchParams();
-  if (processes && processes.length > 0) {
-    params.set("processes", processes.join(","));
-  }
-  if (rulePack) {
-    params.set("rule_pack", rulePack);
-  }
-
-  let url = `${API_BASE}/validate`;
-  const qs = params.toString();
-  if (qs) {
-    url += `?${qs}`;
-  }
-
-  const res = await fetch(url, { method: "POST", body: formData });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || "Validation failed");
-  }
-  return res.json();
-}
-
-export async function validateQuick(file: File): Promise<{
-  filename: string;
-  verdict: string;
-  geometry: Partial<GeometryInfo>;
-  issues: Issue[];
-}> {
-  const formData = new FormData();
-  formData.append("file", file);
-  const res = await fetch(`${API_BASE}/validate/quick`, {
-    method: "POST",
-    body: formData,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || "Quick validation failed");
-  }
-  return res.json();
-}
-
-export async function getProcesses(): Promise<{ processes: Array<{ process: string; material_count: number; machine_count: number; materials: string[]; machines: string[] }> }> {
-  const res = await fetch(`${API_BASE}/processes`);
-  return res.json();
-}
-
-export async function getMaterials(): Promise<{ materials: Material[] }> {
-  const res = await fetch(`${API_BASE}/materials`);
-  return res.json();
-}
-
-export async function getMachines(): Promise<{ machines: Machine[] }> {
-  const res = await fetch(`${API_BASE}/machines`);
-  return res.json();
-}
-
-export async function getRulePacks(): Promise<{ rule_packs: RulePackInfo[] }> {
-  const res = await fetch(`${API_BASE}/rule-packs`);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || "Failed to fetch rule packs");
-  }
-  return res.json();
-}
-
 /* ------------------------------------------------------------------ */
-/*  Analysis history types & client functions (Phase 3 — PERS-09)     */
+/*  Analysis history types (Phase 3 — PERS-09)                        */
 /* ------------------------------------------------------------------ */
 
 export interface AnalysisSummary {
@@ -220,45 +150,8 @@ export interface AnalysesPage {
   rateLimits?: RateLimits;
 }
 
-function authHeaders(): Record<string, string> {
-  if (typeof window === "undefined") return {};
-  const key = localStorage.getItem("cadverify_api_key");
-  return key ? { Authorization: `Bearer ${key}` } : {};
-}
-
-function extractRateLimits(headers: Headers): RateLimits | undefined {
-  const remaining = headers.get("X-RateLimit-Remaining");
-  const limit = headers.get("X-RateLimit-Limit");
-  if (!remaining || !limit) return undefined;
-  return {
-    remaining: parseInt(remaining, 10),
-    limit: parseInt(limit, 10),
-    reset: parseInt(headers.get("X-RateLimit-Reset") || "0", 10),
-  };
-}
-
-export async function fetchAnalyses(params: {
-  cursor?: string;
-  limit?: number;
-  verdict?: string;
-}): Promise<AnalysesPage> {
-  const url = new URL(`${API_BASE}/analyses`, window.location.origin);
-  if (params.cursor) url.searchParams.set("cursor", params.cursor);
-  if (params.limit) url.searchParams.set("limit", String(params.limit));
-  if (params.verdict) url.searchParams.set("verdict", params.verdict);
-
-  const res = await fetch(url.toString(), { headers: authHeaders() });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || "Failed to fetch analyses");
-  }
-  const rateLimits = extractRateLimits(res.headers);
-  const data = await res.json();
-  return { ...data, rateLimits };
-}
-
 /* ------------------------------------------------------------------ */
-/*  Share types & client functions (Phase 4 — SHARE-01..05)            */
+/*  Share types (Phase 4 — SHARE-01..05)                              */
 /* ------------------------------------------------------------------ */
 
 export interface SharedAnalysis {
@@ -275,79 +168,8 @@ export interface SharedAnalysis {
   priority_fixes: PriorityFix[];
 }
 
-export async function shareAnalysis(
-  id: string
-): Promise<{ share_url: string; share_short_id: string }> {
-  const res = await fetch(`${API_BASE}/analyses/${id}/share`, {
-    method: "POST",
-    headers: authHeaders(),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || "Failed to share analysis");
-  }
-  return res.json();
-}
-
-export async function unshareAnalysis(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/analyses/${id}/share`, {
-    method: "DELETE",
-    headers: authHeaders(),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || "Failed to unshare analysis");
-  }
-}
-
-const SHARE_BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") ||
-  "http://localhost:8000";
-
-export async function fetchSharedAnalysis(
-  shortId: string
-): Promise<SharedAnalysis> {
-  const res = await fetch(`${SHARE_BASE}/s/${shortId}`);
-  if (!res.ok) {
-    throw new Error(
-      res.status === 404 ? "Shared analysis not found" : "Failed to fetch"
-    );
-  }
-  return res.json();
-}
-
 /* ------------------------------------------------------------------ */
-/*  PDF download (Phase 4 — PDF-05)                                    */
-/* ------------------------------------------------------------------ */
-
-export async function downloadPdf(
-  analysisId: string,
-  filename: string
-): Promise<void> {
-  const res = await fetch(`${API_BASE}/analyses/${analysisId}/pdf`, {
-    headers: authHeaders(),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || "Failed to download PDF");
-  }
-  const blob = await res.blob();
-  const stem = filename.replace(/\.[^.]+$/, "");
-  const downloadName = `${stem}-dfm-report.pdf`;
-
-  // Create temporary download link
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = downloadName;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-/* ------------------------------------------------------------------ */
-/*  Mesh Repair types & client (Phase 5 — REPAIR-01..03)              */
+/*  Mesh Repair types (Phase 5 — REPAIR-01..03)                       */
 /* ------------------------------------------------------------------ */
 
 export interface RepairDetails {
@@ -366,6 +188,262 @@ export interface RepairResult {
   repaired_analysis: ValidationResult | null;
   repaired_file_b64: string | null;
 }
+
+/* ------------------------------------------------------------------ */
+/*  Auth + rate-limit helpers                                          */
+/* ------------------------------------------------------------------ */
+
+function authHeaders(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const key = localStorage.getItem("cadverify_api_key");
+  return key ? { Authorization: `Bearer ${key}` } : {};
+}
+
+function extractRateLimits(headers: Headers): RateLimits | undefined {
+  const remaining = headers.get("X-RateLimit-Remaining");
+  const limit = headers.get("X-RateLimit-Limit");
+  if (!remaining || !limit) return undefined;
+  return {
+    remaining: parseInt(remaining, 10),
+    limit: parseInt(limit, 10),
+    reset: parseInt(headers.get("X-RateLimit-Reset") || "0", 10),
+  };
+}
+
+// Module-level rate-limit state — updated by every apiClient response
+let _latestRateLimits: RateLimits | undefined;
+
+export function getLatestRateLimits(): RateLimits | undefined {
+  return _latestRateLimits;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Centralized API client                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Centralized API client — attaches auth headers, extracts rate limits,
+ * handles errors (timeout, malformed JSON, 5xx retry, 429 toast, 4xx throw).
+ */
+const apiClient = {
+  async fetch(
+    url: string,
+    options: RequestInit = {},
+    { retries = 0, retryDelayMs = 1000 }: { retries?: number; retryDelayMs?: number } = {}
+  ): Promise<Response> {
+    const headers = new Headers(options.headers);
+    // Attach auth header if not already present
+    const auth = authHeaders();
+    if (auth.Authorization) {
+      headers.set("Authorization", auth.Authorization);
+    }
+
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      if (attempt > 0) {
+        await new Promise((r) => setTimeout(r, retryDelayMs * attempt));
+      }
+
+      let res: Response;
+      try {
+        res = await fetch(url, { ...options, headers });
+      } catch (err) {
+        // Network error / timeout
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (attempt === retries) {
+          toast.error("Connection timed out. Check your network.");
+          throw lastError;
+        }
+        continue;
+      }
+
+      // Extract rate limits from every response
+      const rl = extractRateLimits(res.headers);
+      if (rl) _latestRateLimits = rl;
+
+      // 429 — rate limited, no retry
+      if (res.status === 429) {
+        const retryAfter = parseInt(res.headers.get("Retry-After") || "60", 10);
+        toast.error(`Rate limit exceeded. Try again in ${retryAfter}s.`);
+        const err = await res.json().catch(() => ({ detail: "Rate limit exceeded" }));
+        throw new Error(err.detail || "Rate limit exceeded");
+      }
+
+      // 5xx — retry with backoff
+      if (res.status >= 500) {
+        lastError = new Error(`Server error ${res.status}`);
+        if (attempt === retries) {
+          toast.error("Server error. We've been notified.");
+          Sentry.captureException(lastError, { extra: { url, status: res.status } });
+          throw lastError;
+        }
+        continue;
+      }
+
+      // 4xx (non-429) — no retry
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || err.message || `Request failed: ${res.status}`);
+      }
+
+      return res;
+    }
+    throw lastError || new Error("Request failed");
+  },
+
+  async fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> {
+    const res = await this.fetch(url, options, { retries: 2, retryDelayMs: 1000 });
+    try {
+      return await res.json();
+    } catch {
+      Sentry.captureMessage("Malformed JSON response", { extra: { url } });
+      toast.error("Unexpected server response.");
+      throw new Error("Unexpected server response");
+    }
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/*  API functions                                                      */
+/* ------------------------------------------------------------------ */
+
+export async function validateFile(
+  file: File,
+  processes?: string[],
+  rulePack?: string
+): Promise<ValidationResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const params = new URLSearchParams();
+  if (processes && processes.length > 0) {
+    params.set("processes", processes.join(","));
+  }
+  if (rulePack) {
+    params.set("rule_pack", rulePack);
+  }
+
+  let url = `${API_BASE}/validate`;
+  const qs = params.toString();
+  if (qs) {
+    url += `?${qs}`;
+  }
+
+  return apiClient.fetchJson<ValidationResult>(url, { method: "POST", body: formData });
+}
+
+export async function validateQuick(file: File): Promise<{
+  filename: string;
+  verdict: string;
+  geometry: Partial<GeometryInfo>;
+  issues: Issue[];
+}> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return apiClient.fetchJson(`${API_BASE}/validate/quick`, {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export async function getProcesses(): Promise<{ processes: Array<{ process: string; material_count: number; machine_count: number; materials: string[]; machines: string[] }> }> {
+  return apiClient.fetchJson(`${API_BASE}/processes`);
+}
+
+export async function getMaterials(): Promise<{ materials: Material[] }> {
+  return apiClient.fetchJson(`${API_BASE}/materials`);
+}
+
+export async function getMachines(): Promise<{ machines: Machine[] }> {
+  return apiClient.fetchJson(`${API_BASE}/machines`);
+}
+
+export async function getRulePacks(): Promise<{ rule_packs: RulePackInfo[] }> {
+  return apiClient.fetchJson(`${API_BASE}/rule-packs`);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Analysis history client functions (Phase 3 — PERS-09)             */
+/* ------------------------------------------------------------------ */
+
+export async function fetchAnalyses(params: {
+  cursor?: string;
+  limit?: number;
+  verdict?: string;
+}): Promise<AnalysesPage> {
+  const url = new URL(`${API_BASE}/analyses`, window.location.origin);
+  if (params.cursor) url.searchParams.set("cursor", params.cursor);
+  if (params.limit) url.searchParams.set("limit", String(params.limit));
+  if (params.verdict) url.searchParams.set("verdict", params.verdict);
+
+  const res = await apiClient.fetch(url.toString());
+  const rateLimits = getLatestRateLimits();
+  const data = await res.json();
+  return { ...data, rateLimits };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Share client functions (Phase 4 — SHARE-01..05)                    */
+/* ------------------------------------------------------------------ */
+
+export async function shareAnalysis(
+  id: string
+): Promise<{ share_url: string; share_short_id: string }> {
+  return apiClient.fetchJson(`${API_BASE}/analyses/${id}/share`, {
+    method: "POST",
+  });
+}
+
+export async function unshareAnalysis(id: string): Promise<void> {
+  await apiClient.fetch(`${API_BASE}/analyses/${id}/share`, {
+    method: "DELETE",
+  });
+}
+
+const SHARE_BASE =
+  process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") ||
+  "http://localhost:8000";
+
+export async function fetchSharedAnalysis(
+  shortId: string
+): Promise<SharedAnalysis> {
+  // Public endpoint — no auth needed, but still benefits from error handling
+  const res = await fetch(`${SHARE_BASE}/s/${shortId}`);
+  if (!res.ok) {
+    throw new Error(
+      res.status === 404 ? "Shared analysis not found" : "Failed to fetch"
+    );
+  }
+  return res.json();
+}
+
+/* ------------------------------------------------------------------ */
+/*  PDF download (Phase 4 — PDF-05)                                    */
+/* ------------------------------------------------------------------ */
+
+export async function downloadPdf(
+  analysisId: string,
+  filename: string
+): Promise<void> {
+  const res = await apiClient.fetch(`${API_BASE}/analyses/${analysisId}/pdf`);
+  const blob = await res.blob();
+  const stem = filename.replace(/\.[^.]+$/, "");
+  const downloadName = `${stem}-dfm-report.pdf`;
+
+  // Create temporary download link
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = downloadName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Mesh Repair client (Phase 5 — REPAIR-01..03)                      */
+/* ------------------------------------------------------------------ */
 
 export async function repairAnalysis(
   file: File,
@@ -389,24 +467,12 @@ export async function repairAnalysis(
     url += `?${qs}`;
   }
 
-  const res = await fetch(url, {
+  return apiClient.fetchJson<RepairResult>(url, {
     method: "POST",
     body: formData,
-    headers: authHeaders(),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || "Repair failed");
-  }
-  return res.json();
 }
 
 export async function fetchAnalysis(id: string): Promise<AnalysisDetail> {
-  const res = await fetch(`${API_BASE}/analyses/${id}`, {
-    headers: authHeaders(),
-  });
-  if (!res.ok) {
-    throw new Error(res.status === 404 ? "Analysis not found" : "Failed to fetch analysis");
-  }
-  return res.json();
+  return apiClient.fetchJson<AnalysisDetail>(`${API_BASE}/analyses/${id}`);
 }
