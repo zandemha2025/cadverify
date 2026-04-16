@@ -88,11 +88,11 @@
 
 ### Observability
 
-- [ ] **OBS-01**: Sentry integrated in backend + Next.js frontend with release tagging
-- [ ] **OBS-02**: structlog + request-ID middleware; every log line carries request ID and user ID (when authed)
-- [ ] **OBS-03**: `/health` endpoint reports DB + Redis reachability and reports 200 only when both healthy
-- [ ] **OBS-04**: UptimeRobot (or equivalent) polls `/health` every 1 min with alerting
-- [ ] **OBS-05**: Billing alerts configured on Fly + Neon at $50/month threshold
+- [x] **OBS-01**: Sentry integrated in backend + Next.js frontend with release tagging
+- [x] **OBS-02**: structlog + request-ID middleware; every log line carries request ID and user ID (when authed)
+- [x] **OBS-03**: `/health` endpoint reports DB + Redis reachability and reports 200 only when both healthy
+- [x] **OBS-04**: UptimeRobot (or equivalent) polls `/health` every 1 min with alerting
+- [x] **OBS-05**: Billing alerts configured on Fly + Neon at $50/month threshold
 
 ### Docs & Landing
 
@@ -208,11 +208,11 @@
 | PKG-06 | Phase 6 | Complete |
 | PKG-07 | Phase 6 | Complete |
 | PKG-08 | Phase 6 | Pending |
-| OBS-01 | Phase 6 | Pending |
-| OBS-02 | Phase 6 | Pending |
-| OBS-03 | Phase 6 | Pending |
-| OBS-04 | Phase 6 | Pending |
-| OBS-05 | Phase 6 | Pending |
+| OBS-01 | Phase 6 | Complete |
+| OBS-02 | Phase 6 | Complete |
+| OBS-03 | Phase 6 | Complete |
+| OBS-04 | Phase 6 | Complete |
+| OBS-05 | Phase 6 | Complete |
 | DOC-01 | Phase 6 | Pending |
 | DOC-02 | Phase 6 | Pending |
 | DOC-03 | Phase 6 | Pending |
