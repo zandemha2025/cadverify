@@ -138,16 +138,27 @@ async def _write_usage_event(
 
 
 # ---------------------------------------------------------------------------
-# Imports from routes (pipeline helpers kept in routes.py as module-level fns)
+# Lazy imports from routes to avoid circular dependency
+# (routes.py imports analysis_service; analysis_service needs route helpers)
 # ---------------------------------------------------------------------------
 
-from src.api.routes import (  # noqa: E402
-    _analysis_timeout_sec,
-    _issue_to_dict,
-    _parse_mesh,
-    _resolve_target_processes,
-    _to_response,
-)
+
+def _get_route_helpers():
+    """Import route-level helpers lazily to break circular import."""
+    from src.api.routes import (
+        _analysis_timeout_sec,
+        _issue_to_dict,
+        _parse_mesh,
+        _resolve_target_processes,
+        _to_response,
+    )
+    return (
+        _analysis_timeout_sec,
+        _issue_to_dict,
+        _parse_mesh,
+        _resolve_target_processes,
+        _to_response,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -169,13 +180,21 @@ async def run_analysis(
     On cache miss runs the full pipeline, persists, writes usage_event.
     Handles race condition via IntegrityError catch (T-03B-01).
     """
+    (
+        analysis_timeout_sec_fn,
+        _issue_to_dict,
+        parse_mesh_fn,
+        resolve_target_processes_fn,
+        to_response_fn,
+    ) = _get_route_helpers()
+
     start = time.time()
 
     # 1. Hash raw bytes BEFORE parsing (D-09, D-10)
     mesh_hash = compute_mesh_hash(file_bytes)
 
     # 2. Resolve target processes
-    target_processes = _resolve_target_processes(processes)
+    target_processes = resolve_target_processes_fn(processes)
 
     # 3. Process set hash
     process_set_hash = compute_process_set_hash(
@@ -210,7 +229,7 @@ async def run_analysis(
         return cached.result_json
 
     # 7. Cache MISS — run full pipeline
-    mesh, suffix = _parse_mesh(file_bytes, filename)
+    mesh, suffix = parse_mesh_fn(file_bytes, filename)
 
     # Resolve rule pack
     pack = None
@@ -253,7 +272,7 @@ async def run_analysis(
             process_scores.append(ps)
         return geometry, ctx, features, universal_issues, process_scores
 
-    timeout_sec = _analysis_timeout_sec()
+    timeout_sec = analysis_timeout_sec_fn()
     loop = asyncio.get_event_loop()
     try:
         geometry, ctx, features, universal_issues, process_scores = (
@@ -291,7 +310,7 @@ async def run_analysis(
 
     result = enhance_suggestions(result)
 
-    result_dict = _to_response(result, features, pack)
+    result_dict = to_response_fn(result, features, pack)
 
     # Persist
     try:
@@ -355,6 +374,14 @@ async def run_quick_analysis(
     session: AsyncSession,
 ) -> dict:
     """Quick pass/fail — universal checks only, with dedup + usage tracking."""
+    (
+        _analysis_timeout_sec_fn,
+        _issue_to_dict,
+        parse_mesh_fn,
+        _resolve_target_processes_fn,
+        _to_response_fn,
+    ) = _get_route_helpers()
+
     start = time.time()
 
     mesh_hash = compute_mesh_hash(file_bytes)
@@ -384,7 +411,7 @@ async def run_quick_analysis(
         return cached.result_json
 
     # Cache miss — run quick analysis
-    mesh, _ = _parse_mesh(file_bytes, filename)
+    mesh, suffix = parse_mesh_fn(file_bytes, filename)
     geometry = analyze_geometry(mesh)
     issues = run_universal_checks(mesh)
     has_errors = any(i.severity == Severity.ERROR for i in issues)
@@ -423,7 +450,7 @@ async def run_quick_analysis(
             process_set_hash=process_set_hash,
             analysis_version=analysis_version,
             filename=filename,
-            file_type="stl",  # quick analysis only used for STL currently
+            file_type=suffix.lstrip("."),
             file_size_bytes=len(file_bytes),
             result_json=result_dict,
             verdict=verdict,

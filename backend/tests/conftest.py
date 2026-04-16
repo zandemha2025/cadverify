@@ -42,7 +42,8 @@ def _auth_env(monkeypatch):
 
 
 def _apply_auth_bypass(app) -> None:
-    """Install a dependency override so tests can call /api/v1/* w/o Bearer.
+    """Install dependency overrides so tests can call /api/v1/* w/o Bearer
+    and without a real database connection.
 
     Used by 02.C: existing end-to-end tests (test_api, test_rule_packs,
     test_frontend_errors, test_step_corruption, test_large_mesh) were written
@@ -51,12 +52,34 @@ def _apply_auth_bypass(app) -> None:
     app instance. Tests that need to exercise the real auth enforcement build
     their own isolated FastAPI apps (see test_require_api_key, test_rate_limit).
     """
+    from unittest.mock import AsyncMock, MagicMock
+
     from src.auth.require_api_key import AuthedUser, require_api_key
+    from src.db.engine import get_db_session
 
     def _fake_user():
         return AuthedUser(user_id=1, api_key_id=1, key_prefix="testkey1")
 
+    async def _fake_db_session():
+        """Yield a mock async session that no-ops on ORM calls.
+
+        The mock is transparent enough for analysis_service to call
+        session.execute / session.add / session.flush without hitting a real
+        DB, while still allowing the pipeline result to pass through.
+        """
+        session = AsyncMock()
+        # _check_cache returns None (always cache miss) so the full pipeline runs
+        exec_result = MagicMock()
+        exec_result.scalars.return_value.first.return_value = None
+        session.execute.return_value = exec_result
+        # flush after _persist_analysis — give the Analysis object a fake id
+        async def _fake_flush():
+            pass
+        session.flush = _fake_flush
+        yield session
+
     app.dependency_overrides[require_api_key] = _fake_user
+    app.dependency_overrides[get_db_session] = _fake_db_session
 
 
 @pytest.fixture(autouse=True)
@@ -98,9 +121,13 @@ def _bypass_api_key_auth(monkeypatch):
 
         if "main" in sys.modules:
             from src.auth.require_api_key import require_api_key
+            from src.db.engine import get_db_session
 
             sys.modules["main"].app.dependency_overrides.pop(
                 require_api_key, None
+            )
+            sys.modules["main"].app.dependency_overrides.pop(
+                get_db_session, None
             )
     except Exception:
         pass

@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
-import time
 from pathlib import Path
 from typing import Optional
 
@@ -19,22 +17,20 @@ from fastapi import (
     Response,
     UploadFile,
 )
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.analysis.base_analyzer import analyze_geometry, run_universal_checks
+from src.analysis.models import AnalysisResult, Issue, ProcessType
+from src.analysis.rules import available_rule_packs, get_rule_pack
+from src.api.upload_validation import enforce_triangle_cap, validate_magic
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.rate_limit import limiter
 from src.auth.require_api_key import AuthedUser, require_api_key
-from src.analysis.context import GeometryContext
-from src.analysis.features import detect_all as detect_features
-from src.analysis.models import AnalysisResult, Issue, ProcessType, Severity
-from src.analysis.processes import get_analyzer
-from src.analysis.rules import available_rule_packs, get_rule_pack
-from src.api.upload_validation import enforce_triangle_cap, validate_magic
-from src.fixes.fix_suggester import enhance_suggestions, get_priority_fixes
-from src.matcher.profile_matcher import rank_processes, score_process
+from src.db.engine import get_db_session
+from src.fixes.fix_suggester import get_priority_fixes
 from src.parsers.step_parser import is_step_supported, parse_step_from_bytes
 from src.parsers.stl_parser import parse_stl_from_bytes
 from src.profiles.database import MACHINES, MATERIALS, get_all_processes
+from src.services import analysis_service
 
 logger = logging.getLogger("cadverify.routes")
 
@@ -149,13 +145,10 @@ async def validate_file(
         description="Industry rule pack: aerospace, automotive, oil_gas, medical.",
     ),
     user: AuthedUser = Depends(require_api_key),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Upload a STEP or STL file and get manufacturing validation results."""
-    start = time.time()
-    filename = file.filename or "unknown"
-
-    # Resolve rule pack (if specified)
-    pack = None
+    # Validate rule pack early (before reading file bytes)
     if rule_pack:
         pack = get_rule_pack(rule_pack)
         if pack is None:
@@ -165,72 +158,14 @@ async def validate_file(
             )
 
     data = await _read_capped(file)
-    mesh, suffix = _parse_mesh(data, filename)
-
-    def _run_analysis_sync():
-        geometry = analyze_geometry(mesh)
-        ctx = GeometryContext.build(mesh, geometry)
-        features = detect_features(mesh)
-        ctx.features = features
-        universal_issues = run_universal_checks(mesh)
-
-        target_processes = _resolve_target_processes(processes)
-
-        process_scores = []
-        for proc in target_processes:
-            new_analyzer = get_analyzer(proc)
-            if new_analyzer is None:
-                logger.warning("No registered analyzer for process %s — skipping", proc.value)
-                continue
-            try:
-                proc_issues = new_analyzer.analyze(ctx)
-            except Exception:
-                logger.exception("Analyzer failed for %s", proc.value)
-                continue
-            # Apply rule pack overlay (tighten thresholds, escalate severity)
-            if pack:
-                proc_issues = pack.apply(proc_issues, proc)
-            ps = score_process(proc_issues, geometry, proc)
-            process_scores.append(ps)
-        return geometry, ctx, features, universal_issues, process_scores
-
-    timeout_sec = _analysis_timeout_sec()
-    loop = asyncio.get_event_loop()
-    try:
-        # Run CPU-bound analysis in threadpool so asyncio.wait_for can
-        # enforce a wall-clock timeout without being blocked by the GIL-held
-        # synchronous work. The worker thread may keep running after timeout
-        # (Python cannot kill threads), but the request returns 504 promptly.
-        geometry, ctx, features, universal_issues, process_scores = await asyncio.wait_for(
-            loop.run_in_executor(None, _run_analysis_sync),
-            timeout=timeout_sec,
-        )
-    except asyncio.TimeoutError:
-        raise HTTPException(
-            status_code=504,
-            detail=(
-                f"Analysis exceeded ANALYSIS_TIMEOUT_SEC={timeout_sec:.0f}s. "
-                f"Reduce scope with ?processes=... or try /validate/quick."
-            ),
-        )
-
-    result = AnalysisResult(
-        filename=filename,
-        file_type=suffix.lstrip("."),
-        geometry=geometry,
-        segments=ctx.segments,
-        universal_issues=universal_issues,
-        process_scores=process_scores,
-        analysis_time_ms=round((time.time() - start) * 1000, 1),
+    return await analysis_service.run_analysis(
+        file_bytes=data,
+        filename=file.filename or "unknown",
+        processes=processes,
+        rule_pack=rule_pack,
+        user=user,
+        session=session,
     )
-
-    ranked = rank_processes(result)
-    if ranked and ranked[0].score > 0:
-        result.best_process = ranked[0].process
-
-    result = enhance_suggestions(result)
-
-    return _to_response(result, features, pack)
 
 
 @router.post("/validate/quick", dependencies=[Depends(require_kill_switch_open)])
@@ -240,36 +175,16 @@ async def validate_quick(
     response: Response,
     file: UploadFile = File(...),
     user: AuthedUser = Depends(require_api_key),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Quick pass/fail check — universal checks only, no process-specific analysis."""
-    filename = file.filename or "unknown"
     data = await _read_capped(file)
-    mesh, _ = _parse_mesh(data, filename)
-
-    geometry = analyze_geometry(mesh)
-    issues = run_universal_checks(mesh)
-    has_errors = any(i.severity == Severity.ERROR for i in issues)
-
-    return {
-        "filename": filename,
-        "verdict": "fail" if has_errors else "pass",
-        "geometry": {
-            "vertices": geometry.vertex_count,
-            "faces": geometry.face_count,
-            "volume_mm3": round(geometry.volume, 1),
-            "bounding_box_mm": [round(d, 1) for d in geometry.bounding_box.dimensions],
-            "is_watertight": geometry.is_watertight,
-        },
-        "issues": [
-            {
-                "code": i.code,
-                "severity": i.severity.value,
-                "message": i.message,
-                "fix": i.fix_suggestion,
-            }
-            for i in issues
-        ],
-    }
+    return await analysis_service.run_quick_analysis(
+        file_bytes=data,
+        filename=file.filename or "unknown",
+        user=user,
+        session=session,
+    )
 
 
 @router.get("/rule-packs")
