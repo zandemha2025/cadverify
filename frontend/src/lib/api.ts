@@ -255,6 +255,65 @@ export async function fetchAnalyses(params: {
   return { ...data, rateLimits };
 }
 
+/* ------------------------------------------------------------------ */
+/*  Share types & client functions (Phase 4 — SHARE-01..05)            */
+/* ------------------------------------------------------------------ */
+
+export interface SharedAnalysis {
+  filename: string;
+  file_type: string;
+  verdict: string;
+  face_count: number;
+  duration_ms: number;
+  created_at: string;
+  process_scores: ProcessScore[];
+  universal_issues: Issue[];
+  geometry: GeometryInfo;
+  best_process: string | null;
+  priority_fixes: PriorityFix[];
+}
+
+export async function shareAnalysis(
+  id: string
+): Promise<{ share_url: string; share_short_id: string }> {
+  const res = await fetch(`${API_BASE}/analyses/${id}/share`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || "Failed to share analysis");
+  }
+  return res.json();
+}
+
+export async function unshareAnalysis(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/analyses/${id}/share`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || "Failed to unshare analysis");
+  }
+}
+
+const SHARE_BASE =
+  process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") ||
+  "http://localhost:8000";
+
+export async function fetchSharedAnalysis(
+  shortId: string
+): Promise<SharedAnalysis> {
+  const res = await fetch(`${SHARE_BASE}/s/${shortId}`);
+  if (!res.ok) {
+    throw new Error(
+      res.status === 404 ? "Shared analysis not found" : "Failed to fetch"
+    );
+  }
+  return res.json();
+}
+
 export async function fetchAnalysis(id: string): Promise<AnalysisDetail> {
   const res = await fetch(`${API_BASE}/analyses/${id}`, {
     headers: authHeaders(),
