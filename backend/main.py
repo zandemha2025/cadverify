@@ -7,6 +7,7 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from slowapi.errors import RateLimitExceeded
@@ -15,6 +16,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 import structlog
 
+from src.api.errors import structured_http_error_handler, structured_validation_error_handler
 from src.api.health import router as health_router
 from src.api.history import router as history_router
 from src.api.middleware import RequestIDMiddleware
@@ -96,6 +98,8 @@ app.add_middleware(RequestIDMiddleware)
 # middleware sees every request. See src/auth/rate_limit.py for the key_func.
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+app.add_exception_handler(HTTPException, structured_http_error_handler)
+app.add_exception_handler(RequestValidationError, structured_validation_error_handler)
 app.add_middleware(SlowAPIMiddleware)
 
 # CORS: regex origin matches prod apex/www + Vercel preview subdomains.
