@@ -27,7 +27,7 @@ The 8-phase decomposition is derived from the research in `.planning/research/SU
 - [ ] **Phase 2: Auth + Rate Limiting + Abuse Controls** — Atomic security unit: OAuth/magic-link signup, hashed API keys, slowapi rate limits, Turnstile, kill-switch, CORS, log scrubbing.
 - [x] **Phase 3: Persistence + analysis_service + History + Caching** — KEYSTONE: Postgres schema + Alembic, `services/analysis_service.py`, mesh-hash cache, history endpoints, usage events, dashboard. (completed 2026-04-16)
 - [ ] **Phase 4: Shareable URLs + PDF Export** — Render from stored analyses: opaque share IDs, sanitized public view, WeasyPrint PDF with engine-version stamp.
-- [ ] **Phase 5: Mesh Repair Endpoint** — `trimesh.repair` pre-pass + `pymeshfix` for hard cases; `/api/v1/validate/repair` with re-analysis.
+- [x] **Phase 5: Mesh Repair Endpoint** — `trimesh.repair` pre-pass + `pymeshfix` for hard cases; `/api/v1/validate/repair` with re-analysis. (completed 2026-04-16)
 - [ ] **Phase 6: Packaging + Deploy + Observability + Docs** — Public-URL gate: cadquery Dockerfile (<1.2 GB), docker-compose, Fly deploy, Neon Postgres, Sentry, structlog, /health, landing page, Scalar docs.
 - [ ] **Phase 7: Async SAM-3D** — Parallel track: arq JobQueue, 202 + poll endpoints, pre-baked weights, embedding cache, graceful fallback.
 - [ ] **Phase 8: Performance + Frontend Polish** — Batched `GeometryContext`, BVH ray-cast, mesh cleanup, rate-limit header surfacing, error handling, Dependabot.
@@ -222,7 +222,7 @@ The 8-phase decomposition is derived from the research in `.planning/research/SU
 - Pitfall 5: pathological meshes — pymeshfix is C++ and can hang; enforce subprocess timeout
 - Pitfall 1: pymeshfix adds Docker image weight — budget in Phase 6 spike
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 **UI hint:** yes
 
 ---
@@ -366,7 +366,7 @@ The 8-phase decomposition is derived from the research in `.planning/research/SU
 | 2. Auth + Rate Limiting + Abuse Controls | 0/4 | Not started | - |
 | 3. Persistence + analysis_service + History + Caching | 5/5 | Complete   | 2026-04-16 |
 | 4. Shareable URLs + PDF Export | 0/2 | Planned     | - |
-| 5. Mesh Repair Endpoint | 1/2 | In Progress|  |
+| 5. Mesh Repair Endpoint | 2/2 | Complete   | 2026-04-16 |
 | 6. Packaging + Deploy + Observability + Docs | 0/5 | Not started | - |
 | 7. Async SAM-3D | 0/3 | Not started | - |
 | 8. Performance + Frontend Polish | 0/3 | Not started | - |

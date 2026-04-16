@@ -62,7 +62,7 @@
 
 - [x] **REPAIR-01**: `POST /api/v1/validate/repair` accepts STL/STEP, runs `trimesh.repair` pre-pass + `pymeshfix.MeshFix` for hard cases
 - [x] **REPAIR-02**: Endpoint returns repaired STL bytes plus a re-analysis of the repaired mesh
-- [ ] **REPAIR-03**: Frontend offers "Attempt repair" action when original analysis flags non-manifold or holes
+- [x] **REPAIR-03**: Frontend offers "Attempt repair" action when original analysis flags non-manifold or holes
 
 ### Async SAM-3D
 
@@ -199,7 +199,7 @@
 | PDF-05 | Phase 4 | Complete |
 | REPAIR-01 | Phase 5 | Complete |
 | REPAIR-02 | Phase 5 | Complete |
-| REPAIR-03 | Phase 5 | Pending |
+| REPAIR-03 | Phase 5 | Complete |
 | PKG-01 | Phase 6 | Pending |
 | PKG-02 | Phase 6 | Pending |
 | PKG-03 | Phase 6 | Pending |
