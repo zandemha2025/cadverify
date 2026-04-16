@@ -20,7 +20,7 @@ class SAM3DConfig:
     num_points: int = 10000
     min_segment_faces: int = 5
     confidence_threshold: float = 0.7
-    cache_dir: str = "/tmp/cadverify_sam3d_cache"
+    cache_dir: str = ""  # Set in from_env()
 
     @classmethod
     def from_env(cls) -> SAM3DConfig:
@@ -28,11 +28,11 @@ class SAM3DConfig:
 
         Environment variables:
             SAM3D_ENABLED     - "true" to enable (default "false")
-            SAM3D_MODEL_PATH  - path to classifier weights
-            SAM3D_CACHE_DIR   - directory for content-addressable cache
+            SAM3D_MODEL_PATH  - path to classifier weights (pre-baked in Docker image)
+            SAM3D_CACHE_DIR   - directory for content-addressable cache (Fly volume)
         """
         return cls(
             enabled=os.getenv("SAM3D_ENABLED", "false").lower() == "true",
-            model_path=os.getenv("SAM3D_MODEL_PATH", ""),
-            cache_dir=os.getenv("SAM3D_CACHE_DIR", "/tmp/cadverify_sam3d_cache"),
+            model_path=os.getenv("SAM3D_MODEL_PATH", "/app/models/sam2_hiera_small.pt"),
+            cache_dir=os.getenv("SAM3D_CACHE_DIR", "/data/blobs/sam3d_cache"),
         )
