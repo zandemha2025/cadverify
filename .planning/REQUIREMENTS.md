@@ -52,11 +52,11 @@
 
 ### PDF Export
 
-- [ ] **PDF-01**: `GET /api/v1/analyses/{id}/pdf` returns a rendered PDF of the analysis
-- [ ] **PDF-02**: PDF template built with WeasyPrint + Jinja2; includes verdict, issues, process ranking, material/machine recs
-- [ ] **PDF-03**: PDF footer stamps engine version + mesh SHA + analysis timestamp for reproducibility
-- [ ] **PDF-04**: PDF bytes cached in blob storage (Tigris/R2/Fly volume) keyed by analysis ID
-- [ ] **PDF-05**: Frontend exposes "Download PDF" button on analysis view and history items
+- [x] **PDF-01**: `GET /api/v1/analyses/{id}/pdf` returns a rendered PDF of the analysis
+- [x] **PDF-02**: PDF template built with WeasyPrint + Jinja2; includes verdict, issues, process ranking, material/machine recs
+- [x] **PDF-03**: PDF footer stamps engine version + mesh SHA + analysis timestamp for reproducibility
+- [x] **PDF-04**: PDF bytes cached in blob storage (Tigris/R2/Fly volume) keyed by analysis ID
+- [x] **PDF-05**: Frontend exposes "Download PDF" button on analysis view and history items
 
 ### Mesh Repair
 
@@ -192,11 +192,11 @@
 | SHARE-03 | Phase 4 | Complete |
 | SHARE-04 | Phase 4 | Complete |
 | SHARE-05 | Phase 4 | Complete |
-| PDF-01 | Phase 4 | Pending |
-| PDF-02 | Phase 4 | Pending |
-| PDF-03 | Phase 4 | Pending |
-| PDF-04 | Phase 4 | Pending |
-| PDF-05 | Phase 4 | Pending |
+| PDF-01 | Phase 4 | Complete |
+| PDF-02 | Phase 4 | Complete |
+| PDF-03 | Phase 4 | Complete |
+| PDF-04 | Phase 4 | Complete |
+| PDF-05 | Phase 4 | Complete |
 | REPAIR-01 | Phase 5 | Pending |
 | REPAIR-02 | Phase 5 | Pending |
 | REPAIR-03 | Phase 5 | Pending |
