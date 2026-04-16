@@ -79,9 +79,9 @@
 
 - [ ] **PKG-01**: Multi-stage Dockerfile built on `cadquery-ocp-novtk`; amd64-only; <1.2 GB compressed
 - [ ] **PKG-02**: Single image serves both web and worker via different entrypoints (`uvicorn`, `arq worker`)
-- [ ] **PKG-03**: `docker-compose.yml` for local dev — backend, worker, Postgres, Redis, frontend in one command
-- [ ] **PKG-04**: Fly.io `fly.toml` with min-1 backend machine + min-1 worker machine
-- [ ] **PKG-05**: Managed Postgres provisioned (Neon or Fly Postgres) with connection pooling
+- [x] **PKG-03**: `docker-compose.yml` for local dev — backend, worker, Postgres, Redis, frontend in one command
+- [x] **PKG-04**: Fly.io `fly.toml` with min-1 backend machine + min-1 worker machine
+- [x] **PKG-05**: Managed Postgres provisioned (Neon or Fly Postgres) with connection pooling
 - [ ] **PKG-06**: Frontend deployed to Vercel with custom `api.cadverify.com` backend origin
 - [ ] **PKG-07**: CI pipeline runs lint, typecheck, tests, Alembic upgrade check, and buildx push on main
 - [ ] **PKG-08**: `LICENSE`, `NOTICE`, and `THIRD_PARTY_LICENSES.md` bundled in image (LGPL compliance for cadquery/OCP)
@@ -202,9 +202,9 @@
 | REPAIR-03 | Phase 5 | Complete |
 | PKG-01 | Phase 6 | Pending |
 | PKG-02 | Phase 6 | Pending |
-| PKG-03 | Phase 6 | Pending |
-| PKG-04 | Phase 6 | Pending |
-| PKG-05 | Phase 6 | Pending |
+| PKG-03 | Phase 6 | Complete |
+| PKG-04 | Phase 6 | Complete |
+| PKG-05 | Phase 6 | Complete |
 | PKG-06 | Phase 6 | Pending |
 | PKG-07 | Phase 6 | Pending |
 | PKG-08 | Phase 6 | Pending |
