@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { fetchAnalysis } from "@/lib/api";
 import type { AnalysisDetail } from "@/lib/api";
 import AnalysisDashboard from "@/components/AnalysisDashboard";
+import PdfDownloadButton from "@/components/PdfDownloadButton";
 import ShareButton from "@/components/ShareButton";
 
 export default function AnalysisDetailPage({
@@ -80,6 +81,7 @@ export default function AnalysisDetailPage({
             initialShared={analysis.is_public}
             initialShareUrl={analysis.share_url}
           />
+          <PdfDownloadButton analysisId={id} filename={analysis.filename} />
         </div>
       </div>
 
