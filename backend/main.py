@@ -131,3 +131,20 @@ app.include_router(oauth_router, prefix="/auth")
 app.include_router(magic_router, prefix="/auth")
 app.include_router(keys_router)
 app.include_router(health_router)
+
+
+# Scalar API docs — serves interactive documentation alongside /docs and /redoc
+try:
+    from scalar_fastapi import get_scalar_api_reference
+    from fastapi.responses import HTMLResponse
+
+    @app.get("/scalar", include_in_schema=False)
+    async def scalar_docs():
+        return HTMLResponse(
+            get_scalar_api_reference(
+                openapi_url=app.openapi_url,
+                title=app.title,
+            )
+        )
+except ImportError:
+    pass  # scalar-fastapi not installed; /scalar endpoint not available
