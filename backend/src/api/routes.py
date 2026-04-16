@@ -242,29 +242,82 @@ async def validate_demo(
     request: Request,
     response: Response,
     file: UploadFile = File(...),
+    processes: Optional[str] = Query(
+        None,
+        description="Comma-separated process types. Leave empty for all.",
+    ),
 ):
-    """Public demo — universal checks only, no auth, no persistence, tight rate limit."""
+    """Public demo — full analysis, no auth, no persistence, tight rate limit."""
+    import asyncio
+    import time
+
+    from src.analysis.base_analyzer import analyze_geometry, run_universal_checks
+    from src.analysis.context import GeometryContext
+    from src.analysis.features.detector import detect_features
+    from src.analysis.scoring import rank_processes, score_process
+    from src.analysis.suggestion_engine import enhance_suggestions
+    from src.profiles.database import get_analyzer
+
     data = await _read_capped(file)
     mesh, suffix = _parse_mesh(data, file.filename or "unknown")
+    target_processes = _resolve_target_processes(processes)
 
-    from src.analysis.base_analyzer import run_universal_checks
+    start = time.time()
 
-    issues = run_universal_checks(mesh)
+    def _run():
+        geometry = analyze_geometry(mesh)
+        ctx = GeometryContext.build(mesh, geometry)
+        features = detect_features(mesh)
+        ctx.features = features
+        universal_issues = run_universal_checks(mesh)
+        process_scores = []
+        for proc in target_processes:
+            analyzer = get_analyzer(proc)
+            if analyzer is None:
+                continue
+            try:
+                proc_issues = analyzer.analyze(ctx)
+            except Exception:
+                logger.exception("Demo analyzer failed for %s", proc.value)
+                continue
+            ps = score_process(proc_issues, geometry, proc)
+            process_scores.append(ps)
+        return geometry, ctx, features, universal_issues, process_scores
 
-    verdict = "pass" if not issues else "fail"
-    return {
-        "verdict": verdict,
-        "issues": [
-            {
-                "code": iss.code if hasattr(iss, "code") else str(iss.check_id),
-                "severity": iss.severity.value if hasattr(iss.severity, "value") else str(iss.severity),
-                "message": iss.message,
-            }
-            for iss in issues
-        ],
-        "face_count": len(mesh.faces),
-        "demo": True,
-    }
+    timeout = _analysis_timeout_sec()
+    loop = asyncio.get_event_loop()
+    try:
+        geometry, ctx, features, universal_issues, process_scores = (
+            await asyncio.wait_for(
+                loop.run_in_executor(None, _run),
+                timeout=timeout,
+            )
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=504,
+            detail=f"Analysis exceeded {timeout:.0f}s timeout.",
+        )
+
+    duration_ms = round((time.time() - start) * 1000, 1)
+
+    result = AnalysisResult(
+        filename=file.filename or "unknown",
+        file_type=suffix.lstrip("."),
+        geometry=geometry,
+        segments=ctx.segments,
+        universal_issues=universal_issues,
+        process_scores=process_scores,
+        analysis_time_ms=duration_ms,
+    )
+    ranked = rank_processes(result)
+    if ranked and ranked[0].score > 0:
+        result.best_process = ranked[0].process
+    result = enhance_suggestions(result)
+
+    resp = _to_response(result, features)
+    resp["demo"] = True
+    return resp
 
 
 @router.post("/validate/repair", dependencies=[Depends(require_kill_switch_open)])

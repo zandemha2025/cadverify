@@ -21,10 +21,8 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v
 /* ---------- Landing page (unauthenticated) ---------- */
 
 function LandingPage() {
-  const [demoResult, setDemoResult] = useState<{
-    verdict: string;
-    issueCount: number;
-  } | null>(null);
+  const [demoFile, setDemoFile] = useState<File | null>(null);
+  const [demoResult, setDemoResult] = useState<ValidationResult | null>(null);
   const [demoLoading, setDemoLoading] = useState(false);
   const [demoError, setDemoError] = useState<string | null>(null);
 
@@ -34,6 +32,7 @@ function LandingPage() {
       setDemoError("Unsupported file type. Use .stl, .step, or .stp");
       return;
     }
+    setDemoFile(file);
     setDemoLoading(true);
     setDemoError(null);
     setDemoResult(null);
@@ -48,13 +47,19 @@ function LandingPage() {
         const err = await res.json().catch(() => ({ message: res.statusText }));
         throw new Error(err.message || err.detail || "Validation failed");
       }
-      const data: { verdict: string; issues: Issue[] } = await res.json();
-      setDemoResult({ verdict: data.verdict, issueCount: data.issues.length });
+      const data = await res.json();
+      setDemoResult(data);
     } catch (err) {
       setDemoError(err instanceof Error ? err.message : "Demo analysis failed");
     } finally {
       setDemoLoading(false);
     }
+  }, []);
+
+  const handleReset = useCallback(() => {
+    setDemoFile(null);
+    setDemoResult(null);
+    setDemoError(null);
   }, []);
 
   return (
@@ -84,121 +89,141 @@ function LandingPage() {
       </header>
 
       <main>
-        {/* Hero */}
-        <section className="max-w-3xl mx-auto px-4 pt-16 pb-12 text-center">
-          <h2 className="text-4xl font-bold text-gray-900 mb-4">
-            CadVerify
-          </h2>
-          <p className="text-lg text-gray-600 mb-8">
-            Upload a CAD file, get manufacturability feedback in seconds.
-          </p>
-          <div className="flex justify-center gap-4">
-            <a
-              href="/auth/signup"
-              className="inline-flex items-center px-6 py-3 font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition"
-            >
-              Get API Key
-            </a>
-            <a
-              href="#demo"
-              className="inline-flex items-center px-6 py-3 font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition"
-            >
-              Try the Demo
-            </a>
-          </div>
-        </section>
-
-        {/* Demo section */}
-        <section id="demo" className="max-w-2xl mx-auto px-4 pb-16">
-          <h3 className="text-2xl font-bold text-gray-900 mb-6 text-center">
-            Public Demo
-          </h3>
-          <p className="text-gray-500 text-center mb-6">
-            Upload an STL file for a free quick validation — no account required.
-          </p>
-
-          <FileDropZone onFileSelect={handleDemoUpload} isLoading={demoLoading} />
-
-          {demoError && (
-            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
-              {demoError}
-            </div>
-          )}
-
-          {demoResult && (
-            <div className="mt-6 p-6 bg-white border rounded-xl text-center">
-              <p className="text-lg font-semibold text-gray-900 mb-1">
-                Verdict:{" "}
-                <span
-                  className={
-                    demoResult.verdict === "pass"
-                      ? "text-green-600"
-                      : demoResult.verdict === "fail"
-                        ? "text-red-600"
-                        : "text-yellow-600"
-                  }
+        {!demoResult ? (
+          <>
+            {/* Hero */}
+            <section className="max-w-3xl mx-auto px-4 pt-16 pb-12 text-center">
+              <h2 className="text-4xl font-bold text-gray-900 mb-4">
+                CadVerify
+              </h2>
+              <p className="text-lg text-gray-600 mb-8">
+                Upload a CAD file, get manufacturability feedback across 21 processes in seconds.
+              </p>
+              <div className="flex justify-center gap-4">
+                <a
+                  href="/auth/signup"
+                  className="inline-flex items-center px-6 py-3 font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition"
                 >
-                  {demoResult.verdict}
-                </span>
-              </p>
-              <p className="text-sm text-gray-500 mb-4">
-                {demoResult.issueCount} issue{demoResult.issueCount !== 1 ? "s" : ""} found
-              </p>
-              <a
-                href="/auth/signup"
-                className="inline-flex items-center px-5 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition"
-              >
-                Sign up for full analysis
-              </a>
-            </div>
-          )}
-        </section>
+                  Get API Key
+                </a>
+                <a
+                  href="#demo"
+                  className="inline-flex items-center px-6 py-3 font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition"
+                >
+                  Try the Demo
+                </a>
+              </div>
+            </section>
 
-        {/* How it works */}
-        <section className="bg-white border-t border-b py-16">
-          <div className="max-w-4xl mx-auto px-4">
-            <h3 className="text-2xl font-bold text-gray-900 mb-10 text-center">
-              How it works
-            </h3>
-            <div className="grid md:grid-cols-3 gap-8 text-center">
-              <Step
-                number="1"
-                title="Upload your STEP or STL file"
-                desc="Drag and drop or use the API to submit your CAD geometry."
-              />
-              <Step
-                number="2"
-                title="Get instant DFM analysis across 21 manufacturing processes"
-                desc="Additive, CNC, molding, casting, and sheet metal checks run in seconds."
-              />
-              <Step
-                number="3"
-                title="Share results, export PDF, integrate via API"
-                desc="Collaborate with your team or automate quality gates in your pipeline."
-              />
+            {/* Demo upload */}
+            <section id="demo" className="max-w-2xl mx-auto px-4 pb-16">
+              <h3 className="text-2xl font-bold text-gray-900 mb-2 text-center">
+                Full Analysis Demo
+              </h3>
+              <p className="text-gray-500 text-center mb-6">
+                Upload an STL file for a complete DFM analysis across all 21 manufacturing processes — no account required.
+              </p>
+
+              <FileDropZone onFileSelect={handleDemoUpload} isLoading={demoLoading} />
+
+              {demoLoading && (
+                <div className="mt-6 flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="inline-block w-8 h-8 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin mb-3" />
+                    <p className="text-gray-500 text-sm">
+                      Analyzing across all manufacturing processes...
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {demoError && (
+                <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+                  {demoError}
+                </div>
+              )}
+            </section>
+
+            {/* How it works */}
+            <section className="bg-white border-t border-b py-16">
+              <div className="max-w-4xl mx-auto px-4">
+                <h3 className="text-2xl font-bold text-gray-900 mb-10 text-center">
+                  How it works
+                </h3>
+                <div className="grid md:grid-cols-3 gap-8 text-center">
+                  <Step
+                    number="1"
+                    title="Upload your STEP or STL file"
+                    desc="Drag and drop or use the API to submit your CAD geometry."
+                  />
+                  <Step
+                    number="2"
+                    title="Get instant DFM analysis across 21 manufacturing processes"
+                    desc="Additive, CNC, molding, casting, and sheet metal checks run in seconds."
+                  />
+                  <Step
+                    number="3"
+                    title="Share results, export PDF, integrate via API"
+                    desc="Collaborate with your team or automate quality gates in your pipeline."
+                  />
+                </div>
+              </div>
+            </section>
+
+            {/* Footer */}
+            <footer className="py-10">
+              <div className="max-w-4xl mx-auto px-4 flex flex-wrap justify-center gap-6 text-sm text-gray-500">
+                <a href="https://cadvrfy-api.fly.dev/scalar" className="hover:text-gray-900 transition">
+                  API Docs
+                </a>
+                <a href="/docs" className="hover:text-gray-900 transition">
+                  Quickstart
+                </a>
+              </div>
+            </footer>
+          </>
+        ) : (
+          /* Full results view */
+          <div className="max-w-7xl mx-auto px-4 py-6">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">
+                  Analysis: {demoResult.filename}
+                </h2>
+                <p className="text-sm text-gray-500">
+                  {demoResult.geometry?.faces?.toLocaleString()} faces &middot;{" "}
+                  {demoResult.analysis_time_ms}ms &middot;{" "}
+                  {demoResult.process_scores?.length} processes evaluated
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleReset}
+                  className="text-sm text-gray-600 hover:text-gray-900 px-4 py-2 rounded-lg border hover:bg-gray-50 transition"
+                >
+                  Analyze Another File
+                </button>
+                <a
+                  href="/auth/signup"
+                  className="text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition"
+                >
+                  Get API Key
+                </a>
+              </div>
+            </div>
+
+            <div className="grid lg:grid-cols-2 gap-6">
+              {demoFile && (
+                <div className="h-[500px] lg:h-[calc(100vh-160px)] lg:sticky lg:top-6">
+                  <ModelViewer file={demoFile} />
+                </div>
+              )}
+              <div className="pb-12">
+                <AnalysisDashboard result={demoResult} />
+              </div>
             </div>
           </div>
-        </section>
-
-        {/* Footer */}
-        <footer className="py-10">
-          <div className="max-w-4xl mx-auto px-4 flex flex-wrap justify-center gap-6 text-sm text-gray-500">
-            <a href="/scalar" className="hover:text-gray-900 transition">
-              API Docs
-            </a>
-            <a href="/docs" className="hover:text-gray-900 transition">
-              Quickstart
-            </a>
-            <a
-              href="https://github.com/cadverify/cadverify"
-              className="hover:text-gray-900 transition"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              GitHub
-            </a>
-          </div>
-        </footer>
+        )}
       </main>
     </div>
   );
