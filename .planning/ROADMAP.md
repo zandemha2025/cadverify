@@ -191,7 +191,7 @@ The 8-phase decomposition is derived from the research in `.planning/research/SU
 - Pitfall 11: Shareable URL enumeration / PII leak — mitigated by opaque IDs + sanitized serializer + noindex
 - Pitfall 12: WeasyPrint / headless Chrome PDF rendering footguns — WeasyPrint chosen specifically to avoid Chromium; watch font-loading and JSONB-to-HTML edge cases
 
-**Plans:** TBD
+**Plans:** 2 (04.A in Wave 1, 04.B in Wave 1 — parallel)
 **UI hint:** yes
 
 ---
@@ -365,7 +365,7 @@ The 8-phase decomposition is derived from the research in `.planning/research/SU
 | 1. Stabilize Core | 0/4 | Not started | - |
 | 2. Auth + Rate Limiting + Abuse Controls | 0/4 | Not started | - |
 | 3. Persistence + analysis_service + History + Caching | 5/5 | Complete   | 2026-04-16 |
-| 4. Shareable URLs + PDF Export | 0/2 | Not started | - |
+| 4. Shareable URLs + PDF Export | 0/2 | Planned     | - |
 | 5. Mesh Repair Endpoint | 0/2 | Not started | - |
 | 6. Packaging + Deploy + Observability + Docs | 0/5 | Not started | - |
 | 7. Async SAM-3D | 0/3 | Not started | - |
