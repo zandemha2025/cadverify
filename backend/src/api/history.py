@@ -99,5 +99,7 @@ async def get_analysis(
         "filename": analysis.filename,
         "file_type": analysis.file_type,
         "created_at": analysis.created_at.isoformat(),
+        "is_public": analysis.is_public,
+        "share_url": f"/s/{analysis.share_short_id}" if analysis.share_short_id else None,
         "result": analysis.result_json,
     }

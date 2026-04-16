@@ -203,6 +203,8 @@ export interface AnalysisDetail {
   analysis_time_ms: number;
   created_at: string;
   result_json: ValidationResult;
+  is_public: boolean;
+  share_url: string | null;
 }
 
 export interface RateLimits {

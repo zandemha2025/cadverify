@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { fetchAnalysis } from "@/lib/api";
 import type { AnalysisDetail } from "@/lib/api";
 import AnalysisDashboard from "@/components/AnalysisDashboard";
+import ShareButton from "@/components/ShareButton";
 
 export default function AnalysisDetailPage({
   params,
@@ -73,6 +74,13 @@ export default function AnalysisDetailPage({
           {analysis.file_type.toUpperCase()} &middot;{" "}
           {new Date(analysis.created_at).toLocaleString()}
         </p>
+        <div className="mt-2 flex items-center gap-2">
+          <ShareButton
+            analysisId={id}
+            initialShared={analysis.is_public}
+            initialShareUrl={analysis.share_url}
+          />
+        </div>
       </div>
 
       {/* Reuse existing AnalysisDashboard for the full result */}
