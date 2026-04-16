@@ -47,7 +47,10 @@ def _repair_max_faces() -> int:
 
 def _tier1_repair(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
     """Apply trimesh built-in repair operations (fast, in-place)."""
-    mesh.remove_degenerate_faces()
+    # Remove degenerate (zero-area) faces using nondegenerate_faces mask
+    mask = mesh.nondegenerate_faces()
+    if not mask.all():
+        mesh.update_faces(mask)
     trimesh.repair.fix_normals(mesh)
     trimesh.repair.fix_inversion(mesh)
     trimesh.repair.fill_holes(mesh)
