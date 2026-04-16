@@ -96,10 +96,10 @@
 
 ### Docs & Landing
 
-- [ ] **DOC-01**: OpenAPI schema served at `/openapi.json`; Scalar docs at `/scalar`; Swagger UI at `/docs`
-- [ ] **DOC-02**: Error responses use structured format `{code, message, doc_url}` with stable error codes
-- [ ] **DOC-03**: Landing page with 1-sentence value prop, live demo (public STL), "Get API key" CTA
-- [ ] **DOC-04**: Quickstart docs — curl example, Docker Compose path, authenticated request walkthrough
+- [x] **DOC-01**: OpenAPI schema served at `/openapi.json`; Scalar docs at `/scalar`; Swagger UI at `/docs`
+- [x] **DOC-02**: Error responses use structured format `{code, message, doc_url}` with stable error codes
+- [x] **DOC-03**: Landing page with 1-sentence value prop, live demo (public STL), "Get API key" CTA
+- [x] **DOC-04**: Quickstart docs — curl example, Docker Compose path, authenticated request walkthrough
 
 ### Performance & Frontend Polish
 
@@ -213,10 +213,10 @@
 | OBS-03 | Phase 6 | Complete |
 | OBS-04 | Phase 6 | Complete |
 | OBS-05 | Phase 6 | Complete |
-| DOC-01 | Phase 6 | Pending |
-| DOC-02 | Phase 6 | Pending |
-| DOC-03 | Phase 6 | Pending |
-| DOC-04 | Phase 6 | Pending |
+| DOC-01 | Phase 6 | Complete |
+| DOC-02 | Phase 6 | Complete |
+| DOC-03 | Phase 6 | Complete |
+| DOC-04 | Phase 6 | Complete |
 | SAM-01 | Phase 7 | Pending |
 | SAM-02 | Phase 7 | Pending |
 | SAM-03 | Phase 7 | Pending |
