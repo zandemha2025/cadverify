@@ -222,7 +222,7 @@ The 8-phase decomposition is derived from the research in `.planning/research/SU
 - Pitfall 5: pathological meshes — pymeshfix is C++ and can hang; enforce subprocess timeout
 - Pitfall 1: pymeshfix adds Docker image weight — budget in Phase 6 spike
 
-**Plans:** 2 (05.A in Wave 1, 05.B in Wave 2 — depends on 05.A)
+**Plans:** 1/2 plans executed
 **UI hint:** yes
 
 ---
@@ -366,7 +366,7 @@ The 8-phase decomposition is derived from the research in `.planning/research/SU
 | 2. Auth + Rate Limiting + Abuse Controls | 0/4 | Not started | - |
 | 3. Persistence + analysis_service + History + Caching | 5/5 | Complete   | 2026-04-16 |
 | 4. Shareable URLs + PDF Export | 0/2 | Planned     | - |
-| 5. Mesh Repair Endpoint | 0/2 | Not started | - |
+| 5. Mesh Repair Endpoint | 1/2 | In Progress|  |
 | 6. Packaging + Deploy + Observability + Docs | 0/5 | Not started | - |
 | 7. Async SAM-3D | 0/3 | Not started | - |
 | 8. Performance + Frontend Polish | 0/3 | Not started | - |
