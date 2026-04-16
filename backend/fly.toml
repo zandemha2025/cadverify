@@ -32,8 +32,15 @@ primary_region = "iad"
 [[mounts]]
   source = "cadverify_data"
   destination = "/data"
-  processes = ["web"]
+  processes = ["web", "worker"]
   initial_size = "1gb"
+
+# Worker process: always-on, no auto-stop (SAM-3D jobs are long-running)
+[[machines]]
+  processes = ["worker"]
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
 
 [deploy]
   release_command = "sh -c 'DATABASE_URL=$DATABASE_URL_DIRECT alembic upgrade head'"
