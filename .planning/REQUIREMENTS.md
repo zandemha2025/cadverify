@@ -44,11 +44,11 @@
 
 ### Shareable URLs
 
-- [ ] **SHARE-01**: `POST /api/v1/analyses/{id}/share` issues a 12-char base62 `share_short_id` and sets `is_public=true`
-- [ ] **SHARE-02**: `DELETE /api/v1/analyses/{id}/share` revokes (nulls `share_short_id`, sets `is_public=false`)
-- [ ] **SHARE-03**: Public `GET /s/{short_id}` serves sanitized analysis (no email, no API-key prefix, no user PII)
-- [ ] **SHARE-04**: Share pages set `X-Robots-Tag: noindex` and `Cache-Control: private, no-store` where appropriate
-- [ ] **SHARE-05**: Frontend exposes "Share" and "Unshare" controls on analysis view with copy-to-clipboard
+- [x] **SHARE-01**: `POST /api/v1/analyses/{id}/share` issues a 12-char base62 `share_short_id` and sets `is_public=true`
+- [x] **SHARE-02**: `DELETE /api/v1/analyses/{id}/share` revokes (nulls `share_short_id`, sets `is_public=false`)
+- [x] **SHARE-03**: Public `GET /s/{short_id}` serves sanitized analysis (no email, no API-key prefix, no user PII)
+- [x] **SHARE-04**: Share pages set `X-Robots-Tag: noindex` and `Cache-Control: private, no-store` where appropriate
+- [x] **SHARE-05**: Frontend exposes "Share" and "Unshare" controls on analysis view with copy-to-clipboard
 
 ### PDF Export
 
@@ -187,11 +187,11 @@
 | PERS-07 | Phase 3 | Complete |
 | PERS-08 | Phase 3 | Complete |
 | PERS-09 | Phase 3 | Complete |
-| SHARE-01 | Phase 4 | Pending |
-| SHARE-02 | Phase 4 | Pending |
-| SHARE-03 | Phase 4 | Pending |
-| SHARE-04 | Phase 4 | Pending |
-| SHARE-05 | Phase 4 | Pending |
+| SHARE-01 | Phase 4 | Complete |
+| SHARE-02 | Phase 4 | Complete |
+| SHARE-03 | Phase 4 | Complete |
+| SHARE-04 | Phase 4 | Complete |
+| SHARE-05 | Phase 4 | Complete |
 | PDF-01 | Phase 4 | Pending |
 | PDF-02 | Phase 4 | Pending |
 | PDF-03 | Phase 4 | Pending |
