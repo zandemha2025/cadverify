@@ -30,7 +30,7 @@ The 8-phase decomposition is derived from the research in `.planning/research/SU
 - [x] **Phase 5: Mesh Repair Endpoint** — `trimesh.repair` pre-pass + `pymeshfix` for hard cases; `/api/v1/validate/repair` with re-analysis. (completed 2026-04-16)
 - [ ] **Phase 6: Packaging + Deploy + Observability + Docs** — Public-URL gate: cadquery Dockerfile (<1.2 GB), docker-compose, Fly deploy, Neon Postgres, Sentry, structlog, /health, landing page, Scalar docs.
 - [ ] **Phase 7: Async SAM-3D** — Parallel track: arq JobQueue, 202 + poll endpoints, pre-baked weights, embedding cache, graceful fallback.
-- [ ] **Phase 8: Performance + Frontend Polish** — Batched `GeometryContext`, BVH ray-cast, mesh cleanup, rate-limit header surfacing, error handling, Dependabot.
+- [x] **Phase 8: Performance + Frontend Polish** — Batched `GeometryContext`, BVH ray-cast, mesh cleanup, rate-limit header surfacing, error handling, Dependabot. (completed 2026-04-16)
 
 ## Phase Details
 
@@ -353,7 +353,7 @@ The 8-phase decomposition is derived from the research in `.planning/research/SU
 - Performance traps (batch context, BVH, mesh cleanup) — all listed in PITFALLS Performance Traps section
 - UX pitfalls — Phase 8 closes these explicitly
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 **UI hint:** yes
 
 ---
@@ -369,7 +369,7 @@ The 8-phase decomposition is derived from the research in `.planning/research/SU
 | 5. Mesh Repair Endpoint | 2/2 | Complete   | 2026-04-16 |
 | 6. Packaging + Deploy + Observability + Docs | 4/5 | In Progress|  |
 | 7. Async SAM-3D | 2/3 | In Progress|  |
-| 8. Performance + Frontend Polish | 2/3 | In Progress|  |
+| 8. Performance + Frontend Polish | 3/3 | Complete   | 2026-04-16 |
 
 ## Phase Research Summary
 

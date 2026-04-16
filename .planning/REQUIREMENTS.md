@@ -108,7 +108,7 @@
 - [ ] **PERF-03**: Request-level mesh cleanup releases memory after analysis persists
 - [x] **PERF-04**: Frontend API client attaches `Authorization` header, surfaces rate-limit headers in UI
 - [x] **PERF-05**: Frontend handles network timeout, malformed response, and server 5xx gracefully (no unhandled rejections)
-- [ ] **PERF-06**: Dependabot (or equivalent) configured for frontend + backend dependency updates
+- [x] **PERF-06**: Dependabot (or equivalent) configured for frontend + backend dependency updates
 
 ## v2 Requirements (Post-Beta)
 
@@ -230,7 +230,7 @@
 | PERF-03 | Phase 8 | Pending |
 | PERF-04 | Phase 8 | Complete |
 | PERF-05 | Phase 8 | Complete |
-| PERF-06 | Phase 8 | Pending |
+| PERF-06 | Phase 8 | Complete |
 
 **Coverage:**
 - v1 requirements: 70 total
