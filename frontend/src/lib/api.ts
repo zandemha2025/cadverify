@@ -316,6 +316,36 @@ export async function fetchSharedAnalysis(
   return res.json();
 }
 
+/* ------------------------------------------------------------------ */
+/*  PDF download (Phase 4 — PDF-05)                                    */
+/* ------------------------------------------------------------------ */
+
+export async function downloadPdf(
+  analysisId: string,
+  filename: string
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/analyses/${analysisId}/pdf`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || "Failed to download PDF");
+  }
+  const blob = await res.blob();
+  const stem = filename.replace(/\.[^.]+$/, "");
+  const downloadName = `${stem}-dfm-report.pdf`;
+
+  // Create temporary download link
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = downloadName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export async function fetchAnalysis(id: string): Promise<AnalysisDetail> {
   const res = await fetch(`${API_BASE}/analyses/${id}`, {
     headers: authHeaders(),
