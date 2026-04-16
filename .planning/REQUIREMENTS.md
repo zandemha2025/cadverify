@@ -32,8 +32,8 @@
 
 ### Persistence & History (Keystone)
 
-- [ ] **PERS-01**: Postgres schema created via Alembic: `users`, `api_keys`, `analyses`, `jobs`, `usage_events`
-- [ ] **PERS-02**: Alembic migrations enforce expand-migrate-contract; CI runs `alembic upgrade head` on every PR
+- [x] **PERS-01**: Postgres schema created via Alembic: `users`, `api_keys`, `analyses`, `jobs`, `usage_events`
+- [x] **PERS-02**: Alembic migrations enforce expand-migrate-contract; CI runs `alembic upgrade head` on every PR
 - [ ] **PERS-03**: `services/analysis_service.py` wraps existing pipeline (hash → cache lookup → run → persist)
 - [ ] **PERS-04**: Analysis results stored keyed by `(user_id, mesh_hash, analysis_version)`
 - [ ] **PERS-05**: Identical mesh+process request returns cached result without re-running pipeline
@@ -178,8 +178,8 @@
 | AUTH-09 | Phase 2 | Complete |
 | AUTH-10 | Phase 2 | Complete |
 | AUTH-11 | Phase 2 | Complete |
-| PERS-01 | Phase 3 | Pending |
-| PERS-02 | Phase 3 | Pending |
+| PERS-01 | Phase 3 | Complete |
+| PERS-02 | Phase 3 | Complete |
 | PERS-03 | Phase 3 | Pending |
 | PERS-04 | Phase 3 | Pending |
 | PERS-05 | Phase 3 | Pending |

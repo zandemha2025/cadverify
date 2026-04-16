@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-04-15T23:47:58.880Z"
+last_updated: "2026-04-16T15:45:26.817Z"
 progress:
   total_phases: 8
   completed_phases: 2
-  total_plans: 8
-  completed_plans: 8
-  percent: 100
+  total_plans: 13
+  completed_plans: 9
+  percent: 69
 ---
 
 # STATE: CadVerify
@@ -30,16 +30,14 @@ progress:
 
 ## Current Position
 
-- **Phase:** Phase 2 — Auth + Rate Limiting + Abuse Controls
-- **Plan:** Context captured in `--auto` mode; not yet decomposed into plans
-- **Status:** Ready to execute
-- **Progress:** [██████████] 100%
+- **Phase:** Phase 3 — Persistence + analysis_service + History + Caching (KEYSTONE)
+- **Plan:** 03.A complete, 03.B next (1/5 plans done)
+- **Status:** Executing
+- **Progress:** [##░░░░░░░░] 20%
 
-**Next action:** `/gsd-plan-phase 2` to decompose Phase 2 into executable plans (4 suggested in ROADMAP: 2.A signup + key issuance, 2.B key storage + management UI, 2.C require_api_key + rate-limit + kill-switch, 2.D Turnstile + signup IP limit + log scrubbing + CORS).
+**Next action:** Execute 03.B (analysis_service) — Wave 2.
 
-**Recommendation:** Before running `/gsd-plan-phase 2`, review §"Decisions the User Should Revisit" in `.planning/phases/02-auth-rate-limiting-abuse-controls/02-CONTEXT.md` (5 items flagged for user reconsideration).
-
-**Last session (2026-04-15):** `/gsd-discuss-phase 2 --auto` — wrote 02-CONTEXT.md and 02-DISCUSSION-LOG.md.
+**Last session (2026-04-16):** Executed 03.A — schema + migrations. 5 tasks, 5 commits. ORM models for all 5 tables, migration 0002, engine centralization.
 
 ## Milestone Progress
 
@@ -47,7 +45,7 @@ progress:
 |-------|--------|----------------|
 | 1. Stabilize Core | Not started | 0/4 |
 | 2. Auth + Rate Limiting + Abuse Controls | Not started | 0/4 |
-| 3. Persistence + analysis_service + History + Caching (KEYSTONE) | Not started | 0/4 |
+| 3. Persistence + analysis_service + History + Caching (KEYSTONE) | Executing | 1/5 |
 | 4. Shareable URLs + PDF Export | Not started | 0/2 |
 | 5. Mesh Repair Endpoint | Not started | 0/2 |
 | 6. Packaging + Deploy + Observability + Docs (LAUNCH GATE) | Not started | 0/5 |
@@ -82,9 +80,7 @@ progress:
 
 ### Open Todos
 
-- Run `/gsd-plan-phase 2` to decompose Phase 2 using 02-CONTEXT.md
-- (Optional) Review §"Decisions the User Should Revisit" in 02-CONTEXT.md before planning
-- (Optional) `/gsd-research-phase 2` for deeper Argon2id / slowapi / disposable-email research
+- Run `/gsd-execute-phase 3` to execute all 5 Phase 3 plans
 - Schedule `/gsd-research-phase 6` before Phase 6 kickoff
 - Schedule `/gsd-research-phase 7` before Phase 7 kickoff
 
