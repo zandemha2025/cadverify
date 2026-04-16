@@ -17,6 +17,7 @@ import structlog
 
 from src.api.history import router as history_router
 from src.api.routes import router
+from src.api.share import public_share_router, share_router
 from src.auth.keys_api import router as keys_router
 from src.auth.magic_link import router as magic_router
 from src.auth.oauth import router as oauth_router
@@ -112,6 +113,8 @@ app.add_middleware(
 
 app.include_router(router, prefix="/api/v1")
 app.include_router(history_router, prefix="/api/v1/analyses", tags=["history"])
+app.include_router(share_router, prefix="/api/v1/analyses")
+app.include_router(public_share_router, prefix="/s")
 app.include_router(oauth_router, prefix="/auth")
 app.include_router(magic_router, prefix="/auth")
 app.include_router(keys_router)
