@@ -40,7 +40,7 @@
 - [x] **PERS-06**: `GET /api/v1/analyses` returns paginated user history
 - [x] **PERS-07**: `GET /api/v1/analyses/{id}` returns full stored result
 - [x] **PERS-08**: Every analysis writes a `usage_events` row (for dashboard + rate-limit audit)
-- [ ] **PERS-09**: Usage dashboard UI shows recent analyses, quota consumption, and API-key activity
+- [x] **PERS-09**: Usage dashboard UI shows recent analyses, quota consumption, and API-key activity
 
 ### Shareable URLs
 
@@ -186,7 +186,7 @@
 | PERS-06 | Phase 3 | Complete |
 | PERS-07 | Phase 3 | Complete |
 | PERS-08 | Phase 3 | Complete |
-| PERS-09 | Phase 3 | Pending |
+| PERS-09 | Phase 3 | Complete |
 | SHARE-01 | Phase 4 | Pending |
 | SHARE-02 | Phase 4 | Pending |
 | SHARE-03 | Phase 4 | Pending |
