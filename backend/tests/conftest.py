@@ -12,10 +12,98 @@ from __future__ import annotations
 import base64
 import io
 import os
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
 import trimesh
+
+from src.auth.require_api_key import AuthedUser
+
+
+# ──────────────────────────────────────────────────────────────
+# DB test fixtures — mocked async sessions for Phase 3 tests
+# ──────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def test_db_url():
+    """Return test database URL (or fall back to DATABASE_URL)."""
+    return os.environ.get(
+        "TEST_DATABASE_URL", os.environ.get("DATABASE_URL", "sqlite+aiosqlite://")
+    )
+
+
+@pytest.fixture
+def async_engine(test_db_url):
+    """Return a mock async engine (no live DB required)."""
+    engine = AsyncMock()
+    engine.url = test_db_url
+    return engine
+
+
+@pytest.fixture
+def db_session():
+    """Function-scoped mock async session with rollback semantics.
+
+    Provides a realistic AsyncSession mock that tracks added objects and
+    supports execute/flush/rollback/commit for unit tests without a real DB.
+    """
+    session = AsyncMock()
+    session._added = []
+
+    original_add = session.add
+
+    def _track_add(obj):
+        session._added.append(obj)
+
+    session.add = _track_add
+
+    async def _fake_flush():
+        # Assign fake IDs to added objects that lack one
+        for i, obj in enumerate(session._added, start=1):
+            if hasattr(obj, "id") and obj.id is None:
+                obj.id = i
+
+    session.flush = _fake_flush
+
+    async def _fake_rollback():
+        pass
+
+    session.rollback = _fake_rollback
+
+    async def _fake_commit():
+        pass
+
+    session.commit = _fake_commit
+
+    # Default execute returns empty result (no cache hit)
+    exec_result = MagicMock()
+    exec_result.scalars.return_value.first.return_value = None
+    exec_result.scalars.return_value.all.return_value = []
+    exec_result.scalar_one_or_none.return_value = None
+    session.execute.return_value = exec_result
+
+    return session
+
+
+@pytest.fixture
+def test_user():
+    """Return a test user ID (no real DB row needed for mock tests)."""
+    return 42
+
+
+@pytest.fixture
+def test_api_key():
+    """Return a test API key ID."""
+    return 101
+
+
+@pytest.fixture
+def authed_user(test_user, test_api_key):
+    """Return an AuthedUser instance for the test user."""
+    return AuthedUser(user_id=test_user, api_key_id=test_api_key, key_prefix="test_pfx")
 
 
 # ──────────────────────────────────────────────────────────────
