@@ -7,8 +7,10 @@ event tracking.
 from __future__ import annotations
 
 import asyncio
+import gc
 import hashlib
 import logging
+import os
 import time
 from typing import Optional
 
@@ -30,6 +32,11 @@ from src.fixes.fix_suggester import enhance_suggestions, get_priority_fixes
 from src.matcher.profile_matcher import rank_processes, score_process
 
 logger = logging.getLogger("cadverify.analysis_service")
+
+
+def _force_gc_after_analysis() -> bool:
+    """Return True if FORCE_GC_AFTER_ANALYSIS=true (default false)."""
+    return os.getenv("FORCE_GC_AFTER_ANALYSIS", "false").strip().lower() == "true"
 
 
 # ---------------------------------------------------------------------------
@@ -312,6 +319,19 @@ async def run_analysis(
 
     result_dict = to_response_fn(result, features, pack)
 
+    # Capture values needed after cleanup
+    _face_count = geometry.face_count
+    _verdict = result.overall_verdict
+
+    # Release mesh + context memory before async persist
+    try:
+        mesh._cache.clear()
+    except Exception:
+        pass
+    del ctx, features, universal_issues, process_scores, geometry
+    if _force_gc_after_analysis():
+        gc.collect()
+
     # Persist
     try:
         analysis = await _persist_analysis(
@@ -324,8 +344,8 @@ async def run_analysis(
             file_type=suffix.lstrip("."),
             file_size_bytes=len(file_bytes),
             result_json=result_dict,
-            verdict=result.overall_verdict,
-            face_count=geometry.face_count,
+            verdict=_verdict,
+            face_count=_face_count,
             duration_ms=duration_ms,
         )
         await _write_usage_event(
@@ -335,7 +355,7 @@ async def run_analysis(
             analysis.id,
             mesh_hash,
             duration_ms,
-            geometry.face_count,
+            _face_count,
         )
     except IntegrityError:
         # T-03B-01: Race condition — concurrent duplicate insert.
