@@ -16,6 +16,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import structlog
 
 from src.api.history import router as history_router
+from src.api.middleware import RequestIDMiddleware
 from src.api.pdf import router as pdf_router
 from src.api.routes import router
 from src.api.share import public_share_router, share_router
@@ -85,6 +86,10 @@ app = FastAPI(
     version="0.2.0",
     lifespan=lifespan,
 )
+
+# Request-ID middleware — outermost so every request gets a correlation ID
+# before CORS, rate-limiting, or any router sees it.
+app.add_middleware(RequestIDMiddleware)
 
 # Rate limiting (slowapi). Must be wired before routers are included so the
 # middleware sees every request. See src/auth/rate_limit.py for the key_func.
