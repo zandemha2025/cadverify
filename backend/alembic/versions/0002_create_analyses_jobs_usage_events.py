@@ -1,6 +1,6 @@
 """create analyses, jobs, usage_events tables
 
-Revision ID: 0002_create_analyses_jobs_usage_events
+Revision ID: 0002_analyses_jobs_usage
 Revises: 0001_create_users_api_keys
 Create Date: 2026-04-16
 """
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
-revision = "0002_create_analyses_jobs_usage_events"
+revision = "0002_analyses_jobs_usage"
 down_revision = "0001_create_users_api_keys"
 branch_labels = None
 depends_on = None
