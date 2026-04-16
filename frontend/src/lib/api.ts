@@ -177,3 +177,90 @@ export async function getRulePacks(): Promise<{ rule_packs: RulePackInfo[] }> {
   }
   return res.json();
 }
+
+/* ------------------------------------------------------------------ */
+/*  Analysis history types & client functions (Phase 3 — PERS-09)     */
+/* ------------------------------------------------------------------ */
+
+export interface AnalysisSummary {
+  id: number;
+  ulid: string;
+  filename: string;
+  file_type: string;
+  overall_verdict: "pass" | "issues" | "fail" | "unknown";
+  face_count: number;
+  analysis_time_ms: number;
+  created_at: string;
+}
+
+export interface AnalysisDetail {
+  id: number;
+  ulid: string;
+  filename: string;
+  file_type: string;
+  overall_verdict: "pass" | "issues" | "fail" | "unknown";
+  face_count: number;
+  analysis_time_ms: number;
+  created_at: string;
+  result_json: ValidationResult;
+}
+
+export interface RateLimits {
+  remaining: number;
+  limit: number;
+  reset: number;
+}
+
+export interface AnalysesPage {
+  analyses: AnalysisSummary[];
+  next_cursor: string | null;
+  has_more: boolean;
+  rateLimits?: RateLimits;
+}
+
+function authHeaders(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const key = localStorage.getItem("cadverify_api_key");
+  return key ? { Authorization: `Bearer ${key}` } : {};
+}
+
+function extractRateLimits(headers: Headers): RateLimits | undefined {
+  const remaining = headers.get("X-RateLimit-Remaining");
+  const limit = headers.get("X-RateLimit-Limit");
+  if (!remaining || !limit) return undefined;
+  return {
+    remaining: parseInt(remaining, 10),
+    limit: parseInt(limit, 10),
+    reset: parseInt(headers.get("X-RateLimit-Reset") || "0", 10),
+  };
+}
+
+export async function fetchAnalyses(params: {
+  cursor?: string;
+  limit?: number;
+  verdict?: string;
+}): Promise<AnalysesPage> {
+  const url = new URL(`${API_BASE}/analyses`, window.location.origin);
+  if (params.cursor) url.searchParams.set("cursor", params.cursor);
+  if (params.limit) url.searchParams.set("limit", String(params.limit));
+  if (params.verdict) url.searchParams.set("verdict", params.verdict);
+
+  const res = await fetch(url.toString(), { headers: authHeaders() });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || "Failed to fetch analyses");
+  }
+  const rateLimits = extractRateLimits(res.headers);
+  const data = await res.json();
+  return { ...data, rateLimits };
+}
+
+export async function fetchAnalysis(id: string): Promise<AnalysisDetail> {
+  const res = await fetch(`${API_BASE}/analyses/${id}`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    throw new Error(res.status === 404 ? "Analysis not found" : "Failed to fetch analysis");
+  }
+  return res.json();
+}
