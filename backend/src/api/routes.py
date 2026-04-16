@@ -30,7 +30,7 @@ from src.fixes.fix_suggester import get_priority_fixes
 from src.parsers.step_parser import is_step_supported, parse_step_from_bytes
 from src.parsers.stl_parser import parse_stl_from_bytes
 from src.profiles.database import MACHINES, MATERIALS, get_all_processes
-from src.services import analysis_service
+from src.services import analysis_service, repair_service
 
 logger = logging.getLogger("cadverify.routes")
 
@@ -182,6 +182,43 @@ async def validate_quick(
     return await analysis_service.run_quick_analysis(
         file_bytes=data,
         filename=file.filename or "unknown",
+        user=user,
+        session=session,
+    )
+
+
+@router.post("/validate/repair", dependencies=[Depends(require_kill_switch_open)])
+@limiter.limit("60/hour;500/day")
+async def validate_repair(
+    request: Request,
+    response: Response,
+    file: UploadFile = File(...),
+    processes: Optional[str] = Query(
+        None,
+        description="Comma-separated process types for re-analysis. Leave empty for all.",
+    ),
+    rule_pack: Optional[str] = Query(
+        None,
+        description="Industry rule pack: aerospace, automotive, oil_gas, medical.",
+    ),
+    user: AuthedUser = Depends(require_api_key),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Upload a STEP or STL file, attempt mesh repair, and get before/after analysis."""
+    if rule_pack:
+        pack = get_rule_pack(rule_pack)
+        if pack is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown rule pack '{rule_pack}'. Available: {available_rule_packs()}",
+            )
+
+    data = await _read_capped(file)
+    return await repair_service.repair_mesh(
+        file_bytes=data,
+        filename=file.filename or "unknown",
+        processes=processes,
+        rule_pack=rule_pack,
         user=user,
         session=session,
     )
