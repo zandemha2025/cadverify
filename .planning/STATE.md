@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Milestone Context
 status: executing
-last_updated: "2026-04-17T02:43:07.991Z"
+last_updated: "2026-04-17T02:46:53.501Z"
 progress:
   total_phases: 12
   completed_phases: 11
   total_plans: 43
-  completed_plans: 41
-  percent: 95
+  completed_plans: 43
+  percent: 100
 ---
 
 # STATE: CadVerify
@@ -46,7 +46,7 @@ progress:
 | 9. Batch API + Webhook Pipeline | Executing | 1/3 |
 | 10. Image-to-Mesh Pipeline | Not started | 0/3 |
 | 11. STEP AP242 + GD&T/PMI Extraction | Not started | 0/4 |
-| 12. On-Premise Deployment Hardening | Planned | 0/5 |
+| 12. On-Premise Deployment Hardening | Executing | 4/5 |
 
 ## Performance Metrics
 
@@ -67,6 +67,7 @@ progress:
 - Image-to-mesh reconstruction as competitive moat (v2.0)
 - STEP AP242 with GD&T for enterprise credibility (v2.0)
 - On-prem deployment with SSO/SAML/RBAC for enterprise customers (v2.0)
+- Air-gap Docker bundle + Helm chart with conditional SAML, pre-install migration hook (v2.0 Phase 12.D)
 
 ### Research Flags Pending
 
