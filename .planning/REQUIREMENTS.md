@@ -131,7 +131,7 @@
 
 ### STEP AP242 + GD&T/PMI Extraction
 
-- [ ] **STEP-01**: System parses STEP AP242 files using OpenCascade (cadquery/OCP) to extract B-rep geometry and topology
+- [x] **STEP-01**: System parses STEP AP242 files using OpenCascade (cadquery/OCP) to extract B-rep geometry and topology
 - [ ] **STEP-02**: System extracts GD&T annotations (tolerances, datums, surface finish) from PMI data embedded in STEP AP242
 - [ ] **STEP-03**: System validates extracted tolerances against manufacturing process capability tables (can this process hold this tolerance?)
 - [ ] **STEP-04**: Analysis pipeline uses parametric B-rep features (exact geometry) instead of mesh approximation when STEP AP242 is provided
@@ -261,7 +261,7 @@
 | IMG-03 | Phase 10 | Complete |
 | IMG-04 | Phase 10 | Complete |
 | IMG-05 | Phase 10 | Complete |
-| STEP-01 | Phase 11 | Pending |
+| STEP-01 | Phase 11 | Complete |
 | STEP-02 | Phase 11 | Pending |
 | STEP-03 | Phase 11 | Pending |
 | STEP-04 | Phase 11 | Pending |
