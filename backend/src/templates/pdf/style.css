@@ -84,6 +84,26 @@ th {
   color: #6b7280;
 }
 
+.tolerance-table th,
+.tolerance-table td {
+  font-size: 8.5pt;
+}
+
+.verdict-achievable {
+  color: #16a34a;
+  font-weight: bold;
+}
+
+.verdict-marginal {
+  color: #d97706;
+  font-weight: bold;
+}
+
+.verdict-not_achievable {
+  color: #dc2626;
+  font-weight: bold;
+}
+
 .geometry-grid {
   display: flex;
   flex-wrap: wrap;
