@@ -7,6 +7,7 @@ import os
 from arq.connections import RedisSettings
 
 from src.jobs.batch_tasks import dispatch_webhook, run_batch_coordinator, run_batch_item
+from src.jobs.reconstruction_tasks import run_reconstruction_job
 from src.jobs.tasks import run_sam3d_job
 
 logger = logging.getLogger("cadverify.worker")
@@ -24,6 +25,13 @@ async def startup(ctx: dict) -> None:
     else:
         logger.info("SAM-3D disabled or no model path configured")
 
+    # Pre-load reconstruction engine if using local backend
+    backend = os.getenv("RECONSTRUCTION_BACKEND", "remote")
+    if backend == "local":
+        from src.reconstruction.local_triposr import LocalTripoSR
+        ctx["reconstruction_engine"] = LocalTripoSR.load()
+        logger.info("TripoSR model loaded for local inference")
+
     # Eagerly initialise DB engine + session factory so worker sessions work
     from src.db.engine import init_engine
 
@@ -39,7 +47,7 @@ async def shutdown(ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions = [run_sam3d_job, run_batch_coordinator, run_batch_item, dispatch_webhook]
+    functions = [run_sam3d_job, run_batch_coordinator, run_batch_item, dispatch_webhook, run_reconstruction_job]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(os.getenv("REDIS_URL", "redis://localhost:6379"))
