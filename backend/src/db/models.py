@@ -9,6 +9,7 @@ Tables:
   - batches            (Phase 9, migration 0004)
   - batch_items        (Phase 9, migration 0004)
   - webhook_deliveries (Phase 9, migration 0004)
+  - audit_log          (Phase 12, migration 0006)
 """
 from __future__ import annotations
 
@@ -347,3 +348,34 @@ class WebhookDelivery(Base):
 
     # relationships
     batch: Mapped[Batch] = relationship(back_populates="webhook_deliveries")
+
+
+# ---------------------------------------------------------------------------
+# Phase 12 tables (migration 0006)
+# ---------------------------------------------------------------------------
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_log"
+    __table_args__ = (
+        Index("ix_audit_log_timestamp", "timestamp"),
+        Index("ix_audit_log_user_timestamp", "user_id", "timestamp"),
+        Index("ix_audit_log_action_timestamp", "action", "timestamp"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    user_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    user_email: Mapped[str] = mapped_column(Text, nullable=False)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    resource_type: Mapped[str] = mapped_column(Text, nullable=False)
+    resource_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    detail_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    ip_address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    file_hash: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    result_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
