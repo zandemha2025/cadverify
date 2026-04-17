@@ -114,10 +114,10 @@
 
 ### Batch API + Webhook Pipeline
 
-- [ ] **BATCH-01**: User can submit a ZIP archive or S3 bucket reference with CSV manifest to `POST /api/v1/batch`, receiving a batch job ID
-- [ ] **BATCH-02**: Batch processor decompresses archive, validates manifest, and enqueues each part for parallel analysis via arq
-- [ ] **BATCH-03**: User can configure webhook URL per batch; system sends POST callback on batch completion and per-item completion
-- [ ] **BATCH-04**: User can poll `GET /api/v1/batch/{id}` for real-time progress (items total, completed, failed, in-progress)
+- [x] **BATCH-01**: User can submit a ZIP archive or S3 bucket reference with CSV manifest to `POST /api/v1/batch`, receiving a batch job ID
+- [x] **BATCH-02**: Batch processor decompresses archive, validates manifest, and enqueues each part for parallel analysis via arq
+- [x] **BATCH-03**: User can configure webhook URL per batch; system sends POST callback on batch completion and per-item completion
+- [x] **BATCH-04**: User can poll `GET /api/v1/batch/{id}` for real-time progress (items total, completed, failed, in-progress)
 - [ ] **BATCH-05**: User can view batch progress dashboard in frontend with per-item status drill-down
 - [ ] **BATCH-06**: Admin can configure per-tenant concurrency limits (max parallel workers per batch) via environment or API
 
@@ -250,10 +250,10 @@
 | PERF-05 | Phase 8 | Complete |
 | PERF-06 | Phase 8 | Complete |
 
-| BATCH-01 | Phase 9 | Pending |
-| BATCH-02 | Phase 9 | Pending |
-| BATCH-03 | Phase 9 | Pending |
-| BATCH-04 | Phase 9 | Pending |
+| BATCH-01 | Phase 9 | Complete |
+| BATCH-02 | Phase 9 | Complete |
+| BATCH-03 | Phase 9 | Complete |
+| BATCH-04 | Phase 9 | Complete |
 | BATCH-05 | Phase 9 | Pending |
 | BATCH-06 | Phase 9 | Pending |
 | IMG-01 | Phase 10 | Pending |
