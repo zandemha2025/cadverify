@@ -319,6 +319,25 @@ async def run_analysis(
 
     result_dict = to_response_fn(result, features, pack)
 
+    # Tolerance analysis for STEP files with AP242 support
+    if suffix.lstrip(".") in ("step", "stp"):
+        try:
+            from src.parsers.step_ap242_parser import is_ap242_supported
+            from src.services.tolerance_service import analyze_tolerances, tolerance_report_to_dict
+
+            if is_ap242_supported():
+                tol_report = analyze_tolerances(file_bytes, filename, target_processes)
+                result_dict["tolerances"] = tolerance_report_to_dict(tol_report)
+        except Exception:
+            logger.exception(
+                "Tolerance analysis failed for %s -- continuing without tolerances",
+                filename,
+            )
+            result_dict["tolerances"] = {
+                "has_pmi": False,
+                "pmi_note": "Tolerance analysis failed; results based on geometry only.",
+            }
+
     # Capture values needed after cleanup
     _face_count = geometry.face_count
     _verdict = result.overall_verdict
