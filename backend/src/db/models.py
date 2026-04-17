@@ -52,6 +52,12 @@ class User(Base):
     disposable_flag: Mapped[bool] = mapped_column(
         Boolean, server_default="false", nullable=False
     )
+    auth_provider: Mapped[str] = mapped_column(
+        Text, server_default="google", nullable=False
+    )
+    role: Mapped[str] = mapped_column(
+        Text, server_default="analyst", nullable=False
+    )
 
     # relationships
     api_keys: Mapped[List[ApiKey]] = relationship(back_populates="user", lazy="selectin")

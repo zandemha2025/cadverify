@@ -30,6 +30,7 @@ from src.api.share import public_share_router, share_router
 from src.auth.keys_api import router as keys_router
 from src.auth.magic_link import router as magic_router
 from src.auth.oauth import router as oauth_router
+from src.auth.saml import router as saml_router
 from src.auth.rate_limit import limiter, rate_limit_handler
 from src.auth.scrubbing import scrub_processor, sentry_before_send
 
@@ -135,8 +136,15 @@ app.include_router(history_router, prefix="/api/v1/analyses", tags=["history"])
 app.include_router(share_router, prefix="/api/v1/analyses")
 app.include_router(pdf_router, prefix="/api/v1/analyses")
 app.include_router(public_share_router, prefix="/s")
-app.include_router(oauth_router, prefix="/auth")
-app.include_router(magic_router, prefix="/auth")
+# AUTH_MODE gating: saml | google | hybrid (default: google)
+AUTH_MODE = os.getenv("AUTH_MODE", "google")
+
+if AUTH_MODE in ("google", "hybrid"):
+    app.include_router(oauth_router, prefix="/auth")
+    app.include_router(magic_router, prefix="/auth")
+
+if AUTH_MODE in ("saml", "hybrid"):
+    app.include_router(saml_router, prefix="/auth")
 app.include_router(keys_router)
 app.include_router(health_router)
 
