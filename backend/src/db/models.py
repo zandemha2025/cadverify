@@ -1,11 +1,14 @@
 """ORM mapped classes for all database tables.
 
 Tables:
-  - users          (Phase 2, migration 0001)
-  - api_keys       (Phase 2, migration 0001)
-  - analyses       (Phase 3, migration 0002)
-  - jobs           (Phase 3, migration 0002 -- schema only, populated in Phase 7)
-  - usage_events   (Phase 3, migration 0002)
+  - users              (Phase 2, migration 0001)
+  - api_keys           (Phase 2, migration 0001)
+  - analyses           (Phase 3, migration 0002)
+  - jobs               (Phase 3, migration 0002 -- schema only, populated in Phase 7)
+  - usage_events       (Phase 3, migration 0002)
+  - batches            (Phase 9, migration 0004)
+  - batch_items        (Phase 9, migration 0004)
+  - webhook_deliveries (Phase 9, migration 0004)
 """
 from __future__ import annotations
 
@@ -53,6 +56,7 @@ class User(Base):
     # relationships
     api_keys: Mapped[List[ApiKey]] = relationship(back_populates="user", lazy="selectin")
     analyses: Mapped[List[Analysis]] = relationship(back_populates="user", lazy="selectin")
+    batches: Mapped[List[Batch]] = relationship(back_populates="user", lazy="selectin")
 
 
 class ApiKey(Base):
@@ -196,3 +200,144 @@ class UsageEvent(Base):
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 9 tables (migration 0004)
+# ---------------------------------------------------------------------------
+
+
+class Batch(Base):
+    __tablename__ = "batches"
+    __table_args__ = (
+        Index("ix_batches_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, default=lambda: str(ULID())
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    api_key_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("api_keys.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="pending"
+    )
+    input_mode: Mapped[str] = mapped_column(Text, nullable=False)
+    manifest_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSONB, nullable=True
+    )
+    webhook_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    webhook_secret: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    total_items: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    completed_items: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    failed_items: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    concurrency_limit: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="10"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    started_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+
+    # relationships
+    items: Mapped[List[BatchItem]] = relationship(
+        back_populates="batch", lazy="selectin"
+    )
+    webhook_deliveries: Mapped[List[WebhookDelivery]] = relationship(
+        back_populates="batch", lazy="selectin"
+    )
+    user: Mapped[User] = relationship(back_populates="batches")
+
+
+class BatchItem(Base):
+    __tablename__ = "batch_items"
+    __table_args__ = (
+        Index("ix_batch_items_batch_status", "batch_id", "status"),
+        Index("ix_batch_items_batch_created", "batch_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, default=lambda: str(ULID())
+    )
+    batch_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("batches.id", ondelete="CASCADE"), nullable=False
+    )
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="pending"
+    )
+    process_types: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    rule_pack: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    priority: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="normal"
+    )
+    analysis_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("analyses.id", ondelete="SET NULL"), nullable=True
+    )
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    file_size_bytes: Mapped[Optional[int]] = mapped_column(
+        BigInteger, nullable=True
+    )
+    duration_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    started_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+
+    # relationships
+    batch: Mapped[Batch] = relationship(back_populates="items")
+    analysis: Mapped[Optional[Analysis]] = relationship()
+
+
+class WebhookDelivery(Base):
+    __tablename__ = "webhook_deliveries"
+    __table_args__ = (
+        Index("ix_webhook_deliveries_retry", "status", "next_retry_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    batch_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("batches.id", ondelete="CASCADE"), nullable=False
+    )
+    event_type: Mapped[str] = mapped_column(Text, nullable=False)
+    payload_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="pending"
+    )
+    attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    last_attempt_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    next_retry_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    response_code: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    # relationships
+    batch: Mapped[Batch] = relationship(back_populates="webhook_deliveries")
