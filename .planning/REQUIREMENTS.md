@@ -144,7 +144,7 @@
 - [x] **ONPREM-03**: Full audit log records every analysis action (who analyzed what file, when, what result) for compliance trails
 - [ ] **ONPREM-04**: Air-gapped Docker Compose deployment bundles all dependencies with zero external network calls at runtime
 - [ ] **ONPREM-05**: Helm chart provided for Kubernetes deployment with configurable replicas, resource limits, and persistent volumes
-- [ ] **ONPREM-06**: Enterprise configuration guide documents SSO setup, RBAC configuration, audit log export, and air-gapped installation
+- [x] **ONPREM-06**: Enterprise configuration guide documents SSO setup, RBAC configuration, audit log export, and air-gapped installation
 
 ### Deferred from v2.0
 
@@ -271,7 +271,7 @@
 | ONPREM-03 | Phase 12 | Complete |
 | ONPREM-04 | Phase 12 | Pending |
 | ONPREM-05 | Phase 12 | Pending |
-| ONPREM-06 | Phase 12 | Pending |
+| ONPREM-06 | Phase 12 | Complete |
 
 **Coverage:**
 - v1 requirements: 70 total (mapped to Phases 1-8)
