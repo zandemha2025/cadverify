@@ -32,3 +32,4 @@ arq>=0.27.0
 tsr>=1.0.0
 rembg>=2.0.0
 Pillow>=10.0.0
+python3-saml>=1.16.0

@@ -17,6 +17,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    xmlsec1 \
+    libxmlsec1-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
@@ -45,6 +51,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2 \
     libgdk-pixbuf-2.0-0 \
     libffi8 \
+    xmlsec1 \
+    libxmlsec1 \
     fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
