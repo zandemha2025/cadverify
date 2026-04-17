@@ -497,6 +497,11 @@ def _to_response(result: AnalysisResult, features: list | None = None, pack=None
             "name": pack.name,
             "version": pack.version,
         }
+    # Include tolerance data when present on the AnalysisResult
+    if hasattr(result, "tolerances") and result.tolerances is not None:
+        from src.services.tolerance_service import tolerance_report_to_dict
+
+        resp["tolerances"] = tolerance_report_to_dict(result.tolerances)
     return resp
 
 
