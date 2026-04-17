@@ -6,6 +6,7 @@ import os
 
 from arq.connections import RedisSettings
 
+from src.jobs.batch_tasks import dispatch_webhook, run_batch_coordinator, run_batch_item
 from src.jobs.tasks import run_sam3d_job
 
 logger = logging.getLogger("cadverify.worker")
@@ -38,11 +39,11 @@ async def shutdown(ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions = [run_sam3d_job]
+    functions = [run_sam3d_job, run_batch_coordinator, run_batch_item, dispatch_webhook]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(os.getenv("REDIS_URL", "redis://localhost:6379"))
-    max_jobs = 2
+    max_jobs = 12
     job_timeout = 600  # 10 min visibility timeout (SAM-07)
     health_check_interval = 30
     retry_jobs = True

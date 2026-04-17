@@ -22,6 +22,7 @@ from src.api.health import router as health_router
 from src.api.history import router as history_router
 from src.api.middleware import RequestIDMiddleware
 from src.api.pdf import router as pdf_router
+from src.api.batch_router import router as batch_router
 from src.api.jobs_router import router as jobs_router
 from src.api.routes import router
 from src.api.share import public_share_router, share_router
@@ -126,6 +127,7 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api/v1")
+app.include_router(batch_router)
 app.include_router(jobs_router, prefix="/api/v1")
 app.include_router(history_router, prefix="/api/v1/analyses", tags=["history"])
 app.include_router(share_router, prefix="/api/v1/analyses")
