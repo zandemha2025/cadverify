@@ -1,0 +1,17 @@
+{{- if .Values.persistence.blobs.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "cadverify.fullname" . }}-blobs
+  labels:
+    {{- include "cadverify.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.persistence.blobs.storageClass }}
+  storageClassName: {{ .Values.persistence.blobs.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.blobs.size }}
+{{- end }}

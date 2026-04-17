@@ -1,0 +1,81 @@
+replicaCount:
+  backend: 2
+  worker: 2
+  frontend: 2
+
+image:
+  backend:
+    repository: cadverify-backend
+    tag: latest
+    pullPolicy: IfNotPresent
+  frontend:
+    repository: cadverify-frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+
+resources:
+  backend:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
+  worker:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2000m"
+      memory: "4Gi"
+  frontend:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+persistence:
+  blobs:
+    enabled: true
+    size: 50Gi
+    storageClass: ""
+  postgres:
+    enabled: true
+    size: 20Gi
+    storageClass: ""
+
+saml:
+  enabled: false
+  idpMetadata: ""
+  spEntityId: ""
+  spAcsUrl: ""
+  spSloUrl: ""
+
+auth:
+  mode: "google"
+
+audit:
+  enabled: true
+  retentionDays: 365
+
+rbac:
+  defaultRole: "analyst"
+
+ingress:
+  enabled: false
+  className: "nginx"
+  host: "cadverify.example.com"
+  tls: []
+
+postgresql:
+  host: "postgres"
+  port: 5432
+  database: "cadverify"
+  username: "cadverify"
+  password: ""
+
+redis:
+  host: "redis"
+  port: 6379

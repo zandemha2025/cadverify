@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cadverify.fullname" . }}-backend
+  labels:
+    {{- include "cadverify.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.replicaCount.backend }}
+  selector:
+    matchLabels:
+      {{- include "cadverify.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        {{- include "cadverify.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+        - name: backend
+          image: "{{ .Values.image.backend.repository }}:{{ .Values.image.backend.tag }}"
+          imagePullPolicy: {{ .Values.image.backend.pullPolicy }}
+          ports:
+            - containerPort: 8000
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "8000"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cadverify.fullname" . }}-db
+                  key: database-url
+            - name: REDIS_URL
+              value: {{ include "cadverify.redisUrl" . | quote }}
+            - name: AUTH_MODE
+              value: {{ .Values.auth.mode | quote }}
+            - name: AUDIT_ENABLED
+              value: {{ .Values.audit.enabled | quote }}
+            - name: AUDIT_RETENTION_DAYS
+              value: {{ .Values.audit.retentionDays | quote }}
+            - name: RBAC_DEFAULT_ROLE
+              value: {{ .Values.rbac.defaultRole | quote }}
+            {{- if .Values.saml.enabled }}
+            - name: SAML_ENABLED
+              value: "true"
+            - name: SAML_CONFIG_DIR
+              value: "/app/saml"
+            - name: SAML_SP_ENTITY_ID
+              value: {{ .Values.saml.spEntityId | quote }}
+            - name: SAML_SP_ACS_URL
+              value: {{ .Values.saml.spAcsUrl | quote }}
+            - name: SAML_SP_SLO_URL
+              value: {{ .Values.saml.spSloUrl | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: blobs
+              mountPath: /data/blobs
+            {{- if .Values.saml.enabled }}
+            - name: saml-config
+              mountPath: /app/saml
+              readOnly: true
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources.backend | nindent 12 }}
+      volumes:
+        - name: blobs
+          persistentVolumeClaim:
+            claimName: {{ include "cadverify.fullname" . }}-blobs
+        {{- if .Values.saml.enabled }}
+        - name: saml-config
+          configMap:
+            name: {{ include "cadverify.fullname" . }}-saml
+        {{- end }}

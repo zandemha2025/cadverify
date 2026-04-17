@@ -1,0 +1,18 @@
+# Enterprise overlay: SAML, air-gapped, audit
+image:
+  backend:
+    pullPolicy: Never
+  frontend:
+    pullPolicy: Never
+
+auth:
+  mode: "saml"
+
+saml:
+  enabled: true
+
+audit:
+  enabled: true
+
+rbac:
+  defaultRole: "viewer"

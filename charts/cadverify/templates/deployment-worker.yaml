@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cadverify.fullname" . }}-worker
+  labels:
+    {{- include "cadverify.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.replicaCount.worker }}
+  selector:
+    matchLabels:
+      {{- include "cadverify.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "cadverify.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+    spec:
+      containers:
+        - name: worker
+          image: "{{ .Values.image.backend.repository }}:{{ .Values.image.backend.tag }}"
+          imagePullPolicy: {{ .Values.image.backend.pullPolicy }}
+          command: ["arq", "src.jobs.worker.WorkerSettings"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cadverify.fullname" . }}-db
+                  key: database-url
+            - name: REDIS_URL
+              value: {{ include "cadverify.redisUrl" . | quote }}
+            - name: AUTH_MODE
+              value: {{ .Values.auth.mode | quote }}
+            - name: AUDIT_ENABLED
+              value: {{ .Values.audit.enabled | quote }}
+            {{- if .Values.saml.enabled }}
+            - name: SAML_ENABLED
+              value: "true"
+            - name: SAML_CONFIG_DIR
+              value: "/app/saml"
+            {{- end }}
+          volumeMounts:
+            - name: blobs
+              mountPath: /data/blobs
+            {{- if .Values.saml.enabled }}
+            - name: saml-config
+              mountPath: /app/saml
+              readOnly: true
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources.worker | nindent 12 }}
+      volumes:
+        - name: blobs
+          persistentVolumeClaim:
+            claimName: {{ include "cadverify.fullname" . }}-blobs
+        {{- if .Values.saml.enabled }}
+        - name: saml-config
+          configMap:
+            name: {{ include "cadverify.fullname" . }}-saml
+        {{- end }}

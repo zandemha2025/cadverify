@@ -1,0 +1,42 @@
+{{- if .Values.saml.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cadverify.fullname" . }}-saml
+  labels:
+    {{- include "cadverify.labels" . | nindent 4 }}
+data:
+  settings.json: |
+    {
+      "strict": true,
+      "debug": false,
+      "sp": {
+        "entityId": {{ .Values.saml.spEntityId | quote }},
+        "assertionConsumerService": {
+          "url": {{ .Values.saml.spAcsUrl | quote }},
+          "binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
+        },
+        "singleLogoutService": {
+          "url": {{ .Values.saml.spSloUrl | quote }},
+          "binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
+        },
+        "NameIDFormat": "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
+      },
+      "idp": {
+        "entityId": "",
+        "singleSignOnService": {
+          "url": "",
+          "binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
+        },
+        "x509cert": ""
+      }
+    }
+  advanced_settings.json: |
+    {
+      "security": {
+        "wantAssertionsSigned": true,
+        "signatureAlgorithm": "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
+        "digestAlgorithm": "http://www.w3.org/2001/04/xmlenc#sha256"
+      }
+    }
+{{- end }}
