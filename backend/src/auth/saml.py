@@ -120,6 +120,17 @@ async def _saml_provision_user(email: str) -> int:
     )
 
     logger.info("SAML user provisioned: email=%s user_id=%d", email_lower, user_id)
+
+    # Audit: user.provisioned
+    import asyncio
+    from src.services.audit_service import fire_and_forget_audit
+    asyncio.create_task(fire_and_forget_audit(
+        user_id=user_id, user_email=email,
+        action="user.provisioned", resource_type="user",
+        resource_id=str(user_id),
+        detail={"auth_provider": "saml", "role": "viewer"},
+    ))
+
     return user_id
 
 
@@ -173,6 +184,15 @@ async def saml_acs(request: Request):
         )
 
     user_id = await _saml_provision_user(email)
+
+    # Audit: auth.login
+    import asyncio
+    from src.services.audit_service import fire_and_forget_audit
+    asyncio.create_task(fire_and_forget_audit(
+        user_id=user_id, user_email=email,
+        action="auth.login", resource_type="session",
+        detail={"auth_provider": "saml"},
+    ))
 
     dashboard_url = os.getenv("DASHBOARD_ORIGIN", "https://cadverify.com")
     resp = RedirectResponse(url=f"{dashboard_url}/dashboard", status_code=303)

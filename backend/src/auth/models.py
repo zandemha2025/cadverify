@@ -64,6 +64,17 @@ async def create_api_key(
             )
         ).first()
         await s.commit()
+
+        # Audit: api_key.created
+        import asyncio
+        from src.services.audit_service import fire_and_forget_audit, _lookup_email
+        _email = await _lookup_email(user_id)
+        asyncio.create_task(fire_and_forget_audit(
+            user_id=user_id, user_email=_email,
+            action="api_key.created", resource_type="api_key",
+            detail={"key_prefix": prefix},
+        ))
+
         return int(row[0])
 
 

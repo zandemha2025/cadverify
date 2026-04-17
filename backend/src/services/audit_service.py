@@ -23,6 +23,29 @@ from src.db.models import AuditLog
 
 logger = logging.getLogger("cadverify.audit")
 
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+async def _lookup_email(user_id: int | None) -> str:
+    """Best-effort email lookup for audit. Returns 'system' if not found."""
+    if user_id is None:
+        return "system"
+    try:
+        from src.db.models import User
+
+        async with get_session_factory()() as session:
+            from sqlalchemy import select as _sel
+            row = (await session.execute(
+                _sel(User.email).where(User.id == user_id)
+            )).scalar_one_or_none()
+            return row or f"user:{user_id}"
+    except Exception:
+        return f"user:{user_id}"
+
+
 # ---------------------------------------------------------------------------
 # Write
 # ---------------------------------------------------------------------------

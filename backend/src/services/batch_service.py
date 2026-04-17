@@ -63,6 +63,18 @@ async def create_batch(
     )
     session.add(batch)
     await session.flush()
+
+    # Audit: batch.submitted
+    import asyncio
+    from src.services.audit_service import fire_and_forget_audit, _lookup_email
+    _email = await _lookup_email(user_id)
+    asyncio.create_task(fire_and_forget_audit(
+        user_id=user_id, user_email=_email,
+        action="batch.submitted", resource_type="batch",
+        resource_id=batch.ulid,
+        detail={"input_mode": input_mode},
+    ))
+
     return batch
 
 

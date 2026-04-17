@@ -136,8 +136,20 @@ async def update_user_role(
     if target is None:
         raise HTTPException(status_code=404, detail="User not found")
 
+    old_role = target.role
     target.role = body.role
     await session.commit()
+
+    # Audit: user.role_changed
+    import asyncio
+    from src.services.audit_service import fire_and_forget_audit, _lookup_email
+    _admin_email = await _lookup_email(user.user_id)
+    asyncio.create_task(fire_and_forget_audit(
+        user_id=user.user_id, user_email=_admin_email,
+        action="user.role_changed", resource_type="user",
+        resource_id=str(user_id),
+        detail={"old_role": old_role, "new_role": body.role, "changed_by": user.user_id},
+    ))
 
     return {
         "id": target.id,
