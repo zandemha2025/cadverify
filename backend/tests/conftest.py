@@ -103,7 +103,7 @@ def test_api_key():
 @pytest.fixture
 def authed_user(test_user, test_api_key):
     """Return an AuthedUser instance for the test user."""
-    return AuthedUser(user_id=test_user, api_key_id=test_api_key, key_prefix="test_pfx")
+    return AuthedUser(user_id=test_user, api_key_id=test_api_key, key_prefix="test_pfx", role="analyst")
 
 
 # ──────────────────────────────────────────────────────────────
@@ -146,7 +146,7 @@ def _apply_auth_bypass(app) -> None:
     from src.db.engine import get_db_session
 
     def _fake_user():
-        return AuthedUser(user_id=1, api_key_id=1, key_prefix="testkey1")
+        return AuthedUser(user_id=1, api_key_id=1, key_prefix="testkey1", role="analyst")
 
     async def _fake_db_session():
         """Yield a mock async session that no-ops on ORM calls.

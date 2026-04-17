@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.rate_limit import limiter
+from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.services import pdf_service
@@ -26,7 +27,7 @@ router = APIRouter(tags=["pdf"])
 async def download_pdf(
     analysis_id: str,
     request: Request,
-    user: AuthedUser = Depends(require_api_key),
+    user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ) -> Response:
     """Download a PDF report for the specified analysis."""

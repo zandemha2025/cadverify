@@ -24,6 +24,7 @@ from src.analysis.rules import available_rule_packs, get_rule_pack
 from src.api.upload_validation import enforce_triangle_cap, validate_magic
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.rate_limit import limiter
+from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.fixes.fix_suggester import get_priority_fixes
@@ -148,7 +149,7 @@ async def validate_file(
         None,
         description="Segmentation method: 'sam3d' for async SAM-3D (returns 202).",
     ),
-    user: AuthedUser = Depends(require_api_key),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Upload a STEP or STL file and get manufacturing validation results."""
@@ -223,7 +224,7 @@ async def validate_quick(
     request: Request,
     response: Response,
     file: UploadFile = File(...),
-    user: AuthedUser = Depends(require_api_key),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Quick pass/fail check — universal checks only, no process-specific analysis."""
@@ -334,7 +335,7 @@ async def validate_repair(
         None,
         description="Industry rule pack: aerospace, automotive, oil_gas, medical.",
     ),
-    user: AuthedUser = Depends(require_api_key),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Upload a STEP or STL file, attempt mesh repair, and get before/after analysis."""
@@ -362,7 +363,7 @@ async def validate_repair(
 async def list_rule_packs(
     request: Request,
     response: Response,
-    user: AuthedUser = Depends(require_api_key),
+    user: AuthedUser = Depends(require_role(Role.viewer)),
 ):
     """List available industry rule packs."""
     packs = []
@@ -384,7 +385,7 @@ async def list_rule_packs(
 async def list_processes(
     request: Request,
     response: Response,
-    user: AuthedUser = Depends(require_api_key),
+    user: AuthedUser = Depends(require_role(Role.viewer)),
 ):
     return {"processes": get_all_processes()}
 
@@ -394,7 +395,7 @@ async def list_processes(
 async def list_materials(
     request: Request,
     response: Response,
-    user: AuthedUser = Depends(require_api_key),
+    user: AuthedUser = Depends(require_role(Role.viewer)),
 ):
     return {
         "materials": [
@@ -416,7 +417,7 @@ async def list_materials(
 async def list_machines(
     request: Request,
     response: Response,
-    user: AuthedUser = Depends(require_api_key),
+    user: AuthedUser = Depends(require_role(Role.viewer)),
 ):
     return {
         "machines": [

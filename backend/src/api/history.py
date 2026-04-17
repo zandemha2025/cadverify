@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.rate_limit import limiter
+from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.db.models import Analysis
@@ -31,7 +32,7 @@ async def list_analyses(
     cursor: str | None = Query(None, description="ULID cursor for pagination"),
     limit: int = Query(20, ge=1, le=100, description="Results per page (max 100)"),
     verdict: str | None = Query(None, description="Filter: pass, issues, fail"),
-    user: AuthedUser = Depends(require_api_key),
+    user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Return paginated list of the authenticated user's analyses."""
@@ -80,7 +81,7 @@ async def get_analysis(
     analysis_id: str,
     request: Request,
     response: Response,
-    user: AuthedUser = Depends(require_api_key),
+    user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Return full analysis result by ULID (own analyses only)."""

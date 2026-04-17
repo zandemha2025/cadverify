@@ -6,6 +6,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.services import job_service
@@ -18,7 +19,7 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 @router.get("/{job_id}")
 async def get_job_status(
     job_id: str,
-    user: AuthedUser = Depends(require_api_key),
+    user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Get job status. Returns 404 for non-existent or other user's jobs (D-12)."""
@@ -43,7 +44,7 @@ async def get_job_status(
 @router.get("/{job_id}/result")
 async def get_job_result(
     job_id: str,
-    user: AuthedUser = Depends(require_api_key),
+    user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Get job result. Returns 404 if job not complete or not found (D-11)."""

@@ -16,6 +16,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.db.models import Batch, BatchItem
@@ -34,7 +35,7 @@ router = APIRouter(prefix="/api/v1", tags=["batch"])
 
 @router.post("/batch", status_code=202)
 async def create_batch(
-    user: AuthedUser = Depends(require_api_key),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
     file: Optional[UploadFile] = File(None),
     webhook_url: Optional[str] = Form(None),
@@ -135,7 +136,7 @@ async def create_batch(
 async def list_batches(
     cursor: Optional[str] = Query(None),
     limit: int = Query(default=20, le=100),
-    user: AuthedUser = Depends(require_api_key),
+    user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
     """List user's batches, most recent first, cursor-paginated."""
@@ -177,7 +178,7 @@ async def list_batches(
 @router.get("/batch/{batch_id}")
 async def get_batch_progress(
     batch_id: str,
-    user: AuthedUser = Depends(require_api_key),
+    user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Get batch progress with denormalized counters (D-18)."""
@@ -198,7 +199,7 @@ async def get_batch_items(
     status: Optional[str] = Query(None),
     cursor: Optional[str] = Query(None),
     limit: int = Query(default=50, le=200),
-    user: AuthedUser = Depends(require_api_key),
+    user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Get cursor-paginated batch items with optional status filter (D-19)."""
@@ -248,7 +249,7 @@ async def get_batch_items(
 @router.get("/batch/{batch_id}/results/csv")
 async def get_batch_results_csv(
     batch_id: str,
-    user: AuthedUser = Depends(require_api_key),
+    user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Stream batch results as CSV download."""
@@ -284,7 +285,7 @@ async def get_batch_results_csv(
 @router.post("/batch/{batch_id}/cancel")
 async def cancel_batch(
     batch_id: str,
-    user: AuthedUser = Depends(require_api_key),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Cancel a batch -- skips pending items, does not interrupt in-progress."""

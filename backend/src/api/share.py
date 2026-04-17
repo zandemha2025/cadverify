@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.rate_limit import limiter
+from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.services import share_service
@@ -32,7 +33,7 @@ async def create_share(
     analysis_id: str,
     request: Request,
     response: Response,
-    user: AuthedUser = Depends(require_api_key),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Share an analysis — generates a public short URL."""
@@ -46,7 +47,7 @@ async def revoke_share(
     analysis_id: str,
     request: Request,
     response: Response,
-    user: AuthedUser = Depends(require_api_key),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Revoke sharing — the public link will 404 immediately."""

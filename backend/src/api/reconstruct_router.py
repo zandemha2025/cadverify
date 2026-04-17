@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.services import reconstruction_service
@@ -26,7 +27,7 @@ async def reconstruct(
     images: list[UploadFile] = File(...),
     process_types: Optional[str] = Query(None, description="Comma-separated process types for analysis after reconstruction."),
     rule_pack: Optional[str] = Query(None, description="Industry rule pack: aerospace, automotive, oil_gas, medical."),
-    user: AuthedUser = Depends(require_api_key),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Upload 1-4 images for 3D reconstruction. Returns 202 with job_id for polling."""
@@ -63,7 +64,7 @@ async def reconstruct(
 @router.get("/reconstructions/{job_id}/mesh.stl")
 async def download_reconstruction_mesh(
     job_id: str,
-    user: AuthedUser = Depends(require_api_key),
+    user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Download the reconstructed mesh STL file. Requires authentication and job ownership."""
