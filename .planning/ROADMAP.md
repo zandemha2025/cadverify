@@ -432,6 +432,196 @@ Deferred per PROJECT.md and REQUIREMENTS.md:
 
 ---
 
+---
+
+# v2.0 Enterprise Milestone
+
+**Milestone:** v2.0 Enterprise
+**Defined:** 2026-04-15
+**Goal:** Enable enterprise-scale DFM analysis — batch processing millions of legacy parts, image-to-mesh reconstruction, STEP AP242 with GD&T extraction, and on-premise deployment hardening.
+**Target customer:** Saudi Aramco (14 million legacy parts)
+**Continues from:** v1.0-beta (Phases 1-8 complete)
+
+## v2.0 Milestone Context
+
+This is a **brownfield enterprise expansion** on top of the shipped v1.0 product. The existing infrastructure (arq job queue, Docker Compose, fly.toml, Postgres/Neon, Redis, Google OAuth, API key + rate limiting) is reused and extended. Phase numbering continues from v1.0 (Phase 9 onward).
+
+**Key existing infrastructure leveraged:**
+- arq job queue (Phase 7) — reused for batch processing pipeline
+- Docker Compose + fly.toml (Phase 6) — extended for air-gapped and Helm deployment
+- Postgres (Neon) + Redis — already running, schema extended
+- Google OAuth + API keys — augmented with SSO/SAML for enterprise IdP
+- Rate limiting infrastructure — extended with per-tenant concurrency limits
+
+## v2.0 Phases
+
+- [ ] **Phase 9: Batch API + Webhook Pipeline** — Process millions of parts via bulk upload with async job queue, webhook callbacks, and progress tracking.
+- [ ] **Phase 10: Image-to-Mesh Pipeline** — Reconstruct 3D geometry from photographs of legacy parts via TripoSR/InstantMesh, feed into existing analyzer. The competitive moat.
+- [ ] **Phase 11: STEP AP242 + GD&T/PMI Extraction** — Parse real engineering data beyond triangle meshes; extract tolerances, datums, surface finish; validate against process capabilities.
+- [ ] **Phase 12: On-Premise Deployment Hardening** — Deploy inside enterprise networks: SSO/SAML, RBAC, audit logging, air-gapped Docker Compose, Helm chart.
+
+## v2.0 Phase Details
+
+### Phase 9: Batch API + Webhook Pipeline
+**Goal:** Enterprise customers can submit millions of parts via ZIP/S3 bulk upload and receive results via webhooks, with full progress tracking and configurable concurrency.
+**Depends on:** v1.0 complete (arq job queue from Phase 7, persistence from Phase 3, API key auth from Phase 2)
+**Phase research needed:** **YES** — S3 integration patterns, CSV manifest schema design, webhook retry/backoff strategy, arq concurrency tuning at scale.
+**Requirements:** BATCH-01, BATCH-02, BATCH-03, BATCH-04, BATCH-05, BATCH-06
+
+**Success Criteria** (what must be TRUE):
+1. User can POST a ZIP archive with CSV manifest to `/api/v1/batch` and receive a batch job ID within 2 seconds
+2. User can POST an S3 bucket reference with CSV manifest and the system fetches and processes all referenced parts
+3. Each part in the batch is processed in parallel via arq with configurable concurrency limits per tenant
+4. Webhook POST fires on each item completion and on batch completion with structured payload
+5. `GET /api/v1/batch/{id}` returns real-time progress (total, completed, failed, in-progress counts)
+6. Frontend batch dashboard shows per-item status with drill-down to individual analysis results
+
+**Key Deliverables:**
+- `POST /api/v1/batch` endpoint (ZIP + S3 + CSV manifest)
+- Batch job orchestrator using arq for parallel part processing
+- Webhook dispatch service with retry/backoff
+- `GET /api/v1/batch/{id}` progress endpoint
+- Per-tenant concurrency configuration (env var or API)
+- Batch progress dashboard in frontend
+- Postgres schema additions: `batches`, `batch_items` tables
+
+**Suggested Parallel Plans:**
+- Plan 9.A: Batch endpoint + manifest parsing + ZIP/S3 ingestion (BATCH-01, BATCH-02)
+- Plan 9.B: Webhook dispatch + progress tracking API (BATCH-03, BATCH-04)
+- Plan 9.C: Frontend dashboard + concurrency limits (BATCH-05, BATCH-06)
+
+---
+
+### Phase 10: Image-to-Mesh Pipeline
+**Goal:** Users can upload photographs of legacy parts and get a reconstructed 3D mesh with full DFM analysis — the competitive moat that no other DFM tool offers.
+**Depends on:** Phase 9 not required; depends on v1.0 `/validate` pipeline + persistence
+**Phase research needed:** **YES** — TripoSR vs InstantMesh evaluation, model weight licensing, GPU requirements, reconstruction quality metrics, multi-image alignment strategy.
+**Requirements:** IMG-01, IMG-02, IMG-03, IMG-04, IMG-05
+
+**Success Criteria** (what must be TRUE):
+1. User uploads 1-4 images to `POST /api/v1/reconstruct` and receives a reconstructed STL within 60 seconds
+2. Response includes the generated STL bytes plus a complete DFM analysis (same format as `/validate`)
+3. Every reconstruction includes a quality confidence score (0-1) based on reconstruction metrics (surface coherence, hole count, mesh quality)
+4. Reconstructed mesh flows automatically into the `/validate` pipeline without manual re-upload
+5. Frontend shows image upload with preview, reconstruction progress bar, and seamless transition to analysis dashboard
+
+**Key Deliverables:**
+- TripoSR or InstantMesh integration module
+- `POST /api/v1/reconstruct` endpoint
+- Quality confidence scoring algorithm
+- Auto-feed into `/validate` pipeline
+- Frontend: image upload UI, reconstruction progress, analysis transition
+- Worker configuration for GPU/CPU inference
+
+**Suggested Parallel Plans:**
+- Plan 10.A: 3D reconstruction engine integration + quality scoring (IMG-01, IMG-03)
+- Plan 10.B: Reconstruct endpoint + auto-feed to validate pipeline (IMG-02, IMG-04)
+- Plan 10.C: Frontend image upload + progress + dashboard transition (IMG-05)
+
+---
+
+### Phase 11: STEP AP242 + GD&T/PMI Extraction
+**Goal:** Parse real engineering data from STEP AP242 files — extract tolerances, datums, surface finish — and validate them against manufacturing process capabilities, moving beyond triangle-mesh approximation.
+**Depends on:** v1.0 analyzer pipeline; independent of Phases 9-10
+**Phase research needed:** **YES** — OpenCascade/OCP AP242 PMI API surface, GD&T data model (ISO 1101), tolerance-to-process capability mapping tables, B-rep vs mesh analysis trade-offs.
+**Requirements:** STEP-01, STEP-02, STEP-03, STEP-04, STEP-05
+
+**Success Criteria** (what must be TRUE):
+1. A STEP AP242 file with embedded PMI is parsed and B-rep geometry is extracted via OpenCascade/OCP
+2. GD&T annotations (geometric tolerances, datums, surface finish requirements) are extracted from PMI data
+3. Each extracted tolerance is validated against a process capability table (e.g., "CNC milling can hold +/-0.01mm on this feature")
+4. When STEP AP242 is provided, analysis uses parametric B-rep features instead of tessellated mesh approximation
+5. Report includes a tolerances table showing each extracted tolerance, the datum reference, and per-process achievability
+
+**Key Deliverables:**
+- STEP AP242 parser module using OpenCascade (cadquery/OCP)
+- GD&T/PMI extraction service
+- Process capability tolerance tables (per-process tolerance limits)
+- Enhanced analyzer path for B-rep geometry
+- Tolerance achievability report section in analysis output
+- Updated PDF template with tolerance table
+
+**Suggested Parallel Plans:**
+- Plan 11.A: STEP AP242 parser + B-rep geometry extraction (STEP-01)
+- Plan 11.B: GD&T/PMI extraction + tolerance data model (STEP-02)
+- Plan 11.C: Tolerance validation + process capability tables (STEP-03, STEP-04)
+- Plan 11.D: Report integration + tolerance achievability output (STEP-05)
+
+---
+
+### Phase 12: On-Premise Deployment Hardening
+**Goal:** CadVerify deploys inside enterprise networks — air-gapped, with SSO/SAML, role-based access, and full audit logging for compliance.
+**Depends on:** Phases 9-11 (all enterprise features should exist before hardening deployment)
+**Phase research needed:** **YES** — SAML 2.0 provider integration (Okta, Azure AD, PingFederate), RBAC middleware patterns for FastAPI, audit log schema for SOC2-adjacent compliance, air-gapped dependency bundling strategy, Helm chart best practices.
+**Requirements:** ONPREM-01, ONPREM-02, ONPREM-03, ONPREM-04, ONPREM-05, ONPREM-06
+
+**Success Criteria** (what must be TRUE):
+1. Enterprise customer can configure their SAML IdP (Okta, Azure AD, etc.) and users authenticate via SSO without Google OAuth
+2. Three roles (viewer, analyst, admin) enforce distinct permissions — viewer cannot trigger analysis, analyst cannot manage users
+3. Every analysis action produces an audit log entry with user identity, file hash, timestamp, and result summary
+4. `docker compose up` in an air-gapped network (no internet) produces a fully functional system
+5. Helm chart deploys to Kubernetes with configurable replicas, resource limits, and persistent volumes
+6. Configuration guide enables enterprise IT to complete setup without CadVerify engineering support
+
+**Key Deliverables:**
+- SAML 2.0 / SSO authentication module (configurable IdP)
+- RBAC middleware with role-permission matrix
+- Audit logging service + Postgres `audit_log` table
+- Air-gapped Docker Compose (all images + deps pre-bundled)
+- Helm chart for Kubernetes
+- Enterprise configuration guide (SSO, RBAC, audit, air-gap)
+
+**Suggested Parallel Plans:**
+- Plan 12.A: SSO/SAML integration (ONPREM-01)
+- Plan 12.B: RBAC middleware + permission matrix (ONPREM-02)
+- Plan 12.C: Audit logging service + schema (ONPREM-03)
+- Plan 12.D: Air-gapped Docker Compose + Helm chart (ONPREM-04, ONPREM-05)
+- Plan 12.E: Enterprise configuration guide (ONPREM-06)
+
+---
+
+## v2.0 Progress Table
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 9. Batch API + Webhook Pipeline | 0/3 | Not started | - |
+| 10. Image-to-Mesh Pipeline | 0/3 | Not started | - |
+| 11. STEP AP242 + GD&T/PMI Extraction | 0/4 | Not started | - |
+| 12. On-Premise Deployment Hardening | 0/5 | Not started | - |
+
+## v2.0 Phase Research Summary
+
+| Phase | Needs `/gsd-research-phase`? | Why |
+|-------|------------------------------|-----|
+| 9 | **YES** | S3 integration, CSV manifest schema, webhook retry strategy, arq concurrency tuning |
+| 10 | **YES** | TripoSR vs InstantMesh, model licensing, GPU requirements, quality metrics |
+| 11 | **YES** | OpenCascade AP242 PMI API, GD&T data model, tolerance-to-process mapping |
+| 12 | **YES** | SAML 2.0 providers, RBAC patterns, SOC2 audit schema, air-gap bundling, Helm |
+
+## v2.0 Dependency Graph
+
+```
+v1.0 Complete (Phases 1-8)
+   ├─> Phase 9 (Batch API + Webhooks) ──────────────┐
+   ├─> Phase 10 (Image-to-Mesh — competitive moat)  ├─> Phase 12 (On-Prem Hardening)
+   └─> Phase 11 (STEP AP242 + GD&T) ────────────────┘
+```
+
+## v2.0 Coverage Matrix (100% of v2.0 requirements mapped)
+
+| Category | Requirements | Phase | Count |
+|----------|--------------|-------|-------|
+| Batch API + Webhook Pipeline | BATCH-01 through BATCH-06 | Phase 9 | 6 |
+| Image-to-Mesh Pipeline | IMG-01 through IMG-05 | Phase 10 | 5 |
+| STEP AP242 + GD&T/PMI | STEP-01 through STEP-05 | Phase 11 | 5 |
+| On-Premise Deployment | ONPREM-01 through ONPREM-06 | Phase 12 | 6 |
+
+**Total v2.0 requirements:** 22
+**Mapped:** 22
+**Unmapped:** 0 ✓
+
+---
+
 *Roadmap defined: 2026-04-15*
-*Milestone: v1.0-beta*
-*Last updated: 2026-04-15 after initial roadmap creation*
+*Milestone: v1.0-beta (Phases 1-8) + v2.0 Enterprise (Phases 9-12)*
+*Last updated: 2026-04-15 after v2.0 Enterprise milestone creation*

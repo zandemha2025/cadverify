@@ -110,35 +110,53 @@
 - [x] **PERF-05**: Frontend handles network timeout, malformed response, and server 5xx gracefully (no unhandled rejections)
 - [x] **PERF-06**: Dependabot (or equivalent) configured for frontend + backend dependency updates
 
-## v2 Requirements (Post-Beta)
+## v2.0 Requirements (Enterprise)
 
-### SDKs & Developer Experience
+### Batch API + Webhook Pipeline
+
+- [ ] **BATCH-01**: User can submit a ZIP archive or S3 bucket reference with CSV manifest to `POST /api/v1/batch`, receiving a batch job ID
+- [ ] **BATCH-02**: Batch processor decompresses archive, validates manifest, and enqueues each part for parallel analysis via arq
+- [ ] **BATCH-03**: User can configure webhook URL per batch; system sends POST callback on batch completion and per-item completion
+- [ ] **BATCH-04**: User can poll `GET /api/v1/batch/{id}` for real-time progress (items total, completed, failed, in-progress)
+- [ ] **BATCH-05**: User can view batch progress dashboard in frontend with per-item status drill-down
+- [ ] **BATCH-06**: Admin can configure per-tenant concurrency limits (max parallel workers per batch) via environment or API
+
+### Image-to-Mesh Pipeline
+
+- [ ] **IMG-01**: User can upload single or multiple images to `POST /api/v1/reconstruct`; system reconstructs 3D mesh via TripoSR or InstantMesh
+- [ ] **IMG-02**: Reconstruction endpoint returns generated STL bytes plus a full DFM analysis of the reconstructed mesh
+- [ ] **IMG-03**: System assigns a quality confidence score (0-1) to each reconstructed mesh based on reconstruction metrics
+- [ ] **IMG-04**: Reconstructed mesh is automatically fed into the existing `/validate` pipeline without manual re-upload
+- [ ] **IMG-05**: Frontend provides image upload with preview, reconstruction progress indicator, and seamless transition to analysis dashboard
+
+### STEP AP242 + GD&T/PMI Extraction
+
+- [ ] **STEP-01**: System parses STEP AP242 files using OpenCascade (cadquery/OCP) to extract B-rep geometry and topology
+- [ ] **STEP-02**: System extracts GD&T annotations (tolerances, datums, surface finish) from PMI data embedded in STEP AP242
+- [ ] **STEP-03**: System validates extracted tolerances against manufacturing process capability tables (can this process hold this tolerance?)
+- [ ] **STEP-04**: Analysis pipeline uses parametric B-rep features (exact geometry) instead of mesh approximation when STEP AP242 is provided
+- [ ] **STEP-05**: Analysis report includes extracted tolerances table and per-process tolerance achievability assessment
+
+### On-Premise Deployment Hardening
+
+- [ ] **ONPREM-01**: System supports SSO/SAML authentication with configurable Identity Provider (replacing or augmenting Google OAuth)
+- [ ] **ONPREM-02**: RBAC enforced with three roles (viewer, analyst, admin) and a permission matrix governing API access
+- [ ] **ONPREM-03**: Full audit log records every analysis action (who analyzed what file, when, what result) for compliance trails
+- [ ] **ONPREM-04**: Air-gapped Docker Compose deployment bundles all dependencies with zero external network calls at runtime
+- [ ] **ONPREM-05**: Helm chart provided for Kubernetes deployment with configurable replicas, resource limits, and persistent volumes
+- [ ] **ONPREM-06**: Enterprise configuration guide documents SSO setup, RBAC configuration, audit log export, and air-gapped installation
+
+### Deferred from v2.0
 
 - **SDK-01**: Python SDK (auto-generated from OpenAPI)
 - **SDK-02**: CLI for upload + analyze workflows
 - **SDK-03**: GitHub Action example for CAD validation in CI
-- **SDK-04**: Webhooks for async job completion
-
-### Billing & Tiers
-
 - **BILL-01**: Stripe integration; usage-based + seat-based plans
 - **BILL-02**: Paid tier unlocks higher rate limits, longer history retention, team seats
-
-### Teams & Orgs
-
-- **ORG-01**: Multi-user organizations with role-based access
+- **ORG-01**: Multi-user organizations with role-based access (partially addressed by ONPREM-02 RBAC)
 - **ORG-02**: Shared API keys + per-member audit log
-
-### Advanced Analysis
-
 - **ADV-01**: Synchronous SAM-3D mode (GPU-backed, paid tier only)
 - **ADV-02**: Custom rule-pack builder UI
-- **ADV-03**: Advanced mesh reconstruction (beyond `pymeshfix`)
-
-### Enterprise
-
-- **ENT-01**: SOC2 audit logging
-- **ENT-02**: Self-hosted enterprise tier with license + support
 
 ## Out of Scope
 
@@ -146,7 +164,7 @@
 |---------|--------|
 | Email + password login | API-key-only simpler; OAuth + magic link covers signup |
 | Stripe / billing | Free beta; monetize after demand validation |
-| Multi-user orgs / RBAC | Single API key per user is enough for beta |
+| Multi-user orgs / RBAC | Partially addressed by ONPREM-02 in v2.0; full org model deferred |
 | AWS / GCP full deployment | Vercel + Fly + Neon is cheap and sufficient; avoid devops overhead |
 | Synchronous SAM-3D | 30–60s inference unsuitable for sync HTTP |
 | Advanced mesh reconstruction | `pymeshfix` covers ~80% of repair value at a fraction of the effort |
@@ -232,11 +250,36 @@
 | PERF-05 | Phase 8 | Complete |
 | PERF-06 | Phase 8 | Complete |
 
+| BATCH-01 | Phase 9 | Pending |
+| BATCH-02 | Phase 9 | Pending |
+| BATCH-03 | Phase 9 | Pending |
+| BATCH-04 | Phase 9 | Pending |
+| BATCH-05 | Phase 9 | Pending |
+| BATCH-06 | Phase 9 | Pending |
+| IMG-01 | Phase 10 | Pending |
+| IMG-02 | Phase 10 | Pending |
+| IMG-03 | Phase 10 | Pending |
+| IMG-04 | Phase 10 | Pending |
+| IMG-05 | Phase 10 | Pending |
+| STEP-01 | Phase 11 | Pending |
+| STEP-02 | Phase 11 | Pending |
+| STEP-03 | Phase 11 | Pending |
+| STEP-04 | Phase 11 | Pending |
+| STEP-05 | Phase 11 | Pending |
+| ONPREM-01 | Phase 12 | Pending |
+| ONPREM-02 | Phase 12 | Pending |
+| ONPREM-03 | Phase 12 | Pending |
+| ONPREM-04 | Phase 12 | Pending |
+| ONPREM-05 | Phase 12 | Pending |
+| ONPREM-06 | Phase 12 | Pending |
+
 **Coverage:**
-- v1 requirements: 70 total
-- Mapped to phases: 70
+- v1 requirements: 70 total (mapped to Phases 1-8)
+- v2.0 requirements: 22 total (mapped to Phases 9-12)
+- Grand total: 92
+- Mapped to phases: 92
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-04-15*
-*Last updated: 2026-04-15 after initial definition*
+*Last updated: 2026-04-15 after v2.0 Enterprise milestone definition*

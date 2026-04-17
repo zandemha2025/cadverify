@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: executing
-last_updated: "2026-04-16T18:09:23.146Z"
+milestone: v2.0
+milestone_name: Enterprise
+status: defining
+last_updated: "2026-04-15T00:00:00.000Z"
 progress:
-  total_phases: 8
-  completed_phases: 8
-  total_plans: 28
-  completed_plans: 28
-  percent: 100
+  total_phases: 4
+  completed_phases: 0
+  total_plans: 15
+  completed_plans: 0
+  percent: 0
 ---
 
 # STATE: CadVerify
 
-**Last updated:** 2026-04-15 (after `/gsd-discuss-phase 2 --auto`)
+**Last updated:** 2026-04-15 (after v2.0 Enterprise milestone initialization)
 
 ## Project Reference
 
@@ -26,63 +26,59 @@ progress:
 
 **Core value:** Upload a CAD file, get back trustworthy, process-aware manufacturability feedback in seconds — with enough specificity that an engineer can act on it.
 
-**Current milestone:** v1.0-beta (Public Free Beta) — 8 phases, 72 v1 requirements, 100% mapped.
+**Current milestone:** v2.0 Enterprise — 4 phases (9-12), 22 requirements, 100% mapped.
 
 ## Current Position
 
-- **Phase:** Phase 3 — Persistence + analysis_service + History + Caching (KEYSTONE)
-- **Plan:** 03.A complete, 03.B next (1/5 plans done)
-- **Status:** Ready to execute
-- **Progress:** [██████████] 100%
+- **Phase:** Not started (defining requirements)
+- **Plan:** —
+- **Status:** Defining requirements
+- **Progress:** [░░░░░░░░░░] 0%
 
-**Next action:** Execute 03.B (analysis_service) — Wave 2.
+**Next action:** `/gsd-discuss-phase 9` or `/gsd-plan-phase 9` to begin Phase 9 (Batch API + Webhook Pipeline).
 
-**Last session (2026-04-16):** Executed 03.A — schema + migrations. 5 tasks, 5 commits. ORM models for all 5 tables, migration 0002, engine centralization.
+**Last session (2026-04-15):** Initialized v2.0 Enterprise milestone. Defined 22 requirements across 4 phases (9-12). Updated PROJECT.md, REQUIREMENTS.md, ROADMAP.md.
 
 ## Milestone Progress
 
 | Phase | Status | Plans Complete |
 |-------|--------|----------------|
-| 1. Stabilize Core | Not started | 0/4 |
-| 2. Auth + Rate Limiting + Abuse Controls | Not started | 0/4 |
-| 3. Persistence + analysis_service + History + Caching (KEYSTONE) | Executing | 1/5 |
-| 4. Shareable URLs + PDF Export | Not started | 0/2 |
-| 5. Mesh Repair Endpoint | Not started | 0/2 |
-| 6. Packaging + Deploy + Observability + Docs (LAUNCH GATE) | Executing | 1/5 |
-| 7. Async SAM-3D (parallel track) | Not started | 0/3 |
-| 8. Performance + Frontend Polish | Not started | 0/3 |
+| 9. Batch API + Webhook Pipeline | Not started | 0/3 |
+| 10. Image-to-Mesh Pipeline | Not started | 0/3 |
+| 11. STEP AP242 + GD&T/PMI Extraction | Not started | 0/4 |
+| 12. On-Premise Deployment Hardening | Not started | 0/5 |
 
 ## Performance Metrics
 
-- Phases completed: 0 / 8
-- Plans completed: 0 / 0 (pending Phase 1 planning)
-- Requirements delivered: 0 / 72
+- Phases completed: 0 / 4
+- Plans completed: 0 / 15
+- Requirements delivered: 0 / 22
 
 ## Accumulated Context
 
-### Key Decisions (from PROJECT.md)
+### Key Decisions (carried from v1.0 + v2.0)
 
-- Public free beta, no billing
-- API-key-only auth (OAuth + magic-link signup; no passwords)
-- Vercel (frontend) + Fly.io (backend + worker) + managed Postgres (Neon or Fly)
-- Stabilize core before new features
-- SAM-3D async only
-- Mesh repair via pymeshfix
-- Full history + shareable URLs + PDF export
-- Fine-grained phase slicing
-- Quality-gate agents on (researcher, plan-check, verifier)
+- Public free beta, no billing (v1.0)
+- API-key-only auth with Google OAuth + magic-link signup (v1.0)
+- Vercel (frontend) + Fly.io (backend + worker) + Neon Postgres (v1.0)
+- arq as job queue — already deployed, reuse for batch pipeline (v1.0 Phase 7)
+- Docker Compose + fly.toml already exist (v1.0 Phase 6)
+- Enterprise target: Saudi Aramco with 14M legacy parts (v2.0)
+- Image-to-mesh reconstruction as competitive moat (v2.0)
+- STEP AP242 with GD&T for enterprise credibility (v2.0)
+- On-prem deployment with SSO/SAML/RBAC for enterprise customers (v2.0)
 
 ### Research Flags Pending
 
-- **Phase 2:** OAuth provider / Turnstile / signup abuse model — **resolved in 02-CONTEXT.md via `--auto` mode** (Google + magic link, Turnstile + per-IP + per-email + disposable-blocklist, env-var kill-switch). `/gsd-research-phase 2` still optional for deeper Argon2id/slowapi/disposable-email-list research before planning.
-- **Phase 6:** cadquery Dockerfile spike (highest-risk artifact) → `/gsd-research-phase 6`
-- **Phase 7:** arq-vs-TaskIQ recheck + SAM-3D weight size/license/provenance → `/gsd-research-phase 7`
+- **Phase 9:** S3 integration, CSV manifest schema, webhook retry strategy, arq concurrency tuning
+- **Phase 10:** TripoSR vs InstantMesh, model licensing, GPU requirements, quality metrics
+- **Phase 11:** OpenCascade AP242 PMI API, GD&T data model, tolerance-to-process mapping
+- **Phase 12:** SAML 2.0 providers, RBAC patterns, SOC2 audit schema, air-gap bundling, Helm
 
 ### Open Todos
 
-- Run `/gsd-execute-phase 3` to execute all 5 Phase 3 plans
-- Schedule `/gsd-research-phase 6` before Phase 6 kickoff
-- Schedule `/gsd-research-phase 7` before Phase 7 kickoff
+- Run `/gsd-discuss-phase 9` to begin Phase 9 (Batch API + Webhook Pipeline)
+- All 4 phases need `/gsd-research-phase` before planning
 
 ### Blockers
 
@@ -93,11 +89,11 @@ None.
 **On session resume:**
 
 1. Read PROJECT.md for product intent
-2. Read ROADMAP.md for phase structure + dependencies
+2. Read ROADMAP.md for phase structure + dependencies (scroll to v2.0 section)
 3. Read this STATE.md for current position
 4. If entering a new phase, check "Research Flags Pending" above
 5. Continue from `Next action` above
 
 ---
 
-*State initialized: 2026-04-15 alongside roadmap*
+*State initialized: 2026-04-15 for v2.0 Enterprise milestone*

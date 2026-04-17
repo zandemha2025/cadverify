@@ -29,65 +29,44 @@ Upload a CAD file, get back trustworthy, process-aware manufacturability feedbac
 
 ### Active
 
-<!-- "Finish the product and make it usable" — public free beta, API-key auth, Vercel + Railway/Fly deploy -->
+## Current Milestone: v2.0 Enterprise
 
-**Stabilize core (priority 1):**
-- [ ] Fix STEP temp-file leak (explicit cleanup, `mode=0o600`)
-- [ ] Replace silent `except Exception:` swallowing with categorized warnings + `Issue` emission
-- [ ] Complete migration to registry-based analyzers; remove legacy `PROCESS_ANALYZERS` dual path
-- [ ] Centralize manufacturing constants (move scattered thresholds into `profiles/` or dedicated config)
-- [ ] Fix wall-thickness ray-cast `inf` case + scale-aware epsilon for micro/macro parts
-- [ ] Configurable `ANALYSIS_TIMEOUT_SEC`; return 504 on exceed
-- [ ] Fill critical test gaps (large meshes, STEP corruption, scoring ties, frontend error handling)
+**Goal:** Enable enterprise-scale DFM analysis — batch processing millions of legacy parts, image-to-mesh reconstruction, STEP AP242 with GD&T extraction, and on-premise deployment hardening for customers like Saudi Aramco.
 
-**Security & reliability:**
-- [ ] File magic-byte / MIME validation beyond extension
-- [ ] Rate limiting per API key
-- [ ] Tighten CORS `allow_headers` once auth is in place
-- [ ] Sandboxed / resource-limited mesh parsing path
+**Target features:**
+- Batch API + Webhook Pipeline (process millions of parts via bulk upload)
+- Image-to-Mesh Pipeline (reconstruct 3D geometry from photographs of legacy parts)
+- STEP AP242 + GD&T/PMI Extraction (parse real engineering data beyond triangle meshes)
+- On-Premise Deployment Hardening (air-gapped, SSO/SAML, RBAC, audit logging)
 
-**API-key authentication & tenancy:**
-- [ ] Signup flow that issues API keys (no passwords, no web-app login required)
-- [ ] Per-key usage tracking + rate limits
-- [ ] Usage dashboard (read-only) for each key
+**Batch API + Webhook Pipeline:**
+- [ ] POST /api/v1/batch endpoint accepting ZIP archives or S3 bucket references with CSV manifest
+- [ ] Async job queue (arq) processing parts in parallel
+- [ ] Webhook callbacks on batch/item completion
+- [ ] Batch progress tracking API + dashboard
+- [ ] Configurable concurrency limits per tenant
 
-**Persistence & history:**
-- [ ] Postgres-backed analysis storage keyed by mesh hash + user
-- [ ] User history UI with shareable analysis URLs
-- [ ] PDF report export per analysis
-- [ ] Result caching for identical inputs
+**Image-to-Mesh Pipeline:**
+- [ ] TripoSR or InstantMesh integration for single/multi-image 3D reconstruction
+- [ ] POST /api/v1/reconstruct endpoint accepting images, returning generated STL + analysis
+- [ ] Quality confidence scoring on reconstructed meshes
+- [ ] Automatic feed into /validate pipeline after reconstruction
+- [ ] Frontend: image upload with preview, reconstruction progress, then analysis dashboard
 
-**Mesh repair:**
-- [ ] Integrate `pymeshfix` (or equivalent) for basic healing
-- [ ] `/api/v1/validate/repair` endpoint — returns repaired mesh + re-analysis
+**STEP AP242 + GD&T/PMI Extraction:**
+- [ ] STEP AP242 parser with OpenCascade (cadquery/OCP) for B-rep geometry
+- [ ] GD&T extraction (tolerances, datums, surface finish from PMI)
+- [ ] Tolerance validation against manufacturing process capabilities
+- [ ] Enhanced analysis using parametric features (not just mesh approximation)
+- [ ] Report includes extracted tolerances + whether each process can hold them
 
-**SAM-3D segmentation (async):**
-- [ ] Background job queue (Celery / RQ / Fly machines) for SAM-3D inference
-- [ ] Opt-in flag per analysis request; poll endpoint for results
-- [ ] Pre-loaded model weights, embedding cache by mesh hash
-- [ ] Graceful fallback to heuristic segmentation on failure
-
-**Performance:**
-- [ ] Batch analyzers with shared `GeometryContext` (single context, all requested processes)
-- [ ] Sampled / BVH-accelerated ray casting for large meshes
-- [ ] Request-level mesh cleanup; streaming or mmap for 500k+ face meshes
-
-**Frontend polish:**
-- [ ] API-key-aware client (auth header, rate-limit surfacing)
-- [ ] History view + shareable URLs
-- [ ] Report export UI
-- [ ] Robust error handling (timeouts, malformed responses)
-- [ ] Next.js/React dependency hygiene (Dependabot)
-
-**Packaging & deployment:**
-- [ ] Production Dockerfile with cadquery baked in (arm64 + amd64)
-- [ ] `docker-compose.yml` for local dev (backend + Postgres + worker)
-- [ ] Frontend deployed on Vercel
-- [ ] Backend + worker deployed on Railway or Fly.io
-- [ ] Managed Postgres (Neon / Supabase / Fly Postgres)
-- [ ] CI pipeline (lint, typecheck, test, build)
-- [ ] Landing page + API docs (OpenAPI / docs endpoint)
-- [ ] One-command install path for self-hosters
+**On-Premise Deployment Hardening:**
+- [ ] SSO/SAML integration (replace Google OAuth with configurable IdP)
+- [ ] RBAC (viewer, analyst, admin roles with permission matrix)
+- [ ] Full audit logging (who analyzed what, when, compliance trail)
+- [ ] Air-gapped Docker Compose with all deps bundled (no external network calls)
+- [ ] Helm chart for Kubernetes deployment
+- [ ] Configuration guide for enterprise IT
 
 ### Out of Scope
 
@@ -99,7 +78,6 @@ Upload a CAD file, get back trustworthy, process-aware manufacturability feedbac
 - **Mesh-repair-as-a-service (advanced)** — basic `pymeshfix` only; no topology reconstruction, no GPU-based repair
 - **CAD authoring / editing** — we analyze, we don't author
 - **Real-time collaboration on analyses** — not a collaborative product
-- **On-prem enterprise deployment** — docker-compose reference only, no enterprise SLAs
 - **New analyzer categories beyond the existing 21** — fix/harden what's there rather than expand
 
 ## Context
@@ -111,9 +89,9 @@ Upload a CAD file, get back trustworthy, process-aware manufacturability feedbac
 - No auth, no persistence, no packaging story yet.
 
 **User situation:**
-- Single builder shipping a public free beta.
-- Wants it "done" and "usable" — not an experiment anymore.
-- Prioritizes stabilizing the existing engine over new features.
+- v1.0 milestone complete (8 phases, all deployed). Product is live.
+- Now targeting enterprise customers (Saudi Aramco — 14 million legacy parts).
+- Building competitive moat via image-to-mesh reconstruction and STEP AP242 parsing.
 
 ## Constraints
 
@@ -139,6 +117,11 @@ Upload a CAD file, get back trustworthy, process-aware manufacturability feedbac
 | Full history + shareable URLs + PDF export | Persistence is table-stakes for a product (vs. tool) | — Pending |
 | Fine-grained phase slicing | Scope is broad; smaller phases reduce planning error | — Pending |
 | Quality-gate agents on (researcher, plan-check, verifier) | Worth the token cost for a product-grade rollout | — Pending |
+| arq as job queue | Already deployed in Phase 7; reuse for batch pipeline | Validated |
+| Enterprise target (Saudi Aramco) | 14M legacy parts validates batch + image-to-mesh need | v2.0 |
+| Image-to-mesh as competitive moat | TripoSR/InstantMesh reconstruction from photos is unique in DFM space | v2.0 |
+| STEP AP242 over mesh-only analysis | Real engineering data (GD&T, tolerances) needed for enterprise credibility | v2.0 |
+| On-prem deployment with SSO/RBAC | Enterprise customers require air-gapped, auditable deployments | v2.0 |
 
 ## Evolution
 
@@ -158,4 +141,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-15 after initialization*
+*Last updated: 2026-04-15 after v2.0 Enterprise milestone initialization*
