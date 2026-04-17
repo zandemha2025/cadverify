@@ -1,0 +1,515 @@
+# Process capability tables — achievable_min tolerances (mm) and surface finish (um).
+# All 21 ProcessType values must have entries. Values represent minimum achievable
+# tolerance zone widths under ideal conditions.
+
+# ─── Additive: Polymer ───────────────────────────────────────────────
+
+fdm:
+  form:
+    flatness: 0.15
+    straightness: 0.15
+    circularity: 0.2
+    cylindricity: 0.3
+  orientation:
+    parallelism: 0.15
+    perpendicularity: 0.2
+    angularity: 0.25
+  location:
+    position: 0.3
+    concentricity: 0.3
+    symmetry: 0.3
+  profile:
+    profile_of_surface: 0.3
+    profile_of_line: 0.25
+  runout:
+    circular_runout: 0.2
+    total_runout: 0.3
+  surface_finish:
+    ra_min_um: 8.0
+    ra_typical_um: 15.0
+
+sla:
+  form:
+    flatness: 0.05
+    straightness: 0.05
+    circularity: 0.05
+    cylindricity: 0.08
+  orientation:
+    parallelism: 0.05
+    perpendicularity: 0.05
+    angularity: 0.08
+  location:
+    position: 0.1
+    concentricity: 0.1
+    symmetry: 0.1
+  profile:
+    profile_of_surface: 0.1
+    profile_of_line: 0.08
+  runout:
+    circular_runout: 0.08
+    total_runout: 0.1
+  surface_finish:
+    ra_min_um: 2.0
+    ra_typical_um: 4.0
+
+dlp:
+  form:
+    flatness: 0.05
+    straightness: 0.05
+    circularity: 0.06
+    cylindricity: 0.08
+  orientation:
+    parallelism: 0.05
+    perpendicularity: 0.06
+    angularity: 0.08
+  location:
+    position: 0.1
+    concentricity: 0.1
+    symmetry: 0.1
+  profile:
+    profile_of_surface: 0.1
+    profile_of_line: 0.08
+  runout:
+    circular_runout: 0.08
+    total_runout: 0.1
+  surface_finish:
+    ra_min_um: 2.0
+    ra_typical_um: 4.0
+
+sls:
+  form:
+    flatness: 0.1
+    straightness: 0.1
+    circularity: 0.1
+    cylindricity: 0.15
+  orientation:
+    parallelism: 0.1
+    perpendicularity: 0.1
+    angularity: 0.15
+  location:
+    position: 0.2
+    concentricity: 0.2
+    symmetry: 0.2
+  profile:
+    profile_of_surface: 0.2
+    profile_of_line: 0.15
+  runout:
+    circular_runout: 0.15
+    total_runout: 0.2
+  surface_finish:
+    ra_min_um: 6.0
+    ra_typical_um: 10.0
+
+mjf:
+  form:
+    flatness: 0.1
+    straightness: 0.1
+    circularity: 0.1
+    cylindricity: 0.15
+  orientation:
+    parallelism: 0.1
+    perpendicularity: 0.1
+    angularity: 0.15
+  location:
+    position: 0.2
+    concentricity: 0.2
+    symmetry: 0.2
+  profile:
+    profile_of_surface: 0.2
+    profile_of_line: 0.15
+  runout:
+    circular_runout: 0.15
+    total_runout: 0.2
+  surface_finish:
+    ra_min_um: 6.0
+    ra_typical_um: 10.0
+
+# ─── Additive: Metal ─────────────────────────────────────────────────
+
+dmls:
+  form:
+    flatness: 0.05
+    straightness: 0.05
+    circularity: 0.05
+    cylindricity: 0.08
+  orientation:
+    parallelism: 0.05
+    perpendicularity: 0.05
+    angularity: 0.08
+  location:
+    position: 0.1
+    concentricity: 0.1
+    symmetry: 0.1
+  profile:
+    profile_of_surface: 0.1
+    profile_of_line: 0.08
+  runout:
+    circular_runout: 0.08
+    total_runout: 0.1
+  surface_finish:
+    ra_min_um: 5.0
+    ra_typical_um: 10.0
+
+slm:
+  form:
+    flatness: 0.05
+    straightness: 0.05
+    circularity: 0.05
+    cylindricity: 0.08
+  orientation:
+    parallelism: 0.05
+    perpendicularity: 0.05
+    angularity: 0.08
+  location:
+    position: 0.1
+    concentricity: 0.1
+    symmetry: 0.1
+  profile:
+    profile_of_surface: 0.1
+    profile_of_line: 0.08
+  runout:
+    circular_runout: 0.08
+    total_runout: 0.1
+  surface_finish:
+    ra_min_um: 5.0
+    ra_typical_um: 12.0
+
+ebm:
+  form:
+    flatness: 0.08
+    straightness: 0.08
+    circularity: 0.08
+    cylindricity: 0.1
+  orientation:
+    parallelism: 0.08
+    perpendicularity: 0.08
+    angularity: 0.1
+  location:
+    position: 0.15
+    concentricity: 0.15
+    symmetry: 0.15
+  profile:
+    profile_of_surface: 0.15
+    profile_of_line: 0.1
+  runout:
+    circular_runout: 0.1
+    total_runout: 0.15
+  surface_finish:
+    ra_min_um: 8.0
+    ra_typical_um: 15.0
+
+binder_jetting:
+  form:
+    flatness: 0.1
+    straightness: 0.1
+    circularity: 0.15
+    cylindricity: 0.2
+  orientation:
+    parallelism: 0.1
+    perpendicularity: 0.15
+    angularity: 0.2
+  location:
+    position: 0.2
+    concentricity: 0.25
+    symmetry: 0.25
+  profile:
+    profile_of_surface: 0.25
+    profile_of_line: 0.2
+  runout:
+    circular_runout: 0.2
+    total_runout: 0.25
+  surface_finish:
+    ra_min_um: 10.0
+    ra_typical_um: 20.0
+
+ded:
+  form:
+    flatness: 0.15
+    straightness: 0.15
+    circularity: 0.2
+    cylindricity: 0.25
+  orientation:
+    parallelism: 0.15
+    perpendicularity: 0.2
+    angularity: 0.25
+  location:
+    position: 0.3
+    concentricity: 0.3
+    symmetry: 0.3
+  profile:
+    profile_of_surface: 0.3
+    profile_of_line: 0.25
+  runout:
+    circular_runout: 0.25
+    total_runout: 0.3
+  surface_finish:
+    ra_min_um: 10.0
+    ra_typical_um: 25.0
+
+waam:
+  form:
+    flatness: 0.2
+    straightness: 0.2
+    circularity: 0.3
+    cylindricity: 0.5
+  orientation:
+    parallelism: 0.2
+    perpendicularity: 0.3
+    angularity: 0.4
+  location:
+    position: 0.5
+    concentricity: 0.5
+    symmetry: 0.5
+  profile:
+    profile_of_surface: 0.5
+    profile_of_line: 0.4
+  runout:
+    circular_runout: 0.4
+    total_runout: 0.5
+  surface_finish:
+    ra_min_um: 12.0
+    ra_typical_um: 25.0
+
+# ─── Subtractive ──────────────────────────────────────────────────────
+
+cnc_3axis:
+  form:
+    flatness: 0.005
+    straightness: 0.005
+    circularity: 0.005
+    cylindricity: 0.008
+  orientation:
+    parallelism: 0.005
+    perpendicularity: 0.005
+    angularity: 0.01
+  location:
+    position: 0.01
+    concentricity: 0.01
+    symmetry: 0.01
+  profile:
+    profile_of_surface: 0.01
+    profile_of_line: 0.01
+  runout:
+    circular_runout: 0.005
+    total_runout: 0.01
+  surface_finish:
+    ra_min_um: 0.4
+    ra_typical_um: 1.6
+
+cnc_5axis:
+  form:
+    flatness: 0.005
+    straightness: 0.005
+    circularity: 0.005
+    cylindricity: 0.008
+  orientation:
+    parallelism: 0.005
+    perpendicularity: 0.005
+    angularity: 0.008
+  location:
+    position: 0.008
+    concentricity: 0.008
+    symmetry: 0.008
+  profile:
+    profile_of_surface: 0.008
+    profile_of_line: 0.008
+  runout:
+    circular_runout: 0.005
+    total_runout: 0.008
+  surface_finish:
+    ra_min_um: 0.4
+    ra_typical_um: 1.6
+
+cnc_turning:
+  form:
+    flatness: 0.005
+    straightness: 0.005
+    circularity: 0.003
+    cylindricity: 0.005
+  orientation:
+    parallelism: 0.005
+    perpendicularity: 0.005
+    angularity: 0.01
+  location:
+    position: 0.01
+    concentricity: 0.005
+    symmetry: 0.01
+  profile:
+    profile_of_surface: 0.01
+    profile_of_line: 0.008
+  runout:
+    circular_runout: 0.003
+    total_runout: 0.005
+  surface_finish:
+    ra_min_um: 0.4
+    ra_typical_um: 1.6
+
+wire_edm:
+  form:
+    flatness: 0.002
+    straightness: 0.002
+    circularity: 0.003
+    cylindricity: 0.005
+  orientation:
+    parallelism: 0.002
+    perpendicularity: 0.003
+    angularity: 0.005
+  location:
+    position: 0.005
+    concentricity: 0.005
+    symmetry: 0.005
+  profile:
+    profile_of_surface: 0.005
+    profile_of_line: 0.003
+  runout:
+    circular_runout: 0.003
+    total_runout: 0.005
+  surface_finish:
+    ra_min_um: 0.2
+    ra_typical_um: 0.8
+
+# ─── Formative ────────────────────────────────────────────────────────
+
+injection_molding:
+  form:
+    flatness: 0.01
+    straightness: 0.01
+    circularity: 0.02
+    cylindricity: 0.03
+  orientation:
+    parallelism: 0.01
+    perpendicularity: 0.02
+    angularity: 0.03
+  location:
+    position: 0.05
+    concentricity: 0.05
+    symmetry: 0.05
+  profile:
+    profile_of_surface: 0.05
+    profile_of_line: 0.03
+  runout:
+    circular_runout: 0.03
+    total_runout: 0.05
+  surface_finish:
+    ra_min_um: 0.2
+    ra_typical_um: 1.6
+
+die_casting:
+  form:
+    flatness: 0.05
+    straightness: 0.05
+    circularity: 0.08
+    cylindricity: 0.1
+  orientation:
+    parallelism: 0.05
+    perpendicularity: 0.08
+    angularity: 0.1
+  location:
+    position: 0.1
+    concentricity: 0.15
+    symmetry: 0.15
+  profile:
+    profile_of_surface: 0.15
+    profile_of_line: 0.1
+  runout:
+    circular_runout: 0.1
+    total_runout: 0.2
+  surface_finish:
+    ra_min_um: 1.6
+    ra_typical_um: 6.3
+
+investment_casting:
+  form:
+    flatness: 0.05
+    straightness: 0.05
+    circularity: 0.05
+    cylindricity: 0.08
+  orientation:
+    parallelism: 0.05
+    perpendicularity: 0.05
+    angularity: 0.08
+  location:
+    position: 0.1
+    concentricity: 0.1
+    symmetry: 0.1
+  profile:
+    profile_of_surface: 0.1
+    profile_of_line: 0.08
+  runout:
+    circular_runout: 0.08
+    total_runout: 0.2
+  surface_finish:
+    ra_min_um: 1.6
+    ra_typical_um: 6.3
+
+sand_casting:
+  form:
+    flatness: 0.5
+    straightness: 0.5
+    circularity: 0.8
+    cylindricity: 1.0
+  orientation:
+    parallelism: 0.5
+    perpendicularity: 0.8
+    angularity: 1.0
+  location:
+    position: 1.0
+    concentricity: 1.5
+    symmetry: 1.5
+  profile:
+    profile_of_surface: 1.5
+    profile_of_line: 1.0
+  runout:
+    circular_runout: 1.0
+    total_runout: 2.0
+  surface_finish:
+    ra_min_um: 12.5
+    ra_typical_um: 25.0
+
+sheet_metal:
+  form:
+    flatness: 0.1
+    straightness: 0.1
+    circularity: 0.2
+    cylindricity: 0.3
+  orientation:
+    parallelism: 0.1
+    perpendicularity: 0.15
+    angularity: 0.2
+  location:
+    position: 0.2
+    concentricity: 0.3
+    symmetry: 0.3
+  profile:
+    profile_of_surface: 0.3
+    profile_of_line: 0.2
+  runout:
+    circular_runout: 0.2
+    total_runout: 0.5
+  surface_finish:
+    ra_min_um: 1.6
+    ra_typical_um: 3.2
+
+forging:
+  form:
+    flatness: 0.2
+    straightness: 0.2
+    circularity: 0.3
+    cylindricity: 0.5
+  orientation:
+    parallelism: 0.2
+    perpendicularity: 0.3
+    angularity: 0.5
+  location:
+    position: 0.5
+    concentricity: 0.5
+    symmetry: 0.5
+  profile:
+    profile_of_surface: 0.5
+    profile_of_line: 0.3
+  runout:
+    circular_runout: 0.3
+    total_runout: 1.0
+  surface_finish:
+    ra_min_um: 3.2
+    ra_typical_um: 12.5
