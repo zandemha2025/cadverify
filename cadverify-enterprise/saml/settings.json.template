@@ -1,0 +1,28 @@
+{
+    "strict": true,
+    "debug": false,
+    "sp": {
+        "entityId": "${SAML_SP_ENTITY_ID}",
+        "assertionConsumerService": {
+            "url": "${SAML_SP_ACS_URL}",
+            "binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
+        },
+        "singleLogoutService": {
+            "url": "${SAML_SP_SLO_URL}",
+            "binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
+        },
+        "NameIDFormat": "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
+    },
+    "idp": {
+        "entityId": "${SAML_IDP_ENTITY_ID}",
+        "singleSignOnService": {
+            "url": "${SAML_IDP_SSO_URL}",
+            "binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
+        },
+        "singleLogoutService": {
+            "url": "${SAML_IDP_SLO_URL}",
+            "binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
+        },
+        "x509cert": "${SAML_IDP_X509_CERT}"
+    }
+}

@@ -1,0 +1,71 @@
+services:
+  backend:
+    image: cadverify-backend:latest
+    ports:
+      - "8000:8000"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      - PORT=8000
+      - AUTH_MODE=${AUTH_MODE:-saml}
+      - SAML_ENABLED=${SAML_ENABLED:-true}
+      - SAML_CONFIG_DIR=/app/saml
+    volumes:
+      - ./saml:/app/saml:ro
+      - blobs:/data/blobs
+
+  worker:
+    image: cadverify-backend:latest
+    command: ["arq", "src.jobs.worker.WorkerSettings"]
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      - AUTH_MODE=${AUTH_MODE:-saml}
+      - SAML_ENABLED=${SAML_ENABLED:-true}
+      - SAML_CONFIG_DIR=/app/saml
+    volumes:
+      - ./saml:/app/saml:ro
+      - blobs:/data/blobs
+
+  postgres:
+    image: postgres:16-alpine
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: cadverify
+      POSTGRES_USER: cadverify
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cadverify"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  frontend:
+    image: cadverify-frontend:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+
+volumes:
+  pgdata:
+  redis-data:
+  blobs:
