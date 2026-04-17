@@ -588,7 +588,7 @@ This is a **brownfield enterprise expansion** on top of the shipped v1.0 product
 |-------|----------------|--------|-----------|
 | 9. Batch API + Webhook Pipeline | 3/3 | Complete   | 2026-04-17 |
 | 10. Image-to-Mesh Pipeline | 3/3 | Complete   | 2026-04-17 |
-| 11. STEP AP242 + GD&T/PMI Extraction | 2/4 | In Progress|  |
+| 11. STEP AP242 + GD&T/PMI Extraction | 3/4 | In Progress|  |
 | 12. On-Premise Deployment Hardening | 0/5 | Not started | - |
 
 ## v2.0 Phase Research Summary

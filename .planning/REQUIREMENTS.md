@@ -133,8 +133,8 @@
 
 - [x] **STEP-01**: System parses STEP AP242 files using OpenCascade (cadquery/OCP) to extract B-rep geometry and topology
 - [x] **STEP-02**: System extracts GD&T annotations (tolerances, datums, surface finish) from PMI data embedded in STEP AP242
-- [ ] **STEP-03**: System validates extracted tolerances against manufacturing process capability tables (can this process hold this tolerance?)
-- [ ] **STEP-04**: Analysis pipeline uses parametric B-rep features (exact geometry) instead of mesh approximation when STEP AP242 is provided
+- [x] **STEP-03**: System validates extracted tolerances against manufacturing process capability tables (can this process hold this tolerance?)
+- [x] **STEP-04**: Analysis pipeline uses parametric B-rep features (exact geometry) instead of mesh approximation when STEP AP242 is provided
 - [ ] **STEP-05**: Analysis report includes extracted tolerances table and per-process tolerance achievability assessment
 
 ### On-Premise Deployment Hardening
@@ -263,8 +263,8 @@
 | IMG-05 | Phase 10 | Complete |
 | STEP-01 | Phase 11 | Complete |
 | STEP-02 | Phase 11 | Complete |
-| STEP-03 | Phase 11 | Pending |
-| STEP-04 | Phase 11 | Pending |
+| STEP-03 | Phase 11 | Complete |
+| STEP-04 | Phase 11 | Complete |
 | STEP-05 | Phase 11 | Pending |
 | ONPREM-01 | Phase 12 | Pending |
 | ONPREM-02 | Phase 12 | Pending |
