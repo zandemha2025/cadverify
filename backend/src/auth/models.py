@@ -81,6 +81,18 @@ async def lookup_api_key(hmac_idx: str) -> ApiKeyRow | None:
         return ApiKeyRow(*r) if r else None
 
 
+async def lookup_user_role(user_id: int) -> str:
+    """Return the role column for a user, defaulting to 'analyst'."""
+    async with _session()() as s:
+        r = (
+            await s.execute(
+                text("SELECT role FROM users WHERE id = :uid"),
+                {"uid": user_id},
+            )
+        ).first()
+        return r[0] if r else "analyst"
+
+
 async def touch_last_used(api_key_id: int) -> None:
     async with _session()() as s:
         await s.execute(

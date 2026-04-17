@@ -7,13 +7,14 @@ from fastapi import Header, HTTPException, Request
 from pydantic import BaseModel
 
 from src.auth.hashing import hmac_index, verify_token
-from src.auth.models import lookup_api_key, touch_last_used
+from src.auth.models import lookup_api_key, lookup_user_role, touch_last_used
 
 
 class AuthedUser(BaseModel):
     user_id: int
     api_key_id: int
     key_prefix: str
+    role: str = "analyst"
 
 
 def _401(code: str, message: str) -> HTTPException:
@@ -54,8 +55,9 @@ async def require_api_key(
         raise _401("auth_invalid", "Invalid or revoked API key")
     if not verify_token(row.secret_hash, token):
         raise _401("auth_invalid", "Invalid or revoked API key")
+    role = await lookup_user_role(row.user_id)
     user = AuthedUser(
-        user_id=row.user_id, api_key_id=row.id, key_prefix=row.prefix
+        user_id=row.user_id, api_key_id=row.id, key_prefix=row.prefix, role=role
     )
     request.state.authed_user = user
     asyncio.create_task(touch_last_used(row.id))
