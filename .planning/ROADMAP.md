@@ -490,6 +490,8 @@ This is a **brownfield enterprise expansion** on top of the shipped v1.0 product
 - Plan 9.B: Webhook dispatch + progress tracking API (BATCH-03, BATCH-04)
 - Plan 9.C: Frontend dashboard + concurrency limits (BATCH-05, BATCH-06)
 
+**Plans:** 3 (09.A, 09.B in Wave 1; 09.C in Wave 2) — see 09-CONTEXT.md
+
 ---
 
 ### Phase 10: Image-to-Mesh Pipeline
@@ -584,7 +586,7 @@ This is a **brownfield enterprise expansion** on top of the shipped v1.0 product
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 9. Batch API + Webhook Pipeline | 0/3 | Not started | - |
+| 9. Batch API + Webhook Pipeline | 0/3 | Planned     | - |
 | 10. Image-to-Mesh Pipeline | 0/3 | Not started | - |
 | 11. STEP AP242 + GD&T/PMI Extraction | 0/4 | Not started | - |
 | 12. On-Premise Deployment Hardening | 0/5 | Not started | - |
