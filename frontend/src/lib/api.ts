@@ -476,3 +476,46 @@ export async function repairAnalysis(
 export async function fetchAnalysis(id: string): Promise<AnalysisDetail> {
   return apiClient.fetchJson<AnalysisDetail>(`${API_BASE}/analyses/${id}`);
 }
+
+/* ------------------------------------------------------------------ */
+/*  Image-to-Mesh Reconstruction (Phase 10 — IMG-05)                   */
+/* ------------------------------------------------------------------ */
+
+export interface ReconstructionSubmitResult {
+  job_id: string;
+  status: string;
+  poll_url: string;
+  estimated_seconds: number;
+}
+
+export interface JobStatus {
+  job_id: string;
+  status: "queued" | "running" | "done" | "failed";
+  progress?: number;
+  result?: Record<string, unknown>;
+  error?: string;
+}
+
+export async function submitReconstruction(
+  images: File[],
+  processTypes?: string,
+  rulePack?: string
+): Promise<ReconstructionSubmitResult> {
+  const form = new FormData();
+  images.forEach((img) => form.append("images", img));
+  if (processTypes) form.append("process_types", processTypes);
+  if (rulePack) form.append("rule_pack", rulePack);
+
+  return apiClient.fetchJson<ReconstructionSubmitResult>(
+    `${API_BASE}/reconstruct`,
+    { method: "POST", body: form }
+  );
+}
+
+export async function getJobStatus(jobId: string): Promise<JobStatus> {
+  return apiClient.fetchJson<JobStatus>(`${API_BASE}/jobs/${jobId}`);
+}
+
+export function getReconstructionMeshUrl(jobId: string): string {
+  return `${API_BASE}/reconstructions/${jobId}/mesh.stl`;
+}
