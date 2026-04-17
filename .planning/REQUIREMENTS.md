@@ -123,9 +123,9 @@
 
 ### Image-to-Mesh Pipeline
 
-- [ ] **IMG-01**: User can upload single or multiple images to `POST /api/v1/reconstruct`; system reconstructs 3D mesh via TripoSR or InstantMesh
+- [x] **IMG-01**: User can upload single or multiple images to `POST /api/v1/reconstruct`; system reconstructs 3D mesh via TripoSR or InstantMesh
 - [ ] **IMG-02**: Reconstruction endpoint returns generated STL bytes plus a full DFM analysis of the reconstructed mesh
-- [ ] **IMG-03**: System assigns a quality confidence score (0-1) to each reconstructed mesh based on reconstruction metrics
+- [x] **IMG-03**: System assigns a quality confidence score (0-1) to each reconstructed mesh based on reconstruction metrics
 - [ ] **IMG-04**: Reconstructed mesh is automatically fed into the existing `/validate` pipeline without manual re-upload
 - [ ] **IMG-05**: Frontend provides image upload with preview, reconstruction progress indicator, and seamless transition to analysis dashboard
 
@@ -256,9 +256,9 @@
 | BATCH-04 | Phase 9 | Complete |
 | BATCH-05 | Phase 9 | Complete |
 | BATCH-06 | Phase 9 | Complete |
-| IMG-01 | Phase 10 | Pending |
+| IMG-01 | Phase 10 | Complete |
 | IMG-02 | Phase 10 | Pending |
-| IMG-03 | Phase 10 | Pending |
+| IMG-03 | Phase 10 | Complete |
 | IMG-04 | Phase 10 | Pending |
 | IMG-05 | Phase 10 | Pending |
 | STEP-01 | Phase 11 | Pending |
