@@ -580,7 +580,7 @@ This is a **brownfield enterprise expansion** on top of the shipped v1.0 product
 - Plan 12.D: Air-gapped Docker Compose + Helm chart (ONPREM-04, ONPREM-05)
 - Plan 12.E: Enterprise configuration guide (ONPREM-06)
 
-**Plans:** 1/5 plans executed
+**Plans:** 3/5 plans executed
 
 ---
 
@@ -591,7 +591,7 @@ This is a **brownfield enterprise expansion** on top of the shipped v1.0 product
 | 9. Batch API + Webhook Pipeline | 3/3 | Complete   | 2026-04-17 |
 | 10. Image-to-Mesh Pipeline | 3/3 | Complete   | 2026-04-17 |
 | 11. STEP AP242 + GD&T/PMI Extraction | 4/4 | Complete   | 2026-04-17 |
-| 12. On-Premise Deployment Hardening | 1/5 | In Progress|  |
+| 12. On-Premise Deployment Hardening | 3/5 | In Progress|  |
 
 ## v2.0 Phase Research Summary
 

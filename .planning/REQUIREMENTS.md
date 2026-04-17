@@ -141,7 +141,7 @@
 
 - [x] **ONPREM-01**: System supports SSO/SAML authentication with configurable Identity Provider (replacing or augmenting Google OAuth)
 - [ ] **ONPREM-02**: RBAC enforced with three roles (viewer, analyst, admin) and a permission matrix governing API access
-- [ ] **ONPREM-03**: Full audit log records every analysis action (who analyzed what file, when, what result) for compliance trails
+- [x] **ONPREM-03**: Full audit log records every analysis action (who analyzed what file, when, what result) for compliance trails
 - [ ] **ONPREM-04**: Air-gapped Docker Compose deployment bundles all dependencies with zero external network calls at runtime
 - [ ] **ONPREM-05**: Helm chart provided for Kubernetes deployment with configurable replicas, resource limits, and persistent volumes
 - [ ] **ONPREM-06**: Enterprise configuration guide documents SSO setup, RBAC configuration, audit log export, and air-gapped installation
@@ -268,7 +268,7 @@
 | STEP-05 | Phase 11 | Complete |
 | ONPREM-01 | Phase 12 | Complete |
 | ONPREM-02 | Phase 12 | Pending |
-| ONPREM-03 | Phase 12 | Pending |
+| ONPREM-03 | Phase 12 | Complete |
 | ONPREM-04 | Phase 12 | Pending |
 | ONPREM-05 | Phase 12 | Pending |
 | ONPREM-06 | Phase 12 | Pending |
