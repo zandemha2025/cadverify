@@ -127,6 +127,49 @@ async def create_batch(
 
 
 # ---------------------------------------------------------------------------
+# GET /batches -- list user's batches (most recent first)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/batches")
+async def list_batches(
+    cursor: Optional[str] = Query(None),
+    limit: int = Query(default=20, le=100),
+    user: AuthedUser = Depends(require_api_key),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """List user's batches, most recent first, cursor-paginated."""
+    stmt = (
+        select(Batch)
+        .where(Batch.user_id == user.user_id)
+        .order_by(Batch.id.desc())
+        .limit(limit + 1)
+    )
+    if cursor is not None:
+        stmt = stmt.where(Batch.id < int(cursor))
+
+    rows = (await session.execute(stmt)).scalars().all()
+    has_more = len(rows) > limit
+    batches = rows[:limit]
+
+    return {
+        "batches": [
+            {
+                "batch_ulid": b.ulid,
+                "status": b.status,
+                "total_items": b.total_items,
+                "completed_items": b.completed_items,
+                "failed_items": b.failed_items,
+                "created_at": b.created_at.isoformat() if b.created_at else None,
+            }
+            for b in batches
+        ],
+        "next_cursor": str(batches[-1].id) if batches and has_more else None,
+        "has_more": has_more,
+    }
+
+
+# ---------------------------------------------------------------------------
 # GET /batch/{batch_id} -- progress
 # ---------------------------------------------------------------------------
 
