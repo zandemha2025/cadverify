@@ -98,11 +98,16 @@ async def test_valid_key_returns_authed_user(monkeypatch):
     monkeypatch.setattr(
         "src.auth.require_api_key.touch_last_used", AsyncMock()
     )
+    monkeypatch.setattr(
+        "src.auth.require_api_key.lookup_user_role",
+        AsyncMock(return_value="analyst"),
+    )
     req = _Req()
     u = await require_api_key(req, authorization=f"Bearer {token}")
     assert u.user_id == 42
     assert u.api_key_id == 7
     assert u.key_prefix == prefix
+    assert u.role == "analyst"
     assert req.state.authed_user is u
 
 
