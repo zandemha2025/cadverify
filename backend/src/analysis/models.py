@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from src.analysis.tolerance_models import ToleranceReport
 
 
 class Severity(str, Enum):
@@ -136,6 +139,7 @@ class AnalysisResult:
     process_scores: list[ProcessScore] = field(default_factory=list)
     best_process: Optional[ProcessType] = None
     analysis_time_ms: float = 0.0
+    tolerances: Optional["ToleranceReport"] = None
 
     @property
     def overall_verdict(self) -> str:
