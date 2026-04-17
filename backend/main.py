@@ -25,6 +25,7 @@ from src.api.pdf import router as pdf_router
 from src.api.batch_router import router as batch_router
 from src.api.jobs_router import router as jobs_router
 from src.api.reconstruct_router import router as reconstruct_router
+from src.api.admin_routes import router as admin_router
 from src.api.routes import router
 from src.api.share import public_share_router, share_router
 from src.auth.keys_api import router as keys_router
@@ -145,6 +146,7 @@ if AUTH_MODE in ("google", "hybrid"):
 
 if AUTH_MODE in ("saml", "hybrid"):
     app.include_router(saml_router, prefix="/auth")
+app.include_router(admin_router)
 app.include_router(keys_router)
 app.include_router(health_router)
 
