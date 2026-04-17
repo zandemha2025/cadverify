@@ -127,7 +127,7 @@
 - [x] **IMG-02**: Reconstruction endpoint returns generated STL bytes plus a full DFM analysis of the reconstructed mesh
 - [x] **IMG-03**: System assigns a quality confidence score (0-1) to each reconstructed mesh based on reconstruction metrics
 - [x] **IMG-04**: Reconstructed mesh is automatically fed into the existing `/validate` pipeline without manual re-upload
-- [ ] **IMG-05**: Frontend provides image upload with preview, reconstruction progress indicator, and seamless transition to analysis dashboard
+- [x] **IMG-05**: Frontend provides image upload with preview, reconstruction progress indicator, and seamless transition to analysis dashboard
 
 ### STEP AP242 + GD&T/PMI Extraction
 
@@ -260,7 +260,7 @@
 | IMG-02 | Phase 10 | Complete |
 | IMG-03 | Phase 10 | Complete |
 | IMG-04 | Phase 10 | Complete |
-| IMG-05 | Phase 10 | Pending |
+| IMG-05 | Phase 10 | Complete |
 | STEP-01 | Phase 11 | Pending |
 | STEP-02 | Phase 11 | Pending |
 | STEP-03 | Phase 11 | Pending |

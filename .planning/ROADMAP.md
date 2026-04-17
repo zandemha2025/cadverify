@@ -456,7 +456,7 @@ This is a **brownfield enterprise expansion** on top of the shipped v1.0 product
 ## v2.0 Phases
 
 - [x] **Phase 9: Batch API + Webhook Pipeline** — Process millions of parts via bulk upload with async job queue, webhook callbacks, and progress tracking. (completed 2026-04-17)
-- [ ] **Phase 10: Image-to-Mesh Pipeline** — Reconstruct 3D geometry from photographs of legacy parts via TripoSR/InstantMesh, feed into existing analyzer. The competitive moat.
+- [x] **Phase 10: Image-to-Mesh Pipeline** — Reconstruct 3D geometry from photographs of legacy parts via TripoSR/InstantMesh, feed into existing analyzer. The competitive moat. (completed 2026-04-17)
 - [ ] **Phase 11: STEP AP242 + GD&T/PMI Extraction** — Parse real engineering data beyond triangle meshes; extract tolerances, datums, surface finish; validate against process capabilities.
 - [ ] **Phase 12: On-Premise Deployment Hardening** — Deploy inside enterprise networks: SSO/SAML, RBAC, audit logging, air-gapped Docker Compose, Helm chart.
 
@@ -587,7 +587,7 @@ This is a **brownfield enterprise expansion** on top of the shipped v1.0 product
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 9. Batch API + Webhook Pipeline | 3/3 | Complete   | 2026-04-17 |
-| 10. Image-to-Mesh Pipeline | 2/3 | In Progress|  |
+| 10. Image-to-Mesh Pipeline | 3/3 | Complete   | 2026-04-17 |
 | 11. STEP AP242 + GD&T/PMI Extraction | 0/4 | Not started | - |
 | 12. On-Premise Deployment Hardening | 0/5 | Not started | - |
 
