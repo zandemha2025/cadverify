@@ -139,7 +139,7 @@
 
 ### On-Premise Deployment Hardening
 
-- [ ] **ONPREM-01**: System supports SSO/SAML authentication with configurable Identity Provider (replacing or augmenting Google OAuth)
+- [x] **ONPREM-01**: System supports SSO/SAML authentication with configurable Identity Provider (replacing or augmenting Google OAuth)
 - [ ] **ONPREM-02**: RBAC enforced with three roles (viewer, analyst, admin) and a permission matrix governing API access
 - [ ] **ONPREM-03**: Full audit log records every analysis action (who analyzed what file, when, what result) for compliance trails
 - [ ] **ONPREM-04**: Air-gapped Docker Compose deployment bundles all dependencies with zero external network calls at runtime
@@ -266,7 +266,7 @@
 | STEP-03 | Phase 11 | Complete |
 | STEP-04 | Phase 11 | Complete |
 | STEP-05 | Phase 11 | Complete |
-| ONPREM-01 | Phase 12 | Pending |
+| ONPREM-01 | Phase 12 | Complete |
 | ONPREM-02 | Phase 12 | Pending |
 | ONPREM-03 | Phase 12 | Pending |
 | ONPREM-04 | Phase 12 | Pending |
