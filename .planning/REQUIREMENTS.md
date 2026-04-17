@@ -118,8 +118,8 @@
 - [x] **BATCH-02**: Batch processor decompresses archive, validates manifest, and enqueues each part for parallel analysis via arq
 - [x] **BATCH-03**: User can configure webhook URL per batch; system sends POST callback on batch completion and per-item completion
 - [x] **BATCH-04**: User can poll `GET /api/v1/batch/{id}` for real-time progress (items total, completed, failed, in-progress)
-- [ ] **BATCH-05**: User can view batch progress dashboard in frontend with per-item status drill-down
-- [ ] **BATCH-06**: Admin can configure per-tenant concurrency limits (max parallel workers per batch) via environment or API
+- [x] **BATCH-05**: User can view batch progress dashboard in frontend with per-item status drill-down
+- [x] **BATCH-06**: Admin can configure per-tenant concurrency limits (max parallel workers per batch) via environment or API
 
 ### Image-to-Mesh Pipeline
 
@@ -254,8 +254,8 @@
 | BATCH-02 | Phase 9 | Complete |
 | BATCH-03 | Phase 9 | Complete |
 | BATCH-04 | Phase 9 | Complete |
-| BATCH-05 | Phase 9 | Pending |
-| BATCH-06 | Phase 9 | Pending |
+| BATCH-05 | Phase 9 | Complete |
+| BATCH-06 | Phase 9 | Complete |
 | IMG-01 | Phase 10 | Pending |
 | IMG-02 | Phase 10 | Pending |
 | IMG-03 | Phase 10 | Pending |
