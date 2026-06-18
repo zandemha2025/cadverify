@@ -48,7 +48,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+      - API_BASE=http://backend:8000
+      - NEXT_PUBLIC_API_BASE=http://localhost:8000
 
 volumes:
   pgdata:

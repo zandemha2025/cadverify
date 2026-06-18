@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback } from "react";
 
 function CopyButton({ text }: { text: string }) {
@@ -33,11 +34,15 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
     <div className="relative mt-3 mb-6">
       <CopyButton text={code} />
       <pre className="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-sm leading-relaxed">
-        <code>{code}</code>
+        <code data-language={language}>{code}</code>
       </pre>
     </div>
   );
 }
+
+const API_VALIDATE_URL = "https://cadvrfy-api.fly.dev/api/v1/validate";
+const APP_URL = "https://cadvrfy.vercel.app";
+const GITHUB_URL = "https://github.com/zandemha2025/cadverify";
 
 export default function DocsPage() {
   return (
@@ -45,22 +50,22 @@ export default function DocsPage() {
       {/* Header */}
       <header className="bg-white border-b">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <a href="/" className="text-xl font-bold text-gray-900">
+          <Link href="/" className="text-xl font-bold text-gray-900">
             CadVerify
-          </a>
+          </Link>
           <div className="flex items-center gap-4">
-            <a
+            <Link
               href="/scalar"
               className="text-sm text-gray-600 hover:text-gray-900 transition"
             >
               API Reference
-            </a>
-            <a
-              href="/auth/signup"
+            </Link>
+            <Link
+              href="/signup"
               className="text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition"
             >
               Get API Key
-            </a>
+            </Link>
           </div>
         </div>
       </header>
@@ -83,7 +88,7 @@ export default function DocsPage() {
           </p>
           <CodeBlock
             language="bash"
-            code={`curl -X POST https://api.cadverify.com/api/v1/validate \\
+            code={`curl -X POST ${API_VALIDATE_URL} \\
   -H "Authorization: Bearer cv_live_YOUR_KEY" \\
   -F "file=@part.stl" \\
   -F "processes=fdm,cnc_3axis"`}
@@ -91,9 +96,9 @@ export default function DocsPage() {
           <p className="text-sm text-gray-500">
             Replace <code className="bg-gray-100 px-1 rounded">cv_live_YOUR_KEY</code> with
             your actual API key. See the{" "}
-            <a href="/scalar" className="text-blue-600 hover:underline">
+            <Link href="/scalar" className="text-blue-600 hover:underline">
               full API reference
-            </a>{" "}
+            </Link>{" "}
             for all available parameters and response fields.
           </p>
         </section>
@@ -108,7 +113,7 @@ export default function DocsPage() {
           </p>
           <CodeBlock
             language="bash"
-            code={`git clone https://github.com/cadverify/cadverify.git
+            code={`git clone ${GITHUB_URL}.git
 cd cadverify
 cp .env.example .env
 # Edit .env with your settings
@@ -130,9 +135,9 @@ docker compose up -d
           <ol className="list-decimal list-inside space-y-3 text-gray-700">
             <li>
               Sign up at{" "}
-              <a href="/auth/signup" className="text-blue-600 hover:underline">
-                cadverify.com
-              </a>{" "}
+              <Link href="/signup" className="text-blue-600 hover:underline">
+                {APP_URL}
+              </Link>{" "}
               to get your API key.
             </li>
             <li>
@@ -154,16 +159,16 @@ docker compose up -d
             </li>
             <li>
               View your usage at{" "}
-              <a href="/dashboard" className="text-blue-600 hover:underline">
-                cadverify.com/dashboard
-              </a>
+              <Link href="/dashboard" className="text-blue-600 hover:underline">
+                {APP_URL}/dashboard
+              </Link>
               .
             </li>
           </ol>
           <CodeBlock
             language="bash"
             code={`# Example: authenticated validation with process filter
-curl -X POST https://api.cadverify.com/api/v1/validate \\
+curl -X POST ${API_VALIDATE_URL} \\
   -H "Authorization: Bearer cv_live_sk_abc123..." \\
   -F "file=@bracket.step" \\
   -F "processes=cnc_3axis,cnc_5axis"
@@ -177,14 +182,14 @@ curl -X POST https://api.cadverify.com/api/v1/validate \\
 
         {/* Links */}
         <div className="border-t pt-8 flex flex-wrap gap-6 text-sm text-gray-500">
-          <a href="/scalar" className="hover:text-gray-900 transition">
+          <Link href="/scalar" className="hover:text-gray-900 transition">
             Full API Reference
-          </a>
-          <a href="/" className="hover:text-gray-900 transition">
+          </Link>
+          <Link href="/" className="hover:text-gray-900 transition">
             Home
-          </a>
+          </Link>
           <a
-            href="https://github.com/cadverify/cadverify"
+            href={GITHUB_URL}
             className="hover:text-gray-900 transition"
             target="_blank"
             rel="noopener noreferrer"

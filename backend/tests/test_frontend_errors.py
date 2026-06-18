@@ -19,6 +19,10 @@ import trimesh
 from fastapi.testclient import TestClient
 
 
+def _binary_stl_with_triangles(count: int) -> bytes:
+    return b"\0" * 80 + count.to_bytes(4, "little") + (b"\0" * 50 * count)
+
+
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setenv("ALLOWED_ORIGINS", "http://localhost:3000")
@@ -73,6 +77,31 @@ def test_upload_size_limit_returns_413(monkeypatch):
     )
     assert r.status_code == 413
     assert "message" in r.json()
+
+
+def test_demo_triangle_cap_returns_413_with_cors(monkeypatch):
+    """Public demo must reject oversize STL before expensive analysis."""
+    monkeypatch.setenv("DEMO_MAX_TRIANGLES", "10")
+    monkeypatch.setenv("MAX_UPLOAD_MB", "100")
+    import main
+    importlib.reload(main)
+    client = TestClient(main.app)
+    r = client.post(
+        "/api/v1/validate/demo",
+        files={
+            "file": (
+                "large-demo.stl",
+                _binary_stl_with_triangles(11),
+                "application/octet-stream",
+            )
+        },
+        headers={"Origin": "https://cadvrfy.vercel.app"},
+    )
+    assert r.status_code == 413
+    assert r.headers["access-control-allow-origin"] == "https://cadvrfy.vercel.app"
+    body = r.json()
+    assert "message" in body
+    assert "DEMO_MAX_TRIANGLES" in body["message"]
 
 
 def test_timeout_returns_504_with_structured_detail(monkeypatch):

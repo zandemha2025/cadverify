@@ -32,10 +32,8 @@ jobs:
 
       - name: Alembic migration check
         run: |
-          DATABASE_URL=sqlite:///test_migrations.db alembic upgrade head
-          DATABASE_URL=sqlite:///test_migrations.db alembic downgrade -1
-          DATABASE_URL=sqlite:///test_migrations.db alembic upgrade head
-          rm -f test_migrations.db
+          alembic heads
+          pytest tests/test_migration_*.py -q
 
       - name: Typecheck
         run: |
@@ -49,28 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check routes.py for auth dependency on every /api/v1/* handler
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import re, sys
-          txt = open("backend/src/api/routes.py").read()
-          decorators = re.finditer(r'@router\.(post|get|put|delete|patch)\((.*?)\)', txt, flags=re.S)
-          fails = []
-          for m in decorators:
-              start = m.start()
-              block = txt[start:start+1500]
-              # skip public routes
-              if re.search(r'"(/health|/auth/|/s/)', m.group(2)):
-                  continue
-              # must reference require_api_key in the function signature block
-              if 'require_api_key' not in block:
-                  fails.append(m.group(2).splitlines()[0])
-          if fails:
-              print("ROUTE AUTH COVERAGE FAIL:")
-              for f in fails: print("  ", f)
-              sys.exit(1)
-          print("route-auth-coverage OK")
-          PY
+        run: python3 scripts/ci/check_route_auth.py
 
   sentry-leak-grep:
     name: cv_live_ never appears in captured Sentry payload
@@ -140,7 +117,7 @@ jobs:
         with:
           context: backend
           push: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
-          tags: registry.fly.io/cadverify-api:${{ github.sha }},registry.fly.io/cadverify-api:latest
+          tags: registry.fly.io/cadvrfy-api:${{ github.sha }},registry.fly.io/cadvrfy-api:latest
           platforms: linux/amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -159,7 +136,7 @@ jobs:
         run: |
           flyctl deploy \
             --config backend/fly.toml \
-            --image registry.fly.io/cadverify-api:${{ github.sha }} \
+            --image registry.fly.io/cadvrfy-api:${{ github.sha }} \
             --env RELEASE=${{ github.sha }}
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

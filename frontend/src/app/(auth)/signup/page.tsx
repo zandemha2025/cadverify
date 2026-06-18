@@ -1,14 +1,18 @@
 import Script from "next/script";
+import { backendUrl } from "@/lib/api-base";
 import { startMagic } from "./actions";
 
+export const dynamic = "force-dynamic";
+
 export default function SignupPage() {
-  const sitekey = process.env.NEXT_PUBLIC_TURNSTILE_SITEKEY!;
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE!;
+  const sitekey =
+    process.env.NEXT_PUBLIC_TURNSTILE_SITEKEY?.replace(/\\[rn]/g, "").trim() ||
+    "";
   return (
     <main className="mx-auto max-w-sm py-24 space-y-6">
       <h1 className="text-2xl font-semibold">Get your CadVerify API key</h1>
       <a
-        href={`${apiBase}/auth/google/start`}
+        href={backendUrl("/auth/google/start")}
         className="block w-full rounded-md bg-black px-4 py-2 text-center text-white"
       >
         Continue with Google

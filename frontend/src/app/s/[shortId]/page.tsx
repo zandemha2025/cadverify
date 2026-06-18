@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { fetchSharedAnalysis } from "@/lib/api";
 import type { SharedAnalysis, Issue, ProcessScore } from "@/lib/api";
 
@@ -75,12 +76,12 @@ export default async function SharedAnalysisPage({
           This shared analysis is no longer available. It may have been revoked
           by its owner.
         </p>
-        <a
+        <Link
           href="/"
           className="mt-6 inline-block rounded-md bg-black px-4 py-2 text-sm text-white hover:bg-gray-800"
         >
           Go to CadVerify
-        </a>
+        </Link>
       </main>
     );
   }
@@ -236,12 +237,12 @@ export default async function SharedAnalysisPage({
         <p className="text-sm text-gray-600">
           This is a shared analysis from CadVerify.
         </p>
-        <a
+        <Link
           href="/"
           className="mt-2 inline-block rounded-md bg-black px-4 py-2 text-sm text-white hover:bg-gray-800"
         >
           View on CadVerify
-        </a>
+        </Link>
       </div>
     </main>
   );

@@ -168,5 +168,5 @@ def test_analyses_columns_correct(migration_and_op):
 def test_migration_revision_chain(migration_and_op):
     """Migration 0002 correctly references 0001 as its down_revision."""
     mod, _ = migration_and_op
-    assert mod.revision == "0002_create_analyses_jobs_usage_events"
+    assert mod.revision == "0002_analyses_jobs_usage"
     assert mod.down_revision == "0001_create_users_api_keys"

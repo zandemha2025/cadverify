@@ -1,7 +1,6 @@
 import { toast } from "sonner";
 import * as Sentry from "@sentry/nextjs";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+import { API_BASE, browserOrBackendUrl } from "./api-base";
 
 export interface GeometryInfo {
   vertices: number;
@@ -400,15 +399,11 @@ export async function unshareAnalysis(id: string): Promise<void> {
   });
 }
 
-const SHARE_BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") ||
-  "http://localhost:8000";
-
 export async function fetchSharedAnalysis(
   shortId: string
 ): Promise<SharedAnalysis> {
   // Public endpoint — no auth needed, but still benefits from error handling
-  const res = await fetch(`${SHARE_BASE}/s/${shortId}`);
+  const res = await fetch(browserOrBackendUrl(`/s/${shortId}`));
   if (!res.ok) {
     throw new Error(
       res.status === 404 ? "Shared analysis not found" : "Failed to fetch"

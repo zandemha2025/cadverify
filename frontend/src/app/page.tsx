@@ -6,6 +6,7 @@ import FileDropZone from "@/components/FileDropZone";
 import AnalysisDashboard from "@/components/AnalysisDashboard";
 import RulePackSelector from "@/components/RulePackSelector";
 import { validateFile, validateQuick, type ValidationResult, type Issue } from "@/lib/api";
+import { API_BASE } from "@/lib/api-base";
 
 const ModelViewer = dynamic(() => import("@/components/ModelViewer"), {
   ssr: false,
@@ -15,8 +16,6 @@ const ModelViewer = dynamic(() => import("@/components/ModelViewer"), {
     </div>
   ),
 });
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
 /* ---------- Landing page (unauthenticated) ---------- */
 
@@ -79,7 +78,7 @@ function LandingPage() {
               Docs
             </a>
             <a
-              href="/auth/signup"
+              href="/signup"
               className="text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition"
             >
               Get API Key
@@ -101,7 +100,7 @@ function LandingPage() {
               </p>
               <div className="flex justify-center gap-4">
                 <a
-                  href="/auth/signup"
+                  href="/signup"
                   className="inline-flex items-center px-6 py-3 font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition"
                 >
                   Get API Key
@@ -173,7 +172,7 @@ function LandingPage() {
             {/* Footer */}
             <footer className="py-10">
               <div className="max-w-4xl mx-auto px-4 flex flex-wrap justify-center gap-6 text-sm text-gray-500">
-                <a href="https://cadvrfy-api.fly.dev/scalar" className="hover:text-gray-900 transition">
+                <a href="/scalar" className="hover:text-gray-900 transition">
                   API Docs
                 </a>
                 <a href="/docs" className="hover:text-gray-900 transition">
@@ -204,7 +203,7 @@ function LandingPage() {
                   Analyze Another File
                 </button>
                 <a
-                  href="/auth/signup"
+                  href="/signup"
                   className="text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition"
                 >
                   Get API Key

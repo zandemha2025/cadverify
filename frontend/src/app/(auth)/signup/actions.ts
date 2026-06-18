@@ -1,7 +1,9 @@
 "use server";
 
+import { backendUrl } from "@/lib/api-base";
+
 export async function startMagic(formData: FormData): Promise<void> {
-  const res = await fetch(`${process.env.API_BASE}/auth/magic/start`, {
+  const res = await fetch(backendUrl("/auth/magic/start"), {
     method: "POST",
     body: formData,
   });

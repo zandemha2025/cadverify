@@ -5,7 +5,8 @@ primary_region = "iad"
   dockerfile = "Dockerfile"
 
 [env]
-  NEXT_PUBLIC_API_URL = "https://cadverify-api.fly.dev/api/v1"
+  API_BASE = "https://cadvrfy-api.fly.dev"
+  NEXT_PUBLIC_API_BASE = "https://cadvrfy-api.fly.dev"
 
 [http_service]
   internal_port = 3000

@@ -21,7 +21,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.analysis.models import AnalysisResult, Issue, ProcessType
 from src.analysis.rules import available_rule_packs, get_rule_pack
-from src.api.upload_validation import enforce_triangle_cap, validate_magic
+from src.api.upload_validation import (
+    demo_max_triangles,
+    enforce_stl_triangle_count_cap,
+    enforce_triangle_cap,
+    validate_magic,
+)
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.rate_limit import limiter
 from src.auth.rbac import Role, require_role
@@ -92,6 +97,7 @@ def _parse_mesh(data: bytes, filename: str):
     validate_magic(data, suffix)
     try:
         if suffix == ".stl":
+            enforce_stl_triangle_count_cap(data)
             mesh = parse_stl_from_bytes(data, filename)
             enforce_triangle_cap(mesh)
             return mesh, suffix
@@ -260,7 +266,24 @@ async def validate_demo(
     from src.analysis.processes.base import get_analyzer
 
     data = await _read_capped(file)
-    mesh, suffix = _parse_mesh(data, file.filename or "unknown")
+    filename = file.filename or "unknown"
+    suffix = Path(filename).suffix.lower()
+    if suffix == ".stl":
+        enforce_stl_triangle_count_cap(
+            data,
+            limit=demo_max_triangles(),
+            limit_name="DEMO_MAX_TRIANGLES",
+            status_code=413,
+            subject="Public demo STL",
+        )
+    mesh, suffix = _parse_mesh(data, filename)
+    enforce_triangle_cap(
+        mesh,
+        limit=demo_max_triangles(),
+        limit_name="DEMO_MAX_TRIANGLES",
+        status_code=413,
+        subject="Public demo mesh",
+    )
     target_processes = _resolve_target_processes(processes)
 
     start = time.time()
