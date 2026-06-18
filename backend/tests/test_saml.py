@@ -18,6 +18,22 @@ from fastapi.testclient import TestClient
 # ---------------------------------------------------------------------------
 
 
+def _collect_route_paths(routes, prefix=""):
+    paths = set()
+    for route in routes:
+        path = getattr(route, "path", None)
+        if path is not None:
+            paths.add(f"{prefix}{path}")
+
+        nested = getattr(route, "routes", None)
+        if nested:
+            paths.update(
+                _collect_route_paths(nested, f"{prefix}{getattr(route, 'prefix', '')}")
+            )
+
+    return paths
+
+
 def _make_app(auth_mode: str = "hybrid"):
     """Create a fresh FastAPI app with the given AUTH_MODE.
 
@@ -138,7 +154,7 @@ def test_auth_mode_hybrid_enables_both(mock_build_auth):
     # Verify Google route is registered (not 404). The actual call may fail
     # due to missing REDIS_URL for rate limiting, but route existence is
     # confirmed by checking it is NOT a 404.
-    routes = [r.path for r in app.routes if hasattr(r, "path")]
+    routes = _collect_route_paths(app.routes)
     assert "/auth/google/start" in routes
 
 
