@@ -18,22 +18,6 @@ from fastapi.testclient import TestClient
 # ---------------------------------------------------------------------------
 
 
-def _collect_route_paths(routes, prefix=""):
-    paths = set()
-    for route in routes:
-        path = getattr(route, "path", None)
-        if path is not None:
-            paths.add(f"{prefix}{path}")
-
-        nested = getattr(route, "routes", None)
-        if nested:
-            paths.update(
-                _collect_route_paths(nested, f"{prefix}{getattr(route, 'prefix', '')}")
-            )
-
-    return paths
-
-
 def _make_app(auth_mode: str = "hybrid"):
     """Create a fresh FastAPI app with the given AUTH_MODE.
 
@@ -82,7 +66,7 @@ def test_saml_metadata_endpoint(mock_build_auth):
     """GET /auth/saml/metadata returns 200 with XML containing EntityDescriptor."""
     mock_build_auth.return_value = _mock_saml_auth()
     app = _make_app("saml")
-    client = TestClient(app)
+    client = TestClient(app, raise_server_exceptions=False)
 
     resp = client.get("/auth/saml/metadata")
     assert resp.status_code == 200
@@ -146,16 +130,15 @@ def test_auth_mode_hybrid_enables_both(mock_build_auth):
     """When AUTH_MODE=hybrid, both SAML metadata and Google start are available."""
     mock_build_auth.return_value = _mock_saml_auth()
     app = _make_app("hybrid")
-    client = TestClient(app)
+    client = TestClient(app, raise_server_exceptions=False)
 
     saml_resp = client.get("/auth/saml/metadata")
     assert saml_resp.status_code == 200
 
-    # Verify Google route is registered (not 404). The actual call may fail
-    # due to missing REDIS_URL for rate limiting, but route existence is
-    # confirmed by checking it is NOT a 404.
-    routes = _collect_route_paths(app.routes)
-    assert "/auth/google/start" in routes
+    # Verify Google route is registered. The actual call may fail due to
+    # missing REDIS_URL/rate-limit services, but route existence is confirmed
+    # by checking it is NOT a 404.
+    assert client.get("/auth/google/start").status_code != 404
 
 
 @patch("src.auth.saml._build_auth")

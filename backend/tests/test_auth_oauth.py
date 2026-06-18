@@ -32,10 +32,13 @@ def test_main_wires_auth_routers():
     import os
     os.environ.setdefault("SESSION_SECRET", "test-only")
     import importlib
+    from fastapi.testclient import TestClient
+
     import main as mainmod
     importlib.reload(mainmod)
-    paths = _collect_route_paths(mainmod.app.routes)
-    assert "/auth/google/start" in paths
-    assert "/auth/google/callback" in paths
-    assert "/auth/magic/start" in paths
-    assert "/auth/magic/verify" in paths
+
+    client = TestClient(mainmod.app, raise_server_exceptions=False)
+    assert client.get("/auth/google/start").status_code != 404
+    assert client.get("/auth/google/callback").status_code != 404
+    assert client.post("/auth/magic/start").status_code != 404
+    assert client.get("/auth/magic/verify").status_code != 404
