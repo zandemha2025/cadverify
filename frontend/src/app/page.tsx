@@ -5,8 +5,13 @@ import dynamic from "next/dynamic";
 import FileDropZone from "@/components/FileDropZone";
 import AnalysisDashboard from "@/components/AnalysisDashboard";
 import RulePackSelector from "@/components/RulePackSelector";
-import { validateFile, validateQuick, type ValidationResult, type Issue } from "@/lib/api";
+import { validateFile, type ValidationResult } from "@/lib/api";
 import { API_BASE } from "@/lib/api-base";
+import {
+  exactBinaryStlTriangleCount,
+  PUBLIC_DEMO_MAX_STL_TRIANGLES,
+  publicDemoStlLimitMessage,
+} from "@/lib/stl-validation";
 
 const ModelViewer = dynamic(() => import("@/components/ModelViewer"), {
   ssr: false,
@@ -31,6 +36,21 @@ function LandingPage() {
       setDemoError("Unsupported file type. Use .stl, .step, or .stp");
       return;
     }
+
+    if (ext === "stl") {
+      const triangleCount = await exactBinaryStlTriangleCount(file);
+      if (
+        triangleCount !== null &&
+        triangleCount > PUBLIC_DEMO_MAX_STL_TRIANGLES
+      ) {
+        setDemoFile(null);
+        setDemoResult(null);
+        setDemoLoading(false);
+        setDemoError(publicDemoStlLimitMessage(file.name, triangleCount));
+        return;
+      }
+    }
+
     setDemoFile(file);
     setDemoLoading(true);
     setDemoError(null);
