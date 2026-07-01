@@ -608,12 +608,19 @@ def build_report(res: HarnessResult) -> str:
              f"layer). This collapses the prior +60..+75% medium-part over-cost into the "
              f"+/-60% band. Build-job powder-bed/DLP (median {_med(am_nested):+.0%}) "
              f"remains nested per the build-job model.")
-    L.append(f"- **CNC and IM are well-characterized** (CNC median "
-             f"{per_proc.get('cnc_3axis', {}).get('median_signed_err', 0):+.0%} on "
-             f"3-axis, all CNC 100% in band; IM "
+    L.append(f"- **CNC and IM are well-characterized** (CNC 3-axis median "
+             f"{per_proc.get('cnc_3axis', {}).get('median_signed_err', 0):+.0%}, "
+             f"{per_proc.get('cnc_3axis', {}).get('pct_in_band', 0):.0f}% in band; IM "
              f"{per_proc.get('injection_molding', {}).get('median_signed_err', 0):+.0%}, "
-             f"100% in band) — the removal-math and tooling-tier references corroborate "
-             f"V1 across the whole size range.")
+             f"{per_proc.get('injection_molding', {}).get('pct_in_band', 0):.0f}% in band) "
+             f"— the removal-math and tooling-tier references corroborate V1 across the "
+             f"whole size range. NOTE (S1): V1 now credits a volume/learning curve on "
+             f"machined conversion cost (per-unit cost falls with qty), while the R2 "
+             f"reference is deliberately qty-FLAT; so at the qty-1000 reference point a "
+             f"couple of small-cross-section turned parts (already near the band floor) "
+             f"sit just below the flat reference — a KNOWN residual in the documented "
+             f"direction of the fix, not a defect. A volume-aware CNC reference would "
+             f"re-center it; that is left to the ground-truth-quote calibration path.")
     L.append("")
     L.append("Per-process medians (the bias each process carries):")
     L.append("")

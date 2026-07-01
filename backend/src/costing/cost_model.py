@@ -20,6 +20,7 @@ V1 changes (the 8 weaknesses):
 from __future__ import annotations
 
 import math
+import os
 
 from src.analysis.models import ProcessType
 from src.costing.drivers import parts_per_build
@@ -29,6 +30,49 @@ from src.costing.rates import (
 )
 
 PT = ProcessType
+
+# Master on/off for the volume/learning economics (S1 fix). Defaults ON (the
+# corrected behavior that fixes the demo path). Set CADVERIFY_CNC_LEARNING=0 to
+# recover the old flat, volume-invariant conversion cost. (A learning_rate=1.0
+# rate override is the equivalent per-quote off-switch.)
+_LEARNING_FAMILIES = {"subtractive", "fabrication"}
+
+
+def _learning_multiplier(family, qty, ref_qty, rates: RateCard):
+    """Wright cumulative-average learning multiplier on ATTENDED CONVERSION cost.
+
+    Real machining/fabrication economics: per-unit attended time (machine cycle +
+    hand labor) falls as cumulative volume grows — optimized tool-paths, dedicated
+    fixtures/pallets, dialed-in feeds & speeds, less operator attention. Modeled as
+    the classic Wright curve, cumulative-average form:
+
+        mult(Q) = (Q / Q_ref) ** b ,  b = log2(learning_rate) < 0 ,  clamped ≤ 1
+
+    Q_ref = the first production lot (lot_size): the rate-card cycle time is the
+    first-lot standard time, so no learning is credited at/below one lot (mult=1),
+    and it accrues only above it. Floored at ``learning_floor`` (a practical
+    minimum cycle time). learning_rate=1.0 (or CADVERIFY_CNC_LEARNING=0) => 1.0.
+
+    Returns (multiplier, source_string). The source is honestly tagged as a
+    DEFAULT assumption, NOT validated against real shop quotes.
+    """
+    if os.getenv("CADVERIFY_CNC_LEARNING", "1") == "0":
+        return 1.0, None
+    if family not in _LEARNING_FAMILIES:
+        return 1.0, None
+    rate = rates.g("learning_rate")
+    if not rate or rate >= 1.0 or ref_qty <= 0 or qty <= ref_qty:
+        return 1.0, None
+    floor = rates.g("learning_floor")
+    b = math.log(rate) / math.log(2.0)
+    mult = (qty / ref_qty) ** b
+    mult = max(mult, floor)
+    doublings = math.log(qty / ref_qty) / math.log(2.0)
+    src = (f"learning curve {rate:g}×/doubling of cumulative qty on machine+labor: "
+           f"({qty}/{ref_qty} first-lot)^{b:.3f} = ×{mult:.3f} "
+           f"(~{doublings:.1f} doublings, floor {floor:g}) "
+           f"[assumption, not shop-validated]")
+    return mult, src
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -223,18 +267,30 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         machine_hr, cycle_src = _formative_cycle(process, drivers, rates)
         n = 1
 
+    # ---- lot model (weakness #8) + volume/learning economics (S1) -------
+    # lot_size is the first production lot; it is the learning-curve anchor and
+    # the per-lot setup basis, so compute it before machine/labor cost.
+    setup_hr = rates.p(process, "setup_hr")
+    lot_raw = rates.lot_size_raw(process)
+    lot_size = n if lot_raw == "build" else int(lot_raw)
+    n_setups = math.ceil(qty / lot_size)
+    learn_mult, learn_src = _learning_multiplier(family, qty, lot_size, rates)
+
     # formative: a multi-cavity tool makes n_cavities parts per machine cycle
     cav_div = n_cavities if family == "formative" else 1
     machine_cost = machine_hr * rates.p(process, "machine_rate") / cav_div / util
-    machine_scaled = machine_cost * rl * mgn * burden
+    machine_learned = machine_cost * learn_mult          # attended-time learning (S1)
+    machine_scaled = machine_learned * rl * mgn * burden
     cav_note = f" ÷ {n_cavities} cavities" if cav_div != 1 else ""
     util_note = f" ÷ {util:g} utilization" if util != 1.0 else ""
     burden_note = f" × {burden:g} overhead" if burden != 1.0 else ""
+    learn_note = f" × {learn_mult:.3f} learning@qty{qty}" if learn_mult != 1.0 else ""
     drivers_out.append(Driver(
         name="machine_cost", value=round(machine_scaled, 4), unit="$",
         provenance=rates.prov_tag(f"machine_rate.{process.name}"),
         source=(f"{machine_hr:.4f} hr × ${rates.p(process, 'machine_rate'):g}/hr"
-                f"{cav_note}{util_note} × region-labor ×{rl:g}{burden_note}  [{cycle_src}]"),
+                f"{cav_note}{util_note}{learn_note} × region-labor ×{rl:g}{burden_note}"
+                f"  [{cycle_src}]"),
         error_band_pct=band,
     ))
     drivers_out.append(Driver(
@@ -246,24 +302,28 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     post_hr_part = rates.p(process, "post_hr_part")
     post_hr_build = rates.p(process, "post_hr_build")
     post_labor = (post_hr_part + post_hr_build / n) * labor_rate
-    labor_scaled = post_labor * rl * mgn * burden
+    post_labor_learned = post_labor * learn_mult         # attended-time learning (S1)
+    labor_scaled = post_labor_learned * rl * mgn * burden
     if post_hr_build and n > 1:
         labor_src = (f"finish {post_hr_part:g}hr/part + bulk {post_hr_build:g}hr/build "
-                     f"÷ {n} = {post_hr_part + post_hr_build / n:.3f}hr × ${labor_rate:g}/hr "
-                     f"× region-labor ×{rl:g}")
+                     f"÷ {n} = {post_hr_part + post_hr_build / n:.3f}hr × ${labor_rate:g}/hr"
+                     f"{learn_note} × region-labor ×{rl:g}")
     else:
         labor_src = (f"post-process {post_hr_part + post_hr_build / n:g} hr × "
-                     f"${labor_rate:g}/hr × region-labor ×{rl:g}")
+                     f"${labor_rate:g}/hr{learn_note} × region-labor ×{rl:g}")
     drivers_out.append(Driver(
         name="labor_cost", value=round(labor_scaled, 4), unit="$",
         provenance=rates.prov_tag("labor_rate"), source=labor_src, error_band_pct=20.0,
     ))
 
+    # ---- learning-curve driver (glass box; only when it bites) ----------
+    if learn_src is not None:
+        drivers_out.append(Driver(
+            name="learning_curve", value=round(learn_mult, 4), unit="×",
+            provenance=Provenance.DEFAULT, source=learn_src, error_band_pct=band,
+        ))
+
     # ---- SETUP per lot (weakness #8) ------------------------------------
-    setup_hr = rates.p(process, "setup_hr")
-    lot_raw = rates.lot_size_raw(process)
-    lot_size = n if lot_raw == "build" else int(lot_raw)
-    n_setups = math.ceil(qty / lot_size)
     setup_per_unit = setup_hr * labor_rate * n_setups / qty
     setup_scaled = setup_per_unit * rl * mgn * burden
     drivers_out.append(Driver(

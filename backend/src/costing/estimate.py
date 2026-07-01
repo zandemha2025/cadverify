@@ -199,11 +199,13 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
     estimates_serialized = []
     estimates_by_pq = {}             # (process_value, qty) -> CostEstimate (real per-qty)
     leadtimes_by_key = {}
+    elig_by_pv = {}                  # process_value -> eligible item (for arbitrary-qty costing)
 
     for item in elig:
         process = item["process"]
         material = item["material"]
         ps = item["score"]
+        elig_by_pv[process.value] = item
         for q in options.quantities:
             est = cost_breakdown(process, drivers, material, options.material_class,
                                  q, rates, region,
@@ -217,7 +219,21 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
             estimates_serialized.append(
                 _serialize(est, lt, drivers, options.residual_model, options.ci_level))
 
-    decision = make_vs_buy(estimates_by_pq, options.quantities, leadtimes_by_key)
+    # Real cost evaluator at ARBITRARY qty — powers the NUMERICAL make-vs-buy
+    # crossover (S1: honest crossover once machining variable cost falls with
+    # volume, so the single-qty fixed/var closed form is no longer exact).
+    def _unit_cost_fn(pv, q):
+        item = elig_by_pv.get(pv)
+        if item is None:
+            return float("inf")
+        est = cost_breakdown(item["process"], drivers, item["material"],
+                             options.material_class, q, rates, region,
+                             n_cavities=options.n_cavities,
+                             complexity=options.complexity, process_score=item["score"])
+        return est.unit_cost_usd
+
+    decision = make_vs_buy(estimates_by_pq, options.quantities, leadtimes_by_key,
+                           unit_cost_fn=_unit_cost_fn)
 
     notes = []
     if shop is not None:

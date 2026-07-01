@@ -46,11 +46,50 @@ def crossover(fixed_a: float, var_a: float, fixed_b: float, var_b: float) -> Opt
 
     unit_a(q) = fixed_a/q + var_a ; unit_b(q) = fixed_b/q + var_b
     => q* = (fixed_b - fixed_a) / (var_a - var_b)
+
+    CLOSED FORM — exact only when both variable costs are qty-CONSTANT. Once a
+    make process carries a volume/learning curve (S1: machining conversion cost
+    falls with qty) its variable cost is qty-dependent and this formula is no
+    longer exact; the decision layer then prefers ``_numerical_crossover`` (below),
+    which scans the ACTUAL per-qty unit costs. This form is retained for the
+    constant-variable case and as a documented fallback.
     """
     if var_a == var_b:
         return None
     q = (fixed_b - fixed_a) / (var_a - var_b)
     return q if q > 1 else None
+
+
+def _numerical_crossover(unit_cost_fn, make_pv: str, tool_pv: str,
+                         q_lo: float, q_cap: int = 10_000_000) -> Optional[float]:
+    """Honest crossover for qty-DEPENDENT unit costs (S1 volume/learning).
+
+    Returns the smallest integer quantity q where the tooling route's ACTUAL
+    per-unit cost drops to/below the make route's ACTUAL per-unit cost, found by
+    evaluating both real cost curves (``unit_cost_fn(process_value, q)``) — no
+    fixed/variable reconstruction, so it stays correct when machining variable
+    cost itself falls with volume. None when tooling never overtakes make within
+    ``q_cap`` (or is already cheaper at q_lo). Monotone in tooling fixed cost:
+    a pricier tool pushes the crossover right, as expected.
+    """
+    def diff(q: int) -> float:                       # >0 once tooling is the cheaper route
+        return unit_cost_fn(make_pv, int(q)) - unit_cost_fn(tool_pv, int(q))
+
+    lo = max(2, int(q_lo))
+    if diff(lo) >= 0:
+        return None                                  # tooling already cheaper at low qty
+    hi = lo
+    while hi < q_cap and diff(hi) < 0:
+        hi = min(hi * 2, q_cap)                      # geometric bracket for the sign change
+    if diff(hi) < 0:
+        return None                                  # tooling never wins within the cap
+    while hi - lo > 1:                               # bisect to the crossover integer
+        mid = (lo + hi) // 2
+        if diff(mid) < 0:
+            lo = mid
+        else:
+            hi = mid
+    return float(hi) if hi > 1 else None
 
 
 def _family(pv: str) -> str:
@@ -77,11 +116,18 @@ def _caveat(est) -> str:
     return ""
 
 
-def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key) -> Optional[Decision]:
+def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
+                unit_cost_fn=None) -> Optional[Decision]:
     """estimates_by_pq: {(process_value, qty): CostEstimate} for every eligible
     (process, qty). Decision ranks by REAL per-qty unit cost (not a fixed/var
     reconstruction), so the headline make process and the low-qty recommendation
     are computed from the same ranking and can never disagree.
+
+    unit_cost_fn (optional): ``(process_value, qty) -> unit_cost_usd``, a real
+    cost evaluator at ARBITRARY qty. When supplied, the make-vs-buy crossover is
+    computed NUMERICALLY from the actual per-qty cost curves — the honest method
+    once machining variable cost falls with volume (S1). Falls back to the
+    closed-form ``crossover`` (single-qty fixed/var split) when absent.
     """
     if not estimates_by_pq:
         return None
@@ -116,8 +162,12 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key) -> Optional
 
     q_star = None
     if tool_champion is not None and tool_champion.process != make_now.process:
-        q_star = crossover(make_now.fixed_cost_usd, make_now.variable_cost_usd,
-                           tool_champion.fixed_cost_usd, tool_champion.variable_cost_usd)
+        if unit_cost_fn is not None:
+            q_star = _numerical_crossover(unit_cost_fn, make_now.process,
+                                          tool_champion.process, q_lo)
+        else:
+            q_star = crossover(make_now.fixed_cost_usd, make_now.variable_cost_usd,
+                               tool_champion.fixed_cost_usd, tool_champion.variable_cost_usd)
 
     # ---- per-qty tiers --------------------------------------------------
     recommendation: dict = {}
