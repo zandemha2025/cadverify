@@ -1,19 +1,30 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import type { ColumnDef } from "@tanstack/react-table";
 import { getBatchItems, type BatchItem } from "@/lib/api/batch";
+import { DataTable } from "@/components/ui/data-table";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
 
-const STATUS_BADGES: Record<string, string> = {
-  pending: "bg-gray-100 text-gray-700",
-  queued: "bg-gray-100 text-gray-700",
-  processing: "bg-yellow-100 text-yellow-800",
-  completed: "bg-green-100 text-green-800",
-  failed: "bg-red-100 text-red-800",
-  skipped: "bg-gray-200 text-gray-500",
-};
-
-const STATUS_FILTERS = ["all", "pending", "processing", "completed", "failed", "skipped"];
+const STATUS_FILTERS = [
+  "all",
+  "pending",
+  "processing",
+  "completed",
+  "failed",
+  "skipped",
+];
 
 interface Props {
   batchId: string;
@@ -39,11 +50,7 @@ export default function BatchItemsTable({ batchId, refreshKey }: Props) {
           cursor,
           limit: 50,
         });
-        if (cursor) {
-          setItems((prev) => [...prev, ...resp.items]);
-        } else {
-          setItems(resp.items);
-        }
+        setItems((prev) => (cursor ? [...prev, ...resp.items] : resp.items));
         setNextCursor(resp.next_cursor);
         setHasMore(resp.has_more);
       } catch (err) {
@@ -67,133 +74,146 @@ export default function BatchItemsTable({ batchId, refreshKey }: Props) {
     setLoadingMore(false);
   };
 
-  const toggleError = (itemId: string) => {
+  const toggleError = useCallback((itemId: string) => {
     setExpandedErrors((prev) => {
       const next = new Set(prev);
-      if (next.has(itemId)) {
-        next.delete(itemId);
-      } else {
-        next.add(itemId);
-      }
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
       return next;
     });
-  };
+  }, []);
+
+  const columns = useMemo<ColumnDef<BatchItem>[]>(
+    () => [
+      {
+        accessorKey: "filename",
+        header: "Filename",
+        cell: ({ row }) => {
+          const item = row.original;
+          const expanded = expandedErrors.has(item.item_ulid);
+          return (
+            <div className="max-w-[280px]">
+              <p className="truncate font-medium text-foreground">
+                {item.filename}
+              </p>
+              {item.error_message && expanded && (
+                <p className="mt-1 whitespace-pre-wrap text-xs text-fail">
+                  {item.error_message}
+                </p>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "status",
+        header: "Status",
+        cell: ({ row }) => <StatusBadge status={row.original.status} size="sm" />,
+      },
+      {
+        accessorKey: "priority",
+        header: "Priority",
+        meta: { numeric: true },
+        cell: ({ row }) => (
+          <span className="text-muted-foreground">{row.original.priority}</span>
+        ),
+      },
+      {
+        accessorKey: "duration_ms",
+        header: "Duration",
+        meta: { numeric: true },
+        cell: ({ row }) => (
+          <span className="text-muted-foreground">
+            {row.original.duration_ms != null
+              ? `${(row.original.duration_ms / 1000).toFixed(1)} s`
+              : "—"}
+          </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: "",
+        cell: ({ row }) => {
+          const item = row.original;
+          return (
+            <div className="flex items-center justify-end gap-1">
+              {item.analysis_id != null && (
+                <Button asChild variant="ghost" size="sm">
+                  <Link href={`/analyses/${item.analysis_id}`}>View</Link>
+                </Button>
+              )}
+              {item.error_message && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-fail hover:text-fail"
+                  onClick={() => toggleError(item.item_ulid)}
+                >
+                  {expandedErrors.has(item.item_ulid)
+                    ? "Hide error"
+                    : "Show error"}
+                </Button>
+              )}
+            </div>
+          );
+        },
+      },
+    ],
+    [expandedErrors, toggleError],
+  );
 
   return (
     <div className="space-y-3">
       {/* Status filter */}
-      <div className="flex gap-1">
-        {STATUS_FILTERS.map((f) => (
-          <button
-            key={f}
-            type="button"
-            onClick={() => setStatusFilter(f)}
-            className={`rounded px-3 py-1 text-xs font-medium capitalize transition-colors ${
-              statusFilter === f
-                ? "bg-blue-600 text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            }`}
-          >
-            {f}
-          </button>
-        ))}
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted-foreground">Filter</span>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="h-8 w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {STATUS_FILTERS.map((f) => (
+              <SelectItem key={f} value={f} className="capitalize">
+                {f === "all" ? "All statuses" : f}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {error && (
-        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>
+        <ErrorState
+          message={error}
+          onRetry={() => {
+            setError(null);
+            setLoading(true);
+            fetchItems().finally(() => setLoading(false));
+          }}
+        />
       )}
 
-      {loading ? (
-        <div className="animate-pulse py-8 text-center text-sm text-gray-400">
-          Loading items...
-        </div>
-      ) : items.length === 0 ? (
-        <div className="py-8 text-center text-sm text-gray-500">
-          No items found.
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-md border">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b bg-gray-50 text-xs font-medium uppercase text-gray-500">
-              <tr>
-                <th className="px-4 py-2">Filename</th>
-                <th className="px-4 py-2">Status</th>
-                <th className="px-4 py-2">Priority</th>
-                <th className="px-4 py-2">Duration</th>
-                <th className="px-4 py-2">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {items.map((item) => (
-                <tr key={item.item_ulid} className="hover:bg-gray-50">
-                  <td className="max-w-[200px] truncate px-4 py-2 font-medium">
-                    {item.filename}
-                  </td>
-                  <td className="px-4 py-2">
-                    <span
-                      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGES[item.status] || "bg-gray-100 text-gray-700"}`}
-                    >
-                      {item.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2 text-xs text-gray-500">
-                    {item.priority}
-                  </td>
-                  <td className="px-4 py-2 text-xs text-gray-500">
-                    {item.duration_ms != null
-                      ? `${(item.duration_ms / 1000).toFixed(1)}s`
-                      : "-"}
-                  </td>
-                  <td className="px-4 py-2">
-                    {item.analysis_id != null && (
-                      <Link
-                        href={`/analyses/${item.analysis_id}`}
-                        className="text-xs text-blue-600 hover:underline"
-                      >
-                        View Analysis
-                      </Link>
-                    )}
-                    {item.error_message && (
-                      <button
-                        type="button"
-                        onClick={() => toggleError(item.item_ulid)}
-                        className="ml-2 text-xs text-red-600 hover:underline"
-                      >
-                        {expandedErrors.has(item.item_ulid) ? "Hide Error" : "Show Error"}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {/* Expanded error rows */}
-              {items
-                .filter(
-                  (item) =>
-                    item.error_message && expandedErrors.has(item.item_ulid),
-                )
-                .map((item) => (
-                  <tr key={`${item.item_ulid}-error`} className="bg-red-50">
-                    <td colSpan={5} className="px-4 py-2 text-xs text-red-700">
-                      {item.error_message}
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable
+        columns={columns}
+        data={items}
+        loading={loading}
+        emptyState={
+          <EmptyState
+            title="No items found"
+            description="No items match this filter."
+          />
+        }
+      />
 
-      {/* Load more */}
       {hasMore && (
         <div className="text-center">
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={loadingMore}
             onClick={loadMore}
-            disabled={loadingMore}
-            className="rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50"
           >
-            {loadingMore ? "Loading..." : "Load More"}
-          </button>
+            Load more
+          </Button>
         </div>
       )}
     </div>

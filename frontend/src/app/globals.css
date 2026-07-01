@@ -1,26 +1,541 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ════════════════════════════════════════════════════════════════════════
+   CadVerify — "Bold Industrial Confidence" (Ramp / Mercury DNA).
+   Source of truth: outputs/design/identity-ramp-mercury.md.
+
+   A finance-grade instrument panel with a machine-shop soul. Disciplined warm
+   machinist-paper neutrals (light) → blueprint-twilight (dark); ONE industrial
+   accent — DATUM BLUE (cyanotype / engineer's-marking blue, ~205°), never the
+   generic SaaS royal-indigo. Two number voices: the ANSWER is brand-voiced and
+   monumental (Archivo Expanded); the EVIDENCE is instrument-voiced mono (Geist
+   Mono, tabular). A number is never naked — it carries provenance + confidence.
+
+   Theming: raw ramps (Datum / warm-stone) are static @theme tokens; every
+   SEMANTIC token is `@theme inline` → a runtime var, so light/dark switch by
+   toggling `.dark` on <html> and every `bg-card` / `text-foreground` /
+   `bg-pass-bg` / `border-prov-*` utility re-themes for free.
+   ════════════════════════════════════════════════════════════════════════ */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ─────────────────────────────────────────────────────────────────────────
+   STATIC theme — fonts, raw ramps, scale, radius, shadow, shell, motion
+   ───────────────────────────────────────────────────────────────────────── */
+@theme {
+  /* ----- Type: three voices. Display = the answer (Archivo Expanded); body/UI
+     = Geist (the quiet workhorse); mono = the evidence (Geist Mono, tabular). */
+  --font-display: var(--font-archivo), "Archivo", "Söhne", "Inter", system-ui, sans-serif;
+  --font-sans: var(--font-geist-sans), "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), "Berkeley Mono", ui-monospace, "SF Mono", monospace;
+
+  /* ----- Neutral ramp = WARM machinist stone (a surface plate, not cold slate).
+     Light mode reads "shop paper"; the cyanotype accent sits against warm bone. */
+  --color-neutral-0:   #ffffff;
+  --color-neutral-50:  #f7f5f1;  /* warm limestone */
+  --color-neutral-100: #f1ede6;  /* sunken panel */
+  --color-neutral-200: #e4dfd6;  /* warm bone hairline */
+  --color-neutral-300: #cfc8bd;  /* border-strong */
+  --color-neutral-400: #a89f92;
+  --color-neutral-500: #857e72;  /* subtle text */
+  --color-neutral-600: #5a554c;  /* muted text */
+  --color-neutral-700: #3a362f;
+  --color-neutral-800: #232019;
+  --color-neutral-900: #14110d;  /* warm obsidian ink */
+  --color-neutral-950: #0b0907;
+
+  /* ----- Accent = DATUM BLUE (LOCKED). Cyanotype / engineer's-marking blue at
+     ≈205° — the pigment of *verification*. If it ever drifts toward #2563eb
+     royal-indigo it has failed. Scarce on purpose: CTAs, brand mark, focus,
+     the hero number's datum marker, the revealed glass-box x-ray. */
+  --color-primary-50:  #e8f1fa;
+  --color-primary-100: #d4e6f6;
+  --color-primary-200: #bfdcf2;
+  --color-primary-300: #8fc2ea;
+  --color-primary-400: #3fa3e8;  /* PRIMARY (dark), the single "live" bright tint */
+  --color-primary-500: #1380d6;  /* hover / interactive */
+  --color-primary-600: #0e66b3;  /* PRIMARY (light) — CTAs, brand mark */
+  --color-primary-700: #0a4e8c;  /* deep emphasis, text-on-tint */
+  --color-primary-800: #082e50;  /* ink / blueprint-hero ground */
+
+  /* ----- Calibration copper (the SHOP provenance hue — the human shop floor). */
+  --color-shop-400: #d08b4c;
+  --color-shop-500: #b8743a;
+  --color-shop-600: #9a5b2a;
+  --color-shop-700: #7c4720;
+
+  /* ----- Type scale (px @16 base) with size-linked tracking (Stripe's move).
+     The hero readout + headline are NEW monumental tokens; the in-app
+     readout/display tokens are preserved so product surfaces are unaffected. */
+  --text-hero:       6rem;      /* 96px — the ONE monumental answer (marketing) */
+  --text-hero--line-height: 0.94;
+  --text-headline:   3.5rem;    /* 56px — marketing hero headline */
+  --text-headline--line-height: 3.75rem;
+  --text-display-l:  2.5rem;    /* 40px — page / section opener */
+  --text-display-l--line-height: 2.75rem;
+  --text-readout:    2.5rem;    /* 40px — in-app hero metric (mono) */
+  --text-readout--line-height: 2.75rem;
+  --text-display-xl: 2rem;      /* 32px — marketing / empty-state */
+  --text-display-xl--line-height: 2.5rem;
+  --text-display:    1.75rem;   /* 28px — section title */
+  --text-display--line-height: 2.25rem;
+  --text-micro:      0.6875rem; /* 11px — provenance source strings, dense caption */
+  --text-micro--line-height: 1rem;
+
+  /* ----- Radius: tight, not bubbly. Nothing rounder than 10px; no pills. ----- */
+  --radius-xs: 2px;   /* provenance chips, ticks */
+  --radius-sm: 4px;   /* buttons / inputs (Stripe's exact move) */
+  --radius:    6px;   /* DEFAULT — cards, menus, dialogs */
+  --radius-lg: 10px;  /* marketing panels / the Decision Plate */
+
+  /* ----- Depth = flat-with-borders + an instrument bezel, not stocky shadows. */
+  --shadow-sm:  0 1px 2px 0 rgb(20 17 13 / 0.06);
+  --shadow-md:  0 4px 14px -4px rgb(8 46 80 / 0.12);
+  --shadow-pop: 0 8px 24px -8px rgb(8 46 80 / 0.18);
+
+  /* ----- Motion: a gauge needle settling, not a spring. No bounce/overshoot. - */
+  --ease-standard:   cubic-bezier(0.2, 0, 0, 1);
+  --ease-instrument: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out:        cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast:  120ms;
+  --duration:       180ms;
+  --duration-panel: 240ms;
+
+  /* ----- Shell metrics ----- */
+  --sidebar-w: 256px;
+  --sidebar-rail-w: 64px;
+  --topbar-h: 56px;
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+   SEMANTIC theme (inline) — every token below is a runtime var that flips in
+   `.dark`. Utilities (bg-card, text-foreground, bg-pass-bg, …) inline the var.
+   ───────────────────────────────────────────────────────────────────────── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* surfaces + text */
+  --color-canvas:            var(--cv-canvas);
+  --color-background:        var(--cv-background);
+  --color-card:              var(--cv-card);
+  --color-card-raised:       var(--cv-card-raised);
+  --color-card-foreground:   var(--cv-foreground);
+  --color-foreground:        var(--cv-foreground);
+  --color-muted:             var(--cv-muted);
+  --color-muted-foreground:  var(--cv-muted-foreground);
+  --color-subtle-foreground: var(--cv-subtle-foreground);
+  --color-secondary:            var(--cv-muted);
+  --color-secondary-foreground: var(--cv-foreground);
+  --color-border:            var(--cv-border);
+  --color-border-strong:     var(--cv-border-strong);
+  --color-input:             var(--cv-border-strong);
+  --color-ring:              var(--cv-ring);
+
+  /* accent (Datum Blue) — solid + hover + subtle surface + on-surface text */
+  --color-primary:            var(--cv-primary);
+  --color-primary-foreground: var(--cv-primary-foreground);
+  --color-primary-hover:      var(--cv-primary-hover);
+  --color-accent-subtle:        var(--cv-accent-subtle);
+  --color-accent-subtle-border: var(--cv-accent-subtle-border);
+  --color-accent-text:          var(--cv-accent-text);
+
+  --color-destructive:            var(--cv-fail);
+  --color-destructive-foreground: #ffffff;
+
+  /* semantic status — kept warm/legible, in its own lane (accent is NOT status) */
+  --color-pass:   var(--cv-pass);  --color-pass-bg: var(--cv-pass-bg);  --color-pass-border: var(--cv-pass-border);
+  --color-warn:   var(--cv-warn);  --color-warn-bg: var(--cv-warn-bg);  --color-warn-border: var(--cv-warn-border);
+  --color-fail:   var(--cv-fail);  --color-fail-bg: var(--cv-fail-bg);  --color-fail-border: var(--cv-fail-border);
+  --color-info:   var(--cv-info);  --color-info-bg: var(--cv-info-bg);  --color-info-border: var(--cv-info-border);
+
+  /* provenance — the atom of the product. Fill = grounded; hollow = a guess. */
+  --color-prov-measured:        var(--cv-prov-measured);
+  --color-prov-measured-bg:     var(--cv-prov-measured-bg);
+  --color-prov-measured-border: var(--cv-prov-measured-border);
+  --color-prov-shop:            var(--cv-prov-shop);
+  --color-prov-shop-bg:         var(--cv-prov-shop-bg);
+  --color-prov-shop-border:     var(--cv-prov-shop-border);
+  --color-prov-user:            var(--cv-prov-user);
+  --color-prov-user-bg:         var(--cv-prov-user-bg);
+  --color-prov-user-border:     var(--cv-prov-user-border);
+  --color-prov-default:         var(--cv-prov-default);
+  --color-prov-default-bg:      var(--cv-prov-default-bg);
+  --color-prov-default-border:  var(--cv-prov-default-border);
+
+  /* confidence band + measurement tick */
+  --color-band-track: var(--cv-band-track);
+  --color-band-fill:  var(--cv-band-fill);
+  --color-tick:       var(--cv-tick);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ─────────────────────────────────────────────────────────────────────────
+   LIGHT (default) — warm machinist paper, paper-white cards, Datum accent.
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  --cv-canvas:            #f7f5f1;  /* warm limestone */
+  --cv-background:        #ffffff;
+  --cv-card:              #ffffff;
+  --cv-card-raised:       #f1ede6;  /* sunken panel */
+  --cv-foreground:        #14110d;  /* warm obsidian */
+  --cv-muted:             #f1ede6;
+  --cv-muted-foreground:  #5a554c;
+  --cv-subtle-foreground: #857e72;
+  --cv-border:            #e4dfd6;  /* warm bone */
+  --cv-border-strong:     #cfc8bd;
+  --cv-ring:              #0e66b3;
+
+  --cv-primary:            #0e66b3;
+  --cv-primary-foreground: #ffffff;
+  --cv-primary-hover:      #0a4e8c;
+  --cv-accent-subtle:        #e8f1fa;
+  --cv-accent-subtle-border: #bfdcf2;
+  --cv-accent-text:          #0a4e8c;
+
+  --cv-pass: #15784d; --cv-pass-bg: #e7f4ed; --cv-pass-border: #b7e0c8;
+  --cv-warn: #a36a00; --cv-warn-bg: #fbf1dd; --cv-warn-border: #ead3a0;
+  --cv-fail: #b42318; --cv-fail-bg: #fbeae8; --cv-fail-border: #f0c2bc;
+  --cv-info: #475569; --cv-info-bg: #eef1f5; --cv-info-border: #cbd5e1;
+
+  --cv-prov-measured: #0e66b3; --cv-prov-measured-bg: #e8f1fa; --cv-prov-measured-border: #bfdcf2;
+  --cv-prov-shop:     #9a5b2a; --cv-prov-shop-bg:     #f6ece2; --cv-prov-shop-border:     #e3c9b0;
+  --cv-prov-user:     #6d5bd0; --cv-prov-user-bg:     #eeebfa; --cv-prov-user-border:     #cfc6f0;
+  --cv-prov-default:  #8a93a3; --cv-prov-default-bg:  #f1ede6; --cv-prov-default-border:  #cfc8bd;
+
+  --cv-band-track: #e4dfd6;
+  --cv-band-fill:  #0e66b3;
+  --cv-tick:       #a89f92;
+
+  color-scheme: light;
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+   DARK — "blueprint twilight" command center, tinted toward Datum navy (not
+   neutral gray) so the blueprint DNA carries. Accent lifts to the bright Datum
+   400; CTA text goes deep ink for contrast on the bright fill.
+   ───────────────────────────────────────────────────────────────────────── */
+.dark {
+  --cv-canvas:            #0b1220;  /* blueprint near-black */
+  --cv-background:        #0e1626;
+  --cv-card:              #111b2d;
+  --cv-card-raised:       #18243a;
+  --cv-foreground:        #eaeff7;  /* glowing off-white */
+  --cv-muted:             #18243a;
+  --cv-muted-foreground:  #9fb0c8;
+  --cv-subtle-foreground: #6f8099;
+  --cv-border:            #233149;
+  --cv-border-strong:     #344461;
+  --cv-ring:              #3fa3e8;
+
+  --cv-primary:            #3fa3e8;
+  --cv-primary-foreground: #07131f;
+  --cv-primary-hover:      #6fbcef;
+  --cv-accent-subtle:        #102438;
+  --cv-accent-subtle-border: #1e3a5f;
+  --cv-accent-text:          #8fc8f2;
+
+  --cv-pass: #34d399; --cv-pass-bg: #0e2a1e; --cv-pass-border: #1c5c42;
+  --cv-warn: #f0b429; --cv-warn-bg: #2a2310; --cv-warn-border: #6b5417;
+  --cv-fail: #f87171; --cv-fail-bg: #2c1414; --cv-fail-border: #6e2e2e;
+  --cv-info: #94a3b8; --cv-info-bg: #1a2436; --cv-info-border: #33446a;
+
+  --cv-prov-measured: #3fa3e8; --cv-prov-measured-bg: #0f2236; --cv-prov-measured-border: #1e3a5f;
+  --cv-prov-shop:     #d08b4c; --cv-prov-shop-bg:     #2a1e10; --cv-prov-shop-border:     #5e3e1e;
+  --cv-prov-user:     #a99bf0; --cv-prov-user-bg:     #1c1733; --cv-prov-user-border:     #3a2f66;
+  --cv-prov-default:  #8a93a3; --cv-prov-default-bg:  #18243a; --cv-prov-default-border:  #344461;
+
+  --cv-band-track: #233149;
+  --cv-band-fill:  #3fa3e8;
+  --cv-tick:       #6f8099;
+
+  color-scheme: dark;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   MARKETING SCOPES — the home page is a CURATED composition, not a document
+   that inverts with the OS theme. Warm machinist-paper is the DOMINANT canvas;
+   blueprint-twilight is used SPARINGLY as punctuation (hero plate, one candid
+   dark band, the closing CTA). These two classes LOCK the semantic vars for a
+   subtree (custom-property inheritance overrides any ancestor .dark), so the
+   page reads light-dominant with deliberate dark moments in either OS mode —
+   and both palettes are exercised, correct, on one page.
+   ───────────────────────────────────────────────────────────────────────── */
+.cv-paper {
+  --cv-canvas:            #f7f5f1;
+  --cv-background:        #ffffff;
+  --cv-card:              #ffffff;
+  --cv-card-raised:       #f1ede6;
+  --cv-foreground:        #14110d;
+  --cv-muted:             #f1ede6;
+  --cv-muted-foreground:  #5a554c;
+  --cv-subtle-foreground: #857e72;
+  --cv-border:            #e4dfd6;
+  --cv-border-strong:     #cfc8bd;
+  --cv-ring:              #0e66b3;
+
+  --cv-primary:            #0e66b3;
+  --cv-primary-foreground: #ffffff;
+  --cv-primary-hover:      #0a4e8c;
+  --cv-accent-subtle:        #e8f1fa;
+  --cv-accent-subtle-border: #bfdcf2;
+  --cv-accent-text:          #0a4e8c;
+
+  --cv-pass: #15784d; --cv-pass-bg: #e7f4ed; --cv-pass-border: #b7e0c8;
+  --cv-warn: #a36a00; --cv-warn-bg: #fbf1dd; --cv-warn-border: #ead3a0;
+  --cv-fail: #b42318; --cv-fail-bg: #fbeae8; --cv-fail-border: #f0c2bc;
+  --cv-info: #475569; --cv-info-bg: #eef1f5; --cv-info-border: #cbd5e1;
+
+  --cv-prov-measured: #0e66b3; --cv-prov-measured-bg: #e8f1fa; --cv-prov-measured-border: #bfdcf2;
+  --cv-prov-shop:     #9a5b2a; --cv-prov-shop-bg:     #f6ece2; --cv-prov-shop-border:     #e3c9b0;
+  --cv-prov-user:     #6d5bd0; --cv-prov-user-bg:     #eeebfa; --cv-prov-user-border:     #cfc6f0;
+  --cv-prov-default:  #8a93a3; --cv-prov-default-bg:  #f1ede6; --cv-prov-default-border:  #cfc8bd;
+
+  --cv-band-track: #e4dfd6;
+  --cv-band-fill:  #0e66b3;
+  --cv-tick:       #a89f92;
+
+  color-scheme: light;
+}
+.cv-twilight {
+  --cv-canvas:            #0b1220;
+  --cv-background:        #0e1626;
+  --cv-card:              #111b2d;
+  --cv-card-raised:       #18243a;
+  --cv-foreground:        #eaeff7;
+  --cv-muted:             #18243a;
+  --cv-muted-foreground:  #9fb0c8;
+  --cv-subtle-foreground: #6f8099;
+  --cv-border:            #233149;
+  --cv-border-strong:     #344461;
+  --cv-ring:              #3fa3e8;
+
+  --cv-primary:            #3fa3e8;
+  --cv-primary-foreground: #07131f;
+  --cv-primary-hover:      #6fbcef;
+  --cv-accent-subtle:        #102438;
+  --cv-accent-subtle-border: #1e3a5f;
+  --cv-accent-text:          #8fc8f2;
+
+  --cv-pass: #34d399; --cv-pass-bg: #0e2a1e; --cv-pass-border: #1c5c42;
+  --cv-warn: #f0b429; --cv-warn-bg: #2a2310; --cv-warn-border: #6b5417;
+  --cv-fail: #f87171; --cv-fail-bg: #2c1414; --cv-fail-border: #6e2e2e;
+  --cv-info: #94a3b8; --cv-info-bg: #1a2436; --cv-info-border: #33446a;
+
+  --cv-prov-measured: #3fa3e8; --cv-prov-measured-bg: #0f2236; --cv-prov-measured-border: #1e3a5f;
+  --cv-prov-shop:     #d08b4c; --cv-prov-shop-bg:     #2a1e10; --cv-prov-shop-border:     #5e3e1e;
+  --cv-prov-user:     #a99bf0; --cv-prov-user-bg:     #1c1733; --cv-prov-user-border:     #3a2f66;
+  --cv-prov-default:  #8a93a3; --cv-prov-default-bg:  #18243a; --cv-prov-default-border:  #344461;
+
+  --cv-band-track: #233149;
+  --cv-band-fill:  #3fa3e8;
+  --cv-tick:       #6f8099;
+
+  color-scheme: dark;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Base layer
+   ───────────────────────────────────────────────────────────────────────── */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--cv-canvas);
+  color: var(--cv-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Numbers are the product: tabular mono everywhere they appear (the EVIDENCE). */
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+
+/* The in-app instrument-grade hero metric (unit cost / lead time), mono. */
+.readout {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: -0.01em;
+}
+
+/* ── Two number voices · the ANSWER ───────────────────────────────────────
+   Display headlines + the monumental hero number speak in Archivo EXPANDED
+   (the wdth axis is loaded by next/font). Wide, sturdy, signage-grade — the
+   "bold industrial confidence." This is the single substitution that separates
+   on-identity from template. */
+.cv-display {
+  font-family: var(--font-display);
+  font-variation-settings: "wght" 740, "wdth" 112;
+  font-weight: 740;
+  letter-spacing: -0.02em;
+  font-feature-settings: "tnum" 1;
+}
+.cv-display-tight { letter-spacing: -0.024em; }
+
+/* The signature monumental answer: $14.14 set as a confident headline, tabular,
+   tightly tracked — a caliper coming to rest, not a terminal dump. */
+.cv-readout-hero {
+  font-family: var(--font-display);
+  font-variation-settings: "wght" 800, "wdth" 122;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: -0.026em;
+  line-height: 0.9;
+}
+
+/* ── THE DATUM RAIL · metrology motif (used with discipline) ───────────────
+   Section eyebrows are prefixed by a 2px Datum witness/dimension tick — an
+   engineering callout, not a costume blueprint skin. */
+.cv-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;   /* 13px — legible, per identity §2.2 */
+  line-height: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cv-accent-text);   /* higher contrast than muted; ties to the rail */
+}
+.cv-eyebrow::before {
+  content: "";
+  width: 2px;
+  height: 0.85rem;
+  background: var(--cv-primary);
+  border-radius: 1px;
+}
+/* On the dark hero field the eyebrow + tick read against twilight. */
+.cv-on-dark .cv-eyebrow { color: #9fc4ea; }
+.cv-on-dark .cv-eyebrow::before { background: #3fa3e8; }
+
+/* ── Instrument bezel — a machined faceplate, not a CSS card. 1px border + a
+   1px inner top highlight so the panel reads as milled metal. ──────────────── */
+.cv-bezel {
+  border: 1px solid var(--cv-border-strong);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.55), var(--shadow-sm);
+}
+.dark .cv-bezel,
+.cv-twilight .cv-bezel {
+  border-color: #2c3e5c;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 1px 0 rgb(0 0 0 / 0.4);
+}
+/* A graphite faceplate bezel for the dark Decision Plate (mode-independent).
+   Depth = a richer near-black base (Linear/Raycast-dark), a top-edge light
+   catch (the milled bezel), and a soft Datum bloom washing in from the upper
+   left so the plate sits in light rather than reading as flat mid-navy. */
+.cv-faceplate {
+  background:
+    radial-gradient(120% 78% at 24% -10%, rgb(40 106 170 / 0.22) 0%, rgb(40 106 170 / 0) 52%),
+    radial-gradient(88% 66% at 102% -4%, rgb(22 64 104 / 0.16) 0%, rgb(22 64 104 / 0) 46%),
+    linear-gradient(178deg, #0f1d31 0%, #0b1524 44%, #080f1c 100%);
+  border: 1px solid #253b5a;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.09),
+    inset 0 0 0 1px rgb(10 42 74 / 0.45),
+    inset 0 -40px 80px -52px rgb(0 0 0 / 0.65),
+    0 30px 72px -30px rgb(2 8 18 / 0.9),
+    0 4px 16px -8px rgb(0 0 0 / 0.7);
+}
+
+/* The recessed, softly-lit well the 3D part floats in. A Datum bezel ring that
+   catches light + a soft Datum halo so the beautifully-lit part reads as the
+   emotional centerpiece — the one "whoa" — seated into the milled faceplate. */
+.cv-viewer-well {
+  position: relative;
+  border-radius: var(--radius);
+  box-shadow:
+    0 0 0 1px rgb(63 163 232 / 0.14),
+    0 1px 0 rgb(255 255 255 / 0.05),
+    0 26px 62px -30px rgb(2 8 18 / 0.95),
+    0 0 80px -14px rgb(37 104 168 / 0.30);
+}
+
+/* A subtly raised interior tier — the DFM strip / tucked panels lift off the
+   plate with a hairline top light-catch instead of sharing one flat navy. */
+.cv-elev {
+  background: linear-gradient(180deg, #12203450 0%, #0e192b70 100%);
+  border: 1px solid #21324c;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.045);
+}
+
+/* ── The one-time atmosphere: the dark blueprint-twilight hero field. A single
+   dawn/twilight gradient + a faint cyanotype graph-paper grid — used ONCE, on
+   the hero only, never repeated below (Ramp's "gradient sky" rule). ────────── */
+.cv-hero-field {
+  position: relative;
+  isolation: isolate;
+  color: #eaeff7;
+  background:
+    radial-gradient(125% 110% at 82% -15%, #11406f 0%, rgb(17 64 111 / 0) 52%),
+    radial-gradient(90% 80% at 5% 110%, #0c2c4d 0%, rgb(12 44 77 / 0) 55%),
+    linear-gradient(178deg, #0c1a2e 0%, #0b1220 62%, #0a101d 100%);
+}
+.cv-hero-field::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(to right, rgb(63 163 232 / 0.10) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(63 163 232 / 0.10) 1px, transparent 1px);
+  background-size: 32px 32px;
+  -webkit-mask-image: radial-gradient(120% 90% at 70% 0%, #000 35%, transparent 78%);
+  mask-image: radial-gradient(120% 90% at 70% 0%, #000 35%, transparent 78%);
+}
+/* a brighter minor-grid accent line every 4th cell — the drafting datum */
+.cv-hero-field::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(to right, rgb(63 163 232 / 0.14) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(63 163 232 / 0.14) 1px, transparent 1px);
+  background-size: 128px 128px;
+  -webkit-mask-image: radial-gradient(120% 90% at 70% 0%, #000 30%, transparent 72%);
+  mask-image: radial-gradient(120% 90% at 70% 0%, #000 30%, transparent 72%);
+}
+
+/* ── SIGNATURE: the assumption hatch — an unvalidated confidence band drawn with
+   diagonal hatching so it literally LOOKS provisional. Solid only when measured
+   residuals back it. Honest by construction. ──────────────────────────────── */
+.cv-hatch {
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--cv-band-fill) 55%, transparent) 0 2px,
+    transparent 2px 5px
+  );
+}
+
+/* ── The black-box → glass-box obsidian casing (signature 2). ─────────────── */
+.cv-obsidian {
+  background:
+    radial-gradient(140% 120% at 50% 0%, #15181d 0%, #0a0b0d 70%);
+  border: 1px solid #23262c;
+  color: #cdd0d6;
+}
+
+/* The wordmark wears the display face — a cut wordmark, not body text. */
+.cv-wordmark {
+  font-family: var(--font-display);
+  font-variation-settings: "wght" 720, "wdth" 108;
+  letter-spacing: -0.018em;
+}
+
+/* ── Motion: the hero number settles; the reveal dissolves. Opacity/height/
+   transform only — no bounce. ─────────────────────────────────────────────── */
+@keyframes cv-reveal {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.cv-reveal { animation: cv-reveal var(--duration) var(--ease-out); }
+
+@keyframes cv-settle {
+  from { opacity: 0; transform: translateY(6px); filter: blur(6px); }
+  to   { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+.cv-settle { animation: cv-settle 520ms var(--ease-instrument) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

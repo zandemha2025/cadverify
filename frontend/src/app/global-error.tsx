@@ -2,6 +2,10 @@
 
 import * as Sentry from "@sentry/nextjs";
 import { useEffect } from "react";
+import { Button } from "@/components/ui/button";
+// global-error replaces the root layout, so pull in the design tokens directly
+// (otherwise the primitive's token classes would resolve to nothing).
+import "./globals.css";
 
 export default function GlobalError({
   error,
@@ -15,22 +19,17 @@ export default function GlobalError({
   }, [error]);
 
   return (
-    <html>
+    <html lang="en">
       <body>
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex min-h-screen items-center justify-center bg-canvas px-4">
           <div className="text-center">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            <h2 className="mb-2 text-2xl font-bold text-foreground">
               Something went wrong
             </h2>
-            <p className="text-gray-500 mb-4">
+            <p className="mb-4 text-muted-foreground">
               An unexpected error occurred. Please try again.
             </p>
-            <button
-              onClick={() => unstable_retry()}
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition"
-            >
-              Try again
-            </button>
+            <Button onClick={() => unstable_retry()}>Try again</Button>
           </div>
         </div>
       </body>

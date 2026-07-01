@@ -89,3 +89,34 @@ def verify_token(secret_hash: str, token: str) -> bool:
 
 def needs_rehash(secret_hash: str) -> bool:
     return _ph().check_needs_rehash(secret_hash)
+
+
+# ---------------------------------------------------------------------------
+# User password hashing (email + password credential).
+#
+# Reuses the SAME Argon2id PasswordHasher instance as API-key hashing
+# (time_cost=3, memory_cost=65536, parallelism=4). No pepper is applied to
+# passwords — Argon2's per-hash random salt is sufficient and stored inline in
+# the encoded hash string. We NEVER log or return the plaintext or the hash.
+# ---------------------------------------------------------------------------
+
+
+def hash_password(password: str) -> str:
+    """Argon2id hash of a user password. Salt is random per call."""
+    return _ph().hash(password)
+
+
+def verify_password(password_hash: str, password: str) -> bool:
+    """Return True iff password matches password_hash. Never raises."""
+    try:
+        _ph().verify(password_hash, password)
+        return True
+    except (VerifyMismatchError, InvalidHash, InvalidHashError):
+        return False
+    except Exception:
+        # Defensive: argon2-cffi may raise other errors on malformed input.
+        return False
+
+
+def password_needs_rehash(password_hash: str) -> bool:
+    return _ph().check_needs_rehash(password_hash)

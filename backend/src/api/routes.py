@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Optional
+
+import structlog
 
 from fastapi import (
     APIRouter,
     Depends,
     File,
+    Form,
     HTTPException,
     Query,
     Request,
@@ -33,12 +39,20 @@ from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.fixes.fix_suggester import get_priority_fixes
-from src.parsers.step_parser import is_step_supported, parse_step_from_bytes
+from src.parsers.step_mesher import is_step_supported, step_to_trimesh_from_bytes
 from src.parsers.stl_parser import parse_stl_from_bytes
 from src.profiles.database import MACHINES, MATERIALS, get_all_processes
 from src.services import analysis_service, repair_service
 
 logger = logging.getLogger("cadverify.routes")
+
+# Structured logger for the cost-decision endpoint. Routes through the app's
+# structlog pipeline (merge_contextvars -> add_log_level -> TimeStamper ->
+# scrub_processor -> JSONRenderer), so every event auto-carries the request_id
+# bound by RequestIDMiddleware and is scrubbed of cv_live_*/Authorization. We
+# log ONLY non-PII aggregates here (hashed file id, suffix, counts, outcome) —
+# never the raw filename, mesh bytes, or any geometry beyond face_count.
+slog = structlog.get_logger("cadverify.cost")
 
 router = APIRouter()
 
@@ -104,10 +118,12 @@ def _parse_mesh(data: bytes, filename: str):
         if not is_step_supported():
             raise HTTPException(
                 status_code=501,
-                detail="STEP parsing requires cadquery. Install with: pip install cadquery",
+                detail="STEP parsing is unavailable on this server (gmsh not installed).",
             )
-        mesh = parse_step_from_bytes(data, filename)
-        enforce_triangle_cap(mesh)
+        # gmsh -> triangulated shell (DFM + cost path). The post-mesh triangle
+        # cap below is the hard stop for runaway tessellation (assemblies).
+        mesh = step_to_trimesh_from_bytes(data, filename)
+        enforce_triangle_cap(mesh)   # 400 if tessellation exceeded MAX_TRIANGLES
         return mesh, suffix
     except HTTPException:
         raise
@@ -117,6 +133,30 @@ def _parse_mesh(data: bytes, filename: str):
     except Exception:
         logger.exception("Mesh parsing failed for %s", filename)
         raise HTTPException(status_code=400, detail="Failed to parse mesh file")
+
+
+async def _parse_mesh_async(data: bytes, filename: str):
+    """Run _parse_mesh off the event loop, bounded by ANALYSIS_TIMEOUT_SEC.
+
+    gmsh STEP meshing is CPU-bound and can be slow on complex parts; this keeps
+    the worker responsive and turns a runaway tessellation into a clean 504
+    instead of blocking the event loop. STL parsing is sub-second; it simply
+    runs in a thread now with no behavioural change.
+    """
+    import asyncio
+
+    loop = asyncio.get_event_loop()
+    timeout = _analysis_timeout_sec()
+    try:
+        return await asyncio.wait_for(
+            loop.run_in_executor(None, _parse_mesh, data, filename),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=504,
+            detail=f"File parsing exceeded {timeout:.0f}s timeout.",
+        )
 
 
 def _resolve_target_processes(processes: Optional[str]) -> list[ProcessType]:
@@ -131,6 +171,191 @@ def _resolve_target_processes(processes: Optional[str]) -> list[ProcessType]:
             out.append(ProcessType(token))
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Unknown process: {token}")
+    return out
+
+
+# ──────────────────────────────────────────────────────────────
+# Cost decision engine + options parsing (POST /validate/cost)
+# ──────────────────────────────────────────────────────────────
+def _run_cost_engine(mesh, filename: str):
+    """Score every registered process for the cost decision layer (mirrors
+    cli._run_engine but from an already-parsed in-memory mesh; no narrowing,
+    no persistence, no network)."""
+    import src.analysis.processes  # noqa: F401  populate registry
+    from src.analysis.base_analyzer import analyze_geometry, run_universal_checks
+    from src.analysis.context import GeometryContext
+    from src.analysis.features import detect_all as detect_features
+    from src.matcher.profile_matcher import rank_processes, score_process
+    from src.analysis.processes.base import get_analyzer
+    from src.analysis.processes import base as pbase
+    from src.analysis.models import AnalysisResult
+
+    geometry = analyze_geometry(mesh)
+    ctx = GeometryContext.build(mesh, geometry)
+    ctx.features = detect_features(mesh)
+    universal = run_universal_checks(mesh)
+    scores = [
+        score_process(get_analyzer(p).analyze(ctx), geometry, p)
+        for p in pbase._REGISTRY
+        if get_analyzer(p)
+    ]
+    result = AnalysisResult(
+        filename=filename,
+        file_type="stl",
+        geometry=geometry,
+        segments=ctx.segments,
+        universal_issues=universal,
+        process_scores=scores,
+    )
+    rank_processes(result)
+    return result, mesh, ctx.features
+
+
+_COMPLEXITY = {"simple", "moderate", "complex", "very_complex"}
+_MATERIAL_CLASSES = {"polymer", "aluminum", "steel", "stainless", "titanium"}
+_REGIONS = {"US", "EU", "MX", "CN", "IN", "SA"}
+_MAX_QTYS = 6
+_MAX_QTY = 10_000_000
+_MAX_OVERRIDES = 64  # cap ad-hoc rate/driver overrides per request
+
+
+def _available_shops() -> list[dict]:
+    """The local shop-calibration profiles available to bind (F1).
+
+    Reads backend/data/shop_profiles/ (CAD-as-IP: a local JSON store, no network).
+    Each entry carries the slug `id` (what callers pass back as ?shop=), the
+    display `name`, the shop's `region`, and a short provenance `source`.
+    """
+    from src.costing import list_profiles
+    from src.costing.shop_profile import load_profile
+
+    out: list[dict] = []
+    for slug in list_profiles():
+        try:
+            p = load_profile(slug)
+        except Exception:
+            logger.warning("shop profile %r failed to load; skipping", slug)
+            continue
+        out.append({
+            "id": slug,
+            "name": p.name,
+            "region": p.region,
+            "source": p.source or None,
+        })
+    return out
+
+
+def _resolve_shop_param(shop: Optional[str]) -> Optional[str]:
+    """Resolve a caller-supplied shop (display name OR slug) to a known profile
+    slug, or None when unset. Raises 400 for an unknown shop.
+
+    SECURITY: only profiles that already exist in the local store are accepted
+    (matched by slug or case-insensitive display name) — never an arbitrary
+    filesystem path — so this cannot be turned into a path-traversal read.
+    """
+    if not shop or not shop.strip():
+        return None
+    from src.costing.shop_profile import _slug
+
+    req = shop.strip()
+    req_slug = _slug(req)
+    for s in _available_shops():
+        if req == s["id"] or req_slug == s["id"] or req.lower() == s["name"].lower():
+            return s["id"]
+    raise HTTPException(
+        status_code=400,
+        detail=(f"Unknown shop {req!r}. Available: "
+                f"{[s['id'] for s in _available_shops()] or '(none)'}"),
+    )
+
+
+def _parse_overrides(overrides: Optional[str]) -> dict:
+    """Parse the optional `overrides` Form field (a JSON object of dotted rate /
+    driver keys -> numbers) into the engine's rate_overrides dict.
+
+    This is what makes F3's "edit an assumption/driver -> the number truly
+    re-costs" real: the same override surface the CLI exposes via --set / --labor-
+    rate / --tooling (e.g. {"labor_rate": 40, "machine_rate.SLS": 25,
+    "material_price.@polymer": 6.5, "margin": 0.25}). Values must be finite
+    numbers; keys are validated against the rate card (see _validate_overrides),
+    so a bad key/value is a clean 400, never a 500.
+    """
+    if not overrides or not overrides.strip():
+        return {}
+    try:
+        parsed = json.loads(overrides)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="overrides must be a JSON object")
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=400, detail="overrides must be a JSON object")
+    if len(parsed) > _MAX_OVERRIDES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"At most {_MAX_OVERRIDES} overrides allowed",
+        )
+    out: dict = {}
+    import math as _math
+
+    for k, v in parsed.items():
+        if not isinstance(k, str) or not k.strip():
+            raise HTTPException(status_code=400, detail="override keys must be non-empty strings")
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            raise HTTPException(
+                status_code=400,
+                detail=f"override {k!r} must be a number",
+            )
+        if not _math.isfinite(float(v)):
+            raise HTTPException(status_code=400, detail=f"override {k!r} must be finite")
+        out[k.strip()] = float(v)
+    return out
+
+
+def _validate_overrides(overrides: dict) -> None:
+    """Fail fast on unknown override keys (a clean 400 before any mesh work).
+
+    The cost engine rebuilds the rate card inside estimate_decision; here we do a
+    cheap dry-run bind so an unknown dotted key (which build_rate_card raises on)
+    surfaces as a 400 instead of a 500 deep in the executor.
+    """
+    if not overrides:
+        return
+    from src.costing.rates import build_rate_card
+
+    try:
+        build_rate_card(overrides)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid override: {e}")
+
+
+def _parse_qty_list(qty: str) -> list[int]:
+    out: list[int] = []
+    for tok in (qty or "").split(","):
+        tok = tok.strip()
+        if not tok:
+            continue
+        try:
+            v = int(tok)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid quantity '{tok}' (must be an integer)",
+            )
+        if not (1 <= v <= _MAX_QTY):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Quantity {v} out of range [1, {_MAX_QTY}]",
+            )
+        out.append(v)
+    if not out:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one quantity required (e.g. qty=50,5000)",
+        )
+    if len(out) > _MAX_QTYS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"At most {_MAX_QTYS} quantities allowed",
+        )
     return out
 
 
@@ -276,7 +501,7 @@ async def validate_demo(
             status_code=413,
             subject="Public demo STL",
         )
-    mesh, suffix = _parse_mesh(data, filename)
+    mesh, suffix = await _parse_mesh_async(data, filename)
     enforce_triangle_cap(
         mesh,
         limit=demo_max_triangles(),
@@ -342,6 +567,257 @@ async def validate_demo(
     resp = _to_response(result, features)
     resp["demo"] = True
     return resp
+
+
+async def _run_cost_decision(
+    *,
+    file: UploadFile,
+    qty: str,
+    region: Optional[str],
+    cavities: int,
+    complexity: str,
+    material_class: str,
+    shop: Optional[str] = None,
+    overrides: Optional[str] = None,
+) -> dict:
+    """Shared should-cost / make-vs-buy compute for the authed and public-demo
+    cost routes.
+
+    Validates options (fail fast), parses the mesh, runs the cost engine off
+    the event loop, emits exactly one structured outcome event, and returns the
+    glass-box decision dict — or raises a clean structured 400 (GEOMETRY_INVALID)
+    / 504 (timeout). IP-local: the CAD is parsed, costed, and discarded
+    in-process — nothing is persisted (no DB session, no mesh blob) and no
+    network call is made (the costing layer opens zero sockets). The Σ=unit_cost
+    invariant and every driver/assumption provenance tag come straight from the
+    costing layer, so both routes carry identical guarantees.
+
+    `shop` binds a per-shop calibration profile (F1): the response then carries
+    the SHOP-calibrated number, SHOP-tagged drivers/assumptions, and the
+    "calibrated to shop X" note. `overrides` threads ad-hoc rate/driver overrides
+    (F3): the engine re-costs against them and tags the touched lines USER. When
+    a shop is bound and the caller did not explicitly pass a region, the shop's
+    own region is used.
+    """
+    import asyncio
+
+    t0 = time.perf_counter()
+
+    # ---- validate options (fail fast, before reading bytes) --------------
+    quantities = _parse_qty_list(qty)
+    if complexity not in _COMPLEXITY:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown complexity '{complexity}'. Use one of {sorted(_COMPLEXITY)}",
+        )
+    if material_class not in _MATERIAL_CLASSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown material_class '{material_class}'. Use one of {sorted(_MATERIAL_CLASSES)}",
+        )
+    if cavities < 1:
+        raise HTTPException(status_code=400, detail="cavities must be >= 1")
+    # region: None => unset (DEFAULT US, and a bound shop's region may win); a
+    # supplied region must be one of the documented vectors and is treated USER.
+    region_is_user = region is not None
+    if region is not None and region not in _REGIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown region '{region}'. Use one of {sorted(_REGIONS)}",
+        )
+    effective_region = region or "US"
+    shop_slug = _resolve_shop_param(shop)        # 400 on unknown shop
+    rate_overrides = _parse_overrides(overrides)  # 400 on bad JSON/value
+    _validate_overrides(rate_overrides)           # 400 on unknown key (fail fast)
+
+    data = await _read_capped(file)  # 413 on size, 400 on empty
+    mesh, suffix = await _parse_mesh_async(  # 400/413/501, 504 on parse timeout
+        data, file.filename or "unknown"
+    )
+
+    from src.costing import estimate_decision, EstimateOptions, report_to_dict
+
+    options = EstimateOptions(
+        quantities=quantities,
+        material_class=material_class,
+        material_class_is_user=material_class != "polymer",
+        region=effective_region,
+        region_is_user=region_is_user,
+        shop=shop_slug,
+        rate_overrides=rate_overrides,
+        n_cavities=cavities,
+        n_cavities_is_user=cavities != 1,
+        complexity=complexity,
+        complexity_is_user=complexity != "moderate",
+    )
+
+    def _run():
+        result, m, features = _run_cost_engine(mesh, file.filename or "unknown")
+        return estimate_decision(result, m, features, options)
+
+    timeout = _analysis_timeout_sec()
+    loop = asyncio.get_event_loop()
+    try:
+        report = await asyncio.wait_for(
+            loop.run_in_executor(None, _run), timeout=timeout
+        )
+    except asyncio.TimeoutError:
+        # Bounded compute that ran over budget — structured warning, then 504.
+        slog.warning(
+            "cost_timeout",
+            file_sha8=hashlib.sha256(data).hexdigest()[:8],
+            suffix=suffix,
+            n_qty=len(quantities),
+            region=effective_region,
+            material_class=material_class,
+            shop=shop_slug,
+            timeout_sec=round(timeout, 1),
+            duration_ms=round((time.perf_counter() - t0) * 1000, 1),
+        )
+        raise HTTPException(
+            status_code=504,
+            detail=f"Cost analysis exceeded {timeout:.0f}s timeout.",
+        )
+
+    # One structured outcome event per costed request. status carries OK vs
+    # GEOMETRY_INVALID, so this single emit covers both the success and the
+    # clean-refusal branch below. No CAD/PII: the file is hashed, only
+    # aggregate geometry (face_count) and the decision summary are logged.
+    geo = report.geometry if isinstance(report.geometry, dict) else {}
+    slog.info(
+        "cost_estimate",
+        file_sha8=hashlib.sha256(data).hexdigest()[:8],
+        suffix=suffix,
+        face_count=geo.get("face_count"),
+        watertight=geo.get("watertight"),
+        status=report.status,
+        make_now=(report.decision.make_now_process if report.decision else None),
+        crossover_qty=(report.decision.crossover_qty if report.decision else None),
+        n_qty=len(quantities),
+        region=effective_region,
+        material_class=material_class,
+        shop=shop_slug,
+        duration_ms=round((time.perf_counter() - t0) * 1000, 1),
+    )
+
+    if report.status == "GEOMETRY_INVALID":
+        # G1 surfaced cleanly as a structured 400 (errors.py passes the
+        # dict-with-code through unchanged), carrying the measured geometry
+        # summary + repair reason so the buyer sees *why*.
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "GEOMETRY_INVALID",
+                "message": report.reason,
+                "geometry": report.geometry,
+                "doc_url": "https://docs.cadverify.com/errors#GEOMETRY_INVALID",
+            },
+        )
+
+    return report_to_dict(report)
+
+
+@router.post("/validate/cost", dependencies=[Depends(require_kill_switch_open)])
+@limiter.limit("60/hour;500/day")
+async def validate_cost(
+    request: Request,
+    response: Response,
+    file: UploadFile = File(...),
+    qty: str = Form("50,5000", description="Comma list of quantities, e.g. 50,5000"),
+    region: Optional[str] = Form(
+        None, description="US|EU|MX|CN|IN|SA (unset => US, or a bound shop's region)"
+    ),
+    cavities: int = Form(1, description="Formative tooling cavity count (DEFAULT 1)"),
+    complexity: str = Form(
+        "moderate", description="simple|moderate|complex|very_complex"
+    ),
+    material_class: str = Form(
+        "polymer", description="polymer|aluminum|steel|stainless|titanium"
+    ),
+    shop: Optional[str] = Form(
+        None,
+        description="Per-shop calibration profile id or name (see GET /shops). "
+                    "Binds the shop's real rates -> SHOP-tagged drivers + number.",
+    ),
+    overrides: Optional[str] = Form(
+        None,
+        description='JSON object of ad-hoc rate/driver overrides, e.g. '
+                    '{"labor_rate": 40, "machine_rate.SLS": 25}. Tagged USER; '
+                    'enables a true server re-cost on an edited assumption.',
+    ),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
+):
+    """Explainable make-vs-buy should-cost decision for an uploaded STL/STEP part.
+
+    IP-local: the CAD is parsed, costed, and discarded in-process — nothing is
+    persisted (no DB session, no mesh blob) and no network call is made (the
+    costing layer opens zero sockets). Returns the full glass-box decision JSON;
+    broken geometry is surfaced as a clean structured 400 (GEOMETRY_INVALID),
+    never a 500.
+
+    Pass `shop` to calibrate the number to a specific shop's real rates (the
+    response carries SHOP-tagged drivers/assumptions + a "calibrated to shop X"
+    note); pass `overrides` to re-cost against ad-hoc rate/driver edits.
+    """
+    return await _run_cost_decision(
+        file=file,
+        qty=qty,
+        region=region,
+        cavities=cavities,
+        complexity=complexity,
+        material_class=material_class,
+        shop=shop,
+        overrides=overrides,
+    )
+
+
+@router.post("/validate/cost/demo", dependencies=[Depends(require_kill_switch_open)])
+@limiter.limit("240/hour")
+async def validate_cost_demo(
+    request: Request,
+    response: Response,
+    file: UploadFile = File(...),
+    qty: str = Form("50,5000", description="Comma list of quantities, e.g. 50,5000"),
+    region: Optional[str] = Form(
+        None, description="US|EU|MX|CN|IN|SA (unset => US, or a bound shop's region)"
+    ),
+    cavities: int = Form(1, description="Formative tooling cavity count (DEFAULT 1)"),
+    complexity: str = Form(
+        "moderate", description="simple|moderate|complex|very_complex"
+    ),
+    material_class: str = Form(
+        "polymer", description="polymer|aluminum|steel|stainless|titanium"
+    ),
+    shop: Optional[str] = Form(
+        None,
+        description="Per-shop calibration profile id or name (see GET /shops).",
+    ),
+    overrides: Optional[str] = Form(
+        None,
+        description='JSON object of ad-hoc rate/driver overrides (tagged USER).',
+    ),
+):
+    """Public demo of the should-cost / make-vs-buy decision — NO auth.
+
+    Mirrors POST /validate/cost exactly in security posture except it drops the
+    analyst role gate: kill-switch dep only, tight public rate limit (same as
+    /validate/demo), no DB/persistence, zero network egress. Reuses the same
+    parse + cost-engine + serialization path so STL and STEP both work and every
+    invariant (Σ=unit_cost, provenance, G1 broken-geometry -> clean 400
+    GEOMETRY_INVALID) holds identically. Supports the same `shop` calibration and
+    `overrides` re-cost params. Lets a local browser user get a costing decision
+    with no API key while the CAD never leaves the machine.
+    """
+    return await _run_cost_decision(
+        file=file,
+        qty=qty,
+        region=region,
+        cavities=cavities,
+        complexity=complexity,
+        material_class=material_class,
+        shop=shop,
+        overrides=overrides,
+    )
 
 
 @router.post("/validate/repair", dependencies=[Depends(require_kill_switch_open)])
@@ -411,6 +887,22 @@ async def list_processes(
     user: AuthedUser = Depends(require_role(Role.viewer)),
 ):
     return {"processes": get_all_processes()}
+
+
+@router.get("/shops")
+@limiter.limit("60/hour;500/day")
+async def list_shops(
+    request: Request,
+    response: Response,
+    user: AuthedUser = Depends(require_role(Role.viewer)),
+):
+    """Per-shop calibration profiles available to bind on POST /validate/cost (F1).
+
+    The UI lists these so a buyer can pick a shop and re-cost against its real
+    rates; each `id` is what you pass back as the `shop` form field. Local store
+    only (CAD-as-IP) — no network. Default (no shop) stays a generic should-cost.
+    """
+    return {"shops": _available_shops()}
 
 
 @router.get("/materials")

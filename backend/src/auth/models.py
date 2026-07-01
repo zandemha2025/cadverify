@@ -50,6 +50,76 @@ async def upsert_user(
         return int(row[0])
 
 
+async def create_password_user(
+    email: str,
+    email_lower: str,
+    password_hash: str,
+    disposable_flag: bool = False,
+) -> int | None:
+    """INSERT a new email+password user.
+
+    Returns the new user id, or None if email_lower already exists (caller maps
+    None -> 409 email_taken). Does NOT attach a password to an existing OAuth/
+    SAML row — ON CONFLICT DO NOTHING leaves any existing account untouched.
+    """
+    async with _session()() as s:
+        row = (
+            await s.execute(
+                text(
+                    "INSERT INTO users (email, email_lower, password_hash, auth_provider, disposable_flag) "
+                    "VALUES (:e, :el, :ph, 'password', :d) "
+                    "ON CONFLICT (email_lower) DO NOTHING RETURNING id"
+                ),
+                {"e": email, "el": email_lower, "ph": password_hash, "d": disposable_flag},
+            )
+        ).first()
+        await s.commit()
+        return int(row[0]) if row else None
+
+
+async def get_login_credentials(
+    email_lower: str,
+) -> tuple[int, str | None, str] | None:
+    """Return (user_id, password_hash, role) for a normalized email, else None.
+
+    password_hash is None for accounts created via OAuth/SAML/magic-link.
+    """
+    async with _session()() as s:
+        r = (
+            await s.execute(
+                text(
+                    "SELECT id, password_hash, role FROM users WHERE email_lower = :el"
+                ),
+                {"el": email_lower},
+            )
+        ).first()
+        return (int(r[0]), r[1], r[2]) if r else None
+
+
+async def get_user_public(user_id: int) -> tuple[str, str, str] | None:
+    """Return (email, role, auth_provider) for GET /auth/me, else None."""
+    async with _session()() as s:
+        r = (
+            await s.execute(
+                text(
+                    "SELECT email, role, auth_provider FROM users WHERE id = :u"
+                ),
+                {"u": user_id},
+            )
+        ).first()
+        return (r[0], r[1], r[2]) if r else None
+
+
+async def update_password_hash(user_id: int, password_hash: str) -> None:
+    """Persist a re-hashed password (Argon2 parameter upgrade on login)."""
+    async with _session()() as s:
+        await s.execute(
+            text("UPDATE users SET password_hash = :ph WHERE id = :u"),
+            {"ph": password_hash, "u": user_id},
+        )
+        await s.commit()
+
+
 async def create_api_key(
     user_id: int, name: str, prefix: str, hmac_idx: str, secret_hash: str
 ) -> int:

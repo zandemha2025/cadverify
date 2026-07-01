@@ -1,7 +1,12 @@
 fastapi>=0.115.0
-uvicorn>=0.30.0
+uvicorn[standard]>=0.30.0
 python-multipart>=0.0.9
 trimesh[easy]>=4.4.0
+# STEP/STP ingestion: gmsh embeds the OpenCASCADE kernel to read STEP and
+# tessellate to a trimesh shell (DFM + cost). py2.py3 wheels exist for macOS
+# arm64 + manylinux x86_64; if no wheel for the deploy target, the route
+# degrades to a clean 501 via is_step_supported() (no crash). ~36 MB wheel.
+gmsh>=4.13
 numpy>=1.26.0
 scipy>=1.13.0
 shapely>=2.0.0

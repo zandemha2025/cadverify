@@ -1,5 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 export function RevealOnceModal() {
   const [token, setToken] = useState<string | null>(null);
@@ -11,11 +20,10 @@ export function RevealOnceModal() {
     if (m) {
       setToken(decodeURIComponent(m[1]));
       // scrub immediately so a reload doesn't re-reveal
-      document.cookie = "cv_mint_once=; Max-Age=0; path=/dashboard/keys";
+      document.cookie = "cv_mint_once=; Max-Age=0; path=/keys";
+      document.cookie = "cv_mint_once=; Max-Age=0; path=/";
     }
   }, []);
-
-  if (!token) return null;
 
   async function copy() {
     if (!token) return;
@@ -34,45 +42,51 @@ export function RevealOnceModal() {
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 grid place-items-center bg-black/40"
+    <Dialog
+      open={!!token}
+      onOpenChange={(open) => {
+        // Only allow closing once the user has acknowledged saving the key.
+        if (!open && acknowledged) dismiss();
+      }}
     >
-      <div className="w-[32rem] rounded-lg bg-white p-6 space-y-4 shadow-xl">
-        <h2 className="text-lg font-semibold">Save your API key</h2>
-        <p className="text-sm text-neutral-600">
-          Copy it now — we will not show it again.
-        </p>
-        <pre className="rounded-md bg-neutral-100 p-3 font-mono text-sm break-all">
+      <DialogContent hideClose className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Save your API key</DialogTitle>
+          <DialogDescription>
+            Copy it now — we will not show it again.
+          </DialogDescription>
+        </DialogHeader>
+
+        <pre className="num overflow-x-auto rounded-[var(--radius)] border border-border bg-muted p-3 text-sm break-all">
           {token}
         </pre>
-        <div className="flex gap-3 items-center">
-          <button
-            type="button"
-            onClick={copy}
-            className="rounded-md border px-3 py-1 text-sm"
-          >
+
+        <div className="flex items-center gap-3">
+          <Button type="button" variant="secondary" size="sm" onClick={copy}>
             {copied ? "Copied" : "Copy"}
-          </button>
-          <label className="flex items-center gap-2 text-sm">
+          </Button>
+          <label className="flex items-center gap-2 text-sm text-foreground">
             <input
               type="checkbox"
               checked={acknowledged}
               onChange={(e) => setAck(e.target.checked)}
+              className="size-4 accent-primary"
             />
             I&apos;ve saved it somewhere safe
           </label>
         </div>
-        <button
-          type="button"
-          disabled={!acknowledged}
-          onClick={dismiss}
-          className="w-full rounded-md bg-black text-white px-4 py-2 disabled:opacity-40"
-        >
-          Done
-        </button>
-      </div>
-    </div>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            disabled={!acknowledged}
+            onClick={dismiss}
+            className="w-full"
+          >
+            Done
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

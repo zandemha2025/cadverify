@@ -2,19 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getBatchProgress, type BatchProgress } from "@/lib/api/batch";
+import { Card } from "@/components/ui/card";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { Progress } from "@/components/ui/progress";
+import { ErrorState } from "@/components/ui/error-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { batchStatusTone } from "@/lib/status";
 
 const POLL_INTERVAL_MS = 5_000;
 
 const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
-
-const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-gray-100 text-gray-700",
-  extracting: "bg-yellow-100 text-yellow-800",
-  processing: "bg-blue-100 text-blue-800",
-  completed: "bg-green-100 text-green-800",
-  failed: "bg-red-100 text-red-800",
-  cancelled: "bg-gray-200 text-gray-600",
-};
 
 interface Props {
   batchId: string;
@@ -53,10 +50,7 @@ export default function BatchProgressBar({ batchId, onProgressUpdate }: Props) {
       }
     };
 
-    // Initial fetch
     poll();
-
-    // Start polling
     intervalRef.current = setInterval(poll, POLL_INTERVAL_MS);
 
     return () => {
@@ -69,14 +63,25 @@ export default function BatchProgressBar({ batchId, onProgressUpdate }: Props) {
   }, [batchId, onProgressUpdate]);
 
   if (error) {
-    return <div className="rounded-md bg-red-50 p-4 text-sm text-red-700">{error}</div>;
+    return <ErrorState title="Could not load progress" message={error} />;
   }
 
   if (!progress) {
-    return <div className="animate-pulse rounded-md bg-gray-100 p-4 text-sm text-gray-500">Loading progress...</div>;
+    return (
+      <Card className="p-4">
+        <Skeleton className="h-16 w-full" />
+      </Card>
+    );
   }
 
-  const { total_items, completed_items, failed_items, pending_items, status, concurrency_limit } = progress;
+  const {
+    total_items,
+    completed_items,
+    failed_items,
+    pending_items,
+    status,
+    concurrency_limit,
+  } = progress;
   const processed = completed_items + failed_items;
   const pct = total_items > 0 ? Math.round((processed / total_items) * 100) : 0;
 
@@ -88,63 +93,43 @@ export default function BatchProgressBar({ batchId, onProgressUpdate }: Props) {
     const remaining = total_items - processed;
     if (rate > 0) {
       const etaSec = Math.round(remaining / rate);
-      if (etaSec < 60) {
-        etaLabel = `~${etaSec}s remaining`;
-      } else {
-        etaLabel = `~${Math.round(etaSec / 60)}m remaining`;
-      }
+      etaLabel =
+        etaSec < 60 ? `~${etaSec}s remaining` : `~${Math.round(etaSec / 60)}m remaining`;
     }
   }
 
-  // Bar color
-  const barColor =
-    status === "failed" || status === "cancelled"
-      ? "bg-red-500"
-      : status === "completed"
-        ? "bg-green-500"
-        : "bg-blue-500";
-
   return (
-    <div className="space-y-3 rounded-md border p-4">
+    <Card className="space-y-3 p-4">
       {/* Header row */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span
-            className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[status] || "bg-gray-100 text-gray-700"}`}
-          >
-            {status}
-          </span>
-          <span className="text-sm text-gray-600">
+          <StatusBadge status={status} size="sm" />
+          <span className="text-sm text-muted-foreground">
             Processing {concurrency_limit} items in parallel
           </span>
         </div>
         {etaLabel && (
-          <span className="text-xs text-gray-500">{etaLabel}</span>
+          <span className="num text-xs text-muted-foreground">{etaLabel}</span>
         )}
       </div>
 
       {/* Progress bar */}
-      <div className="h-3 w-full overflow-hidden rounded-full bg-gray-200">
-        <div
-          className={`h-full rounded-full transition-all duration-500 ${barColor}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+      <Progress value={pct} tone={batchStatusTone(status)} className="h-3" />
 
       {/* Counters */}
       <div className="flex items-center justify-between text-sm">
-        <span className="font-medium text-gray-700">
+        <span className="num font-medium text-foreground">
           {processed} / {total_items} ({pct}%)
         </span>
-        <div className="flex gap-3 text-xs text-gray-500">
+        <div className="num flex gap-3 text-xs text-muted-foreground">
           {failed_items > 0 && (
-            <span className="text-red-600">{failed_items} failed</span>
+            <span className="text-fail">{failed_items} failed</span>
           )}
           {pending_items > 0 && !TERMINAL_STATUSES.has(status) && (
             <span>{pending_items} pending</span>
           )}
         </div>
       </div>
-    </div>
+    </Card>
   );
 }

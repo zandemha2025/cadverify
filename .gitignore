@@ -87,3 +87,14 @@ tmp/
 *.tmp
 *.bak
 .gstack/
+
+# ──────────────────────────────────────────────────────────────
+# Cycle 4 — local corpus + human labels (CAD-as-IP, never committed)
+# ──────────────────────────────────────────────────────────────
+data/
+
+# local dev auth secrets (run-local-app.sh)
+.env.local-auth
+
+# sample batch archives (not source; regenerable test fixtures)
+*.zip

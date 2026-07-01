@@ -192,12 +192,6 @@ export interface RepairResult {
 /*  Auth + rate-limit helpers                                          */
 /* ------------------------------------------------------------------ */
 
-function authHeaders(): Record<string, string> {
-  if (typeof window === "undefined") return {};
-  const key = localStorage.getItem("cadverify_api_key");
-  return key ? { Authorization: `Bearer ${key}` } : {};
-}
-
 function extractRateLimits(headers: Headers): RateLimits | undefined {
   const remaining = headers.get("X-RateLimit-Remaining");
   const limit = headers.get("X-RateLimit-Limit");
@@ -230,12 +224,9 @@ const apiClient = {
     options: RequestInit = {},
     { retries = 0, retryDelayMs = 1000 }: { retries?: number; retryDelayMs?: number } = {}
   ): Promise<Response> {
+    // Same-origin → the httpOnly session cookie is sent automatically and the
+    // Next proxy forwards it to the backend. No Authorization header needed.
     const headers = new Headers(options.headers);
-    // Attach auth header if not already present
-    const auth = authHeaders();
-    if (auth.Authorization) {
-      headers.set("Authorization", auth.Authorization);
-    }
 
     let lastError: Error | null = null;
     for (let attempt = 0; attempt <= retries; attempt++) {
@@ -513,4 +504,296 @@ export async function getJobStatus(jobId: string): Promise<JobStatus> {
 
 export function getReconstructionMeshUrl(jobId: string): string {
   return `${API_BASE}/reconstructions/${jobId}/mesh.stl`;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Cost decision client (Cycle 5 — POST /api/v1/validate/cost)        */
+/*  Types mirror src/costing/report.py::report_to_dict exactly.        */
+/*  NOTE: recommendation / if_redesigned are keyed by quantity but      */
+/*  JSON-serialize the int keys as strings -> Record<string, …>.        */
+/* ------------------------------------------------------------------ */
+
+export type Provenance = "MEASURED" | "SHOP" | "USER" | "DEFAULT";
+
+export interface CostDriver {
+  name: string;
+  value: number;
+  unit: string;
+  provenance: Provenance;
+  source: string;
+  error_band_pct: number | null;
+}
+
+/**
+ * Confidence interval around a should-cost. `validated:false` (today, for every
+ * part — no ground truth yet) → `method:"assumption-band"` and `label` reads
+ * "assumption-based, not yet validated". Flips to `"measured-residual"` /
+ * `validated:true` only when real residuals accrue. The UI renders this honesty
+ * VERBATIM and never prints a fabricated ±X% accuracy number.
+ *
+ * Lives in the engine's report_to_dict; surfaced through the API is a build gap.
+ */
+export interface CostConfidence {
+  low_usd: number;
+  high_usd: number;
+  point_usd: number;
+  level: number; // e.g. 0.8
+  method: "assumption-band" | "measured-residual";
+  validated: boolean;
+  n_samples: number;
+  half_width_pct: number;
+  basis: string;
+  label: string;
+}
+
+/**
+ * Geometric routing: the archetype + recommended process + the human reasoning
+ * paragraph (the trust object for the manufacturing engineer), plus the measured
+ * drivers that decided it. Lives in the engine; surfacing it is a build gap.
+ */
+export interface CostRouting {
+  archetype: string;
+  recommended_process: string;
+  eval_family: string;
+  material_hint: string;
+  confidence: number;
+  reasoning: string;
+  alternatives: string[];
+  drivers: Record<string, number | boolean>;
+}
+
+export interface CostLeadTime {
+  low_days: number;
+  high_days: number;
+  mid_days: number;
+  components: Record<string, number>;
+  capacity:
+    | { n_machines?: number; machine_hours_per_day?: number; provenance?: string }
+    | Record<string, never>;
+}
+
+export interface CostEstimate {
+  process: string;
+  material: string;
+  quantity: number;
+  unit_cost_usd: number;
+  fixed_cost_usd: number;
+  variable_cost_usd: number;
+  est_error_band_pct: number;
+  /** confidence interval (engine field; optional until surfaced through the API). */
+  confidence?: CostConfidence;
+  dfm_ready: boolean;
+  dfm_verdict: "pass" | "issues" | "fail";
+  dfm_score: number;
+  dfm_blockers: string[];
+  line_items: Record<string, number>;
+  drivers: CostDriver[];
+  lead_time: CostLeadTime;
+}
+
+export interface CostRecommendation {
+  process: string;
+  material: string;
+  unit_cost_usd: number;
+  dfm_ready: boolean;
+  dfm_verdict: string;
+  lead_low_days: number | null;
+  lead_high_days: number | null;
+}
+
+export interface CostRedesigned {
+  process: string;
+  material: string;
+  unit_cost_usd: number;
+  caveat: string;
+}
+
+export interface CostDecision {
+  make_now_process: string;
+  make_now_material: string;
+  tooling_process: string | null;
+  tooling_dfm_ready: boolean;
+  crossover_qty: number | null;
+  recommendation: Record<string, CostRecommendation>;
+  if_redesigned: Record<string, CostRedesigned | null>;
+  note: string;
+}
+
+export interface CostAssumption {
+  name: string;
+  value: number;
+  unit: string;
+  provenance: Provenance;
+  source: string;
+}
+
+export interface CostGeometry {
+  volume_cm3: number;
+  surface_area_cm2: number;
+  bbox_mm: [number, number, number];
+  watertight: boolean;
+  face_count: number;
+}
+
+export interface CostFeasibility {
+  process: string;
+  verdict: string;
+  score: number;
+  costed: boolean;
+}
+
+export interface CostReport {
+  filename: string;
+  status: "OK" | "GEOMETRY_INVALID";
+  reason: string | null;
+  geometry: CostGeometry;
+  material_class: string;
+  quantities: number[];
+  estimates: CostEstimate[];
+  engine_feasibility: CostFeasibility[];
+  /** geometric routing (engine field; optional until surfaced through the API). */
+  routing?: CostRouting;
+  notes: string[];
+  assumptions: CostAssumption[];
+  decision: CostDecision | null;
+}
+
+export interface CostOptions {
+  qty: string; // comma list e.g. "50,5000"
+  region: string; // "auto" | US|EU|MX|CN|IN|SA ("auto" => omit, shop region or US)
+  cavities: number; // >= 1
+  complexity: string; // simple|moderate|complex|very_complex
+  material_class: string; // polymer|aluminum|steel|stainless|titanium
+  /** per-shop calibration profile id (see getShops). null/undefined => generic defaults. */
+  shop?: string | null;
+  /**
+   * Ad-hoc rate/driver overrides (dotted keys → numbers), e.g.
+   * `{ labor_rate: 40, "machine_rate.MJF": 25, "material_price.@polymer": 6.5 }`.
+   * Threaded into POST /validate/cost so an edited assumption/driver truly
+   * re-costs server-side; the engine tags the touched lines USER.
+   */
+  overrides?: Record<string, number>;
+}
+
+/** A bindable per-shop calibration profile (GET /shops). */
+export interface ShopProfileInfo {
+  id: string;
+  name: string;
+  region: string;
+  source: string | null;
+}
+
+/** List the per-shop calibration profiles available to bind (F1). */
+export async function getShops(): Promise<{ shops: ShopProfileInfo[] }> {
+  return apiClient.fetchJson<{ shops: ShopProfileInfo[] }>(`${API_BASE}/shops`);
+}
+
+/**
+ * Thrown when POST /validate/cost returns a 400 GEOMETRY_INVALID. Carries the
+ * structured `geometry` summary from the body so the UI can render a repair
+ * card (reason + measured geometry) instead of a bare error string. The cost
+ * engine's G1 gate refuses broken geometry (volume <= 0 / non-watertight) here.
+ */
+export class CostGeometryInvalidError extends Error {
+  readonly geometry: CostGeometry | null;
+  constructor(message: string, geometry: CostGeometry | null) {
+    super(message);
+    this.name = "CostGeometryInvalidError";
+    this.geometry = geometry;
+  }
+}
+
+/**
+ * Submit a CAD file for an explainable should-cost / make-vs-buy decision.
+ *
+ * The endpoint takes multipart Form fields (not query params). We do NOT route
+ * through apiClient.fetch here because the GEOMETRY_INVALID (400) body carries a
+ * structured `geometry` payload we want to surface; apiClient consumes the body
+ * and throws a flat Error. Instead we replicate apiClient's rate-limit + 429/5xx
+ * handling and branch on the structured 400. No auto-retry: costing is
+ * non-idempotent compute. The call is authed by the session via the same-origin
+ * proxy (`/api/proxy/validate/cost`); no API key in the browser.
+ */
+async function _costEstimate(
+  file: File,
+  opts: CostOptions
+): Promise<CostReport> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("qty", opts.qty);
+  // "auto" / empty → omit, so a bound shop's own region wins (else backend US).
+  if (opts.region && opts.region !== "auto") form.append("region", opts.region);
+  form.append("cavities", String(opts.cavities));
+  form.append("complexity", opts.complexity);
+  form.append("material_class", opts.material_class);
+  // Per-shop calibration (F1): bind the shop's real rates → SHOP-tagged number.
+  if (opts.shop) form.append("shop", opts.shop);
+  // Ad-hoc overrides (F3): real server re-cost on an edited assumption/driver.
+  if (opts.overrides && Object.keys(opts.overrides).length > 0) {
+    form.append("overrides", JSON.stringify(opts.overrides));
+  }
+
+  const url = `${API_BASE}/validate/cost`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, { method: "POST", body: form });
+  } catch (err) {
+    const e = err instanceof Error ? err : new Error(String(err));
+    toast.error("Connection failed. Check your network.");
+    throw e;
+  }
+
+  // Track rate limits on every response, like apiClient does.
+  const rl = extractRateLimits(res.headers);
+  if (rl) _latestRateLimits = rl;
+
+  if (res.ok) {
+    return (await res.json()) as CostReport;
+  }
+
+  // Parse the structured error body once (safe fallback if not JSON).
+  const body: Record<string, unknown> = await res
+    .json()
+    .catch(() => ({ message: res.statusText }));
+
+  if (res.status === 429) {
+    const retryAfter = parseInt(res.headers.get("Retry-After") || "60", 10);
+    toast.error(`Rate limit exceeded. Try again in ${retryAfter}s.`);
+    throw new Error(
+      (body.message as string) ||
+        (body.detail as string) ||
+        "Rate limit exceeded"
+    );
+  }
+
+  if (res.status >= 500) {
+    const e = new Error(`Server error ${res.status}`);
+    toast.error("Server error. We've been notified.");
+    Sentry.captureException(e, { extra: { url, status: res.status } });
+    throw e;
+  }
+
+  // GEOMETRY_INVALID (400) — structured {code,message,geometry,doc_url}.
+  if (body.code === "GEOMETRY_INVALID") {
+    throw new CostGeometryInvalidError(
+      (body.message as string) || "Geometry invalid — repair required.",
+      (body.geometry as CostGeometry) ?? null
+    );
+  }
+
+  // Other 4xx — structured {code,message,doc_url} or legacy {detail}.
+  throw new Error(
+    (body.message as string) ||
+      (body.detail as string) ||
+      `Request failed: ${res.status}`
+  );
+}
+
+/** Session-authenticated should-cost (via the same-origin proxy). */
+export function costEstimate(
+  file: File,
+  opts: CostOptions
+): Promise<CostReport> {
+  return _costEstimate(file, opts);
 }

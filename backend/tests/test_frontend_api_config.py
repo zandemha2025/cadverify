@@ -60,6 +60,12 @@ def test_public_docs_use_live_urls_and_route_shims_exist():
     assert "https://github.com/cadverify/cadverify" not in docs
     assert 'backendUrl("/docs")' in scalar_route
 
-    assert (ROOT / "frontend/src/app/auth/signup/page.tsx").exists()
-    assert (ROOT / "frontend/src/app/dashboard/keys/page.tsx").exists()
-    assert (ROOT / "frontend/src/app/dashboard/analyses/[id]/page.tsx").exists()
+    # Legacy URLs now resolve via next.config redirects (the physical shim pages
+    # were removed when auth moved to the (auth)/(app) route groups and API keys
+    # were demoted to Settings -> Developer). Assert the redirect shims exist.
+    next_config = read("frontend/next.config.ts")
+    assert '"/auth/signup"' in next_config and '"/signup"' in next_config
+    assert '"/dashboard/keys"' in next_config
+    assert '"/dashboard/analyses/:id"' in next_config
+    assert '"/analyses/:id"' in next_config
+    assert '"/settings/developer"' in next_config

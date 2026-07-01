@@ -1,0 +1,129 @@
+
+## Gatherer run — 2026-06-29T02:17:15Z
+
+- start: 0 parts already in manifest
+- ABC mirror probe https://huggingface.co/api/datasets/deepmind/abc -> HTTP 401
+- BLOCKED: ABC mirror https://huggingface.co/api/datasets/deepmind/abc gated (HTTP 401) — skipped
+- ABC mirror probe https://huggingface.co/api/datasets/ABC-Dataset/abc -> HTTP 401
+- BLOCKED: ABC mirror https://huggingface.co/api/datasets/ABC-Dataset/abc gated (HTTP 401) — skipped
+- BLOCKED: ABC CAD dataset — no open, login-free mesh mirror resolved; STEP-only entries also un-tessellable (cadquery not installed). Skipped per spec §2.4/§2.5.
+- near-dup skip: e12can_Spacer_right.stl matches (vol=20.7, faces=1358)
+- units note: printables_122552_ThrottleBodyFlap.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: printables_122552_UpperIntakeManifoldExtension.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: printables_483245_E30_Throttle_Body_clip_OEM.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: printables_483254_Remix_e30_Throt_body_clip.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: thangs_584075_cf362a1b_Plot_support_PCB.stl detect_units=inches (NOT rescaled; bbox in source units)
+- existing-parts: added 104
+- thingi10k: 6865 openly-licensed candidates after filtering
+- thingi10k: selected 460 stratified across face buckets
+- units note: 97941.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 107390.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 904479.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 187283.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 53126.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 40179.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 567039.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 95488.stl detect_units=inches (NOT rescaled; bbox in source units)
+- thingi10k: progress 50/460, added=50
+- units note: 71383.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 138196.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 110834.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 80084.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 68654.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 80945.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 91607.stl detect_units=m (NOT rescaled; bbox in source units)
+- units note: 109730.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 100077.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 237634.stl detect_units=inches (NOT rescaled; bbox in source units)
+- thingi10k: progress 100/460, added=100
+- units note: 110038.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 71709.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 96780.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 135220.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 53119.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 110375.stl detect_units=inches (NOT rescaled; bbox in source units)
+- thingi10k: progress 150/460, added=150
+- units note: 135364.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 919994.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 1050061.stl detect_units=inches (NOT rescaled; bbox in source units)
+- thingi10k: progress 200/460, added=199
+- units note: 40985.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 91611.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 919993.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 816583.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 1288652.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 128640.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 163758.stl detect_units=inches (NOT rescaled; bbox in source units)
+- thingi10k: progress 250/460, added=249
+- units note: 42193.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 98020.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 81308.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 66784.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 368148.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 113685.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 96775.stl detect_units=inches (NOT rescaled; bbox in source units)
+- thingi10k: progress 300/460, added=299
+- units note: 71380.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 45030.stl detect_units=inches (NOT rescaled; bbox in source units)
+- thingi10k: progress 350/460, added=349
+- units note: 135075.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 472006.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: 66125.stl detect_units=inches (NOT rescaled; bbox in source units)
+- thingi10k: progress 400/460, added=399
+- near-dup skip: 601646.stl matches (vol=8.2, faces=231938)
+- thingi10k: progress 450/460, added=448
+- near-dup skip: 46024.stl matches (vol=0.0, faces=319898)
+- thingi10k: HTTP 404 for 364736.stl — skipped
+- thingi10k: HTTP 404 for 444166.stl — skipped
+- thingi10k: DONE added 455
+- github prusa3d/Original-Prusa-i3@MK3: 38 mesh files, license=GPL-2.0
+- units note: extruder-idler-plug.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: plug-aligner.stl detect_units=inches (NOT rescaled; bbox in source units)
+- github prusa3d/Original-Prusa-i3: added 30
+- github BCN3D/BCN3D-Moveo@master: 32 mesh files, license=MIT
+- units note: T4M1E.stl detect_units=inches (NOT rescaled; bbox in source units)
+- near-dup skip: Tapa 4M1.STL matches (vol=0.0, faces=5202)
+- drop: oversized mesh Box.STL (515684 faces > 400000)
+- units note: Cilinder.STL detect_units=inches (NOT rescaled; bbox in source units)
+- github BCN3D/BCN3D-Moveo: added 30
+- github AngelLM/Thor@master: tree HTTP 404 — skipped
+- github: DONE added 60
+- DONE: added 619 new parts; manifest now 619 parts
+
+## Gatherer run — 2026-06-29T02:18:36Z
+
+- start: 619 parts already in manifest
+- ABC mirror probe https://huggingface.co/api/datasets/deepmind/abc -> HTTP 401
+- BLOCKED: ABC mirror https://huggingface.co/api/datasets/deepmind/abc gated (HTTP 401) — skipped
+- ABC mirror probe https://huggingface.co/api/datasets/ABC-Dataset/abc -> HTTP 401
+- BLOCKED: ABC mirror https://huggingface.co/api/datasets/ABC-Dataset/abc gated (HTTP 401) — skipped
+- BLOCKED: ABC CAD dataset — no open, login-free mesh mirror resolved; STEP-only entries also un-tessellable (cadquery not installed). Skipped per spec §2.4/§2.5.
+- github prusa3d/Original-Prusa-i3@MK3: 38 mesh files, license=GPL-2.0
+- units note: z-screw-cover.stl detect_units=inches (NOT rescaled; bbox in source units)
+- github prusa3d/Original-Prusa-i3: added 8
+- github BCN3D/BCN3D-Moveo@master: 32 mesh files, license=MIT
+- near-dup skip: Tapa 4M1.STL matches (vol=0.0, faces=5202)
+- drop: oversized mesh Box.STL (515684 faces > 400000)
+- github BCN3D/BCN3D-Moveo: added 0
+- github AngelLM/Thor@main: 72 mesh files, license=CC-BY-SA-4.0
+- units note: Art1Top_1_Stopper.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: Art4BearingRing_Stopper.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: Art4BodyBot_Stopper.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: BaseBearingFix_Stopper.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: Art1GearMotor.stl detect_units=inches (NOT rescaled; bbox in source units)
+- units note: Art2MotorGear.stl detect_units=inches (NOT rescaled; bbox in source units)
+- github AngelLM/Thor: added 40
+- github: DONE added 48
+- DONE: added 48 new parts; manifest now 667 parts
+
+## FINAL STATUS — Corpus Gatherer — 2026-06-28
+
+- **COMPLETE: 667 real parts on disk** (manifest records == STL files == unique sha256 ids == 667). Floor 300 cleared.
+- Sources ingested: Thingi10K 455 (per-file open licenses) · existing repo parts 104 · GitHub Thor 40 (CC-BY-SA) · Prusa-i3 38 (GPL-2.0) · BCN3D-Moveo 30 (MIT).
+- Integrity verified: 0 duplicate part_ids, 0 sha256 mismatches, 0 missing files, 0 orphan meshes, 0 empty source_url, 0 empty license.
+- Dedup: sha256 primary + (round(vol,1), n_faces) near-dup guard (7 near-dup skips, 1 oversized drop: Box.STL 515,684 faces > 400k cap).
+- Geometry stratified by face-count + bbox-diagonal buckets ONLY (never by engine routing). 133 non-watertight parts recorded with volume_cm3=0.0 per spec §1.1.
+- process_family_guess written as tagged heuristic_v1 (additive 451 / subtractive 138 / sheet_metal 78) — UNVERIFIED, never a label, never in metrics.
+- BLOCKED/skipped (honest): ABC dataset HF mirrors 401-gated; STEP sources un-tessellable (no cadquery); GrabCAD/consumer-CAD login/ToS; Objaverse not pursued (artistic, optional); Thingi NC/ND licenses excluded.
+- Spot-check: 3 random manifest parts load successfully with trimesh.
+- Deliverables: data/corpus/{meshes/*.stl, manifest.jsonl}, outputs/c4-corpus-report.md, this log. Reproduce: `python -m src.corpus.gather` from backend/.

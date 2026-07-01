@@ -1,0 +1,269 @@
+{
+  "generated_at": "2026-06-29T03:50:17.692704+00:00",
+  "mode": "smoke",
+  "gate": {
+    "human_labels_manufacturable": 0,
+    "threshold": 30,
+    "gate_ok": false
+  },
+  "label_source": "SMOKE seed (data/labels.seed.jsonl)",
+  "smoke_tag": "SMOKE \u2014 synthetic seed labels, NOT human ground truth",
+  "accuracy": {
+    "n_labeled": 5,
+    "n_correct": 1,
+    "n_no_route": 0,
+    "top1_accuracy": 0.2,
+    "per_label_counts": {
+      "additive": 1,
+      "subtractive": 1,
+      "injection_molding": 1,
+      "sheet_metal": 1,
+      "casting": 1
+    },
+    "confusion": {
+      "additive": {
+        "additive": 1,
+        "subtractive": 0,
+        "injection_molding": 0,
+        "sheet_metal": 0,
+        "casting": 0,
+        "no_route": 0
+      },
+      "subtractive": {
+        "additive": 1,
+        "subtractive": 0,
+        "injection_molding": 0,
+        "sheet_metal": 0,
+        "casting": 0,
+        "no_route": 0
+      },
+      "injection_molding": {
+        "additive": 1,
+        "subtractive": 0,
+        "injection_molding": 0,
+        "sheet_metal": 0,
+        "casting": 0,
+        "no_route": 0
+      },
+      "sheet_metal": {
+        "additive": 1,
+        "subtractive": 0,
+        "injection_molding": 0,
+        "sheet_metal": 0,
+        "casting": 0,
+        "no_route": 0
+      },
+      "casting": {
+        "additive": 0,
+        "subtractive": 1,
+        "injection_molding": 0,
+        "sheet_metal": 0,
+        "casting": 0,
+        "no_route": 0
+      }
+    },
+    "per_family": {
+      "additive": {
+        "precision": 0.25,
+        "recall": 1.0,
+        "support": 1
+      },
+      "subtractive": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "support": 1
+      },
+      "injection_molding": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "support": 1
+      },
+      "sheet_metal": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "support": 1
+      },
+      "casting": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "support": 1
+      }
+    },
+    "misroutes": [
+      {
+        "part_id": "01094739dae3406be6843bb7420d4f43aa09b2eba3a6e6161843fa1d27f275de",
+        "filename": "62987.stl",
+        "true_label": "sheet_metal",
+        "engine_best_process": "dlp",
+        "engine_family": "additive",
+        "engine_score": 1.0,
+        "top3": [
+          {
+            "process": "dlp",
+            "score": 1.0
+          },
+          {
+            "process": "cnc_3axis",
+            "score": 1.0
+          },
+          {
+            "process": "cnc_5axis",
+            "score": 1.0
+          }
+        ],
+        "dataset": "Thingi10K",
+        "license": "CC-BY"
+      },
+      {
+        "part_id": "01b094f4fc706c26cb1b25c7b5cbe1b21b04030a7a31664899759d98efae6f54",
+        "filename": "196194.stl",
+        "true_label": "casting",
+        "engine_best_process": "wire_edm",
+        "engine_family": "subtractive",
+        "engine_score": 1.0,
+        "top3": [
+          {
+            "process": "wire_edm",
+            "score": 1.0
+          },
+          {
+            "process": "sla",
+            "score": 0.9
+          },
+          {
+            "process": "dlp",
+            "score": 0.9
+          }
+        ],
+        "dataset": "Thingi10K",
+        "license": "CC-BY"
+      },
+      {
+        "part_id": "0204c16ec9acbc40cf103bed8e7764b84802c09fd16c972cb18475a80c0e826b",
+        "filename": "1582428.stl",
+        "true_label": "subtractive",
+        "engine_best_process": "sla",
+        "engine_family": "additive",
+        "engine_score": 1.0,
+        "top3": [
+          {
+            "process": "sla",
+            "score": 1.0
+          },
+          {
+            "process": "dlp",
+            "score": 1.0
+          },
+          {
+            "process": "sls",
+            "score": 1.0
+          }
+        ],
+        "dataset": "Thingi10K",
+        "license": "CC-BY-SA"
+      },
+      {
+        "part_id": "0109832a6889a27d81c1632e59aace48506a2bdbd8886870261d2603a33b6522",
+        "filename": "461878.stl",
+        "true_label": "injection_molding",
+        "engine_best_process": "sls",
+        "engine_family": "additive",
+        "engine_score": 0.9,
+        "top3": [
+          {
+            "process": "sls",
+            "score": 0.9
+          },
+          {
+            "process": "mjf",
+            "score": 0.9
+          },
+          {
+            "process": "fdm",
+            "score": 0.8
+          }
+        ],
+        "dataset": "Thingi10K",
+        "license": "CC-BY"
+      }
+    ],
+    "skipped": [
+      {
+        "part_id": "01f0ad14923567aea3d4b365275ce88d3d62dbd29c9034fc19fcb54f23ce14f9",
+        "reason": "label 'unsure_other' not scored"
+      }
+    ]
+  },
+  "similarity_example": {
+    "query": "023e1210312d (macchina_m2_M2R3_CASE_TOP_UTD.STL)",
+    "neighbors": [
+      {
+        "part_id": "0012f6a9f15c017d697a267465617c05b5705c8961e7f18d456ad6eff6112321",
+        "label": "additive",
+        "distance": 2.1988279672603204,
+        "dataset": "Thingi10K",
+        "shared": [
+          "watertight",
+          "log_n_curved",
+          "log_bodies"
+        ]
+      },
+      {
+        "part_id": "01b094f4fc706c26cb1b25c7b5cbe1b21b04030a7a31664899759d98efae6f54",
+        "label": "casting",
+        "distance": 3.1519646622187016,
+        "dataset": "Thingi10K",
+        "shared": [
+          "watertight",
+          "curved_area_frac",
+          "log_bodies"
+        ]
+      },
+      {
+        "part_id": "01094739dae3406be6843bb7420d4f43aa09b2eba3a6e6161843fa1d27f275de",
+        "label": "sheet_metal",
+        "distance": 3.34057194284636,
+        "dataset": "Thingi10K",
+        "shared": [
+          "watertight",
+          "log_n_curved",
+          "curved_area_frac"
+        ]
+      },
+      {
+        "part_id": "0204c16ec9acbc40cf103bed8e7764b84802c09fd16c972cb18475a80c0e826b",
+        "label": "subtractive",
+        "distance": 4.133518797513832,
+        "dataset": "Thingi10K",
+        "shared": [
+          "watertight",
+          "log_n_curved",
+          "log_bodies"
+        ]
+      },
+      {
+        "part_id": "0109832a6889a27d81c1632e59aace48506a2bdbd8886870261d2603a33b6522",
+        "label": "injection_molding",
+        "distance": 4.94267178283189,
+        "dataset": "Thingi10K",
+        "shared": [
+          "watertight",
+          "log_n_curved",
+          "curved_area_frac"
+        ]
+      },
+      {
+        "part_id": "01f0ad14923567aea3d4b365275ce88d3d62dbd29c9034fc19fcb54f23ce14f9",
+        "label": "unsure_other",
+        "distance": 6.1061774179931865,
+        "dataset": "Thingi10K",
+        "shared": [
+          "curved_area_frac",
+          "log_n_curved",
+          "squareness"
+        ]
+      }
+    ]
+  },
+  "similarity_note": "neighbour pool = SMOKE seed labels; vectors from features.npz + 2 on-the-fly rows (N=502)"
+}

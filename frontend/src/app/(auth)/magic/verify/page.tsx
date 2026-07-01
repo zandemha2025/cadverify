@@ -13,6 +13,6 @@ export default async function MagicVerify({
     { redirect: "manual" },
   );
   if (res.status !== 303) redirect("/signup?err=invalid");
-  const loc = res.headers.get("location") || "/dashboard/keys";
+  const loc = res.headers.get("location") || "/keys";
   redirect(loc);
 }

@@ -59,6 +59,7 @@ class User(Base):
     role: Mapped[str] = mapped_column(
         Text, server_default="analyst", nullable=False
     )
+    password_hash: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # relationships
     api_keys: Mapped[List[ApiKey]] = relationship(back_populates="user", lazy="selectin")

@@ -2,6 +2,12 @@
 
 import Link from "next/link";
 import { useCallback } from "react";
+import {
+  PublicHeader,
+  PublicNavLink,
+  PublicFooter,
+} from "@/components/ui/public-chrome";
+import { Button } from "@/components/ui/button";
 
 function CopyButton({ text }: { text: string }) {
   const handleCopy = useCallback(async () => {
@@ -19,22 +25,26 @@ function CopyButton({ text }: { text: string }) {
   }, [text]);
 
   return (
-    <button
+    <Button
+      variant="secondary"
+      size="sm"
       onClick={handleCopy}
-      className="absolute top-2 right-2 px-2 py-1 text-xs text-gray-400 hover:text-gray-200 bg-gray-700 hover:bg-gray-600 rounded transition"
+      className="absolute right-2 top-2"
       title="Copy to clipboard"
     >
       Copy
-    </button>
+    </Button>
   );
 }
 
 function CodeBlock({ code, language }: { code: string; language?: string }) {
   return (
-    <div className="relative mt-3 mb-6">
+    <div className="relative mb-6 mt-3">
       <CopyButton text={code} />
-      <pre className="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-sm leading-relaxed">
-        <code data-language={language}>{code}</code>
+      <pre className="overflow-x-auto rounded-[var(--radius)] bg-neutral-900 p-4 text-sm leading-relaxed text-neutral-100">
+        <code className="num" data-language={language}>
+          {code}
+        </code>
       </pre>
     </div>
   );
@@ -46,43 +56,24 @@ const GITHUB_URL = "https://github.com/zandemha2025/cadverify";
 
 export default function DocsPage() {
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold text-gray-900">
-            CadVerify
-          </Link>
-          <div className="flex items-center gap-4">
-            <Link
-              href="/scalar"
-              className="text-sm text-gray-600 hover:text-gray-900 transition"
-            >
-              API Reference
-            </Link>
-            <Link
-              href="/signup"
-              className="text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition"
-            >
-              Get API Key
-            </Link>
-          </div>
-        </div>
-      </header>
+    <div className="flex min-h-screen flex-col bg-canvas">
+      <PublicHeader>
+        <PublicNavLink href="/scalar">API reference</PublicNavLink>
+      </PublicHeader>
 
-      <main className="max-w-4xl mx-auto px-4 py-12">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Quickstart</h1>
-        <p className="text-gray-500 mb-10">
+      <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-12 lg:px-8">
+        <h1 className="mb-2 text-3xl font-bold text-foreground">Quickstart</h1>
+        <p className="mb-10 text-muted-foreground">
           Get started with CadVerify in minutes. Validate CAD files via the API
           or self-host with Docker Compose.
         </p>
 
         {/* Section 1: curl */}
         <section className="mb-12">
-          <h2 className="text-2xl font-semibold text-gray-900 mb-3">
-            1. Quick Start with curl
+          <h2 className="mb-3 text-2xl font-semibold text-foreground">
+            1. Quick start with curl
           </h2>
-          <p className="text-gray-600 mb-2">
+          <p className="mb-2 text-muted-foreground">
             Send a STEP or STL file and get manufacturability feedback in one
             request:
           </p>
@@ -93,10 +84,11 @@ export default function DocsPage() {
   -F "file=@part.stl" \\
   -F "processes=fdm,cnc_3axis"`}
           />
-          <p className="text-sm text-gray-500">
-            Replace <code className="bg-gray-100 px-1 rounded">cv_live_YOUR_KEY</code> with
-            your actual API key. See the{" "}
-            <Link href="/scalar" className="text-blue-600 hover:underline">
+          <p className="text-sm text-muted-foreground">
+            Replace{" "}
+            <code className="num rounded bg-muted px-1">cv_live_YOUR_KEY</code>{" "}
+            with your actual API key. See the{" "}
+            <Link href="/scalar" className="text-primary hover:underline">
               full API reference
             </Link>{" "}
             for all available parameters and response fields.
@@ -105,10 +97,10 @@ export default function DocsPage() {
 
         {/* Section 2: Self-host */}
         <section className="mb-12">
-          <h2 className="text-2xl font-semibold text-gray-900 mb-3">
-            2. Self-Host with Docker Compose
+          <h2 className="mb-3 text-2xl font-semibold text-foreground">
+            2. Self-host with Docker Compose
           </h2>
-          <p className="text-gray-600 mb-2">
+          <p className="mb-2 text-muted-foreground">
             Run CadVerify on your own infrastructure:
           </p>
           <CodeBlock
@@ -120,23 +112,24 @@ cp .env.example .env
 docker compose up -d
 # Open http://localhost:3000`}
           />
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-muted-foreground">
             The Docker Compose stack includes the backend API, frontend, and a
-            Postgres database. Edit <code className="bg-gray-100 px-1 rounded">.env</code>{" "}
-            to configure database credentials, Sentry DSN, and other settings.
+            Postgres database. Edit{" "}
+            <code className="num rounded bg-muted px-1">.env</code> to configure
+            database credentials, Sentry DSN, and other settings.
           </p>
         </section>
 
         {/* Section 3: Authenticated request walkthrough */}
         <section className="mb-12">
-          <h2 className="text-2xl font-semibold text-gray-900 mb-3">
-            3. Authenticated Request Walkthrough
+          <h2 className="mb-3 text-2xl font-semibold text-foreground">
+            3. Authenticated request walkthrough
           </h2>
-          <ol className="list-decimal list-inside space-y-3 text-gray-700">
+          <ol className="list-inside list-decimal space-y-3 text-foreground">
             <li>
               Sign up at{" "}
-              <Link href="/signup" className="text-blue-600 hover:underline">
-                {APP_URL}
+              <Link href="/signup" className="text-primary hover:underline">
+                {APP_URL}/signup
               </Link>{" "}
               to get your API key.
             </li>
@@ -145,22 +138,22 @@ docker compose up -d
             </li>
             <li>
               Include{" "}
-              <code className="bg-gray-100 px-1 rounded text-sm">
+              <code className="num rounded bg-muted px-1 text-sm">
                 Authorization: Bearer cv_live_...
               </code>{" "}
               in every request.
             </li>
             <li>
               Check rate limits via the{" "}
-              <code className="bg-gray-100 px-1 rounded text-sm">
+              <code className="num rounded bg-muted px-1 text-sm">
                 X-RateLimit-Remaining
               </code>{" "}
               response header.
             </li>
             <li>
-              View your usage at{" "}
-              <Link href="/dashboard" className="text-blue-600 hover:underline">
-                {APP_URL}/dashboard
+              View your keys and usage at{" "}
+              <Link href="/keys" className="text-primary hover:underline">
+                {APP_URL}/keys
               </Link>
               .
             </li>
@@ -180,24 +173,18 @@ curl -X POST ${API_VALIDATE_URL} \\
           />
         </section>
 
-        {/* Links */}
-        <div className="border-t pt-8 flex flex-wrap gap-6 text-sm text-gray-500">
-          <Link href="/scalar" className="hover:text-gray-900 transition">
-            Full API Reference
-          </Link>
-          <Link href="/" className="hover:text-gray-900 transition">
-            Home
-          </Link>
-          <a
-            href={GITHUB_URL}
-            className="hover:text-gray-900 transition"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            GitHub
-          </a>
+        {/* Inline next steps */}
+        <div className="flex flex-wrap gap-3 border-t border-border pt-8">
+          <Button asChild>
+            <Link href="/signup">Get an API key</Link>
+          </Button>
+          <Button asChild variant="secondary">
+            <Link href="/scalar">Full API reference</Link>
+          </Button>
         </div>
       </main>
+
+      <PublicFooter />
     </div>
   );
 }

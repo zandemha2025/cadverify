@@ -31,6 +31,7 @@ from src.api.share import public_share_router, share_router
 from src.auth.keys_api import router as keys_router
 from src.auth.magic_link import router as magic_router
 from src.auth.oauth import router as oauth_router
+from src.auth.password import router as password_router
 from src.auth.saml import router as saml_router
 from src.auth.rate_limit import limiter, rate_limit_handler
 from src.auth.scrubbing import scrub_processor, sentry_before_send
@@ -42,10 +43,18 @@ def _parse_origins(raw: str) -> list[str]:
 
 # Default CORS regex: prod apex/www + Vercel preview subdomains.
 # Override via CORS_ORIGIN_REGEX env for dev/localhost if needed.
-CORS_ORIGIN_REGEX = os.getenv(
-    "CORS_ORIGIN_REGEX",
-    r"^https://(cadverify\.com|www\.cadverify\.com|[a-z0-9-]+\.vercel\.app)$",
-)
+# When the local labeling tool is enabled (LABELING_ENABLED=1) the regex also
+# allows localhost/127.0.0.1 origins so the /label viewer can stream STLs from
+# the local backend (CAD stays on localhost). An explicit CORS_ORIGIN_REGEX env
+# always wins.
+LABELING_ENABLED = os.getenv("LABELING_ENABLED") == "1"
+_DEFAULT_CORS_REGEX = r"^https://(cadverify\.com|www\.cadverify\.com|[a-z0-9-]+\.vercel\.app)$"
+if LABELING_ENABLED:
+    _DEFAULT_CORS_REGEX = (
+        r"^(https://(cadverify\.com|www\.cadverify\.com|[a-z0-9-]+\.vercel\.app)"
+        r"|https?://(localhost|127\.0\.0\.1)(:\d+)?)$"
+    )
+CORS_ORIGIN_REGEX = os.getenv("CORS_ORIGIN_REGEX", _DEFAULT_CORS_REGEX)
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
 logging.basicConfig(
@@ -137,6 +146,11 @@ app.include_router(history_router, prefix="/api/v1/analyses", tags=["history"])
 app.include_router(share_router, prefix="/api/v1/analyses")
 app.include_router(pdf_router, prefix="/api/v1/analyses")
 app.include_router(public_share_router, prefix="/s")
+# Email + password auth (signup/login/logout/me). Mounted UNCONDITIONALLY — it
+# is the primary login method that works end-to-end locally with zero external
+# infra, independent of AUTH_MODE.
+app.include_router(password_router, prefix="/auth")
+
 # AUTH_MODE gating: saml | google | hybrid (default: google)
 AUTH_MODE = os.getenv("AUTH_MODE", "google")
 
@@ -149,6 +163,15 @@ if AUTH_MODE in ("saml", "hybrid"):
 app.include_router(admin_router)
 app.include_router(keys_router)
 app.include_router(health_router)
+
+# Cycle 4 local labeling tool (dev-gated, prod-safe). Mounted ONLY under
+# LABELING_ENABLED=1 so the corpus/label surface never ships to production and
+# no CAD egresses. Routes are localhost-only (no API key/role — see corpus_router).
+if LABELING_ENABLED:
+    from src.api.corpus_router import router as corpus_router
+
+    app.include_router(corpus_router)
+    logger.info("Labeling tool ENABLED — corpus routes mounted at /api/v1/corpus")
 
 
 # Scalar API docs — serves interactive documentation alongside /docs and /redoc

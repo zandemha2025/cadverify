@@ -1,6 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 interface ShareModalProps {
   shareUrl: string;
@@ -26,56 +36,33 @@ export default function ShareModal({ shareUrl, onClose }: ShareModalProps) {
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 grid place-items-center bg-black/40"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="w-[28rem] rounded-lg bg-white p-6 shadow-xl space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Share this analysis</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-            aria-label="Close"
-          >
-            &#x2715;
-          </button>
-        </div>
-
-        <p className="text-sm text-gray-600">
-          Anyone with this link can view a read-only version of this analysis.
-        </p>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Share this analysis</DialogTitle>
+          <DialogDescription>
+            Anyone with this link can view a read-only version of this analysis.
+          </DialogDescription>
+        </DialogHeader>
 
         <div className="flex items-center gap-2">
-          <input
-            type="text"
+          <Input
             readOnly
             value={fullUrl}
-            className="flex-1 rounded-md border bg-gray-50 px-3 py-2 font-mono text-sm text-gray-700"
+            className="num flex-1 bg-muted"
             onFocus={(e) => e.target.select()}
           />
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="rounded-md border px-3 py-2 text-sm font-medium hover:bg-gray-50"
-          >
+          <Button variant="secondary" size="sm" onClick={handleCopy}>
             {copied ? "Copied!" : "Copy link"}
-          </button>
+          </Button>
         </div>
 
-        <button
-          type="button"
-          onClick={onClose}
-          className="w-full rounded-md bg-black px-4 py-2 text-sm text-white hover:bg-gray-800"
-        >
-          Done
-        </button>
-      </div>
-    </div>
+        <DialogFooter>
+          <Button onClick={onClose} className="w-full sm:w-auto">
+            Done
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

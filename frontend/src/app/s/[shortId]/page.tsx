@@ -1,7 +1,20 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Box } from "lucide-react";
 import { fetchSharedAnalysis } from "@/lib/api";
 import type { SharedAnalysis, Issue, ProcessScore } from "@/lib/api";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status-badge";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
+import { verdictTone, verdictLabel } from "@/lib/status";
 
 /* ------------------------------------------------------------------ */
 /*  OG Meta Tags for link previews (Slack, email, social)             */
@@ -33,20 +46,44 @@ export async function generateMetadata({
 }
 
 /* ------------------------------------------------------------------ */
-/*  Verdict styling                                                    */
+/*  Public shell (no app nav — read-only, but same design language)   */
 /* ------------------------------------------------------------------ */
 
-const VERDICT_STYLES: Record<string, { bg: string; text: string; label: string }> = {
-  pass: { bg: "bg-green-50 border-green-200", text: "text-green-800", label: "Manufacturable" },
-  issues: { bg: "bg-yellow-50 border-yellow-200", text: "text-yellow-800", label: "Issues Found" },
-  fail: { bg: "bg-red-50 border-red-200", text: "text-red-800", label: "Not Manufacturable" },
-};
+function PublicShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-canvas">
+      <header className="border-b border-border bg-card">
+        <div className="mx-auto flex h-14 max-w-3xl items-center gap-2 px-4">
+          <Box className="size-5 text-primary" />
+          <span className="font-semibold text-foreground">CadVerify</span>
+          <span className="ml-2 text-xs text-muted-foreground">
+            Shared analysis · read-only
+          </span>
+        </div>
+      </header>
+      <main className="mx-auto max-w-3xl space-y-6 px-4 py-8">{children}</main>
+    </div>
+  );
+}
 
-const SEVERITY_STYLES: Record<string, string> = {
-  error: "bg-red-100 text-red-700",
-  warning: "bg-yellow-100 text-yellow-700",
-  info: "bg-blue-100 text-blue-700",
-};
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      {children}
+    </h2>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <Card className="p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <p className="num mt-0.5 text-sm font-semibold text-foreground">{value}</p>
+    </Card>
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /*  Server Component — read-only public share page                     */
@@ -68,29 +105,24 @@ export default async function SharedAnalysisPage({
 
   if (!data) {
     return (
-      <main className="mx-auto max-w-2xl px-4 py-16 text-center">
-        <h1 className="text-2xl font-bold text-gray-800">
-          Analysis Not Available
-        </h1>
-        <p className="mt-2 text-gray-500">
-          This shared analysis is no longer available. It may have been revoked
-          by its owner.
-        </p>
-        <Link
-          href="/"
-          className="mt-6 inline-block rounded-md bg-black px-4 py-2 text-sm text-white hover:bg-gray-800"
-        >
-          Go to CadVerify
-        </Link>
-      </main>
+      <PublicShell>
+        <Card>
+          <CardContent className="py-12 text-center">
+            <h1 className="text-xl font-semibold text-foreground">
+              Analysis not available
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              This shared analysis is no longer available. It may have been
+              revoked by its owner.
+            </p>
+            <Button asChild className="mt-6">
+              <Link href="/">Go to CadVerify</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </PublicShell>
     );
   }
-
-  const verdict = VERDICT_STYLES[data.verdict] ?? {
-    bg: "bg-gray-50 border-gray-200",
-    text: "text-gray-800",
-    label: data.verdict,
-  };
 
   const sortedIssues = [...(data.universal_issues || [])].sort((a, b) => {
     const order: Record<string, number> = { error: 0, warning: 1, info: 2 };
@@ -98,36 +130,37 @@ export default async function SharedAnalysisPage({
   });
 
   const sortedProcesses = [...(data.process_scores || [])].sort(
-    (a, b) => b.score - a.score
+    (a, b) => b.score - a.score,
   );
 
   const geo = data.geometry || ({} as Record<string, unknown>);
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-8">
+    <PublicShell>
       {/* Header */}
-      <div className={`rounded-xl border p-5 ${verdict.bg}`}>
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">{data.filename}</h1>
-            <p className="mt-1 text-sm text-gray-500">
-              {data.file_type.toUpperCase()} &middot;{" "}
-              {new Date(data.created_at).toLocaleDateString()} &middot;{" "}
+      <Card tone={verdictTone(data.verdict)}>
+        <CardContent className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="truncate text-xl font-semibold text-foreground">
+              {data.filename}
+            </h1>
+            <p className="num mt-1 text-sm text-muted-foreground">
+              {data.file_type.toUpperCase()} ·{" "}
+              {new Date(data.created_at).toLocaleDateString()} ·{" "}
               {data.duration_ms}ms
             </p>
           </div>
-          <span className={`text-lg font-bold ${verdict.text}`}>
-            {verdict.label}
-          </span>
-        </div>
-      </div>
+          <StatusBadge
+            verdict={data.verdict}
+            label={verdictLabel(data.verdict, true)}
+          />
+        </CardContent>
+      </Card>
 
       {/* Geometry Overview */}
       {"faces" in geo && (
-        <section className="mt-6">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
-            Geometry
-          </h2>
+        <section>
+          <SectionHeading>Geometry</SectionHeading>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <StatCard label="Faces" value={String(data.face_count)} />
             {geo.volume_mm3 != null && (
@@ -139,7 +172,9 @@ export default async function SharedAnalysisPage({
             {geo.bounding_box_mm && (
               <StatCard
                 label="Dimensions"
-                value={`${(geo.bounding_box_mm as number[]).map((d: number) => d.toFixed(1)).join(" x ")} mm`}
+                value={`${(geo.bounding_box_mm as number[])
+                  .map((d: number) => d.toFixed(1))
+                  .join(" x ")} mm`}
               />
             )}
             {geo.is_watertight != null && (
@@ -154,30 +189,24 @@ export default async function SharedAnalysisPage({
 
       {/* Issues */}
       {sortedIssues.length > 0 && (
-        <section className="mt-6">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
-            Issues ({sortedIssues.length})
-          </h2>
+        <section>
+          <SectionHeading>Issues ({sortedIssues.length})</SectionHeading>
           <div className="space-y-2">
             {sortedIssues.map((issue: Issue, i: number) => (
-              <div key={i} className="rounded-lg border bg-white p-3">
+              <Card key={i} className="p-3">
                 <div className="flex items-center gap-2">
-                  <span
-                    className={`rounded px-1.5 py-0.5 text-xs font-medium ${SEVERITY_STYLES[issue.severity] ?? SEVERITY_STYLES.info}`}
-                  >
-                    {issue.severity}
-                  </span>
-                  <span className="font-mono text-xs text-gray-500">
+                  <StatusBadge severity={issue.severity} size="sm" />
+                  <span className="num text-xs text-muted-foreground">
                     {issue.code}
                   </span>
                 </div>
-                <p className="mt-1 text-sm text-gray-700">{issue.message}</p>
+                <p className="mt-1 text-sm text-foreground">{issue.message}</p>
                 {issue.fix_suggestion && (
-                  <p className="mt-1 text-sm text-blue-700">
+                  <p className="mt-1 text-sm text-primary">
                     {issue.fix_suggestion}
                   </p>
                 )}
-              </div>
+              </Card>
             ))}
           </div>
         </section>
@@ -185,78 +214,54 @@ export default async function SharedAnalysisPage({
 
       {/* Process Ranking */}
       {sortedProcesses.length > 0 && (
-        <section className="mt-6">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
-            Process Ranking
-          </h2>
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b bg-gray-50">
-                <tr>
-                  <th className="px-3 py-2 font-medium text-gray-600">Process</th>
-                  <th className="px-3 py-2 font-medium text-gray-600">Score</th>
-                  <th className="px-3 py-2 font-medium text-gray-600">Verdict</th>
-                  <th className="px-3 py-2 font-medium text-gray-600">Material</th>
-                  <th className="px-3 py-2 font-medium text-gray-600">Machine</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
+        <section>
+          <SectionHeading>Process ranking</SectionHeading>
+          <Card className="overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Process</TableHead>
+                  <TableHead numeric>Score</TableHead>
+                  <TableHead>Verdict</TableHead>
+                  <TableHead>Material</TableHead>
+                  <TableHead>Machine</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {sortedProcesses.map((ps: ProcessScore) => (
-                  <tr key={ps.process}>
-                    <td className="px-3 py-2 font-medium">{ps.process}</td>
-                    <td className="px-3 py-2">{ps.score}</td>
-                    <td className="px-3 py-2">
-                      <span
-                        className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-                          ps.verdict === "pass"
-                            ? "bg-green-100 text-green-700"
-                            : ps.verdict === "issues"
-                              ? "bg-yellow-100 text-yellow-700"
-                              : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {ps.verdict}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-gray-600">
-                      {ps.recommended_material ?? "-"}
-                    </td>
-                    <td className="px-3 py-2 text-gray-600">
-                      {ps.recommended_machine ?? "-"}
-                    </td>
-                  </tr>
+                  <TableRow key={ps.process} className="h-11">
+                    <TableCell className="font-medium text-foreground">
+                      {ps.process}
+                    </TableCell>
+                    <TableCell numeric>{ps.score}</TableCell>
+                    <TableCell>
+                      <StatusBadge verdict={ps.verdict} size="sm" />
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {ps.recommended_material ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {ps.recommended_machine ?? "—"}
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
+          </Card>
         </section>
       )}
 
       {/* CTA Footer */}
-      <div className="mt-8 rounded-lg border bg-gray-50 p-4 text-center">
-        <p className="text-sm text-gray-600">
-          This is a shared analysis from CadVerify.
-        </p>
-        <Link
-          href="/"
-          className="mt-2 inline-block rounded-md bg-black px-4 py-2 text-sm text-white hover:bg-gray-800"
-        >
-          View on CadVerify
-        </Link>
-      </div>
-    </main>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Helper components                                                  */
-/* ------------------------------------------------------------------ */
-
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border bg-white p-3">
-      <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
-      <p className="mt-0.5 text-sm font-semibold text-gray-800">{value}</p>
-    </div>
+      <Card>
+        <CardContent className="text-center">
+          <p className="text-sm text-muted-foreground">
+            This is a shared analysis from CadVerify.
+          </p>
+          <Button asChild className="mt-3">
+            <Link href="/">View on CadVerify</Link>
+          </Button>
+        </CardContent>
+      </Card>
+    </PublicShell>
   );
 }

@@ -36,11 +36,16 @@ def run_migrations_online() -> None:
         url = url.replace("sslmode=require", "ssl=require")
         url = url.replace("&channel_binding=require", "").replace("?channel_binding=require&", "?").replace("?channel_binding=require", "")
         engine = create_async_engine(url, poolclass=None)
+
+        def _run(connection) -> None:
+            context.configure(connection=connection, target_metadata=target_metadata)
+            # begin_transaction() is required so the DDL + alembic_version bump
+            # are committed; without it the async connection rolls back on close.
+            with context.begin_transaction():
+                context.run_migrations()
+
         async with engine.connect() as conn:
-            await conn.run_sync(
-                lambda c: context.configure(connection=c, target_metadata=target_metadata)
-            )
-            await conn.run_sync(lambda _: context.run_migrations())
+            await conn.run_sync(_run)
         await engine.dispose()
 
     asyncio.run(do())

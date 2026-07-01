@@ -71,26 +71,14 @@ export interface BatchListResponse {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Auth helper (mirrors @/lib/api authHeaders)                        */
+/*  Fetch helper — same-origin proxy (session cookie sent automatically) */
 /* ------------------------------------------------------------------ */
-
-function authHeaders(): Record<string, string> {
-  if (typeof window === "undefined") return {};
-  const key = localStorage.getItem("cadverify_api_key");
-  return key ? { Authorization: `Bearer ${key}` } : {};
-}
 
 async function apiFetch(
   url: string,
   options: RequestInit = {},
 ): Promise<Response> {
-  const headers = new Headers(options.headers);
-  const auth = authHeaders();
-  if (auth.Authorization) {
-    headers.set("Authorization", auth.Authorization);
-  }
-
-  const res = await fetch(url, { ...options, headers });
+  const res = await fetch(url, options);
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }));

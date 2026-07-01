@@ -4,6 +4,11 @@ import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { createBatch, createBatchS3 } from "@/lib/api/batch";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Dropzone } from "@/components/ui/dropzone";
+import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 type InputMode = "zip" | "s3";
 
@@ -20,38 +25,20 @@ export default function BatchUploadForm() {
   const [s3Prefix, setS3Prefix] = useState("");
   const [manifestUrl, setManifestUrl] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
 
-  const handleFileDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    const dropped = e.dataTransfer.files[0];
-    if (dropped) {
-      if (!dropped.name.toLowerCase().endsWith(".zip")) {
-        toast.error("Only .zip files are accepted");
-        return;
-      }
-      if (dropped.size > MAX_FILE_SIZE) {
-        toast.error("File exceeds 5 GB limit");
-        return;
-      }
-      setFile(dropped);
+  const handleFiles = useCallback((files: File[]) => {
+    const dropped = files[0];
+    if (!dropped) return;
+    if (!dropped.name.toLowerCase().endsWith(".zip")) {
+      toast.error("Only .zip files are accepted");
+      return;
     }
+    if (dropped.size > MAX_FILE_SIZE) {
+      toast.error("File exceeds 5 GB limit");
+      return;
+    }
+    setFile(dropped);
   }, []);
-
-  const handleFileInput = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const selected = e.target.files?.[0];
-      if (selected) {
-        if (selected.size > MAX_FILE_SIZE) {
-          toast.error("File exceeds 5 GB limit");
-          return;
-        }
-        setFile(selected);
-      }
-    },
-    [],
-  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,150 +85,77 @@ export default function BatchUploadForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Mode toggle */}
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={() => setMode("zip")}
-          className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-            mode === "zip"
-              ? "bg-blue-600 text-white"
-              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-          }`}
-        >
-          ZIP Upload
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("s3")}
-          className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-            mode === "s3"
-              ? "bg-blue-600 text-white"
-              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-          }`}
-        >
-          S3 Reference
-        </button>
-      </div>
+      <Tabs value={mode} onValueChange={(v) => setMode(v as InputMode)}>
+        <TabsList>
+          <TabsTrigger value="zip">ZIP upload</TabsTrigger>
+          <TabsTrigger value="s3">S3 reference</TabsTrigger>
+        </TabsList>
 
-      {/* ZIP mode */}
-      {mode === "zip" && (
-        <div className="space-y-4">
-          {/* Drop zone */}
-          <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              setIsDragOver(true);
-            }}
-            onDragLeave={() => setIsDragOver(false)}
-            onDrop={handleFileDrop}
-            className={`rounded-xl border-2 border-dashed p-8 text-center transition-all ${
-              isDragOver
-                ? "border-blue-500 bg-blue-50"
-                : "border-gray-300 hover:border-gray-400"
-            } ${uploading ? "pointer-events-none opacity-50" : "cursor-pointer"}`}
-          >
-            <input
-              type="file"
-              accept=".zip"
-              onChange={handleFileInput}
-              className="hidden"
-              id="batch-zip-upload"
-              disabled={uploading}
-            />
-            <label htmlFor="batch-zip-upload" className="cursor-pointer">
-              <p className="text-lg font-semibold text-gray-700">
-                {file ? file.name : "Drop your ZIP file here"}
-              </p>
-              <p className="mt-1 text-sm text-gray-500">
-                {file
-                  ? `${(file.size / 1024 / 1024).toFixed(1)} MB`
-                  : "or click to browse. Max 5 GB."}
-              </p>
-            </label>
-          </div>
-
-          {/* Optional manifest */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              CSV Manifest (optional)
-            </label>
-            <input
+        {/* ZIP mode */}
+        <TabsContent value="zip" className="space-y-4">
+          <Dropzone
+            accept=".zip"
+            onFiles={handleFiles}
+            isLoading={uploading}
+            hint={
+              file
+                ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB`
+                : "ZIP archive up to 5 GB"
+            }
+          />
+          <Field label="CSV manifest (optional)">
+            <Input
               type="file"
               accept=".csv"
               onChange={(e) => setManifest(e.target.files?.[0] ?? null)}
-              className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:rounded file:border-0 file:bg-gray-100 file:px-4 file:py-2 file:text-sm file:font-medium hover:file:bg-gray-200"
               disabled={uploading}
+              className="h-auto py-1.5 text-muted-foreground file:mr-3 file:rounded-sm file:border-0 file:bg-muted file:px-3 file:py-1 file:text-sm file:font-medium"
             />
-          </div>
-        </div>
-      )}
+          </Field>
+        </TabsContent>
 
-      {/* S3 mode */}
-      {mode === "s3" && (
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              S3 Bucket <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
+        {/* S3 mode */}
+        <TabsContent value="s3" className="space-y-4">
+          <Field label="S3 bucket">
+            <Input
               value={s3Bucket}
               onChange={(e) => setS3Bucket(e.target.value)}
               placeholder="my-cad-files-bucket"
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               disabled={uploading}
             />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              S3 Prefix <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
+          </Field>
+          <Field label="S3 prefix">
+            <Input
               value={s3Prefix}
               onChange={(e) => setS3Prefix(e.target.value)}
               placeholder="batches/2024-01/"
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               disabled={uploading}
             />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Manifest URL (optional)
-            </label>
-            <input
-              type="text"
+          </Field>
+          <Field label="Manifest URL (optional)">
+            <Input
               value={manifestUrl}
               onChange={(e) => setManifestUrl(e.target.value)}
               placeholder="https://..."
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               disabled={uploading}
             />
-          </div>
-        </div>
-      )}
+          </Field>
+        </TabsContent>
+      </Tabs>
 
       {/* Shared options */}
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Webhook URL (optional)
-          </label>
-          <input
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Webhook URL (optional)">
+          <Input
             type="url"
             value={webhookUrl}
             onChange={(e) => setWebhookUrl(e.target.value)}
             placeholder="https://..."
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             disabled={uploading}
           />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Concurrency Limit
-          </label>
-          <input
+        </Field>
+        <Field label="Concurrency limit">
+          <Input
             type="number"
             min={1}
             max={100}
@@ -251,20 +165,20 @@ export default function BatchUploadForm() {
                 Math.max(1, Math.min(100, Number(e.target.value) || 10)),
               )
             }
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             disabled={uploading}
+            className="num"
           />
-        </div>
+        </Field>
       </div>
 
-      {/* Submit */}
-      <button
+      <Button
         type="submit"
+        loading={uploading}
         disabled={uploading || (mode === "zip" && !file)}
-        className="w-full rounded-md bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+        className="w-full"
       >
-        {uploading ? "Uploading..." : "Start Batch"}
-      </button>
+        {uploading ? "Uploading…" : "Start batch"}
+      </Button>
     </form>
   );
 }

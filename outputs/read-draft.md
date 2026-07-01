@@ -1,0 +1,110 @@
+# CadVerify — The Brutal Two-Sided Read (Strategist Synthesis)
+
+**Date:** 2026-06-29 · **Inputs:** self-audit.md (ran the live app + CLI engine), giants.md (SolidWorks / Fusion / Zoo, 2026-verified), direct-competitors.md (aPriori / Xometry-Protolabs-Fictiv / Paperless Parts / 3D Spark / Leo AI / DFMPro, 2026-verified). No new research; this is the synthesis.
+
+**The frame holds throughout:** no category error (CadVerify is a DFM + cost-*decision* tool, not a modeler). Every laugh-at is split by AXIS and flagged TABLE-STAKES (must fix just to be real software / a player clones it in a release) vs DEEPER (structural or genuinely hard). Every shit-their-pants claim is tested against what that specific player *already ships*; anything copyable-in-a-sprint is marked NOT a moat.
+
+**One-line read:** the *engine* is real software — 18 processes, real DFM matrix, MEASURED geometry, make-vs-buy crossover, Σ-coherence check, honest confidence, IP-local, real three.js viewer. The *buyable product wrapped around it* is a thin, partly-cosmetic demo whose single scariest differentiator (per-shop calibration) is invisible in the live app, whose router contradicts its own DFM on the home page, and whose marquee "edit any assumption" buttons toast "build gap." **The wedge is currently a slide, not software.** That is the whole story.
+
+---
+
+# PART 1 — WHAT THEY'D LAUGH AT
+
+Ordered by damage, not by axis number. The most damaging laughs are in Correctness/Trust and Credibility — they block "real, buyable software" before any capability argument starts.
+
+## AXIS A — CORRECTNESS / TRUST (this is where the laughs draw blood)
+
+### A1. The marquee wedge — per-shop calibration — does not exist in the live product. **[TABLE-STAKES to even be real]** — *most damaging finding in the entire teardown*
+The homepage leads with it ("Per-shop calibration → Your numbers become yours", `frontend/src/app/page.tsx:139-172`); the hero shows `$14.14` "Calibrated to Midwest Precision CNC." The live API takes `qty, region, cavities, complexity, material_class` and **no `shop` param** (`backend/src/api/routes.py:585-615`); a live call returns zero shop keys, everything tagged `DEFAULT`, and the UI pill reads **"Not calibrated — generic defaults."** Clicking "Swap shop" toasts *"Shop calibration through the API is a build gap."* The `$44/$110/$35 across shops` story is told entirely with a **hardcoded fixture** (`components/marketing/data.ts`), not a live run.
+
+Why it's fatal, not cosmetic: this is the ONE thing aPriori, 3D Spark, Paperless Parts, and the marketplaces cannot cheaply copy (it needs a per-shop rate data asset, not just engineering — see Part 2). **An evaluator who signs in today sees a generic should-cost — the exact thing aPriori and 3D Spark already ship, minus their 20 years of data and their real customers.** The differentiator that would make a marketplace nervous is the one feature missing from the product. **Fix:** wire `shop` through the API into `EstimateOptions`, render the SHOP-tagged drivers the engine already produces. This is the single highest-leverage line of code in the project.
+
+### A2. The router recommends a process its own DFM hard-fails — in the same panel, on the home page. **[TABLE-STAKES correctness; root cause is DEEPER]**
+On the fuel-pump-holder the Routing lens headlines **"CNC turning, archetype: rotational, confidence 0.80"** while the DFM matrix directly below flags that *same* `cnc_turning` as **fail, score 0.0** ("Part lacks rotational symmetry"), and the actual decision is **Make by MJF (polymer)** with reasoning that says *"a round metal part is rarely powder-bed printed"* — about a plastic bracket. **Systematic: reproduced on 4 of 5 printed parts.** Root cause is two disagreeing definitions of "rotational": routing uses bounding-box squareness (`min/max ≥ 0.80`, so an 85×88 rectangle scores 0.97 → "rotational"); DFM uses inertia-tensor eigenvalues (correct). The marketing fixture **embeds this same contradiction** (`data.ts` ships `cnc_turning` + "round metal" prose under a "Make by MJF" hero). This is the direct analogue of the sheet-metal bug "just fixed" — still live for turning. A manufacturing engineer loses trust on the first part, and DFMPro (mature, curated DFM rules) laughs hardest here. **Fix:** unify on the eigenvalue definition; never headline a process the DFM matrix fails.
+
+### A3. "Override → re-runs" is false; the glass box doesn't move the number. **[TABLE-STAKES]**
+The driver-row button reads **"Override — re-tags USER, re-runs"**; the handler relabels client-side and toasts *"Server re-cost on driver overrides is a build gap."* "Save as scenario" toasts the same. So the central wedge interaction — *open the model and edit it* — is cosmetic; the number never moves. "Every assumption is editable" (homepage) reduces to 5 dropdowns plus non-functional per-driver overrides. The glass box you can't actually edit isn't a glass box; it's a printout. **Fix:** make override do a real re-cost round-trip (the engine already accepts `--set` / `--labor-rate` / `--margin` in the CLI — expose them).
+
+### A4. The dollar is unvalidated ±40–60%, `n_samples: 0`. **[framing is FINE; the missing receipt is DEEPER]**
+Every estimate ships `validated:false`, "assumption-based, not yet validated." **Crucial nuance the giants will get wrong and a buyer won't:** this is *category-correct framing*, not a confession — aPriori, the 20-year leader, publishes "Your Should Cost Estimate is NOT Accurate, but that's Okay" and concedes ±30–40% is the normal spread. So decision-not-dollar + honest error bands is exactly how the incumbent defends its own number. **The laugh that lands is not the error band — it's the zero.** Validated against *zero* real quotes, while SolidWorks Costing has a decade of grounded, editable rate templates and aPriori has calibrated regional libraries. This is not fixed by engineering; it needs the pending Zoox/real-data session to produce "validated ±X% on N parts." Until then the number is honest but not yet *buyable*. **This is the gating credibility receipt.**
+
+*No-bias the other way (genuinely trustworthy, don't let anyone laugh at these):* Σ(line-items)=unit-cost is a live check that turns red if it breaks; confidence intervals really flow through the API; provenance tags are real and per-driver with verbatim sources; broken geometry returns a clean structured 400, not a 500; the engine prints `[IP-local, zero network calls]`. The honesty infrastructure is real and consistent — it's the thing worth building on.
+
+## AXIS B — CREDIBILITY / POLISH (the "is this real, buyable software" bar)
+
+### B1. Local-dev, seeded login, no cloud, no SOC2/ITAR — while Zoo shipped *public* SOC2 Type II + Trail of Bits. **[TABLE-STAKES to be procurable; trust posture is DEEPER]**
+CadVerify runs as a gated local-dev build with a seeded `nazeem+livetest` account. Zoo.dev has completed SOC 2 Type II and **made the report public at trust.zoo.dev**, plus a public Trail of Bits review. Zoo set a *radical-transparency* security bar that maps directly onto CadVerify's own glass-box ethos — and got there first on the compliance axis. SolidWorks/aPriori are enterprise-procured, ITAR-handled, channel-supported. The gap in "is this a real, supported, buyable product" is currently enormous. **Fix (staged):** a real deploy + a real trust page; the on-prem/air-gapped posture is also a *weapon* (Part 2), not just a checkbox.
+
+### B2. Internal dev surfaces ship in the customer sidebar. **[TABLE-STAKES — trivially fixable, maximally embarrassing]**
+The production nav lists **"Parts (Label)"** (an internal corpus-annotation data-ops tool) and **"Design system"** (a component showcase whose own header calls it "the build proof"), one click from Cost/Analyze, both returning 200. This is the single clearest "this is a dev build, not a product" tell. **Fix:** route-guard or delete them from the customer nav. One afternoon.
+
+### B3. The marketing site renders a static fixture captioned as live engine output — and the hero contradicts itself. **[TABLE-STAKES]**
+The hero sits under *"Real output · object analyzed by the cost-truth engine"* and `/method` says *"the real product… not screenshots,"* but every number is a hardcoded constant (`unit_cost_usd: 14.14`, `crossoverQty: 1962`) captured once from a `bracket_v3.stl` that isn't even in the corpus; the same engine on a real part returns `$64.63`. There is no live "try it." And the fixture embeds the A2 contradiction (CNC-turning prose under a Make-by-MJF hero). The numbers were really generated once, but the caption oversells a static page, and the flagship example contradicts itself. **Fix:** either a real "drop a file" demo, or drop the "live / real output" captioning.
+
+### B4. Aspirational ITAR / AS9100 copy stated bigger than the artifact. **[TABLE-STAKES messaging]**
+"On the ITAR / AS9100 path," "Built for regulated hardware" on a local Postgres email/password build. The "designed to / on the path" hedging is defensible, but a security reviewer reads the section as bigger than what exists. **Fix:** make the tense unambiguously roadmap until it's true — *especially* because zero-egress for regulated hardware is the real bet (Part 2) and overclaiming it now poisons the well.
+
+## AXIS C — CAPABILITY / DEPTH
+
+### C1. The live edit-and-re-run loop is 5 coarse dropdowns; the CLI's real levers are hidden. **[TABLE-STAKES product gap; the engine exists]**
+Only qty / material_class / region / complexity / cavities re-cost through the API. The CLI's real levers — `--labor-rate`, `--margin`, `--set machine_rate.SLS=25`, `--tooling`, `--shop` — are not in the web form. The depth is *built and proven in the engine*; it's a wiring gap, not a capability gap. Same root cause as A1/A3. **Fix:** expose the CLI levers in the form; they already work.
+
+### C2. DFM depth is heuristic and shallow vs DFMPro; material class is manual and silently mis-routes. **[DEEPER]**
+`material_class` defaults to `polymer` as a dropdown the user must set; the engine never infers it from geometry, so picking wrong re-costs the whole model wrong with no warning (and produces the "round metal" prose on a plastic part). Versus DFMPro's years of curated, configurable rules across molding/sheet/machining/casting, CadVerify's draft/undercut/feasibility checks are coarse. If a buyer's first question is "how good is your DFM," DFMPro wins that narrow contest today. **Fix:** infer material class from geometry+context where possible and warn on mismatch; deepen the rule set over time (this is a multi-quarter investment, not a sprint).
+
+### C3. The AI/agent story is thin in a year when "AI copilot for the design engineer" is *the* narrative buyers are paying for. **[DEEPER — momentum, not just features]**
+Zoo's Zookeeper (Jan 2026) markets "manufacturing-aware feedback" and "design reviews"; Leo AI raised $9.7M for an "AI for mechanical engineering" copilot with Scania/HP/Siemens; Autodesk has Assistant; SolidWorks 2026 shipped ~10 AI features. CadVerify's interaction model is dropdowns and toasts. This is not a reason to bolt on a chatbot — but the *absence* of any conversational/explanatory agent over the glass box is a momentum gap a 2026 buyer notices. **Fix (strategic, not cosmetic):** the glass box + provenance is the perfect substrate for a *grounded* agent that explains and defends each driver — that's a differentiated AI story, not a me-too one.
+
+## AXIS D — UX / EASE
+
+### D1. "Build gap" toasts litter the primary loop. **[TABLE-STAKES — symptom of A1/A3]**
+A user who actually drives the glass box (the differentiator) hits "build gap" on override, driver-override, save-scenario, and shop-swap — four of the most natural actions. Internally honest; externally it reads as a demo where the interesting buttons don't work. Resolving A1/A3/C1 removes most of these. **No-bias the other way:** the one-drop role-lens flow (one CAD drop runs cost + DFM together, part stays in a persistent 3D rail, Role Lens sets the landing tab without walling anything off) is genuinely the right shape and it *works* — don't "fix" it.
+
+---
+
+# PART 2 — WHAT WOULD MAKE THEM SHIT THEIR PANTS
+
+The wedge thesis is: **glass-box + per-shop-calibrated traceable cost + decision-not-dollar + design-engineer speed.** I tested each component against what each player *already ships*. Most components die on contact. Name what survives.
+
+### Test 1 — Glass-box / every-assumption-visible-and-editable → **NOT a moat alone.**
+SolidWorks Costing templates are *already partly editable* (you set raw-material cost, setup/operation times, scrap). aPriori gives cost composition. So "transparent and editable" is **table-stakes — a giant half-does it.** CadVerify's version is *deeper* (per-driver MEASURED/USER/DEFAULT/SHOP tags with verbatim sources, a live Σ-check that turns red, an error band per driver) — but depth alone is copyable, and today the "editable" half is *fake* (A3). Differentiator, not moat.
+
+### Test 2 — Decision-not-dollar (make-vs-buy + quantity crossover) → **NOT a moat alone.**
+Absent from all three giants *today*, and 3D Spark already ships make-or-buy (just doesn't foreground a draggable crossover). aPriori or 3D Spark could add a crossover in a release. **Copyable-in-a-sprint by the should-cost players.** It is structurally hard for exactly one cluster — the marketplaces — because a marketplace will never tell you "actually, make this in-house" or "a cheaper process exists outside our network." So decision-framing is a weapon *only against the marketplaces*, not a general moat.
+
+### Test 3 — Design-engineer speed / web / no-CAD-seat → **structural vs SolidWorks ONLY; half-stale otherwise.**
+"Web, upload a file, no $4k seat" is genuinely hard for *Dassault specifically* — they can't give Costing away free without cannibalizing seat revenue. But the design-engineer door is **already half-walked-through by the category:** aPriori shipped `aP Design` (browser, design-engineer-facing) + `aP Generate` (auto cost+DFM on every CAD check-in), and Protolabs shipped **ProDesk (Feb 2026)** — AI-DFM + instant quote at the design engineer. So "we're the design-engineer-facing one" is no longer uncontested. Structural only against SolidWorks; not a broad moat.
+
+### Test 4 — Per-shop calibration (bind real rates → that shop's number, every line tagged SHOP + sourced) → **STRUCTURAL. Survives.**
+**None** of the giants or direct competitors sell this. aPriori has *regional library averages*, not the buyer's own shop's rates. Paperless Parts owns the shop's real rate data but is **sell-side** — it exists to produce a quote to *sell to a customer*, the wrong buyer and wrong moment, not a neutral decision for the person creating the part. This wedge requires a **per-shop rate data asset nobody hands you** — data + trust, not just an engine. That is the hard-for-them part. **Verified working in the CLI** (generic $31.05 → re-derived with $52/hr labor, $12/hr machine ÷0.8 util ×1.15 overhead, $7/kg, every line re-tagged SHOP). **The asterisk that currently kills it: it is not in the web app and there are zero real shops onboarded (A1).** Real moat the moment it ships with even one real shop's calibrated, validated rates; vaporware until then.
+
+### Test 5 — Neutral / no-margin / no-network number → **STRUCTURAL vs the marketplaces specifically. Survives.**
+A marketplace (Xometry/Protolabs/Fictiv) **literally cannot** ship "here's our cost, here's our margin, here's what your shop would charge" — it exposes the markup (reported >50%, up to ~70%) and cannibalizes take-rate. Xometry's Q1-2026 "personalized pricing" makes price a function of *your willingness to pay* — the exact opposite of a neutral should-cost. So a margin-free, shop-calibrated number is **economically barred** for that whole cluster. (Note: aPriori is also neutral — so neutrality alone doesn't beat aPriori; it beats the marketplaces.)
+
+### Test 6 — Local-first / zero-egress / CAD-as-IP → **STRUCTURAL vs the marketplaces + 3D Spark + Zoo. Survives.**
+Every marketplace's model *requires* exfiltrating the CAD to a supplier network; 3D Spark leans on supplier indicative pricing (round-trip); **Zoo is cloud-only by architecture** (the geometry engine runs in Zoo's cloud, video-streamed) and aPriori/ProDesk are cloud. For IP-sensitive automotive/defense/data-residency programs (Zoox, defense, Aramco-class), "**the part never leaves the building**" is a procurement *gate the dominant business models cannot natively clear.* **Verified:** the engine runs IP-local, zero network calls. *Honest limit:* CadVerify hasn't productized an on-prem/air-gapped *offering* yet — today it's a dev build that happens to make no network calls. The capability is real; the product isn't built.
+
+### The combination that actually survives — name it precisely
+
+No single component is a moat: glass-box is table-stakes, decision-framing and crossover are buildable, design-engineer-web is half-stale. **The moat is the *intersection*, because the intersection is barred for each player by what they already are:**
+
+> **A neutral, per-shop-calibrated, glass-box should-cost-*as-a-decision* (make-vs-buy + crossover) that runs with zero egress — bound to the buyer's own shop's real rates, every driver tagged and sourced, the CAD never leaving the building.**
+
+Why the *intersection* is hard-for-THEM, player by player:
+- **Marketplaces (Xometry/Protolabs/Fictiv):** barred from *neutral* (margin/network conflict) AND barred from *zero-egress* (their model is exfiltration). They can't hold two of the three corners at once.
+- **aPriori:** can be neutral and glass-box-ish, but is shaped around cost engineers + *regional-library averages* + enterprise cloud — the *buyer's-own-per-shop-rates + equation-level transparency + local-first* combo is off its axis and against its enterprise grain.
+- **Zoo.dev (the live threat):** has distribution + own engine + an agent already framed as "manufacturing-aware feedback" + public SOC2 — but **zero cost/quoting/sourcing today**, and **cloud-only by architecture**, so the *cost-decision + zero-egress* combo is exactly what its stack makes hard. It's the player most likely to frame "manufacturability + cost" first; it is also the one least able to do it air-gapped.
+- **Paperless Parts:** owns the shop rate data but is sell-side (produces a quote to sell), wrong buyer/moment, not a neutral designer-facing decision.
+- **SolidWorks/Fusion:** SW is behind a seat and single-part; Fusion's "cost" is CAM cycle-time *downstream of a programmed toolpath* — neither is a design-time, pre-CAM, process-agnostic neutral decision.
+
+Each competitor can hold one or two corners of {neutral, per-shop-calibrated, zero-egress, decision-framed, design-engineer-native}. **None can hold all of them, because holding all of them contradicts their business model, their data shape, or their cloud architecture.** That contradiction — not any one feature — is the thing they can't cheaply copy.
+
+---
+
+# PART 3 — BOTTOM LINE
+
+**Is CadVerify currently a toy that must first look + work like real software before any wedge matters? — Mostly yes, and unavoidably so.** The engine is real and not a toy (18 processes, real DFM, crossover, IP-local, Σ-check, honest confidence, real 3D viewer). But the *buyable product a customer logs into* is a demo: the scariest differentiator (per-shop calibration) is invisible in it, the router contradicts its own DFM on the home page, the marquee "edit any assumption" buttons toast "build gap," internal dev tools sit in the customer nav, and the marketing numbers are a static fixture captioned as live. **A giant or a funded competitor who signs in today sees a cleaner-looking 3D Spark with no data, no customers, no validation, and its one differentiator disabled — copyable in a sprint, not yet a moat.** The wedge is a slide, not software. So yes: the first job is not strategy, it's making the thing real — and the good news is that the four most damaging items (A1 wire calibration, A2 fix the router, A3 make override re-cost, B2 pull dev surfaces) are *wiring and hygiene over an engine that already does the hard part*, not new science. Validation on N real parts (A4) is the one that needs outside data, not code.
+
+**The ONE structural bet worth making:** **Own the zero-egress, per-shop-calibrated, neutral cost-*decision* for IP-gated programs** — automotive/defense/data-residency buyers (Zoox-class) where the part *cannot* leave the building. This is the only lane where the moat is the *intersection no competitor can enter by construction*: the marketplaces are barred (margin + exfiltration), Zoo is barred (cloud-only, no cost), aPriori is off-axis (enterprise cloud, library averages, cost-engineer-shaped), Paperless is sell-side. Concretely that means: (1) wire per-shop calibration into the web app and onboard **one** real shop's real, sourced rates; (2) validate ±X% against a **handful** of that buyer's real quotes (the pending Zoox session is the linchpin — it converts the framing from honest to buyable); (3) ship a genuinely **on-prem / air-gapped** deploy and say so truthfully (turn B4's overclaim into a real weapon). Everything else — glass-box polish, crossover, more processes, an AI agent — is either table-stakes or copyable and should be sequenced *behind* those three.
+
+**The clock is Zoo's roadmap.** Zoo has the distribution, the engine, the agent, and the public-trust posture; the only thing it lacks is exactly this wedge — cost economics + zero-egress — and its cloud architecture makes the zero-egress half *structurally* hard for it. If CadVerify ships calibrated + validated + air-gapped before "manufacturing economics" lands on Zoo's roadmap, that intersection is a defensible lead. If it keeps shipping a demo where the differentiator is a disabled button, Zoo (or a funded 3D Spark) frames "manufacturability + cost" first and CadVerify becomes a feature. **The thesis is right; the receipts are missing; the window is the next few moves.**

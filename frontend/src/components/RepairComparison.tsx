@@ -1,6 +1,10 @@
 "use client";
 
+import { Download } from "lucide-react";
 import AnalysisDashboard from "@/components/AnalysisDashboard";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status-badge";
 import type { RepairResult } from "@/lib/api";
 
 interface RepairComparisonProps {
@@ -38,54 +42,57 @@ export default function RepairComparison({
 
   if (!result.repair_applied) {
     return (
-      <div className="rounded-md border border-yellow-300 bg-yellow-50 p-4">
-        <p className="text-sm text-yellow-800">
-          Repair was not possible for this mesh.
+      <Card tone="warn" className="bg-warn-bg">
+        <CardContent compact className="space-y-1">
+          <div className="flex items-center gap-2">
+            <StatusBadge tone="warn" label="Repair not possible" size="sm" />
+          </div>
           {result.repair_details.error && (
-            <span className="mt-1 block text-xs text-yellow-600">
+            <p className="num text-xs text-muted-foreground">
               Reason: {result.repair_details.error}
-            </span>
+            </p>
           )}
-        </p>
-      </div>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
     <div className="space-y-4">
       {/* Repair summary banner */}
-      <div className="rounded-md border border-green-300 bg-green-50 p-4">
-        <p className="text-sm font-medium text-green-800">
-          Mesh repaired successfully
-        </p>
-        <p className="mt-1 text-xs text-green-600">
-          Tier: {result.repair_details.tier} &middot;{" "}
-          {result.repair_details.original_faces?.toLocaleString()} &rarr;{" "}
-          {result.repair_details.repaired_faces?.toLocaleString()} faces &middot;{" "}
-          {result.repair_details.duration_ms?.toFixed(0)}ms
-        </p>
-        {result.repaired_file_b64 && (
-          <button
-            onClick={handleDownload}
-            className="mt-2 rounded bg-green-600 px-3 py-1 text-sm text-white hover:bg-green-700"
-          >
-            Download Repaired File
-          </button>
-        )}
-      </div>
+      <Card tone="pass" className="bg-pass-bg">
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-1">
+              <StatusBadge tone="pass" label="Mesh repaired" size="sm" />
+              <p className="num text-xs text-muted-foreground">
+                Tier {result.repair_details.tier} ·{" "}
+                {result.repair_details.original_faces?.toLocaleString()} →{" "}
+                {result.repair_details.repaired_faces?.toLocaleString()} faces ·{" "}
+                {result.repair_details.duration_ms?.toFixed(0)}ms
+              </p>
+            </div>
+            {result.repaired_file_b64 && (
+              <Button variant="secondary" size="sm" onClick={handleDownload}>
+                <Download /> Download repaired file
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Before / After comparison */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div>
-          <h3 className="mb-2 text-sm font-semibold text-gray-500">
-            Original Analysis
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Original analysis
           </h3>
           <AnalysisDashboard result={result.original_analysis} />
         </div>
         {result.repaired_analysis && (
           <div>
-            <h3 className="mb-2 text-sm font-semibold text-green-600">
-              Repaired Analysis
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-pass">
+              Repaired analysis
             </h3>
             <AnalysisDashboard result={result.repaired_analysis} />
           </div>

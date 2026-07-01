@@ -705,19 +705,37 @@ def check_bends(
     *,
     cite: str = "",
 ) -> list[Issue]:
+    """Flag bends too tight to form (radius < thickness ~ a knife-edge fold).
+
+    ``ctx.dihedral_angles_rad`` is the angle BETWEEN ADJACENT FACE NORMALS:
+        0 rad   -> coplanar (a FLAT region, NOT a bend)
+        pi/2    -> a clean 90 deg sheet-metal bend (manufacturable)
+        ->pi    -> the sheet folds back on itself (included angle -> 0, a
+                   knife-edge: unmanufacturable as a single air bend)
+
+    The previous threshold ``< 90 deg`` was inverted: it flagged every flat,
+    coplanar facet pair (angle ~0) as a "sharp bend", which hard-failed sheet
+    metal on EVERY part that has a flat face — i.e. every part. A real DFM
+    violation is a fold so tight the radius drops below the gauge, which shows
+    up as a normal-divergence ABOVE ~150 deg (included bend angle < 30 deg).
+    Flat blanks (0 deg) and normal 90 deg bends now pass, as they must.
+    """
     if len(ctx.dihedral_angles_rad) == 0:
         return []
-    very_sharp = ctx.dihedral_angles_rad < np.radians(90)
-    count = int(np.sum(very_sharp))
+    knife = ctx.dihedral_angles_rad > np.radians(150)
+    count = int(np.sum(knife))
     if count == 0:
         return []
+    tightest_deg = float(np.degrees(ctx.dihedral_angles_rad[knife].max()))
     return [Issue(
         code="SHARP_BEND", severity=Severity.ERROR,
         message=(
-            f"{count} bends < 90° — bend radius must be >= material thickness. "
-            f"DIN 6935."
+            f"{count} knife-edge folds (normal divergence up to {tightest_deg:.0f}° "
+            f"≈ included bend angle < 30°) — bend radius must be >= material "
+            f"thickness. DIN 6935."
         ),
         process=process,
+        measured_value=tightest_deg,
         fix_suggestion=f"Increase bend radius to >= 1x material thickness. {cite}",
     )]
 

@@ -2,8 +2,9 @@
 
 import { useEffect } from "react";
 import * as Sentry from "@sentry/nextjs";
+import { Button } from "@/components/ui/button";
 
-export default function GlobalError({
+export default function RootError({
   error,
   unstable_retry,
 }: {
@@ -18,23 +19,20 @@ export default function GlobalError({
 
   return (
     <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-4 text-center">
-      <h2 className="text-2xl font-semibold text-gray-900">
+      <h2 className="text-2xl font-semibold text-foreground">
         Something went wrong
       </h2>
-      <p className="max-w-md text-gray-600">
+      <p className="max-w-md text-muted-foreground">
         An unexpected error occurred. Our team has been notified.
       </p>
       {error.digest && (
-        <p className="text-xs text-gray-400">
+        <p className="num text-xs text-muted-foreground">
           Error ID: {error.digest}
         </p>
       )}
-      <button
-        onClick={() => unstable_retry()}
-        className="mt-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
-      >
+      <Button className="mt-2" onClick={() => unstable_retry()}>
         Try again
-      </button>
+      </Button>
     </div>
   );
 }

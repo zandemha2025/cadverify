@@ -6,6 +6,7 @@ import asyncio
 from fastapi import Header, HTTPException, Request
 from pydantic import BaseModel
 
+from src.auth.dashboard_session import COOKIE_NAME, unsign
 from src.auth.hashing import hmac_index, verify_token
 from src.auth.models import lookup_api_key, lookup_user_role, touch_last_used
 
@@ -33,9 +34,22 @@ async def require_api_key(
     authorization: str | None = Header(None),
 ) -> AuthedUser:
     if not authorization or not authorization.startswith("Bearer cv_live_"):
+        # Fallback: dashboard session cookie (forwarded by the Next.js proxy).
+        # This lets the gated platform call authed routes with the session
+        # instead of a Bearer API key. api_key_id=0 is the session sentinel.
+        cookies = getattr(request, "cookies", None)
+        cookie = cookies.get(COOKIE_NAME) if cookies else None
+        uid = unsign(cookie) if cookie else None
+        if uid is not None:
+            role = await lookup_user_role(uid)
+            user = AuthedUser(
+                user_id=uid, api_key_id=0, key_prefix="session", role=role
+            )
+            request.state.authed_user = user
+            return user
         raise _401(
             "auth_missing",
-            "Authorization: Bearer cv_live_... header required",
+            "Authorization: Bearer cv_live_... header or dashboard session required",
         )
     token = authorization[len("Bearer "):].strip()
     try:

@@ -1,33 +1,32 @@
 "use client";
 
 import type { RateLimits } from "@/lib/api";
+import { Progress } from "@/components/ui/progress";
+import { usageTone } from "@/lib/status";
 
 interface Props {
   rateLimits?: RateLimits;
 }
 
-function usageColor(pct: number): string {
-  if (pct >= 80) return "bg-red-500";
-  if (pct >= 50) return "bg-yellow-500";
-  return "bg-green-500";
-}
-
-function ProgressBar({ used, total, label }: { used: number; total: number; label: string }) {
+function QuotaBar({
+  used,
+  total,
+  label,
+}: {
+  used: number;
+  total: number;
+  label: string;
+}) {
   const pct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
   return (
     <div>
       <div className="mb-1 flex items-center justify-between text-sm">
-        <span className="text-gray-600">{label}</span>
-        <span className="tabular-nums text-gray-500">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="num text-muted-foreground">
           {used} / {total} used ({pct}%)
         </span>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
-        <div
-          className={`h-full rounded-full transition-all ${usageColor(pct)}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+      <Progress value={pct} tone={usageTone(used, total)} className="h-2" />
     </div>
   );
 }
@@ -35,7 +34,7 @@ function ProgressBar({ used, total, label }: { used: number; total: number; labe
 export default function QuotaDisplay({ rateLimits }: Props) {
   if (!rateLimits) {
     return (
-      <p className="text-sm text-gray-400">Quota data unavailable</p>
+      <p className="text-sm text-muted-foreground">Quota data unavailable</p>
     );
   }
 
@@ -43,13 +42,9 @@ export default function QuotaDisplay({ rateLimits }: Props) {
 
   return (
     <div className="space-y-3">
-      <ProgressBar
-        used={used}
-        total={rateLimits.limit}
-        label="RateLimit usage"
-      />
+      <QuotaBar used={used} total={rateLimits.limit} label="Rate limit usage" />
       {rateLimits.reset > 0 && (
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-muted-foreground">
           Resets in {Math.ceil(rateLimits.reset / 60)} min
         </p>
       )}
