@@ -23,3 +23,7 @@ The layer is read-only over the engine (`AnalysisResult` + `mesh` + `features`);
 
 ## Tests
 `pytest tests/test_costing_model.py tests/test_costing_gates.py` → **17 passed** (gates G1–G7 + model invariants). Gate tests read real parts via `CADVERIFY_PARTS_DIR` (skip cleanly if absent); model tests are procedural and always run.
+
+---
+
+[DFM-UX] BUILT dfm-scope-flags
