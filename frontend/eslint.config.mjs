@@ -18,6 +18,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Unit tests run on `node --test` with native TS type-stripping, which
+    // requires explicit `.ts` import extensions (rejected by the app tsconfig /
+    // typecheck). Keep them out of the app lint/build; they run via `npm test`.
+    "**/*.test.ts",
   ]),
 ]);
 

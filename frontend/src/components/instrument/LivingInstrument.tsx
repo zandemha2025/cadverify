@@ -48,7 +48,12 @@ import {
   qtyToPos,
 } from "@/lib/breakeven";
 import { pickEstimate } from "@/lib/cost-views";
-import { flattenIssues, type IndexedIssue } from "@/components/IssueList";
+import { type IndexedIssue } from "@/components/IssueList";
+import {
+  partitionDfmByRoute,
+  dfmScopedFlagsEnabled,
+  type DfmPartition,
+} from "@/lib/dfm-scope";
 import { DEFAULT_COST_OPTIONS, validateQty } from "@/components/cost/CostOptionsForm";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { QuantityScrubber } from "./QuantityScrubber";
@@ -88,6 +93,10 @@ const SEVERITY_HEX: Record<string, string> = {
 };
 
 export type InstrumentFocus = "decision" | "dfm";
+
+/** Stable empty issue list so derived arrays keep a constant identity when the
+ *  DFM partition is absent (pre-analysis) — avoids churning memo/callback deps. */
+const NO_ISSUES: IndexedIssue[] = [];
 
 /** A frosted instrument panel that floats legibly over the 3D part. */
 function Panel({
@@ -143,6 +152,7 @@ export default function LivingInstrument({
   const [selectedKey, setSelectedKey] = React.useState<string | null>(null);
   const [glassOpen, setGlassOpen] = React.useState(false);
   const [flagsOpen, setFlagsOpen] = React.useState(focus === "dfm");
+  const [showAllCandidates, setShowAllCandidates] = React.useState(false);
   const [controlsOpen, setControlsOpen] = React.useState(false);
   const [dragActive, setDragActive] = React.useState(false);
 
@@ -322,38 +332,59 @@ export default function LivingInstrument({
   const recEstimate =
     rec && report ? pickEstimate(report, rec.curve.process, qty) : null;
 
-  const dfmIssues = React.useMemo(
-    () => (validation ? flattenIssues(validation) : []),
-    [validation]
+  // FRAGILE-1: scope the DFM headline to the route the part will ACTUALLY be
+  // made by — the scrubbed recommendation `recProcess`, with the DFM engine's
+  // own best-fit (`best_process`) as a pre-cost fallback so the headline is
+  // meaningful the instant the DFM pass returns. Part-level `universal_issues`
+  // always count. The full per-process matrix stays reachable + honestly
+  // labeled (the de-emphasized "across all candidate processes" section).
+  const dfmScoped = dfmScopedFlagsEnabled();
+  const dfmRoute = recProcess || validation?.best_process || "";
+  const dfm: DfmPartition | null = React.useMemo(
+    () =>
+      validation
+        ? partitionDfmByRoute(validation, dfmScoped ? dfmRoute : "")
+        : null,
+    [validation, dfmScoped, dfmRoute]
   );
 
-  // A calm severity breakdown for the collapsed DFM strip ("76 flags · 2
-  // critical · 1 advisory") — the wall of rows only opens on demand.
-  const dfmSummary = React.useMemo(() => {
-    const counts = { fail: 0, warn: 0, info: 0, other: 0 };
-    for (const it of dfmIssues) {
-      const t = severityTone(it.issue.severity);
-      if (t === "fail") counts.fail++;
-      else if (t === "warn") counts.warn++;
-      else if (t === "info") counts.info++;
-      else counts.other++;
-    }
-    const parts: { label: string; n: number; color: string }[] = [
-      { label: "critical", n: counts.fail, color: "#f8716e" },
-      { label: "advisory", n: counts.warn, color: "#f0b429" },
-      { label: "info", n: counts.info, color: "#7fa8cf" },
-    ].filter((p) => p.n > 0);
-    return { total: dfmIssues.length, parts };
-  }, [dfmIssues]);
+  // Every issue (canonical keys) — the face→issue lookup must resolve any
+  // highlighted face regardless of which panel section renders its row.
+  const dfmIssues = dfm?.all ?? NO_ISSUES;
+  // Rows on the recommended route (the honest default) vs only-on-other-
+  // candidate rows (the de-emphasized, expandable full matrix).
+  const routeIssues = dfmScoped ? dfm?.route ?? NO_ISSUES : dfm?.all ?? NO_ISSUES;
+  const extraIssues = dfmScoped ? dfm?.extra ?? NO_ISSUES : NO_ISSUES;
+  const routeLabel = dfm?.recommendedProcess
+    ? procLabel(dfm.recommendedProcess)
+    : "part-level checks";
 
-  // auto-spotlight the top priority fix on the part when landing in DFM focus
+  // Headline severity dots for the scoped (or, if the legacy flag is off, the
+  // union) count. This is the number that used to read "58 flags · 11 critical".
+  const headlineCounts =
+    (dfmScoped ? dfm?.counts : dfm?.allCounts) ?? {
+      total: 0,
+      critical: 0,
+      advisory: 0,
+      info: 0,
+    };
+  const headlineParts = [
+    { label: "critical", n: headlineCounts.critical, color: "#f8716e" },
+    { label: "advisory", n: headlineCounts.advisory, color: "#f0b429" },
+    { label: "info", n: headlineCounts.info, color: "#7fa8cf" },
+  ].filter((p) => p.n > 0);
+
+  // auto-spotlight the top priority fix on the part when landing in DFM focus —
+  // prefer a fix on the recommended route, falling back to any locatable issue.
   React.useEffect(() => {
-    if (focus !== "dfm" || !dfmIssues.length || selectedKey) return;
+    if (focus !== "dfm" || !dfm || selectedKey) return;
+    const pool = dfmScoped ? dfm.route : dfm.all;
     const top =
-      dfmIssues.find((i) => severityTone(i.issue.severity) === "fail" && i.faces.length) ??
-      dfmIssues.find((i) => i.faces.length);
+      pool.find((i) => severityTone(i.issue.severity) === "fail" && i.faces.length) ??
+      pool.find((i) => i.faces.length) ??
+      dfm.all.find((i) => i.faces.length);
     if (top) setSelectedKey(top.key);
-  }, [focus, dfmIssues, selectedKey]);
+  }, [focus, dfm, dfmScoped, selectedKey]);
 
   const activeIssue = React.useMemo(() => {
     const key = hoveredKey ?? selectedKey;
@@ -370,10 +401,13 @@ export default function LivingInstrument({
       const hit = dfmIssues.find((i) => i.faces.includes(faceIndex));
       if (hit) {
         setFlagsOpen(true);
+        // If the clicked face belongs to an off-route candidate issue, reveal
+        // the "other candidate processes" section so its row is visible.
+        if (extraIssues.some((e) => e.key === hit.key)) setShowAllCandidates(true);
         setSelectedKey(hit.key);
       }
     },
-    [dfmIssues]
+    [dfmIssues, extraIssues]
   );
 
   const dec = report?.decision ?? null;
@@ -634,9 +668,14 @@ export default function LivingInstrument({
               ) : (
                 <span className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
                   <span className="num text-[11px] text-[#9fb0c8]">
-                    {dfmSummary.total} {dfmSummary.total === 1 ? "flag" : "flags"}
+                    {headlineCounts.total === 0
+                      ? "No flags"
+                      : `${headlineCounts.total} ${headlineCounts.total === 1 ? "flag" : "flags"}`}
+                    {dfmScoped && (
+                      <span className="text-[#6f8099]"> on {routeLabel}</span>
+                    )}
                   </span>
-                  {dfmSummary.parts.map((p) => (
+                  {headlineParts.map((p) => (
                     <span
                       key={p.label}
                       className="num inline-flex items-center gap-1 text-[11px] text-[#6f8099]"
@@ -649,6 +688,12 @@ export default function LivingInstrument({
                       {p.n} {p.label}
                     </span>
                   ))}
+                  {dfmScoped && extraIssues.length > 0 && (
+                    <span className="num text-[11px] text-[#52647f]">
+                      · {dfm?.allCounts.total} across all{" "}
+                      {dfm?.candidateProcessCount} candidate processes
+                    </span>
+                  )}
                 </span>
               )}
               <ChevronDown
@@ -669,23 +714,80 @@ export default function LivingInstrument({
                 </button>
               </div>
             )}
-            {flagsOpen && dfmIssues.length > 0 && (
-              <div className="max-h-[min(42vh,20rem)] space-y-2 overflow-y-auto border-t border-[#23314a] px-3.5 py-3">
-                {dfmIssues.map((it) => (
-                  <FlagRow
-                    key={it.key}
-                    item={it}
-                    selected={selectedKey === it.key}
-                    onHover={(k) => setHoveredKey(k)}
-                    onSelect={(k) => setSelectedKey((cur) => (cur === k ? null : k))}
-                  />
-                ))}
+            {flagsOpen && !dfmLoading && !dfmError && (
+              <div className="border-t border-[#23314a]">
+                {/* recommended-route issues — the honest headline set */}
+                {routeIssues.length > 0 ? (
+                  <div className="max-h-[min(42vh,20rem)] space-y-2 overflow-y-auto px-3.5 py-3">
+                    {dfmScoped && (
+                      <p className="num text-[10px] uppercase tracking-wide text-[#6f8099]">
+                        On recommended route · {routeLabel}
+                      </p>
+                    )}
+                    {routeIssues.map((it) => (
+                      <FlagRow
+                        key={it.key}
+                        item={it}
+                        selected={selectedKey === it.key}
+                        onHover={(k) => setHoveredKey(k)}
+                        onSelect={(k) => setSelectedKey((cur) => (cur === k ? null : k))}
+                      />
+                    ))}
+                  </div>
+                ) : dfmScoped && extraIssues.length > 0 ? (
+                  <p className="px-3.5 py-2.5 text-xs text-[#8fd0a0]">
+                    No flags on the recommended route ({routeLabel}) — clean as
+                    modeled.
+                  </p>
+                ) : (
+                  <p className="px-3 py-2.5 text-xs text-[#6f8099]">
+                    No DFM flags — clean as modeled.
+                  </p>
+                )}
+
+                {/* full matrix — every OTHER candidate process, de-emphasized
+                    and honestly labeled; never the scary headline */}
+                {dfmScoped && extraIssues.length > 0 && (
+                  <div className="border-t border-[#23314a]">
+                    <button
+                      type="button"
+                      onClick={() => setShowAllCandidates((o) => !o)}
+                      aria-expanded={showAllCandidates}
+                      className="flex w-full items-center gap-1.5 px-3.5 py-2 text-left text-[11px] text-[#6f8099] hover:text-[#9fb0c8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3fa3e8]"
+                    >
+                      <ChevronDown
+                        className={`size-3.5 shrink-0 transition-transform ${showAllCandidates ? "rotate-180" : ""}`}
+                      />
+                      <span>
+                        {showAllCandidates ? "Hide" : "Show"} {extraIssues.length}{" "}
+                        {extraIssues.length === 1 ? "flag" : "flags"} on other
+                        candidate processes
+                        <span className="num ml-1 text-[#52647f]">
+                          ({dfm?.candidateProcessCount} evaluated)
+                        </span>
+                      </span>
+                    </button>
+                    {showAllCandidates && (
+                      <div className="max-h-[min(32vh,16rem)] space-y-2 overflow-y-auto px-3.5 pb-3">
+                        <p className="num text-[10px] uppercase tracking-wide text-[#52647f]">
+                          Only on processes the part is not routed to
+                        </p>
+                        {extraIssues.map((it) => (
+                          <FlagRow
+                            key={it.key}
+                            item={it}
+                            selected={selectedKey === it.key}
+                            onHover={(k) => setHoveredKey(k)}
+                            onSelect={(k) =>
+                              setSelectedKey((cur) => (cur === k ? null : k))
+                            }
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            )}
-            {flagsOpen && !dfmLoading && !dfmError && dfmIssues.length === 0 && (
-              <p className="border-t border-[#23314a] px-3 py-2.5 text-xs text-[#6f8099]">
-                No DFM flags — clean as modeled.
-              </p>
             )}
           </Panel>
         </div>

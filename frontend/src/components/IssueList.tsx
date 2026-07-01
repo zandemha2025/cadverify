@@ -2,43 +2,21 @@
 
 import { useEffect, useRef } from "react";
 import { Crosshair } from "lucide-react";
-import type { Issue, ValidationResult } from "@/lib/api";
 import { severityTone, type Tone } from "@/lib/status";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { flattenIssues, type IndexedIssue } from "@/lib/dfm-scope";
 
 /* ------------------------------------------------------------------ */
-/*  Flattened issue index — shared by AnalysisDashboard (render) and   */
-/*  PartWorkspace (geometry → issue mapping for two-way linking).      */
+/*  Flattened issue index — the pure flatten/scoping logic now lives   */
+/*  in `@/lib/dfm-scope` (unit-tested, no React). Re-exported here for  */
+/*  the existing importers (AnalysisDashboard, LivingInstrument,       */
+/*  PartWorkspace) and used by this renderer.                          */
 /* ------------------------------------------------------------------ */
 
-export interface IndexedIssue {
-  key: string;
-  issue: Issue;
-  /** sampled face indices for 3D highlight (unioned across duplicates) */
-  faces: number[];
-}
-
-/** Merge universal + per-process issues, dedup by code|message, union faces. */
-export function flattenIssues(result: ValidationResult): IndexedIssue[] {
-  const seen = new Map<string, IndexedIssue>();
-  const push = (issue: Issue, keyBase: string) => {
-    const id = `${issue.code}|${issue.message}`;
-    const faces = issue.affected_faces_sample ?? [];
-    const existing = seen.get(id);
-    if (existing) {
-      existing.faces = Array.from(new Set([...existing.faces, ...faces]));
-    } else {
-      seen.set(id, { key: keyBase, issue, faces: [...faces] });
-    }
-  };
-  result.universal_issues.forEach((iss, i) => push(iss, `u${i}`));
-  result.process_scores.forEach((ps) =>
-    ps.issues.forEach((iss, i) => push(iss, `${ps.process}#${i}`))
-  );
-  return Array.from(seen.values());
-}
+export { flattenIssues };
+export type { IndexedIssue };
 
 /** Inline renderer for `[tag]` citation markers — neutral, on-token badges. */
 function CitationText({ text }: { text: string }) {
