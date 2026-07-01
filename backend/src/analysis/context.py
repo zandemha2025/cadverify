@@ -145,8 +145,10 @@ class GeometryContext:
         # Bound the whole engine: decimate pathologically large meshes before
         # any O(faces) work. `info` intentionally keeps the ORIGINAL part's
         # volume/area/watertightness (analyze_geometry ran on the raw mesh);
-        # only the per-face analysis arrays below run on the bounded mesh, and
-        # the swap is recorded honestly in metadata (no silent lying).
+        # only the per-face analysis arrays below run on the bounded mesh. The
+        # swap is recorded in metadata["decimation"], which
+        # ``base_analyzer.decimation_issue`` reads to emit a user-visible
+        # DECIMATED_MESH warning in the analysis response (no silent lying).
         mesh, decimation = _maybe_decimate(mesh)
 
         extents = mesh.extents
@@ -163,8 +165,11 @@ class GeometryContext:
         centroids = np.asarray(mesh.triangles_center, dtype=np.float64)
         face_areas = np.asarray(mesh.area_faces, dtype=np.float64)
 
-        cos_z = np.clip(normals @ np.array([0.0, 0.0, 1.0]), -1.0, 1.0)
-        angles_from_up_deg = np.degrees(np.arccos(cos_z))
+        # Suppress cosmetic divide-by-zero/overflow RuntimeWarnings from the
+        # matmul over degenerate/decimated normals; the clipped result is clean.
+        with np.errstate(all="ignore"):
+            cos_z = np.clip(normals @ np.array([0.0, 0.0, 1.0]), -1.0, 1.0)
+            angles_from_up_deg = np.degrees(np.arccos(cos_z))
 
         wall_thickness = _compute_wall_thickness(mesh, normals, centroids, scale_eps)
 
@@ -406,7 +411,8 @@ def _maybe_decimate(mesh: trimesh.Trimesh) -> tuple[trimesh.Trimesh, dict | None
     logger.info(
         "Decimated mesh for analysis: %d -> %d faces via %s "
         "(MAX_ANALYSIS_FACES=%d). Wall-thickness/draft numbers are computed on "
-        "the approximation and labelled accordingly.",
+        "the approximation; a DECIMATED_MESH warning is surfaced to the user "
+        "via base_analyzer.decimation_issue.",
         n, len(reduced.faces), strategy, cap,
     )
     return reduced, {

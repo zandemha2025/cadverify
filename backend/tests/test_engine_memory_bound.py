@@ -139,3 +139,106 @@ def test_pathological_sphere_wall_thickness_is_bounded():
         f"pathological-sphere peak RSS delta {peak:.0f} MB exceeds "
         f"{_PATHOLOGICAL_BOUND_MB} MB ({n_faces} faces) — worst case not bounded"
     )
+
+
+# ──────────────────────────────────────────────────────────────
+# Honesty: decimation must be VISIBLY labelled to the user
+# ──────────────────────────────────────────────────────────────
+def _big_box_composite(min_faces: int):
+    """A >min_faces watertight mesh that is cheap to ray-cast (boxes prune well),
+    so the decimation-honesty tests stay fast."""
+    import trimesh
+    from trimesh.util import concatenate
+
+    a = trimesh.creation.box(extents=[20.0, 20.0, 20.0])
+    for _ in range(7):
+        a = a.subdivide()  # 196,608
+    b = trimesh.creation.box(extents=[10.0, 10.0, 10.0])
+    for _ in range(6):
+        b = b.subdivide()  # 49,152
+    b.apply_translation([60.0, 0.0, 0.0])
+    c = trimesh.creation.box(extents=[8.0, 8.0, 8.0])
+    for _ in range(6):
+        c = c.subdivide()  # 49,152
+    c.apply_translation([-60.0, 0.0, 0.0])
+    mesh = concatenate([a, b, c])
+    assert len(mesh.faces) > min_faces, f"only {len(mesh.faces)} faces"
+    return mesh
+
+
+def test_decimation_records_metadata_and_emits_warning():
+    """A mesh over MAX_ANALYSIS_FACES is decimated, recorded in ctx.metadata, and
+    turned into a user-visible DECIMATED_MESH warning (the honesty contract)."""
+    from src.analysis.base_analyzer import analyze_geometry, decimation_issue
+    from src.analysis.context import GeometryContext, _max_analysis_faces
+
+    mesh = _big_box_composite(_max_analysis_faces())  # > 250k faces by default
+    info = analyze_geometry(mesh)
+    ctx = GeometryContext.build(mesh, info)
+
+    dec = ctx.metadata.get("decimation")
+    assert dec and dec["succeeded"], "decimation not recorded in ctx.metadata"
+    assert dec["original_faces"] == len(mesh.faces)
+    assert dec["analysis_faces"] < dec["original_faces"]
+
+    issue = decimation_issue(ctx)
+    assert issue is not None, "no DECIMATED_MESH issue produced"
+    assert issue.code == "DECIMATED_MESH"
+    assert issue.severity.value == "warning"
+    assert issue.process is None  # universal issue
+    assert "approximate" in issue.message.lower()
+    assert f"{dec['original_faces']:,}" in issue.message
+
+
+def test_no_decimation_no_warning_for_normal_part():
+    """Ordinary parts (under the cap) are untouched and emit NO decimation warning."""
+    import trimesh
+
+    from src.analysis.base_analyzer import analyze_geometry, decimation_issue
+    from src.analysis.context import GeometryContext
+
+    mesh = trimesh.creation.box(extents=[10.0, 10.0, 10.0])
+    for _ in range(3):
+        mesh = mesh.subdivide()  # 768 faces — well under the cap
+    ctx = GeometryContext.build(mesh, analyze_geometry(mesh))
+    assert not ctx.metadata.get("decimation")
+    assert decimation_issue(ctx) is None
+
+
+def test_decimation_warning_is_visible_in_api_response(monkeypatch):
+    """End-to-end: a >250k-face upload returns a DECIMATED_MESH warning in the
+    response's ``universal_issues`` — the exact field the frontend renders.
+
+    This is the proof the honest label actually reaches the user, not just
+    ctx.metadata that no consumer reads.
+    """
+    import importlib
+    import io
+
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setenv("ALLOWED_ORIGINS", "http://localhost:3000")
+    monkeypatch.setenv("MAX_UPLOAD_MB", "100")
+    monkeypatch.setenv("DEMO_MAX_TRIANGLES", "500000")  # composite (~295k) is allowed
+    import main
+
+    importlib.reload(main)
+    client = TestClient(main.app)
+
+    mesh = _big_box_composite(250_000)
+    buf = io.BytesIO()
+    mesh.export(buf, file_type="stl")
+
+    r = client.post(
+        "/api/v1/validate/demo",
+        files={"file": ("big.stl", buf.getvalue(), "application/octet-stream")},
+    )
+    assert r.status_code == 200, f"expected 200, got {r.status_code}: {r.text[:300]}"
+    body = r.json()
+    issues = body.get("universal_issues", [])
+    codes = [i.get("code") for i in issues]
+    assert "DECIMATED_MESH" in codes, f"DECIMATED_MESH not in response; codes={codes}"
+
+    dec = next(i for i in issues if i["code"] == "DECIMATED_MESH")
+    assert dec["severity"] == "warning"
+    assert "approximate" in dec["message"].lower()

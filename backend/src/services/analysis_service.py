@@ -20,7 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src import __version__ as _app_version
-from src.analysis.base_analyzer import analyze_geometry, run_universal_checks
+from src.analysis.base_analyzer import (
+    analyze_geometry,
+    decimation_issue,
+    run_universal_checks,
+)
 from src.analysis.context import GeometryContext
 from src.analysis.features import detect_all as detect_features
 from src.analysis.models import AnalysisResult, ProcessType, Severity
@@ -260,6 +264,10 @@ async def run_analysis(
         features = detect_features(ctx.mesh)
         ctx.features = features
         universal_issues = run_universal_checks(mesh)
+        # Honestly surface to the user when the mesh was decimated for analysis.
+        dec_issue = decimation_issue(ctx)
+        if dec_issue is not None:
+            universal_issues.append(dec_issue)
 
         process_scores = []
         for proc in target_processes:
