@@ -27,3 +27,9 @@ The layer is read-only over the engine (`AnalysisResult` + `mesh` + `features`);
 ---
 
 [DFM-UX] BUILT dfm-scope-flags
+
+[COST] BUILT cnc-volume
+
+---
+
+[SRE] BUILT engine-memory
