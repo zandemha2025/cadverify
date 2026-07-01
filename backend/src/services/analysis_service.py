@@ -255,7 +255,9 @@ async def run_analysis(
     def _run_analysis_sync():
         geometry = analyze_geometry(mesh)
         ctx = GeometryContext.build(mesh, geometry)
-        features = detect_features(mesh)
+        # ctx.mesh == mesh unless build() decimated an oversize mesh; detect on
+        # ctx.mesh so feature indices align with the context per-face arrays.
+        features = detect_features(ctx.mesh)
         ctx.features = features
         universal_issues = run_universal_checks(mesh)
 

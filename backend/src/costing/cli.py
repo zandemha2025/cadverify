@@ -37,7 +37,9 @@ def _run_engine(path: str):
     mesh = trimesh.load(path, force="mesh")
     geometry = analyze_geometry(mesh)
     ctx = GeometryContext.build(mesh, geometry)
-    ctx.features = detect_features(mesh)
+    # ctx.mesh == mesh unless build() decimated an oversize mesh; detect on
+    # ctx.mesh so feature indices align with the context per-face arrays.
+    ctx.features = detect_features(ctx.mesh)
     universal = run_universal_checks(mesh)
     scores = [score_process(get_analyzer(p).analyze(ctx), geometry, p)
               for p in pbase._REGISTRY if get_analyzer(p)]

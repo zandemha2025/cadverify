@@ -27,14 +27,19 @@ def test_threshold_env_var(monkeypatch):
     assert _raycast_sample_threshold() == 1000
 
 
-def test_threshold_default():
-    """Default threshold is 50000."""
-    val = _raycast_sample_threshold()
-    assert val == 50000 or val > 0  # env may be set in CI
+def test_threshold_default(monkeypatch):
+    """Default threshold is 5000 (lowered from 50000 to keep the 10k-50k face
+    zone off the un-sampled, memory-unbounded full-ray path)."""
+    monkeypatch.delenv("RAYCAST_SAMPLE_THRESHOLD", raising=False)
+    assert _raycast_sample_threshold() == 5000
 
 
-def test_sampling_correctness_on_cube():
+def test_sampling_correctness_on_cube(monkeypatch):
     """Sampled thickness on a known geometry (box) is within 10% of full ray-cast."""
+    # Force the (batched) full-ray path so `full` is a genuine reference: the
+    # default threshold (5000) would otherwise route this ~12k-face mesh onto
+    # the sampled path, making the comparison vacuous.
+    monkeypatch.setenv("RAYCAST_SAMPLE_THRESHOLD", "10_000_000")
     mesh = trimesh.creation.box(extents=[10, 10, 10])
     # Subdivide to get enough faces for sampling
     for _ in range(5):

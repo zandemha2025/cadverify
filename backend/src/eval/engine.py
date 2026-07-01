@@ -71,7 +71,9 @@ def geometry_pass(mesh: trimesh.Trimesh) -> GeometryPass:
         warnings.simplefilter("ignore", RuntimeWarning)
         geometry = analyze_geometry(mesh)
         ctx = GeometryContext.build(mesh, geometry)
-        features = detect_features(mesh)
+        # ctx.mesh == mesh unless build() decimated an oversize mesh; detect on
+        # ctx.mesh so feature indices align with the context per-face arrays.
+        features = detect_features(ctx.mesh)
         ctx.features = features
     return GeometryPass(mesh=mesh, geometry=geometry, ctx=ctx, features=features)
 

@@ -192,7 +192,10 @@ def _run_cost_engine(mesh, filename: str):
 
     geometry = analyze_geometry(mesh)
     ctx = GeometryContext.build(mesh, geometry)
-    ctx.features = detect_features(mesh)
+    # Features must be detected on the same mesh the context arrays derive from
+    # (ctx.mesh == mesh unless build() decimated an oversize mesh) so feature
+    # face-indices stay aligned with the per-face arrays the analyzers consume.
+    ctx.features = detect_features(ctx.mesh)
     universal = run_universal_checks(mesh)
     scores = [
         score_process(get_analyzer(p).analyze(ctx), geometry, p)
@@ -516,7 +519,9 @@ async def validate_demo(
     def _run():
         geometry = analyze_geometry(mesh)
         ctx = GeometryContext.build(mesh, geometry)
-        features = detect_features(mesh)
+        # ctx.mesh == mesh unless build() decimated an oversize mesh; detect on
+        # ctx.mesh so feature indices align with the context per-face arrays.
+        features = detect_features(ctx.mesh)
         ctx.features = features
         universal_issues = run_universal_checks(mesh)
         process_scores = []
