@@ -86,9 +86,14 @@ jobs:
 
       - name: Typecheck
         run: |
-          pip install pyright
-          pyright src/ --pythonversion 3.12
-        continue-on-error: true
+          pip install pyright==1.1.411
+          mkdir -p build
+          pyright src/ --pythonversion 3.12 --outputjson > build/pyright-report.json || true
+          python3 scripts/ci/check_pyright_baseline.py build/pyright-report.json
+        # Blocking (F-ARCH-7): was continue-on-error: true, silently never
+        # gating anything. It is now a real regression ratchet against
+        # scripts/ci/pyright_baseline.txt — see that file + the checker
+        # script's docstring for why it isn't a flat "0 errors" gate yet.
 
   route-auth-coverage:
     name: Every /api/v1 route calls require_api_key
