@@ -1,7 +1,22 @@
 import type { NextConfig } from "next";
 
+// S6: hardening headers applied to every route. Kept in sync with the backend
+// SecurityHeadersMiddleware. No CSP here — the app inlines styles/scripts and a
+// tight policy needs its own rollout; that is deliberately out of scope.
+const SECURITY_HEADERS = [
+  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+];
+
 const nextConfig: NextConfig = {
   // output: "standalone" is for Docker; Vercel uses its own adapter
+
+  async headers() {
+    return [{ source: "/:path*", headers: SECURITY_HEADERS }];
+  },
 
   // The legacy /dashboard/* shim tree and /auth/signup were deleted; redirect
   // old bookmarks/emails to the single (app) namespace. These run server-side

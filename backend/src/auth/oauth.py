@@ -16,7 +16,7 @@ from fastapi.responses import RedirectResponse
 from src.auth.dashboard_session import set_session_cookie
 from src.auth.disposable import normalize_email
 from src.auth.hashing import hmac_index, mint_token
-from src.auth.models import create_api_key, upsert_user
+from src.auth.models import create_api_key, upsert_user, user_has_active_api_key
 from src.auth.signup_limits import per_ip_signup_limit
 
 oauth = OAuth()
@@ -75,6 +75,15 @@ async def google_callback(request: Request):
         )
     email_norm = normalize_email(email)
     user_id = await upsert_user(email, sub, email_norm)
+
+    # Mint a key only when the account has none active (S3). A returning user
+    # keeps their existing key(s) — logging in must not spawn a fresh key nor
+    # attempt a one-time reveal of a secret we can no longer show.
+    if await user_has_active_api_key(user_id):
+        resp = RedirectResponse(url="/dashboard/keys", status_code=303)
+        set_session_cookie(resp, user_id)
+        return resp
+
     full_token, prefix, secret_hash = mint_token()
     await create_api_key(
         user_id, "Default", prefix, hmac_index(full_token), secret_hash

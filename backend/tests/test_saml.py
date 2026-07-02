@@ -6,6 +6,7 @@ or xmlsec1 installed.
 from __future__ import annotations
 
 import importlib
+import json
 import os
 from unittest.mock import MagicMock, patch, AsyncMock
 
@@ -151,3 +152,88 @@ def test_saml_logout_redirects_to_idp(mock_build_auth):
     resp = client.get("/auth/saml/logout")
     assert resp.status_code == 302
     assert "idp.example.com/slo" in resp.headers.get("location", "")
+
+
+# ---------------------------------------------------------------------------
+# S2: settings.json ${ENV_VAR} expansion
+# ---------------------------------------------------------------------------
+
+
+def test_saml_settings_expandvars(tmp_path, monkeypatch):
+    """${ENV_VAR} placeholders in settings.json resolve from the environment."""
+    monkeypatch.setenv("SAML_SP_ENTITY_ID", "https://sp.example.com/meta")
+    monkeypatch.setenv("SAML_IDP_SSO_URL", "https://idp.example.com/sso")
+    (tmp_path / "settings.json").write_text(
+        json.dumps(
+            {
+                "sp": {"entityId": "${SAML_SP_ENTITY_ID}"},
+                "idp": {"singleSignOnService": {"url": "${SAML_IDP_SSO_URL}"}},
+                "strict": True,
+            }
+        )
+    )
+    monkeypatch.setenv("SAML_CONFIG_DIR", str(tmp_path))
+
+    from src.auth.saml import _load_saml_settings
+
+    s = _load_saml_settings()
+    assert s["sp"]["entityId"] == "https://sp.example.com/meta"
+    assert s["idp"]["singleSignOnService"]["url"] == "https://idp.example.com/sso"
+    assert s["strict"] is True  # non-string values untouched
+
+
+def test_saml_settings_undefined_var_left_verbatim(tmp_path, monkeypatch):
+    """An undefined ${VAR} is left verbatim rather than silently blanked."""
+    monkeypatch.delenv("SAML_SP_ENTITY_ID", raising=False)
+    (tmp_path / "settings.json").write_text(
+        json.dumps({"sp": {"entityId": "${SAML_SP_ENTITY_ID}"}})
+    )
+    monkeypatch.setenv("SAML_CONFIG_DIR", str(tmp_path))
+
+    from src.auth.saml import _load_saml_settings
+
+    s = _load_saml_settings()
+    assert s["sp"]["entityId"] == "${SAML_SP_ENTITY_ID}"
+
+
+# ---------------------------------------------------------------------------
+# S3: SAML provisioning mints an API key only when none is active
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@patch("src.services.audit_service.fire_and_forget_audit", new_callable=AsyncMock)
+@patch("src.auth.saml.create_api_key", new_callable=AsyncMock)
+@patch("src.auth.saml.user_has_active_api_key", new_callable=AsyncMock)
+@patch("src.auth.saml.upsert_user", new_callable=AsyncMock)
+async def test_saml_provision_mints_when_no_active_key(
+    mock_upsert, mock_has_key, mock_create, mock_audit
+):
+    from src.auth.saml import _saml_provision_user
+
+    mock_upsert.return_value = 5
+    mock_has_key.return_value = False
+
+    uid = await _saml_provision_user("User@Example.com")
+
+    assert uid == 5
+    mock_create.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@patch("src.services.audit_service.fire_and_forget_audit", new_callable=AsyncMock)
+@patch("src.auth.saml.create_api_key", new_callable=AsyncMock)
+@patch("src.auth.saml.user_has_active_api_key", new_callable=AsyncMock)
+@patch("src.auth.saml.upsert_user", new_callable=AsyncMock)
+async def test_saml_provision_skips_when_key_exists(
+    mock_upsert, mock_has_key, mock_create, mock_audit
+):
+    from src.auth.saml import _saml_provision_user
+
+    mock_upsert.return_value = 5
+    mock_has_key.return_value = True
+
+    uid = await _saml_provision_user("User@Example.com")
+
+    assert uid == 5
+    mock_create.assert_not_called()

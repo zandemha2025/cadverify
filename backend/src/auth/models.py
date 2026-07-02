@@ -148,6 +148,26 @@ async def create_api_key(
         return int(row[0])
 
 
+async def user_has_active_api_key(user_id: int) -> bool:
+    """True if the user already holds at least one non-revoked API key.
+
+    Used by the SSO login paths (SAML ACS, Google callback, magic-link verify)
+    to avoid minting a fresh key on every single login — a new key should be
+    issued only when the account has none active.
+    """
+    async with _session()() as s:
+        r = (
+            await s.execute(
+                text(
+                    "SELECT 1 FROM api_keys "
+                    "WHERE user_id = :u AND revoked_at IS NULL LIMIT 1"
+                ),
+                {"u": user_id},
+            )
+        ).first()
+        return r is not None
+
+
 async def lookup_api_key(hmac_idx: str) -> ApiKeyRow | None:
     async with _session()() as s:
         r = (

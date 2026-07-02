@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Batch, WebhookDelivery
+from src.services.url_guard import UnsafeURLError, validate_outbound_url
 
 logger = logging.getLogger("cadverify.webhook_service")
 
@@ -148,6 +149,21 @@ async def deliver_webhook(
         await session.commit()
         return True
 
+    # SSRF guard (S7) defense-in-depth: re-validate at delivery time in case
+    # DNS was rebound to an internal address after the request-time check.
+    # A rejected URL is a permanent failure -- mark failed, never retried.
+    try:
+        validate_outbound_url(batch.webhook_url)
+    except UnsafeURLError:
+        logger.warning(
+            "Webhook delivery blocked by SSRF guard: delivery=%d batch=%s",
+            delivery_id, batch.ulid,
+        )
+        delivery.status = "failed"
+        delivery.last_attempt_at = datetime.now(timezone.utc)
+        await session.commit()
+        return False
+
     # Sign and send
     import json
 
@@ -220,6 +236,12 @@ async def schedule_webhook_retry(
 
     if delivery is None:
         logger.error("WebhookDelivery %d not found for retry", delivery_id)
+        return
+
+    # Terminal failure (e.g. rejected by the SSRF guard at delivery time) must
+    # never be rescheduled -- that path does not increment attempts, so without
+    # this guard it would retry forever.
+    if delivery.status == "failed":
         return
 
     if delivery.attempts >= 5:
