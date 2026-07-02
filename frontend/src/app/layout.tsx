@@ -13,9 +13,13 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// Display voice: Archivo, loaded WITH the width axis (`wdth`) so the headlines
-// and the monumental hero number can use the Expanded width — the signature
-// "bold industrial confidence" cut, not a quiet neutral UI sans.
+// MARKETING-ONLY. Archivo was the authed app's display voice pre-"Governed
+// Catalog" re-founding; that identity retired it in favor of Geist Mono for
+// the one hero metric (see globals.css --font-display comment). It's loaded
+// here — WITH the width axis (`wdth`) for the Expanded cut — only as the
+// `--font-display` fallback the (deferred) marketing surfaces still consume;
+// the authed app never sets it. Keep the import until the marketing
+// re-founding decision lands; do not read this as the app's current voice.
 const archivo = Archivo({
   variable: "--font-archivo",
   subsets: ["latin"],
