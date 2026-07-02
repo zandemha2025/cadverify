@@ -206,3 +206,24 @@ async def test_deliver_webhook_blocks_rebound_url():
     assert ok is False
     assert delivery.status == "failed"
     mock_client.assert_not_called()  # no outbound request ever made
+
+
+@pytest.mark.asyncio
+async def test_terminally_failed_delivery_not_rescheduled():
+    """An SSRF-blocked (status=failed) delivery must not be retried forever."""
+    from src.services import webhook_service
+
+    delivery = MagicMock()
+    delivery.id = 9
+    delivery.status = "failed"
+    delivery.attempts = 0  # never incremented by the SSRF-block path
+
+    res = MagicMock()
+    res.scalars.return_value.first.return_value = delivery
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=res)
+    pool = AsyncMock()
+
+    await webhook_service.schedule_webhook_retry(session, 9, pool)
+
+    pool.enqueue_job.assert_not_called()

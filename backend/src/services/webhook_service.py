@@ -238,6 +238,12 @@ async def schedule_webhook_retry(
         logger.error("WebhookDelivery %d not found for retry", delivery_id)
         return
 
+    # Terminal failure (e.g. rejected by the SSRF guard at delivery time) must
+    # never be rescheduled -- that path does not increment attempts, so without
+    # this guard it would retry forever.
+    if delivery.status == "failed":
+        return
+
     if delivery.attempts >= 5:
         delivery.status = "failed"
         await session.commit()
