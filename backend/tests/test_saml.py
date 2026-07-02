@@ -126,20 +126,33 @@ def test_auth_mode_saml_disables_google():
     assert resp.status_code == 404
 
 
+@patch("src.auth.oauth.oauth.google.authorize_redirect", new_callable=AsyncMock)
 @patch("src.auth.saml._build_auth")
-def test_auth_mode_hybrid_enables_both(mock_build_auth):
+def test_auth_mode_hybrid_enables_both(mock_build_auth, mock_authorize_redirect):
     """When AUTH_MODE=hybrid, both SAML metadata and Google start are available."""
     mock_build_auth.return_value = _mock_saml_auth()
+    from fastapi.responses import RedirectResponse
+
+    mock_authorize_redirect.return_value = RedirectResponse(
+        "https://accounts.google.com/mock-authorize", status_code=302
+    )
     app = _make_app("hybrid")
-    client = TestClient(app, raise_server_exceptions=False)
+    # Hermetic: without a live REDIS_URL, /auth/google/start would 500 on the
+    # unconditional per_ip_signup_limit KeyError; with REDIS_URL live it would
+    # reach authlib's authorize_redirect, which performs a REAL network GET to
+    # Google's OIDC discovery endpoint. Mock authorize_redirect (patched above)
+    # so the route is exercised with zero network access either way, and
+    # disable follow_redirects as defense in depth against ever dereferencing
+    # a 302 to a real external host.
+    client = TestClient(app, raise_server_exceptions=False, follow_redirects=False)
 
     saml_resp = client.get("/auth/saml/metadata")
     assert saml_resp.status_code == 200
 
-    # Verify Google route is registered. The actual call may fail due to
-    # missing REDIS_URL/rate-limit services, but route existence is confirmed
-    # by checking it is NOT a 404.
+    # Verify Google route is registered and reachable without touching the
+    # network (authorize_redirect is mocked above).
     assert client.get("/auth/google/start").status_code != 404
+    mock_authorize_redirect.assert_awaited_once()
 
 
 @patch("src.auth.saml._build_auth")

@@ -43,7 +43,14 @@ async def google_start(request: Request):
     # Per-email limit is NOT applied here — it would lock out legitimate
     # re-sign-ins; applied only at magic-link start where one email = one
     # fresh signup intent.
-    await per_ip_signup_limit(request)
+    #
+    # Gated behind REDIS_URL exactly like the password-signup path
+    # (src/auth/password.py::_run_abuse_controls) — deploy-gated: no rate
+    # limiting in local/dev without Redis configured. Previously this call
+    # was unconditional, so it raised KeyError (os.environ["REDIS_URL"]) on
+    # any environment without Redis instead of degrading gracefully.
+    if os.getenv("REDIS_URL"):
+        await per_ip_signup_limit(request)
     redirect_uri = f"{_api_origin()}/auth/google/callback"
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
