@@ -748,6 +748,7 @@ async def _run_cost_decision(
             compute_params_hash,
             cost_persist_enabled,
             persist_cost_decision,
+            record_persist_failure,
         )
 
         if cost_persist_enabled():
@@ -763,11 +764,12 @@ async def _run_cost_decision(
                 shop=shop_slug,
                 overrides=rate_overrides,
             )
+            mesh_hash = compute_mesh_hash(data)
             try:
                 saved = await persist_cost_decision(
                     session,
                     user,
-                    mesh_hash=compute_mesh_hash(data),
+                    mesh_hash=mesh_hash,
                     params_hash=params_hash,
                     engine_version=_cv_version,
                     filename=file.filename or "unknown",
@@ -781,10 +783,12 @@ async def _run_cost_decision(
                     "id": saved.ulid,
                     "url": f"/api/v1/cost-decisions/{saved.ulid}",
                 }
-            except Exception:
-                # Persistence must never break the live decision the buyer sees.
-                logger.exception(
-                    "Cost-decision persistence failed — returning unsaved decision"
+            except Exception as exc:
+                # Persistence must never break the live decision the buyer
+                # sees (graceful degrade, unchanged) — but the failure must
+                # be observable, not silent: warning log + usage_events row.
+                await record_persist_failure(
+                    session, user, mesh_hash=mesh_hash, error=exc
                 )
 
     return result_dict

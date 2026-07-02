@@ -133,6 +133,7 @@ I asked the founder to pick the **WORLD** (single biggest design decision) from 
 ---
 
 ## 7. ARTIFACT INDEX (produced/updated this run)
+- **Plan (2026-07-02, post-handoff): `outputs/long-horizon-plan.md`** — the full long-horizon build plan (design track D−1→D4, gates G0a–G4, sprint sequence, walls W1–W5, engine-credibility split, human-gate queue). Survey-grounded + 3-critic adversarially reviewed. Supersedes the *sequencing* sections of `impl-state.md`; `impl-state.md` remains the item ledger.
 - State: `outputs/impl-state.md` (backlog + Phase-3 walls), `outputs/impl-summary.md` (run summary), `outputs/impl-harness-log.md` (event log), `outputs/orchestrator-log.md`, THIS file.
 - Verify verdicts: `outputs/verify/{dfm-scope-flags,cnc-volume,engine-memory,cost-persist,p0-kill-egress}.md`.
 - Impl notes (builders): `outputs/impl/{dfm-scope,cnc-volume,engine-memory,cost-persist,cost-persist-ui,p0-kill-egress,p0-refound}-note.md`, `outputs/impl/phase2-persist-cost-spec.md`.
