@@ -3,6 +3,23 @@
 Full lifecycle (sign / unsign / set / clear / require). Cookie body is
 `{user_id}.{issued_at}` HMAC-SHA256'd with DASHBOARD_SESSION_SECRET; the
 `iat` field enforces a 30-day hard expiry on unsign.
+
+Token format (JWT-style):  ``<b64url(body)>.<b64url(sig)>``
+Body and signature are base64url-encoded *separately* and joined with a
+literal ``.``. Because the base64url alphabet never contains ``.``, the dot
+is an unambiguous delimiter and a byte in the raw signature can never be
+mistaken for the separator.
+
+Backward compatibility — FAIL CLOSED (intentional): the previous format
+base64url-encoded ``body + b"." + sig`` as a *single* blob (no dot in the
+resulting string). Such legacy cookies contain zero dots, so ``split(".")``
+yields one segment and :func:`unsign` returns ``None``. Old cookies cannot be
+parsed unambiguously (the old encoding is prefix-ambiguous with a new
+``body`` segment), so we do NOT attempt a dual-format parse. Impact: every
+session minted before this deploy is invalidated exactly once — affected
+users are silently forced to re-login a single time, after which they hold a
+new-format cookie. This is a deliberate one-time cost to eliminate the
+~6% spurious-rejection bug in the old format.
 """
 from __future__ import annotations
 
@@ -25,18 +42,37 @@ def _secret() -> bytes:
     return raw
 
 
+def _b64url_encode(raw: bytes) -> str:
+    """base64url without padding (URL/cookie-safe, no ``.`` in alphabet)."""
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+
+def _b64url_decode(seg: str) -> bytes:
+    """Inverse of :func:`_b64url_encode`; restores stripped ``=`` padding."""
+    pad = "=" * (-len(seg) % 4)
+    return base64.urlsafe_b64decode(seg + pad)
+
+
 def sign(user_id: int, issued_at: int | None = None) -> str:
     iat = issued_at if issued_at is not None else int(time.time())
     body = f"{user_id}.{iat}".encode()
     sig = hmac.new(_secret(), body, hashlib.sha256).digest()[:16]
-    return base64.urlsafe_b64encode(body + b"." + sig).rstrip(b"=").decode()
+    # JWT-style: encode body and sig as SEPARATE base64url segments joined by a
+    # literal ".". The base64url alphabet excludes ".", so a raw signature byte
+    # (0x2e) can never be confused with the delimiter — the ~6% split-corruption
+    # bug of the old single-blob format is structurally impossible here.
+    return f"{_b64url_encode(body)}.{_b64url_encode(sig)}"
 
 
 def unsign(cookie: str) -> int | None:
     try:
-        pad = "=" * (-len(cookie) % 4)
-        raw = base64.urlsafe_b64decode(cookie + pad)
-        body, sig = raw.rsplit(b".", 1)
+        # Exactly two segments. Legacy single-blob cookies contain no "." and
+        # yield one segment -> rejected (fail closed; see module docstring).
+        parts = cookie.split(".")
+        if len(parts) != 2:
+            return None
+        body = _b64url_decode(parts[0])
+        sig = _b64url_decode(parts[1])
         expected = hmac.new(_secret(), body, hashlib.sha256).digest()[:16]
         if not hmac.compare_digest(sig, expected):
             return None
