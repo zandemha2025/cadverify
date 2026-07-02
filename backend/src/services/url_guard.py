@@ -29,6 +29,27 @@ class UnsafeURLError(ValueError):
 
 _ALLOWED_SCHEMES = frozenset({"http", "https"})
 
+# Ranges that ipaddress's built-in is_private/is_reserved predicates do NOT
+# reliably flag as non-routable on every Python version we run (notably
+# 3.9, which is what the backend venv ships). Checked explicitly below in
+# addition to the stdlib predicates rather than instead of them, so any
+# future stdlib improvements stay in effect too.
+#
+#   - 100.64.0.0/10  (RFC 6598 "Shared Address Space" / CGNAT). Widely used
+#     by cloud providers to host their instance-metadata service (e.g.
+#     Alibaba Cloud's 100.100.100.200). is_private and is_reserved are both
+#     False for this range on py3.9 and py3.12 — it is neither RFC-1918 nor
+#     flagged reserved by the stdlib, so it sails through unless checked
+#     explicitly.
+#   - 192.0.0.0/24   (RFC 6890 "IETF Protocol Assignments", which includes
+#     the 192.0.0.0/29 DS-Lite / NAT64 well-known prefixes). is_private is
+#     False and is_reserved is False on py3.9 (is_global is True), so it is
+#     treated as routable/public by the stdlib on that version.
+_EXTRA_BLOCKED_NETWORKS = (
+    ipaddress.ip_network("100.64.0.0/10"),
+    ipaddress.ip_network("192.0.0.0/24"),
+)
+
 
 def guard_enabled() -> bool:
     """Whether the SSRF guard is active (default on)."""
@@ -42,9 +63,20 @@ def _ip_is_blocked(ip: ipaddress._BaseAddress) -> bool:
     fc00::/7), link-local (169.254/16 incl. 169.254.169.254, fe80::/10),
     unspecified (0.0.0.0, ::), multicast, and other reserved ranges. IPv4
     addresses mapped into IPv6 (::ffff:127.0.0.1) are unwrapped first.
+
+    Also explicitly blocks 100.64.0.0/10 (RFC 6598 CGNAT, used by several
+    cloud providers for their instance-metadata endpoints) and 192.0.0.0/24
+    (RFC 6890 IETF protocol assignments), neither of which the stdlib
+    is_private/is_reserved predicates cover on all supported Python
+    versions — see _EXTRA_BLOCKED_NETWORKS above.
     """
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
         ip = ip.ipv4_mapped
+    if (
+        isinstance(ip, ipaddress.IPv4Address)
+        and any(ip in net for net in _EXTRA_BLOCKED_NETWORKS)
+    ):
+        return True
     return (
         ip.is_private
         or ip.is_loopback

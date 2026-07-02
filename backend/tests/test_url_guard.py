@@ -39,12 +39,21 @@ from src.services.url_guard import (
         "http://[::1]/hook",
         "http://[fc00::1]/hook",  # IPv6 unique-local
         "http://[fe80::1]/hook",  # IPv6 link-local
+        "http://100.100.100.200/latest/meta-data/",  # Alibaba Cloud ECS metadata (CGNAT)
+        "http://100.64.0.1/hook",  # RFC 6598 shared address space (CGNAT)
+        "http://192.0.0.8/hook",  # RFC 6890 IETF protocol assignments
     ],
 )
 def test_rejects_non_routable_ip_literals(url):
     with pytest.raises(UnsafeURLError):
         validate_outbound_url(url)
     assert is_safe_outbound_url(url) is False
+
+
+def test_rejects_ipv4_mapped_ipv6_cgnat_metadata():
+    # ::ffff:100.100.100.200 must be unwrapped and blocked as CGNAT/metadata.
+    with pytest.raises(UnsafeURLError):
+        validate_outbound_url("http://[::ffff:100.100.100.200]/latest/meta-data/")
 
 
 @pytest.mark.parametrize(

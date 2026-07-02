@@ -47,9 +47,10 @@ persistence:
     storageClass: ""
 
 # WARNING: templates/secret-saml.yaml ships sp-key.pem / sp-cert.pem as EMPTY
-# string placeholders. They are fine for receiving unsigned assertions, but SP
-# request signing / encrypted assertions (advanced_settings authnRequestsSigned
-# or wantAssertionsEncrypted) will silently fail with an empty key. Provide the
+# string placeholders by default (samlSecrets below). They are fine for
+# receiving unsigned assertions, but SP request signing / encrypted
+# assertions (advanced_settings authnRequestsSigned or
+# wantAssertionsEncrypted) will silently fail with an empty key. Provide the
 # real PEMs before enabling those, e.g.:
 #   helm upgrade ... --set-file samlSecrets.spKey=sp-key.pem \
 #                    --set-file samlSecrets.spCert=sp-cert.pem
@@ -60,6 +61,13 @@ saml:
   spEntityId: ""
   spAcsUrl: ""
   spSloUrl: ""
+
+# Populated via --set-file (see WARNING above) or an external/sealed secret;
+# templates/secret-saml.yaml renders these into the sp-key.pem / sp-cert.pem
+# keys of the SAML Secret. Left empty by default.
+samlSecrets:
+  spKey: ""
+  spCert: ""
 
 auth:
   mode: "google"
