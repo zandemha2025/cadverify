@@ -4,9 +4,15 @@ from __future__ import annotations
 import logging
 import os
 
+from arq import cron
 from arq.connections import RedisSettings
 
-from src.jobs.batch_tasks import dispatch_webhook, run_batch_coordinator, run_batch_item
+from src.jobs.batch_tasks import (
+    dispatch_webhook,
+    run_batch_coordinator,
+    run_batch_item,
+    sweep_orphaned_batches,
+)
 from src.jobs.reconstruction_tasks import run_reconstruction_job
 from src.jobs.tasks import run_sam3d_job
 
@@ -58,11 +64,27 @@ async def shutdown(ctx: dict) -> None:
 
 class WorkerSettings:
     functions = [run_sam3d_job, run_batch_coordinator, run_batch_item, dispatch_webhook, run_reconstruction_job]
+    # Periodic orphan sweep (F-ARCH-1): reap batches stuck in pending/processing.
+    # Runs every 5 minutes and once at worker startup as a backstop.
+    cron_jobs = [
+        cron(
+            sweep_orphaned_batches,
+            minute=set(range(0, 60, 5)),
+            run_at_startup=True,
+        )
+    ]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(os.getenv("REDIS_URL", "redis://localhost:6379"))
     max_jobs = 12
-    job_timeout = 600  # 10 min visibility timeout (SAM-07)
+    # 10 min per-job ceiling (SAM-07). arq wraps every job in
+    # asyncio.wait_for(task, job_timeout) and CANCELS it at the deadline, so no
+    # job may be designed to outlive this. run_batch_coordinator is therefore a
+    # short self-re-enqueueing *tick* (see batch_tasks.py), not a batch-lifetime
+    # loop -- each tick finishes in milliseconds, well inside this ceiling, and a
+    # long batch is driven by the chain of ticks. A dead chain is reaped by the
+    # heartbeat-based orphan sweeper.
+    job_timeout = 600
     health_check_interval = 30
     retry_jobs = True
     max_tries = 2

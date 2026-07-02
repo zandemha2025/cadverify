@@ -17,6 +17,14 @@ logger = logging.getLogger("cadverify.jobs.arq_backend")
 # Module-level singleton pool
 _pool: Optional[ArqRedis] = None
 
+# Explicit job_type -> arq task-name registry. enqueue() honors the caller's
+# job_type via this map instead of hardcoding a single task; an unknown
+# job_type raises loudly rather than silently running the wrong task.
+_JOB_TYPE_TO_TASK: dict[str, str] = {
+    "sam3d": "run_sam3d_job",
+    "reconstruction": "run_reconstruction_job",
+}
+
 
 async def get_arq_pool() -> ArqRedis:
     """Return (and lazily create) the arq Redis connection pool."""
@@ -35,6 +43,13 @@ class ArqJobQueue(JobQueue):
 
     async def enqueue(self, job_type: str, params: dict, idempotency_key: str) -> str:
         """Enqueue a job. Uses idempotency_key as the arq job ID to prevent duplicates."""
+        task_name = _JOB_TYPE_TO_TASK.get(job_type)
+        if task_name is None:
+            raise ValueError(
+                f"Unknown job_type {job_type!r}; expected one of "
+                f"{sorted(_JOB_TYPE_TO_TASK)}"
+            )
+
         # Check for existing job with same idempotency key
         async with get_session_factory()() as session:
             existing = (
@@ -49,13 +64,14 @@ class ArqJobQueue(JobQueue):
                 logger.info("Duplicate enqueue for key=%s, returning existing job", idempotency_key)
                 return existing.ulid
 
-        # Enqueue to arq with the idempotency key as job ID
+        # Enqueue to arq with the idempotency key as job ID. Honor the caller's
+        # job_type via the registry rather than hardcoding a single task.
         await self._pool.enqueue_job(
-            "run_sam3d_job",
+            task_name,
             idempotency_key,
             _job_id=idempotency_key,
         )
-        logger.info("Enqueued job type=%s key=%s", job_type, idempotency_key)
+        logger.info("Enqueued job type=%s task=%s key=%s", job_type, task_name, idempotency_key)
         return idempotency_key
 
     async def get_status(self, job_id: str) -> JobInfo:

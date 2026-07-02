@@ -27,6 +27,7 @@ from src.auth.disposable import classify, normalize_email
 from src.auth.disposable_list import get_soft_flag_set
 from src.auth.hashing import hmac_index, mint_token
 from src.auth.models import create_api_key, upsert_user, user_has_active_api_key
+from src.auth.redis_util import require_redis_url
 from src.auth.signup_limits import per_email_signup_limit, per_ip_signup_limit
 from src.auth.turnstile import verify_turnstile
 
@@ -39,7 +40,7 @@ def _secret() -> bytes:
 
 
 def _r() -> aioredis.Redis:
-    return aioredis.from_url(os.environ["REDIS_URL"], decode_responses=True)
+    return aioredis.from_url(require_redis_url(), decode_responses=True)
 
 
 def _mint(email_norm: str) -> str:
