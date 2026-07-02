@@ -46,6 +46,14 @@ persistence:
     size: 20Gi
     storageClass: ""
 
+# WARNING: templates/secret-saml.yaml ships sp-key.pem / sp-cert.pem as EMPTY
+# string placeholders. They are fine for receiving unsigned assertions, but SP
+# request signing / encrypted assertions (advanced_settings authnRequestsSigned
+# or wantAssertionsEncrypted) will silently fail with an empty key. Provide the
+# real PEMs before enabling those, e.g.:
+#   helm upgrade ... --set-file samlSecrets.spKey=sp-key.pem \
+#                    --set-file samlSecrets.spCert=sp-cert.pem
+# or point the Secret at an external/sealed secret. Do NOT commit real keys here.
 saml:
   enabled: false
   idpMetadata: ""
