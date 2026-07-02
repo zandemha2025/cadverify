@@ -41,11 +41,13 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        {/* No-flash theme: apply the persisted theme before paint. */}
+        {/* No-flash theme: DARK-FIRST. The authed app defaults to dark graphite
+            (the command register); only a user who has pinned light opts out.
+            Applied before paint so the theme never flickers. */}
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "try{var t=localStorage.getItem('cv_theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark')}}catch(e){}",
+              "try{if(localStorage.getItem('cv_theme')!=='light'){document.documentElement.classList.add('dark')}}catch(e){document.documentElement.classList.add('dark')}",
           }}
         />
       </head>

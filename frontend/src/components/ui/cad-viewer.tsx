@@ -240,9 +240,7 @@ export default function CadViewer({
     <div
       className={cn(
         "h-full overflow-hidden rounded-[var(--radius)] border",
-        instrument
-          ? "border-[#22344f]"
-          : "border-border bg-gradient-to-b from-neutral-100 to-neutral-200",
+        instrument ? "border-[#22344f]" : "border-border bg-card-raised",
         className
       )}
       style={
@@ -318,7 +316,7 @@ export default function CadViewer({
         />
         {!instrument && (
           <gridHelper
-            args={[8, 16, "#cfc8bd", "#e4dfd6"]}
+            args={[8, 16, "#3a4655", "#232c37"]}
             position={[0, -halfH - 0.01, 0]}
           />
         )}

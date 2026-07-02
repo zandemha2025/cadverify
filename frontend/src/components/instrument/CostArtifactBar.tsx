@@ -55,10 +55,10 @@ function BarButton({
       onClick={onClick}
       disabled={busy}
       className={[
-        "inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3fa3e8] disabled:opacity-60",
+        "inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] border px-2.5 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
         primary
-          ? "border-[#1e3a5f] bg-[#102438] text-[#8fc8f2] hover:bg-[#15314c]"
-          : "border-[#233149] bg-[#0f1b2e] text-[#9fb0c8] hover:text-[#eaeff7]",
+          ? "border-accent-subtle-border bg-accent-subtle text-accent-text hover:bg-accent-subtle/70"
+          : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
       ].join(" ")}
     >
       <Icon className="size-3.5" />
@@ -101,16 +101,16 @@ export function CostArtifactBar({
     });
 
   return (
-    <div className="mt-5 border-t border-[#233149] pt-4">
+    <div className="mt-5 border-t border-border pt-4">
       <div className="flex items-center gap-2">
-        <span className="inline-flex items-center gap-1.5 text-[11px] text-[#6fbf8f]">
+        <span className="inline-flex items-center gap-1.5 text-[11px] text-pass">
           <Check className="size-3.5" />
           Saved to cost history
         </span>
         <button
           type="button"
           onClick={() => router.push(`/cost-decisions/${saved.id}`)}
-          className="num inline-flex items-center gap-1 text-[11px] text-[#3fa3e8] hover:text-[#6fbcef] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3fa3e8]"
+          className="num inline-flex items-center gap-1 text-[11px] text-accent-text hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ExternalLink className="size-3" /> open
         </button>
@@ -149,10 +149,10 @@ export function CostArtifactBar({
         />
       </div>
 
-      <p className="mt-2.5 text-[11px] leading-relaxed text-[#6f8099]">
+      <p className="mt-2.5 text-[11px] leading-relaxed text-subtle-foreground">
         Saved, exported and shared copies keep the provenance tags and the
         confidence band labeled{" "}
-        <span className="text-[#9fb0c8]">assumption-based, not yet validated</span>{" "}
+        <span className="text-muted-foreground">assumption-based, not yet validated</span>{" "}
         — an explainable should-cost, not a validated quote.
       </p>
 
