@@ -600,6 +600,8 @@ async def _run_cost_decision(
     material_class: str,
     shop: Optional[str] = None,
     overrides: Optional[str] = None,
+    user: Optional[AuthedUser] = None,
+    session: Optional[AsyncSession] = None,
 ) -> dict:
     """Shared should-cost / make-vs-buy compute for the authed and public-demo
     cost routes.
@@ -735,7 +737,57 @@ async def _run_cost_decision(
             },
         )
 
-    return report_to_dict(report)
+    result_dict = report_to_dict(report)
+
+    # ---- persist for authenticated callers (Phase 2 gap #3) --------------
+    # Turns the flagship decision into a durable artifact (list/export/share/
+    # compare). The /demo route passes no user/session, so it stays IP-local
+    # and ephemeral — honest to its docstring. Behind COST_PERSIST_ENABLED.
+    if user is not None and session is not None:
+        from src.services.cost_decision_service import (
+            compute_params_hash,
+            cost_persist_enabled,
+            persist_cost_decision,
+        )
+
+        if cost_persist_enabled():
+            from src import __version__ as _cv_version
+            from src.services.analysis_service import compute_mesh_hash
+
+            params_hash = compute_params_hash(
+                quantities=quantities,
+                region=region,
+                cavities=cavities,
+                complexity=complexity,
+                material_class=material_class,
+                shop=shop_slug,
+                overrides=rate_overrides,
+            )
+            try:
+                saved = await persist_cost_decision(
+                    session,
+                    user,
+                    mesh_hash=compute_mesh_hash(data),
+                    params_hash=params_hash,
+                    engine_version=_cv_version,
+                    filename=file.filename or "unknown",
+                    file_type=suffix.lstrip("."),
+                    result_json=result_dict,
+                )
+                # Non-destructive: the decision JSON is unchanged; we only add a
+                # pointer to the saved artifact so the caller can open/export it.
+                result_dict = dict(result_dict)
+                result_dict["saved"] = {
+                    "id": saved.ulid,
+                    "url": f"/api/v1/cost-decisions/{saved.ulid}",
+                }
+            except Exception:
+                # Persistence must never break the live decision the buyer sees.
+                logger.exception(
+                    "Cost-decision persistence failed — returning unsaved decision"
+                )
+
+    return result_dict
 
 
 @router.post("/validate/cost", dependencies=[Depends(require_kill_switch_open)])
@@ -767,14 +819,18 @@ async def validate_cost(
                     'enables a true server re-cost on an edited assumption.',
     ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Explainable make-vs-buy should-cost decision for an uploaded STL/STEP part.
 
-    IP-local: the CAD is parsed, costed, and discarded in-process — nothing is
-    persisted (no DB session, no mesh blob) and no network call is made (the
-    costing layer opens zero sockets). Returns the full glass-box decision JSON;
-    broken geometry is surfaced as a clean structured 400 (GEOMETRY_INVALID),
-    never a 500.
+    IP-local compute: the CAD is parsed and costed in-process and no network call
+    is made (the costing layer opens zero sockets). The glass-box decision is
+    then PERSISTED for the authenticated user (Phase 2 gap #3, behind
+    COST_PERSIST_ENABLED) so it can be listed, PDF/JSON/CSV exported, shared, and
+    compared — the response carries a `saved: {id, url}` pointer to that artifact.
+    Only the decision (geometry summary + estimates + assumptions) is stored; the
+    raw CAD blob is never retained. Broken geometry is surfaced as a clean
+    structured 400 (GEOMETRY_INVALID), never a 500.
 
     Pass `shop` to calibrate the number to a specific shop's real rates (the
     response carries SHOP-tagged drivers/assumptions + a "calibrated to shop X"
@@ -789,6 +845,8 @@ async def validate_cost(
         material_class=material_class,
         shop=shop,
         overrides=overrides,
+        user=user,
+        session=session,
     )
 
 

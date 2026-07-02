@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Should-Cost Report - {{ filename }}</title>
+  <style>
+    @page { size: A4; margin: 1.6cm; }
+    body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1a1a1a; font-size: 11px; line-height: 1.4; }
+    h1 { font-size: 20px; margin: 0 0 2px 0; }
+    h2 { font-size: 14px; margin: 18px 0 6px 0; border-bottom: 1.5px solid #333; padding-bottom: 3px; }
+    h3 { font-size: 12px; margin: 10px 0 4px 0; }
+    .sub { color: #555; margin: 0 0 10px 0; }
+    table { border-collapse: collapse; width: 100%; margin: 4px 0 8px 0; }
+    th, td { border: 1px solid #ccc; padding: 3px 6px; text-align: left; vertical-align: top; }
+    th { background: #f2f2f2; font-weight: 600; }
+    .num { text-align: right; }
+    .card { border: 1px solid #ddd; border-radius: 4px; padding: 8px 10px; margin: 8px 0; page-break-inside: avoid; }
+    .card-head { font-weight: 600; font-size: 12px; margin-bottom: 4px; }
+    .prov { display: inline-block; font-size: 9px; font-weight: 700; padding: 0 4px; border-radius: 3px; margin-left: 4px; }
+    .prov-DEFAULT { background: #eee; color: #555; }
+    .prov-SHOP { background: #e2f0d9; color: #375623; }
+    .prov-USER { background: #fce4d6; color: #843c0c; }
+    .prov-MEASURED { background: #d9e6f2; color: #1f3864; }
+    .ci-band { margin: 4px 0; padding: 5px 8px; background: #fff8e1; border-left: 3px solid #e0a800; font-size: 10px; }
+    .ci-honesty { font-weight: 700; color: #7a5c00; }
+    .crossover { background: #eef4fb; border-left: 3px solid #2f5597; padding: 6px 10px; margin: 6px 0; }
+    .disclaimer { margin-top: 6px; padding: 8px 10px; background: #fff3cd; border: 1px solid #ffe08a; border-radius: 4px; font-size: 10px; }
+    .footer { margin-top: 22px; padding-top: 6px; border-top: 1px solid #ccc; color: #777; font-size: 9px; }
+    .flag { color: #843c0c; font-weight: 600; }
+    .muted { color: #777; }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <h1>Should-Cost &amp; Make-vs-Buy Report</h1>
+  <p class="sub">
+    <strong>{{ filename }}</strong>
+    {% if label %}&mdash; {{ label }}{% endif %}
+    &mdash; {{ created_at[:10] }}
+    {% if material_class %}&middot; material class: {{ material_class }}{% endif %}
+  </p>
+
+  <!-- Honesty disclaimer (never certified) -->
+  <div class="disclaimer">
+    <span class="ci-honesty">Assumption-based should-cost.</span>
+    Every figure is a glass-box estimate built from stated drivers and rate
+    assumptions (tagged DEFAULT / SHOP / USER below). Confidence bands are
+    <strong>assumption-based, not yet validated</strong> against measured shop
+    outcomes &mdash; they are propagated from the stated assumptions, not a
+    guarantee. Use as a negotiation and design baseline, not a quote.
+  </div>
+
+  <!-- Geometry -->
+  <h2>Geometry</h2>
+  {% set geo = result.get('geometry', {}) %}
+  <table>
+    <tr><th>Volume (cm&sup3;)</th><th>Surface area (cm&sup2;)</th><th>Bounding box (mm)</th><th>Watertight</th><th>Faces</th></tr>
+    <tr>
+      <td class="num">{{ geo.get('volume_cm3', 'N/A') }}</td>
+      <td class="num">{{ geo.get('surface_area_cm2', 'N/A') }}</td>
+      <td>{{ geo.get('bbox_mm', []) | join(' &times; ') }}</td>
+      <td>{{ 'Yes' if geo.get('watertight') else 'No' }}</td>
+      <td class="num">{{ geo.get('face_count', 'N/A') | format_number }}</td>
+    </tr>
+  </table>
+
+  <!-- Routing -->
+  {% set routing = result.get('routing') %}
+  {% if routing %}
+  <h2>Geometric Routing</h2>
+  <p>
+    Recommended process: <strong>{{ routing.get('recommended_process') }}</strong>
+    (archetype: {{ routing.get('archetype') }}, confidence {{ routing.get('confidence') }})
+  </p>
+  {% if routing.get('reasoning') %}<p class="muted">{{ routing.get('reasoning') }}</p>{% endif %}
+  {% endif %}
+
+  <!-- Per-process estimates with line items + provenance -->
+  <h2>Per-Process Estimates (should-cost, USD)</h2>
+  {% set estimates = result.get('estimates', []) %}
+  {% if estimates %}
+    {% for e in estimates %}
+    <div class="card">
+      <div class="card-head">
+        {{ e.get('process') }} / {{ e.get('material') }} &mdash; qty {{ e.get('quantity') }}
+        &mdash; {{ e.get('unit_cost_usd') | format_money }}/unit
+        {% if not e.get('dfm_ready') %}<span class="flag">&#9888; not DFM-ready as-modeled</span>{% endif %}
+      </div>
+
+      <!-- Line items (sum to unit cost) -->
+      {% set li = e.get('line_items', {}) %}
+      {% if li %}
+      <h3>Line items</h3>
+      <table>
+        <tr><th>Cost element</th><th class="num">USD/unit</th></tr>
+        {% for k, v in li.items() %}
+        <tr><td>{{ k }}</td><td class="num">{{ v | format_money }}</td></tr>
+        {% endfor %}
+        <tr><td><strong>&Sigma; unit cost</strong></td><td class="num"><strong>{{ e.get('unit_cost_usd') | format_money }}</strong></td></tr>
+      </table>
+      {% endif %}
+
+      <!-- Drivers with provenance tags -->
+      {% set drivers = e.get('drivers', []) %}
+      {% if drivers %}
+      <h3>Cost drivers &amp; provenance</h3>
+      <table>
+        <tr><th>Driver</th><th>Value</th><th>Source</th><th>Provenance</th></tr>
+        {% for d in drivers %}
+        <tr>
+          <td>{{ d.get('name') }}</td>
+          <td class="num">{{ d.get('value') }} {{ d.get('unit') }}</td>
+          <td>{{ d.get('source') }}</td>
+          <td><span class="prov prov-{{ d.get('provenance') }}">{{ d.get('provenance') }}</span></td>
+        </tr>
+        {% endfor %}
+      </table>
+      {% endif %}
+
+      <!-- Confidence band (honest, never "validated") -->
+      {% set ci = e.get('confidence') %}
+      {% if ci %}
+      <div class="ci-band">
+        Confidence {{ (ci.get('level', 0) * 100) | int }}%:
+        {{ ci.get('low_usd') | format_money }}&ndash;{{ ci.get('high_usd') | format_money }}/unit
+        (&plusmn;{{ ci.get('half_width_pct') }}%)
+        &mdash;
+        {% if ci.get('validated') %}
+          <span class="prov prov-MEASURED">MEASURED</span> {{ ci.get('basis') }}
+        {% else %}
+          <span class="ci-honesty">{{ ci.get('label') or 'assumption-based, not yet validated' }}</span>
+          &middot; {{ ci.get('basis') }}
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  {% else %}
+  <p class="muted">No priced estimates (geometry may be invalid).</p>
+  {% endif %}
+
+  <!-- Make-vs-buy crossover -->
+  <h2>Make-vs-Buy Crossover</h2>
+  {% set dec = result.get('decision') %}
+  {% if dec %}
+  <div class="crossover">
+    <p>
+      <strong>Make now:</strong> {{ dec.get('make_now_process') }} / {{ dec.get('make_now_material') }}
+      {% if dec.get('tooling_process') %}
+        &middot; <strong>Tooling / production candidate:</strong> {{ dec.get('tooling_process') }}
+        ({{ 'DFM-ready' if dec.get('tooling_dfm_ready') else 'redesign required' }})
+      {% endif %}
+    </p>
+    <p>
+      <strong>Crossover quantity:</strong>
+      {% if dec.get('crossover_qty') %}
+        &asymp; {{ dec.get('crossover_qty') }} units &mdash; above this the tooling/production
+        route becomes the cheaper per-unit choice.
+      {% else %}
+        none within the evaluated range &mdash; make-as-is stays cheapest.
+      {% endif %}
+    </p>
+    {% if dec.get('note') %}<p class="muted">{{ dec.get('note') }}</p>{% endif %}
+  </div>
+
+  <h3>Recommendation by quantity</h3>
+  <table>
+    <tr><th>Quantity</th><th>Process</th><th>Material</th><th class="num">Unit cost</th><th>Cheaper if redesigned</th></tr>
+    {% set rec = dec.get('recommendation', {}) %}
+    {% set redes = dec.get('if_redesigned', {}) %}
+    {% for q in result.get('quantities', []) %}
+      {% set r = rec.get(q|string) or rec.get(q) %}
+      {% set alt = redes.get(q|string) or redes.get(q) %}
+      {% if r %}
+      <tr>
+        <td class="num">{{ q }}</td>
+        <td>{{ r.get('process') }}</td>
+        <td>{{ r.get('material') }}</td>
+        <td class="num">{{ r.get('unit_cost_usd') | format_money }}/unit</td>
+        <td>
+          {% if alt %}{{ alt.get('process') }} {{ alt.get('unit_cost_usd') | format_money }}/unit
+            {% if alt.get('caveat') %}<span class="muted">({{ alt.get('caveat') }})</span>{% endif %}
+          {% else %}&mdash;{% endif %}
+        </td>
+      </tr>
+      {% endif %}
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">No decision available.</p>
+  {% endif %}
+
+  <!-- Assumptions log -->
+  <h2>Assumptions Log</h2>
+  <p class="muted">DEFAULT = generic fallback &middot; SHOP = your calibrated profile &middot; USER = ad-hoc override. Every assumption is editable and re-costable.</p>
+  {% set assumptions = result.get('assumptions', []) %}
+  {% if assumptions %}
+  <table>
+    <tr><th>Assumption</th><th>Value</th><th>Unit</th><th>Source</th><th>Provenance</th></tr>
+    {% for a in assumptions %}
+    <tr>
+      <td>{{ a.get('name') }}</td>
+      <td class="num">{{ a.get('value') }}</td>
+      <td>{{ a.get('unit') }}</td>
+      <td>{{ a.get('source') }}</td>
+      <td><span class="prov prov-{{ a.get('provenance') }}">{{ a.get('provenance') }}</span></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">No assumptions recorded.</p>
+  {% endif %}
+
+  {% set notes = result.get('notes', []) %}
+  {% if notes %}
+  <h3>Notes</h3>
+  <ul>
+    {% for n in notes %}<li>{{ n }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  <!-- Footer -->
+  <div class="footer">
+    CadVerify {{ engine_version }} | mesh: {{ mesh_hash }} | generated {{ created_at }} |
+    Assumption-based should-cost &mdash; not a validated quote.
+  </div>
+
+</body>
+</html>
