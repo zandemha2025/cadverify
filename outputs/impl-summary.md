@@ -12,7 +12,13 @@ Backlog = `outputs/audit/platform-gap-map.md`. Discipline: feature branch off `d
 **Phase 2 — the keepable artifact (the flagship output is now durable):**
 4. **Persist + export/share/compare the should-cost decision** (product audit gap #3) — `CostDecision` model + migration 0008; persist on `/validate/cost`; list/detail/compare; cost PDF + JSON + CSV export; public sanitized share link; full save/export/share/history/compare UI. Verified on **real Postgres** (no PII leak, owner-scoped 404, migration up/down clean); honesty preserved everywhere (no "validated" stamp). Flags `COST_PERSIST_ENABLED` / `NEXT_PUBLIC_COST_PERSIST_UI` (default ON). *(060fca3 + 03c357b)*
 
-**Audit's stated goal achieved:** "make the demo hold up, then make it produce a keepable artifact." Both done. `prod` == `dev`, demo-ready. Full backend suite green (594 passed / 0 failed); frontend tsc + tests + Turbopack build green.
+**Audit's stated goal achieved:** "make the demo hold up, then make it produce a keepable artifact." Both done.
+
+**Phase 0 (design re-founding) also shipped this run:**
+5. **Kill Replicate egress** (F-ARCH-4 / honesty) — reconstruction defaults local; remote = explicit warned opt-in; no-local+no-opt-in → announced `RECONSTRUCTION_UNAVAILABLE` 501 (no egress); honest `/health` reconstruction block. Zero-egress claim now true. Suite 603/0. *(680757a)*
+6. **Frontend re-founding** — the identity swap from "glowing-gauge cockpit" to "governed catalog": graphite dark-first + one cobalt, faceplate/bloom retired, one 4-zone shell, `PartWorkspace` = the **Decision** frame (Decision·Routing&DFM·Glass Box·Compare·History) with the crossover "aha" preserved in flat chrome, `GlassBoxDrawer` → `DecisionInspector` (provenance-as-infrastructure, no fabricated %). Demo path + Phase-2 artifact intact; zero-egress badge scoped to the cost/DFM path. tsc/tests/Turbopack-build green. *(4c17022)*
+
+`prod` == `dev`, demo-ready with the new identity on the live loop. Full backend suite 603/0; frontend green. **Aesthetic judgment → founder (design is theirs to eyeball).**
 
 ## 🔜 Phase 3 — PLATFORM + DESIGN track (north star: "Databricks for manufacturability & cost")
 See `outputs/impl-state.md` for the load-bearing walls. Sequence (design-first):
