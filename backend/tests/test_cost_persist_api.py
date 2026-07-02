@@ -24,7 +24,7 @@ from fastapi.testclient import TestClient
 
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
-from src.db.models import CostDecision
+from src.db.models import CostDecision, UsageEvent
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +180,49 @@ def test_validate_cost_flag_off_does_not_persist(
                    qty="50,5000", material_class="polymer")
     assert r.status_code == 200, r.text
     assert "saved" not in r.json()
+
+
+def test_validate_cost_persist_failure_is_graceful_and_observable(
+    client, cube_10mm, stl_bytes_of, caplog
+):
+    """A broken persist must still degrade gracefully (200, no `saved`) —
+    but the failure must no longer be silent: a WARNING log line carrying
+    the exception, plus a queryable `usage_events` row (CORE-hygiene #2)."""
+    cl, app = client
+    session = _session_returning()
+    # First flush (the real persist attempt) blows up; second flush (our own
+    # best-effort usage-event write) succeeds so we can assert it happened.
+    session.flush = AsyncMock(side_effect=[RuntimeError("db exploded"), None])
+    _override(app, session)
+
+    with caplog.at_level("WARNING", logger="cadverify.cost_decision_service"):
+        r = _post_cost(cl, "/api/v1/validate/cost", "cube.stl", stl_bytes_of(cube_10mm),
+                       qty="50,5000", material_class="polymer", region="US")
+
+    # Graceful degrade unchanged: still 200, still a full decision, just unsaved.
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "OK"
+    assert "saved" not in body
+
+    # Observable #1: a WARNING log line naming the exception (was silent before).
+    warnings = [rec for rec in caplog.records if rec.levelname == "WARNING"]
+    assert any("Cost-decision persistence failed" in rec.getMessage() for rec in warnings)
+    assert any("db exploded" in rec.getMessage() for rec in warnings)
+
+    # Observable #2: a usage_events row so the failure rate is queryable, not
+    # just grep-able in logs.
+    added_events = [
+        c.args[0] for c in session.add.call_args_list
+        if isinstance(c.args[0], UsageEvent)
+    ]
+    assert len(added_events) == 1
+    assert added_events[0].event_type == "cost_persist_failed"
+    assert added_events[0].user_id == 42
+
+    # The session was rolled back before the usage-event write (the failed
+    # flush left the transaction unusable otherwise).
+    assert session.rollback.await_count >= 1
 
 
 async def _run_persist(session, result_json, user_id=42):

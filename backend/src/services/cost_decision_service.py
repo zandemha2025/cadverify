@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.auth.require_api_key import AuthedUser
-from src.db.models import CostDecision
+from src.db.models import CostDecision, UsageEvent
 from src.services.share_service import generate_short_id
 
 logger = logging.getLogger("cadverify.cost_decision_service")
@@ -163,6 +163,58 @@ async def persist_cost_decision(
             return existing
         raise
     return decision
+
+
+async def record_persist_failure(
+    session: AsyncSession,
+    user: AuthedUser,
+    *,
+    mesh_hash: Optional[str],
+    error: BaseException,
+) -> None:
+    """Best-effort observability for a failed cost-decision persist.
+
+    Called from the graceful-degrade ``except`` in routes.py: persistence
+    must never break the live decision the buyer sees, so this function is
+    not allowed to raise either. It (1) logs the exception at WARNING so
+    it's no longer silent, and (2) appends a ``usage_events`` row so the
+    failure rate is queryable, not just grep-able.
+
+    Rolls back first: the triggering exception may have left the session's
+    transaction in a state that rejects further flush/commit (e.g. any
+    non-``IntegrityError`` DB failure inside ``persist_cost_decision``), and
+    an unrecoverable session would otherwise surface as a 500 at the
+    request-scoped commit in ``get_db_session`` — turning the "graceful"
+    degrade into a crash. Rolling back is safe here because persisting a
+    cost decision touches no other rows in this request's transaction.
+    """
+    logger.warning(
+        "Cost-decision persistence failed for user=%s mesh=%.12s…: %s",
+        user.user_id,
+        mesh_hash or "?",
+        error,
+        exc_info=error,
+    )
+    try:
+        await session.rollback()
+        session.add(
+            UsageEvent(
+                user_id=user.user_id,
+                api_key_id=user.api_key_id or None,
+                event_type="cost_persist_failed",
+                mesh_hash=mesh_hash,
+            )
+        )
+        await session.flush()
+    except Exception:
+        # The telemetry write itself must degrade gracefully too — a DB
+        # that's too unhealthy to take a usage-event insert is already
+        # loudly logged above; don't let this raise into the response.
+        logger.warning(
+            "Failed to record cost_persist_failed usage event for user=%s",
+            user.user_id,
+            exc_info=True,
+        )
 
 
 # ---------------------------------------------------------------------------
