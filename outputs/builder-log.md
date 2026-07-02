@@ -33,3 +33,4 @@ The layer is read-only over the engine (`AnalysisResult` + `mesh` + `features`);
 ---
 
 [SRE] BUILT engine-memory
+[PLATFORM] BUILT cost-persist
