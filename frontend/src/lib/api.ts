@@ -656,6 +656,12 @@ export interface CostReport {
   notes: string[];
   assumptions: CostAssumption[];
   decision: CostDecision | null;
+  /**
+   * Present when the authed cost route persisted this decision (Phase 2 gap #3).
+   * `id` is the durable cost-decision ulid; `url` is its backend detail path.
+   * Absent on the demo route or when COST_PERSIST_ENABLED is off.
+   */
+  saved?: { id: string; url: string };
 }
 
 export interface CostOptions {
@@ -796,4 +802,210 @@ export function costEstimate(
   opts: CostOptions
 ): Promise<CostReport> {
   return _costEstimate(file, opts);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Cost-decision persistence (Phase 2 gap #3 — save/export/share/compare) */
+/*  Contract: outputs/impl/cost-persist-note.md. Base is /api/v1 via the   */
+/*  same-origin authed proxy (require_role viewer for reads, analyst for    */
+/*  share). result_json.decision keys round-trip as STRINGS through JSONB — */
+/*  read them via lib/cost-decision helpers, never as numeric keys.         */
+/* ------------------------------------------------------------------ */
+
+/** One row of the cost-decision history list (denormalized for listing). */
+export interface CostDecisionSummary {
+  id: string;
+  filename: string;
+  file_type: string;
+  label: string | null;
+  make_now_process: string | null;
+  crossover_qty: number | null;
+  quantities: number[];
+  created_at: string;
+  is_public: boolean;
+  share_url: string | null;
+}
+
+export interface CostDecisionsPage {
+  cost_decisions: CostDecisionSummary[];
+  next_cursor: string | null;
+  has_more: boolean;
+  rateLimits?: RateLimits;
+}
+
+/** Full saved decision envelope — `result` is the verbatim report_to_dict. */
+export interface CostDecisionDetail {
+  id: string;
+  filename: string;
+  file_type: string;
+  label: string | null;
+  created_at: string;
+  engine_version: string | null;
+  make_now_process: string | null;
+  crossover_qty: number | null;
+  quantities: number[];
+  is_public: boolean;
+  share_url: string | null;
+  result: CostReport;
+}
+
+/**
+ * Sanitized public cost-decision payload (GET /s/cost/{short_id}). ZERO owner
+ * PII — the decision content (provenance + honest confidence band) is intact.
+ */
+export interface SharedCostDecision {
+  filename: string;
+  file_type: string;
+  label: string | null;
+  created_at: string;
+  make_now_process: string | null;
+  crossover_qty: number | null;
+  quantities: number[];
+  geometry: CostGeometry;
+  material_class: string | null;
+  routing: CostRouting | null;
+  estimates: CostEstimate[];
+  decision: CostDecision | null;
+  assumptions: CostAssumption[];
+  engine_feasibility: CostFeasibility[];
+  notes: string[];
+  status: string | null;
+}
+
+/** Summary side of a compare (one decision). */
+export interface CostCompareSummary {
+  id: string;
+  filename: string;
+  label: string | null;
+  make_now_process: string | null;
+  make_now_material: string | null;
+  tooling_process: string | null;
+  crossover_qty: number | null;
+  material_class: string | null;
+  created_at: string;
+}
+
+export interface CostCompareUnitRow {
+  quantity: number;
+  a: { process: string | null; unit_cost_usd: number | null } | null;
+  b: { process: string | null; unit_cost_usd: number | null } | null;
+  delta_usd: number | null;
+  delta_pct: number | null;
+}
+
+/** Structured diff of two owned cost decisions (GET /cost-decisions/compare). */
+export interface CostComparison {
+  a: CostCompareSummary;
+  b: CostCompareSummary;
+  unit_cost_by_qty: CostCompareUnitRow[];
+  diff: {
+    make_now_process: [string | null, string | null];
+    tooling_process: [string | null, string | null];
+    crossover_qty: [number | null, number | null];
+  };
+  unit_costs_by_process: {
+    a: Record<string, Record<string, number>>;
+    b: Record<string, Record<string, number>>;
+  };
+}
+
+export interface CostShareResult {
+  share_url: string;
+  share_short_id: string;
+}
+
+/** Paginated list of the user's saved cost decisions. */
+export async function fetchCostDecisions(params: {
+  cursor?: string;
+  limit?: number;
+  process?: string;
+  createdAfter?: string;
+  createdBefore?: string;
+}): Promise<CostDecisionsPage> {
+  const url = new URL(`${API_BASE}/cost-decisions`, window.location.origin);
+  if (params.cursor) url.searchParams.set("cursor", params.cursor);
+  if (params.limit) url.searchParams.set("limit", String(params.limit));
+  if (params.process) url.searchParams.set("process", params.process);
+  if (params.createdAfter) url.searchParams.set("created_after", params.createdAfter);
+  if (params.createdBefore) url.searchParams.set("created_before", params.createdBefore);
+
+  const res = await apiClient.fetch(url.toString());
+  const rateLimits = getLatestRateLimits();
+  const data = await res.json();
+  return { ...data, rateLimits };
+}
+
+/** Full saved cost decision by id (owner-scoped; 404 for others). */
+export async function fetchCostDecision(id: string): Promise<CostDecisionDetail> {
+  return apiClient.fetchJson<CostDecisionDetail>(`${API_BASE}/cost-decisions/${id}`);
+}
+
+/** Trigger a browser download of `blob` as `filename` (shared by the exporters). */
+function triggerBlobDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function costStem(filename: string): string {
+  return filename.replace(/\.[^.]+$/, "");
+}
+
+/** Download the cost-report PDF for a saved decision. */
+export async function downloadCostPdf(id: string, filename: string): Promise<void> {
+  const res = await apiClient.fetch(`${API_BASE}/cost-decisions/${id}/pdf`);
+  triggerBlobDownload(await res.blob(), `${costStem(filename)}-cost-report.pdf`);
+}
+
+/** Export the raw glass-box decision JSON (result_json) for a saved decision. */
+export async function exportCostJson(id: string, filename: string): Promise<void> {
+  const res = await apiClient.fetch(`${API_BASE}/cost-decisions/${id}/export.json`);
+  triggerBlobDownload(await res.blob(), `${costStem(filename)}-cost.json`);
+}
+
+/** Export the estimates / line-items table as CSV (honest confidence columns). */
+export async function exportCostCsv(id: string, filename: string): Promise<void> {
+  const res = await apiClient.fetch(`${API_BASE}/cost-decisions/${id}/export.csv`);
+  triggerBlobDownload(await res.blob(), `${costStem(filename)}-cost.csv`);
+}
+
+/** Create a public share link for a saved cost decision (idempotent). */
+export async function shareCostDecision(id: string): Promise<CostShareResult> {
+  return apiClient.fetchJson<CostShareResult>(`${API_BASE}/cost-decisions/${id}/share`, {
+    method: "POST",
+  });
+}
+
+/** Revoke a cost decision's public share link. */
+export async function unshareCostDecision(id: string): Promise<void> {
+  await apiClient.fetch(`${API_BASE}/cost-decisions/${id}/share`, { method: "DELETE" });
+}
+
+/** Public sanitized cost-decision view (no auth). Mirrors fetchSharedAnalysis. */
+export async function fetchSharedCostDecision(
+  shortId: string
+): Promise<SharedCostDecision> {
+  const res = await fetch(browserOrBackendUrl(`/s/cost/${shortId}`));
+  if (!res.ok) {
+    throw new Error(
+      res.status === 404 ? "Shared cost decision not found" : "Failed to fetch"
+    );
+  }
+  return res.json();
+}
+
+/** Structured side-by-side diff of two owned cost decisions. */
+export async function compareCostDecisions(
+  idA: string,
+  idB: string
+): Promise<CostComparison> {
+  const ids = encodeURIComponent(`${idA},${idB}`);
+  return apiClient.fetchJson<CostComparison>(
+    `${API_BASE}/cost-decisions/compare?ids=${ids}`
+  );
 }

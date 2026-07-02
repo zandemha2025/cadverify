@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test src/lib/dfm-scope.test.ts"
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test src/lib/dfm-scope.test.ts src/lib/cost-decision.test.ts"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.17",

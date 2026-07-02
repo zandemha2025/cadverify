@@ -3,31 +3,44 @@
 import { useState } from "react";
 import { Share2 } from "lucide-react";
 import { toast } from "sonner";
-import { shareAnalysis, unshareAnalysis } from "@/lib/api";
+import {
+  shareAnalysis,
+  unshareAnalysis,
+  shareCostDecision,
+  unshareCostDecision,
+} from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import ShareModal from "./ShareModal";
 
 interface ShareButtonProps {
+  /** analysis ulid (analysis) or cost-decision ulid (cost). */
   analysisId: string;
   initialShared?: boolean;
   initialShareUrl?: string | null;
+  /** which resource to share. "analysis" (default) or "cost". */
+  kind?: "analysis" | "cost";
 }
 
 export default function ShareButton({
   analysisId,
   initialShared = false,
   initialShareUrl = null,
+  kind = "analysis",
 }: ShareButtonProps) {
   const [isShared, setIsShared] = useState(initialShared);
   const [shareUrl, setShareUrl] = useState<string | null>(initialShareUrl);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
 
+  const isCost = kind === "cost";
+
   async function handleShare() {
     setLoading(true);
     try {
-      const result = await shareAnalysis(analysisId);
+      const result = isCost
+        ? await shareCostDecision(analysisId)
+        : await shareAnalysis(analysisId);
       setIsShared(true);
       setShareUrl(result.share_url);
       setShowModal(true);
@@ -41,7 +54,8 @@ export default function ShareButton({
   async function handleRevoke() {
     setLoading(true);
     try {
-      await unshareAnalysis(analysisId);
+      if (isCost) await unshareCostDecision(analysisId);
+      else await unshareAnalysis(analysisId);
       setIsShared(false);
       setShareUrl(null);
     } catch (e) {
@@ -86,7 +100,11 @@ export default function ShareButton({
       )}
 
       {showModal && shareUrl && (
-        <ShareModal shareUrl={shareUrl} onClose={() => setShowModal(false)} />
+        <ShareModal
+          shareUrl={shareUrl}
+          onClose={() => setShowModal(false)}
+          kind={kind}
+        />
       )}
     </>
   );
