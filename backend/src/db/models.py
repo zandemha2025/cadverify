@@ -65,6 +65,9 @@ class User(Base):
     api_keys: Mapped[List[ApiKey]] = relationship(back_populates="user", lazy="selectin")
     analyses: Mapped[List[Analysis]] = relationship(back_populates="user", lazy="selectin")
     batches: Mapped[List[Batch]] = relationship(back_populates="user", lazy="selectin")
+    cost_decisions: Mapped[List[CostDecision]] = relationship(
+        back_populates="user", lazy="selectin"
+    )
 
 
 class ApiKey(Base):
@@ -149,6 +152,73 @@ class Analysis(Base):
     # relationships
     user: Mapped[User] = relationship(back_populates="analyses")
     jobs: Mapped[List[Job]] = relationship(back_populates="analysis", lazy="selectin")
+
+
+class CostDecision(Base):
+    """Persisted should-cost / make-vs-buy decision (Phase 2 gap #3).
+
+    Mirrors ``Analysis`` for type-compatibility on both Postgres (JSONB) and the
+    SQLite test DB: ``result_json`` stores the full ``report_to_dict(report)``
+    glass-box artifact verbatim (geometry, per-process estimates with drivers +
+    provenance + honest confidence band, routing, assumptions, and the
+    make-vs-buy decision). A handful of columns are denormalized off that JSON
+    (``make_now_process`` / ``crossover_qty`` / ``quantities``) purely for
+    listing/filtering — the JSON stays the source of truth and carries the same
+    honesty (never "validated") as the live decision.
+    """
+
+    __tablename__ = "cost_decisions"
+    __table_args__ = (
+        Index("ix_cost_decisions_user_created", "user_id", "created_at"),
+        UniqueConstraint(
+            "user_id",
+            "mesh_hash",
+            "params_hash",
+            name="uq_cost_decisions_dedup",
+        ),
+        Index(
+            "ix_cost_decisions_share",
+            "share_short_id",
+            unique=True,
+            postgresql_where=text("share_short_id IS NOT NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, default=lambda: str(ULID())
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    api_key_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("api_keys.id", ondelete="SET NULL"), nullable=True
+    )
+    mesh_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    # SHA-256 of the canonical cost parameters (qty/region/cavities/complexity/
+    # material_class/shop/overrides) — the second half of the dedup key.
+    params_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    engine_version: Mapped[str] = mapped_column(Text, nullable=False)
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    file_type: Mapped[str] = mapped_column(Text, nullable=False)
+    result_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    # Denormalized off result_json for cheap listing / filtering only.
+    make_now_process: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    crossover_qty: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    quantities: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    label: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_public: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    share_short_id: Mapped[Optional[str]] = mapped_column(
+        Text, unique=False, nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    # relationships
+    user: Mapped[User] = relationship(back_populates="cost_decisions")
 
 
 class Job(Base):

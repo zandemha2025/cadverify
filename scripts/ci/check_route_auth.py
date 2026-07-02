@@ -15,6 +15,10 @@ ROOT = Path(__file__).resolve().parents[2]
 ROUTES_FILE = ROOT / "backend/src/api/routes.py"
 PUBLIC_ROUTES = {
     ("post", "/validate/demo"),
+    # Public should-cost demo — NO auth by design (mirrors /validate/demo:
+    # kill-switch dep only, tight public rate limit, no DB/persistence, zero
+    # network egress). Its authed sibling POST /validate/cost is role-gated.
+    ("post", "/validate/cost/demo"),
 }
 AUTH_DEPENDENCIES = {"require_api_key", "require_role"}
 
