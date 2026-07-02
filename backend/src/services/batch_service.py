@@ -10,7 +10,9 @@ import io
 import logging
 import os
 import shutil
+import tempfile
 import zipfile
+from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
 
 from sqlalchemy import select, text
@@ -20,6 +22,16 @@ from ulid import ULID
 from src.db.models import Analysis, Batch, BatchItem
 
 logger = logging.getLogger("cadverify.batch_service")
+
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def _flag(name: str, default: str) -> bool:
+    return os.getenv(name, default).strip().lower() in _TRUTHY
+
+
+class ZipTooLargeError(ValueError):
+    """Uploaded ZIP exceeded the configured size cap (streamed, early-rejected)."""
 
 # ---------------------------------------------------------------------------
 # Constants (from env vars)
@@ -83,71 +95,150 @@ async def create_batch(
 # ---------------------------------------------------------------------------
 
 
-def extract_zip_to_items(zip_bytes: bytes, batch_ulid: str) -> list[dict]:
-    """Extract valid CAD files from a ZIP archive to disk.
+async def stream_upload_to_tempfile(
+    upload,
+    max_bytes: int,
+    chunk_size: int = 1024 * 1024,
+) -> str:
+    """Stream an UploadFile to a temp file, rejecting once *max_bytes* exceeded.
+
+    F-ARCH-9: the old path did ``await file.read()`` -- pulling the entire
+    (potentially multi-GB) ZIP into RAM before checking the size cap. We now
+    stream in chunks and reject as soon as the cumulative size crosses the cap,
+    so an oversized upload never fully materializes in memory.
+
+    Returns the temp file path (caller owns cleanup on success). On rejection the
+    partial temp file is removed and ``ZipTooLargeError`` is raised.
+    """
+    fd, path = tempfile.mkstemp(suffix=".zip", prefix="cv_batch_")
+    total = 0
+    try:
+        with os.fdopen(fd, "wb") as out:
+            while True:
+                chunk = await upload.read(chunk_size)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    raise ZipTooLargeError(
+                        f"ZIP upload exceeds maximum size of {max_bytes} bytes"
+                    )
+                out.write(chunk)
+    except BaseException:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        raise
+    return path
+
+
+def _dedup_name(base: str, seen: set[str]) -> str:
+    """Return a name unique within *seen*, suffixing ``_1``, ``_2`` on collision.
+
+    Prevents the F-ARCH-9 silent collapse: two archive entries with the same
+    basename in different folders (``a/part.stl`` + ``b/part.stl``) used to
+    overwrite each other on disk and produce two items pointing at one file.
+    """
+    if base not in seen:
+        seen.add(base)
+        return base
+    stem, ext = os.path.splitext(base)
+    i = 1
+    while True:
+        candidate = f"{stem}_{i}{ext}"
+        if candidate not in seen:
+            seen.add(candidate)
+            return candidate
+        i += 1
+
+
+def _extract_zipfile(zf: zipfile.ZipFile, batch_ulid: str) -> list[dict]:
+    """Core extraction shared by the bytes- and path-based entry points.
 
     Enforces:
     - Max items (BATCH_MAX_ITEMS)
     - Per-file size limit (BATCH_MAX_FILE_BYTES)
     - Compression ratio limit (MAX_COMPRESSION_RATIO) for zip bomb protection
     - Path traversal prevention via os.path.basename()
-
-    Returns list of dicts with either extracted file info or skip records.
+    - Basename dedup so same-named files in different folders don't collapse
+      (BATCH_ZIP_DEDUP, default on)
     """
     results: list[dict] = []
     extract_dir = os.path.join(BATCH_BLOB_DIR, batch_ulid)
     os.makedirs(extract_dir, exist_ok=True)
 
-    with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
-        cad_entries = []
-        for info in zf.infolist():
-            if info.is_dir():
-                continue
-            safe_name = os.path.basename(info.filename)
-            if not safe_name:
-                continue
-            ext = os.path.splitext(safe_name)[1].lower()
-            if ext not in VALID_EXTENSIONS:
-                continue  # skip non-CAD silently
-            cad_entries.append((info, safe_name))
+    dedup = _flag("BATCH_ZIP_DEDUP", "1")
+    seen: set[str] = set()
 
-        if len(cad_entries) > BATCH_MAX_ITEMS:
-            raise ValueError(
-                f"ZIP contains {len(cad_entries)} CAD files, "
-                f"exceeding limit of {BATCH_MAX_ITEMS}"
-            )
+    cad_entries = []
+    for info in zf.infolist():
+        if info.is_dir():
+            continue
+        base = os.path.basename(info.filename)
+        if not base:
+            continue
+        ext = os.path.splitext(base)[1].lower()
+        if ext not in VALID_EXTENSIONS:
+            continue  # skip non-CAD silently
+        # Assign the final on-disk name up front (deduped) so both skip records
+        # and extracted files carry a distinct, stable filename.
+        safe_name = _dedup_name(base, seen) if dedup else base
+        cad_entries.append((info, safe_name))
 
-        for info, safe_name in cad_entries:
-            # Pre-check uncompressed size
-            if info.file_size > BATCH_MAX_FILE_BYTES:
-                results.append({
-                    "filename": safe_name,
-                    "status": "skipped",
-                    "error": f"File size {info.file_size} exceeds limit {BATCH_MAX_FILE_BYTES}",
-                })
-                continue
+    if len(cad_entries) > BATCH_MAX_ITEMS:
+        raise ValueError(
+            f"ZIP contains {len(cad_entries)} CAD files, "
+            f"exceeding limit of {BATCH_MAX_ITEMS}"
+        )
 
-            # Compression ratio check (zip bomb protection)
-            if info.compress_size > 0:
-                ratio = info.file_size / info.compress_size
-                if ratio > MAX_COMPRESSION_RATIO:
-                    raise ValueError(
-                        f"Compression ratio {ratio:.0f}:1 for '{safe_name}' "
-                        f"exceeds limit {MAX_COMPRESSION_RATIO}:1 (possible zip bomb)"
-                    )
-
-            # Extract file
-            dest_path = os.path.join(extract_dir, safe_name)
-            with zf.open(info) as src, open(dest_path, "wb") as dst:
-                dst.write(src.read())
-
+    for info, safe_name in cad_entries:
+        # Pre-check uncompressed size
+        if info.file_size > BATCH_MAX_FILE_BYTES:
             results.append({
                 "filename": safe_name,
-                "path": dest_path,
-                "size": info.file_size,
+                "status": "skipped",
+                "error": f"File size {info.file_size} exceeds limit {BATCH_MAX_FILE_BYTES}",
             })
+            continue
+
+        # Compression ratio check (zip bomb protection)
+        if info.compress_size > 0:
+            ratio = info.file_size / info.compress_size
+            if ratio > MAX_COMPRESSION_RATIO:
+                raise ValueError(
+                    f"Compression ratio {ratio:.0f}:1 for '{safe_name}' "
+                    f"exceeds limit {MAX_COMPRESSION_RATIO}:1 (possible zip bomb)"
+                )
+
+        # Extract file
+        dest_path = os.path.join(extract_dir, safe_name)
+        with zf.open(info) as src, open(dest_path, "wb") as dst:
+            dst.write(src.read())
+
+        results.append({
+            "filename": safe_name,
+            "path": dest_path,
+            "size": info.file_size,
+        })
 
     return results
+
+
+def extract_zip_to_items(zip_bytes: bytes, batch_ulid: str) -> list[dict]:
+    """Extract valid CAD files from an in-memory ZIP archive to disk."""
+    with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
+        return _extract_zipfile(zf, batch_ulid)
+
+
+def extract_zip_path_to_items(zip_path: str, batch_ulid: str) -> list[dict]:
+    """Extract valid CAD files from a ZIP on disk (streamed upload path).
+
+    zipfile reads entries lazily from the file, so the whole archive is never
+    held in RAM -- the counterpart to stream_upload_to_tempfile().
+    """
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        return _extract_zipfile(zf, batch_ulid)
 
 
 # ---------------------------------------------------------------------------
@@ -377,6 +468,69 @@ async def update_batch_counters(
         text(f"UPDATE batches SET {field} = {field} + 1 WHERE id = :batch_id"),
         {"batch_id": batch_id},
     )
+
+
+# ---------------------------------------------------------------------------
+# Failure / orphan handling (F-ARCH-1)
+# ---------------------------------------------------------------------------
+
+# How long a batch may sit in pending/processing before the sweeper declares it
+# orphaned. Must exceed the coordinator's worst-case runtime so we never reap a
+# batch that is legitimately still working. Default: 6 hours.
+BATCH_ORPHAN_TTL_SECONDS = int(os.getenv("BATCH_ORPHAN_TTL_SECONDS", str(6 * 3600)))
+
+
+def mark_batch_failed(batch: Batch, reason: str) -> None:
+    """Mark a Batch row failed and record *why* in manifest_json.
+
+    Reassigns manifest_json (rather than mutating in place) so SQLAlchemy detects
+    the JSONB change. Caller commits.
+    """
+    batch.status = "failed"
+    batch.completed_at = datetime.now(timezone.utc)
+    manifest = dict(batch.manifest_json or {})
+    manifest["failure_reason"] = reason
+    batch.manifest_json = manifest
+
+
+async def sweep_orphaned_batches(
+    session: AsyncSession,
+    ttl_seconds: Optional[int] = None,
+    now: Optional[datetime] = None,
+) -> int:
+    """Mark batches stuck in pending/processing past the TTL as failed=orphaned.
+
+    A batch is orphaned when its coordinator was never enqueued (crash between
+    commit and enqueue) or died mid-run, leaving it 'pending'/'processing'
+    forever. We measure staleness from started_at (fallback created_at).
+
+    Returns the number of batches reaped. Caller commits.
+    """
+    from datetime import timedelta
+
+    ttl = BATCH_ORPHAN_TTL_SECONDS if ttl_seconds is None else ttl_seconds
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - timedelta(seconds=ttl)
+
+    stmt = select(Batch).where(Batch.status.in_(["pending", "processing"]))
+    rows = (await session.execute(stmt)).scalars().all()
+
+    reaped = 0
+    for batch in rows:
+        anchor = batch.started_at or batch.created_at
+        if anchor is None:
+            continue
+        # Normalize naive timestamps (defensive) to UTC-aware for comparison.
+        if anchor.tzinfo is None:
+            anchor = anchor.replace(tzinfo=timezone.utc)
+        if anchor <= cutoff:
+            mark_batch_failed(batch, "orphaned")
+            reaped += 1
+            logger.warning(
+                "Reaped orphaned batch %s (status was %s, anchor=%s)",
+                batch.ulid, batch.status, anchor.isoformat(),
+            )
+    return reaped
 
 
 # ---------------------------------------------------------------------------

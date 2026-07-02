@@ -213,3 +213,128 @@ def test_extract_zip_path_traversal_prevention(tmp_path, monkeypatch):
 def test_concurrency_limit_default():
     """Verify DEFAULT_BATCH_CONCURRENCY=10."""
     assert DEFAULT_BATCH_CONCURRENCY == 10
+
+
+# ---------------------------------------------------------------------------
+# Basename dedup (F-ARCH-9): same-named files in different folders must not
+# silently collapse.
+# ---------------------------------------------------------------------------
+
+
+def test_extract_zip_dedups_same_basename_across_folders(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.services.batch_service.BATCH_BLOB_DIR", str(tmp_path))
+    zip_bytes = _make_zip({
+        "a/part.stl": b"solid A\nendsolid",
+        "b/part.stl": b"solid B\nendsolid",
+    })
+    results = extract_zip_to_items(zip_bytes, "dedup-batch")
+    names = sorted(r["filename"] for r in results)
+    assert names == ["part.stl", "part_1.stl"]
+    # Both files land on distinct paths, both present on disk (no collapse).
+    paths = [r["path"] for r in results]
+    assert len(set(paths)) == 2
+    for p in paths:
+        assert os.path.exists(p)
+
+
+def test_extract_zip_dedup_off_switch(tmp_path, monkeypatch):
+    """BATCH_ZIP_DEDUP=0 restores flat last-wins basenames (documented off-switch)."""
+    monkeypatch.setattr("src.services.batch_service.BATCH_BLOB_DIR", str(tmp_path))
+    monkeypatch.setenv("BATCH_ZIP_DEDUP", "0")
+    zip_bytes = _make_zip({
+        "a/part.stl": b"solid A\nendsolid",
+        "b/part.stl": b"solid B\nendsolid",
+    })
+    results = extract_zip_to_items(zip_bytes, "dedup-off")
+    assert all(r["filename"] == "part.stl" for r in results)
+
+
+# ---------------------------------------------------------------------------
+# Streaming upload with early rejection (F-ARCH-9)
+# ---------------------------------------------------------------------------
+
+
+class _FakeUpload:
+    def __init__(self, chunks):
+        self._chunks = list(chunks)
+
+    async def read(self, n):
+        return self._chunks.pop(0) if self._chunks else b""
+
+
+@pytest.mark.asyncio
+async def test_stream_upload_rejects_oversize_early():
+    from src.services.batch_service import stream_upload_to_tempfile, ZipTooLargeError
+
+    up = _FakeUpload([b"x" * 10, b"y" * 10])
+    with pytest.raises(ZipTooLargeError):
+        await stream_upload_to_tempfile(up, max_bytes=15)
+
+
+@pytest.mark.asyncio
+async def test_stream_upload_writes_and_returns_path():
+    from src.services.batch_service import stream_upload_to_tempfile
+
+    up = _FakeUpload([b"hello", b"world"])
+    path = await stream_upload_to_tempfile(up, max_bytes=1000)
+    try:
+        with open(path, "rb") as f:
+            assert f.read() == b"helloworld"
+    finally:
+        os.unlink(path)
+
+
+# ---------------------------------------------------------------------------
+# Orphan sweep (F-ARCH-1)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_sweep_orphaned_batches_marks_stale_only():
+    from datetime import datetime, timedelta, timezone
+    from unittest.mock import AsyncMock, MagicMock
+
+    from src.db.models import Batch
+    from src.services.batch_service import sweep_orphaned_batches
+
+    now = datetime(2026, 7, 2, 12, 0, 0, tzinfo=timezone.utc)
+
+    stale = MagicMock(spec=Batch)
+    stale.ulid = "OLD"
+    stale.status = "processing"
+    stale.started_at = now - timedelta(hours=10)
+    stale.created_at = now - timedelta(hours=11)
+    stale.manifest_json = None
+
+    fresh = MagicMock(spec=Batch)
+    fresh.ulid = "NEW"
+    fresh.status = "pending"
+    fresh.started_at = None
+    fresh.created_at = now - timedelta(minutes=5)
+    fresh.manifest_json = None
+
+    session = AsyncMock()
+    exec_result = MagicMock()
+    exec_result.scalars.return_value.all.return_value = [stale, fresh]
+    session.execute.return_value = exec_result
+
+    reaped = await sweep_orphaned_batches(session, ttl_seconds=6 * 3600, now=now)
+
+    assert reaped == 1
+    assert stale.status == "failed"
+    assert stale.manifest_json["failure_reason"] == "orphaned"
+    assert fresh.status == "pending"  # untouched
+
+
+def test_mark_batch_failed_preserves_existing_manifest():
+    from unittest.mock import MagicMock
+
+    from src.db.models import Batch
+    from src.services.batch_service import mark_batch_failed
+
+    batch = MagicMock(spec=Batch)
+    batch.manifest_json = {"s3_bucket": "b"}
+    mark_batch_failed(batch, "enqueue_failed")
+    assert batch.status == "failed"
+    assert batch.manifest_json["failure_reason"] == "enqueue_failed"
+    assert batch.manifest_json["s3_bucket"] == "b"  # not clobbered
