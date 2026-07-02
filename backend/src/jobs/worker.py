@@ -25,12 +25,22 @@ async def startup(ctx: dict) -> None:
     else:
         logger.info("SAM-3D disabled or no model path configured")
 
-    # Pre-load reconstruction engine if using local backend
-    backend = os.getenv("RECONSTRUCTION_BACKEND", "remote")
-    if backend == "local":
+    # Pre-load reconstruction engine only when the effective backend is a local
+    # model that is actually installed. Default is local-only (zero egress); we
+    # never preload -- or silently egress via -- a remote backend at startup.
+    from src.services import reconstruction_service
+
+    recon = reconstruction_service.check_reconstruction_availability()
+    if recon["available"] and recon["effective_backend"] == "local":
         from src.reconstruction.local_triposr import LocalTripoSR
         ctx["reconstruction_engine"] = LocalTripoSR.load()
         logger.info("TripoSR model loaded for local inference")
+    else:
+        logger.info(
+            "Reconstruction engine not preloaded (available=%s effective_backend=%s)",
+            recon["available"],
+            recon["effective_backend"],
+        )
 
     # Eagerly initialise DB engine + session factory so worker sessions work
     from src.db.engine import init_engine

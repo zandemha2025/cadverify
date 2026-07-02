@@ -178,8 +178,14 @@ async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
 
         except Exception as e:
             logger.exception("Reconstruction job %s failed", job_ulid)
+            # Honest annotation: if reconstruction is unavailable (no local
+            # model + remote egress not opted in), record the stable error code
+            # rather than a bare message -- never a silent egress.
+            error_json: dict = {"error": str(e)}
+            if getattr(e, "code", None) == "RECONSTRUCTION_UNAVAILABLE":
+                error_json["code"] = "RECONSTRUCTION_UNAVAILABLE"
             job.status = "failed"
-            job.result_json = {"error": str(e)}
+            job.result_json = error_json
             job.completed_at = datetime.now(timezone.utc)
             await session.commit()
-            return {"error": str(e)}
+            return error_json
