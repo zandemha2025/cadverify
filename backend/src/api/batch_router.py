@@ -22,6 +22,7 @@ from src.db.engine import get_db_session
 from src.db.models import Batch, BatchItem
 from src.services import batch_service
 from src.services.batch_service import BATCH_MAX_ZIP_BYTES
+from src.services.url_guard import UnsafeURLError, validate_outbound_url
 
 logger = logging.getLogger("cadverify.batch_router")
 
@@ -61,6 +62,22 @@ async def create_batch(
             status_code=400,
             detail="Provide either a ZIP file upload or s3_bucket field",
         )
+
+    # SSRF guard (S7): reject webhook targets that resolve to internal ranges
+    # BEFORE any batch row is written. Re-checked at delivery time in
+    # webhook_service as defense-in-depth against DNS rebinding.
+    if webhook_url is not None:
+        try:
+            validate_outbound_url(webhook_url)
+        except UnsafeURLError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "webhook_url_rejected",
+                    "message": f"webhook_url rejected: {exc}",
+                    "doc_url": "https://docs.cadverify.com/errors#webhook_url_rejected",
+                },
+            )
 
     # Create batch row
     batch = await batch_service.create_batch(
