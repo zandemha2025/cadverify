@@ -60,7 +60,9 @@ import { QuantityScrubber } from "./QuantityScrubber";
 import { DecisionReadout } from "./DecisionReadout";
 import { InstrumentControls } from "./InstrumentControls";
 import { GlassBoxDrawer } from "./GlassBoxDrawer";
+import { CostArtifactBar } from "./CostArtifactBar";
 import { GhostPart } from "./GhostPart";
+import { costPersistUiEnabled } from "@/lib/cost-decision";
 import {
   useInstrumentChrome,
   type PartFact,
@@ -641,6 +643,11 @@ export default function LivingInstrument({
                     recosting={recosting}
                   />
                 </div>
+              )}
+              {/* KEEP/EXPORT/SHARE the decision — the durable artifact. Shown
+                  once the authed cost route has persisted it (report.saved). */}
+              {costPersistUiEnabled() && report.saved && file && (
+                <CostArtifactBar saved={report.saved} filename={file.name} />
               )}
             </>
           ) : report ? (

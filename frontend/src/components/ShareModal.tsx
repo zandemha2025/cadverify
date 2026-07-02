@@ -15,10 +15,13 @@ import { Button } from "@/components/ui/button";
 interface ShareModalProps {
   shareUrl: string;
   onClose: () => void;
+  /** "analysis" (default) or "cost" — tunes the title + honesty copy. */
+  kind?: "analysis" | "cost";
 }
 
-export default function ShareModal({ shareUrl, onClose }: ShareModalProps) {
+export default function ShareModal({ shareUrl, onClose, kind = "analysis" }: ShareModalProps) {
   const [copied, setCopied] = useState(false);
+  const isCost = kind === "cost";
 
   const fullUrl =
     typeof window !== "undefined"
@@ -39,9 +42,13 @@ export default function ShareModal({ shareUrl, onClose }: ShareModalProps) {
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Share this analysis</DialogTitle>
+          <DialogTitle>
+            {isCost ? "Share this should-cost decision" : "Share this analysis"}
+          </DialogTitle>
           <DialogDescription>
-            Anyone with this link can view a read-only version of this analysis.
+            {isCost
+              ? "Anyone with this link can view a read-only copy of this decision. Provenance and the confidence band travel with it — it stays labeled assumption-based, not yet validated."
+              : "Anyone with this link can view a read-only version of this analysis."}
           </DialogDescription>
         </DialogHeader>
 
@@ -56,6 +63,12 @@ export default function ShareModal({ shareUrl, onClose }: ShareModalProps) {
             {copied ? "Copied!" : "Copy link"}
           </Button>
         </div>
+
+        {isCost && (
+          <p className="text-xs text-muted-foreground">
+            Not a validated quote — an explainable should-cost estimate.
+          </p>
+        )}
 
         <DialogFooter>
           <Button onClick={onClose} className="w-full sm:w-auto">
