@@ -36,3 +36,5 @@ The layer is read-only over the engine (`AnalysisResult` + `mesh` + `features`);
 [PLATFORM] BUILT cost-persist
 [FE] BUILT cost-persist-ui
 [VERIFY] cost-persist-ui CLOSED / PRODUCTION-WORTHY (high) — every affordance (CostArtifactBar PDF/JSON/CSV/Share, detail-page PdfDownloadButton+ShareButton+JSON/CSV, history list, compare, public /s/cost) hits a real /api/proxy → /api/v1/cost-decisions endpoint matching the backend contract; public /s/cost/{shortId} bypasses proxy to backend origin (correct). No TODO/alert/disabled/placeholder stubs. Honesty preserved verbatim (CostHonestyNote + engine ConfidenceInterval label; no fabricated ±X% — all half_width_pct is engine-sourced; no "validated"/certified stamp). Pure logic: string-key JSONB reader + compare "—"-on-missing proven by 10 real tests. Flag NEXT_PUBLIC_COST_PERSIST_UI defaults ON; CostArtifactBar gated on report.saved (degrades gracefully). `npm test`: 17 pass / 0 fail (10 new). `npx tsc --noEmit`: exit 0, clean.
+
+[SEC] BUILT p0-kill-egress
