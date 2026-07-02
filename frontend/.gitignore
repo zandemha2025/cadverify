@@ -13,6 +13,9 @@
 # testing
 /coverage
 
+# e2e smoke screenshots (scripts/e2e-smoke.mjs output — regenerated per run)
+/scripts/e2e-smoke-output/
+
 # next.js
 /.next/
 /out/
