@@ -9,6 +9,7 @@ POST /api/v1/batch/{id}/cancel   -- cancel batch
 from __future__ import annotations
 
 import logging
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
@@ -16,16 +17,23 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.errors import DOC_BASE
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.db.models import Batch, BatchItem
 from src.services import batch_service
-from src.services.batch_service import BATCH_MAX_ZIP_BYTES
+from src.services.batch_service import BATCH_MAX_ZIP_BYTES, ZipTooLargeError
 
 logger = logging.getLogger("cadverify.batch_router")
 
 router = APIRouter(prefix="/api/v1", tags=["batch"])
+
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def _flag(name: str, default: str) -> bool:
+    return os.getenv(name, default).strip().lower() in _TRUTHY
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +56,8 @@ async def create_batch(
 ):
     """Create a batch for bulk analysis.
 
-    Accepts either a ZIP file upload or S3 reference fields.
+    Accepts a ZIP file upload. (S3 input is advertised but not yet implemented --
+    see F-ARCH-5: rejected up front with 501 rather than orphaned per-item.)
     Returns 202 with batch_id and status URL.
     """
     # Determine input mode
@@ -62,62 +71,113 @@ async def create_batch(
             detail="Provide either a ZIP file upload or s3_bucket field",
         )
 
-    # Create batch row
-    batch = await batch_service.create_batch(
-        session=session,
-        user_id=user.user_id,
-        input_mode=input_mode,
-        webhook_url=webhook_url,
-        webhook_secret=webhook_secret,
-        concurrency_limit=concurrency_limit,
-        api_key_id=user.api_key_id,
-    )
+    # F-ARCH-5 (S3 honesty): the worker raises NotImplementedError per item for
+    # S3 input, orphaning the batch. Announce, don't orphan: reject at the API
+    # with a stable 501 until the connectors wall (W2) lands the real fetch.
+    # Flip S3_INPUT_ENABLED=1 once implemented.
+    if input_mode == "s3" and not _flag("S3_INPUT_ENABLED", "0"):
+        raise HTTPException(
+            status_code=501,
+            detail={
+                "code": "S3_INPUT_NOT_IMPLEMENTED",
+                "message": (
+                    "S3 batch input is not yet implemented. Upload a ZIP file "
+                    "instead. S3 ingestion is scheduled for the connectors "
+                    "release (W2)."
+                ),
+                "doc_url": f"{DOC_BASE}/S3_INPUT_NOT_IMPLEMENTED",
+            },
+        )
 
+    # For a ZIP upload, stream to a temp file with early size rejection BEFORE
+    # creating the batch row -- so an oversized/invalid upload never leaves an
+    # orphaned 'pending' batch behind (F-ARCH-9 + F-ARCH-1).
+    zip_tmp_path: Optional[str] = None
     if input_mode == "zip":
-        # Read and validate ZIP
-        zip_bytes = await file.read()
-        if len(zip_bytes) > BATCH_MAX_ZIP_BYTES:
-            raise HTTPException(
-                status_code=400,
-                detail=f"ZIP file exceeds maximum size of {BATCH_MAX_ZIP_BYTES} bytes",
+        try:
+            zip_tmp_path = await batch_service.stream_upload_to_tempfile(
+                file, BATCH_MAX_ZIP_BYTES
             )
+        except ZipTooLargeError as exc:
+            raise HTTPException(status_code=413, detail=str(exc))
 
-        # Extract files to disk
-        items_data = batch_service.extract_zip_to_items(zip_bytes, batch.ulid)
+    try:
+        # Create batch row
+        batch = await batch_service.create_batch(
+            session=session,
+            user_id=user.user_id,
+            input_mode=input_mode,
+            webhook_url=webhook_url,
+            webhook_secret=webhook_secret,
+            concurrency_limit=concurrency_limit,
+            api_key_id=user.api_key_id,
+        )
 
-        # Parse manifest CSV if provided
-        if manifest is not None:
-            manifest_bytes = await manifest.read()
-            manifest_items = batch_service.parse_csv_manifest(manifest_bytes.decode("utf-8"))
-            # Merge manifest metadata with extracted items by filename
-            manifest_map = {m["filename"]: m for m in manifest_items}
-            for item in items_data:
-                if item.get("status") == "skipped":
-                    continue
-                meta = manifest_map.get(item["filename"], {})
-                item["process_types"] = meta.get("process_types")
-                item["rule_pack"] = meta.get("rule_pack")
-                item["priority"] = meta.get("priority", "normal")
+        if input_mode == "zip":
+            # Extract files to disk (streamed from the temp file, not RAM).
+            try:
+                items_data = batch_service.extract_zip_path_to_items(
+                    zip_tmp_path, batch.ulid
+                )
+            except ValueError as exc:
+                # Bad archive (zip bomb / too many items): reject, don't orphan.
+                raise HTTPException(status_code=400, detail=str(exc))
 
-        # Create batch items
-        count = await batch_service.create_batch_items(session, batch.id, items_data)
-        batch.total_items = count
+            # Parse manifest CSV if provided
+            if manifest is not None:
+                manifest_bytes = await manifest.read()
+                manifest_items = batch_service.parse_csv_manifest(
+                    manifest_bytes.decode("utf-8")
+                )
+                # Merge manifest metadata with extracted items by filename
+                manifest_map = {m["filename"]: m for m in manifest_items}
+                for item in items_data:
+                    if item.get("status") == "skipped":
+                        continue
+                    meta = manifest_map.get(item["filename"], {})
+                    item["process_types"] = meta.get("process_types")
+                    item["rule_pack"] = meta.get("rule_pack")
+                    item["priority"] = meta.get("priority", "normal")
 
-    elif input_mode == "s3":
-        # Store S3 reference in manifest_json for coordinator
-        batch.manifest_json = {
-            "s3_bucket": s3_bucket,
-            "s3_prefix": s3_prefix,
-            "manifest_url": manifest_url,
-        }
+            # Create batch items
+            count = await batch_service.create_batch_items(
+                session, batch.id, items_data
+            )
+            batch.total_items = count
+    finally:
+        if zip_tmp_path is not None:
+            try:
+                os.unlink(zip_tmp_path)
+            except OSError:
+                pass
 
     await session.commit()
 
-    # Enqueue coordinator task
+    # Enqueue coordinator task. If enqueue fails, the batch row is already
+    # committed -- reject-don't-orphan (F-ARCH-1): mark it failed and return an
+    # honest 503 instead of leaving it 'pending' forever with a bare 500.
     from src.jobs.arq_backend import get_arq_pool
 
-    pool = await get_arq_pool()
-    await pool.enqueue_job("run_batch_coordinator", batch.ulid)
+    try:
+        pool = await get_arq_pool()
+        await pool.enqueue_job("run_batch_coordinator", batch.ulid)
+    except Exception:
+        logger.exception(
+            "Failed to enqueue coordinator for batch %s; marking failed", batch.ulid
+        )
+        batch_service.mark_batch_failed(batch, "enqueue_failed")
+        await session.commit()
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "BATCH_ENQUEUE_FAILED",
+                "message": (
+                    "Batch was accepted but could not be scheduled (job queue "
+                    "unavailable). It has been marked failed; please retry."
+                ),
+                "doc_url": f"{DOC_BASE}/BATCH_ENQUEUE_FAILED",
+            },
+        )
 
     # Never return webhook_secret (T-09-03)
     return {
