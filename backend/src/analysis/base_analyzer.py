@@ -195,3 +195,44 @@ def run_universal_checks(mesh: trimesh.Trimesh) -> list[Issue]:
     issues.extend(check_self_intersections(mesh))
     issues.extend(check_disconnected_components(mesh))
     return issues
+
+
+def decimation_issue(ctx) -> Issue | None:
+    """User-visible WARNING when analysis ran on a decimated (approximated) mesh.
+
+    ``GeometryContext.build`` decimates meshes over ``MAX_ANALYSIS_FACES`` to
+    bound memory. When that happens, wall-thickness / draft / DFM values are
+    computed on a reduced-resolution copy, so this surfaces a universal issue
+    that flows into ``AnalysisResult.universal_issues`` and out to the API
+    response — the honest label the user must see (not a silent approximation).
+
+    Returns ``None`` when no decimation occurred (the common case) or when a
+    decimation attempt failed and the ORIGINAL full-resolution mesh was kept
+    (results are then exact, so no warning is warranted).
+    """
+    meta = getattr(ctx, "metadata", None)
+    dec = meta.get("decimation") if isinstance(meta, dict) else None
+    if not dec or not dec.get("succeeded"):
+        return None
+    orig = int(dec.get("original_faces", 0))
+    ana = int(dec.get("analysis_faces", 0))
+    strat = str(dec.get("strategy", "unknown"))
+    # The true threshold below which no decimation happens is the analysis cap,
+    # not the (possibly-overshot) decimated count — advise the user with the cap.
+    from src.analysis.context import _max_analysis_faces
+
+    cap = _max_analysis_faces()
+    return Issue(
+        code="DECIMATED_MESH",
+        severity=Severity.WARNING,
+        message=(
+            f"Analyzed on a decimated mesh: {orig:,}→{ana:,} faces "
+            f"({strat}). Wall-thickness, draft-angle and other DFM values are "
+            "approximate — computed on a reduced-resolution copy to bound memory."
+        ),
+        process=None,
+        fix_suggestion=(
+            f"Re-export the part with {cap:,} or fewer triangles (lower the "
+            "tessellation / mesh density) so DFM is computed on the exact geometry."
+        ),
+    )

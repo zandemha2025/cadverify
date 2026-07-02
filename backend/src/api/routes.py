@@ -182,7 +182,11 @@ def _run_cost_engine(mesh, filename: str):
     cli._run_engine but from an already-parsed in-memory mesh; no narrowing,
     no persistence, no network)."""
     import src.analysis.processes  # noqa: F401  populate registry
-    from src.analysis.base_analyzer import analyze_geometry, run_universal_checks
+    from src.analysis.base_analyzer import (
+        analyze_geometry,
+        decimation_issue,
+        run_universal_checks,
+    )
     from src.analysis.context import GeometryContext
     from src.analysis.features import detect_all as detect_features
     from src.matcher.profile_matcher import rank_processes, score_process
@@ -192,8 +196,15 @@ def _run_cost_engine(mesh, filename: str):
 
     geometry = analyze_geometry(mesh)
     ctx = GeometryContext.build(mesh, geometry)
-    ctx.features = detect_features(mesh)
+    # Features must be detected on the same mesh the context arrays derive from
+    # (ctx.mesh == mesh unless build() decimated an oversize mesh) so feature
+    # face-indices stay aligned with the per-face arrays the analyzers consume.
+    ctx.features = detect_features(ctx.mesh)
     universal = run_universal_checks(mesh)
+    # Honestly surface to the user when the mesh was decimated for analysis.
+    dec_issue = decimation_issue(ctx)
+    if dec_issue is not None:
+        universal.append(dec_issue)
     scores = [
         score_process(get_analyzer(p).analyze(ctx), geometry, p)
         for p in pbase._REGISTRY
@@ -483,7 +494,11 @@ async def validate_demo(
     import asyncio
     import time
 
-    from src.analysis.base_analyzer import analyze_geometry, run_universal_checks
+    from src.analysis.base_analyzer import (
+        analyze_geometry,
+        decimation_issue,
+        run_universal_checks,
+    )
     from src.analysis.context import GeometryContext
     from src.analysis.features import detect_all as detect_features
     from src.matcher.profile_matcher import rank_processes, score_process
@@ -516,9 +531,15 @@ async def validate_demo(
     def _run():
         geometry = analyze_geometry(mesh)
         ctx = GeometryContext.build(mesh, geometry)
-        features = detect_features(mesh)
+        # ctx.mesh == mesh unless build() decimated an oversize mesh; detect on
+        # ctx.mesh so feature indices align with the context per-face arrays.
+        features = detect_features(ctx.mesh)
         ctx.features = features
         universal_issues = run_universal_checks(mesh)
+        # Honestly surface to the user when the mesh was decimated for analysis.
+        dec_issue = decimation_issue(ctx)
+        if dec_issue is not None:
+            universal_issues.append(dec_issue)
         process_scores = []
         for proc in target_processes:
             analyzer = get_analyzer(proc)
