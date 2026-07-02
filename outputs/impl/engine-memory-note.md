@@ -62,11 +62,35 @@ regression, are **never touched**.
   `fast_simplification` (quadric) nor `skimage` (voxel remesh) is installed, so the
   vertex-cluster fallback is what runs — it is numpy-only, deterministic, fast (<0.1 s),
   and preserves volume within ~0.7% on test geometry.
-- **Honest labelling (no silent lying):** when decimation runs it is recorded in
-  `ctx.metadata["decimation"] = {attempted, succeeded, original_faces, analysis_faces,
-  strategy}`. `GeometryInfo` (volume/area/watertightness) is intentionally kept from the
+- **Honest labelling (no silent lying) — USER-VISIBLE:** when decimation runs it is
+  recorded in `ctx.metadata["decimation"] = {attempted, succeeded, original_faces,
+  analysis_faces, strategy}` **and surfaced to the user** as a `DECIMATED_MESH` warning
+  (§3b). `GeometryInfo` (volume/area/watertightness) is intentionally kept from the
   **original** mesh (computed by `analyze_geometry` upstream); only the per-face analysis
   arrays run on the bounded mesh.
+
+### 3b. User-visible decimation warning (honesty fix — added after adversarial review)
+The first cut recorded decimation only in `ctx.metadata`, which **no consumer read** — so
+the user was never told their DFM numbers were approximate (a silent-approximation honesty
+violation; the code comments even falsely claimed "labelled accordingly"). Fixed:
+`base_analyzer.decimation_issue(ctx)` reads `ctx.metadata["decimation"]` and, when
+`succeeded`, returns a universal `Issue`:
+
+> **DECIMATED_MESH** (severity `warning`): "Analyzed on a decimated mesh:
+> {original:,}→{analysis:,} faces ({strategy}). Wall-thickness, draft-angle and other DFM
+> values are approximate — computed on a reduced-resolution copy to bound memory."
+> fix_suggestion: "Re-export the part with fewer than {analysis:,} triangles …"
+
+It is appended to `universal_issues` in **all four** GeometryContext-building analysis
+paths — authed `/validate` (`services/analysis_service.py`), demo `/validate/demo`
+(`routes.py::validate_demo`), cost engine (`routes.py::_run_cost_engine`), and the costing
+CLI (`costing/cli.py`) — so it flows through `_to_response` into the JSON `universal_issues`
+array the frontend already renders. When a decimation *attempt fails* and the original
+full-resolution mesh is kept, results are exact and **no** warning is emitted (correct).
+The two false code comments (`context.py:149`, `context.py:406-410`) were reworded to
+describe the real, now-implemented labelling. Proven user-visible by
+`test_decimation_warning_is_visible_in_api_response` (POST a ~295k-face mesh → HTTP 200
+with `DECIMATED_MESH` in `universal_issues`).
 
 ### 4. Feature detection consistency (call-site edits)
 Because features are indexed against the context's per-face arrays, feature detection
@@ -82,6 +106,12 @@ The existing hard cap `enforce_triangle_cap` / `MAX_TRIANGLES=2_000_000` (demo 5
 parse time still refuses truly pathological meshes with an honest 4xx. Left as-is — it is
 the "beyond what decimation handles" guard the audit asked for; `MAX_TRIANGLES` is owned
 by another item, so it was not changed.
+
+### 6. Cosmetic numpy warning suppression
+Wrapped the `normals @ [0,0,1]` angle-from-up matmul (`context.py:166`) in
+`np.errstate(all="ignore")` — the same approach `eval/engine.py` already uses — so the
+cosmetic divide-by-zero/overflow `RuntimeWarning` that fires on decimated/degenerate
+normals no longer spams the routes/service path. The clipped result is numerically clean.
 
 ---
 
@@ -130,6 +160,16 @@ fraction of the pre-fix 19 GB:
 Bounds are generous-but-meaningful (absorb allocator/GC noise, still << 19 GB) and
 deterministic (fresh process + delta-from-baseline).
 
+**Decimation-honesty tests** (same file):
+- `test_decimation_records_metadata_and_emits_warning` — a >250k-face mesh is decimated,
+  recorded in `ctx.metadata`, and `decimation_issue(ctx)` returns a `DECIMATED_MESH`
+  warning.
+- `test_no_decimation_no_warning_for_normal_part` — an ordinary part emits **no** warning
+  (no false positives).
+- `test_decimation_warning_is_visible_in_api_response` — POST a ~295k-face mesh to
+  `/validate/demo` → HTTP 200 with `DECIMATED_MESH` in the response `universal_issues`
+  (proves the label reaches the user, not just `ctx.metadata`).
+
 ---
 
 ## Env flags / defaults (all ON by default)
@@ -156,35 +196,43 @@ deterministic (fresh process + delta-from-baseline).
 No test asserted exact wall-thickness *values* that changed, so no numeric assertions were
 rewritten.
 
-**⚠ Numeric-correctness caveat — flag for the Zoox gate (NOT self-certified):**
+**⚠ Numeric-correctness caveats — flag for the Zoox gate (NOT self-certified):**
 Lowering the sample threshold to 5000 means parts in the 5k–50k face range now use the
 **sampled + KDTree-propagated** wall thickness instead of the exact per-face full ray
 cast, and parts over 250k faces are **decimated** before analysis. Both can **shift
-wall-thickness and draft-angle numbers** (magnitude/direction unverified here). The
-sampled path is a pre-existing, legitimate approximation (already ships for >50k), and
-`np.inf` still means "unknown" not "thick"; decimation is honestly recorded in
-`ctx.metadata`. Whether these shifts are within DFM tolerance is a **numeric-correctness
-question that must go through the Zoox calibration gate** — it is explicitly *not*
-self-certified in this change.
+wall-thickness and draft-angle numbers**. `np.inf` still means "unknown" not "thick", the
+sampled path is a pre-existing approximation (already shipped for >50k), and decimation is
+now honestly labelled to the user. Specific items for the Zoox correctness gate:
+
+1. **Sampled-path tail error at wall-thickness discontinuities.** Lowering
+   `RAYCAST_SAMPLE_THRESHOLD` 50000→5000 expands the KDTree-propagation sampled path to
+   **most real CAD (5k–50k faces)**. Because unsampled faces inherit the nearest sampled
+   face's thickness, a **thin rib adjacent to a thick boss can inherit the wrong value** at
+   the discontinuity — a verifier measured **tail error up to ~567% relative** at such
+   discontinuities. This is the primary correctness risk of this change and must be
+   evaluated/tuned (sample density, discontinuity-aware propagation) at the Zoox gate. It
+   is **not** self-certified here.
+2. **Decimation numeric shift.** Vertex-cluster decimation of >250k-face meshes changes
+   the mesh the DFM numbers are computed on; magnitude/direction of the resulting
+   wall-thickness/draft shift is unverified (labelled to the user via `DECIMATED_MESH`).
+
+These are **numeric-correctness questions that must go through the Zoox calibration gate** —
+explicitly *not* self-certified in this change.
 
 ---
 
 ## Full suite result
 
-`pytest -q` (backend), same venv:
-- **Base (my changes stashed):** 554 passed, **3 failed**, 7 skipped.
-- **With my changes:** 557 passed, **3 failed**, 7 skipped.
+`pytest -q` (backend), same venv, final state (with `backend/data` symlinked so
+shop-profile tests have their fixtures):
+- **563 passed, 0 failed, 7 skipped.**
 
-The delta is exactly **+3 passing** (my new memory-bound tests) and **zero new failures**.
-The 3 failures are pre-existing `test_cost_api` tests (`test_list_shops_returns_local_profiles`,
-`test_cost_shop_calibrates_number_and_tags_shop`, `test_cost_demo_supports_shop`) that fail
-identically on the clean base — they belong to the cost-model item (this branch's checkpoint
-commit touched the cost engine) and are **out of scope** for this change. (The stated
-"558 passed / 6 skipped" baseline predates this branch's checkpoint commit.) One earlier run
-showed a flaky `test_auth_dashboard_session::test_require_dashboard_session_valid` failure
-that did **not** recur and is an env-leak ordering flake in the auth suite (reads
-`DASHBOARD_SESSION_SECRET`) with no causal link to the geometry path — it passes in isolation
-with my changes and passed in the final full run.
+This includes 6 memory-bound tests + 3 decimation-honesty tests. The 3 `test_cost_api`
+failures seen during development were pre-existing (missing `backend/data` shop-profile
+fixtures, unrelated to this change) and are now green once the fixtures are present. An
+earlier one-off flaky `test_auth_dashboard_session::test_require_dashboard_session_valid`
+(an env-leak ordering flake reading `DASHBOARD_SESSION_SECRET`, no causal link to the
+geometry path) did **not** recur.
 
 ---
 
@@ -194,9 +242,12 @@ with my changes and passed in the final full run.
    5000). ✔
 2. Even when the full-ray path does run (small meshes, or forced), it is cast in adaptive
    memory-bounded batches — proven to bound the exact bomb. ✔
-3. Pathological huge meshes are decimated on ingest (with honest labelling), bounding the
-   whole engine, and a hard refuse guard remains for the truly extreme. ✔
-4. A deterministic regression test proves peak RSS on a ~37k-face part dropped from ~19 GB
+3. Pathological huge meshes are decimated on ingest, bounding the whole engine, and a hard
+   refuse guard remains for the truly extreme. ✔
+4. Decimation is **honestly and visibly labelled to the user** via a `DECIMATED_MESH`
+   warning in the response `universal_issues` (not a silently-approximated result) — proven
+   by an end-to-end response test. ✔
+5. A deterministic regression test proves peak RSS on a ~37k-face part dropped from ~19 GB
    to tens of MB (realistic) / ~0.5 GB (worst-case sphere) — a small fraction of 19 GB. ✔
 
 ## Residual / recommended follow-up (out of scope here)
