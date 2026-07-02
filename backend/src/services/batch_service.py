@@ -474,10 +474,48 @@ async def update_batch_counters(
 # Failure / orphan handling (F-ARCH-1)
 # ---------------------------------------------------------------------------
 
-# How long a batch may sit in pending/processing before the sweeper declares it
-# orphaned. Must exceed the coordinator's worst-case runtime so we never reap a
-# batch that is legitimately still working. Default: 6 hours.
+# How long a batch with NO coordinator heartbeat may sit in pending/processing
+# before the sweeper declares it orphaned. This is only the fallback anchor (a
+# batch whose coordinator never wrote a single heartbeat -- e.g. the API crashed
+# between committing the batch and enqueuing its coordinator). Default: 6 hours.
 BATCH_ORPHAN_TTL_SECONDS = int(os.getenv("BATCH_ORPHAN_TTL_SECONDS", str(6 * 3600)))
+
+# Heartbeat-based staleness (F-ARCH-6/#2). The self-re-enqueueing coordinator
+# writes manifest_json["heartbeat_at"] every poll tick, and run_batch_item
+# refreshes the same field on every item completion/failure -- so the heartbeat
+# reflects liveness from EITHER source, not just the coordinator. A live
+# long-running batch keeps advancing its heartbeat; a dead one (worker crashed,
+# coordinator chain broke, a tick was cancelled at arq's job_timeout) stops.
+# The sweeper reaps a batch whose heartbeat has not advanced within this
+# window -- so a legitimately long batch is NEVER reaped while it is still
+# working.
+#
+# Floored at 600s (not 60s): the coordinator's re-enqueued ticks and every
+# batch item share the SAME 12-slot arq pool (WorkerSettings.max_jobs=12), each
+# job up to job_timeout=600s. Under pool saturation -- or a deploy pause/worker
+# restart lasting longer than a few seconds -- a coordinator tick can easily be
+# delayed well past 60s even though the batch is completely healthy. A 60s
+# floor made that a false-positive orphan reap that permanently stranded
+# not-yet-queued items (the batch is marked failed but items are never
+# resumed). 600s matches the worst case of "one more full-length job must
+# drain from the shared pool before a tick/item can run again," which is the
+# real bound on how stale a live batch's heartbeat can legitimately get.
+# Still env-tunable via BATCH_HEARTBEAT_STALE_SECONDS for deployments with a
+# different pool/timeout shape.
+_BATCH_POLL_INTERVAL_SECONDS = int(os.getenv("BATCH_POLL_INTERVAL_SECONDS", "2"))
+BATCH_HEARTBEAT_STALE_FACTOR = int(os.getenv("BATCH_HEARTBEAT_STALE_FACTOR", "10"))
+BATCH_HEARTBEAT_STALE_FLOOR_SECONDS = 600
+BATCH_HEARTBEAT_STALE_SECONDS = int(
+    os.getenv(
+        "BATCH_HEARTBEAT_STALE_SECONDS",
+        str(
+            max(
+                BATCH_HEARTBEAT_STALE_FACTOR * _BATCH_POLL_INTERVAL_SECONDS,
+                BATCH_HEARTBEAT_STALE_FLOOR_SECONDS,
+            )
+        ),
+    )
+)
 
 
 def mark_batch_failed(batch: Batch, reason: str) -> None:
@@ -493,41 +531,114 @@ def mark_batch_failed(batch: Batch, reason: str) -> None:
     batch.manifest_json = manifest
 
 
+def touch_batch_heartbeat(batch: Batch, now: Optional[datetime] = None) -> None:
+    """Record a fresh coordinator heartbeat in manifest_json['heartbeat_at'].
+
+    The self-re-enqueueing coordinator calls this on every poll tick. The orphan
+    sweeper uses it to tell a live long-running batch (heartbeat advancing) apart
+    from a dead one (heartbeat stale). Reassigns manifest_json so SQLAlchemy sees
+    the JSONB mutation. Caller commits.
+    """
+    now = now or datetime.now(timezone.utc)
+    manifest = dict(batch.manifest_json or {})
+    manifest["heartbeat_at"] = now.isoformat()
+    batch.manifest_json = manifest
+
+
+def _parse_heartbeat(manifest_json: Optional[dict]) -> Optional[datetime]:
+    """Extract a UTC-aware heartbeat timestamp from manifest_json, or None."""
+    if not manifest_json:
+        return None
+    raw = manifest_json.get("heartbeat_at")
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(raw)
+    except (ValueError, TypeError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+async def mark_pending_items_terminal(
+    session: AsyncSession,
+    batch_id: int,
+    terminal_status: str = "skipped",
+) -> None:
+    """Move a batch's non-terminal items to a terminal state (F-ARCH-1/#3).
+
+    When a batch is marked failed on the enqueue-failure path, its items would
+    otherwise keep their non-terminal 'pending' status, so progress endpoints
+    (pending_items = total - completed - failed) would advertise work that will
+    never run. Terminalize them so the read is consistent. Caller commits.
+    """
+    await session.execute(
+        text(
+            "UPDATE batch_items SET status = :s "
+            "WHERE batch_id = :b AND status IN ('pending', 'queued', 'processing')"
+        ),
+        {"s": terminal_status, "b": batch_id},
+    )
+
+
 async def sweep_orphaned_batches(
     session: AsyncSession,
     ttl_seconds: Optional[int] = None,
+    heartbeat_stale_seconds: Optional[int] = None,
     now: Optional[datetime] = None,
 ) -> int:
-    """Mark batches stuck in pending/processing past the TTL as failed=orphaned.
+    """Mark dead batches stuck in pending/processing as failed=orphaned.
 
-    A batch is orphaned when its coordinator was never enqueued (crash between
-    commit and enqueue) or died mid-run, leaving it 'pending'/'processing'
-    forever. We measure staleness from started_at (fallback created_at).
+    Staleness is measured from the coordinator's heartbeat
+    (manifest_json['heartbeat_at']) when present: a batch is reaped only once its
+    heartbeat is older than *heartbeat_stale_seconds*, so a legitimately long
+    batch that keeps ticking is never reaped (F-ARCH-6/#2). Only when NO heartbeat
+    was ever written -- the coordinator never ran (crash between commit and
+    enqueue) -- do we fall back to the wall-clock TTL from started_at/created_at.
 
     Returns the number of batches reaped. Caller commits.
     """
     from datetime import timedelta
 
     ttl = BATCH_ORPHAN_TTL_SECONDS if ttl_seconds is None else ttl_seconds
+    hb_stale = (
+        BATCH_HEARTBEAT_STALE_SECONDS
+        if heartbeat_stale_seconds is None
+        else heartbeat_stale_seconds
+    )
     now = now or datetime.now(timezone.utc)
-    cutoff = now - timedelta(seconds=ttl)
+    ttl_cutoff = now - timedelta(seconds=ttl)
+    hb_cutoff = now - timedelta(seconds=hb_stale)
 
     stmt = select(Batch).where(Batch.status.in_(["pending", "processing"]))
     rows = (await session.execute(stmt)).scalars().all()
 
     reaped = 0
     for batch in rows:
+        heartbeat = _parse_heartbeat(batch.manifest_json)
+        if heartbeat is not None:
+            # Primary path: reap only when the heartbeat has gone stale.
+            if heartbeat <= hb_cutoff:
+                mark_batch_failed(batch, "orphaned")
+                reaped += 1
+                logger.warning(
+                    "Reaped orphaned batch %s (status was %s, heartbeat=%s stale)",
+                    batch.ulid, batch.status, heartbeat.isoformat(),
+                )
+            continue
+        # Fallback: no heartbeat ever written -> the coordinator never ran.
         anchor = batch.started_at or batch.created_at
         if anchor is None:
             continue
         # Normalize naive timestamps (defensive) to UTC-aware for comparison.
         if anchor.tzinfo is None:
             anchor = anchor.replace(tzinfo=timezone.utc)
-        if anchor <= cutoff:
+        if anchor <= ttl_cutoff:
             mark_batch_failed(batch, "orphaned")
             reaped += 1
             logger.warning(
-                "Reaped orphaned batch %s (status was %s, anchor=%s)",
+                "Reaped orphaned batch %s (status was %s, no heartbeat, anchor=%s)",
                 batch.ulid, batch.status, anchor.isoformat(),
             )
     return reaped

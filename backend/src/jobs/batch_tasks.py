@@ -6,7 +6,6 @@ dispatch_webhook: Delivers webhook with retry scheduling.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 from datetime import datetime, timezone
@@ -31,19 +30,37 @@ def _flag(name: str, default: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
-    """Coordinate batch processing: drip-feed items up to concurrency limit.
+_TERMINAL_BATCH_STATUSES = frozenset({"completed", "failed", "cancelled"})
 
-    Polls until all items complete or the batch is cancelled. F-ARCH-6: a batch
-    can run for hours, so the coordinator must NOT pin one DB session/connection
-    open the whole time. It opens a short-lived session per poll and releases it
-    back to the pool during the sleep between polls.
+
+async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
+    """Run ONE coordination tick, then re-enqueue itself (F-ARCH-6/#1).
+
+    This is deliberately NOT a while-True poller. arq wraps every job in
+    ``asyncio.wait_for(task, job_timeout)`` (arq/worker.py), so a job designed to
+    live for a batch's whole lifetime (hours) is *cancelled* at ``job_timeout``.
+    On py3.9 ``asyncio.CancelledError`` is a ``BaseException``, not an
+    ``Exception``, so an ``except Exception`` cleanup handler never runs and the
+    batch is orphaned in 'processing'. We remove the long-lived job entirely:
+
+      * Each invocation performs a single short poll ("tick"): drip-feed pending
+        items up to the concurrency limit, refresh the coordinator heartbeat, and
+        finalize once every item is terminal.
+      * If more work remains, the tick re-enqueues *itself* deferred by the poll
+        interval. The chain of short jobs replaces the loop -- every job now
+        finishes in milliseconds, far inside ``job_timeout``, so the cancellation
+        window is designed out rather than patched around.
+      * Recovery is uniform: if a tick is cancelled at ``job_timeout``, crashes,
+        or the worker dies, the chain simply stops advancing the heartbeat and the
+        heartbeat-based orphan sweeper (F-ARCH-6/#2) reaps the batch. No
+        unreachable ``except Exception`` cleanup is relied upon.
     """
+    from src.services import batch_service
+
     session_factory = get_session_factory()
     pool = ctx.get("redis") or ctx.get("pool")
     poll_interval = int(os.getenv("BATCH_POLL_INTERVAL_SECONDS", "2"))
 
-    # --- Phase 1: initialise (short session) ---------------------------------
     async with session_factory() as session:
         batch = (
             await session.execute(select(Batch).where(Batch.ulid == batch_ulid))
@@ -53,99 +70,35 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
             return
         batch_id = batch.id
 
-        batch.status = "processing"
-        batch.started_at = datetime.now(timezone.utc)
-        total = (
-            await session.execute(
-                select(func.count(BatchItem.id)).where(BatchItem.batch_id == batch_id)
+        # Terminal already (cancelled/failed/completed): stop the chain without
+        # overwriting the status. Cancellation is driven by the cancel endpoint.
+        if batch.status in _TERMINAL_BATCH_STATUSES:
+            logger.info(
+                "Batch %s already %s; coordinator stopping", batch_ulid, batch.status
             )
-        ).scalar() or 0
-        batch.total_items = total
-        await session.commit()
-
-        if total == 0:
-            batch.status = "completed"
-            batch.completed_at = datetime.now(timezone.utc)
-            await session.commit()
             return
 
-    # --- Phase 2 + 3: poll loop, releasing the session between polls ---------
-    try:
-        cancelled = False
-        while True:
-            async with session_factory() as session:
-                batch = (
-                    await session.execute(select(Batch).where(Batch.id == batch_id))
-                ).scalars().first()
-                if batch is None:
-                    logger.error("Batch id=%s vanished mid-coordination", batch_id)
-                    return
-
-                if batch.status == "cancelled":
-                    logger.info("Batch %s cancelled, exiting coordinator", batch_ulid)
-                    cancelled = True
-                    break
-
-                done_count = batch.completed_items + batch.failed_items
-                if done_count >= batch.total_items:
-                    break
-
-                # Count active items (queued + processing)
-                active_count = (
-                    await session.execute(
-                        select(func.count(BatchItem.id)).where(
-                            BatchItem.batch_id == batch_id,
-                            BatchItem.status.in_(["queued", "processing"]),
-                        )
+        # First tick: pending -> processing. total_items is authoritative from the
+        # router, but recompute defensively so the coordinator is self-consistent.
+        if batch.status == "pending":
+            batch.status = "processing"
+            batch.started_at = datetime.now(timezone.utc)
+            batch.total_items = (
+                await session.execute(
+                    select(func.count(BatchItem.id)).where(
+                        BatchItem.batch_id == batch_id
                     )
-                ).scalar() or 0
+                )
+            ).scalar() or 0
 
-                # Enqueue more items up to concurrency limit
-                slots = batch.concurrency_limit - active_count
-                if slots > 0:
-                    pending_items = (
-                        await session.execute(
-                            select(BatchItem)
-                            .where(
-                                BatchItem.batch_id == batch_id,
-                                BatchItem.status == "pending",
-                            )
-                            .order_by(
-                                # High priority first
-                                BatchItem.priority.desc(),
-                                BatchItem.created_at.asc(),
-                            )
-                            .limit(slots)
-                        )
-                    ).scalars().all()
+        total = batch.total_items
+        done_count = batch.completed_items + batch.failed_items
 
-                    for item in pending_items:
-                        item.status = "queued"
-                        defer_by = 0 if item.priority == "high" else 1
-                        if pool is not None:
-                            await pool.enqueue_job(
-                                "run_batch_item", item.ulid, _defer_by=defer_by
-                            )
+        # Finalize: nothing to do (empty batch) or every item is terminal.
+        if total == 0 or done_count >= total:
+            batch.status = "completed"
+            batch.completed_at = datetime.now(timezone.utc)
 
-                    if pending_items:
-                        await session.commit()
-            # session released here -- the connection is NOT held during sleep
-            await asyncio.sleep(poll_interval)
-
-        # --- Phase 3: finalise (fresh session) -------------------------------
-        async with session_factory() as session:
-            batch = (
-                await session.execute(select(Batch).where(Batch.id == batch_id))
-            ).scalars().first()
-            if batch is None:
-                return
-
-            if not cancelled and batch.status != "cancelled":
-                batch.status = "completed"
-                batch.completed_at = datetime.now(timezone.utc)
-                await session.commit()
-
-            # Fire batch.completed webhook if configured
             if batch.webhook_url:
                 from src.services import webhook_service
 
@@ -163,26 +116,64 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
                 await session.commit()
                 if pool is not None:
                     await pool.enqueue_job("dispatch_webhook", delivery.id)
+            else:
+                await session.commit()
 
             logger.info(
                 "Batch %s coordinator done: status=%s total=%d completed=%d failed=%d",
-                batch_ulid,
-                batch.status,
-                batch.total_items,
-                batch.completed_items,
-                batch.failed_items,
+                batch_ulid, batch.status, batch.total_items,
+                batch.completed_items, batch.failed_items,
             )
+            return  # terminal -> do NOT re-enqueue; the chain stops here
 
-    except Exception:
-        logger.exception("Batch %s coordinator failed", batch_ulid)
-        async with session_factory() as session:
-            batch = (
-                await session.execute(select(Batch).where(Batch.id == batch_id))
-            ).scalars().first()
-            if batch is not None and batch.status not in ("completed", "cancelled"):
-                batch.status = "failed"
-                batch.completed_at = datetime.now(timezone.utc)
-                await session.commit()
+        # Steady state: refresh heartbeat + drip-feed pending items up to the
+        # concurrency limit. The heartbeat proves to the sweeper we are alive.
+        batch_service.touch_batch_heartbeat(batch)
+
+        active_count = (
+            await session.execute(
+                select(func.count(BatchItem.id)).where(
+                    BatchItem.batch_id == batch_id,
+                    BatchItem.status.in_(["queued", "processing"]),
+                )
+            )
+        ).scalar() or 0
+
+        slots = batch.concurrency_limit - active_count
+        if slots > 0:
+            pending_items = (
+                await session.execute(
+                    select(BatchItem)
+                    .where(
+                        BatchItem.batch_id == batch_id,
+                        BatchItem.status == "pending",
+                    )
+                    .order_by(
+                        # High priority first
+                        BatchItem.priority.desc(),
+                        BatchItem.created_at.asc(),
+                    )
+                    .limit(slots)
+                )
+            ).scalars().all()
+
+            for item in pending_items:
+                item.status = "queued"
+                defer_by = 0 if item.priority == "high" else 1
+                if pool is not None:
+                    await pool.enqueue_job(
+                        "run_batch_item", item.ulid, _defer_by=defer_by
+                    )
+
+        await session.commit()
+
+    # Re-enqueue the next tick outside the session so no DB connection is pinned
+    # across the poll interval. If there is no pool (unit tests), the chain simply
+    # does not continue -- one tick still runs and asserts its own behavior.
+    if pool is not None:
+        await pool.enqueue_job(
+            "run_batch_coordinator", batch_ulid, _defer_by=poll_interval
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -303,6 +294,13 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
             item.duration_ms = duration_ms
             item.completed_at = datetime.now(timezone.utc)
             await batch_service.update_batch_counters(session, batch.id, "completed_items")
+            # Liveness from work, not just the coordinator (F-ARCH-6/#2 follow-up):
+            # a batch under arq pool saturation may go many ticks without the
+            # coordinator itself running, but items are still actively finishing.
+            # Refresh the same heartbeat the coordinator writes so the sweeper
+            # sees the batch as alive whenever there is real progress, from
+            # either source.
+            batch_service.touch_batch_heartbeat(batch)
             await session.commit()
 
             logger.info(
@@ -316,6 +314,9 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
             item.error_message = str(exc)[:500]
             item.completed_at = datetime.now(timezone.utc)
             await batch_service.update_batch_counters(session, batch.id, "failed_items")
+            # Same reasoning as the success path: a failed item is still proof
+            # of life for the batch.
+            batch_service.touch_batch_heartbeat(batch)
             await session.commit()
 
         # Fire item webhook if configured

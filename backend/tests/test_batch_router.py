@@ -198,6 +198,8 @@ def test_create_batch_enqueue_failure_marks_failed_503(mock_bs, mock_pool):
         {"filename": "part.stl", "path": "/tmp/part.stl", "size": 100}
     ]
     mock_bs.create_batch_items = AsyncMock(return_value=1)
+    # F-ARCH-1/#3: enqueue-failure path terminalizes the batch's items.
+    mock_bs.mark_pending_items_terminal = AsyncMock()
 
     # Enqueue blows up.
     mock_arq = AsyncMock()
@@ -213,6 +215,11 @@ def test_create_batch_enqueue_failure_marks_failed_503(mock_bs, mock_pool):
     assert resp.status_code == 503
     assert resp.json()["detail"]["code"] == "BATCH_ENQUEUE_FAILED"
     mock_bs.mark_batch_failed.assert_called_once_with(mock_batch, "enqueue_failed")
+    # Items moved off 'pending' so progress endpoints don't advertise dead work.
+    mock_bs.mark_pending_items_terminal.assert_awaited_once()
+    _pos, _kw = mock_bs.mark_pending_items_terminal.await_args
+    assert _pos[1] == mock_batch.id
+    assert _pos[2] == "skipped"
 
     app.dependency_overrides.clear()
 

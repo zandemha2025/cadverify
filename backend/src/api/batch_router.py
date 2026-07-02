@@ -166,6 +166,10 @@ async def create_batch(
             "Failed to enqueue coordinator for batch %s; marking failed", batch.ulid
         )
         batch_service.mark_batch_failed(batch, "enqueue_failed")
+        # F-ARCH-1/#3: the batch is failed but its items are still 'pending', so
+        # progress (pending_items = total - completed - failed) would advertise
+        # work that can never run. Move them to a terminal state so reads agree.
+        await batch_service.mark_pending_items_terminal(session, batch.id, "skipped")
         await session.commit()
         raise HTTPException(
             status_code=503,

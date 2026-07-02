@@ -77,7 +77,14 @@ class WorkerSettings:
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(os.getenv("REDIS_URL", "redis://localhost:6379"))
     max_jobs = 12
-    job_timeout = 600  # 10 min visibility timeout (SAM-07)
+    # 10 min per-job ceiling (SAM-07). arq wraps every job in
+    # asyncio.wait_for(task, job_timeout) and CANCELS it at the deadline, so no
+    # job may be designed to outlive this. run_batch_coordinator is therefore a
+    # short self-re-enqueueing *tick* (see batch_tasks.py), not a batch-lifetime
+    # loop -- each tick finishes in milliseconds, well inside this ceiling, and a
+    # long batch is driven by the chain of ticks. A dead chain is reaped by the
+    # heartbeat-based orphan sweeper.
+    job_timeout = 600
     health_check_interval = 30
     retry_jobs = True
     max_tries = 2
