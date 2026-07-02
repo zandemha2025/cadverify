@@ -18,11 +18,63 @@ def test_sign_unsign_roundtrip():
     assert unsign(c) == 42
 
 
+_B64URL_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+
+
+def _flip_char(seg: str, idx: int) -> str:
+    """Replace seg[idx] with a different base64url character.
+
+    idx must NOT be the last character of `seg`. Base64 only pads the
+    *final* character of an encoded blob with don't-care bits (when the
+    source length isn't a multiple of 3 bytes); every other character
+    encodes a full 6 significant bits. So flipping any non-final character
+    to a different symbol is guaranteed to change the decoded bytes --
+    unlike the final character, where e.g. 'a' and 'Q' can decode to the
+    identical byte because the low bits are unused padding, not signal.
+    """
+    assert idx < len(seg) - 1, "must flip a non-final character to stay deterministic"
+    orig = seg[idx]
+    replacement = next(ch for ch in _B64URL_ALPHABET if ch != orig)
+    return seg[:idx] + replacement + seg[idx + 1 :]
+
+
 def test_unsign_rejects_tampered():
+    """Flip a MIDDLE character of the sig segment.
+
+    Regression guard for a flaky (~25%) version of this test that flipped
+    only the FINAL cookie character: in base64url-no-padding, the final
+    char of the 22-char sig segment carries just 2 significant bits (the
+    other 4 are zero-padding), so a naive 'a' <-> 'Q'-style flip can
+    round-trip to the identical signature bytes, silently making the
+    "tamper" a no-op ~25% of the time. Index 5 of the 22-char sig segment
+    is a full, fully-significant 6-bit character, so flipping it
+    deterministically changes the signature -> unsign() must always
+    reject it.
+    """
     from src.auth.dashboard_session import sign, unsign
 
     c = sign(42)
-    tampered = c[:-1] + ("a" if c[-1] != "a" else "b")
+    body_seg, sig_seg = c.split(".")
+    tampered_sig = _flip_char(sig_seg, 5)
+    tampered = f"{body_seg}.{tampered_sig}"
+    assert unsign(tampered) is None
+
+
+def test_unsign_rejects_tampered_body():
+    """Same determinism guarantee, but tampering the body segment.
+
+    A flipped body byte changes the HMAC input, so the stored signature
+    (computed over the original body) will not match the recomputed one
+    except via an HMAC-SHA256 preimage collision (~2^-128) -- and index 2
+    is a non-final character of the body segment, so the flip itself is
+    deterministic per _flip_char's guarantee.
+    """
+    from src.auth.dashboard_session import sign, unsign
+
+    c = sign(42)
+    body_seg, sig_seg = c.split(".")
+    tampered_body = _flip_char(body_seg, 2)
+    tampered = f"{tampered_body}.{sig_seg}"
     assert unsign(tampered) is None
 
 
