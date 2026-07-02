@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.errors import DOC_BASE
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
@@ -31,9 +32,24 @@ async def reconstruct(
     session: AsyncSession = Depends(get_db_session),
 ):
     """Upload 1-4 images for 3D reconstruction. Returns 202 with job_id for polling."""
-    # Validate image count
+    # Validate image count (cheap request-shape check, no egress).
     if len(images) < 1 or len(images) > 4:
         raise HTTPException(status_code=400, detail="Upload 1-4 images")
+
+    # HONESTY / zero-egress gate: refuse to accept work we cannot run without a
+    # silent third-party egress. If no local model is available and remote
+    # egress has not been explicitly opted in, announce unavailability up front
+    # with a stable error code -- never silently egress, never a confusing 500.
+    availability = reconstruction_service.check_reconstruction_availability()
+    if not availability["available"]:
+        raise HTTPException(
+            status_code=501,
+            detail={
+                "code": "RECONSTRUCTION_UNAVAILABLE",
+                "message": availability["reason"],
+                "doc_url": f"{DOC_BASE}/RECONSTRUCTION_UNAVAILABLE",
+            },
+        )
 
     # Read all image bytes
     image_data: list[tuple[bytes, str]] = []

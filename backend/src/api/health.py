@@ -45,12 +45,29 @@ async def health_check():
     except Exception:
         pass
 
+    # Honest reconstruction capability report (not a health gate: reconstruction
+    # being unavailable in a zero-egress deployment is a valid, intended state).
+    try:
+        from src.services.reconstruction_service import (
+            check_reconstruction_availability,
+        )
+
+        recon = check_reconstruction_availability()
+        reconstruction = {
+            "available": recon["available"],
+            "backend": recon["effective_backend"],
+            "egress": recon["egress"],
+        }
+    except Exception:
+        reconstruction = {"available": False, "backend": "unknown", "egress": False}
+
     all_ok = all(checks.values())
     return JSONResponse(
         content={
             "status": "ok" if all_ok else "degraded",
             "version": version,
             **checks,
+            "reconstruction": reconstruction,
         },
         status_code=200 if all_ok else 503,
     )
