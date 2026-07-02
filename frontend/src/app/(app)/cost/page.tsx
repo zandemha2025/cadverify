@@ -1,10 +1,11 @@
-import LivingInstrument from "@/components/instrument/LivingInstrument";
+import PartWorkspace from "@/components/workspace/PartWorkspace";
 
 /**
- * Cost / make-vs-buy entry to THE LIVING INSTRUMENT. One canvas, no tabs: the
- * part in real 3D with the make-vs-buy decision orbiting it as live readouts and
- * a quantity scrubber you drag to flip the recommended process. Session-authed.
+ * Cost / make-vs-buy entry to the L2 DECISION frame. Drop a CAD file → the
+ * should-cost decision (make-by, $/unit, lead, the make-vs-buy crossover
+ * scrubber) with the glass-box drivers, routing/DFM and the resident Inspector
+ * one click away. Lands on the Design lens (answer-first). Session-authed.
  */
 export default function CostPage() {
-  return <LivingInstrument focus="decision" />;
+  return <PartWorkspace defaultRole="design" />;
 }
