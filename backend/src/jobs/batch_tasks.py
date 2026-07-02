@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
@@ -18,6 +19,12 @@ from src.db.models import Batch, BatchItem
 
 logger = logging.getLogger("cadverify.batch_tasks")
 
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def _flag(name: str, default: str) -> bool:
+    return os.getenv(name, default).strip().lower() in _TRUTHY
+
 
 # ---------------------------------------------------------------------------
 # Coordinator task
@@ -27,67 +34,71 @@ logger = logging.getLogger("cadverify.batch_tasks")
 async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
     """Coordinate batch processing: drip-feed items up to concurrency limit.
 
-    Polls every 2 seconds until all items complete or batch is cancelled.
-    Timeout: 4 hours (set via worker registration).
+    Polls until all items complete or the batch is cancelled. F-ARCH-6: a batch
+    can run for hours, so the coordinator must NOT pin one DB session/connection
+    open the whole time. It opens a short-lived session per poll and releases it
+    back to the pool during the sleep between polls.
     """
     session_factory = get_session_factory()
+    pool = ctx.get("redis") or ctx.get("pool")
+    poll_interval = int(os.getenv("BATCH_POLL_INTERVAL_SECONDS", "2"))
 
+    # --- Phase 1: initialise (short session) ---------------------------------
     async with session_factory() as session:
-        # Load batch
         batch = (
             await session.execute(select(Batch).where(Batch.ulid == batch_ulid))
         ).scalars().first()
         if batch is None:
             logger.error("Batch %s not found", batch_ulid)
             return
+        batch_id = batch.id
 
-        try:
-            # Set status to processing
-            batch.status = "processing"
-            batch.started_at = datetime.now(timezone.utc)
+        batch.status = "processing"
+        batch.started_at = datetime.now(timezone.utc)
+        total = (
+            await session.execute(
+                select(func.count(BatchItem.id)).where(BatchItem.batch_id == batch_id)
+            )
+        ).scalar() or 0
+        batch.total_items = total
+        await session.commit()
 
-            # Count total items
-            total = (
-                await session.execute(
-                    select(func.count(BatchItem.id)).where(
-                        BatchItem.batch_id == batch.id
-                    )
-                )
-            ).scalar() or 0
-            batch.total_items = total
+        if total == 0:
+            batch.status = "completed"
+            batch.completed_at = datetime.now(timezone.utc)
             await session.commit()
+            return
 
-            if total == 0:
-                batch.status = "completed"
-                batch.completed_at = datetime.now(timezone.utc)
-                await session.commit()
-                return
+    # --- Phase 2 + 3: poll loop, releasing the session between polls ---------
+    try:
+        cancelled = False
+        while True:
+            async with session_factory() as session:
+                batch = (
+                    await session.execute(select(Batch).where(Batch.id == batch_id))
+                ).scalars().first()
+                if batch is None:
+                    logger.error("Batch id=%s vanished mid-coordination", batch_id)
+                    return
 
-            # Coordinator loop
-            pool = ctx.get("redis") or ctx.get("pool")
-            while True:
-                # Refresh batch state
-                await session.refresh(batch)
-
-                # Check cancellation
                 if batch.status == "cancelled":
                     logger.info("Batch %s cancelled, exiting coordinator", batch_ulid)
+                    cancelled = True
+                    break
+
+                done_count = batch.completed_items + batch.failed_items
+                if done_count >= batch.total_items:
                     break
 
                 # Count active items (queued + processing)
                 active_count = (
                     await session.execute(
                         select(func.count(BatchItem.id)).where(
-                            BatchItem.batch_id == batch.id,
+                            BatchItem.batch_id == batch_id,
                             BatchItem.status.in_(["queued", "processing"]),
                         )
                     )
                 ).scalar() or 0
-
-                # Check completion
-                done_count = batch.completed_items + batch.failed_items
-                if done_count >= total:
-                    break
 
                 # Enqueue more items up to concurrency limit
                 slots = batch.concurrency_limit - active_count
@@ -96,7 +107,7 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
                         await session.execute(
                             select(BatchItem)
                             .where(
-                                BatchItem.batch_id == batch.id,
+                                BatchItem.batch_id == batch_id,
                                 BatchItem.status == "pending",
                             )
                             .order_by(
@@ -118,12 +129,18 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
 
                     if pending_items:
                         await session.commit()
+            # session released here -- the connection is NOT held during sleep
+            await asyncio.sleep(poll_interval)
 
-                await asyncio.sleep(2)
+        # --- Phase 3: finalise (fresh session) -------------------------------
+        async with session_factory() as session:
+            batch = (
+                await session.execute(select(Batch).where(Batch.id == batch_id))
+            ).scalars().first()
+            if batch is None:
+                return
 
-            # Batch complete -- set final status
-            await session.refresh(batch)
-            if batch.status != "cancelled":
+            if not cancelled and batch.status != "cancelled":
                 batch.status = "completed"
                 batch.completed_at = datetime.now(timezone.utc)
                 await session.commit()
@@ -156,11 +173,46 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
                 batch.failed_items,
             )
 
-        except Exception:
-            logger.exception("Batch %s coordinator failed", batch_ulid)
-            batch.status = "failed"
-            batch.completed_at = datetime.now(timezone.utc)
+    except Exception:
+        logger.exception("Batch %s coordinator failed", batch_ulid)
+        async with session_factory() as session:
+            batch = (
+                await session.execute(select(Batch).where(Batch.id == batch_id))
+            ).scalars().first()
+            if batch is not None and batch.status not in ("completed", "cancelled"):
+                batch.status = "failed"
+                batch.completed_at = datetime.now(timezone.utc)
+                await session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Orphan sweeper (F-ARCH-1)
+# ---------------------------------------------------------------------------
+
+
+async def sweep_orphaned_batches(ctx: dict) -> int:
+    """arq cron: reap batches stuck in pending/processing past the TTL.
+
+    Backstops the reject-don't-orphan path in POST /batch: if the API crashed
+    between committing the batch and enqueuing its coordinator (or the
+    coordinator died mid-run), the batch would sit 'pending'/'processing'
+    forever. This marks such batches failed with reason 'orphaned'.
+
+    Off-switch: BATCH_ORPHAN_SWEEP_ENABLED=0.
+    """
+    if not _flag("BATCH_ORPHAN_SWEEP_ENABLED", "1"):
+        return 0
+
+    from src.services import batch_service
+
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        reaped = await batch_service.sweep_orphaned_batches(session)
+        if reaped:
             await session.commit()
+    if reaped:
+        logger.warning("Orphan sweep reaped %d stuck batch(es)", reaped)
+    return reaped
 
 
 # ---------------------------------------------------------------------------

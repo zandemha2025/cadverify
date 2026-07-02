@@ -4,9 +4,15 @@ from __future__ import annotations
 import logging
 import os
 
+from arq import cron
 from arq.connections import RedisSettings
 
-from src.jobs.batch_tasks import dispatch_webhook, run_batch_coordinator, run_batch_item
+from src.jobs.batch_tasks import (
+    dispatch_webhook,
+    run_batch_coordinator,
+    run_batch_item,
+    sweep_orphaned_batches,
+)
 from src.jobs.reconstruction_tasks import run_reconstruction_job
 from src.jobs.tasks import run_sam3d_job
 
@@ -58,6 +64,15 @@ async def shutdown(ctx: dict) -> None:
 
 class WorkerSettings:
     functions = [run_sam3d_job, run_batch_coordinator, run_batch_item, dispatch_webhook, run_reconstruction_job]
+    # Periodic orphan sweep (F-ARCH-1): reap batches stuck in pending/processing.
+    # Runs every 5 minutes and once at worker startup as a backstop.
+    cron_jobs = [
+        cron(
+            sweep_orphaned_batches,
+            minute=set(range(0, 60, 5)),
+            run_at_startup=True,
+        )
+    ]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(os.getenv("REDIS_URL", "redis://localhost:6379"))

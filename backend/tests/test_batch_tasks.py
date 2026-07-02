@@ -83,10 +83,41 @@ def _mock_session_factory(session):
 # ---------------------------------------------------------------------------
 
 
+def _coordinator_execute(state):
+    """Build a session.execute that routes by the compiled SQL.
+
+    The coordinator now opens a fresh session per poll (F-ARCH-6) and re-queries
+    the batch by id instead of session.refresh(), so tests dispatch on the
+    statement shape rather than a fixed call ordering.
+    """
+
+    async def execute(stmt):
+        s = str(stmt).lower()
+        result = MagicMock()
+        scalars = MagicMock()
+        if "count(" in s:
+            # active count has a `status IN (...)` clause; total count does not.
+            result.scalar.return_value = state["active"] if "status" in s else state["total"]
+            return result
+        if "from batch_items" in s:
+            scalars.all.return_value = state["pending"]
+            result.scalars.return_value = scalars
+            cb = state.get("on_pending")
+            if cb is not None:
+                cb()
+            return result
+        # default: batch load (SELECT ... FROM batches ...)
+        scalars.first.return_value = state["batch"]
+        result.scalars.return_value = scalars
+        return result
+
+    return execute
+
+
 @pytest.mark.asyncio
 @patch("src.jobs.batch_tasks.get_session_factory")
 async def test_coordinator_enqueues_items(mock_gsf):
-    """Coordinator enqueues items up to concurrency limit."""
+    """Coordinator enqueues pending items up to the concurrency limit."""
     from src.jobs.batch_tasks import run_batch_coordinator
 
     mock_session = AsyncMock()
@@ -95,79 +126,37 @@ async def test_coordinator_enqueues_items(mock_gsf):
     batch = _make_batch(total_items=3, completed_items=0, failed_items=0)
     pending_item = _make_item(status="pending")
 
-    # Sequence of execute calls:
-    # 1. Load batch by ULID
-    # 2. Count total items
-    # 3. Refresh (via session.refresh)
-    # 4. Count active items
-    # 5. Select pending items
-    # Then on second loop iteration, all done
+    def _mark_all_done():
+        # Once we've handed out the pending item, the batch reaches completion so
+        # the next poll breaks the loop.
+        batch.completed_items = 3
 
-    call_count = 0
-
-    async def mock_execute(stmt):
-        nonlocal call_count
-        call_count += 1
-        result = MagicMock()
-        scalars = MagicMock()
-
-        if call_count == 1:
-            # Load batch
-            scalars.first.return_value = batch
-            result.scalars.return_value = scalars
-        elif call_count == 2:
-            # Count total items
-            result.scalar.return_value = 3
-        elif call_count == 3:
-            # Count active items (first loop)
-            result.scalar.return_value = 0
-        elif call_count == 4:
-            # Select pending items (first loop)
-            scalars.all.return_value = [pending_item]
-            result.scalars.return_value = scalars
-        elif call_count == 5:
-            # Count active items (second loop) -- after completion
-            result.scalar.return_value = 0
-        else:
-            scalars.all.return_value = []
-            scalars.first.return_value = None
-            result.scalars.return_value = scalars
-            result.scalar.return_value = 0
-
-        return result
-
-    mock_session.execute = mock_execute
+    state = {
+        "batch": batch,
+        "total": 3,
+        "active": 0,
+        "pending": [pending_item],
+        "on_pending": _mark_all_done,
+    }
+    mock_session.execute = _coordinator_execute(state)
     mock_session.commit = AsyncMock()
-
-    # After first loop iteration, mark as complete
-    refresh_count = 0
-
-    async def mock_refresh(obj):
-        nonlocal refresh_count
-        refresh_count += 1
-        if refresh_count >= 2:
-            batch.completed_items = 3
-            batch.failed_items = 0
-
-    mock_session.refresh = mock_refresh
 
     mock_pool = AsyncMock()
     mock_pool.enqueue_job = AsyncMock()
-
     ctx = {"redis": mock_pool}
 
-    # Patch asyncio.sleep to avoid real delays
     with patch("src.jobs.batch_tasks.asyncio.sleep", new_callable=AsyncMock):
         await run_batch_coordinator(ctx, "01BATCH00000000000001")
 
-    # Verify items were enqueued
     mock_pool.enqueue_job.assert_called()
+    assert pending_item.status == "queued"
+    assert batch.status == "completed"
 
 
 @pytest.mark.asyncio
 @patch("src.jobs.batch_tasks.get_session_factory")
 async def test_coordinator_completes_when_all_done(mock_gsf):
-    """Batch status set to completed when all items done."""
+    """Batch status set to completed when all items are already done."""
     from src.jobs.batch_tasks import run_batch_coordinator
 
     mock_session = AsyncMock()
@@ -175,31 +164,9 @@ async def test_coordinator_completes_when_all_done(mock_gsf):
 
     batch = _make_batch(total_items=2, completed_items=2, failed_items=0)
 
-    call_count = 0
-
-    async def mock_execute(stmt):
-        nonlocal call_count
-        call_count += 1
-        result = MagicMock()
-        scalars = MagicMock()
-
-        if call_count == 1:
-            scalars.first.return_value = batch
-            result.scalars.return_value = scalars
-        elif call_count == 2:
-            result.scalar.return_value = 2  # total items
-        elif call_count == 3:
-            result.scalar.return_value = 0  # active count
-        else:
-            result.scalar.return_value = 0
-            scalars.all.return_value = []
-            result.scalars.return_value = scalars
-
-        return result
-
-    mock_session.execute = mock_execute
+    state = {"batch": batch, "total": 2, "active": 0, "pending": []}
+    mock_session.execute = _coordinator_execute(state)
     mock_session.commit = AsyncMock()
-    mock_session.refresh = AsyncMock()
 
     ctx = {"redis": AsyncMock()}
 
@@ -207,6 +174,82 @@ async def test_coordinator_completes_when_all_done(mock_gsf):
         await run_batch_coordinator(ctx, batch.ulid)
 
     assert batch.status == "completed"
+
+
+@pytest.mark.asyncio
+@patch("src.jobs.batch_tasks.get_session_factory")
+async def test_coordinator_exits_on_cancel(mock_gsf):
+    """Cancelled batch: coordinator exits without overwriting the status."""
+    from src.jobs.batch_tasks import run_batch_coordinator
+
+    mock_session = AsyncMock()
+    mock_gsf.return_value = _mock_session_factory(mock_session)
+
+    batch = _make_batch(total_items=3, completed_items=0, failed_items=0)
+
+    def _cancel_after_init():
+        batch.status = "cancelled"
+
+    # Flip to cancelled right after phase-1 total count, so the first poll sees it.
+    state = {
+        "batch": batch,
+        "total": 3,
+        "active": 0,
+        "pending": [],
+    }
+
+    orig = _coordinator_execute(state)
+
+    seen_total = {"done": False}
+
+    async def execute(stmt):
+        res = await orig(stmt)
+        s = str(stmt).lower()
+        if "count(" in s and "status" not in s and not seen_total["done"]:
+            seen_total["done"] = True
+            batch.status = "cancelled"
+        return res
+
+    mock_session.execute = execute
+    mock_session.commit = AsyncMock()
+
+    ctx = {"redis": AsyncMock()}
+    with patch("src.jobs.batch_tasks.asyncio.sleep", new_callable=AsyncMock):
+        await run_batch_coordinator(ctx, batch.ulid)
+
+    assert batch.status == "cancelled"
+
+
+# ---------------------------------------------------------------------------
+# sweep_orphaned_batches (arq cron task)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@patch("src.jobs.batch_tasks.get_session_factory")
+async def test_sweep_task_commits_when_reaped(mock_gsf):
+    from src.jobs.batch_tasks import sweep_orphaned_batches
+
+    mock_session = AsyncMock()
+    mock_gsf.return_value = _mock_session_factory(mock_session)
+    mock_session.commit = AsyncMock()
+
+    import src.services.batch_service as bs
+
+    with patch.object(bs, "sweep_orphaned_batches", new_callable=AsyncMock, return_value=2) as mock_sweep:
+        n = await sweep_orphaned_batches({})
+
+    assert n == 2
+    mock_sweep.assert_awaited_once()
+    mock_session.commit.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_sweep_task_off_switch(monkeypatch):
+    from src.jobs.batch_tasks import sweep_orphaned_batches
+
+    monkeypatch.setenv("BATCH_ORPHAN_SWEEP_ENABLED", "0")
+    assert await sweep_orphaned_batches({}) == 0
 
 
 # ---------------------------------------------------------------------------
