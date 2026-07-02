@@ -5,7 +5,7 @@ primary_region = "iad"
   dockerfile = "Dockerfile"
 
 [processes]
-  web = "uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2"
+  web = "uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2 --no-server-header"
   worker = "arq src.jobs.worker.WorkerSettings"
 
 [env]

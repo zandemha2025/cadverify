@@ -83,4 +83,6 @@ USER cadverify
 EXPOSE 8000
 
 # Web entrypoint (default). Worker overrides CMD to: arq src.jobs.worker.WorkerSettings
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# --no-server-header suppresses uvicorn's `server: uvicorn` banner (S6); the app
+# middleware then stamps a neutral Server value.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--no-server-header"]

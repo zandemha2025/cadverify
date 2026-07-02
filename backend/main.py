@@ -21,6 +21,7 @@ from src.api.errors import structured_http_error_handler, structured_validation_
 from src.api.health import router as health_router
 from src.api.history import router as history_router
 from src.api.middleware import RequestIDMiddleware
+from src.api.security_headers import SecurityHeadersMiddleware
 from src.api.pdf import router as pdf_router
 from src.api.batch_router import router as batch_router
 from src.api.jobs_router import router as jobs_router
@@ -57,6 +58,47 @@ if LABELING_ENABLED:
     )
 CORS_ORIGIN_REGEX = os.getenv("CORS_ORIGIN_REGEX", _DEFAULT_CORS_REGEX)
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+
+
+def _is_production() -> bool:
+    """True when RELEASE names a real deployment (not a dev/test/local build)."""
+    return os.getenv("RELEASE", "dev").strip().lower() not in {
+        "",
+        "dev",
+        "development",
+        "local",
+        "test",
+        "ci",
+    }
+
+
+def _assert_production_secrets() -> None:
+    """Fail closed in production if auth secrets are still at dev defaults (S5).
+
+    Mirrors the DASHBOARD_SESSION_SECRET fail-closed pattern (refuse to run
+    without a real secret), but as a startup guard so a misconfigured deploy
+    crashes loudly instead of silently signing sessions with a well-known key.
+    Off-switch: SECRET_ENFORCEMENT_ENABLED=0 (default on).
+    """
+    if os.getenv("SECRET_ENFORCEMENT_ENABLED", "1") == "0" or not _is_production():
+        return
+    session_secret = os.getenv("SESSION_SECRET", "").strip()
+    if not session_secret or session_secret == "dev-only":
+        raise RuntimeError(
+            "SESSION_SECRET is unset or 'dev-only' in a production build "
+            f"(RELEASE={os.getenv('RELEASE')!r}); refusing to start."
+        )
+    auth_mode = os.getenv("AUTH_MODE", "google")
+    if auth_mode in ("google", "hybrid"):
+        for var in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"):
+            if os.getenv(var, "dummy").strip() in ("", "dummy"):
+                raise RuntimeError(
+                    f"{var} is unset or the 'dummy' default in a production "
+                    f"build with AUTH_MODE={auth_mode}; refusing to start."
+                )
+
+
+_assert_production_secrets()
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
@@ -138,6 +180,11 @@ app.add_middleware(
     SessionMiddleware,
     secret_key=os.environ.get("SESSION_SECRET", "dev-only"),
 )
+
+# Security response headers (S6) — added LAST so it is the outermost user
+# middleware and stamps every response (incl. CORS preflights, rate-limit 429s,
+# and error responses) on the way out. Off-switch: SECURITY_HEADERS_ENABLED=0.
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(router, prefix="/api/v1")
 app.include_router(batch_router)
