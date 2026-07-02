@@ -15,7 +15,7 @@ from fastapi.responses import RedirectResponse, Response
 
 from src.auth.dashboard_session import clear_session_cookie, set_session_cookie
 from src.auth.hashing import hmac_index, mint_token
-from src.auth.models import create_api_key, upsert_user
+from src.auth.models import create_api_key, upsert_user, user_has_active_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -65,11 +65,29 @@ async def _build_request_data_with_post(request: Request) -> dict:
     return data
 
 
+def _expand_env(value):
+    """Recursively apply os.path.expandvars to every string in a JSON tree.
+
+    Lets the documented ${SAML_SP_ENTITY_ID} / ${SAML_IDP_X509_CERT} style
+    placeholders in settings.json resolve from the environment at load time.
+    An undefined ${VAR} is left verbatim by expandvars (python3-saml then
+    surfaces the misconfiguration), rather than being silently blanked.
+    """
+    if isinstance(value, str):
+        return os.path.expandvars(value)
+    if isinstance(value, dict):
+        return {k: _expand_env(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_expand_env(v) for v in value]
+    return value
+
+
 def _load_saml_settings() -> dict:
     """Load SAML settings from config directory.
 
     Reads settings.json and advanced_settings.json from the directory
-    specified by SAML_CONFIG_DIR env var (default: 'saml/').
+    specified by SAML_CONFIG_DIR env var (default: 'saml/'). String values
+    are passed through os.path.expandvars so ${ENV_VAR} templates resolve.
     """
     config_dir = Path(os.getenv("SAML_CONFIG_DIR", "saml/"))
     settings_path = config_dir / "settings.json"
@@ -89,7 +107,7 @@ def _load_saml_settings() -> dict:
             advanced = json.load(f)
         settings.update(advanced)
 
-    return settings
+    return _expand_env(settings)
 
 
 def _build_auth(request: Request, request_data: dict):
@@ -113,11 +131,13 @@ async def _saml_provision_user(email: str) -> int:
         disposable_flag=False,
     )
 
-    # Mint a default API key for new SAML users
-    full_token, prefix, secret_hash = mint_token()
-    await create_api_key(
-        user_id, "SAML Default", prefix, hmac_index(full_token), secret_hash
-    )
+    # Mint a default API key only if the user has none active. Re-minting on
+    # every SSO login would orphan keys and churn the user's integrations (S3).
+    if not await user_has_active_api_key(user_id):
+        full_token, prefix, secret_hash = mint_token()
+        await create_api_key(
+            user_id, "SAML Default", prefix, hmac_index(full_token), secret_hash
+        )
 
     logger.info("SAML user provisioned: email=%s user_id=%d", email_lower, user_id)
 

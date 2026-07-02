@@ -26,7 +26,7 @@ from src.auth.dashboard_session import set_session_cookie
 from src.auth.disposable import classify, normalize_email
 from src.auth.disposable_list import get_soft_flag_set
 from src.auth.hashing import hmac_index, mint_token
-from src.auth.models import create_api_key, upsert_user
+from src.auth.models import create_api_key, upsert_user, user_has_active_api_key
 from src.auth.signup_limits import per_email_signup_limit, per_ip_signup_limit
 from src.auth.turnstile import verify_turnstile
 
@@ -137,6 +137,14 @@ async def magic_verify(token: str):
             },
         )
     user_id = await upsert_user(stored, None, stored)
+
+    # Mint a key only when the account has none active (S3). Returning users
+    # sign in via magic link repeatedly; each login must not spawn a new key.
+    if await user_has_active_api_key(user_id):
+        resp = RedirectResponse(url="/dashboard/keys", status_code=303)
+        set_session_cookie(resp, user_id)
+        return resp
+
     full_token, prefix, secret_hash = mint_token()
     await create_api_key(
         user_id, "Default", prefix, hmac_index(full_token), secret_hash
