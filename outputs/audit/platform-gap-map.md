@@ -51,3 +51,8 @@
 4. **Then the platform/enterprise layer** (org/tenant model, portfolio-cost batch, real async tier, encryption/SOC2/SAML).
 
 *Sources: outputs/audit/{audit-cost, audit-dfm, audit-product, audit-enterprise, audit-arch}.md*
+
+---
+
+## Addendum 2026-07-03 — Part-in-context (founder direction)
+Show every part in its ENVIRONMENT (program → parent assembly → position in the product), not as an orphan file. Three honesty rungs: **declared context fields** (S; unlocks honest $/year portfolio math — demand quantities are otherwise unknown); **deterministic STEP assembly product-structure ingestion** (M–L; the in-situ zoom-out moment); **PLM where-used connector** (rides W2, after G4). Context is never AI-inferred silently. Details: `long-horizon-plan.md` §W3.5 + the design brief's "context moment". Zoox session: ask how they'd want this to work.

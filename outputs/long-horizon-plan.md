@@ -124,6 +124,13 @@ Build order (each its own branch/spec/verify; backend does NOT wait for G0):
 ### W3 — Portfolio/batch cost (L–XL; the enterprise value story; after G2)
 Batch pipeline is DFM-only (`batch_tasks.py` calls `run_analysis`, never `cost_decision_service`; `BatchItem` has no qty/region/material/shop fields). Build: batch-cost job type + item params + coordinator (reuse the webhook infra — solid — and the `groundtruth.py` per-part×qty loop pattern) → portfolio roll-up API (`GROUP BY` over the catalog) → Portfolio UI (ranked cost-down board, posture bar, drill-to-rows) in the world. Portfolio-level scenarios/compare (M) and the CO₂ checkbox metric (S–M) attach here. **Pre-build validation (G4-lite):** show a design partner the mocked ranked-savings report first — the audit's own advice.
 
+### W3.5 — Part-in-context (added 2026-07-03; founder direction)
+Today every upload is an orphan; the founder wants the part shown in its ENVIRONMENT (screw → bracket → door module → vehicle/plane). Three honesty rungs — context is never AI-guessed:
+1. **Declared context (S; rides W3/W4):** `program / parent_assembly / units_per_parent / annual_volume` fields on catalog parts, USER provenance. Unlocks the honest $/year portfolio roll-up (W3's savings ranking has no demand quantities without this) and *program* as a portfolio grouping dimension.
+2. **STEP assembly product-structure ingestion (M–L; the differentiator):** AP214/AP242 assemblies carry BOM trees + part positions — deterministic extraction (OpenCascade-class dependency), powering the in-situ zoom-out moment. Engine-known nodes only.
+3. **PLM where-used connector:** folds into **W2**, stays gated on **G4** (ask design partners which system their parts live in first).
+Visual states are specified in `outputs/design/claude-web-design-brief.md` ("The context moment"). **Zoox session agenda add:** ask how they'd want part-in-context to work against their real program structure — validates rung 2 vs 3 before building either.
+
 ### W4 — Governed libraries (L; the catalog's content)
 Today: `RATE_CARD_V0` is a hardcoded 487-line dict with **no API at all**; shop profiles are 2 flat JSON files (read-only GET); materials are code+YAML. Build: DB-backed, versioned, effective-dated rate/material/shop assets + CRUD + engine cache invalidation → asset-detail UI (Overview·Versions·Usage·Lineage) → Governance zone (change request → review → publish → re-cost consumers, downstream-impact count). Material library expansion (carbon/alloy steels, corrected $/kg — Cost M6) lands *as governed data*, not more hardcoded constants. Supplier/shop directory (M) attaches here.
 
