@@ -1,0 +1,34 @@
+{
+  "name": "Midwest Precision CNC",
+  "region": "US",
+  "labor_rate": 52.0,
+  "margin": 0.3,
+  "overhead": 0.15,
+  "utilization": 0.8,
+  "stock_allowance": null,
+  "machine_rates": {
+    "CNC_3AXIS": 95,
+    "CNC_5AXIS": 135,
+    "CNC_TURNING": 85,
+    "SLS": 28,
+    "MJF": 30,
+    "FDM": 12,
+    "INJECTION_MOLDING": 60
+  },
+  "material_prices": {
+    "@polymer": 7.0,
+    "@aluminum": 9.0,
+    "Delrin (POM)": 6.5,
+    "PA12 (Nylon 12)": 8.0,
+    "6061-T6 Aluminum": 9.0
+  },
+  "region_multipliers": {
+    "labor": 1.0,
+    "material": 1.0,
+    "tooling": 1.0
+  },
+  "source": "Shop accounting export 2026-Q2 (loaded rates + negotiated resin lots)",
+  "notes": "Aerospace/automotive job shop, 8 CNC machines, in-house SLS.",
+  "created": "2026-06-29",
+  "schema_version": 1
+}

@@ -1,0 +1,32 @@
+{
+  "name": "Shenzhen Contract Mfg",
+  "region": "CN",
+  "labor_rate": 14.0,
+  "margin": 0.1,
+  "overhead": 0.05,
+  "utilization": 0.92,
+  "stock_allowance": null,
+  "machine_rates": {
+    "CNC_3AXIS": 45,
+    "CNC_5AXIS": 70,
+    "CNC_TURNING": 40,
+    "SLS": 15,
+    "MJF": 15,
+    "FDM": 6,
+    "INJECTION_MOLDING": 30
+  },
+  "material_prices": {
+    "@polymer": 4.5,
+    "Delrin (POM)": 4.0,
+    "PA12 (Nylon 12)": 5.5
+  },
+  "region_multipliers": {
+    "labor": 1.0,
+    "material": 0.98,
+    "tooling": 0.45
+  },
+  "source": "Supplier RFQ packet 2026-05 (quoted hourly + tooling)",
+  "notes": "High-volume contract manufacturer, low-cost region.",
+  "created": "2026-06-29",
+  "schema_version": 1
+}
