@@ -1,38 +1,34 @@
 # RESUME — Autonomous Orchestration Loop (live)
 
-**Written 2026-07-03 by Fable (orchestrator).** Directive: **full autonomous** — Fable orchestrates, subagents build, Fable gates every merge, routes back failures, keeps the pipeline full, does NOT stop to ask the user between beats. Continue the loop.
+**Updated 2026-07-03 by Fable (orchestrator).** Directive: full autonomous — Fable orchestrates, subagents build, Fable gates every merge. Continue the loop.
 
-## Current prod
-- `prod == dev == 8b7529e`. Backend suite: **768 passed, 24 failed (ENV-ONLY), 13 skipped**. The 24 are `test_costing_gates`+`test_costing_accuracy` failing ONLY because `CADVERIFY_PARTS_DIR` is unset (missing STL corpus) — NOT regressions. Verify after any merge: `git diff <base>..dev --stat -- backend/src/costing backend/src/analysis` empty ⇒ the 24 aren't yours. Frontend behind `NEXT_PUBLIC_STAGE_UI` (flag-off byte-identical).
+## Current state
+- `dev == 74c5d38` (W3 merged). **`prod == 1b8a174` — PROMOTION PENDING**: the permission layer blocked `git push . dev:prod` (reads as prod deploy); founder to approve or add a Bash allow-rule for `git push . dev:prod`. Everything else about the W3 gate is complete.
+- Backend suite post-merge: **797 passed, 24 failed (ENV-ONLY: test_costing_accuracy×8 + test_costing_gates×16, unset `CADVERIFY_PARTS_DIR`), 15 skipped.** W3 touched neither `src/costing` nor `src/analysis`.
+- **GitHub remote is live**: `github.com/zandemha2025/cadverify`. main/dev/prod + all 27 merged feature branches + `feat/w3-portfolio-cost` pushed. **Policy: push `origin dev` (and `prod` once promotions are unblocked) after every gated merge** — founder works in the cloud too; pull before assuming local == remote, and if founder pushed to dev from the cloud, rebase the loop's work instead of colliding.
 
-## Landed today (all adversarially verified, honesty bugs caught+fixed)
-Sprint 0 · W1 tenancy steps 1–3 (org/team/membership, RBAC superadmin split, route threading w/ PROVEN cross-tenant isolation) · Findings-API deepening · Frontend v1 FE-1..FE-5 (three doors, part hero on real data) · E-now wave 1 (cost credibility, DEFAULT-tagged, validated=False) · W1 Catalog API (`backend/src/api/catalog.py`, org-scoped read surface).
+## W3 — LANDED on dev (merge 74c5d38, triple adversarial PASS, high conf)
+Migration `0012_batch_cost` (batches.job_type; batch_items quantities/region/material_class/shop/cost_decision_id) · batch-cost job type (`BATCH_COST_ENABLED` default ON) · worker cost path with org-calibration binding — **parity crux: byte-identical to `/validate/cost`** (independent verifier script) · dedup-safe persist · cost results CSV · org-scoped `GET /api/v1/catalog/portfolio` with engine-grounded savings ranking (basis `decision.if_redesigned[q]`, JSONB string-key tolerant, withheld/validated honesty carried, no fabricated portfolio total). Isolation verifier ran its own two-org mesh-hash cross-contamination probe: clean.
+Non-blocking notes (disclosed, not defects): batch cost path persists unconditionally (FK needs it) while the route gates on `COST_PERSIST_ENABLED`; savings baseline reads `decision.recommendation[q]` (tier-1 make-as-is) — honest, labeled with basis+qty. Builder impl note: `outputs/impl/w3-portfolio-cost-note.md`; spec: `outputs/impl/w3-portfolio-cost-spec.md`.
 
 ## IN FLIGHT
-- Nothing building right now — all launched work is merged to prod.
+- Nothing building. W3 worktree at `<scratchpad>/wt/w3` can be pruned (`git worktree remove`) once prod is promoted.
 
-## NEXT UP (launch first thing, then gate)
-1. **W3 portfolio cost** — batch-cost job type + portfolio roll-up (savings ranking) over the org-scoped catalog. Current batch pipeline is DFM-only (`backend/src/jobs/batch_tasks.py` calls `run_analysis`, never cost). Reuse the arq worker + webhook infra + the groundtruth per-part×qty loop pattern. This makes the FE portfolio door's honest "coming" savings state real. Builder + 2 verifiers, isolation lens (org-scoped).
-2. Then: **E-now freeze checkpoint** → regenerate the Zoox validation packet from merged prod (engine credible + flywheel persists = both G3 prereqs met) → founder schedules the Zoox session. Then W4 governed libraries.
+## NEXT UP
+1. **Promote dev→prod** (founder approval pending) → push `origin prod`.
+2. **E-now freeze checkpoint** → regenerate the Zoox validation packet FROM MERGED PROD (long-horizon-plan §5; packet basis `outputs/verify/*.md` + `outputs/validation-packet.md` + `outputs/truth-engine-validation.md`) → G3 Zoox session becomes founder-schedulable. **Zoox agenda add (2026-07-03): ask how they'd want part-in-context to work against their real program structure** (validates W3.5 rung 2 vs 3).
+3. **W4 governed libraries** (rate/material/shop assets, versioned + effective-dated). W3.5 rung 1 (declared context fields: program/parent/units_per_parent/annual_volume, USER provenance) can ride W4 — it unlocks honest $/year portfolio math.
 
-## DONE this session (all merged to prod `0ba3aaf`)
-- **feat/findings-fe-bind** (68f0bb8) · **feat/catalog-ui** (042bfe3, 168/0 fe) · **feat/w5-plumbing** (0ba3aaf) — flywheel persists; band-incoherence bug (validated band excluded truth 0/17) fixed w/ calibration-factor point correction + coverage regression test; validated=True ONLY from real residuals, byte-identical when none. E-now wave1 + W1 Catalog API also prod.
+## Design track (founder-driven, in the cloud)
+Founder is running Claude Design on the web against the repo. **`DESIGN-MISSION.md` (repo root)** is the complete mission: register + three rejected directions + six signature moments + full screen/card/interaction inventory. Cloud sessions work on `design/*` branches ONLY (never dev/prod, never backend/). Founder judges concept frames first. New product idea captured 2026-07-03: **W3.5 part-in-context** (plan §W3.5 + gap-map addendum + design brief "context moment" — 3 honesty rungs, never AI-guessed).
 
-## RECURRING GOTCHA — package.json merge conflict
-Every frontend branch conflicts on `frontend/package.json` "test" script (each adds `--test src/lib/X.test.ts` files). Resolve by UNION of the `--test` file list (keep all test files from both sides), rebuild ONE test line, validate JSON. A crude regex once leaked a branch-name past the closing quote → JSON invalid → npm blows up. After resolving: `python3 -c "import json;json.load(open('frontend/package.json'))"` before committing.
+## Forward queue
+- E-now wave 2 (tolerance input surface — L; Zoox-gated coefficients).
+- W1 Catalog UI / portfolio-door FE binding — **waits for the design world** (G0b; founder's cloud design round may land it).
+- Non-blocking: pre-existing `/history` fabricated-type bug; `/{id}/pdf` WeasyPrint local libs.
 
-## Gating protocol (unchanged discipline)
-Read both verdicts per branch. Double-PASS → merge `--no-ff` to dev. Any FAIL (esp. honesty/isolation) → dispatch a focused fix agent with the EXACT defect, re-verify crux, then merge. After merges: full backend suite (accept only the 24 env fails) → `git push . dev:prod`. Frontend merges: tsc+npm test+both --webpack builds green.
+## Gating protocol (unchanged)
+Feature branch off dev → builder (opus, worktree under `<scratchpad>/wt/`, symlink backend/data) → 3 adversarial verifiers (isolation/honesty/correctness lenses) → read all verdicts → any FAIL routes back with the exact defect → merge --no-ff → full suite (accept ONLY the 24 env fails) → promote prod → push origin. Builders never merge/push. Every numeric cost change: DEFAULT/USER provenance + `[assumption, not shop-validated]` + validated=False. Never merge on a fabrication.
 
-## Forward queue (launch next batches autonomously, keep pipeline full)
-- **E-now freeze checkpoint** → regenerate the Zoox packet from merged prod (long-horizon-plan §5) → G3 Zoox session is then founder-schedulable.
-- **W3 portfolio cost** (batch-cost job type + portfolio roll-up) — the FE portfolio door's real backend.
-- **W1 Catalog UI** already in batch-2; next FE: bind portfolio door to real aggregates.
-- Deeper E-now waves (tolerance input surface — L, Zoox-gated coefficients).
-- Non-blocking: pre-existing `/history` fabricated-type bug (disclosed by FE-3); W4 governed libraries.
-
-## Key facts
-- Merges stay with the orchestrator; builders never merge/push. Worktrees under `<scratchpad>/wt/`.
-- Every numeric cost change: DEFAULT/USER provenance + `[assumption, not shop-validated]` + `validated=False`. No self-certified magnitudes.
-- The discipline's whole value: 7+ honesty/isolation defects caught by adversarial verifiers this run, every one fixed before merge. Never merge on a fabrication.
-- Memory has the corpus-test gotcha + build discipline + orchestrator-model-split.
+## RECURRING GOTCHA — frontend package.json
+Every frontend branch conflicts on the `"test"` script line; resolve by UNION of `--test` file lists, then `python3 -c "import json;json.load(open('frontend/package.json'))"` before committing.
