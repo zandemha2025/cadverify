@@ -26,6 +26,7 @@ import { useAuth } from "@/components/ui/auth-provider";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DoorChooser } from "./DoorChooser";
 import { PartDoor } from "./PartDoor";
+import { CatalogDoor } from "./catalog/CatalogDoor";
 import { ComingDoor } from "./ComingDoor";
 import type { DoorNav } from "./DoorCrossNav";
 
@@ -85,6 +86,7 @@ export default function LandingRouter() {
   const nav: DoorNav = { current: door, onGoDoor: goDoor, onReChoose: reChoose };
 
   if (door === "part") return <PartDoor nav={nav} />;
+  if (door === "cost") return <CatalogDoor nav={nav} />;
   return <ComingDoor door={door} nav={nav} />;
 }
 
