@@ -19,6 +19,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
+from src.auth.org_context import caller_org_subquery
 from src.db.models import Analysis, Batch, BatchItem
 
 logger = logging.getLogger("cadverify.batch_service")
@@ -332,9 +333,13 @@ async def get_batch_progress(
 ) -> dict | None:
     """Return batch progress dict. O(1) via denormalized counters.
 
-    Returns None if batch not found or not owned by user.
+    Returns None if the batch does not exist or belongs to another org
+    (W1 step 3: org-scoped — ``user_id`` resolves the caller's org boundary).
     """
-    stmt = select(Batch).where(Batch.ulid == batch_ulid, Batch.user_id == user_id)
+    stmt = select(Batch).where(
+        Batch.ulid == batch_ulid,
+        Batch.org_id == caller_org_subquery(user_id),
+    )
     batch = (await session.execute(stmt)).scalars().first()
     if batch is None:
         return None

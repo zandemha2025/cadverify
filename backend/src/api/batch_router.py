@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.errors import DOC_BASE
+from src.auth.org_context import caller_org_subquery
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
@@ -220,10 +221,13 @@ async def list_batches(
     user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """List user's batches, most recent first, cursor-paginated."""
+    """List the caller's org's batches, most recent first, cursor-paginated.
+
+    W1 step 3: org-scoped (tenant boundary); never leaks another org's batches.
+    """
     stmt = (
         select(Batch)
-        .where(Batch.user_id == user.user_id)
+        .where(Batch.org_id == caller_org_subquery(user.user_id))
         .order_by(Batch.id.desc())
         .limit(limit + 1)
     )
@@ -287,7 +291,10 @@ async def get_batch_items(
     # Verify batch ownership (404 not 403, T-09-04)
     batch = (
         await session.execute(
-            select(Batch).where(Batch.ulid == batch_id, Batch.user_id == user.user_id)
+            select(Batch).where(
+                Batch.ulid == batch_id,
+                Batch.org_id == caller_org_subquery(user.user_id),
+            )
         )
     ).scalars().first()
     if batch is None:
@@ -336,7 +343,10 @@ async def get_batch_results_csv(
     """Stream batch results as CSV download."""
     batch = (
         await session.execute(
-            select(Batch).where(Batch.ulid == batch_id, Batch.user_id == user.user_id)
+            select(Batch).where(
+                Batch.ulid == batch_id,
+                Batch.org_id == caller_org_subquery(user.user_id),
+            )
         )
     ).scalars().first()
     if batch is None:
@@ -372,7 +382,10 @@ async def cancel_batch(
     """Cancel a batch -- skips pending items, does not interrupt in-progress."""
     batch = (
         await session.execute(
-            select(Batch).where(Batch.ulid == batch_id, Batch.user_id == user.user_id)
+            select(Batch).where(
+                Batch.ulid == batch_id,
+                Batch.org_id == caller_org_subquery(user.user_id),
+            )
         )
     ).scalars().first()
     if batch is None:

@@ -30,6 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
+from src.auth.org_context import caller_org_subquery
 from src.auth.require_api_key import AuthedUser
 from src.db.models import Job
 from src.reconstruction.preprocessing import validate_image
@@ -301,15 +302,19 @@ async def create_reconstruction_job(
 async def get_reconstruction_mesh_path(
     session: AsyncSession, job_ulid: str, user_id: int
 ) -> Optional[str]:
-    """Return path to reconstructed mesh if job is complete and owned by user.
+    """Return path to reconstructed mesh if job is complete and in caller's org.
 
-    Returns None if job not found, wrong user, or not yet complete.
+    Returns None if the job does not exist, belongs to another org, or is not
+    yet complete (W1 step 3: org-scoped — ``user_id`` resolves the org boundary).
     """
     _validate_ulid(job_ulid)
 
     job = (
         await session.execute(
-            select(Job).where(Job.ulid == job_ulid, Job.user_id == user_id)
+            select(Job).where(
+                Job.ulid == job_ulid,
+                Job.org_id == caller_org_subquery(user_id),
+            )
         )
     ).scalars().first()
 

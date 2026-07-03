@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.auth.org_context import caller_org_subquery
 from src.auth.rate_limit import limiter
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
@@ -35,8 +36,16 @@ async def list_analyses(
     user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Return paginated list of the authenticated user's analyses."""
-    stmt = select(Analysis).where(Analysis.user_id == user.user_id)
+    """Return paginated list of analyses owned by the caller's organization.
+
+    W1 step 3: scoped by ``org_id`` (the tenant boundary), resolved from the
+    caller via a correlated subquery. In v1 each user has a personal org, so
+    this is identical to the old per-user list; once an org holds more than one
+    member the list is the org's shared history. Never leaks another org's rows.
+    """
+    stmt = select(Analysis).where(
+        Analysis.org_id == caller_org_subquery(user.user_id)
+    )
 
     if cursor:
         stmt = stmt.where(Analysis.ulid < cursor)
@@ -84,10 +93,10 @@ async def get_analysis(
     user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Return full analysis result by ULID (own analyses only)."""
+    """Return full analysis result by ULID (caller's org only; 404 otherwise)."""
     stmt = select(Analysis).where(
         Analysis.ulid == analysis_id,
-        Analysis.user_id == user.user_id,
+        Analysis.org_id == caller_org_subquery(user.user_id),
     )
     result = await session.execute(stmt)
     analysis = result.scalar_one_or_none()
