@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 import * as Sentry from "@sentry/nextjs";
 import { API_BASE, browserOrBackendUrl } from "./api-base";
+import type { AnalysisListRow } from "./recent-parts";
 
 export interface GeometryInfo {
   vertices: number;
@@ -370,6 +371,23 @@ export async function fetchAnalyses(params: {
   const rateLimits = getLatestRateLimits();
   const data = await res.json();
   return { ...data, rateLimits };
+}
+
+/**
+ * Fetch the most recent analyses for the landing "recent parts" strip, typed to
+ * the REAL list-endpoint shape (`AnalysisListRow`) rather than the legacy
+ * `AnalysisSummary` that mistypes the row (see `lib/recent-parts.ts`). Returns
+ * only the honest rows; the strip needs no pagination/rate-limit envelope.
+ */
+export async function fetchRecentAnalyses(
+  limit: number
+): Promise<AnalysisListRow[]> {
+  const url = new URL(`${API_BASE}/analyses`, window.location.origin);
+  url.searchParams.set("limit", String(limit));
+
+  const res = await apiClient.fetch(url.toString());
+  const data = (await res.json()) as { analyses?: AnalysisListRow[] };
+  return data.analyses ?? [];
 }
 
 /* ------------------------------------------------------------------ */
