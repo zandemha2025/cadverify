@@ -149,6 +149,12 @@ async def get_portfolio(
     engine savings signal carries ``savings: null`` + a reason. ``validated`` is
     copied from the confidence band, never set here. Parts with no cost decision
     are excluded from the ranking (``excluded_no_cost_count``).
+
+    W3.5 rung-1: when a part has a USER-DECLARED context (program / assembly /
+    annual volume), each row additionally carries a ``context`` block and honest
+    annualized ``$/year`` figures — present ONLY when an annual_volume was
+    declared (else null + a reason), never a fabricated demand quantity. When no
+    context is declared anywhere in the org, the response is byte-identical to W3.
     """
     # Tenant boundary: the caller's org. None → no membership → empty roll-up.
     org_id = await resolve_org(session, user.user_id)
@@ -165,5 +171,13 @@ async def get_portfolio(
         resp["note"] = (
             "This roll-up is over a capped scan of the most recent parts; "
             "older parts were not included."
+        )
+    # Additive + gated: only when at least one program is declared do we surface
+    # the declared-context honesty note (byte-identical to W3 otherwise).
+    if summary.get("programs"):
+        resp["context_note"] = (
+            "Annualized $/year figures are derived from USER-DECLARED annual "
+            "volumes (provenance: user); parts without a declared volume show "
+            "null, never a fabricated demand quantity."
         )
     return resp

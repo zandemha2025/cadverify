@@ -759,3 +759,57 @@ class RateCardVersion(Base):
     published_at: Mapped[Optional[datetime]] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
+
+
+# ---------------------------------------------------------------------------
+# W3.5 rung-1 declared context (migration 0014): honest portfolio $/year
+# ---------------------------------------------------------------------------
+
+
+class PartContext(Base):
+    """A part's USER-DECLARED business context (W3.5 rung-1).
+
+    One optional row per part (a distinct ``mesh_hash`` within an org) carrying
+    the demand/program facts the geometry can never tell you — which program the
+    part belongs to, its parent assembly, how many go into each parent, and the
+    annual build volume. It is what lets the portfolio roll-up state an honest
+    ``$/year`` instead of only a per-unit price.
+
+    HONESTY (non-negotiable): every field here is DECLARED by a user, never
+    inferred or guessed from the mesh — provenance is always ``"user"``. Nothing
+    is fabricated: an annualized figure is only ever computed when the user has
+    actually declared an ``annual_volume`` (we NEVER invent a demand quantity),
+    and a part with no context row behaves exactly as it did before this table
+    existed. Adopting a context changes what business math we can show; it never
+    flips a cost band to ``validated`` (that is still real ground truth only).
+    """
+
+    __tablename__ = "part_contexts"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "mesh_hash", name="uq_part_contexts_org_mesh"
+        ),
+        Index("ix_part_contexts_org_program", "org_id", "program"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    mesh_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    program: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    parent_assembly: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    units_per_parent: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    annual_volume: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )

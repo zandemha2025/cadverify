@@ -40,6 +40,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Analysis, CostDecision
+from src.services import part_context_service as pcsvc
 
 # ---------------------------------------------------------------------------
 # Config
@@ -588,6 +589,60 @@ def _empty_posture_agg() -> dict:
     }
 
 
+# The honest reason an annualized $/year is withheld: the user never declared an
+# annual_volume, and we NEVER fabricate a demand quantity to invent one.
+_NO_VOLUME_REASON = (
+    "no declared annual_volume; annualized $/year withheld (never fabricated)"
+)
+
+
+def _group_by_program(rows: list[dict]) -> list[dict]:
+    """Per-program roll-up over enriched portfolio rows (pure).
+
+    Groups the costed rows that carry a declared ``program`` and sums their
+    annualized figures. A row's ``$/year`` contributes ONLY when it is a real
+    number (the owner declared an annual_volume); rows without one are counted
+    (``parts``) but never fabricate a total. Returns [] when no row has a
+    program. Sorted by program name for a stable, deterministic response.
+    """
+    groups: dict[str, dict] = {}
+    for r in rows:
+        ctx = r.get("context") or {}
+        program = ctx.get("program")
+        if not program:
+            continue
+        g = groups.setdefault(
+            program,
+            {
+                "program": program,
+                "parts": 0,
+                "annualized_cost_usd": None,
+                "annualized_savings_usd": None,
+            },
+        )
+        g["parts"] += 1
+        for key in ("annualized_cost_usd", "annualized_savings_usd"):
+            val = r.get(key)
+            if val is not None:
+                g[key] = round((g[key] or 0.0) + val, 2)
+    return [groups[p] for p in sorted(groups)]
+
+
+def _context_block(ctx_row: Any) -> Optional[dict]:
+    """The USER-DECLARED context block for a portfolio row, or None when the part
+    has no declared context. Every field is a user assertion (``provenance:
+    'user'``), never inferred from the mesh."""
+    if ctx_row is None:
+        return None
+    return {
+        "program": getattr(ctx_row, "program", None),
+        "parent_assembly": getattr(ctx_row, "parent_assembly", None),
+        "units_per_parent": getattr(ctx_row, "units_per_parent", None),
+        "annual_volume": getattr(ctx_row, "annual_volume", None),
+        "provenance": "user",
+    }
+
+
 async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
     """The org-scoped portfolio roll-up: costed parts ranked by redesign savings.
 
@@ -615,6 +670,15 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
         }
 
     parts, truncated = await _fold_org_parts(session, org_id)
+
+    # W3.5 rung-1: join each part to its optional USER-DECLARED context. This is
+    # PURELY ADDITIVE — when the org has declared NO contexts, ``ctx_by_mesh`` is
+    # empty, ``has_any_context`` is False, and every roll-up field below is left
+    # exactly as it was before this table existed (byte-identical output). No
+    # part is ever enriched with an inferred/fabricated context.
+    contexts = await pcsvc.list_contexts(session, org_id)
+    ctx_by_mesh = {c.mesh_hash: c for c in contexts}
+    has_any_context = bool(ctx_by_mesh)
 
     rows: list[dict] = []
     drafted_count = 0
@@ -659,6 +723,24 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
                 "no engine-computed cheaper alternative "
                 "(make-as-is is cheapest at every quoted quantity)"
             )
+
+        # Additive declared-context enrichment (only when the org has declared
+        # at least one context — otherwise the row is byte-identical to today).
+        if has_any_context:
+            ctx_row = ctx_by_mesh.get(mesh)
+            annual_volume = getattr(ctx_row, "annual_volume", None) if ctx_row else None
+            unit_usd = (unit_cost or {}).get("usd") if unit_cost else None
+            save_unit = (savings or {}).get("save_unit_usd") if savings else None
+            row["context"] = _context_block(ctx_row)
+            # $/year appears ONLY with a user-declared annual_volume; otherwise
+            # null + an honest reason. Never a fabricated demand quantity.
+            row["annualized_cost_usd"] = pcsvc.annualized_cost(unit_usd, annual_volume)
+            row["annualized_savings_usd"] = pcsvc.annualized_cost(
+                save_unit, annual_volume
+            )
+            if annual_volume is None:
+                row["annualized_reason"] = _NO_VOLUME_REASON
+
         rows.append(row)
 
     # Rank by savings descending: parts WITH a signal first (deepest save_pct;
@@ -678,15 +760,23 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
     agg["grounded"] = grounded
     agg["grounded_pct"] = round(grounded / total, 4) if total > 0 else 0.0
 
-    return {
-        "summary": {
-            "parts": len(rows) + drafted_count,
-            "costed": len(rows),
-            "drafted": drafted_count,
-            # parts excluded from the ranking because they have no cost decision.
-            "excluded_no_cost_count": drafted_count,
-            "truncated": truncated,
-            "posture": agg,
-        },
-        "rows": rows,
+    summary = {
+        "parts": len(rows) + drafted_count,
+        "costed": len(rows),
+        "drafted": drafted_count,
+        # parts excluded from the ranking because they have no cost decision.
+        "excluded_no_cost_count": drafted_count,
+        "truncated": truncated,
+        "posture": agg,
     }
+
+    # Per-program roll-up — ADDITIVE, and only when at least one costed part
+    # carries a declared ``program``. Sums are honest: a part's $/year only
+    # contributes when its owner declared an annual_volume (else it is omitted,
+    # never fabricated). Absent any declared program, ``summary`` is byte-identical.
+    if has_any_context:
+        programs = _group_by_program(rows)
+        if programs:
+            summary["programs"] = programs
+
+    return {"summary": summary, "rows": rows}
