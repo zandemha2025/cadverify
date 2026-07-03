@@ -14,7 +14,11 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { computeHighlightVertexColors } from "./highlight-colors.ts";
+import {
+  computeHighlightVertexColors,
+  computeThicknessVertexColors,
+  thicknessColorRange,
+} from "./highlight-colors.ts";
 
 // Values chosen to be EXACTLY representable in float32 (the buffer's storage
 // type) so `strictEqual` round-trips without epsilon fuzz.
@@ -62,4 +66,52 @@ test("out-of-range face indices are ignored (no buffer overflow)", () => {
   for (let v = 0; v < 3; v++) {
     assert.equal(colors[v * 3], BASE.r, "no face fits, everything stays base");
   }
+});
+
+/* ------------------------------------------------------------------ */
+/*  Wall-thickness heatmap buffer (opt-in thin-wall map — item #3)      */
+/*  RGB stops chosen to be EXACTLY representable in float32.            */
+/* ------------------------------------------------------------------ */
+
+const THIN = { r: 1, g: 0, b: 0 };      // hot end (thinnest wall)
+const THICK = { r: 0, g: 0, b: 1 };     // cool end (thickest wall)
+const UNMEASURED = { r: 0.5, g: 0.5, b: 0.5 };
+
+test("thicknessColorRange: bounds over the finite entries only", () => {
+  assert.deepEqual(thicknessColorRange([2, null, 5, undefined, 1]), { min: 1, max: 5 });
+});
+
+test("thicknessColorRange: null when nothing is measured (no faked range)", () => {
+  assert.equal(thicknessColorRange([null, undefined, Infinity, NaN]), null);
+});
+
+test("thickness heatmap: linear ramp thin→thick, midpoint interpolates", () => {
+  // 3 faces (9 verts): min-wall, mid-wall, max-wall over [1,3]
+  const colors = computeThicknessVertexColors(9, [1, 2, 3], 1, 3, THIN, THICK, UNMEASURED);
+  // face 0 (val=1, t=0) → THIN
+  assert.equal(colors[0], 1); assert.equal(colors[2], 0);
+  // face 1 (val=2, t=0.5) → midpoint (0.5, 0, 0.5)
+  assert.equal(colors[3 * 3], 0.5); assert.equal(colors[3 * 3 + 2], 0.5);
+  // face 2 (val=3, t=1) → THICK
+  assert.equal(colors[6 * 3], 0); assert.equal(colors[6 * 3 + 2], 1);
+});
+
+test("thickness heatmap: null/non-finite faces stay UNMEASURED (never faked)", () => {
+  const colors = computeThicknessVertexColors(6, [null, NaN], 1, 3, THIN, THICK, UNMEASURED);
+  for (let v = 0; v < 6; v++) {
+    assert.equal(colors[v * 3], UNMEASURED.r, `vertex ${v} R unmeasured`);
+    assert.equal(colors[v * 3 + 2], UNMEASURED.b, `vertex ${v} B unmeasured`);
+  }
+});
+
+test("thickness heatmap: out-of-range values clamp into [min,max]", () => {
+  // val below min and above max clamp to the ends, not overshoot
+  const colors = computeThicknessVertexColors(6, [0.1, 99], 1, 3, THIN, THICK, UNMEASURED);
+  assert.equal(colors[0], 1); assert.equal(colors[2], 0);          // → THIN
+  assert.equal(colors[3 * 3], 0); assert.equal(colors[3 * 3 + 2], 1); // → THICK
+});
+
+test("thickness heatmap: degenerate max<=min collapses measured faces to THIN", () => {
+  const colors = computeThicknessVertexColors(3, [2], 2, 2, THIN, THICK, UNMEASURED);
+  assert.equal(colors[0], 1); assert.equal(colors[2], 0);
 });

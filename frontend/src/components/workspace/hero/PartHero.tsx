@@ -39,6 +39,7 @@ import type {
   ValidationResult,
 } from "@/lib/api";
 import { flattenIssues, partitionDfmByRoute, type IndexedIssue } from "@/lib/dfm-scope";
+import { reportCostBlockerLocators } from "@/lib/inspection-bind";
 import { deriveBreakeven } from "@/lib/breakeven";
 import { deriveFindings } from "@/lib/findings";
 import { severityTone, verdictLabel, verdictTone, procLabel } from "@/lib/status";
@@ -178,9 +179,20 @@ export function PartHero({
     [report, breakeven]
   );
 
+  // Cost-side DFM blockers relinked to locatable rows (the backend relink),
+  // deduped across estimates. These share the CadViewer highlight path with the
+  // DFM findings via `selectedKey`; their `cost:`-prefixed keys never collide.
+  const costLocators = React.useMemo(
+    () => (report ? reportCostBlockerLocators(report.estimates) : []),
+    [report]
+  );
+
   const selectedIssue = React.useMemo(
-    () => allIssues.find((i) => i.key === selectedKey) ?? null,
-    [allIssues, selectedKey]
+    () =>
+      allIssues.find((i) => i.key === selectedKey) ??
+      costLocators.find((i) => i.key === selectedKey) ??
+      null,
+    [allIssues, costLocators, selectedKey]
   );
 
   const highlightFaces = selectedIssue?.faces?.length ? selectedIssue.faces : undefined;
@@ -370,6 +382,9 @@ export function PartHero({
                   report={report}
                   breakeven={breakeven}
                   filename={file.name}
+                  costBlockers={costLocators}
+                  selectedKey={selectedKey}
+                  onLocateBlocker={setSelectedKey}
                   onOpenGlassBox={() => setDepth("decision")}
                   onSeeRouting={() => setDepth("inspection")}
                 />
