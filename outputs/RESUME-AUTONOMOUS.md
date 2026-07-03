@@ -8,9 +8,15 @@
 ## Landed today (all adversarially verified, honesty bugs caught+fixed)
 Sprint 0 · W1 tenancy steps 1–3 (org/team/membership, RBAC superadmin split, route threading w/ PROVEN cross-tenant isolation) · Findings-API deepening · Frontend v1 FE-1..FE-5 (three doors, part hero on real data) · E-now wave 1 (cost credibility, DEFAULT-tagged, validated=False) · W1 Catalog API (`backend/src/api/catalog.py`, org-scoped read surface).
 
-## IN FLIGHT (gate these when they notify)
-1. **feat/findings-fe-bind** — route-back fixing dead cost-blocker locator (agent `ac419f493dddc8e6c`). Items 1–3 already PASS; must WIRE `costBlockerLocators()` into PartHero selection/locate path (was dead code). Gate: tsc/test/both-builds; merge if wired + real.
-2. **Batch-2 workflow** (`autonomous-batch-2`): **feat/w5-plumbing** (ground-truth ingest API + Calibration persistence + ResidualModel into /validate/cost — HONESTY CRUX: validated=True ONLY from real measured residuals, byte-identical when no ground truth) and **feat/catalog-ui** (catalog grid on the real /catalog endpoint). Each has 2 verifiers.
+## IN FLIGHT (gate when it notifies)
+1. **feat/w5-plumbing** — route-back IN PROGRESS (agent `a258cec94d4e9699d`). Original build FAILED verify: served "measured-residual" band centered on UNCORRECTED baseline while residuals measured on CORRECTED predictions → validated band excluded true cost 0/11. Fix: apply persisted `calibration.factor_for(process)` to the point estimate feeding `confidence_interval` (estimate.py:306-308 via routes.py:715-720 / groundtruth_service load_served_residual_model which was discarding the factor) → verifier confirmed coverage → 11/11; + a NEW coverage test (must fail pre-fix, pass post). validated stays False w/o real ground truth (byte-identical). GATE when it returns: re-verify coverage crux + byte-identical-no-groundtruth + no new failures beyond the 24 env.
+
+## DONE since last handoff (already merged to prod-line dev)
+- **feat/findings-fe-bind** MERGED (68f0bb8) — cost-blocker locate wired into live path.
+- **feat/catalog-ui** MERGED (042bfe3) — catalog grid on real /catalog endpoint. (frontend verify in flight bzyj4ffwp; ff prod when green.)
+
+## RECURRING GOTCHA — package.json merge conflict
+Every frontend branch conflicts on `frontend/package.json` "test" script (each adds `--test src/lib/X.test.ts` files). Resolve by UNION of the `--test` file list (keep all test files from both sides), rebuild ONE test line, validate JSON. A crude regex once leaked a branch-name past the closing quote → JSON invalid → npm blows up. After resolving: `python3 -c "import json;json.load(open('frontend/package.json'))"` before committing.
 
 ## Gating protocol (unchanged discipline)
 Read both verdicts per branch. Double-PASS → merge `--no-ff` to dev. Any FAIL (esp. honesty/isolation) → dispatch a focused fix agent with the EXACT defect, re-verify crux, then merge. After merges: full backend suite (accept only the 24 env fails) → `git push . dev:prod`. Frontend merges: tsc+npm test+both --webpack builds green.
