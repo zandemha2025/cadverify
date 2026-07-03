@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.auth.org_context import caller_org_subquery
-from src.db.models import Analysis, Batch, BatchItem
+from src.db.models import Analysis, Batch, BatchItem, CostDecision
 
 logger = logging.getLogger("cadverify.batch_service")
 
@@ -49,6 +49,22 @@ VALID_EXTENSIONS = {".stl", ".step", ".stp"}
 _VALID_PRIORITIES = {"low", "normal", "high"}
 _CSV_EXPORT_PAGE_SIZE = 200
 
+# W3 cost-batch job type. BATCH_COST_ENABLED gates the cost path at create time
+# (default ON); when off, a cost batch is rejected 501 (mirrors S3 honesty).
+VALID_JOB_TYPES = {"dfm", "cost"}
+
+# Cost-manifest validity vectors — mirror the POST /validate/cost validators
+# (routes.py ``_REGIONS`` / ``_MATERIAL_CLASSES`` / ``_MAX_QTYS`` / ``_MAX_QTY``)
+# so a manifest-supplied value is accepted iff the live cost route would accept
+# it. Kept as literals here (not imported from the API layer) to avoid a
+# service→router import cycle; they are stable domain enums.
+_COST_VALID_REGIONS = {"US", "EU", "MX", "CN", "IN", "SA"}
+_COST_VALID_MATERIAL_CLASSES = {
+    "polymer", "aluminum", "steel", "stainless", "titanium",
+}
+_COST_MAX_QTYS = 6
+_COST_MAX_QTY = 10_000_000
+
 
 # ---------------------------------------------------------------------------
 # Batch CRUD
@@ -63,6 +79,7 @@ async def create_batch(
     webhook_secret: Optional[str] = None,
     concurrency_limit: Optional[int] = None,
     api_key_id: Optional[int] = None,
+    job_type: str = "dfm",
 ) -> Batch:
     """Create a Batch row with status='pending'. Returns the Batch object."""
     from src.auth.org_context import resolve_org
@@ -72,6 +89,7 @@ async def create_batch(
         user_id=user_id,
         org_id=await resolve_org(session, user_id),
         input_mode=input_mode,
+        job_type=job_type,
         webhook_url=webhook_url,
         webhook_secret=webhook_secret,
         concurrency_limit=concurrency_limit or DEFAULT_BATCH_CONCURRENCY,
@@ -88,7 +106,7 @@ async def create_batch(
         user_id=user_id, user_email=_email,
         action="batch.submitted", resource_type="batch",
         resource_id=batch.ulid,
-        detail={"input_mode": input_mode},
+        detail={"input_mode": input_mode, "job_type": job_type},
     ))
 
     return batch
@@ -250,11 +268,20 @@ def extract_zip_path_to_items(zip_path: str, batch_ulid: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def parse_csv_manifest(csv_content: str) -> list[dict]:
+def parse_csv_manifest(csv_content: str, *, validate_cost: bool = False) -> list[dict]:
     """Parse a CSV manifest with columns: filename, process_types, rule_pack, priority.
 
     'filename' is required; others are optional with sensible defaults.
     Raises ValueError on missing filename column or invalid priority values.
+
+    When *validate_cost* is True (a cost batch), the optional cost columns
+    ``quantities`` (semicolon-separated ints, e.g. "1;100;1000"), ``region``,
+    ``material_class`` and ``shop`` are parsed and validated against the SAME
+    vectors the live POST /validate/cost route accepts — an invalid value raises
+    ``ValueError`` naming the 1-indexed row, which the router turns into a
+    structured 400. Missing values stay ``None`` → the worker uses engine
+    defaults. DFM batches (validate_cost False) ignore these columns entirely, so
+    their behaviour is byte-identical.
     """
     reader = csv.DictReader(io.StringIO(csv_content))
     if reader.fieldnames is None or "filename" not in reader.fieldnames:
@@ -273,14 +300,114 @@ def parse_csv_manifest(csv_content: str) -> list[dict]:
                 f"Valid: {sorted(_VALID_PRIORITIES)}"
             )
 
-        items.append({
+        item = {
             "filename": filename,
             "process_types": (row.get("process_types") or "").strip() or None,
             "rule_pack": (row.get("rule_pack") or "").strip() or None,
             "priority": priority,
-        })
+        }
+
+        if validate_cost:
+            item.update(_parse_cost_manifest_fields(row, row_num))
+
+        items.append(item)
 
     return items
+
+
+def _parse_cost_manifest_fields(row: dict, row_num: int) -> dict:
+    """Validate + normalize the cost columns of one manifest row.
+
+    Returns ``{"quantities","region","material_class","shop"}`` (each None when
+    the column is absent/blank → engine default at cost time). Raises ValueError
+    naming *row_num* on any invalid value, matching the route's fail-fast 400.
+    """
+    # quantities: a semicolon-separated list of ints inside one cell.
+    raw_qty = (row.get("quantities") or "").strip()
+    quantities: Optional[str] = None
+    if raw_qty:
+        toks = [t.strip() for t in raw_qty.split(";") if t.strip()]
+        parsed: list[int] = []
+        for tok in toks:
+            try:
+                v = int(tok)
+            except ValueError:
+                raise ValueError(
+                    f"Row {row_num}: invalid quantity '{tok}' (must be an integer)"
+                )
+            if not (1 <= v <= _COST_MAX_QTY):
+                raise ValueError(
+                    f"Row {row_num}: quantity {v} out of range [1, {_COST_MAX_QTY}]"
+                )
+            parsed.append(v)
+        if not parsed:
+            raise ValueError(f"Row {row_num}: quantities column is empty")
+        if len(parsed) > _COST_MAX_QTYS:
+            raise ValueError(
+                f"Row {row_num}: at most {_COST_MAX_QTYS} quantities allowed"
+            )
+        # Re-serialize canonically (strip whitespace) for durable storage.
+        quantities = ";".join(str(v) for v in parsed)
+
+    # region
+    raw_region = (row.get("region") or "").strip()
+    region: Optional[str] = None
+    if raw_region:
+        if raw_region not in _COST_VALID_REGIONS:
+            raise ValueError(
+                f"Row {row_num}: unknown region '{raw_region}'. "
+                f"Use one of {sorted(_COST_VALID_REGIONS)}"
+            )
+        region = raw_region
+
+    # material_class
+    raw_material = (row.get("material_class") or "").strip()
+    material_class: Optional[str] = None
+    if raw_material:
+        if raw_material not in _COST_VALID_MATERIAL_CLASSES:
+            raise ValueError(
+                f"Row {row_num}: unknown material_class '{raw_material}'. "
+                f"Use one of {sorted(_COST_VALID_MATERIAL_CLASSES)}"
+            )
+        material_class = raw_material
+
+    # shop: resolve to a known local profile slug (or reject). Mirrors the route's
+    # _resolve_shop_param — only an existing profile (by slug or display name) is
+    # accepted, never an arbitrary path.
+    raw_shop = (row.get("shop") or "").strip()
+    shop: Optional[str] = None
+    if raw_shop:
+        shop = _resolve_manifest_shop(raw_shop, row_num)
+
+    return {
+        "quantities": quantities,
+        "region": region,
+        "material_class": material_class,
+        "shop": shop,
+    }
+
+
+def _resolve_manifest_shop(shop: str, row_num: int) -> str:
+    """Resolve a caller-supplied shop (slug OR display name) to a known profile
+    slug, or raise ValueError(row_num). Reads the local shop-profile store only —
+    the same allow-list the cost route enforces (no path traversal)."""
+    from src.costing.shop_profile import _slug, load_profile, list_profiles
+
+    req = shop.strip()
+    req_slug = _slug(req)
+    for slug in list_profiles():
+        if req == slug or req_slug == slug:
+            return slug
+        try:
+            p = load_profile(slug)
+        except Exception:  # pragma: no cover - defensive; skip unreadable profile
+            continue
+        if req.lower() == (p.name or "").lower():
+            return slug
+    raise ValueError(
+        f"Row {row_num}: unknown shop '{shop}'. Available: "
+        f"{list(list_profiles()) or '(none)'}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -312,6 +439,11 @@ async def create_batch_items(
             process_types=item.get("process_types"),
             rule_pack=item.get("rule_pack"),
             priority=item.get("priority", "normal"),
+            # W3 cost params (None for DFM items / unset manifest cells).
+            quantities=item.get("quantities"),
+            region=item.get("region"),
+            material_class=item.get("material_class"),
+            shop=item.get("shop"),
             error_message=item.get("error"),
             file_size_bytes=item.get("size"),
         )
@@ -394,12 +526,22 @@ async def get_batch_items_page(
 async def generate_results_csv(
     session: AsyncSession,
     batch_id: int,
+    job_type: str = "dfm",
 ) -> AsyncGenerator[str, None]:
     """Async generator yielding CSV rows for StreamingResponse.
 
-    Paginated internally (200 items per page) to avoid memory bloat.
-    Joins batch_items with analyses for verdict/best_process data.
+    Paginated internally (200 items per page) to avoid memory bloat. Branches on
+    the batch's *job_type*: a DFM batch joins analyses (verdict/best_process); a
+    cost batch joins cost_decisions and emits the should-cost columns. Both honour
+    the catalog honesty rule — a cost row withholds ``unit_cost_usd`` when the
+    make-now estimate is DFM-blocked, and ``validated`` is copied from the
+    engine's confidence band, never computed here.
     """
+    if job_type == "cost":
+        async for chunk in _generate_cost_results_csv(session, batch_id):
+            yield chunk
+        return
+
     header = "filename,status,verdict,best_process,issue_count,duration_ms,analysis_url,error\n"
     yield header
 
@@ -440,6 +582,89 @@ async def generate_results_csv(
                 f"{issue_count},"
                 f"{bi.duration_ms or ''},"
                 f"{_csv_escape(analysis_url)},"
+                f"{_csv_escape(bi.error_message or '')}\n"
+            )
+            yield row_str
+            cursor = bi.id
+
+        if len(rows) < _CSV_EXPORT_PAGE_SIZE:
+            break
+
+
+async def _generate_cost_results_csv(
+    session: AsyncSession,
+    batch_id: int,
+) -> AsyncGenerator[str, None]:
+    """Cost-batch CSV: one row per item, joined to its cost_decision.
+
+    ``unit_cost_usd`` follows catalog withholding (empty when the make-now
+    estimate is DFM-blocked); ``validated`` is copied verbatim from the estimate's
+    confidence band (never computed here).
+    """
+    from src.services.catalog_service import make_now_estimate
+
+    header = (
+        "filename,status,make_now_process,crossover_qty,quantities,"
+        "unit_cost_usd,validated,cost_decision_url,error\n"
+    )
+    yield header
+
+    cursor: int | None = None
+    while True:
+        stmt = (
+            select(BatchItem, CostDecision)
+            .outerjoin(
+                CostDecision, BatchItem.cost_decision_id == CostDecision.id
+            )
+            .where(BatchItem.batch_id == batch_id)
+        )
+        if cursor is not None:
+            stmt = stmt.where(BatchItem.id > cursor)
+        stmt = stmt.order_by(BatchItem.id).limit(_CSV_EXPORT_PAGE_SIZE)
+
+        rows = (await session.execute(stmt)).all()
+        if not rows:
+            break
+
+        for bi, decision in rows:
+            make_now_process = ""
+            crossover_qty = ""
+            quantities = ""
+            unit_cost_usd = ""
+            validated = ""
+            cost_decision_url = ""
+
+            if decision is not None:
+                result = decision.result_json or {}
+                make_now_process = decision.make_now_process or ""
+                crossover_qty = (
+                    "" if decision.crossover_qty is None
+                    else str(decision.crossover_qty)
+                )
+                qtys = decision.quantities or result.get("quantities") or []
+                if isinstance(qtys, list):
+                    quantities = ";".join(str(q) for q in qtys)
+                cost_decision_url = f"/api/v1/cost-decisions/{decision.ulid}"
+
+                est = make_now_estimate(result)
+                if est is not None:
+                    blocked = not est.get("dfm_ready", True)
+                    # Withhold the price on a DFM-blocked route (catalog honesty).
+                    if not blocked and est.get("unit_cost_usd") is not None:
+                        unit_cost_usd = str(est.get("unit_cost_usd"))
+                    ci = est.get("confidence") or {}
+                    # Copied from the artifact — never computed here.
+                    validated = str(bool(ci.get("validated", False)))
+
+            row_str = (
+                f"{_csv_escape(bi.filename)},"
+                f"{_csv_escape(bi.status)},"
+                f"{_csv_escape(make_now_process)},"
+                f"{_csv_escape(crossover_qty)},"
+                f"{_csv_escape(quantities)},"
+                f"{_csv_escape(unit_cost_usd)},"
+                f"{_csv_escape(validated)},"
+                f"{_csv_escape(cost_decision_url)},"
                 f"{_csv_escape(bi.error_message or '')}\n"
             )
             yield row_str

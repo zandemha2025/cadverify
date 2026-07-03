@@ -443,6 +443,11 @@ class Batch(Base):
     status: Mapped[str] = mapped_column(
         Text, nullable=False, server_default="pending"
     )
+    # W3: 'dfm' (DFM-check every item, the original pipeline) | 'cost' (should-cost
+    # every item). server_default keeps every pre-W3 row DFM with no backfill.
+    job_type: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="dfm"
+    )
     input_mode: Mapped[str] = mapped_column(Text, nullable=False)
     manifest_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(
         JSONB, nullable=True
@@ -487,6 +492,7 @@ class BatchItem(Base):
         Index("ix_batch_items_batch_status", "batch_id", "status"),
         Index("ix_batch_items_batch_created", "batch_id", "created_at"),
         Index("ix_batch_items_org_id", "org_id"),
+        Index("ix_batch_items_cost_decision_id", "cost_decision_id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -512,6 +518,21 @@ class BatchItem(Base):
     )
     analysis_id: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("analyses.id", ondelete="SET NULL"), nullable=True
+    )
+    # W3 cost-batch per-item params (nullable; DFM items leave them unset). The
+    # worker mirrors POST /validate/cost when these are supplied and falls back
+    # to the engine defaults otherwise. ``quantities`` is a semicolon-separated
+    # int list (e.g. "1;100;1000").
+    quantities: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    region: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    material_class: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    shop: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # The cost_decisions row a costed item produced (SET NULL on delete so a
+    # pruned decision never orphans the item).
+    cost_decision_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger,
+        ForeignKey("cost_decisions.id", ondelete="SET NULL"),
+        nullable=True,
     )
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     file_size_bytes: Mapped[Optional[int]] = mapped_column(

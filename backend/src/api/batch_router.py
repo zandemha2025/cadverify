@@ -24,7 +24,11 @@ from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.db.models import Batch, BatchItem
 from src.services import batch_service
-from src.services.batch_service import BATCH_MAX_ZIP_BYTES, ZipTooLargeError
+from src.services.batch_service import (
+    BATCH_MAX_ZIP_BYTES,
+    VALID_JOB_TYPES,
+    ZipTooLargeError,
+)
 from src.services.url_guard import UnsafeURLError, validate_outbound_url
 
 logger = logging.getLogger("cadverify.batch_router")
@@ -51,17 +55,52 @@ async def create_batch(
     webhook_url: Optional[str] = Form(None),
     webhook_secret: Optional[str] = Form(None),
     concurrency_limit: Optional[int] = Form(None),
+    job_type: str = Form("dfm"),
     s3_bucket: Optional[str] = Form(None),
     s3_prefix: Optional[str] = Form(None),
     manifest_url: Optional[str] = Form(None),
     manifest: Optional[UploadFile] = File(None),
 ):
-    """Create a batch for bulk analysis.
+    """Create a batch for bulk analysis (job_type=dfm) or should-costing
+    (job_type=cost).
 
     Accepts a ZIP file upload. (S3 input is advertised but not yet implemented --
     see F-ARCH-5: rejected up front with 501 rather than orphaned per-item.)
     Returns 202 with batch_id and status URL.
     """
+    # W3: validate the job type. Invalid -> 422 structured (mirrors FastAPI's
+    # own validation status for an out-of-domain field value).
+    job_type = (job_type or "dfm").strip().lower()
+    if job_type not in VALID_JOB_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_JOB_TYPE",
+                "message": (
+                    f"job_type must be one of {sorted(VALID_JOB_TYPES)}; "
+                    f"got {job_type!r}."
+                ),
+                "doc_url": f"{DOC_BASE}/INVALID_JOB_TYPE",
+            },
+        )
+
+    # W3 (cost honesty): the cost pipeline is flag-gated. When off, a cost batch
+    # is rejected up front with a stable 501 (mirrors the S3 pattern) rather than
+    # silently DFM-processed. Flag ON is the default; DFM is never gated, so
+    # flag-off leaves every existing behaviour byte-identical.
+    if job_type == "cost" and not _flag("BATCH_COST_ENABLED", "1"):
+        raise HTTPException(
+            status_code=501,
+            detail={
+                "code": "BATCH_COST_NOT_ENABLED",
+                "message": (
+                    "Cost batches are not enabled on this server. Set "
+                    "BATCH_COST_ENABLED=1 to turn on the should-cost pipeline."
+                ),
+                "doc_url": f"{DOC_BASE}/BATCH_COST_NOT_ENABLED",
+            },
+        )
+
     # Determine input mode
     if file is not None:
         input_mode = "zip"
@@ -129,6 +168,7 @@ async def create_batch(
             webhook_secret=webhook_secret,
             concurrency_limit=concurrency_limit,
             api_key_id=user.api_key_id,
+            job_type=job_type,
         )
 
         if input_mode == "zip":
@@ -144,9 +184,27 @@ async def create_batch(
             # Parse manifest CSV if provided
             if manifest is not None:
                 manifest_bytes = await manifest.read()
-                manifest_items = batch_service.parse_csv_manifest(
-                    manifest_bytes.decode("utf-8")
-                )
+                if job_type == "cost":
+                    # Cost manifests additionally carry quantities/region/
+                    # material_class/shop; an invalid value is a per-row 400
+                    # (reject at create time, never at the worker).
+                    try:
+                        manifest_items = batch_service.parse_csv_manifest(
+                            manifest_bytes.decode("utf-8"), validate_cost=True
+                        )
+                    except ValueError as exc:
+                        raise HTTPException(
+                            status_code=400,
+                            detail={
+                                "code": "INVALID_COST_MANIFEST",
+                                "message": str(exc),
+                                "doc_url": f"{DOC_BASE}/INVALID_COST_MANIFEST",
+                            },
+                        )
+                else:
+                    manifest_items = batch_service.parse_csv_manifest(
+                        manifest_bytes.decode("utf-8")
+                    )
                 # Merge manifest metadata with extracted items by filename
                 manifest_map = {m["filename"]: m for m in manifest_items}
                 for item in items_data:
@@ -156,6 +214,12 @@ async def create_batch(
                     item["process_types"] = meta.get("process_types")
                     item["rule_pack"] = meta.get("rule_pack")
                     item["priority"] = meta.get("priority", "normal")
+                    if job_type == "cost":
+                        # Cost knobs (None → engine default at cost time).
+                        item["quantities"] = meta.get("quantities")
+                        item["region"] = meta.get("region")
+                        item["material_class"] = meta.get("material_class")
+                        item["shop"] = meta.get("shop")
 
             # Create batch items
             count = await batch_service.create_batch_items(
@@ -358,7 +422,9 @@ async def get_batch_results_csv(
             detail=f"Batch not yet completed (status: {batch.status})",
         )
 
-    csv_generator = batch_service.generate_results_csv(session, batch.id)
+    csv_generator = batch_service.generate_results_csv(
+        session, batch.id, batch.job_type
+    )
     return StreamingResponse(
         csv_generator,
         media_type="text/csv",

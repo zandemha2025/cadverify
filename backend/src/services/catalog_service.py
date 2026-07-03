@@ -394,16 +394,14 @@ def _fold_latest_by_mesh(rows: list) -> dict[str, Any]:
     return latest
 
 
-async def build_catalog(session: AsyncSession, org_id: Optional[str]) -> dict:
-    """Build the full org-scoped catalog: one derived row per part.
-
-    Returns ``{"rows": [...], "truncated": bool}`` — the caller applies facet
-    filters + pagination on top. ``org_id`` None (a caller with no membership —
-    e.g. a mocked session) yields an empty catalog, never a cross-org read.
-    """
-    if not org_id:
-        return {"rows": [], "truncated": False}
-
+async def _fold_org_parts(
+    session: AsyncSession, org_id: str
+) -> tuple[list[tuple[str, Optional[SourceRef], Optional[SourceRef]]], bool]:
+    """The org-scoped fetch + latest-per-part fold shared by the catalog grid and
+    the portfolio roll-up. Returns ``([(mesh, analysis_ref, cost_ref), ...],
+    truncated)`` — one entry per distinct part (mesh_hash) in the org, each
+    hydrated into DB-free ``SourceRef``s. A single bounded, ulid-desc scan per
+    source table (cap+1 so truncation is honest without a second COUNT)."""
     # One bounded, ulid-desc query per source table (newest first). Fetch cap+1
     # so we can honestly report truncation without a second COUNT round-trip.
     an_rows = (
@@ -437,7 +435,7 @@ async def build_catalog(session: AsyncSession, org_id: Optional[str]) -> dict:
     an_by_mesh = _fold_latest_by_mesh(an_rows)
     cost_by_mesh = _fold_latest_by_mesh(cost_rows)
 
-    rows: list[dict] = []
+    parts: list[tuple[str, Optional[SourceRef], Optional[SourceRef]]] = []
     for mesh in set(an_by_mesh) | set(cost_by_mesh):
         a = an_by_mesh.get(mesh)
         c = cost_by_mesh.get(mesh)
@@ -463,11 +461,232 @@ async def build_catalog(session: AsyncSession, org_id: Optional[str]) -> dict:
             if c is not None
             else None
         )
-        rows.append(
-            derive_row(part_key=mesh, analysis=analysis_ref, cost=cost_ref)
-        )
+        parts.append((mesh, analysis_ref, cost_ref))
+    return parts, truncated
+
+
+async def build_catalog(session: AsyncSession, org_id: Optional[str]) -> dict:
+    """Build the full org-scoped catalog: one derived row per part.
+
+    Returns ``{"rows": [...], "truncated": bool}`` — the caller applies facet
+    filters + pagination on top. ``org_id`` None (a caller with no membership —
+    e.g. a mocked session) yields an empty catalog, never a cross-org read.
+    """
+    if not org_id:
+        return {"rows": [], "truncated": False}
+
+    parts, truncated = await _fold_org_parts(session, org_id)
+    rows = [
+        derive_row(part_key=mesh, analysis=analysis_ref, cost=cost_ref)
+        for (mesh, analysis_ref, cost_ref) in parts
+    ]
 
     # Most-recent activity first (the grid's default order). ``updated_at`` is a
     # real timestamp on every row.
     rows.sort(key=lambda r: r["updated_at"], reverse=True)
     return {"rows": rows, "truncated": truncated}
+
+
+# ---------------------------------------------------------------------------
+# Portfolio roll-up (W3) — savings ranking over the org's COSTED parts
+# ---------------------------------------------------------------------------
+
+
+def derive_savings(cost_result_json: dict) -> Optional[dict]:
+    """The single, honest savings signal for a costed part — or None.
+
+    SAVINGS HONESTY (the crux of W3): every number here is one the engine already
+    computed and PERSISTED in ``result_json``. The signal is the engine's own
+    ``if_redesigned`` alternative being cheaper than the recommended make-as-is at
+    a quoted quantity — a per-unit delta of two persisted engine unit costs:
+
+        ``decision.recommendation[q].unit_cost_usd``  (tier-1 make-as-is, the
+            make-now baseline — coherence invariant pins it to make_now_process)
+      − ``decision.if_redesigned[q].unit_cost_usd``   (tier-2 cheaper-if-redesigned)
+
+    Mirrors the frontend ``lib/portfolio.ts::bestRedesignSaving`` field-for-field
+    (make-now / redesigned unit + qty + pct + the engine's own caveat, verbatim):
+    it scans every quoted qty, keeps only qtys where the redesign is genuinely
+    cheaper, and picks the DEEPEST ``save_pct`` (ties → larger qty, where a
+    redesign matters most to a portfolio owner). JSONB stringifies the int qty
+    keys on round-trip, so the recommendation lookup is string-key tolerant. No
+    cheaper redesign at any qty → None (never a fabricated saving).
+    """
+    decision = cost_result_json.get("decision") or {}
+    rec = decision.get("recommendation") or {}
+    alt = decision.get("if_redesigned") or {}
+    if not isinstance(rec, dict) or not isinstance(alt, dict):
+        return None
+
+    best: Optional[dict] = None
+    for q_key, alt_at_q in alt.items():
+        if not alt_at_q:
+            continue
+        rec_at_q = _lookup_by_qty(rec, q_key)
+        if not rec_at_q:
+            continue
+        make_now_usd = rec_at_q.get("unit_cost_usd")
+        redesigned_usd = alt_at_q.get("unit_cost_usd")
+        if make_now_usd is None or redesigned_usd is None or make_now_usd <= 0:
+            continue
+        save_unit_usd = round(make_now_usd - redesigned_usd, 2)
+        if save_unit_usd <= 0:
+            continue  # redesign not cheaper — no saving to claim
+        save_pct = round(save_unit_usd / make_now_usd, 4)
+        try:
+            qty = int(q_key)
+        except (TypeError, ValueError):
+            qty = q_key
+        candidate = {
+            # basis: the exact engine field this delta was read from, so the
+            # number is always traceable to persisted engine output.
+            "basis": "decision.if_redesigned",
+            "qty": qty,
+            "make_now_unit_usd": round(make_now_usd, 2),
+            "redesigned_unit_usd": round(redesigned_usd, 2),
+            "save_unit_usd": save_unit_usd,
+            "save_pct": save_pct,
+            "redesigned_process": alt_at_q.get("process"),
+            # the engine's OWN caveat (why the cheaper option is not the make-as-
+            # is pick) — rendered verbatim, never softened.
+            "caveat": alt_at_q.get("caveat") or None,
+        }
+        if (
+            best is None
+            or save_pct > best["save_pct"]
+            or (save_pct == best["save_pct"] and _qty_num(qty) > _qty_num(best["qty"]))
+        ):
+            best = candidate
+    return best
+
+
+def _lookup_by_qty(rec: dict, q_key) -> Optional[dict]:
+    """String-key tolerant lookup (JSONB turns int qty keys into strings), so a
+    saved decision re-derives identically to a live one."""
+    if q_key in rec:
+        return rec.get(q_key)
+    s = str(q_key)
+    if s in rec:
+        return rec.get(s)
+    for k in rec:
+        if str(k) == s:
+            return rec.get(k)
+    return None
+
+
+def _qty_num(q) -> float:
+    try:
+        return float(q)
+    except (TypeError, ValueError):
+        return float("-inf")
+
+
+def _empty_posture_agg() -> dict:
+    return {
+        "measured": 0, "shop": 0, "user": 0, "default": 0,
+        "total": 0, "grounded": 0, "grounded_pct": 0.0,
+    }
+
+
+async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
+    """The org-scoped portfolio roll-up: costed parts ranked by redesign savings.
+
+    A SECOND derivation pass over the same org fold the catalog uses (no new
+    tables, no SQL GROUP BY). Each costed part becomes a row carrying its make-now
+    route, withheld-aware unit cost, quantities, validated flag, provenance
+    posture, crossover, and the honest savings signal (or ``savings: null`` +
+    reason). Rows rank by ``save_pct`` descending (ties → larger qty), matching
+    the frontend savings queue. Parts with NO cost decision are excluded from the
+    ranking and counted in ``excluded_no_cost_count`` — you can't rank a savings
+    on a part that was never costed.
+
+    ``org_id`` None → an empty roll-up, never a cross-org read. ``truncated`` is
+    carried through: when true the roll-up is over a CAPPED scan (older parts
+    omitted), and the response says so.
+    """
+    if not org_id:
+        return {
+            "summary": {
+                "parts": 0, "costed": 0, "drafted": 0,
+                "excluded_no_cost_count": 0, "truncated": False,
+                "posture": _empty_posture_agg(),
+            },
+            "rows": [],
+        }
+
+    parts, truncated = await _fold_org_parts(session, org_id)
+
+    rows: list[dict] = []
+    drafted_count = 0
+    agg = _empty_posture_agg()
+
+    for mesh, analysis_ref, cost_ref in parts:
+        if cost_ref is None:
+            # Drafted-only (analysis, no cost) — can't derive savings; excluded.
+            drafted_count += 1
+            continue
+
+        base = derive_row(part_key=mesh, analysis=analysis_ref, cost=cost_ref)
+        cost_json = cost_ref.result_json or {}
+        decision = cost_json.get("decision") or {}
+        unit_cost = base.get("unit_cost")
+        pp = base.get("provenance_posture")
+
+        # Posture aggregate across costed parts (driver provenance mix).
+        if pp:
+            for k in ("measured", "shop", "user", "default"):
+                agg[k] += pp.get(k, 0)
+
+        savings = derive_savings(cost_json)
+        row = {
+            "part_key": mesh,
+            "filename": base["filename"],
+            "lifecycle_state": base["lifecycle_state"],
+            "make_now_process": (base.get("recommended_route") or {}).get("process"),
+            # withheld-aware unit cost dict (same rule as catalog rows).
+            "unit_cost": unit_cost,
+            "quantities": cost_json.get("quantities") or [],
+            # copied from the engine's confidence band — NEVER computed here.
+            "validated": (unit_cost or {}).get("validated") if unit_cost else None,
+            "posture": pp,
+            # the engine's authoritative make-vs-buy crossover (or null).
+            "crossover_qty": decision.get("crossover_qty"),
+            "cost_decision": base.get("cost_decision"),
+            "savings": savings,
+        }
+        if savings is None:
+            row["reason"] = (
+                "no engine-computed cheaper alternative "
+                "(make-as-is is cheapest at every quoted quantity)"
+            )
+        rows.append(row)
+
+    # Rank by savings descending: parts WITH a signal first (deepest save_pct;
+    # ties → larger qty), null-savings parts last (stable among themselves).
+    rows.sort(
+        key=lambda r: (
+            1 if r["savings"] else 0,
+            (r["savings"] or {}).get("save_pct", 0.0),
+            _qty_num((r["savings"] or {}).get("qty", 0)),
+        ),
+        reverse=True,
+    )
+
+    grounded = agg["measured"] + agg["shop"] + agg["user"]
+    total = grounded + agg["default"]
+    agg["total"] = total
+    agg["grounded"] = grounded
+    agg["grounded_pct"] = round(grounded / total, 4) if total > 0 else 0.0
+
+    return {
+        "summary": {
+            "parts": len(rows) + drafted_count,
+            "costed": len(rows),
+            "drafted": drafted_count,
+            # parts excluded from the ranking because they have no cost decision.
+            "excluded_no_cost_count": drafted_count,
+            "truncated": truncated,
+            "posture": agg,
+        },
+        "rows": rows,
+    }

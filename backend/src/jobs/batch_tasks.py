@@ -207,15 +207,228 @@ async def sweep_orphaned_batches(ctx: dict) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Cost-item helpers (W3) — a batch-costed part must match POST /validate/cost
+# ---------------------------------------------------------------------------
+
+
+def _cost_timeout_sec() -> float:
+    """Per-item cost compute budget. Mirrors routes._analysis_timeout_sec (same
+    env var, default, and floor) and is well within the 600s worker ceiling."""
+    try:
+        return max(0.1, float(os.getenv("ANALYSIS_TIMEOUT_SEC", "60")))
+    except (TypeError, ValueError):
+        return 60.0
+
+
+def _parse_item_quantities(raw: str | None) -> list[int]:
+    """Manifest quantities ("1;100;1000") -> [1,100,1000]. Empty/unset mirrors
+    POST /validate/cost's default qty EXACTLY (Form default "50,5000")."""
+    if not raw or not raw.strip():
+        return [50, 5000]
+    out: list[int] = []
+    for tok in raw.split(";"):
+        tok = tok.strip()
+        if tok:
+            out.append(int(tok))  # values validated at create time
+    return out or [50, 5000]
+
+
+def _compute_cost_report(file_bytes: bytes, filename: str, options):
+    """Parse + cost one part off the event loop, reusing the LIVE cost route's
+    mesh parse (``_parse_mesh``) and engine (``_run_cost_engine``) so a batch-
+    costed part is byte-for-byte the same computation as POST /validate/cost with
+    the same params. Returns ``(DecisionReport, suffix)``."""
+    from src.api.routes import _parse_mesh, _run_cost_engine
+    from src.costing import estimate_decision
+
+    mesh, suffix = _parse_mesh(file_bytes, filename)
+    result, m, features = _run_cost_engine(mesh, filename)
+    return estimate_decision(result, m, features, options), suffix
+
+
+async def _run_cost_item(session, batch, item) -> dict:
+    """Cost one batch item and link the resulting decision to it.
+
+    Mirrors ``routes._run_cost_decision`` step-for-step (options, org-calibration
+    bind, bounded executor, persist+dedup) so the number a batch produces equals
+    the number the live route would — the honesty invariant of W3. Returns a dict
+    of engine-computed webhook extras (copied from ``report_to_dict`` output).
+
+    On ``report.status == "GEOMETRY_INVALID"`` the item is marked ``failed`` with
+    the engine's repair reason (no fake success, no crash) and no decision is
+    persisted — exactly the route's clean-refusal branch.
+    """
+    import asyncio
+    import os as _os
+    import time
+
+    from src import __version__ as _cv_version
+    from src.auth.org_context import resolve_org
+    from src.auth.require_api_key import AuthedUser
+    from src.costing import EstimateOptions, report_to_dict
+    from src.services import batch_service, cost_decision_service
+    from src.services.analysis_service import compute_mesh_hash
+    from src.services.catalog_service import make_now_estimate
+
+    start = time.time()
+
+    # ---- read bytes (zip only; s3 stays NotImplemented, same as DFM) --------
+    if batch.input_mode == "zip":
+        blob_dir = _os.getenv("BATCH_BLOB_DIR", "/data/blobs/batch")
+        file_path = _os.path.join(blob_dir, batch.ulid, item.filename)
+        with open(file_path, "rb") as f:
+            file_bytes = f.read()
+    elif batch.input_mode == "s3":
+        raise NotImplementedError("S3 item fetch not yet implemented")
+    else:
+        raise ValueError(f"Unknown input_mode: {batch.input_mode}")
+
+    filename = item.filename
+
+    # ---- build EstimateOptions (mirror _run_cost_decision) ------------------
+    # is_user is True ONLY for manifest-supplied values (parity rule); missing
+    # values fall back to the engine defaults. quantities default mirrors the
+    # route's Form default (50,5000). n_cavities/complexity are not manifest
+    # fields, so they stay at the engine defaults (DEFAULT provenance).
+    quantities = _parse_item_quantities(item.quantities)
+    region = item.region                       # None => unset (DEFAULT US)
+    material_class = item.material_class or "polymer"
+    shop_slug = item.shop                       # a validated slug (or None)
+
+    options = EstimateOptions(
+        quantities=quantities,
+        material_class=material_class,
+        material_class_is_user=item.material_class is not None,
+        region=region or "US",
+        region_is_user=region is not None,
+        shop=shop_slug,
+        rate_overrides={},
+        n_cavities=1,
+        n_cavities_is_user=False,
+        complexity="moderate",
+        complexity_is_user=False,
+    )
+
+    # ---- bind org calibration EXACTLY like _run_cost_decision ---------------
+    # user = the batch owner; resolve_org gives the same org persist_cost_decision
+    # will stamp, so calibration-org and decision-org stay coherent. No bundle =>
+    # residual_model stays None => byte-identical to an uncalibrated run.
+    user = AuthedUser(
+        user_id=batch.user_id,
+        api_key_id=batch.api_key_id or 0,
+        key_prefix="batch",
+    )
+    cal_org_id = await resolve_org(session, user.user_id)
+    if isinstance(cal_org_id, str) and cal_org_id:
+        from src.services.groundtruth_service import load_served_calibration
+
+        residual_model, calibration = load_served_calibration(cal_org_id)
+        if residual_model is not None:
+            options.residual_model = residual_model
+        if calibration is not None:
+            options.calibration = calibration
+
+    # ---- parse + cost, bounded by the same timeout the route uses -----------
+    timeout = _cost_timeout_sec()
+    loop = asyncio.get_event_loop()
+    report, suffix = await asyncio.wait_for(
+        loop.run_in_executor(
+            None, _compute_cost_report, file_bytes, filename, options
+        ),
+        timeout=timeout,
+    )
+    duration_ms = round((time.time() - start) * 1000, 1)
+
+    # ---- broken geometry -> failed item with the structured reason ----------
+    if report.status == "GEOMETRY_INVALID":
+        item.status = "failed"
+        item.error_message = (report.reason or "GEOMETRY_INVALID")[:500]
+        item.duration_ms = duration_ms
+        item.completed_at = datetime.now(timezone.utc)
+        await batch_service.update_batch_counters(session, batch.id, "failed_items")
+        batch_service.touch_batch_heartbeat(batch)
+        await session.commit()
+        logger.info(
+            "BatchItem %s cost failed: GEOMETRY_INVALID (%s)",
+            item.ulid, report.reason,
+        )
+        return {
+            "cost_decision_id": None,
+            "make_now_process": None,
+            "unit_cost_usd": None,
+            "crossover_qty": None,
+        }
+
+    result_dict = report_to_dict(report)
+
+    # ---- persist (dedup-safe: reuse the existing row on conflict) -----------
+    # persist_cost_decision keys on (user_id, mesh_hash, params_hash) and RETURNS
+    # the existing row on a duplicate (pre-check or IntegrityError race) — so a
+    # ZIP with duplicate parts still completes each item, all pointing at the one
+    # decision row. params_hash matches the route's for the same params (dedup +
+    # parity coherence).
+    params_hash = cost_decision_service.compute_params_hash(
+        quantities=quantities,
+        region=region,
+        cavities=1,
+        complexity="moderate",
+        material_class=material_class,
+        shop=shop_slug,
+        overrides={},
+    )
+    mesh_hash = compute_mesh_hash(file_bytes)
+    saved = await cost_decision_service.persist_cost_decision(
+        session,
+        user,
+        mesh_hash=mesh_hash,
+        params_hash=params_hash,
+        engine_version=_cv_version,
+        filename=filename,
+        file_type=suffix.lstrip("."),
+        result_json=result_dict,
+    )
+
+    # ---- success: link + counters + heartbeat (same shape as the DFM path) --
+    item.status = "completed"
+    item.cost_decision_id = saved.id
+    item.duration_ms = duration_ms
+    item.completed_at = datetime.now(timezone.utc)
+    await batch_service.update_batch_counters(session, batch.id, "completed_items")
+    batch_service.touch_batch_heartbeat(batch)
+    await session.commit()
+
+    # ---- engine-number webhook extras (copied from report_to_dict) ----------
+    decision = result_dict.get("decision") or {}
+    est = make_now_estimate(result_dict)
+    unit_cost_usd = None
+    if est is not None and est.get("dfm_ready", True):
+        # Withhold the price on a DFM-blocked make-now route (catalog honesty).
+        unit_cost_usd = est.get("unit_cost_usd")
+
+    logger.info(
+        "BatchItem %s cost completed: decision=%s make_now=%s duration=%.1fms",
+        item.ulid, saved.ulid, decision.get("make_now_process"), duration_ms,
+    )
+    return {
+        "cost_decision_id": saved.ulid,
+        "make_now_process": decision.get("make_now_process"),
+        "unit_cost_usd": unit_cost_usd,
+        "crossover_qty": decision.get("crossover_qty"),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Item processor task
 # ---------------------------------------------------------------------------
 
 
 async def run_batch_item(ctx: dict, item_ulid: str) -> None:
-    """Process a single batch item: run analysis_service.run_analysis.
+    """Process a single batch item.
 
-    Updates item status and batch counters atomically.
-    Fires item-level webhook if batch has webhook_url.
+    DFM batches (``job_type='dfm'``) run ``analysis_service.run_analysis``; cost
+    batches (``job_type='cost'``) run the should-cost path via ``_run_cost_item``.
+    Updates item status and batch counters atomically and fires the item-level
+    webhook if the batch has one.
     """
     from src.services import analysis_service, batch_service, webhook_service
 
@@ -246,67 +459,75 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
         item.started_at = datetime.now(timezone.utc)
         await session.commit()
 
+        # Cost items carry engine-number webhook extras; DFM items carry none.
+        webhook_extra: dict | None = None
+
         try:
-            import os
-            import time
-
-            start = time.time()
-
-            # Read file bytes
-            if batch.input_mode == "zip":
-                blob_dir = os.getenv("BATCH_BLOB_DIR", "/data/blobs/batch")
-                file_path = os.path.join(blob_dir, batch.ulid, item.filename)
-                with open(file_path, "rb") as f:
-                    file_bytes = f.read()
-            elif batch.input_mode == "s3":
-                # S3 fetch placeholder -- would use boto3 in production
-                raise NotImplementedError("S3 item fetch not yet implemented")
+            if batch.job_type == "cost":
+                # W3: should-cost this item (mirror POST /validate/cost). The
+                # coordinator/DFM paths are untouched.
+                webhook_extra = await _run_cost_item(session, batch, item)
             else:
-                raise ValueError(f"Unknown input_mode: {batch.input_mode}")
+                import os
+                import time
 
-            # Construct AuthedUser for analysis service
-            user = AuthedUser(
-                user_id=batch.user_id,
-                api_key_id=batch.api_key_id or 0,
-                key_prefix="batch",
-            )
+                start = time.time()
 
-            # Run analysis
-            result = await analysis_service.run_analysis(
-                file_bytes=file_bytes,
-                filename=item.filename,
-                processes=item.process_types,
-                rule_pack=item.rule_pack,
-                user=user,
-                session=session,
-            )
+                # Read file bytes
+                if batch.input_mode == "zip":
+                    blob_dir = os.getenv("BATCH_BLOB_DIR", "/data/blobs/batch")
+                    file_path = os.path.join(blob_dir, batch.ulid, item.filename)
+                    with open(file_path, "rb") as f:
+                        file_bytes = f.read()
+                elif batch.input_mode == "s3":
+                    # S3 fetch placeholder -- would use boto3 in production
+                    raise NotImplementedError("S3 item fetch not yet implemented")
+                else:
+                    raise ValueError(f"Unknown input_mode: {batch.input_mode}")
 
-            duration_ms = round((time.time() - start) * 1000, 1)
+                # Construct AuthedUser for analysis service
+                user = AuthedUser(
+                    user_id=batch.user_id,
+                    api_key_id=batch.api_key_id or 0,
+                    key_prefix="batch",
+                )
 
-            # Get analysis ID for linking
-            analysis_id = await analysis_service.get_latest_analysis_id(
-                session, batch.user_id, analysis_service.compute_mesh_hash(file_bytes)
-            )
+                # Run analysis
+                result = await analysis_service.run_analysis(
+                    file_bytes=file_bytes,
+                    filename=item.filename,
+                    processes=item.process_types,
+                    rule_pack=item.rule_pack,
+                    user=user,
+                    session=session,
+                )
 
-            # Success
-            item.status = "completed"
-            item.analysis_id = analysis_id
-            item.duration_ms = duration_ms
-            item.completed_at = datetime.now(timezone.utc)
-            await batch_service.update_batch_counters(session, batch.id, "completed_items")
-            # Liveness from work, not just the coordinator (F-ARCH-6/#2 follow-up):
-            # a batch under arq pool saturation may go many ticks without the
-            # coordinator itself running, but items are still actively finishing.
-            # Refresh the same heartbeat the coordinator writes so the sweeper
-            # sees the batch as alive whenever there is real progress, from
-            # either source.
-            batch_service.touch_batch_heartbeat(batch)
-            await session.commit()
+                duration_ms = round((time.time() - start) * 1000, 1)
 
-            logger.info(
-                "BatchItem %s completed: analysis_id=%s duration=%.1fms",
-                item_ulid, analysis_id, duration_ms,
-            )
+                # Get analysis ID for linking
+                analysis_id = await analysis_service.get_latest_analysis_id(
+                    session, batch.user_id, analysis_service.compute_mesh_hash(file_bytes)
+                )
+
+                # Success
+                item.status = "completed"
+                item.analysis_id = analysis_id
+                item.duration_ms = duration_ms
+                item.completed_at = datetime.now(timezone.utc)
+                await batch_service.update_batch_counters(session, batch.id, "completed_items")
+                # Liveness from work, not just the coordinator (F-ARCH-6/#2 follow-up):
+                # a batch under arq pool saturation may go many ticks without the
+                # coordinator itself running, but items are still actively finishing.
+                # Refresh the same heartbeat the coordinator writes so the sweeper
+                # sees the batch as alive whenever there is real progress, from
+                # either source.
+                batch_service.touch_batch_heartbeat(batch)
+                await session.commit()
+
+                logger.info(
+                    "BatchItem %s completed: analysis_id=%s duration=%.1fms",
+                    item_ulid, analysis_id, duration_ms,
+                )
 
         except Exception as exc:
             logger.exception("BatchItem %s failed", item_ulid)
@@ -331,6 +552,10 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
                     "analysis_id": item.analysis_id,
                     "error_message": item.error_message,
                 }
+                # Cost items add cost_decision_id + engine numbers (copied
+                # straight from report_to_dict; never fabricated here).
+                if webhook_extra:
+                    payload.update(webhook_extra)
                 delivery = await webhook_service.create_webhook_delivery(
                     session, batch.id, "batch_item.completed", payload
                 )
