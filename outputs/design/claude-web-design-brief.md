@@ -21,6 +21,13 @@ CadVerify — "Databricks for manufacturability & cost." A governed decision lay
 - **Work on a `design/…` branch. Do not commit to `dev` or `prod`** — an autonomous build loop merges to those locally and force-of-habit collisions are expensive. Do not touch `backend/`.
 - Known merge gotcha: every frontend branch conflicts on `frontend/package.json`'s `"test"` script line; resolution is the union of `--test` file lists.
 
+## The context moment — "the part in its world" (added 2026-07-03)
+Beyond verify/cost/DFM, the product must show where a part LIVES: its program, parent assembly, and position (screw → bracket → door module → vehicle). Three data rungs, each with its own honest visual state — design all three:
+1. **Real structure exists** (STEP assembly ingested; later PLM connector): the signature cinematic moment — the hero stage zooms out and the parent assembly materializes around the part, part lit in situ; exploded views; sibling parts as isometric thumbnails; any node tappable into the hero position. Deterministic product structure only — every node in the reveal is engine-known.
+2. **Declared context only** (user typed program / parent / units-per-parent / annual volume): NO parent geometry exists, so none is shown. Visual = a designed lineage strip (program → assembly → part) with USER-provenance chips on the volumes, feeding honest $/year portfolio math. Diagrammatic, never fake 3D.
+3. **No context**: an honest, inviting empty state — "this part has no home yet — where does it live?" Never a stock product silhouette implying knowledge the engine doesn't have.
+In the CUI paradigm, "where does this live?" is a first-class conversational question whose answer is this artifact. At portfolio level, program becomes a grouping dimension (the cost-down board clustered by product, rows carrying in-situ thumbnails). Hard rule: the zoom-out is earned by data, never decorated.
+
 ## Where the deeper context lives (in this repo)
 - `outputs/long-horizon-plan.md` — Track D (design) + gates G0/G0b history.
 - `outputs/design/platform-ia-vision.md` — information architecture vision.
