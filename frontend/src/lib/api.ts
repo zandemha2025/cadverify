@@ -15,17 +15,47 @@ export interface GeometryInfo {
   units: string;
 }
 
+/**
+ * A structured manufacturing-standard reference, serialized by the backend
+ * (`serialize_citation`) as `{standard?, clause?, text?, rule_id?}` with every
+ * null field DROPPED. The honesty contract that governs the render:
+ *
+ *   • `standard` PRESENT  → a real source (AMS/ASTM/ISO/NADCA/vendor guide);
+ *     render it as a citation chip (`standard` + optional `clause`).
+ *   • `standard` ABSENT   → the descriptor case: the analyzer's `cite=` string
+ *     did not parse to a real source, so only `text` survives. Render it as
+ *     plain descriptive text — NEVER promote a descriptor to a fake citation.
+ *
+ * The whole `citation` key is omitted when the issue is genuinely uncited.
+ */
+export interface IssueCitation {
+  standard?: string;
+  clause?: string;
+  text?: string;
+  rule_id?: string;
+}
+
 export interface Issue {
   code: string;
   severity: "error" | "warning" | "info";
   message: string;
   fix_suggestion: string | null;
   process?: string;
+  /** TRUE total of affected faces (no longer clipped by the analyzers). */
   affected_face_count?: number;
+  /** up to MAX_SERIALIZED_AFFECTED_FACES (2000) indices for the 3D highlight. */
   affected_faces_sample?: number[];
+  /** set by the serializer when affected_face_count > 2000: the sample is capped,
+   *  the honest total is still in affected_face_count (nothing silently dropped). */
+  affected_faces_truncated?: boolean;
   region_center?: [number, number, number];
   measured_value?: number;
   required_value?: number;
+  /** structured standard reference; absent when the issue is uncited. */
+  citation?: IssueCitation;
+  /** "localized" when the finding has faces or a region center; "whole_part"
+   *  when it is honestly unlocalizable (no faked location). */
+  scope?: "localized" | "whole_part";
 }
 
 export interface Segment {
@@ -43,6 +73,9 @@ export interface ProcessScore {
   recommended_material: string | null;
   recommended_machine: string | null;
   estimated_cost_factor: number | null;
+  /** the analyzer's standards bibliography (AMS/ASTM/ISO/NADCA/vendor) behind
+   *  this process's thresholds; [] when the analyzer declares none. */
+  standards?: string[];
   issues: Issue[];
 }
 
@@ -74,6 +107,24 @@ export interface RulePackInfo {
   mandatory_issue_count: number;
 }
 
+/**
+ * Opt-in per-face wall-thickness map for a thin-wall heatmap. Returned under
+ * `wall_thickness_map` ONLY when the request passed `include_thickness=true`
+ * (never persisted/cached). `values[i]` is the inward-ray wall thickness (mm) of
+ * analyzed-mesh face `i` — the SAME index space as `Issue.affected_faces_sample`
+ * — or `null` where thickness is uncomputable (open/degenerate face). When the
+ * analyzed mesh was decimated, `decimated` is true and indices map to the
+ * approximated geometry, not the original upload.
+ */
+export interface WallThicknessMap {
+  n_faces: number;
+  units: string; // "mm"
+  values: (number | null)[];
+  note: string;
+  decimated?: boolean;
+  original_faces?: number;
+}
+
 export interface ValidationResult {
   filename: string;
   file_type: string;
@@ -87,6 +138,8 @@ export interface ValidationResult {
   priority_fixes: PriorityFix[];
   features?: FeatureInfo[];
   rule_pack?: { name: string; version: string };
+  /** present only when the analysis was requested with include_thickness. */
+  wall_thickness_map?: WallThicknessMap;
 }
 
 export interface Material {
@@ -301,7 +354,10 @@ const apiClient = {
 export async function validateFile(
   file: File,
   processes?: string[],
-  rulePack?: string
+  rulePack?: string,
+  /** opt-in: request the per-face wall-thickness map for a thin-wall heatmap.
+   *  Off by default → no query param → response is byte-identical to before. */
+  includeThickness?: boolean
 ): Promise<ValidationResult> {
   const formData = new FormData();
   formData.append("file", file);
@@ -312,6 +368,9 @@ export async function validateFile(
   }
   if (rulePack) {
     params.set("rule_pack", rulePack);
+  }
+  if (includeThickness) {
+    params.set("include_thickness", "true");
   }
 
   let url = `${API_BASE}/validate`;
@@ -603,7 +662,13 @@ export interface CostEstimate {
   dfm_ready: boolean;
   dfm_verdict: "pass" | "issues" | "fail";
   dfm_score: number;
+  /** ERROR-severity blocker MESSAGES (kept for text consumers). */
   dfm_blockers: string[];
+  /** The same blockers as FULL serialized Issues — same order/source as
+   *  `dfm_blockers` — so a cost-side blocker can locate on the part (faces /
+   *  region / measured / citation), not merely restate its message. Absent on
+   *  reports produced before the cost-blocker relink. */
+  dfm_blocker_details?: Issue[];
   line_items: Record<string, number>;
   drivers: CostDriver[];
   lead_time: CostLeadTime;

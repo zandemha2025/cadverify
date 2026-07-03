@@ -25,6 +25,11 @@ import * as React from "react";
 import { Crosshair, Factory, ChevronRight, ShieldCheck } from "lucide-react";
 import type { IndexedIssue } from "@/lib/dfm-scope";
 import type { DerivedFinding } from "@/lib/findings";
+import {
+  issueCitationRef,
+  citationChipLabel,
+  affectedFacesSummary,
+} from "@/lib/inspection-bind";
 import { severityTone, type Tone } from "@/lib/status";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -220,6 +225,11 @@ function DfmCard({
   const { issue, faces } = item;
   const ref = React.useRef<HTMLDivElement>(null);
   const locatable = faces.length > 0;
+  // Richer Findings-API bindings (real serialized fields; null when absent):
+  //  · the TRUE affected-face count + honest 2000-cap truncation flag
+  //  · the structured {standard, clause?, text} citation — chip vs descriptor
+  const faceSummary = affectedFacesSummary(issue);
+  const citation = issueCitationRef(issue);
 
   React.useEffect(() => {
     if (selected && ref.current) {
@@ -257,14 +267,34 @@ function DfmCard({
         {locatable && (
           <span
             className="flex shrink-0 items-center gap-1 text-[11px] text-primary"
-            title="Highlighted on the 3D model"
+            title={
+              faceSummary?.truncated
+                ? `${faceSummary.count.toLocaleString()} affected faces (capped at ${faceSummary.sampleCount.toLocaleString()} on the 3D model)`
+                : "Highlighted on the 3D model"
+            }
           >
             <Crosshair className="size-3.5" />
-            {selected ? "shown in 3D" : "locate"}
+            {/* TRUE affected-face count (un-clipped) with honest truncation. */}
+            {faceSummary ? faceSummary.label : selected ? "shown in 3D" : "locate"}
           </span>
         )}
       </div>
       <p className="mt-1 text-sm text-foreground">{issue.message}</p>
+      {/* Structured citation: a real STANDARD renders as a chip; the descriptor
+          case (no standard parsed) renders as honest plain text — never a chip. */}
+      {citation &&
+        (citation.kind === "standard" ? (
+          <Badge
+            variant="outline"
+            size="sm"
+            className="num mt-1.5 align-baseline"
+            title={citation.text}
+          >
+            {citationChipLabel(citation)}
+          </Badge>
+        ) : (
+          <p className="mt-1.5 text-xs text-subtle-foreground">{citation.text}</p>
+        ))}
       {issue.fix_suggestion && (
         <p className="mt-1 whitespace-pre-line text-sm text-muted-foreground">
           <CitationText text={issue.fix_suggestion} />
