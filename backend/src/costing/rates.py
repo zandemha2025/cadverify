@@ -65,6 +65,24 @@ RATE_CARD_V0: dict = {
         # DEFAULT/assumption — NOT validated against real shop quotes.
         "learning_rate": 0.90,        # 0<rate<=1 fraction per doubling of cumulative qty; 1.0 = no learning (old flat behavior)
         "learning_floor": 0.25,       # min fraction of first-lot standard time the curve can reach (practical cycle-time floor)
+        # ── region machine-rate capital/labor split (E-now #2) ───────────
+        # BUG FIX (cost audit M8): the region_labor multiplier (e.g. CN 0.55)
+        # was applied to the WHOLE machine $/hr, discounting the machine's
+        # capital depreciation / facility / energy as if it were local labor.
+        # A CNC or printer costs ~the same globally; only the OPERATOR share of
+        # the loaded rate follows regional labor. machine_labor_frac splits the
+        # rate: (1-frac) is globally-priced capital+facility+energy (region ×1),
+        # frac is operator labor (region ×region_labor). 1.0 = the old, buggy
+        # whole-rate discount (the off-switch). This is a MODEL structure tagged
+        # DEFAULT/assumption — the fraction is NOT validated against real shop
+        # cost accounting; Zoox will calibrate it (likely per-process).
+        "machine_labor_frac": 0.35,   # operator-labor share of the loaded machine rate; 1.0 recovers old behavior
+        # ── perishable tooling / consumables (E-now #4) ──────────────────
+        # Cutting tools, inserts, coolant, abrasives wear out and are consumed in
+        # proportion to spindle/machine time. Modeled as a % of the machine line
+        # for subtractive (CNC) work — standard shop cost-accounting. DEFAULT
+        # assumption, NOT shop-validated; 0.0 = off (byte-identical old cost).
+        "perishable_frac": 0.05,      # perishable tooling+consumables as a fraction of CNC machine cost
     },
     # Per-process rates. Keys map 1:1 to the spec §6.3 + V1 §1 tables.
     #
@@ -113,21 +131,32 @@ RATE_CARD_V0: dict = {
             nesting_mode="build_job", post_hr_part=0.08, post_hr_build=0.50,
             lot_size="build", min_charge=75,
             n_machines=6, machine_hours_per_day=22),
+        # CNC keys nre_hr / fai_hr / inspect_hr_part / finish_* are E-now #3+#4:
+        # CAM-programming NRE (amortized over the whole order), first-article +
+        # in-process inspection, and OUTSOURCED secondary finishing (anodize /
+        # plate / heat-treat) as a lot + per-part charge (default 0 = as-machined,
+        # no finish assumed). All DEFAULT, all overridable, all Zoox-caveated.
         PT.CNC_3AXIS: dict(
             machine_rate=75, setup_hr=0.75, post_hr=0.50, scrap=0.05,
             deposition=None, vert=None, finish=600, queue_days=5, post_days=1,
             post_hr_part=0.50, post_hr_build=0.0, lot_size=100, min_charge=90,
-            n_machines=8, machine_hours_per_day=16),
+            n_machines=8, machine_hours_per_day=16,
+            nre_hr=2.0, fai_hr=0.50, inspect_hr_part=0.030,
+            finish_lot_charge=0.0, finish_per_part=0.0),
         PT.CNC_5AXIS: dict(
             machine_rate=110, setup_hr=1.00, post_hr=0.50, scrap=0.05,
             deposition=None, vert=None, finish=500, queue_days=7, post_days=1,
             post_hr_part=0.50, post_hr_build=0.0, lot_size=100, min_charge=110,
-            n_machines=4, machine_hours_per_day=16),
+            n_machines=4, machine_hours_per_day=16,
+            nre_hr=3.0, fai_hr=0.75, inspect_hr_part=0.050,
+            finish_lot_charge=0.0, finish_per_part=0.0),
         PT.CNC_TURNING: dict(
             machine_rate=65, setup_hr=0.50, post_hr=0.30, scrap=0.05,
             deposition=None, vert=None, finish=800, queue_days=5, post_days=1,
             post_hr_part=0.30, post_hr_build=0.0, lot_size=100, min_charge=90,
-            n_machines=6, machine_hours_per_day=16),
+            n_machines=6, machine_hours_per_day=16,
+            nre_hr=1.0, fai_hr=0.40, inspect_hr_part=0.025,
+            finish_lot_charge=0.0, finish_per_part=0.0),
         PT.INJECTION_MOLDING: dict(
             machine_rate=45, setup_hr=0.00, post_hr=0.05, scrap=0.03,
             deposition=None, vert=None, finish=None, queue_days=2, post_days=1,
@@ -326,6 +355,29 @@ class RateCard:
     def region_tooling(self, region: str) -> float:
         return self.data["region_tooling"].get(region, 1.0)
 
+    def machine_region_mult(self, region: str) -> float:
+        """Effective region multiplier for the MACHINE line (E-now #2).
+
+        Only the operator-labor share (machine_labor_frac) of the loaded machine
+        rate follows regional labor; the capital+facility+energy share is a
+        global commodity (region ×1). CADVERIFY_MACHINE_CAPITAL_SPLIT=0 (or
+        machine_labor_frac=1.0) recovers the legacy whole-rate discount exactly.
+        """
+        import os
+        rl = self.region_labor(region)
+        if os.getenv("CADVERIFY_MACHINE_CAPITAL_SPLIT", "1") == "0":
+            return rl
+        frac = self.g("machine_labor_frac")
+        return (1.0 - frac) + frac * rl
+
+    # ---- per-process getter with a default (new/optional keys) -----------
+    def pget(self, process: ProcessType, key: str, default: float = 0.0) -> float:
+        """Read a per-process numeric key that may be absent on some processes
+        (nre_hr, fai_hr, inspect_hr_part, finish_lot_charge, finish_per_part).
+        Absent => the default (0.0), i.e. the line simply does not apply."""
+        v = self.data["process"][process].get(key)
+        return float(v) if v is not None else float(default)
+
     # ---- additive build-plate nesting (weaknesses #1, #2) ---------------
     def build_env(self, proc: ProcessType) -> tuple:
         return tuple(self.p(proc, "build_env_mm"))
@@ -406,6 +458,8 @@ _NUMERIC_FIELDS = {
     "n_machines", "machine_hours_per_day", "xy_packing_density",
     # FABRICATION (sheet metal) cut/bend/handling physics (all overridable)
     "cut_speed_mm_min", "ref_gauge_mm", "sec_per_bend", "handling_hr",
+    # E-now #3+#4: CNC NRE / inspection / outsourced secondary finishing
+    "nre_hr", "fai_hr", "inspect_hr_part", "finish_lot_charge", "finish_per_part",
 }
 
 

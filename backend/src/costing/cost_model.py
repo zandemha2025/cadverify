@@ -128,9 +128,17 @@ def _cnc_cycle(process, drivers, material_class, rates: RateCard):
         stock_src = (f"bounding cylinder π·({drivers.rot_cross_dia_mm:.1f}/2)²·"
                      f"{drivers.rot_axis_len_mm:.1f} mm = {stock_vol:.1f} cm³")
     else:
-        stock_vol = drivers.hull_volume_cm3 * rates.g("stock_allowance")
-        stock_src = (f"hull {drivers.hull_volume_cm3:.1f} cm³ × "
-                     f"{rates.g('stock_allowance'):.2f} = {stock_vol:.1f} cm³")
+        # E-now #1: mill from a rectangular BILLET (bounding box), not a hull —
+        # a pocketed part is cut from a solid block, so more is roughed away.
+        from src.costing.drivers import bbox_billet_enabled
+        allow = rates.g("stock_allowance")
+        stock_vol = drivers.billet_volume_cm3(allow)
+        if bbox_billet_enabled():
+            stock_src = (f"bbox billet {drivers.bbox_volume_cm3:.1f} cm³ × {allow:.2f} "
+                         f"= {stock_vol:.1f} cm³ [assumption, not shop-validated]")
+        else:
+            stock_src = (f"hull {drivers.hull_volume_cm3:.1f} cm³ × {allow:.2f} "
+                         f"= {stock_vol:.1f} cm³")
     removed = max(0.0, stock_vol - drivers.volume_cm3)
     mrr = rates.mrr(material_class)            # cm³/min
     rough_hr = removed / (mrr * 60.0)
@@ -203,6 +211,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     band = rates.band_pct(process)
 
     rl = rates.region_labor(region)
+    rl_machine = rates.machine_region_mult(region)   # E-now #2: labor-only region scaling of the blended machine rate
     rm = rates.region_material(region)
     rt = rates.region_tooling(region)
     mgn = 1.0 + margin
@@ -212,9 +221,14 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     drivers_out: list[Driver] = []
 
     # ---- MATERIAL --------------------------------------------------------
-    if process in SUBTRACTIVE:
+    if process == PT.CNC_TURNING:
+        # turning starts from round bar (hull ≈ swept solid) — billet unchanged
         input_mass = drivers.stock_mass_kg(material.density, rates.g("stock_allowance"))
         mass_src = drivers.stock_source(material.density, rates.g("stock_allowance"), material.name)
+    elif process in SUBTRACTIVE:
+        # E-now #1: milling billet = bounding-box block × allowance (was hull)
+        input_mass = drivers.billet_mass_kg(material.density, rates.g("stock_allowance"))
+        mass_src = drivers.billet_source(material.density, rates.g("stock_allowance"), material.name)
     elif process in FABRICATION:
         # you buy the rectangular blank (footprint × gauge), not just the net part
         input_mass = drivers.bbox_volume_cm3 * material.density / 1000.0
@@ -280,19 +294,36 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     cav_div = n_cavities if family == "formative" else 1
     machine_cost = machine_hr * rates.p(process, "machine_rate") / cav_div / util
     machine_learned = machine_cost * learn_mult          # attended-time learning (S1)
-    machine_scaled = machine_learned * rl * mgn * burden
+    machine_scaled = machine_learned * rl_machine * mgn * burden   # E-now #2: labor-only region scaling
     cav_note = f" ÷ {n_cavities} cavities" if cav_div != 1 else ""
     util_note = f" ÷ {util:g} utilization" if util != 1.0 else ""
     burden_note = f" × {burden:g} overhead" if burden != 1.0 else ""
     learn_note = f" × {learn_mult:.3f} learning@qty{qty}" if learn_mult != 1.0 else ""
+    if rl_machine != rl:
+        _frac = rates.g("machine_labor_frac")
+        region_mach_note = (f" × region-machine ×{rl_machine:g} (labor {_frac:g} of "
+                            f"rate ×{rl:g}, capital global ×1) [assumption, not shop-validated]")
+    else:
+        region_mach_note = f" × region-labor ×{rl_machine:g}"
     drivers_out.append(Driver(
         name="machine_cost", value=round(machine_scaled, 4), unit="$",
         provenance=rates.prov_tag(f"machine_rate.{process.name}"),
         source=(f"{machine_hr:.4f} hr × ${rates.p(process, 'machine_rate'):g}/hr"
-                f"{cav_note}{util_note}{learn_note} × region-labor ×{rl:g}{burden_note}"
+                f"{cav_note}{util_note}{learn_note}{region_mach_note}{burden_note}"
                 f"  [{cycle_src}]"),
         error_band_pct=band,
     ))
+    if rl_machine != rl:
+        drivers_out.append(Driver(
+            name="machine_region_split", value=round(rl_machine, 4), unit="×",
+            provenance=Provenance.DEFAULT,
+            source=(f"machine region multiplier ×{rl_machine:g}: only the labor share "
+                    f"{rates.g('machine_labor_frac'):g} of the ${rates.p(process,'machine_rate'):g}/hr "
+                    f"rate scales ×{rl:g}; capital/facility/energy stays global ×1 "
+                    f"(fixes the whole-rate offshore over-discount) "
+                    f"[assumption, not shop-validated]"),
+            error_band_pct=band,
+        ))
     drivers_out.append(Driver(
         name="cycle_time", value=round(machine_hr, 4), unit="hr",
         provenance=Provenance.DEFAULT, source=cycle_src, error_band_pct=band,
@@ -334,6 +365,88 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         error_band_pct=20.0,
     ))
 
+    # ── E-now #3+#4: extra make-now cost lines (CNC scoped) ──────────────
+    # These accumulate into the crossover fixed/variable split too.
+    extra_fixed = 0.0          # one-time costs (amortize over the whole order) → fixed
+    extra_variable = 0.0       # asymptotic per-unit (qty→∞) → variable
+
+    # ---- E-now #3: CAM-programming NRE + FAI/inspection (qty-1 honesty) --
+    # Today a qty-1 machined part is caught only by the min-charge floor. Real
+    # shops charge a one-time CAM-programming/NRE plus first-article + in-process
+    # inspection. Hours are DEFAULT assumptions, Zoox-caveated. CADVERIFY_CNC_NRE=0
+    # removes both lines (byte-identical old cost).
+    nre_scaled = 0.0
+    inspection_scaled = 0.0
+    if family == "subtractive" and os.getenv("CADVERIFY_CNC_NRE", "1") != "0":
+        nre_hr = rates.pget(process, "nre_hr")
+        fai_hr = rates.pget(process, "fai_hr")
+        inspect_hr_part = rates.pget(process, "inspect_hr_part")
+        if nre_hr > 0:
+            nre_total = nre_hr * labor_rate * rl * mgn * burden      # one-time
+            nre_scaled = nre_total / qty                              # amortized per unit
+            extra_fixed += nre_total
+            drivers_out.append(Driver(
+                name="nre_cost", value=round(nre_scaled, 4), unit="$",
+                provenance=rates.prov_tag(f"nre_hr.{process.name}"),
+                source=(f"CAM programming/NRE {nre_hr:g}hr × ${labor_rate:g}/hr × "
+                        f"region-labor ×{rl:g} ÷ {qty} order (one-time) "
+                        f"[assumption, not shop-validated]"),
+                error_band_pct=40.0,
+            ))
+        inspect_part = inspect_hr_part * learn_mult                   # per-part (learns/samples down at volume)
+        fai_per_unit = fai_hr * n_setups / qty                       # first article per lot
+        insp_hr_per_unit = fai_per_unit + inspect_part
+        if insp_hr_per_unit > 0:
+            inspection_scaled = insp_hr_per_unit * labor_rate * rl * mgn * burden
+            extra_variable += (fai_hr / lot_size + inspect_part) * labor_rate * rl * mgn * burden
+            drivers_out.append(Driver(
+                name="inspection_cost", value=round(inspection_scaled, 4), unit="$",
+                provenance=rates.prov_tag(f"fai_hr.{process.name}"),
+                source=(f"first-article {fai_hr:g}hr × {n_setups} lot(s) ÷ {qty} + in-process "
+                        f"{inspect_hr_part:g}hr/part{learn_note} = {insp_hr_per_unit:.4f}hr × "
+                        f"${labor_rate:g}/hr × region-labor ×{rl:g} "
+                        f"[assumption, not shop-validated]"),
+                error_band_pct=40.0,
+            ))
+
+    # ---- E-now #4a: perishable tooling / consumables (% of machine) -----
+    consumables_scaled = 0.0
+    if family == "subtractive" and os.getenv("CADVERIFY_PERISHABLE_TOOLING", "1") != "0":
+        perishable_frac = rates.g("perishable_frac")
+        if perishable_frac > 0:
+            consumables_scaled = machine_scaled * perishable_frac
+            extra_variable += consumables_scaled
+            drivers_out.append(Driver(
+                name="consumables_cost", value=round(consumables_scaled, 4), unit="$",
+                provenance=Provenance.DEFAULT,
+                source=(f"perishable tooling/consumables {perishable_frac:g} × machine "
+                        f"${machine_scaled:.2f} (cutting tools, inserts, coolant) "
+                        f"[assumption, not shop-validated]"),
+                error_band_pct=40.0,
+            ))
+
+    # ---- E-now #4b: OUTSOURCED secondary finishing (lot + per-part) -----
+    # Anodize / plate / heat-treat is bought from a vendor as a lot setup + a
+    # per-part rate, NOT in-house labor hours. Default 0 (as-machined, no finish);
+    # set finish_lot_charge / finish_per_part to enable. CADVERIFY_OUTSOURCED_FINISHING=0
+    # forces it off even when configured (byte-identical old cost).
+    finishing_scaled = 0.0
+    fin_lot = rates.pget(process, "finish_lot_charge")
+    fin_part = rates.pget(process, "finish_per_part")
+    if (fin_lot > 0 or fin_part > 0) and os.getenv("CADVERIFY_OUTSOURCED_FINISHING", "1") != "0":
+        fin_lot_per_unit = fin_lot * n_setups / qty
+        finishing_per_unit = fin_lot_per_unit + fin_part
+        finishing_scaled = finishing_per_unit * rl * mgn             # outsourced invoice: regional service + margin (no internal overhead burden)
+        extra_variable += (fin_lot / lot_size + fin_part) * rl * mgn
+        drivers_out.append(Driver(
+            name="finishing_cost", value=round(finishing_scaled, 4), unit="$",
+            provenance=rates.prov_tag(f"finish_per_part.{process.name}"),
+            source=(f"outsourced finishing: lot ${fin_lot:g} × {n_setups} ÷ {qty} + "
+                    f"${fin_part:g}/part = ${finishing_per_unit:.2f}/unit × region-labor ×{rl:g} "
+                    f"[assumption, not shop-validated]"),
+            error_band_pct=40.0,
+        ))
+
     # ---- TOOLING (formative only; cavity + complexity, weakness #5) -----
     if process in FORMATIVE:
         tooling_cost = rates.tooling_cost(process, drivers.max_bbox_mm, n_cavities, complexity)
@@ -359,13 +472,24 @@ def cost_breakdown(process, drivers, material, material_class, qty,
 
     tooling_amort_scaled = (tooling_cost / qty) * rt * mgn
 
-    # ---- assemble (4-key line_items; Σ invariant) -----------------------
+    # ---- assemble (base 4 keys + E-now #3/#4 lines when they apply) ------
+    # Extra keys (nre/inspection/consumables/finishing) are added ONLY when
+    # non-zero — every consumer iterates line_items generically, and the Σ ==
+    # unit_cost invariant still holds (asserted below).
     line_items = {
         "amortized_fixed": round(tooling_amort_scaled + setup_scaled, 4),
         "material": round(material_scaled, 4),
         "machine": round(machine_scaled, 4),
         "labor": round(labor_scaled, 4),
     }
+    if nre_scaled:
+        line_items["nre"] = round(nre_scaled, 4)
+    if inspection_scaled:
+        line_items["inspection"] = round(inspection_scaled, 4)
+    if consumables_scaled:
+        line_items["consumables"] = round(consumables_scaled, 4)
+    if finishing_scaled:
+        line_items["finishing"] = round(finishing_scaled, 4)
     unit_cost = round(sum(line_items.values()), 4)
 
     # ---- region split driver (when any factor ≠ 1.0) --------------------
@@ -392,9 +516,14 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         ))
 
     # ---- decision split (clean asymptotic fixed/var for crossover §6) ---
+    # E-now #3/#4: NRE is a one-time cost (→ fixed, like tooling); consumables,
+    # per-part inspection/finishing and the asymptotic per-lot inspection/finishing
+    # shares are per-unit (→ variable). extra_fixed/extra_variable were accumulated
+    # above. (The make-vs-buy crossover itself uses the exact numerical evaluator.)
     setup_asymptotic_scaled = (setup_hr * labor_rate / lot_size) * rl * mgn * burden
-    fixed_cost_usd = tooling_cost * rt * mgn
-    variable_cost_usd = material_scaled + machine_scaled + labor_scaled + setup_asymptotic_scaled
+    fixed_cost_usd = tooling_cost * rt * mgn + extra_fixed
+    variable_cost_usd = (material_scaled + machine_scaled + labor_scaled
+                         + setup_asymptotic_scaled + extra_variable)
 
     # ---- DFM verdict pass-through ---------------------------------------
     dfm_ready = True
