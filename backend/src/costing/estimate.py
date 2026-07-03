@@ -98,7 +98,15 @@ def _global_assumptions(rates: RateCard, options: EstimateOptions, region: str) 
         Driver("utilization", g["utilization"], "frac", rates.prov_tag("utilization"),
                "machine utilization (idle-recovery on machine cost)" + shop_note),
         Driver("stock_allowance", g["stock_allowance"], "×", rates.prov_tag("stock_allowance"),
-               "CNC billet oversize on hull"),
+               "CNC billet oversize (milling: on bounding box; turning: on hull)"),
+        Driver("machine_labor_frac", g["machine_labor_frac"], "frac",
+               rates.prov_tag("machine_labor_frac"),
+               "operator-labor share of the machine rate that scales with region "
+               "(capital/facility stays global) [assumption, not shop-validated]"),
+        Driver("perishable_frac", g["perishable_frac"], "frac",
+               rates.prov_tag("perishable_frac"),
+               "perishable tooling/consumables as a fraction of CNC machine cost "
+               "[assumption, not shop-validated]"),
         Driver("daily_machine_hours", g["daily_machine_hours"], "hr/day",
                Provenance.DEFAULT, "for lead-time production days"),
         Driver("n_cavities", float(options.n_cavities), "cav",

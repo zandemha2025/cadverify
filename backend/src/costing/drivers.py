@@ -7,11 +7,20 @@ the cost model's material mass, stock removal, cooling-time and routing logic.
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass
 
 import numpy as np
 
 from src.costing.routing import is_rotational
+
+
+def bbox_billet_enabled() -> bool:
+    """E-now #1 off-switch. Default ON (bounding-box billet for CNC milling).
+
+    CADVERIFY_BBOX_BILLET=0 recovers the legacy convex-hull billet so the old
+    material mass + rough-machining volume come back byte-for-byte."""
+    return os.getenv("CADVERIFY_BBOX_BILLET", "1") != "0"
 
 
 @dataclass
@@ -41,8 +50,9 @@ class GeoDrivers:
         return self.volume_cm3 * density_g_cm3 / 1000.0
 
     def stock_mass_kg(self, density_g_cm3: float, stock_allowance: float) -> float:
-        """CNC billet mass: convex-hull volume × oversize × density (you buy the
-        billet, not the finished part)."""
+        """Legacy CNC billet mass: convex-hull volume × oversize × density. Kept
+        for CNC turning (round-bar stock) and as the byte-identical fallback when
+        the bbox-billet fix is switched off."""
         return self.hull_volume_cm3 * stock_allowance * density_g_cm3 / 1000.0
 
     def mass_source(self, density_g_cm3: float, material_name: str) -> str:
@@ -53,6 +63,26 @@ class GeoDrivers:
                      material_name: str) -> str:
         return (f"hull volume {self.hull_volume_cm3:.2f} cm³ × {stock_allowance:.2f} "
                 f"stock allowance × {material_name} density {density_g_cm3:.2f} g/cm³")
+
+    # ---- CNC-milling billet (E-now #1): rectangular block from the bbox ------
+    def billet_volume_cm3(self, stock_allowance: float) -> float:
+        """CNC-milling raw-stock (billet) volume you actually buy: the bounding
+        box × oversize. A pocketed/non-convex part is sawn from a solid
+        rectangular block, NOT a hull-shaped blank — hull volume understates the
+        block by up to ~2.6× on non-convex geometry. Off-switch recovers hull."""
+        v = self.bbox_volume_cm3 if bbox_billet_enabled() else self.hull_volume_cm3
+        return v * stock_allowance
+
+    def billet_mass_kg(self, density_g_cm3: float, stock_allowance: float) -> float:
+        return self.billet_volume_cm3(stock_allowance) * density_g_cm3 / 1000.0
+
+    def billet_source(self, density_g_cm3: float, stock_allowance: float,
+                      material_name: str) -> str:
+        if not bbox_billet_enabled():
+            return self.stock_source(density_g_cm3, stock_allowance, material_name)
+        return (f"bounding-box billet {self.bbox_volume_cm3:.2f} cm³ × "
+                f"{stock_allowance:.2f} stock allowance × {material_name} density "
+                f"{density_g_cm3:.2f} g/cm³ [assumption, not shop-validated]")
 
 
 def parts_per_build(proc, bbox_mm, rates) -> int:

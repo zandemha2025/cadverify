@@ -213,8 +213,17 @@ def test_per_lot_setup_recurs():
 
 
 def test_region_split_material_not_labor_scaled():
-    """#4: material scales with region_material (~0.98), machine with region_labor
-    (0.55) — commodity material is NOT discounted like regional shop labor."""
+    """#4 + E-now #2: material scales with region_material (~0.98); the MACHINE
+    line scales by the capital/labor SPLIT — only the operator-labor share
+    (machine_labor_frac) of the blended machine rate follows region_labor
+    (CN 0.55); the capital/facility/energy share stays a global commodity (×1).
+    So the machine multiplier is NOT the raw 0.55 (that whole-rate discount was
+    the M8 bug), and commodity material is still not discounted like labor."""
+    from src.costing.rates import build_rate_card
+    rc = build_rate_card()
+    frac = rc.g("machine_labor_frac")
+    rl_cn = rc.region_labor("CN")
+    expected_mach = (1.0 - frac) + frac * rl_cn      # capital global ×1 + labor share ×rl
     result, mesh, feats = _analyze(_bulky_block())
     us = estimate_decision(result, mesh, feats, EstimateOptions(quantities=[100], region="US"))
     cn = estimate_decision(result, mesh, feats, EstimateOptions(quantities=[100], region="CN"))
@@ -223,7 +232,10 @@ def test_region_split_material_not_labor_scaled():
     mat_ratio = cn_sls["line_items"]["material"] / us_sls["line_items"]["material"]
     mach_ratio = cn_sls["line_items"]["machine"] / us_sls["line_items"]["machine"]
     assert abs(mat_ratio - 0.98) < 0.02, mat_ratio
-    assert abs(mach_ratio - 0.55) < 0.02, mach_ratio
+    assert abs(mach_ratio - expected_mach) < 0.02, mach_ratio
+    # the split makes the offshore machine discount LESS aggressive than the raw
+    # regional-labor factor (the fixed M8 bug over-discounted it all the way to 0.55)
+    assert mach_ratio > rl_cn + 0.02, (mach_ratio, rl_cn)
     assert mat_ratio > mach_ratio, "material must not be discounted like labor"
 
 
