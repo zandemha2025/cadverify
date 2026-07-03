@@ -22,6 +22,7 @@ import {
   isWholePart,
   costBlockerLocators,
   hasLocatableCostBlocker,
+  reportCostBlockerLocators,
 } from "./inspection-bind.ts";
 
 /* ---- 1. citations -------------------------------------------------- */
@@ -161,4 +162,51 @@ test("hasLocatableCostBlocker: true only when a blocker carries faces", () => {
     false
   );
   assert.equal(hasLocatableCostBlocker([est({}) as never]), false);
+});
+
+/* ---- 4. cost-blocker relink → shared selection (the wired path) ---- */
+
+test("reportCostBlockerLocators: merges blockers across estimates, unioning faces under ONE key", () => {
+  // same blocker (code|message) reported on two costed processes/quantities:
+  // it must collapse to a single row whose faces are the union.
+  const rows = reportCostBlockerLocators([
+    est({
+      process: "cnc_milling",
+      dfm_blocker_details: [
+        { code: "THIN_WALL", severity: "error", message: "thin", fix_suggestion: null, affected_faces_sample: [1, 2] },
+      ],
+    }) as never,
+    est({
+      process: "injection_molding",
+      dfm_blocker_details: [
+        { code: "THIN_WALL", severity: "error", message: "thin", fix_suggestion: null, affected_faces_sample: [2, 3] },
+      ],
+    }) as never,
+  ]);
+  assert.equal(rows.length, 1);
+  assert.deepEqual([...rows[0].faces].sort((a, b) => a - b), [1, 2, 3]);
+  // key stays cost:-namespaced (never collides with a dfm-scope finding key).
+  assert.match(rows[0].key, /^cost:/);
+});
+
+test("reportCostBlockerLocators: keeps a non-localizable blocker (faces=[]) but as an un-locatable row", () => {
+  const rows = reportCostBlockerLocators([
+    est({
+      dfm_blocker_details: [
+        { code: "WHOLE", severity: "error", message: "no faces", fix_suggestion: null },
+        { code: "SPOT", severity: "error", message: "here", fix_suggestion: null, affected_faces_sample: [7] },
+      ],
+    }) as never,
+  ]);
+  // BOTH surface (honest: the blocker is shown), but only one carries faces —
+  // the UI renders a Locate affordance only for the row with faces.
+  assert.equal(rows.length, 2);
+  const whole = rows.find((r) => r.issue.code === "WHOLE");
+  const spot = rows.find((r) => r.issue.code === "SPOT");
+  assert.deepEqual(whole?.faces, []);
+  assert.deepEqual(spot?.faces, [7]);
+});
+
+test("reportCostBlockerLocators: [] for a report whose estimates predate the relink", () => {
+  assert.deepEqual(reportCostBlockerLocators([est({}) as never, est({}) as never]), []);
 });

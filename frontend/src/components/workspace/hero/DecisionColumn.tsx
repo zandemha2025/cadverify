@@ -17,8 +17,9 @@
  */
 
 import * as React from "react";
-import { Boxes, ChevronRight } from "lucide-react";
+import { Boxes, ChevronRight, Crosshair } from "lucide-react";
 import type { CostReport } from "@/lib/api";
+import type { IndexedIssue } from "@/lib/dfm-scope";
 import type { Breakeven } from "@/lib/breakeven";
 import { recommendAt, posToQty, qtyToPos } from "@/lib/breakeven";
 import { pickEstimate } from "@/lib/cost-views";
@@ -42,12 +43,22 @@ export function DecisionColumn({
   report,
   breakeven,
   filename,
+  costBlockers,
+  selectedKey,
+  onLocateBlocker,
   onOpenGlassBox,
   onSeeRouting,
 }: {
   report: CostReport;
   breakeven: Breakeven | null;
   filename: string;
+  /** cost-side DFM blockers relinked to locatable rows (dedup across estimates);
+   *  each carries the shared `cost:`-namespaced key + its face sample. */
+  costBlockers?: IndexedIssue[];
+  /** the currently highlighted key (shared with the CadViewer / inspection). */
+  selectedKey?: string | null;
+  /** light this blocker's faces on the part (toggles off when re-clicked). */
+  onLocateBlocker?: (key: string | null) => void;
   /** open the glass box (drivers · provenance · Σ) — the Decision depth panel */
   onOpenGlassBox: () => void;
   /** jump to the per-process DFM audit (from the "if redesigned" honesty banner) */
@@ -130,6 +141,50 @@ export function DecisionColumn({
           blocker={toolingBlocker}
           onSeeRouting={onSeeRouting}
         />
+      )}
+
+      {/* ── cost blockers, locatable on the part (the relink, surfaced) ── */}
+      {costBlockers && costBlockers.length > 0 && (
+        <Card>
+          <CardContent compact className="space-y-2">
+            <div className="flex items-baseline justify-between">
+              <span className="cv-eyebrow">Cost blockers</span>
+              <span className="text-micro text-muted-foreground">DFM · on this route</span>
+            </div>
+            <ul className="space-y-1.5">
+              {costBlockers.map((b) => {
+                const locatable = b.faces.length > 0;
+                const active = selectedKey === b.key;
+                return (
+                  <li key={b.key} className="flex items-start gap-2 text-xs">
+                    <span className="flex-1 leading-snug text-muted-foreground">
+                      <span className="num text-foreground">{b.issue.code}</span> — {b.issue.message}
+                    </span>
+                    {locatable && onLocateBlocker ? (
+                      <button
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => onLocateBlocker(active ? null : b.key)}
+                        className={`inline-flex shrink-0 items-center gap-1 rounded-[var(--radius-sm)] border px-1.5 py-0.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                          active
+                            ? "border-accent-text bg-accent/10 text-accent-text"
+                            : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground"
+                        }`}
+                      >
+                        <Crosshair className="size-3" aria-hidden />
+                        {active ? "Locating" : "Locate"}
+                      </button>
+                    ) : (
+                      // Honest: this blocker carried no face indices from the
+                      // relink — it applies to the whole part, so no locate.
+                      <span className="shrink-0 text-[11px] text-muted-foreground">whole part</span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </CardContent>
+        </Card>
       )}
 
       {/* ── the make-vs-buy scrubber (live-flips the recommendation) ───── */}

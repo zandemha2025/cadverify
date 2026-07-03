@@ -154,3 +154,33 @@ export function hasLocatableCostBlocker(estimates: readonly CostEstimate[]): boo
     )
   );
 }
+
+/**
+ * The report-wide set of cost-side DFM blockers as locatable `IndexedIssue`
+ * rows: `costBlockerLocators` per estimate, then merged ACROSS estimates by
+ * identity (`code|message`) with the face samples unioned — so a blocker that
+ * appears on several costed processes (e.g. the make-now route and the tooling
+ * route) surfaces once, carrying every face it touches. Each row keeps its
+ * first estimate's `cost:`-namespaced key, distinct from the analysis panel's
+ * dfm-scope keys, so a cost-view selection never collides with a DFM-finding
+ * one. Returns [] for a report with no relinked blockers. This is the single
+ * source the hero merges into its shared selection state, so the key it renders
+ * a Locate button for is the key the CadViewer highlight resolves.
+ */
+export function reportCostBlockerLocators(
+  estimates: readonly CostEstimate[]
+): IndexedIssue[] {
+  const seen = new Map<string, IndexedIssue>();
+  for (const estimate of estimates) {
+    for (const row of costBlockerLocators(estimate)) {
+      const id = `${row.issue.code}|${row.issue.message}`;
+      const existing = seen.get(id);
+      if (existing) {
+        existing.faces = Array.from(new Set([...existing.faces, ...row.faces]));
+      } else {
+        seen.set(id, row);
+      }
+    }
+  }
+  return Array.from(seen.values());
+}
