@@ -257,6 +257,83 @@
   color-scheme: dark;
 }
 
+/* ════════════════════════════════════════════════════════════════════════
+   STAGE register (D5) — the "staged hero" re-token. Semantic NAMES are
+   unchanged (80% of the tree consumes `bg-card` / `text-foreground` /
+   `border-prov-*` untouched); only the VALUES move onto the stage ramp.
+
+   GATED: applies only under `[data-stage]` on <html>, emitted by the root
+   layout when `NEXT_PUBLIC_STAGE_UI` is on. Flag-off = no attribute = today's
+   graphite UI, byte-identical. Marketing keeps its identity: the `.cv-paper` /
+   `.cv-twilight` locks set `--cv-*` on a nearer ancestor, so their subtrees win
+   by proximity even with the stage vars sitting on <html>.
+
+   Dark-viewport is native to CAD work, so the stage ramp is dark regardless of
+   the light/dark pin (D5: light mode DEFERRED post-v1).
+   ════════════════════════════════════════════════════════════════════════ */
+[data-stage] {
+  /* Surfaces — the stage ramp. stage-0 floor · stage-1 riser · translucent
+     panel (backdrop blur applied by the surfaces that opt in) · hairline line. */
+  --cv-canvas:            #0c0e10;              /* stage-0 */
+  --cv-background:        #14171a;              /* stage-1 */
+  --cv-card:              rgba(16, 19, 22, 0.78); /* panel */
+  --cv-card-raised:       #181b1e;
+  --cv-foreground:        #f4f2ee;              /* warm white — never pure */
+  --cv-muted:             #14171a;
+  --cv-muted-foreground:  #a6acaf;
+  --cv-subtle-foreground: #61686c;
+  --cv-border:            #252a2f;              /* line */
+  --cv-border-strong:     #333a40;
+  --cv-ring:              #f97316;              /* molten focus */
+
+  /* Accent — molten cost (the one hot accent; #F97316 → #FFC06A). */
+  --cv-primary:            #f97316;
+  --cv-primary-foreground: #0c0e10;             /* deep ink on the molten fill */
+  --cv-primary-hover:      #fb8c3c;
+  --cv-accent-subtle:        #241407;
+  --cv-accent-subtle-border: #3d2410;
+  --cv-accent-text:          #ffc06a;
+
+  /* Severity lane — ERROR crimson · WARN amber · INFO steel; PASS = VALIDATED
+     brass (solid/brass = validated, per the truths). */
+  --cv-pass: #cfa84e; --cv-pass-bg: #221b0c; --cv-pass-border: #4a3c18;
+  --cv-warn: #e5a83b; --cv-warn-bg: #241c0e; --cv-warn-border: #574318;
+  --cv-fail: #e05252; --cv-fail-bg: #241312; --cv-fail-border: #5a2b28;
+  --cv-info: #8fa0a6; --cv-info-bg: #161a1c; --cv-info-border: #2e353a;
+
+  /* Provenance — held apart from the accent. Fill = grounded; hollow = a guess. */
+  --cv-prov-measured: #4fb3bf; --cv-prov-measured-bg: #08252a; --cv-prov-measured-border: #12454c;
+  --cv-prov-shop:     #d08a4c; --cv-prov-shop-bg:     #241812; --cv-prov-shop-border:     #4c3620;
+  --cv-prov-user:     #9d8cff; --cv-prov-user-bg:     #191634; --cv-prov-user-border:     #322b62;
+  --cv-prov-default:  #78828a; --cv-prov-default-bg:  #161a1c; --cv-prov-default-border:  #2e353a;
+
+  /* Confidence / data-quality track — molten fill on a hairline track. */
+  --cv-band-track: #20252a;
+  --cv-band-fill:  #f97316;
+  --cv-tick:       #61686c;
+
+  color-scheme: dark;
+}
+
+/* Stage typography — APP SCOPE ONLY (marketing keeps Geist). Emitted on the
+   authed-app wrapper (`[data-stage-type]`) by the (app) layout when the flag is
+   on; the `@fontsource-variable/*` @font-faces are imported there too, so a
+   marketing visitor never even downloads them. Re-reading `--font-sans` here is
+   required — plain inherited text keeps the ancestor's computed family unless a
+   descendant re-references the (now-overridden) var. */
+[data-stage-type] {
+  --font-sans: "Instrument Sans Variable", var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
+  font-family: var(--font-sans);
+}
+
+/* Tabular figures for any digit column that isn't already `.num` / `.readout`
+   (the evidence reads aligned; D5: `tnum` everywhere digits column). */
+.tnum {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1;
+}
+
 /* ─────────────────────────────────────────────────────────────────────────
    Base layer
    ───────────────────────────────────────────────────────────────────────── */

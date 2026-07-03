@@ -7,10 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test src/lib/dfm-scope.test.ts src/lib/cost-decision.test.ts src/lib/breakeven.test.ts src/lib/cost-views.test.ts",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test src/lib/dfm-scope.test.ts src/lib/cost-decision.test.ts src/lib/breakeven.test.ts src/lib/cost-views.test.ts src/lib/tempo-core.test.ts",
     "test:e2e": "node scripts/e2e-smoke.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/instrument-sans": "^5.2.8",
+    "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@radix-ui/react-dialog": "^1.1.17",
     "@radix-ui/react-dropdown-menu": "^2.1.18",
     "@radix-ui/react-label": "^2.1.10",

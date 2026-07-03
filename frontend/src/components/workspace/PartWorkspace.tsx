@@ -65,6 +65,7 @@ import {
 } from "@/components/cost/CostOptionsForm";
 import { RoleLens, CalibrationBar, roleById, type RoleId } from "@/components/glass-box";
 import { useInstrumentChrome, type PartFact } from "@/components/instrument/instrument-chrome";
+import { STAGE_UI } from "@/lib/stage-flag";
 
 const CadViewer = dynamic(() => import("@/components/ui/cad-viewer"), {
   ssr: false,
@@ -75,14 +76,25 @@ const CadViewer = dynamic(() => import("@/components/ui/cad-viewer"), {
   ),
 });
 
-/* Cool face-highlight hues that read on the machined mesh under graphite. */
-const SEVERITY_HEX: Record<string, string> = {
-  fail: "#e0736b",
-  warn: "#d9a441",
-  info: "#4c90f0",
-  pass: "#3fb37f",
-  neutral: "#93a1b3",
-};
+/* Face-highlight hues that read on the machined mesh. Stage register: the D5
+   severity lane (ERROR crimson · WARN amber · INFO steel) with brass = validated
+   / default neutral steel; legacy: the cool-graphite tones. Gated on the flag so
+   flag-off is byte-identical. */
+const SEVERITY_HEX: Record<string, string> = STAGE_UI
+  ? {
+      fail: "#e05252",
+      warn: "#e5a83b",
+      info: "#8fa0a6",
+      pass: "#cfa84e",
+      neutral: "#78828a",
+    }
+  : {
+      fail: "#e0736b",
+      warn: "#d9a441",
+      info: "#4c90f0",
+      pass: "#3fb37f",
+      neutral: "#93a1b3",
+    };
 
 const ACCEPT = ".stl,.step,.stp";
 
