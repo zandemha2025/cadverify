@@ -9,11 +9,10 @@
 Sprint 0 · W1 tenancy steps 1–3 (org/team/membership, RBAC superadmin split, route threading w/ PROVEN cross-tenant isolation) · Findings-API deepening · Frontend v1 FE-1..FE-5 (three doors, part hero on real data) · E-now wave 1 (cost credibility, DEFAULT-tagged, validated=False) · W1 Catalog API (`backend/src/api/catalog.py`, org-scoped read surface).
 
 ## IN FLIGHT (gate when it notifies)
-1. **feat/w5-plumbing** — route-back IN PROGRESS (agent `a258cec94d4e9699d`). Original build FAILED verify: served "measured-residual" band centered on UNCORRECTED baseline while residuals measured on CORRECTED predictions → validated band excluded true cost 0/11. Fix: apply persisted `calibration.factor_for(process)` to the point estimate feeding `confidence_interval` (estimate.py:306-308 via routes.py:715-720 / groundtruth_service load_served_residual_model which was discarding the factor) → verifier confirmed coverage → 11/11; + a NEW coverage test (must fail pre-fix, pass post). validated stays False w/o real ground truth (byte-identical). GATE when it returns: re-verify coverage crux + byte-identical-no-groundtruth + no new failures beyond the 24 env.
+1. **W3 portfolio cost** (workflow just launched) — batch-cost job type + portfolio roll-up (savings ranking). Gate both verifiers; the FE portfolio door's honest "coming" savings state becomes real once this lands.
 
-## DONE since last handoff (already merged to prod-line dev)
-- **feat/findings-fe-bind** MERGED (68f0bb8) — cost-blocker locate wired into live path.
-- **feat/catalog-ui** MERGED (042bfe3) — catalog grid on real /catalog endpoint. (frontend verify in flight bzyj4ffwp; ff prod when green.)
+## DONE this session (all merged to prod `0ba3aaf`)
+- **feat/findings-fe-bind** (68f0bb8) · **feat/catalog-ui** (042bfe3, 168/0 fe) · **feat/w5-plumbing** (0ba3aaf) — flywheel persists; band-incoherence bug (validated band excluded truth 0/17) fixed w/ calibration-factor point correction + coverage regression test; validated=True ONLY from real residuals, byte-identical when none. E-now wave1 + W1 Catalog API also prod.
 
 ## RECURRING GOTCHA — package.json merge conflict
 Every frontend branch conflicts on `frontend/package.json` "test" script (each adds `--test src/lib/X.test.ts` files). Resolve by UNION of the `--test` file list (keep all test files from both sides), rebuild ONE test line, validate JSON. A crude regex once leaked a branch-name past the closing quote → JSON invalid → npm blows up. After resolving: `python3 -c "import json;json.load(open('frontend/package.json'))"` before committing.
