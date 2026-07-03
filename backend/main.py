@@ -30,6 +30,7 @@ from src.api.admin_routes import router as admin_router
 from src.api.routes import router
 from src.api.cost_decisions import public_cost_share_router, router as cost_decisions_router
 from src.api.catalog import router as catalog_router
+from src.api.rate_library import router as rate_library_router
 from src.api.groundtruth import router as groundtruth_router
 from src.api.share import public_share_router, share_router
 from src.auth.keys_api import router as keys_router
@@ -201,6 +202,10 @@ app.include_router(cost_decisions_router, prefix="/api/v1/cost-decisions")
 app.include_router(public_cost_share_router, prefix="/s")
 # Catalog read surface (W1 step 4): the org-scoped parts×decisions grid.
 app.include_router(catalog_router, prefix="/api/v1/catalog", tags=["catalog"])
+# Governed rate-library (W4 slice 1): versioned, effective-dated rate-card asset.
+app.include_router(
+    rate_library_router, prefix="/api/v1/rate-library", tags=["rate-library"]
+)
 app.include_router(
     groundtruth_router, prefix="/api/v1/ground-truth", tags=["ground-truth"]
 )

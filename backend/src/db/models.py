@@ -685,3 +685,77 @@ class GroundTruthRecordRow(Base):
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+# ---------------------------------------------------------------------------
+# W4 governed libraries (migration 0013): the versioned rate-card asset
+# ---------------------------------------------------------------------------
+
+
+class RateCardVersion(Base):
+    """A governed rate-card asset — a versioned, effective-dated snapshot of an
+    org's cost rate table (W4 governed libraries, slice 1).
+
+    Replaces "the 487-line hardcoded ``RATE_CARD_V0`` dict with no API at all"
+    (long-horizon-plan §W4 / arch audit) with a DB-backed asset an org admin can
+    draft, review, and PUBLISH with an effective date. ``payload`` is a full
+    ``RATE_CARD_V0``-shaped table; the costing engine reads the version *effective
+    at the estimate time* as its base table instead of the hardcoded default.
+
+    HONESTY (non-negotiable rule #1/#2): a governed rate card is still a table of
+    DEFAULT assumptions — NOT a claim of measured truth. Adopting one changes
+    which default numbers an org uses; it never flips a decision to ``validated``
+    (that comes only from real ground-truth residuals, W5). Nothing here launders
+    an assumption into a fact.
+
+    Versioning / effective-dating (one non-overlapping timeline per org):
+      * ``version`` is monotonic per org (1, 2, 3…), unique per org.
+      * ``status`` is ``draft`` | ``published`` | ``archived``.
+      * Publishing a version stamps ``effective_from`` (now, or a caller-supplied
+        future instant) and closes the previously-open published version's
+        ``effective_to`` to that instant — so at most one published version is in
+        effect at any time. Resolution picks the published row with
+        ``effective_from <= as_of`` and (``effective_to IS NULL`` or ``> as_of``).
+    """
+
+    __tablename__ = "rate_card_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "version", name="uq_rate_card_versions_org_version"
+        ),
+        Index("ix_rate_card_versions_org_status", "org_id", "status"),
+        Index("ix_rate_card_versions_org_effective", "org_id", "effective_from"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="draft"
+    )
+    # Full RATE_CARD_V0-shaped rate table (validated on publish).
+    payload: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    change_note: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=""
+    )
+    effective_from: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    effective_to: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    published_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )

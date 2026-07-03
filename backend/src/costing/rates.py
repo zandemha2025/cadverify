@@ -512,15 +512,26 @@ def _apply_override(data: dict, raw_key: str, value) -> None:
 def build_rate_card(overrides: dict | None = None, *,
                     shop_overrides: dict | None = None,
                     shop_name: "str | None" = None,
-                    shop_region: "str | None" = None) -> RateCard:
-    """Deep-copy the default card, bind the active SHOP profile (if any), then
+                    shop_region: "str | None" = None,
+                    base_rate_table: dict | None = None) -> RateCard:
+    """Deep-copy the base card, bind the active SHOP profile (if any), then
     apply ad-hoc USER overrides on top.
 
     Precedence: DEFAULT (card) < SHOP (shop_overrides) < USER (overrides). A key
     set by both the shop and an ad-hoc override resolves to USER (the buyer
     explicitly overrode their own shop default for this quote).
+
+    ``base_rate_table`` (W4 governed libraries): when supplied, it is the base
+    DEFAULT table instead of the hardcoded ``RATE_CARD_V0`` — a governed,
+    versioned, effective-dated rate card an org has published. ``None`` (the
+    default) uses ``RATE_CARD_V0`` verbatim, so the pre-W4 behaviour is
+    byte-identical. A governed card is still a table of DEFAULT assumptions: it
+    changes *which* default numbers are used, never the provenance semantics —
+    nothing here is presented as measured/validated.
     """
-    data = copy.deepcopy(RATE_CARD_V0)
+    data = copy.deepcopy(
+        base_rate_table if base_rate_table is not None else RATE_CARD_V0
+    )
     data.setdefault("_tooling_flat", {})
     data.setdefault("material_prices", {})
     shop_keys: set = set()

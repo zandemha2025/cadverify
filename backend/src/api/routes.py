@@ -725,6 +725,20 @@ async def _run_cost_decision(
             if calibration is not None:
                 options.calibration = calibration
 
+            # ── W4 governed rate library ────────────────────────────────────
+            # If RATE_LIBRARY_ENABLED is on AND the org has a PUBLISHED rate card
+            # in effect now, use it as the base DEFAULT table under shop/user
+            # overrides. Flag off / no published card => None => hardcoded
+            # RATE_CARD_V0 => byte-identical to pre-W4. A governed card is a table
+            # of DEFAULT assumptions — provenance stays DEFAULT, never validated.
+            from src.services.rate_library_service import (
+                resolve_rate_table_for_org,
+            )
+
+            base_table = await resolve_rate_table_for_org(session, cal_org_id)
+            if base_table is not None:
+                options.base_rate_table = base_table
+
     def _run():
         result, m, features = _run_cost_engine(mesh, file.filename or "unknown")
         return estimate_decision(result, m, features, options)

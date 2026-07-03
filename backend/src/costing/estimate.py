@@ -55,6 +55,12 @@ class EstimateOptions:
     # centred coherently. Bound ONLY alongside a REAL residual_model; None
     # (default) => point uncorrected => byte-identical pre-data behaviour.
     calibration: object = None
+    # W4 governed libraries: a full RATE_CARD_V0-shaped base table resolved from
+    # the org's PUBLISHED, effective-dated rate card. When set, it replaces the
+    # hardcoded ``RATE_CARD_V0`` as the DEFAULT layer under shop/user overrides.
+    # None (default) => the hardcoded default => byte-identical pre-W4 behaviour.
+    # A governed card is still a table of DEFAULT assumptions (never validated).
+    base_rate_table: dict | None = None
 
 
 @dataclass
@@ -147,7 +153,8 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
               else options.region)
     rates = build_rate_card(options.rate_overrides, shop_overrides=shop_overrides,
                             shop_name=(shop.name if shop is not None else None),
-                            shop_region=shop_region)
+                            shop_region=shop_region,
+                            base_rate_table=options.base_rate_table)
 
     # engine feasibility table (all 21 processes), with costed flag
     feas = []
