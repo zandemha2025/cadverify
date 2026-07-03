@@ -13,6 +13,7 @@ import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { cn } from "@/lib/utils";
 import { STAGE_UI } from "@/lib/stage-flag";
+import { computeHighlightVertexColors } from "@/lib/highlight-colors";
 
 /* Non-highlighted faces keep a machined tint when vertex-colouring is on (i.e.
    during DFM inspection) so the flagged faces still pop against them. Stage
@@ -49,6 +50,7 @@ function STLModel({
 }) {
   const geometry = useLoader(STLLoader, url);
   const meshRef = useRef<THREE.Mesh>(null);
+  const materialRef = useRef<THREE.MeshStandardMaterial>(null);
   const hasHighlights = !!highlightFaces && highlightFaces.length > 0;
   const highlight = useMemo(() => new THREE.Color(highlightColor), [highlightColor]);
 
@@ -75,28 +77,31 @@ function STLModel({
     if (!geometry) return;
     const pos = geometry.getAttribute("position");
     if (!pos) return;
+    const material = materialRef.current;
     if (!hasHighlights) {
       geometry.deleteAttribute("color");
+      // R3F just flipped `material.vertexColors` back to false via a bare
+      // assignment; force the shader to recompile so it stops sampling the
+      // colour channel we just deleted.
+      if (material) material.needsUpdate = true;
       return;
     }
-    const count = pos.count;
-    const colors = new Float32Array(count * 3);
-    for (let v = 0; v < count; v++) {
-      colors[v * 3] = BASE_COLOR.r;
-      colors[v * 3 + 1] = BASE_COLOR.g;
-      colors[v * 3 + 2] = BASE_COLOR.b;
-    }
-    for (const f of highlightFaces!) {
-      for (let k = 0; k < 3; k++) {
-        const v = f * 3 + k;
-        if (v < count) {
-          colors[v * 3] = highlight.r;
-          colors[v * 3 + 1] = highlight.g;
-          colors[v * 3 + 2] = highlight.b;
-        }
-      }
-    }
-    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    const colors = computeHighlightVertexColors(
+      pos.count,
+      highlightFaces!,
+      BASE_COLOR,
+      highlight
+    );
+    const colorAttribute = new THREE.BufferAttribute(colors, 3);
+    colorAttribute.needsUpdate = true;
+    geometry.setAttribute("color", colorAttribute);
+    // ROOT-CAUSE FIX (locate highlight never rendered): @react-three/fiber's
+    // applyProps sets `material.vertexColors = true` with a plain assignment and
+    // never flips `material.needsUpdate`, so three.js keeps the cached program
+    // that was compiled WITHOUT the `USE_COLOR` define and silently ignores this
+    // colour attribute — the flagged faces stay the base tone. Flipping
+    // needsUpdate forces the program rebuild so the vertex colours actually paint.
+    if (material) material.needsUpdate = true;
   }, [geometry, hasHighlights, highlightFaces, highlight]);
 
   // Hero camera frame — a well-composed 3/4 with a gentle downward tilt, pulled
@@ -133,6 +138,7 @@ function STLModel({
             Inspecting (highlights on): the material relaxes to a matte technical
             read so the flagged faces stay unmistakable. */}
         <meshStandardMaterial
+          ref={materialRef}
           color={hasHighlights ? "#ffffff" : "#bcc6d2"}
           vertexColors={hasHighlights}
           metalness={hasHighlights ? 0.35 : 0.9}
