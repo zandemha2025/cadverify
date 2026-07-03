@@ -57,9 +57,12 @@ async def create_sam3d_job(
         return existing
 
     # Create new job
+    from src.auth.org_context import resolve_org
+
     job = Job(
         ulid=str(ULID()),
         user_id=user_id,
+        org_id=await resolve_org(session, user_id),
         analysis_id=analysis_id,
         job_type="sam3d",
         status="queued",

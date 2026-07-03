@@ -66,8 +66,16 @@ async def log_action(
     """Insert an audit_log row. Swallows DB errors to avoid breaking requests."""
     try:
         async with get_session_factory()() as session:
+            from src.auth.org_context import resolve_org
+
+            org_id = (
+                await resolve_org(session, user_id)
+                if user_id is not None
+                else None
+            )
             entry = AuditLog(
                 user_id=user_id,
+                org_id=org_id,
                 user_email=user_email,
                 action=action,
                 resource_type=resource_type,

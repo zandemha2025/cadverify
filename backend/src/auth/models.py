@@ -46,8 +46,15 @@ async def upsert_user(
                 {"e": email, "el": email_lower, "g": google_sub, "d": disposable_flag},
             )
         ).first()
+        # W1: guarantee the (possibly brand-new) user has a personal org +
+        # admin membership before any of their rows are written. Idempotent:
+        # a returning/existing user already has one, so this is a no-op read.
+        from src.auth.org_context import ensure_personal_org
+
+        uid = int(row[0])
+        await ensure_personal_org(s, uid, email)
         await s.commit()
-        return int(row[0])
+        return uid
 
 
 async def create_password_user(
@@ -73,8 +80,18 @@ async def create_password_user(
                 {"e": email, "el": email_lower, "ph": password_hash, "d": disposable_flag},
             )
         ).first()
+        if row is None:
+            # email_lower already existed -> no new user, nothing to provision.
+            await s.commit()
+            return None
+        # W1: provision the new user's personal org before returning (see
+        # upsert_user). Idempotent get-or-create.
+        from src.auth.org_context import ensure_personal_org
+
+        uid = int(row[0])
+        await ensure_personal_org(s, uid, email)
         await s.commit()
-        return int(row[0]) if row else None
+        return uid
 
 
 async def get_login_credentials(
@@ -123,14 +140,20 @@ async def update_password_hash(user_id: int, password_hash: str) -> None:
 async def create_api_key(
     user_id: int, name: str, prefix: str, hmac_idx: str, secret_hash: str
 ) -> int:
+    from src.auth.org_context import resolve_org
+
     async with _session()() as s:
+        # api_keys.org_id is NOT NULL (W1). The caller always holds a provisioned
+        # org by now (signup provisions one; the 0009 backfill covers existing
+        # users), so resolve_org returns it.
+        org_id = await resolve_org(s, user_id)
         row = (
             await s.execute(
                 text(
-                    "INSERT INTO api_keys (user_id, name, prefix, hmac_index, secret_hash) "
-                    "VALUES (:u, :n, :p, :h, :s) RETURNING id"
+                    "INSERT INTO api_keys (user_id, org_id, name, prefix, hmac_index, secret_hash) "
+                    "VALUES (:u, :o, :n, :p, :h, :s) RETURNING id"
                 ),
-                {"u": user_id, "n": name, "p": prefix, "h": hmac_idx, "s": secret_hash},
+                {"u": user_id, "o": org_id, "n": name, "p": prefix, "h": hmac_idx, "s": secret_hash},
             )
         ).first()
         await s.commit()

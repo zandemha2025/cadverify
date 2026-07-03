@@ -101,9 +101,12 @@ async def _persist_analysis(
     duration_ms: float,
 ) -> Analysis:
     """Insert a new Analysis row and flush to get the assigned id."""
+    from src.auth.org_context import resolve_org
+
     analysis = Analysis(
         ulid=str(ULID()),
         user_id=user.user_id,
+        org_id=await resolve_org(session, user.user_id),
         api_key_id=user.api_key_id,
         mesh_hash=mesh_hash,
         process_set_hash=process_set_hash,
@@ -136,8 +139,11 @@ async def _write_usage_event(
     face_count: int | None,
 ) -> None:
     """Append a usage_events row (same transaction as analysis persist)."""
+    from src.auth.org_context import resolve_org
+
     event = UsageEvent(
         user_id=user.user_id,
+        org_id=await resolve_org(session, user.user_id),
         api_key_id=user.api_key_id,
         event_type=event_type,
         analysis_id=analysis_id,

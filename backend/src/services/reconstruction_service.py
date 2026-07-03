@@ -260,9 +260,12 @@ async def create_reconstruction_job(
         validate_image(img_bytes, content_type)
 
     # Create Job row
+    from src.auth.org_context import resolve_org
+
     job = Job(
         ulid=str(ULID()),
         user_id=user.user_id,
+        org_id=await resolve_org(session, user.user_id),
         job_type="reconstruction",
         status="queued",
         params_json={

@@ -1,15 +1,25 @@
 """ORM mapped classes for all database tables.
 
 Tables:
-  - users              (Phase 2, migration 0001)
-  - api_keys           (Phase 2, migration 0001)
-  - analyses           (Phase 3, migration 0002)
-  - jobs               (Phase 3, migration 0002 -- schema only, populated in Phase 7)
-  - usage_events       (Phase 3, migration 0002)
-  - batches            (Phase 9, migration 0004)
-  - batch_items        (Phase 9, migration 0004)
-  - webhook_deliveries (Phase 9, migration 0004)
-  - audit_log          (Phase 12, migration 0006)
+  - organizations      (W1, migration 0009)
+  - teams              (W1, migration 0009 -- created but unused in v1 flows)
+  - memberships        (W1, migration 0009)
+  - users              (Phase 2, migration 0001; +current_org_id in 0009)
+  - api_keys           (Phase 2, migration 0001; +org_id in 0009)
+  - analyses           (Phase 3, migration 0002; +org_id in 0009)
+  - cost_decisions     (Phase 2 gap, migration 0008; +org_id in 0009)
+  - jobs               (Phase 3, migration 0002 -- schema only, populated in Phase 7; +org_id in 0009)
+  - usage_events       (Phase 3, migration 0002; +org_id in 0009)
+  - batches            (Phase 9, migration 0004; +org_id in 0009)
+  - batch_items        (Phase 9, migration 0004; +org_id in 0009)
+  - webhook_deliveries (Phase 9, migration 0004; +org_id in 0009)
+  - audit_log          (Phase 12, migration 0006; +org_id in 0009)
+
+W1 tenancy note (migration 0009): every user-scoped row carries ``org_id``
+(FK -> organizations.id, a ULID string). The eight pure data tables have it
+NOT NULL; ``users.current_org_id`` (the active-org pointer) and
+``audit_log.org_id`` (system events have no user) are intentionally nullable.
+Nothing filters by ``org_id`` yet -- this is a pure foundation layer (W1 step 1).
 """
 from __future__ import annotations
 
@@ -36,12 +46,103 @@ from src.db.engine import Base
 
 
 # ---------------------------------------------------------------------------
+# W1 tenancy tables (migration 0009)
+# ---------------------------------------------------------------------------
+
+
+class Organization(Base):
+    """A tenant. Every user-scoped row is owned by exactly one organization.
+
+    In v1 each user gets a personal org at signup (or via the 0009 backfill for
+    pre-existing users); multi-user orgs / invites arrive with RBAC (W1 step 2).
+    ``id`` is a ULID string PK (matches the spec's ``id (ulid pk)``), so all
+    ``org_id`` FK columns elsewhere are ``Text``.
+    """
+
+    __tablename__ = "organizations"
+
+    id: Mapped[str] = mapped_column(
+        Text, primary_key=True, default=lambda: str(ULID())
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    slug: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    # relationships
+    teams: Mapped[List[Team]] = relationship(
+        back_populates="organization", lazy="selectin"
+    )
+    memberships: Mapped[List[Membership]] = relationship(
+        back_populates="organization", lazy="selectin"
+    )
+
+
+class Team(Base):
+    """A sub-group within an org. Created in v1 but unused by any flow yet."""
+
+    __tablename__ = "teams"
+    __table_args__ = (Index("ix_teams_org_id", "org_id"),)
+
+    id: Mapped[str] = mapped_column(
+        Text, primary_key=True, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    # relationships
+    organization: Mapped[Organization] = relationship(back_populates="teams")
+
+
+class Membership(Base):
+    """Binds a user to an org with an org-scoped role.
+
+    ``(org_id, user_id)`` is unique. ``org_role`` is one of admin/member/viewer
+    (a CHECK constraint, mirroring the platform ``users.role`` check from 0005).
+    This is the row ``resolve_org()`` reads to answer "which org owns this user".
+    """
+
+    __tablename__ = "memberships"
+    __table_args__ = (
+        UniqueConstraint("org_id", "user_id", name="uq_memberships_org_user"),
+        Index("ix_memberships_user_id", "user_id"),
+        Index("ix_memberships_org_id", "org_id"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        Text, primary_key=True, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    org_role: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="member"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    # relationships
+    organization: Mapped[Organization] = relationship(back_populates="memberships")
+
+
+# ---------------------------------------------------------------------------
 # Phase 2 tables (mirror 0001 migration)
 # ---------------------------------------------------------------------------
 
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (Index("ix_users_current_org_id", "current_org_id"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     email: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
@@ -60,6 +161,13 @@ class User(Base):
         Text, server_default="analyst", nullable=False
     )
     password_hash: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # W1: the user's active org (pointer). Intentionally NULLABLE — it breaks
+    # the users<->organizations bootstrap cycle at signup, and accommodates the
+    # future superadmin split (W1 step 2). Not the tenancy source of truth; the
+    # ``memberships`` row is (see resolve_org).
+    current_org_id: Mapped[Optional[str]] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True
+    )
 
     # relationships
     api_keys: Mapped[List[ApiKey]] = relationship(back_populates="user", lazy="selectin")
@@ -72,10 +180,14 @@ class User(Base):
 
 class ApiKey(Base):
     __tablename__ = "api_keys"
+    __table_args__ = (Index("ix_api_keys_org_id", "org_id"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(Text, nullable=False, server_default="Default")
     prefix: Mapped[str] = mapped_column(Text, nullable=False)
@@ -104,6 +216,9 @@ class Analysis(Base):
     __tablename__ = "analyses"
     __table_args__ = (
         Index("ix_analyses_user_created", "user_id", "created_at"),
+        # W1 hot-table composite: org_id is the leading column so it also
+        # serves org_id-only lookups (no separate single-column index needed).
+        Index("ix_analyses_org_user", "org_id", "user_id"),
         UniqueConstraint(
             "user_id",
             "mesh_hash",
@@ -125,6 +240,9 @@ class Analysis(Base):
     )
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
     api_key_id: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("api_keys.id", ondelete="SET NULL"), nullable=True
@@ -170,6 +288,8 @@ class CostDecision(Base):
     __tablename__ = "cost_decisions"
     __table_args__ = (
         Index("ix_cost_decisions_user_created", "user_id", "created_at"),
+        # W1 hot-table composite (org_id leading; see Analysis note).
+        Index("ix_cost_decisions_org_user", "org_id", "user_id"),
         UniqueConstraint(
             "user_id",
             "mesh_hash",
@@ -190,6 +310,9 @@ class CostDecision(Base):
     )
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
     api_key_id: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("api_keys.id", ondelete="SET NULL"), nullable=True
@@ -223,6 +346,10 @@ class CostDecision(Base):
 
 class Job(Base):
     __tablename__ = "jobs"
+    __table_args__ = (
+        # W1 hot-table composite (org_id leading; see Analysis note).
+        Index("ix_jobs_org_user", "org_id", "user_id"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     ulid: Mapped[str] = mapped_column(
@@ -230,6 +357,9 @@ class Job(Base):
     )
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
     analysis_id: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("analyses.id", ondelete="SET NULL"), nullable=True
@@ -259,11 +389,15 @@ class UsageEvent(Base):
     __table_args__ = (
         Index("ix_usage_events_user_created", "user_id", "created_at"),
         Index("ix_usage_events_apikey_created", "api_key_id", "created_at"),
+        Index("ix_usage_events_org_id", "org_id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
     api_key_id: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("api_keys.id", ondelete="SET NULL"), nullable=True
@@ -289,6 +423,8 @@ class Batch(Base):
     __tablename__ = "batches"
     __table_args__ = (
         Index("ix_batches_user_created", "user_id", "created_at"),
+        # W1 hot-table composite (org_id leading; see Analysis note).
+        Index("ix_batches_org_user", "org_id", "user_id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -297,6 +433,9 @@ class Batch(Base):
     )
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
     api_key_id: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("api_keys.id", ondelete="SET NULL"), nullable=True
@@ -347,6 +486,7 @@ class BatchItem(Base):
     __table_args__ = (
         Index("ix_batch_items_batch_status", "batch_id", "status"),
         Index("ix_batch_items_batch_created", "batch_id", "created_at"),
+        Index("ix_batch_items_org_id", "org_id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -355,6 +495,11 @@ class BatchItem(Base):
     )
     batch_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("batches.id", ondelete="CASCADE"), nullable=False
+    )
+    # W1: no user_id on this table — org_id is derived from the parent batch
+    # (in the 0009 backfill and in create_batch_items).
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
     filename: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(
@@ -392,11 +537,17 @@ class WebhookDelivery(Base):
     __tablename__ = "webhook_deliveries"
     __table_args__ = (
         Index("ix_webhook_deliveries_retry", "status", "next_retry_at"),
+        Index("ix_webhook_deliveries_org_id", "org_id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     batch_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("batches.id", ondelete="CASCADE"), nullable=False
+    )
+    # W1: no user_id on this table — org_id is derived from the parent batch
+    # (in the 0009 backfill and in create_webhook_delivery).
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
     event_type: Mapped[str] = mapped_column(Text, nullable=False)
     payload_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
@@ -432,6 +583,7 @@ class AuditLog(Base):
         Index("ix_audit_log_timestamp", "timestamp"),
         Index("ix_audit_log_user_timestamp", "user_id", "timestamp"),
         Index("ix_audit_log_action_timestamp", "action", "timestamp"),
+        Index("ix_audit_log_org_id", "org_id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -440,6 +592,12 @@ class AuditLog(Base):
     )
     user_id: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # W1: NULLABLE — system/unauthenticated audit events have no user, hence no
+    # org. User-attributed rows are stamped (backfill + log_action). ondelete
+    # SET NULL: audit history survives org deletion (mirrors user_id).
+    org_id: Mapped[Optional[str]] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True
     )
     user_email: Mapped[str] = mapped_column(Text, nullable=False)
     action: Mapped[str] = mapped_column(Text, nullable=False)

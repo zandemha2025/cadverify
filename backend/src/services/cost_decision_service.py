@@ -132,9 +132,12 @@ async def persist_cost_decision(
 
     make_now, crossover, quantities = _denormalize(result_json)
 
+    from src.auth.org_context import resolve_org
+
     decision = CostDecision(
         ulid=str(ULID()),
         user_id=user.user_id,
+        org_id=await resolve_org(session, user.user_id),
         api_key_id=user.api_key_id or None,
         mesh_hash=mesh_hash,
         params_hash=params_hash,
@@ -197,9 +200,12 @@ async def record_persist_failure(
     )
     try:
         await session.rollback()
+        from src.auth.org_context import resolve_org
+
         session.add(
             UsageEvent(
                 user_id=user.user_id,
+                org_id=await resolve_org(session, user.user_id),
                 api_key_id=user.api_key_id or None,
                 event_type="cost_persist_failed",
                 mesh_hash=mesh_hash,
