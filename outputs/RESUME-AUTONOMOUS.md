@@ -8,8 +8,12 @@
 ## Landed today (all adversarially verified, honesty bugs caught+fixed)
 Sprint 0 · W1 tenancy steps 1–3 (org/team/membership, RBAC superadmin split, route threading w/ PROVEN cross-tenant isolation) · Findings-API deepening · Frontend v1 FE-1..FE-5 (three doors, part hero on real data) · E-now wave 1 (cost credibility, DEFAULT-tagged, validated=False) · W1 Catalog API (`backend/src/api/catalog.py`, org-scoped read surface).
 
-## IN FLIGHT (gate when it notifies)
-1. **W3 portfolio cost** (workflow just launched) — batch-cost job type + portfolio roll-up (savings ranking). Gate both verifiers; the FE portfolio door's honest "coming" savings state becomes real once this lands.
+## IN FLIGHT
+- Nothing building right now — all launched work is merged to prod.
+
+## NEXT UP (launch first thing, then gate)
+1. **W3 portfolio cost** — batch-cost job type + portfolio roll-up (savings ranking) over the org-scoped catalog. Current batch pipeline is DFM-only (`backend/src/jobs/batch_tasks.py` calls `run_analysis`, never cost). Reuse the arq worker + webhook infra + the groundtruth per-part×qty loop pattern. This makes the FE portfolio door's honest "coming" savings state real. Builder + 2 verifiers, isolation lens (org-scoped).
+2. Then: **E-now freeze checkpoint** → regenerate the Zoox validation packet from merged prod (engine credible + flywheel persists = both G3 prereqs met) → founder schedules the Zoox session. Then W4 governed libraries.
 
 ## DONE this session (all merged to prod `0ba3aaf`)
 - **feat/findings-fe-bind** (68f0bb8) · **feat/catalog-ui** (042bfe3, 168/0 fe) · **feat/w5-plumbing** (0ba3aaf) — flywheel persists; band-incoherence bug (validated band excluded truth 0/17) fixed w/ calibration-factor point correction + coverage regression test; validated=True ONLY from real residuals, byte-identical when none. E-now wave1 + W1 Catalog API also prod.
