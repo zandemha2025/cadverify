@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Archivo } from "next/font/google";
 import { Toaster } from "sonner";
+import { STAGE_UI } from "@/lib/stage-flag";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -41,6 +42,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      // Stage-UI gate: when NEXT_PUBLIC_STAGE_UI is on, `[data-stage]` swaps the
+      // semantic tokens onto the D5 stage register (see globals.css). Off = the
+      // attribute is omitted entirely → today's graphite UI, byte-identical.
+      data-stage={STAGE_UI ? "" : undefined}
       className={`${geistSans.variable} ${geistMono.variable} ${archivo.variable} h-full antialiased`}
       suppressHydrationWarning
     >
