@@ -2,16 +2,20 @@
 
 /**
  * RecentParts — "my recent parts" strip for the part door, straight off the REAL
- * analyses endpoint (`fetchAnalyses`, session-scoped server-side). It shows only
- * what the engine actually has: real rows, real verdicts, real timestamps — and
- * an honest empty/loading/error state, never an invented row. Each chip opens the
- * stored analysis at its real detail route.
+ * analyses list endpoint (`fetchRecentAnalyses` → `GET /api/v1/analyses`,
+ * session-scoped server-side). It binds ONLY the fields that endpoint actually
+ * returns — `id` (the ULID the detail route resolves), `filename`, `verdict`,
+ * `created_at` — via the pure `toRecentPartChip` mapper. No fabricated `ulid` /
+ * `overall_verdict`, so every chip opens a real `/analyses/{ulid}` page and every
+ * badge shows a real verdict. Honest empty/loading/error states, never an
+ * invented row.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { History } from "lucide-react";
-import { fetchAnalyses, type AnalysisSummary } from "@/lib/api";
+import { fetchRecentAnalyses } from "@/lib/api";
+import { toRecentPartChip, type RecentPartChip } from "@/lib/recent-parts";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Stagger } from "@/components/ui/motion";
@@ -34,17 +38,17 @@ type Status = "loading" | "error" | "ready";
 export function RecentParts() {
   const router = useRouter();
   const [status, setStatus] = useState<Status>("loading");
-  const [items, setItems] = useState<AnalysisSummary[]>([]);
+  const [items, setItems] = useState<RecentPartChip[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     setStatus("loading");
-    fetchAnalyses({ limit: RECENT_LIMIT })
-      .then((page) => {
+    fetchRecentAnalyses(RECENT_LIMIT)
+      .then((rows) => {
         if (cancelled) return;
-        setItems(page.analyses);
+        setItems(rows.map(toRecentPartChip));
         setStatus("ready");
       })
       .catch((e) => {
@@ -98,18 +102,18 @@ export function RecentParts() {
           <Stagger step={45} ms={280}>
             {items.map((a) => (
               <button
-                key={a.ulid}
+                key={a.id}
                 type="button"
-                onClick={() => router.push(`/analyses/${a.ulid}`)}
+                onClick={() => router.push(a.href)}
                 title={`Open ${a.filename}`}
                 className="group inline-flex max-w-full items-center gap-2 rounded-[var(--radius)] border border-border bg-card px-2.5 py-1.5 text-left transition-colors hover:border-border-strong hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <span className="num min-w-0 truncate text-xs font-medium text-foreground">
                   {a.filename}
                 </span>
-                <StatusBadge verdict={a.overall_verdict} size="sm" />
+                <StatusBadge verdict={a.verdict} size="sm" />
                 <span className="num shrink-0 text-[10px] text-subtle-foreground">
-                  {relativeTime(a.created_at)}
+                  {relativeTime(a.createdAt)}
                 </span>
               </button>
             ))}
