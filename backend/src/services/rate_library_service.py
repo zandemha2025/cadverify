@@ -124,6 +124,52 @@ def select_effective(
     return best
 
 
+def diff_payloads(a: dict, b: dict, *, _prefix: str = "") -> dict:
+    """Structural diff of two rate-table payloads: ``a`` (from) vs ``b`` (to).
+
+    Pure, recursive, and honest: only REAL leaf-level deltas are reported. A
+    key whose value is unchanged (including deeply nested, e.g.
+    ``global.labor_rate``) is never listed — no fabricated or inferred changes.
+    Recurses into nested dicts; a leaf is any non-dict value (or a dict on one
+    side and a non-dict on the other, which counts as "changed" at that path
+    rather than recursed into).
+
+    Returns ``{"changed": [...], "added": [...], "removed": [...]}`` where:
+      * ``changed`` entries are ``{"path": "a.b.c", "from": <a's value>, "to": <b's value>}``
+      * ``added``/``removed`` are dotted key paths present only in ``b``/``a``
+        respectively (reported once at the highest level they appear — a whole
+        added/removed subtree is not also descended into as more "changed" noise).
+    """
+    changed: list[dict] = []
+    added: list[str] = []
+    removed: list[str] = []
+
+    a = a if isinstance(a, dict) else {}
+    b = b if isinstance(b, dict) else {}
+
+    keys = sorted(set(a.keys()) | set(b.keys()))
+    for key in keys:
+        path = f"{_prefix}.{key}" if _prefix else key
+        in_a, in_b = key in a, key in b
+        if in_a and not in_b:
+            removed.append(path)
+            continue
+        if in_b and not in_a:
+            added.append(path)
+            continue
+        av, bv = a[key], b[key]
+        if isinstance(av, dict) and isinstance(bv, dict):
+            sub = diff_payloads(av, bv, _prefix=path)
+            changed.extend(sub["changed"])
+            added.extend(sub["added"])
+            removed.extend(sub["removed"])
+        elif av != bv:
+            changed.append({"path": path, "from": av, "to": bv})
+        # else: identical leaf — not reported (no fabricated change)
+
+    return {"changed": changed, "added": added, "removed": removed}
+
+
 # ---------------------------------------------------------------------------
 # Resolution cache (single-process; invalidated on publish)
 # ---------------------------------------------------------------------------
@@ -287,6 +333,72 @@ async def update_draft(
     if change_note is not None:
         row.change_note = change_note
     await session.flush()
+    return row
+
+
+async def discard_draft(
+    session: AsyncSession, org_id: str, version_id: int
+) -> RateCardVersion:
+    """Delete a DRAFT version outright (governance: discard, not "hide").
+
+    Only a draft may be discarded — a published or archived version is part of
+    the org's audit trail (what rates were actually in effect when) and must
+    never be deleted. 409 otherwise, mirroring the other status guards in this
+    module.
+    """
+    row = await get_version(session, org_id, version_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="version not found")
+    if row.status != "draft":
+        raise HTTPException(
+            status_code=409,
+            detail="only draft versions can be discarded; published/archived "
+            "versions are the audit trail",
+        )
+    await session.delete(row)
+    await session.flush()
+    return row
+
+
+async def archive_version(
+    session: AsyncSession, org_id: str, version_id: int
+) -> RateCardVersion:
+    """Archive a PUBLISHED version: published -> archived.
+
+    GUARD: the version currently IN EFFECT (i.e. it would resolve via
+    ``select_effective`` right now) can NOT be archived — that would strand the
+    costing engine with no published card to resolve. A superseded published
+    version (its ``effective_to`` already closed by a later publish) is fine to
+    archive. Archived rows are never returned by ``select_effective`` (it only
+    considers ``status == 'published'``), so an archived card can never
+    silently resolve as effective again.
+    """
+    row = await get_version(session, org_id, version_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="version not found")
+    if row.status != "published":
+        raise HTTPException(
+            status_code=409, detail="only published versions can be archived"
+        )
+    now = _now()
+    # Same in-effect predicate as ``select_effective``: [effective_from, effective_to)
+    # with effective_to exclusive. A superseded row (effective_to already closed
+    # and <= now) or a not-yet-started scheduled row (effective_from > now) is
+    # NOT currently in effect and may be archived; only the row actually
+    # resolving right now is guarded.
+    ef, et = row.effective_from, row.effective_to
+    currently_in_effect = (
+        ef is not None and ef <= now and (et is None or et > now)
+    )
+    if currently_in_effect:
+        raise HTTPException(
+            status_code=409,
+            detail="cannot archive the version currently in effect; "
+            "publish a replacement first",
+        )
+    row.status = "archived"
+    await session.flush()
+    invalidate(org_id)
     return row
 
 

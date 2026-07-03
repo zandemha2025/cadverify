@@ -189,3 +189,152 @@ async def test_rate_library_lifecycle_isolation_and_honesty(monkeypatch):
             {"a": org_a, "b": org_b},
         )
         await s.commit()
+
+
+@_requires_pg
+@pytest.mark.asyncio
+async def test_rate_library_governance_discard_archive_diff(monkeypatch):
+    """Discard/archive/diff against live Postgres: discard-draft-ok,
+    discard-published-409, archive-superseded-ok, archive-in-effect-409, and a
+    real cross-tenant-scoped structural diff."""
+    from httpx import ASGITransport, AsyncClient
+    from sqlalchemy import text
+    from ulid import ULID
+
+    import src.db.engine as eng
+
+    monkeypatch.setenv("RATE_LIBRARY_ENABLED", "1")
+
+    tag = uuid.uuid4().hex[:10]
+    org_a, org_b = str(ULID()), str(ULID())
+
+    async def _mk_user(s, label):
+        email = f"rlg-{tag}-{label}@example.com"
+        return int(
+            (
+                await s.execute(
+                    text(
+                        "INSERT INTO users (email, email_lower, role, auth_provider) "
+                        "VALUES (:e, :el, 'analyst', 'password') RETURNING id"
+                    ),
+                    {"e": email, "el": email.lower()},
+                )
+            ).first()[0]
+        )
+
+    async with eng.get_session_factory()() as s:
+        for oid, nm in ((org_a, f"GA {tag}"), (org_b, f"GB {tag}")):
+            await s.execute(
+                text(
+                    "INSERT INTO organizations (id, name, slug, created_at) "
+                    "VALUES (:id, :n, :sl, now())"
+                ),
+                {"id": oid, "n": nm, "sl": f"{oid[-8:].lower()}"},
+            )
+        uid_a = await _mk_user(s, "a")
+        uid_b = await _mk_user(s, "b")
+        for oid, uid in ((org_a, uid_a), (org_b, uid_b)):
+            await s.execute(
+                text(
+                    "INSERT INTO memberships (id, org_id, user_id, org_role, created_at) "
+                    "VALUES (:id, :o, :u, 'admin', now())"
+                ),
+                {"id": str(ULID()), "o": oid, "u": uid},
+            )
+        await s.commit()
+
+    app = _build_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        _act_as(app, uid_a)
+
+        # --- discard a draft: ok -------------------------------------------
+        r = await c.post("/api/v1/rate-library", json={"name": "throwaway"})
+        assert r.status_code == 200, r.text
+        draft_id = r.json()["id"]
+        r = await c.delete(f"/api/v1/rate-library/{draft_id}")
+        assert r.status_code == 200, r.text
+        # gone: 404 on subsequent read
+        r = await c.get(f"/api/v1/rate-library/{draft_id}")
+        assert r.status_code == 404
+
+        # --- publish v1, then v2 (v1 becomes superseded) --------------------
+        r = await c.post("/api/v1/rate-library", json={"name": "v1"})
+        v1 = r.json()
+        v1_id = v1["id"]
+        payload1 = v1["payload"]
+        payload1["global"]["labor_rate"] = 35.0
+        await c.patch(f"/api/v1/rate-library/{v1_id}", json={"payload": payload1})
+        r = await c.post(f"/api/v1/rate-library/{v1_id}/publish", json={})
+        assert r.status_code == 200, r.text
+
+        # discarding a PUBLISHED version is a 409 (audit trail)
+        r = await c.delete(f"/api/v1/rate-library/{v1_id}")
+        assert r.status_code == 409
+
+        r = await c.post("/api/v1/rate-library", json={"from_version_id": v1_id})
+        v2 = r.json()
+        v2_id = v2["id"]
+        payload2 = v2["payload"]
+        payload2["global"]["labor_rate"] = 55.0
+        await c.patch(f"/api/v1/rate-library/{v2_id}", json={"payload": payload2})
+
+        # archiving v1 (still in effect — v2 not yet published) is a 409
+        r = await c.post(f"/api/v1/rate-library/{v1_id}/archive", json={})
+        assert r.status_code == 409, r.text
+
+        r = await c.post(f"/api/v1/rate-library/{v2_id}/publish", json={})
+        assert r.status_code == 200, r.text  # closes v1's effective_to
+
+        # v1 is now superseded (closed) — archiving it is fine
+        r = await c.post(f"/api/v1/rate-library/{v1_id}/archive", json={})
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "archived"
+
+        # archiving v2 (currently in effect) is a 409
+        r = await c.post(f"/api/v1/rate-library/{v2_id}/archive", json={})
+        assert r.status_code == 409
+
+        # an archived version never resolves as effective
+        r = await c.get("/api/v1/rate-library/effective")
+        assert r.json()["payload"]["global"]["labor_rate"] == 55.0  # v2, not archived v1
+
+        # --- real structural diff between v1 (35.0) and v2 (55.0) ----------
+        r = await c.get(f"/api/v1/rate-library/{v1_id}/diff/{v2_id}")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        changed = {c_["path"]: c_ for c_ in body["diff"]["changed"]}
+        assert changed["global.labor_rate"] == {
+            "path": "global.labor_rate",
+            "from": 35.0,
+            "to": 55.0,
+        }
+
+        # --- cross-tenant isolation on discard/archive/diff -----------------
+        _act_as(app, uid_b)
+        r = await c.delete(f"/api/v1/rate-library/{v2_id}")
+        assert r.status_code == 404
+        r = await c.post(f"/api/v1/rate-library/{v2_id}/archive", json={})
+        assert r.status_code == 404
+        r = await c.get(f"/api/v1/rate-library/{v1_id}/diff/{v2_id}")
+        assert r.status_code == 404
+
+    # --- cleanup -------------------------------------------------------------
+    async with eng.get_session_factory()() as s:
+        await s.execute(
+            text("DELETE FROM rate_card_versions WHERE org_id IN (:a, :b)"),
+            {"a": org_a, "b": org_b},
+        )
+        await s.execute(
+            text("DELETE FROM memberships WHERE org_id IN (:a, :b)"),
+            {"a": org_a, "b": org_b},
+        )
+        await s.execute(
+            text("DELETE FROM users WHERE id IN (:a, :b)"),
+            {"a": uid_a, "b": uid_b},
+        )
+        await s.execute(
+            text("DELETE FROM organizations WHERE id IN (:a, :b)"),
+            {"a": org_a, "b": org_b},
+        )
+        await s.commit()

@@ -186,6 +186,69 @@ async def update_rate_card_draft(
     return svc.serialize_version(row, include_payload=True)
 
 
+@router.delete("/{version_id}")
+@limiter.limit("60/hour;300/day")
+async def discard_rate_card_draft(
+    request: Request,
+    response: Response,
+    version_id: int,
+    ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Discard a DRAFT version. Published/archived versions are the audit
+    trail and can never be deleted (409)."""
+    org_id = await _write_org(ctx, session)
+    row = await svc.discard_draft(session, org_id, version_id)
+    await session.commit()
+    return svc.serialize_version(row)
+
+
+@router.post("/{version_id}/archive")
+@limiter.limit("60/hour;300/day")
+async def archive_rate_card(
+    request: Request,
+    response: Response,
+    version_id: int,
+    ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Archive a PUBLISHED version. Guarded: the version currently in effect
+    cannot be archived (409) — that would strand the costing engine."""
+    org_id = await _write_org(ctx, session)
+    row = await svc.archive_version(session, org_id, version_id)
+    await session.commit()
+    return svc.serialize_version(row, include_payload=True)
+
+
+@router.get("/{version_id}/diff/{other_id}")
+@limiter.limit("120/hour;600/day")
+async def diff_rate_cards(
+    request: Request,
+    response: Response,
+    version_id: int,
+    other_id: int,
+    user: AuthedUser = Depends(require_role(Role.viewer)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Structural diff between two of the caller's org's rate-card versions.
+
+    404 if either version does not exist in the caller's org (never a
+    cross-tenant read). Only real changed leaf keys are reported (path,
+    from, to); an unchanged key is never listed.
+    """
+    org_id = await resolve_org(session, user.user_id)
+    row_a = await svc.get_version(session, org_id, version_id) if org_id else None
+    row_b = await svc.get_version(session, org_id, other_id) if org_id else None
+    if row_a is None or row_b is None:
+        raise HTTPException(status_code=404, detail="version not found")
+    diff = svc.diff_payloads(row_a.payload, row_b.payload)
+    return {
+        "from": svc.serialize_version(row_a),
+        "to": svc.serialize_version(row_b),
+        "diff": diff,
+    }
+
+
 @router.post("/{version_id}/publish")
 @limiter.limit("60/hour;300/day")
 async def publish_rate_card(
