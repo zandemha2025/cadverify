@@ -32,6 +32,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.auth.org_context import caller_org_subquery
 from src.auth.rate_limit import limiter
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
@@ -71,8 +72,14 @@ async def list_cost_decisions(
     user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Paginated list of the authenticated user's saved cost decisions."""
-    stmt = select(CostDecision).where(CostDecision.user_id == user.user_id)
+    """Paginated list of the caller's organization's saved cost decisions.
+
+    W1 step 3: org-scoped (the tenant boundary) — in v1 the personal org makes
+    this identical to the old per-user list; it never leaks another org's rows.
+    """
+    stmt = select(CostDecision).where(
+        CostDecision.org_id == caller_org_subquery(user.user_id)
+    )
 
     if cursor:
         stmt = stmt.where(CostDecision.ulid < cursor)

@@ -57,6 +57,35 @@ def personal_org_name(email: str) -> str:
     return f"{local}'s Organization"
 
 
+def caller_org_subquery(user_id: int):
+    """Correlated scalar subquery → the org_id that owns ``user_id``.
+
+    W1 step 3 — the isolation predicate for every org-scoped **read**::
+
+        select(X).where(X.org_id == caller_org_subquery(user_id))
+
+    Threading the org boundary as a subquery (rather than a separate
+    ``resolve_org`` round-trip) is deliberate: each org-scoped read stays a
+    SINGLE ``session.execute`` — byte-for-byte the same one-query-per-read shape
+    as the pre-W1 ``WHERE user_id == :u`` idiom. Nothing that counts DB round
+    trips changes, so mocks that stub an *ordered* ``execute`` sequence keep
+    working untouched. The oldest-membership tie-break matches ``resolve_org``
+    and ``lookup_org_membership`` so a user's reads and writes always resolve to
+    the same org (self-consistent for the defensive multi-membership case).
+
+    ``user_id`` binds as a literal parameter, so the returned subquery is
+    self-contained (not correlated against the outer table) — safe to drop into
+    any ``select`` regardless of what it reads from.
+    """
+    return (
+        select(Membership.org_id)
+        .where(Membership.user_id == user_id)
+        .order_by(Membership.created_at.asc(), Membership.id.asc())
+        .limit(1)
+        .scalar_subquery()
+    )
+
+
 async def resolve_org(session: AsyncSession, user_id: int) -> Optional[str]:
     """Return the org_id that owns ``user_id`` (single-org v1), else None.
 

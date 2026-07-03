@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import __version__ as _app_version
+from src.auth.org_context import caller_org_subquery
 from src.db.models import Analysis
 
 logger = logging.getLogger("cadverify.pdf")
@@ -134,11 +135,12 @@ async def get_or_generate_pdf(
     """Look up analysis, serve cached PDF or generate a new one.
 
     Returns (pdf_bytes, original_filename).
-    Raises HTTPException 404 if analysis not found or not owned by user.
+    Raises HTTPException 404 if analysis not found or in another org
+    (W1 step 3: org-scoped — the caller's org is the tenant boundary).
     """
     stmt = select(Analysis).where(
         Analysis.ulid == analysis_ulid,
-        Analysis.user_id == user_id,
+        Analysis.org_id == caller_org_subquery(user_id),
     )
     result = await session.execute(stmt)
     analysis = result.scalar_one_or_none()

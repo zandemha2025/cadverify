@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import __version__ as _app_version
+from src.auth.org_context import caller_org_subquery
 from src.db.models import CostDecision
 from src.services.pdf_service import _format_number
 
@@ -97,16 +98,16 @@ async def generate_cost_pdf(decision: CostDecision) -> bytes:
 async def get_or_generate_cost_pdf(
     ulid: str, user_id: int, session: AsyncSession
 ) -> tuple[bytes, str]:
-    """Look up an owned cost decision, serve cached PDF or generate + cache it.
+    """Look up a cost decision in the caller's org, serve/generate its PDF.
 
     Returns (pdf_bytes, original_filename). Raises HTTPException 404 if the
-    decision does not exist or is not owned by ``user_id``.
+    decision does not exist or belongs to another org (W1 step 3: org-scoped).
     """
     from fastapi import HTTPException
 
     stmt = select(CostDecision).where(
         CostDecision.ulid == ulid,
-        CostDecision.user_id == user_id,
+        CostDecision.org_id == caller_org_subquery(user_id),
     )
     decision = (await session.execute(stmt)).scalar_one_or_none()
     if decision is None:

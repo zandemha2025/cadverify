@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
+from src.auth.org_context import caller_org_subquery
 from src.db.models import Job
 
 logger = logging.getLogger("cadverify.job_service")
@@ -93,13 +94,18 @@ async def get_job_for_user(
     job_ulid: str,
     user_id: int,
 ) -> Optional[Job]:
-    """Get a job by ULID, only if owned by user_id.
+    """Get a job by ULID, scoped to the caller's org.
 
-    Returns None for non-existent or other user's jobs (D-12: 404 not 403).
+    W1 step 3: the isolation predicate is ``org_id`` (resolved from ``user_id``
+    via a correlated subquery). Returns None for a non-existent job or one in
+    another org, so the route answers 404 (never 403 — existence never leaks).
     """
     job = (
         await session.execute(
-            select(Job).where(Job.ulid == job_ulid, Job.user_id == user_id)
+            select(Job).where(
+                Job.ulid == job_ulid,
+                Job.org_id == caller_org_subquery(user_id),
+            )
         )
     ).scalars().first()
     return job

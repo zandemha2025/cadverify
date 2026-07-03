@@ -27,6 +27,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
+from src.auth.org_context import caller_org_subquery
 from src.auth.require_api_key import AuthedUser
 from src.db.models import CostDecision, UsageEvent
 from src.services.share_service import generate_short_id
@@ -246,10 +247,15 @@ def _list_item(d: CostDecision) -> dict:
 async def get_owned(
     session: AsyncSession, ulid: str, user_id: int
 ) -> CostDecision:
-    """Fetch an owned cost decision by ulid or raise 404 (never 403)."""
+    """Fetch a cost decision by ulid, scoped to the caller's org, or 404.
+
+    W1 step 3: the isolation predicate is ``org_id`` (the tenant boundary),
+    resolved from ``user_id`` via a correlated subquery. A decision in another
+    org is invisible → 404 (never 403, so existence never leaks across tenants).
+    """
     stmt = select(CostDecision).where(
         CostDecision.ulid == ulid,
-        CostDecision.user_id == user_id,
+        CostDecision.org_id == caller_org_subquery(user_id),
     )
     row = (await session.execute(stmt)).scalar_one_or_none()
     if row is None:
@@ -320,9 +326,14 @@ def build_estimates_csv(result_json: dict) -> str:
 async def create_share(
     ulid: str, user_id: int, session: AsyncSession
 ) -> dict:
-    """Toggle a cost decision public and assign a share short id (idempotent)."""
+    """Toggle a cost decision public and assign a share short id (idempotent).
+
+    W1 step 3: org-scoped lookup — only a decision in the caller's org can be
+    shared; another org's decision is invisible (404).
+    """
     stmt = select(CostDecision).where(
-        CostDecision.ulid == ulid, CostDecision.user_id == user_id
+        CostDecision.ulid == ulid,
+        CostDecision.org_id == caller_org_subquery(user_id),
     )
     d = (await session.execute(stmt)).scalar_one_or_none()
     if d is None:
@@ -345,9 +356,13 @@ async def create_share(
 async def revoke_share(
     ulid: str, user_id: int, session: AsyncSession
 ) -> None:
-    """Revoke sharing — the public link 404s immediately."""
+    """Revoke sharing — the public link 404s immediately.
+
+    W1 step 3: org-scoped lookup (see ``create_share``).
+    """
     stmt = select(CostDecision).where(
-        CostDecision.ulid == ulid, CostDecision.user_id == user_id
+        CostDecision.ulid == ulid,
+        CostDecision.org_id == caller_org_subquery(user_id),
     )
     d = (await session.execute(stmt)).scalar_one_or_none()
     if d is None:
