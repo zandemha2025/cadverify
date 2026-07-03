@@ -391,6 +391,14 @@ async def validate_file(
         None,
         description="Segmentation method: 'sam3d' for async SAM-3D (returns 202).",
     ),
+    include_thickness: bool = Query(
+        False,
+        description=(
+            "Opt-in: include the per-face wall-thickness map "
+            "(wall_thickness_map) for a heatmap. Off by default to keep "
+            "responses lean; the map is never persisted/cached."
+        ),
+    ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -412,6 +420,7 @@ async def validate_file(
         rule_pack=rule_pack,
         user=user,
         session=session,
+        include_thickness=include_thickness,
     )
 
     if segmentation == "sam3d":
@@ -488,6 +497,14 @@ async def validate_demo(
     processes: Optional[str] = Query(
         None,
         description="Comma-separated process types. Leave empty for all.",
+    ),
+    include_thickness: bool = Query(
+        False,
+        description=(
+            "Opt-in: include the per-face wall-thickness map "
+            "(wall_thickness_map) for a heatmap. Off by default to keep "
+            "responses lean."
+        ),
     ),
 ):
     """Public demo — full analysis, no auth, no persistence, tight rate limit."""
@@ -585,7 +602,13 @@ async def validate_demo(
         result.best_process = ranked[0].process
     result = enhance_suggestions(result)
 
-    resp = _to_response(result, features)
+    resp = _to_response(
+        result,
+        features,
+        wall_thickness=ctx.wall_thickness if include_thickness else None,
+        wall_thickness_decimation=(ctx.metadata or {}).get("decimation")
+        if include_thickness else None,
+    )
     resp["demo"] = True
     return resp
 
@@ -1036,7 +1059,21 @@ async def list_machines(
 # ──────────────────────────────────────────────────────────────
 # Serialization
 # ──────────────────────────────────────────────────────────────
-def _to_response(result: AnalysisResult, features: list | None = None, pack=None) -> dict:
+def _to_response(
+    result: AnalysisResult,
+    features: list | None = None,
+    pack=None,
+    *,
+    wall_thickness=None,
+    wall_thickness_decimation=None,
+) -> dict:
+    """Serialize an AnalysisResult to the API response dict.
+
+    ``wall_thickness`` is opt-in: pass ``ctx.wall_thickness`` (the per-face
+    array) ONLY when a caller has explicitly requested the heatmap, so the
+    default response stays lean and unchanged. When present it is serialized
+    under ``wall_thickness_map``.
+    """
     resp = {
         "filename": result.filename,
         "file_type": result.file_type,
@@ -1085,6 +1122,11 @@ def _to_response(result: AnalysisResult, features: list | None = None, pack=None
                 "recommended_material": ps.recommended_material,
                 "recommended_machine": ps.recommended_machine,
                 "estimated_cost_factor": ps.estimated_cost_factor,
+                # The analyzer's standards bibliography — the AMS/ASTM/ISO/NADCA/
+                # vendor sources behind this process's thresholds. Declared on
+                # every ProcessAnalyzer but previously never serialized; surfaced
+                # here so the audit trail is inspectable.
+                "standards": _analyzer_standards(ps.process),
                 "issues": [_issue_to_dict(i) for i in ps.issues],
             }
             for ps in sorted(result.process_scores, key=lambda s: s.score, reverse=True)
@@ -1101,25 +1143,35 @@ def _to_response(result: AnalysisResult, features: list | None = None, pack=None
         from src.services.tolerance_service import tolerance_report_to_dict
 
         resp["tolerances"] = tolerance_report_to_dict(result.tolerances)
+    # Opt-in per-face wall-thickness heatmap. Only serialized when the caller
+    # explicitly passed the array (query-param gated upstream), keeping the
+    # default response lean.
+    if wall_thickness is not None:
+        from src.analysis.serialization import serialize_wall_thickness
+
+        resp["wall_thickness_map"] = serialize_wall_thickness(
+            wall_thickness, decimation=wall_thickness_decimation
+        )
     return resp
 
 
+def _analyzer_standards(process) -> list[str]:
+    """The standards bibliography declared by a process's analyzer (or [])."""
+    from src.analysis.processes.base import get_analyzer
+
+    analyzer = get_analyzer(process)
+    return list(getattr(analyzer, "standards", []) or []) if analyzer else []
+
+
 def _issue_to_dict(issue: Issue) -> dict:
-    d: dict = {
-        "code": issue.code,
-        "severity": issue.severity.value,
-        "message": issue.message,
-        "fix_suggestion": issue.fix_suggestion,
-    }
-    if issue.process:
-        d["process"] = issue.process.value
-    if issue.affected_faces:
-        d["affected_face_count"] = len(issue.affected_faces)
-        d["affected_faces_sample"] = issue.affected_faces[:20]
-    if issue.region_center:
-        d["region_center"] = [round(c, 2) for c in issue.region_center]
-    if issue.measured_value is not None:
-        d["measured_value"] = round(issue.measured_value, 3)
-    if issue.required_value is not None:
-        d["required_value"] = issue.required_value
-    return d
+    """Serialize an Issue for the API response.
+
+    Delegates to the canonical ``serialize_issue`` (shared with the cost-view
+    DFM-blocker serializer) so the two never drift. That serializer carries the
+    untruncated affected-face list (up to a documented cap, with an honest
+    truncation flag), the structured ``citation`` object, and the ``scope``
+    marker for unlocalizable findings.
+    """
+    from src.analysis.serialization import serialize_issue
+
+    return serialize_issue(issue)

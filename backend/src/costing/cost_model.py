@@ -401,14 +401,24 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     dfm_verdict = "pass"
     dfm_score = 1.0
     dfm_blockers: list = []
+    dfm_blocker_details: list = []
     if process_score is not None:
         dfm_verdict = process_score.verdict
         dfm_score = float(process_score.score)
         dfm_ready = process_score.verdict != "fail"
-        dfm_blockers = [
-            i.message for i in process_score.issues
+        # The ERROR-severity issues that block this process. Carry BOTH the
+        # message strings (dfm_blockers — kept for existing text consumers) and
+        # the full serialized Issue (dfm_blocker_details) so the cost view can
+        # locate each blocker on the part (faces/region/measured/citation),
+        # not merely restate its message. Same order, same source list.
+        from src.analysis.serialization import serialize_issue
+
+        error_issues = [
+            i for i in process_score.issues
             if getattr(i.severity, "value", i.severity) == "error"
         ]
+        dfm_blockers = [i.message for i in error_issues]
+        dfm_blocker_details = [serialize_issue(i) for i in error_issues]
 
     est = CostEstimate(
         process=process.value,
@@ -424,6 +434,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         dfm_verdict=dfm_verdict,
         dfm_score=dfm_score,
         dfm_blockers=dfm_blockers,
+        dfm_blocker_details=dfm_blocker_details,
     )
     est.assert_sums()
     return est

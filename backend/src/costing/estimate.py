@@ -311,6 +311,10 @@ def _serialize(est, lt, drivers, residual_model=None, ci_level: float = 0.80) ->
         "dfm_verdict": est.dfm_verdict,
         "dfm_score": est.dfm_score,
         "dfm_blockers": est.dfm_blockers,
+        # Structured blockers — each a full serialized Issue so the cost view can
+        # locate the blocker on the part (faces/region/citation), not just its
+        # message. Parallel to dfm_blockers (same order).
+        "dfm_blocker_details": getattr(est, "dfm_blocker_details", []),
         "line_items": est.line_items,
         "drivers": [
             {"name": d.name, "value": d.value, "unit": d.unit,

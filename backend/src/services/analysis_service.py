@@ -190,6 +190,7 @@ async def run_analysis(
     rule_pack: str | None,
     user: AuthedUser,
     session: AsyncSession,
+    include_thickness: bool = False,
 ) -> dict:
     """Full analysis pipeline: hash -> dedup check -> analyze -> persist -> track.
 
@@ -221,10 +222,16 @@ async def run_analysis(
     # 4. Analysis version from package
     analysis_version = _app_version
 
-    # 5. Cache check
-    cached = await _check_cache(
-        session, user.user_id, mesh_hash, process_set_hash, analysis_version
-    )
+    # 5. Cache check.
+    # The wall-thickness map is opt-in and deliberately NOT persisted (it would
+    # bloat every cached row). It needs a live GeometryContext, which only the
+    # fresh path builds — so when the caller asks for it we skip the cache short
+    # circuit and run analysis, then attach the map to the RETURNED dict only.
+    cached = None
+    if not include_thickness:
+        cached = await _check_cache(
+            session, user.user_id, mesh_hash, process_set_hash, analysis_version
+        )
 
     if cached is not None:
         # 6. Cache HIT
@@ -358,6 +365,17 @@ async def run_analysis(
     _face_count = geometry.face_count
     _verdict = result.overall_verdict
 
+    # Opt-in wall-thickness map: serialize from the live ctx BEFORE it is freed.
+    # Kept out of result_dict so the persisted/cached JSON stays lean; attached
+    # to the returned dict only (see below).
+    _thickness_map = None
+    if include_thickness:
+        from src.analysis.serialization import serialize_wall_thickness
+
+        _thickness_map = serialize_wall_thickness(
+            ctx.wall_thickness, decimation=(ctx.metadata or {}).get("decimation")
+        )
+
     # Release mesh + context memory before async persist
     try:
         mesh._cache.clear()
@@ -425,12 +443,24 @@ async def run_analysis(
                 cached.duration_ms,
                 cached.face_count,
             )
-            return cached.result_json
+            return _with_thickness(cached.result_json, _thickness_map)
         # If re-query also fails, just return the computed result
         # (usage event lost but the user still gets their response).
         logger.warning("Re-query after IntegrityError returned None — returning computed result")
 
-    return result_dict
+    return _with_thickness(result_dict, _thickness_map)
+
+
+def _with_thickness(result_dict: dict, thickness_map: dict | None) -> dict:
+    """Attach the opt-in wall-thickness map to a RETURNED response dict.
+
+    Returns a shallow copy with ``wall_thickness_map`` added so the map never
+    ends up on the persisted/cached ``result_dict`` (default responses stay
+    lean). A no-op when the map was not requested.
+    """
+    if not thickness_map:
+        return result_dict
+    return {**result_dict, "wall_thickness_map": thickness_map}
 
 
 async def get_latest_analysis_id(
