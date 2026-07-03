@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test src/lib/dfm-scope.test.ts src/lib/cost-decision.test.ts src/lib/breakeven.test.ts src/lib/cost-views.test.ts src/lib/tempo-core.test.ts",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test src/lib/dfm-scope.test.ts src/lib/cost-decision.test.ts src/lib/breakeven.test.ts src/lib/cost-views.test.ts src/lib/tempo-core.test.ts src/lib/findings.test.ts",
     "test:e2e": "node scripts/e2e-smoke.mjs"
   },
   "dependencies": {

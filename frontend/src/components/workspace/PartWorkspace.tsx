@@ -66,6 +66,7 @@ import {
 import { RoleLens, CalibrationBar, roleById, type RoleId } from "@/components/glass-box";
 import { useInstrumentChrome, type PartFact } from "@/components/instrument/instrument-chrome";
 import { STAGE_UI } from "@/lib/stage-flag";
+import { PartHero } from "@/components/workspace/hero/PartHero";
 
 const CadViewer = dynamic(() => import("@/components/ui/cad-viewer"), {
   ssr: false,
@@ -447,6 +448,40 @@ export default function PartWorkspace({
           )}
         </Card>
       </div>
+    );
+  }
+
+  /* ---- staged hero (D5 FE-2) — flag-gated; flag-off keeps the tabs -- */
+  if (STAGE_UI) {
+    return (
+      <PartHero
+        file={file}
+        report={report}
+        validation={validation}
+        opts={opts}
+        setOpt={setOpt}
+        assumptions={assumptions}
+        overrideKeys={overrideKeys}
+        scenarios={scenarios}
+        shops={shops}
+        calibration={calibration}
+        role={role}
+        costLoading={costLoading}
+        dfmLoading={dfmLoading}
+        costError={costError}
+        dfmError={dfmError}
+        geomError={geomError}
+        onChangeRole={onChangeRole}
+        onSelectShop={onSelectShop}
+        onApplyOverride={onApplyOverride}
+        onSetCavities={onSetCavities}
+        onClearOverrides={onClearOverrides}
+        onSaveScenario={onSaveScenario}
+        onRecallScenario={onRecallScenario}
+        handleRecost={handleRecost}
+        runDfm={runDfm}
+        reset={reset}
+      />
     );
   }
 
