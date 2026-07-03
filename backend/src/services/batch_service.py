@@ -64,9 +64,12 @@ async def create_batch(
     api_key_id: Optional[int] = None,
 ) -> Batch:
     """Create a Batch row with status='pending'. Returns the Batch object."""
+    from src.auth.org_context import resolve_org
+
     batch = Batch(
         ulid=str(ULID()),
         user_id=user_id,
+        org_id=await resolve_org(session, user_id),
         input_mode=input_mode,
         webhook_url=webhook_url,
         webhook_secret=webhook_secret,
@@ -293,12 +296,16 @@ async def create_batch_items(
 
     Returns count of items created.
     """
+    from src.auth.org_context import resolve_org_via_batch
+
+    org_id = await resolve_org_via_batch(session, batch_id)
     count = 0
     for item in items_data:
         status = item.get("status", "pending")
         bi = BatchItem(
             ulid=str(ULID()),
             batch_id=batch_id,
+            org_id=org_id,
             filename=item["filename"],
             status=status,
             process_types=item.get("process_types"),

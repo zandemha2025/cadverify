@@ -94,8 +94,11 @@ async def create_webhook_delivery(
     payload: dict,
 ) -> WebhookDelivery:
     """Create a WebhookDelivery row with status='pending', attempts=0."""
+    from src.auth.org_context import resolve_org_via_batch
+
     delivery = WebhookDelivery(
         batch_id=batch_id,
+        org_id=await resolve_org_via_batch(session, batch_id),
         event_type=event_type,
         payload_json=payload,
         status="pending",
