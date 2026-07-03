@@ -12,8 +12,13 @@ sentence. The rules, in order:
 
 1. Pull a section marker (``§3``, ``§3.1``, ``§ 4.2``) out as ``clause``.
 2. If a colon *followed by whitespace* delimits the string (``STANDARD: detail``),
-   split there — ``standard`` = left, ``text`` = right. (A colon *inside* a token
-   such as ``ISO/ASTM 52910:2018`` is NOT a delimiter and is left intact.)
+   split there — but ``standard`` = left ONLY when the left side actually reads
+   as a citation source (a standards body / spec / vendor guide). When the left
+   side is a generic process/material/geometry descriptor (``"3-axis: …"``,
+   ``"Forging: …"``, ``"Metal powder: …"``) the colon merely introduces an
+   explanatory clause, so the WHOLE string becomes ``text`` with no fabricated
+   ``standard``. (A colon *inside* a token such as ``ISO/ASTM 52910:2018`` is NOT
+   a delimiter and is left intact.)
 3. Otherwise the string is either a bare source identifier (``"Sodick ALC600G."``)
    or an advisory sentence (``"Wire EDM cuts a 2D profile extruded in Z."``). A
    sentence — anything containing a common lowercase word or sentence
@@ -30,6 +35,9 @@ Examples:
         -> standard="Sodick ALC600G.", text=None
     * ``"Wire EDM cuts a 2D profile extruded in Z."``
         -> standard=None, text="Wire EDM cuts a 2D profile extruded in Z."
+    * ``"3-axis: tool access from +Z only."``
+        -> standard=None, text="3-axis: tool access from +Z only." (descriptor,
+        not a source — no fabricated standard)
 """
 
 from __future__ import annotations
@@ -51,6 +59,46 @@ _DELIM_RE = re.compile(r":(?:\s|$)")
 # Sentence punctuation that reliably marks advisory prose rather than a source
 # identifier in the current cite corpus.
 _SENTENCE_PUNCT = (";", "—", "→")
+
+# Generic manufacturing descriptors — process names, material states, and
+# geometry/axis terms. These are NOT citation sources: a cite like
+# ``"3-axis: tool access from +Z only."`` or ``"Forging: no undercuts …"`` uses
+# the colon to introduce an explanatory clause, not to name a standard, so the
+# left side must NOT be promoted to ``standard``. Curated because surface form
+# alone cannot tell the process word "Forging" from a vendor name like "Sandvik";
+# every entry is verified absent from the genuine sources in the real cite=
+# corpus (e.g. "metal" is deliberately excluded — it appears in the vendor
+# "Desktop Metal"). Matched case-insensitively, per hyphen/space/slash token.
+_DESCRIPTOR_WORDS = frozenset({
+    "axis", "forging", "casting", "molding", "moulding", "machining",
+    "milling", "turning", "welding", "sintering", "extrusion",
+    "powder", "resin", "filament", "green", "part",
+    "undercut", "undercuts", "overhang", "overhangs",
+})
+
+
+def _looks_like_source_left(left: str) -> bool:
+    """True when the left of a ``STANDARD: detail`` split is a real citation source.
+
+    A real source is a standards body / spec / vendor guide (``AFS``, ``DIN 6935``,
+    ``EOS M 400-4``, ``Sandvik``). It is NOT a generic manufacturing descriptor
+    (``3-axis``, ``Forging``, ``Metal powder``, ``Multi-axis DED``): those use the
+    colon to introduce an explanatory clause, so the whole cite must stay free
+    text with a null ``standard``.
+
+    Unlike the colon-less prose guard, this does NOT reject on lowercase words —
+    genuine vendor sources legitimately contain them ("EOS DMLS best practice",
+    "EOS Ti/Inconel data sheets"). It rejects only when a known
+    process/material/geometry descriptor token is present (hyphens split too, so
+    "3-axis" and "Multi-axis" expose the "axis" descriptor), plus advisory
+    sentence punctuation, which a source name never carries.
+    """
+    if any(p in left for p in _SENTENCE_PUNCT):
+        return False
+    for tok in re.split(r"[\s/\-]+", left):
+        if tok.strip(".,()[]").lower() in _DESCRIPTOR_WORDS:
+            return False
+    return True
 
 
 def _looks_like_source(text: str) -> bool:
@@ -97,9 +145,17 @@ def parse_citation(cite: Optional[str]) -> Optional[Citation]:
     # 2. "STANDARD: detail" delimiter (colon followed by whitespace/end).
     dm = _DELIM_RE.search(working)
     if dm:
-        standard = working[: dm.start()].strip(" .") or None
-        text = working[dm.end():].strip() or None
-        return Citation(standard=standard, text=text, clause=clause)
+        left = working[: dm.start()].strip(" .")
+        right = working[dm.end():].strip() or None
+        # Promote the left side to ``standard`` ONLY when it actually reads as a
+        # citation source. A generic process/material/geometry descriptor
+        # ("3-axis", "Forging", "Metal powder") names a process, not a reference:
+        # asserting standard="3-axis" would fabricate a standard. In that case
+        # keep the WHOLE cite as honest free text with no fabricated standard.
+        if left and _looks_like_source_left(left):
+            return Citation(standard=left or None, text=right, clause=clause)
+        whole = working.strip(" .") or None
+        return Citation(standard=None, text=whole, clause=clause)
 
     # 3. No delimiter: bare identifier vs advisory sentence.
     if not working:

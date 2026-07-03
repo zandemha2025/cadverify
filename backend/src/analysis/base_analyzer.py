@@ -114,7 +114,12 @@ def check_degenerate_faces(mesh: trimesh.Trimesh) -> list[Issue]:
             severity=Severity.WARNING,
             message=f"{degen_count} degenerate (zero-area) faces detected.",
             process=None,
-            affected_faces=degen_indices[:100],  # Cap at 100 for response size
+            # Carry the FULL untruncated face list so serialize_issue reports the
+            # TRUE affected_face_count and fires affected_faces_truncated honestly.
+            # (Do NOT pre-clip here — clipping before the Issue exists lies about
+            # the count; the serializer owns the response-size cap. Mirrors the
+            # processes/checks.py fix on this sibling universal-check path.)
+            affected_faces=degen_indices,
             fix_suggestion=(
                 "Remove degenerate triangles. These are typically artifacts "
                 "from bad tessellation. Re-export from CAD with tighter mesh quality."

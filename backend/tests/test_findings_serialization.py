@@ -16,7 +16,11 @@ from __future__ import annotations
 import numpy as np
 import trimesh
 
-from src.analysis.base_analyzer import analyze_geometry, run_universal_checks
+from src.analysis.base_analyzer import (
+    analyze_geometry,
+    check_degenerate_faces,
+    run_universal_checks,
+)
 from src.analysis.citations import parse_citation
 from src.analysis.context import GeometryContext
 from src.analysis.models import (
@@ -87,6 +91,27 @@ def test_analyzer_no_longer_clips_affected_faces_at_100():
     assert len(tw.affected_faces) > 100
 
 
+def test_degenerate_faces_universal_check_reports_true_count_not_clipped():
+    """base_analyzer.check_degenerate_faces must carry the TRUE affected-face
+    count into the Issue — the sibling universal-check path used to pre-clip the
+    list to 100, so serialize_issue reported 100 for a 150-degenerate part and
+    never flagged the drop (silently wrong). Now the full list rides through."""
+    box = trimesh.creation.box(extents=[10.0, 10.0, 10.0])
+    # 150 zero-area faces (each references two identical vertices -> area 0).
+    degen = np.array([[0, 0, 1]] * 150)
+    faces = np.vstack([box.faces, degen])
+    mesh = trimesh.Trimesh(vertices=box.vertices, faces=faces, process=False)
+
+    issue = next(i for i in check_degenerate_faces(mesh) if i.code == "DEGENERATE_FACES")
+    assert "150 degenerate" in issue.message
+    assert len(issue.affected_faces) == 150            # NOT pre-clipped to 100
+
+    d = serialize_issue(issue)
+    assert d["affected_face_count"] == 150             # honest total, not 100
+    assert len(d["affected_faces_sample"]) == 150      # 150 < cap -> full sample
+    assert "affected_faces_truncated" not in d         # nothing silently dropped
+
+
 def test_serialize_issue_reports_true_count_and_full_sample_under_cap():
     faces = list(range(150))  # > old 20/100 clips, < serialization cap
     issue = Issue(code="THIN_WALL", severity=Severity.ERROR, message="m",
@@ -147,6 +172,40 @@ def test_parse_citation_sentence_never_fabricates_standard():
     c = parse_citation("Wire EDM cuts a 2D profile extruded in Z.")
     assert c.standard is None
     assert c.text == "Wire EDM cuts a 2D profile extruded in Z."
+
+
+def test_parse_citation_colon_descriptor_never_fabricates_standard():
+    """The colon-split path must NOT promote a process/material/geometry
+    descriptor to `standard`. The left side of a "STANDARD: detail" split only
+    becomes `standard` when it reads as a real citation source; a descriptor
+    keeps the WHOLE cite as honest free text (standard=None)."""
+    offenders = [
+        "3-axis: tool access from +Z only.",
+        "Forging: no undercuts — die cannot open.",
+        "Green part: 1mm min wall; 0.8mm post-sinter.",
+        "Metal powder: 5mm+ drain holes.",
+        "Multi-axis DED: 60° threshold.",
+        "Multi-axis WAAM: 60° practical limit.",
+    ]
+    for cite in offenders:
+        c = parse_citation(cite)
+        assert c is not None
+        assert c.standard is None, f"fabricated standard for {cite!r}: {c.standard!r}"
+        # The descriptor text is preserved as free text, not discarded.
+        left = cite.split(":", 1)[0]
+        assert c.text and c.text.startswith(left), f"{cite!r} -> text {c.text!r}"
+
+
+def test_parse_citation_colon_real_standard_still_parses():
+    """A genuine standards spec / vendor guide left side still yields `standard`."""
+    c = parse_citation("ASME Y14.5-2018: GD&T datum callouts.")
+    assert c.standard == "ASME Y14.5-2018"
+    assert c.text == "GD&T datum callouts."
+    # A vendor source carrying descriptive lowercase words survives too (the
+    # descriptor guard is targeted, not a blanket lowercase reject).
+    c2 = parse_citation("EOS Ti/Inconel data sheets: 0.4mm min.")
+    assert c2.standard == "EOS Ti/Inconel data sheets"
+    assert c2.text == "0.4mm min."
 
 
 def test_parse_citation_empty_is_none():
