@@ -608,3 +608,59 @@ class AuditLog(Base):
     user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     file_hash: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     result_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class GroundTruthRecordRow(Base):
+    """One persisted real cost/quote datum — the W5 flywheel's durable store.
+
+    The ORG-SCOPED home for the ``GroundTruthRecord`` that the costing
+    ground-truth loop (``src/costing/groundtruth.py``) consumes. This is what
+    retires the Python-REPL requirement: real quotes land here via the ingest
+    API, and recalibration reads them (``WHERE org_id = caller-org``) to fit the
+    served Calibration / ResidualModel. ``stand_in`` defaults False — the API is
+    for REAL data — but a True row can only shape a band's spread, it can NEVER
+    flip ``validated`` True (that honesty rail is enforced in the costing layer,
+    not here). One org's rows never enter another's calibration: every read is
+    org-filtered (cross-tenant test asserts this by name).
+
+    Mirrors the ``analyses``/``cost_decisions`` shape: ULID public id, org_id FK
+    (CASCADE), nullable user_id (who ingested; SET NULL so history survives a
+    user delete). Dedup (last write wins on part+process+qty+shop within an org)
+    lives in the service, mirroring ``groundtruth.add_record``.
+    """
+
+    __tablename__ = "ground_truth_records"
+    __table_args__ = (
+        Index("ix_ground_truth_records_org", "org_id"),
+        Index("ix_ground_truth_records_org_part", "org_id", "part_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    part_id: Mapped[str] = mapped_column(Text, nullable=False)
+    process: Mapped[str] = mapped_column(Text, nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    actual_unit_cost_usd: Mapped[float] = mapped_column(Float, nullable=False)
+    material_class: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="polymer"
+    )
+    shop: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    region: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    currency: Mapped[str] = mapped_column(Text, nullable=False, server_default="USD")
+    source: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    stand_in: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    part_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )

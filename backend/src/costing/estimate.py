@@ -48,6 +48,13 @@ class EstimateOptions:
     # (default) => assumption-band on every estimate (honest pre-data behaviour).
     residual_model: object = None
     ci_level: float = 0.80
+    # Per-process calibration correction (bucket #4). A ground-truth
+    # ``Calibration`` (any object with ``factor_for(process) -> float``) that
+    # corrects the point estimate to the CORRECTED prediction the residuals were
+    # measured on (``corrected = baseline × factor``), so the MEASURED band is
+    # centred coherently. Bound ONLY alongside a REAL residual_model; None
+    # (default) => point uncorrected => byte-identical pre-data behaviour.
+    calibration: object = None
 
 
 @dataclass
@@ -225,7 +232,8 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
             leadtimes_by_key[(process.value, q)] = lt
             estimates_by_pq[(process.value, q)] = est
             estimates_serialized.append(
-                _serialize(est, lt, drivers, options.residual_model, options.ci_level))
+                _serialize(est, lt, drivers, options.residual_model, options.ci_level,
+                           options.calibration))
 
     # Real cost evaluator at ARBITRARY qty — powers the NUMERICAL make-vs-buy
     # crossover (S1: honest crossover once machining variable cost falls with
@@ -299,12 +307,25 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
     )
 
 
-def _serialize(est, lt, drivers, residual_model=None, ci_level: float = 0.80) -> dict:
+def _serialize(est, lt, drivers, residual_model=None, ci_level: float = 0.80,
+               calibration=None) -> dict:
     # Every estimate carries a CONFIDENCE INTERVAL (hard global constraint). When
     # a ground-truth residual model is bound it is the MEASURED empirical band;
     # otherwise it falls back to the stated assumption band, clearly labelled.
+    #
+    # Coherence rail (W5): the measured residuals were fitted on the CORRECTED
+    # prediction (corrected = baseline × calibration.factor_for(process); see
+    # groundtruth._residuals). So when a REAL calibration is bound we correct the
+    # point to that same prediction BEFORE building the band — otherwise the band
+    # would be centred on the uncorrected baseline while its residuals assume the
+    # correction, and it would systematically EXCLUDE the true cost. With no real
+    # calibration (calibration is None) the point is uncorrected and the CI is
+    # byte-identical to the pre-W5 assumption band / stand-in spread.
+    point_usd = est.unit_cost_usd
+    if calibration is not None:
+        point_usd = point_usd * calibration.factor_for(est.process)
     ci = confidence_interval(
-        est.unit_cost_usd, assumption_band_pct=est.est_error_band_pct,
+        point_usd, assumption_band_pct=est.est_error_band_pct,
         residual_provider=residual_model, process=est.process, level=ci_level)
     return {
         "process": est.process,
