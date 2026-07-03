@@ -189,6 +189,10 @@ async def test_rate_library_lifecycle_isolation_and_honesty(monkeypatch):
             {"a": org_a, "b": org_b},
         )
         await s.commit()
+    # Release the async engine bound to THIS test's event loop so the next async
+    # PG test in the process rebuilds it on its own loop (repo convention — every
+    # other PG integration test does this; asyncpg pools are loop-bound).
+    await eng.dispose_engine()
 
 
 @_requires_pg
@@ -338,3 +342,7 @@ async def test_rate_library_governance_discard_archive_diff(monkeypatch):
             {"a": org_a, "b": org_b},
         )
         await s.commit()
+    # Release the async engine bound to THIS test's event loop so the next async
+    # PG test in the process rebuilds it on its own loop (repo convention — every
+    # other PG integration test does this; asyncpg pools are loop-bound).
+    await eng.dispose_engine()

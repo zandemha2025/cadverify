@@ -173,3 +173,6 @@ async def test_part_context_upsert_read_and_isolation():
             {"a": org_a, "b": org_b},
         )
         await s.commit()
+    # Release the async engine bound to THIS test's event loop (repo convention —
+    # asyncpg pools are loop-bound; the next async PG test rebuilds it).
+    await eng.dispose_engine()
