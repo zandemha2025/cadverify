@@ -358,17 +358,33 @@ export interface RedesignSaving {
   caveat: string;
 }
 
-/** Numeric quantity keys of a JSONB-round-tripped map, sorted ascending. */
-function numericKeys(map: Record<string, unknown> | null | undefined): number[] {
-  if (!map) return [];
-  return Object.keys(map)
+/*
+ * Quantity-keyed readers for a decision. These MIRROR the canonical accessors in
+ * `lib/cost-decision.ts` (`recommendedQuantities`, `recommendationForQty`,
+ * `redesignedForQty`) field-for-field — they exist here only because this module
+ * runs on the `node --test` type-stripping runner, which cannot resolve a
+ * runtime import of a sibling lib (extensionless fails to resolve; a `.ts`
+ * extension fails `tsc` without `allowImportingTsExtensions`). Keeping the SAME
+ * string-key-tolerant lookup guarantees a saved decision (JSONB stringifies the
+ * int qty keys) re-derives identically to a live one.
+ */
+
+/** The costed quantities of a decision, ascending (keys may be JSONB strings). */
+function recommendedQuantities(
+  decision: Pick<CostDecision, "recommendation">
+): number[] {
+  if (!decision.recommendation) return [];
+  return Object.keys(decision.recommendation)
     .map((k) => Number(k))
     .filter((n) => Number.isFinite(n))
     .sort((a, b) => a - b);
 }
 
 /** String-key tolerant lookup (JSONB turns int keys into strings). */
-function atQty<V>(map: Record<string, V> | null | undefined, qty: number): V | null {
+function lookupByQty<V>(
+  map: Record<string, V> | null | undefined,
+  qty: number
+): V | null {
   if (!map) return null;
   const key = String(qty);
   if (Object.prototype.hasOwnProperty.call(map, key)) return map[key] ?? null;
@@ -380,10 +396,25 @@ function atQty<V>(map: Record<string, V> | null | undefined, qty: number): V | n
 
 /**
  * The best real redesign saving for a decision — the costed quantity at which
- * the `if_redesigned` alternative is cheaper than the recommended make, by the
- * largest fraction. Returns null when there is no cheaper redesign (never a
- * fabricated saving). Prefers the deepest savePct; ties break to the larger qty
+ * the engine's `if_redesigned` alternative is cheaper than the recommended make,
+ * by the largest fraction. Returns null when there is no cheaper redesign (never
+ * a fabricated saving). Prefers the deepest savePct; ties break to the larger qty
  * (the volume where a redesign matters most to a portfolio owner).
+ *
+ * BOTH costs come from REAL engine fields the API returns (verified against
+ * `backend/src/costing/decision.py` + `report_to_dict`):
+ *
+ *   • make-now cost   = `recommendation[qty].unit_cost_usd` — the tier-1
+ *     make-as-is (DFM-ready) unit cost. The engine's coherence invariant #7
+ *     pins `make_now_process == recommendation[q_lo].process`, so the recommended
+ *     make IS the make-now route; its per-qty unit cost is the honest baseline.
+ *   • redesigned cost = `if_redesigned[qty].unit_cost_usd` — the tier-2 cheaper
+ *     alternative's fully-loaded unit cost (tooling is amortized into
+ *     `unit_cost_usd`, cost_model line-item `amortized_fixed`), carried with the
+ *     engine's own `caveat` (rendered verbatim, never softened).
+ *
+ * The delta is a real per-part figure; the portfolio ROLL-UP stays uncomputed
+ * (W3) — this never invents an aggregate.
  */
 export function bestRedesignSaving(
   id: string,
@@ -393,9 +424,9 @@ export function bestRedesignSaving(
   if (!decision) return null;
   let best: RedesignSaving | null = null;
 
-  for (const qty of numericKeys(decision.recommendation)) {
-    const rec = atQty(decision.recommendation, qty);
-    const alt = atQty(decision.if_redesigned, qty);
+  for (const qty of recommendedQuantities(decision)) {
+    const rec = lookupByQty(decision.recommendation, qty);
+    const alt = lookupByQty(decision.if_redesigned, qty);
     if (!rec || !alt) continue;
     const makeNowUsd = rec.unit_cost_usd;
     const redesignedUsd = alt.unit_cost_usd;

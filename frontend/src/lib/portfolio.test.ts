@@ -481,6 +481,64 @@ test("rankRedesignSavings: ranks parts deepest-first, omits parts with no saving
   assert.equal(rows[0].savePct, 0.5);
 });
 
+test("bestRedesignSaving: make-now/redesigned come from the REAL engine fields only", () => {
+  // A decision shaped EXACTLY as backend report_to_dict serialises it (every
+  // real key on both tiers, JSONB string qty keys). make-now MUST read
+  // recommendation[qty].unit_cost_usd; redesigned MUST read
+  // if_redesigned[qty].unit_cost_usd — never any other/absent field.
+  const d = decision({
+    make_now_process: "cnc_3axis",
+    recommendation: {
+      "250": {
+        process: "cnc_3axis",
+        material: "aluminum",
+        unit_cost_usd: 60,
+        dfm_ready: true,
+        dfm_verdict: "pass",
+        lead_low_days: 5,
+        lead_high_days: 9,
+      },
+    },
+    if_redesigned: {
+      "250": {
+        process: "injection_molding",
+        material: "abs",
+        unit_cost_usd: 24,
+        caveat: "invest in tooling",
+      },
+    },
+  });
+  const s = bestRedesignSaving("p", "housing", d);
+  assert.ok(s);
+  assert.equal(s.qty, 250); // string JSONB key resolved (mirrors cost-decision lookupByQty)
+  assert.equal(s.makeNowUsd, 60); // recommendation[qty].unit_cost_usd
+  assert.equal(s.redesignedUsd, 24); // if_redesigned[qty].unit_cost_usd
+  assert.equal(s.saveUsd, 36);
+  assert.equal(s.savePct, 0.6);
+  assert.equal(s.redesignedProcess, "injection_molding");
+  assert.equal(s.caveat, "invest in tooling");
+
+  // The derivation must NOT invent a make-now cost from a fabricated field: a
+  // recommendation entry missing unit_cost_usd yields no (finite) saving.
+  const dNoCost = decision({
+    recommendation: {
+      "250": {
+        process: "cnc_3axis",
+        material: "aluminum",
+        // unit_cost_usd deliberately absent
+        dfm_ready: true,
+        dfm_verdict: "pass",
+        lead_low_days: null,
+        lead_high_days: null,
+      } as unknown as CostDecision["recommendation"][string],
+    },
+    if_redesigned: {
+      "250": { process: "injection_molding", material: "abs", unit_cost_usd: 24, caveat: "c" },
+    },
+  });
+  assert.equal(bestRedesignSaving("p", "housing", dNoCost), null);
+});
+
 /* ------------------------------------------------------------------ */
 /*  Format helpers                                                     */
 /* ------------------------------------------------------------------ */
