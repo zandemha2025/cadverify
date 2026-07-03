@@ -129,3 +129,41 @@ async def get_catalog(
             "has_findings": has_findings,
         },
     }
+
+
+@router.get("/portfolio")
+@limiter.limit("60/hour;500/day")
+async def get_portfolio(
+    request: Request,
+    response: Response,
+    user: AuthedUser = Depends(require_role(Role.viewer)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Org-scoped portfolio roll-up: the caller's COSTED parts ranked by the
+    engine's redesign savings, plus a posture aggregate (W3).
+
+    HONEST BY CONSTRUCTION: every ``savings`` figure is a delta of two numbers the
+    engine already computed and persisted (``decision.recommendation`` vs
+    ``decision.if_redesigned`` at a quoted qty) — never a fabricated %/$ or a
+    portfolio "total spend" (demand quantities are unknown). A costed part with no
+    engine savings signal carries ``savings: null`` + a reason. ``validated`` is
+    copied from the confidence band, never set here. Parts with no cost decision
+    are excluded from the ranking (``excluded_no_cost_count``).
+    """
+    # Tenant boundary: the caller's org. None → no membership → empty roll-up.
+    org_id = await resolve_org(session, user.user_id)
+    built = await svc.build_portfolio(session, org_id)
+
+    summary = built["summary"]
+    resp = {
+        "summary": summary,
+        "rows": built["rows"],
+    }
+    # When the scan was capped, say so plainly: the roll-up covers only the most
+    # recent parts, not the full history.
+    if summary.get("truncated"):
+        resp["note"] = (
+            "This roll-up is over a capped scan of the most recent parts; "
+            "older parts were not included."
+        )
+    return resp
