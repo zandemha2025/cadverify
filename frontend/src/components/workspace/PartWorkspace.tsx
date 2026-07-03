@@ -20,7 +20,7 @@
  * artifact (save / export / share) are preserved.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -132,11 +132,24 @@ function landingTab(role: RoleId): WorkTab {
 
 export default function PartWorkspace({
   defaultRole = "design",
+  initialFile = null,
+  onExit,
 }: {
   /** the lens this entry point lands on (cost → design, analyze → mfg). */
   defaultRole?: RoleId;
+  /**
+   * A file to seed the workspace with — used by the FE-3 part door, which drops
+   * the user straight into the hero. Flag-off / direct routes pass nothing and
+   * behave exactly as before (cold-start dropzone).
+   */
+  initialFile?: File | null;
+  /**
+   * Called when the user resets ("New part"). When provided (part door), the
+   * caller returns to its own landing instead of this workspace's cold-start.
+   */
+  onExit?: () => void;
 }) {
-  const [file, setFile] = useState<File | null>(null);
+  const [file, setFile] = useState<File | null>(initialFile ?? null);
   const [opts, setOpts] = useState<CostOptions>(DEFAULT_COST_OPTIONS);
   const [role, setRole] = useState<RoleId>(defaultRole);
   const [tab, setTab] = useState<WorkTab>(() => landingTab(defaultRole));
@@ -340,6 +353,19 @@ export default function PartWorkspace({
     [opts, role, runCost, runDfm]
   );
 
+  /* Seed from a caller-provided file (FE-3 part door hands off here). `file`
+     state is initialised to it so the hero paints immediately with no cold-start
+     flash; this effect runs the real cost + DFM pass once, reusing handleFile. */
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (initialFile && !seededRef.current) {
+      seededRef.current = true;
+      handleFile(initialFile);
+    }
+    // handleFile is stable enough; we intentionally seed only on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFile]);
+
   const handleRecost = useCallback(() => {
     if (!file || validateQty(opts.qty)) return;
     void runCost(file, opts);
@@ -354,7 +380,10 @@ export default function PartWorkspace({
     setDfmError(null);
     setSelectedIssueKey(null);
     setScenarios([]);
-  }, []);
+    // Part-door mode: hand control back to the door landing instead of showing
+    // this workspace's own cold-start dropzone. No-op on flag-off / direct routes.
+    onExit?.();
+  }, [onExit]);
 
   const onFaceClick = useCallback(
     (faceIndex: number) => {

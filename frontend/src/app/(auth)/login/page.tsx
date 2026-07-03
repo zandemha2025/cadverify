@@ -5,7 +5,16 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { browserOrBackendUrl } from "@/lib/api-base";
+import { STAGE_UI } from "@/lib/stage-flag";
 import { PublicHeader } from "@/components/ui/public-chrome";
+
+/**
+ * Where a fresh login lands when no `next` was requested. Flag-on (D5 FE-3): the
+ * three-door landing router at /cost, so the door chooser can greet a first-run
+ * user. Flag-off: today's /analyze. `STAGE_UI` is a compile-time constant, so
+ * this folds to "/analyze" and behaviour is byte-identical when the flag is off.
+ */
+const POST_LOGIN_HOME = STAGE_UI ? "/cost" : "/analyze";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
@@ -21,7 +30,7 @@ function errorMessage(data: unknown, fallback: string): string {
 
 function LoginForm() {
   const params = useSearchParams();
-  const next = params.get("next") || "/analyze";
+  const next = params.get("next") || POST_LOGIN_HOME;
 
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -44,7 +53,7 @@ function LoginForm() {
         return;
       }
       // Hard navigation so the server re-evaluates the new session for the gate.
-      window.location.href = next.startsWith("/") ? next : "/analyze";
+      window.location.href = next.startsWith("/") ? next : POST_LOGIN_HOME;
     } catch {
       setError("Could not reach the server. Is the backend running?");
     } finally {
