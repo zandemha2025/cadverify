@@ -83,6 +83,29 @@ class BoundingBox:
 
 
 @dataclass
+class Citation:
+    """A structured reference to the manufacturing standard behind a check.
+
+    Promotes the previously free-text ``cite=`` strings (e.g.
+    ``"NADCA §3: 1° min external, 2° internal."``) into an inspectable object
+    so enterprise customers can audit every threshold against its source.
+
+    Fields mirror the enterprise-audit schema ``{rule_id?, standard, clause?,
+    text}``. ``standard`` is the source identifier (a spec name like
+    ``"DIN 6935"`` or a machine/vendor guide like ``"Formlabs Form 4"``);
+    ``clause`` is the section marker (``"§3.1"``) when present; ``text`` is the
+    descriptive detail; ``rule_id`` is an optional internal rule identifier
+    (e.g. a rule-pack rule) — left unset when parsed from a bare cite string,
+    never fabricated.
+    """
+
+    standard: Optional[str] = None
+    text: Optional[str] = None
+    clause: Optional[str] = None
+    rule_id: Optional[str] = None
+
+
+@dataclass
 class Issue:
     code: str                           # e.g. "THIN_WALL", "NO_DRAFT", "NON_MANIFOLD"
     severity: Severity
@@ -93,6 +116,7 @@ class Issue:
     fix_suggestion: Optional[str] = None
     measured_value: Optional[float] = None    # e.g. actual wall thickness
     required_value: Optional[float] = None    # e.g. minimum wall thickness
+    citation: Optional[Citation] = None       # structured standard behind the check
 
 
 @dataclass

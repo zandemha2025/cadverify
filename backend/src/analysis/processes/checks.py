@@ -18,6 +18,7 @@ from typing import Optional
 
 import numpy as np
 
+from src.analysis.citations import parse_citation
 from src.analysis.constants import STANDARD_GAUGES
 from src.analysis.context import GeometryContext
 from src.analysis.features.base import Feature, FeatureKind
@@ -54,11 +55,12 @@ def check_wall_thickness(
             f"min wall for {process.value}. Thinnest: {min_measured:.2f}mm."
         ),
         process=process,
-        affected_faces=thin_faces[:100].tolist(),
+        affected_faces=thin_faces.tolist(),
         region_center=region,
         measured_value=min_measured,
         required_value=min_wall_mm,
         fix_suggestion=f"Increase wall thickness to >= {min_wall_mm}mm. {cite}",
+        citation=parse_citation(cite),
     )]
 
 
@@ -90,12 +92,13 @@ def check_overhangs(
             f"overhang threshold for {process.value}. Supports required."
         ),
         process=process,
-        affected_faces=oh_faces[:100].tolist(),
+        affected_faces=oh_faces.tolist(),
         region_center=region,
         fix_suggestion=(
             f"Reorient part or redesign overhangs < {max_angle_deg}° "
             f"for {process.value}. {cite}"
         ),
+        citation=parse_citation(cite),
     )]
 
 
@@ -129,6 +132,7 @@ def check_small_features(
         measured_value=smallest,
         required_value=min_size_mm,
         fix_suggestion=f"Enlarge features to >= {min_size_mm}mm. {cite}",
+        citation=parse_citation(cite),
     )]
 
 
@@ -158,6 +162,7 @@ def check_build_volume(
         ),
         process=process,
         fix_suggestion="Scale down, split part, or use a larger machine.",
+        citation=parse_citation(cite),
     )]
 
 
@@ -222,6 +227,7 @@ def check_trapped_volumes(
                     fix_suggestion=(
                         f"Add drain holes >= {min_drain_mm}mm diameter. {cite}"
                     ),
+                    citation=parse_citation(cite),
                 ))
     except Exception:
         logger.warning(
@@ -277,11 +283,12 @@ def check_draft_angles(
             f"below {min_draft_deg}° draft for {process.value}."
         ),
         process=process,
-        affected_faces=no_draft_faces[:100].tolist(),
+        affected_faces=no_draft_faces.tolist(),
         required_value=min_draft_deg,
         fix_suggestion=(
             f"Add >= {min_draft_deg}° draft to all walls in pull direction. {cite}"
         ),
+        citation=parse_citation(cite),
     )]
 
 
@@ -314,6 +321,7 @@ def check_wall_uniformity(
             measured_value=t_min,
             required_value=min_wall,
             fix_suggestion=f"Increase to >= {min_wall}mm. {cite}",
+            citation=parse_citation(cite),
         ))
     if t_max > max_wall:
         issues.append(Issue(
@@ -324,6 +332,7 @@ def check_wall_uniformity(
             measured_value=t_max,
             required_value=max_wall,
             fix_suggestion=f"Core out thick sections. Target {ideal_wall}mm. {cite}",
+            citation=parse_citation(cite),
         ))
     if t_max > 0 and t_min > 0 and (t_max / t_min) > 2.0:
         issues.append(Issue(
@@ -337,6 +346,7 @@ def check_wall_uniformity(
             measured_value=t_max / t_min,
             required_value=2.0,
             fix_suggestion=f"Aim for uniform {ideal_wall}mm. Use ribs, not solid. {cite}",
+            citation=parse_citation(cite),
         ))
     return issues
 
@@ -368,8 +378,9 @@ def check_undercuts_from_z(
         severity=severity,
         message=f"{len(uc_faces)} faces ({pct:.1f}%) are undercuts for {process.value}.",
         process=process,
-        affected_faces=uc_faces[:100].tolist(),
+        affected_faces=uc_faces.tolist(),
         fix_suggestion=f"Remove undercuts or plan multi-setup machining. {cite}",
+        citation=parse_citation(cite),
     )]
 
 
@@ -398,8 +409,9 @@ def check_undercuts_molding(
             f"in {process.value} tooling."
         ),
         process=process,
-        affected_faces=uc_faces[:100].tolist(),
+        affected_faces=uc_faces.tolist(),
         fix_suggestion=f"Redesign to eliminate undercuts or add slides. {cite}",
+        citation=parse_citation(cite),
     )]
 
 
@@ -430,6 +442,7 @@ def check_internal_radii(
         process=process,
         required_value=min_radius_mm,
         fix_suggestion=f"Add fillets >= {min_radius_mm}mm to internal corners. {cite}",
+        citation=parse_citation(cite),
     )]
 
 
@@ -483,6 +496,7 @@ def check_fillet_requirements(
         process=process,
         required_value=min_fillet_mm,
         fix_suggestion=f"Add {min_fillet_mm}mm+ fillets. {cite}",
+        citation=parse_citation(cite),
     )]
 
 
@@ -543,6 +557,7 @@ def check_residual_stress(
                 ),
                 process=process,
                 fix_suggestion=f"Add breakup features or reorient. HIP recommended. {cite}",
+                citation=parse_citation(cite),
             )]
     return []
 
@@ -658,6 +673,7 @@ def check_prismatic(
         measured_value=pct,
         required_value=85.0,
         fix_suggestion=f"Redesign as a 2D profile extruded along Z. {cite}",
+        citation=parse_citation(cite),
     )]
 
 
@@ -737,6 +753,7 @@ def check_bends(
         process=process,
         measured_value=tightest_deg,
         fix_suggestion=f"Increase bend radius to >= 1x material thickness. {cite}",
+        citation=parse_citation(cite),
     )]
 
 
