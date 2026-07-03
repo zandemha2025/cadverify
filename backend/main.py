@@ -29,6 +29,7 @@ from src.api.reconstruct_router import router as reconstruct_router
 from src.api.admin_routes import router as admin_router
 from src.api.routes import router
 from src.api.cost_decisions import public_cost_share_router, router as cost_decisions_router
+from src.api.catalog import router as catalog_router
 from src.api.share import public_share_router, share_router
 from src.auth.keys_api import router as keys_router
 from src.auth.magic_link import router as magic_router
@@ -197,6 +198,8 @@ app.include_router(public_share_router, prefix="/s")
 # Cost-decision persistence surface (Phase 2 gap #3): list/detail/export/share/compare
 app.include_router(cost_decisions_router, prefix="/api/v1/cost-decisions")
 app.include_router(public_cost_share_router, prefix="/s")
+# Catalog read surface (W1 step 4): the org-scoped parts×decisions grid.
+app.include_router(catalog_router, prefix="/api/v1/catalog", tags=["catalog"])
 # Email + password auth (signup/login/logout/me). Mounted UNCONDITIONALLY — it
 # is the primary login method that works end-to-end locally with zero external
 # infra, independent of AUTH_MODE.
