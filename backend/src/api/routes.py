@@ -708,16 +708,22 @@ async def _run_cost_decision(
     # The demo route passes no user/session, so it stays untouched and IP-local.
     if user is not None and session is not None:
         from src.auth.org_context import resolve_org
-        from src.services.groundtruth_service import load_served_residual_model
+        from src.services.groundtruth_service import load_served_calibration
 
         cal_org_id = await resolve_org(session, user.user_id)
         # resolve_org's contract is Optional[str]; guard on the concrete type so
         # a mocked/unprovisioned session (no real org_id) is treated as "no
         # calibration" — leaving behaviour byte-identical to pre-W5.
         if isinstance(cal_org_id, str) and cal_org_id:
-            residual_model = load_served_residual_model(cal_org_id)
+            residual_model, calibration = load_served_calibration(cal_org_id)
             if residual_model is not None:
                 options.residual_model = residual_model
+            # Correct the served point by the per-process calibration factor so
+            # the MEASURED band is centred coherently with its residuals (they
+            # were measured on the CORRECTED prediction). None (no real ground
+            # truth) => point stays uncorrected => byte-identical to pre-W5.
+            if calibration is not None:
+                options.calibration = calibration
 
     def _run():
         result, m, features = _run_cost_engine(mesh, file.filename or "unknown")

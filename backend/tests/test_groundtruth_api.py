@@ -42,6 +42,14 @@ _N_PARTS = 18
 _PROC = "sls"
 
 
+def _true_cost(i: int) -> float:
+    """Known shop cost for seeded part i at qty 100. Deliberately several × the
+    engine's raw SLS baseline for these small cubes, so the tuned calibration
+    factor lands far from 1.0 — which is exactly what makes the centring bug bite:
+    a band centred on the UNCORRECTED baseline cannot reach this true cost."""
+    return round(30.0 + 1.0 * i, 2)
+
+
 def _build_app():
     from fastapi import FastAPI
 
@@ -162,7 +170,7 @@ async def test_ingest_persist_recalibrate_serve_and_cross_tenant(tmp_path, monke
                     "/api/v1/ground-truth",
                     json={
                         "part_id": pid, "process": _PROC, "quantity": 100,
-                        "actual_unit_cost_usd": round(6.0 + 0.2 * i, 2),
+                        "actual_unit_cost_usd": _true_cost(i),
                         "part_path": ppath, "stand_in": False,
                         "source": f"PO-{1000 + i} real quote",
                     },
@@ -244,6 +252,67 @@ async def test_ingest_persist_recalibrate_serve_and_cross_tenant(tmp_path, monke
             assert a_est is not None
             assert a_est["confidence"]["validated"] is True  # MEASURED from real residuals
             assert a_est["confidence"].get("n_samples") or a_est["confidence"].get("n")
+
+            # ============ COVERAGE: the validated band must CONTAIN the truth ====
+            # The regression the fix targets: a validated band whose residuals were
+            # measured on the CALIBRATION-CORRECTED prediction, but CENTRED on the
+            # UNCORRECTED baseline, systematically EXCLUDES the true cost. We cost
+            # every seeded part (known true unit cost = _true_cost(i) at qty 100)
+            # and count how many served [low, high] bands contain that truth.
+            #
+            # `factor` (per-process calibration) lets us reconstruct, from the SAME
+            # served response, the band the UNCORRECTED point would have produced:
+            # the empirical band scales linearly with the point, so the pre-fix
+            # (uncorrected) band == served band / factor. On the buggy code the
+            # served band IS that uncorrected band and — with a factor far from 1 —
+            # contains the truth for ZERO parts; the fix re-centres it on the
+            # corrected point and restores coverage. So `covered_corrected` reads 0
+            # on the pre-fix code (assertion FAILS) and a strong majority after.
+            cal = summ["calibration"]
+            factor = cal["process_factors"].get(_PROC) or cal["global_factor"]
+            assert factor and factor > 2.0, (
+                "seeded costs must push the calibration factor well clear of 1.0 so "
+                "the centring bug actually excludes truth", cal)
+            covered_corrected = 0
+            covered_uncorrected = 0
+            n_checked = 0
+            # skip part 0: the dedup probe above overwrote its stored cost to 99.0,
+            # so its known true cost no longer matches _true_cost(0).
+            for i, (pid, ppath) in list(enumerate(part_files))[1:]:
+                true_cost = _true_cost(i)
+                files = {"file": (pid, _cube_bytes(i), "application/octet-stream")}
+                r = await ac.post(
+                    "/api/v1/validate/cost", data={"qty": "100"}, files=files
+                )
+                assert r.status_code == 200, r.text
+                est = _confidence_of(r.json(), _PROC)
+                if est is None:
+                    continue
+                ci = est["confidence"]
+                assert ci["validated"] is True and ci["method"] == "measured-residual"
+                lo, hi = ci["low_usd"], ci["high_usd"]
+                n_checked += 1
+                if lo <= true_cost <= hi:
+                    covered_corrected += 1
+                # the band the UNCORRECTED point would have yielded (the bug)
+                if (lo / factor) <= true_cost <= (hi / factor):
+                    covered_uncorrected += 1
+
+            assert n_checked >= 6, n_checked
+            # THE BUG, reproduced in-test: centred on the uncorrected baseline the
+            # validated band contains the truth for NONE of the parts.
+            assert covered_uncorrected == 0, (
+                f"uncorrected centring should exclude ALL truth, got "
+                f"{covered_uncorrected}/{n_checked} (factor={factor})")
+            # THE FIX: correcting the point restores coverage to a strong majority
+            # (nominal 80% band; the two empirical tails may fall just outside).
+            assert covered_corrected >= (2 * n_checked) // 3, (
+                f"corrected band coverage {covered_corrected}/{n_checked} too low "
+                f"(factor={factor}) — the band should CONTAIN the true cost")
+            # and the re-centred point sits at the TRUE-cost scale, not the baseline
+            centre = a_est["confidence"]["point_usd"]
+            assert _true_cost(1) * 0.5 <= centre <= _true_cost(1) * 1.6, (
+                "served centre off true-cost scale", centre)
 
             # ============ cross-tenant: A's calibration NEVER leaks into B ========
             _act_as(app, b1)

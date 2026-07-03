@@ -238,14 +238,37 @@ async def recalibrate_org(
 
 
 # ── serve (item 2/3) ─────────────────────────────────────────────────────────
-def load_served_residual_model(org_id: str, store_dir: Optional[str] = None):
-    """Load the org's persisted ``ResidualModel`` (None if never calibrated).
+def load_served_calibration(org_id: str, store_dir: Optional[str] = None):
+    """Load the org's persisted served CI binding: ``(ResidualModel, Calibration)``.
 
     Called at ``/validate/cost`` time. Pure local disk read — no DB, no network.
-    None => the caller leaves ``EstimateOptions.residual_model`` unset => the CI
+    ``(None, None)`` => never calibrated => the caller leaves both unset => the CI
     is the assumption band (byte-identical to pre-W5 behaviour).
+
+    Honesty seam / coherence rail — the ``Calibration`` is returned ONLY when the
+    bundle carries REAL held-out residuals (``from_real``). The served point is
+    corrected by ``calibration.factor_for(process)`` BEFORE it enters
+    ``confidence_interval`` — mirroring how ``run_loop`` measures residuals on the
+    CORRECTED prediction (``corrected = baseline × factor``; ``groundtruth.py``
+    ``_residuals``). Without real ground truth the calibration stays ``None`` so
+    the point is UNCORRECTED and the band is byte-identical to today's assumption
+    band / stand-in spread — a stand-in bundle cannot move the served number.
     """
     bundle = cstore.load_bundle(org_id, store_dir=store_dir)
     if bundle is None:
-        return None
-    return bundle.residual_model()
+        return None, None
+    model = bundle.residual_model()
+    # Only a REAL (measured) residual model earns a corrected point; a stand-in
+    # spread stays centred on the uncorrected baseline exactly as before.
+    calibration = bundle.calibration if model.from_real else None
+    return model, calibration
+
+
+def load_served_residual_model(org_id: str, store_dir: Optional[str] = None):
+    """Back-compat shim: the served ``ResidualModel`` alone (None if uncalibrated).
+
+    Prefer ``load_served_calibration`` at the served path — it also returns the
+    Calibration needed to correct the point so the MEASURED band stays coherent
+    with its centre.
+    """
+    return load_served_calibration(org_id, store_dir=store_dir)[0]
