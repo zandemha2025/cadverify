@@ -1,89 +1,77 @@
 "use client";
 
 /**
- * useCatalogRows — the data hook behind the cost-engineer catalog grid (D5 FE-4).
+ * useCatalog — the data hook behind the cost-engineer catalog grid (D5 FE-4).
  *
- * The catalog is a table over the user's REAL saved should-cost decisions. It is
- * built from two real endpoints, honestly:
+ * ONE call to the REAL org-scoped `/catalog` endpoint (backend
+ * `src/api/catalog.py`) paints the whole page: every cell — route, unit price,
+ * route-scoped DFM findings, provenance posture, lifecycle state — is derived
+ * SERVER-SIDE and read verbatim. There is no client-side per-row hydration and no
+ * client join of `/analyses` + `/cost-decisions`: the lakehouse read surface does
+ * it once, org-scoped, so the grid is consistent by construction.
  *
- *   1. `fetchCostDecisions` — the paginated list. Its columns (part, make-now
- *      route, crossover, when, shared) paint IMMEDIATELY; they are real.
- *   2. `fetchCostDecision(id)` — the full saved report per row. Unit $, provenance
- *      posture, route DFM blockers and the lifecycle state are read from it and
- *      hydrate progressively (bounded concurrency). Each is a real engine field.
- *
- * This client-side hydration is the honest v1: the list endpoint does not carry
- * per-row posture / price, and the ONE-CALL catalog aggregate (posture + findings
- * per row, server-side) lands with the Governed Catalog (Phase 1). Until then we
- * fetch each saved decision on demand rather than invent the columns — a row whose
- * detail fails to load shows its real list fields and an honest error on the rest.
+ * Facets (state · route · has-findings) map to the endpoint's REAL query params
+ * and are applied server-side BEFORE pagination, so the row count and the page
+ * are always mutually consistent. Changing a facet resets to page 1.
  *
  * Liveness: a `mountedRef` drops any state write after unmount; a monotonic
- * `runIdRef` (bumped at the start of each load effect) invalidates the in-flight
- * fetches of a superseded load (e.g. after Retry), so late detail responses from a
- * stale run never overwrite the fresh grid.
+ * `runIdRef` (bumped at the start of each fetch) invalidates a superseded
+ * request, so a late response from a stale filter/page never overwrites the grid.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  fetchCostDecisions,
-  fetchCostDecision,
-  type CostDecisionSummary,
+  fetchCatalog,
+  type CatalogFacets,
+  type CatalogPagination,
 } from "@/lib/api";
-import { deriveCatalogMetrics, type CatalogMetrics } from "@/lib/catalog";
+import { mapCatalogItems, type CatalogItem } from "@/lib/catalog-api";
 
-/** first page size; a page's rows all hydrate before it is considered settled. */
-const PAGE_LIMIT = 30;
-/** max concurrent per-decision detail fetches (kind to the authed proxy). */
-const CONCURRENCY = 5;
+/** Rows per page — the endpoint caps page_size at 100; 20 is a scannable grid. */
+export const CATALOG_PAGE_SIZE = 20;
 
-export type Hydration = "pending" | "ready" | "error";
+export type CatalogStatus = "loading" | "error" | "ready";
 
-export interface CatalogRow {
-  summary: CostDecisionSummary;
-  metrics: CatalogMetrics | null;
-  hydration: Hydration;
+/** The active facet selection (each maps to a real endpoint query param). */
+export interface CatalogFilterState {
+  state: "Drafted" | "Costed" | null;
+  route: string | null;
+  hasFindings: boolean | null;
 }
 
-export type ListStatus = "loading" | "error" | "ready";
+const EMPTY_FILTERS: CatalogFilterState = {
+  state: null,
+  route: null,
+  hasFindings: null,
+};
 
-export interface UseCatalogRows {
-  status: ListStatus;
+export interface UseCatalog {
+  status: CatalogStatus;
   error: string | null;
-  rows: CatalogRow[];
-  /** rows whose detail is still in flight (their metric cells show skeletons) */
-  hydratingCount: number;
-  hasMore: boolean;
-  loadingMore: boolean;
-  loadMore: () => void;
+  rows: CatalogItem[];
+  facets: CatalogFacets | null;
+  pagination: CatalogPagination | null;
+  /** true when the org exceeded the scan cap and some older parts were omitted */
+  truncated: boolean;
+  filters: CatalogFilterState;
+  page: number;
+  setStateFacet: (s: "Drafted" | "Costed" | null) => void;
+  setRouteFacet: (r: string | null) => void;
+  setHasFindingsFacet: (h: boolean | null) => void;
+  clearFilters: () => void;
+  setPage: (p: number) => void;
   retry: () => void;
 }
 
-/** Run `worker` over `items` with at most `concurrency` in flight. */
-async function runPool<T>(
-  items: readonly T[],
-  concurrency: number,
-  stopped: () => boolean,
-  worker: (item: T) => Promise<void>
-): Promise<void> {
-  let cursor = 0;
-  const lanes = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
-    while (cursor < items.length) {
-      if (stopped()) return;
-      const item = items[cursor++];
-      await worker(item);
-    }
-  });
-  await Promise.all(lanes);
-}
-
-export function useCatalogRows(): UseCatalogRows {
-  const [status, setStatus] = useState<ListStatus>("loading");
+export function useCatalog(): UseCatalog {
+  const [status, setStatus] = useState<CatalogStatus>("loading");
   const [error, setError] = useState<string | null>(null);
-  const [rows, setRows] = useState<CatalogRow[]>([]);
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [rows, setRows] = useState<CatalogItem[]>([]);
+  const [facets, setFacets] = useState<CatalogFacets | null>(null);
+  const [pagination, setPagination] = useState<CatalogPagination | null>(null);
+  const [truncated, setTruncated] = useState(false);
+  const [filters, setFilters] = useState<CatalogFilterState>(EMPTY_FILTERS);
+  const [page, setPageState] = useState(1);
   const [reloadKey, setReloadKey] = useState(0);
 
   const mountedRef = useRef(true);
@@ -96,105 +84,67 @@ export function useCatalogRows(): UseCatalogRows {
     };
   }, []);
 
-  /** true when this run has been superseded or the component has unmounted. */
-  const stale = useCallback((runId: number) => !mountedRef.current || runId !== runIdRef.current, []);
-
-  const hydrate = useCallback(
-    async (summaries: CostDecisionSummary[], runId: number) => {
-      await runPool(summaries, CONCURRENCY, () => stale(runId), async (s) => {
-        try {
-          const detail = await fetchCostDecision(s.id);
-          if (stale(runId)) return;
-          const metrics = deriveCatalogMetrics(detail.result);
-          setRows((prev) =>
-            prev.map((r) =>
-              r.summary.id === s.id ? { ...r, metrics, hydration: "ready" } : r
-            )
-          );
-        } catch {
-          if (stale(runId)) return;
-          setRows((prev) =>
-            prev.map((r) => (r.summary.id === s.id ? { ...r, hydration: "error" } : r))
-          );
-        }
-      });
-    },
-    [stale]
-  );
-
-  const loadFirst = useCallback(
-    async (runId: number) => {
-      setStatus("loading");
-      setError(null);
-      setRows([]);
-      try {
-        const page = await fetchCostDecisions({ limit: PAGE_LIMIT });
-        if (stale(runId)) return;
-        const fresh: CatalogRow[] = page.cost_decisions.map((summary) => ({
-          summary,
-          metrics: null,
-          hydration: "pending",
-        }));
-        setRows(fresh);
-        setCursor(page.next_cursor);
-        setHasMore(page.has_more);
-        setStatus("ready");
-        void hydrate(page.cost_decisions, runId);
-      } catch (e) {
-        if (stale(runId)) return;
-        setError(e instanceof Error ? e.message : "Could not load your cost catalog");
-        setStatus("error");
-      }
-    },
-    [hydrate, stale]
-  );
-
   useEffect(() => {
     const runId = ++runIdRef.current;
-    void loadFirst(runId);
-  }, [loadFirst, reloadKey]);
-
-  const loadMore = useCallback(() => {
-    if (!cursor || loadingMore) return;
-    const runId = runIdRef.current;
-    setLoadingMore(true);
-    fetchCostDecisions({ cursor, limit: PAGE_LIMIT })
-      .then((page) => {
-        if (stale(runId)) return;
-        const more: CatalogRow[] = page.cost_decisions.map((summary) => ({
-          summary,
-          metrics: null,
-          hydration: "pending",
-        }));
-        setRows((prev) => [...prev, ...more]);
-        setCursor(page.next_cursor);
-        setHasMore(page.has_more);
-        void hydrate(page.cost_decisions, runId);
+    const stale = () => !mountedRef.current || runId !== runIdRef.current;
+    setStatus("loading");
+    setError(null);
+    fetchCatalog({
+      page,
+      pageSize: CATALOG_PAGE_SIZE,
+      state: filters.state,
+      route: filters.route,
+      hasFindings: filters.hasFindings,
+    })
+      .then((res) => {
+        if (stale()) return;
+        setRows(mapCatalogItems(res.rows));
+        setFacets(res.facets);
+        setPagination(res.pagination);
+        setTruncated(res.truncated);
+        setStatus("ready");
       })
       .catch((e) => {
-        if (stale(runId)) return;
-        setError(e instanceof Error ? e.message : "Could not load more decisions");
-      })
-      .finally(() => {
-        if (!stale(runId)) setLoadingMore(false);
+        if (stale()) return;
+        setError(e instanceof Error ? e.message : "Could not load your cost catalog");
+        setStatus("error");
       });
-  }, [cursor, loadingMore, hydrate, stale]);
+  }, [page, filters, reloadKey]);
 
+  // A facet change resets to page 1 (the old page may not exist post-filter).
+  const setStateFacet = useCallback((s: "Drafted" | "Costed" | null) => {
+    setFilters((f) => ({ ...f, state: s }));
+    setPageState(1);
+  }, []);
+  const setRouteFacet = useCallback((r: string | null) => {
+    setFilters((f) => ({ ...f, route: r }));
+    setPageState(1);
+  }, []);
+  const setHasFindingsFacet = useCallback((h: boolean | null) => {
+    setFilters((f) => ({ ...f, hasFindings: h }));
+    setPageState(1);
+  }, []);
+  const clearFilters = useCallback(() => {
+    setFilters(EMPTY_FILTERS);
+    setPageState(1);
+  }, []);
+  const setPage = useCallback((p: number) => setPageState(Math.max(1, p)), []);
   const retry = useCallback(() => setReloadKey((k) => k + 1), []);
-
-  const hydratingCount = rows.reduce(
-    (n, r) => (r.hydration === "pending" ? n + 1 : n),
-    0
-  );
 
   return {
     status,
     error,
     rows,
-    hydratingCount,
-    hasMore,
-    loadingMore,
-    loadMore,
+    facets,
+    pagination,
+    truncated,
+    filters,
+    page,
+    setStateFacet,
+    setRouteFacet,
+    setHasFindingsFacet,
+    clearFilters,
+    setPage,
     retry,
   };
 }
