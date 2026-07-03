@@ -32,6 +32,41 @@ Sells the thesis — the governed decision layer, the copilot that cannot halluc
 2. Only after the founder picks a direction, derive tokens and components.
 3. Then build app surfaces and website pages.
 
+## Screen & artifact inventory (what to actually design)
+
+### App anatomy
+Every screen lives in one anatomy: **rail** (nav) / **workspace** (center) / **inspector** (right, progressive disclosure) — plus the **conversation surface**, the CUI entry point, always reachable (as the workspace's spine or a summonable thread). Design how conversation and direct manipulation coexist; that relationship is the product's signature.
+
+### Screens
+1. **Sign-in / first-run** (real email+password auth exists; design an honest, craft-level first-run).
+2. **Home — the three doors** (Decide / Catalog / Portfolio), role-aware landing.
+3. **Decision workspace** (THE core screen): drop zone → part hero stage → conversation with the engine → decision artifacts. This is the founder's first-contact surface — it carries The Crossover moment.
+4. **Part detail** (a catalog entry): hero stage, the context moment, DFM findings, its cost-decision history, lineage.
+5. **Catalog explorer**: grid with isometric hero thumbnails, facets, saved views, the specimen-admission beat.
+6. **Portfolio cost-down board**: savings ranking clustered by program, posture bar, drill-to-rows.
+7. **Batch run monitor**: a ZIP of parts costing progressively — honest per-item states including failures (a failed part shows why, never disappears).
+8. **Cost decision detail + compare** (two decisions side-by-side; differences that don't exist show "—", never fake zeros).
+9. **Public shared artifact page** (`/s/cost/…`) — marketing-grade: this page is how the product spreads; it must carry the honesty labels intact.
+10. **Ground-truth ingest / the Hallmark moment**: real quotes come back → the assumption band flips solid. Design the flip.
+11. **Governed libraries** (rate cards, materials, shops — versioned, effective-dated): one concept frame now, full design later.
+12. **Org settings**: members/roles, API keys, webhooks — functional register, same system.
+13. **Empty states for every list** — empty catalog, empty portfolio, no-context part. Empty states are designed moments here, not gray placeholders.
+
+### Cards / artifacts (the atoms — these ARE the product)
+Should-cost **decision card** (make-vs-buy + crossover qty) · **crossover chart** (a designed chart, not a library default) · **glass-box driver table** with provenance chips (MEASURED / SHOP / USER / DEFAULT) · **confidence band** (dashed assumption vs solid measured; the `validated` flag) · **DFM findings card** scoped to the recommended route, with the honest expander to the full 21-process matrix · **part hero thumbnail** (isometric, used in every list) · **context lineage strip** · **portfolio savings row** (with `basis` — which engine field the saving comes from) · **posture bar** (provenance aggregate) · **batch progress card** · honesty primitives: the **withheld number**, the **DEFAULT-assumption chip** with `[assumption, not shop-validated]`, the **"assumption-based, not yet validated"** label, the **decimated-mesh notice**.
+
+### Interactions (design as moments, with motion)
+- **The drop** — file lands, engine works, the part materializes onto the hero stage (the opening ceremony).
+- **Ask the engine** — conversational what-ifs, ONLY the ones the engine actually answers: quantity, region, material class, shop profile, rate overrides. The UI must never offer a question the engine can't compute.
+- **The crossover scrub** — drag quantity, watch the make-vs-buy decision flip at the computed crossover.
+- **Provenance disclosure** — tap any chip → the driver's source, verbatim.
+- **The zoom-out** — the context moment (three states, per the brief).
+- **Compare** — two decisions, differences composed, absences honest.
+- **Share** — decision → public artifact page.
+- **The batch drop** — a ZIP arrives, the portfolio fills progressively.
+- **The Hallmark** — ground truth ingested, the band flips solid: the single most emotionally important interaction in the product.
+- **The withheld tap** — tap a withheld number → why it's withheld and what would unlock it.
+
 ## Working rules
 - Create a `design/<your-name>` branch and commit ONLY there — **never to `dev` or `prod`** (an autonomous build loop merges to those).
 - Do not touch `backend/`.
