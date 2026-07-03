@@ -66,7 +66,16 @@ import {
 import { RoleLens, CalibrationBar, roleById, type RoleId } from "@/components/glass-box";
 import { useInstrumentChrome, type PartFact } from "@/components/instrument/instrument-chrome";
 import { STAGE_UI } from "@/lib/stage-flag";
-import { PartHero } from "@/components/workspace/hero/PartHero";
+
+/* PartHero (~1900 lines, stage-only) is code-split into its own lazy chunk so a
+   flag-off build never ships it in the main bundle: it is rendered solely from
+   the `if (STAGE_UI)` branch below, so flag-off never mounts it and the chunk is
+   never requested. ssr:false is fine — the hero is a client-only surface (it
+   hosts the WebGL CadViewer, itself ssr:false). Flag-off behaviour is unchanged. */
+const PartHero = dynamic(
+  () => import("@/components/workspace/hero/PartHero").then((m) => m.PartHero),
+  { ssr: false }
+);
 
 const CadViewer = dynamic(() => import("@/components/ui/cad-viewer"), {
   ssr: false,
