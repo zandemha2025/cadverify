@@ -1023,6 +1023,143 @@ export async function fetchCostDecision(id: string): Promise<CostDecisionDetail>
   return apiClient.fetchJson<CostDecisionDetail>(`${API_BASE}/cost-decisions/${id}`);
 }
 
+/* ------------------------------------------------------------------ */
+/*  Catalog — the org-scoped parts×decisions grid (W1.4, GET /catalog) */
+/*  The lakehouse read surface the FE-4 catalog door consumes instead   */
+/*  of joining /analyses + /cost-decisions on the client. Every field    */
+/*  mirrors backend/src/api/catalog.py + catalog_service.derive_row      */
+/*  VERBATIM — a value the endpoint does not carry is null, never faked.  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The recommended make route for a catalog part. `source` distinguishes a
+ * costed decision's make-now route (`"costed"`) from a raw DFM suggestion on a
+ * part that has not been costed yet (`"dfm"`).
+ */
+export interface CatalogRoute {
+  process: string;
+  material: string | null;
+  source: "costed" | "dfm";
+}
+
+/**
+ * Unit cost for a catalog row's recommended route. `usd` is null and `withheld`
+ * true on a DFM-blocked route — the grid never prints a make-price for a part
+ * that can't be made as-designed. `validated` rides the engine confidence band
+ * (false for every assumption-based band today — no ground truth yet).
+ */
+export interface CatalogUnitCost {
+  usd: number | null;
+  qty: number | null;
+  currency: string;
+  withheld: boolean;
+  withheld_reason: string | null;
+  validated: boolean;
+}
+
+/**
+ * Route-scoped DFM finding counts. Null when the part has no analysis (a cost
+ * decision alone does not embed the DFM Issue array) — an honest absence, never
+ * faked as zero.
+ */
+export interface CatalogFindings {
+  total: number;
+  critical: number;
+  advisory: number;
+  info: number;
+  scoped_process: string;
+}
+
+/** Provenance mix across the make-now estimate's drivers (server-derived). */
+export interface CatalogPosture {
+  measured: number;
+  shop: number;
+  user: number;
+  default: number;
+  total: number;
+  grounded: number;
+  guess: number;
+  grounded_pct: number;
+}
+
+/** A link to a source artifact (the analysis or the cost decision) for a part. */
+export interface CatalogRef {
+  id: string;
+  url: string;
+}
+
+/** One catalog grid row — one part (distinct mesh) in the caller's org. */
+export interface CatalogRowApi {
+  part_key: string;
+  filename: string;
+  file_type: string;
+  lifecycle_state: "Drafted" | "Costed";
+  recommended_route: CatalogRoute | null;
+  unit_cost: CatalogUnitCost | null;
+  findings: CatalogFindings | null;
+  provenance_posture: CatalogPosture | null;
+  route_blocker_count: number;
+  cost_decision: CatalogRef | null;
+  analysis: CatalogRef | null;
+  updated_at: string;
+}
+
+export interface CatalogPagination {
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+  has_more: boolean;
+}
+
+/** Facet summary over the FULL org catalog (pre-filter) — real counts. */
+export interface CatalogFacets {
+  state: Record<string, number>;
+  route: Record<string, number>;
+  findings: { with_findings: number; without_findings: number; unknown: number };
+}
+
+/** The filters the server actually applied (echoed back, canonicalized). */
+export interface CatalogFilters {
+  state: string | null;
+  route: string | null;
+  has_findings: boolean | null;
+}
+
+export interface CatalogPage {
+  rows: CatalogRowApi[];
+  pagination: CatalogPagination;
+  facets: CatalogFacets;
+  /** true when the org exceeded the scan cap and some older parts were omitted. */
+  truncated: boolean;
+  filters: CatalogFilters;
+  rateLimits?: RateLimits;
+}
+
+export interface CatalogQuery {
+  page?: number;
+  pageSize?: number;
+  state?: "Drafted" | "Costed" | null;
+  route?: string | null;
+  hasFindings?: boolean | null;
+}
+
+/** Paginated org-scoped catalog grid (GET /api/v1/catalog). */
+export async function fetchCatalog(params: CatalogQuery = {}): Promise<CatalogPage> {
+  const url = new URL(`${API_BASE}/catalog`, window.location.origin);
+  if (params.page) url.searchParams.set("page", String(params.page));
+  if (params.pageSize) url.searchParams.set("page_size", String(params.pageSize));
+  if (params.state) url.searchParams.set("state", params.state);
+  if (params.route) url.searchParams.set("route", params.route);
+  if (params.hasFindings != null) {
+    url.searchParams.set("has_findings", String(params.hasFindings));
+  }
+  const res = await apiClient.fetch(url.toString());
+  const rateLimits = getLatestRateLimits();
+  const data = await res.json();
+  return { ...data, rateLimits };
+}
+
 /** Trigger a browser download of `blob` as `filename` (shared by the exporters). */
 function triggerBlobDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
