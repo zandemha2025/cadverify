@@ -206,7 +206,7 @@ async def lookup_api_key(hmac_idx: str) -> ApiKeyRow | None:
 
 
 async def lookup_user_role(user_id: int) -> str:
-    """Return the role column for a user, defaulting to 'analyst'."""
+    """Return the PLATFORM role column for a user, defaulting to 'analyst'."""
     async with _session()() as s:
         r = (
             await s.execute(
@@ -215,6 +215,32 @@ async def lookup_user_role(user_id: int) -> str:
             )
         ).first()
         return r[0] if r else "analyst"
+
+
+async def lookup_org_membership(user_id: int) -> tuple[str, str] | None:
+    """Return ``(org_id, org_role)`` for the user's primary membership, else None.
+
+    W1 step 2 — the org-scoped *authorization* read that ``require_org_role``
+    resolves against. Single-org in v1; if a user (defensively) holds more than
+    one membership the oldest wins, matching ``org_context.resolve_org``'s
+    tie-break so the org boundary a route enforces is deterministic and stable
+    across the two resolution paths. Opens its own session like the other auth
+    helpers here, so it composes with ``require_api_key`` without a request DB
+    dependency. Returns None for a user with no membership (a mocked test
+    session, or a superadmin provisioned without one).
+    """
+    async with _session()() as s:
+        r = (
+            await s.execute(
+                text(
+                    "SELECT org_id, org_role FROM memberships "
+                    "WHERE user_id = :uid "
+                    "ORDER BY created_at ASC, id ASC LIMIT 1"
+                ),
+                {"uid": user_id},
+            )
+        ).first()
+        return (r[0], r[1]) if r else None
 
 
 async def touch_last_used(api_key_id: int) -> None:

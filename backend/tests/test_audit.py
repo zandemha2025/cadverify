@@ -216,13 +216,18 @@ async def test_export_audit_csv_format():
 # ---------------------------------------------------------------------------
 
 def test_audit_export_requires_admin():
-    """GET /audit-log should require admin role (analyst gets 403)."""
-    from unittest.mock import AsyncMock
+    """GET /audit-log requires ORG-admin: a non-admin member gets 403.
+
+    W1 step 2: the gate is now ``require_org_role(OrgRole.admin)``. We stub the
+    membership-resolution seam (``lookup_org_membership``) so no live DB is
+    needed; a user whose org_role is not admin is rejected before any handler
+    logic runs.
+    """
+    from unittest.mock import AsyncMock, patch
 
     from fastapi.testclient import TestClient
 
     from src.api.admin_routes import router
-    from src.auth.rbac import Role, require_role
     from src.auth.require_api_key import AuthedUser, require_api_key
     from src.db.engine import get_db_session
 
@@ -231,19 +236,26 @@ def test_audit_export_requires_admin():
     app = FastAPI()
     app.include_router(router)
 
-    # Override auth to return analyst role
-    def _analyst_user():
+    def _member_user():
         return AuthedUser(user_id=1, api_key_id=1, key_prefix="test", role="analyst")
 
     async def _fake_db():
         yield AsyncMock()
 
-    app.dependency_overrides[require_api_key] = _analyst_user
+    app.dependency_overrides[require_api_key] = _member_user
     app.dependency_overrides[get_db_session] = _fake_db
 
     client = TestClient(app)
-    resp = client.get("/api/v1/admin/audit-log?start=2026-01-01T00:00:00&end=2026-01-02T00:00:00")
+    # org_role="member" (< admin) -> 403 insufficient_org_role.
+    with patch(
+        "src.auth.rbac.lookup_org_membership",
+        new=AsyncMock(return_value=("org-x", "member")),
+    ):
+        resp = client.get(
+            "/api/v1/admin/audit-log?start=2026-01-01T00:00:00&end=2026-01-02T00:00:00"
+        )
     assert resp.status_code == 403
+    assert resp.json()["detail"]["code"] == "insufficient_org_role"
 
 
 # ---------------------------------------------------------------------------
@@ -251,8 +263,8 @@ def test_audit_export_requires_admin():
 # ---------------------------------------------------------------------------
 
 def test_audit_export_90_day_limit():
-    """GET /audit-log with >90 day range returns 400."""
-    from unittest.mock import AsyncMock
+    """GET /audit-log with >90 day range returns 400 (org-admin cleared)."""
+    from unittest.mock import AsyncMock, patch
 
     from fastapi.testclient import TestClient
 
@@ -264,9 +276,8 @@ def test_audit_export_90_day_limit():
     app = FastAPI()
     app.include_router(router)
 
-    # Override auth to return admin role
     def _admin_user():
-        return AuthedUser(user_id=1, api_key_id=1, key_prefix="test", role="admin")
+        return AuthedUser(user_id=1, api_key_id=1, key_prefix="test", role="analyst")
 
     async def _fake_db():
         yield AsyncMock()
@@ -275,8 +286,13 @@ def test_audit_export_90_day_limit():
     app.dependency_overrides[get_db_session] = _fake_db
 
     client = TestClient(app)
-    resp = client.get(
-        "/api/v1/admin/audit-log?start=2026-01-01T00:00:00&end=2026-06-01T00:00:00"
-    )
+    # org_role="admin" clears the gate; the 90-day window check then rejects.
+    with patch(
+        "src.auth.rbac.lookup_org_membership",
+        new=AsyncMock(return_value=("org-x", "admin")),
+    ):
+        resp = client.get(
+            "/api/v1/admin/audit-log?start=2026-01-01T00:00:00&end=2026-06-01T00:00:00"
+        )
     assert resp.status_code == 400
     assert "90" in resp.text

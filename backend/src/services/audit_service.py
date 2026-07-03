@@ -113,13 +113,17 @@ async def query_audit_log(
     end: datetime,
     user_id: int | None = None,
     action: str | None = None,
+    org_id: str | None = None,
     cursor: str | None = None,
     limit: int = _DEFAULT_LIMIT,
     session: AsyncSession | None = None,
 ) -> dict:
     """Query audit_log with time range, optional filters, cursor pagination.
 
-    Returns {"entries": [...], "next_cursor": ..., "has_more": ...}.
+    ``org_id`` bounds the result to a single organization (W1 step 2 — an
+    org-admin passes their org; a superadmin passes None for the unfiltered,
+    platform-wide view). Returns
+    {"entries": [...], "next_cursor": ..., "has_more": ...}.
     """
     limit = max(1, min(limit, _MAX_LIMIT))
 
@@ -140,6 +144,8 @@ async def query_audit_log(
             stmt = stmt.where(AuditLog.user_id == user_id)
         if action is not None:
             stmt = stmt.where(AuditLog.action == action)
+        if org_id is not None:
+            stmt = stmt.where(AuditLog.org_id == org_id)
         if cursor is not None:
             stmt = stmt.where(AuditLog.id > int(cursor))
 
@@ -177,12 +183,14 @@ async def export_audit_csv(
     end: datetime,
     user_id: int | None = None,
     action: str | None = None,
+    org_id: str | None = None,
     session: AsyncSession | None = None,
 ) -> str:
     """Return CSV string of audit entries matching filters.
 
-    Columns: timestamp, user_email, action, resource_type, resource_id,
-    ip_address, file_hash, result_summary.
+    ``org_id`` bounds the export to a single organization (None = platform-wide,
+    superadmin only). Columns: timestamp, user_email, action, resource_type,
+    resource_id, ip_address, file_hash, result_summary.
     """
     should_close = False
     if session is None:
@@ -200,6 +208,8 @@ async def export_audit_csv(
             stmt = stmt.where(AuditLog.user_id == user_id)
         if action is not None:
             stmt = stmt.where(AuditLog.action == action)
+        if org_id is not None:
+            stmt = stmt.where(AuditLog.org_id == org_id)
 
         rows = (await session.execute(stmt)).scalars().all()
 
