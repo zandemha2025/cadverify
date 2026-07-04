@@ -1,5 +1,7 @@
 # DESIGN MISSION — read this first, then design
 
+> **THESIS UPDATE 2026-07-04 — read `PLATFORM-DNA.md` (repo root) FIRST and design to IT.** The platform's center of gravity moved from should-cost to **makeability VERIFICATION** (can this be made — on your machines, in materials that survive its environment, at physical resource cost; price is secondary). Where this file and PLATFORM-DNA.md disagree, **the DNA wins** — in particular, the #1 signature moment is now **The Verdict**, and the DNA adds three new moments (Your Machines, The Environment Door, Triage at Scale). The register, hard NOs, anatomy, honesty rules, and working rules below all still apply unchanged.
+
 You are doing the full **product design** and **marketing website** for CadVerify. This file is your complete mission. Follow it exactly.
 
 Before designing anything, also read `outputs/design/claude-web-design-brief.md` — it encodes three rounds of founder rejections and is **binding**. Deeper context if you want it: `outputs/design/platform-ia-vision.md`, `outputs/long-horizon-plan.md` (Track D and §W3.5), `outputs/audit/platform-gap-map.md`.
