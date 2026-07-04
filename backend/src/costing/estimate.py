@@ -71,6 +71,20 @@ class EstimateOptions:
     # capital fraction it removes is a DEFAULT assumption (not shop-validated),
     # and machine_capital_frac=0.0 recovers fully-loaded even when this is set.
     owned_processes: frozenset = frozenset()
+    # ── declared tolerance class (Aramco cost gap #4) ────────────────────────
+    # The caller STATES how tight the part is; the cost model applies an honest
+    # machining multiplier to the tolerance-sensitive conversion terms (CNC
+    # finish pass + inspection) and WIDENS the confidence band. There is NO real
+    # GD&T/PMI extraction (that needs OCP) — this is a STATED input, never a
+    # measurement. "standard" (default/omitted) ⇒ (1.0, +0 band) ⇒ byte-identical.
+    # Unknown strings normalize to "standard" (honest fallback, never crash). The
+    # DECLARATION is USER; the factor magnitudes are DEFAULT assumptions.
+    tolerance_class: str = "standard"
+    tolerance_class_is_user: bool = False
+
+    def __post_init__(self):
+        from src.costing.rates import normalize_tolerance_class
+        self.tolerance_class = normalize_tolerance_class(self.tolerance_class)
 
 
 @dataclass
@@ -256,7 +270,8 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
                                  q, rates, region,
                                  n_cavities=options.n_cavities,
                                  complexity=options.complexity, process_score=ps,
-                                 owned=process in options.owned_processes)
+                                 owned=process in options.owned_processes,
+                                 tolerance_class=options.tolerance_class)
             # cycle_hr from the estimate keeps lead time consistent with cost
             cycle_hr = next((d.value for d in est.drivers if d.name == "cycle_time"), 0.0)
             lt = lead_time(process, cycle_hr, q, rates)
@@ -277,7 +292,8 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
                              options.material_class, q, rates, region,
                              n_cavities=options.n_cavities,
                              complexity=options.complexity, process_score=item["score"],
-                             owned=item["process"] in options.owned_processes)
+                             owned=item["process"] in options.owned_processes,
+                             tolerance_class=options.tolerance_class)
         return est.unit_cost_usd
 
     decision = make_vs_buy(estimates_by_pq, options.quantities, leadtimes_by_key,

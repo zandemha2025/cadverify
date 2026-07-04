@@ -59,6 +59,24 @@ BAND_PCT = {"additive": 40.0, "subtractive": 50.0, "formative": 60.0,
             "forging": 55.0,     # billet loss + die-tier are un-validated assumptions
             "edm": 45.0}         # cut-path proxy (perimeter × thickness) is un-validated
 
+# ── Declared tolerance classes (Aramco readiness gap #4, cost side) ─────────
+# Ordered loosest → tightest. The caller DECLARES how tight the part is; there
+# is no real GD&T/PMI extraction here (that needs OCP), so this is an honest
+# STATED input, not a measured one. "standard" is the neutral no-op class.
+TOLERANCE_CLASSES = ("standard", "precision", "tight")
+
+
+def normalize_tolerance_class(value) -> str:
+    """Coerce any caller input to a known tolerance class; unknown → 'standard'.
+
+    Honest fallback: never crash on a bad string, and an unrecognised value is
+    treated as the neutral 'standard' (byte-identical to omitting it).
+    """
+    if not isinstance(value, str):
+        return "standard"
+    v = value.strip().lower()
+    return v if v in TOLERANCE_CLASSES else "standard"
+
 
 # ──────────────────────────────────────────────────────────────────────────
 # The default rate card (all DEFAULT)
@@ -319,6 +337,20 @@ RATE_CARD_V0: dict = {
     # Tooling cavity + complexity scaling (weakness #5). DEFAULT 1 cav, moderate.
     "cavity_exponent": 0.70,   # tool cost ~ n_cavities^0.70 (shared bolster/base)
     "complexity_factor": {"simple": 0.80, "moderate": 1.00, "complex": 1.50, "very_complex": 2.20},
+    # ── Declared tolerance class (Aramco cost gap #4) ────────────────────────
+    # The caller DECLARES how tight the part is → we apply a machining COST
+    # multiplier (≥1.0) to the tolerance-SENSITIVE conversion terms (CNC finish
+    # pass + inspection) and WIDEN the confidence band by band_add_pct absolute
+    # points (tighter = more uncertain — the band only ever widens). "standard"
+    # MUST be (1.0, 0.0): an omitted/standard declaration is BYTE-IDENTICAL to
+    # pre-change output. The DECLARATION is USER; these factor magnitudes are
+    # DEFAULT assumptions, NOT shop-validated, and overridable via a governed
+    # base rate table. There is NO real GD&T extraction here (that needs OCP).
+    "tolerance_class": {
+        "standard":  {"cost_mult": 1.00, "band_add_pct": 0.0},
+        "precision": {"cost_mult": 1.20, "band_add_pct": 8.0},
+        "tight":     {"cost_mult": 1.50, "band_add_pct": 18.0},
+    },
     # Tooling lead time (days), applied once regardless of qty.
     "tooling_lead_days": {PT.INJECTION_MOLDING: 25, PT.DIE_CASTING: 35,
                           # new tooled families (DEFAULT, un-validated lead assumptions)
@@ -590,6 +622,18 @@ class RateCard:
 
     def band_pct(self, process: ProcessType) -> float:
         return BAND_PCT[process_family(process)]
+
+    def tolerance_factors(self, tolerance_class: str) -> tuple:
+        """(cost_mult, band_add_pct) for a DECLARED tolerance class.
+
+        Unknown / missing → 'standard' → (1.0, 0.0), i.e. a byte-identical
+        no-op. The multiplier scales the tolerance-sensitive conversion terms;
+        band_add_pct is added (absolute points) to the reported error band. Both
+        are DEFAULT assumptions (governed via the rate card), never validated."""
+        table = self.data.get("tolerance_class", {}) or {}
+        tc = table.get(normalize_tolerance_class(tolerance_class)) or \
+            table.get("standard", {"cost_mult": 1.0, "band_add_pct": 0.0})
+        return float(tc.get("cost_mult", 1.0)), float(tc.get("band_add_pct", 0.0))
 
 
 # Map a flag-style process token (e.g. "SLS", "INJECTION_MOLDING") to ProcessType.

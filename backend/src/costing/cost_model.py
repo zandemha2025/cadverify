@@ -149,7 +149,10 @@ def _cnc_cycle(process, drivers, material_class, rates: RateCard):
     src = (f"rough {removed:.1f} cm³ ÷ ({mrr:g} cm³/min·60) = {rough_hr:.3f} hr "
            f"+ finish {drivers.surface_area_cm2:.1f} cm² ÷ {finish_rate:g} cm²/hr "
            f"= {finish_hr:.3f} hr  [stock {stock_src}; MRR {material_class}]")
-    return cycle, src
+    # finish_hr is returned separately so the declared tolerance-class input
+    # (Aramco gap #4) can scale ONLY the finish-pass share of machine time, not
+    # roughing (roughing is not tolerance-driven).
+    return cycle, finish_hr, src
 
 
 def _sheet_cycle(process, drivers, rates: RateCard):
@@ -285,7 +288,7 @@ def _edm_cycle(process, drivers, material_class, rates: RateCard):
 def cost_breakdown(process, drivers, material, material_class, qty,
                    rates: RateCard, region: str, n_cavities: int = 1,
                    complexity: str = "moderate", process_score=None,
-                   owned: bool = False) -> CostEstimate:
+                   owned: bool = False, tolerance_class: str = "standard") -> CostEstimate:
     family = process_family(process)
     labor_rate = rates.g("labor_rate")
     margin = rates.g("margin")
@@ -293,6 +296,12 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     utilization = rates.g("utilization")      # machine utilization (DEFAULT 1.0)
     scrap = rates.p(process, "scrap")
     band = rates.band_pct(process)
+    # Declared tolerance class (Aramco gap #4): a COST multiplier (≥1.0) on the
+    # tolerance-sensitive conversion terms + an absolute band widening. standard
+    # ⇒ (1.0, 0.0) ⇒ byte-identical. reported_band is what the estimate exposes;
+    # the per-driver family `band` stays the base family band (unchanged).
+    tol_cost_mult, tol_band_add = rates.tolerance_factors(tolerance_class)
+    reported_band = band + tol_band_add
 
     rl = rates.region_labor(region)
     rl_machine = rates.machine_region_mult(region)   # E-now #2: labor-only region scaling of the blended machine rate
@@ -358,6 +367,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     ))
 
     # ---- MACHINE ---------------------------------------------------------
+    finish_hr = 0.0     # CNC finish-pass share (set by _cnc_cycle); 0 for other families
     if family == "additive":
         machine_hr, n, cycle_src = _additive_machine(process, drivers, rates)
         if rates.nesting_mode(process) == "serial":
@@ -378,7 +388,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             source=pp_src,
         ))
     elif family == "subtractive":
-        machine_hr, cycle_src = _cnc_cycle(process, drivers, material_class, rates)
+        machine_hr, finish_hr, cycle_src = _cnc_cycle(process, drivers, material_class, rates)
         n = 1
     elif family == "fabrication":
         machine_hr, cycle_src = _sheet_cycle(process, drivers, rates)
@@ -608,6 +618,51 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             error_band_pct=40.0,
         ))
 
+    # ── DECLARED TOLERANCE CLASS (Aramco cost gap #4) ────────────────────
+    # The caller DECLARED how tight this part is. Tighter tolerance means more
+    # CNC finishing work + more inspection — the tolerance-SENSITIVE conversion
+    # terms. Apply the DEFAULT multiplier to those terms ONLY: the finish-pass
+    # share of machine time + inspection + any outsourced finishing. Roughing,
+    # material and setup are NOT tolerance-driven and are deliberately excluded.
+    # Non-machining families (additive/formative/fabrication) get NO honest
+    # per-part cost surcharge in V0 — a molded/printed/sheet part's tolerance is
+    # set by the tool/process, not by per-part finishing passes we can quantify —
+    # so their cost is UNCHANGED (band still widens: uncertainty grows either
+    # way). The DECLARATION is USER; the multiplier magnitude is a DEFAULT
+    # assumption, not shop-validated. "standard" ⇒ mult 1.0, +0 band ⇒ NO line
+    # item and NO driver ⇒ byte-identical to pre-change output. validated is
+    # NEVER flipped here — this is an assumption multiplier, not a measurement.
+    tolerance_surcharge = 0.0
+    if family == "subtractive" and tol_cost_mult != 1.0:
+        finish_machine_scaled = (machine_scaled * (finish_hr / machine_hr)
+                                 if machine_hr > 0 else 0.0)
+        tol_base = finish_machine_scaled + inspection_scaled + finishing_scaled
+        tolerance_surcharge = tol_base * (tol_cost_mult - 1.0)
+        extra_variable += tolerance_surcharge          # per-unit conversion cost
+        drivers_out.append(Driver(
+            name="tolerance_class", value=round(tol_cost_mult, 4), unit="×",
+            provenance=Provenance.USER,
+            source=(f"declared tolerance '{tolerance_class}' → ×{tol_cost_mult:g} on the "
+                    f"tolerance-sensitive conversion terms (CNC finish pass "
+                    f"${finish_machine_scaled:.2f} + inspection ${inspection_scaled:.2f}"
+                    + (f" + finishing ${finishing_scaled:.2f}" if finishing_scaled else "")
+                    + f" = ${tol_base:.2f}) = +${tolerance_surcharge:.2f}/unit; band widened "
+                    f"+{tol_band_add:g}pts (uncertainty grows). DECLARATION is USER; the "
+                    f"factor is a DEFAULT assumption [not shop-validated]"),
+            error_band_pct=band,
+        ))
+    elif tol_cost_mult != 1.0 or tol_band_add != 0.0:
+        drivers_out.append(Driver(
+            name="tolerance_class", value=1.0, unit="×",
+            provenance=Provenance.USER,
+            source=(f"declared tolerance '{tolerance_class}': band widened +{tol_band_add:g}pts "
+                    f"(uncertainty grows), but NO per-part machining surcharge applies to a "
+                    f"{family} part in V0 (tolerance is set by the tool/process, not by "
+                    f"quantifiable per-part finishing passes) — cost UNCHANGED. DECLARATION "
+                    f"is USER; DEFAULT assumption [not shop-validated]"),
+            error_band_pct=band,
+        ))
+
     # ---- TOOLING (formative only; cavity + complexity, weakness #5) -----
     if process in FORMATIVE:
         tooling_cost = rates.tooling_cost(process, drivers.max_bbox_mm, n_cavities, complexity)
@@ -678,6 +733,8 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         line_items["consumables"] = round(consumables_scaled, 4)
     if finishing_scaled:
         line_items["finishing"] = round(finishing_scaled, 4)
+    if tolerance_surcharge:
+        line_items["tolerance"] = round(tolerance_surcharge, 4)
     unit_cost = round(sum(line_items.values()), 4)
 
     # ---- region split driver (when any factor ≠ 1.0) --------------------
@@ -746,7 +803,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         variable_cost_usd=round(variable_cost_usd, 4),
         drivers=drivers_out,
         line_items=line_items,
-        est_error_band_pct=band,
+        est_error_band_pct=reported_band,
         dfm_ready=dfm_ready,
         dfm_verdict=dfm_verdict,
         dfm_score=dfm_score,

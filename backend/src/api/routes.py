@@ -229,6 +229,7 @@ def _run_cost_engine(mesh, filename: str):
 _COMPLEXITY = {"simple", "moderate", "complex", "very_complex"}
 _MATERIAL_CLASSES = {"polymer", "aluminum", "steel", "stainless", "titanium"}
 _REGIONS = {"US", "EU", "MX", "CN", "IN", "SA"}
+_TOLERANCE_CLASSES = {"standard", "precision", "tight"}
 _MAX_QTYS = 6
 _MAX_QTY = 10_000_000
 _MAX_OVERRIDES = 64  # cap ad-hoc rate/driver overrides per request
@@ -690,6 +691,7 @@ async def _run_cost_decision(
     shop: Optional[str] = None,
     overrides: Optional[str] = None,
     owned_processes: Optional[str] = None,
+    tolerance_class: Optional[str] = None,
     user: Optional[AuthedUser] = None,
     session: Optional[AsyncSession] = None,
 ) -> dict:
@@ -730,6 +732,15 @@ async def _run_cost_decision(
         )
     if cavities < 1:
         raise HTTPException(status_code=400, detail="cavities must be >= 1")
+    # tolerance_class: None => unset (DEFAULT "standard", byte-identical); a
+    # supplied value must be one of the documented classes and is treated USER.
+    tolerance_is_user = tolerance_class is not None
+    if tolerance_class is not None and tolerance_class not in _TOLERANCE_CLASSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown tolerance_class '{tolerance_class}'. Use one of {sorted(_TOLERANCE_CLASSES)}",
+        )
+    effective_tolerance = tolerance_class or "standard"
     # region: None => unset (DEFAULT US, and a bound shop's region may win); a
     # supplied region must be one of the documented vectors and is treated USER.
     region_is_user = region is not None
@@ -778,6 +789,8 @@ async def _run_cost_decision(
         complexity=complexity,
         complexity_is_user=complexity != "moderate",
         owned_processes=owned,
+        tolerance_class=effective_tolerance,
+        tolerance_class_is_user=tolerance_is_user,
     )
 
     # ---- MEASURED confidence band from a persisted org calibration (W5) ----
@@ -1108,6 +1121,14 @@ async def validate_cost(
                     "machine rate (owned capital is sunk) — the make-it-ourselves "
                     "path. Tagged USER; unset => nothing owned (fully-loaded).",
     ),
+    tolerance_class: Optional[str] = Form(
+        None,
+        description="Declared part tolerance: standard|precision|tight (unset => "
+                    "standard, byte-identical). Applies an honest machining "
+                    "multiplier to the tolerance-sensitive CNC terms (finish pass "
+                    "+ inspection) and widens the confidence band. STATED input, "
+                    "not measured GD&T; the factor is a DEFAULT assumption.",
+    ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -1136,6 +1157,7 @@ async def validate_cost(
         shop=shop,
         overrides=overrides,
         owned_processes=owned_processes,
+        tolerance_class=tolerance_class,
         user=user,
         session=session,
     )
@@ -1166,6 +1188,12 @@ async def validate_cost_demo(
         None,
         description='JSON object of ad-hoc rate/driver overrides (tagged USER).',
     ),
+    tolerance_class: Optional[str] = Form(
+        None,
+        description="Declared part tolerance: standard|precision|tight (unset => "
+                    "standard, byte-identical). Honest machining multiplier on the "
+                    "tolerance-sensitive CNC terms + band widening. STATED input.",
+    ),
 ):
     """Public demo of the should-cost / make-vs-buy decision — NO auth.
 
@@ -1187,6 +1215,7 @@ async def validate_cost_demo(
         material_class=material_class,
         shop=shop,
         overrides=overrides,
+        tolerance_class=tolerance_class,
     )
 
 
