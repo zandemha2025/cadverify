@@ -198,6 +198,30 @@ async def refresh_part_summary_safe(
         )
 
 
+async def org_has_raw_parts(session: AsyncSession, org_id: str) -> bool:
+    """Cheap read-only EXISTS: does the org have ANY analysis or cost decision?
+
+    Used to tell a genuinely-empty org (correct zero) apart from a COLD projection
+    (org has raw parts written before the projection existed / before the deploy
+    backfill ran). Two indexed ``LIMIT 1`` probes — never a scan, never a write.
+    """
+    if not org_id:
+        return False
+    a = (
+        await session.execute(
+            select(Analysis.id).where(Analysis.org_id == org_id).limit(1)
+        )
+    ).first()
+    if a is not None:
+        return True
+    c = (
+        await session.execute(
+            select(CostDecision.id).where(CostDecision.org_id == org_id).limit(1)
+        )
+    ).first()
+    return c is not None
+
+
 # ---------------------------------------------------------------------------
 # Backfill (deploy / byte-identity test population) — unbounded, paged
 # ---------------------------------------------------------------------------

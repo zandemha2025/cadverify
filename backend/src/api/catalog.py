@@ -240,19 +240,21 @@ async def get_triage(
     # of folding the 2000 newest raw rows in Python. Byte-identical output shape.
     built = await svc.build_triage_scaled(session, org_id)
 
-    # Rollout self-heal: if the org has parts but no projection rows yet (data
-    # predating the projection, or a deploy that shipped before the one-time
-    # backfill ran), lazily backfill THIS org once, then recompute. A genuinely
-    # empty org backfills nothing (one empty keyset probe — negligible), so this
-    # never fabricates counts; it only reconciles a stale projection.
+    # Cold-projection fallback (READ-ONLY — no write on a GET). If the scaled
+    # projection is empty but the org actually has parts (data predating the
+    # projection, or a deploy that shipped before the one-time backfill ran), we
+    # do NOT synchronously backfill the whole org inside a read request — for a
+    # million-part org that would be an unbounded, request-blocking write. Instead
+    # we fall back to the LEGACY capped fold for THIS response: honest
+    # (``truncated:true`` says coverage is partial), bounded (≤ the scan cap), and
+    # read-only. Once the deploy backfill runs (or new writes land via the persist
+    # hooks), the uncapped scaled path takes over automatically. A genuinely empty
+    # org has no raw parts → the scaled zero is correct and we never touch legacy.
     if org_id and built["summary"]["total"] == 0:
         from src.services import part_summary_service
 
-        healed = await part_summary_service.backfill_part_summaries(
-            session, org_id=org_id
-        )
-        if healed:
-            built = await svc.build_triage_scaled(session, org_id)
+        if await part_summary_service.org_has_raw_parts(session, org_id):
+            built = await svc.build_triage(session, org_id)
 
     summary = built["summary"]
     resp = {

@@ -546,6 +546,68 @@ async def test_backfill_idempotency_and_parity():
 
 @_requires_pg
 @pytest.mark.asyncio
+async def test_cold_projection_fallback_is_read_only():
+    """The triage endpoint's cold-projection handling is READ-ONLY.
+
+    When raw parts exist but the projection is cold (bypassed hooks / pre-backfill
+    deploy), ``build_triage_scaled`` returns zero, ``org_has_raw_parts`` is True,
+    and the endpoint serves the LEGACY capped fold — WITHOUT writing any
+    part_summaries row on the GET. A genuinely empty org has no raw parts, so the
+    scaled zero stands and legacy is never consulted."""
+    import src.db.engine as eng
+    from sqlalchemy import text
+    from ulid import ULID
+
+    fx = _Fixture(uuid.uuid4().hex[:8])
+    try:
+        async with eng.get_session_factory()() as s:
+            org = await fx.org(s, "CD")
+            await fx.user(s, org, "cd")
+            uid = fx.user_ids[-1]
+            # Raw insert WITHOUT hooks → projection stays cold for a real part.
+            await s.execute(
+                text(
+                    "INSERT INTO cost_decisions (ulid, user_id, org_id, mesh_hash, "
+                    "params_hash, engine_version, filename, file_type, result_json, "
+                    "make_now_process, crossover_qty) VALUES (:ul, :u, :o, :mh, :ph, "
+                    "'0.3.0', :fn, 'stl', CAST(:rj AS jsonb), :mnp, 500.0)"
+                ),
+                {"ul": str(ULID()), "u": uid, "o": org, "mh": f"cd-{fx.tag}",
+                 "ph": f"params-{ULID()}", "fn": f"cd-{fx.tag}.stl",
+                 "rj": json.dumps(_cost_json()),
+                 "mnp": (_cost_json().get("decision") or {}).get("make_now_process")},
+            )
+            await s.commit()
+
+        async with eng.get_session_factory()() as s:
+            # Projection is cold → scaled triage is empty …
+            scaled = await svc.build_triage_scaled(s, org)
+            assert scaled["summary"]["total"] == 0
+            # … but the org really has parts (the disambiguation the endpoint uses)
+            assert await pss.org_has_raw_parts(s, org) is True
+            # … so the endpoint serves the legacy fold, which sees the real part.
+            legacy = await svc.build_triage(s, org)
+            assert legacy["summary"]["total"] == 1
+            # READ-ONLY: consulting the fallback wrote NO projection rows.
+            n = (
+                await s.execute(
+                    text("SELECT count(*) FROM part_summaries WHERE org_id=:o"),
+                    {"o": org},
+                )
+            ).scalar()
+            assert n == 0
+
+        # A genuinely empty org: no raw parts → scaled zero is correct, no fallback.
+        async with eng.get_session_factory()() as s:
+            empty_org = await fx.org(s, "CE")
+            assert await pss.org_has_raw_parts(s, empty_org) is False
+            assert (await svc.build_triage_scaled(s, empty_org))["summary"]["total"] == 0
+    finally:
+        await _cleanup(fx)
+
+
+@_requires_pg
+@pytest.mark.asyncio
 async def test_keyset_pagination_walks_every_part_once():
     """> limit parts: walking pages via next_cursor yields every part exactly once,
     in (updated_at DESC, mesh_hash DESC) order, next_cursor None only on the last
