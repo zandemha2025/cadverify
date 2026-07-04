@@ -12,7 +12,16 @@ import logging
 import os
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +58,7 @@ def _flag(name: str, default: str) -> bool:
 
 @router.post("/batch", status_code=202)
 async def create_batch(
+    request: Request,
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
     file: Optional[UploadFile] = File(None),
@@ -101,6 +111,28 @@ async def create_batch(
             },
         )
 
+    # F-ARCH-5 (S3/manifest honesty): the coordinator raises NotImplementedError
+    # per item for remote input, orphaning the batch. Announce, don't orphan:
+    # reject at the API with a stable 501 -- BEFORE any Batch row is created (and
+    # before we buffer a ZIP) -- so no doomed 'pending' batch is ever persisted.
+    # Covers s3_bucket/s3_prefix AND manifest_url (all advertised, none wired).
+    # Flip S3_INPUT_ENABLED=1 once the connectors wall (W2) lands the real fetch.
+    if not _flag("S3_INPUT_ENABLED", "0") and (
+        s3_bucket is not None or s3_prefix is not None or manifest_url is not None
+    ):
+        raise HTTPException(
+            status_code=501,
+            detail={
+                "code": "S3_INPUT_NOT_IMPLEMENTED",
+                "message": (
+                    "S3/manifest batch input is not yet available; upload a ZIP "
+                    "file instead. Remote ingestion is scheduled for the "
+                    "connectors release (W2)."
+                ),
+                "doc_url": f"{DOC_BASE}/S3_INPUT_NOT_IMPLEMENTED",
+            },
+        )
+
     # Determine input mode
     if file is not None:
         input_mode = "zip"
@@ -128,29 +160,30 @@ async def create_batch(
                 },
             )
 
-    # F-ARCH-5 (S3 honesty): the worker raises NotImplementedError per item for
-    # S3 input, orphaning the batch. Announce, don't orphan: reject at the API
-    # with a stable 501 until the connectors wall (W2) lands the real fetch.
-    # Flip S3_INPUT_ENABLED=1 once implemented.
-    if input_mode == "s3" and not _flag("S3_INPUT_ENABLED", "0"):
-        raise HTTPException(
-            status_code=501,
-            detail={
-                "code": "S3_INPUT_NOT_IMPLEMENTED",
-                "message": (
-                    "S3 batch input is not yet implemented. Upload a ZIP file "
-                    "instead. S3 ingestion is scheduled for the connectors "
-                    "release (W2)."
-                ),
-                "doc_url": f"{DOC_BASE}/S3_INPUT_NOT_IMPLEMENTED",
-            },
-        )
-
     # For a ZIP upload, stream to a temp file with early size rejection BEFORE
     # creating the batch row -- so an oversized/invalid upload never leaves an
     # orphaned 'pending' batch behind (F-ARCH-9 + F-ARCH-1).
     zip_tmp_path: Optional[str] = None
     if input_mode == "zip":
+        # F-ARCH-9 (early cheap reject): if the client declared a Content-Length
+        # that already exceeds the cap, reject with 413 before reading a single
+        # byte of the body. The streamed read below remains authoritative (a
+        # spoofed/absent header cannot bypass the cap), but this short-circuits
+        # the obvious 5 GB upload without touching the socket payload.
+        declared = request.headers.get("content-length")
+        if declared is not None:
+            try:
+                declared_len = int(declared)
+            except ValueError:
+                declared_len = None
+            if declared_len is not None and declared_len > BATCH_MAX_ZIP_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=(
+                        f"Upload Content-Length {declared_len} exceeds maximum "
+                        f"ZIP size of {BATCH_MAX_ZIP_BYTES} bytes"
+                    ),
+                )
         try:
             zip_tmp_path = await batch_service.stream_upload_to_tempfile(
                 file, BATCH_MAX_ZIP_BYTES
