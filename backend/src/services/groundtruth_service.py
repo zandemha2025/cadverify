@@ -22,6 +22,7 @@ import asyncio
 import csv
 import io
 import logging
+import os
 from typing import Optional
 
 from sqlalchemy import delete, func, select
@@ -33,6 +34,11 @@ from src.costing.groundtruth import GroundTruthRecord, run_loop
 from src.db.models import GroundTruthRecordRow
 
 logger = logging.getLogger("cadverify.groundtruth")
+
+# Hard ceiling on best-effort geometry extraction during ingest so a pathological
+# or oversized mesh can never hang the request; on timeout the record stores with
+# NULL geometry (the analogy k-NN simply skips it).
+_GEOM_EXTRACT_TIMEOUT_S = float(os.getenv("GT_GEOM_EXTRACT_TIMEOUT_S", "20"))
 
 # ── CSV bulk-import contract (W5 flywheel mass-ingest) ───────────────────────
 # Known engine process ids and material classes the importer validates against —
@@ -84,6 +90,44 @@ class InsufficientGroundTruth(Exception):
             f"count toward a served calibration. Ingest more real quotes "
             f"(stand_in=false) and retry."
         )
+
+
+# ── network-supplied part_path safety ────────────────────────────────────────
+# A network caller (API ingest / CSV import) may supply an optional ``part_path``
+# geometry hint. It is later handed to the mesh parsers (gmsh/trimesh) by
+# ``resolve_part_path`` -> ``_extract_geometry_features``. An UNTRUSTED absolute
+# path or a ``..`` traversal would let an authenticated caller point the server
+# at any local file (``/etc/passwd``, ``/proc/...``, a FIFO/device that hangs a
+# worker) — bypassing every HTTP upload guard. So we confine network-supplied
+# part_path to a SAFE RELATIVE path (resolved under the trusted parts_dir).
+# The trusted eval harness builds ``GroundTruthRecord`` dataclasses directly and
+# is unaffected — this guard is only on the two network ingress points.
+class UnsafePartPath(ValueError):
+    """A network-supplied part_path is absolute or escapes the corpus dir."""
+
+
+def sanitize_part_path(value):
+    """Return a safe relative part_path, or None if blank; raise UnsafePartPath.
+
+    Rejects absolute paths, ``..`` traversal, home expansion, and NUL bytes — a
+    network client has no business naming an absolute server path. A safe value
+    is a plain relative path that ``resolve_part_path`` joins under parts_dir.
+    """
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    if "\x00" in s:
+        raise UnsafePartPath("part_path contains a NUL byte")
+    if s.startswith("~"):
+        raise UnsafePartPath("part_path may not use ~ home expansion")
+    if os.path.isabs(s) or (len(s) > 1 and s[1] == ":"):  # POSIX abs or Windows drive
+        raise UnsafePartPath("part_path must be a relative path within the corpus, not absolute")
+    parts = s.replace("\\", "/").split("/")
+    if ".." in parts:
+        raise UnsafePartPath("part_path may not contain '..' path traversal")
+    return s
 
 
 # ── CSV parser (pure — no DB, no I/O) ────────────────────────────────────────
@@ -195,6 +239,13 @@ def parse_ground_truth_csv(text: str):
         if material_class not in KNOWN_MATERIAL_CLASSES:
             row_errs.append(f"unknown material_class '{material_class}'")
 
+        # network-supplied part_path must be a safe relative corpus path
+        safe_part_path = None
+        try:
+            safe_part_path = sanitize_part_path(cell(record, "part_path") or None)
+        except UnsafePartPath as exc:
+            row_errs.append(str(exc))
+
         currency = (cell(record, "currency") or "USD").upper()
         if not (currency.isalpha() and len(currency) == 3):
             row_errs.append(
@@ -215,7 +266,7 @@ def parse_ground_truth_csv(text: str):
             "region": cell(record, "region") or None,
             "currency": currency,
             "source": cell(record, "source"),
-            "part_path": cell(record, "part_path") or None,
+            "part_path": safe_part_path,
             "notes": cell(record, "notes"),
             "stand_in": False,  # imported historical costs are REAL
         })
@@ -310,11 +361,17 @@ def _extract_geometry_features(gt: GroundTruthRecord,
     from src.costing.groundtruth import resolve_part_path
 
     if parts_dir is None:
-        try:
-            from src.costing.harness import PARTS_DIR_DEFAULT
-            parts_dir = PARTS_DIR_DEFAULT
-        except Exception:  # pragma: no cover - harness import guard
-            parts_dir = None
+        # Read the trusted-corpus dir FRESH from the env (not an import-time
+        # constant) so the resolution honours the deployed configuration. This
+        # is the ONLY dir a network record's mesh is looked up under (its
+        # part_path was already confined to a safe relative name at ingest).
+        parts_dir = os.environ.get("CADVERIFY_PARTS_DIR")
+        if parts_dir is None:
+            try:
+                from src.costing.harness import PARTS_DIR_DEFAULT
+                parts_dir = PARTS_DIR_DEFAULT
+            except Exception:  # pragma: no cover - harness import guard
+                parts_dir = None
     path = resolve_part_path(gt, parts_dir)
     if path is None:
         return None
@@ -378,16 +435,31 @@ async def ingest_record(
         currency=payload.get("currency") or "USD",
         source=payload.get("source") or "",
         stand_in=bool(payload.get("stand_in", False)),
-        part_path=payload.get("part_path"),
+        # network-supplied path is confined to a safe relative corpus path
+        # (raises UnsafePartPath -> ValueError -> the API maps it to 400).
+        part_path=sanitize_part_path(payload.get("part_path")),
         notes=payload.get("notes") or "",
     )
 
     # Best-effort MEASURED geometry (off the event loop — CPU-bound mesh analysis).
     # None when the mesh does not resolve or extraction fails => geometry stays
     # NULL and the analogy k-NN skips this record; the ingest is never failed.
-    geom = await asyncio.get_event_loop().run_in_executor(
-        None, _extract_geometry_features, gt, parts_dir
-    )
+    # Bounded by a timeout so a pathological/slow mesh can never hang a worker
+    # thread indefinitely (defense-in-depth alongside the part_path confinement).
+    try:
+        geom = await asyncio.wait_for(
+            asyncio.get_event_loop().run_in_executor(
+                None, _extract_geometry_features, gt, parts_dir
+            ),
+            timeout=_GEOM_EXTRACT_TIMEOUT_S,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "ground-truth geometry extraction timed out for part_id=%.60s — "
+            "storing record with NULL geometry (analogy skips it)",
+            gt.part_id,
+        )
+        geom = None
 
     # last-wins dedup within the org
     await session.execute(
@@ -484,8 +556,11 @@ def recalibrate_from_records(
             n_real=len(real), n_records=len(records), min_real=MIN_REAL_RECORDS
         )
     if parts_dir is None:
-        from src.costing.harness import PARTS_DIR_DEFAULT
-        parts_dir = PARTS_DIR_DEFAULT
+        # Fresh env read (deployed-config honouring), same as ingest extraction.
+        parts_dir = os.environ.get("CADVERIFY_PARTS_DIR")
+        if parts_dir is None:
+            from src.costing.harness import PARTS_DIR_DEFAULT
+            parts_dir = PARTS_DIR_DEFAULT
     loop = run_loop(
         records,
         parts_dir=parts_dir,

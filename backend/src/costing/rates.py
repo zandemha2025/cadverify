@@ -315,7 +315,12 @@ RATE_CARD_V0: dict = {
     # "PA12 (Nylon 12)") or by a class sentinel ("@polymer", "@aluminum", ...).
     "material_prices": {},
     # CNC material-removal rate (cm^3/min) by material class.
-    "mrr": {"polymer": 50, "aluminum": 30, "steel": 8, "stainless": 5, "titanium": 2},
+    # Material-removal rate (cm³/min) by class. Nickel superalloys (Inconel,
+    # Incoloy, Hastelloy) work-harden and machine SLOWER than titanium, so they
+    # get their own low rate — without it the fallback (8) would cost a nickel
+    # CNC part like steel and materially under-cost the machine line.
+    "mrr": {"polymer": 50, "aluminum": 30, "steel": 8, "stainless": 5,
+            "titanium": 2, "nickel": 1.5},
     # Wire-EDM cut rate (mm^2 of swept cross-section per HOUR) by material class —
     # the whole point of wire-EDM is that it is SLOW and precise (orders of
     # magnitude below milling). Conductive metals only; the "polymer" entry is a

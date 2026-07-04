@@ -94,8 +94,11 @@ async def test_ingest_persist_recalibrate_serve_and_cross_tenant(tmp_path, monke
 
     parts_dir = tmp_path / "parts"
     parts_dir.mkdir()
-    # Write real STL parts to disk; ingest records point part_path at them so
-    # recalibration's engine run resolves them regardless of the configured dir.
+    # Write real STL parts to a TRUSTED SERVER CORPUS (CADVERIFY_PARTS_DIR);
+    # records resolve their mesh by part_id under that dir — the secure path. A
+    # network-supplied absolute part_path is rejected at ingest (arbitrary-file
+    # open guard), so the POST bodies below carry NO part_path.
+    monkeypatch.setenv("CADVERIFY_PARTS_DIR", str(parts_dir))
     part_files = []
     for i in range(_N_PARTS):
         pid = f"gtcube-{i:02d}.stl"
@@ -171,7 +174,7 @@ async def test_ingest_persist_recalibrate_serve_and_cross_tenant(tmp_path, monke
                     json={
                         "part_id": pid, "process": _PROC, "quantity": 100,
                         "actual_unit_cost_usd": _true_cost(i),
-                        "part_path": ppath, "stand_in": False,
+                        "stand_in": False,
                         "source": f"PO-{1000 + i} real quote",
                     },
                 )
@@ -191,7 +194,7 @@ async def test_ingest_persist_recalibrate_serve_and_cross_tenant(tmp_path, monke
                 "/api/v1/ground-truth",
                 json={
                     "part_id": part_files[0][0], "process": _PROC, "quantity": 100,
-                    "actual_unit_cost_usd": 99.0, "part_path": part_files[0][1],
+                    "actual_unit_cost_usd": 99.0,
                     "stand_in": False, "source": "PO-dup",
                 },
             )

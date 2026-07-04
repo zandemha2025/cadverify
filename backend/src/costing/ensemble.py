@@ -510,10 +510,12 @@ def combine_inverse_variance(values_and_vars: Sequence[tuple]) -> Combined:
     reduce, never increase, the combined variance). Equal variances reduce to
     the plain mean. Unit-tested.
 
-    This is the estimator-space analogue we will use once the ensemble has
-    multiple *distinct* members (P1+). The current assumption ensemble has one
-    physics member perturbed K ways (not K independent estimators), so this
-    helper is provided and tested but not yet applied to the band above.
+    This is the estimator-space combine used by the P1 analogy path: when a real
+    analogy-to-quote member is present it is combined with the physics member
+    here (the ``has_real_member`` BLUE combine above). The assumption ensemble
+    alone — one physics member perturbed K ways, no distinct 2nd estimator — does
+    not invoke it; the combine only engages once a second, independent estimator
+    (the analogy member) actually contributes.
     """
     items = [(float(v), float(var)) for v, var in values_and_vars]
     if not items:

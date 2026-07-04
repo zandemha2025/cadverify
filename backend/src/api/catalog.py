@@ -107,9 +107,33 @@ async def get_catalog(
     # SCALE mode: keyset page over the materialized projection (opt-in, so the
     # default response shape stays unchanged for existing callers).
     if keyset:
-        return await svc.build_catalog_page(
+        from src.services import part_summary_service
+
+        page = await svc.build_catalog_page(
             session, org_id, cursor=cursor, limit=page_size
         )
+        # Cold-projection fallback (READ-ONLY, mirrors the /triage path): if the
+        # first page is empty but the org actually has parts, the projection is
+        # cold (data predating it / a deploy before the one-time backfill). Don't
+        # silently show an empty grid for a non-empty org — fall back to the
+        # legacy capped catalog for this response (honest: `truncated` flags it),
+        # no write on the GET. Once the backfill runs / new writes land, the
+        # uncapped keyset path takes over. Only checked on the FIRST page (no
+        # cursor) so mid-walk pages are never misread as "cold".
+        if (
+            org_id
+            and cursor is None
+            and not page["rows"]
+            and await part_summary_service.org_has_raw_parts(session, org_id)
+        ):
+            built = await svc.build_catalog(session, org_id)
+            return {
+                "rows": built["rows"],
+                "next_cursor": None,
+                "cold_projection": True,
+                "truncated": built["truncated"],
+            }
+        return page
 
     built = await svc.build_catalog(session, org_id)
     all_rows = built["rows"]

@@ -152,10 +152,13 @@ async def test_analogy_member_activates_live_and_is_org_isolated(monkeypatch):
                     "quantity": QTY,
                     "actual_unit_cost_usd": 120.0 + 5 * i,
                     "material_class": "aluminum",
-                    "part_path": p,
+                    # secure resolution: the mesh lives in a trusted server
+                    # corpus (parts_dir) and resolves by part_id — NOT via a
+                    # network-supplied absolute part_path (now rejected).
                     "source": "PO-real",
                     "stand_in": False,
                 },
+                parts_dir=tmpdir,
             )
             # geometry was populated best-effort at ingest
             assert row.volume_cm3 is not None and row.face_count is not None

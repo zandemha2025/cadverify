@@ -91,6 +91,37 @@ def test_missing_required_column_is_a_header_error():
     assert "actual_unit_cost_usd" in errors[0]["reason"]
 
 
+def test_unsafe_part_path_is_rejected_per_line_not_stored():
+    # A network-supplied absolute / traversal part_path must be REPORTED as a
+    # per-line error (never silently stored) — it would otherwise be an
+    # arbitrary-local-file open primitive when the record is later parsed.
+    csv_text = (
+        "part_id,process,quantity,actual_unit_cost_usd,part_path\n"
+        "good.stl,sls,10,5.00,sub/good.stl\n"          # safe relative — kept
+        "evil1.stl,sls,10,5.00,/etc/passwd\n"          # absolute — rejected
+        "evil2.stl,sls,10,5.00,../../etc/shadow\n"     # traversal — rejected
+    )
+    rows, errors = svc.parse_ground_truth_csv(csv_text)
+    assert [r["part_id"] for r in rows] == ["good.stl"]
+    assert rows[0]["part_path"] == "sub/good.stl"
+    by_line = {e["line"]: e["reason"] for e in errors}
+    assert set(by_line) == {3, 4}
+    assert "absolute" in by_line[3]
+    assert ".." in by_line[4]
+
+
+def test_safe_relative_and_blank_part_path_pass():
+    from src.services.groundtruth_service import UnsafePartPath, sanitize_part_path
+
+    assert sanitize_part_path(None) is None
+    assert sanitize_part_path("") is None
+    assert sanitize_part_path("a.stl") == "a.stl"
+    assert sanitize_part_path("sub/dir/a.step") == "sub/dir/a.step"
+    for bad in ("/etc/passwd", "../x", "~/x", "C:\\x", "a/../../etc"):
+        with pytest.raises(UnsafePartPath):
+            sanitize_part_path(bad)
+
+
 def test_all_bad_rows_yield_zero_rows_plus_errors():
     csv_text = (
         "part_id,process,quantity,actual_unit_cost_usd\n"
