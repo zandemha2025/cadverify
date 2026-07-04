@@ -267,7 +267,12 @@ def row_to_public(r: GroundTruthRecordRow) -> dict:
 
 
 def _row_to_gt(r: GroundTruthRecordRow) -> GroundTruthRecord:
-    """DB row -> the dataclass the costing loop consumes (validates on build)."""
+    """DB row -> the dataclass the costing loop consumes (validates on build).
+
+    Threads the (nullable) MEASURED geometry through so a record that carries it
+    can activate the analogy-to-quote k-NN member (``geometry_features`` property);
+    a row with NULL geometry stays skippable by the analogy exactly as before.
+    """
     return GroundTruthRecord(
         part_id=r.part_id,
         process=r.process,
@@ -281,12 +286,70 @@ def _row_to_gt(r: GroundTruthRecordRow) -> GroundTruthRecord:
         stand_in=bool(r.stand_in),
         part_path=r.part_path,
         notes=r.notes or "",
+        volume_cm3=(float(r.volume_cm3) if r.volume_cm3 is not None else None),
+        surface_area_cm2=(float(r.surface_area_cm2)
+                          if r.surface_area_cm2 is not None else None),
+        max_bbox_mm=(float(r.max_bbox_mm) if r.max_bbox_mm is not None else None),
+        face_count=(int(r.face_count) if r.face_count is not None else None),
     )
+
+
+def _extract_geometry_features(gt: GroundTruthRecord,
+                               parts_dir: Optional[str] = None) -> Optional[dict]:
+    """Best-effort MEASURED geometry for a record — reuse the engine's extraction.
+
+    Resolves the record's ``part_path``/``part_id`` to a mesh via the SAME
+    parts-dir resolution the eval/recalibrate paths use (``resolve_part_path``),
+    runs the canonical engine sequence, and returns the analogy k-NN feature
+    mapping (``analogy_estimator.FEATURE_KEYS``) extracted from ``GeoDrivers`` —
+    or None when the mesh does not resolve or extraction fails. NEVER fabricates
+    and NEVER raises: a geometry failure must not fail the ingest (caller stores
+    None). CPU-bound (loads + analyses the mesh); async callers run it in an
+    executor.
+    """
+    from src.costing.groundtruth import resolve_part_path
+
+    if parts_dir is None:
+        try:
+            from src.costing.harness import PARTS_DIR_DEFAULT
+            parts_dir = PARTS_DIR_DEFAULT
+        except Exception:  # pragma: no cover - harness import guard
+            parts_dir = None
+    path = resolve_part_path(gt, parts_dir)
+    if path is None:
+        return None
+    try:
+        from src.costing.cli import _run_engine
+        from src.costing.drivers import extract_drivers
+
+        result, mesh, feats = _run_engine(path)
+        dr = extract_drivers(result.geometry, mesh, feats)
+        vol = float(dr.volume_cm3)
+        area = float(dr.surface_area_cm2)
+        bbox = float(dr.max_bbox_mm)
+        faces = int(dr.face_count)
+        # The analogy vector needs every driver positive (analogy_estimator._vector);
+        # an unmeasurable part stays None so the k-NN honestly skips it.
+        if vol <= 0.0 or area <= 0.0 or bbox <= 0.0 or faces <= 0:
+            return None
+        return {
+            "volume_cm3": vol,
+            "surface_area_cm2": area,
+            "max_bbox_mm": bbox,
+            "face_count": faces,
+        }
+    except Exception as exc:  # best-effort — never fail an ingest on geometry
+        logger.warning(
+            "ground-truth geometry extraction failed for part_id=%s: %s",
+            gt.part_id, exc,
+        )
+        return None
 
 
 # ── ingest / read (org-scoped) ───────────────────────────────────────────────
 async def ingest_record(
-    session: AsyncSession, org_id: str, user_id: Optional[int], payload: dict
+    session: AsyncSession, org_id: str, user_id: Optional[int], payload: dict,
+    *, parts_dir: Optional[str] = None,
 ) -> GroundTruthRecordRow:
     """Insert ONE org-scoped ground-truth record.
 
@@ -295,6 +358,14 @@ async def ingest_record(
     non-empty part_id, ...). Dedup: last write wins on
     ``(org_id, part_id, process, quantity, shop)`` — mirrors
     ``groundtruth.add_record``. Does NOT commit; the caller owns the txn.
+
+    P1 analogy feed: when the record's ``part_path``/``part_id`` resolves to a
+    mesh, the MEASURED geometry (``analogy_estimator.FEATURE_KEYS``) is extracted
+    from it and stored so the record can activate the analogy-to-quote k-NN
+    member. Best-effort and NON-FATAL: no resolvable mesh / extraction failure
+    leaves the geometry NULL (the analogy simply skips the record) — the ingest
+    still succeeds. Geometry is never fabricated. The CSV bulk path
+    (``import_records``) funnels through here, so it inherits this unchanged.
     """
     gt = GroundTruthRecord(
         part_id=payload["part_id"],
@@ -310,6 +381,14 @@ async def ingest_record(
         part_path=payload.get("part_path"),
         notes=payload.get("notes") or "",
     )
+
+    # Best-effort MEASURED geometry (off the event loop — CPU-bound mesh analysis).
+    # None when the mesh does not resolve or extraction fails => geometry stays
+    # NULL and the analogy k-NN skips this record; the ingest is never failed.
+    geom = await asyncio.get_event_loop().run_in_executor(
+        None, _extract_geometry_features, gt, parts_dir
+    )
+
     # last-wins dedup within the org
     await session.execute(
         delete(GroundTruthRecordRow).where(
@@ -335,6 +414,10 @@ async def ingest_record(
         stand_in=gt.stand_in,
         part_path=gt.part_path,
         notes=gt.notes,
+        volume_cm3=(geom or {}).get("volume_cm3"),
+        surface_area_cm2=(geom or {}).get("surface_area_cm2"),
+        max_bbox_mm=(geom or {}).get("max_bbox_mm"),
+        face_count=(geom or {}).get("face_count"),
     )
     session.add(row)
     await session.flush()

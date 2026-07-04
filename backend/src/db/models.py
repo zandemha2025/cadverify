@@ -682,6 +682,16 @@ class GroundTruthRecordRow(Base):
     )
     part_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    # ── P1 analogy-to-quote k-NN geometry (migration 0018) — all NULLABLE. ──
+    # The MEASURED cost-drivers (mirroring ``analogy_estimator.FEATURE_KEYS`` /
+    # ``drivers.GeoDrivers``) a record carries so the analogy k-NN member can
+    # measure geometric distance to the query part. Populated best-effort at
+    # ingest when the part's mesh resolves; a record with no resolvable mesh (or
+    # an older row) stays NULL and the analogy simply skips it. Never fabricated.
+    volume_cm3: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    surface_area_cm2: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    max_bbox_mm: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    face_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )

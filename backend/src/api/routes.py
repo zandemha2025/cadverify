@@ -786,6 +786,12 @@ async def _run_cost_decision(
     # byte-identical to pre-W5 behaviour. Pure local disk read (no network); the
     # only added work is the org lookup, which never touches the response bytes.
     # The demo route passes no user/session, so it stays untouched and IP-local.
+    # ── P1 analogy feed (loaded below only when the ensemble is on) ──────────
+    # The caller org's ground-truth records, passed to ``ensemble_estimate`` so
+    # the analogy-to-quote k-NN member can measure geometric distance to THIS
+    # part. None => the analogy is never engaged and the band is byte-identical
+    # (demo route, flag off, or an unprovisioned session).
+    analogy_records = None
     if user is not None and session is not None:
         from src.auth.org_context import resolve_org
         from src.services.groundtruth_service import load_served_calibration
@@ -855,6 +861,21 @@ async def _run_cost_decision(
                     base["materials"] = merged_defs
                 options.base_rate_table = base
 
+            # ── P1 analogy-to-quote k-NN feed (org-scoped, cheap query) ──────
+            # When the ensemble is enabled, load THIS org's ground-truth records
+            # so the independent analogy member can contribute to the POINT via
+            # BLUE. Loaded here (off the compute executor) as a single org-scoped
+            # SELECT; the analogy itself filters to REAL (stand_in=False)
+            # same-process neighbours that carry geometry and ABSTAINS otherwise,
+            # so an org with no usable records leaves the band byte-identical.
+            from src.costing.ensemble import ensemble_enabled as _ens_on
+            if _ens_on():
+                from src.services.groundtruth_service import (
+                    load_org_ground_truth,
+                )
+
+                analogy_records = await load_org_ground_truth(session, cal_org_id)
+
     # ---- OPT-IN assumption-ensemble uncertainty band (Moat P1) -------------
     # Behind COST_ENSEMBLE_ENABLED (default OFF). When on, we ALSO run the same
     # estimator under K deterministic rate-card perturbations and attach the
@@ -876,11 +897,41 @@ async def _run_cost_decision(
         rep = estimate_decision(result, m, features, options)
         unc = None
         if run_ensemble and rep.status != "GEOMETRY_INVALID":
+            # ── P1 analogy query geometry ────────────────────────────────────
+            # THIS part's MEASURED cost-drivers (analogy_estimator.FEATURE_KEYS),
+            # extracted by the SAME engine extraction the records were populated
+            # with. Only computed when the org actually has records to match
+            # against — otherwise geometry stays None and the analogy is never
+            # engaged (band byte-identical). Best-effort: an extraction failure
+            # leaves geometry None (analogy abstains), never fails the estimate.
+            geom_features = None
+            if analogy_records:
+                try:
+                    from src.costing.drivers import extract_drivers
+
+                    dr = extract_drivers(result.geometry, m, features)
+                    if (dr.volume_cm3 > 0 and dr.surface_area_cm2 > 0
+                            and dr.max_bbox_mm > 0 and dr.face_count > 0):
+                        geom_features = {
+                            "volume_cm3": float(dr.volume_cm3),
+                            "surface_area_cm2": float(dr.surface_area_cm2),
+                            "max_bbox_mm": float(dr.max_bbox_mm),
+                            "face_count": int(dr.face_count),
+                        }
+                except Exception:
+                    geom_features = None
             # Reuse the org's W5 residual_model when one was bound above; else
             # None -> the honest pre-data assumption spread (validated=False).
+            # records + geometry activate the analogy-to-quote k-NN member: it
+            # contributes to the POINT via BLUE ONLY when it finds >= min_real
+            # REAL same-process neighbours WITH geometry; otherwise it ABSTAINS
+            # and the band is byte-identical to the assumption spread. The
+            # measured residual path (validated) is unchanged and still wins.
             ens = ensemble_estimate(
                 result, m, features, options,
                 residual_model=getattr(options, "residual_model", None),
+                records=analogy_records,
+                geometry=geom_features,
             )
             unc = ens.to_dict()
         return rep, unc
