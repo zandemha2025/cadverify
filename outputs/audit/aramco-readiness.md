@@ -21,9 +21,10 @@ Aramco's ~millions of legacy parts are overwhelmingly **IGES, native CAD (CATIA/
 - **Native CAD (CATIA/NX/Creo/SLDPRT) — [ENV/EXT].** Needs OCP/OpenCASCADE-XDE or a translator (e.g. a CAD-exchange lib); heavier, some formats are proprietary.
 - **2D drawings / no-3D-model parts — [BUILD, large].** Many legacy parts have only a drawing. Needs a drawing→features/OCR path (or an explicit "declare specs, no geometry" mode). Big, but high-value for MRO.
 
-### GAP 2 — Scale to millions (the catalog is capped at 2,000)
-The catalog / triage / portfolio read surfaces cap at **`CATALOG_SCAN_CAP = 2000`** parts (honestly truncated, `catalog_service.py:57`) and fold rows in Python. Aramco = millions. The batch pipeline can chew a ZIP, but the aggregate "triaged catalog of your whole inventory" doesn't scale.
-- **[SCALE]** Move the rollups to SQL-side aggregation (GROUP BY / window), real pagination/cursoring, and indexed queries; stream ingestion of large corpora. Substantial but fully in-lane. Until then, "triage your 14M parts" is honest-but-capped-at-2k.
+### GAP 2 — Scale to millions — **whole-inventory triage + paginated grid CLOSED 2026-07-04**
+The catalog/triage/portfolio read surfaces used to cap at `CATALOG_SCAN_CAP = 2000` parts (fold in Python). Now:
+- **[DONE].** A materialized `part_summaries` projection (one row per `(org_id, mesh_hash)`, migration 0019) is maintained on every analysis/cost write (graceful-degrade in a SAVEPOINT, idempotent, byte-identical to the legacy derivation by *calling* `derive_row`/`triage_bucket`). **Triage is now an O(buckets) SQL `GROUP BY` over the whole inventory** — "triage your 14M parts" is real, uncapped. The catalog grid gains **keyset pagination** (`?keyset=true&cursor=…`) that hydrates one page at a time. The legacy capped fold is retained untouched as the byte-identity oracle **and** as a read-only fallback when an org's projection is still cold (pre-backfill deploy) — honest `truncated:true`, no write on a GET. Deploy runs `scripts/backfill_part_summaries.py` once to lift the cap for pre-existing data (idempotent; correctness never depends on it). (`part_summary_service.py`, `catalog_service.build_triage_scaled`/`build_catalog_page`, `tests/test_part_summary.py`.)
+- **Still [SCALE] (not yet done):** streaming ingestion of very large corpora, and portfolio-savings ranking at full scale (portfolio still uses the legacy fold). The core Aramco triage-the-inventory claim is the piece that shipped.
 
 ### GAP 3 — No connectors to where their data lives (PLM / ERP / SAP)
 Aramco's parts + historical costs live in **SAP + a PLM (Teamcenter/SmarTeam/etc.)**. We have **zero connectors** (W2 unbuilt; `batch_router.py:130` literally says "connectors release (W2)"). The only bulk paths are **ZIP upload** and the new **CSV cost import** — good for a pilot, a non-starter for millions of parts under governance.
@@ -56,8 +57,8 @@ Everything we/I built — governed libraries, triage, portfolio, owned-equipment
 1. ~~**IGES ingestion**~~ — **DONE 2026-07-04.**
 2. ~~**Tolerance/finish input surface**~~ — **DONE 2026-07-04.**
 3. ~~**Cost models for forging / casting / EDM**~~ — **DONE 2026-07-04.**
-4. **Catalog/triage at scale** [SCALE] — SQL-side aggregation + pagination; lift the 2,000 cap toward millions. **← next recommended.**
-5. **Parts-manifest CSV + ingestion API** [BUILD] — structured bulk part onboarding (the pilot-grade connector) ahead of real PLM/ERP.
+4. ~~**Catalog/triage at scale**~~ — **DONE 2026-07-04** (whole-inventory SQL triage + keyset-paginated grid; portfolio-at-scale + streaming ingest still open).
+5. **Parts-manifest CSV + ingestion API** [BUILD] — structured bulk part onboarding (the pilot-grade connector) ahead of real PLM/ERP. **← next recommended.**
 6. **Oil-&-gas material pack** [BUILD/data] — seed the governed material library with API-spec alloys + corrected prices.
 7. **Metal-AM cost (DMLS/SLM/EBM)** [BUILD] — the last feasibility-only families, if Aramco needs additive-metal costing.
 
