@@ -1,0 +1,31 @@
+name: Super Duplex 2507
+aliases: [2507, UNS S32750, SAF 2507, 1.4410]
+alloy_designation: ASTM A182 F53
+standards: [ASTM A182 F53, ASTM A240, ASTM A790, UNS S32750, NACE MR0175]
+processes: [cnc_3axis, cnc_5axis, cnc_turning, forging, investment_casting, wire_edm]
+mechanical:
+  density_g_cm3: 7.79
+  tensile_mpa: 795
+  yield_mpa: 550
+  elongation_pct: 25
+  hardness_hrc: 32
+  thermal_conductivity_w_mk: 16.0
+  machinability_index: 25
+  max_temperature_c: 300
+dfm:
+  min_wall_mm: 0.6
+  min_wall_by_process:
+    cnc_3axis: 0.6
+    cnc_5axis: 0.6
+    cnc_turning: 0.6
+    forging: 3.0
+    investment_casting: 1.5
+    wire_edm: 0.3
+  cost_per_kg_usd:
+    wrought: 13
+compliance:
+  nace_mr0175: true
+  biocompatible: false
+  itar: false
+  sour_service: true
+notes: "Super duplex (PREN >40) for seawater, topside piping and subsea. Higher strength/chloride-pitting resistance than 2205. NACE MR0175 compliant."

@@ -1,0 +1,30 @@
+name: Hastelloy C276
+aliases: [C276, Alloy C-276, UNS N10276, 2.4819]
+alloy_designation: UNS N10276
+standards: [ASTM B574, ASTM B575, UNS N10276, NACE MR0175]
+processes: [cnc_3axis, cnc_5axis, cnc_turning, forging, wire_edm]
+mechanical:
+  density_g_cm3: 8.89
+  tensile_mpa: 790
+  yield_mpa: 355
+  elongation_pct: 40
+  hardness_hrc: 22
+  thermal_conductivity_w_mk: 10.1
+  machinability_index: 18
+  max_temperature_c: 1040
+dfm:
+  min_wall_mm: 0.6
+  min_wall_by_process:
+    cnc_3axis: 0.8
+    cnc_5axis: 0.6
+    cnc_turning: 0.8
+    forging: 3.0
+    wire_edm: 0.3
+  cost_per_kg_usd:
+    wrought: 55
+compliance:
+  nace_mr0175: true
+  biocompatible: false
+  itar: false
+  sour_service: true
+notes: "Ni-Mo-Cr superalloy for the most severe sour/oxidizing-reducing corrosion (wet H2S, chlorides). Highest-grade CRA for subsea/downhole. NACE MR0175 compliant."

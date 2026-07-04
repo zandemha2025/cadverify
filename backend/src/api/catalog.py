@@ -64,6 +64,18 @@ async def get_catalog(
             "'unknown' and match neither."
         ),
     ),
+    keyset: bool = Query(
+        False,
+        description=(
+            "Opt-in SCALE mode (Aramco GAP 2): keyset-paginate the whole "
+            "inventory over the materialized part-summary projection instead of "
+            "the capped raw scan. Returns {rows, next_cursor}; pass the returned "
+            "cursor back to walk pages. Facet filters do not apply in this mode."
+        ),
+    ),
+    cursor: Optional[str] = Query(
+        None, description="Opaque keyset cursor from a prior page's next_cursor."
+    ),
     user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -72,6 +84,11 @@ async def get_catalog(
     Every cell is read verbatim from the engine's own serialization — a missing
     field is null, never fabricated. Filters apply to real derived fields BEFORE
     pagination, so ``total`` and the page are always mutually consistent.
+
+    ``keyset=true`` opts into the SCALE path: the grid is served one keyset page at
+    a time from the materialized ``part_summaries`` projection (whole-inventory,
+    never capped) as ``{rows, next_cursor}``. The default offset path below is
+    otherwise byte-identical to before.
     """
     # Validate the state facet up front (400 beats silently returning empty).
     canonical_state: Optional[str] = None
@@ -86,6 +103,41 @@ async def get_catalog(
     # The tenant boundary: the caller's org (single-org v1). None → no membership
     # (e.g. a mocked session) → an empty catalog, never a cross-org read.
     org_id = await resolve_org(session, user.user_id)
+
+    # SCALE mode: keyset page over the materialized projection (opt-in, so the
+    # default response shape stays unchanged for existing callers).
+    if keyset:
+        from src.services import part_summary_service
+
+        try:
+            page = await svc.build_catalog_page(
+                session, org_id, cursor=cursor, limit=page_size
+            )
+        except svc.InvalidCursorError:
+            # The client sent an undecodable cursor — a 400, never a 500.
+            raise HTTPException(status_code=400, detail="invalid cursor")
+        # Cold-projection fallback (READ-ONLY, mirrors the /triage path): if the
+        # first page is empty but the org actually has parts, the projection is
+        # cold (data predating it / a deploy before the one-time backfill). Don't
+        # silently show an empty grid for a non-empty org — fall back to the
+        # legacy capped catalog for this response (honest: `truncated` flags it),
+        # no write on the GET. Once the backfill runs / new writes land, the
+        # uncapped keyset path takes over. Only checked on the FIRST page (no
+        # cursor) so mid-walk pages are never misread as "cold".
+        if (
+            org_id
+            and cursor is None
+            and not page["rows"]
+            and await part_summary_service.org_has_raw_parts(session, org_id)
+        ):
+            built = await svc.build_catalog(session, org_id)
+            return {
+                "rows": built["rows"],
+                "next_cursor": None,
+                "cold_projection": True,
+                "truncated": built["truncated"],
+            }
+        return page
 
     built = await svc.build_catalog(session, org_id)
     all_rows = built["rows"]
@@ -149,6 +201,12 @@ async def get_portfolio(
     engine savings signal carries ``savings: null`` + a reason. ``validated`` is
     copied from the confidence band, never set here. Parts with no cost decision
     are excluded from the ranking (``excluded_no_cost_count``).
+
+    W3.5 rung-1: when a part has a USER-DECLARED context (program / assembly /
+    annual volume), each row additionally carries a ``context`` block and honest
+    annualized ``$/year`` figures — present ONLY when an annual_volume was
+    declared (else null + a reason), never a fabricated demand quantity. When no
+    context is declared anywhere in the org, the response is byte-identical to W3.
     """
     # Tenant boundary: the caller's org. None → no membership → empty roll-up.
     org_id = await resolve_org(session, user.user_id)
@@ -165,5 +223,79 @@ async def get_portfolio(
         resp["note"] = (
             "This roll-up is over a capped scan of the most recent parts; "
             "older parts were not included."
+        )
+    # Additive + gated: only when at least one program is declared do we surface
+    # the declared-context honesty note (byte-identical to W3 otherwise).
+    if summary.get("programs"):
+        resp["context_note"] = (
+            "Annualized $/year figures are derived from USER-DECLARED annual "
+            "volumes (provenance: user); parts without a declared volume show "
+            "null, never a fabricated demand quantity."
+        )
+    return resp
+
+
+@router.get("/triage")
+@limiter.limit("60/hour;500/day")
+async def get_triage(
+    request: Request,
+    response: Response,
+    user: AuthedUser = Depends(require_role(Role.viewer)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Org-scoped makeability triage roll-up: of the caller's N parts, how many
+    are routable to each process and how many are makeable / need review / unknown.
+
+    This is the FIRST value prop (can-we-make-it-and-how) at PORTFOLIO scale — a
+    pile of legacy parts summarized into an actionable catalog. It needs no shop
+    and no cost validation: the buckets are a pure DFM-makeability lens.
+
+    HONEST BY CONSTRUCTION: every count is a tally of a real engine-derived field
+    on the same catalog rows the grid uses. ``makeable`` = routed AND DFM-analyzed
+    with zero critical findings; ``needs_review`` = routed but the engine flagged a
+    blocking DFM blocker or a critical finding; ``unknown`` = no route OR never
+    DFM-analyzed. Every part lands in exactly one bucket (they sum to ``total``); a
+    part with no analysis is never assumed makeable. When the org scan was capped,
+    ``truncated`` is true and a ``note`` says so — full coverage is never implied.
+
+    Empty org → a zeroed summary (not an error). Program grouping is additive:
+    present only when a part carries a USER-DECLARED program.
+    """
+    # Tenant boundary: the caller's org. None → no membership → zeroed summary.
+    org_id = await resolve_org(session, user.user_id)
+    # SCALE (Aramco GAP 2): the whole-inventory triage COUNT is a SQL GROUP BY over
+    # the materialized part-summary projection — O(buckets), never capped — instead
+    # of folding the 2000 newest raw rows in Python. Byte-identical output shape.
+    built = await svc.build_triage_scaled(session, org_id)
+
+    # Cold-projection fallback (READ-ONLY — no write on a GET). If the scaled
+    # projection is empty but the org actually has parts (data predating the
+    # projection, or a deploy that shipped before the one-time backfill ran), we
+    # do NOT synchronously backfill the whole org inside a read request — for a
+    # million-part org that would be an unbounded, request-blocking write. Instead
+    # we fall back to the LEGACY capped fold for THIS response: honest
+    # (``truncated:true`` says coverage is partial), bounded (≤ the scan cap), and
+    # read-only. Once the deploy backfill runs (or new writes land via the persist
+    # hooks), the uncapped scaled path takes over automatically. A genuinely empty
+    # org has no raw parts → the scaled zero is correct and we never touch legacy.
+    if org_id and built["summary"]["total"] == 0:
+        from src.services import part_summary_service
+
+        if await part_summary_service.org_has_raw_parts(session, org_id):
+            built = await svc.build_triage(session, org_id)
+
+    summary = built["summary"]
+    resp = {
+        "summary": summary,
+        "by_process": built["by_process"],
+    }
+    if built.get("programs"):
+        resp["programs"] = built["programs"]
+    # When the scan was capped, say so plainly: the triage covers only the most
+    # recent parts, not the full history — never a silent implication of coverage.
+    if summary.get("truncated"):
+        resp["note"] = (
+            "This makeability triage is over a capped scan of the most recent "
+            "parts; older parts were not counted."
         )
     return resp

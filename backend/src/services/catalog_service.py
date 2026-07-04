@@ -32,14 +32,17 @@ Honesty contract (identical to the live decision / FE catalog):
 """
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import select
+from sqlalchemy import and_, func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.db.models import Analysis, CostDecision
+from src.analysis.models import ProcessType
+from src.db.models import Analysis, CostDecision, PartContext, PartSummary
+from src.services import part_context_service as pcsvc
 
 # ---------------------------------------------------------------------------
 # Config
@@ -588,6 +591,60 @@ def _empty_posture_agg() -> dict:
     }
 
 
+# The honest reason an annualized $/year is withheld: the user never declared an
+# annual_volume, and we NEVER fabricate a demand quantity to invent one.
+_NO_VOLUME_REASON = (
+    "no declared annual_volume; annualized $/year withheld (never fabricated)"
+)
+
+
+def _group_by_program(rows: list[dict]) -> list[dict]:
+    """Per-program roll-up over enriched portfolio rows (pure).
+
+    Groups the costed rows that carry a declared ``program`` and sums their
+    annualized figures. A row's ``$/year`` contributes ONLY when it is a real
+    number (the owner declared an annual_volume); rows without one are counted
+    (``parts``) but never fabricate a total. Returns [] when no row has a
+    program. Sorted by program name for a stable, deterministic response.
+    """
+    groups: dict[str, dict] = {}
+    for r in rows:
+        ctx = r.get("context") or {}
+        program = ctx.get("program")
+        if not program:
+            continue
+        g = groups.setdefault(
+            program,
+            {
+                "program": program,
+                "parts": 0,
+                "annualized_cost_usd": None,
+                "annualized_savings_usd": None,
+            },
+        )
+        g["parts"] += 1
+        for key in ("annualized_cost_usd", "annualized_savings_usd"):
+            val = r.get(key)
+            if val is not None:
+                g[key] = round((g[key] or 0.0) + val, 2)
+    return [groups[p] for p in sorted(groups)]
+
+
+def _context_block(ctx_row: Any) -> Optional[dict]:
+    """The USER-DECLARED context block for a portfolio row, or None when the part
+    has no declared context. Every field is a user assertion (``provenance:
+    'user'``), never inferred from the mesh."""
+    if ctx_row is None:
+        return None
+    return {
+        "program": getattr(ctx_row, "program", None),
+        "parent_assembly": getattr(ctx_row, "parent_assembly", None),
+        "units_per_parent": getattr(ctx_row, "units_per_parent", None),
+        "annual_volume": getattr(ctx_row, "annual_volume", None),
+        "provenance": "user",
+    }
+
+
 async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
     """The org-scoped portfolio roll-up: costed parts ranked by redesign savings.
 
@@ -615,6 +672,15 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
         }
 
     parts, truncated = await _fold_org_parts(session, org_id)
+
+    # W3.5 rung-1: join each part to its optional USER-DECLARED context. This is
+    # PURELY ADDITIVE — when the org has declared NO contexts, ``ctx_by_mesh`` is
+    # empty, ``has_any_context`` is False, and every roll-up field below is left
+    # exactly as it was before this table existed (byte-identical output). No
+    # part is ever enriched with an inferred/fabricated context.
+    contexts = await pcsvc.list_contexts(session, org_id)
+    ctx_by_mesh = {c.mesh_hash: c for c in contexts}
+    has_any_context = bool(ctx_by_mesh)
 
     rows: list[dict] = []
     drafted_count = 0
@@ -659,6 +725,24 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
                 "no engine-computed cheaper alternative "
                 "(make-as-is is cheapest at every quoted quantity)"
             )
+
+        # Additive declared-context enrichment (only when the org has declared
+        # at least one context — otherwise the row is byte-identical to today).
+        if has_any_context:
+            ctx_row = ctx_by_mesh.get(mesh)
+            annual_volume = getattr(ctx_row, "annual_volume", None) if ctx_row else None
+            unit_usd = (unit_cost or {}).get("usd") if unit_cost else None
+            save_unit = (savings or {}).get("save_unit_usd") if savings else None
+            row["context"] = _context_block(ctx_row)
+            # $/year appears ONLY with a user-declared annual_volume; otherwise
+            # null + an honest reason. Never a fabricated demand quantity.
+            row["annualized_cost_usd"] = pcsvc.annualized_cost(unit_usd, annual_volume)
+            row["annualized_savings_usd"] = pcsvc.annualized_cost(
+                save_unit, annual_volume
+            )
+            if annual_volume is None:
+                row["annualized_reason"] = _NO_VOLUME_REASON
+
         rows.append(row)
 
     # Rank by savings descending: parts WITH a signal first (deepest save_pct;
@@ -678,15 +762,411 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
     agg["grounded"] = grounded
     agg["grounded_pct"] = round(grounded / total, 4) if total > 0 else 0.0
 
-    return {
-        "summary": {
-            "parts": len(rows) + drafted_count,
-            "costed": len(rows),
-            "drafted": drafted_count,
-            # parts excluded from the ranking because they have no cost decision.
-            "excluded_no_cost_count": drafted_count,
-            "truncated": truncated,
-            "posture": agg,
-        },
-        "rows": rows,
+    summary = {
+        "parts": len(rows) + drafted_count,
+        "costed": len(rows),
+        "drafted": drafted_count,
+        # parts excluded from the ranking because they have no cost decision.
+        "excluded_no_cost_count": drafted_count,
+        "truncated": truncated,
+        "posture": agg,
     }
+
+    # Per-program roll-up — ADDITIVE, and only when at least one costed part
+    # carries a declared ``program``. Sums are honest: a part's $/year only
+    # contributes when its owner declared an annual_volume (else it is omitted,
+    # never fabricated). Absent any declared program, ``summary`` is byte-identical.
+    if has_any_context:
+        programs = _group_by_program(rows)
+        if programs:
+            summary["programs"] = programs
+
+    return {"summary": summary, "rows": rows}
+
+
+# ---------------------------------------------------------------------------
+# Makeability triage roll-up (W1 value-prop 1) — "can we make it, and how?" at
+# portfolio scale. A THIRD pure aggregation over the SAME catalog rows: it turns
+# a pile of legacy parts into an actionable summary — of N parts, how many are
+# routable to each process, and how many are makeable / need review / unknown.
+# No shop, no cost validation: this is the DFM-makeability lens only.
+# ---------------------------------------------------------------------------
+
+
+# Human labels for every real engine process id (ProcessType). Keeps the rollup
+# honest: buckets key off the engine's own category, and the label is a display
+# string only — an unrecognized id falls back to a titleized form, never dropped.
+_PROCESS_LABELS: dict[str, str] = {
+    ProcessType.FDM.value: "FDM 3D Printing",
+    ProcessType.SLA.value: "SLA 3D Printing",
+    ProcessType.DLP.value: "DLP 3D Printing",
+    ProcessType.SLS.value: "SLS 3D Printing",
+    ProcessType.MJF.value: "MJF 3D Printing",
+    ProcessType.DMLS.value: "DMLS Metal 3D Printing",
+    ProcessType.SLM.value: "SLM Metal 3D Printing",
+    ProcessType.EBM.value: "EBM Metal 3D Printing",
+    ProcessType.BINDER_JET.value: "Binder Jetting",
+    ProcessType.DED.value: "Directed Energy Deposition",
+    ProcessType.WAAM.value: "Wire-Arc Additive (WAAM)",
+    ProcessType.CNC_3AXIS.value: "CNC Milling (3-axis)",
+    ProcessType.CNC_5AXIS.value: "CNC Milling (5-axis)",
+    ProcessType.CNC_TURNING.value: "CNC Turning",
+    ProcessType.WIRE_EDM.value: "Wire EDM",
+    ProcessType.INJECTION_MOLDING.value: "Injection Molding",
+    ProcessType.DIE_CASTING.value: "Die Casting",
+    ProcessType.INVESTMENT_CASTING.value: "Investment Casting",
+    ProcessType.SAND_CASTING.value: "Sand Casting",
+    ProcessType.SHEET_METAL.value: "Sheet Metal",
+    ProcessType.FORGING.value: "Forging",
+}
+
+# The three makeability postures. Every part lands in EXACTLY one (see
+# ``triage_bucket``); they are mutually exclusive and sum to ``total``.
+TRIAGE_BUCKETS = ("makeable", "needs_review", "unknown")
+
+
+def process_label(process_id: Optional[str]) -> str:
+    """Human label for an engine process id (display only, never a category)."""
+    if not process_id:
+        return "Unrouted"
+    return _PROCESS_LABELS.get(process_id) or process_id.replace("_", " ").title()
+
+
+def triage_bucket(row: dict) -> str:
+    """Classify one derived catalog row into a makeability posture.
+
+    Mutually exclusive, evaluated in order — every row lands in exactly one, and
+    every branch keys off a REAL engine-derived field on the row:
+
+    * ``needs_review`` — the part IS routed to a process, but the engine flagged a
+      blocking/critical DFM problem on that route: either a cost-side DFM blocker
+      (``route_blocker_count > 0``, the same signal that withholds the price) or a
+      route-scoped critical DFM finding (``findings.critical > 0``). A concrete,
+      engine-computed reason it can't be made as-designed.
+    * ``makeable`` — routed AND a DFM analysis actually ran on the route
+      (``findings`` present) AND that analysis has zero critical findings. We only
+      call a part makeable once the DFM engine has CONFIRMED the route is clean —
+      never on a cost decision alone.
+    * ``unknown`` — everything else: no recommended route at all, OR routed but
+      never DFM-analyzed (a cost decision does not embed the DFM Issue array). We
+      do not KNOW it's makeable, so we never assume it. Honest by construction.
+    """
+    route = (row.get("recommended_route") or {}).get("process")
+    findings = row.get("findings")
+    if route:
+        if (row.get("route_blocker_count") or 0) > 0:
+            return "needs_review"
+        if findings and (findings.get("critical") or 0) > 0:
+            return "needs_review"
+        # Makeable only when a DFM analysis actually ran and found nothing
+        # blocking — a route without an analysis is unknown, never makeable.
+        if findings is not None:
+            return "makeable"
+    return "unknown"
+
+
+def _empty_triage_summary() -> dict:
+    return {
+        "total": 0,
+        "analyzed": 0,
+        "makeable": 0,
+        "needs_review": 0,
+        "unknown": 0,
+        "truncated": False,
+    }
+
+
+def triage_rollup(
+    rows: list[dict],
+    *,
+    truncated: bool = False,
+    programs: Optional[dict[str, str]] = None,
+) -> dict:
+    """Pure makeability roll-up over derived catalog rows (no DB, no I/O).
+
+    Aggregates the exact rows ``build_catalog`` produced — it never re-derives or
+    re-queries. Returns:
+
+    * ``summary`` — ``total`` parts; ``analyzed`` (= makeable + needs_review, the
+      parts carrying a real DFM makeability signal); the three posture counts; and
+      ``truncated`` passed straight through (true ⇒ the scan was capped and older
+      parts were NOT counted — stated, never implied away).
+    * ``by_process`` — for each process any part is routed to, the count of parts
+      on that route with the engine process id + a human label. Sorted by count
+      desc then id, so it's deterministic. Only routed parts appear (an unrouted
+      ``unknown`` part contributes to no process).
+    * ``programs`` (optional) — the same posture counts grouped by USER-DECLARED
+      ``program``, present ONLY when at least one part carries one. Additive; the
+      response is byte-identical without it.
+
+    Honesty: every count is a tally of a real engine-derived field. A part with no
+    analysis is ``unknown`` (never assumed makeable); a % is only ever count/total,
+    computed by the caller if at all — none is fabricated here.
+    """
+    summary = _empty_triage_summary()
+    summary["truncated"] = bool(truncated)
+    by_process: dict[str, int] = {}
+    prog_groups: dict[str, dict] = {}
+
+    for r in rows:
+        summary["total"] += 1
+        bucket = triage_bucket(r)
+        summary[bucket] += 1
+
+        proc = (r.get("recommended_route") or {}).get("process")
+        if proc:
+            by_process[proc] = by_process.get(proc, 0) + 1
+
+        if programs:
+            program = programs.get(r.get("part_key"))
+            if program:
+                g = prog_groups.setdefault(
+                    program,
+                    {"program": program, "total": 0,
+                     "makeable": 0, "needs_review": 0, "unknown": 0},
+                )
+                g["total"] += 1
+                g[bucket] += 1
+
+    summary["analyzed"] = summary["makeable"] + summary["needs_review"]
+
+    by_process_list = [
+        {"process": p, "label": process_label(p), "count": c}
+        for p, c in by_process.items()
+    ]
+    by_process_list.sort(key=lambda x: (-x["count"], x["process"]))
+
+    out: dict = {"summary": summary, "by_process": by_process_list}
+    if prog_groups:
+        out["programs"] = [prog_groups[p] for p in sorted(prog_groups)]
+    return out
+
+
+async def build_triage(session: AsyncSession, org_id: Optional[str]) -> dict:
+    """The org-scoped makeability triage roll-up.
+
+    Reuses ``build_catalog``'s derived rows verbatim (no new tables, no raw
+    re-query) and folds them into a portfolio-scale "can we make it, and how?"
+    summary. ``org_id`` None → a zeroed summary (never a cross-org read), matching
+    the empty-org contract of the catalog/portfolio surfaces.
+
+    Program grouping is additive: when the org has declared at least one part
+    ``program``, the roll-up carries a per-program posture breakdown; otherwise the
+    response is byte-identical without it. Truncation is carried through honestly.
+    """
+    if not org_id:
+        return {"summary": _empty_triage_summary(), "by_process": []}
+
+    built = await build_catalog(session, org_id)
+    rows = built["rows"]
+
+    # Optional declared-program grouping — same source the portfolio join uses.
+    contexts = await pcsvc.list_contexts(session, org_id)
+    prog_by_mesh = {
+        c.mesh_hash: c.program
+        for c in contexts
+        if getattr(c, "program", None)
+    }
+
+    return triage_rollup(
+        rows,
+        truncated=built["truncated"],
+        programs=prog_by_mesh or None,
+    )
+
+
+# ===========================================================================
+# SCALE PATH (Aramco GAP 2) — summary-backed reads over ``part_summaries``.
+#
+# These ADD alongside build_triage / build_catalog (which stay UNTOUCHED as the
+# byte-identity oracle). They compute the whole-inventory triage COUNT with a SQL
+# GROUP BY (O(buckets), scales to millions) and paginate the grid by keyset —
+# never scanning + folding raw rows in Python, never capped. Proven byte-identical
+# to the legacy output on identical data: the summary rows carry the exact
+# ``derive_row`` dict + the exact ``triage_bucket`` classification.
+# ===========================================================================
+
+
+async def build_triage_scaled(session: AsyncSession, org_id: Optional[str]) -> dict:
+    """Whole-inventory makeability triage — the SCALE version of ``build_triage``.
+
+    SAME OUTPUT SHAPE as ``build_triage`` (``summary`` + ``by_process`` + optional
+    ``programs``), but computed by SQL aggregation over ``part_summaries`` instead
+    of folding the 2000 newest raw rows in Python:
+
+    * ``summary`` — ``GROUP BY triage_bucket`` gives the three posture counts; the
+      derived ``total`` and ``analyzed`` (= makeable + needs_review) follow. This
+      counts the ENTIRE inventory, so ``truncated`` is ALWAYS False — there is no
+      cap to exceed.
+    * ``by_process`` — ``GROUP BY route_process`` (routed parts only) → the per-
+      process counts, labeled + sorted by (count desc, id) exactly as the legacy
+      rollup.
+    * ``programs`` (optional) — a bounded JOIN to ``part_contexts`` grouped by the
+      USER-DECLARED program × bucket; present ONLY when a part carries a program,
+      byte-identical without it (programs are few, so the join is cheap).
+
+    Byte-identical to ``build_triage`` for any org whose parts fit under the legacy
+    cap (the byte-identity test asserts this). ``org_id`` None → the same zeroed
+    ``_empty_triage_summary()`` + ``[]`` contract.
+    """
+    if not org_id:
+        return {"summary": _empty_triage_summary(), "by_process": []}
+
+    # --- posture counts (GROUP BY triage_bucket) ---------------------------
+    bucket_rows = (
+        await session.execute(
+            select(PartSummary.triage_bucket, func.count())
+            .where(PartSummary.org_id == org_id)
+            .group_by(PartSummary.triage_bucket)
+        )
+    ).all()
+    summary = _empty_triage_summary()
+    for bucket, cnt in bucket_rows:
+        summary["total"] += cnt
+        if bucket in TRIAGE_BUCKETS:
+            summary[bucket] += cnt
+    summary["analyzed"] = summary["makeable"] + summary["needs_review"]
+    # Whole inventory is counted — never truncated (no cap on a SQL COUNT).
+    summary["truncated"] = False
+
+    # --- by_process (GROUP BY route_process, routed parts only) ------------
+    proc_rows = (
+        await session.execute(
+            select(PartSummary.route_process, func.count())
+            .where(
+                PartSummary.org_id == org_id,
+                PartSummary.route_process.isnot(None),
+            )
+            .group_by(PartSummary.route_process)
+        )
+    ).all()
+    by_process_list = [
+        {"process": p, "label": process_label(p), "count": c}
+        for p, c in proc_rows
+    ]
+    by_process_list.sort(key=lambda x: (-x["count"], x["process"]))
+
+    # --- programs (bounded JOIN to declared contexts) ----------------------
+    prog_rows = (
+        await session.execute(
+            select(PartContext.program, PartSummary.triage_bucket, func.count())
+            .select_from(PartSummary)
+            .join(
+                PartContext,
+                and_(
+                    PartContext.org_id == PartSummary.org_id,
+                    PartContext.mesh_hash == PartSummary.mesh_hash,
+                ),
+            )
+            .where(
+                PartSummary.org_id == org_id,
+                PartContext.program.isnot(None),
+            )
+            .group_by(PartContext.program, PartSummary.triage_bucket)
+        )
+    ).all()
+    prog_groups: dict[str, dict] = {}
+    for program, bucket, cnt in prog_rows:
+        g = prog_groups.setdefault(
+            program,
+            {"program": program, "total": 0,
+             "makeable": 0, "needs_review": 0, "unknown": 0},
+        )
+        g["total"] += cnt
+        if bucket in TRIAGE_BUCKETS:
+            g[bucket] += cnt
+
+    out: dict = {"summary": summary, "by_process": by_process_list}
+    if prog_groups:
+        out["programs"] = [prog_groups[p] for p in sorted(prog_groups)]
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Keyset-paginated catalog grid (scale) — one page of derived rows at a time
+# ---------------------------------------------------------------------------
+
+# Opaque cursor cap — bound a single page so a caller cannot force an unbounded
+# hydrate; mirrors the spirit of CATALOG_SCAN_CAP for the scale path.
+CATALOG_PAGE_MAX = 500
+
+
+def _encode_page_cursor(updated_at_iso: str, mesh_hash: str) -> str:
+    """Opaque forward cursor = base64("updated_at_iso|mesh_hash"). Encodes the
+    LAST row of the page on the ``(updated_at DESC, mesh_hash DESC)`` sort key."""
+    raw = f"{updated_at_iso}|{mesh_hash}".encode()
+    return base64.urlsafe_b64encode(raw).decode()
+
+
+class InvalidCursorError(ValueError):
+    """A client-supplied keyset cursor that cannot be decoded/parsed. Raised by
+    ``_decode_page_cursor`` so the route boundary can answer 400 (never let a
+    malformed cursor become an unhandled 500)."""
+
+
+def _decode_page_cursor(cursor: str) -> tuple[datetime, str]:
+    """Decode a cursor into ``(updated_at datetime, mesh_hash)``. The datetime is
+    parsed from the exact ISO string the row's ``row_json['updated_at']`` carried,
+    so it compares equal to the stored ``updated_at`` timestamptz column.
+
+    A malformed cursor (bad base64, missing ``|`` separator, or a non-ISO
+    timestamp) raises :class:`InvalidCursorError` rather than a raw
+    ``binascii.Error`` / ``ValueError`` — the client sent the cursor, so this is a
+    400, not a 500."""
+    try:
+        raw = base64.urlsafe_b64decode(cursor.encode()).decode()
+        ts_str, mesh = raw.split("|", 1)
+        return datetime.fromisoformat(ts_str), mesh
+    except (ValueError, TypeError, UnicodeDecodeError) as exc:
+        # binascii.Error (bad base64) subclasses ValueError; unpack failure on a
+        # missing '|' and a non-ISO fromisoformat also raise ValueError.
+        raise InvalidCursorError("invalid cursor") from exc
+
+
+async def build_catalog_page(
+    session: AsyncSession,
+    org_id: Optional[str],
+    *,
+    cursor: Optional[str] = None,
+    limit: int = 100,
+) -> dict:
+    """One keyset-paginated page of the org catalog grid (the SCALE version of
+    ``build_catalog``'s row list).
+
+    Orders by ``(updated_at DESC, mesh_hash DESC)`` — the same most-recent-first
+    order the legacy grid sorts on, with ``mesh_hash`` as a deterministic
+    tie-break so pages never overlap or skip. Hydrates ONLY the current page's
+    ``row_json`` (each is the exact ``derive_row`` dict). Returns
+    ``{"rows": [...], "next_cursor": str | None}``; ``next_cursor`` is None only on
+    the final page. ``cursor`` opaquely encodes the previous page's last row;
+    ``limit`` is bounded at ``CATALOG_PAGE_MAX``. ``org_id`` None → an empty page.
+    """
+    if not org_id:
+        return {"rows": [], "next_cursor": None}
+
+    limit = max(1, min(int(limit), CATALOG_PAGE_MAX))
+
+    q = select(
+        PartSummary.updated_at, PartSummary.mesh_hash, PartSummary.row_json
+    ).where(PartSummary.org_id == org_id)
+    if cursor:
+        cur_ts, cur_mesh = _decode_page_cursor(cursor)
+        q = q.where(
+            tuple_(PartSummary.updated_at, PartSummary.mesh_hash)
+            < tuple_(cur_ts, cur_mesh)
+        )
+    # Fetch limit+1 so we know whether a further page exists without a COUNT.
+    q = q.order_by(
+        PartSummary.updated_at.desc(), PartSummary.mesh_hash.desc()
+    ).limit(limit + 1)
+
+    fetched = (await session.execute(q)).all()
+    has_more = len(fetched) > limit
+    page = fetched[:limit]
+    rows = [r.row_json for r in page]
+
+    next_cursor: Optional[str] = None
+    if has_more and page:
+        last = page[-1]
+        next_cursor = _encode_page_cursor(last.row_json["updated_at"], last.mesh_hash)
+    return {"rows": rows, "next_cursor": next_cursor}

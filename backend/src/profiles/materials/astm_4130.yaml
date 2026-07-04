@@ -1,0 +1,30 @@
+name: AISI 4130
+aliases: [4130, 30CrMo4, UNS G41300, Chromoly]
+alloy_designation: AISI 4130
+standards: [ASTM A519, AISI 4130, API 6A, NACE MR0175]
+processes: [cnc_3axis, cnc_5axis, cnc_turning, forging, wire_edm]
+mechanical:
+  density_g_cm3: 7.85
+  tensile_mpa: 670
+  yield_mpa: 435
+  elongation_pct: 25
+  hardness_hrc: 24
+  thermal_conductivity_w_mk: 42.7
+  machinability_index: 70
+  max_temperature_c: 400
+dfm:
+  min_wall_mm: 0.5
+  min_wall_by_process:
+    cnc_3axis: 0.5
+    cnc_5axis: 0.5
+    cnc_turning: 0.5
+    forging: 3.0
+    wire_edm: 0.3
+  cost_per_kg_usd:
+    bar: 2.2
+compliance:
+  nace_mr0175: true
+  biocompatible: false
+  itar: false
+  sour_service: true
+notes: "Cr-Mo low-alloy steel, common in drilling/structural oil & gas. NACE MR0175 requires <=22 HRC (heat-treat controlled)."

@@ -21,6 +21,7 @@ from src.api.errors import structured_http_error_handler, structured_validation_
 from src.api.health import router as health_router
 from src.api.history import router as history_router
 from src.api.middleware import RequestIDMiddleware
+from src.api.metrics import MetricsMiddleware, router as metrics_router
 from src.api.security_headers import SecurityHeadersMiddleware
 from src.api.pdf import router as pdf_router
 from src.api.batch_router import router as batch_router
@@ -30,7 +31,14 @@ from src.api.admin_routes import router as admin_router
 from src.api.routes import router
 from src.api.cost_decisions import public_cost_share_router, router as cost_decisions_router
 from src.api.catalog import router as catalog_router
+from src.api.rate_library import router as rate_library_router
+from src.api.shop_library import router as shop_library_router
+from src.api.material_library import router as material_library_router
+from src.api.governance import router as governance_router
+from src.api.part_context import router as part_context_router
 from src.api.groundtruth import router as groundtruth_router
+from src.api.manifest import router as manifest_router
+from src.api.machine_inventory import router as machine_inventory_router
 from src.api.share import public_share_router, share_router
 from src.auth.keys_api import router as keys_router
 from src.auth.magic_link import router as magic_router
@@ -154,6 +162,12 @@ app = FastAPI(
 # before CORS, rate-limiting, or any router sees it.
 app.add_middleware(RequestIDMiddleware)
 
+# Prometheus request instrumentation (enterprise observability). Times every
+# request and records cadverify_http_requests_total / _request_duration_seconds
+# labelled by the matched route TEMPLATE (bounded cardinality) + status. Additive
+# and no-op when prometheus-client is absent; no behaviour change to any route.
+app.add_middleware(MetricsMiddleware)
+
 # Rate limiting (slowapi). Must be wired before routers are included so the
 # middleware sees every request. See src/auth/rate_limit.py for the key_func.
 app.state.limiter = limiter
@@ -201,8 +215,54 @@ app.include_router(cost_decisions_router, prefix="/api/v1/cost-decisions")
 app.include_router(public_cost_share_router, prefix="/s")
 # Catalog read surface (W1 step 4): the org-scoped parts×decisions grid.
 app.include_router(catalog_router, prefix="/api/v1/catalog", tags=["catalog"])
+# Governed rate-library (W4 slice 1): versioned, effective-dated rate-card asset.
+app.include_router(
+    rate_library_router, prefix="/api/v1/rate-library", tags=["rate-library"]
+)
+# Governed shop-library (W4 slice 2): versioned, effective-dated, per-slug
+# shop-profile asset (DB successor to data/shop_profiles/*.json).
+app.include_router(
+    shop_library_router, prefix="/api/v1/shop-library", tags=["shop-library"]
+)
+# Governed materials-library (W4 slice 3): versioned, effective-dated materials
+# catalog that overrides the base rate card's material_prices for the org.
+app.include_router(
+    material_library_router,
+    prefix="/api/v1/material-library",
+    tags=["material-library"],
+)
+# Governance (W4 governance zone): change-request -> review -> publish flow over
+# the governed rate-card / shop-profile libraries (approval publishes the draft).
+app.include_router(
+    governance_router, prefix="/api/v1/governance", tags=["governance"]
+)
+# Declared part-context (W3.5 rung-1): user-declared program/assembly/volume so
+# the portfolio roll-up can state an honest $/year.
+app.include_router(
+    part_context_router, prefix="/api/v1/part-context", tags=["part-context"]
+)
 app.include_router(
     groundtruth_router, prefix="/api/v1/ground-truth", tags=["ground-truth"]
+)
+# Parts-manifest bulk onboarding (Aramco GAP 3): declared inventory registry +
+# honest geometry-coverage headline — a THIRD part identity (declared part_id),
+# separate from geometry-derived catalog parts and cost records.
+app.include_router(
+    manifest_router, prefix="/api/v1/manifest", tags=["manifest"]
+)
+# Machine-inventory (verification-thesis crux): org-owned machine capability
+# registry + shop-level secondary ops. USER-declared; absent inventory is
+# byte-identical (purely additive). The pure matcher (Phase B) consumes the
+# hydrated MachineCap/ShopCaps from this org-scoped model.
+#
+# Mounted under /api/v1/machine-inventory (NOT /api/v1/machines): the latter is
+# already claimed by the global AM reference-catalog GET in src/api/routes.py.
+# Starlette is first-match-wins, so sharing the prefix made this org-scoped LIST
+# unreachable — the reference catalog shadowed it. Keep these prefixes distinct.
+app.include_router(
+    machine_inventory_router,
+    prefix="/api/v1/machine-inventory",
+    tags=["machine-inventory"],
 )
 # Email + password auth (signup/login/logout/me). Mounted UNCONDITIONALLY — it
 # is the primary login method that works end-to-end locally with zero external
@@ -221,6 +281,11 @@ if AUTH_MODE in ("saml", "hybrid"):
 app.include_router(admin_router)
 app.include_router(keys_router)
 app.include_router(health_router)
+# Prometheus scrape target. Unauthenticated by design (scrapers carry no API
+# key) and gated by METRICS_ENABLED; scrape it over a private network / ingress
+# allowlist in production. Listed in scripts/ci/check_route_auth.py's public
+# allowlist.
+app.include_router(metrics_router)
 
 # Cycle 4 local labeling tool (dev-gated, prod-safe). Mounted ONLY under
 # LABELING_ENABLED=1 so the corpus/label surface never ships to production and

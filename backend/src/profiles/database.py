@@ -59,7 +59,7 @@ _HARDCODED_MATERIALS: list[MaterialProfile] = [
     MaterialProfile("Ductile Iron", [ProcessType.SAND_CASTING], 3.0, 1150, 420, 18, 7.1, 2),
     MaterialProfile("17-4 PH (Cast)", [ProcessType.INVESTMENT_CASTING], 1.0, 1400, 900, 10, 7.78, 15),
     # Sheet Metal
-    MaterialProfile("Mild Steel (Sheet)", [ProcessType.SHEET_METAL], 0.5, 1500, 350, 25, 7.85, 1.5),
+    MaterialProfile("Mild Steel", [ProcessType.SHEET_METAL], 0.5, 1500, 350, 25, 7.85, 1.5),
     MaterialProfile("304 SS (Sheet)", [ProcessType.SHEET_METAL], 0.5, 1400, 505, 40, 8.0, 4),
     MaterialProfile("5052 Aluminum (Sheet)", [ProcessType.SHEET_METAL], 0.5, 600, 230, 12, 2.68, 4),
     MaterialProfile("Copper C110 (Sheet)", [ProcessType.SHEET_METAL], 0.5, 1080, 220, 50, 8.94, 10),

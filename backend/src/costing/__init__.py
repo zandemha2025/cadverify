@@ -20,6 +20,10 @@ from src.costing.shop_profile import (
     DEFAULT_STORE_DIR,
 )
 from src.costing.confidence import ConfidenceInterval, confidence_interval
+from src.costing.ensemble import (
+    ensemble_estimate, combine_inverse_variance, ensemble_enabled,
+    EnsembleResult, EnsembleBand, UNCERTAIN_COEFFICIENTS, COST_ENSEMBLE_ENABLED,
+)
 from src.costing.groundtruth import (
     GroundTruthRecord, load_records, save_records, add_record,
     split_records, tune, evaluate, run_loop, build_report,
@@ -43,6 +47,14 @@ __all__ = [
     # per-estimate confidence interval
     "ConfidenceInterval",
     "confidence_interval",
+    # assumption-ensemble uncertainty (Moat P0)
+    "ensemble_estimate",
+    "combine_inverse_variance",
+    "ensemble_enabled",
+    "EnsembleResult",
+    "EnsembleBand",
+    "UNCERTAIN_COEFFICIENTS",
+    "COST_ENSEMBLE_ENABLED",
     # ground-truth accuracy loop (bucket #4 measurement)
     "GroundTruthRecord",
     "load_records",

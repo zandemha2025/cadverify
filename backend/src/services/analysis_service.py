@@ -121,6 +121,15 @@ async def _persist_analysis(
     )
     session.add(analysis)
     await session.flush()  # get id assigned
+
+    # Maintain the materialized per-part catalog projection (Aramco GAP 2 — scale
+    # to millions). Same-transaction + graceful-degrade: a projection failure is
+    # isolated in a SAVEPOINT and swallowed, never breaking this persist.
+    from src.services import part_summary_service
+
+    await part_summary_service.refresh_part_summary_safe(
+        session, analysis.org_id, analysis.mesh_hash
+    )
     return analysis
 
 

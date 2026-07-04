@@ -29,6 +29,9 @@ itsdangerous>=2.2.0
 slowapi>=0.1.9
 structlog==24.4.0
 sentry-sdk==2.18.0
+# Prometheus text-exposition for the /metrics scrape target (enterprise
+# observability). Pure-python, no system deps.
+prometheus-client>=0.20.0
 fakeredis==2.26.0
 weasyprint>=62.0
 jinja2>=3.1.0

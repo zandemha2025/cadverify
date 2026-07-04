@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.analysis.models import AnalysisResult, Issue, ProcessType
 from src.analysis.rules import available_rule_packs, get_rule_pack
+from src.api.metrics_registry import observe_analysis_duration, record_cost_decision
 from src.api.upload_validation import (
     demo_max_triangles,
     enforce_stl_triangle_count_cap,
@@ -101,10 +102,13 @@ async def _read_capped(file: UploadFile) -> bytes:
 
 def _parse_mesh(data: bytes, filename: str):
     suffix = Path(filename).suffix.lower()
-    if suffix not in (".stl", ".step", ".stp"):
+    if suffix not in (".stl", ".step", ".stp", ".iges", ".igs"):
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported file type: {suffix}. Use .stl, .step, or .stp",
+            detail=(
+                f"Unsupported file type: {suffix}. "
+                "Use .stl, .step, .stp, .iges, or .igs"
+            ),
         )
     # CORE-07: defense-in-depth — verify magic bytes before dispatching
     # to parser libs (cadquery/trimesh can crash on adversarial input).
@@ -225,9 +229,38 @@ def _run_cost_engine(mesh, filename: str):
 _COMPLEXITY = {"simple", "moderate", "complex", "very_complex"}
 _MATERIAL_CLASSES = {"polymer", "aluminum", "steel", "stainless", "titanium"}
 _REGIONS = {"US", "EU", "MX", "CN", "IN", "SA"}
+_TOLERANCE_CLASSES = {"standard", "precision", "tight"}
 _MAX_QTYS = 6
 _MAX_QTY = 10_000_000
 _MAX_OVERRIDES = 64  # cap ad-hoc rate/driver overrides per request
+
+
+def _parse_owned_processes(raw: Optional[str]) -> frozenset:
+    """Parse the comma-separated `owned_processes` form field into a
+    frozenset[ProcessType] (the engine processes the org already OWNS in-house).
+
+    Absent / blank => empty frozenset => byte-identical (nothing owned). Each
+    token is an engine process id (e.g. "cnc_3axis,injection_molding"); an
+    unknown id is a 400, mirroring the region/material validation.
+    """
+    if not raw or not raw.strip():
+        return frozenset()
+    from src.costing.rates import _resolve_process_token
+
+    out = set()
+    for tok in raw.split(","):
+        tok = tok.strip()
+        if not tok:
+            continue
+        pt = _resolve_process_token(tok)
+        if pt is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(f"Unknown process {tok!r} in owned_processes. Use engine "
+                        f"process ids, e.g. cnc_3axis,injection_molding."),
+            )
+        out.add(pt)
+    return frozenset(out)
 
 
 def _available_shops() -> list[dict]:
@@ -278,6 +311,40 @@ def _resolve_shop_param(shop: Optional[str]) -> Optional[str]:
         detail=(f"Unknown shop {req!r}. Available: "
                 f"{[s['id'] for s in _available_shops()] or '(none)'}"),
     )
+
+
+async def _resolve_governed_shop(session, user_id, shop):
+    """Governed (DB) shop binding for the caller's org + slug, or None (W4 slice 2).
+
+    When ``SHOP_LIBRARY_ENABLED`` is on AND the caller's org has a PUBLISHED shop
+    profile for the requested slug in effect now, return a ShopProfile-like
+    binding carrying that org's DECLARED overrides (bound as SHOP provenance by
+    ``build_rate_card``). Otherwise ``None`` — the caller falls through to the
+    flat-file ``resolve_shop`` allowlist, byte-identical to pre-W4. The flag is
+    checked FIRST so an off flag adds no DB work and no behaviour change.
+    """
+    raw = (shop or "").strip()
+    if not raw:
+        return None
+    from src.services.shop_library_service import (
+        governed_shop_profile,
+        resolve_shop_overrides_for,
+        shop_library_enabled,
+    )
+
+    if not shop_library_enabled():
+        return None
+    from src.auth.org_context import resolve_org
+    from src.costing.shop_profile import _slug
+
+    org_id = await resolve_org(session, user_id)
+    if not isinstance(org_id, str) or not org_id:
+        return None
+    slug = _slug(raw)
+    payload = await resolve_shop_overrides_for(session, org_id, slug)
+    if payload is None:
+        return None
+    return governed_shop_profile(slug, payload)
 
 
 def _parse_overrides(overrides: Optional[str]) -> dict:
@@ -623,6 +690,8 @@ async def _run_cost_decision(
     material_class: str,
     shop: Optional[str] = None,
     overrides: Optional[str] = None,
+    owned_processes: Optional[str] = None,
+    tolerance_class: Optional[str] = None,
     user: Optional[AuthedUser] = None,
     session: Optional[AsyncSession] = None,
 ) -> dict:
@@ -663,6 +732,15 @@ async def _run_cost_decision(
         )
     if cavities < 1:
         raise HTTPException(status_code=400, detail="cavities must be >= 1")
+    # tolerance_class: None => unset (DEFAULT "standard", byte-identical); a
+    # supplied value must be one of the documented classes and is treated USER.
+    tolerance_is_user = tolerance_class is not None
+    if tolerance_class is not None and tolerance_class not in _TOLERANCE_CLASSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown tolerance_class '{tolerance_class}'. Use one of {sorted(_TOLERANCE_CLASSES)}",
+        )
+    effective_tolerance = tolerance_class or "standard"
     # region: None => unset (DEFAULT US, and a bound shop's region may win); a
     # supplied region must be one of the documented vectors and is treated USER.
     region_is_user = region is not None
@@ -672,9 +750,24 @@ async def _run_cost_decision(
             detail=f"Unknown region '{region}'. Use one of {sorted(_REGIONS)}",
         )
     effective_region = region or "US"
-    shop_slug = _resolve_shop_param(shop)        # 400 on unknown shop
+    # ── Shop binding: governed (DB) profile first, else the flat-file allowlist ──
+    # W4 slice 2: when SHOP_LIBRARY_ENABLED and the caller's org has a PUBLISHED
+    # shop profile for this slug in effect now, bind its DECLARED overrides as
+    # SHOP provenance (the slug need not exist as a flat file). Flag off / no
+    # governed profile for the slug => byte-identical: the flat-file resolve_shop
+    # path (and its 400 on an unknown shop) is used unchanged.
+    governed_shop = None
+    if user is not None and session is not None:
+        governed_shop = await _resolve_governed_shop(session, user.user_id, shop)
+    if governed_shop is not None:
+        shop_slug = governed_shop.slug           # string slug for logging / params_hash
+        shop_binding = governed_shop             # ShopProfile-like object bound to engine
+    else:
+        shop_slug = _resolve_shop_param(shop)    # 400 on unknown shop
+        shop_binding = shop_slug
     rate_overrides = _parse_overrides(overrides)  # 400 on bad JSON/value
     _validate_overrides(rate_overrides)           # 400 on unknown key (fail fast)
+    owned = _parse_owned_processes(owned_processes)  # 400 on unknown process id
 
     data = await _read_capped(file)  # 413 on size, 400 on empty
     mesh, suffix = await _parse_mesh_async(  # 400/413/501, 504 on parse timeout
@@ -689,12 +782,15 @@ async def _run_cost_decision(
         material_class_is_user=material_class != "polymer",
         region=effective_region,
         region_is_user=region_is_user,
-        shop=shop_slug,
+        shop=shop_binding,
         rate_overrides=rate_overrides,
         n_cavities=cavities,
         n_cavities_is_user=cavities != 1,
         complexity=complexity,
         complexity_is_user=complexity != "moderate",
+        owned_processes=owned,
+        tolerance_class=effective_tolerance,
+        tolerance_class_is_user=tolerance_is_user,
     )
 
     # ---- MEASURED confidence band from a persisted org calibration (W5) ----
@@ -706,6 +802,12 @@ async def _run_cost_decision(
     # byte-identical to pre-W5 behaviour. Pure local disk read (no network); the
     # only added work is the org lookup, which never touches the response bytes.
     # The demo route passes no user/session, so it stays untouched and IP-local.
+    # ── P1 analogy feed (loaded below only when the ensemble is on) ──────────
+    # The caller org's ground-truth records, passed to ``ensemble_estimate`` so
+    # the analogy-to-quote k-NN member can measure geometric distance to THIS
+    # part. None => the analogy is never engaged and the band is byte-identical
+    # (demo route, flag off, or an unprovisioned session).
+    analogy_records = None
     if user is not None and session is not None:
         from src.auth.org_context import resolve_org
         from src.services.groundtruth_service import load_served_calibration
@@ -725,14 +827,135 @@ async def _run_cost_decision(
             if calibration is not None:
                 options.calibration = calibration
 
+            # ── W4 governed rate library ────────────────────────────────────
+            # If RATE_LIBRARY_ENABLED is on AND the org has a PUBLISHED rate card
+            # in effect now, use it as the base DEFAULT table under shop/user
+            # overrides. Flag off / no published card => None => hardcoded
+            # RATE_CARD_V0 => byte-identical to pre-W4. A governed card is a table
+            # of DEFAULT assumptions — provenance stays DEFAULT, never validated.
+            from src.services.rate_library_service import (
+                resolve_rate_table_for_org,
+            )
+
+            base_table = await resolve_rate_table_for_org(session, cal_org_id)
+            if base_table is not None:
+                options.base_rate_table = base_table
+
+            # ── W4 governed materials library ───────────────────────────────
+            # If MATERIAL_LIBRARY_ENABLED is on AND the org has a PUBLISHED
+            # materials catalog in effect now, OVERLAY its DECLARED per-kg prices
+            # onto the base table's ``material_prices`` (the governed catalog wins
+            # per material key). Flag off / no published catalog / empty catalog
+            # => no overlay => the base table's own material_prices are used
+            # unchanged => byte-identical to pre-W4. A governed catalog is DECLARED
+            # default prices — provenance stays DEFAULT, never validated.
+            import copy as _copy
+
+            from src.costing.rates import RATE_CARD_V0 as _RATE_CARD_V0
+            from src.services.material_library_service import (
+                resolve_material_overrides_for,
+            )
+
+            mat_payload = await resolve_material_overrides_for(session, cal_org_id)
+            mat_prices = (mat_payload or {}).get("material_prices") or {}
+            mat_defs = (mat_payload or {}).get("materials") or {}
+            if mat_prices or mat_defs:
+                # Deep-copy before mutating: base_table may be the rate-library
+                # cache's shared payload (returned by reference) — never corrupt it.
+                base = _copy.deepcopy(
+                    options.base_rate_table
+                    if options.base_rate_table is not None
+                    else _RATE_CARD_V0
+                )
+                if mat_prices:
+                    merged = dict(base.get("material_prices") or {})
+                    merged.update(mat_prices)
+                    base["material_prices"] = merged
+                if mat_defs:
+                    merged_defs = dict(base.get("materials") or {})
+                    merged_defs.update(mat_defs)
+                    base["materials"] = merged_defs
+                options.base_rate_table = base
+
+            # ── P1 analogy-to-quote k-NN feed (org-scoped, cheap query) ──────
+            # When the ensemble is enabled, load THIS org's ground-truth records
+            # so the independent analogy member can contribute to the POINT via
+            # BLUE. Loaded here (off the compute executor) as a single org-scoped
+            # SELECT; the analogy itself filters to REAL (stand_in=False)
+            # same-process neighbours that carry geometry and ABSTAINS otherwise,
+            # so an org with no usable records leaves the band byte-identical.
+            from src.costing.ensemble import ensemble_enabled as _ens_on
+            if _ens_on():
+                from src.services.groundtruth_service import (
+                    load_org_ground_truth,
+                )
+
+                analogy_records = await load_org_ground_truth(session, cal_org_id)
+
+    # ---- OPT-IN assumption-ensemble uncertainty band (Moat P1) -------------
+    # Behind COST_ENSEMBLE_ENABLED (default OFF). When on, we ALSO run the same
+    # estimator under K deterministic rate-card perturbations and attach the
+    # HONEST spread as a NEW top-level `uncertainty` key. When off we never
+    # construct it and never add the key -> the response is BYTE-IDENTICAL.
+    # It reuses the SAME estimate inputs and runs inside the SAME off-loop
+    # executor as the point estimate, so the (opt-in) latency never blocks the
+    # event loop. It rides the RESPONSE only; the persisted result_json and the
+    # dedup params_hash are untouched (the band is derived, not an input).
+    from src.costing.ensemble import ensemble_enabled, ensemble_estimate
+
+    # Gated on an authenticated caller too: the public demo route (no user) is
+    # IP-local + ephemeral by contract and stays byte-identical regardless of
+    # the flag — the band is an authed-product feature.
+    run_ensemble = ensemble_enabled() and user is not None
+
     def _run():
         result, m, features = _run_cost_engine(mesh, file.filename or "unknown")
-        return estimate_decision(result, m, features, options)
+        rep = estimate_decision(result, m, features, options)
+        unc = None
+        if run_ensemble and rep.status != "GEOMETRY_INVALID":
+            # ── P1 analogy query geometry ────────────────────────────────────
+            # THIS part's MEASURED cost-drivers (analogy_estimator.FEATURE_KEYS),
+            # extracted by the SAME engine extraction the records were populated
+            # with. Only computed when the org actually has records to match
+            # against — otherwise geometry stays None and the analogy is never
+            # engaged (band byte-identical). Best-effort: an extraction failure
+            # leaves geometry None (analogy abstains), never fails the estimate.
+            geom_features = None
+            if analogy_records:
+                try:
+                    from src.costing.drivers import extract_drivers
+
+                    dr = extract_drivers(result.geometry, m, features)
+                    if (dr.volume_cm3 > 0 and dr.surface_area_cm2 > 0
+                            and dr.max_bbox_mm > 0 and dr.face_count > 0):
+                        geom_features = {
+                            "volume_cm3": float(dr.volume_cm3),
+                            "surface_area_cm2": float(dr.surface_area_cm2),
+                            "max_bbox_mm": float(dr.max_bbox_mm),
+                            "face_count": int(dr.face_count),
+                        }
+                except Exception:
+                    geom_features = None
+            # Reuse the org's W5 residual_model when one was bound above; else
+            # None -> the honest pre-data assumption spread (validated=False).
+            # records + geometry activate the analogy-to-quote k-NN member: it
+            # contributes to the POINT via BLUE ONLY when it finds >= min_real
+            # REAL same-process neighbours WITH geometry; otherwise it ABSTAINS
+            # and the band is byte-identical to the assumption spread. The
+            # measured residual path (validated) is unchanged and still wins.
+            ens = ensemble_estimate(
+                result, m, features, options,
+                residual_model=getattr(options, "residual_model", None),
+                records=analogy_records,
+                geometry=geom_features,
+            )
+            unc = ens.to_dict()
+        return rep, unc
 
     timeout = _analysis_timeout_sec()
     loop = asyncio.get_event_loop()
     try:
-        report = await asyncio.wait_for(
+        report, uncertainty = await asyncio.wait_for(
             loop.run_in_executor(None, _run), timeout=timeout
         )
     except asyncio.TimeoutError:
@@ -748,6 +971,8 @@ async def _run_cost_decision(
             timeout_sec=round(timeout, 1),
             duration_ms=round((time.perf_counter() - t0) * 1000, 1),
         )
+        # Observability: bounded compute that ran over budget is an error outcome.
+        record_cost_decision("error")
         raise HTTPException(
             status_code=504,
             detail=f"Cost analysis exceeded {timeout:.0f}s timeout.",
@@ -774,10 +999,15 @@ async def _run_cost_decision(
         duration_ms=round((time.perf_counter() - t0) * 1000, 1),
     )
 
+    # Observability: the compute finished, so record its duration (both outcomes)
+    # and the decision outcome. Real timings/counts only; no PII enters a label.
+    observe_analysis_duration(time.perf_counter() - t0)
+
     if report.status == "GEOMETRY_INVALID":
         # G1 surfaced cleanly as a structured 400 (errors.py passes the
         # dict-with-code through unchanged), carrying the measured geometry
         # summary + repair reason so the buyer sees *why*.
+        record_cost_decision("geometry_invalid")
         raise HTTPException(
             status_code=400,
             detail={
@@ -788,6 +1018,7 @@ async def _run_cost_decision(
             },
         )
 
+    record_cost_decision("ok")
     result_dict = report_to_dict(report)
 
     # ---- persist for authenticated callers (Phase 2 gap #3) --------------
@@ -842,6 +1073,16 @@ async def _run_cost_decision(
                     session, user, mesh_hash=mesh_hash, error=exc
                 )
 
+    # RESPONSE-ONLY: attach the ensemble band (when the flag produced one) after
+    # persistence so the stored result_json stays byte-identical to the flag-off
+    # path. The block carries the ensemble's own honest labels verbatim
+    # (method/validated/label/disagreement_cov); `validated` is measured ONLY
+    # when a real residual_model produced measured bands. When the flag is off
+    # `uncertainty` is None and the key is never added.
+    if uncertainty is not None:
+        result_dict = dict(result_dict)
+        result_dict["uncertainty"] = uncertainty
+
     return result_dict
 
 
@@ -873,6 +1114,21 @@ async def validate_cost(
                     '{"labor_rate": 40, "machine_rate.SLS": 25}. Tagged USER; '
                     'enables a true server re-cost on an edited assumption.',
     ),
+    owned_processes: Optional[str] = Form(
+        None,
+        description="Comma-separated engine process ids the org OWNS in-house, "
+                    "e.g. cnc_3axis,injection_molding. Costs those at the MARGINAL "
+                    "machine rate (owned capital is sunk) — the make-it-ourselves "
+                    "path. Tagged USER; unset => nothing owned (fully-loaded).",
+    ),
+    tolerance_class: Optional[str] = Form(
+        None,
+        description="Declared part tolerance: standard|precision|tight (unset => "
+                    "standard, byte-identical). Applies an honest machining "
+                    "multiplier to the tolerance-sensitive CNC terms (finish pass "
+                    "+ inspection) and widens the confidence band. STATED input, "
+                    "not measured GD&T; the factor is a DEFAULT assumption.",
+    ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -900,6 +1156,8 @@ async def validate_cost(
         material_class=material_class,
         shop=shop,
         overrides=overrides,
+        owned_processes=owned_processes,
+        tolerance_class=tolerance_class,
         user=user,
         session=session,
     )
@@ -930,6 +1188,12 @@ async def validate_cost_demo(
         None,
         description='JSON object of ad-hoc rate/driver overrides (tagged USER).',
     ),
+    tolerance_class: Optional[str] = Form(
+        None,
+        description="Declared part tolerance: standard|precision|tight (unset => "
+                    "standard, byte-identical). Honest machining multiplier on the "
+                    "tolerance-sensitive CNC terms + band widening. STATED input.",
+    ),
 ):
     """Public demo of the should-cost / make-vs-buy decision — NO auth.
 
@@ -951,6 +1215,7 @@ async def validate_cost_demo(
         material_class=material_class,
         shop=shop,
         overrides=overrides,
+        tolerance_class=tolerance_class,
     )
 
 

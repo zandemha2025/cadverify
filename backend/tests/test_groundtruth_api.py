@@ -94,8 +94,11 @@ async def test_ingest_persist_recalibrate_serve_and_cross_tenant(tmp_path, monke
 
     parts_dir = tmp_path / "parts"
     parts_dir.mkdir()
-    # Write real STL parts to disk; ingest records point part_path at them so
-    # recalibration's engine run resolves them regardless of the configured dir.
+    # Write real STL parts to a TRUSTED SERVER CORPUS (CADVERIFY_PARTS_DIR);
+    # records resolve their mesh by part_id under that dir — the secure path. A
+    # network-supplied absolute part_path is rejected at ingest (arbitrary-file
+    # open guard), so the POST bodies below carry NO part_path.
+    monkeypatch.setenv("CADVERIFY_PARTS_DIR", str(parts_dir))
     part_files = []
     for i in range(_N_PARTS):
         pid = f"gtcube-{i:02d}.stl"
@@ -171,7 +174,7 @@ async def test_ingest_persist_recalibrate_serve_and_cross_tenant(tmp_path, monke
                     json={
                         "part_id": pid, "process": _PROC, "quantity": 100,
                         "actual_unit_cost_usd": _true_cost(i),
-                        "part_path": ppath, "stand_in": False,
+                        "stand_in": False,
                         "source": f"PO-{1000 + i} real quote",
                     },
                 )
@@ -191,7 +194,7 @@ async def test_ingest_persist_recalibrate_serve_and_cross_tenant(tmp_path, monke
                 "/api/v1/ground-truth",
                 json={
                     "part_id": part_files[0][0], "process": _PROC, "quantity": 100,
-                    "actual_unit_cost_usd": 99.0, "part_path": part_files[0][1],
+                    "actual_unit_cost_usd": 99.0,
                     "stand_in": False, "source": "PO-dup",
                 },
             )
@@ -325,11 +328,11 @@ async def test_ingest_persist_recalibrate_serve_and_cross_tenant(tmp_path, monke
             assert b2_est is not None
             # B has no ground truth -> still the assumption band, NOT validated.
             assert b2_est["confidence"]["validated"] is False
-            # recalibrating B (zero records) stays honestly un-validated
+            # recalibrating B (zero real records) is honestly REFUSED (422) — a
+            # calibration is never emitted below the MIN_REAL_RECORDS floor.
             r = await ac.post("/api/v1/ground-truth/recalibrate")
-            assert r.status_code == 200
-            assert r.json()["from_real"] is False
-            assert r.json()["validated"] is False
+            assert r.status_code == 422, r.text
+            assert r.json()["detail"]["n_real"] == 0
     finally:
         async with eng.get_session_factory()() as s:
             await s.execute(

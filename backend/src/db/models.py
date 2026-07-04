@@ -682,6 +682,621 @@ class GroundTruthRecordRow(Base):
     )
     part_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    # ── P1 analogy-to-quote k-NN geometry (migration 0018) — all NULLABLE. ──
+    # The MEASURED cost-drivers (mirroring ``analogy_estimator.FEATURE_KEYS`` /
+    # ``drivers.GeoDrivers``) a record carries so the analogy k-NN member can
+    # measure geometric distance to the query part. Populated best-effort at
+    # ingest when the part's mesh resolves; a record with no resolvable mesh (or
+    # an older row) stays NULL and the analogy simply skips it. Never fabricated.
+    volume_cm3: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    surface_area_cm2: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    max_bbox_mm: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    face_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+# ---------------------------------------------------------------------------
+# W4 governed libraries (migration 0013): the versioned rate-card asset
+# ---------------------------------------------------------------------------
+
+
+class RateCardVersion(Base):
+    """A governed rate-card asset — a versioned, effective-dated snapshot of an
+    org's cost rate table (W4 governed libraries, slice 1).
+
+    Replaces "the 487-line hardcoded ``RATE_CARD_V0`` dict with no API at all"
+    (long-horizon-plan §W4 / arch audit) with a DB-backed asset an org admin can
+    draft, review, and PUBLISH with an effective date. ``payload`` is a full
+    ``RATE_CARD_V0``-shaped table; the costing engine reads the version *effective
+    at the estimate time* as its base table instead of the hardcoded default.
+
+    HONESTY (non-negotiable rule #1/#2): a governed rate card is still a table of
+    DEFAULT assumptions — NOT a claim of measured truth. Adopting one changes
+    which default numbers an org uses; it never flips a decision to ``validated``
+    (that comes only from real ground-truth residuals, W5). Nothing here launders
+    an assumption into a fact.
+
+    Versioning / effective-dating (one non-overlapping timeline per org):
+      * ``version`` is monotonic per org (1, 2, 3…), unique per org.
+      * ``status`` is ``draft`` | ``published`` | ``archived``.
+      * Publishing a version stamps ``effective_from`` (now, or a caller-supplied
+        future instant) and closes the previously-open published version's
+        ``effective_to`` to that instant — so at most one published version is in
+        effect at any time. Resolution picks the published row with
+        ``effective_from <= as_of`` and (``effective_to IS NULL`` or ``> as_of``).
+    """
+
+    __tablename__ = "rate_card_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "version", name="uq_rate_card_versions_org_version"
+        ),
+        Index("ix_rate_card_versions_org_status", "org_id", "status"),
+        Index("ix_rate_card_versions_org_effective", "org_id", "effective_from"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="draft"
+    )
+    # Full RATE_CARD_V0-shaped rate table (validated on publish).
+    payload: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    change_note: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=""
+    )
+    effective_from: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    effective_to: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    published_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# W3.5 rung-1 declared context (migration 0014): honest portfolio $/year
+# ---------------------------------------------------------------------------
+
+
+class PartContext(Base):
+    """A part's USER-DECLARED business context (W3.5 rung-1).
+
+    One optional row per part (a distinct ``mesh_hash`` within an org) carrying
+    the demand/program facts the geometry can never tell you — which program the
+    part belongs to, its parent assembly, how many go into each parent, and the
+    annual build volume. It is what lets the portfolio roll-up state an honest
+    ``$/year`` instead of only a per-unit price.
+
+    HONESTY (non-negotiable): every field here is DECLARED by a user, never
+    inferred or guessed from the mesh — provenance is always ``"user"``. Nothing
+    is fabricated: an annualized figure is only ever computed when the user has
+    actually declared an ``annual_volume`` (we NEVER invent a demand quantity),
+    and a part with no context row behaves exactly as it did before this table
+    existed. Adopting a context changes what business math we can show; it never
+    flips a cost band to ``validated`` (that is still real ground truth only).
+    """
+
+    __tablename__ = "part_contexts"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "mesh_hash", name="uq_part_contexts_org_mesh"
+        ),
+        Index("ix_part_contexts_org_program", "org_id", "program"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    mesh_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    program: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    parent_assembly: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    units_per_parent: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    annual_volume: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Declared service environment (machine-inventory §6): USER-declared, never
+    # inferred. {max_temp_c, min_temp_c, pressure_bar, corrosive, sour_service,
+    # medium, standard}. NULL → no environment declared (gate is a no-op).
+    service_environment: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSONB, nullable=True
+    )
+    created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class MachineInstance(Base):
+    """One USER-DECLARED owned machine (or identical group) in an org's inventory.
+
+    The machine-inventory model (verification-thesis crux, spec §3): turns the
+    process-level owned-equipment seam into a machine-level capability-matching
+    surface. One row per owned machine or identical group; ``count`` is capacity
+    (N identical machines), never a fit axis. Every makeability check reduces to a
+    scalar comparison ``part_requirement ⩿ machine_capability``; the small set of
+    universal typed columns is queried/indexed and the per-process-family
+    ``capabilities`` JSONB carries the process-appropriate scalars (validated on
+    write against a per-family schema in ``machine_inventory_service``).
+
+    HONESTY (non-negotiable, spec §2): every capability here is DECLARED by the
+    org — provenance is always ``"user"``, NEVER measured. A machine's
+    envelope/rate/material qualification is the org's declaration; a later "fits"
+    verdict on the *envelope* is a MEASURED-geometry × USER-capability comparison,
+    while tolerance/secondary-op capability is USER-declared, never a measurement
+    of the machine. Malformed inputs are reported by the service, never coerced.
+    No inventory declared → the platform is byte-identical (this feature is purely
+    additive). Org-scoped: cross-tenant isolation on every query.
+
+    Mirrors the ``manifest_parts`` / ``part_contexts`` column style: BigInt PK,
+    ULID public id, org_id FK (CASCADE), nullable ``created_by`` (SET NULL so
+    history survives a user delete). CRUD + keyset list + CSV import live in the
+    service.
+    """
+
+    __tablename__ = "machine_instances"
+    __table_args__ = (
+        Index("ix_machine_instances_org", "org_id"),
+        Index("ix_machine_instances_org_process", "org_id", "process"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    # Display name, e.g. "Haas VF-2 #3".
+    name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # ProcessType.value — which process family (indexed).
+    process: Mapped[str] = mapped_column(Text, nullable=False)
+    # N identical machines (capacity, NOT a fit axis).
+    count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # Universal mass gate: max workpiece mass this machine handles (kg).
+    max_workpiece_kg: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # This machine's OWN rate ($/hr) — overrides the rate-card default for cost.
+    hourly_rate_usd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Per-machine sunk-capital fraction [0,1]; NULL → rate-card default.
+    capital_frac: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Per-process-family fit-gate scalars (envelope/force/reach/resolution).
+    capabilities: Mapped[Dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
+    # Material names/classes QUALIFIED on THIS machine (material-qualification gate).
+    materials: Mapped[Optional[List[Any]]] = mapped_column(JSONB, nullable=True)
+    # {material: max_mm} (laser/EDM/sheet power×material×thickness gate).
+    material_thickness_map: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSONB, nullable=True
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ShopCapabilities(Base):
+    """An org's SHOP-LEVEL secondary-op capabilities (spec §3.1).
+
+    Secondary ops are shop-level, NOT per-machine (a foundry has one HIP vessel,
+    not one per press). ONE row per org: ``ops`` is a JSONB map
+    ``{op: True | {size/temp limits}}`` (heat_treat, stress_relief, hip, sinter,
+    grinding, plating, cmm, ct_inspection, …). The matcher consumes this as the
+    org's available-secondary-ops set; a part that REQUIRES an op the org lacks is
+    a real gap (spec §0).
+
+    HONESTY: every entry is USER-declared (provenance ``"user"``), never inferred.
+    No row → the org has declared no secondary ops (byte-identical / no-op).
+    Org-scoped, one row per org (unique ``org_id``).
+    """
+
+    __tablename__ = "shop_capabilities"
+    __table_args__ = (
+        UniqueConstraint("org_id", name="uq_shop_capabilities_org"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    # {op: True | {size/temp limits}} — the org's available secondary ops.
+    ops: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class PartSummary(Base):
+    """Materialized per-part catalog projection (Aramco GAP 2 — scale to millions).
+
+    ONE row per ``(org_id, mesh_hash)`` carrying the fully-derived catalog row
+    (``row_json`` = the exact ``catalog_service.derive_row`` dict) plus the scalar
+    columns needed to aggregate/paginate the whole inventory in SQL — the derived
+    makeability ``triage_bucket``, the recommended ``route_process``, the two
+    artifact-presence flags, and the row's derived recency (``updated_at`` =
+    ``max(analysis, cost)`` created_at).
+
+    Maintained on write at the two persist funnels (analysis + cost decision) so
+    the whole-inventory triage COUNT and the catalog grid no longer scan the 2000
+    newest raw rows and fold in Python. The legacy fold path
+    (``catalog_service._fold_org_parts`` and friends) is untouched and remains the
+    byte-identity oracle: ``row_json`` reproduces the grid row VERBATIM and
+    ``triage_bucket`` equals ``catalog_service.triage_bucket(row_json)``.
+
+    HONESTY: nothing is fabricated — every column is a projection of what the
+    legacy derivation already computes from persisted engine output. A part with
+    no artifact has no summary row (it never appears in the catalog either).
+    """
+
+    __tablename__ = "part_summaries"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "mesh_hash", name="uq_part_summaries_org_mesh"
+        ),
+        # Triage rollup: GROUP BY triage_bucket within an org.
+        Index("ix_part_summaries_org_bucket", "org_id", "triage_bucket"),
+        # Keyset pagination of the grid: (updated_at DESC, mesh_hash DESC).
+        Index(
+            "ix_part_summaries_org_keyset",
+            "org_id",
+            text("updated_at DESC"),
+            text("mesh_hash DESC"),
+        ),
+        # by_process rollup: GROUP BY route_process within an org.
+        Index("ix_part_summaries_org_route", "org_id", "route_process"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    mesh_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    # Derived makeability posture (makeable | needs_review | unknown) — the exact
+    # output of catalog_service.triage_bucket(row_json).
+    triage_bucket: Mapped[str] = mapped_column(Text, nullable=False)
+    # Recommended-route process id (None when the part has no route). Fuels the
+    # by_process rollup + the route facet.
+    route_process: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    has_analysis: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    has_cost: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    # Derived recency = max(analysis, cost) created_at — the grid's sort key and
+    # the keyset-pagination cursor axis. Kept in lock-step with row_json's
+    # ``updated_at`` string (both parsed from the same value; never drifts).
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
+    # The full catalog row — catalog_service.derive_row(...) VERBATIM, so the
+    # scaled grid hydrates a page byte-identically to the legacy grid.
+    row_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# W4 governed libraries (migration 0015): the versioned shop-profile asset
+# ---------------------------------------------------------------------------
+
+
+class ShopProfileVersion(Base):
+    """A governed shop-profile asset — a versioned, effective-dated, PER-SLUG
+    snapshot of one shop's cost calibration (W4 governed libraries, slice 2).
+
+    The DB-backed successor to the read-only ``backend/data/shop_profiles/*.json``
+    flat files: an org admin drafts, reviews, and PUBLISHES a shop profile with an
+    effective date, and the costing engine binds the version *effective at the
+    estimate time* as that shop's SHOP-provenance overrides instead of loading the
+    flat file. Mirrors ``RateCardVersion`` column-for-column, plus a ``slug`` (the
+    shop identifier the cost API references, e.g. ``"midwest-precision-cnc"``).
+
+    ``payload`` is the shop-overrides dict — the exact dotted-key form
+    ``ShopProfile.to_shop_overrides`` produces and ``build_rate_card(shop_overrides=…)``
+    consumes (``labor_rate``, ``machine_rate.SLS``, ``material_price.@polymer``,
+    ``region_labor.MX`` …) — plus optional ``name``/``region`` metadata used for
+    the shop label/region binding.
+
+    HONESTY (non-negotiable rules #1/#2): a governed shop profile is the org's
+    DECLARED shop calibration. ``build_rate_card`` already flips its keys to SHOP
+    provenance (``shop_keys``); that is a declared assumption, NOT measured truth.
+    Adopting one changes *which* shop numbers an org uses; it never flips a
+    decision to ``validated`` (that comes only from real ground-truth residuals,
+    W5). Nothing here launders a declared rate into a fact.
+
+    Versioning / effective-dating is PER ``(org_id, slug)``: ``version`` is
+    monotonic per org; publishing a version for a slug closes that slug's
+    previously-open published version's ``effective_to`` so at most one published
+    version per (org, slug) is in effect at any time.
+    """
+
+    __tablename__ = "shop_profile_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "version", name="uq_shop_profile_versions_org_version"
+        ),
+        UniqueConstraint("ulid", name="uq_shop_profile_versions_ulid"),
+        Index("ix_shop_profile_versions_org_status", "org_id", "status"),
+        Index("ix_shop_profile_versions_org_slug", "org_id", "slug"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    # The shop identifier the cost API references (?shop=<slug>). The effective
+    # governed profile is resolved per (org_id, slug).
+    slug: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="draft"
+    )
+    # Shop-overrides dict (validated on publish via a build_rate_card dry-run).
+    payload: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    change_note: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=""
+    )
+    effective_from: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    effective_to: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    published_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# W4 governance (migration 0016): the change-request workflow over the
+# governed rate-card / shop-profile libraries
+# ---------------------------------------------------------------------------
+
+
+class ChangeRequest(Base):
+    """A governance change-request over a governed library asset version (W4).
+
+    The org-scoped record that gates the "change request -> review -> publish"
+    flow over the versioned rate-card and shop-profile libraries: a member
+    PROPOSES a draft version for review, and an org admin either APPROVES it
+    (which publishes the draft via the library's existing, tested
+    ``publish_version`` path) or REJECTS it (the draft stays a draft).
+
+    ``target_version_id`` + ``asset_type`` identify the DRAFT being proposed.
+    They are deliberately NOT a single cross-table FK: a change request can
+    target either a ``rate_card_versions`` row or a ``shop_profile_versions``
+    row, so ``asset_type`` dispatches which library owns the id. Tenancy is by
+    ``org_id`` (both the change request and its target live in the same org).
+
+    HONESTY (non-negotiable): governance never launders an assumption into a
+    fact. Approving a change request only triggers the existing publish path —
+    it changes WHICH default/shop numbers an org uses and WHO may trigger the
+    switch; it never flips a decision to ``validated`` (that is real
+    ground-truth residuals only, W5).
+    """
+
+    __tablename__ = "change_requests"
+    __table_args__ = (
+        UniqueConstraint("ulid", name="uq_change_requests_ulid"),
+        Index("ix_change_requests_org_status", "org_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    # Which library owns ``target_version_id``: 'rate_card' | 'shop_profile'.
+    asset_type: Mapped[str] = mapped_column(Text, nullable=False)
+    # The DRAFT version being proposed (id within the asset_type's table — NOT a
+    # cross-table FK; the owning table is chosen by asset_type).
+    target_version_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="proposed"
+    )
+    title: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    note: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    proposed_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    decided_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# W4 governed libraries (migration 0017): the versioned materials-catalog asset
+# ---------------------------------------------------------------------------
+
+
+class MaterialLibraryVersion(Base):
+    """A governed materials-library asset — a versioned, effective-dated,
+    org-scoped catalog of material prices/definitions (W4 governed libraries,
+    slice 3).
+
+    The DB-backed successor to the empty ``RATE_CARD_V0["material_prices"]``
+    default (generic material-DB unit prices): an org admin drafts, reviews, and
+    PUBLISHES a materials catalog with an effective date, and the costing engine
+    overlays the version *effective at the estimate time* onto the base rate
+    table's ``material_prices`` so the org's DECLARED lot prices override the
+    generic per-kg defaults. Mirrors ``RateCardVersion`` column-for-column.
+
+    ``payload`` is a materials catalog dict shaped exactly as the engine expects:
+    ``{"material_prices": {<material>: <usd_per_kg>, ...},
+        "materials": {<name>: {"family": ..., "density_g_cm3": ..., ...}}}``.
+    ``material_prices`` maps an exact material name (e.g. ``"PA12 (Nylon 12)"``)
+    or a class sentinel (``"@polymer"``) to a positive $/kg; ``materials`` is an
+    optional bag of material definitions. Only ``material_prices`` is required.
+
+    HONESTY (non-negotiable rules #1/#2): a governed materials catalog is the
+    org's DECLARED default prices — NOT measured/negotiated truth. Adopting one
+    changes *which* default per-kg numbers an org uses; it never flips a decision
+    to ``validated`` (that comes only from real ground-truth residuals, W5).
+    Nothing here launders a declared price into a fact.
+
+    Versioning / effective-dating (one non-overlapping timeline per org):
+    ``version`` is monotonic per org; publishing a version closes the previously
+    open published version's ``effective_to`` so at most one is in effect at a time.
+    """
+
+    __tablename__ = "material_library_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "version", name="uq_material_library_versions_org_version"
+        ),
+        UniqueConstraint("ulid", name="uq_material_library_versions_ulid"),
+        Index("ix_material_library_versions_org_status", "org_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="draft"
+    )
+    # Materials catalog dict (validated on publish).
+    payload: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    change_note: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=""
+    )
+    effective_from: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    effective_to: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    published_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# Aramco GAP 3 (migration 0020): declared parts-manifest bulk onboarding
+# ---------------------------------------------------------------------------
+
+
+class ManifestPart(Base):
+    """One USER-DECLARED inventory line from a parts-manifest import (Aramco GAP 3).
+
+    A THIRD kind of part identity, distinct from the two we already store: it is
+    NOT a ``mesh_hash``-keyed catalog part (that is geometry-derived) and NOT a
+    ``ground_truth_records`` cost datum — it is a DECLARED inventory line keyed by
+    the customer's own ``part_id``. Aramco's parts live in SAP/PLM; the pilot
+    bridge is a manifest upload (CSV exported from SAP/Excel) of part numbers plus
+    demand/program/material metadata, usually WITHOUT geometry. This table is that
+    registry, so an org can see its inventory ORGANIZED immediately and get an
+    honest "how much of it can we even assess (has geometry)" coverage number.
+
+    HONESTY (non-negotiable): every column here is DECLARED by the customer, never
+    inferred and never a makeability/cost claim. A declared row never creates an
+    analysis / cost decision / part summary, never touches the catalog or triage
+    numbers (those stay geometry-derived), and NEVER flips a band to validated.
+    Coverage's geometry match is a BEST-EFFORT normalized-stem convention against
+    uploaded analyses in the SAME org — an unmatched declared part is honestly
+    ``without_geometry``, never fabricated as covered.
+
+    Mirrors the ``part_contexts`` / ``ground_truth_records`` column style: BigInt
+    PK, ULID public id, org_id FK (CASCADE), nullable ``created_by`` (SET NULL so
+    history survives a user delete). Upsert (last write wins) on
+    ``(org_id, part_id)`` lives in the service.
+    """
+
+    __tablename__ = "manifest_parts"
+    __table_args__ = (
+        UniqueConstraint("org_id", "part_id", name="uq_manifest_parts_org_part"),
+        Index("ix_manifest_parts_org_program", "org_id", "program"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    # The customer's own part number — the declared identity (NOT a mesh_hash).
+    part_id: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    material_class: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    program: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    parent_assembly: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    units_per_parent: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    annual_volume: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    quantity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    region: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )

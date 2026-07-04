@@ -55,6 +55,36 @@ class EstimateOptions:
     # centred coherently. Bound ONLY alongside a REAL residual_model; None
     # (default) => point uncorrected => byte-identical pre-data behaviour.
     calibration: object = None
+    # W4 governed libraries: a full RATE_CARD_V0-shaped base table resolved from
+    # the org's PUBLISHED, effective-dated rate card. When set, it replaces the
+    # hardcoded ``RATE_CARD_V0`` as the DEFAULT layer under shop/user overrides.
+    # None (default) => the hardcoded default => byte-identical pre-W4 behaviour.
+    # A governed card is still a table of DEFAULT assumptions (never validated).
+    base_rate_table: dict | None = None
+    # ── owned-equipment / in-house marginal costing (make-it-ourselves) ──────
+    # The ProcessTypes the org ALREADY OWNS in its own facility (USER-declared).
+    # For an owned process the machine is costed at the MARGINAL rate (capital
+    # amortization removed — the asset is sunk; see rates.machine_capital_frac),
+    # so make-it-ourselves on gear we already have is a first-class, correctly
+    # cheaper option than renting an outside shop's fully-loaded time. Empty
+    # (default) => nothing owned => byte-identical. The DECLARATION is USER; the
+    # capital fraction it removes is a DEFAULT assumption (not shop-validated),
+    # and machine_capital_frac=0.0 recovers fully-loaded even when this is set.
+    owned_processes: frozenset = frozenset()
+    # ── declared tolerance class (Aramco cost gap #4) ────────────────────────
+    # The caller STATES how tight the part is; the cost model applies an honest
+    # machining multiplier to the tolerance-sensitive conversion terms (CNC
+    # finish pass + inspection) and WIDENS the confidence band. There is NO real
+    # GD&T/PMI extraction (that needs OCP) — this is a STATED input, never a
+    # measurement. "standard" (default/omitted) ⇒ (1.0, +0 band) ⇒ byte-identical.
+    # Unknown strings normalize to "standard" (honest fallback, never crash). The
+    # DECLARATION is USER; the factor magnitudes are DEFAULT assumptions.
+    tolerance_class: str = "standard"
+    tolerance_class_is_user: bool = False
+
+    def __post_init__(self):
+        from src.costing.rates import normalize_tolerance_class
+        self.tolerance_class = normalize_tolerance_class(self.tolerance_class)
 
 
 @dataclass
@@ -132,6 +162,19 @@ def _global_assumptions(rates: RateCard, options: EstimateOptions, region: str) 
                + ("(buyer-supplied)" if options.material_class_is_user
                   else "(DEFAULT: these are polymer automotive parts; override for metal)")),
     ]
+    # ── owned-equipment assumption (only when a process is declared OWNED and
+    # the capital fraction is live) — the DECLARATION is USER (shown per-estimate
+    # as the owned_in_house driver); the FRACTION magnitude removed is a DEFAULT
+    # assumption. Gated so the default (nothing owned) and the off-switch
+    # (machine_capital_frac=0) both stay byte-identical.
+    if options.owned_processes and rates.g("machine_capital_frac") > 0:
+        owned_names = ", ".join(sorted(p.value for p in options.owned_processes))
+        out.append(Driver(
+            "machine_capital_frac", g["machine_capital_frac"], "frac",
+            rates.prov_tag("machine_capital_frac"),
+            f"capital/amortization share of the loaded machine rate removed for "
+            f"OWNED, in-house processes ({owned_names}) — sunk on gear the org "
+            f"already owns [assumption, not shop-validated]"))
     return out
 
 
@@ -147,7 +190,8 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
               else options.region)
     rates = build_rate_card(options.rate_overrides, shop_overrides=shop_overrides,
                             shop_name=(shop.name if shop is not None else None),
-                            shop_region=shop_region)
+                            shop_region=shop_region,
+                            base_rate_table=options.base_rate_table)
 
     # engine feasibility table (all 21 processes), with costed flag
     feas = []
@@ -225,7 +269,9 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
             est = cost_breakdown(process, drivers, material, options.material_class,
                                  q, rates, region,
                                  n_cavities=options.n_cavities,
-                                 complexity=options.complexity, process_score=ps)
+                                 complexity=options.complexity, process_score=ps,
+                                 owned=process in options.owned_processes,
+                                 tolerance_class=options.tolerance_class)
             # cycle_hr from the estimate keeps lead time consistent with cost
             cycle_hr = next((d.value for d in est.drivers if d.name == "cycle_time"), 0.0)
             lt = lead_time(process, cycle_hr, q, rates)
@@ -245,7 +291,9 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
         est = cost_breakdown(item["process"], drivers, item["material"],
                              options.material_class, q, rates, region,
                              n_cavities=options.n_cavities,
-                             complexity=options.complexity, process_score=item["score"])
+                             complexity=options.complexity, process_score=item["score"],
+                             owned=item["process"] in options.owned_processes,
+                             tolerance_class=options.tolerance_class)
         return est.unit_cost_usd
 
     decision = make_vs_buy(estimates_by_pq, options.quantities, leadtimes_by_key,
@@ -327,7 +375,7 @@ def _serialize(est, lt, drivers, residual_model=None, ci_level: float = 0.80,
     ci = confidence_interval(
         point_usd, assumption_band_pct=est.est_error_band_pct,
         residual_provider=residual_model, process=est.process, level=ci_level)
-    return {
+    d = {
         "process": est.process,
         "material": est.material,
         "quantity": est.quantity,
@@ -357,3 +405,9 @@ def _serialize(est, lt, drivers, residual_model=None, ci_level: float = 0.80,
             "capacity": lt.capacity,        # R1: stated, inspectable, overridable
         },
     }
+    # First-class make-it-ourselves flag: present (True) ONLY when this process
+    # was costed as OWNED in-house (marginal machine rate). Absent otherwise, so
+    # the default / off-switch paths stay byte-identical.
+    if getattr(est, "owned_in_house", False):
+        d["owned_in_house"] = True
+    return d
