@@ -1098,13 +1098,29 @@ def _encode_page_cursor(updated_at_iso: str, mesh_hash: str) -> str:
     return base64.urlsafe_b64encode(raw).decode()
 
 
+class InvalidCursorError(ValueError):
+    """A client-supplied keyset cursor that cannot be decoded/parsed. Raised by
+    ``_decode_page_cursor`` so the route boundary can answer 400 (never let a
+    malformed cursor become an unhandled 500)."""
+
+
 def _decode_page_cursor(cursor: str) -> tuple[datetime, str]:
     """Decode a cursor into ``(updated_at datetime, mesh_hash)``. The datetime is
     parsed from the exact ISO string the row's ``row_json['updated_at']`` carried,
-    so it compares equal to the stored ``updated_at`` timestamptz column."""
-    raw = base64.urlsafe_b64decode(cursor.encode()).decode()
-    ts_str, mesh = raw.split("|", 1)
-    return datetime.fromisoformat(ts_str), mesh
+    so it compares equal to the stored ``updated_at`` timestamptz column.
+
+    A malformed cursor (bad base64, missing ``|`` separator, or a non-ISO
+    timestamp) raises :class:`InvalidCursorError` rather than a raw
+    ``binascii.Error`` / ``ValueError`` — the client sent the cursor, so this is a
+    400, not a 500."""
+    try:
+        raw = base64.urlsafe_b64decode(cursor.encode()).decode()
+        ts_str, mesh = raw.split("|", 1)
+        return datetime.fromisoformat(ts_str), mesh
+    except (ValueError, TypeError, UnicodeDecodeError) as exc:
+        # binascii.Error (bad base64) subclasses ValueError; unpack failure on a
+        # missing '|' and a non-ISO fromisoformat also raise ValueError.
+        raise InvalidCursorError("invalid cursor") from exc
 
 
 async def build_catalog_page(

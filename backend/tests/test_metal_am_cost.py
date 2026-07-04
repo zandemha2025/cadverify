@@ -132,6 +132,19 @@ def test_each_metal_am_process_positive_finite_cost_with_drivers():
         assert "not shop-validated" in all_src or "assumption" in all_src, p.name
 
 
+def test_metal_am_families_carry_honesty_literal_in_drivers():
+    """Honesty-literal regression guard: every metal-AM family (powder-bed,
+    binder-jet, DED/WAAM) attaches the ``assumption, not shop-validated`` caveat to
+    at least one returned driver — an un-validated model is NEVER presented as
+    shop-validated truth. If a future edit drops the caveat, this fails."""
+    rc, d, mat = build_rate_card(), _drivers(), _ti()
+    for p in METAL_AM_PROCESSES:
+        est = cost_breakdown(p, d, mat, "titanium", 100, rc, "US")
+        sources = " ".join(dr.source for dr in est.drivers)
+        assert "assumption, not shop-validated" in sources, (
+            f"{p.name}: no driver carries the honesty caveat")
+
+
 def test_powder_bed_has_metal_only_post_processing():
     """DMLS/SLM/EBM must carry the metal-only post costs polymer AM never pays:
     build-plate removal, support removal, and a stress-relief furnace — each its own

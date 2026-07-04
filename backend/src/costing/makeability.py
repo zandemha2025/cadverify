@@ -596,6 +596,26 @@ def _env_requires_sour(env: dict) -> bool:
     return bool(env.get("sour_service") or env.get("sour"))
 
 
+def _mat_flag(p: dict, key: str):
+    """Read a material compliance/property flag from a props dict, accepting BOTH
+    shapes: a FLAT top-level value (hand-built dicts / overrides) OR one nested
+    under a ``compliance`` sub-dict — the shape ``MaterialProfile`` stores
+    compliance flags in (``MaterialProfile.compliance``, e.g. ``nace_mr0175`` /
+    ``sour_service``). Top-level WINS on conflict, so a flat override still beats a
+    nested value. Returns None when neither carries the key.
+
+    Without this the gate read the flags flat only and silently saw NO
+    qualification on real ``MaterialProfile``-derived props (all flags live under
+    ``compliance``), which would wrongly exclude every NACE/sour-qualified alloy.
+    """
+    if key in p:
+        return p[key]
+    compliance = p.get("compliance")
+    if isinstance(compliance, dict):
+        return compliance.get(key)
+    return None
+
+
 def environment_gate(routes, materials, env, material_props_by_name=None):
     """Drop routes/materials INVALID for the declared service environment.
 
@@ -625,19 +645,21 @@ def environment_gate(routes, materials, env, material_props_by_name=None):
         mclass = p.get("class") or MATERIAL_FAMILY.get(mat, "unknown")
 
         # sour service → require NACE MR0175 / sour_service qualification
-        if sour and not (p.get("nace_mr0175") or p.get("sour_service")):
+        if sour and not (_mat_flag(p, "nace_mr0175") or _mat_flag(p, "sour_service")):
             excluded_materials.add(mat)
             exclusions.append(FitFailure(
                 "environment", mat, "NACE MR0175 sour-service qualified",
-                {"nace_mr0175": p.get("nace_mr0175"),
-                 "sour_service": p.get("sour_service")},
+                {"nace_mr0175": _mat_flag(p, "nace_mr0175"),
+                 "sour_service": _mat_flag(p, "sour_service")},
                 f"{mat} excluded: sour service requires NACE MR0175 "
                 f"qualification (material not NACE MR0175 / sour_service)"))
             continue
 
         # over-temperature → material max service temp must clear the env
         if _is_number(max_temp):
-            mt = p.get("max_temperature_c", p.get("max_temperature"))
+            mt = _mat_flag(p, "max_temperature_c")
+            if mt is None:
+                mt = _mat_flag(p, "max_temperature")
             if _is_number(mt) and mt < max_temp:
                 excluded_materials.add(mat)
                 exclusions.append(FitFailure(
@@ -648,7 +670,7 @@ def environment_gate(routes, materials, env, material_props_by_name=None):
 
         # corrosive (non-sour) → require a corrosion-resistant alloy class
         if corrosive and not sour and mclass not in CRA_CLASSES \
-                and not (p.get("nace_mr0175") or p.get("cra")):
+                and not (_mat_flag(p, "nace_mr0175") or _mat_flag(p, "cra")):
             excluded_materials.add(mat)
             exclusions.append(FitFailure(
                 "environment", mat, "corrosion-resistant alloy", mclass,

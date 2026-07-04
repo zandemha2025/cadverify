@@ -539,6 +539,44 @@ def test_env_excluded_processes():
     assert "forging" in valid["routes"] and "dmls" not in valid["routes"]
 
 
+# ── integration: the gate on REAL loaded MaterialProfiles (defect D) ─────────
+# NOT hand-crafted flat dicts. The actual loader produces MaterialProfiles whose
+# compliance flags live NESTED under MaterialProfile.compliance — exactly the
+# shape the future Phase-C wiring feeds. This proves the gate reads that nested
+# shape (previously it read flat only and silently saw NO qualification, wrongly
+# excluding every NACE/sour-qualified alloy).
+def _real_material_props(names: list[str]) -> dict:
+    from dataclasses import asdict
+
+    from src.profiles.loader import load_yaml_materials
+
+    by_name = {m.name: m for m in load_yaml_materials()}
+    return {n: asdict(by_name[n]) for n in names}
+
+
+def test_env_gate_on_real_loaded_profiles_flips_sour_exclusion():
+    props = _real_material_props(["API 13Cr", "ASTM A105"])
+    # sanity: the flags really ARE nested under 'compliance' (the shape that used
+    # to defeat the flat read), not flattened onto the top level.
+    assert "nace_mr0175" not in props["API 13Cr"]
+    assert props["API 13Cr"]["compliance"]["sour_service"] is True
+    assert props["ASTM A105"]["compliance"]["nace_mr0175"] is False
+
+    valid, exclusions = environment_gate(
+        ["forging", "cnc_3axis"],
+        ["API 13Cr", "ASTM A105"],
+        {"sour_service": True},
+        props,
+    )
+    # API 13Cr is NACE MR0175 / sour-qualified → allowed; A105 is not → excluded.
+    assert "API 13Cr" not in valid["excluded_materials"]
+    assert "API 13Cr" in valid["materials"]
+    assert "ASTM A105" in valid["excluded_materials"]
+    # the exclusion cites the standard on the offending (nested-flag) material
+    a105 = [e for e in exclusions if e.axis == "ASTM A105"]
+    assert a105 and "NACE MR0175" in a105[0].human
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # GAP analysis — minimal delta, binding-constraint-first, multi-failure collapse
 # ─────────────────────────────────────────────────────────────────────────────

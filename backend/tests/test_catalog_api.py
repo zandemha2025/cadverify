@@ -112,6 +112,40 @@ def _cost_result(*, process="cnc_3axis", dfm_ready=True, blockers=None):
     }
 
 
+@pytest.mark.asyncio
+async def test_keyset_bad_cursor_is_400_not_500(monkeypatch):
+    """A malformed keyset cursor is a client error (400 'invalid cursor'), never an
+    unhandled 500. No DB needed: resolve_org is stubbed to a fake org and the bad
+    cursor fails to decode BEFORE any query runs."""
+    from httpx import ASGITransport, AsyncClient
+
+    from src.api.errors import structured_http_error_handler
+    from src.db.engine import get_db_session
+
+    async def _fake_resolve_org(_session, _user_id):
+        return "org-fake"
+
+    monkeypatch.setattr("src.api.catalog.resolve_org", _fake_resolve_org)
+
+    app = _build_app()
+    # structured error handler so HTTPException(400) serializes like the real app.
+    from fastapi import HTTPException as _HTTPException
+    from starlette.exceptions import HTTPException as _StarletteHTTPException
+
+    app.add_exception_handler(_HTTPException, structured_http_error_handler)
+    app.add_exception_handler(_StarletteHTTPException, structured_http_error_handler)
+    # get_db_session is never actually used (decode fails first), but must resolve.
+    app.dependency_overrides[get_db_session] = lambda: object()
+    _act_as(app, 1)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        for bad in ("@@@not-base64@@@", "bm8tc2VwYXJhdG9y", "bm90LWlzb3xtZXNo"):
+            r = await ac.get(f"/api/v1/catalog?keyset=true&cursor={bad}")
+            assert r.status_code == 400, (bad, r.text)
+            assert "invalid cursor" in r.text
+
+
 @_requires_pg
 @pytest.mark.asyncio
 async def test_catalog_isolation_pagination_facets_and_honesty():

@@ -99,6 +99,19 @@ def test_each_new_process_positive_finite_cost_with_drivers():
         assert "not shop-validated" in cyc_d.source or "assumption" in cyc_d.source, p.name
 
 
+def test_new_families_carry_honesty_literal_in_drivers():
+    """Honesty-literal regression guard: every newly-costed family (casting,
+    forging, wire-EDM) attaches the ``assumption, not shop-validated`` caveat to at
+    least one returned driver — an un-validated model is NEVER presented as
+    shop-validated truth. If a future edit drops the caveat, this fails."""
+    rc, d, mat = build_rate_card(), _drivers(), _alu()
+    for p in NEW_PROCESSES:
+        est = cost_breakdown(p, d, mat, "aluminum", 100, rc, "US")
+        sources = " ".join(dr.source for dr in est.drivers)
+        assert "assumption, not shop-validated" in sources, (
+            f"{p.name}: no driver carries the honesty caveat")
+
+
 # ── per-process economically-meaningful relationships ────────────────────────
 def _tooling(process, qty=1):
     rc, d, mat = build_rate_card(), _drivers(), _alu()

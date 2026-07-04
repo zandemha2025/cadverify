@@ -305,6 +305,76 @@ def test_validate_context_rejects_bad_env():
         pcs.validate_context({"service_environment": {"bogus": 1}})
 
 
+# ── real-app routing guards (defect A) ───────────────────────────────────────
+# The org inventory router mounts a bare @router.get("") LIST. When it shared the
+# /api/v1/machines prefix with the pre-existing global AM reference-catalog GET in
+# src/api/routes.py, Starlette's first-match-wins silently shadowed the org LIST —
+# and the collision escaped review because the DB tests only mount the sub-router
+# in ISOLATION. These guards compose the REAL app (main.app) so any future
+# re-claim of an existing route fails loudly.
+def _real_app():
+    import main
+
+    return main.app
+
+
+def _routes_for(app, path: str):
+    from starlette.routing import Route
+
+    return [
+        r
+        for r in app.routes
+        if isinstance(r, Route) and getattr(r, "path", None) == path
+    ]
+
+
+def test_machine_inventory_list_reachable_on_real_app():
+    """GET /api/v1/machine-inventory resolves to the ORG inventory LIST handler
+    (src.api.machine_inventory) on the composed app — not the AM reference catalog."""
+    app = _real_app()
+    inv = [
+        r
+        for r in _routes_for(app, "/api/v1/machine-inventory")
+        if "GET" in (r.methods or set())
+    ]
+    assert len(inv) == 1, "org inventory LIST must be registered exactly once"
+    assert inv[0].endpoint.__module__ == "src.api.machine_inventory"
+
+
+def test_machines_path_is_still_reference_catalog():
+    """GET /api/v1/machines remains the global AM reference catalog — the org
+    inventory no longer collides with (and shadows) it."""
+    app = _real_app()
+    ref = [
+        r
+        for r in _routes_for(app, "/api/v1/machines")
+        if "GET" in (r.methods or set())
+    ]
+    assert len(ref) == 1, "reference-catalog GET /api/v1/machines must be unique"
+    assert ref[0].endpoint.__module__ == "src.api.routes"
+
+
+def test_no_duplicate_route_registration_in_real_app():
+    """PERMANENT guard: no (method, path) pair is registered twice ANYWHERE in the
+    composed app. This is the check that would have caught the machine-inventory
+    collision; it must fail if any future router re-claims an existing route."""
+    from collections import Counter
+
+    app = _real_app()
+    pairs: list = []
+    for r in app.routes:
+        methods = getattr(r, "methods", None)
+        path = getattr(r, "path", None)
+        if not methods or not path:
+            continue
+        for m in methods:
+            if m in ("HEAD", "OPTIONS"):  # framework-added, never a real collision
+                continue
+            pairs.append((m, path))
+    dupes = {k: n for k, n in Counter(pairs).items() if n > 1}
+    assert not dupes, f"duplicate (method, path) route registrations: {dupes}"
+
+
 # ── optional end-to-end (real Postgres) ──────────────────────────────────────
 _PG = os.environ.get("DATABASE_URL", "").startswith("postgresql")
 _requires_pg = pytest.mark.skipif(
@@ -377,7 +447,7 @@ def _build_app():
 
     app = FastAPI()
     app.state.limiter = limiter
-    app.include_router(m_router, prefix="/api/v1/machines")
+    app.include_router(m_router, prefix="/api/v1/machine-inventory")
     return app
 
 
@@ -416,7 +486,7 @@ async def test_crud_and_org_isolation():
                                  "achievable_it_grade": 9},
                 "materials": ["304 Stainless"],
             }
-            r = await ac.post("/api/v1/machines", json=body)
+            r = await ac.post("/api/v1/machine-inventory", json=body)
             assert r.status_code == 201, r.text
             mid = r.json()["id"]
             assert r.json()["provenance"] == "user"
@@ -424,37 +494,37 @@ async def test_crud_and_org_isolation():
             # a malformed field is a 400, never coerced
             bad = dict(body)
             bad["capital_frac"] = 5
-            rb = await ac.post("/api/v1/machines", json=bad)
+            rb = await ac.post("/api/v1/machine-inventory", json=bad)
             assert rb.status_code == 400
             assert "capital_frac" in rb.json()["detail"]
 
             # read back
-            g = await ac.get(f"/api/v1/machines/{mid}")
+            g = await ac.get(f"/api/v1/machine-inventory/{mid}")
             assert g.json()["count"] == 2
 
             # patch (partial; merged result re-validated)
-            p = await ac.patch(f"/api/v1/machines/{mid}", json={"count": 3})
+            p = await ac.patch(f"/api/v1/machine-inventory/{mid}", json={"count": 3})
             assert p.status_code == 200 and p.json()["count"] == 3
 
             # list
-            lst = (await ac.get("/api/v1/machines")).json()
+            lst = (await ac.get("/api/v1/machine-inventory")).json()
             assert [m["id"] for m in lst["machines"]] == [mid]
 
             # cross-tenant: org B sees nothing, cannot read A's machine
             _act_as(app, b1)
-            assert (await ac.get("/api/v1/machines")).json()["machines"] == []
-            assert (await ac.get(f"/api/v1/machines/{mid}")).status_code == 404
+            assert (await ac.get("/api/v1/machine-inventory")).json()["machines"] == []
+            assert (await ac.get(f"/api/v1/machine-inventory/{mid}")).status_code == 404
             assert (
-                await ac.patch(f"/api/v1/machines/{mid}", json={"count": 9})
+                await ac.patch(f"/api/v1/machine-inventory/{mid}", json={"count": 9})
             ).status_code == 404
             assert (
-                await ac.delete(f"/api/v1/machines/{mid}")
+                await ac.delete(f"/api/v1/machine-inventory/{mid}")
             ).status_code == 404
 
             # owner deletes
             _act_as(app, a1)
-            assert (await ac.delete(f"/api/v1/machines/{mid}")).status_code == 200
-            assert (await ac.get("/api/v1/machines")).json()["machines"] == []
+            assert (await ac.delete(f"/api/v1/machine-inventory/{mid}")).status_code == 200
+            assert (await ac.get("/api/v1/machine-inventory")).json()["machines"] == []
     finally:
         await _cleanup([org_a, org_b], uids)
         await eng.dispose_engine()
@@ -490,7 +560,7 @@ async def test_csv_import_and_load_org_inventory():
                 {"process": "bogus", "name": "bad"},  # reported, skipped
             ])
             r = await ac.post(
-                "/api/v1/machines/import",
+                "/api/v1/machine-inventory/import",
                 files={"file": ("m.csv", text.encode(), "text/csv")},
             )
             assert r.status_code == 200, r.text
@@ -543,14 +613,14 @@ async def test_shop_capabilities_and_load_shop_caps():
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
             _act_as(app, a1)
             # unset -> empty
-            assert (await ac.get("/api/v1/machines/shop-capabilities")).json()["ops"] == {}
+            assert (await ac.get("/api/v1/machine-inventory/shop-capabilities")).json()["ops"] == {}
             ops = {"heat_treat": True, "hip": {"dia_mm": 300, "height_mm": 600}}
-            r = await ac.put("/api/v1/machines/shop-capabilities", json={"ops": ops})
+            r = await ac.put("/api/v1/machine-inventory/shop-capabilities", json={"ops": ops})
             assert r.status_code == 200
             assert r.json()["ops"]["hip"]["dia_mm"] == 300
             # malformed op -> 400
             rb = await ac.put(
-                "/api/v1/machines/shop-capabilities", json={"ops": {"hip": "yes"}}
+                "/api/v1/machine-inventory/shop-capabilities", json={"ops": {"hip": "yes"}}
             )
             assert rb.status_code == 400
 

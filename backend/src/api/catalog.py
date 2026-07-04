@@ -109,9 +109,13 @@ async def get_catalog(
     if keyset:
         from src.services import part_summary_service
 
-        page = await svc.build_catalog_page(
-            session, org_id, cursor=cursor, limit=page_size
-        )
+        try:
+            page = await svc.build_catalog_page(
+                session, org_id, cursor=cursor, limit=page_size
+            )
+        except svc.InvalidCursorError:
+            # The client sent an undecodable cursor — a 400, never a 500.
+            raise HTTPException(status_code=400, detail="invalid cursor")
         # Cold-projection fallback (READ-ONLY, mirrors the /triage path): if the
         # first page is empty but the org actually has parts, the projection is
         # cold (data predating it / a deploy before the one-time backfill). Don't

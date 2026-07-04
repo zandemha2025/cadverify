@@ -254,8 +254,15 @@ app.include_router(
 # registry + shop-level secondary ops. USER-declared; absent inventory is
 # byte-identical (purely additive). The pure matcher (Phase B) consumes the
 # hydrated MachineCap/ShopCaps from this org-scoped model.
+#
+# Mounted under /api/v1/machine-inventory (NOT /api/v1/machines): the latter is
+# already claimed by the global AM reference-catalog GET in src/api/routes.py.
+# Starlette is first-match-wins, so sharing the prefix made this org-scoped LIST
+# unreachable — the reference catalog shadowed it. Keep these prefixes distinct.
 app.include_router(
-    machine_inventory_router, prefix="/api/v1/machines", tags=["machine-inventory"]
+    machine_inventory_router,
+    prefix="/api/v1/machine-inventory",
+    tags=["machine-inventory"],
 )
 # Email + password auth (signup/login/logout/me). Mounted UNCONDITIONALLY — it
 # is the primary login method that works end-to-end locally with zero external

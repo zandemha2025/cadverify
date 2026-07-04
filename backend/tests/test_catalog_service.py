@@ -9,7 +9,10 @@ invocation (no Postgres required).
 """
 from __future__ import annotations
 
+import base64
 from datetime import datetime, timezone
+
+import pytest
 
 from src.services import catalog_service as svc
 from src.services.catalog_service import SourceRef
@@ -364,3 +367,41 @@ def test_compute_facets_counts():
         "without_findings": 1,
         "unknown": 1,
     }
+
+
+# ---------------------------------------------------------------------------
+# Keyset cursor decode — a malformed client cursor is a 400, never a 500
+# ---------------------------------------------------------------------------
+
+
+def test_page_cursor_roundtrips():
+    ts = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    cur = svc._encode_page_cursor(ts.isoformat(), "abc123")
+    got_ts, got_mesh = svc._decode_page_cursor(cur)
+    assert got_ts == ts and got_mesh == "abc123"
+
+
+def test_decode_cursor_bad_base64_raises_invalid_cursor():
+    # '@@@@' is not valid urlsafe base64 (binascii.Error, a ValueError subclass).
+    with pytest.raises(svc.InvalidCursorError, match="invalid cursor"):
+        svc._decode_page_cursor("@@@@not base64@@@@")
+
+
+def test_decode_cursor_missing_separator_raises_invalid_cursor():
+    # Valid base64, but the decoded payload has no '|' separator to unpack.
+    bad = base64.urlsafe_b64encode(b"no-separator-here").decode()
+    with pytest.raises(svc.InvalidCursorError, match="invalid cursor"):
+        svc._decode_page_cursor(bad)
+
+
+def test_decode_cursor_non_iso_timestamp_raises_invalid_cursor():
+    # Well-formed base64 with a '|', but the left side is not an ISO timestamp.
+    bad = base64.urlsafe_b64encode(b"not-a-timestamp|meshhash").decode()
+    with pytest.raises(svc.InvalidCursorError, match="invalid cursor"):
+        svc._decode_page_cursor(bad)
+
+
+def test_invalid_cursor_is_a_valueerror_subclass():
+    # So any generic ValueError handler still catches it, but the route can map it
+    # specifically to a 400.
+    assert issubclass(svc.InvalidCursorError, ValueError)
