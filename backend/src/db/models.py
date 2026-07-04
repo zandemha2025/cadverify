@@ -895,3 +895,68 @@ class ShopProfileVersion(Base):
     published_at: Mapped[Optional[datetime]] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
+
+
+# ---------------------------------------------------------------------------
+# W4 governance (migration 0016): the change-request workflow over the
+# governed rate-card / shop-profile libraries
+# ---------------------------------------------------------------------------
+
+
+class ChangeRequest(Base):
+    """A governance change-request over a governed library asset version (W4).
+
+    The org-scoped record that gates the "change request -> review -> publish"
+    flow over the versioned rate-card and shop-profile libraries: a member
+    PROPOSES a draft version for review, and an org admin either APPROVES it
+    (which publishes the draft via the library's existing, tested
+    ``publish_version`` path) or REJECTS it (the draft stays a draft).
+
+    ``target_version_id`` + ``asset_type`` identify the DRAFT being proposed.
+    They are deliberately NOT a single cross-table FK: a change request can
+    target either a ``rate_card_versions`` row or a ``shop_profile_versions``
+    row, so ``asset_type`` dispatches which library owns the id. Tenancy is by
+    ``org_id`` (both the change request and its target live in the same org).
+
+    HONESTY (non-negotiable): governance never launders an assumption into a
+    fact. Approving a change request only triggers the existing publish path —
+    it changes WHICH default/shop numbers an org uses and WHO may trigger the
+    switch; it never flips a decision to ``validated`` (that is real
+    ground-truth residuals only, W5).
+    """
+
+    __tablename__ = "change_requests"
+    __table_args__ = (
+        UniqueConstraint("ulid", name="uq_change_requests_ulid"),
+        Index("ix_change_requests_org_status", "org_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    # Which library owns ``target_version_id``: 'rate_card' | 'shop_profile'.
+    asset_type: Mapped[str] = mapped_column(Text, nullable=False)
+    # The DRAFT version being proposed (id within the asset_type's table — NOT a
+    # cross-table FK; the owning table is chosen by asset_type).
+    target_version_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="proposed"
+    )
+    title: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    note: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    proposed_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    decided_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )

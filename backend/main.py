@@ -32,6 +32,7 @@ from src.api.cost_decisions import public_cost_share_router, router as cost_deci
 from src.api.catalog import router as catalog_router
 from src.api.rate_library import router as rate_library_router
 from src.api.shop_library import router as shop_library_router
+from src.api.governance import router as governance_router
 from src.api.part_context import router as part_context_router
 from src.api.groundtruth import router as groundtruth_router
 from src.api.share import public_share_router, share_router
@@ -212,6 +213,11 @@ app.include_router(
 # shop-profile asset (DB successor to data/shop_profiles/*.json).
 app.include_router(
     shop_library_router, prefix="/api/v1/shop-library", tags=["shop-library"]
+)
+# Governance (W4 governance zone): change-request -> review -> publish flow over
+# the governed rate-card / shop-profile libraries (approval publishes the draft).
+app.include_router(
+    governance_router, prefix="/api/v1/governance", tags=["governance"]
 )
 # Declared part-context (W3.5 rung-1): user-declared program/assembly/volume so
 # the portfolio roll-up can state an honest $/year.
