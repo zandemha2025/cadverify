@@ -15,9 +15,9 @@ The platform moved a long way this cycle. The old gap map's demo-killers are **c
 
 ## 1. The five gaps that actually block Aramco (ex-security), ranked
 
-### GAP 1 — Legacy CAD format coverage (THE #1 blocker)
-Aramco's ~millions of legacy parts are overwhelmingly **IGES, native CAD (CATIA/NX/Creo/SolidWorks), 2D drawings (PDF/TIFF), and scans** — not clean STL/STEP. Today the uploader accepts **only `.stl`, `.step`, `.stp`** (`routes.py:105`). They literally cannot get most of their catalog in.
-- **IGES — [BUILD], cheap.** The STEP mesher is gmsh/OpenCASCADE, which *already reads IGES* (`step_mesher.py:4`). The only blocker is the upload allowlist rejecting `.iges/.igs`. ~a day to wire + validate.
+### GAP 1 — Legacy CAD format coverage (THE #1 blocker) — **IGES CLOSED 2026-07-04**
+Aramco's ~millions of legacy parts are overwhelmingly **IGES, native CAD (CATIA/NX/Creo/SolidWorks), 2D drawings (PDF/TIFF), and scans** — not clean STL/STEP.
+- **IGES — [DONE].** The uploader now accepts `.iges/.igs` and routes them through the existing gmsh/OpenCASCADE mesher (no new mesher code), gated by a structural 80-column/section-letter magic check. STL/STEP behaviour is byte-identical; IGES-derived cost/DFM carries the same mesh-level (not B-rep) caveat as STEP. (`routes.py` `_parse_mesh`, `upload_validation.py`, `tests/test_iges_ingest.py`.)
 - **Native CAD (CATIA/NX/Creo/SLDPRT) — [ENV/EXT].** Needs OCP/OpenCASCADE-XDE or a translator (e.g. a CAD-exchange lib); heavier, some formats are proprietary.
 - **2D drawings / no-3D-model parts — [BUILD, large].** Many legacy parts have only a drawing. Needs a drawing→features/OCR path (or an explicit "declare specs, no geometry" mode). Big, but high-value for MRO.
 
@@ -30,11 +30,11 @@ Aramco's parts + historical costs live in **SAP + a PLM (Teamcenter/SmarTeam/etc
 - **[BUILD]** A parts-manifest CSV/where-used import (extend the CSV path) and a documented ingestion API — cheap, unblocks a structured pilot.
 - **[EXT]** Real PLM/ERP connectors need those systems to build+test against; scaffold-only here.
 
-### GAP 4 — Tolerances / GD&T and assemblies (correctness + context for pressure-rated parts)
+### GAP 4 — Tolerances / GD&T and assemblies — **declared-tolerance cost surface CLOSED 2026-07-04**
 Aramco parts are pressure-rated, API-spec — **tolerance and material spec ARE the part.** Today:
-- **STEP is mesh-level, not B-rep**; **GD&T/PMI extraction is [ENV]-blocked** (needs OCP; the AP242 tests skip). Tolerance is the #1 cost driver after material+size, and there's **no tolerance INPUT surface on `/validate/cost`** feeding the cost model (tolerance only appears on the DFM read path, usually empty without OCP).
+- **Declared tolerance-class input — [DONE].** `/validate/cost` now accepts a `tolerance_class` (`standard`/`precision`/`tight`); the cost model applies an honest machining-cost multiplier to the tolerance-sensitive CNC conversion terms (finish pass + inspection) **and** widens the confidence band. `standard`/omitted is byte-identical; the factor is a DEFAULT assumption (not shop-validated), the declaration is USER, `validated` never fabricated. (`EstimateOptions.tolerance_class`, `cost_model.cost_breakdown`, `rates.TOLERANCE_CLASSES`, `tests/test_tolerance_input.py`.) This closes the biggest *cost-side* tolerance gap **without OCP**.
+- **Real GD&T/PMI extraction — [ENV].** STEP is mesh-level, not B-rep; AP242 PMI extraction still needs OCP (tests skip). The declared input above is a STATED cost driver, not a measured tolerance.
 - **No assembly / part-in-context** — can't ingest a STEP assembly BOM tree / where-used. The *declared*-context rung shipped (part_context); real geometry context is [ENV] (OCP).
-- **[BUILD]** A tolerance/finish **input surface** ("declare the tolerance class → honest wider band + a cost driver") is buildable now (E-now wave 2) and closes most of the *cost*-side gap without OCP. Real PMI extraction is [ENV].
 
 ### GAP 5 — No UI; it's an API-only platform
 Everything we/I built — governed libraries, triage, portfolio, owned-equipment costing, CSV import, flywheel — is **backend/API only**, exercised by tests, not clickable. **Aramco can't pilot an API.** The frontend register is mid-redesign (founder rejected earlier passes). **[HUMAN/design]** — this is the founder's Claude Design track, but it is a hard prerequisite for an actual evaluation.
@@ -43,7 +43,7 @@ Everything we/I built — governed libraries, triage, portfolio, owned-equipment
 
 ## 2. Secondary gaps (would surface in a serious evaluation, ex-security)
 
-- **Cost coverage is 11 of 18 processes — [BUILD].** Feasibility triage covers 18 processes incl. forging/casting/EDM/DMLS, but **dollar cost covers only 11** (`COSTED_PROCESSES`): additive, CNC, injection/die-cast, sheet. **Forging, investment/sand casting, wire-EDM, DMLS get "makeable" but no cost** — and Aramco makes many forged/cast parts. Add cost models for these.
+- **Cost coverage is now 15 of 18 processes — [forging/casting/EDM DONE 2026-07-04].** Dollar cost now covers **15** (`COSTED_PROCESSES`): additive, CNC, injection/die-cast, sheet, **+ forging, investment casting, sand casting, wire-EDM** (new honest physics models, own `casting`/`forging`/`edm` families, byte-identical to the prior 11). Remaining feasibility-only: **DMLS, SLM, EBM, binder-jet, DED, WAAM** (advanced/metal-additive) — [BUILD] next if Aramco needs metal-AM cost. Wire-EDM's cut-path uses a 2D-outline proxy (honestly caveated, wide 45% band) pending a true 3D cut-length driver.
 - **Oil-&-gas material breadth — [BUILD/data].** API-spec alloys (Inconel, duplex/super-duplex, 13Cr, forging steels) with corrected $/kg. The new governed material library lets them load their own, but out-of-box breadth is thin.
 - **Numbers still n=0 out-of-box — [HUMAN/data], now self-serve.** Assumption bands until real data; but that's now *onboardable by them* (CSV import → flywheel → owned-equipment marginal cost), not a Zoox-bureau gate.
 - **Scale/ops unproven — [SCALE/HUMAN].** No load/soak at Aramco volume; single-request CPU/memory-bound engine; no SLA/DR/backup-restore runbook; batch/recon blobs on local disk (no object-store abstraction) breaks on multi-machine.
@@ -53,12 +53,13 @@ Everything we/I built — governed libraries, triage, portfolio, owned-equipment
 ---
 
 ## 3. What I can build next (no human/env gate) — recommended order
-1. **IGES ingestion** [BUILD, ~1 day] — gmsh already reads it; flip the allowlist + validate. Immediate legacy-format win.
-2. **Tolerance/finish input surface** [BUILD] — declare tolerance class → honest wider band + cost driver; closes the biggest *cost-side* correctness gap without OCP.
-3. **Cost models for forging / casting / EDM** [BUILD] — get Aramco's real process families off "feasibility-only."
-4. **Catalog/triage at scale** [SCALE] — SQL-side aggregation + pagination; lift the 2,000 cap toward millions.
+1. ~~**IGES ingestion**~~ — **DONE 2026-07-04.**
+2. ~~**Tolerance/finish input surface**~~ — **DONE 2026-07-04.**
+3. ~~**Cost models for forging / casting / EDM**~~ — **DONE 2026-07-04.**
+4. **Catalog/triage at scale** [SCALE] — SQL-side aggregation + pagination; lift the 2,000 cap toward millions. **← next recommended.**
 5. **Parts-manifest CSV + ingestion API** [BUILD] — structured bulk part onboarding (the pilot-grade connector) ahead of real PLM/ERP.
 6. **Oil-&-gas material pack** [BUILD/data] — seed the governed material library with API-spec alloys + corrected prices.
+7. **Metal-AM cost (DMLS/SLM/EBM)** [BUILD] — the last feasibility-only families, if Aramco needs additive-metal costing.
 
 ## 4. What is genuinely NOT in our lane
 - **Native-CAD / PMI / STEP-assembly geometry** [ENV] — needs OCP/OpenCASCADE-XDE, not installable in this container; a deploy-target task.
