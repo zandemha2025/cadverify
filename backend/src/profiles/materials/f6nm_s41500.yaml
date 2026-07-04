@@ -1,0 +1,30 @@
+name: F6NM
+aliases: [CA6NM, UNS S41500, F6NM, 13-4 Soft Martensitic]
+alloy_designation: ASTM A182 F6NM
+standards: [ASTM A182 F6NM, ASTM A487 CA6NM, UNS S41500, NACE MR0175]
+processes: [forging, investment_casting, sand_casting, cnc_3axis, cnc_turning]
+mechanical:
+  density_g_cm3: 7.70
+  tensile_mpa: 790
+  yield_mpa: 620
+  elongation_pct: 15
+  hardness_hrc: 23
+  thermal_conductivity_w_mk: 25.0
+  machinability_index: 45
+  max_temperature_c: 480
+dfm:
+  min_wall_mm: 0.6
+  min_wall_by_process:
+    forging: 3.0
+    investment_casting: 1.5
+    sand_casting: 4.0
+    cnc_3axis: 0.6
+    cnc_turning: 0.6
+  cost_per_kg_usd:
+    wrought: 6.0
+compliance:
+  nace_mr0175: true
+  biocompatible: false
+  itar: false
+  sour_service: true
+notes: "Soft martensitic 13Cr-4Ni (wrought F6NM / cast CA6NM). Valve bodies, pump/compressor casings, hydro runners. Tough, weldable, NACE-compliant."

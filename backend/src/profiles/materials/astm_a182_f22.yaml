@@ -1,0 +1,28 @@
+name: ASTM A182 F22
+aliases: [F22, 2.25Cr-1Mo, 10CrMo9-10, UNS K21590]
+alloy_designation: ASTM A182 F22
+standards: [ASTM A182, ASME B16.34, ASTM A387]
+processes: [forging, cnc_3axis, cnc_5axis, cnc_turning]
+mechanical:
+  density_g_cm3: 7.85
+  tensile_mpa: 515
+  yield_mpa: 310
+  elongation_pct: 20
+  hardness_hrc: null
+  thermal_conductivity_w_mk: 37.5
+  machinability_index: 60
+  max_temperature_c: 550
+dfm:
+  min_wall_mm: 0.5
+  min_wall_by_process:
+    forging: 3.0
+    cnc_3axis: 0.5
+    cnc_5axis: 0.5
+    cnc_turning: 0.5
+  cost_per_kg_usd:
+    bar: 3.2
+compliance:
+  nace_mr0175: false
+  biocompatible: false
+  itar: false
+notes: "2.25Cr-1Mo chrome-moly forging for elevated-temperature/high-pressure service (refinery, valve bodies). Creep-resistant to ~550C."

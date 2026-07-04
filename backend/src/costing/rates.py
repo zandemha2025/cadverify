@@ -397,6 +397,15 @@ MATERIAL_FAMILY: dict = {
     "CoCr": "cobalt", "CoCr ASTM F75": "cobalt",
     "Zinc Alloy (Zamak 3)": "zinc",
     "Copper C110 (Sheet)": "copper",
+    # ── Oil & gas / API-spec alloy pack (2026-07-04) ─────────────────────────
+    # Low-alloy & carbon forging steels (Aramco flanges, fittings, stems, bodies)
+    "AISI 4130": "steel", "AISI 4140": "steel",
+    "ASTM A105": "steel", "ASTM A182 F22": "steel",
+    # Martensitic / duplex CRAs (OCTG/tubing, valve bodies, seawater/topside)
+    "API 13Cr": "stainless", "Super 13Cr": "stainless",
+    "Super Duplex 2507": "stainless", "F6NM": "stainless",
+    # Nickel CRAs (sour/acid service, cladding, downhole)
+    "Incoloy 825": "nickel", "Hastelloy C276": "nickel",
 }
 
 

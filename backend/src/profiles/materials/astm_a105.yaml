@@ -1,0 +1,27 @@
+name: ASTM A105
+aliases: [A105N, UNS K03504, Carbon Steel Forging]
+alloy_designation: ASTM A105
+standards: [ASTM A105, ASME B16.5, ASME B16.34]
+processes: [forging, cnc_3axis, cnc_turning]
+mechanical:
+  density_g_cm3: 7.85
+  tensile_mpa: 485
+  yield_mpa: 250
+  elongation_pct: 22
+  hardness_hrc: null
+  thermal_conductivity_w_mk: 51.9
+  machinability_index: 72
+  max_temperature_c: 425
+dfm:
+  min_wall_mm: 0.5
+  min_wall_by_process:
+    forging: 3.0
+    cnc_3axis: 0.5
+    cnc_turning: 0.5
+  cost_per_kg_usd:
+    bar: 1.7
+compliance:
+  nace_mr0175: false
+  biocompatible: false
+  itar: false
+notes: "Carbon steel forgings for piping components — flanges, fittings, valves (ASME B16.5/B16.34). The workhorse forged fitting grade."

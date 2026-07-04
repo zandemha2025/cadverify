@@ -1,0 +1,30 @@
+name: API 13Cr
+aliases: [13Cr, 410 SS, UNS S41000, AISI 410]
+alloy_designation: UNS S41000
+standards: [API 5CT L80-13Cr, ASTM A182 F6a, UNS S41000, NACE MR0175]
+processes: [cnc_3axis, cnc_5axis, cnc_turning, forging, wire_edm]
+mechanical:
+  density_g_cm3: 7.70
+  tensile_mpa: 655
+  yield_mpa: 550
+  elongation_pct: 15
+  hardness_hrc: 22
+  thermal_conductivity_w_mk: 24.9
+  machinability_index: 54
+  max_temperature_c: 480
+dfm:
+  min_wall_mm: 0.5
+  min_wall_by_process:
+    cnc_3axis: 0.5
+    cnc_5axis: 0.5
+    cnc_turning: 0.5
+    forging: 3.0
+    wire_edm: 0.3
+  cost_per_kg_usd:
+    bar: 4.5
+compliance:
+  nace_mr0175: true
+  biocompatible: false
+  itar: false
+  sour_service: true
+notes: "Martensitic 13% Cr stainless — the standard OCTG/tubing and wellhead grade for CO2-bearing (sweet) wells. NACE MR0175 at controlled hardness."

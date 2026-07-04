@@ -1,0 +1,29 @@
+name: Super 13Cr
+aliases: [S13Cr, UNS S41426, 13Cr-5Ni-2Mo]
+alloy_designation: UNS S41426
+standards: [API 5CT, UNS S41426, NACE MR0175, ISO 15156]
+processes: [cnc_3axis, cnc_5axis, cnc_turning, forging]
+mechanical:
+  density_g_cm3: 7.70
+  tensile_mpa: 760
+  yield_mpa: 655
+  elongation_pct: 15
+  hardness_hrc: 28
+  thermal_conductivity_w_mk: 24.0
+  machinability_index: 45
+  max_temperature_c: 480
+dfm:
+  min_wall_mm: 0.5
+  min_wall_by_process:
+    cnc_3axis: 0.5
+    cnc_5axis: 0.5
+    cnc_turning: 0.5
+    forging: 3.0
+  cost_per_kg_usd:
+    bar: 7.0
+compliance:
+  nace_mr0175: true
+  biocompatible: false
+  itar: false
+  sour_service: true
+notes: "Modified 13Cr (Ni+Mo added) for mildly sour service — higher strength and CO2/H2S resistance than standard 13Cr. Common in modern OCTG."
