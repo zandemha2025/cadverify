@@ -856,6 +856,11 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
                 "machines_evaluated": len(fits),
                 "best_machine": best.machine,
                 "failures": (),
+                # the winning machine's rate basis (machine + declared rate +
+                # capital_frac + secondary ops) so a caller can cost this route on
+                # the fitted machine's OWN marginal rate (spec §7 cost_breakdown).
+                # Present ONLY on a passing route; absent elsewhere.
+                "resource": best.resource_hint,
             }
         else:
             closest = min(fits, key=_machine_score)

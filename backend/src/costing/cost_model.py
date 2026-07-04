@@ -345,7 +345,8 @@ def _ded_cycle(process, drivers, material, rates: RateCard):
 def cost_breakdown(process, drivers, material, material_class, qty,
                    rates: RateCard, region: str, n_cavities: int = 1,
                    complexity: str = "moderate", process_score=None,
-                   owned: bool = False, tolerance_class: str = "standard") -> CostEstimate:
+                   owned: bool = False, tolerance_class: str = "standard",
+                   machine_override: dict = None) -> CostEstimate:
     family = process_family(process)
     labor_rate = rates.g("labor_rate")
     margin = rates.g("margin")
@@ -561,9 +562,32 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     # time. Cost the machine at machine_rate × (1 - machine_capital_frac); setup/
     # material/labor/finishing are unchanged. Gated on cap_frac > 0 so the
     # off-switch (machine_capital_frac=0.0) is byte-identical even when owned.
-    base_machine_rate = rates.p(process, "machine_rate")
-    cap_frac = rates.g("machine_capital_frac")
-    owned_here = bool(owned) and cap_frac > 0.0
+    # ── machine-SPECIFIC marginal rate (Phase C, spec §7 cost_breakdown) ──────
+    # When a fitted OWNED machine from the org's declared inventory is handed in,
+    # its OWN declared $/hr replaces the rate-card default and its OWN declared
+    # capital_frac (or the card default when it declared none) drives the marginal
+    # (make-it-ourselves) seam. The machine_cost driver is then tagged with the
+    # machine's provenance (SHOP — the org's real per-machine rate) and its source
+    # NAMES the machine. machine_override is None on every generic call (no
+    # inventory), so base_machine_rate / cap_frac / owned_here are UNCHANGED and
+    # the whole path stays byte-identical.
+    mo_rate = machine_override.get("hourly_rate_usd") if machine_override else None
+    if machine_override is not None and isinstance(mo_rate, (int, float)) \
+            and not isinstance(mo_rate, bool):
+        base_machine_rate = float(mo_rate)
+        _mo_cf = machine_override.get("capital_frac")
+        cap_frac = (float(_mo_cf)
+                    if isinstance(_mo_cf, (int, float)) and not isinstance(_mo_cf, bool)
+                    else rates.g("machine_capital_frac"))
+        owned_here = cap_frac > 0.0
+        machine_name = machine_override.get("machine_name")
+        machine_prov = machine_override.get("provenance") or Provenance.SHOP
+    else:
+        base_machine_rate = rates.p(process, "machine_rate")
+        cap_frac = rates.g("machine_capital_frac")
+        owned_here = bool(owned) and cap_frac > 0.0
+        machine_name = None
+        machine_prov = None
     eff_machine_rate = base_machine_rate * (1.0 - cap_frac) if owned_here else base_machine_rate
     machine_cost = machine_hr * eff_machine_rate / cav_div / util
     machine_learned = machine_cost * learn_mult          # attended-time learning (S1)
@@ -580,10 +604,21 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                             f"rate ×{rl:g}, capital global ×1) [assumption, not shop-validated]")
     else:
         region_mach_note = f" × region-labor ×{rl_machine:g}"
+    # machine-specific override: name the fitted machine, show its OWN rate, and
+    # carry its provenance. No override => the card default rate + prov_tag,
+    # byte-identical.
+    if machine_name is not None:
+        machine_prov_tag = machine_prov
+        machine_rate_shown = base_machine_rate
+        machine_name_note = f" (fitted machine '{machine_name}', its OWN declared rate)"
+    else:
+        machine_prov_tag = rates.prov_tag(f"machine_rate.{process.name}")
+        machine_rate_shown = rates.p(process, "machine_rate")
+        machine_name_note = ""
     drivers_out.append(Driver(
         name="machine_cost", value=round(machine_scaled, 4), unit="$",
-        provenance=rates.prov_tag(f"machine_rate.{process.name}"),
-        source=(f"{machine_hr:.4f} hr × ${rates.p(process, 'machine_rate'):g}/hr"
+        provenance=machine_prov_tag,
+        source=(f"{machine_hr:.4f} hr × ${machine_rate_shown:g}/hr{machine_name_note}"
                 f"{owned_note}{cav_note}{util_note}{learn_note}{region_mach_note}{burden_note}"
                 f"  [{cycle_src}]"),
         error_band_pct=band,
@@ -594,15 +629,21 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         # removed is a DEFAULT assumption, not shop-validated. validated never
         # flips here — this is a structural sunk-cost adjustment, not a measured
         # number. Driver only (does not enter the line_items sum).
+        _owned_subject = (f"machine '{machine_name}' OWNED in-house"
+                          if machine_name is not None else "process OWNED in-house")
+        _frac_prov = ("declared on the machine" if (machine_name is not None
+                      and isinstance(machine_override.get("capital_frac"), (int, float))
+                      and not isinstance(machine_override.get("capital_frac"), bool))
+                      else "DEFAULT [assumption, not shop-validated]")
         drivers_out.append(Driver(
             name="owned_in_house", value=round(1.0 - cap_frac, 4), unit="×",
             provenance=Provenance.USER,
-            source=(f"process OWNED in-house: machine costed at MARGINAL rate "
+            source=(f"{_owned_subject}: machine costed at MARGINAL rate "
                     f"${eff_machine_rate:g}/hr = ${base_machine_rate:g}/hr × "
                     f"(1-{cap_frac:g} capital) — capital purchase/amortization removed "
                     f"(sunk on gear the org already owns; make-it-ourselves, not "
                     f"rent-the-time). USER-declared ownership; the {cap_frac:g} capital "
-                    f"fraction is DEFAULT [assumption, not shop-validated]"),
+                    f"fraction is {_frac_prov}"),
             error_band_pct=band,
         ))
     if rl_machine != rl:
@@ -610,7 +651,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             name="machine_region_split", value=round(rl_machine, 4), unit="×",
             provenance=Provenance.DEFAULT,
             source=(f"machine region multiplier ×{rl_machine:g}: only the labor share "
-                    f"{rates.g('machine_labor_frac'):g} of the ${rates.p(process,'machine_rate'):g}/hr "
+                    f"{rates.g('machine_labor_frac'):g} of the ${machine_rate_shown:g}/hr "
                     f"rate scales ×{rl:g}; capital/facility/energy stays global ×1 "
                     f"(fixes the whole-rate offshore over-discount) "
                     f"[assumption, not shop-validated]"),
