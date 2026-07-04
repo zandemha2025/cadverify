@@ -45,7 +45,7 @@ Everything we/I built — governed libraries, triage, portfolio, owned-equipment
 ## 2. Secondary gaps (would surface in a serious evaluation, ex-security)
 
 - **Cost coverage is now 15 of 18 processes — [forging/casting/EDM DONE 2026-07-04].** Dollar cost now covers **15** (`COSTED_PROCESSES`): additive, CNC, injection/die-cast, sheet, **+ forging, investment casting, sand casting, wire-EDM** (new honest physics models, own `casting`/`forging`/`edm` families, byte-identical to the prior 11). Remaining feasibility-only: **DMLS, SLM, EBM, binder-jet, DED, WAAM** (advanced/metal-additive) — [BUILD] next if Aramco needs metal-AM cost. Wire-EDM's cut-path uses a 2D-outline proxy (honestly caveated, wide 45% band) pending a true 3D cut-length driver.
-- **Oil-&-gas material breadth — [BUILD/data].** API-spec alloys (Inconel, duplex/super-duplex, 13Cr, forging steels) with corrected $/kg. The new governed material library lets them load their own, but out-of-box breadth is thin.
+- **Oil-&-gas material breadth — [DONE 2026-07-04].** Added a 10-alloy API-spec pack (AISI 4130/4140, ASTM A105, A182 F22; API 13Cr, Super 13Cr, Super Duplex 2507, F6NM/CA6NM; Incoloy 825, Hastelloy C276) with correct metallurgical properties, NACE MR0175 + API/ASTM standards, and honest approximate wrought $/kg. **Also activated WIRE_EDM end-to-end** (it had zero compatible material, so Track D's wire-EDM cost was previously unreachable via the live path) and the sand-cast stainless route (F6NM). Family-cheapest defaults for existing classes stay byte-identical (new grades priced above the incumbents); the only shifts are to genuinely-cheaper real alloys (nickel→Incoloy 825, forging-stainless→API 13Cr). Orgs can still override via the governed material library. Remaining out-of-box gap: even broader alloy coverage (Monel, Alloy 625/718 forged variants, more grades) is easy follow-on data.
 - **Numbers still n=0 out-of-box — [HUMAN/data], now self-serve.** Assumption bands until real data; but that's now *onboardable by them* (CSV import → flywheel → owned-equipment marginal cost), not a Zoox-bureau gate.
 - **Scale/ops unproven — [SCALE/HUMAN].** No load/soak at Aramco volume; single-request CPU/memory-bound engine; no SLA/DR/backup-restore runbook; batch/recon blobs on local disk (no object-store abstraction) breaks on multi-machine.
 - **No RFQ/quote/sourcing object — [BUILD].** Matters less for a make-in-house buyer, but absent.
@@ -59,8 +59,8 @@ Everything we/I built — governed libraries, triage, portfolio, owned-equipment
 3. ~~**Cost models for forging / casting / EDM**~~ — **DONE 2026-07-04.**
 4. ~~**Catalog/triage at scale**~~ — **DONE 2026-07-04** (whole-inventory SQL triage + keyset-paginated grid; portfolio-at-scale + streaming ingest still open).
 5. ~~**Parts-manifest CSV + ingestion API**~~ — **DONE 2026-07-04** (declared-inventory registry + import + coverage summary).
-6. **Oil-&-gas material pack** [BUILD/data] — seed the governed material library with API-spec alloys + corrected prices. **← next recommended.**
-7. **Metal-AM cost (DMLS/SLM/EBM)** [BUILD] — the last feasibility-only families, if Aramco needs additive-metal costing.
+6. ~~**Oil-&-gas material pack**~~ — **DONE 2026-07-04** (10 API-spec alloys + WIRE_EDM/sand-cast activation).
+7. **Metal-AM cost (DMLS/SLM/EBM)** [BUILD] — the last feasibility-only families, if Aramco needs additive-metal costing. **← next recommended.**
 
 ## 4. What is genuinely NOT in our lane
 - **Native-CAD / PMI / STEP-assembly geometry** [ENV] — needs OCP/OpenCASCADE-XDE, not installable in this container; a deploy-target task.
