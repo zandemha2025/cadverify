@@ -12,6 +12,7 @@ This spec turns the **process-level** owned-equipment seam (`owned_processes` �
 For a part P, a process Pr, and an org's owned machine inventory M, the verdict per (P) is one of:
 
 - **`makeable_in_house`** — ∃ a machine m ∈ M that (a) runs process Pr, (b) whose work envelope **fits** P, (c) is **capable** of P's material, (d) meets P's **tolerance/precision** need, (e) is under **max part weight**, and (f) all **required secondary ops** (heat-treat/HIP/etc.) are available in-house. Carries the *best* machine + the resource cost on it (marginal rate).
+- **`makeable_with_secondary_op`** — the base machine fits on every gate EXCEPT a precision/finish/density spec the base process can't hold alone (IT below the machine's grade → grind/hone/EDM; fatigue-critical cast/AM → HIP), AND the org **has that secondary op** in-house. Makeable, with the op's added resource cost surfaced as its own line. (If the org LACKS the op → it's a gap, below.)
 - **`makeable_not_on_owned`** — Pr is a valid route AND the environment permits it, but **no owned machine fits**. Carries the **gap**: the minimal capability delta that would make it makeable (`"exceeds Z travel: part 380mm > your largest 305mm — need ≥380mm"`, `"no owned machine qualified for Inconel 718"`, `"tolerance IT6 exceeds your machines' IT9"`, `"needs 5-axis; you own 3-axis only"`). This is the acquisition-consideration surface ("if they get one").
 - **`makeable_outsource_only`** — a valid, environment-permitted route exists but the org has **no capability for this process at all** (owns nothing of that family). Honest: "buy it, or acquire the capability."
 - **`environment_excluded`** — the route/material is **invalid for the declared service environment** (e.g. aluminium for sour service; a polymer above its max service temp). Never counted makeable.
@@ -44,38 +45,42 @@ Threaded through: the live decision (`/validate/cost` → the in-house verdict +
 
 ---
 
-## 3. Data model — `MachineInstance` (org-owned inventory)
+## 3. Data model — `MachineInstance` (org-owned inventory) — FINALIZED against domain research
 
-> **Capability field set is FIRST-CUT below; finalize against the machine-capability domain research (envelope, weight, materials, tolerance grade, axes, tonnage/power, layer/feature resolution, secondary-ops).** The research returns a per-process-family capability table + a recommended minimal schema — reconcile before the migration lands.
+**Design principle from the research:** every makeability check reduces to a scalar comparison `part_requirement ⩿ machine_capability`, and every failure is one of six gate types — **envelope · mass · force/energy · reach/access · resolution · material-qualification**. So the schema carries a small set of universal typed columns (queried/indexed) + a per-process-family `capabilities` JSONB (the process-appropriate scalars), validated on write against a per-family schema. This keeps the table clean across ~24 heterogeneous process families without a sparse 40-column monster.
 
-`machine_instances` (org-scoped, one row per owned machine — or per identical group with a `count`):
+`machine_instances` (org-scoped, one row per owned machine or identical group):
 
 | Column | Type | Purpose / gate |
 |---|---|---|
-| `id` BigInt PK, `ulid` | — | identity |
+| `id` BigInt PK, `ulid` Text | — | identity |
 | `org_id` Text NOT NULL (FK orgs) | — | tenant boundary |
 | `name` Text | — | "Haas VF-2 #3" (display) |
-| `process` Text NOT NULL | ProcessType.value | which process family this machine runs |
+| `process` Text NOT NULL | ProcessType.value | which process family (indexed) |
 | `count` Int default 1 | — | N identical machines (capacity, not fit) |
-| `envelope_mm` JSONB | `{x,y,z}` mm (build volume / travels) | **envelope fit** vs part bbox |
-| `swing_dia_mm` Float NULL | mm | lathe max swing (turning) |
-| `between_centers_mm` Float NULL | mm | lathe max length (turning) |
-| `max_part_kg` Float NULL | kg | **weight gate** vs part mass |
-| `materials` JSONB | list of material names / classes qualified | **material capability** gate |
-| `tolerance_grade` Text NULL | IT grade or ±mm class → mapped to our `tolerance_class` ladder | **tolerance capability** gate |
-| `axes` Int NULL | 3/4/5 (subtractive) | undercut/reachability gate |
-| `max_thickness_mm` Float NULL | mm | sheet cut / EDM cut thickness |
-| `tonnage` Float NULL | tons | press-brake / forging / molding clamp |
-| `power_kw` Float NULL | kW | laser cut-thickness / spindle |
-| `min_feature_mm` Float NULL | mm | min wall / min tool radius |
-| `hourly_rate_usd` Float NULL | $/hr | the machine's OWN rate (overrides the rate-card default for cost) |
-| `capital_frac` Float NULL | 0–1 | per-machine sunk-capital fraction (owned → marginal); NULL → rate-card default |
-| `secondary_ops` JSONB | list: heat_treat/HIP/stress_relief/plating/grinding/CMM… | **required-secondary-op** availability |
+| `max_workpiece_kg` Float NULL | kg | **mass gate** vs part mass (universal — every family has one) |
+| `hourly_rate_usd` Float NULL | $/hr | the machine's OWN rate (overrides rate-card default for cost) |
+| `capital_frac` Float NULL | 0–1 | per-machine sunk-capital fraction; NULL → rate-card default |
+| `capabilities` JSONB NOT NULL | per-family scalars (below) | the fit gates |
+| `materials` JSONB | list of material names/classes **qualified on THIS machine** | **material-qualification** gate |
+| `material_thickness_map` JSONB NULL | `{material: max_mm}` (laser/EDM/sheet) | power×material×thickness gate (research §A) |
 | `notes` Text, `created_by`, `created_at`, `updated_at` | — | provenance/audit |
+
+**`capabilities` JSONB, by gate type (fields present per family; all USER-declared, validated on write):**
+- **Envelope** — one of: `{x,y,z}` mm (mill travels / AM build / EDM Z) · `{bed_x,bed_y}` mm (sheet) · `{swing_dia, between_centers, spindle_bore}` mm (turning) · `{flask_x,flask_y,flask_z}` mm (casting) · `{platen_x,platen_y,tie_bar_gap,daylight}` mm (molding). Orientation permutation allowed for AM/milling.
+- **Force/energy** — `spindle_power_kw`, `spindle_taper`, `max_rpm` (mill) · `laser_power_kw` (laser) · `tonnage_t` + `max_bend_length_mm` (brake) · `clamp_tonnage_t` + `shot_capacity_g` + `max_injection_bar` (molding/die-cast) · `press_tonnage_t` (forging) · `furnace_capacity_kg` + `max_pour_kg` (casting) · `max_cut_thickness_mm` (laser/EDM).
+- **Reach/access** — `axes` (3/4/5), `motion_mode` (`positional_3plus2` | `simultaneous_5`), `min_tool_dia_mm` (→ min internal radius), `max_tool_reach_ratio`, and turning flags `live_tooling`/`y_axis`/`sub_spindle`/`bar_feed`.
+- **Resolution/precision** — `achievable_it_grade` (Int; **store the IT grade, NOT ±mm** — ± is size-dependent, computed per-dimension via ISO 286), `positioning_accuracy_um`, `repeatability_um`, `surface_finish_ra_um`, plus AM/EDM `min_layer_um`, `min_wall_mm`, `min_feature_mm`, `max_taper_deg` (EDM).
+- **Material special gates** — `conductive_required` (EDM, bool), `chamber_type` (`hot`|`cold`, die-cast).
 
 Indexes: `(org_id)`, `(org_id, process)`. Migration `0021_machine_instances` (down_revision `0020_manifest_parts`), reversible.
 
-**Seed convenience (not required):** a "add from catalog" path that pre-fills capability from the existing static `MachineProfile` reference DB (`profiles/database.py`) so a user picks "Haas VF-2" and edits, rather than typing every field. The static catalog is the *template*; the org instance is the *declaration*.
+**Conservative-default + honesty note (from the research uncertainty flags):** laser thickness-by-power, forging/casting maxima, and AM per-material build windows are *site-specific and vary ±20–30%*. So capability is **always the org's own declaration** (provenance USER), never a hardcoded process constant; where we offer catalog defaults they are conservative + clearly a starting point to edit. IT-grade→±mm is computed per-dimension from ISO 286, never a stored ±mm.
+
+### 3.1 Shop-level secondary-op capabilities (`shop_capabilities`)
+Secondary ops are **shop-level, not per-machine** (a foundry has one HIP vessel, not one per press). Small org-scoped table `shop_capabilities` (or a JSONB on a per-org row): `{heat_treat, stress_relief, hip:{dia_mm,height_mm}, sinter_furnace:{envelope}, grinding, plating, cmm:{measuring_vol}, ct_inspection}` — each a bool + optional size/temp limit. The matcher consumes this as the org's available-secondary-ops set. Some parts **require** an op (HIP for fatigue-critical cast/AM; sinter for binder-jet; stress-relief for metal-AM before plate removal; grind/hone/EDM to reach IT below the base process) — a missing required op is a real gate (§0 `makeable_with_secondary_op` vs a gap).
+
+**Seed convenience:** an "add from catalog" path pre-fills `capabilities` from the static `MachineProfile` reference DB (`profiles/database.py`) — pick "Haas VF-2", edit. The catalog is the *template*; the org instance is the *declaration*.
 
 **Service-environment declaration** (§6): extend `part_contexts` (already `(org_id, mesh_hash)`-keyed) with nullable `service_environment` JSONB `{max_temp_c, min_temp_c, pressure_bar, corrosive:bool, sour_service:bool, medium, standard}` — declared, provenance USER. Migration `0022_part_context_environment`. (Alternative: a dedicated `part_requirements` table; extending part_context is lighter and reuses the org/mesh key + the declared-context honesty model. Decide at build time; leaning extend.)
 
