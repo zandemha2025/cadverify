@@ -31,6 +31,7 @@ from src.api.routes import router
 from src.api.cost_decisions import public_cost_share_router, router as cost_decisions_router
 from src.api.catalog import router as catalog_router
 from src.api.rate_library import router as rate_library_router
+from src.api.shop_library import router as shop_library_router
 from src.api.part_context import router as part_context_router
 from src.api.groundtruth import router as groundtruth_router
 from src.api.share import public_share_router, share_router
@@ -206,6 +207,11 @@ app.include_router(catalog_router, prefix="/api/v1/catalog", tags=["catalog"])
 # Governed rate-library (W4 slice 1): versioned, effective-dated rate-card asset.
 app.include_router(
     rate_library_router, prefix="/api/v1/rate-library", tags=["rate-library"]
+)
+# Governed shop-library (W4 slice 2): versioned, effective-dated, per-slug
+# shop-profile asset (DB successor to data/shop_profiles/*.json).
+app.include_router(
+    shop_library_router, prefix="/api/v1/shop-library", tags=["shop-library"]
 )
 # Declared part-context (W3.5 rung-1): user-declared program/assembly/volume so
 # the portfolio roll-up can state an honest $/year.

@@ -280,6 +280,40 @@ def _resolve_shop_param(shop: Optional[str]) -> Optional[str]:
     )
 
 
+async def _resolve_governed_shop(session, user_id, shop):
+    """Governed (DB) shop binding for the caller's org + slug, or None (W4 slice 2).
+
+    When ``SHOP_LIBRARY_ENABLED`` is on AND the caller's org has a PUBLISHED shop
+    profile for the requested slug in effect now, return a ShopProfile-like
+    binding carrying that org's DECLARED overrides (bound as SHOP provenance by
+    ``build_rate_card``). Otherwise ``None`` — the caller falls through to the
+    flat-file ``resolve_shop`` allowlist, byte-identical to pre-W4. The flag is
+    checked FIRST so an off flag adds no DB work and no behaviour change.
+    """
+    raw = (shop or "").strip()
+    if not raw:
+        return None
+    from src.services.shop_library_service import (
+        governed_shop_profile,
+        resolve_shop_overrides_for,
+        shop_library_enabled,
+    )
+
+    if not shop_library_enabled():
+        return None
+    from src.auth.org_context import resolve_org
+    from src.costing.shop_profile import _slug
+
+    org_id = await resolve_org(session, user_id)
+    if not isinstance(org_id, str) or not org_id:
+        return None
+    slug = _slug(raw)
+    payload = await resolve_shop_overrides_for(session, org_id, slug)
+    if payload is None:
+        return None
+    return governed_shop_profile(slug, payload)
+
+
 def _parse_overrides(overrides: Optional[str]) -> dict:
     """Parse the optional `overrides` Form field (a JSON object of dotted rate /
     driver keys -> numbers) into the engine's rate_overrides dict.
@@ -672,7 +706,21 @@ async def _run_cost_decision(
             detail=f"Unknown region '{region}'. Use one of {sorted(_REGIONS)}",
         )
     effective_region = region or "US"
-    shop_slug = _resolve_shop_param(shop)        # 400 on unknown shop
+    # ── Shop binding: governed (DB) profile first, else the flat-file allowlist ──
+    # W4 slice 2: when SHOP_LIBRARY_ENABLED and the caller's org has a PUBLISHED
+    # shop profile for this slug in effect now, bind its DECLARED overrides as
+    # SHOP provenance (the slug need not exist as a flat file). Flag off / no
+    # governed profile for the slug => byte-identical: the flat-file resolve_shop
+    # path (and its 400 on an unknown shop) is used unchanged.
+    governed_shop = None
+    if user is not None and session is not None:
+        governed_shop = await _resolve_governed_shop(session, user.user_id, shop)
+    if governed_shop is not None:
+        shop_slug = governed_shop.slug           # string slug for logging / params_hash
+        shop_binding = governed_shop             # ShopProfile-like object bound to engine
+    else:
+        shop_slug = _resolve_shop_param(shop)    # 400 on unknown shop
+        shop_binding = shop_slug
     rate_overrides = _parse_overrides(overrides)  # 400 on bad JSON/value
     _validate_overrides(rate_overrides)           # 400 on unknown key (fail fast)
 
@@ -689,7 +737,7 @@ async def _run_cost_decision(
         material_class_is_user=material_class != "polymer",
         region=effective_region,
         region_is_user=region_is_user,
-        shop=shop_slug,
+        shop=shop_binding,
         rate_overrides=rate_overrides,
         n_cavities=cavities,
         n_cavities_is_user=cavities != 1,

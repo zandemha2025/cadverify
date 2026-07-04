@@ -813,3 +813,85 @@ class PartContext(Base):
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+# ---------------------------------------------------------------------------
+# W4 governed libraries (migration 0015): the versioned shop-profile asset
+# ---------------------------------------------------------------------------
+
+
+class ShopProfileVersion(Base):
+    """A governed shop-profile asset — a versioned, effective-dated, PER-SLUG
+    snapshot of one shop's cost calibration (W4 governed libraries, slice 2).
+
+    The DB-backed successor to the read-only ``backend/data/shop_profiles/*.json``
+    flat files: an org admin drafts, reviews, and PUBLISHES a shop profile with an
+    effective date, and the costing engine binds the version *effective at the
+    estimate time* as that shop's SHOP-provenance overrides instead of loading the
+    flat file. Mirrors ``RateCardVersion`` column-for-column, plus a ``slug`` (the
+    shop identifier the cost API references, e.g. ``"midwest-precision-cnc"``).
+
+    ``payload`` is the shop-overrides dict — the exact dotted-key form
+    ``ShopProfile.to_shop_overrides`` produces and ``build_rate_card(shop_overrides=…)``
+    consumes (``labor_rate``, ``machine_rate.SLS``, ``material_price.@polymer``,
+    ``region_labor.MX`` …) — plus optional ``name``/``region`` metadata used for
+    the shop label/region binding.
+
+    HONESTY (non-negotiable rules #1/#2): a governed shop profile is the org's
+    DECLARED shop calibration. ``build_rate_card`` already flips its keys to SHOP
+    provenance (``shop_keys``); that is a declared assumption, NOT measured truth.
+    Adopting one changes *which* shop numbers an org uses; it never flips a
+    decision to ``validated`` (that comes only from real ground-truth residuals,
+    W5). Nothing here launders a declared rate into a fact.
+
+    Versioning / effective-dating is PER ``(org_id, slug)``: ``version`` is
+    monotonic per org; publishing a version for a slug closes that slug's
+    previously-open published version's ``effective_to`` so at most one published
+    version per (org, slug) is in effect at any time.
+    """
+
+    __tablename__ = "shop_profile_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "version", name="uq_shop_profile_versions_org_version"
+        ),
+        UniqueConstraint("ulid", name="uq_shop_profile_versions_ulid"),
+        Index("ix_shop_profile_versions_org_status", "org_id", "status"),
+        Index("ix_shop_profile_versions_org_slug", "org_id", "slug"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    # The shop identifier the cost API references (?shop=<slug>). The effective
+    # governed profile is resolved per (org_id, slug).
+    slug: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="draft"
+    )
+    # Shop-overrides dict (validated on publish via a build_rate_card dry-run).
+    payload: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    change_note: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=""
+    )
+    effective_from: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    effective_to: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    published_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
