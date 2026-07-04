@@ -13,9 +13,14 @@ version for a slug AND the ``SHOP_LIBRARY_ENABLED`` flag is on.
     non-overlapping per-(org, slug) timeline (publishing closes that slug's prior
     open version).
 
-Revision ID: 0015_create_shop_profile_versions
+Revision ID: 0015_shop_profiles
 Revises: 0014_create_part_contexts
 Create Date: 2026-07-04
+
+Note: the revision id is kept <= 32 chars because alembic's ``alembic_version.
+version_num`` column is ``varchar(32)`` — a longer id (e.g. the descriptive
+``0015_create_shop_profile_versions``, 33 chars) fails the version UPDATE and
+rolls back the whole upgrade.
 """
 from __future__ import annotations
 
@@ -23,7 +28,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0015_create_shop_profile_versions"
+revision = "0015_shop_profiles"
 down_revision = "0014_create_part_contexts"
 branch_labels = None
 depends_on = None

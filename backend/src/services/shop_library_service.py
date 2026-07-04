@@ -293,7 +293,7 @@ async def create_draft(
     session: AsyncSession,
     org_id: str,
     *,
-    slug: str,
+    slug: Optional[str] = None,
     name: str = "",
     change_note: str = "",
     payload: Optional[dict] = None,
@@ -302,21 +302,29 @@ async def create_draft(
 ) -> ShopProfileVersion:
     """Create a new DRAFT version for ``slug``. Payload defaults to the migrated
     flat-file profile (first draft of a known slug) or a deep copy of
-    ``from_version_id`` (iterate on an existing governed profile)."""
+    ``from_version_id`` (iterate on an existing governed profile).
+
+    When ``from_version_id`` is given, the source's ``slug`` (and payload, unless
+    overridden) is INHERITED, so the caller iterating on an existing profile need
+    not repeat the slug. An explicit ``slug`` still wins."""
+    # Resolve the source first so its slug can be inherited BEFORE the slug guard.
+    src = None
+    if from_version_id is not None:
+        src = await get_version(session, org_id, from_version_id)
+        if src is None:
+            raise HTTPException(status_code=404, detail="source version not found")
+        if not (slug and slug.strip()):
+            slug = src.slug
     if not slug or not slug.strip():
         raise ValueError("shop profile requires a non-empty slug")
     # Canonicalize the slug so cost-path resolution (which normalizes the
     # caller's ?shop= via the same _slug) always matches the stored value.
     slug = _slug(slug)
     if payload is None:
-        if from_version_id is not None:
-            src = await get_version(session, org_id, from_version_id)
-            if src is None:
-                raise HTTPException(status_code=404, detail="source version not found")
-            payload = copy.deepcopy(src.payload)
-            slug = src.slug
-        else:
-            payload = default_shop_payload(slug)
+        payload = (
+            copy.deepcopy(src.payload) if src is not None
+            else default_shop_payload(slug)
+        )
     validate_shop_payload(payload)
     row = ShopProfileVersion(
         ulid=str(ULID()),
