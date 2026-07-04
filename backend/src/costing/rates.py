@@ -25,6 +25,20 @@ FORMATIVE = {PT.INJECTION_MOLDING, PT.DIE_CASTING}
 # FABRICATION: 2.5D blank-and-bend (laser/punch + press brake). No hard tooling
 # at low/mid volume, so this is a MAKE-NOW family like additive / CNC.
 FABRICATION = {PT.SHEET_METAL}
+# CASTING: pour-and-solidify (sand mould / investment shell). Hard tooling is a
+# PATTERN (sand) or a wax die + ceramic shell (investment), cheaper than an
+# injection/die-cast tool. Aramco makes many cast parts (pump housings, valve
+# bodies), so these must leave feasibility-only with a defensible dollar.
+CASTING = {PT.INVESTMENT_CASTING, PT.SAND_CASTING}
+# FORGING: heat + press/hammer a billet in a closed die. Tooling is a hardened
+# forging DIE set — the most expensive of the tooled families here. Common for
+# high-strength Aramco parts (flanges, valve bodies, drilling components).
+FORGING_FAMILY = {PT.FORGING}
+# EDM: wire-EDM is a SLOW, precise, tool-less removal route (spark-erode a
+# conductive blank along a cut path). No hard tooling; cost is dominated by the
+# very slow cut. Common on Aramco hard/precise features. Kept in its own family
+# so its wide band + cut-path model never touch the CNC removal path.
+EDM = {PT.WIRE_EDM}
 
 # The bounded set V0 will produce a dollar should-cost for. Everything else is
 # feasibility-only (honest: no number we cannot defend).
@@ -33,11 +47,17 @@ COSTED_PROCESSES = {
     PT.CNC_3AXIS, PT.CNC_5AXIS, PT.CNC_TURNING,
     PT.INJECTION_MOLDING, PT.DIE_CASTING,
     PT.SHEET_METAL,
+    # newly costed (off feasibility-only): forged, cast, wire-EDM
+    PT.FORGING, PT.INVESTMENT_CASTING, PT.SAND_CASTING, PT.WIRE_EDM,
 }
 
-# Absolute-cost error band by family (the dominant-line band, spec §6.5).
+# Absolute-cost error band by family (the dominant-line band, spec §6.5). The new
+# families are WIDE and honest — un-validated, pre-calibration physics models.
 BAND_PCT = {"additive": 40.0, "subtractive": 50.0, "formative": 60.0,
-            "fabrication": 35.0}
+            "fabrication": 35.0,
+            "casting": 55.0,     # pour-yield + tooling tier are un-validated assumptions
+            "forging": 55.0,     # billet loss + die-tier are un-validated assumptions
+            "edm": 45.0}         # cut-path proxy (perimeter × thickness) is un-validated
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -202,6 +222,74 @@ RATE_CARD_V0: dict = {
             ref_gauge_mm=2.0,           # gauge at which cut_speed holds; thicker = slower
             sec_per_bend=20.0,          # press-brake hit: locate + bend + remove
             handling_hr=0.020),         # load/unload/locate per part
+        # ── CASTING (pour + solidify) — foundry cell. Material = poured metal =
+        # net part mass × (1 + yield_loss) for gating/risers. Machine cycle =
+        # pour + solidification cool (∝ poured mass). Knockout/fettle/clean is
+        # LABOR (post_hr_part). Tooling is a pattern (sand) / wax die + shell
+        # (investment), sized by the shared size-tier table × a casting multiplier
+        # (see tooling_casting_mult). EVERY constant below is a DEFAULT assumption,
+        # NOT foundry-validated. ──────────────────────────────────────────────
+        PT.SAND_CASTING: dict(
+            machine_rate=40.0,          # $/hr loaded sand-foundry pour cell (DEFAULT, un-validated)
+            setup_hr=1.00,              # mould box / gating setup per lot (DEFAULT)
+            post_hr=0.0, scrap=0.06,    # casting-defect scrap fraction (DEFAULT)
+            deposition=None, vert=None, finish=None, queue_days=6, post_days=3,
+            post_hr_part=0.60,          # shakeout + knockout + fettle/grind/clean, per part (DEFAULT)
+            post_hr_build=0.0, lot_size=200, min_charge=120,
+            n_machines=3, machine_hours_per_day=16,
+            yield_loss=0.50,            # gating+risers: poured = net × 1.50 (sand runs heavy) (DEFAULT)
+            pour_hr=0.08,               # ladle pour + handling per part (DEFAULT)
+            cool_min_per_kg=1.20),      # solidification/cool minutes per kg poured (DEFAULT)
+        PT.INVESTMENT_CASTING: dict(
+            machine_rate=55.0,          # $/hr loaded investment (lost-wax) shell+pour cell (DEFAULT)
+            setup_hr=1.50,              # tree assembly / shell prep per lot (DEFAULT)
+            post_hr=0.0, scrap=0.05,    # casting-defect scrap fraction (DEFAULT)
+            deposition=None, vert=None, finish=None, queue_days=10, post_days=4,
+            post_hr_part=0.35,          # near-net precision route: less fettling than sand (DEFAULT)
+            post_hr_build=0.0, lot_size=200, min_charge=180,
+            n_machines=2, machine_hours_per_day=16,
+            yield_loss=0.40,            # gating tree metal: poured = net × 1.40 (DEFAULT)
+            pour_hr=0.12,               # shell fill + handling per part (DEFAULT)
+            cool_min_per_kg=1.50),      # ceramic shell holds heat: slower cool per kg (DEFAULT)
+        # ── FORGING (heat + press/hammer a billet in a closed die) — material =
+        # billet mass = net × (1 + flash/scale loss), bought as bar stock. Machine
+        # cycle = furnace heat (∝ billet mass) + press/hammer strokes + trim. High
+        # per-lot setup; hardened DIE set (most expensive tooled family here). NOTE:
+        # a forging is a NEAR-NET blank — it USUALLY needs downstream finish
+        # machining that this model does NOT bundle (caveat, not a hidden CNC pass).
+        # All constants DEFAULT, un-validated. ────────────────────────────────
+        PT.FORGING: dict(
+            machine_rate=120.0,         # $/hr loaded forging press/hammer + furnace cell (DEFAULT)
+            setup_hr=3.00,              # die install + heat-up + trial strokes per lot (DEFAULT)
+            post_hr=0.0, scrap=0.05,    # lap/underfill scrap fraction (DEFAULT)
+            deposition=None, vert=None, finish=None, queue_days=12, post_days=3,
+            post_hr_part=0.20,          # de-scale / trim-flash cleanup, per part (DEFAULT)
+            post_hr_build=0.0, lot_size=250, min_charge=200,
+            n_machines=2, machine_hours_per_day=16,
+            flash_loss=0.25,            # flash + scale: billet = net × 1.25 (DEFAULT)
+            heat_min_per_kg=2.50,       # furnace heat-to-forging-temp minutes per kg billet (DEFAULT)
+            press_hr=0.05,              # press/hammer strokes + manipulation per part (DEFAULT)
+            trim_hr=0.03),              # flash-trim press hit per part (DEFAULT)
+        # ── WIRE-EDM (spark-erode a conductive blank along a cut path) — tool-less
+        # and SLOW. Material = the billet plate you buy (bbox billet, like milling).
+        # Machine cycle = swept cut AREA (cut-path length × stock thickness) ÷ a very
+        # slow EDM cut rate (mm²/hr, material-dependent) + wire-threading per contour.
+        # Wire is a CONSUMABLE (∝ cut time). No hard tooling. cut_rate is by material
+        # class (see edm_cut_rate). CAVEAT: with no true cut-perimeter driver we use
+        # outline_perimeter_mm (the measured 2D outline proxy) × the min bbox extent
+        # (stock thickness) as the swept area — an APPROXIMATION, flagged in-source.
+        # All constants DEFAULT, un-validated. ────────────────────────────────
+        PT.WIRE_EDM: dict(
+            machine_rate=42.0,          # $/hr loaded wire-EDM machine (runs mostly unattended) (DEFAULT)
+            setup_hr=0.75,              # fixture + edge-find + program per lot (DEFAULT)
+            post_hr=0.0, scrap=0.04,    # blank offcut/handling scrap fraction (DEFAULT)
+            deposition=None, vert=None, finish=None, queue_days=6, post_days=1,
+            post_hr_part=0.10,          # break wire-entry tab / light deburr, per part (DEFAULT)
+            post_hr_build=0.0, lot_size=50, min_charge=110,
+            n_machines=3, machine_hours_per_day=20,
+            n_threads=1,                # wire threads (contours) per part (DEFAULT proxy)
+            thread_min=6.0,             # auto-wire-thread + re-reference minutes per contour (DEFAULT)
+            wire_cost_per_hr=7.0),      # brass wire + dielectric/filter consumable $/cut-hr (DEFAULT)
     },
     # Shop-specific material lot prices ($/kg). Empty by default → fall back to
     # the material-DB cost_per_kg (a generic DEFAULT). A calibrated shop binds its
@@ -210,14 +298,32 @@ RATE_CARD_V0: dict = {
     "material_prices": {},
     # CNC material-removal rate (cm^3/min) by material class.
     "mrr": {"polymer": 50, "aluminum": 30, "steel": 8, "stainless": 5, "titanium": 2},
+    # Wire-EDM cut rate (mm^2 of swept cross-section per HOUR) by material class —
+    # the whole point of wire-EDM is that it is SLOW and precise (orders of
+    # magnitude below milling). Conductive metals only; the "polymer" entry is a
+    # nominal fallback (EDM needs a conductive workpiece). All DEFAULT, un-validated.
+    "edm_cut_rate": {"aluminum": 12000, "steel": 8000, "stainless": 6000,
+                     "titanium": 4000, "nickel": 3500, "polymer": 6000},
     # Single-cavity tooling by part size tier (max bbox dim, mm). Die-casting = ×1.5.
     "tooling": {"S": 6000, "M": 15000, "L": 30000, "XL": 60000},
     "tooling_die_mult": 1.5,
+    # Hard-tooling multipliers on the size-tier base for the new tooled families
+    # (all DEFAULT, un-validated). Ordering is the physically-honest one:
+    #   sand pattern (cheap wood/resin) < investment wax die + shell < injection/
+    #   die-cast tool (base/×1.5) < hardened forging DIE set (most expensive).
+    "tooling_casting_mult": {
+        PT.SAND_CASTING: 0.35,          # pattern + core boxes — cheapest hard tooling (DEFAULT)
+        PT.INVESTMENT_CASTING: 0.90,    # wax-injection die + ceramic shell — > sand, < injection (DEFAULT)
+    },
+    "tooling_forging_mult": 2.00,       # hardened closed-die set — most expensive tooled family (DEFAULT)
     # Tooling cavity + complexity scaling (weakness #5). DEFAULT 1 cav, moderate.
     "cavity_exponent": 0.70,   # tool cost ~ n_cavities^0.70 (shared bolster/base)
     "complexity_factor": {"simple": 0.80, "moderate": 1.00, "complex": 1.50, "very_complex": 2.20},
     # Tooling lead time (days), applied once regardless of qty.
-    "tooling_lead_days": {PT.INJECTION_MOLDING: 25, PT.DIE_CASTING: 35},
+    "tooling_lead_days": {PT.INJECTION_MOLDING: 25, PT.DIE_CASTING: 35,
+                          # new tooled families (DEFAULT, un-validated lead assumptions)
+                          PT.SAND_CASTING: 15, PT.INVESTMENT_CASTING: 30,
+                          PT.FORGING: 45},
     # Region split (weakness #4): three independent vectors. Commodity material &
     # global-steel tooling do NOT track regional shop labor.
     "region_labor":    {"US": 1.00, "EU": 1.10, "MX": 0.70, "CN": 0.55, "IN": 0.50, "SA": 1.05},
@@ -279,6 +385,12 @@ def process_family(process: ProcessType) -> str:
         return "subtractive"
     if process in FABRICATION:
         return "fabrication"
+    if process in CASTING:
+        return "casting"
+    if process in FORGING_FAMILY:
+        return "forging"
+    if process in EDM:
+        return "edm"
     return "formative"
 
 
@@ -435,6 +547,10 @@ class RateCard:
     def mrr(self, material_class: str) -> float:
         return self.data["mrr"].get(material_class, 8)
 
+    def edm_cut_rate(self, material_class: str) -> float:
+        """Wire-EDM swept-area cut rate (mm²/hr) by material class (DEFAULT)."""
+        return float(self.data["edm_cut_rate"].get(material_class, 6000))
+
     def tooling_cost(self, process: ProcessType, max_bbox_mm: float,
                      n_cavities: int = 1, complexity: str = "moderate") -> float:
         """Single-cavity size-tier base × n_cavities^cavity_exponent × complexity
@@ -449,6 +565,25 @@ class RateCard:
         cav = float(n_cavities) ** self.data["cavity_exponent"]
         comp = self.data["complexity_factor"][complexity]
         return base * cav * comp
+
+    def casting_forging_tooling(self, process: ProcessType, max_bbox_mm: float,
+                                complexity: str = "moderate") -> float:
+        """Hard-tooling cost for the CASTING / FORGING families: size-tier base ×
+        family multiplier × complexity. Honors a flat USER override
+        (`tooling.<PROCESS>`) exactly like `tooling_cost`. Multipliers order sand
+        pattern < investment (wax die + shell) < forging die (see
+        tooling_casting_mult / tooling_forging_mult). All DEFAULT, un-validated."""
+        flat = self.data.get("_tooling_flat", {}).get(process)
+        if flat is not None:
+            return float(flat)
+        tier = family_to_size_tier(max_bbox_mm)
+        base = float(self.data["tooling"][tier])
+        if process in CASTING:
+            mult = float(self.data["tooling_casting_mult"][process])
+        else:  # FORGING
+            mult = float(self.data["tooling_forging_mult"])
+        comp = self.data["complexity_factor"][complexity]
+        return base * mult * comp
 
     def tooling_lead_days(self, process: ProcessType) -> float:
         return float(self.data["tooling_lead_days"].get(process, 0))
@@ -477,6 +612,10 @@ _NUMERIC_FIELDS = {
     "cut_speed_mm_min", "ref_gauge_mm", "sec_per_bend", "handling_hr",
     # E-now #3+#4: CNC NRE / inspection / outsourced secondary finishing
     "nre_hr", "fai_hr", "inspect_hr_part", "finish_lot_charge", "finish_per_part",
+    # CASTING / FORGING / WIRE-EDM physics constants (all DEFAULT, overridable)
+    "yield_loss", "pour_hr", "cool_min_per_kg",
+    "flash_loss", "heat_min_per_kg", "press_hr", "trim_hr",
+    "n_threads", "thread_min", "wire_cost_per_hr",
 }
 
 

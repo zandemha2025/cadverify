@@ -222,6 +222,9 @@ _EVAL_FAMILY = {
     PT.WIRE_EDM.value: "subtractive",
     PT.INJECTION_MOLDING.value: "injection_molding",
     PT.DIE_CASTING.value: "casting",
+    PT.SAND_CASTING.value: "casting",
+    PT.INVESTMENT_CASTING.value: "casting",
+    PT.FORGING.value: "forging",
 }
 
 

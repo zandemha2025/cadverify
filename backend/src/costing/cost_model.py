@@ -26,7 +26,8 @@ from src.analysis.models import ProcessType
 from src.costing.drivers import parts_per_build
 from src.costing.provenance import CostEstimate, Driver, Provenance
 from src.costing.rates import (
-    ADDITIVE, SUBTRACTIVE, FORMATIVE, FABRICATION, RateCard, process_family,
+    ADDITIVE, SUBTRACTIVE, FORMATIVE, FABRICATION, CASTING, FORGING_FAMILY, EDM,
+    RateCard, process_family,
 )
 
 PT = ProcessType
@@ -196,6 +197,88 @@ def _formative_cycle(process, drivers, rates: RateCard):
     return cycle_hr, src
 
 
+def _casting_cycle(process, drivers, material, rates: RateCard):
+    """Foundry pour cycle: pour/handling + solidification cool (∝ poured mass).
+
+    Poured mass = net part mass × (1 + yield_loss) (gating + risers). The mould
+    machine-cycle is the ladle pour plus the solidification/cool the part must sit
+    in the mould before knockout — cool time scales with the metal poured. Knockout
+    / fettle / clean is LABOR (post_hr_part), not machine time. Every constant is a
+    DEFAULT foundry assumption, NOT validated.
+    """
+    net_mass = drivers.mass_kg(material.density)
+    yl = rates.p(process, "yield_loss")
+    poured = net_mass * (1.0 + yl)
+    cool_min_per_kg = rates.p(process, "cool_min_per_kg")
+    pour_hr = rates.p(process, "pour_hr")
+    cool_hr = poured * cool_min_per_kg / 60.0
+    cycle = pour_hr + cool_hr
+    src = (f"pour {pour_hr:g}hr + solidify/cool {poured:.3f}kg poured "
+           f"(net {net_mass:.3f}kg × 1+{yl:g} yield) × {cool_min_per_kg:g}min/kg "
+           f"= {cool_hr * 60:.1f}min = {cycle:.4f} hr  "
+           f"[foundry assumption, not shop-validated]")
+    return cycle, src
+
+
+def _forging_cycle(process, drivers, material, rates: RateCard):
+    """Closed-die forging cycle: furnace heat (∝ billet mass) + press/hammer
+    strokes + flash-trim.
+
+    Billet mass = net part mass × (1 + flash_loss) (flash web + scale). Heat time
+    to forging temperature scales with billet mass; press and trim are per-part
+    fixed operations. NOTE: a forging is a near-net BLANK — downstream finish
+    machining is USUALLY required and is deliberately NOT bundled here (a caveat,
+    not a hidden CNC pass). Every constant is a DEFAULT assumption, NOT validated.
+    """
+    net_mass = drivers.mass_kg(material.density)
+    fl = rates.p(process, "flash_loss")
+    billet = net_mass * (1.0 + fl)
+    heat_min_per_kg = rates.p(process, "heat_min_per_kg")
+    press_hr = rates.p(process, "press_hr")
+    trim_hr = rates.p(process, "trim_hr")
+    heat_hr = billet * heat_min_per_kg / 60.0
+    cycle = heat_hr + press_hr + trim_hr
+    src = (f"heat {billet:.3f}kg billet (net {net_mass:.3f}kg × 1+{fl:g} flash/scale) "
+           f"× {heat_min_per_kg:g}min/kg = {heat_hr * 60:.1f}min + press {press_hr:g}hr "
+           f"+ trim {trim_hr:g}hr = {cycle:.4f} hr  (near-net blank — finish machining "
+           f"NOT bundled) [forge assumption, not shop-validated]")
+    return cycle, src
+
+
+def _edm_cycle(process, drivers, material_class, rates: RateCard):
+    """Wire-EDM cut-path model: swept cross-section AREA ÷ a very slow EDM cut rate,
+    plus wire-threading per contour.
+
+      swept area = cut-path length × stock thickness.
+                   PROXY: cut-path length = drivers.outline_perimeter_mm (the
+                   MEASURED 2D outline/cutout length); stock thickness = the
+                   smallest bbox extent (the plate the wire cuts through). This is
+                   an APPROXIMATION — there is no true 3D cut-perimeter driver — and
+                   is flagged as such in the source string.
+      cut time   = swept area ÷ edm_cut_rate(material) (mm²/hr — slow, material-set).
+      thread     = n_threads contours × thread_min (auto-wire-thread + re-reference).
+
+    Returns (machine_hr, swept_area_mm2, cut_hr, src). Wire consumable is costed
+    separately (∝ cut time). All constants DEFAULT, un-validated.
+    """
+    dd = sorted(drivers.bbox_mm)                 # ascending: dd[0] = stock thickness
+    thickness = max(dd[0], 0.1)
+    cut_len = max(drivers.outline_perimeter_mm, 2.0 * (dd[1] + dd[2]))  # measured outline, floored at bbox rect
+    swept_area = cut_len * thickness             # mm² of cross-section the wire erodes
+    cut_rate = rates.edm_cut_rate(material_class)     # mm²/hr (SLOW)
+    cut_hr = swept_area / cut_rate
+    n_threads = int(rates.p(process, "n_threads"))
+    thread_min = rates.p(process, "thread_min")
+    thread_hr = n_threads * thread_min / 60.0
+    cycle = cut_hr + thread_hr
+    src = (f"wire-EDM cut path {cut_len:.0f}mm × {thickness:.1f}mm stock "
+           f"= {swept_area:.0f}mm² swept ÷ {cut_rate:g}mm²/hr ({material_class}, slow) "
+           f"= {cut_hr * 60:.1f}min + thread {n_threads}×{thread_min:g}min "
+           f"= {cycle:.4f} hr  [cut-path = outline_perimeter × min-bbox-extent PROXY, "
+           f"not a true 3D cut perimeter; assumption, not shop-validated]")
+    return cycle, swept_area, cut_hr, src
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # Master cost breakdown
 # ──────────────────────────────────────────────────────────────────────────
@@ -236,6 +319,28 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         mass_src = (f"sheet blank {drivers.bbox_mm[1]:.0f}×{drivers.bbox_mm[2]:.0f}×"
                     f"{drivers.sheet_gauge_mm:g}mm = {drivers.bbox_volume_cm3:.2f} cm³ × "
                     f"{material.name} density {material.density:.2f} g/cm³ (rectangular blank)")
+    elif process in CASTING:
+        # poured metal = net part mass × (1 + yield_loss) for gating + risers
+        net_mass = drivers.mass_kg(material.density)
+        yl = rates.p(process, "yield_loss")
+        input_mass = net_mass * (1.0 + yl)
+        mass_src = (f"poured metal = net {net_mass:.4f} kg (CAD volume "
+                    f"{drivers.volume_cm3:.2f} cm³ × {material.name} density "
+                    f"{material.density:.2f} g/cm³) × (1+{yl:g} gating/riser yield) "
+                    f"[foundry assumption, not shop-validated]")
+    elif process in FORGING_FAMILY:
+        # billet from bar stock = net part mass × (1 + flash/scale loss)
+        net_mass = drivers.mass_kg(material.density)
+        fl = rates.p(process, "flash_loss")
+        input_mass = net_mass * (1.0 + fl)
+        mass_src = (f"billet from bar = net {net_mass:.4f} kg (CAD volume "
+                    f"{drivers.volume_cm3:.2f} cm³ × {material.name} density "
+                    f"{material.density:.2f} g/cm³) × (1+{fl:g} flash/scale loss) "
+                    f"[forge assumption, not shop-validated]")
+    elif process in EDM:
+        # wire-EDM cuts the part from a solid billet plate (bbox block × allowance)
+        input_mass = drivers.billet_mass_kg(material.density, rates.g("stock_allowance"))
+        mass_src = drivers.billet_source(material.density, rates.g("stock_allowance"), material.name)
     else:
         input_mass = drivers.mass_kg(material.density)
         mass_src = drivers.mass_source(material.density, material.name)
@@ -277,6 +382,16 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         n = 1
     elif family == "fabrication":
         machine_hr, cycle_src = _sheet_cycle(process, drivers, rates)
+        n = 1
+    elif family == "casting":
+        machine_hr, cycle_src = _casting_cycle(process, drivers, material, rates)
+        n = 1
+    elif family == "forging":
+        machine_hr, cycle_src = _forging_cycle(process, drivers, material, rates)
+        n = 1
+    elif family == "edm":
+        machine_hr, edm_swept_mm2, edm_cut_hr, cycle_src = _edm_cycle(
+            process, drivers, material_class, rates)
         n = 1
     else:
         machine_hr, cycle_src = _formative_cycle(process, drivers, rates)
@@ -455,6 +570,21 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                         f"[assumption, not shop-validated]"),
                 error_band_pct=40.0,
             ))
+    # ---- wire-EDM consumable: brass wire + dielectric/filter, ∝ cut time -----
+    elif family == "edm":
+        wire_per_hr = rates.p(process, "wire_cost_per_hr")
+        if wire_per_hr > 0:
+            # commodity consumable: regional material scaling + margin, no overhead burden
+            consumables_scaled = edm_cut_hr * wire_per_hr * rm * mgn
+            extra_variable += consumables_scaled
+            drivers_out.append(Driver(
+                name="consumables_cost", value=round(consumables_scaled, 4), unit="$",
+                provenance=Provenance.DEFAULT,
+                source=(f"wire-EDM consumable {edm_cut_hr:.3f} cut-hr × ${wire_per_hr:g}/hr "
+                        f"(brass wire + dielectric/filter) × region-material ×{rm:g} "
+                        f"[assumption, not shop-validated]"),
+                error_band_pct=40.0,
+            ))
 
     # ---- E-now #4b: OUTSOURCED secondary finishing (lot + per-part) -----
     # Anodize / plate / heat-treat is bought from a vendor as a lot setup + a
@@ -497,6 +627,33 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             name="tooling_cost", value=round(tooling_cost, 2), unit="$",
             provenance=rates.prov_tag(f"tooling.{process.name}"),
             source=tool_src, error_band_pct=60.0,
+        ))
+    elif family in ("casting", "forging"):
+        # ---- TOOLING (casting pattern / wax die+shell / forging die) --------
+        # Size-tier base × family multiplier × complexity. Ordering: sand pattern
+        # < investment (wax die + shell) < forging die. Amortized over qty below.
+        tooling_cost = rates.casting_forging_tooling(process, drivers.max_bbox_mm, complexity)
+        flat = rates.data.get("_tooling_flat", {}).get(process) is not None
+        if flat:
+            tool_src = "flat USER override (whole tool); ±55%, OVERRIDABLE"
+        else:
+            from src.costing.rates import family_to_size_tier
+            tier = family_to_size_tier(drivers.max_bbox_mm)
+            if process in CASTING:
+                mult = rates.data["tooling_casting_mult"][process]
+                what = "pattern/core-box" if process == PT.SAND_CASTING else "wax die + ceramic shell"
+            else:
+                mult = rates.data["tooling_forging_mult"]
+                what = "hardened closed-die set"
+            comp = rates.data["complexity_factor"][complexity]
+            tool_src = (f"{what}: size tier {tier} (max bbox {drivers.max_bbox_mm:.0f}mm) "
+                        f"× {mult:g} family-mult × {complexity} (={comp:.2f}) "
+                        f"= ${tooling_cost:,.0f}; ±55%, OVERRIDABLE "
+                        f"[assumption, not shop-validated]")
+        drivers_out.append(Driver(
+            name="tooling_cost", value=round(tooling_cost, 2), unit="$",
+            provenance=rates.prov_tag(f"tooling.{process.name}"),
+            source=tool_src, error_band_pct=55.0,
         ))
     else:
         tooling_cost = 0.0
