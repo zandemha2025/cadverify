@@ -68,6 +68,12 @@ def test_no_inventory_no_env_is_byte_identical_and_adds_no_key():
     assert base == again
     assert "verification" not in base
     assert base["decision"] is not None  # a real decision was produced
+    # env-undeclared path re-proven against the pre-fix expectation: the
+    # environment-coherence seam is a strict no-op here — NO estimate carries the
+    # exclusion flag and the decision note has NO environment clause.
+    assert all("environment_excluded" not in e for e in base["estimates"])
+    assert all("environment_exclusion_reason" not in e for e in base["estimates"])
+    assert "environment (" not in base["decision"]["note"]
 
 
 def test_report_has_no_verification_attr_leak_when_unused():
@@ -86,6 +92,10 @@ def test_estimates_byte_identical_when_no_machine_matches_a_route():
     base = report_to_dict(_report())
     with_inv = report_to_dict(_report(inventory=[sla]))
     assert with_inv["estimates"] == base["estimates"]
+    # NO environment declared → the make-vs-buy shortlist is NOT filtered, so the
+    # DECISION is byte-identical too (proves the env-coherence seam is inert when
+    # a service environment is absent, even with inventory present).
+    assert with_inv["decision"] == base["decision"]
     # the verdict block IS added, and it is an honest outsource_only (owns nothing
     # of any eligible family) — never a fabricated pass.
     assert with_inv["verification"]["verdict"] == "makeable_outsource_only"
@@ -224,6 +234,46 @@ def test_sour_env_excludes_non_nace_material_with_cited_exclusion():
     assert "NACE MR0175" in mild["human"]  # cited, not a naked drop
 
 
+def test_sour_env_makes_decision_coherent_with_the_exclusion():
+    """The adversarial defect + its fix: a declared sour environment that excludes
+    Mild Steel / Ductile Iron must ALSO steer the make-vs-buy DECISION off those
+    materials — the headline can never recommend a material the verdict excludes.
+
+      * the recommended (headline + per-qty) material is environment-VALID
+        (AISI 4130), never an excluded one;
+      * every env-excluded cost entry REMAINS in ``estimates`` but carries the
+        inline flag + the SAME cited reason the verdict shows;
+      * ``decision.note`` states the environment constraint that changed the pick.
+    Cross-checked against the no-env decision to prove the env genuinely flipped
+    it (the defect was byte-identical make/buy under sour service)."""
+    base = report_to_dict(_report(inventory=[_mill()]))
+    rep = report_to_dict(_report(inventory=[_mill()], env={"sour_service": True}))
+
+    excluded = {"Mild Steel", "Ductile Iron"}
+    dec = rep["decision"]
+    assert dec is not None
+    # headline + every per-qty recommendation lands on an env-VALID material
+    assert dec["make_now_material"] not in excluded
+    assert dec["make_now_material"] == "AISI 4130"
+    for r in dec["recommendation"].values():
+        assert r["material"] not in excluded
+    # the fix genuinely changed the pick vs the no-env decision (defect: identical)
+    assert dec["make_now_material"] != base["decision"]["make_now_material"]
+    # the note states the environment constraint that moved the outcome
+    assert "environment (sour service) excludes" in dec["note"]
+    assert "NACE-qualified" in dec["note"]
+
+    # excluded entries STAY in the cost list, each carrying the SAME cited reason
+    flagged = [e for e in rep["estimates"] if e.get("environment_excluded")]
+    assert flagged, "expected env-excluded cost entries to remain, flagged"
+    for e in flagged:
+        assert e["material"] in excluded
+        assert "NACE MR0175" in e["environment_exclusion_reason"]
+    # and the surviving (recommended) route is NOT flagged
+    surviving = [e for e in rep["estimates"] if not e.get("environment_excluded")]
+    assert all(e["material"] not in excluded for e in surviving)
+
+
 def test_over_temp_env_excludes_material_below_service_temp():
     """A 500°C service excludes materials whose real max_temperature is below it,
     citing the temperature — off the loader's top-level max_temperature field."""
@@ -352,6 +402,215 @@ async def test_pg_two_org_machine_isolation_in_verdict():
         # B's block never sees A-VF2; A's never sees B-mini
         assert "A-VF2" not in str(vb)
         assert "B-mini" not in str(va)
+    finally:
+        await _cleanup([org_a, org_b], uids)
+        await eng.dispose_engine()
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# LIVE POSTGRES — ROUTE-LEVEL (drives the real resolve_org(user_id) server path)
+#   The two-org test above drives the loader directly; these POST to the real
+#   /validate/cost route so the server resolves the org from the caller's
+#   membership (resolve_org) and threads the machine + declared environment in
+#   exactly as production does.
+# ═════════════════════════════════════════════════════════════════════════════
+def _build_app():
+    from fastapi import FastAPI
+
+    from src.api.routes import router as api_router
+    from src.auth.rate_limit import limiter
+
+    app = FastAPI()
+    app.state.limiter = limiter
+    app.include_router(api_router, prefix="/api/v1")
+    return app
+
+
+def _act_as(app, user_id: int, session_factory) -> None:
+    """Bind the analyst-role auth + DB-session deps to a REAL user/session, so the
+    route resolves the org from THIS user's membership (resolve_org(user_id))."""
+    from src.auth.require_api_key import AuthedUser, require_api_key
+    from src.db.engine import get_db_session
+
+    app.dependency_overrides[require_api_key] = lambda: AuthedUser(
+        user_id=user_id, api_key_id=0, key_prefix="session", role="analyst"
+    )
+
+    async def _session():
+        async with session_factory() as s:
+            yield s
+
+    app.dependency_overrides[get_db_session] = _session
+
+
+def _block_stl_bytes() -> bytes:
+    import io
+
+    buf = io.BytesIO()
+    _bulky_block().export(buf, file_type="stl")
+    return buf.getvalue()
+
+
+def _cnc5(name: str, x=1200, y=800, z=800) -> dict:
+    """A cnc_5axis machine payload qualified for the env-VALID AISI 4130. Default
+    envelope FITS the 40×30×25 block; shrink x/y/z to force a not-on-owned gap."""
+    return {
+        "name": name, "process": "cnc_5axis", "count": 1,
+        "max_workpiece_kg": 200, "hourly_rate_usd": 120, "capital_frac": 0.4,
+        "capabilities": {"x": x, "y": y, "z": z, "axes": 5,
+                         "motion_mode": "simultaneous_5", "achievable_it_grade": 6},
+        "materials": ["steel", "AISI 4130"],
+    }
+
+
+async def _seed_env_context(sf, org_id, mesh_hash, uid, env) -> None:
+    from src.services.part_context_service import upsert_context
+
+    async with sf() as s:
+        await upsert_context(s, org_id, mesh_hash,
+                             {"service_environment": env}, created_by=uid)
+        await s.commit()
+
+
+@_requires_pg
+@pytest.mark.asyncio
+async def test_pg_route_machine_plus_sour_env_is_coherent(monkeypatch):
+    """Route-level: an org with a DECLARED cnc_5axis machine AND a DECLARED sour
+    environment POSTs to /validate/cost. The server resolves the org from the user
+    (resolve_org), loads the machine + part context, and the RESPONSE is coherent:
+    a real verdict, the excluded materials cited, and the DECISION recommends the
+    environment-VALID AISI 4130 (never the excluded Mild Steel) with the excluded
+    cost entries carrying the inline flag + the same cited reason."""
+    from httpx import ASGITransport, AsyncClient
+    from ulid import ULID
+
+    import src.db.engine as eng
+    from src.services import machine_inventory_service as svc
+    from src.services.analysis_service import compute_mesh_hash
+
+    monkeypatch.setenv("COST_PERSIST_ENABLED", "false")  # keep the test IP-local
+
+    org = str(ULID())
+    uids: list[int] = []
+    sf = eng.get_session_factory()
+    box = _block_stl_bytes()
+    mesh_hash = compute_mesh_hash(box)
+    try:
+        async with sf() as s:
+            uid = await _seed_org_user(s, org, "A")
+            uids.append(uid)
+            await svc.create_machine(s, org, _cnc5("A-5X"), created_by=uid)
+            await s.commit()
+        await _seed_env_context(sf, org, mesh_hash, uid, {"sour_service": True})
+
+        app = _build_app()
+        _act_as(app, uid, sf)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://t") as c:
+            r = await c.post(
+                "/api/v1/validate/cost",
+                files={"file": ("block.stl", box, "application/octet-stream")},
+                data={"qty": "10,1000", "material_class": "steel", "region": "US"},
+            )
+        assert r.status_code == 200, r.text
+        body = r.json()
+
+        v = body["verification"]
+        assert v["environment_declared"] is True
+        assert v["inventory_declared"] is True
+        # the env-valid AISI 4130 fits the owned 5-axis → a real, positive verdict
+        assert v["verdict"] == "makeable_in_house"
+        assert v["best_machine"] == "A-5X"
+        excl_axes = {e["axis"] for e in v["env_exclusions"]}
+        assert "Mild Steel" in excl_axes
+        mild = [e for e in v["env_exclusions"] if e["axis"] == "Mild Steel"][0]
+        assert "NACE MR0175" in mild["human"]
+
+        # DECISION coherence — recommended material is environment-VALID
+        dec = body["decision"]
+        assert dec is not None
+        assert dec["make_now_material"] == "AISI 4130"
+        for rec in dec["recommendation"].values():
+            assert rec["material"] not in {"Mild Steel", "Ductile Iron"}
+        assert "environment (sour service) excludes" in dec["note"]
+
+        # excluded cost entries REMAIN, each flagged with the SAME cited reason
+        flagged = [e for e in body["estimates"] if e.get("environment_excluded")]
+        assert flagged, "expected env-excluded cost entries to remain, flagged"
+        for e in flagged:
+            assert e["material"] in {"Mild Steel", "Ductile Iron"}
+            assert "NACE MR0175" in e["environment_exclusion_reason"]
+    finally:
+        await _cleanup([org], uids)
+        await eng.dispose_engine()
+
+
+@_requires_pg
+@pytest.mark.asyncio
+async def test_pg_route_two_org_resolve_org_isolation(monkeypatch):
+    """Route-level two-org isolation LOCKING the resolve_org(user_id) server path
+    (the loader-level two-org test drives load_org_inventory directly). The SAME
+    part POSTed by user A vs user B resolves to A's vs B's org: A owns a 5-axis
+    that FITS (→ makeable_in_house on A-5X), B owns one too SMALL (→
+    makeable_not_on_owned). A-5X never leaks into B's response, nor B-5X into A's.
+    Both orgs declared sour service, so BOTH decisions recommend the env-valid
+    AISI 4130 — never the excluded Mild Steel."""
+    from httpx import ASGITransport, AsyncClient
+    from ulid import ULID
+
+    import src.db.engine as eng
+    from src.services import machine_inventory_service as svc
+    from src.services.analysis_service import compute_mesh_hash
+
+    monkeypatch.setenv("COST_PERSIST_ENABLED", "false")
+
+    org_a, org_b = str(ULID()), str(ULID())
+    uids: list[int] = []
+    sf = eng.get_session_factory()
+    box = _block_stl_bytes()
+    mesh_hash = compute_mesh_hash(box)
+    try:
+        async with sf() as s:
+            ua = await _seed_org_user(s, org_a, "A")
+            ub = await _seed_org_user(s, org_b, "B")
+            uids += [ua, ub]
+            await svc.create_machine(s, org_a, _cnc5("A-5X"), created_by=ua)  # fits
+            await svc.create_machine(
+                s, org_b, _cnc5("B-5X", x=20, y=20, z=20), created_by=ub)  # too small
+            await s.commit()
+        await _seed_env_context(sf, org_a, mesh_hash, ua, {"sour_service": True})
+        await _seed_env_context(sf, org_b, mesh_hash, ub, {"sour_service": True})
+
+        app = _build_app()
+        transport = ASGITransport(app=app)
+
+        async def _post(uid):
+            _act_as(app, uid, sf)
+            async with AsyncClient(transport=transport, base_url="http://t") as c:
+                r = await c.post(
+                    "/api/v1/validate/cost",
+                    files={"file": ("block.stl", box, "application/octet-stream")},
+                    data={"qty": "10,1000", "material_class": "steel", "region": "US"},
+                )
+            assert r.status_code == 200, r.text
+            return r.json()
+
+        body_a = await _post(ua)
+        body_b = await _post(ub)
+
+        va, vb = body_a["verification"], body_b["verification"]
+        assert va["verdict"] == "makeable_in_house"
+        assert va["best_machine"] == "A-5X"
+        assert vb["verdict"] == "makeable_not_on_owned"
+        # resolve_org isolation: neither org's machine leaks into the other response
+        assert "A-5X" not in str(body_b)
+        assert "B-5X" not in str(body_a)
+        # both remain env-coherent: recommend the env-VALID AISI 4130, cite Mild Steel
+        for body in (body_a, body_b):
+            dec = body["decision"]
+            assert dec is not None and dec["make_now_material"] == "AISI 4130"
+            excl = {e["axis"] for e in body["verification"]["env_exclusions"]}
+            assert "Mild Steel" in excl
     finally:
         await _cleanup([org_a, org_b], uids)
         await eng.dispose_engine()

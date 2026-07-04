@@ -117,7 +117,7 @@ def _caveat(est) -> str:
 
 
 def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
-                unit_cost_fn=None) -> Optional[Decision]:
+                unit_cost_fn=None, excluded_pv=None, env_note=None) -> Optional[Decision]:
     """estimates_by_pq: {(process_value, qty): CostEstimate} for every eligible
     (process, qty). Decision ranks by REAL per-qty unit cost (not a fixed/var
     reconstruction), so the headline make process and the low-qty recommendation
@@ -128,24 +128,39 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
     computed NUMERICALLY from the actual per-qty cost curves — the honest method
     once machining variable cost falls with volume (S1). Falls back to the
     closed-form ``crossover`` (single-qty fixed/var split) when absent.
+
+    excluded_pv (optional): the set of process_values whose (process, material)
+    pair the DECLARED service-environment gate ruled out (spec §6). Those routes
+    are DROPPED from the shortlist the crossover / recommendation / if-redesigned
+    tiers range over, so the headline can never recommend an environment-invalid
+    material while the verdict cites its exclusion. EMPTY / None (the default, and
+    every no-environment path) => nothing is dropped and the whole decision — the
+    ranking AND the note — is byte-identical to pre-gate behaviour.
+    env_note (optional): a pre-built human clause naming the environment
+    constraint; appended to ``note`` ONLY when the exclusion actually changed the
+    make-as-is headline (see below).
     """
     if not estimates_by_pq:
         return None
 
     quantities = list(quantities)
     q_lo, q_hi = min(quantities), max(quantities)
-    proc_values = sorted({pv for (pv, _q) in estimates_by_pq})
+    excluded_pv = set(excluded_pv or ())
+    all_pv = sorted({pv for (pv, _q) in estimates_by_pq})
+    proc_values = [pv for pv in all_pv if pv not in excluded_pv]
 
     def est_at(pv, q):
         return estimates_by_pq[(pv, q)]
 
-    def make_ready_ranked(q):
-        cands = [est_at(pv, q) for pv in proc_values
+    def make_ready_ranked(q, pvs=None):
+        pvs = proc_values if pvs is None else pvs
+        cands = [est_at(pv, q) for pv in pvs
                  if _family(pv) in MAKE_NOW_FAMILIES and est_at(pv, q).dfm_ready]
         return sorted(cands, key=lambda e: e.unit_cost_usd)
 
-    def make_any_ranked(q):  # fallback if no DFM-ready make process exists
-        cands = [est_at(pv, q) for pv in proc_values if _family(pv) in MAKE_NOW_FAMILIES]
+    def make_any_ranked(q, pvs=None):  # fallback if no DFM-ready make process exists
+        pvs = proc_values if pvs is None else pvs
+        cands = [est_at(pv, q) for pv in pvs if _family(pv) in MAKE_NOW_FAMILIES]
         return sorted(cands, key=lambda e: e.unit_cost_usd)
 
     def tool_ranked(q):
@@ -154,6 +169,10 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
 
     ready_lo = make_ready_ranked(q_lo) or make_any_ranked(q_lo)
     if not ready_lo:
+        # Every make-as-is candidate was environment-excluded (or none existed):
+        # honestly ABSENT — no recommendation is fabricated from an excluded pair.
+        # Aligns with the absent-decision shape (report_to_dict serializes None,
+        # exactly as it does for GEOMETRY_INVALID / no-estimates).
         return None
     make_now = ready_lo[0]
 
@@ -205,6 +224,16 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
     note = _build_note(make_now, tool_champion, q_star, q_lo, q_hi,
                        round(make_now.unit_cost_usd, 2),
                        round(tool_champion.unit_cost_usd, 2) if tool_champion else None)
+
+    # State the environment constraint in the note ONLY when it CHANGED the
+    # make-as-is headline: the cheapest make candidate over the FULL (unfiltered)
+    # shortlist was environment-excluded, so the surviving pick differs. No
+    # exclusion / unchanged headline => the note is byte-identical.
+    if excluded_pv and env_note:
+        full_ready_lo = (make_ready_ranked(q_lo, pvs=all_pv)
+                         or make_any_ranked(q_lo, pvs=all_pv))
+        if full_ready_lo and full_ready_lo[0].process != make_now.process:
+            note = note + " " + env_note
 
     return Decision(
         make_now_process=make_now.process,

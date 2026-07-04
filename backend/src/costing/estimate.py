@@ -283,8 +283,9 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
     # whole report is byte-identical to pre-Phase-C.
     verification = None
     machine_override_by_pv: dict = {}
+    env_excluded: dict = {}
     if options.inventory or options.service_environment:
-        verification, machine_override_by_pv = _build_verification(
+        verification, machine_override_by_pv, env_excluded = _build_verification(
             elig, drivers, options)
 
     estimates_serialized = []
@@ -315,6 +316,19 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
                 _serialize(est, lt, drivers, options.residual_model, options.ci_level,
                            options.calibration))
 
+    # ── env-excluded cost entries stay in the list, but carry an inline flag +
+    # the SAME cited reason the verdict shows (Phase C coherence fix) so the cost
+    # list and the make-vs-buy verdict can never be read incoherently. Only ever
+    # populated when a service environment is declared; empty otherwise => no key
+    # added => byte-identical.
+    reason_by_pv = env_excluded.get("reason_by_pv") or {}
+    if reason_by_pv:
+        for e in estimates_serialized:
+            reason = reason_by_pv.get(e["process"])
+            if reason is not None:
+                e["environment_excluded"] = True
+                e["environment_exclusion_reason"] = reason
+
     # Real cost evaluator at ARBITRARY qty — powers the NUMERICAL make-vs-buy
     # crossover (S1: honest crossover once machining variable cost falls with
     # volume, so the single-qty fixed/var closed form is no longer exact).
@@ -333,7 +347,9 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
         return est.unit_cost_usd
 
     decision = make_vs_buy(estimates_by_pq, options.quantities, leadtimes_by_key,
-                           unit_cost_fn=_unit_cost_fn)
+                           unit_cost_fn=_unit_cost_fn,
+                           excluded_pv=env_excluded.get("excluded_pv"),
+                           env_note=env_excluded.get("note"))
 
     notes = []
     if shop is not None:
@@ -375,6 +391,14 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
         "Absolute cost is ±40–60% (cycle-time/tooling defaults). The crossover "
         "quantity and make-vs-buy direction are robust to it because they depend "
         "on the fixed-vs-variable split, driven by your rates.")
+    # If the environment excluded EVERY make-as-is pair, the decision is honestly
+    # ABSENT (None) — surface WHY at the report level so the (None) verdict and
+    # the cost list (whose surviving entries carry the exclusion flag) can never
+    # be read as a silent omission.
+    if decision is None and env_excluded.get("note"):
+        notes.append(
+            "Decision: no environment-valid make-as-is option — "
+            + env_excluded["note"] + ".")
 
     return DecisionReport(
         filename=result.filename,
@@ -473,12 +497,44 @@ def _ff_to_dict(f) -> dict:
             "have": _jsonable(f.have), "human": f.human}
 
 
+def _env_label(env) -> str:
+    """A short human label for the declared environment (for the decision note)."""
+    if not env:
+        return "declared environment"
+    bits = []
+    if env.get("sour_service") or env.get("sour"):
+        bits.append("sour service")
+    if env.get("corrosive"):
+        bits.append("corrosive service")
+    mt = env.get("max_temp_c")
+    if isinstance(mt, (int, float)) and not isinstance(mt, bool):
+        bits.append(f"{mt:g}C service")
+    return ", ".join(bits) if bits else "declared environment"
+
+
+def _env_decision_note(env, excluded_materials, excluded_routes=()) -> str:
+    """The decision-note clause stating WHY the make-vs-buy shortlist shrank —
+    e.g. 'environment (sour service) excludes Mild Steel; decision computed over
+    NACE-qualified materials'."""
+    parts = list(excluded_materials) + [f"route {r}" for r in excluded_routes]
+    excl = ", ".join(parts) if parts else "some options"
+    sour = bool(env and (env.get("sour_service") or env.get("sour")))
+    over = "NACE-qualified materials" if sour else "the environment-valid materials"
+    return (f"environment ({_env_label(env)}) excludes {excl}; "
+            f"decision computed over {over}")
+
+
 def _build_verification(elig, drivers, options):
     """Compute the §0 makeability verdict + per-process marginal-rate overrides.
 
-    Returns ``(verification_dict, machine_override_by_pv)``. Called ONLY when the
-    org declared machines or a service environment (the caller guards the no-op).
-    The environment gate + machine fit are the PURE ``makeability`` engine; the
+    Returns ``(verification_dict, machine_override_by_pv, env_excluded)`` where
+    ``env_excluded`` carries the DECLARED-environment gate's dropped (process,
+    material) pairs: ``reason_by_pv`` (route -> the CITED exclusion reason, for the
+    inline estimate flag), ``excluded_pv`` (the set the decision drops from its
+    shortlist), and ``note`` (the decision-note clause, or None). Empty when no
+    environment is declared => byte-identical. Called ONLY when the org declared
+    machines or a service environment (the caller guards the no-op). The
+    environment gate + machine fit are the PURE ``makeability`` engine; the
     machine override for a PASSING owned machine (its OWN declared rate) is read
     straight from ``verify_part``'s per-route resource hint, so the cost seam and
     the verdict can never disagree.
@@ -549,8 +605,33 @@ def _build_verification(elig, drivers, options):
                 "provenance": Provenance.SHOP,
             }
 
+    # ── env-excluded (process, material) pairs → decision shortlist + estimate
+    # flags. ONLY populated when a service environment is declared (env falsy =>
+    # the gate returns empty exclusion sets => everything below stays empty =>
+    # byte-identical). Each affected route carries the SAME cited FitFailure.human
+    # the verdict shows, so the cost list and the verdict cannot disagree.
+    reason_by_axis = {f.axis: f.human for f in env_exclusions}
+    excluded_materials = _gate.get("excluded_materials") or set()
+    excluded_routes = _gate.get("excluded_routes") or set()
+    reason_by_pv: dict = {}
+    for pv, preq in part_req_by_route.items():
+        mat = preq.material_name
+        if mat and mat in excluded_materials:
+            reason_by_pv[pv] = reason_by_axis.get(
+                mat, f"{mat} excluded by declared service environment")
+        elif pv in excluded_routes:
+            reason_by_pv[pv] = reason_by_axis.get(
+                pv, f"route {pv} excluded by declared service environment")
+    env_excluded = {
+        "reason_by_pv": reason_by_pv,
+        "excluded_pv": set(reason_by_pv.keys()),
+        "note": (_env_decision_note(env, sorted(excluded_materials),
+                                    sorted(excluded_routes))
+                 if reason_by_pv else None),
+    }
+
     verification = _serialize_verification(verdict, options, env_exclusions)
-    return verification, machine_override_by_pv
+    return verification, machine_override_by_pv, env_excluded
 
 
 def _serialize_verification(verdict, options, env_exclusions=()) -> dict:

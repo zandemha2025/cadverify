@@ -651,7 +651,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             name="machine_region_split", value=round(rl_machine, 4), unit="×",
             provenance=Provenance.DEFAULT,
             source=(f"machine region multiplier ×{rl_machine:g}: only the labor share "
-                    f"{rates.g('machine_labor_frac'):g} of the ${rates.p(process,'machine_rate'):g}/hr "
+                    f"{rates.g('machine_labor_frac'):g} of the ${machine_rate_shown:g}/hr "
                     f"rate scales ×{rl:g}; capital/facility/energy stays global ×1 "
                     f"(fixes the whole-rate offshore over-discount) "
                     f"[assumption, not shop-validated]"),
