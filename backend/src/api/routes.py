@@ -787,14 +787,40 @@ async def _run_cost_decision(
             if base_table is not None:
                 options.base_rate_table = base_table
 
+    # ---- OPT-IN assumption-ensemble uncertainty band (Moat P1) -------------
+    # Behind COST_ENSEMBLE_ENABLED (default OFF). When on, we ALSO run the same
+    # estimator under K deterministic rate-card perturbations and attach the
+    # HONEST spread as a NEW top-level `uncertainty` key. When off we never
+    # construct it and never add the key -> the response is BYTE-IDENTICAL.
+    # It reuses the SAME estimate inputs and runs inside the SAME off-loop
+    # executor as the point estimate, so the (opt-in) latency never blocks the
+    # event loop. It rides the RESPONSE only; the persisted result_json and the
+    # dedup params_hash are untouched (the band is derived, not an input).
+    from src.costing.ensemble import ensemble_enabled, ensemble_estimate
+
+    # Gated on an authenticated caller too: the public demo route (no user) is
+    # IP-local + ephemeral by contract and stays byte-identical regardless of
+    # the flag — the band is an authed-product feature.
+    run_ensemble = ensemble_enabled() and user is not None
+
     def _run():
         result, m, features = _run_cost_engine(mesh, file.filename or "unknown")
-        return estimate_decision(result, m, features, options)
+        rep = estimate_decision(result, m, features, options)
+        unc = None
+        if run_ensemble and rep.status != "GEOMETRY_INVALID":
+            # Reuse the org's W5 residual_model when one was bound above; else
+            # None -> the honest pre-data assumption spread (validated=False).
+            ens = ensemble_estimate(
+                result, m, features, options,
+                residual_model=getattr(options, "residual_model", None),
+            )
+            unc = ens.to_dict()
+        return rep, unc
 
     timeout = _analysis_timeout_sec()
     loop = asyncio.get_event_loop()
     try:
-        report = await asyncio.wait_for(
+        report, uncertainty = await asyncio.wait_for(
             loop.run_in_executor(None, _run), timeout=timeout
         )
     except asyncio.TimeoutError:
@@ -903,6 +929,16 @@ async def _run_cost_decision(
                 await record_persist_failure(
                     session, user, mesh_hash=mesh_hash, error=exc
                 )
+
+    # RESPONSE-ONLY: attach the ensemble band (when the flag produced one) after
+    # persistence so the stored result_json stays byte-identical to the flag-off
+    # path. The block carries the ensemble's own honest labels verbatim
+    # (method/validated/label/disagreement_cov); `validated` is measured ONLY
+    # when a real residual_model produced measured bands. When the flag is off
+    # `uncertainty` is None and the key is never added.
+    if uncertainty is not None:
+        result_dict = dict(result_dict)
+        result_dict["uncertainty"] = uncertainty
 
     return result_dict
 
