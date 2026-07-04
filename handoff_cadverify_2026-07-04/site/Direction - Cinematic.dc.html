@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+  <style>
+    html, body { margin: 0; padding: 0; background: #050506; }
+    * { box-sizing: border-box; }
+    ::selection { background: rgba(255,255,255,0.2); }
+    @keyframes heroIn { from { opacity: 0; transform: translateY(24px); filter: blur(10px); } to { opacity: 1; transform: translateY(0); filter: blur(0); } }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes scrollHint { 0%, 100% { transform: translateY(0); opacity: 0.5; } 50% { transform: translateY(8px); opacity: 1; } }
+    input[type="range"].cvdial { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 999px; background: rgba(245,245,247,0.14); outline: none; margin: 0; }
+    input[type="range"].cvdial::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; border-radius: 50%; background: #f5f5f7; border: none; cursor: grab; box-shadow: 0 2px 12px rgba(0,0,0,0.6); transition: transform 150ms; }
+    input[type="range"].cvdial::-webkit-slider-thumb:hover { transform: scale(1.12); }
+    input[type="range"].cvdial::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: #f5f5f7; border: none; cursor: grab; }
+  </style>
+</helmet>
+
+<div style="background: #050506; color: #f5f5f7; font-family: 'Helvetica Neue', -apple-system, BlinkMacSystemFont, system-ui, sans-serif; -webkit-font-smoothing: antialiased;">
+
+  <!-- fixed WebGL stage -->
+  <div ref="{{ stageRef }}" style="position: fixed; inset: 0; z-index: 0;"></div>
+
+  <!-- fixed vignette + grain atmosphere -->
+  <div aria-hidden="true" style="position: fixed; inset: 0; z-index: 1; pointer-events: none; background: radial-gradient(120% 90% at 50% 45%, transparent 40%, rgba(0,0,0,0.55) 100%);"></div>
+
+  <!-- metrology HUD labels (projected from 3D each frame) -->
+  <div aria-hidden="true" style="position: fixed; inset: 0; z-index: 2; pointer-events: none; overflow: hidden;">
+    <span ref="{{ hud1 }}" style="position: absolute; left: 0; top: 0; opacity: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.08em; color: #9fc3e4; white-space: nowrap; text-shadow: 0 1px 8px rgba(0,0,0,0.8);">Ø 21.16 mm</span>
+    <span ref="{{ hud2 }}" style="position: absolute; left: 0; top: 0; opacity: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.08em; color: #9fc3e4; white-space: nowrap; text-shadow: 0 1px 8px rgba(0,0,0,0.8);">21.43 mm · watertight ✓</span>
+  </div>
+
+  <!-- act progress rail -->
+  <nav aria-label="Story progress" style="position: fixed; right: 30px; top: 50%; transform: translateY(-50%); z-index: 25; display: flex; flex-direction: column; align-items: flex-end; gap: 16px;">
+    <sc-for list="{{ railStops }}" as="stop" hint-placeholder-count="6">
+      <button type="button" onClick="{{ stop.jump }}" style="display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 0; cursor: pointer; font-family: ui-monospace, 'SF Mono', monospace;">
+        <span ref="{{ stop.labelRef }}" style="font-size: 10px; letter-spacing: 0.14em; color: rgba(245,245,247,0.5); opacity: 0; transition: opacity 250ms;">{{ stop.label }}</span>
+        <span ref="{{ stop.dotRef }}" style="display: block; width: 6px; height: 6px; border-radius: 50%; background: rgba(245,245,247,0.25); transition: all 250ms;"></span>
+      </button>
+    </sc-for>
+  </nav>
+
+  <!-- persistent conversion pill (appears mid-story, hides at close) -->
+  <div ref="{{ ctaBar }}" style="position: fixed; bottom: 26px; right: 26px; z-index: 30; opacity: 0; pointer-events: none; transition: opacity 500ms, transform 500ms; transform: translateY(10px);">
+    <a href="Company.dc.html#pilot" style="display: inline-flex; align-items: center; gap: 10px; background: #f5f5f7; color: #050506; border-radius: 999px; padding: 12px 22px; font-size: 13.5px; font-weight: 500; text-decoration: none; box-shadow: 0 12px 40px rgba(0,0,0,0.6);">See it on your part <span aria-hidden="true">→</span></a>
+  </div>
+
+  <!-- fixed nav -->
+  <header data-screen-label="Nav" style="position: fixed; top: 0; left: 0; right: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; padding: 26px 48px; animation: fadeIn 1.2s ease-out 0.4s both;">
+    <span style="font-size: 17px; font-weight: 500; letter-spacing: 0.06em;">CadVerify</span>
+    <nav style="display: flex; align-items: center; gap: 36px; font-size: 13.5px; color: rgba(245,245,247,0.7);">
+      <a href="Method.dc.html" style="color: inherit; text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Method</a>
+      <a href="Platform.dc.html" style="color: inherit; text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Platform</a>
+      <a href="Teams.dc.html" style="color: inherit; text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Teams</a>
+      <a href="Security.dc.html" style="color: inherit; text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Security</a>
+      <a href="Developers.dc.html" style="color: inherit; text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Developers</a>
+      <a href="Company.dc.html" style="color: inherit; text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Company</a>
+      <a href="Company.dc.html#pilot" style="border: 1px solid rgba(245,245,247,0.35); border-radius: 999px; padding: 8px 20px; color: #f5f5f7; text-decoration: none; transition: all 200ms;" style-hover="background: #f5f5f7; color: #050506;">Request a pilot</a>
+    </nav>
+  </header>
+
+  <!-- ═══ ACT 1 · the part ═══ -->
+  <section data-screen-label="Act 1 — Hero" style="position: relative; z-index: 10; height: 100vh; display: flex; flex-direction: column; justify-content: flex-end; padding: 0 48px 9vh;">
+    <div ref="{{ cap0 }}" style="max-width: 720px;">
+      <p style="margin: 0; font-size: 14px; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(245,245,247,0.5); animation: heroIn 1.4s cubic-bezier(0.16,1,0.3,1) 0.6s both;">Makeability verification</p>
+      <h1 style="margin: 22px 0 0; font-size: clamp(52px, 6.5vw, 92px); line-height: 1.02; font-weight: 300; letter-spacing: -0.03em; animation: heroIn 1.4s cubic-bezier(0.16,1,0.3,1) 0.85s both;">Every part arrives<br>with a question.</h1>
+      <p style="margin: 26px 0 0; max-width: 560px; font-size: 19px; line-height: 1.55; font-weight: 300; color: rgba(245,245,247,0.65); animation: heroIn 1.4s cubic-bezier(0.16,1,0.3,1) 1.1s both;">Can it be made — on your machines, in materials that survive its world — and what will it really take?</p>
+    </div>
+    <div aria-hidden="true" style="position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%); animation: scrollHint 2.2s ease-in-out infinite;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(245,245,247,0.7)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+    </div>
+  </section>
+
+  <!-- ═══ ACT 2 · it reads the shape ═══ -->
+  <section ref="{{ sec1 }}" data-screen-label="Act 2 — Routed" style="position: relative; z-index: 10; height: 140vh;">
+    <div style="position: sticky; top: 0; height: 100vh; display: flex; align-items: center; padding: 0 48px;">
+      <div ref="{{ cap1 }}" style="max-width: 460px; opacity: 0;">
+        <p style="margin: 0; font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(245,245,247,0.45);">01 — Routed by geometry</p>
+        <h2 style="margin: 18px 0 0; font-size: clamp(36px, 3.6vw, 54px); line-height: 1.08; font-weight: 300; letter-spacing: -0.025em;">It reads the shape,<br>and chooses the machine.</h2>
+        <p style="margin: 20px 0 0; font-size: 17px; line-height: 1.6; font-weight: 300; color: rgba(245,245,247,0.6);">Axisymmetric. Ø21 mm. Turnable. Before a single dollar is computed, the engine routes the part the way a manufacturing engineer would — and says its reasoning out loud.</p>
+        <p style="margin: 22px 0 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12.5px; line-height: 1.7; color: rgba(245,245,247,0.4);">rotational → cnc_turning · confidence 0.80<br>envelope — fits 6 of 6 machines you'd declare · size is not the constraint</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ ACT 3 · it opens ═══ -->
+  <section ref="{{ sec2 }}" data-screen-label="Act 3 — Glass box" style="position: relative; z-index: 10; height: 160vh;">
+    <div style="position: sticky; top: 0; height: 100vh; display: flex; align-items: center; justify-content: flex-end; padding: 0 48px;">
+      <div ref="{{ cap2 }}" style="max-width: 460px; text-align: left; opacity: 0;">
+        <p style="margin: 0; font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(245,245,247,0.45);">02 — The glass box</p>
+        <h2 style="margin: 18px 0 0; font-size: clamp(36px, 3.6vw, 54px); line-height: 1.08; font-weight: 300; letter-spacing: -0.025em;">Then it opens.</h2>
+        <p style="margin: 20px 0 0; font-size: 17px; line-height: 1.6; font-weight: 300; color: rgba(245,245,247,0.6);">No sealed total. Five drivers — material, machine, labor, setup, nesting — each measured off the geometry or bound to your shop's real rates, each carrying its source.</p>
+        <div style="margin-top: 26px; display: flex; flex-direction: column; gap: 9px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 13px; color: rgba(245,245,247,0.55);">
+          <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(245,245,247,0.12); padding-bottom: 8px;"><span>material</span><span style="color: #f5f5f7;">$0.04</span></div>
+          <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(245,245,247,0.12); padding-bottom: 8px;"><span>machine</span><span style="color: #f5f5f7;">$3.82</span></div>
+          <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(245,245,247,0.12); padding-bottom: 8px;"><span>labor</span><span style="color: #f5f5f7;">$6.39</span></div>
+          <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(245,245,247,0.12); padding-bottom: 8px;"><span>setup</span><span style="color: #f5f5f7;">$3.89</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ ACT 3.5 · it takes its place ═══ -->
+  <section ref="{{ sec2b }}" data-screen-label="Act 3.5 — Assembly" style="position: relative; z-index: 10; height: 170vh;">
+    <div style="position: sticky; top: 0; height: 100vh; display: flex; align-items: flex-end; padding: 0 48px 10vh;">
+      <div ref="{{ cap2b }}" style="max-width: 520px; opacity: 0;">
+        <p style="margin: 0; font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(245,245,247,0.45);">03 — Context, earned</p>
+        <h2 style="margin: 18px 0 0; font-size: clamp(36px, 3.6vw, 54px); line-height: 1.08; font-weight: 300; letter-spacing: -0.025em;">Then it takes its place.</h2>
+        <p style="margin: 20px 0 0; font-size: 17px; line-height: 1.6; font-weight: 300; color: rgba(245,245,247,0.6);">A part never lives alone. When your assembly data is present, the shaft seats into its gearbox — and one unit cost becomes a program number.</p>
+        <div style="margin-top: 22px; display: flex; align-items: center; gap: 14px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12.5px;">
+          <span style="color: rgba(245,245,247,0.4);">program → assembly → part</span>
+          <span style="color: rgba(245,245,247,0.85); border: 1px solid rgba(245,245,247,0.25); border-radius: 5px; padding: 4px 10px;">exposure = unit cost × your program volume</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ ACT 4 · the number ═══ -->
+  <section ref="{{ sec3 }}" data-screen-label="Act 4 — The number" style="position: relative; z-index: 10; height: 160vh;">
+    <div style="position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
+      <div ref="{{ cap3 }}" style="opacity: 0;">
+        <p style="margin: 0; font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(245,245,247,0.45);">04 — What it really takes</p>
+        <p ref="{{ numRef }}" style="margin: 18px 0 0; font-size: clamp(110px, 15vw, 220px); line-height: 0.95; font-weight: 200; letter-spacing: -0.045em; font-variant-numeric: tabular-nums;">$14.14</p>
+        <p style="margin: 22px 0 0; font-size: 17px; font-weight: 300; color: rgba(245,245,247,0.6);">per unit · MJF (PP) · quantity 10 — the resource cost, one artifact inside the verdict</p>
+        <p style="margin: 10px 0 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11.5px; color: rgba(245,245,247,0.35);">captured cost-truth-engine output · object.stl · Midwest Precision CNC calibration — the same part on every page of this site</p>
+        <p style="margin: 14px 0 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12.5px; color: rgba(245,245,247,0.4);">$8.49 ······ ±40%, assumption-based, not yet validated ······ $19.80</p>
+        <p style="margin: 30px 0 0; max-width: 520px; font-size: 16px; line-height: 1.6; font-weight: 300; color: rgba(245,245,247,0.55);">And the decision behind it: make by MJF below 1,962 units.<br>Tool up beyond — stated honestly as "if redesigned."</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ ACT 4.2 · the proof — a live instrument, not a claim ═══ -->
+  <section ref="{{ secDial }}" data-screen-label="Live crossover dial" style="position: relative; z-index: 10; background: linear-gradient(180deg, rgba(5,5,6,0) 0%, rgba(7,7,9,0.9) 15%, rgba(7,7,9,0.9) 85%, rgba(5,5,6,0) 100%); padding: 16vh 48px;">
+    <div style="max-width: 760px; margin: 0 auto;">
+      <p style="margin: 0; font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(245,245,247,0.45); text-align: center;">Don't trust the copy — drag this</p>
+      <h2 style="margin: 18px 0 0; text-align: center; font-size: clamp(30px, 3.4vw, 46px); line-height: 1.08; font-weight: 300; letter-spacing: -0.026em;">The decision, live.<br>Fitted from the engine's costed quantities.</h2>
+      <div style="margin-top: 44px; border: 1px solid rgba(245,245,247,0.12); border-radius: 16px; background: #0b0c0f; padding: 30px 34px;">
+        <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px;">
+          <p style="margin: 0; font-size: 22px; font-weight: 300; letter-spacing: -0.015em;">{{ dialVerdict }}</p>
+          <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 13px; color: rgba(245,245,247,0.55);">{{ dialUnit }} <span style="color: rgba(245,245,247,0.35);">/unit</span></p>
+        </div>
+        <sc-if value="{{ dialAbove }}" hint-placeholder-val="{{ false }}">
+          <p style="margin: 8px 0 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11.5px; color: #d9a856;">conditional — the part fails draft today · "if redesigned," never a current quote</p>
+        </sc-if>
+        <div style="margin-top: 26px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11.5px; color: rgba(245,245,247,0.45);">
+            <span>QUANTITY</span><span style="color: #f5f5f7;">{{ dialQtyFmt }} units</span>
+          </div>
+          <input class="cvdial" type="range" min="0" max="1000" step="1" value="{{ dialPos }}" onInput="{{ onDial }}" onChange="{{ onDial }}" aria-label="Quantity">
+          <div style="margin-top: 8px; display: flex; justify-content: space-between; font-family: ui-monospace, 'SF Mono', monospace; font-size: 10.5px; color: rgba(245,245,247,0.35);"><span>1</span><span>crossover ≈ 1,962</span><span>10,000</span></div>
+        </div>
+        <svg viewBox="0 0 720 230" style="width: 100%; display: block; margin-top: 26px;">
+          <line x1="40" y1="10" x2="40" y2="196" stroke="rgba(245,245,247,0.14)" stroke-width="1"></line>
+          <line x1="40" y1="196" x2="712" y2="196" stroke="rgba(245,245,247,0.14)" stroke-width="1"></line>
+          <g font-family="ui-monospace, monospace" font-size="10.5" fill="rgba(245,245,247,0.35)">
+            <text x="34" y="200" text-anchor="end">$0</text>
+            <text x="34" y="106" text-anchor="end">$25</text>
+            <text x="34" y="16" text-anchor="end">$50</text>
+          </g>
+          <line x1="{{ dialCrossX }}" y1="10" x2="{{ dialCrossX }}" y2="196" stroke="rgba(245,245,247,0.25)" stroke-width="1" stroke-dasharray="3 4"></line>
+          <path d="{{ dialPathIm }}" fill="none" stroke="{{ dialImStroke }}" stroke-width="{{ dialImW }}" stroke-dasharray="6 4"></path>
+          <path d="{{ dialPathMjf }}" fill="none" stroke="{{ dialMjfStroke }}" stroke-width="{{ dialMjfW }}"></path>
+          <line x1="{{ dialQtyX }}" y1="10" x2="{{ dialQtyX }}" y2="196" stroke="#f5f5f7" stroke-width="1.5"></line>
+          <circle cx="{{ dialQtyX }}" cy="{{ dialDotY }}" r="4.5" fill="#f5f5f7" stroke="#0b0c0f" stroke-width="2"></circle>
+        </svg>
+        <div style="margin-top: 14px; display: flex; justify-content: center; gap: 26px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; color: rgba(245,245,247,0.45);">
+          <span style="display: inline-flex; align-items: center; gap: 7px;"><span aria-hidden="true" style="width: 14px; height: 2px; background: {{ dialMjfStroke }};"></span>MJF (PP) — make now</span>
+          <span style="display: inline-flex; align-items: center; gap: 7px;"><span aria-hidden="true" style="width: 14px; height: 2px; background: {{ dialImStroke }};"></span>Injection molding — tooled, if redesigned</span>
+        </div>
+        <p style="margin: 20px 0 0; text-align: center; font-family: ui-monospace, 'SF Mono', monospace; font-size: 10.5px; color: rgba(245,245,247,0.3);">fitted from the engine's costed quantities · schematic between computed points · object.stl · Midwest Precision CNC</p>
+      </div>
+      <p style="margin: 26px 0 0; text-align: center; font-size: 15px; font-weight: 300; color: rgba(245,245,247,0.55);">This is one part. A pilot does this for fifty of yours — against your rates.&nbsp;&nbsp;<a href="Company.dc.html#pilot" style="color: #f5f5f7; text-decoration: none; border-bottom: 1px solid rgba(245,245,247,0.4); padding-bottom: 1px;">Request a pilot →</a></p>
+    </div>
+  </section>
+
+  <!-- ═══ ACT 4.3 · the three gates ═══ -->
+  <section data-screen-label="Three gates" style="position: relative; z-index: 10; background: rgba(7,7,9,0.9); padding: 12vh 48px;">
+    <div style="max-width: 1180px; margin: 0 auto;">
+      <p style="margin: 0; font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(245,245,247,0.45); text-align: center;">What nobody else answers</p>
+      <div style="margin-top: 34px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px;">
+        <div style="border: 1px solid rgba(245,245,247,0.1); border-radius: 16px; background: #0c0d10; padding: 26px;">
+          <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 10.5px; letter-spacing: 0.16em; color: rgba(245,245,247,0.4);">YOUR MACHINES, BY NAME</p>
+          <p style="margin: 12px 0 0; font-size: 19px; font-weight: 300; letter-spacing: -0.015em; line-height: 1.3;">"Yes — on your M2 Pro."<br><span style="font-size: 14px; color: rgba(245,245,247,0.55);">Owned → marginal cost. Missing → an acquisition consideration, stated as one.</span></p>
+        </div>
+        <div style="border: 1px solid rgba(245,245,247,0.1); border-radius: 16px; background: #0c0d10; padding: 26px;">
+          <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 10.5px; letter-spacing: 0.16em; color: rgba(245,245,247,0.4);">THE ENVIRONMENT GATE</p>
+          <p style="margin: 12px 0 0; font-size: 19px; font-weight: 300; letter-spacing: -0.015em; line-height: 1.3;"><span style="text-decoration: line-through; color: rgba(245,245,247,0.35);">Al 6061</span> <span style="font-family: ui-monospace, monospace; font-size: 12px; color: #c96a5e;">fails NACE MR0175</span><br><span style="font-size: 14px; color: rgba(245,245,247,0.55);">Declare the part's world; what can't survive it is struck — visibly, with the reason.</span></p>
+        </div>
+        <div style="border: 1px solid rgba(245,245,247,0.1); border-radius: 16px; background: #0c0d10; padding: 26px;">
+          <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 10.5px; letter-spacing: 0.16em; color: rgba(245,245,247,0.4);">TRIAGE AT SCALE</p>
+          <p style="margin: 12px 0 0; font-size: 19px; font-weight: 300; letter-spacing: -0.015em; line-height: 1.3;">A legacy catalog, honestly bucketed.<br><span style="font-size: 14px; color: rgba(245,245,247,0.55);">In-house · outside · needs capability · not makeable — every count opens to its verdicts.</span></p>
+        </div>
+      </div>
+      <p style="margin: 22px 0 0; text-align: center;"><a href="Platform.dc.html" style="font-size: 14px; color: #f5f5f7; text-decoration: none; border-bottom: 1px solid rgba(245,245,247,0.35); padding-bottom: 2px;">The full platform →</a></p>
+    </div>
+  </section>
+
+  <!-- ═══ ACT 4.5 · the platform ═══ -->
+  <section data-screen-label="Platform" style="position: relative; z-index: 10; background: linear-gradient(180deg, rgba(5,5,6,0) 0%, rgba(7,7,9,0.94) 12%, #070709 100%); padding: 18vh 48px 10vh;">
+    <div style="max-width: 1180px; margin: 0 auto;">
+      <p style="margin: 0; font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(245,245,247,0.45); text-align: center;">05 — The platform</p>
+      <h2 style="margin: 20px 0 0; text-align: center; font-size: clamp(38px, 4.2vw, 60px); line-height: 1.06; font-weight: 300; letter-spacing: -0.028em;">The governed decision layer<br>for everything you make.</h2>
+      <p style="margin: 22px auto 0; max-width: 560px; text-align: center; font-size: 17px; line-height: 1.6; font-weight: 300; color: rgba(245,245,247,0.6);">One engine, three surfaces. Every number on every one of them is computed, sourced, and reconciled — nothing is generated.</p>
+
+      <div style="margin-top: 64px; display: grid; grid-template-columns: 1.25fr 1fr; gap: 20px;">
+        <!-- copilot panel -->
+        <div style="border: 1px solid rgba(245,245,247,0.1); border-radius: 16px; background: #0c0d10; padding: 30px; display: flex; flex-direction: column; gap: 18px;">
+          <div>
+            <p style="margin: 0; display: flex; align-items: center; gap: 10px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.18em; color: rgba(245,245,247,0.4);">ASK THE ENGINE <span style="letter-spacing: 0.1em; font-size: 9.5px; border: 1px solid rgba(217,168,86,0.35); color: #d9a856; border-radius: 4px; padding: 2px 7px;">IN DEVELOPMENT</span></p>
+            <h3 style="margin: 10px 0 0; font-size: 26px; font-weight: 300; letter-spacing: -0.02em;">A copilot that cannot hallucinate a number.</h3>
+            <p style="margin: 12px 0 0; font-size: 14.5px; line-height: 1.6; font-weight: 300; color: rgba(245,245,247,0.55);">Ask in plain language; the answer is a decision artifact. Every figure inside it is an engine run with provenance — the model writes the sentences, never the numbers.</p>
+          </div>
+          <div style="border: 1px solid rgba(245,245,247,0.09); border-radius: 12px; background: #0a0b0d; padding: 18px 20px;">
+            <p style="margin: 0; font-size: 13.5px; font-weight: 300; color: rgba(245,245,247,0.75); border-bottom: 1px solid rgba(245,245,247,0.08); padding-bottom: 12px;">"Should we tool up for 5,000 units next year?"</p>
+            <div style="margin-top: 14px; display: flex; align-items: center; gap: 10px;">
+              <span aria-hidden="true" style="width: 6px; height: 6px; border-radius: 50%; background: #f5f5f7;"></span>
+              <span style="font-family: ui-monospace, 'SF Mono', monospace; font-size: 10.5px; letter-spacing: 0.12em; color: rgba(245,245,247,0.4);">ENGINE OUTPUT — COMPUTED, NOT GENERATED</span>
+            </div>
+            <div style="margin-top: 12px; display: flex; align-items: baseline; gap: 14px;">
+              <span style="font-size: 34px; font-weight: 200; letter-spacing: -0.03em; font-variant-numeric: tabular-nums;">$8.01</span>
+              <span style="font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; color: #d9a856;">CONDITIONAL — if redesigned · 1 sidewall &lt; 1.0° draft</span>
+            </div>
+            <p style="margin: 10px 0 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; color: rgba(245,245,247,0.4);">±60% · assumption-based · n=0 · crossover 1,962 units</p>
+          </div>
+        </div>
+        <!-- calibration panel -->
+        <div style="border: 1px solid rgba(245,245,247,0.1); border-radius: 16px; background: #0c0d10; padding: 30px; display: flex; flex-direction: column;">
+          <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.18em; color: rgba(245,245,247,0.4);">GOVERNED, NOT GUESSED</p>
+          <h3 style="margin: 10px 0 0; font-size: 26px; font-weight: 300; letter-spacing: -0.02em;">Your rates, bound and visible.</h3>
+          <p style="margin: 12px 0 0; font-size: 14.5px; line-height: 1.6; font-weight: 300; color: rgba(245,245,247,0.55);">Calibrate to a shop and the whole model re-costs. What's bound is tagged. What isn't stays a visible default — the gaps are governance, not shame.</p>
+          <div style="margin-top: 22px; display: flex; flex-direction: column; gap: 9px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;"><span style="color: rgba(245,245,247,0.55);">labor_rate</span><span style="color: #c9834f;">$52/hr ● SHOP</span></div>
+            <div style="display: flex; justify-content: space-between; align-items: center;"><span style="color: rgba(245,245,247,0.55);">machine MJF</span><span style="color: #c9834f;">$30/hr ● SHOP</span></div>
+            <div style="display: flex; justify-content: space-between; align-items: center;"><span style="color: rgba(245,245,247,0.55);">utilization</span><span style="color: #c9834f;">0.80 ● SHOP</span></div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border: 1px solid rgba(217,168,86,0.3); border-radius: 6px; padding: 6px 10px; margin: 2px -10px 0;"><span style="color: #d9a856;">n_cavities</span><span style="color: rgba(245,245,247,0.4);">1 ○ DEFAULT</span></div>
+          </div>
+          <p style="margin: auto 0 0; padding-top: 18px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; color: rgba(245,245,247,0.35);">19 rates bound · Midwest Precision CNC · source: 2026-Q2 accounting export</p>
+        </div>
+      </div>
+
+      <!-- flywheel -->
+      <div style="margin-top: 20px; border: 1px solid rgba(245,245,247,0.1); border-radius: 16px; background: #0c0d10; padding: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center;">
+        <div>
+          <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.18em; color: rgba(245,245,247,0.4);">THE GROUND-TRUTH FLYWHEEL</p>
+          <h3 style="margin: 12px 0 0; font-size: clamp(26px, 2.6vw, 36px); font-weight: 300; letter-spacing: -0.022em; line-height: 1.15;">Send back real costs.<br>Watch the band go solid.</h3>
+          <p style="margin: 14px 0 0; font-size: 15px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.55);">Every estimate ships hatched — assumption-based, and labeled so. Feed your invoices back and the model validates against your held-out parts. The flip from hatched to solid is the only accuracy claim we will ever make.</p>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 26px;">
+          <div>
+            <div style="display: flex; justify-content: space-between; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; color: rgba(245,245,247,0.4); margin-bottom: 9px;"><span>DAY 1 — ASSUMPTION-BASED</span><span>±40% · n=0</span></div>
+            <div style="position: relative; height: 8px; border-radius: 4px; background: rgba(245,245,247,0.08); overflow: hidden;">
+              <div style="position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, rgba(245,245,247,0.4) 0 2px, transparent 2px 7px);"></div>
+              <span aria-hidden="true" style="position: absolute; top: -2px; bottom: -2px; left: 50%; width: 2px; background: #f5f5f7;"></span>
+            </div>
+          </div>
+          <div style="display: flex; justify-content: center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(245,245,247,0.4)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"></path><path d="m19 12-7 7-7-7"></path></svg></div>
+          <div>
+            <div style="display: flex; justify-content: space-between; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; color: #55b880; margin-bottom: 9px;"><span>AFTER YOUR INVOICES — VALIDATED</span><span>±ᵐᵉᵃˢᵘʳᵉᵈ · n = your parts</span></div>
+            <div style="position: relative; height: 8px; border-radius: 4px; background: rgba(245,245,247,0.08); overflow: hidden;">
+              <div style="position: absolute; inset: 0 18% 0 22%; border-radius: 4px; background: rgba(85,184,128,0.8);"></div>
+              <span aria-hidden="true" style="position: absolute; top: -2px; bottom: -2px; left: 52%; width: 2px; background: #f5f5f7;"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- enterprise strip -->
+      <div style="margin-top: 20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
+        <div style="border: 1px solid rgba(245,245,247,0.1); border-radius: 16px; background: #0c0d10; padding: 26px;">
+          <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.18em; color: rgba(245,245,247,0.4);">YOUR IP STAYS PUT</p>
+          <p style="margin: 12px 0 0; font-size: 14.5px; line-height: 1.6; font-weight: 300; color: rgba(245,245,247,0.6);">CAD parsed in-process and discarded. Zero network egress on the local path — built for export-controlled programs.</p>
+        </div>
+        <div style="border: 1px solid rgba(245,245,247,0.1); border-radius: 16px; background: #0c0d10; padding: 26px;">
+          <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.18em; color: rgba(245,245,247,0.4);">EVERY NUMBER AUDITABLE</p>
+          <p style="margin: 12px 0 0; font-size: 14.5px; line-height: 1.6; font-weight: 300; color: rgba(245,245,247,0.6);">Each driver carries provenance and a source string. A cost engineer can defend the answer in review — line by line.</p>
+        </div>
+        <div style="border: 1px solid rgba(245,245,247,0.1); border-radius: 16px; background: #0c0d10; padding: 26px;">
+          <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.18em; color: rgba(245,245,247,0.4);">Σ ALWAYS RECONCILES</p>
+          <p style="margin: 12px 0 0; font-size: 14.5px; line-height: 1.6; font-weight: 300; color: rgba(245,245,247,0.6);">Line items sum to the unit cost on screen. No naked totals, no black-box rollups, no invented precision.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ ACT 5 · close ═══ -->
+  <section ref="{{ sec4 }}" data-screen-label="Act 5 — Close" style="position: relative; z-index: 10; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 48px;">
+    <div ref="{{ cap4 }}" style="opacity: 0;">
+      <h2 style="margin: 0; font-size: clamp(40px, 4.6vw, 68px); line-height: 1.05; font-weight: 300; letter-spacing: -0.03em;">Bring your hardest part.</h2>
+      <p style="margin: 22px 0 0; max-width: 520px; font-size: 18px; line-height: 1.6; font-weight: 300; color: rgba(245,245,247,0.6);">A pilot is a measurement, not a demo: your parts, your shops' rates, validated against invoices we never saw — including the parts we get wrong.</p>
+      <div style="margin: 40px auto 0; display: flex; align-items: center; gap: 10px; max-width: 460px; border: 1px solid rgba(245,245,247,0.22); border-radius: 999px; padding: 6px 6px 6px 22px; background: rgba(245,245,247,0.04);">
+        <input placeholder="you@company.com" style="flex: 1; min-width: 0; background: none; border: none; outline: none; font-size: 15px; color: #f5f5f7; font-family: inherit; font-weight: 300;">
+        <a href="Company.dc.html#pilot" style="flex-shrink: 0; background: #f5f5f7; color: #050506; border-radius: 999px; padding: 12px 26px; font-size: 14.5px; font-weight: 500; text-decoration: none; transition: transform 200ms;" style-hover="transform: scale(1.03);">Request a pilot</a>
+      </div>
+      <p style="margin: 16px 0 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; color: rgba(245,245,247,0.35);">reply in two business days · cloud, VPC, or air-gapped · <a href="Method.dc.html" style="color: rgba(245,245,247,0.55); text-decoration: none;">or read the method first →</a></p>
+      <p style="margin: 72px 0 40px; font-size: 12.5px; letter-spacing: 0.06em; color: rgba(245,245,247,0.35);">CadVerify — verification, made of glass · <a href="Method.dc.html" style="color: inherit; text-decoration: none;">Method</a> · <a href="Platform.dc.html" style="color: inherit; text-decoration: none;">Platform</a> · <a href="Security.dc.html" style="color: inherit; text-decoration: none;">Security</a> · <a href="Developers.dc.html" style="color: inherit; text-decoration: none;">Developers</a></p>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { qty: 500 };
+
+  // the engine's fitted curves: unit = fixedAmort/qty + variablePerUnit
+  dialUnitAt(f, v, q) { return f / q + v; }
+  dialPath(f, v) {
+    const pts = [];
+    for (let i = 0; i <= 64; i++) {
+      const q = Math.pow(10, (i / 64) * 4);
+      const cost = Math.min(50, this.dialUnitAt(f, v, q));
+      const x = 40 + (Math.log10(q) / 4) * 672;
+      const y = 196 - (cost / 50) * 186;
+      pts.push((i === 0 ? "M" : "L") + x.toFixed(1) + " " + y.toFixed(1));
+    }
+    return pts.join(" ");
+  }
+
+  renderVals() {
+    const qty = this.state.qty;
+    const crossover = 1962;
+    const below = qty <= crossover;
+    const makeUnit = this.dialUnitAt(37.27, 10.41, qty);
+    const toolUnit = this.dialUnitAt(7800, 6.45, qty);
+    const recUnit = below ? makeUnit : toolUnit;
+    const pos = Math.round((Math.log10(Math.max(1, qty)) / 4) * 1000);
+    const fmt = (v) => "$" + v.toLocaleString("en-US", { maximumFractionDigits: v < 100 ? 2 : 0 });
+
+    return {
+      dialVerdict: below ? "Make by MJF (PP)" : "Tool up: injection molding",
+      dialAbove: !below,
+      dialUnit: fmt(recUnit),
+      dialQtyFmt: qty.toLocaleString(),
+      dialPos: pos,
+      onDial: (e) => {
+        const p = parseFloat(e.target.value);
+        this.setState({ qty: Math.max(1, Math.round(Math.pow(10, (p / 1000) * 4))) });
+      },
+      dialPathMjf: this.dialPath(37.27, 10.41),
+      dialPathIm: this.dialPath(7800, 6.45),
+      dialMjfStroke: below ? "#f5f5f7" : "rgba(245,245,247,0.3)",
+      dialImStroke: below ? "rgba(245,245,247,0.3)" : "#d9a856",
+      dialMjfW: below ? 2.5 : 1.5,
+      dialImW: below ? 1.5 : 2.5,
+      dialQtyX: (40 + (Math.log10(qty) / 4) * 672).toFixed(1),
+      dialCrossX: (40 + (Math.log10(crossover) / 4) * 672).toFixed(1),
+      dialDotY: (196 - (Math.min(50, recUnit) / 50) * 186).toFixed(1),
+      stageRef: (el) => {
+        this._stage = el;
+        if (!el) return;
+        if (this._renderer) {
+          // template re-created the stage node — re-attach the live canvas
+          if (!el.contains(this._renderer.domElement)) el.appendChild(this._renderer.domElement);
+          if (this._ro) { this._ro.disconnect(); this._ro.observe(el); }
+          if (this._onResize) this._onResize();
+        } else {
+          this.initScene();
+        }
+      },
+      numRef: (el) => (this._num = el),
+      hud1: (el) => (this._hud1 = el),
+      hud2: (el) => (this._hud2 = el),
+      ctaBar: (el) => (this._ctaBar = el),
+      railStops: ["PART", "ROUTED", "OPENED", "SEATED", "THE NUMBER", "PROOF"].map((label, i) => ({
+        label,
+        labelRef: (el) => (this["_railL" + i] = el),
+        dotRef: (el) => (this["_railD" + i] = el),
+        jump: () => {
+          const sec = [null, this._sec1, this._sec2, this._sec2b, this._sec3, this._secDial][i];
+          const top = i === 0 ? 0 : sec ? window.scrollY + sec.getBoundingClientRect().top : 0;
+          window.scrollTo({ top, behavior: "smooth" });
+        },
+      })),
+      secDial: (el) => (this._secDial = el),
+      cap0: (el) => (this._cap0 = el),
+      cap1: (el) => (this._cap1 = el),
+      cap2: (el) => (this._cap2 = el),
+      cap3: (el) => (this._cap3 = el),
+      cap4: (el) => (this._cap4 = el),
+      sec1: (el) => (this._sec1 = el),
+      sec2: (el) => (this._sec2 = el),
+      sec2b: (el) => (this._sec2b = el),
+      cap2b: (el) => (this._cap2b = el),
+      sec3: (el) => (this._sec3 = el),
+      sec4: (el) => (this._sec4 = el),
+    };
+  }
+
+  componentDidMount() {
+    this._dead = false;
+    // Watchdog owns liveness: init once possible, then keep the canvas attached.
+    this._watch = setInterval(() => {
+      if (this._dead) return;
+      const stage = this._stage;
+      if (!this._renderer) {
+        if (stage && window.THREE && stage.clientWidth && stage.clientHeight) {
+          this._inited = false; // clear any stale flag from a failed attempt
+          this.initScene();
+        }
+        return;
+      }
+      // renderer exists — heal detachment after template re-renders
+      const cv = this._renderer.domElement;
+      if (stage && !stage.contains(cv)) {
+        stage.appendChild(cv);
+        if (this._onResize) this._onResize();
+      }
+    }, 150);
+  }
+
+  componentWillUnmount() {
+    this._dead = true;
+    clearInterval(this._watch);
+    cancelAnimationFrame(this._raf);
+    window.removeEventListener("scroll", this._onScroll);
+    window.removeEventListener("resize", this._onResize);
+    window.removeEventListener("mousemove", this._onMouse);
+    if (this._ro) this._ro.disconnect();
+    if (this._renderer) this._renderer.dispose();
+  }
+
+  initScene() {
+    if (this._inited || this._renderer) return;
+    if (!this._stage || !window.THREE || !this._stage.clientWidth || !this._stage.clientHeight) return; // watchdog will retry
+    const stageEl = this._stage;
+    this._inited = true;
+    const THREE = window.THREE;
+    const stage = stageEl;
+    // always size from the CURRENT stage node (template may re-create it)
+    const W = () => (this._stage && this._stage.clientWidth) || window.innerWidth;
+    const H = () => (this._stage && this._stage.clientHeight) || window.innerHeight;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+    renderer.setSize(W(), H());
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    stage.appendChild(renderer.domElement);
+    this._renderer = renderer;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(38, W() / H(), 0.1, 100);
+    camera.position.set(0, 0, 5.4);
+
+    // studio environment from a painted equirect canvas (softboxes on black)
+    const envCanvas = document.createElement("canvas");
+    envCanvas.width = 512; envCanvas.height = 256;
+    const ec = envCanvas.getContext("2d");
+    ec.fillStyle = "#0a0b0d"; ec.fillRect(0, 0, 512, 256);
+    const soft = (x, y, w, h, bright) => {
+      const g = ec.createRadialGradient(x + w / 2, y + h / 2, 2, x + w / 2, y + h / 2, Math.max(w, h) / 2);
+      g.addColorStop(0, "rgba(255,255,255," + bright + ")");
+      g.addColorStop(1, "rgba(255,255,255,0)");
+      ec.fillStyle = g; ec.fillRect(x, y, w, h);
+    };
+    soft(60, 20, 190, 130, 0.95);   // key softbox upper-left
+    soft(330, 130, 150, 90, 0.5);   // fill lower-right
+    soft(430, 10, 70, 60, 0.85);    // rim ping
+    ec.fillStyle = "rgba(255,255,255,0.06)"; ec.fillRect(0, 118, 512, 6); // horizon strip
+    const envTex = new THREE.CanvasTexture(envCanvas);
+    envTex.mapping = THREE.EquirectangularReflectionMapping;
+    envTex.colorSpace = THREE.SRGBColorSpace;
+    scene.environment = envTex;
+
+    // ── the machined part: a turned aluminum body (LatheGeometry) ──
+    const pts = [];
+    const P = (r, y) => pts.push(new THREE.Vector2(r, y));
+    P(0.001, -1.05); P(0.42, -1.05); P(0.46, -1.0); P(0.46, -0.62); P(0.58, -0.58);
+    P(0.58, -0.34); P(0.72, -0.30); P(0.86, -0.22); P(0.90, -0.10); P(0.90, 0.14);
+    P(0.86, 0.20); P(0.62, 0.24); P(0.58, 0.30); P(0.58, 0.66); P(0.40, 0.70);
+    P(0.34, 0.76); P(0.34, 0.98); P(0.28, 1.05); P(0.001, 1.05);
+    scene.fog = new THREE.FogExp2(0x050506, 0.045);
+    const bodyGeo = new THREE.LatheGeometry(pts, 128);
+    const alu = new THREE.MeshPhysicalMaterial({
+      color: 0xc8ccd2, metalness: 1.0, roughness: 0.3,
+      clearcoat: 0.55, clearcoatRoughness: 0.28,
+      envMapIntensity: 1.5, transparent: true, opacity: 1,
+    });
+    const body = new THREE.Mesh(bodyGeo, alu);
+
+    // groove rings (machining marks)
+    const ringMat = new THREE.MeshStandardMaterial({ color: 0x9ba1a9, metalness: 1.0, roughness: 0.45, envMapIntensity: 1.2, transparent: true });
+    const rings = new THREE.Group();
+    [[-0.48, 0.585], [0.0, 0.905], [0.48, 0.585]].forEach(([y, r]) => {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.012, 12, 100), ringMat);
+      ring.rotation.x = Math.PI / 2; ring.position.y = y;
+      rings.add(ring);
+    });
+
+    // x-ray wireframe twin
+    const wireMat = new THREE.MeshBasicMaterial({ color: 0xaebdcd, wireframe: true, transparent: true, opacity: 0 });
+    const wire = new THREE.Mesh(new THREE.LatheGeometry(pts, 64), wireMat);
+    wire.scale.setScalar(1.002);
+
+    const part = new THREE.Group();
+    part.add(body); part.add(rings); part.add(wire);
+    part.rotation.z = 0.35;
+    scene.add(part);
+
+    // ── metrology overlay: dimension lines drawn on the part (routed act) ──
+    const mLineMat = new THREE.LineBasicMaterial({ color: 0x8fb7dd, transparent: true, opacity: 0 });
+    const metro = new THREE.Group();
+    const seg3 = (a, b) => {
+      const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...a), new THREE.Vector3(...b)]);
+      metro.add(new THREE.Line(g, mLineMat));
+    };
+    // datum axis (long vertical through the part)
+    seg3([0, -1.6, 0], [0, 1.6, 0]);
+    // diameter callout at the widest land (r = 0.90), with witness ticks
+    seg3([-1.28, -0.02, 0], [1.28, -0.02, 0]);
+    seg3([-1.28, -0.1, 0], [-1.28, 0.06, 0]);
+    seg3([1.28, -0.1, 0], [1.28, 0.06, 0]);
+    seg3([-0.9, -0.02, 0], [-0.9, -0.3, 0]);
+    seg3([0.9, -0.02, 0], [0.9, -0.3, 0]);
+    // height callout on the right, with witness ticks
+    seg3([1.5, -1.05, 0], [1.5, 1.05, 0]);
+    seg3([1.42, -1.05, 0], [1.58, -1.05, 0]);
+    seg3([1.42, 1.05, 0], [1.58, 1.05, 0]);
+    part.add(metro);
+    // HUD anchors (projected to screen per frame)
+    const hudA1 = new THREE.Vector3(); const hudA2 = new THREE.Vector3();
+
+    // ── scan ring: a bright coil that sweeps the part while it's being read ──
+    const scanMat = new THREE.MeshBasicMaterial({ color: 0x9fd0ff, transparent: true, opacity: 0 });
+    const scan = new THREE.Mesh(new THREE.TorusGeometry(1.06, 0.0075, 10, 110), scanMat);
+    scan.rotation.x = Math.PI / 2;
+    part.add(scan);
+
+    // ── contact shadow: soft dark pool beneath the part ──
+    const shCanvas = document.createElement("canvas"); shCanvas.width = 256; shCanvas.height = 256;
+    const shc = shCanvas.getContext("2d");
+    const shg = shc.createRadialGradient(128, 128, 8, 128, 128, 128);
+    shg.addColorStop(0, "rgba(0,0,0,0.85)"); shg.addColorStop(0.6, "rgba(0,0,0,0.35)"); shg.addColorStop(1, "rgba(0,0,0,0)");
+    shc.fillStyle = shg; shc.fillRect(0, 0, 256, 256);
+    const shTex = new THREE.CanvasTexture(shCanvas);
+    const shadow = new THREE.Mesh(
+      new THREE.PlaneGeometry(4.6, 4.6),
+      new THREE.MeshBasicMaterial({ map: shTex, transparent: true, opacity: 0.5, depthWrite: false })
+    );
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.y = -1.62;
+    scene.add(shadow);
+
+    // mouse parallax (damped)
+    const mouse = { x: 0, y: 0 }; const mp = { x: 0, y: 0 };
+    this._onMouse = (e) => {
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = (e.clientY / window.innerHeight) * 2 - 1;
+    };
+    window.addEventListener("mousemove", this._onMouse, { passive: true });
+
+    // ── the gearbox housing: ghost siblings that seat around the shaft ──
+    const ghostMat = new THREE.MeshStandardMaterial({ color: 0x3a3f46, metalness: 0.9, roughness: 0.55, envMapIntensity: 0.5, transparent: true, opacity: 0 });
+    const latheOf = (profile, segs) => new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r, y)), segs || 80);
+    const flangeGeo = latheOf([[0.3,-0.16],[1.15,-0.16],[1.22,-0.08],[1.22,0.06],[0.66,0.1],[0.46,0.14],[0.3,0.14]]);
+    const bushGeo = latheOf([[0.62,-0.34],[0.86,-0.34],[0.86,0.34],[0.62,0.34]]);
+    const ghosts = [];
+    const addGhost = (geo, seat, scatter, rot) => {
+      const m = new THREE.Mesh(geo, ghostMat);
+      if (rot) m.rotation.set(rot[0], rot[1], rot[2]);
+      m.userData = { seat: new THREE.Vector3(...seat), scatter: new THREE.Vector3(...scatter) };
+      m.position.copy(m.userData.scatter);
+      ghosts.push(m); scene.add(m);
+    };
+    addGhost(flangeGeo, [0, 1.32, 0], [0.6, 4.4, -1.2]);                    // top flange, drops in
+    addGhost(flangeGeo, [0, -1.32, 0], [-0.5, -4.4, -1.0], [Math.PI, 0, 0]); // bottom flange, rises in
+    addGhost(bushGeo, [0, -0.45, 0], [-4.6, -0.9, -1.6]);                   // bearing bushing, slides in
+    addGhost(new THREE.TorusGeometry(1.05, 0.05, 12, 90), [0, 0.45, 0], [4.8, 1.1, -1.4], [Math.PI / 2, 0, 0]); // retaining ring
+    addGhost(new THREE.CylinderGeometry(0.1, 0.1, 2.4, 20), [1.55, 0, -0.5], [1.9, 0, -5.5]);  // guide rail
+    addGhost(new THREE.CylinderGeometry(0.1, 0.1, 2.4, 20), [-1.55, 0, -0.5], [-1.9, 0, -5.5]); // guide rail
+
+    // lights (shape the metal beyond the env)
+    const key = new THREE.DirectionalLight(0xffffff, 2.4); key.position.set(-3, 4, 3); scene.add(key);
+    const rim = new THREE.DirectionalLight(0xbcd2ff, 1.6); rim.position.set(4, -1, -3); scene.add(rim);
+    scene.add(new THREE.AmbientLight(0x1a1d22, 1.2));
+
+    // dust motes for depth
+    const dustGeo = new THREE.BufferGeometry();
+    const N = 220, pos = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) {
+      pos[i * 3] = (Math.random() - 0.5) * 14;
+      pos[i * 3 + 1] = (Math.random() - 0.5) * 9;
+      pos[i * 3 + 2] = (Math.random() - 0.5) * 7 - 1;
+    }
+    dustGeo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0x8892a0, size: 0.012, transparent: true, opacity: 0.45 }));
+    scene.add(dust);
+
+    // ── scroll choreography ──
+    const lerp = (a, b, t) => a + (b - a) * t;
+    const clamp01 = (v) => Math.max(0, Math.min(1, v));
+    const smooth = (v) => v * v * (3 - 2 * v);
+    let scrollT = 0, targetT = 0;
+    this._onScroll = () => {
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      targetT = max > 0 ? window.scrollY / max : 0;
+    };
+    window.addEventListener("scroll", this._onScroll, { passive: true });
+    this._onResize = () => {
+      camera.aspect = W() / H(); camera.updateProjectionMatrix();
+      renderer.setSize(W(), H());
+    };
+    window.addEventListener("resize", this._onResize);
+    // guard against late layout of the fixed stage (0-size on first paint)
+    this._ro = new ResizeObserver(this._onResize);
+    this._ro.observe(stage);
+
+    // Section-local progress (measured every frame — never desyncs from layout):
+    //   ramp: 0 → 1 as the section's top travels from viewport-bottom to viewport-top, stays 1 after
+    //   pin:  0 → 1 across the section's sticky range
+    //   vis:  caption visibility — in while entering/pinned, out as the section leaves
+    const seg = (t, a, b) => clamp01((t - a) / (b - a));
+    const measure = (el) => {
+      const vh = window.innerHeight;
+      if (!el) return { ramp: 0, pin: 0, vis: 0 };
+      const r = el.getBoundingClientRect();
+      const ramp = clamp01((vh - r.top) / vh);
+      const span = Math.max(1, r.height - vh);
+      const pin = clamp01(-r.top / span);
+      const enter = clamp01((vh - r.top) / (vh * 0.55));
+      const exit = clamp01((r.bottom - vh) / (vh * 0.45));
+      return { ramp, pin, vis: smooth(Math.min(enter, exit)) };
+    };
+    const setOp = (el, v) => { if (el) { el.style.opacity = v.toFixed(3); el.style.transform = "translateY(" + ((1 - v) * 28).toFixed(1) + "px)"; } };
+
+    const clock = new THREE.Clock();
+    const loop = () => {
+      if (this._dead === true) return;
+      this._raf = requestAnimationFrame(loop);
+      const dt = clock.getDelta();
+      scrollT = lerp(scrollT, targetT, Math.min(1, dt * 5));
+      const t = scrollT;
+
+      // continuous idle spin (settles while seated in the housing)
+      part.rotation.y += dt * (0.22 - 0.16 * (this._seatEase || 0));
+
+      // ACT progress from the sections' real positions
+      const m1 = measure(this._sec1);   // routed
+      const m2 = measure(this._sec2);   // x-ray
+      const m2b = measure(this._sec2b); // assembly
+      const m3 = measure(this._sec3);   // the number
+      const m4 = measure(this._sec4);   // close
+      const aHero = smooth(m1.ramp);
+      const aRoute = smooth(clamp01(m1.ramp * 0.55 + m1.pin * 0.45));
+      const aXray = smooth(clamp01(m2.ramp * 0.45 + m2.pin * 0.55));
+      const aAsm = smooth(clamp01(m2b.ramp * 0.4 + m2b.pin * 0.6));
+      const aNum = smooth(clamp01(m3.ramp * 0.5 + m3.pin * 0.5));
+      const aClose = smooth(m4.ramp);
+
+      // assembly: ghosts fly in and seat; gone again by the number act
+      const seat = aAsm * (1 - aNum);
+      const easeSeat = smooth(seat);
+      ghostMat.opacity = 0.5 * easeSeat;
+      for (const g of ghosts) {
+        g.position.lerpVectors(g.userData.scatter, g.userData.seat, easeSeat);
+        g.visible = easeSeat > 0.01;
+      }
+      this._seatEase = easeSeat;
+
+      // camera: drift in, orbit, push close, pull back for the assembly, far for the number
+      const orbit = aRoute * 1.35;
+      const radius = lerp(lerp(lerp(lerp(5.4, 4.1, aHero), 3.1, aXray), 6.0, aAsm), 7.5, aNum);
+      // damped mouse parallax — the studio breathes with the cursor
+      mp.x = lerp(mp.x, mouse.x, Math.min(1, dt * 2.4));
+      mp.y = lerp(mp.y, mouse.y, Math.min(1, dt * 2.4));
+      camera.position.x = Math.sin(orbit) * radius + lerp(1.4, 0, aNum) * (1 - aHero * 0.4) + mp.x * 0.28;
+      camera.position.z = Math.cos(orbit) * radius;
+      camera.position.y = lerp(lerp(0.1, 0.55, aRoute), -0.2, aXray) - mp.y * 0.2;
+      camera.lookAt(0, lerp(0, -0.1, aNum), 0);
+
+      // x-ray dissolve factor (used by shadow + materials below)
+      const x = aXray * (1 - Math.max(aAsm, aNum));
+
+      // metrology overlay + scan sweep, alive only while the engine reads the shape
+      const metroIn = aRoute * (1 - aXray);
+      mLineMat.opacity = metroIn * 0.55;
+      const sweep = (clock.elapsedTime * 0.45) % 1;
+      scan.position.y = -1.1 + sweep * 2.2;
+      scan.scale.setScalar(1 + Math.sin(sweep * Math.PI) * 0.02);
+      scanMat.opacity = metroIn * 0.85 * Math.sin(sweep * Math.PI);
+      // project HUD labels from part-space anchors
+      if (this._hud1 && this._hud2) {
+        const place = (el, v) => {
+          v.applyMatrix4(part.matrixWorld).project(camera);
+          const sx = (v.x * 0.5 + 0.5) * W(), sy = (-v.y * 0.5 + 0.5) * H();
+          el.style.transform = "translate(" + sx.toFixed(0) + "px," + sy.toFixed(0) + "px)";
+          el.style.opacity = (metroIn * 0.9).toFixed(3);
+        };
+        place(this._hud1, hudA1.set(-1.24, 0.14, 0));
+        place(this._hud2, hudA2.set(1.56, 1.18, 0));
+      }
+
+      // contact shadow follows and fades as the part lifts away
+      shadow.position.x = part.position.x;
+      shadow.material.opacity = 0.5 * (1 - aNum * 0.9) * (1 - x * 0.6);
+      const shScale = 1 + (part.position.y + 0.1) * 0.12;
+      shadow.scale.setScalar(Math.max(0.6, shScale));
+
+      // the number counts up as it arrives
+      if (this._num) {
+        const k = smooth(clamp01(aNum * 1.25));
+        const val = 14.14 * k;
+        const txt = "$" + val.toFixed(2);
+        if (this._num.textContent !== txt) this._num.textContent = txt;
+      }
+
+      // conversion pill: visible mid-story, gone at hero and close
+      if (this._ctaBar) {
+        const show = aXray > 0.6 && aClose < 0.25 ? 1 : 0;
+        this._ctaBar.style.opacity = show;
+        this._ctaBar.style.transform = "translateY(" + (show ? 0 : 10) + "px)";
+        this._ctaBar.style.pointerEvents = show ? "auto" : "none";
+      }
+
+      // progress rail: light the active act
+      const mDial = measure(this._secDial);
+      const acts = [1 - aRoute, aRoute * (1 - aXray), aXray * (1 - aAsm), aAsm * (1 - aNum), aNum * (1 - mDial.ramp), mDial.vis];
+      let hi = 0; for (let i = 1; i < acts.length; i++) if (acts[i] > acts[hi]) hi = i;
+      for (let i = 0; i < 6; i++) {
+        const d = this["_railD" + i], l = this["_railL" + i];
+        if (d) { d.style.background = i === hi ? "#f5f5f7" : "rgba(245,245,247,0.25)"; d.style.transform = i === hi ? "scale(1.5)" : "scale(1)"; }
+        if (l) l.style.opacity = i === hi ? 1 : 0;
+      }
+
+      // part offset: right of copy in hero, center later, sink + dim at number
+      part.position.x = lerp(1.55, 0, Math.max(aRoute, aXray));
+      part.position.y = lerp(0, -0.55, aNum) - Math.sin(clock.elapsedTime * 0.8) * 0.04;
+      part.rotation.z = lerp(lerp(0.35, 0.12, aRoute), 0, easeSeat);
+      const partScale = lerp(1, 0.55, aNum * 0.9);
+      part.scale.setScalar(partScale);
+
+      // x-ray dissolve — re-solidifies before the assembly seats
+      alu.opacity = lerp(1, 0.12, x);
+      ringMat.opacity = lerp(1, 0.1, x);
+      wireMat.opacity = lerp(0, 0.55, x);
+      const dimAll = 1 - aNum * 0.75 - aClose * 0.2;
+      renderer.toneMappingExposure = 1.15 * Math.max(0.25, dimAll);
+
+      // caption opacities — tied to each caption's OWN section
+      setOp(this._cap1, m1.vis);
+      setOp(this._cap2, m2.vis);
+      setOp(this._cap2b, m2b.vis);
+      setOp(this._cap3, m3.vis);
+      setOp(this._cap4, aClose);
+      if (this._cap0) this._cap0.style.opacity = (1 - smooth(clamp01(m1.ramp / 0.55))).toFixed(3);
+
+      dust.rotation.y += dt * 0.01;
+      renderer.render(scene, camera);
+    };
+    loop();
+  }
+}
+</script>
+</body>
+</html>

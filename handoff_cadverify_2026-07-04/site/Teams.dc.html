@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    html, body { margin: 0; padding: 0; background: #050506; }
+    * { box-sizing: border-box; }
+    ::selection { background: rgba(255,255,255,0.2); }
+  </style>
+</helmet>
+
+<div style="background: #050506; color: #f5f5f7; font-family: 'Helvetica Neue', -apple-system, BlinkMacSystemFont, system-ui, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh;">
+
+  <header style="position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; padding: 22px 48px; background: rgba(5,5,6,0.82); backdrop-filter: blur(14px); border-bottom: 1px solid rgba(245,245,247,0.07);">
+    <a href="Direction - Cinematic.dc.html" style="font-size: 17px; font-weight: 500; letter-spacing: 0.06em; color: #f5f5f7; text-decoration: none;">CadVerify</a>
+    <nav style="display: flex; align-items: center; gap: 32px; font-size: 13.5px;">
+      <a href="Method.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Method</a>
+      <a href="Platform.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Platform</a>
+      <a href="Teams.dc.html" style="color: #f5f5f7; text-decoration: none;">Teams</a>
+      <a href="Security.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Security</a>
+      <a href="Developers.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Developers</a>
+      <a href="Company.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Company</a>
+      <a href="Company.dc.html#pilot" style="border: 1px solid rgba(245,245,247,0.35); border-radius: 999px; padding: 8px 20px; color: #f5f5f7; text-decoration: none; transition: all 200ms;" style-hover="background: #f5f5f7; color: #050506;">Request a pilot</a>
+    </nav>
+  </header>
+
+  <!-- hero -->
+  <section data-screen-label="Teams hero" style="max-width: 1100px; margin: 0 auto; padding: 110px 48px 70px;">
+    <p style="margin: 0; font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(245,245,247,0.45);">Who it's for</p>
+    <h1 style="margin: 24px 0 0; font-size: clamp(44px, 5.2vw, 72px); line-height: 1.03; font-weight: 300; letter-spacing: -0.03em; max-width: 800px;">One record.<br>Five people who have to defend it.</h1>
+    <p style="margin: 26px 0 0; max-width: 640px; font-size: 18px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.62);">The same engine output, read through different lenses — because a cost engineer, a buyer, a design engineer and a shop owner ask different questions of the same number. Role lenses read the same record; the answer never changes, only what's foregrounded.</p>
+  </section>
+
+  <!-- personas -->
+  <section style="max-width: 1100px; margin: 0 auto; padding: 0 48px 60px; display: flex; flex-direction: column;">
+
+    <div data-screen-label="In-house manufacturing" style="display: grid; grid-template-columns: 110px 1fr 1fr; gap: 40px; padding: 52px 0; border-top: 1px solid rgba(245,245,247,0.09);">
+      <span style="font-size: 52px; font-weight: 200; color: rgba(245,245,247,0.14); line-height: 1; font-variant-numeric: tabular-nums;">00</span>
+      <div>
+        <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.18em; color: rgba(245,245,247,0.4);">IN-HOUSE MANUFACTURING · OPERATOR / MRO</p>
+        <h2 style="margin: 12px 0 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em; line-height: 1.12;">"Can WE make this — on OUR machines?"</h2>
+        <p style="margin: 14px 0 0; font-size: 15px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.58);">The captive shop's question at an operator: a legacy part, an obsolete supplier, a floor full of capability nobody has indexed. Declare the floor once — every verdict after that answers with a machine name: owned → marginal cost, missing → the acquisition it implies.</p>
+        <a href="For In-House Manufacturing.dc.html" style="display: inline-block; margin-top: 18px; font-size: 14px; color: #f5f5f7; text-decoration: none; border-bottom: 1px solid rgba(245,245,247,0.35); padding-bottom: 2px;">The full journey →</a>
+      </div>
+      <div style="border: 1px solid rgba(245,245,247,0.09); border-radius: 12px; background: #0c0d10; padding: 22px; align-self: center; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12px; line-height: 1.9;">
+        <p style="margin: 0; color: rgba(245,245,247,0.35); font-size: 10px; letter-spacing: 0.12em;">THE VERDICT · ON YOUR FLOOR</p>
+        <p style="margin: 8px 0 0; color: rgba(245,245,247,0.65);">→ fits <span style="color: #f5f5f7;">your M2 Pro</span> (380×284×380) ✓</p>
+        <p style="margin: 0; color: rgba(245,245,247,0.65);">→ PP survives the declared world ✓</p>
+        <p style="margin: 0; color: rgba(245,245,247,0.65);">→ 0.068 machine-hr · 4.2 g · <span style="color: #f5f5f7;">$14.14 marginal</span></p>
+        <p style="margin: 8px 0 0; color: #d9a856;">not owned: IM → $7,800 acquisition consideration</p>
+      </div>
+    </div>
+
+    <div data-screen-label="Cost engineering" style="display: grid; grid-template-columns: 110px 1fr 1fr; gap: 40px; padding: 52px 0; border-top: 1px solid rgba(245,245,247,0.09);">
+      <span style="font-size: 52px; font-weight: 200; color: rgba(245,245,247,0.14); line-height: 1; font-variant-numeric: tabular-nums;">01</span>
+      <div>
+        <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.18em; color: rgba(245,245,247,0.4);">COST ENGINEERING · OEM</p>
+        <h2 style="margin: 12px 0 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em; line-height: 1.12;">Defend the number in the review.</h2>
+        <p style="margin: 14px 0 0; font-size: 15px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.58);">You're the one who signs the should-cost. Every driver carries its source string, line items reconcile to the unit cost on screen, and the confidence band states its basis — so when the program review pushes back, you trace the answer to its inputs instead of defending a black box.</p>
+        <a href="For Cost Engineering.dc.html" style="display: inline-block; margin-top: 18px; font-size: 14px; color: #f5f5f7; text-decoration: none; border-bottom: 1px solid rgba(245,245,247,0.35); padding-bottom: 2px;">The full journey →</a>
+      </div>
+      <div style="border: 1px solid rgba(245,245,247,0.09); border-radius: 12px; background: #0c0d10; padding: 22px; align-self: center; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12px; line-height: 1.9;">
+        <p style="margin: 0; color: rgba(245,245,247,0.35); font-size: 10px; letter-spacing: 0.12em;">WHAT THE LENS FOREGROUNDS</p>
+        <p style="margin: 8px 0 0; color: rgba(245,245,247,0.65);">→ driver stack, verbatim sources</p>
+        <p style="margin: 0; color: rgba(245,245,247,0.65);">→ Σ reconciliation, error bands per driver</p>
+        <p style="margin: 0; color: rgba(245,245,247,0.65);">→ what's DEFAULT vs SHOP vs MEASURED</p>
+      </div>
+    </div>
+
+    <div data-screen-label="Sourcing" style="display: grid; grid-template-columns: 110px 1fr 1fr; gap: 40px; padding: 52px 0; border-top: 1px solid rgba(245,245,247,0.09);">
+      <span style="font-size: 52px; font-weight: 200; color: rgba(245,245,247,0.14); line-height: 1; font-variant-numeric: tabular-nums;">02</span>
+      <div>
+        <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.18em; color: rgba(245,245,247,0.4);">SOURCING &amp; PROCUREMENT</p>
+        <h2 style="margin: 12px 0 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em; line-height: 1.12;">Negotiate from the driver, not the total.</h2>
+        <p style="margin: 14px 0 0; font-size: 15px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.58);">Cost the same part against two shop calibrations and the board shows you which driver diverges — labor rate, machine rate, material lot. "Your labor line is 3.7× the Shenzhen calibration" is a negotiation; "your price feels high" is a feeling.</p>
+        <a href="For Sourcing.dc.html" style="display: inline-block; margin-top: 18px; font-size: 14px; color: #f5f5f7; text-decoration: none; border-bottom: 1px solid rgba(245,245,247,0.35); padding-bottom: 2px;">The full journey →</a>
+      </div>
+      <div style="border: 1px solid rgba(245,245,247,0.09); border-radius: 12px; background: #0c0d10; padding: 22px; align-self: center; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12px; line-height: 1.9;">
+        <p style="margin: 0; color: rgba(245,245,247,0.35); font-size: 10px; letter-spacing: 0.12em;">SHOP VS SHOP · QTY 1,000</p>
+        <p style="margin: 8px 0 0; color: rgba(245,245,247,0.65);">CNC turning&nbsp;&nbsp;$26.92 vs $5.96&nbsp;&nbsp;<span style="color: #c9834f;">−78%</span></p>
+        <p style="margin: 0; color: rgba(245,245,247,0.65);">MJF&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;$10.45 vs $2.68&nbsp;&nbsp;<span style="color: #c9834f;">−74%</span></p>
+        <p style="margin: 8px 0 0; color: #c9834f;">lever: labor_rate $52/hr vs $14/hr</p>
+      </div>
+    </div>
+
+    <div data-screen-label="Design engineering" style="display: grid; grid-template-columns: 110px 1fr 1fr; gap: 40px; padding: 52px 0; border-top: 1px solid rgba(245,245,247,0.09);">
+      <span style="font-size: 52px; font-weight: 200; color: rgba(245,245,247,0.14); line-height: 1; font-variant-numeric: tabular-nums;">03</span>
+      <div>
+        <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.18em; color: rgba(245,245,247,0.4);">DESIGN ENGINEERING</p>
+        <h2 style="margin: 12px 0 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em; line-height: 1.12;">Know the cost of a fillet before the gate review.</h2>
+        <p style="margin: 14px 0 0; font-size: 15px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.58);">DFM feedback that names the fix: the failing threshold, the measured value, and the exact faces — highlighted on the part. Change the draft angle, re-run, and watch the injection-molding route unlock at the crossover quantity. Cost becomes a design variable, not a surprise.</p>
+        <a href="For Design Engineering.dc.html" style="display: inline-block; margin-top: 18px; font-size: 14px; color: #f5f5f7; text-decoration: none; border-bottom: 1px solid rgba(245,245,247,0.35); padding-bottom: 2px;">The full journey →</a>
+      </div>
+      <div style="border: 1px solid rgba(245,245,247,0.09); border-radius: 12px; background: #0c0d10; padding: 22px; align-self: center; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12px; line-height: 1.9;">
+        <p style="margin: 0; color: rgba(245,245,247,0.35); font-size: 10px; letter-spacing: 0.12em;">DFM · NAMED AND ACTIONABLE</p>
+        <p style="margin: 8px 0 0; color: #d9a856;">▲ draft 0.4° measured · ≥1.0° required</p>
+        <p style="margin: 0; color: rgba(245,245,247,0.65);">→ faces highlighted in 3D</p>
+        <p style="margin: 0; color: rgba(245,245,247,0.65);">→ fix unlocks IM route at qty ≥ 1,962</p>
+      </div>
+    </div>
+
+    <div data-screen-label="Shop owners" style="display: grid; grid-template-columns: 110px 1fr 1fr; gap: 40px; padding: 52px 0; border-top: 1px solid rgba(245,245,247,0.09); border-bottom: 1px solid rgba(245,245,247,0.09);">
+      <span style="font-size: 52px; font-weight: 200; color: rgba(245,245,247,0.14); line-height: 1; font-variant-numeric: tabular-nums;">04</span>
+      <div>
+        <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.18em; color: rgba(245,245,247,0.4);">SHOP OWNERS · QUOTING</p>
+        <h2 style="margin: 12px 0 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em; line-height: 1.12;">Quote in minutes, at your real rates.</h2>
+        <p style="margin: 14px 0 0; font-size: 15px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.58);">Bind your loaded labor, machine rates and material lots once, and every incoming RFQ costs itself against your shop's reality — with your margin as an explicit, visible line. Win the jobs that fit your machines; skip the ones that don't, and know why.</p>
+        <a href="For Shop Owners.dc.html" style="display: inline-block; margin-top: 18px; font-size: 14px; color: #f5f5f7; text-decoration: none; border-bottom: 1px solid rgba(245,245,247,0.35); padding-bottom: 2px;">The full journey →</a>
+      </div>
+      <div style="border: 1px solid rgba(245,245,247,0.09); border-radius: 12px; background: #0c0d10; padding: 22px; align-self: center; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12px; line-height: 1.9;">
+        <p style="margin: 0; color: rgba(245,245,247,0.35); font-size: 10px; letter-spacing: 0.12em;">YOUR CALIBRATION</p>
+        <p style="margin: 8px 0 0; color: #c9834f;">● labor $52/hr · CNC-3ax $95/hr · MJF $30/hr</p>
+        <p style="margin: 0; color: #c9834f;">● margin 0.30 · utilization 0.80</p>
+        <p style="margin: 0; color: rgba(245,245,247,0.45);">○ 3 rates still DEFAULT — shown, not hidden</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section data-screen-label="Teams CTA" style="padding: 90px 48px 110px; text-align: center;">
+    <h2 style="margin: 0; font-size: clamp(32px, 3.8vw, 52px); line-height: 1.06; font-weight: 300; letter-spacing: -0.028em;">Same number. Every lens. No versions of the truth.</h2>
+    <div style="margin-top: 36px; display: flex; justify-content: center; gap: 16px;">
+      <a href="Company.dc.html#pilot" style="background: #f5f5f7; color: #050506; border-radius: 999px; padding: 14px 32px; font-size: 15px; font-weight: 500; text-decoration: none;">Request a pilot</a>
+      <a href="Platform.dc.html" style="border: 1px solid rgba(245,245,247,0.35); border-radius: 999px; padding: 14px 32px; font-size: 15px; color: #f5f5f7; text-decoration: none;">Explore the platform</a>
+    </div>
+  </section>
+
+  <footer style="border-top: 1px solid rgba(245,245,247,0.07); padding: 34px 48px; display: flex; flex-direction: column; gap: 14px; font-size: 12.5px; color: rgba(245,245,247,0.4);">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <span>CadVerify — verification, made of glass</span>
+      <span style="display: flex; gap: 26px;">
+        <a href="Direction - Cinematic.dc.html" style="color: inherit; text-decoration: none;">Home</a>
+        <a href="Method.dc.html" style="color: inherit; text-decoration: none;">Method</a>
+        <a href="Platform.dc.html" style="color: inherit; text-decoration: none;">Platform</a>
+        <a href="Teams.dc.html" style="color: inherit; text-decoration: none;">Teams</a>
+        <a href="Security.dc.html" style="color: inherit; text-decoration: none;">Security</a>
+        <a href="Developers.dc.html" style="color: inherit; text-decoration: none;">Developers</a>
+        <a href="Company.dc.html" style="color: inherit; text-decoration: none;">Company</a>
+      </span>
+    </div>
+    <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; color: rgba(245,245,247,0.28);">
+      <span>© 2026 CadVerify, Inc.</span>
+      <span style="display: flex; gap: 22px;"><span style="cursor: pointer;">Privacy</span><span style="cursor: pointer;">Terms</span><span style="cursor: pointer;">DPA</span><span style="cursor: pointer;">Status</span></span>
+    </div>
+  </footer>
+</div>
+</x-dc>
+</body>
+</html>

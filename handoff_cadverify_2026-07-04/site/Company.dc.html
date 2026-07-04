@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    html, body { margin: 0; padding: 0; background: #050506; }
+    * { box-sizing: border-box; }
+    ::selection { background: rgba(255,255,255,0.2); }
+    @keyframes hatchOut { 0%, 42% { opacity: 1; } 58%, 88% { opacity: 0; } 100% { opacity: 1; } }
+    @keyframes solidIn { 0%, 42% { transform: scaleX(0); } 58%, 88% { transform: scaleX(1); } 100% { transform: scaleX(0); } }
+    @keyframes labelSwap1 { 0%, 46% { opacity: 1; } 54%, 92% { opacity: 0; } 100% { opacity: 1; } }
+    @keyframes labelSwap2 { 0%, 46% { opacity: 0; } 54%, 92% { opacity: 1; } 100% { opacity: 0; } }
+  </style>
+</helmet>
+
+<div style="background: #050506; color: #f5f5f7; font-family: 'Helvetica Neue', -apple-system, BlinkMacSystemFont, system-ui, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh;">
+
+  <header style="position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; padding: 22px 48px; background: rgba(5,5,6,0.82); backdrop-filter: blur(14px); border-bottom: 1px solid rgba(245,245,247,0.07);">
+    <a href="Direction - Cinematic.dc.html" style="font-size: 17px; font-weight: 500; letter-spacing: 0.06em; color: #f5f5f7; text-decoration: none;">CadVerify</a>
+    <nav style="display: flex; align-items: center; gap: 32px; font-size: 13.5px;">
+      <a href="Method.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Method</a>
+      <a href="Platform.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Platform</a>
+      <a href="Teams.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Teams</a>
+      <a href="Security.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Security</a>
+      <a href="Developers.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Developers</a>
+      <a href="Company.dc.html" style="color: #f5f5f7; text-decoration: none;">Company</a>
+      <a href="#pilot" style="border: 1px solid rgba(245,245,247,0.35); border-radius: 999px; padding: 8px 20px; color: #f5f5f7; text-decoration: none; transition: all 200ms;" style-hover="background: #f5f5f7; color: #050506;">Request a pilot</a>
+    </nav>
+  </header>
+
+  <!-- mission -->
+  <section data-screen-label="Mission" style="max-width: 880px; margin: 0 auto; padding: 110px 48px 80px;">
+    <p style="margin: 0; font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(245,245,247,0.45);">Company</p>
+    <h1 style="margin: 24px 0 0; font-size: clamp(44px, 5.2vw, 72px); line-height: 1.03; font-weight: 300; letter-spacing: -0.03em;">Manufacturing runs on numbers nobody can check.</h1>
+    <p style="margin: 26px 0 0; max-width: 640px; font-size: 18px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.62);">Trillions of dollars of hardware are sourced every year against quotes and estimates that arrive as bare totals — from marketplaces selling their own capacity, or suites that bury the math where only a specialist can read it. We think the cost of a part should be as inspectable as its geometry.</p>
+    <p style="margin: 18px 0 0; max-width: 640px; font-size: 18px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.62);">So we built the glass box: a cost-truth engine where every number carries its provenance, every total reconciles on screen, and accuracy is a measured property — earned per customer, on their parts, against their invoices. Never asserted.</p>
+    <!-- the light: the flip we exist for -->
+    <div style="margin-top: 48px; max-width: 560px;">
+      <div style="position: relative; height: 8px; border-radius: 4px; background: rgba(245,245,247,0.08); overflow: hidden;">
+        <div aria-hidden="true" style="position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, rgba(245,245,247,0.4) 0 2px, transparent 2px 7px); animation: hatchOut 9s ease-in-out infinite;"></div>
+        <div aria-hidden="true" style="position: absolute; inset: 0 18% 0 22%; border-radius: 4px; background: rgba(85,184,128,0.85); transform-origin: 40% 50%; animation: solidIn 9s ease-in-out infinite;"></div>
+        <span aria-hidden="true" style="position: absolute; top: -2px; bottom: -2px; left: 50%; width: 2px; background: #f5f5f7;"></span>
+      </div>
+      <div style="position: relative; margin-top: 10px; height: 18px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px;">
+        <p style="position: absolute; margin: 0; color: rgba(245,245,247,0.4); animation: labelSwap1 9s ease-in-out infinite;">assumption-based · n=0 — how every estimate begins</p>
+        <p style="position: absolute; margin: 0; color: #55b880; animation: labelSwap2 9s ease-in-out infinite;">validated on your parts, against your invoices — the flip we exist for</p>
+      </div>
+    </div>
+    <div style="margin-top: 44px; display: flex; gap: 44px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12px; color: rgba(245,245,247,0.45);">
+      <span><span style="display: block; font-size: 26px; font-weight: 300; color: #f5f5f7; font-family: 'Helvetica Neue', sans-serif;">21</span>process families routed &amp; costed</span>
+      <span><span style="display: block; font-size: 26px; font-weight: 300; color: #f5f5f7; font-family: 'Helvetica Neue', sans-serif;">4</span>provenance marks on every driver</span>
+      <span><span style="display: block; font-size: 26px; font-weight: 300; color: #f5f5f7; font-family: 'Helvetica Neue', sans-serif;">0</span>accuracy claims we haven't measured</span>
+    </div>
+  </section>
+
+  <!-- pilot -->
+  <section id="pilot" data-screen-label="Pilot program" style="border-top: 1px solid rgba(245,245,247,0.07); background: #070709; padding: 90px 48px;">
+    <div style="max-width: 1100px; margin: 0 auto;">
+      <p style="margin: 0; font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(245,245,247,0.45);">The evaluation</p>
+      <h2 style="margin: 20px 0 0; font-size: clamp(32px, 3.8vw, 52px); line-height: 1.06; font-weight: 300; letter-spacing: -0.028em; max-width: 760px;">Don't take our word for it.<br>That's the entire point.</h2>
+      <p style="margin: 22px 0 0; max-width: 620px; font-size: 16.5px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.6);">A CadVerify pilot is a measurement, not a demo. You bring real parts and real paid prices; we come back with a validated-on-your-parts report — including the parts we got wrong. Runs in your environment if your programs require it.</p>
+
+      <div style="margin-top: 56px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;">
+        <div style="border-left: 1px solid rgba(245,245,247,0.12); padding: 4px 28px 0 22px;">
+          <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: rgba(245,245,247,0.4);">WEEK 1</p>
+          <h3 style="margin: 12px 0 0; font-size: 19px; font-weight: 400; letter-spacing: -0.01em;">Bring 10–50 parts</h3>
+          <p style="margin: 10px 0 0; font-size: 13.5px; line-height: 1.6; font-weight: 300; color: rgba(245,245,247,0.55);">STEP or STL, plus your machine list — the floor is the denominator of every verdict — and 12 months of paid prices where you have them. Deployed in our cloud, your VPC, or air-gapped.</p>
+        </div>
+        <div style="border-left: 1px solid rgba(245,245,247,0.12); padding: 4px 28px 0 22px;">
+          <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: rgba(245,245,247,0.4);">WEEK 2</p>
+          <h3 style="margin: 12px 0 0; font-size: 19px; font-weight: 400; letter-spacing: -0.01em;">We calibrate</h3>
+          <p style="margin: 10px 0 0; font-size: 13.5px; line-height: 1.6; font-weight: 300; color: rgba(245,245,247,0.55);">Your shops' rates bound and tagged SHOP; every gap left visible as a DEFAULT. Every part costed with full driver stacks.</p>
+        </div>
+        <div style="border-left: 1px solid rgba(245,245,247,0.12); padding: 4px 28px 0 22px;">
+          <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: rgba(245,245,247,0.4);">WEEK 3</p>
+          <h3 style="margin: 12px 0 0; font-size: 19px; font-weight: 400; letter-spacing: -0.01em;">Held-out validation</h3>
+          <p style="margin: 10px 0 0; font-size: 13.5px; line-height: 1.6; font-weight: 300; color: rgba(245,245,247,0.55);">We validate hours and cost against actuals the model never saw — machine time is the number this thesis lives or dies on. The band flips hatched → solid, or it doesn't, and the report says so.</p>
+        </div>
+        <div style="border-left: 1px solid rgba(245,245,247,0.12); padding: 4px 28px 0 22px;">
+          <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: rgba(245,245,247,0.4);">WEEK 4</p>
+          <h3 style="margin: 12px 0 0; font-size: 19px; font-weight: 400; letter-spacing: -0.01em;">The decision brief</h3>
+          <p style="margin: 10px 0 0; font-size: 13.5px; line-height: 1.6; font-weight: 300; color: rgba(245,245,247,0.55);">Measured residuals per process family, the cost-down ranking for the portfolio you shared, and where the model still guesses.</p>
+        </div>
+      </div>
+
+      <!-- request form -->
+      <div style="margin-top: 64px; max-width: 620px; border: 1px solid rgba(245,245,247,0.1); border-radius: 16px; background: #0c0d10; padding: 34px;">
+        <p style="margin: 0; font-size: 19px; font-weight: 400;">Request a pilot</p>
+        <p style="margin: 8px 0 0; font-size: 13.5px; font-weight: 300; color: rgba(245,245,247,0.5);">We reply within two business days. Security teams welcome from day one.</p>
+        <div style="margin-top: 22px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+          <input placeholder="Work email" style="background: #0a0b0d; border: 1px solid rgba(245,245,247,0.14); border-radius: 8px; padding: 13px 16px; font-size: 14px; color: #f5f5f7; font-family: inherit; outline: none;" style-focus="border-color: rgba(245,245,247,0.4);">
+          <input placeholder="Company" style="background: #0a0b0d; border: 1px solid rgba(245,245,247,0.14); border-radius: 8px; padding: 13px 16px; font-size: 14px; color: #f5f5f7; font-family: inherit; outline: none;" style-focus="border-color: rgba(245,245,247,0.4);">
+          <input placeholder="What do you make?" style="grid-column: span 2; background: #0a0b0d; border: 1px solid rgba(245,245,247,0.14); border-radius: 8px; padding: 13px 16px; font-size: 14px; color: #f5f5f7; font-family: inherit; outline: none;" style-focus="border-color: rgba(245,245,247,0.4);">
+        </div>
+        <div style="margin-top: 16px; display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; color: rgba(245,245,247,0.35);">cloud · VPC · air-gapped — your call</span>
+          <span style="background: #f5f5f7; color: #050506; border-radius: 999px; padding: 12px 28px; font-size: 14.5px; font-weight: 500; cursor: pointer;">Send</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- why now -->
+  <section data-screen-label="Why now" style="max-width: 880px; margin: 0 auto; padding: 90px 48px;">
+    <p style="margin: 0; font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(245,245,247,0.45);">Why now</p>
+    <div style="margin-top: 28px; display: flex; flex-direction: column; gap: 22px; font-size: 17px; line-height: 1.7; font-weight: 300; color: rgba(245,245,247,0.65); max-width: 680px;">
+      <p style="margin: 0;">Supply chains regionalized, and with them every make-vs-buy assumption of the last twenty years went stale. Reshoring programs are re-costing entire portfolios at once — with cost engineering teams that haven't grown since 2015.</p>
+      <p style="margin: 0;">At the same moment, language models made it trivial to generate a confident-sounding number. The scarce thing is no longer an estimate — it's an estimate you can audit. We built the engine that computes, and drew a hard architectural line so the model that talks can never be the one that counts.</p>
+    </div>
+  </section>
+
+  <!-- contact -->
+  <section data-screen-label="Contact" style="border-top: 1px solid rgba(245,245,247,0.07); padding: 80px 48px 110px; text-align: center;">
+    <h2 style="margin: 0; font-size: clamp(30px, 3.4vw, 46px); line-height: 1.06; font-weight: 300; letter-spacing: -0.026em;">Talk to a human.</h2>
+    <p style="margin: 18px auto 0; max-width: 440px; font-size: 16px; line-height: 1.6; font-weight: 300; color: rgba(245,245,247,0.55);">Founders answer the pilot inbox. Procurement, security, and export-control questions welcome.</p>
+    <p style="margin: 26px 0 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 14px; color: rgba(245,245,247,0.7);">pilots@cadverify.com</p>
+  </section>
+
+  <footer style="border-top: 1px solid rgba(245,245,247,0.07); padding: 34px 48px; display: flex; flex-direction: column; gap: 14px; font-size: 12.5px; color: rgba(245,245,247,0.4);">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <span>CadVerify — verification, made of glass</span>
+      <span style="display: flex; gap: 26px;">
+        <a href="Direction - Cinematic.dc.html" style="color: inherit; text-decoration: none;">Home</a>
+        <a href="Method.dc.html" style="color: inherit; text-decoration: none;">Method</a>
+        <a href="Platform.dc.html" style="color: inherit; text-decoration: none;">Platform</a>
+        <a href="Teams.dc.html" style="color: inherit; text-decoration: none;">Teams</a>
+        <a href="Security.dc.html" style="color: inherit; text-decoration: none;">Security</a>
+        <a href="Developers.dc.html" style="color: inherit; text-decoration: none;">Developers</a>
+        <a href="Company.dc.html" style="color: inherit; text-decoration: none;">Company</a>
+      </span>
+    </div>
+    <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; color: rgba(245,245,247,0.28);">
+      <span>© 2026 CadVerify, Inc.</span>
+      <span style="display: flex; gap: 22px;"><span style="cursor: pointer;">Privacy</span><span style="cursor: pointer;">Terms</span><span style="cursor: pointer;">DPA</span><span style="cursor: pointer;">Status</span></span>
+    </div>
+  </footer>
+</div>
+</x-dc>
+</body>
+</html>

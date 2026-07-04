@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    html, body { margin: 0; padding: 0; background: #050506; }
+    * { box-sizing: border-box; }
+    ::selection { background: rgba(255,255,255,0.2); }
+  </style>
+</helmet>
+
+<div style="background: #050506; color: #f5f5f7; font-family: 'Helvetica Neue', -apple-system, BlinkMacSystemFont, system-ui, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh;">
+
+  <header style="position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; padding: 22px 48px; background: rgba(5,5,6,0.82); backdrop-filter: blur(14px); border-bottom: 1px solid rgba(245,245,247,0.07);">
+    <a href="Direction - Cinematic.dc.html" style="font-size: 17px; font-weight: 500; letter-spacing: 0.06em; color: #f5f5f7; text-decoration: none;">CadVerify</a>
+    <nav style="display: flex; align-items: center; gap: 36px; font-size: 13.5px;">
+      <a href="Method.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Method</a>
+      <a href="Platform.dc.html" style="color: #f5f5f7; text-decoration: none;">Platform</a>
+      <a href="Teams.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Teams</a>
+      <a href="Security.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Security</a>
+      <a href="Developers.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Developers</a>
+      <a href="Company.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Company</a>
+      <a href="Company.dc.html#pilot" style="border: 1px solid rgba(245,245,247,0.35); border-radius: 999px; padding: 8px 20px; color: #f5f5f7; text-decoration: none; transition: all 200ms;" style-hover="background: #f5f5f7; color: #050506;">Request a pilot</a>
+    </nav>
+  </header>
+
+  <!-- hero -->
+  <section data-screen-label="Platform hero" style="max-width: 1100px; margin: 0 auto; padding: 110px 48px 80px;">
+    <p style="margin: 0; font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(245,245,247,0.45);">Platform</p>
+    <h1 style="margin: 24px 0 0; font-size: clamp(44px, 5.2vw, 72px); line-height: 1.03; font-weight: 300; letter-spacing: -0.03em; max-width: 820px;">The governed decision layer for everything you make.</h1>
+    <p style="margin: 26px 0 0; max-width: 640px; font-size: 18px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.62);">One deterministic verification engine underneath; every surface above it renders the same auditable record. From a single part to a million-part legacy catalog, nothing on screen is generated — only computed, sourced, and reconciled.</p>
+  </section>
+
+  <!-- the moats -->
+  <section data-screen-label="The moats" style="max-width: 1100px; margin: 0 auto; padding: 0 48px 60px;">
+    <p style="margin: 0; font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(245,245,247,0.45);">What nobody else answers</p>
+    <div style="margin-top: 24px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px;">
+      <div style="border: 1px solid rgba(245,245,247,0.1); border-radius: 16px; background: #0c0d10; padding: 28px;">
+        <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 10.5px; letter-spacing: 0.16em; color: rgba(245,245,247,0.4);">YOUR MACHINES, BY NAME</p>
+        <h3 style="margin: 12px 0 0; font-size: 22px; font-weight: 300; letter-spacing: -0.018em; line-height: 1.2;">"Yes — on your M2 Pro."</h3>
+        <p style="margin: 12px 0 0; font-size: 14px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.55);">Verdicts are computed against your declared floor — envelope, materials, rate, throughput per machine. Owned means marginal cost; missing means an acquisition consideration, stated as one.</p>
+        <p style="margin: 14px 0 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; line-height: 1.8; color: rgba(245,245,247,0.45);">✓ fits M2 Pro · 380×284×380<br><span style="color: #d9a856;">✗ IM not owned → $7,800 consideration</span></p>
+      </div>
+      <div style="border: 1px solid rgba(245,245,247,0.1); border-radius: 16px; background: #0c0d10; padding: 28px;">
+        <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 10.5px; letter-spacing: 0.16em; color: rgba(245,245,247,0.4);">THE ENVIRONMENT GATE</p>
+        <h3 style="margin: 12px 0 0; font-size: 22px; font-weight: 300; letter-spacing: -0.018em; line-height: 1.2;">Materials that can't survive are struck, with reasons.</h3>
+        <p style="margin: 12px 0 0; font-size: 14px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.55);">Declare the part's world — pressure, temperature, sour service — and the material set filters visibly, never silently.</p>
+        <p style="margin: 14px 0 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; line-height: 1.8; color: rgba(245,245,247,0.45);"><span style="text-decoration: line-through; color: rgba(245,245,247,0.3);">Al 6061-T6</span> <span style="color: #c96a5e;">fails NACE MR0175</span><br><span style="text-decoration: line-through; color: rgba(245,245,247,0.3);">PP</span> <span style="color: #c96a5e;">HDT &lt; 120 °C</span> · <span style="color: #55b880;">316L · 17-4PH pass</span></p>
+      </div>
+      <div style="border: 1px solid rgba(245,245,247,0.1); border-radius: 16px; background: #0c0d10; padding: 28px;">
+        <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 10.5px; letter-spacing: 0.16em; color: rgba(245,245,247,0.4);">TRIAGE AT SCALE</p>
+        <h3 style="margin: 12px 0 0; font-size: 22px; font-weight: 300; letter-spacing: -0.018em; line-height: 1.2;">A legacy catalog collapses into honest buckets.</h3>
+        <p style="margin: 12px 0 0; font-size: 14px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.55);">Thousands to millions of parts, each walked through the same verification: makeable in-house · outside · needs new capability · not makeable — every count openable to its verdicts.</p>
+        <p style="margin: 14px 0 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; line-height: 1.8; color: rgba(245,245,247,0.45);">268 in-house · 97 outside · <span style="color: #d9a856;">36 capability</span> · <span style="color: #c96a5e;">11 not makeable</span></p>
+      </div>
+    </div>
+    <p style="margin: 16px 0 0; text-align: center; font-family: ui-monospace, 'SF Mono', monospace; font-size: 10.5px; color: rgba(245,245,247,0.35);">sample figures illustrative — the mechanics are the product · the surfaces below render these three gates</p>
+  </section>
+
+  <!-- capabilities -->
+  <section style="max-width: 1100px; margin: 0 auto; padding: 0 48px 60px; display: flex; flex-direction: column; gap: 22px;">
+
+    <!-- copilot -->
+    <div data-screen-label="Copilot" style="border: 1px solid rgba(245,245,247,0.1); border-radius: 18px; background: #0c0d10; padding: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center;">
+      <div>
+        <p style="margin: 0; display: flex; align-items: center; gap: 10px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.18em; color: rgba(245,245,247,0.4);">01 · THE DECISION WORKSPACE <span style="letter-spacing: 0.1em; font-size: 9.5px; border: 1px solid rgba(217,168,86,0.35); color: #d9a856; border-radius: 4px; padding: 2px 7px;">IN DEVELOPMENT</span></p>
+        <h2 style="margin: 14px 0 0; font-size: clamp(26px, 2.7vw, 36px); font-weight: 300; letter-spacing: -0.022em; line-height: 1.12;">A copilot that cannot hallucinate a number.</h2>
+        <p style="margin: 16px 0 0; font-size: 15px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.58);">Ask in plain language — "should we tool up for 5,000 units?" — and the answer arrives as a decision artifact: should-cost with its band, the crossover chart, DFM findings, and a provenance chip on every driver. The language model writes the sentences. The engine writes the numbers. That boundary is architectural, not a policy.</p>
+        <p style="margin: 16px 0 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11.5px; color: rgba(245,245,247,0.4);">every artifact carries its engine run id, shop binding, and timestamp</p>
+      </div>
+      <div style="border: 1px solid rgba(245,245,247,0.09); border-radius: 12px; background: #0a0b0d; padding: 20px;">
+        <p style="margin: 0; font-size: 13.5px; font-weight: 300; color: rgba(245,245,247,0.75); border-bottom: 1px solid rgba(245,245,247,0.08); padding-bottom: 12px;">"Procurement wants 5,000 units next year. Keep printing, or tool up?"</p>
+        <p style="margin: 14px 0 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 10.5px; letter-spacing: 0.12em; color: rgba(245,245,247,0.4);">ENGINE OUTPUT — COMPUTED, NOT GENERATED</p>
+        <div style="margin-top: 12px; display: flex; align-items: baseline; gap: 12px;">
+          <span style="font-size: 32px; font-weight: 200; letter-spacing: -0.03em; font-variant-numeric: tabular-nums;">$8.01</span>
+          <span style="font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; color: #d9a856;">CONDITIONAL — 1 sidewall &lt; 1.0° draft</span>
+        </div>
+        <div style="margin-top: 12px; position: relative; height: 5px; border-radius: 3px; background: rgba(245,245,247,0.08); overflow: hidden;">
+          <div style="position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, rgba(217,168,86,0.5) 0 2px, transparent 2px 6px);"></div>
+        </div>
+        <p style="margin: 9px 0 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 10.5px; color: rgba(245,245,247,0.4);">±60% · assumption-based · n=0 · crossover 1,962 units</p>
+      </div>
+    </div>
+
+    <!-- part hero + context -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 22px;">
+      <div data-screen-label="Part stage" style="border: 1px solid rgba(245,245,247,0.1); border-radius: 18px; background: #0c0d10; padding: 36px;">
+        <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.18em; color: rgba(245,245,247,0.4);">02 · THE PART, AS HERO OBJECT</p>
+        <h2 style="margin: 14px 0 0; font-size: 26px; font-weight: 300; letter-spacing: -0.02em; line-height: 1.15;">Geometry is the interface.</h2>
+        <p style="margin: 14px 0 0; font-size: 14.5px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.58);">Every part lives on a lit 3D stage — X-ray into the driver stack, highlight the exact faces a DFM blocker points at, section it. Every list in the product carries real rendered thumbnails, because a cost without its geometry is just a rumor.</p>
+        <p style="margin: 18px 0 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11.5px; color: #6aa5d8;">● MEASURED — 710 faces · watertight · Ø21 × 21.5 mm</p>
+      </div>
+      <div data-screen-label="Context" style="border: 1px solid rgba(245,245,247,0.1); border-radius: 18px; background: #0c0d10; padding: 36px;">
+        <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.18em; color: rgba(245,245,247,0.4);">03 · CONTEXT, EARNED</p>
+        <h2 style="margin: 14px 0 0; font-size: 26px; font-weight: 300; letter-spacing: -0.02em; line-height: 1.15;">Every part knows where it lives.</h2>
+        <p style="margin: 14px 0 0; font-size: 14.5px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.58);">With assembly data, the camera pulls back and the part seats into its housing — one unit cost becomes program exposure. Context you declared yourself is shown as exactly that, tagged USER. And a part with no home says so, honestly.</p>
+        <p style="margin: 18px 0 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11.5px; color: rgba(245,245,247,0.5);">program → assembly → part · <span style="color: #f5f5f7;">exposure = unit cost × your volume, computed</span></p>
+      </div>
+    </div>
+
+    <!-- portfolio -->
+    <div data-screen-label="Portfolio" style="border: 1px solid rgba(245,245,247,0.1); border-radius: 18px; background: #0c0d10; padding: 40px;">
+      <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 40px; align-items: center;">
+        <div>
+          <p style="margin: 0; display: flex; align-items: center; gap: 10px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.18em; color: rgba(245,245,247,0.4);">04 · THE PORTFOLIO COST-DOWN BOARD <span style="letter-spacing: 0.1em; font-size: 9.5px; border: 1px solid rgba(217,168,86,0.35); color: #d9a856; border-radius: 4px; padding: 2px 7px;">IN DEVELOPMENT</span></p>
+          <h2 style="margin: 14px 0 0; font-size: clamp(26px, 2.7vw, 36px); font-weight: 300; letter-spacing: -0.022em; line-height: 1.12;">Where the money is, ranked by the engine.</h2>
+          <p style="margin: 16px 0 0; font-size: 15px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.58);">Every costed part in the org, clustered by program and ranked by engine-computed savings against what you're paying today. Validated savings read solid; assumption-based stay hatched; and where there's no paid price on file, the number is withheld — never extrapolated to look complete.</p>
+        </div>
+        <div style="border: 1px solid rgba(245,245,247,0.09); border-radius: 12px; background: #0a0b0d; overflow: hidden; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12px;">
+          <div style="display: grid; grid-template-columns: 1.4fr 1fr 1fr 90px; gap: 12px; padding: 12px 18px; border-bottom: 1px solid rgba(245,245,247,0.07); color: rgba(245,245,247,0.35); font-size: 10px; letter-spacing: 0.1em;"><span>ILLUSTRATIVE DATA</span><span>PAYING</span><span>SHOULD</span><span style="text-align: right;">SAVINGS</span></div>
+          <div style="display: grid; grid-template-columns: 1.4fr 1fr 1fr 90px; gap: 12px; padding: 13px 18px; border-bottom: 1px solid rgba(245,245,247,0.05);"><span style="color: rgba(245,245,247,0.75);">Bearing flange</span><span style="color: rgba(245,245,247,0.55);">$41.80</span><span style="color: rgba(245,245,247,0.55);">$22.60</span><span style="text-align: right; color: #f5f5f7;">$1.27M</span></div>
+          <div style="display: grid; grid-template-columns: 1.4fr 1fr 1fr 90px; gap: 12px; padding: 13px 18px; border-bottom: 1px solid rgba(245,245,247,0.05); background: rgba(85,184,128,0.04);"><span style="color: rgba(245,245,247,0.75);">Guide bushing</span><span style="color: rgba(245,245,247,0.55);">$11.02</span><span style="color: rgba(245,245,247,0.55);">$6.31</span><span style="text-align: right; color: #55b880;">$620K ✓</span></div>
+          <div style="display: grid; grid-template-columns: 1.4fr 1fr 1fr 90px; gap: 12px; padding: 13px 18px;"><span style="color: rgba(245,245,247,0.75);">Output shaft</span><span style="color: rgba(245,245,247,0.3);">— none on file</span><span style="color: rgba(245,245,247,0.55);">$14.14</span><span style="text-align: right; color: rgba(245,245,247,0.3);">withheld</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- flywheel + honesty -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 22px;">
+      <div data-screen-label="Flywheel" style="border: 1px solid rgba(245,245,247,0.1); border-radius: 18px; background: #0c0d10; padding: 36px;">
+        <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.18em; color: rgba(245,245,247,0.4);">05 · THE GROUND-TRUTH FLYWHEEL</p>
+        <h2 style="margin: 14px 0 0; font-size: 26px; font-weight: 300; letter-spacing: -0.02em; line-height: 1.15;">Accuracy is earned, per customer.</h2>
+        <p style="margin: 14px 0 0; font-size: 14.5px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.58);">Send back real invoice costs and the model validates against your held-out parts. The band flips from hatched to solid and states its measured residual — the only accuracy claim the product will ever make, and it's yours, not ours.</p>
+        <div style="margin-top: 22px; display: flex; flex-direction: column; gap: 10px;">
+          <div style="position: relative; height: 6px; border-radius: 3px; background: rgba(245,245,247,0.08); overflow: hidden;"><div style="position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, rgba(245,245,247,0.4) 0 2px, transparent 2px 7px);"></div></div>
+          <div style="position: relative; height: 6px; border-radius: 3px; background: rgba(245,245,247,0.08); overflow: hidden;"><div style="position: absolute; inset: 0 18% 0 22%; border-radius: 3px; background: rgba(85,184,128,0.8);"></div></div>
+          <p style="margin: 4px 0 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 10.5px; color: rgba(245,245,247,0.4);">±40% n=0 → <span style="color: #55b880;">a measured residual on your held-out parts</span></p>
+        </div>
+      </div>
+      <div data-screen-label="Honest states" style="border: 1px solid rgba(245,245,247,0.1); border-radius: 18px; background: #0c0d10; padding: 36px;">
+        <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.18em; color: rgba(245,245,247,0.4);">06 · HONESTY AS A DESIGN SYSTEM</p>
+        <h2 style="margin: 14px 0 0; font-size: 26px; font-weight: 300; letter-spacing: -0.02em; line-height: 1.15;">The states we refuse to fake.</h2>
+        <p style="margin: 14px 0 0; font-size: 14.5px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.58);">Unvalidated bands render hatched. Missing baselines render withheld, with the reason. Generic assumptions are framed, not buried. In a procurement review, the absence of false precision is the feature.</p>
+        <div style="margin-top: 22px; display: flex; flex-wrap: wrap; gap: 8px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px;">
+          <span style="border: 1px solid rgba(245,245,247,0.15); border-radius: 6px; padding: 5px 10px; color: rgba(245,245,247,0.6);">hatched band</span>
+          <span style="border: 1px solid rgba(85,184,128,0.3); border-radius: 6px; padding: 5px 10px; color: #55b880;">earned solid</span>
+          <span style="border: 1px dashed rgba(245,245,247,0.2); border-radius: 6px; padding: 5px 10px; color: rgba(245,245,247,0.45);">withheld number</span>
+          <span style="border: 1px solid rgba(217,168,86,0.3); border-radius: 6px; padding: 5px 10px; color: #d9a856;">visible DEFAULT</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- scale -->
+  <section data-screen-label="Scale" style="max-width: 1100px; margin: 0 auto; padding: 30px 48px 60px;">
+    <div style="border: 1px solid rgba(245,245,247,0.1); border-radius: 18px; background: #0c0d10; padding: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center;">
+      <div>
+        <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.18em; color: rgba(245,245,247,0.4);">07 · BUILT FOR PORTFOLIO SCALE</p>
+        <h2 style="margin: 14px 0 0; font-size: clamp(26px, 2.7vw, 36px); font-weight: 300; letter-spacing: -0.022em; line-height: 1.12;">One part is a demo.<br>Ten thousand is a program.</h2>
+        <p style="margin: 16px 0 0; font-size: 15px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.58);">Batch upload an entire BOM, or drive the API from your PLM export — every part routed, costed and DFM-checked with the same full report, then ranked on the cost-down board. Onboarding a reshoring program's portfolio is a batch job, not a quarter.</p>
+      </div>
+      <div style="border: 1px solid rgba(245,245,247,0.09); border-radius: 12px; background: #0a0b0d; padding: 22px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12px; line-height: 2;">
+        <p style="margin: 0; color: rgba(245,245,247,0.35); font-size: 10px; letter-spacing: 0.12em;">BATCH · GEARBOX BOM · 412 PARTS</p>
+        <p style="margin: 10px 0 0; color: rgba(245,245,247,0.65);">▸ 398 costed with full driver stacks</p>
+        <p style="margin: 0; color: rgba(245,245,247,0.65);">▸ 11 routed feasibility-only <span style="color: rgba(245,245,247,0.35);">(no calibrated process)</span></p>
+        <p style="margin: 0; color: #d9a856;">▸ 3 geometry invalid — repair suggested, not silently skipped</p>
+        <p style="margin: 10px 0 0; color: rgba(245,245,247,0.45); border-top: 1px solid rgba(245,245,247,0.07); padding-top: 10px;">every row opens into the same glass box</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- positioning -->
+  <section data-screen-label="Positioning" style="border-top: 1px solid rgba(245,245,247,0.07); background: #070709; padding: 90px 48px;">
+    <div style="max-width: 1100px; margin: 0 auto;">
+      <p style="margin: 0; font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(245,245,247,0.45); text-align: center;">The category</p>
+      <h2 style="margin: 20px auto 0; max-width: 720px; text-align: center; font-size: clamp(30px, 3.6vw, 48px); line-height: 1.07; font-weight: 300; letter-spacing: -0.026em;">Both incumbents hide the model.<br>For opposite reasons.</h2>
+      <div style="margin-top: 52px; display: grid; grid-template-columns: 1fr 1fr 1.15fr; gap: 18px;">
+        <div style="border: 1px solid rgba(245,245,247,0.08); border-radius: 16px; padding: 30px; background: rgba(245,245,247,0.02);">
+          <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 10.5px; letter-spacing: 0.16em; color: rgba(245,245,247,0.35);">INSTANT-QUOTE MARKETPLACE</p>
+          <p style="margin: 14px 0 0; font-size: 15px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.55);">A price with nothing behind it — because the marketplace is selling its own capacity. The number is a sales position, unauditable by design, and your CAD trains their library.</p>
+        </div>
+        <div style="border: 1px solid rgba(245,245,247,0.08); border-radius: 16px; padding: 30px; background: rgba(245,245,247,0.02);">
+          <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 10.5px; letter-spacing: 0.16em; color: rgba(245,245,247,0.35);">COST-ENGINEERING SUITE</p>
+          <p style="margin: 14px 0 0; font-size: 15px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.55);">Physics-based and serious — then buried in a bill-of-process only a trained specialist can read, gated behind seats, roles, and a six-month deployment.</p>
+        </div>
+        <div style="border: 1px solid rgba(245,245,247,0.22); border-radius: 16px; padding: 30px; background: rgba(245,245,247,0.045);">
+          <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 10.5px; letter-spacing: 0.16em; color: #f5f5f7;">CADVERIFY — THE GLASS BOX</p>
+          <p style="margin: 14px 0 0; font-size: 15px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.75);">Every driver visible, sourced, and summing to the unit cost. The hero output is the decision — make-vs-buy and the crossover — and trust is demonstrated on your parts, never asserted on a slide.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section data-screen-label="Platform CTA" style="padding: 100px 48px 110px; text-align: center;">
+    <h2 style="margin: 0; font-size: clamp(32px, 3.8vw, 52px); line-height: 1.06; font-weight: 300; letter-spacing: -0.028em;">One engine. Every decision surface.</h2>
+    <div style="margin-top: 36px; display: flex; justify-content: center; gap: 16px;">
+      <span style="background: #f5f5f7; color: #050506; border-radius: 999px; padding: 14px 32px; font-size: 15px; font-weight: 500; cursor: pointer;">Cost a part</span>
+      <a href="Method.dc.html" style="border: 1px solid rgba(245,245,247,0.35); border-radius: 999px; padding: 14px 32px; font-size: 15px; color: #f5f5f7; text-decoration: none;">How the number is built</a>
+    </div>
+  </section>
+
+  <footer style="border-top: 1px solid rgba(245,245,247,0.07); padding: 34px 48px; display: flex; flex-direction: column; gap: 14px; font-size: 12.5px; color: rgba(245,245,247,0.4);">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <span>CadVerify — verification, made of glass</span>
+      <span style="display: flex; gap: 26px;">
+        <a href="Direction - Cinematic.dc.html" style="color: inherit; text-decoration: none;">Home</a>
+        <a href="Method.dc.html" style="color: inherit; text-decoration: none;">Method</a>
+        <a href="Platform.dc.html" style="color: inherit; text-decoration: none;">Platform</a>
+        <a href="Teams.dc.html" style="color: inherit; text-decoration: none;">Teams</a>
+        <a href="Security.dc.html" style="color: inherit; text-decoration: none;">Security</a>
+        <a href="Developers.dc.html" style="color: inherit; text-decoration: none;">Developers</a>
+        <a href="Company.dc.html" style="color: inherit; text-decoration: none;">Company</a>
+      </span>
+    </div>
+    <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; color: rgba(245,245,247,0.28);">
+      <span>© 2026 CadVerify, Inc.</span>
+      <span style="display: flex; gap: 22px;"><span style="cursor: pointer;">Privacy</span><span style="cursor: pointer;">Terms</span><span style="cursor: pointer;">DPA</span><span style="cursor: pointer;">Status</span></span>
+    </div>
+  </footer>
+</div>
+</x-dc>
+</body>
+</html>
