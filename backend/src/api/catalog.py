@@ -181,3 +181,50 @@ async def get_portfolio(
             "null, never a fabricated demand quantity."
         )
     return resp
+
+
+@router.get("/triage")
+@limiter.limit("60/hour;500/day")
+async def get_triage(
+    request: Request,
+    response: Response,
+    user: AuthedUser = Depends(require_role(Role.viewer)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Org-scoped makeability triage roll-up: of the caller's N parts, how many
+    are routable to each process and how many are makeable / need review / unknown.
+
+    This is the FIRST value prop (can-we-make-it-and-how) at PORTFOLIO scale — a
+    pile of legacy parts summarized into an actionable catalog. It needs no shop
+    and no cost validation: the buckets are a pure DFM-makeability lens.
+
+    HONEST BY CONSTRUCTION: every count is a tally of a real engine-derived field
+    on the same catalog rows the grid uses. ``makeable`` = routed AND DFM-analyzed
+    with zero critical findings; ``needs_review`` = routed but the engine flagged a
+    blocking DFM blocker or a critical finding; ``unknown`` = no route OR never
+    DFM-analyzed. Every part lands in exactly one bucket (they sum to ``total``); a
+    part with no analysis is never assumed makeable. When the org scan was capped,
+    ``truncated`` is true and a ``note`` says so — full coverage is never implied.
+
+    Empty org → a zeroed summary (not an error). Program grouping is additive:
+    present only when a part carries a USER-DECLARED program.
+    """
+    # Tenant boundary: the caller's org. None → no membership → zeroed summary.
+    org_id = await resolve_org(session, user.user_id)
+    built = await svc.build_triage(session, org_id)
+
+    summary = built["summary"]
+    resp = {
+        "summary": summary,
+        "by_process": built["by_process"],
+    }
+    if built.get("programs"):
+        resp["programs"] = built["programs"]
+    # When the scan was capped, say so plainly: the triage covers only the most
+    # recent parts, not the full history — never a silent implication of coverage.
+    if summary.get("truncated"):
+        resp["note"] = (
+            "This makeability triage is over a capped scan of the most recent "
+            "parts; older parts were not counted."
+        )
+    return resp

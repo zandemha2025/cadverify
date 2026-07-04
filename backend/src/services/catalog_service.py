@@ -39,6 +39,7 @@ from typing import Any, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.analysis.models import ProcessType
 from src.db.models import Analysis, CostDecision
 from src.services import part_context_service as pcsvc
 
@@ -780,3 +781,194 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
             summary["programs"] = programs
 
     return {"summary": summary, "rows": rows}
+
+
+# ---------------------------------------------------------------------------
+# Makeability triage roll-up (W1 value-prop 1) — "can we make it, and how?" at
+# portfolio scale. A THIRD pure aggregation over the SAME catalog rows: it turns
+# a pile of legacy parts into an actionable summary — of N parts, how many are
+# routable to each process, and how many are makeable / need review / unknown.
+# No shop, no cost validation: this is the DFM-makeability lens only.
+# ---------------------------------------------------------------------------
+
+
+# Human labels for every real engine process id (ProcessType). Keeps the rollup
+# honest: buckets key off the engine's own category, and the label is a display
+# string only — an unrecognized id falls back to a titleized form, never dropped.
+_PROCESS_LABELS: dict[str, str] = {
+    ProcessType.FDM.value: "FDM 3D Printing",
+    ProcessType.SLA.value: "SLA 3D Printing",
+    ProcessType.DLP.value: "DLP 3D Printing",
+    ProcessType.SLS.value: "SLS 3D Printing",
+    ProcessType.MJF.value: "MJF 3D Printing",
+    ProcessType.DMLS.value: "DMLS Metal 3D Printing",
+    ProcessType.SLM.value: "SLM Metal 3D Printing",
+    ProcessType.EBM.value: "EBM Metal 3D Printing",
+    ProcessType.BINDER_JET.value: "Binder Jetting",
+    ProcessType.DED.value: "Directed Energy Deposition",
+    ProcessType.WAAM.value: "Wire-Arc Additive (WAAM)",
+    ProcessType.CNC_3AXIS.value: "CNC Milling (3-axis)",
+    ProcessType.CNC_5AXIS.value: "CNC Milling (5-axis)",
+    ProcessType.CNC_TURNING.value: "CNC Turning",
+    ProcessType.WIRE_EDM.value: "Wire EDM",
+    ProcessType.INJECTION_MOLDING.value: "Injection Molding",
+    ProcessType.DIE_CASTING.value: "Die Casting",
+    ProcessType.INVESTMENT_CASTING.value: "Investment Casting",
+    ProcessType.SAND_CASTING.value: "Sand Casting",
+    ProcessType.SHEET_METAL.value: "Sheet Metal",
+    ProcessType.FORGING.value: "Forging",
+}
+
+# The three makeability postures. Every part lands in EXACTLY one (see
+# ``triage_bucket``); they are mutually exclusive and sum to ``total``.
+TRIAGE_BUCKETS = ("makeable", "needs_review", "unknown")
+
+
+def process_label(process_id: Optional[str]) -> str:
+    """Human label for an engine process id (display only, never a category)."""
+    if not process_id:
+        return "Unrouted"
+    return _PROCESS_LABELS.get(process_id) or process_id.replace("_", " ").title()
+
+
+def triage_bucket(row: dict) -> str:
+    """Classify one derived catalog row into a makeability posture.
+
+    Mutually exclusive, evaluated in order — every row lands in exactly one, and
+    every branch keys off a REAL engine-derived field on the row:
+
+    * ``needs_review`` — the part IS routed to a process, but the engine flagged a
+      blocking/critical DFM problem on that route: either a cost-side DFM blocker
+      (``route_blocker_count > 0``, the same signal that withholds the price) or a
+      route-scoped critical DFM finding (``findings.critical > 0``). A concrete,
+      engine-computed reason it can't be made as-designed.
+    * ``makeable`` — routed AND a DFM analysis actually ran on the route
+      (``findings`` present) AND that analysis has zero critical findings. We only
+      call a part makeable once the DFM engine has CONFIRMED the route is clean —
+      never on a cost decision alone.
+    * ``unknown`` — everything else: no recommended route at all, OR routed but
+      never DFM-analyzed (a cost decision does not embed the DFM Issue array). We
+      do not KNOW it's makeable, so we never assume it. Honest by construction.
+    """
+    route = (row.get("recommended_route") or {}).get("process")
+    findings = row.get("findings")
+    if route:
+        if (row.get("route_blocker_count") or 0) > 0:
+            return "needs_review"
+        if findings and (findings.get("critical") or 0) > 0:
+            return "needs_review"
+        # Makeable only when a DFM analysis actually ran and found nothing
+        # blocking — a route without an analysis is unknown, never makeable.
+        if findings is not None:
+            return "makeable"
+    return "unknown"
+
+
+def _empty_triage_summary() -> dict:
+    return {
+        "total": 0,
+        "analyzed": 0,
+        "makeable": 0,
+        "needs_review": 0,
+        "unknown": 0,
+        "truncated": False,
+    }
+
+
+def triage_rollup(
+    rows: list[dict],
+    *,
+    truncated: bool = False,
+    programs: Optional[dict[str, str]] = None,
+) -> dict:
+    """Pure makeability roll-up over derived catalog rows (no DB, no I/O).
+
+    Aggregates the exact rows ``build_catalog`` produced — it never re-derives or
+    re-queries. Returns:
+
+    * ``summary`` — ``total`` parts; ``analyzed`` (= makeable + needs_review, the
+      parts carrying a real DFM makeability signal); the three posture counts; and
+      ``truncated`` passed straight through (true ⇒ the scan was capped and older
+      parts were NOT counted — stated, never implied away).
+    * ``by_process`` — for each process any part is routed to, the count of parts
+      on that route with the engine process id + a human label. Sorted by count
+      desc then id, so it's deterministic. Only routed parts appear (an unrouted
+      ``unknown`` part contributes to no process).
+    * ``programs`` (optional) — the same posture counts grouped by USER-DECLARED
+      ``program``, present ONLY when at least one part carries one. Additive; the
+      response is byte-identical without it.
+
+    Honesty: every count is a tally of a real engine-derived field. A part with no
+    analysis is ``unknown`` (never assumed makeable); a % is only ever count/total,
+    computed by the caller if at all — none is fabricated here.
+    """
+    summary = _empty_triage_summary()
+    summary["truncated"] = bool(truncated)
+    by_process: dict[str, int] = {}
+    prog_groups: dict[str, dict] = {}
+
+    for r in rows:
+        summary["total"] += 1
+        bucket = triage_bucket(r)
+        summary[bucket] += 1
+
+        proc = (r.get("recommended_route") or {}).get("process")
+        if proc:
+            by_process[proc] = by_process.get(proc, 0) + 1
+
+        if programs:
+            program = programs.get(r.get("part_key"))
+            if program:
+                g = prog_groups.setdefault(
+                    program,
+                    {"program": program, "total": 0,
+                     "makeable": 0, "needs_review": 0, "unknown": 0},
+                )
+                g["total"] += 1
+                g[bucket] += 1
+
+    summary["analyzed"] = summary["makeable"] + summary["needs_review"]
+
+    by_process_list = [
+        {"process": p, "label": process_label(p), "count": c}
+        for p, c in by_process.items()
+    ]
+    by_process_list.sort(key=lambda x: (-x["count"], x["process"]))
+
+    out: dict = {"summary": summary, "by_process": by_process_list}
+    if prog_groups:
+        out["programs"] = [prog_groups[p] for p in sorted(prog_groups)]
+    return out
+
+
+async def build_triage(session: AsyncSession, org_id: Optional[str]) -> dict:
+    """The org-scoped makeability triage roll-up.
+
+    Reuses ``build_catalog``'s derived rows verbatim (no new tables, no raw
+    re-query) and folds them into a portfolio-scale "can we make it, and how?"
+    summary. ``org_id`` None → a zeroed summary (never a cross-org read), matching
+    the empty-org contract of the catalog/portfolio surfaces.
+
+    Program grouping is additive: when the org has declared at least one part
+    ``program``, the roll-up carries a per-program posture breakdown; otherwise the
+    response is byte-identical without it. Truncation is carried through honestly.
+    """
+    if not org_id:
+        return {"summary": _empty_triage_summary(), "by_process": []}
+
+    built = await build_catalog(session, org_id)
+    rows = built["rows"]
+
+    # Optional declared-program grouping — same source the portfolio join uses.
+    contexts = await pcsvc.list_contexts(session, org_id)
+    prog_by_mesh = {
+        c.mesh_hash: c.program
+        for c in contexts
+        if getattr(c, "program", None)
+    }
+
+    return triage_rollup(
+        rows,
+        truncated=built["truncated"],
+        programs=prog_by_mesh or None,
+    )
