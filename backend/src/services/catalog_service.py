@@ -32,15 +32,16 @@ Honesty contract (identical to the live decision / FE catalog):
 """
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import select
+from sqlalchemy import and_, func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.analysis.models import ProcessType
-from src.db.models import Analysis, CostDecision
+from src.db.models import Analysis, CostDecision, PartContext, PartSummary
 from src.services import part_context_service as pcsvc
 
 # ---------------------------------------------------------------------------
@@ -972,3 +973,184 @@ async def build_triage(session: AsyncSession, org_id: Optional[str]) -> dict:
         truncated=built["truncated"],
         programs=prog_by_mesh or None,
     )
+
+
+# ===========================================================================
+# SCALE PATH (Aramco GAP 2) — summary-backed reads over ``part_summaries``.
+#
+# These ADD alongside build_triage / build_catalog (which stay UNTOUCHED as the
+# byte-identity oracle). They compute the whole-inventory triage COUNT with a SQL
+# GROUP BY (O(buckets), scales to millions) and paginate the grid by keyset —
+# never scanning + folding raw rows in Python, never capped. Proven byte-identical
+# to the legacy output on identical data: the summary rows carry the exact
+# ``derive_row`` dict + the exact ``triage_bucket`` classification.
+# ===========================================================================
+
+
+async def build_triage_scaled(session: AsyncSession, org_id: Optional[str]) -> dict:
+    """Whole-inventory makeability triage — the SCALE version of ``build_triage``.
+
+    SAME OUTPUT SHAPE as ``build_triage`` (``summary`` + ``by_process`` + optional
+    ``programs``), but computed by SQL aggregation over ``part_summaries`` instead
+    of folding the 2000 newest raw rows in Python:
+
+    * ``summary`` — ``GROUP BY triage_bucket`` gives the three posture counts; the
+      derived ``total`` and ``analyzed`` (= makeable + needs_review) follow. This
+      counts the ENTIRE inventory, so ``truncated`` is ALWAYS False — there is no
+      cap to exceed.
+    * ``by_process`` — ``GROUP BY route_process`` (routed parts only) → the per-
+      process counts, labeled + sorted by (count desc, id) exactly as the legacy
+      rollup.
+    * ``programs`` (optional) — a bounded JOIN to ``part_contexts`` grouped by the
+      USER-DECLARED program × bucket; present ONLY when a part carries a program,
+      byte-identical without it (programs are few, so the join is cheap).
+
+    Byte-identical to ``build_triage`` for any org whose parts fit under the legacy
+    cap (the byte-identity test asserts this). ``org_id`` None → the same zeroed
+    ``_empty_triage_summary()`` + ``[]`` contract.
+    """
+    if not org_id:
+        return {"summary": _empty_triage_summary(), "by_process": []}
+
+    # --- posture counts (GROUP BY triage_bucket) ---------------------------
+    bucket_rows = (
+        await session.execute(
+            select(PartSummary.triage_bucket, func.count())
+            .where(PartSummary.org_id == org_id)
+            .group_by(PartSummary.triage_bucket)
+        )
+    ).all()
+    summary = _empty_triage_summary()
+    for bucket, cnt in bucket_rows:
+        summary["total"] += cnt
+        if bucket in TRIAGE_BUCKETS:
+            summary[bucket] += cnt
+    summary["analyzed"] = summary["makeable"] + summary["needs_review"]
+    # Whole inventory is counted — never truncated (no cap on a SQL COUNT).
+    summary["truncated"] = False
+
+    # --- by_process (GROUP BY route_process, routed parts only) ------------
+    proc_rows = (
+        await session.execute(
+            select(PartSummary.route_process, func.count())
+            .where(
+                PartSummary.org_id == org_id,
+                PartSummary.route_process.isnot(None),
+            )
+            .group_by(PartSummary.route_process)
+        )
+    ).all()
+    by_process_list = [
+        {"process": p, "label": process_label(p), "count": c}
+        for p, c in proc_rows
+    ]
+    by_process_list.sort(key=lambda x: (-x["count"], x["process"]))
+
+    # --- programs (bounded JOIN to declared contexts) ----------------------
+    prog_rows = (
+        await session.execute(
+            select(PartContext.program, PartSummary.triage_bucket, func.count())
+            .select_from(PartSummary)
+            .join(
+                PartContext,
+                and_(
+                    PartContext.org_id == PartSummary.org_id,
+                    PartContext.mesh_hash == PartSummary.mesh_hash,
+                ),
+            )
+            .where(
+                PartSummary.org_id == org_id,
+                PartContext.program.isnot(None),
+            )
+            .group_by(PartContext.program, PartSummary.triage_bucket)
+        )
+    ).all()
+    prog_groups: dict[str, dict] = {}
+    for program, bucket, cnt in prog_rows:
+        g = prog_groups.setdefault(
+            program,
+            {"program": program, "total": 0,
+             "makeable": 0, "needs_review": 0, "unknown": 0},
+        )
+        g["total"] += cnt
+        if bucket in TRIAGE_BUCKETS:
+            g[bucket] += cnt
+
+    out: dict = {"summary": summary, "by_process": by_process_list}
+    if prog_groups:
+        out["programs"] = [prog_groups[p] for p in sorted(prog_groups)]
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Keyset-paginated catalog grid (scale) — one page of derived rows at a time
+# ---------------------------------------------------------------------------
+
+# Opaque cursor cap — bound a single page so a caller cannot force an unbounded
+# hydrate; mirrors the spirit of CATALOG_SCAN_CAP for the scale path.
+CATALOG_PAGE_MAX = 500
+
+
+def _encode_page_cursor(updated_at_iso: str, mesh_hash: str) -> str:
+    """Opaque forward cursor = base64("updated_at_iso|mesh_hash"). Encodes the
+    LAST row of the page on the ``(updated_at DESC, mesh_hash DESC)`` sort key."""
+    raw = f"{updated_at_iso}|{mesh_hash}".encode()
+    return base64.urlsafe_b64encode(raw).decode()
+
+
+def _decode_page_cursor(cursor: str) -> tuple[datetime, str]:
+    """Decode a cursor into ``(updated_at datetime, mesh_hash)``. The datetime is
+    parsed from the exact ISO string the row's ``row_json['updated_at']`` carried,
+    so it compares equal to the stored ``updated_at`` timestamptz column."""
+    raw = base64.urlsafe_b64decode(cursor.encode()).decode()
+    ts_str, mesh = raw.split("|", 1)
+    return datetime.fromisoformat(ts_str), mesh
+
+
+async def build_catalog_page(
+    session: AsyncSession,
+    org_id: Optional[str],
+    *,
+    cursor: Optional[str] = None,
+    limit: int = 100,
+) -> dict:
+    """One keyset-paginated page of the org catalog grid (the SCALE version of
+    ``build_catalog``'s row list).
+
+    Orders by ``(updated_at DESC, mesh_hash DESC)`` — the same most-recent-first
+    order the legacy grid sorts on, with ``mesh_hash`` as a deterministic
+    tie-break so pages never overlap or skip. Hydrates ONLY the current page's
+    ``row_json`` (each is the exact ``derive_row`` dict). Returns
+    ``{"rows": [...], "next_cursor": str | None}``; ``next_cursor`` is None only on
+    the final page. ``cursor`` opaquely encodes the previous page's last row;
+    ``limit`` is bounded at ``CATALOG_PAGE_MAX``. ``org_id`` None → an empty page.
+    """
+    if not org_id:
+        return {"rows": [], "next_cursor": None}
+
+    limit = max(1, min(int(limit), CATALOG_PAGE_MAX))
+
+    q = select(
+        PartSummary.updated_at, PartSummary.mesh_hash, PartSummary.row_json
+    ).where(PartSummary.org_id == org_id)
+    if cursor:
+        cur_ts, cur_mesh = _decode_page_cursor(cursor)
+        q = q.where(
+            tuple_(PartSummary.updated_at, PartSummary.mesh_hash)
+            < tuple_(cur_ts, cur_mesh)
+        )
+    # Fetch limit+1 so we know whether a further page exists without a COUNT.
+    q = q.order_by(
+        PartSummary.updated_at.desc(), PartSummary.mesh_hash.desc()
+    ).limit(limit + 1)
+
+    fetched = (await session.execute(q)).all()
+    has_more = len(fetched) > limit
+    page = fetched[:limit]
+    rows = [r.row_json for r in page]
+
+    next_cursor: Optional[str] = None
+    if has_more and page:
+        last = page[-1]
+        next_cursor = _encode_page_cursor(last.row_json["updated_at"], last.mesh_hash)
+    return {"rows": rows, "next_cursor": next_cursor}

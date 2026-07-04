@@ -825,6 +825,74 @@ class PartContext(Base):
     )
 
 
+class PartSummary(Base):
+    """Materialized per-part catalog projection (Aramco GAP 2 — scale to millions).
+
+    ONE row per ``(org_id, mesh_hash)`` carrying the fully-derived catalog row
+    (``row_json`` = the exact ``catalog_service.derive_row`` dict) plus the scalar
+    columns needed to aggregate/paginate the whole inventory in SQL — the derived
+    makeability ``triage_bucket``, the recommended ``route_process``, the two
+    artifact-presence flags, and the row's derived recency (``updated_at`` =
+    ``max(analysis, cost)`` created_at).
+
+    Maintained on write at the two persist funnels (analysis + cost decision) so
+    the whole-inventory triage COUNT and the catalog grid no longer scan the 2000
+    newest raw rows and fold in Python. The legacy fold path
+    (``catalog_service._fold_org_parts`` and friends) is untouched and remains the
+    byte-identity oracle: ``row_json`` reproduces the grid row VERBATIM and
+    ``triage_bucket`` equals ``catalog_service.triage_bucket(row_json)``.
+
+    HONESTY: nothing is fabricated — every column is a projection of what the
+    legacy derivation already computes from persisted engine output. A part with
+    no artifact has no summary row (it never appears in the catalog either).
+    """
+
+    __tablename__ = "part_summaries"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "mesh_hash", name="uq_part_summaries_org_mesh"
+        ),
+        # Triage rollup: GROUP BY triage_bucket within an org.
+        Index("ix_part_summaries_org_bucket", "org_id", "triage_bucket"),
+        # Keyset pagination of the grid: (updated_at DESC, mesh_hash DESC).
+        Index(
+            "ix_part_summaries_org_keyset",
+            "org_id",
+            text("updated_at DESC"),
+            text("mesh_hash DESC"),
+        ),
+        # by_process rollup: GROUP BY route_process within an org.
+        Index("ix_part_summaries_org_route", "org_id", "route_process"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    mesh_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    # Derived makeability posture (makeable | needs_review | unknown) — the exact
+    # output of catalog_service.triage_bucket(row_json).
+    triage_bucket: Mapped[str] = mapped_column(Text, nullable=False)
+    # Recommended-route process id (None when the part has no route). Fuels the
+    # by_process rollup + the route facet.
+    route_process: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    has_analysis: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    has_cost: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    # Derived recency = max(analysis, cost) created_at — the grid's sort key and
+    # the keyset-pagination cursor axis. Kept in lock-step with row_json's
+    # ``updated_at`` string (both parsed from the same value; never drifts).
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
+    # The full catalog row — catalog_service.derive_row(...) VERBATIM, so the
+    # scaled grid hydrates a page byte-identically to the legacy grid.
+    row_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+
 # ---------------------------------------------------------------------------
 # W4 governed libraries (migration 0015): the versioned shop-profile asset
 # ---------------------------------------------------------------------------

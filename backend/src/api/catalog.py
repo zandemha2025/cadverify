@@ -64,6 +64,18 @@ async def get_catalog(
             "'unknown' and match neither."
         ),
     ),
+    keyset: bool = Query(
+        False,
+        description=(
+            "Opt-in SCALE mode (Aramco GAP 2): keyset-paginate the whole "
+            "inventory over the materialized part-summary projection instead of "
+            "the capped raw scan. Returns {rows, next_cursor}; pass the returned "
+            "cursor back to walk pages. Facet filters do not apply in this mode."
+        ),
+    ),
+    cursor: Optional[str] = Query(
+        None, description="Opaque keyset cursor from a prior page's next_cursor."
+    ),
     user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -72,6 +84,11 @@ async def get_catalog(
     Every cell is read verbatim from the engine's own serialization — a missing
     field is null, never fabricated. Filters apply to real derived fields BEFORE
     pagination, so ``total`` and the page are always mutually consistent.
+
+    ``keyset=true`` opts into the SCALE path: the grid is served one keyset page at
+    a time from the materialized ``part_summaries`` projection (whole-inventory,
+    never capped) as ``{rows, next_cursor}``. The default offset path below is
+    otherwise byte-identical to before.
     """
     # Validate the state facet up front (400 beats silently returning empty).
     canonical_state: Optional[str] = None
@@ -86,6 +103,13 @@ async def get_catalog(
     # The tenant boundary: the caller's org (single-org v1). None → no membership
     # (e.g. a mocked session) → an empty catalog, never a cross-org read.
     org_id = await resolve_org(session, user.user_id)
+
+    # SCALE mode: keyset page over the materialized projection (opt-in, so the
+    # default response shape stays unchanged for existing callers).
+    if keyset:
+        return await svc.build_catalog_page(
+            session, org_id, cursor=cursor, limit=page_size
+        )
 
     built = await svc.build_catalog(session, org_id)
     all_rows = built["rows"]
@@ -211,7 +235,24 @@ async def get_triage(
     """
     # Tenant boundary: the caller's org. None → no membership → zeroed summary.
     org_id = await resolve_org(session, user.user_id)
-    built = await svc.build_triage(session, org_id)
+    # SCALE (Aramco GAP 2): the whole-inventory triage COUNT is a SQL GROUP BY over
+    # the materialized part-summary projection — O(buckets), never capped — instead
+    # of folding the 2000 newest raw rows in Python. Byte-identical output shape.
+    built = await svc.build_triage_scaled(session, org_id)
+
+    # Rollout self-heal: if the org has parts but no projection rows yet (data
+    # predating the projection, or a deploy that shipped before the one-time
+    # backfill ran), lazily backfill THIS org once, then recompute. A genuinely
+    # empty org backfills nothing (one empty keyset probe — negligible), so this
+    # never fabricates counts; it only reconciles a stale projection.
+    if org_id and built["summary"]["total"] == 0:
+        from src.services import part_summary_service
+
+        healed = await part_summary_service.backfill_part_summaries(
+            session, org_id=org_id
+        )
+        if healed:
+            built = await svc.build_triage_scaled(session, org_id)
 
     summary = built["summary"]
     resp = {

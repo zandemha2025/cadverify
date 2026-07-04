@@ -129,6 +129,10 @@ async def persist_cost_decision(
         logger.info(
             "Cost-decision dedup hit for user=%s mesh=%.12s…", user.user_id, mesh_hash
         )
+        # A dedup hit must still RECONCILE the part-summary projection (the newest
+        # analysis for this mesh may have landed after the decision) — idempotent,
+        # graceful-degrade, same-transaction.
+        await _refresh_summary_for(session, existing)
         return existing
 
     make_now, crossover, quantities = _denormalize(result_json)
@@ -164,9 +168,25 @@ async def persist_cost_decision(
             session, user.user_id, mesh_hash, params_hash
         )
         if existing is not None:
+            await _refresh_summary_for(session, existing)
             return existing
         raise
+
+    await _refresh_summary_for(session, decision)
     return decision
+
+
+async def _refresh_summary_for(session: AsyncSession, decision: CostDecision) -> None:
+    """Maintain the materialized per-part catalog projection for a persisted (or
+    deduped) cost decision — Aramco GAP 2. Graceful-degrade + same-transaction:
+    delegated to ``part_summary_service.refresh_part_summary_safe`` which isolates
+    any failure in a SAVEPOINT and swallows it, so a broken projection never
+    breaks the live cost persist."""
+    from src.services import part_summary_service
+
+    await part_summary_service.refresh_part_summary_safe(
+        session, decision.org_id, decision.mesh_hash
+    )
 
 
 async def record_persist_failure(
