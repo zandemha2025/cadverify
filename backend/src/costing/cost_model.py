@@ -201,7 +201,8 @@ def _formative_cycle(process, drivers, rates: RateCard):
 # ──────────────────────────────────────────────────────────────────────────
 def cost_breakdown(process, drivers, material, material_class, qty,
                    rates: RateCard, region: str, n_cavities: int = 1,
-                   complexity: str = "moderate", process_score=None) -> CostEstimate:
+                   complexity: str = "moderate", process_score=None,
+                   owned: bool = False) -> CostEstimate:
     family = process_family(process)
     labor_rate = rates.g("labor_rate")
     margin = rates.g("margin")
@@ -292,9 +293,22 @@ def cost_breakdown(process, drivers, material, material_class, qty,
 
     # formative: a multi-cavity tool makes n_cavities parts per machine cycle
     cav_div = n_cavities if family == "formative" else 1
-    machine_cost = machine_hr * rates.p(process, "machine_rate") / cav_div / util
+    # ── owned-equipment / in-house marginal machine rate (make-it-ourselves) ──
+    # When the org OWNS this machine, its capital purchase/amortization is SUNK —
+    # the marginal cost of one more part is material+energy+operator+consumables,
+    # NOT the fully-loaded rate that recovers capital as if renting outside-shop
+    # time. Cost the machine at machine_rate × (1 - machine_capital_frac); setup/
+    # material/labor/finishing are unchanged. Gated on cap_frac > 0 so the
+    # off-switch (machine_capital_frac=0.0) is byte-identical even when owned.
+    base_machine_rate = rates.p(process, "machine_rate")
+    cap_frac = rates.g("machine_capital_frac")
+    owned_here = bool(owned) and cap_frac > 0.0
+    eff_machine_rate = base_machine_rate * (1.0 - cap_frac) if owned_here else base_machine_rate
+    machine_cost = machine_hr * eff_machine_rate / cav_div / util
     machine_learned = machine_cost * learn_mult          # attended-time learning (S1)
     machine_scaled = machine_learned * rl_machine * mgn * burden   # E-now #2: labor-only region scaling
+    owned_note = (f" × (1-{cap_frac:g} capital sunk) OWNED-IN-HOUSE marginal "
+                  f"[assumption, not shop-validated]") if owned_here else ""
     cav_note = f" ÷ {n_cavities} cavities" if cav_div != 1 else ""
     util_note = f" ÷ {util:g} utilization" if util != 1.0 else ""
     burden_note = f" × {burden:g} overhead" if burden != 1.0 else ""
@@ -309,10 +323,27 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         name="machine_cost", value=round(machine_scaled, 4), unit="$",
         provenance=rates.prov_tag(f"machine_rate.{process.name}"),
         source=(f"{machine_hr:.4f} hr × ${rates.p(process, 'machine_rate'):g}/hr"
-                f"{cav_note}{util_note}{learn_note}{region_mach_note}{burden_note}"
+                f"{owned_note}{cav_note}{util_note}{learn_note}{region_mach_note}{burden_note}"
                 f"  [{cycle_src}]"),
         error_band_pct=band,
     ))
+    if owned_here:
+        # First-class make-it-ourselves saving. The OWNED declaration is USER
+        # (the org told us it owns this gear); the machine_capital_frac magnitude
+        # removed is a DEFAULT assumption, not shop-validated. validated never
+        # flips here — this is a structural sunk-cost adjustment, not a measured
+        # number. Driver only (does not enter the line_items sum).
+        drivers_out.append(Driver(
+            name="owned_in_house", value=round(1.0 - cap_frac, 4), unit="×",
+            provenance=Provenance.USER,
+            source=(f"process OWNED in-house: machine costed at MARGINAL rate "
+                    f"${eff_machine_rate:g}/hr = ${base_machine_rate:g}/hr × "
+                    f"(1-{cap_frac:g} capital) — capital purchase/amortization removed "
+                    f"(sunk on gear the org already owns; make-it-ourselves, not "
+                    f"rent-the-time). USER-declared ownership; the {cap_frac:g} capital "
+                    f"fraction is DEFAULT [assumption, not shop-validated]"),
+            error_band_pct=band,
+        ))
     if rl_machine != rl:
         drivers_out.append(Driver(
             name="machine_region_split", value=round(rl_machine, 4), unit="×",
@@ -564,6 +595,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         dfm_score=dfm_score,
         dfm_blockers=dfm_blockers,
         dfm_blocker_details=dfm_blocker_details,
+        owned_in_house=owned_here,
     )
     est.assert_sums()
     return est

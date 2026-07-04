@@ -83,6 +83,23 @@ RATE_CARD_V0: dict = {
         # for subtractive (CNC) work — standard shop cost-accounting. DEFAULT
         # assumption, NOT shop-validated; 0.0 = off (byte-identical old cost).
         "perishable_frac": 0.05,      # perishable tooling+consumables as a fraction of CNC machine cost
+        # ── owned-equipment / in-house marginal costing (make-it-ourselves) ──
+        # The target customer MAKES PARTS IN THEIR OWN FACILITY on machines they
+        # ALREADY OWN. When the org owns the machine, its capital purchase /
+        # amortization is a SUNK cost — the true MARGINAL cost of making one more
+        # part in-house is material + energy + operator + consumables, NOT the
+        # fully-loaded bureau $/hr (which recovers the capital as if renting time
+        # from an outside shop). machine_capital_frac is the share of the loaded
+        # machine rate that is capital purchase/depreciation (DISTINCT from the
+        # facility/energy/operator that stay marginal even on owned gear). When a
+        # process is declared OWNED (EstimateOptions.owned_processes, USER), the
+        # machine line is costed at machine_rate × (1 - machine_capital_frac).
+        # This is a MODEL structure tagged DEFAULT/assumption — the fraction is
+        # NOT validated against a real org's cost accounting; a customer's real
+        # numbers (governed rate library + W5 flywheel) calibrate it, likely
+        # per-process. machine_capital_frac=0.0 is the OFF-SWITCH: owned ==
+        # fully-loaded, byte-identical to renting the time.
+        "machine_capital_frac": 0.35, # capital/amortization share of the loaded machine rate; SUNK when the org owns the machine; 0.0 = off (owned == fully-loaded)
     },
     # Per-process rates. Keys map 1:1 to the spec §6.3 + V1 §1 tables.
     #

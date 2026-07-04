@@ -231,6 +231,34 @@ _MAX_QTY = 10_000_000
 _MAX_OVERRIDES = 64  # cap ad-hoc rate/driver overrides per request
 
 
+def _parse_owned_processes(raw: Optional[str]) -> frozenset:
+    """Parse the comma-separated `owned_processes` form field into a
+    frozenset[ProcessType] (the engine processes the org already OWNS in-house).
+
+    Absent / blank => empty frozenset => byte-identical (nothing owned). Each
+    token is an engine process id (e.g. "cnc_3axis,injection_molding"); an
+    unknown id is a 400, mirroring the region/material validation.
+    """
+    if not raw or not raw.strip():
+        return frozenset()
+    from src.costing.rates import _resolve_process_token
+
+    out = set()
+    for tok in raw.split(","):
+        tok = tok.strip()
+        if not tok:
+            continue
+        pt = _resolve_process_token(tok)
+        if pt is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(f"Unknown process {tok!r} in owned_processes. Use engine "
+                        f"process ids, e.g. cnc_3axis,injection_molding."),
+            )
+        out.add(pt)
+    return frozenset(out)
+
+
 def _available_shops() -> list[dict]:
     """The local shop-calibration profiles available to bind (F1).
 
@@ -658,6 +686,7 @@ async def _run_cost_decision(
     material_class: str,
     shop: Optional[str] = None,
     overrides: Optional[str] = None,
+    owned_processes: Optional[str] = None,
     user: Optional[AuthedUser] = None,
     session: Optional[AsyncSession] = None,
 ) -> dict:
@@ -724,6 +753,7 @@ async def _run_cost_decision(
         shop_binding = shop_slug
     rate_overrides = _parse_overrides(overrides)  # 400 on bad JSON/value
     _validate_overrides(rate_overrides)           # 400 on unknown key (fail fast)
+    owned = _parse_owned_processes(owned_processes)  # 400 on unknown process id
 
     data = await _read_capped(file)  # 413 on size, 400 on empty
     mesh, suffix = await _parse_mesh_async(  # 400/413/501, 504 on parse timeout
@@ -744,6 +774,7 @@ async def _run_cost_decision(
         n_cavities_is_user=cavities != 1,
         complexity=complexity,
         complexity_is_user=complexity != "moderate",
+        owned_processes=owned,
     )
 
     # ---- MEASURED confidence band from a persisted org calibration (W5) ----
@@ -1016,6 +1047,13 @@ async def validate_cost(
                     '{"labor_rate": 40, "machine_rate.SLS": 25}. Tagged USER; '
                     'enables a true server re-cost on an edited assumption.',
     ),
+    owned_processes: Optional[str] = Form(
+        None,
+        description="Comma-separated engine process ids the org OWNS in-house, "
+                    "e.g. cnc_3axis,injection_molding. Costs those at the MARGINAL "
+                    "machine rate (owned capital is sunk) — the make-it-ourselves "
+                    "path. Tagged USER; unset => nothing owned (fully-loaded).",
+    ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -1043,6 +1081,7 @@ async def validate_cost(
         material_class=material_class,
         shop=shop,
         overrides=overrides,
+        owned_processes=owned_processes,
         user=user,
         session=session,
     )
