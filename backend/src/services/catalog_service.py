@@ -1170,3 +1170,420 @@ async def build_catalog_page(
         last = page[-1]
         next_cursor = _encode_page_cursor(last.row_json["updated_at"], last.mesh_hash)
     return {"rows": rows, "next_cursor": next_cursor}
+
+
+# ===========================================================================
+# PHASE D — machine-inventory makeability at triage scale (spec §10 Phase D)
+#
+# A SECOND scaled lens over ``part_summaries``, alongside the DFM triage above:
+#   D3 — the in-house makeability BUCKET breakdown over the projection (SQL
+#        GROUP BY, org-scoped, keyset drill-down per bucket).
+#   D4 — the CAPABILITY-INVESTMENT ranking: "which ONE machine acquisition
+#        unlocks the most parts", computed ONLY from stored real gap data.
+#
+# HONESTY: buckets/verdicts are projections of the Phase-C verification block the
+# cost path already computed (never re-invented); staleness (inventory changed
+# since a verdict was computed) is carried as a visible flag + count, never
+# silently served as fresh; no dollar figure is fabricated for an acquisition.
+# ===========================================================================
+
+
+def _is_num(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+# The six D3 makeability buckets — mutually exclusive, every part lands in one.
+MAKEABILITY_BUCKETS = (
+    "makeable_in_house",   # an owned machine fits (incl. an in-house secondary op)
+    "makeable_outside",    # a valid route exists but the org owns none of the family
+    "needs_capability",    # owns the family but no machine fits → a concrete gap
+    "not_makeable",        # no valid route / environment-excluded on every route
+    "unknown",             # no verdict (no inventory declared, or not costed)
+    "geometry_invalid",    # the geometry itself is invalid (can't be made by any)
+)
+
+
+def makeability_bucket(verdict: Optional[str], status: Optional[str] = None) -> str:
+    """Map a §0 lattice verdict (+ the cost report ``status``) to a D3 bucket.
+
+    TOTAL over the lattice — every verdict value (and ``None``) maps to exactly one
+    bucket, so the scaled rollup can GROUP BY the stored bucket. ``status ==
+    'GEOMETRY_INVALID'`` (the engine's own authoritative geometry signal) wins over
+    the verdict: a part with invalid geometry is not makeable by anything. A
+    ``None`` verdict (part costed with no declared inventory/env, or not costed) is
+    honestly ``unknown`` — never fabricated makeable.
+    """
+    if status == "GEOMETRY_INVALID":
+        return "geometry_invalid"
+    if verdict in ("makeable_in_house", "makeable_with_secondary_op"):
+        return "makeable_in_house"
+    if verdict == "makeable_outsource_only":
+        return "makeable_outside"
+    if verdict == "makeable_not_on_owned":
+        return "needs_capability"
+    if verdict in ("environment_excluded", "not_makeable"):
+        return "not_makeable"
+    return "unknown"
+
+
+# The provenance line every capability-investment entry carries.
+_ACQ_BASIS = (
+    "grouped from stored per-part makeability gaps (the §0 verdict + its binding "
+    "FitFailure), derived at projection time from the Phase-C verification block; "
+    "parts_unlocked counts parts whose single binding constraint this one "
+    "acquisition closes. No acquisition dollar cost is shown (none is available "
+    "from engine data — never fabricated)."
+)
+
+
+def _acq_spec(gate: Optional[str], need_min, need_max, labels) -> dict:
+    """The human acquisition spec for one (process, gate) group, aggregated from
+    the group's REAL stored needs. Numeric gates take the MAX need (the machine
+    must clear the largest blocked part), tolerance takes the MIN IT grade
+    (tighter), material unions the required material set. No fabricated figure."""
+    labels = sorted({str(x) for x in (labels or []) if x})
+    if gate is None:
+        return {"requirement": "process capability not currently owned"}
+    if gate == "envelope":
+        return {
+            "gate": "envelope",
+            "work_envelope_mm_min": need_max,
+            "summary": (
+                f"work envelope clearing ≥{need_max:g} mm "
+                "(largest blocked-part dimension)"
+                if _is_num(need_max) else "a larger work envelope"
+            ),
+        }
+    if gate == "mass":
+        return {
+            "gate": "mass",
+            "max_workpiece_kg_min": need_max,
+            "summary": (
+                f"handles ≥{need_max:g} kg workpieces"
+                if _is_num(need_max) else "a higher workpiece-mass limit"
+            ),
+        }
+    if gate == "tolerance":
+        return {
+            "gate": "tolerance",
+            "achievable_it_grade_max": need_min,
+            "summary": (
+                f"holds ≤ IT{int(need_min)}"
+                if _is_num(need_min) else "a tighter tolerance grade"
+            ),
+        }
+    if gate == "axes":
+        return {
+            "gate": "axes",
+            "axes_min": int(need_max) if _is_num(need_max) else None,
+            "summary": (
+                f"≥{int(need_max)}-axis"
+                if _is_num(need_max) else "more axes"
+            ),
+        }
+    if gate == "material":
+        return {
+            "gate": "material",
+            "qualify_materials": labels,
+            "summary": (
+                "qualified for " + ", ".join(labels)
+                if labels else "material qualification"
+            ),
+        }
+    # thickness / force / min_feature / secondary_op — generic numeric or label.
+    spec: dict = {"gate": gate}
+    if _is_num(need_max):
+        spec["need_max"] = need_max
+        spec["summary"] = f"meets {gate} ≥ {need_max:g}"
+    elif labels:
+        spec["labels"] = labels
+        spec["summary"] = f"{gate}: " + ", ".join(labels)
+    else:
+        spec["summary"] = f"closes the {gate} gap"
+    return spec
+
+
+def rank_acquisitions(groups: list[dict]) -> list[dict]:
+    """Rank capability acquisitions by parts unlocked (PURE — no DB, no I/O).
+
+    ``groups`` is one entry per (unlock_process, unlock_gate) with the aggregated
+    ``count`` (parts unlocked), ``need_min`` / ``need_max`` / ``labels`` (the
+    acquisition spec inputs), and ``stale_count`` / ``any_stale``. Sorted by
+    parts_unlocked DESC, ties broken deterministically by (process, gate) so the
+    ranking is stable. Empty input → empty ranking. Every entry names its basis;
+    a stale group carries ``stale: true`` + a count so a verdict computed before a
+    recent machine change is never presented as fresh.
+    """
+    entries: list[dict] = []
+    for g in groups:
+        gate = g.get("gate")
+        proc = g.get("process")
+        entries.append({
+            "acquisition": {
+                "kind": "acquire" if gate is None else "upgrade",
+                "process": proc,
+                "process_label": process_label(proc),
+                "gate": gate,
+                "spec": _acq_spec(gate, g.get("need_min"), g.get("need_max"),
+                                  g.get("labels")),
+            },
+            "parts_unlocked": g.get("count", 0),
+            "stale": bool(g.get("any_stale")),
+            "stale_parts": g.get("stale_count", 0),
+            "basis": _ACQ_BASIS,
+        })
+    entries.sort(key=lambda e: (
+        -e["parts_unlocked"],
+        e["acquisition"]["process"] or "",
+        e["acquisition"]["gate"] or "",
+    ))
+    return entries
+
+
+def _empty_makeability_rollup() -> dict:
+    summary = {b: 0 for b in MAKEABILITY_BUCKETS}
+    summary.update({"total": 0, "stale_count": 0, "stale": False,
+                    "truncated": False})
+    return {"summary": summary}
+
+
+async def build_makeability_rollup(session: AsyncSession, org_id: Optional[str]) -> dict:
+    """The org-scoped in-house makeability bucket breakdown (D3) — SQL GROUP BY over
+    the ``part_summaries`` projection (O(buckets), whole inventory, never capped).
+
+    ``summary`` carries the six bucket counts + ``total`` + the staleness honesty
+    (``stale`` flag + ``stale_count``: parts whose stored verdict predates a machine
+    change and has not been re-costed). ``truncated`` is always False (a SQL COUNT
+    over the whole projection has no cap). ``org_id`` None → a zeroed rollup, never
+    a cross-org read.
+    """
+    if not org_id:
+        return _empty_makeability_rollup()
+
+    rows = (
+        await session.execute(
+            select(
+                PartSummary.makeability_bucket,
+                func.count(),
+                func.count().filter(PartSummary.makeability_stale.is_(True)),
+            )
+            .where(PartSummary.org_id == org_id)
+            .group_by(PartSummary.makeability_bucket)
+        )
+    ).all()
+
+    summary = {b: 0 for b in MAKEABILITY_BUCKETS}
+    total = 0
+    stale_total = 0
+    for bucket, cnt, stale_cnt in rows:
+        total += cnt
+        stale_total += stale_cnt or 0
+        if bucket in summary:
+            summary[bucket] += cnt
+        else:  # defensive: an unexpected bucket value folds into unknown, honestly
+            summary["unknown"] += cnt
+    summary["total"] = total
+    summary["stale_count"] = stale_total
+    summary["stale"] = stale_total > 0
+    summary["truncated"] = False
+    return {"summary": summary}
+
+
+async def build_makeability_bucket_page(
+    session: AsyncSession,
+    org_id: Optional[str],
+    bucket: str,
+    *,
+    cursor: Optional[str] = None,
+    limit: int = 100,
+) -> dict:
+    """One keyset page of the parts in a single D3 makeability bucket.
+
+    Orders by ``(updated_at DESC, mesh_hash DESC)`` (the projection's keyset axis,
+    same tie-break the catalog grid uses). Each row is the exact ``derive_row``
+    dict PLUS a ``makeability`` block ({verdict, stale, gap}) so the drill-down can
+    show WHY. ``{"rows", "next_cursor"}``; ``org_id`` None → empty page.
+    """
+    if not org_id:
+        return {"rows": [], "next_cursor": None}
+    limit = max(1, min(int(limit), CATALOG_PAGE_MAX))
+
+    q = select(
+        PartSummary.updated_at, PartSummary.mesh_hash, PartSummary.row_json,
+        PartSummary.makeability_verdict, PartSummary.makeability_stale,
+        PartSummary.makeability_gap,
+    ).where(
+        PartSummary.org_id == org_id,
+        PartSummary.makeability_bucket == bucket,
+    )
+    if cursor:
+        cur_ts, cur_mesh = _decode_page_cursor(cursor)
+        q = q.where(
+            tuple_(PartSummary.updated_at, PartSummary.mesh_hash)
+            < tuple_(cur_ts, cur_mesh)
+        )
+    q = q.order_by(
+        PartSummary.updated_at.desc(), PartSummary.mesh_hash.desc()
+    ).limit(limit + 1)
+
+    fetched = (await session.execute(q)).all()
+    has_more = len(fetched) > limit
+    page = fetched[:limit]
+    rows = [
+        {**r.row_json, "makeability": {
+            "verdict": r.makeability_verdict,
+            "stale": r.makeability_stale,
+            "gap": r.makeability_gap,
+        }}
+        for r in page
+    ]
+    next_cursor: Optional[str] = None
+    if has_more and page:
+        last = page[-1]
+        next_cursor = _encode_page_cursor(
+            last.row_json["updated_at"], last.mesh_hash
+        )
+    return {"rows": rows, "next_cursor": next_cursor}
+
+
+async def build_capability_investment(
+    session: AsyncSession, org_id: Optional[str]
+) -> dict:
+    """The org-scoped capability-investment ranking (D4): which ONE machine
+    acquisition unlocks the most currently-blocked parts.
+
+    Computed ENTIRELY from stored real gap data: one SQL GROUP BY over the
+    ``(unlock_process, unlock_gate)`` the projection denormalized from each part's
+    binding FitFailure, aggregating the count + the acquisition spec (max envelope /
+    mass, min IT grade, material set) + the staleness. Parts blocked by MULTIPLE
+    constraints (no single acquisition unlocks them) are honestly reported in
+    ``summary.blocked_by_multiple_constraints`` — never folded into a ranking entry.
+    No acquisition dollar cost is invented. ``org_id`` None → an empty ranking.
+    """
+    if not org_id:
+        return {
+            "ranking": [],
+            "summary": {
+                "acquisitions": 0,
+                "parts_unlockable_by_one_acquisition": 0,
+                "blocked_by_multiple_constraints": 0,
+                "total_blocked": 0,
+                "stale": False,
+                "truncated": False,
+            },
+        }
+
+    rows = (
+        await session.execute(
+            select(
+                PartSummary.unlock_process,
+                PartSummary.unlock_gate,
+                func.count(),
+                func.min(PartSummary.unlock_need_num),
+                func.max(PartSummary.unlock_need_num),
+                func.array_agg(func.distinct(PartSummary.unlock_need_label))
+                    .filter(PartSummary.unlock_need_label.isnot(None)),
+                func.count().filter(PartSummary.makeability_stale.is_(True)),
+                func.bool_or(PartSummary.makeability_stale),
+            )
+            .where(
+                PartSummary.org_id == org_id,
+                PartSummary.unlock_single.is_(True),
+                PartSummary.unlock_process.isnot(None),
+            )
+            .group_by(PartSummary.unlock_process, PartSummary.unlock_gate)
+        )
+    ).all()
+
+    groups = [
+        {
+            "process": p, "gate": g, "count": c,
+            "need_min": nmin, "need_max": nmax,
+            "labels": list(labels or []),
+            "stale_count": sc or 0, "any_stale": bool(anys),
+        }
+        for (p, g, c, nmin, nmax, labels, sc, anys) in rows
+    ]
+    ranking = rank_acquisitions(groups)
+
+    multi = (
+        await session.execute(
+            select(func.count()).where(
+                PartSummary.org_id == org_id,
+                PartSummary.unlock_single.is_(False),
+            )
+        )
+    ).scalar() or 0
+
+    unlockable = sum(g["count"] for g in groups)
+    return {
+        "ranking": ranking,
+        "summary": {
+            "acquisitions": len(ranking),
+            "parts_unlockable_by_one_acquisition": unlockable,
+            "blocked_by_multiple_constraints": int(multi),
+            "total_blocked": unlockable + int(multi),
+            "stale": any(e["stale"] for e in ranking),
+            "truncated": False,
+        },
+    }
+
+
+async def build_capability_investment_page(
+    session: AsyncSession,
+    org_id: Optional[str],
+    process: str,
+    gate: Optional[str],
+    *,
+    cursor: Optional[str] = None,
+    limit: int = 100,
+) -> dict:
+    """One keyset page of the parts unlocked by a single acquisition (D4
+    drill-down): those whose primary acquisition is (``process``, ``gate``) and
+    which a single acquisition unlocks. ``gate`` None selects the pure-acquire
+    group (owns none of the family). Each row is the ``derive_row`` dict + a
+    ``makeability`` block. ``org_id`` None → empty page.
+    """
+    if not org_id:
+        return {"rows": [], "next_cursor": None}
+    limit = max(1, min(int(limit), CATALOG_PAGE_MAX))
+
+    q = select(
+        PartSummary.updated_at, PartSummary.mesh_hash, PartSummary.row_json,
+        PartSummary.makeability_verdict, PartSummary.makeability_stale,
+        PartSummary.makeability_gap,
+    ).where(
+        PartSummary.org_id == org_id,
+        PartSummary.unlock_single.is_(True),
+        PartSummary.unlock_process == process,
+        PartSummary.unlock_gate.is_(None) if gate is None
+        else PartSummary.unlock_gate == gate,
+    )
+    if cursor:
+        cur_ts, cur_mesh = _decode_page_cursor(cursor)
+        q = q.where(
+            tuple_(PartSummary.updated_at, PartSummary.mesh_hash)
+            < tuple_(cur_ts, cur_mesh)
+        )
+    q = q.order_by(
+        PartSummary.updated_at.desc(), PartSummary.mesh_hash.desc()
+    ).limit(limit + 1)
+
+    fetched = (await session.execute(q)).all()
+    has_more = len(fetched) > limit
+    page = fetched[:limit]
+    rows = [
+        {**r.row_json, "makeability": {
+            "verdict": r.makeability_verdict,
+            "stale": r.makeability_stale,
+            "gap": r.makeability_gap,
+        }}
+        for r in page
+    ]
+    next_cursor: Optional[str] = None
+    if has_more and page:
+        last = page[-1]
+        next_cursor = _encode_page_cursor(
+            last.row_json["updated_at"], last.mesh_hash
+        )
+    return {"rows": rows, "next_cursor": next_cursor}

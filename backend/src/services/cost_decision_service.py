@@ -184,8 +184,12 @@ async def _refresh_summary_for(session: AsyncSession, decision: CostDecision) ->
     breaks the live cost persist."""
     from src.services import part_summary_service
 
+    # mark_makeability_fresh=True: the cost decision's Phase-C verification block was
+    # just computed against the org's CURRENT inventory, so this part's makeability
+    # is fresh — clear any stale flag a prior machine change set on it.
     await part_summary_service.refresh_part_summary_safe(
-        session, decision.org_id, decision.mesh_hash
+        session, decision.org_id, decision.mesh_hash,
+        mark_makeability_fresh=True,
     )
 
 
