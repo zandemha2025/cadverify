@@ -960,3 +960,81 @@ class ChangeRequest(Base):
     decided_at: Mapped[Optional[datetime]] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
+
+
+# ---------------------------------------------------------------------------
+# W4 governed libraries (migration 0017): the versioned materials-catalog asset
+# ---------------------------------------------------------------------------
+
+
+class MaterialLibraryVersion(Base):
+    """A governed materials-library asset — a versioned, effective-dated,
+    org-scoped catalog of material prices/definitions (W4 governed libraries,
+    slice 3).
+
+    The DB-backed successor to the empty ``RATE_CARD_V0["material_prices"]``
+    default (generic material-DB unit prices): an org admin drafts, reviews, and
+    PUBLISHES a materials catalog with an effective date, and the costing engine
+    overlays the version *effective at the estimate time* onto the base rate
+    table's ``material_prices`` so the org's DECLARED lot prices override the
+    generic per-kg defaults. Mirrors ``RateCardVersion`` column-for-column.
+
+    ``payload`` is a materials catalog dict shaped exactly as the engine expects:
+    ``{"material_prices": {<material>: <usd_per_kg>, ...},
+        "materials": {<name>: {"family": ..., "density_g_cm3": ..., ...}}}``.
+    ``material_prices`` maps an exact material name (e.g. ``"PA12 (Nylon 12)"``)
+    or a class sentinel (``"@polymer"``) to a positive $/kg; ``materials`` is an
+    optional bag of material definitions. Only ``material_prices`` is required.
+
+    HONESTY (non-negotiable rules #1/#2): a governed materials catalog is the
+    org's DECLARED default prices — NOT measured/negotiated truth. Adopting one
+    changes *which* default per-kg numbers an org uses; it never flips a decision
+    to ``validated`` (that comes only from real ground-truth residuals, W5).
+    Nothing here launders a declared price into a fact.
+
+    Versioning / effective-dating (one non-overlapping timeline per org):
+    ``version`` is monotonic per org; publishing a version closes the previously
+    open published version's ``effective_to`` so at most one is in effect at a time.
+    """
+
+    __tablename__ = "material_library_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "version", name="uq_material_library_versions_org_version"
+        ),
+        UniqueConstraint("ulid", name="uq_material_library_versions_ulid"),
+        Index("ix_material_library_versions_org_status", "org_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="draft"
+    )
+    # Materials catalog dict (validated on publish).
+    payload: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    change_note: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=""
+    )
+    effective_from: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    effective_to: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    published_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )

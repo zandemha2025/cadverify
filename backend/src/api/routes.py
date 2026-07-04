@@ -787,6 +787,42 @@ async def _run_cost_decision(
             if base_table is not None:
                 options.base_rate_table = base_table
 
+            # ── W4 governed materials library ───────────────────────────────
+            # If MATERIAL_LIBRARY_ENABLED is on AND the org has a PUBLISHED
+            # materials catalog in effect now, OVERLAY its DECLARED per-kg prices
+            # onto the base table's ``material_prices`` (the governed catalog wins
+            # per material key). Flag off / no published catalog / empty catalog
+            # => no overlay => the base table's own material_prices are used
+            # unchanged => byte-identical to pre-W4. A governed catalog is DECLARED
+            # default prices — provenance stays DEFAULT, never validated.
+            import copy as _copy
+
+            from src.costing.rates import RATE_CARD_V0 as _RATE_CARD_V0
+            from src.services.material_library_service import (
+                resolve_material_overrides_for,
+            )
+
+            mat_payload = await resolve_material_overrides_for(session, cal_org_id)
+            mat_prices = (mat_payload or {}).get("material_prices") or {}
+            mat_defs = (mat_payload or {}).get("materials") or {}
+            if mat_prices or mat_defs:
+                # Deep-copy before mutating: base_table may be the rate-library
+                # cache's shared payload (returned by reference) — never corrupt it.
+                base = _copy.deepcopy(
+                    options.base_rate_table
+                    if options.base_rate_table is not None
+                    else _RATE_CARD_V0
+                )
+                if mat_prices:
+                    merged = dict(base.get("material_prices") or {})
+                    merged.update(mat_prices)
+                    base["material_prices"] = merged
+                if mat_defs:
+                    merged_defs = dict(base.get("materials") or {})
+                    merged_defs.update(mat_defs)
+                    base["materials"] = merged_defs
+                options.base_rate_table = base
+
     # ---- OPT-IN assumption-ensemble uncertainty band (Moat P1) -------------
     # Behind COST_ENSEMBLE_ENABLED (default OFF). When on, we ALSO run the same
     # estimator under K deterministic rate-card perturbations and attach the

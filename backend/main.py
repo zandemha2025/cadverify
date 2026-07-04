@@ -32,6 +32,7 @@ from src.api.cost_decisions import public_cost_share_router, router as cost_deci
 from src.api.catalog import router as catalog_router
 from src.api.rate_library import router as rate_library_router
 from src.api.shop_library import router as shop_library_router
+from src.api.material_library import router as material_library_router
 from src.api.governance import router as governance_router
 from src.api.part_context import router as part_context_router
 from src.api.groundtruth import router as groundtruth_router
@@ -213,6 +214,13 @@ app.include_router(
 # shop-profile asset (DB successor to data/shop_profiles/*.json).
 app.include_router(
     shop_library_router, prefix="/api/v1/shop-library", tags=["shop-library"]
+)
+# Governed materials-library (W4 slice 3): versioned, effective-dated materials
+# catalog that overrides the base rate card's material_prices for the org.
+app.include_router(
+    material_library_router,
+    prefix="/api/v1/material-library",
+    tags=["material-library"],
 )
 # Governance (W4 governance zone): change-request -> review -> publish flow over
 # the governed rate-card / shop-profile libraries (approval publishes the draft).
