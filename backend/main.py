@@ -38,6 +38,7 @@ from src.api.governance import router as governance_router
 from src.api.part_context import router as part_context_router
 from src.api.groundtruth import router as groundtruth_router
 from src.api.manifest import router as manifest_router
+from src.api.machine_inventory import router as machine_inventory_router
 from src.api.share import public_share_router, share_router
 from src.auth.keys_api import router as keys_router
 from src.auth.magic_link import router as magic_router
@@ -248,6 +249,13 @@ app.include_router(
 # separate from geometry-derived catalog parts and cost records.
 app.include_router(
     manifest_router, prefix="/api/v1/manifest", tags=["manifest"]
+)
+# Machine-inventory (verification-thesis crux): org-owned machine capability
+# registry + shop-level secondary ops. USER-declared; absent inventory is
+# byte-identical (purely additive). The pure matcher (Phase B) consumes the
+# hydrated MachineCap/ShopCaps from this org-scoped model.
+app.include_router(
+    machine_inventory_router, prefix="/api/v1/machines", tags=["machine-inventory"]
 )
 # Email + password auth (signup/login/logout/me). Mounted UNCONDITIONALLY — it
 # is the primary login method that works end-to-end locally with zero external

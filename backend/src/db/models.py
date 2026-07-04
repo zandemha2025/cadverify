@@ -814,6 +814,123 @@ class PartContext(Base):
     parent_assembly: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     units_per_parent: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     annual_volume: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Declared service environment (machine-inventory §6): USER-declared, never
+    # inferred. {max_temp_c, min_temp_c, pressure_bar, corrosive, sour_service,
+    # medium, standard}. NULL → no environment declared (gate is a no-op).
+    service_environment: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSONB, nullable=True
+    )
+    created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class MachineInstance(Base):
+    """One USER-DECLARED owned machine (or identical group) in an org's inventory.
+
+    The machine-inventory model (verification-thesis crux, spec §3): turns the
+    process-level owned-equipment seam into a machine-level capability-matching
+    surface. One row per owned machine or identical group; ``count`` is capacity
+    (N identical machines), never a fit axis. Every makeability check reduces to a
+    scalar comparison ``part_requirement ⩿ machine_capability``; the small set of
+    universal typed columns is queried/indexed and the per-process-family
+    ``capabilities`` JSONB carries the process-appropriate scalars (validated on
+    write against a per-family schema in ``machine_inventory_service``).
+
+    HONESTY (non-negotiable, spec §2): every capability here is DECLARED by the
+    org — provenance is always ``"user"``, NEVER measured. A machine's
+    envelope/rate/material qualification is the org's declaration; a later "fits"
+    verdict on the *envelope* is a MEASURED-geometry × USER-capability comparison,
+    while tolerance/secondary-op capability is USER-declared, never a measurement
+    of the machine. Malformed inputs are reported by the service, never coerced.
+    No inventory declared → the platform is byte-identical (this feature is purely
+    additive). Org-scoped: cross-tenant isolation on every query.
+
+    Mirrors the ``manifest_parts`` / ``part_contexts`` column style: BigInt PK,
+    ULID public id, org_id FK (CASCADE), nullable ``created_by`` (SET NULL so
+    history survives a user delete). CRUD + keyset list + CSV import live in the
+    service.
+    """
+
+    __tablename__ = "machine_instances"
+    __table_args__ = (
+        Index("ix_machine_instances_org", "org_id"),
+        Index("ix_machine_instances_org_process", "org_id", "process"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    # Display name, e.g. "Haas VF-2 #3".
+    name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # ProcessType.value — which process family (indexed).
+    process: Mapped[str] = mapped_column(Text, nullable=False)
+    # N identical machines (capacity, NOT a fit axis).
+    count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # Universal mass gate: max workpiece mass this machine handles (kg).
+    max_workpiece_kg: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # This machine's OWN rate ($/hr) — overrides the rate-card default for cost.
+    hourly_rate_usd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Per-machine sunk-capital fraction [0,1]; NULL → rate-card default.
+    capital_frac: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Per-process-family fit-gate scalars (envelope/force/reach/resolution).
+    capabilities: Mapped[Dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
+    # Material names/classes QUALIFIED on THIS machine (material-qualification gate).
+    materials: Mapped[Optional[List[Any]]] = mapped_column(JSONB, nullable=True)
+    # {material: max_mm} (laser/EDM/sheet power×material×thickness gate).
+    material_thickness_map: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSONB, nullable=True
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ShopCapabilities(Base):
+    """An org's SHOP-LEVEL secondary-op capabilities (spec §3.1).
+
+    Secondary ops are shop-level, NOT per-machine (a foundry has one HIP vessel,
+    not one per press). ONE row per org: ``ops`` is a JSONB map
+    ``{op: True | {size/temp limits}}`` (heat_treat, stress_relief, hip, sinter,
+    grinding, plating, cmm, ct_inspection, …). The matcher consumes this as the
+    org's available-secondary-ops set; a part that REQUIRES an op the org lacks is
+    a real gap (spec §0).
+
+    HONESTY: every entry is USER-declared (provenance ``"user"``), never inferred.
+    No row → the org has declared no secondary ops (byte-identical / no-op).
+    Org-scoped, one row per org (unique ``org_id``).
+    """
+
+    __tablename__ = "shop_capabilities"
+    __table_args__ = (
+        UniqueConstraint("org_id", name="uq_shop_capabilities_org"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    # {op: True | {size/temp limits}} — the org's available secondary ops.
+    ops: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     created_by: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

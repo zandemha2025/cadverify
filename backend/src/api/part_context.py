@@ -40,6 +40,10 @@ class DeclareContextBody(BaseModel):
     parent_assembly: Optional[str] = None
     units_per_parent: Optional[int] = None
     annual_volume: Optional[int] = None
+    # The declared service environment (machine-inventory §6) rides this existing
+    # PUT: {max_temp_c, min_temp_c, pressure_bar, corrosive, sour_service, medium,
+    # standard}. USER-declared, never inferred; validated in the service.
+    service_environment: Optional[dict] = None
 
 
 async def _require_org(session: AsyncSession, user_id: int) -> str:

@@ -36,8 +36,52 @@ DECLARED_FIELDS = (
     "parent_assembly",
     "units_per_parent",
     "annual_volume",
+    "service_environment",
 )
 _POSITIVE_INT_FIELDS = ("units_per_parent", "annual_volume")
+
+# Declared service-environment schema (machine-inventory §6). Every key is
+# USER-declared, never inferred from the mesh. Numeric temps/pressure, boolean
+# corrosive/sour flags, free-text medium/standard. Unknown keys are REJECTED so a
+# typo'd field can't silently vanish.
+_ENV_NUMBER_FIELDS = ("max_temp_c", "min_temp_c", "pressure_bar")
+_ENV_BOOL_FIELDS = ("corrosive", "sour_service")
+_ENV_STR_FIELDS = ("medium", "standard")
+_ENV_FIELDS = frozenset(_ENV_NUMBER_FIELDS + _ENV_BOOL_FIELDS + _ENV_STR_FIELDS)
+
+
+def validate_service_environment(env) -> None:
+    """Raise ``ValueError`` unless ``env`` is a valid declared service environment.
+
+    ``{max_temp_c, min_temp_c, pressure_bar}`` numeric; ``{corrosive,
+    sour_service}`` bool; ``{medium, standard}`` string. ``pressure_bar`` must be
+    >= 0. Unknown keys are rejected (never silently ignored). ``None`` / absent is
+    allowed — the environment is entirely optional (gate is a no-op when unset).
+    """
+    if env is None:
+        return
+    if not isinstance(env, dict):
+        raise ValueError("service_environment must be a JSON object")
+    errors: list[str] = []
+    for key, val in env.items():
+        if key not in _ENV_FIELDS:
+            errors.append(f"unknown service_environment field '{key}'")
+            continue
+        if val is None:
+            continue
+        if key in _ENV_NUMBER_FIELDS:
+            if isinstance(val, bool) or not isinstance(val, (int, float)):
+                errors.append(f"{key} must be a number")
+            elif key == "pressure_bar" and val < 0:
+                errors.append("pressure_bar must be >= 0")
+        elif key in _ENV_BOOL_FIELDS:
+            if not isinstance(val, bool):
+                errors.append(f"{key} must be a boolean")
+        elif key in _ENV_STR_FIELDS:
+            if not isinstance(val, str):
+                errors.append(f"{key} must be a string")
+    if errors:
+        raise ValueError("; ".join(errors))
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +106,9 @@ def validate_context(fields: dict) -> None:
             raise ValueError(f"{key} must be an integer, got {val!r}")
         if val <= 0:
             raise ValueError(f"{key} must be positive (> 0), got {val}")
+    # The declared service environment (machine-inventory §6) — USER-declared,
+    # never inferred. Validated when present; absent → the gate is a no-op.
+    validate_service_environment(fields.get("service_environment"))
 
 
 def annualized_cost(
@@ -150,7 +197,7 @@ async def upsert_context(
 def serialize_context(row: Any) -> dict:
     """Serialize a context row. ``provenance`` is always ``"user"`` — a declared
     context is a user assertion, never an inferred/measured fact."""
-    return {
+    out = {
         "mesh_hash": row.mesh_hash,
         "program": row.program,
         "parent_assembly": row.parent_assembly,
@@ -159,3 +206,10 @@ def serialize_context(row: Any) -> dict:
         # Honesty: this context is DECLARED by a user, never inferred.
         "provenance": "user",
     }
+    # The declared service environment (machine-inventory §6) is surfaced ONLY
+    # when actually declared — a context with no environment stays byte-identical
+    # to the pre-feature shape (honesty invariant: no declaration → no-op).
+    env = getattr(row, "service_environment", None)
+    if env is not None:
+        out["service_environment"] = env
+    return out
