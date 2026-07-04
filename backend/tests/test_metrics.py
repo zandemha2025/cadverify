@@ -6,6 +6,8 @@ guardrails: labels are the route TEMPLATE (never a raw path with a ULID), and th
 /metrics payload carries no secret/PII substrings.
 """
 
+from __future__ import annotations
+
 import subprocess
 import sys
 from pathlib import Path
