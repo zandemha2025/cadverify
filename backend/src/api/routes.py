@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.analysis.models import AnalysisResult, Issue, ProcessType
 from src.analysis.rules import available_rule_packs, get_rule_pack
+from src.api.metrics_registry import observe_analysis_duration, record_cost_decision
 from src.api.upload_validation import (
     demo_max_triangles,
     enforce_stl_triangle_count_cap,
@@ -872,6 +873,8 @@ async def _run_cost_decision(
             timeout_sec=round(timeout, 1),
             duration_ms=round((time.perf_counter() - t0) * 1000, 1),
         )
+        # Observability: bounded compute that ran over budget is an error outcome.
+        record_cost_decision("error")
         raise HTTPException(
             status_code=504,
             detail=f"Cost analysis exceeded {timeout:.0f}s timeout.",
@@ -898,10 +901,15 @@ async def _run_cost_decision(
         duration_ms=round((time.perf_counter() - t0) * 1000, 1),
     )
 
+    # Observability: the compute finished, so record its duration (both outcomes)
+    # and the decision outcome. Real timings/counts only; no PII enters a label.
+    observe_analysis_duration(time.perf_counter() - t0)
+
     if report.status == "GEOMETRY_INVALID":
         # G1 surfaced cleanly as a structured 400 (errors.py passes the
         # dict-with-code through unchanged), carrying the measured geometry
         # summary + repair reason so the buyer sees *why*.
+        record_cost_decision("geometry_invalid")
         raise HTTPException(
             status_code=400,
             detail={
@@ -912,6 +920,7 @@ async def _run_cost_decision(
             },
         )
 
+    record_cost_decision("ok")
     result_dict = report_to_dict(report)
 
     # ---- persist for authenticated callers (Phase 2 gap #3) --------------

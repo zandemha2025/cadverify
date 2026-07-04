@@ -21,6 +21,7 @@ from src.api.errors import structured_http_error_handler, structured_validation_
 from src.api.health import router as health_router
 from src.api.history import router as history_router
 from src.api.middleware import RequestIDMiddleware
+from src.api.metrics import MetricsMiddleware, router as metrics_router
 from src.api.security_headers import SecurityHeadersMiddleware
 from src.api.pdf import router as pdf_router
 from src.api.batch_router import router as batch_router
@@ -159,6 +160,12 @@ app = FastAPI(
 # before CORS, rate-limiting, or any router sees it.
 app.add_middleware(RequestIDMiddleware)
 
+# Prometheus request instrumentation (enterprise observability). Times every
+# request and records cadverify_http_requests_total / _request_duration_seconds
+# labelled by the matched route TEMPLATE (bounded cardinality) + status. Additive
+# and no-op when prometheus-client is absent; no behaviour change to any route.
+app.add_middleware(MetricsMiddleware)
+
 # Rate limiting (slowapi). Must be wired before routers are included so the
 # middleware sees every request. See src/auth/rate_limit.py for the key_func.
 app.state.limiter = limiter
@@ -252,6 +259,11 @@ if AUTH_MODE in ("saml", "hybrid"):
 app.include_router(admin_router)
 app.include_router(keys_router)
 app.include_router(health_router)
+# Prometheus scrape target. Unauthenticated by design (scrapers carry no API
+# key) and gated by METRICS_ENABLED; scrape it over a private network / ingress
+# allowlist in production. Listed in scripts/ci/check_route_auth.py's public
+# allowlist.
+app.include_router(metrics_router)
 
 # Cycle 4 local labeling tool (dev-gated, prod-safe). Mounted ONLY under
 # LABELING_ENABLED=1 so the corpus/label surface never ships to production and

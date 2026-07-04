@@ -19,6 +19,12 @@ PUBLIC_ROUTES = {
     # kill-switch dep only, tight public rate limit, no DB/persistence, zero
     # network egress). Its authed sibling POST /validate/cost is role-gated.
     ("post", "/validate/cost/demo"),
+    # Prometheus scrape target (src/api/metrics.py). UNAUTHENTICATED by design —
+    # scrapers do not carry API keys; it must be scraped over a private network /
+    # ingress allowlist and is gated by METRICS_ENABLED. Payload is machine
+    # metrics only (no PII/secrets). Listed here so the auth-coverage guard treats
+    # it as legitimately public.
+    ("get", "/metrics"),
 }
 AUTH_DEPENDENCIES = {"require_api_key", "require_role"}
 
