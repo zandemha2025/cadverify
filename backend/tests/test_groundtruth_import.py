@@ -231,7 +231,7 @@ async def test_import_persists_real_org_scoped_and_isolated():
                     "INSERT INTO organizations (id, name, slug, created_at) "
                     "VALUES (:id, :n, :sl, now())"
                 ),
-                {"id": oid, "n": f"Org {nm} {oid[:6]}", "sl": f"org-{oid[:6]}"},
+                {"id": oid, "n": f"Org {nm} {oid[-8:]}", "sl": f"org-{oid[-8:].lower()}"},
             )
         a1 = await _mk_user(s, "a1")
         b1 = await _mk_user(s, "b1")
