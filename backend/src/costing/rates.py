@@ -39,6 +39,22 @@ FORGING_FAMILY = {PT.FORGING}
 # very slow cut. Common on Aramco hard/precise features. Kept in its own family
 # so its wide band + cut-path model never touch the CNC removal path.
 EDM = {PT.WIRE_EDM}
+# ── METAL ADDITIVE (dollar-costed 2026-07-04) ────────────────────────────────
+# These six were feasibility-only AND — the latent bug this fixes — fell through
+# process_family()'s "formative" fallback because they were in NO family set.
+# They are metal AM, not molding. Three physically-distinct routes, each its own
+# family so its cost model + wide band never touch a polymer-AM/casting path:
+#   metal_powder_bed {DMLS,SLM,EBM} — laser/e-beam powder-bed fusion. REUSES the
+#     build-job additive time model (full-build Z-sweep ÷ parts_per_build) with
+#     metal params + a metal-only post helper (plate cut-off, support removal,
+#     stress-relief furnace) that polymer AM never pays.
+#   binder_jet {BINDER_JET} — print a green part (fast/cheap) then debind + SINTER
+#     (furnace batch; ~18% linear shrink → the green is printed oversize).
+#   ded {DED,WAAM} — directed-energy / wire-arc: deposition-RATE driven near-net,
+#     then a coarse finish-machining allowance. HIGH, geometry/shop-specific band.
+METAL_POWDER_BED = {PT.DMLS, PT.SLM, PT.EBM}
+BINDER_JET_FAMILY = {PT.BINDER_JET}
+DED_FAMILY = {PT.DED, PT.WAAM}
 
 # The bounded set V0 will produce a dollar should-cost for. Everything else is
 # feasibility-only (honest: no number we cannot defend).
@@ -49,6 +65,8 @@ COSTED_PROCESSES = {
     PT.SHEET_METAL,
     # newly costed (off feasibility-only): forged, cast, wire-EDM
     PT.FORGING, PT.INVESTMENT_CASTING, PT.SAND_CASTING, PT.WIRE_EDM,
+    # metal additive (off feasibility-only): powder-bed, binder-jet, DED/WAAM
+    PT.DMLS, PT.SLM, PT.EBM, PT.BINDER_JET, PT.DED, PT.WAAM,
 }
 
 # Absolute-cost error band by family (the dominant-line band, spec §6.5). The new
@@ -57,7 +75,11 @@ BAND_PCT = {"additive": 40.0, "subtractive": 50.0, "formative": 60.0,
             "fabrication": 35.0,
             "casting": 55.0,     # pour-yield + tooling tier are un-validated assumptions
             "forging": 55.0,     # billet loss + die-tier are un-validated assumptions
-            "edm": 45.0}         # cut-path proxy (perimeter × thickness) is un-validated
+            "edm": 45.0,         # cut-path proxy (perimeter × thickness) is un-validated
+            # metal AM (un-validated, pre-calibration physics — wider than polymer AM)
+            "metal_powder_bed": 50.0,  # build-job time + metal post are assumptions
+            "binder_jet": 55.0,        # sinter shrink + furnace batch are assumptions
+            "ded": 60.0}               # deposition-rate model is coarse + shop-specific
 
 # ── Declared tolerance classes (Aramco readiness gap #4, cost side) ─────────
 # Ordered loosest → tightest. The caller DECLARES how tight the part is; there
@@ -308,6 +330,99 @@ RATE_CARD_V0: dict = {
             n_threads=1,                # wire threads (contours) per part (DEFAULT proxy)
             thread_min=6.0,             # auto-wire-thread + re-reference minutes per contour (DEFAULT)
             wire_cost_per_hr=7.0),      # brass wire + dielectric/filter consumable $/cut-hr (DEFAULT)
+        # ── METAL POWDER-BED FUSION (DMLS/SLM/EBM) — laser/e-beam melt of metal
+        # powder, layer by layer. REUSES the build-job additive time model: the beam
+        # sweeps every layer of the whole build, so per-part machine time = full-build
+        # Z-height ÷ vert (SLOW metal build rate) ÷ parts_per_build. Machines are
+        # expensive ($150-180/hr loaded). Metal-only POST that polymer AM never pays:
+        # build-plate cut-off + support removal (per part) + stress-relief furnace
+        # (per-build batch, amortized). Powder is recycled so scrap is the ~15%
+        # effective loss, NOT 100% of unfused powder. Support structure adds ~20%
+        # extra printed (then removed) volume, folded into material mass. NOTE: powder
+        # $/kg is taken at the material-DB value (metal_am_powder_mult=1.0 — powder
+        # vs wrought pricing is a KNOWN refinement, NOT silently inflated). HIP /
+        # solution heat-treat / CNC finish of critical surfaces are part-specific and
+        # deliberately NOT bundled. Every constant DEFAULT, un-validated. ───────────
+        PT.DMLS: dict(
+            machine_rate=180.0,         # $/hr loaded laser powder-bed metal machine (DEFAULT)
+            setup_hr=0.50, post_hr=0.0, scrap=0.15,   # 15% effective powder loss (recycled) (DEFAULT)
+            deposition=None, vert=6.0,  # SLOW metal Z build rate mm/hr (DEFAULT)
+            finish=None, queue_days=7, post_days=3,
+            build_env_mm=(250, 250, 325), packing_density=0.08, part_spacing_mm=6.0,
+            nesting_mode="build_job", post_hr_part=0.0, post_hr_build=0.0,
+            lot_size="build", min_charge=250,
+            n_machines=2, machine_hours_per_day=20,
+            # metal-AM post-processing (all DEFAULT, all overridable)
+            plate_removal_hr=0.30,      # wire-EDM/bandsaw off the build plate, per part (DEFAULT)
+            support_removal_hr=0.60,    # metal support removal, per part (DEFAULT)
+            stress_relief_hr_build=2.0, # stress-relief furnace per build, amortized over n (DEFAULT)
+            support_vol_frac=0.20,      # extra printed support volume (removed) as fraction of net (DEFAULT)
+            metal_am_powder_mult=1.0),  # powder-price multiplier on material-DB $/kg (1.0 = no inflation) (DEFAULT)
+        PT.SLM: dict(
+            machine_rate=180.0, setup_hr=0.50, post_hr=0.0, scrap=0.15,
+            deposition=None, vert=6.0, finish=None, queue_days=7, post_days=3,
+            build_env_mm=(250, 250, 325), packing_density=0.08, part_spacing_mm=6.0,
+            nesting_mode="build_job", post_hr_part=0.0, post_hr_build=0.0,
+            lot_size="build", min_charge=250,
+            n_machines=2, machine_hours_per_day=20,
+            plate_removal_hr=0.30, support_removal_hr=0.60, stress_relief_hr_build=2.0,
+            support_vol_frac=0.20, metal_am_powder_mult=1.0),
+        PT.EBM: dict(
+            machine_rate=150.0,         # electron-beam machine (DEFAULT)
+            setup_hr=0.50, post_hr=0.0, scrap=0.15,
+            deposition=None, vert=9.0,  # faster Z build than laser (DEFAULT)
+            finish=None, queue_days=7, post_days=3,
+            build_env_mm=(350, 380, 380), packing_density=0.08, part_spacing_mm=6.0,
+            nesting_mode="build_job", post_hr_part=0.0, post_hr_build=0.0,
+            lot_size="build", min_charge=250,
+            n_machines=2, machine_hours_per_day=20,
+            plate_removal_hr=0.30, support_removal_hr=0.60, stress_relief_hr_build=2.0,
+            support_vol_frac=0.20, metal_am_powder_mult=1.0),
+        # ── BINDER JETTING — inkjet a binder into metal powder → GREEN part (fast,
+        # cheap print machine), then debind + SINTER in a furnace batch. The green is
+        # printed OVERSIZE because sintering shrinks it ~18% linearly → material mass
+        # = net × (1+shrinkage_linear)³ of powder. Sinter is a long furnace batch cycle
+        # amortized over the parts sintered together. Every constant DEFAULT,
+        # un-validated. ────────────────────────────────────────────────────────────
+        PT.BINDER_JET: dict(
+            machine_rate=40.0,          # $/hr loaded binder-jet PRINT machine (fast, cheap) (DEFAULT)
+            setup_hr=0.50, post_hr=0.0, scrap=0.10,
+            deposition=None, vert=25.0, # fast green print Z rate mm/hr (DEFAULT)
+            finish=None, queue_days=7, post_days=4,
+            build_env_mm=(400, 250, 250), packing_density=0.12, part_spacing_mm=6.0,
+            nesting_mode="build_job", post_hr_part=0.0, post_hr_build=0.0,
+            lot_size="build", min_charge=150,
+            n_machines=2, machine_hours_per_day=20,
+            # debind + sinter (all DEFAULT, all overridable)
+            sinter_hr_build=24.0,       # furnace debind+sinter batch cycle hr (DEFAULT)
+            sinter_rate=15.0,           # $/hr loaded sinter furnace (DEFAULT)
+            shrinkage_linear=0.18,      # linear sinter shrink → green oversize (1+s)^3 volume (DEFAULT)
+            parts_per_sinter_batch=0.0),# furnace batch count; 0 => amortize over parts_per_build (DEFAULT)
+        # ── DED / WAAM (directed-energy / wire-arc) — deposition-RATE driven near-net
+        # deposition of feedstock (wire/powder), then finish machining (ALWAYS needed).
+        # Machine cost = deposited mass ÷ deposition_rate × machine_rate. Feedstock =
+        # net × feedstock_mult (near-net overbuild) at the material price. A coarse
+        # finish-machining allowance is added as a fraction of deposition cost. This
+        # is HIGHLY geometry/shop-specific — the WIDEST band. Every constant DEFAULT,
+        # un-validated. ────────────────────────────────────────────────────────────
+        PT.DED: dict(
+            machine_rate=120.0,         # $/hr loaded DED cell (DEFAULT)
+            setup_hr=1.00, post_hr=0.0, scrap=0.10,
+            deposition=None, vert=None, finish=None, queue_days=10, post_days=4,
+            post_hr_part=0.0, post_hr_build=0.0, lot_size=10, min_charge=300,
+            n_machines=2, machine_hours_per_day=20,
+            deposition_rate_kg_hr=1.0,  # feedstock deposited per hour (DEFAULT)
+            feedstock_mult=1.15,        # near-net overbuild: deposited = net × 1.15 (DEFAULT)
+            finish_machining_frac=0.30),# finish-machining allowance as fraction of deposition cost (DEFAULT)
+        PT.WAAM: dict(
+            machine_rate=90.0,          # $/hr loaded wire-arc cell (DEFAULT)
+            setup_hr=1.00, post_hr=0.0, scrap=0.10,
+            deposition=None, vert=None, finish=None, queue_days=10, post_days=4,
+            post_hr_part=0.0, post_hr_build=0.0, lot_size=10, min_charge=300,
+            n_machines=2, machine_hours_per_day=20,
+            deposition_rate_kg_hr=3.0,  # wire-arc deposits FAST (DEFAULT)
+            feedstock_mult=1.15,
+            finish_machining_frac=0.30),
     },
     # Shop-specific material lot prices ($/kg). Empty by default → fall back to
     # the material-DB cost_per_kg (a generic DEFAULT). A calibrated shop binds its
@@ -437,6 +552,14 @@ def process_family(process: ProcessType) -> str:
         return "forging"
     if process in EDM:
         return "edm"
+    # metal additive — MUST precede the "formative" fallback (that fallback was
+    # the latent bug: these six matched no family set and mis-returned formative).
+    if process in METAL_POWDER_BED:
+        return "metal_powder_bed"
+    if process in BINDER_JET_FAMILY:
+        return "binder_jet"
+    if process in DED_FAMILY:
+        return "ded"
     return "formative"
 
 
@@ -677,6 +800,11 @@ _NUMERIC_FIELDS = {
     "yield_loss", "pour_hr", "cool_min_per_kg",
     "flash_loss", "heat_min_per_kg", "press_hr", "trim_hr",
     "n_threads", "thread_min", "wire_cost_per_hr",
+    # METAL-AM physics constants (powder-bed / binder-jet / DED — all DEFAULT, overridable)
+    "plate_removal_hr", "support_removal_hr", "stress_relief_hr_build",
+    "support_vol_frac", "metal_am_powder_mult",
+    "sinter_hr_build", "sinter_rate", "shrinkage_linear", "parts_per_sinter_batch",
+    "deposition_rate_kg_hr", "feedstock_mult", "finish_machining_frac",
 }
 
 

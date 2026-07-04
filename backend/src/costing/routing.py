@@ -104,6 +104,14 @@ def material_family(material_name: str) -> Optional[str]:
     return MATERIAL_FAMILY.get(material_name)
 
 
+# DED/WAAM feedstock is the same family of metal alloys as powder-bed AM, but no
+# MaterialProfile row lists DED/WAAM in its process_types — so borrow the metal-AM
+# powder-bed / binder-jet pool for the class. This lets DED/WAAM leave feasibility-
+# only with a real material $/kg; it is a routing convenience, not a claim that the
+# exact alloy row is DED-qualified.
+_DED_FEEDSTOCK_PROCS = (PT.DMLS, PT.SLM, PT.EBM, PT.BINDER_JET)
+
+
 def select_material(process: ProcessType, material_class: str, rates: RateCard):
     """Cheapest material compatible with (process, material_class) — the sane
     default pick. No positional materials[0]; no superalloy on a polymer part.
@@ -114,6 +122,16 @@ def select_material(process: ProcessType, material_class: str, rates: RateCard):
         if MATERIAL_FAMILY.get(m.name) == material_class
         and m.density and m.cost_per_kg
     ]
+    if not mats and process in (PT.DED, PT.WAAM):
+        # no material row declares DED/WAAM — fall back to the metal-AM alloy pool
+        # for this class (dedup by name) so the deposition route can be costed.
+        seen: set = set()
+        for p in _DED_FEEDSTOCK_PROCS:
+            for m in get_materials_for_process(p):
+                if (m.name not in seen and MATERIAL_FAMILY.get(m.name) == material_class
+                        and m.density and m.cost_per_kg):
+                    seen.add(m.name)
+                    mats.append(m)
     if not mats:
         return None
     return min(mats, key=lambda m: m.cost_per_kg)

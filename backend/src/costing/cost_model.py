@@ -27,6 +27,7 @@ from src.costing.drivers import parts_per_build
 from src.costing.provenance import CostEstimate, Driver, Provenance
 from src.costing.rates import (
     ADDITIVE, SUBTRACTIVE, FORMATIVE, FABRICATION, CASTING, FORGING_FAMILY, EDM,
+    METAL_POWDER_BED, BINDER_JET_FAMILY, DED_FAMILY,
     RateCard, process_family,
 )
 
@@ -282,6 +283,62 @@ def _edm_cycle(process, drivers, material_class, rates: RateCard):
     return cycle, swept_area, cut_hr, src
 
 
+def _metal_am_post(process, n, rates: RateCard):
+    """Metal powder-bed POST-PROCESSING that polymer AM never pays.
+
+    Returns a list of (line_key, driver_name, hr_per_part, source) components:
+      * build-plate removal  — cut the parts off the build plate (wire-EDM/bandsaw),
+                               per part.
+      * support removal      — grind/break metal supports off, per part.
+      * stress-relief furnace— a per-BUILD furnace batch (relieve residual stress
+                               from the melt), amortized over the n parts on the plate.
+
+    Each is emitted as its own inspectable Driver + line item. NOTE (caveat carried
+    in the stress-relief source): HIP, solution heat-treat and CNC finishing of
+    critical surfaces are part-specific and deliberately NOT bundled here. Every
+    constant is a DEFAULT assumption, not shop-validated.
+    """
+    plate_hr = rates.p(process, "plate_removal_hr")
+    support_hr = rates.p(process, "support_removal_hr")
+    sr_build = rates.p(process, "stress_relief_hr_build")
+    sr_per_part = sr_build / n if n else sr_build
+    return [
+        ("plate_removal", "plate_removal_cost", plate_hr,
+         (f"build-plate removal (wire-EDM/bandsaw off the plate) {plate_hr:g}hr/part "
+          f"[metal-AM assumption, not shop-validated]")),
+        ("support_removal", "support_removal_cost", support_hr,
+         (f"metal support removal (grind/break-off) {support_hr:g}hr/part "
+          f"[metal-AM assumption, not shop-validated]")),
+        ("stress_relief", "stress_relief_cost", sr_per_part,
+         (f"stress-relief furnace {sr_build:g}hr/build ÷ {n} parts/build "
+          f"= {sr_per_part:.3f}hr/part (batch amortized). HIP / solution heat-treat / "
+          f"CNC finish of critical surfaces are part-specific and NOT bundled "
+          f"[metal-AM assumption, not shop-validated]")),
+    ]
+
+
+def _ded_cycle(process, drivers, material, rates: RateCard):
+    """DED / WAAM deposition-rate cycle: deposited feedstock mass ÷ deposition rate.
+
+    Directed-energy / wire-arc deposition is rate-driven, not layer-swept: the cell
+    lays down feedstock at deposition_rate_kg_hr, so machine time = deposited mass ÷
+    that rate. Deposited mass = net part mass × feedstock_mult (near-net overbuild
+    that the downstream finish machining removes). This is a COARSE model — real DED/
+    WAAM time is highly geometry/path/shop-specific — flagged in the source. Returns
+    (machine_hr, deposited_kg, src).
+    """
+    net_mass = drivers.mass_kg(material.density)
+    fm = rates.p(process, "feedstock_mult")
+    deposited = net_mass * fm
+    rate_kg_hr = rates.p(process, "deposition_rate_kg_hr")
+    machine_hr = deposited / rate_kg_hr if rate_kg_hr > 0 else 0.0
+    src = (f"deposit {deposited:.4f}kg (net {net_mass:.4f}kg × {fm:g} near-net overbuild) "
+           f"÷ {rate_kg_hr:g}kg/hr deposition = {machine_hr:.4f}hr  [COARSE deposition-rate "
+           f"model — DED/WAAM cost is highly geometry/path/shop-specific; assumption, "
+           f"not shop-validated]")
+    return machine_hr, deposited, src
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # Master cost breakdown
 # ──────────────────────────────────────────────────────────────────────────
@@ -350,12 +407,53 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         # wire-EDM cuts the part from a solid billet plate (bbox block × allowance)
         input_mass = drivers.billet_mass_kg(material.density, rates.g("stock_allowance"))
         mass_src = drivers.billet_source(material.density, rates.g("stock_allowance"), material.name)
+    elif process in METAL_POWDER_BED:
+        # powder-bed metal = net part mass + support structure printed then removed.
+        # Powder is priced at the material-DB $/kg (a KNOWN refinement — see powder mult
+        # below — NOT silently inflated). Powder loss is the scrap term (recycled).
+        net_mass = drivers.mass_kg(material.density)
+        svf = rates.p(process, "support_vol_frac")
+        input_mass = net_mass * (1.0 + svf)
+        mass_src = (f"powder-bed metal = net {net_mass:.4f} kg (CAD volume "
+                    f"{drivers.volume_cm3:.2f} cm³ × {material.name} density "
+                    f"{material.density:.2f} g/cm³) × (1+{svf:g} support structure "
+                    f"printed+removed); powder $/kg assumed at material-DB value "
+                    f"[metal-AM assumption, not shop-validated]")
+    elif process in BINDER_JET_FAMILY:
+        # green part printed OVERSIZE for sinter shrinkage: material = net × (1+s)³ of
+        # powder (net volume grows by the cube of the linear shrink factor).
+        net_mass = drivers.mass_kg(material.density)
+        shr = rates.p(process, "shrinkage_linear")
+        oversize = (1.0 + shr) ** 3
+        input_mass = net_mass * oversize
+        mass_src = (f"green part = net {net_mass:.4f} kg × (1+{shr:g})³ = ×{oversize:.3f} "
+                    f"sinter-shrink oversize (CAD volume {drivers.volume_cm3:.2f} cm³ × "
+                    f"{material.name} density {material.density:.2f} g/cm³); powder $/kg at "
+                    f"material-DB value [binder-jet assumption, not shop-validated]")
+    elif process in DED_FAMILY:
+        # feedstock (wire/powder) = net part mass × near-net overbuild, at material price
+        net_mass = drivers.mass_kg(material.density)
+        fm = rates.p(process, "feedstock_mult")
+        input_mass = net_mass * fm
+        mass_src = (f"feedstock (wire/powder) = net {net_mass:.4f} kg × {fm:g} near-net "
+                    f"overbuild (CAD volume {drivers.volume_cm3:.2f} cm³ × {material.name} "
+                    f"density {material.density:.2f} g/cm³) [DED/WAAM assumption, not "
+                    f"shop-validated]")
     else:
         input_mass = drivers.mass_kg(material.density)
         mass_src = drivers.mass_source(material.density, material.name)
     # shop lot price when the active profile binds one; else generic material-DB price
     price_per_kg, price_prov, price_note = rates.material_price(
         material.name, material_class, material.cost_per_kg)
+    # metal powder-bed: a KNOWN, explicit powder-price refinement knob (DEFAULT 1.0 =
+    # material-DB $/kg used as-is, NO silent inflation). Guarded to the new family so
+    # every existing family's price path is byte-identical.
+    if process in METAL_POWDER_BED:
+        pmult = rates.p(process, "metal_am_powder_mult")
+        if pmult != 1.0:
+            price_per_kg = price_per_kg * pmult
+        price_note = (f"{price_note}; ×{pmult:g} metal-AM powder mult "
+                      f"(powder-vs-wrought pricing is a KNOWN refinement, not silently inflated)")
     material_cost = input_mass * price_per_kg * (1.0 + scrap)
     material_scaled = material_cost * rm * mgn
     drivers_out.append(Driver(
@@ -365,6 +463,20 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                 f"× (1+{scrap:g} scrap) × region-material ×{rm:g}"),
         error_band_pct=5.0,
     ))
+    # metal powder-bed: surface the support-structure powder as an inspectable adder
+    # (already inside material_cost above; shown separately so it can be audited).
+    if process in METAL_POWDER_BED:
+        _svf = rates.p(process, "support_vol_frac")
+        _support_mass = drivers.mass_kg(material.density) * _svf
+        _support_cost = _support_mass * price_per_kg * (1.0 + scrap) * rm * mgn
+        drivers_out.append(Driver(
+            name="support_material", value=round(_support_cost, 4), unit="$",
+            provenance=Provenance.DEFAULT,
+            source=(f"support structure {_svf:g}×net = {_support_mass:.4f} kg powder "
+                    f"printed then removed (INCLUDED in material_cost above; surfaced for "
+                    f"inspection) [metal-AM assumption, not shop-validated]"),
+            error_band_pct=band,
+        ))
 
     # ---- MACHINE ---------------------------------------------------------
     finish_hr = 0.0     # CNC finish-pass share (set by _cnc_cycle); 0 for other families
@@ -402,6 +514,30 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     elif family == "edm":
         machine_hr, edm_swept_mm2, edm_cut_hr, cycle_src = _edm_cycle(
             process, drivers, material_class, rates)
+        n = 1
+    elif family == "metal_powder_bed":
+        # REUSE the build-job additive time model (full-build Z-sweep ÷ parts/build)
+        # with metal params. Metal-only post (plate/support/stress-relief) added below.
+        machine_hr, n, cycle_src = _additive_machine(process, drivers, rates)
+        drivers_out.append(Driver(
+            name="parts_per_build", value=float(n), unit="parts",
+            provenance=rates.prov_tag(f"packing_density.{process.name}"),
+            source=(f"nesting: packing {rates.packing_density(process):g} × env "
+                    f"{rates.build_env(process)} ÷ part bbox {tuple(drivers.bbox_mm)}+"
+                    f"{rates.part_spacing(process):g}mm spacing = {n} parts/build"),
+        ))
+    elif family == "binder_jet":
+        # green-part PRINT reuses the fast build-job model; debind+sinter added below.
+        machine_hr, n, cycle_src = _additive_machine(process, drivers, rates)
+        drivers_out.append(Driver(
+            name="parts_per_build", value=float(n), unit="parts",
+            provenance=rates.prov_tag(f"packing_density.{process.name}"),
+            source=(f"green print nesting: packing {rates.packing_density(process):g} × env "
+                    f"{rates.build_env(process)} ÷ part bbox {tuple(drivers.bbox_mm)}+"
+                    f"{rates.part_spacing(process):g}mm spacing = {n} parts/build"),
+        ))
+    elif family == "ded":
+        machine_hr, ded_deposited_kg, cycle_src = _ded_cycle(process, drivers, material, rates)
         n = 1
     else:
         machine_hr, cycle_src = _formative_cycle(process, drivers, rates)
@@ -618,6 +754,56 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             error_band_pct=40.0,
         ))
 
+    # ── METAL-AM POST / FURNACE / FINISH (new families; pure additions) ──────
+    # powder-bed: build-plate cut-off + support removal + stress-relief furnace
+    #   (LABOR, each an inspectable line + driver) — the costs polymer AM never pays.
+    # binder-jet: debind + SINTER furnace batch (furnace machine-time, batch-amortized).
+    # DED/WAAM: a coarse finish-machining allowance (near-net ALWAYS needs finishing).
+    # All feed extra_variable so the fixed/variable split and Σ line_items stay exact.
+    metal_post_items: dict = {}     # powder-bed post-processing line items
+    sinter_scaled = 0.0             # binder-jet debind+sinter furnace
+    ded_finish_scaled = 0.0         # DED/WAAM finish-machining allowance
+    if family == "metal_powder_bed":
+        for line_key, drv_name, comp_hr, comp_src in _metal_am_post(process, n, rates):
+            comp_cost = comp_hr * labor_rate * rl * mgn * burden
+            metal_post_items[line_key] = round(comp_cost, 4)
+            extra_variable += comp_cost
+            drivers_out.append(Driver(
+                name=drv_name, value=round(comp_cost, 4), unit="$",
+                provenance=Provenance.DEFAULT,
+                source=(f"{comp_src} × ${labor_rate:g}/hr × region-labor ×{rl:g}"),
+                error_band_pct=band,
+            ))
+    elif family == "binder_jet":
+        sinter_hr_build = rates.p(process, "sinter_hr_build")
+        sinter_rate = rates.p(process, "sinter_rate")
+        psb_raw = rates.p(process, "parts_per_sinter_batch")
+        n_sinter = int(psb_raw) if psb_raw and psb_raw > 0 else n
+        sinter_per_part_hr = sinter_hr_build / n_sinter if n_sinter else sinter_hr_build
+        sinter_cost = sinter_per_part_hr * sinter_rate
+        sinter_scaled = sinter_cost * rl_machine * mgn * burden   # furnace = machine-like conversion
+        extra_variable += sinter_scaled
+        drivers_out.append(Driver(
+            name="sinter_cost", value=round(sinter_scaled, 4), unit="$",
+            provenance=Provenance.DEFAULT,
+            source=(f"debind+sinter furnace {sinter_hr_build:g}hr/batch ÷ {n_sinter} parts/batch "
+                    f"= {sinter_per_part_hr:.3f}hr × ${sinter_rate:g}/hr furnace × region-machine "
+                    f"×{rl_machine:g} [binder-jet assumption, not shop-validated]"),
+            error_band_pct=band,
+        ))
+    elif family == "ded":
+        finish_frac = rates.p(process, "finish_machining_frac")
+        ded_finish_scaled = machine_scaled * finish_frac
+        extra_variable += ded_finish_scaled
+        drivers_out.append(Driver(
+            name="finish_machining", value=round(ded_finish_scaled, 4), unit="$",
+            provenance=Provenance.DEFAULT,
+            source=(f"finish-machining allowance {finish_frac:g} × deposition machine "
+                    f"${machine_scaled:.2f} (near-net DED/WAAM ALWAYS needs finishing) "
+                    f"[coarse allowance; assumption, not shop-validated]"),
+            error_band_pct=band,
+        ))
+
     # ── DECLARED TOLERANCE CLASS (Aramco cost gap #4) ────────────────────
     # The caller DECLARED how tight this part is. Tighter tolerance means more
     # CNC finishing work + more inspection — the tolerance-SENSITIVE conversion
@@ -735,6 +921,14 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         line_items["finishing"] = round(finishing_scaled, 4)
     if tolerance_surcharge:
         line_items["tolerance"] = round(tolerance_surcharge, 4)
+    # metal-AM additions (only present for the new families)
+    for _k, _v in metal_post_items.items():
+        if _v:
+            line_items[_k] = _v
+    if sinter_scaled:
+        line_items["sinter"] = round(sinter_scaled, 4)
+    if ded_finish_scaled:
+        line_items["finish_machining"] = round(ded_finish_scaled, 4)
     unit_cost = round(sum(line_items.values()), 4)
 
     # ---- region split driver (when any factor ≠ 1.0) --------------------
