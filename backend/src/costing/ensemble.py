@@ -44,6 +44,10 @@ import os
 from dataclasses import dataclass, field, replace
 from typing import NamedTuple, Optional, Sequence
 
+from src.costing.analogy_estimator import (
+    analogy_estimate, ANALOGY_PROVENANCE,
+    DEFAULT_K as _AN_DEFAULT_K, DEFAULT_MIN_REAL_NEIGHBORS as _AN_MIN_REAL,
+)
 from src.costing.confidence import _percentile, confidence_interval
 from src.costing.estimate import EstimateOptions, estimate_decision
 from src.costing.rates import RATE_CARD_V0, _resolve_process_token, process_family, BAND_PCT
@@ -215,9 +219,17 @@ class EnsembleBand:
     label: str
     basis: str
     member_costs: list = field(default_factory=list)
+    # ── P1 analogy member (additive; only populated when a REAL k-NN contributed).
+    # When empty/False these leave ``to_dict`` byte-identical to the physics-only
+    # band, so an ABSTAINING analogy member is invisible in the output.
+    members: list = field(default_factory=list)  # [{name,value_usd,variance_usd2,provenance,...}]
+    has_real_member: bool = False                # a real ground-truth member contributed
+    n_real_neighbors: int = 0                    # k-NN neighbours the analogy member used
+    combined_usd: Optional[float] = None         # inverse-variance/BLUE combined value
+    combined_variance_usd2: Optional[float] = None
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "process": self.process,
             "quantity": self.quantity,
             "point_usd": round(self.point_usd, 2),
@@ -233,6 +245,17 @@ class EnsembleBand:
             "label": self.label,
             "basis": self.basis,
         }
+        # Only surfaced when a REAL analogy member actually contributed — keeps the
+        # physics-only / abstain path byte-identical to the pre-P1 band dict.
+        if self.has_real_member:
+            d["has_real_member"] = True
+            d["n_real_neighbors"] = self.n_real_neighbors
+            d["combined_usd"] = round(self.combined_usd, 2) if self.combined_usd is not None else None
+            d["combined_variance_usd2"] = (
+                round(self.combined_variance_usd2, 6)
+                if self.combined_variance_usd2 is not None else None)
+            d["members"] = [dict(m) for m in self.members]
+        return d
 
 
 @dataclass
@@ -282,7 +305,11 @@ def _assumption_band_pct(process: str) -> float:
 def ensemble_estimate(result, mesh, features, options: EstimateOptions,
                       n_members: int = DEFAULT_N_MEMBERS,
                       coefficients: Optional[Sequence[UncertainCoefficient]] = None,
-                      residual_model: object = None) -> EnsembleResult:
+                      residual_model: object = None,
+                      records: Optional[Sequence] = None,
+                      geometry: Optional[dict] = None,
+                      analogy_k: int = None,
+                      analogy_min_real: int = None) -> EnsembleResult:
     """Run ``estimate_decision`` under K deterministic rate-card perturbations and
     report the per-(process, qty) spread as an honest uncertainty band.
 
@@ -304,6 +331,24 @@ def ensemble_estimate(result, mesh, features, options: EstimateOptions,
         ``validated`` flag follows the residuals' realness. The assumption
         spread is then kept only as the ``disagreement`` diagnostic. This is how
         the assumption band becomes a MEASURED band once quotes accumulate.
+    records, geometry
+        **P1 analogy seam (additive).** When both are supplied, per (process, qty)
+        the assumption band is COMBINED with an independent analogy-to-quote k-NN
+        member (``analogy_estimator.analogy_estimate`` over REAL ground-truth
+        ``records`` with geometry near ``geometry``) by inverse-variance / BLUE
+        (§6): the combined variance is provably <= the physics assumption-spread
+        variance, so the reported band is TIGHTENED and centred on the combined
+        value, with a ``members`` list naming each contributor. When the analogy
+        member ABSTAINS (insufficient real neighbours) the band is EXACTLY today's
+        physics-only assumption band — byte-identical. ``geometry`` is the QUERY
+        part's MEASURED feature mapping (see ``analogy_estimator.FEATURE_KEYS``).
+        Combining a real-analogy member does NOT set ``validated`` (that still
+        requires the measured residual path); it sets ``has_real_member`` so the
+        real-data contribution is surfaced honestly. The measured residual path,
+        when it fires, takes precedence over the analogy combine.
+    analogy_k, analogy_min_real
+        Optional overrides for the k-NN neighbourhood size and the real-neighbour
+        abstain floor (default ``analogy_estimator`` values).
     """
     coeffs = list(coefficients if coefficients is not None else UNCERTAIN_COEFFICIENTS)
     # Resolve DEFAULT coefficient values from the effective base table. Newer
@@ -361,6 +406,13 @@ def ensemble_estimate(result, mesh, features, options: EstimateOptions,
                  f"over {len(coeffs)} DEFAULT-tagged uncertain coefficient(s); "
                  f"NOT shop-validated")
 
+        members: list = []
+        has_real_member = False
+        n_real_neighbors = 0
+        combined_usd = None
+        combined_variance_usd2 = None
+        measured = False
+
         # ── W5 seam: a real ResidualModel REPLACES the assumption spread with the
         # MEASURED empirical band (confidence.py measured path). ──────────────
         if residual_model is not None:
@@ -374,13 +426,62 @@ def ensemble_estimate(result, mesh, features, options: EstimateOptions,
                 label = ci.label or "measured band"
                 basis = ci.basis + (f"; assumption disagreement CoV={cov:.3f} retained "
                                     f"as epistemic diagnostic")
+                measured = True
             else:
                 overall_validated = False
+
+        # ── P1 seam: combine an independent ANALOGY-TO-QUOTE member with the
+        # physics assumption point via inverse-variance/BLUE (§6). Only when the
+        # measured path did NOT fire (measured beats analogy) and real records +
+        # query geometry are supplied. On ABSTAIN the band is left EXACTLY as the
+        # physics-only assumption band above (byte-identical). ────────────────
+        if (not measured and records is not None and geometry is not None
+                and sd > 0.0):
+            ae = analogy_estimate(
+                process, quantity, geometry, records,
+                k=(analogy_k if analogy_k is not None else _AN_DEFAULT_K),
+                min_real=(analogy_min_real if analogy_min_real is not None
+                          else _AN_MIN_REAL))
+            if ae is not None:
+                physics_var = sd * sd                       # assumption-spread variance
+                blue = combine_inverse_variance(
+                    [(point, physics_var), (ae.value_usd, ae.variance_usd2)])
+                combined_usd = blue.value
+                combined_variance_usd2 = blue.variance
+                has_real_member = True
+                n_real_neighbors = ae.n_used
+                # Tighten the assumption band: keep its SHAPE, scale its half-widths
+                # by sqrt(combined_var / physics_var) (<= 1 by BLUE), recentre on the
+                # combined value. Band width can only shrink, never grow.
+                scale = (combined_variance_usd2 / physics_var) ** 0.5 if physics_var > 0 else 1.0
+                p10 = combined_usd + (p10 - point) * scale
+                p50 = combined_usd + (p50 - point) * scale
+                p90 = combined_usd + (p90 - point) * scale
+                members = [
+                    {"name": "physics", "value_usd": round(point, 4),
+                     "variance_usd2": round(physics_var, 6),
+                     "provenance": "DEFAULT assumption-ensemble spread (not shop-validated)"},
+                    {"name": "analogy", "value_usd": round(ae.value_usd, 4),
+                     "variance_usd2": round(ae.variance_usd2, 6),
+                     "n_real_neighbors": ae.n_used,
+                     "provenance": ANALOGY_PROVENANCE},
+                ]
+                basis = (
+                    f"inverse-variance/BLUE combine of physics assumption point "
+                    f"(var={physics_var:.4f}) + real analogy-to-quote k-NN "
+                    f"(n={ae.n_used}, var={ae.variance_usd2:.4f}); combined var "
+                    f"{combined_variance_usd2:.4f} <= min member var; band tightened. "
+                    f"Real-data member contributed but NOT measured-validated "
+                    f"(no held-out residual model).")
+
         bands.append(EnsembleBand(
             process=process, quantity=quantity, point_usd=point, mean_usd=mu,
             std_usd=sd, p10_usd=p10, p50_usd=p50, p90_usd=p90,
             disagreement_cov=cov, n_members=len(costs), method=method,
-            validated=validated, label=label, basis=basis, member_costs=costs))
+            validated=validated, label=label, basis=basis, member_costs=costs,
+            members=members, has_real_member=has_real_member,
+            n_real_neighbors=n_real_neighbors, combined_usd=combined_usd,
+            combined_variance_usd2=combined_variance_usd2))
 
     overall_validated = overall_validated and all(b.validated for b in bands) and bool(bands)
     return EnsembleResult(
