@@ -1116,3 +1116,70 @@ class MaterialLibraryVersion(Base):
     published_at: Mapped[Optional[datetime]] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
+
+
+# ---------------------------------------------------------------------------
+# Aramco GAP 3 (migration 0020): declared parts-manifest bulk onboarding
+# ---------------------------------------------------------------------------
+
+
+class ManifestPart(Base):
+    """One USER-DECLARED inventory line from a parts-manifest import (Aramco GAP 3).
+
+    A THIRD kind of part identity, distinct from the two we already store: it is
+    NOT a ``mesh_hash``-keyed catalog part (that is geometry-derived) and NOT a
+    ``ground_truth_records`` cost datum — it is a DECLARED inventory line keyed by
+    the customer's own ``part_id``. Aramco's parts live in SAP/PLM; the pilot
+    bridge is a manifest upload (CSV exported from SAP/Excel) of part numbers plus
+    demand/program/material metadata, usually WITHOUT geometry. This table is that
+    registry, so an org can see its inventory ORGANIZED immediately and get an
+    honest "how much of it can we even assess (has geometry)" coverage number.
+
+    HONESTY (non-negotiable): every column here is DECLARED by the customer, never
+    inferred and never a makeability/cost claim. A declared row never creates an
+    analysis / cost decision / part summary, never touches the catalog or triage
+    numbers (those stay geometry-derived), and NEVER flips a band to validated.
+    Coverage's geometry match is a BEST-EFFORT normalized-stem convention against
+    uploaded analyses in the SAME org — an unmatched declared part is honestly
+    ``without_geometry``, never fabricated as covered.
+
+    Mirrors the ``part_contexts`` / ``ground_truth_records`` column style: BigInt
+    PK, ULID public id, org_id FK (CASCADE), nullable ``created_by`` (SET NULL so
+    history survives a user delete). Upsert (last write wins) on
+    ``(org_id, part_id)`` lives in the service.
+    """
+
+    __tablename__ = "manifest_parts"
+    __table_args__ = (
+        UniqueConstraint("org_id", "part_id", name="uq_manifest_parts_org_part"),
+        Index("ix_manifest_parts_org_program", "org_id", "program"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    # The customer's own part number — the declared identity (NOT a mesh_hash).
+    part_id: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    material_class: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    program: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    parent_assembly: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    units_per_parent: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    annual_volume: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    quantity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    region: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )

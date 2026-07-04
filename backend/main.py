@@ -37,6 +37,7 @@ from src.api.material_library import router as material_library_router
 from src.api.governance import router as governance_router
 from src.api.part_context import router as part_context_router
 from src.api.groundtruth import router as groundtruth_router
+from src.api.manifest import router as manifest_router
 from src.api.share import public_share_router, share_router
 from src.auth.keys_api import router as keys_router
 from src.auth.magic_link import router as magic_router
@@ -241,6 +242,12 @@ app.include_router(
 )
 app.include_router(
     groundtruth_router, prefix="/api/v1/ground-truth", tags=["ground-truth"]
+)
+# Parts-manifest bulk onboarding (Aramco GAP 3): declared inventory registry +
+# honest geometry-coverage headline — a THIRD part identity (declared part_id),
+# separate from geometry-derived catalog parts and cost records.
+app.include_router(
+    manifest_router, prefix="/api/v1/manifest", tags=["manifest"]
 )
 # Email + password auth (signup/login/logout/me). Mounted UNCONDITIONALLY — it
 # is the primary login method that works end-to-end locally with zero external
