@@ -392,7 +392,7 @@ MATERIAL_FAMILY: dict = {
     "SS316L": "stainless", "304 Stainless": "stainless", "304 SS (Sheet)": "stainless",
     "17-4 PH SS": "stainless", "17-4 PH (Cast)": "stainless", "Duplex 2205": "stainless",
     # carbon / ferrous steel
-    "Mild Steel (Sheet)": "steel", "Ductile Iron": "steel",
+    "Mild Steel": "steel", "Ductile Iron": "steel",
     # titanium
     "Ti6Al4V": "titanium", "Ti6Al4V (Wrought)": "titanium", "Ti-6Al-4V Grade 5": "titanium",
     # nickel superalloy (deliberately its own family — never a default for a
@@ -486,7 +486,10 @@ class RateCard:
         Returns (price, provenance, note). When the active shop profile carries a
         real lot price for this exact material (or its class via "@<class>"), that
         price is used and tagged USER/SHOP. Otherwise we fall back to the generic
-        material-DB price (MEASURED part mass × a DEFAULT unit price).
+        material-DB $/kg, which is a stated DEFAULT assumption (a book price, NOT
+        extracted from the part) — so it is tagged DEFAULT, not MEASURED. (The
+        part MASS it multiplies is MEASURED and carries its own tag on the
+        geometry drivers; the PRICE, the assumable part, is what this tags.)
         """
         from src.costing.provenance import Provenance
         mp = self.data.get("material_prices", {}) or {}
@@ -495,7 +498,7 @@ class RateCard:
             if key_suffix in mp:
                 dotted = f"material_price.{key_suffix}"
                 return float(mp[key_suffix]), self.prov_tag(dotted), note
-        return float(default_price), Provenance.MEASURED, "material-DB unit price (DEFAULT)"
+        return float(default_price), Provenance.DEFAULT, "material-DB unit price (DEFAULT book value)"
 
     # ---- per-process getter ---------------------------------------------
     def p(self, process: ProcessType, key: str):

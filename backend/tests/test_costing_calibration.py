@@ -174,7 +174,9 @@ def test_material_price_exact_name_beats_class():
     price2, prov2, _ = rc.material_price("PA12 (Nylon 12)", "polymer", 99.0)
     assert price2 == 5.0 and prov2 == Provenance.SHOP        # falls back to @polymer
     price3, prov3, _ = rc.material_price("Unpriced", "aluminum", 7.0)
-    assert price3 == 7.0 and prov3 == Provenance.MEASURED    # generic DB fallback
+    # The generic material-DB $/kg is a stated DEFAULT book value (not extracted
+    # from the part), so the price provenance is DEFAULT, never MEASURED.
+    assert price3 == 7.0 and prov3 == Provenance.DEFAULT
 
 
 # ── overhead / utilization: default no-op, non-default moves cost ────────────
