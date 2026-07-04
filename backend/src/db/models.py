@@ -980,6 +980,23 @@ class PartSummary(Base):
         ),
         # by_process rollup: GROUP BY route_process within an org.
         Index("ix_part_summaries_org_route", "org_id", "route_process"),
+        # Phase D — scaled makeability rollup: GROUP BY (org_id,
+        # makeability_bucket) + per-bucket keyset drill-down.
+        Index(
+            "ix_part_summaries_org_mkbucket",
+            "org_id",
+            "makeability_bucket",
+            text("updated_at DESC"),
+            text("mesh_hash DESC"),
+        ),
+        # Phase D — capability-investment ranking: GROUP BY (org_id,
+        # unlock_process, unlock_gate) + per-acquisition drill-down.
+        Index(
+            "ix_part_summaries_org_unlock",
+            "org_id",
+            "unlock_process",
+            "unlock_gate",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -1008,6 +1025,53 @@ class PartSummary(Base):
     # The full catalog row — catalog_service.derive_row(...) VERBATIM, so the
     # scaled grid hydrates a page byte-identically to the legacy grid.
     row_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+    # ── Phase D — machine-inventory makeability projection (spec §10 Phase D) ──
+    # The §0 lattice verdict last computed for this part from the Phase-C
+    # verification block on the cost decision (NULL = costed with no declared
+    # inventory/env → "not evaluated", never a fabricated verdict).
+    makeability_verdict: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # True iff verdict ∈ {makeable_in_house, makeable_with_secondary_op}; NULL when
+    # unknown/unevaluated (never fabricated True).
+    in_house_makeable: Mapped[Optional[bool]] = mapped_column(
+        Boolean, nullable=True
+    )
+    # The D3 triage bucket (makeable_in_house | makeable_outside |
+    # needs_capability | not_makeable | unknown | geometry_invalid) — the single
+    # GROUP-BY key for the scaled makeability rollup. Always present.
+    makeability_bucket: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="unknown"
+    )
+    # Set true (in bulk) when the org's machine inventory changes, so a verdict
+    # computed against the OLD inventory is never served as fresh; cleared when the
+    # part is re-costed against current inventory. Visible in rollups/rankings.
+    makeability_stale: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    # ── D4 capability-investment ranking keys (the single primary acquisition
+    # that would unlock a currently-blocked part), derived from the REAL stored
+    # FitFailure gap data — never invented. ──
+    # Process to acquire (outsource_only) or upgrade (not_on_owned).
+    unlock_process: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Binding gate for an upgrade (envelope|material|tolerance|axes|...); NULL for
+    # a pure acquire (owns none of the process family).
+    unlock_gate: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # True when ONE acquisition suffices (single binding gate, or acquire); False
+    # when multiple constraints block (no single acquisition unlocks it); NULL when
+    # not blocked/applicable.
+    unlock_single: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    # The numeric requirement the acquisition must meet for a numeric gate
+    # (envelope mm / mass kg / IT grade / axes / thickness / force). NULL for a
+    # categorical gate (material) or a pure acquire.
+    unlock_need_num: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # The categorical requirement (e.g. the material name to qualify). NULL for a
+    # numeric gate or a pure acquire.
+    unlock_need_label: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Full per-part gap detail for the D4 drill-down: {kind, process, gate, single,
+    # gap:[{gate,axis,need,have,human}, ...]}. NULL when the part is not blocked.
+    makeability_gap: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSONB, nullable=True
+    )
 
 
 # ---------------------------------------------------------------------------

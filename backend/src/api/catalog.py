@@ -299,3 +299,191 @@ async def get_triage(
             "parts; older parts were not counted."
         )
     return resp
+
+
+@router.get("/makeability")
+@limiter.limit("60/hour;500/day")
+async def get_makeability(
+    request: Request,
+    response: Response,
+    bucket: Optional[str] = Query(
+        None,
+        description=(
+            "Drill-down mode: return one keyset page of the parts in this "
+            "makeability bucket (makeable_in_house | makeable_outside | "
+            "needs_capability | not_makeable | unknown | geometry_invalid). "
+            "Omit for the rollup."
+        ),
+    ),
+    cursor: Optional[str] = Query(
+        None, description="Opaque keyset cursor from a prior drill-down page."
+    ),
+    page_size: int = Query(100, ge=1, le=500, description="Drill-down page size."),
+    user: AuthedUser = Depends(require_role(Role.viewer)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Org-scoped IN-HOUSE makeability breakdown (Phase D — spec §10 D3).
+
+    Refines the DFM triage with the machine-inventory §0 verdict: of the caller's N
+    parts, how many are makeable on OWNED equipment (``makeable_in_house``), buyable
+    but on no owned family (``makeable_outside``), owned-family-but-no-fit with a
+    concrete gap (``needs_capability``), not makeable / environment-excluded
+    (``not_makeable``), unevaluated (``unknown`` — no declared inventory or not
+    costed), or geometry-invalid.
+
+    A SQL GROUP BY over the materialized ``part_summaries`` projection — O(buckets),
+    whole inventory, never capped. HONEST: verdicts are projections of the Phase-C
+    verification block the cost path already computed (never re-invented); a verdict
+    computed against inventory that has since changed is carried as STALE (a visible
+    count + flag), never served as fresh. Empty org → a zeroed rollup.
+
+    ``bucket`` opts into a keyset drill-down (``{rows, next_cursor}``) — each row is
+    the catalog row plus a ``makeability`` block ({verdict, stale, gap}) showing WHY.
+    """
+    org_id = await resolve_org(session, user.user_id)
+
+    # ── drill-down mode: one keyset page of a single bucket ──────────────────
+    if bucket is not None:
+        b = bucket.strip()
+        if b not in svc.MAKEABILITY_BUCKETS:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "invalid bucket: expected one of "
+                    + ", ".join(svc.MAKEABILITY_BUCKETS)
+                ),
+            )
+        try:
+            return await svc.build_makeability_bucket_page(
+                session, org_id, b, cursor=cursor, limit=page_size
+            )
+        except svc.InvalidCursorError:
+            raise HTTPException(status_code=400, detail="invalid cursor")
+
+    # ── rollup mode ──────────────────────────────────────────────────────────
+    built = await svc.build_makeability_rollup(session, org_id)
+    summary = built["summary"]
+    resp = {"summary": summary, "buckets": list(svc.MAKEABILITY_BUCKETS)}
+
+    # Cold-projection honesty (READ-ONLY — no write on a GET), mirroring /triage: if
+    # the projection is empty but the org actually has parts (data predating the
+    # projection, or a deploy before the one-time backfill), say so plainly rather
+    # than imply a genuinely-empty org. There is no legacy makeability fold to fall
+    # back to (this lens is projection-only), so we flag it and point at the fix.
+    if org_id and summary["total"] == 0:
+        from src.services import part_summary_service
+
+        if await part_summary_service.org_has_raw_parts(session, org_id):
+            resp["cold_projection"] = True
+            resp["note"] = (
+                "The makeability projection is cold for this org (parts predate it, "
+                "or the one-time backfill has not run). Run the part-summary "
+                "backfill or re-cost parts to populate the in-house breakdown."
+            )
+
+    # Staleness is surfaced, never hidden: the counts above INCLUDE stale rows and
+    # ``stale_count`` says how many; this note tells the reader how to refresh.
+    if summary.get("stale"):
+        resp["stale_note"] = (
+            f"{summary['stale_count']} verdict(s) predate a recent machine-inventory "
+            "change and are marked stale (counted above, never hidden); re-cost the "
+            "affected parts to refresh their in-house verdict."
+        )
+
+    # If nothing has been evaluated against a declared inventory, say so — an
+    # all-'unknown' breakdown is honest, not a bug.
+    evaluated = (
+        summary["makeable_in_house"] + summary["makeable_outside"]
+        + summary["needs_capability"] + summary["not_makeable"]
+    )
+    if summary["total"] > 0 and evaluated == 0 and not resp.get("cold_projection"):
+        resp["evaluation_note"] = (
+            "No parts have been evaluated against a declared machine inventory — "
+            "in-house makeability is 'unknown'. Declare machines and (re-)cost parts "
+            "to populate the breakdown."
+        )
+    return resp
+
+
+@router.get("/capability-investment")
+@limiter.limit("60/hour;500/day")
+async def get_capability_investment(
+    request: Request,
+    response: Response,
+    process: Optional[str] = Query(
+        None,
+        description=(
+            "Drill-down mode: return one keyset page of the parts unlocked by the "
+            "acquisition of this process. Omit for the ranking."
+        ),
+    ),
+    gate: Optional[str] = Query(
+        None,
+        description=(
+            "Drill-down: the binding gate of the acquisition (envelope | material | "
+            "tolerance | axes | ...). Omit for a pure 'acquire' (owns none of the "
+            "family) acquisition."
+        ),
+    ),
+    cursor: Optional[str] = Query(
+        None, description="Opaque keyset cursor from a prior drill-down page."
+    ),
+    page_size: int = Query(100, ge=1, le=500, description="Drill-down page size."),
+    user: AuthedUser = Depends(require_role(Role.viewer)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Org-scoped CAPABILITY-INVESTMENT ranking (Phase D — spec §10 D4): which ONE
+    machine acquisition unlocks the most currently-blocked parts.
+
+    Computed ENTIRELY from stored real gap data — the §0 verdict + the binding
+    FitFailure the projection denormalized per part — via one SQL GROUP BY over
+    ``(unlock_process, unlock_gate)``. Each entry names the acquisition (process +
+    class/envelope spec aggregated from the group's real needs), the parts unlocked
+    (count + a keyset drill-down), and its basis. Parts blocked by MULTIPLE
+    constraints (no single acquisition unlocks them) are reported separately in
+    ``summary.blocked_by_multiple_constraints`` — never folded into an entry. NO
+    acquisition dollar cost is fabricated (none is available from engine data). A
+    stale entry (verdict predates a machine change) carries ``stale: true`` + a
+    count.
+
+    ``process`` opts into a keyset drill-down of the parts that acquisition unlocks.
+    """
+    org_id = await resolve_org(session, user.user_id)
+
+    # ── drill-down mode: the parts a specific acquisition unlocks ────────────
+    if process is not None:
+        try:
+            return await svc.build_capability_investment_page(
+                session,
+                org_id,
+                process.strip(),
+                gate.strip() if gate else None,
+                cursor=cursor,
+                limit=page_size,
+            )
+        except svc.InvalidCursorError:
+            raise HTTPException(status_code=400, detail="invalid cursor")
+
+    # ── ranking mode ─────────────────────────────────────────────────────────
+    built = await svc.build_capability_investment(session, org_id)
+    resp = {"ranking": built["ranking"], "summary": built["summary"]}
+    resp["basis_note"] = (
+        "Ranking counts parts whose SINGLE binding constraint one acquisition "
+        "closes, computed only from stored gap data. Parts blocked by multiple "
+        "constraints are reported in blocked_by_multiple_constraints and never "
+        "folded in. No acquisition dollar cost is shown — none is available from "
+        "engine data (never fabricated)."
+    )
+    if built["summary"].get("stale"):
+        resp["stale_note"] = (
+            "Some ranked verdicts predate a recent machine-inventory change and are "
+            "marked stale (flagged per entry, never hidden); re-cost the affected "
+            "parts to refresh."
+        )
+    if not built["ranking"] and built["summary"]["total_blocked"] == 0:
+        resp["note"] = (
+            "No single-acquisition unlock opportunities found — either nothing is "
+            "currently blocked, or the makeability projection is cold (see "
+            "GET /catalog/makeability for coverage)."
+        )
+    return resp
