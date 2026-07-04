@@ -26,10 +26,10 @@ The catalog/triage/portfolio read surfaces used to cap at `CATALOG_SCAN_CAP = 20
 - **[DONE].** A materialized `part_summaries` projection (one row per `(org_id, mesh_hash)`, migration 0019) is maintained on every analysis/cost write (graceful-degrade in a SAVEPOINT, idempotent, byte-identical to the legacy derivation by *calling* `derive_row`/`triage_bucket`). **Triage is now an O(buckets) SQL `GROUP BY` over the whole inventory** — "triage your 14M parts" is real, uncapped. The catalog grid gains **keyset pagination** (`?keyset=true&cursor=…`) that hydrates one page at a time. The legacy capped fold is retained untouched as the byte-identity oracle **and** as a read-only fallback when an org's projection is still cold (pre-backfill deploy) — honest `truncated:true`, no write on a GET. Deploy runs `scripts/backfill_part_summaries.py` once to lift the cap for pre-existing data (idempotent; correctness never depends on it). (`part_summary_service.py`, `catalog_service.build_triage_scaled`/`build_catalog_page`, `tests/test_part_summary.py`.)
 - **Still [SCALE] (not yet done):** streaming ingestion of very large corpora, and portfolio-savings ranking at full scale (portfolio still uses the legacy fold). The core Aramco triage-the-inventory claim is the piece that shipped.
 
-### GAP 3 — No connectors to where their data lives (PLM / ERP / SAP)
-Aramco's parts + historical costs live in **SAP + a PLM (Teamcenter/SmarTeam/etc.)**. We have **zero connectors** (W2 unbuilt; `batch_router.py:130` literally says "connectors release (W2)"). The only bulk paths are **ZIP upload** and the new **CSV cost import** — good for a pilot, a non-starter for millions of parts under governance.
-- **[BUILD]** A parts-manifest CSV/where-used import (extend the CSV path) and a documented ingestion API — cheap, unblocks a structured pilot.
-- **[EXT]** Real PLM/ERP connectors need those systems to build+test against; scaffold-only here.
+### GAP 3 — No connectors to where their data lives — **parts-manifest onboarding CLOSED 2026-07-04**
+Aramco's parts + historical costs live in **SAP + a PLM (Teamcenter/SmarTeam/etc.)**.
+- **Parts-manifest import — [DONE].** A declared-inventory registry (`manifest_parts`, keyed by `(org_id, part_id)`, migration 0020) with `POST /api/v1/manifest/import` (strict/honest CSV, mirrors the ground-truth importer — per-line errors, material validation, capped streaming, upsert per part_id), a keyset-paginated `GET /manifest`, and `GET /manifest/coverage` — the pilot headline: total declared, a scalable `GROUP BY program` breakdown, and a normalized-stem **geometry-coverage** count ("how much of your inventory do we even have geometry for"). Honest by construction: declared rows are USER inventory facts, the manifest is a SEPARATE registry that never creates analyses/cost_decisions and never moves the geometry-derived catalog/triage numbers. (`manifest_service.py`, `api/manifest.py`, `tests/test_manifest_ingest.py`.) This unblocks a structured pilot from a SAP/Excel export.
+- **[EXT]** Real live PLM/ERP/SAP connectors still need those systems to build+test against; the manifest CSV + documented ingestion API is the pilot-grade bridge to them.
 
 ### GAP 4 — Tolerances / GD&T and assemblies — **declared-tolerance cost surface CLOSED 2026-07-04**
 Aramco parts are pressure-rated, API-spec — **tolerance and material spec ARE the part.** Today:
@@ -58,8 +58,8 @@ Everything we/I built — governed libraries, triage, portfolio, owned-equipment
 2. ~~**Tolerance/finish input surface**~~ — **DONE 2026-07-04.**
 3. ~~**Cost models for forging / casting / EDM**~~ — **DONE 2026-07-04.**
 4. ~~**Catalog/triage at scale**~~ — **DONE 2026-07-04** (whole-inventory SQL triage + keyset-paginated grid; portfolio-at-scale + streaming ingest still open).
-5. **Parts-manifest CSV + ingestion API** [BUILD] — structured bulk part onboarding (the pilot-grade connector) ahead of real PLM/ERP. **← next recommended.**
-6. **Oil-&-gas material pack** [BUILD/data] — seed the governed material library with API-spec alloys + corrected prices.
+5. ~~**Parts-manifest CSV + ingestion API**~~ — **DONE 2026-07-04** (declared-inventory registry + import + coverage summary).
+6. **Oil-&-gas material pack** [BUILD/data] — seed the governed material library with API-spec alloys + corrected prices. **← next recommended.**
 7. **Metal-AM cost (DMLS/SLM/EBM)** [BUILD] — the last feasibility-only families, if Aramco needs additive-metal costing.
 
 ## 4. What is genuinely NOT in our lane
