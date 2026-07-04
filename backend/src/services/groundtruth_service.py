@@ -31,6 +31,37 @@ from src.db.models import GroundTruthRecordRow
 
 logger = logging.getLogger("cadverify.groundtruth")
 
+# Documented honest floor: a served calibration is emitted ONLY from at least
+# this many REAL (non-stand-in) records. Below it recalibration REFUSES rather
+# than fit a factor from insufficient / synthetic data. Mirrors the sibling eval
+# honesty rails — ``eval.run.MIN_HUMAN_LABELS`` (30),
+# ``eval.backtest_ensemble.MIN_BACKTEST_REAL`` (8), and
+# ``costing.groundtruth.MIN_RESIDUALS`` (3, the per-process CI floor). We pin to
+# the backtest floor (8): enough real records that a 30% by-part held-out split
+# can still surface >= MIN_RESIDUALS real residuals to MEASURE against.
+MIN_REAL_RECORDS = 8
+
+
+class InsufficientGroundTruth(Exception):
+    """Recalibration was requested below the ``MIN_REAL_RECORDS`` real-record floor.
+
+    Carries the counts so the API can answer with an honest 422 that names
+    exactly why accuracy is refused. Stand-in / synthetic records never count
+    toward this floor — they can shape a band's spread but can NEVER earn a
+    served, validated calibration.
+    """
+
+    def __init__(self, n_real: int, n_records: int, min_real: int = MIN_REAL_RECORDS):
+        self.n_real = int(n_real)
+        self.n_records = int(n_records)
+        self.min_real = int(min_real)
+        super().__init__(
+            f"Recalibration refused: {self.n_real} REAL ground-truth record(s) "
+            f"(< {self.min_real} required). Stand-in / synthetic records never "
+            f"count toward a served calibration. Ingest more real quotes "
+            f"(stand_in=false) and retry."
+        )
+
 
 # ── serialization ──────────────────────────────────────────────────────────
 def row_to_public(r: GroundTruthRecordRow) -> dict:
@@ -175,7 +206,18 @@ def recalibrate_from_records(
     ``parts_dir`` defaults to the configured engine parts dir so a record that
     carries only a ``part_id`` (STL filename) resolves against it; a record that
     carries an explicit ``part_path`` resolves regardless.
+
+    HONESTY GATE (item 3): refuses with ``InsufficientGroundTruth`` — BEFORE the
+    engine ever runs — when fewer than ``MIN_REAL_RECORDS`` real (non-stand-in)
+    records are present. A calibration is emitted ONLY from sufficient REAL data;
+    stand-in records never count toward the floor and can never earn a served,
+    validated calibration.
     """
+    real = [r for r in records if not getattr(r, "stand_in", True)]
+    if len(real) < MIN_REAL_RECORDS:
+        raise InsufficientGroundTruth(
+            n_real=len(real), n_records=len(records), min_real=MIN_REAL_RECORDS
+        )
     if parts_dir is None:
         from src.costing.harness import PARTS_DIR_DEFAULT
         parts_dir = PARTS_DIR_DEFAULT

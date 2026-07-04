@@ -325,11 +325,11 @@ async def test_ingest_persist_recalibrate_serve_and_cross_tenant(tmp_path, monke
             assert b2_est is not None
             # B has no ground truth -> still the assumption band, NOT validated.
             assert b2_est["confidence"]["validated"] is False
-            # recalibrating B (zero records) stays honestly un-validated
+            # recalibrating B (zero real records) is honestly REFUSED (422) — a
+            # calibration is never emitted below the MIN_REAL_RECORDS floor.
             r = await ac.post("/api/v1/ground-truth/recalibrate")
-            assert r.status_code == 200
-            assert r.json()["from_real"] is False
-            assert r.json()["validated"] is False
+            assert r.status_code == 422, r.text
+            assert r.json()["detail"]["n_real"] == 0
     finally:
         async with eng.get_session_factory()() as s:
             await s.execute(

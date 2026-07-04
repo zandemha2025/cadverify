@@ -148,6 +148,21 @@ async def recalibrate_ground_truth(
     served Calibration / ResidualModel. The manual recalibration trigger; the
     returned summary carries the measured claim and whether the band is now
     ``validated`` (True only from REAL held-out residuals).
+
+    HONESTLY GATED: with fewer than ``MIN_REAL_RECORDS`` real (non-stand-in)
+    records the request is REFUSED with a 422 that names the shortfall, rather
+    than emitting a calibration from insufficient / synthetic data.
     """
     org_id = await _require_org(session, user)
-    return await svc.recalibrate_org(session, org_id)
+    try:
+        return await svc.recalibrate_org(session, org_id)
+    except svc.InsufficientGroundTruth as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "reason": str(exc),
+                "n_real": exc.n_real,
+                "n_records": exc.n_records,
+                "min_real": exc.min_real,
+            },
+        )
