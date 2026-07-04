@@ -31,6 +31,15 @@ def report_to_dict(report) -> dict:
         ],
         "decision": asdict(report.decision) if report.decision else None,
     }
+    # Machine-inventory verification block (Phase C). Added ONLY when the org
+    # actually declared machines or a service environment (report.verification is
+    # not None). No declaration → the key is NEVER added → the serialized output
+    # is BYTE-IDENTICAL to pre-Phase-C (honesty invariant §2.1). This must stay a
+    # tail-append with a truthiness guard: an always-on key here would break the
+    # byte-identity regression test on purpose.
+    verification = getattr(report, "verification", None)
+    if verification is not None:
+        d["verification"] = verification
     return d
 
 

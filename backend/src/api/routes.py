@@ -817,6 +817,46 @@ async def _run_cost_decision(
         # a mocked/unprovisioned session (no real org_id) is treated as "no
         # calibration" — leaving behaviour byte-identical to pre-W5.
         if isinstance(cal_org_id, str) and cal_org_id:
+            # ── Phase C: machine-inventory verification feed ─────────────────
+            # Resolve the caller org's DECLARED owned machines + shop-level
+            # secondary ops + THIS part's DECLARED service environment, and thread
+            # them into the estimate so the decision report carries a machine-
+            # grounded §0 makeability verdict and a PASSING owned machine re-costs
+            # its process at its OWN marginal rate. An org with NO declared
+            # machines AND NO declared environment leaves options.inventory ()
+            # + service_environment None → the served response is BYTE-IDENTICAL
+            # (the only added work is org-scoped SELECTs that never touch the
+            # response bytes). Best-effort: a load failure must never break the
+            # live decision — the machine lens simply stays absent.
+            try:
+                from src.services.analysis_service import (
+                    compute_mesh_hash as _compute_mesh_hash,
+                )
+                from src.services.machine_inventory_service import (
+                    load_org_inventory,
+                    load_shop_caps,
+                )
+                from src.services.part_context_service import get_context
+
+                _inventory = await load_org_inventory(session, cal_org_id)
+                if _inventory:
+                    options.inventory = tuple(_inventory)
+                    options.shop_caps = await load_shop_caps(session, cal_org_id)
+                _ctx = await get_context(
+                    session, cal_org_id, _compute_mesh_hash(data)
+                )
+                _env = (
+                    getattr(_ctx, "service_environment", None)
+                    if _ctx is not None else None
+                )
+                if _env:
+                    options.service_environment = _env
+            except Exception:
+                logger.warning(
+                    "machine-inventory feed failed for org %s; decision proceeds "
+                    "without the machine lens", cal_org_id, exc_info=True,
+                )
+
             residual_model, calibration = load_served_calibration(cal_org_id)
             if residual_model is not None:
                 options.residual_model = residual_model

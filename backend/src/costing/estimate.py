@@ -81,6 +81,22 @@ class EstimateOptions:
     # DECLARATION is USER; the factor magnitudes are DEFAULT assumptions.
     tolerance_class: str = "standard"
     tolerance_class_is_user: bool = False
+    # ── machine-inventory verification (Phase C, spec §7) ────────────────────
+    # The org's DECLARED owned machines, hydrated to the pure-matcher capability
+    # dataclasses (``makeability.MachineCap``). When non-empty, the decision
+    # pipeline computes per-process machine fit (verify_part/fit_machine) and the
+    # report carries a machine-grounded §0 verdict; a PASSING owned machine that
+    # declares a rate re-costs THAT process at its own MARGINAL rate. Empty
+    # (default) => no machine lens => byte-identical to pre-Phase-C. USER-declared.
+    inventory: tuple = ()
+    # The org's DECLARED shop-level secondary ops (``makeability.ShopCaps``) — the
+    # matcher's available-secondary-op set (grinding/HIP/sinter/…). None => none.
+    shop_caps: object = None
+    # The part's DECLARED service environment (part_context.service_environment):
+    # {max_temp_c,min_temp_c,pressure_bar,corrosive,sour_service,medium,standard}.
+    # Feeds the environment gate (drops env-invalid materials/routes with a cited
+    # exclusion). None (default) => the gate is a no-op => byte-identical.
+    service_environment: "dict | None" = None
 
     def __post_init__(self):
         from src.costing.rates import normalize_tolerance_class
@@ -101,6 +117,11 @@ class DecisionReport:
     engine_feasibility: list = field(default_factory=list)
     notes: list = field(default_factory=list)
     routing: Optional[dict] = None                   # geometric archetype + reasoning
+    # Machine-inventory verification block (Phase C): the §0 makeability verdict
+    # (per-process machine fit + top-level verdict + gap + env exclusions). None
+    # (default) => no inventory AND no declared environment => report_to_dict adds
+    # NO key => byte-identical to pre-Phase-C output.
+    verification: Optional[dict] = None
 
 
 def _geo_summary(g) -> dict:
@@ -255,6 +276,17 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
     elig = eligible_processes(result, drivers, options.material_class, rates,
                               strict_dfm=options.strict_dfm)
 
+    # ── Phase C: machine-inventory verification (additive; no-op when unused) ──
+    # Only engaged when the org DECLARED machines OR a service environment. When
+    # neither is present, verification stays None and machine_override_by_pv stays
+    # empty, so every cost_breakdown call below gets machine_override=None and the
+    # whole report is byte-identical to pre-Phase-C.
+    verification = None
+    machine_override_by_pv: dict = {}
+    if options.inventory or options.service_environment:
+        verification, machine_override_by_pv = _build_verification(
+            elig, drivers, options)
+
     estimates_serialized = []
     estimates_by_pq = {}             # (process_value, qty) -> CostEstimate (real per-qty)
     leadtimes_by_key = {}
@@ -271,7 +303,9 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
                                  n_cavities=options.n_cavities,
                                  complexity=options.complexity, process_score=ps,
                                  owned=process in options.owned_processes,
-                                 tolerance_class=options.tolerance_class)
+                                 tolerance_class=options.tolerance_class,
+                                 machine_override=machine_override_by_pv.get(
+                                     process.value))
             # cycle_hr from the estimate keeps lead time consistent with cost
             cycle_hr = next((d.value for d in est.drivers if d.name == "cycle_time"), 0.0)
             lt = lead_time(process, cycle_hr, q, rates)
@@ -293,7 +327,9 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
                              n_cavities=options.n_cavities,
                              complexity=options.complexity, process_score=item["score"],
                              owned=item["process"] in options.owned_processes,
-                             tolerance_class=options.tolerance_class)
+                             tolerance_class=options.tolerance_class,
+                             machine_override=machine_override_by_pv.get(
+                                 item["process"].value))
         return est.unit_cost_usd
 
     decision = make_vs_buy(estimates_by_pq, options.quantities, leadtimes_by_key,
@@ -352,6 +388,7 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
         engine_feasibility=feas,
         notes=notes,
         routing=routing_info,
+        verification=verification,
     )
 
 
@@ -411,3 +448,153 @@ def _serialize(est, lt, drivers, residual_model=None, ci_level: float = 0.80,
     if getattr(est, "owned_in_house", False):
         d["owned_in_house"] = True
     return d
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase C — machine-inventory verification (spec §5, §7)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _jsonable(v):
+    """Coerce a FitFailure ``need``/``have`` (which may be a tuple/set/dict) to a
+    JSON-serializable value, recursively. Numbers/strings/None/bool pass through."""
+    if isinstance(v, tuple):
+        return [_jsonable(x) for x in v]
+    if isinstance(v, set):
+        return sorted((_jsonable(x) for x in v), key=lambda x: str(x))
+    if isinstance(v, dict):
+        return {k: _jsonable(x) for k, x in v.items()}
+    return v
+
+
+def _ff_to_dict(f) -> dict:
+    """One FitFailure → a serializable gate record (why a machine passed/failed)."""
+    return {"gate": f.gate, "axis": f.axis, "need": _jsonable(f.need),
+            "have": _jsonable(f.have), "human": f.human}
+
+
+def _build_verification(elig, drivers, options):
+    """Compute the §0 makeability verdict + per-process marginal-rate overrides.
+
+    Returns ``(verification_dict, machine_override_by_pv)``. Called ONLY when the
+    org declared machines or a service environment (the caller guards the no-op).
+    The environment gate + machine fit are the PURE ``makeability`` engine; the
+    machine override for a PASSING owned machine (its OWN declared rate) is read
+    straight from ``verify_part``'s per-route resource hint, so the cost seam and
+    the verdict can never disagree.
+    """
+    from dataclasses import asdict, is_dataclass
+
+    from src.costing.makeability import (
+        environment_gate,
+        part_req_from_drivers,
+        verify_part,
+    )
+    from src.costing.provenance import Provenance
+
+    env = options.service_environment or None
+    inventory = list(options.inventory or ())
+    shop_caps = options.shop_caps
+
+    part_req_by_route: dict = {}
+    material_props: dict = {}
+    for item in elig:
+        process = item["process"]
+        mat = item["material"]
+        # MaterialProfile → the exact nested-compliance dict shape the env gate
+        # reads (nace_mr0175/sour_service under 'compliance', max_temperature at
+        # top level). asdict is the loader-faithful shape the real-profile
+        # integration test pins.
+        props = asdict(mat) if is_dataclass(mat) else {
+            "name": getattr(mat, "name", str(mat)),
+            "density": getattr(mat, "density", None),
+        }
+        preq = part_req_from_drivers(process, drivers, mat,
+                                     options.tolerance_class,
+                                     material_props=props, env=env)
+        part_req_by_route[process.value] = preq
+        if preq.material_name:
+            material_props[preq.material_name] = props
+
+    verdict = verify_part(part_req_by_route, inventory, shop_caps=shop_caps,
+                          env=env, material_props=material_props)
+
+    # Environment exclusions run independently of inventory: verify_part
+    # short-circuits to a bare ``unknown`` when NO machines are declared, so for
+    # the env-only case (declared environment, no inventory) we surface the cited
+    # exclusions directly. When inventory IS present, verify_part already ran the
+    # SAME gate, so verdict.env_exclusions is authoritative and used as-is.
+    routes = list(part_req_by_route.keys())
+    materials = list({p.material_name for p in part_req_by_route.values()
+                      if p.material_name})
+    _gate, direct_exclusions = environment_gate(routes, materials, env,
+                                                material_props)
+    env_exclusions = verdict.env_exclusions or direct_exclusions
+
+    # Per-process marginal-rate override from each PASSING route's fitted machine.
+    machine_override_by_pv: dict = {}
+    for pv, info in verdict.per_route.items():
+        res = info.get("resource")
+        if not res:
+            continue
+        rate = res.get("hourly_rate_usd")
+        if isinstance(rate, (int, float)) and not isinstance(rate, bool):
+            machine_override_by_pv[pv] = {
+                "hourly_rate_usd": rate,
+                "capital_frac": res.get("capital_frac"),
+                "machine_name": res.get("machine"),
+                # A declared per-machine rate is the org/shop's real per-machine
+                # reality → SHOP provenance (durable calibration, not a per-quote
+                # USER override). The source string names the machine.
+                "provenance": Provenance.SHOP,
+            }
+
+    verification = _serialize_verification(verdict, options, env_exclusions)
+    return verification, machine_override_by_pv
+
+
+def _serialize_verification(verdict, options, env_exclusions=()) -> dict:
+    """Serialize a MakeabilityVerdict into the report's ``verification`` block.
+
+    Honest by construction: negative/unknown verdicts are FIRST-CLASS (``unknown``
+    when no inventory is declared, ``makeable_not_on_owned`` with a concrete gap,
+    ``makeable_outsource_only``, ``environment_excluded``, ``not_makeable``); a
+    machine fit is a MEASURED-geometry × USER-capability comparison, never a
+    fabricated pass.
+    """
+    per_route: dict = {}
+    for pv, info in verdict.per_route.items():
+        entry = {
+            "verdict": info.get("verdict"),
+            "machines_evaluated": info.get("machines_evaluated", 0),
+            "best_machine": info.get("best_machine"),
+            "failures": [_ff_to_dict(f) for f in info.get("failures", ())],
+        }
+        res = info.get("resource")
+        if res:
+            entry["machine_rate_usd"] = res.get("hourly_rate_usd")
+            entry["capital_frac"] = res.get("capital_frac")
+            entry["secondary_ops"] = list(res.get("secondary_ops", ()))
+        per_route[pv] = entry
+    return {
+        "verdict": verdict.verdict,
+        "best_machine": verdict.best_machine,
+        "resource": _jsonable(verdict.resource) if verdict.resource else None,
+        "gap": [_ff_to_dict(f) for f in verdict.gap],
+        "env_exclusions": [_ff_to_dict(f) for f in env_exclusions],
+        "per_route": per_route,
+        "inventory_declared": bool(options.inventory),
+        "environment_declared": bool(options.service_environment),
+        # The machine capabilities + declared environment are USER assertions; a
+        # "fits" verdict on the envelope is MEASURED-geometry × USER-capability.
+        "provenance": "user",
+        "note": (
+            "Machine fit is a MEASURED-geometry × USER-declared-capability "
+            "comparison. 'unknown' when no inventory is declared or a required "
+            "capability is undeclared — never a fabricated pass. Environment "
+            "exclusions cite the material property/standard. Known limitations: "
+            "the 5-axis/undercut need is inherited from the upstream process "
+            "router (not re-derived from geometry); force gates (tonnage/taper) "
+            "require a declared force."
+        ),
+    }
