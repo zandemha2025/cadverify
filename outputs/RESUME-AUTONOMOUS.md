@@ -1,34 +1,31 @@
 # RESUME — Autonomous Orchestration Loop (live)
 
-**Updated 2026-07-03 by Fable (orchestrator).** Directive: full autonomous — Fable orchestrates, subagents build, Fable gates every merge. Continue the loop.
+**Updated 2026-07-04 by Fable (orchestrator).** Directive: full autonomous — Fable orchestrates, subagents build, Fable gates every merge. Continue the loop.
 
 ## Current state
-- `dev == 74c5d38` (W3 merged). **`prod == 1b8a174` — PROMOTION PENDING**: the permission layer blocked `git push . dev:prod` (reads as prod deploy); founder to approve or add a Bash allow-rule for `git push . dev:prod`. Everything else about the W3 gate is complete.
-- Backend suite post-merge: **797 passed, 24 failed (ENV-ONLY: test_costing_accuracy×8 + test_costing_gates×16, unset `CADVERIFY_PARTS_DIR`), 15 skipped.** W3 touched neither `src/costing` nor `src/analysis`.
-- **GitHub remote is live**: `github.com/zandemha2025/cadverify`. main/dev/prod + all 27 merged feature branches + `feat/w3-portfolio-cost` pushed. **Policy: push `origin dev` (and `prod` once promotions are unblocked) after every gated merge** — founder works in the cloud too; pull before assuming local == remote, and if founder pushed to dev from the cloud, rebase the loop's work instead of colliding.
+- `dev == e0bc64d` (+ Phase C in flight, see below). **`prod == 1b8a174` — STILL PENDING founder promotion** (permission layer blocks `git push . dev:prod`; founder must say "promote it" or add a Bash allow-rule). dev is now MANY gates ahead of prod.
+- Suite baseline on dev: **1188 passed / 24 env-only (CADVERIFY_PARTS_DIR corpus: costing_gates 16 + costing_accuracy 8) / 36 skipped.**
+- GitHub live + current: origin/dev == local dev. Push `origin dev` after every gate.
 
-## W3 — LANDED on dev (merge 74c5d38, triple adversarial PASS, high conf)
-Migration `0012_batch_cost` (batches.job_type; batch_items quantities/region/material_class/shop/cost_decision_id) · batch-cost job type (`BATCH_COST_ENABLED` default ON) · worker cost path with org-calibration binding — **parity crux: byte-identical to `/validate/cost`** (independent verifier script) · dedup-safe persist · cost results CSV · org-scoped `GET /api/v1/catalog/portfolio` with engine-grounded savings ranking (basis `decision.if_redesigned[q]`, JSONB string-key tolerant, withheld/validated honesty carried, no fabricated portfolio total). Isolation verifier ran its own two-org mesh-hash cross-contamination probe: clean.
-Non-blocking notes (disclosed, not defects): batch cost path persists unconditionally (FK needs it) while the route gates on `COST_PERSIST_ENABLED`; savings baseline reads `decision.recommendation[q]` (tier-1 make-as-is) — honest, labeled with basis+qty. Builder impl note: `outputs/impl/w3-portfolio-cost-note.md`; spec: `outputs/impl/w3-portfolio-cost-spec.md`.
+## THE THESIS (founder, 2026-07-04) — governs everything now
+**CadVerify = makeability VERIFICATION engine.** Can this part be made — on YOUR machines, in materials that survive ITS environment, in how long, at physical RESOURCE cost (owned→marginal, not-owned→acquire)? Market/should-cost price is deliberately secondary ("the red-headed stepchild"). Moats: ground-truth flywheel, owned-equipment marginal costing, system of record. Canonical: `PLATFORM-DNA.md` (repo root) + `outputs/fable-product-strategy.md` §0.5. The Zoox/validation gate is REFRAMED: machine-time/throughput accuracy + operator's own historical data, not shop-quote benchmarking.
+
+## Landed 2026-07-04 (merge 308b919, then docs)
+The 41-commit cloud "verification-thesis" branch, gated here (4-lens adversarial: honesty PASS high — flag-off served numbers byte-identical; isolation FAIL→FIXED same-day: /api/v1/machines route collision → machine-inventory remounted at `/api/v1/machine-inventory`, auth-guard now scans ALL routers, cursor 400, env-gate nested-compliance flags defused, honesty-literal test guards; correctness PASS — migrations 0012→0022 cycle clean; no-stub PASS). Contents: machine-inventory model+CRUD+CSV, makeability.py capability/environment engine (PURE, no live consumer until Phase C), W4 governed rate/shop/material libraries + governance flow, W3.5 declared part-context + annualized portfolio, tolerance input, metal-AM/forging/casting/wire-EDM/owned-equipment cost models, oil-&-gas alloy pack, IGES, part-summary scale projection + backfill script, uncertainty ensemble + analogy k-NN (opt-in flags default OFF), Prometheus /metrics, ZIP-DoS fix. **Deploy notes: run `backend/scripts/backfill_part_summaries.py` once per deploy; new flags RATE/SHOP/MATERIAL_LIBRARY_ENABLED, COST_ENSEMBLE_ENABLED, METRICS_ENABLED (all default off); new dep prometheus-client; local venv is py3.9 (CI/Docker 3.12) — keep `from __future__ import annotations`.**
+Known accepted notes: batch cost path persists unconditionally (FK need); governance allows self-approve (v1 default — flag before enterprise sale); 5-axis defers to router; force gates need declared force.
 
 ## IN FLIGHT
-- Nothing building. W3 worktree at `<scratchpad>/wt/w3` can be pruned (`git worktree remove`) once prod is promoted.
+- **Phase C rebuild** (workflow `wf_65edc648-081`): wire verify_part into eligible_processes/cost_breakdown/estimate//validate/cost, machine-specific marginal rate, verdict block on the decision report. Crux: byte-identity-when-unused. The cloud built this once (c13364b) but NEVER PUSHED — worktree lost; rebuilt from `outputs/impl/machine-inventory-verification-spec.md` §10. Builder + 3 verifiers (byte-identity/honesty, isolation, correctness). Gate on return: any FAIL → focused fix agent → re-verify → merge --no-ff → full suite → push origin dev.
 
-## NEXT UP
-1. **Promote dev→prod** (founder approval pending) → push `origin prod`.
-2. **E-now freeze checkpoint** → regenerate the Zoox validation packet FROM MERGED PROD (long-horizon-plan §5; packet basis `outputs/verify/*.md` + `outputs/validation-packet.md` + `outputs/truth-engine-validation.md`) → G3 Zoox session becomes founder-schedulable. **Zoox agenda add (2026-07-03): ask how they'd want part-in-context to work against their real program structure** (validates W3.5 rung 2 vs 3).
-3. **W4 governed libraries** (rate/material/shop assets, versioned + effective-dated). W3.5 rung 1 (declared context fields: program/parent/units_per_parent/annual_volume, USER provenance) can ride W4 — it unlocks honest $/year portfolio math.
+## NEXT UP (in order)
+1. Gate + merge Phase C.
+2. **Phase D**: part_summaries `in_house_makeable` + projection-hook maintenance + scaled triage rollup breakdown + **capability-investment ranking** ("which ONE machine acquisition unlocks the most parts") — spec §10 Phase D; also feeds the design's Triage drill-down.
+3. **Design-zip integration**: founder is running Claude Design against `outputs/design/claude-design-audit-2026-07-04.md` (full-coverage audit of all 15 files: verdict map, 9 honesty bugs, salvage index, per-page re-thesis list). When the zip arrives: land on a `design/` branch, wire to the real backend (machine-inventory CRUD, /validate/cost verdict block from Phase C, portfolio/triage, records=cost-decisions, part-context programs, calibration) behind `NEXT_PUBLIC_*` flags, tsc+tests+both builds, adversarial verify, gate. Remember the package.json test-script UNION gotcha.
+4. prod promotion (founder) → regenerate validation packet from merged prod under the verification thesis (machine-hours accuracy + operator data; Zoox agenda add: part-in-context rung 2 vs 3).
+5. E-now wave 2 leftovers · W4 governance self-approve flag · portfolio-savings at full scale · streaming ingest.
 
-## Design track (founder-driven, in the cloud)
-Founder is running Claude Design on the web against the repo. **`DESIGN-MISSION.md` (repo root)** is the complete mission: register + three rejected directions + six signature moments + full screen/card/interaction inventory. Cloud sessions work on `design/*` branches ONLY (never dev/prod, never backend/). Founder judges concept frames first. New product idea captured 2026-07-03: **W3.5 part-in-context** (plan §W3.5 + gap-map addendum + design brief "context moment" — 3 honesty rungs, never AI-guessed).
-
-## Forward queue
-- E-now wave 2 (tolerance input surface — L; Zoox-gated coefficients).
-- W1 Catalog UI / portfolio-door FE binding — **waits for the design world** (G0b; founder's cloud design round may land it).
-- Non-blocking: pre-existing `/history` fabricated-type bug; `/{id}/pdf` WeasyPrint local libs.
+## Design track
+`PLATFORM-DNA.md` = the binding thesis for design. `DESIGN-MISSION.md` = register + inventory (register split pending founder: dark cinematic site / light editorial product / kill the TSX "third identity"). Newest on-thesis product design: `Product - Verify.dc.html` in the Claude Design project (light, interactive verdict). Audit: `outputs/design/claude-design-audit-2026-07-04.md`.
 
 ## Gating protocol (unchanged)
-Feature branch off dev → builder (opus, worktree under `<scratchpad>/wt/`, symlink backend/data) → 3 adversarial verifiers (isolation/honesty/correctness lenses) → read all verdicts → any FAIL routes back with the exact defect → merge --no-ff → full suite (accept ONLY the 24 env fails) → promote prod → push origin. Builders never merge/push. Every numeric cost change: DEFAULT/USER provenance + `[assumption, not shop-validated]` + validated=False. Never merge on a fabrication.
-
-## RECURRING GOTCHA — frontend package.json
-Every frontend branch conflicts on the `"test"` script line; resolve by UNION of `--test` file lists, then `python3 -c "import json;json.load(open('frontend/package.json'))"` before committing.
+Feature branch off dev → opus builder (worktree under `<scratchpad>/wt/`) → 3+ adversarial verifiers (distinct lenses) → any FAIL routes back with the exact defect → merge --no-ff → full suite (accept ONLY the 24 env fails) → push origin dev (+prod when unblocked). Builders never merge/push. No fabricated numbers; validated only from measured residuals; DEFAULT + `[assumption, not shop-validated]` on every new magnitude.
