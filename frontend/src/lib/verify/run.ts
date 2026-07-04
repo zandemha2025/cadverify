@@ -5,46 +5,38 @@
  * comes from one of these responses or is withheld.
  *
  *   POST /validate         → routing + DFM (ValidationResult)          [real]
+ *   PUT  /part-context/{h} → persist the declared world (env round-trip)  [real]
  *   POST /validate/cost    → the glass-box should-cost record (CostReport) [real]
  *   GET  /machine-inventory→ the org's declared floor (OwnedMachine[])  [real]
  *
- * The dev-branch engine does NOT surface a top-level `verification` block
- * (per-route machine fit / verdict lattice), so the walk renders the honest
- * makeability state ("no inventory declared" / feature pending), NEVER a fake
- * makeable/not-makeable verdict. When the engine wires that block, `verification`
- * on the result carries it through untouched.
+ * The cost route returns a top-level `verification` block (per-route machine fit /
+ * verdict lattice / env exclusions) whenever the org declared machines and/or this
+ * part's service environment. The environment door is REAL end-to-end: before the
+ * cost call, the declared world is PERSISTED via the part-context API keyed by the
+ * part's mesh_hash, so the block the server returns reflects it (env_exclusions
+ * with cited standards, an environment-coherent decision). When neither inventory
+ * nor an environment is declared, no block is emitted → the walk renders the honest
+ * "not evaluated" state, NEVER a fabricated verdict.
  */
 import { validateFile, type ValidationResult, type CostReport, type CostGeometry } from "@/lib/api";
 import { API_BASE } from "@/lib/api-base";
 import { listMachines, ownedProcessesFrom, type OwnedMachine } from "./machine-api";
+import type { VerificationBlock } from "./verification";
+import {
+  computeMeshHash,
+  declarePartContext,
+  envToServiceEnvironment,
+} from "./part-context";
 
-/** The verdict lattice the engine emits WHEN a makeability block is present. */
-export type MakeabilityLattice =
-  | "makeable_in_house"
-  | "makeable_with_secondary_op"
-  | "makeable_not_on_owned"
-  | "makeable_outsource_only"
-  | "environment_excluded"
-  | "not_makeable"
-  | "unknown";
-
-/** The (currently unsurfaced) top-level verification block. Rendered verbatim
- *  when present; its absence drives the honest unknown/feature state. */
-export interface VerificationBlock {
-  verdict: MakeabilityLattice;
-  best_machine?: string | null;
-  gap?: { gate: string; axis: string; need: unknown; have: unknown; human: string }[];
-  env_exclusions?: { gate: string; axis: string; need: unknown; have: unknown; human: string }[];
-  per_route?: Record<string, unknown>;
-}
+// Re-export so existing importers keep resolving these off `run` unchanged.
+export type { VerificationBlock, MakeabilityLattice } from "./verification";
 
 export interface VerifyInput {
   file: File;
-  /** The declared service world. HONEST NOTE: the dev-branch /validate/cost has
-   *  no env parameter, so this is captured for the record + the stage reaction
-   *  only; environment-driven material survival (NACE MR0175 / HDT) is part of
-   *  the makeability verification, which this engine build does not yet surface.
-   *  It is NEVER used to fabricate a changed cost. */
+  /** The declared service world. REAL round-trip: it is persisted to the part's
+   *  context (PUT /part-context/{mesh_hash}) before costing, so the engine's
+   *  verification block reflects it (environment-driven material survival — NACE
+   *  MR0175 / HDT). It is NEVER used client-side to fabricate a changed cost. */
   env: { temp: boolean; sour: boolean; pressure: boolean };
   materialClass: string;
 }
@@ -75,9 +67,15 @@ export interface VerifyResult {
   machines: OwnedMachine[];
   machinesError: string | null;
   /** the makeability lattice block IF the engine surfaced one (else null →
-   *  honest unknown/feature state). Read off both responses. */
+   *  honest "not evaluated" state). Read off the cost response. */
   verification: VerificationBlock | null;
   quantities: number[];
+  /** the environment round-trip outcome, so the door tells the exact truth:
+   *  declared? captured to the part's record? or (on failure) why not. */
+  env: { temp: boolean; sour: boolean; pressure: boolean };
+  envDeclared: boolean;
+  envCaptured: boolean;
+  envError: string | null;
 }
 
 /** Log-spaced quantity ladder the scrub interpolates over — the crossover story
@@ -144,6 +142,28 @@ export async function runVerification(input: VerifyInput): Promise<VerifyResult>
   }
   const owned = ownedProcessesFrom(machines).filter((p) => KNOWN_ENGINE_PROCESSES.has(p));
 
+  // ── the environment round-trip (real) ──────────────────────────────────────
+  // Persist the declared world to THIS part's context (keyed by the mesh_hash the
+  // server itself computes) BEFORE costing, so the verification block the cost
+  // route returns reflects it. Ambient (nothing toggled) sends an empty env, which
+  // the backend treats as a no-op AND which coherently clears a prior declaration.
+  // Best-effort: a failure (no org / role / network) is surfaced honestly, never
+  // faked into a "captured" claim, and never blocks the walk.
+  const serviceEnv = envToServiceEnvironment(input.env);
+  const envDeclared = Object.keys(serviceEnv).length > 0;
+  let envCaptured = false;
+  let envError: string | null = null;
+  const meshHash = await computeMeshHash(input.file).catch(() => null);
+  if (meshHash) {
+    const declared = await declarePartContext(meshHash, serviceEnv);
+    envCaptured = declared.ok && envDeclared;
+    if (envDeclared && !declared.ok) envError = declared.error;
+  } else if (envDeclared) {
+    envError = "could not compute this part's mesh hash in the browser";
+  }
+
+  // Validation and costing run after the env is on the record, so the cost route
+  // reads the just-written context. (Validation carries no env; it can parallel.)
   const [validationOut, costOut] = await Promise.all([
     validateFile(input.file).then(
       (v) => ({ v, err: null as string | null }),
@@ -152,10 +172,10 @@ export async function runVerification(input: VerifyInput): Promise<VerifyResult>
     postCost(input, owned),
   ]);
 
-  // The verification block is not surfaced by the dev-branch engine. Read it off
-  // either response if a future build adds it; otherwise null → honest state.
-  const verification =
-    readVerification(validationOut.v) ?? readVerification(costOut.cost) ?? null;
+  // The verification block rides the cost response when the org declared machines
+  // and/or this part's environment; its ABSENCE (never a fabricated value) drives
+  // the honest "not evaluated" state.
+  const verification = readVerification(costOut.cost) ?? null;
 
   return {
     file: input.file,
@@ -168,6 +188,10 @@ export async function runVerification(input: VerifyInput): Promise<VerifyResult>
     machinesError,
     verification,
     quantities: costOut.cost?.quantities ?? QTY_LADDER,
+    env: input.env,
+    envDeclared,
+    envCaptured,
+    envError,
   };
 }
 

@@ -18,21 +18,46 @@ import { makeNowEstimate, driverViews } from "@/lib/verify/derive";
 import { Kicker, ProvChip, GhostButton, EmptyState, Spinner, InDev } from "./primitives";
 import { normProv } from "@/lib/verify/tokens";
 
+const PAGE = 50;
+
 export function RecordsScreen({ nav }: { nav: (s: string) => void }) {
   const [rows, setRows] = useState<CostDecisionSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const page = await fetchCostDecisions({ limit: 50 });
+      const page = await fetchCostDecisions({ limit: PAGE });
       setRows(page.cost_decisions);
+      setCursor(page.next_cursor);
+      setHasMore(page.has_more);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load records");
       setRows([]);
+      setCursor(null);
+      setHasMore(false);
     }
   }, []);
+
+  const loadMore = useCallback(async () => {
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await fetchCostDecisions({ limit: PAGE, cursor });
+      setRows((prev) => [...(prev ?? []), ...page.cost_decisions]);
+      setCursor(page.next_cursor);
+      setHasMore(page.has_more);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load more records");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [cursor, loadingMore]);
 
   useEffect(() => {
     void refresh();
@@ -62,7 +87,9 @@ export function RecordsScreen({ nav }: { nav: (s: string) => void }) {
       ) : (
         <>
           <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 8, maxWidth: 1100 }}>
-            <span style={{ border: `1px solid ${C.ink}`, background: C.ink, color: "#fff", borderRadius: 999, padding: "6px 14px", fontSize: 12 }}>All · {rows.length}</span>
+            <span style={{ border: `1px solid ${C.ink}`, background: C.ink, color: "#fff", borderRadius: 999, padding: "6px 14px", fontSize: 12 }}>
+              {hasMore ? `Loaded ${rows.length}${cursor ? "+" : ""}` : `All · ${rows.length}`}
+            </span>
             <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>immutable · nothing is ever deleted</span>
           </div>
           <div style={{ marginTop: 18, border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, overflow: "hidden", maxWidth: 1100 }}>
@@ -84,6 +111,14 @@ export function RecordsScreen({ nav }: { nav: (s: string) => void }) {
               </button>
             ))}
           </div>
+          {hasMore && (
+            <div style={{ marginTop: 14, maxWidth: 1100, display: "flex", alignItems: "center", gap: 12 }}>
+              <GhostButton onClick={() => void loadMore()} disabled={loadingMore}>
+                {loadingMore ? "Loading…" : "Load more"}
+              </GhostButton>
+              <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink40 }}>more records beyond the {rows.length} loaded — cursor-paged</span>
+            </div>
+          )}
           <p style={{ margin: "16px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink35 }}>
             a shared record renders read-only with full provenance — the receiver can open every number, not edit it{" "}
             <InDev label="SHARED VIEW — IN DEVELOPMENT" />

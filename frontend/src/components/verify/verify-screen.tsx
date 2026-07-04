@@ -22,8 +22,23 @@ import {
   provenanceMix,
   type DriverView,
 } from "@/lib/verify/derive";
+import {
+  verdictBannerModel,
+  perRouteRows,
+  envStrikes,
+  marginalRate,
+  acquisitionGap,
+  gapText,
+  type Tone,
+  type VerificationBlock,
+} from "@/lib/verify/verification";
 import { envelopeSummary } from "@/lib/verify/machine-api";
 import { Card, Kicker, ProvChip, ProvDot, InDev, ConfidenceBand, GhostButton, EmptyState } from "./primitives";
+
+/** Light status colour for a verdict/fit tone. */
+function toneColor(t: Tone): string {
+  return t === "pass" ? C.pass : t === "cond" ? C.cond : t === "fail" ? C.fail : C.ink45;
+}
 
 type Nav = (screen: string) => void;
 
@@ -50,6 +65,10 @@ export function VerifyScreen(props: Props) {
   const [disclose, setDisclose] = useState<string | null>(null);
 
   const hostile = env.temp || env.sour || env.pressure;
+  // The env door tells the EXACT truth about the round-trip. `result` reflects the
+  // world as it was actually persisted for the last run; before/while a run it
+  // states intent, never a "captured" claim it can't back up.
+  const door = envDoorStatus(hostile, running, result);
 
   return (
     <div
@@ -84,7 +103,7 @@ export function VerifyScreen(props: Props) {
         <section style={{ marginTop: 16, border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "18px 20px" }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <Kicker>DECLARE ITS WORLD</Kicker>
-            <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink40 }}>captured on the record</span>
+            <span style={{ fontFamily: MONO, fontSize: 10.5, color: door.chipColor }}>{door.chip}</span>
           </div>
           <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 8 }}>
             {ENV_CHIPS.map((chip) => {
@@ -111,12 +130,8 @@ export function VerifyScreen(props: Props) {
               );
             })}
           </div>
-          <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: hostile ? C.cond : C.ink40 }}>
-            {hostile
-              ? "world declared — material survival (NACE MR0175 / HDT) is decided by the makeability verification"
-              : "no world declared — the part is verified in ambient conditions"}
-            {"  "}
-            <InDev label="ENV GATE — VERIFICATION PENDING" />
+          <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: door.color, lineHeight: 1.6 }}>
+            {door.line}
           </p>
         </section>
 
@@ -139,6 +154,59 @@ export function VerifyScreen(props: Props) {
       </div>
     </div>
   );
+}
+
+/** The env door's exact-truth status. The "captured on the record" claim is made
+ *  ONLY when the last run actually persisted the world (result.envCaptured); a
+ *  failed persistence says exactly what is true ("drives this preview only"). */
+function envDoorStatus(
+  hostile: boolean,
+  running: boolean,
+  result: VerifyResult | null
+): { chip: string; chipColor: string; line: string; color: string } {
+  if (result && result.envDeclared) {
+    if (result.envCaptured) {
+      return {
+        chip: "● USER · on the record",
+        chipColor: C.user,
+        line: "world declared — captured on this part's record (part-context, keyed to its mesh). The verification below reflects it: materials that can't survive this world are struck with their cited standard.",
+        color: C.pass,
+      };
+    }
+    return {
+      chip: "drives this preview only",
+      chipColor: C.cond,
+      line:
+        "world declared — drives this preview only, NOT captured to the record" +
+        (result.envError ? ` (${result.envError})` : "") +
+        ".",
+      color: C.cond,
+    };
+  }
+  if (result && !result.envDeclared) {
+    return {
+      chip: "ambient",
+      chipColor: C.ink40,
+      line: "no world declared — the part is verified in ambient conditions.",
+      color: C.ink40,
+    };
+  }
+  if (hostile) {
+    return {
+      chip: running ? "capturing…" : "captured on verify",
+      chipColor: C.ink40,
+      line: running
+        ? "declaring this world on the part's record, then re-costing against it…"
+        : "world declared — it will be captured on the part's record when you verify, and any material that can't survive it is struck with its cited standard.",
+      color: C.cond,
+    };
+  }
+  return {
+    chip: "ambient",
+    chipColor: C.ink40,
+    line: "no world declared — the part will be verified in ambient conditions.",
+    color: C.ink40,
+  };
 }
 
 function ComputingBanner() {
@@ -316,9 +384,15 @@ function Walk({
               </div>
               <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40, lineHeight: 1.6 }}>
                 part envelope {bbox ? `${bbox.map((n) => n.toFixed(1)).join(" × ")} mm ` : "— "}
-                <ProvChip p={bbox ? "MEASURED" : "DEFAULT"} /> · per-machine fit is decided by the makeability verification{" "}
-                <InDev label="ENGINE BLOCK PENDING" /> — the floor is declared; no fit is faked here.
+                <ProvChip p={bbox ? "MEASURED" : "DEFAULT"} />
+                {!verification && (
+                  <>
+                    {" "}· per-machine fit is decided by the makeability verification{" "}
+                    <InDev label="ENGINE BLOCK — NOT EVALUATED" /> — the floor is declared; no fit is faked here.
+                  </>
+                )}
               </p>
+              {verification && <RouteFitBlock verification={verification} />}
             </>
           )}
         </StepShell>
@@ -372,10 +446,14 @@ function Walk({
                 ) : (
                   <p style={{ margin: 0, fontFamily: MONO, fontSize: 11.5, color: C.ink50 }}>material class withheld — costing unavailable</p>
                 )}
-                <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40, lineHeight: 1.6 }}>
-                  environment-driven survival filtering (NACE MR0175 / HDT tables) is part of the makeability verification —{" "}
-                  <InDev label="NOT SURFACED THIS BUILD" />. Invalid materials will be filtered out visibly, never silently.
-                </p>
+                {verification ? (
+                  <EnvStrikesBlock verification={verification} envDeclared={result.envDeclared} />
+                ) : (
+                  <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40, lineHeight: 1.6 }}>
+                    environment-driven survival filtering (NACE MR0175 / HDT tables) is part of the makeability verification —{" "}
+                    <InDev label="NOT EVALUATED — DECLARE A WORLD" />. Invalid materials are filtered out visibly, never silently.
+                  </p>
+                )}
               </div>
             </StepShell>
 
@@ -409,6 +487,7 @@ function Walk({
                   crossover={crossover}
                   toolingProcess={cost.decision?.tooling_process ?? null}
                   makeProcess={cost.decision?.make_now_process ?? makeNow?.process ?? null}
+                  verification={verification}
                   nav={nav}
                 />
               </StepShell>
@@ -421,11 +500,16 @@ function Walk({
 
         {verification && (
           <Card style={{ borderColor: C.hair }}>
-            <Kicker>MAKEABILITY VERDICT — {verification.verdict.replace(/_/g, " ").toUpperCase()}</Kicker>
-            <p style={{ margin: "8px 0 0", fontSize: 13, color: C.ink60 }}>
-              The engine returned a makeability block; rendered verbatim.{" "}
-              {verification.best_machine ? `Best machine: ${verification.best_machine}.` : ""}
+            <Kicker>
+              MAKEABILITY — {verification.verdict.replace(/_/g, " ").toUpperCase()} · {(verification.provenance ?? "user").toUpperCase()}
+            </Kicker>
+            <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink50, lineHeight: 1.7 }}>
+              inventory declared {String(!!verification.inventory_declared)} · environment declared {String(!!verification.environment_declared)}
+              {verification.best_machine ? ` · best machine ${verification.best_machine}` : ""}
             </p>
+            {verification.note && (
+              <p style={{ margin: "8px 0 0", fontSize: 12, color: C.ink55, lineHeight: 1.6 }}>{verification.note}</p>
+            )}
           </Card>
         )}
       </div>
@@ -442,7 +526,7 @@ function VerdictBanner({
   makeNow: ReturnType<typeof makeNowEstimate>;
   nav: Nav;
 }) {
-  const { validation, cost, costGeometryInvalid } = result;
+  const { validation, cost, costGeometryInvalid, verification } = result;
 
   if (costGeometryInvalid) {
     return (
@@ -458,9 +542,45 @@ function VerdictBanner({
     );
   }
 
-  const dfm = validation?.overall_verdict ?? "unknown";
   const unit = makeNow?.unit_cost_usd ?? null;
   const proc = cost?.decision?.make_now_process ?? makeNow?.process ?? null;
+
+  const savedCta = cost?.saved?.id ? (
+    <div style={{ marginTop: 14 }}>
+      <GhostButton primary onClick={() => nav("records")}>
+        Open the record →
+      </GhostButton>
+    </div>
+  ) : null;
+
+  // When a makeability block is present, the VERDICT LATTICE drives the banner —
+  // makeable_in_house / makeable_not_on_owned / environment_excluded / not_makeable
+  // / unknown — never a DFM guess standing in for makeability.
+  if (verification) {
+    const m = verdictBannerModel(verification.verdict);
+    const color = toneColor(m.tone);
+    return (
+      <BannerFrame borderColor={color} bg="rgba(23,24,26,0.015)">
+        <Kicker color={color}>{m.kicker}</Kicker>
+        <p style={{ margin: "10px 0 0", fontSize: 24, fontWeight: 400, letterSpacing: "-0.015em", lineHeight: 1.25 }}>
+          {m.title}
+        </p>
+        <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 560 }}>{m.sub}</p>
+        {proc && unit != null && (
+          <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink50, lineHeight: 1.6 }}>
+            should-cost {USD(unit)}/unit on {procLabel(proc)}
+            {makeNow ? ` at qty ${NUM(makeNow.quantity)}` : ""}
+            {verification.best_machine ? ` · best machine ${verification.best_machine}` : ""}
+          </p>
+        )}
+        {savedCta}
+      </BannerFrame>
+    );
+  }
+
+  // No makeability block (no inventory + no declared world) → the honest DFM +
+  // should-cost banner; the makeability gate is stated as not-evaluated, never assumed.
+  const dfm = validation?.overall_verdict ?? "unknown";
   const color = statusColor(dfm);
 
   return (
@@ -480,16 +600,10 @@ function VerdictBanner({
       </p>
       <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 560 }}>
         The engine returned routing, DFM, and a glass-box should-cost. Whether it&apos;s makeable{" "}
-        <span style={{ fontWeight: 500 }}>on your machines</span> is the makeability verification — a separate gate not
-        surfaced by this engine build, so it is shown as pending, never assumed.
+        <span style={{ fontWeight: 500 }}>on your machines</span> is the makeability verification — not evaluated here
+        because no machines and no world are declared. Declare your floor or a world to resolve it, never assumed.
       </p>
-      {cost?.saved?.id && (
-        <div style={{ marginTop: 14 }}>
-          <GhostButton primary onClick={() => nav("records")}>
-            Open the record →
-          </GhostButton>
-        </div>
-      )}
+      {savedCta}
     </BannerFrame>
   );
 }
@@ -506,6 +620,93 @@ function BannerFrame({ children, borderColor, bg }: { children: React.ReactNode;
       }}
     >
       {children}
+    </div>
+  );
+}
+
+/** Per-machine envelope fit, rendered faithfully from the engine's verification
+ *  block: ✓ pass / ✗ fail / ? unknown, and — for a failed or unknown gate — the
+ *  concrete need-vs-have delta the engine measured (never a vague "too big"). */
+function RouteFitBlock({ verification }: { verification: VerificationBlock }) {
+  const rows = perRouteRows(verification);
+  const gap = acquisitionGap(verification);
+  if (rows.length === 0) {
+    return (
+      <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40, lineHeight: 1.6 }}>
+        the engine evaluated your floor against this part but surfaced no per-route detail — no fit is faked here.
+      </p>
+    );
+  }
+  return (
+    <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+      {rows.map((r) => {
+        const detail =
+          r.tone === "pass"
+            ? r.bestMachine ?? `${r.machinesEvaluated} machine${r.machinesEvaluated === 1 ? "" : "s"} clear`
+            : r.failures.length > 0
+              ? `${r.failures[0].gate}: ${gapText(r.failures[0])}`
+              : r.verdict.replace(/_/g, " ");
+        return (
+          <div
+            key={r.process}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              fontFamily: MONO,
+              fontSize: 11.5,
+              padding: "7px 10px",
+              borderRadius: 8,
+              background: C.sunken,
+            }}
+          >
+            <span style={{ color: toneColor(r.tone), width: 12, textAlign: "center", flexShrink: 0 }}>{r.glyph}</span>
+            <span style={{ color: C.ink, whiteSpace: "nowrap" }}>{procLabel(r.process)}</span>
+            <span style={{ marginLeft: "auto", color: r.tone === "pass" ? C.ink55 : C.ink45, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {detail}
+            </span>
+          </div>
+        );
+      })}
+      {gap.length > 0 && (
+        <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.cond, lineHeight: 1.6 }}>
+          acquisition gap · {gap.map((f) => `${f.axis || f.gate} ${gapText(f)}`).join(" · ")}{" "}
+          <span style={{ color: C.ink40 }}>— what you&apos;d acquire to make this in-house</span>
+        </p>
+      )}
+      <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40, lineHeight: 1.6 }}>
+        machine fit is a <span style={{ color: C.measured }}>MEASURED</span>-geometry × <span style={{ color: C.user }}>USER</span>-declared-capability comparison — ? when a capability is undeclared, never a fabricated pass.
+      </p>
+    </div>
+  );
+}
+
+/** The declared world's material strikes, each citing the property/standard that
+ *  ruled it out (e.g. NACE MR0175 under sour service). Excluded materials are shown
+ *  struck, never dropped silently; an absence of strikes is stated honestly too. */
+function EnvStrikesBlock({ verification, envDeclared }: { verification: VerificationBlock; envDeclared: boolean }) {
+  const strikes = envStrikes(verification);
+  const worldDeclared = envDeclared || !!verification.environment_declared;
+  if (strikes.length === 0) {
+    return (
+      <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40, lineHeight: 1.6 }}>
+        {worldDeclared
+          ? "the declared world was applied — no candidate material on the shortlisted routes is excluded by it."
+          : "no world declared — materials are verified in ambient conditions. Declare a world above to gate them by NACE MR0175 / HDT."}
+      </p>
+    );
+  }
+  return (
+    <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+      {strikes.map((s) => (
+        <div key={s.material} style={{ display: "flex", alignItems: "baseline", gap: 8, fontFamily: MONO, fontSize: 11 }}>
+          <span style={{ color: C.fail, textDecoration: "line-through", whiteSpace: "nowrap", flexShrink: 0 }}>{s.material}</span>
+          <span style={{ color: C.ink55, lineHeight: 1.5 }}>{s.reason}</span>
+        </div>
+      ))}
+      <p style={{ margin: "4px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40, lineHeight: 1.6 }}>
+        excluded materials are struck visibly, never dropped silently — each cites the property / standard, and the decision below is computed over the survivors.
+      </p>
     </div>
   );
 }
@@ -637,6 +838,9 @@ function TimeAndResources({
           <p style={{ margin: "9px 0 0", fontFamily: MONO, fontSize: 10.5, lineHeight: 1.7, color: C.ink55 }}>
             source: {active.source || "— (engine did not attach a derivation string)"}
           </p>
+          <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink40, lineHeight: 1.6 }}>
+            this engine build carries one derivation string per driver — the formula IS the source above; there are no separate formula/chain rows to render.
+          </p>
           {active.errorBandPct != null && (
             <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, color: C.cond }}>
               ±{Math.round(active.errorBandPct)}% [assumption band] · this driver&apos;s honest error, verbatim
@@ -664,6 +868,7 @@ function ResourceCost({
   crossover,
   toolingProcess,
   makeProcess,
+  verification,
   nav,
 }: {
   cost: NonNullable<VerifyResult["cost"]>;
@@ -675,8 +880,13 @@ function ResourceCost({
   crossover: number | null;
   toolingProcess: string | null;
   makeProcess: string | null;
+  verification: VerificationBlock | null;
   nav: Nav;
 }) {
+  // The machine-specific MARGINAL rate: when a PASSING owned machine re-costs this
+  // route at its OWN declared rate, the header reads OWNED → MARGINAL and names the
+  // machine + rate (SHOP provenance). Absent → the generic MAKE NOW header.
+  const marginal = marginalRate(verification, makeProcess);
   const conf = makeAtQty?.confidence;
   const validated = conf?.validated ?? false;
   // real tick position inside the engine's band (schematic center only if absent)
@@ -719,11 +929,16 @@ function ResourceCost({
         {/* make-now (owned → marginal) */}
         <div style={{ border: `1.5px solid rgba(31,138,91,0.35)`, borderRadius: 12, padding: "14px 16px", background: "rgba(31,138,91,0.02)" }}>
           <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", color: C.pass }}>
-            {procLabel(makeProcess)} — MAKE NOW
+            {procLabel(makeProcess)} — {marginal ? "OWNED → MARGINAL" : "MAKE NOW"}
           </p>
           <p style={{ margin: "8px 0 0", fontSize: 26, fontWeight: 300, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
             {USD(makeAtQty?.unit_cost_usd)} <span style={{ fontSize: 13, color: C.ink45 }}>/unit at this qty</span>
           </p>
+          {marginal && (
+            <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, lineHeight: 1.6, color: C.shop }}>
+              {marginal.machine ? `on ${marginal.machine} ` : ""}at {USD(marginal.rateUsd)}/hr · <ProvChip p="SHOP" /> — your machine&apos;s own marginal rate, owned capital sunk
+            </p>
+          )}
           <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, lineHeight: 1.7, color: C.ink45 }}>
             hours × your rates + mass × your lot price · {mix.groundedPct}% of drivers grounded (● measured/shop/user)
           </p>

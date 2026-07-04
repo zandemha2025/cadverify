@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { C, MONO, SANS } from "@/lib/verify/tokens";
 import { runVerification, type VerifyResult } from "@/lib/verify/run";
+import { listMachines } from "@/lib/verify/machine-api";
 import { Stage } from "./stage";
 import { VerifyScreen } from "./verify-screen";
 import { MachinesScreen } from "./machines-screen";
@@ -50,7 +51,14 @@ export function VerifyApp() {
   const [running, setRunning] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [notifOpen, setNotifOpen] = useState(false);
+  // A REAL signal for the rail footer: are any of the org's machines declaring an
+  // hourly rate (i.e. a shop rate is actually bound)? null while loading → the dot
+  // stays hollow/neutral until a bound rate is detected — never a hardcoded claim.
+  const [ratesBound, setRatesBound] = useState<boolean | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  // The last part the user verified — so a change to the declared world can re-run
+  // the verification (re-persist the env + re-cost against it) for the same part.
+  const latestFile = useRef<File | null>(null);
 
   const nav = useCallback((s: string) => {
     if (s === "acquisition") return setScreen("acquisition");
@@ -63,6 +71,7 @@ export function VerifyApp() {
   const runVerify = useCallback(
     async (f: File) => {
       setFile(f);
+      latestFile.current = f;
       setScreen("verify");
       setRunning(true);
       setResult(null);
@@ -80,6 +89,27 @@ export function VerifyApp() {
     if (file) void runVerify(file);
     else pickFile();
   }, [file, runVerify, pickFile]);
+
+  // The rail footer's bound-rate signal.
+  useEffect(() => {
+    listMachines().then(
+      (p) => setRatesBound(p.machines.some((m) => typeof m.hourly_rate_usd === "number" && Number.isFinite(m.hourly_rate_usd))),
+      () => setRatesBound(false)
+    );
+  }, []);
+
+  // The environment door is REAL: when the declared world changes and a part is
+  // loaded, re-run the verification so the new world is persisted to the part's
+  // record and the cost/verdict are recomputed against it. Skips the first mount.
+  const firstEnv = useRef(true);
+  useEffect(() => {
+    if (firstEnv.current) {
+      firstEnv.current = false;
+      return;
+    }
+    if (latestFile.current) void runVerify(latestFile.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [env]);
 
   // hotkeys — ⌘K palette · Esc closes overlays
   useEffect(() => {
@@ -133,7 +163,28 @@ export function VerifyApp() {
           );
         })}
         <div style={{ marginTop: "auto" }}>
-          <span title="Your rates bound · ● SHOP" style={{ width: 8, height: 8, borderRadius: "50%", background: C.shop, display: "block" }} />
+          <button
+            type="button"
+            onClick={() => setScreen("calibration")}
+            title={
+              ratesBound
+                ? "Your shop rates are bound · ● SHOP — open Calibration & truth"
+                : "Calibration & truth — no shop rate bound yet"
+            }
+            style={{ border: "none", background: "none", padding: 4, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+          >
+            <span
+              aria-hidden
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                display: "block",
+                background: ratesBound ? C.shop : "transparent",
+                border: ratesBound ? "none" : `1.5px solid ${C.ink40}`,
+              }}
+            />
+          </button>
         </div>
       </nav>
 

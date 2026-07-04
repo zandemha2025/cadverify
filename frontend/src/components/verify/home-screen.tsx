@@ -29,7 +29,10 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
   const kpis: { n: string; l: string; c: string; go: string }[] = [
     { n: records == null ? "—" : `${NUM(records.length)}${recordsMore ? "+" : ""}`, l: "RECORDS", c: C.ink, go: "records" },
     { n: machineCount == null ? "—" : NUM(machineCount), l: "MACHINES DECLARED", c: machineCount ? C.ink : C.cond, go: "machines" },
-    { n: "—", l: "VALIDATED BANDS (n=0)", c: C.cond, go: "calibration" },
+    // Validated-band counts aren't carried on the list summaries, so this is not a
+    // number we can honestly compute here — it is labelled [no data yet], never a
+    // hardcoded stat. It resolves on the Calibration surface once actuals arrive.
+    { n: "—", l: "VALIDATED BANDS · NO DATA YET", c: C.ink45, go: "calibration" },
   ];
 
   return (
@@ -98,7 +101,7 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
             <div style={{ marginTop: 10, position: "relative", height: 6, borderRadius: 3, background: "#ececef", overflow: "hidden" }}>
               <span style={{ position: "absolute", inset: 0, backgroundImage: "repeating-linear-gradient(135deg, rgba(23,24,26,0.35) 0 2px, transparent 2px 7px)" }} />
             </div>
-            <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.cond }}>n=0 · every band still hatched — send actuals back to flip them</p>
+            <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink45 }}>no validated bands yet — send actuals back to flip a hatched band solid</p>
           </div>
         </div>
       </div>
