@@ -19,17 +19,40 @@ orchestrates.
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import logging
 from typing import Optional
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.analysis.models import ProcessType
 from src.costing import calibration_store as cstore
 from src.costing.groundtruth import GroundTruthRecord, run_loop
 from src.db.models import GroundTruthRecordRow
 
 logger = logging.getLogger("cadverify.groundtruth")
+
+# ── CSV bulk-import contract (W5 flywheel mass-ingest) ───────────────────────
+# Known engine process ids and material classes the importer validates against —
+# the SAME vocabularies the single-ingest / costing layer accepts, so a bulk
+# import can never smuggle in a value the ground-truth loop would later reject.
+KNOWN_PROCESSES = frozenset(p.value for p in ProcessType)
+# Material classes recognised by the cost engine (rates.MRR keys). "polymer" is
+# the documented default when the column is omitted/blank.
+KNOWN_MATERIAL_CLASSES = frozenset(
+    {"polymer", "aluminum", "steel", "stainless", "titanium"}
+)
+
+# Exact CSV columns. Required first, then optional (all lower-case, header row
+# order-independent). Imported rows are ALWAYS real (stand_in=False) — there is
+# deliberately no stand_in column: this path is for REAL historical costs only.
+CSV_REQUIRED_COLUMNS = ("part_id", "process", "quantity", "actual_unit_cost_usd")
+CSV_OPTIONAL_COLUMNS = (
+    "material_class", "shop", "region", "currency", "source", "part_path", "notes"
+)
+CSV_HEADER = ",".join(CSV_REQUIRED_COLUMNS + CSV_OPTIONAL_COLUMNS)
 
 # Documented honest floor: a served calibration is emitted ONLY from at least
 # this many REAL (non-stand-in) records. Below it recalibration REFUSES rather
@@ -61,6 +84,165 @@ class InsufficientGroundTruth(Exception):
             f"count toward a served calibration. Ingest more real quotes "
             f"(stand_in=false) and retry."
         )
+
+
+# ── CSV parser (pure — no DB, no I/O) ────────────────────────────────────────
+def _clean(v) -> str:
+    return (v or "").strip()
+
+
+def parse_ground_truth_csv(text: str):
+    """Parse a historical-cost CSV into (rows, errors) — STRICT and HONEST.
+
+    ``rows`` is a list of ``ingest_record`` payloads (each with
+    ``stand_in=False`` — imported historical costs are REAL). ``errors`` is a
+    list of ``{"line": <1-based file line>, "reason": <str>}``.
+
+    Contract (see ``CSV_HEADER``): required columns are ``part_id``, ``process``,
+    ``quantity``, ``actual_unit_cost_usd``; optional columns are
+    ``material_class`` (default ``polymer``), ``shop``, ``region``, ``currency``
+    (default ``USD``), ``source``, ``part_path``, ``notes``. There is no
+    ``stand_in`` column — this path only ingests REAL data.
+
+    Honesty rails:
+      * A malformed ROW is reported (unknown process, unknown material class,
+        non-positive quantity/cost, missing required value, bad currency) and
+        SKIPPED — never silently coerced or dropped without a report. One bad row
+        never aborts the file: valid rows still come back.
+      * A malformed HEADER (missing a required column, empty file) yields
+        ``([], errors)`` with a single header-level error rather than guessing.
+    """
+    rows: list = []
+    errors: list = []
+
+    if not text or not text.strip():
+        return rows, [{"line": 0, "reason": "empty CSV (no header, no rows)"}]
+
+    reader = csv.reader(io.StringIO(text))
+    try:
+        header = next(reader)
+    except StopIteration:
+        return rows, [{"line": 0, "reason": "empty CSV (no header, no rows)"}]
+
+    # normalise header names (lower, strip); strip a UTF-8 BOM on the first cell.
+    if header and header[0].startswith("﻿"):
+        header[0] = header[0][1:]
+    cols = [_clean(h).lower() for h in header]
+    col_index = {name: i for i, name in enumerate(cols)}
+
+    missing = [c for c in CSV_REQUIRED_COLUMNS if c not in col_index]
+    if missing:
+        return rows, [{
+            "line": 1,
+            "reason": (
+                f"header missing required column(s): {', '.join(missing)}. "
+                f"Expected header: {CSV_HEADER}"
+            ),
+        }]
+
+    def cell(record: list, name: str) -> str:
+        i = col_index.get(name)
+        if i is None or i >= len(record):
+            return ""
+        return _clean(record[i])
+
+    for offset, record in enumerate(reader):
+        line = offset + 2  # header is line 1; first data row is line 2
+        # skip a wholly blank line without reporting it as an error
+        if not any(_clean(c) for c in record):
+            continue
+
+        part_id = cell(record, "part_id")
+        process = cell(record, "process")
+        quantity_raw = cell(record, "quantity")
+        cost_raw = cell(record, "actual_unit_cost_usd")
+
+        row_errs: list = []
+        if not part_id:
+            row_errs.append("missing part_id")
+        if not process:
+            row_errs.append("missing process")
+        elif process not in KNOWN_PROCESSES:
+            row_errs.append(f"unknown process '{process}'")
+
+        quantity = None
+        if not quantity_raw:
+            row_errs.append("missing quantity")
+        else:
+            try:
+                quantity = int(quantity_raw)
+                if quantity < 1:
+                    row_errs.append(f"quantity must be >= 1 (got {quantity})")
+            except ValueError:
+                row_errs.append(f"quantity not an integer ('{quantity_raw}')")
+
+        cost = None
+        if not cost_raw:
+            row_errs.append("missing actual_unit_cost_usd")
+        else:
+            try:
+                cost = float(cost_raw)
+                if not (cost > 0):
+                    row_errs.append(
+                        f"actual_unit_cost_usd must be > 0 (got {cost})"
+                    )
+            except ValueError:
+                row_errs.append(
+                    f"actual_unit_cost_usd not a number ('{cost_raw}')"
+                )
+
+        material_class = cell(record, "material_class") or "polymer"
+        if material_class not in KNOWN_MATERIAL_CLASSES:
+            row_errs.append(f"unknown material_class '{material_class}'")
+
+        currency = (cell(record, "currency") or "USD").upper()
+        if not (currency.isalpha() and len(currency) == 3):
+            row_errs.append(
+                f"currency must be a 3-letter code (got '{currency}')"
+            )
+
+        if row_errs:
+            errors.append({"line": line, "reason": "; ".join(row_errs)})
+            continue
+
+        rows.append({
+            "part_id": part_id,
+            "process": process,
+            "quantity": quantity,
+            "actual_unit_cost_usd": cost,
+            "material_class": material_class,
+            "shop": cell(record, "shop") or None,
+            "region": cell(record, "region") or None,
+            "currency": currency,
+            "source": cell(record, "source"),
+            "part_path": cell(record, "part_path") or None,
+            "notes": cell(record, "notes"),
+            "stand_in": False,  # imported historical costs are REAL
+        })
+
+    return rows, errors
+
+
+async def import_records(
+    session: AsyncSession, org_id: str, user_id: Optional[int], rows: list
+):
+    """Persist parsed CSV rows through the SINGLE-record create path.
+
+    Funnels every row through ``ingest_record`` so bulk import shares the exact
+    org-scoping, dedup, validation and ``stand_in`` honesty of the single
+    endpoint. Per-row failures (a value the costing dataclass rejects) are
+    collected, not fatal — returns ``(imported_count, errors)``; the caller owns
+    the commit.
+    """
+    imported = 0
+    errors: list = []
+    for idx, payload in enumerate(rows):
+        try:
+            await ingest_record(session, org_id, user_id, payload)
+            imported += 1
+        except (ValueError, KeyError) as exc:
+            errors.append({"line": None, "index": idx, "reason": str(exc)})
+    return imported, errors
 
 
 # ── serialization ──────────────────────────────────────────────────────────

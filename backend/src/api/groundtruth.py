@@ -14,9 +14,19 @@ require ``viewer``; recalibration requires ``analyst``.
 from __future__ import annotations
 
 import logging
-from typing import Optional
+import os
+from typing import AsyncIterator, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +41,49 @@ from src.services import groundtruth_service as svc
 logger = logging.getLogger("cadverify.groundtruth")
 
 router = APIRouter(tags=["ground-truth"])
+
+_CHUNK = 1024 * 1024  # 1 MiB
+
+
+def _import_cap_bytes() -> int:
+    """Bulk-import size cap. Read lazily so tests can override via env.
+
+    Historical-cost CSVs are text, not meshes — a much smaller cap than the STL
+    upload path (``GROUNDTRUTH_IMPORT_MAX_MB``, default 10MB) is honest here.
+    """
+    try:
+        mb = int(os.getenv("GROUNDTRUTH_IMPORT_MAX_MB", "10"))
+    except ValueError:
+        mb = 10
+    return max(1, mb) * 1024 * 1024
+
+
+async def _read_capped_chunks(chunks: AsyncIterator[bytes], limit: int) -> bytes:
+    """Stream chunks, rejecting anything over ``limit`` WITHOUT buffering the
+    whole payload — mirrors ``routes._read_capped``. Raises 413 as soon as the
+    running total crosses the cap (before pulling further chunks); 400 if empty.
+    """
+    buf = bytearray()
+    async for chunk in chunks:
+        if not chunk:
+            continue
+        buf.extend(chunk)
+        if len(buf) > limit:
+            raise HTTPException(
+                status_code=413,
+                detail=f"CSV exceeds {limit // (1024 * 1024)}MB import limit",
+            )
+    if not buf:
+        raise HTTPException(status_code=400, detail="Empty CSV upload")
+    return bytes(buf)
+
+
+async def _upload_chunks(file: UploadFile) -> AsyncIterator[bytes]:
+    while True:
+        chunk = await file.read(_CHUNK)
+        if not chunk:
+            break
+        yield chunk
 
 
 class GroundTruthIn(BaseModel):
@@ -166,3 +219,81 @@ async def recalibrate_ground_truth(
                 "min_real": exc.min_real,
             },
         )
+
+
+@router.get("/import/template", response_class=PlainTextResponse)
+@limiter.limit("120/hour;1000/day")
+async def import_template(
+    request: Request,
+    response: Response,
+    user: AuthedUser = Depends(require_role(Role.viewer)),
+):
+    """The exact CSV header a customer must produce for bulk import.
+
+    Required columns: ``part_id, process, quantity, actual_unit_cost_usd``.
+    Optional: ``material_class`` (default polymer), ``shop``, ``region``,
+    ``currency`` (default USD), ``source``, ``part_path``, ``notes``. There is no
+    ``stand_in`` column — imported rows are REAL (stand_in=False) by contract.
+    """
+    example = (
+        "widget-a.stl,cnc_3axis,100,42.50,aluminum,acme-shop,US,USD,"
+        "PO-1001,,first article"
+    )
+    return svc.CSV_HEADER + "\n" + example + "\n"
+
+
+@router.post("/import", dependencies=[Depends(require_kill_switch_open)])
+@limiter.limit("30/hour;100/day")
+async def import_ground_truth(
+    request: Request,
+    response: Response,
+    file: Optional[UploadFile] = File(None),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Bulk-import an org's historical costs from a CSV to feed the flywheel.
+
+    Accepts either a multipart ``file`` upload OR a raw ``text/csv`` request
+    body. Streams with an honest size cap (``GROUNDTRUTH_IMPORT_MAX_MB``, 413 on
+    overflow) — the file is never buffered unbounded. Parses STRICTLY: every
+    valid row is persisted through the SAME single-record create path (org-scoped,
+    ``stand_in=False`` — these are REAL and count toward the calibration floor);
+    every malformed row is reported, never coerced.
+
+    Partial success is honest: a file with some bad rows returns 200 with the
+    valid rows imported and the per-line errors listed. A fully-invalid (or
+    empty-of-valid-rows) file still returns 200 with ``imported=0`` and the
+    errors — the endpoint reports, it does not crash. The columns are documented
+    at ``GET /import/template`` and in ``groundtruth_service.CSV_HEADER``.
+
+    Returns ``{imported, skipped, total, errors:[{line, reason}]}``.
+    """
+    org_id = await _require_org(session, user)
+
+    limit = _import_cap_bytes()
+    if file is not None:
+        raw = await _read_capped_chunks(_upload_chunks(file), limit)
+    else:
+        raw = await _read_capped_chunks(request.stream(), limit)
+
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(
+            status_code=400, detail="CSV must be UTF-8 encoded text."
+        )
+
+    rows, parse_errors = svc.parse_ground_truth_csv(text)
+    imported, insert_errors = await svc.import_records(
+        session, org_id, user.user_id, rows
+    )
+    await session.commit()
+
+    errors = parse_errors + insert_errors
+    total = len(rows) + len(parse_errors)
+    return {
+        "imported": imported,
+        "skipped": total - imported,
+        "total": total,
+        "errors": errors,
+    }
