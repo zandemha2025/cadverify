@@ -102,10 +102,13 @@ async def _read_capped(file: UploadFile) -> bytes:
 
 def _parse_mesh(data: bytes, filename: str):
     suffix = Path(filename).suffix.lower()
-    if suffix not in (".stl", ".step", ".stp"):
+    if suffix not in (".stl", ".step", ".stp", ".iges", ".igs"):
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported file type: {suffix}. Use .stl, .step, or .stp",
+            detail=(
+                f"Unsupported file type: {suffix}. "
+                "Use .stl, .step, .stp, .iges, or .igs"
+            ),
         )
     # CORE-07: defense-in-depth — verify magic bytes before dispatching
     # to parser libs (cadquery/trimesh can crash on adversarial input).

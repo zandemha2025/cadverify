@@ -12,6 +12,9 @@ logger = logging.getLogger("cadverify.upload_validation")
 _STEP_MAGIC: bytes = b"ISO-10303-21"
 _BINARY_STL_HEADER_BYTES = 84
 _BINARY_STL_TRIANGLE_BYTES = 50
+# IGES section letters that can legally appear in column 73 (index 72) of a
+# fixed 80-column record: S(tart) G(lobal) D(irectory) P(arameter) T(erminate).
+_IGES_SECTION_LETTERS = "SGDPT"
 
 
 def _positive_env_int(name: str, default: int) -> int:
@@ -78,6 +81,52 @@ def validate_magic(data: bytes, suffix: str) -> None:
             )
         # ASCII STL check: header starts with 'solid' (case-insensitive).
         # Either way length check above is sufficient; no further action needed.
+        return
+    if suffix in (".iges", ".igs"):
+        # IGES has no simple leading magic like STEP's ISO-10303-21. An ASCII
+        # IGES file is a stream of fixed 80-column records; every record carries
+        # its SECTION LETTER in column 73 (index 72) — one of S(tart) G(lobal)
+        # D(irectory) P(arameter) T(erminate) — immediately followed by a
+        # right-justified sequence number in columns 74-80 (index 72:80). A
+        # valid file opens with the Start ('S') section, so the FIRST non-blank
+        # record must be >= 80 chars, have a section letter at index 72, and end
+        # (cols 73-80) with a digit sequence number. This is a lenient-but-real
+        # structural check: it rejects STEP misfiled as .iges (explicit magic
+        # guard below) and binary/garbage (whose bytes will not line an SGDPT
+        # letter up at column 73 followed by a digit sequence number).
+        if _STEP_MAGIC in data[:256]:
+            logger.info("Rejected IGES upload: carries STEP ISO-10303-21 magic")
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "File does not appear to be a valid IGES file "
+                    "(looks like a STEP file — upload it as .step/.stp)."
+                ),
+            )
+        # Decode leniently (errors='replace'): real IGES is ASCII, and the
+        # column check below is strong enough to reject non-ASCII/binary input
+        # without having to first prove the whole prefix decodes cleanly.
+        head = data[:1024].decode("ascii", errors="replace")
+        first_record = ""
+        for line in head.splitlines():
+            if line.strip():
+                first_record = line
+                break
+        section_id = first_record[72:80].strip() if len(first_record) >= 80 else ""
+        if (
+            len(first_record) < 80
+            or first_record[72] not in _IGES_SECTION_LETTERS
+            or not section_id
+            or not section_id[-1].isdigit()
+        ):
+            logger.info("Rejected IGES upload: no valid 80-col section record")
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "File does not appear to be a valid IGES file "
+                    "(missing the 80-column section record structure)."
+                ),
+            )
         return
     # Other suffixes are rejected earlier in routes.py; no-op here.
     return
