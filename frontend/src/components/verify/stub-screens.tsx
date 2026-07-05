@@ -18,11 +18,6 @@ interface StubDef {
 }
 
 export const STUBS: Record<string, StubDef> = {
-  catalog: {
-    title: "Parts catalog",
-    lede: "Every part the org has asked about, thumbnails rendered from the geometry itself, facets and search over the real lakehouse read surface.",
-    seam: "binds to GET /api/v1/catalog (org-scoped parts×decisions grid)",
-  },
   compare: {
     title: "Compare",
     lede: "Same part, two questions: which calibration, and which route. Every figure banded, never fake-exact.",
