@@ -1,0 +1,72 @@
+{
+  "seed": {
+    "email": "demo-floor-1783277337@cadverify.example.com",
+    "user_id": 2,
+    "parts": {
+      "bracket": {
+        "path": "/tmp/cadverify-demo-floor-parts/bracket_block.stl",
+        "mesh_hash": "97064d08a95658cc160677cd0add4ae22098db38b1a86e890bc03c207c7e4485",
+        "cost_id": "01KWSSSESRMEMKB8GBCZGQPJ83",
+        "makeability": "makeable_in_house"
+      },
+      "sensor": {
+        "path": "/tmp/cadverify-demo-floor-parts/sensor_boss.stl",
+        "mesh_hash": "9022ea35e97d7348de9dfdb0ee4aaeb43d4a2acfff7f99b154088823591b6c03",
+        "cost_id": "01KWSSSEVQA1SHWVS3KE25NJ41",
+        "makeability": "makeable_in_house"
+      }
+    },
+    "counts": {
+      "machines": 2,
+      "records": 2,
+      "catalog_rows": 2,
+      "portfolio_rows": 2,
+      "makeability_total": 2
+    }
+  },
+  "browserCounts": {
+    "records": 3,
+    "catalogRows": 2,
+    "machines": 2,
+    "portfolioRows": 2,
+    "makeability": {
+      "makeable_in_house": 2,
+      "makeable_outside": 0,
+      "needs_capability": 0,
+      "not_makeable": 0,
+      "unknown": 0,
+      "geometry_invalid": 0,
+      "total": 2,
+      "stale_count": 0,
+      "stale": false,
+      "truncated": false
+    },
+    "capability": {
+      "acquisitions": 0,
+      "parts_unlockable_by_one_acquisition": 0,
+      "blocked_by_multiple_constraints": 0,
+      "total_blocked": 0,
+      "stale": false,
+      "truncated": false
+    },
+    "statuses": {
+      "records": 200,
+      "catalog": 200,
+      "machines": 200,
+      "portfolio": 200,
+      "makeability": 200,
+      "capability": 200
+    },
+    "filenames": [
+      "sensor_boss.stl",
+      "sensor_boss.stl",
+      "bracket_block.stl"
+    ]
+  },
+  "consoleErrors": [],
+  "finalSnapshot": {
+    "title": "Verify — CadVerify",
+    "bodyText": "C\nCalibration & truth\nDefault rate card (v0) · none authored\n⌘K\nVerify a part\nCalibration & truth\n\nWhat the engine knows about your floor, and how it earns accuracy. Governed rates are versioned, not edited; gaps stay visible defaults; validation only ever comes from your actuals.\n\nDEFAULT RATE TABLE (v0)\n\n○ DEFAULT\n\nNo governed rate card is in effect — the engine is costing against the built-in default table (v0): generic assumptions, not your floor.\n\nauthored versions\n0\npublished\n0\ndrafts\n0\nrate-library flag\noff\n\nrate-library is behind a backend flag; until it is enabled and a card is published, costing uses the default table.\n\nTHE HALLMARK — GROUND-TRUTH FLYWHEEL\n\nSend reality back\n\ndrop actual hours & invoiced costs (CSV) — the engine validates on parts it never saw\n\nSend actuals (CSV)\nRecalibrate\nreal records (held-out pool)\n0\nstand-ins (never validate)\n0\nfloor to validate\n8 real\n\nvalidation status: n=0 real · every band hatched · 'validated' here will only ever mean measured\n\nwhat happens when enough actuals arrive: received → residuals on held-out parts the model never saw → the flip (hatched → solid, the word becomes “measured”) → the org ripple across records.\n\nAPI & USAGE\n\nUSAGE METERING — IN DEVELOPMENT\nverifications this month\n—\nAPI calls\n—\nwebhook deliveries\n—\n\nno usage-metering backend yet — withheld, not estimated\n\nDEVELOPER KEYS\n\nno API keys yet — create one in Settings → Developer\n\nPOST /api/v1/validate returns the same record this UI renders — nothing withheld · secret shown once at creation\n\nGOVERNED CHANGE — RATES ARE VERSIONED, NOT EDITED\n\nNo pending rate changes. A change is proposed, reviewed, and published as a new version — never edited in place. Every verdict pins the version it was computed with.\n\nreopen a record from last quarter, see that quarter's rates, not today's\n\nMEMBERS & ROLES\n\nD\ndemo-floor-1783277337@cadverify.example.com · org admin\nviewer\nanalyst\nadmin\n\nroles gate actions, never visibility of provenance — every member can open every number\n\nWEBHOOKS — THE RECORD, PUSHED\n\nIN DEVELOPMENT\n\nPush the full verification record — with provenance, the same JSON the API returns — to your PLM/ERP on verification.completed, validation.flipped, and more.\n\nverification.completed\nvalidation.flipped\ntriage.finished\ndecision.recorded\n\ndelivery log — no delivery backend yet; nothing is fabricated here\n\nAUDIT LOG — IMMUTABLE, EXPORTABLE\n\nexport CSV →\nJul 5, 02:48 PM\ndemo-floor-1783277337@cadverify.example.com\nauth.signup · user 2\nJul 5, 02:48 PM\ndemo-floor-1783277337@cadverify.example.com\nmachine.created · machine 01KWSSSENE5GC0XY7JFQKNR1K7\nJul 5, 02:48 PM\ndemo-floor-1783277337@cadverify.example.com\nmachine.created · machine 01KWSSSEP0QG92F2GJK3S3H450\nJul 5, 02:48 PM\ndemo-floor-1783277337@cadverify.example.com\ndecision.created · cost_decision 01KWSSSESRMEMKB8GBCZGQPJ83\nJul 5, 02:48 PM\ndemo-floor-1783277337@cadverify.example.com\ndecision.created · cost_decision 01KWSSSEVQA1SHWVS3KE25NJ41\nJul 5, 02:50 PM\ndemo-floor-1783277337@cadverify.example.com\ndecision.created · cost_decision 01KWSSWQ4G4JSARSB644VPAHEF\n\nevery verdict, decision, and rate change lands here — the record behind the records",
+    "url": "http://localhost:3210/verify"
+  }
+}
