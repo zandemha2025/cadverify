@@ -9,9 +9,20 @@
  * gates render the honest unknown/feature state — NEVER a fabricated verdict. The
  * walk stops honestly at a failed gate (geometry invalid → no downstream compute).
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { C, MONO, USD, NUM, procLabel, statusColor } from "@/lib/verify/tokens";
 import type { VerifyResult } from "@/lib/verify/run";
+import type { CostReport, CostComparison } from "@/lib/api";
+import {
+  parseAsk,
+  computeCostAtQty,
+  compareRoutesAtQty,
+  compareSaved,
+  NL_REFUSAL,
+  NONDETERMINISTIC_REFUSAL,
+  type CostAtQtyResult,
+  type RouteCompareResult,
+} from "@/lib/verify/ask";
 import {
   driverViews,
   makeNowEstimate,
@@ -35,7 +46,7 @@ import {
 } from "@/lib/verify/verification";
 import { envelopeSummary } from "@/lib/verify/machine-api";
 import { useToast } from "./toast";
-import { Card, Kicker, ProvChip, ProvDot, InDev, ConfidenceBand, GhostButton, EmptyState } from "./primitives";
+import { Card, Kicker, ProvChip, ProvDot, InDev, ConfidenceBand, GhostButton, EmptyState, Spinner } from "./primitives";
 import { PipelineOverlay } from "./pipeline-overlay";
 
 /** Light status colour for a verdict/fit tone. */
@@ -169,7 +180,7 @@ export function VerifyScreen(props: Props) {
           front door to what the engine ACTUALLY computed for this part (real slices
           of `result`) plus the honest refusal for anything non-deterministic; it
           never generates a number. */}
-      <AskDock result={result} nav={nav} />
+      <AskDock cost={result?.cost ?? null} running={running} nav={nav} />
     </div>
     <PipelineOverlay running={running} result={result} fileName={props.fileName} />
     </>
@@ -292,8 +303,8 @@ function StepShell({
 }: {
   n: number;
   title: string;
-  right?: React.ReactNode;
-  children: React.ReactNode;
+  right?: ReactNode;
+  children: ReactNode;
   delayMs?: number;
 }) {
   return (
@@ -633,7 +644,7 @@ function VerdictBanner({
   );
 }
 
-function BannerFrame({ children, borderColor, bg }: { children: React.ReactNode; borderColor: string; bg: string }) {
+function BannerFrame({ children, borderColor, bg }: { children: ReactNode; borderColor: string; bg: string }) {
   return (
     <div
       style={{
@@ -1152,56 +1163,162 @@ function driverUnit(d: DriverView): string {
   return d.unit;
 }
 
-/* ─── ASK DOCK ────────────────────────────────────────────────────────────────
- * A docked "ask the engine" row. The engine only answers DETERMINISTIC questions,
- * and it answers them from what it ACTUALLY computed for THIS part (real slices of
- * `result`) — never a generated number. The quick asks read the loaded run; the
- * free-text parser is honestly IN DEVELOPMENT; anything non-deterministic gets the
- * honest refusal. No fabricated shop-vs-shop fixture is presented as real.
- */
-type AskReply = "cost" | "crossover" | "materials" | "refusal" | "indev";
+/* ═══════════════════════════════════════════════════════════════════════════
+ * ASK-THE-ENGINE DOCK — docked at the foot of the walk.
+ *
+ * The dock's contract IS the honesty rule: an answer is only ever an
+ * ENGINE-COMPUTED ARTIFACT, never generated prose with numbers in it.
+ *   • "compare routes [at qty N]"  → the make-now route vs the tooling / next
+ *      route, read off THIS part's real CostReport (POST /validate/cost output).
+ *   • "should-cost at qty N"       → the should-cost at that qty, off the report.
+ *   • "compare saved decisions"    → a LIVE GET /api/v1/cost-decisions/compare
+ *      diff of this part's persisted decision vs the org's most-recent other one.
+ *   • anything else / free text    → REFUSED. Free-form NL has no engine backend
+ *      (IN DEVELOPMENT); the engine never invents an answer.
+ * No design fixtures, no fabricated figures — every number is selected from a
+ * real response or the ask is refused.
+ * ═══════════════════════════════════════════════════════════════════════════ */
 
-function AskDock({ result, nav }: { result: VerifyResult | null; nav: Nav }) {
-  const [reply, setReply] = useState<AskReply | null>(null);
-  const [q, setQ] = useState("");
-  const canCompute = !!result?.cost;
+type DockState =
+  | { t: "idle" }
+  | { t: "loading" }
+  | { t: "routes"; data: Extract<RouteCompareResult, { status: "ok" }> }
+  | { t: "cost"; data: CostAtQtyResult }
+  | { t: "saved"; data: CostComparison; otherId: string }
+  | { t: "refuse"; title: string; reason: string; nl: boolean };
 
-  // A new run clears a stale reply so the dock never shows the previous part's answer.
-  useEffect(() => {
-    setReply(null);
-  }, [result]);
+function AskDock({ cost, running, nav }: { cost: CostReport | null; running: boolean; nav: Nav }) {
+  const [text, setText] = useState("");
+  const [state, setState] = useState<DockState>({ t: "idle" });
+  const canAsk = !!cost && !running;
+
+  function refuse(title: string, reason: string, nl = false) {
+    setState({ t: "refuse", title, reason, nl });
+  }
+  function clear() {
+    setState({ t: "idle" });
+  }
+
+  function askRoutes(qty: number | null) {
+    if (!cost) return;
+    const r = compareRoutesAtQty(cost, qty);
+    if (r.status === "single") {
+      refuse(
+        "Nothing to compare — one route.",
+        "Only one route was costed for this part, so there is no second route to diff. The should-cost above already carries every driver for that route."
+      );
+    } else {
+      setState({ t: "routes", data: r });
+    }
+  }
+
+  function askCost(qty: number | null) {
+    if (!cost) return;
+    setState({ t: "cost", data: computeCostAtQty(cost, qty) });
+  }
+
+  async function askSaved() {
+    if (!cost) return;
+    setState({ t: "loading" });
+    const res = await compareSaved(cost.saved?.id ?? null);
+    if (res.status === "ok") {
+      setState({ t: "saved", data: res.comparison, otherId: res.otherId });
+    } else if (res.status === "not_saved") {
+      refuse(
+        "No saved decision to compare.",
+        "This part's decision was not persisted (persistence is off for this run), so there is no record id to diff against. Save a verification, then ask again."
+      );
+    } else if (res.status === "need_second") {
+      refuse(
+        "Only one decision on record.",
+        "Compare needs a second saved decision — this org has just this one on record. Verify another part (or the same part under a new calibration) and it becomes comparable."
+      );
+    } else {
+      refuse(
+        "Compare unavailable.",
+        `The compare call did not return (${res.message}). No diff is shown rather than a fabricated one.`
+      );
+    }
+  }
+
+  function submit() {
+    const raw = text.trim();
+    if (!raw) return;
+    if (!cost) {
+      refuse("No part loaded.", "Load a part above first — the engine answers only about a part it has actually computed.");
+      return;
+    }
+    const p = parseAsk(raw);
+    if (p.kind === "cost_at_qty") askCost(p.qty);
+    else if (p.kind === "compare_routes") askRoutes(p.qty);
+    else if (p.kind === "compare_saved") void askSaved();
+    else refuse("The engine can't compute that.", NL_REFUSAL, true);
+  }
 
   return (
     <div style={{ flexShrink: 0, borderTop: `1px solid ${C.hair2}`, background: C.panel, padding: "10px 30px" }}>
-      {reply && <AskReplyCard reply={reply} result={result} nav={nav} onClear={() => setReply(null)} />}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, maxWidth: 900, flexWrap: "wrap" }}>
+      {/* the answer — an engine artifact, never prose-with-numbers */}
+      {state.t === "loading" && (
+        <div style={ARTIFACT_STYLE}>
+          <Spinner label="asking GET /cost-decisions/compare…" />
+        </div>
+      )}
+      {state.t === "routes" && <RouteCompareArtifact data={state.data} onClose={clear} />}
+      {state.t === "cost" && <CostReadoutArtifact data={state.data} onClose={clear} />}
+      {state.t === "saved" && <SavedCompareArtifact data={state.data} otherId={state.otherId} onClose={clear} nav={nav} />}
+      {state.t === "refuse" && <RefusalArtifact title={state.title} reason={state.reason} nl={state.nl} onClose={clear} />}
+
+      {/* the ask row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, maxWidth: 820, flexWrap: "wrap" }}>
         <div
           style={{
             flex: 1,
-            minWidth: 220,
+            minWidth: 240,
             display: "flex",
             alignItems: "center",
             gap: 10,
-            border: `1px solid #dcdce0`,
+            border: `1px solid ${canAsk ? "#dcdce0" : C.hair}`,
             borderRadius: 999,
             padding: "4px 4px 4px 16px",
-            background: C.bg,
+            background: canAsk ? C.sunken : "#fafafb",
+            opacity: canAsk ? 1 : 0.7,
           }}
         >
           <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") setReply("indev");
+              if (e.key === "Enter") submit();
             }}
-            placeholder="Ask the engine — 'what's the unit cost at 1,000 on my floor?'"
+            disabled={!canAsk}
+            placeholder={
+              canAsk
+                ? "Ask the engine — “compare routes at qty 1,000” · “should-cost at qty 500”"
+                : running
+                  ? "computing the walk…"
+                  : "Load a part above — the engine answers only about a computed part."
+            }
             style={{ flex: 1, minWidth: 0, background: "none", border: "none", outline: "none", fontSize: 13, color: C.ink, fontFamily: "inherit" }}
           />
           <button
             type="button"
-            onClick={() => setReply("indev")}
-            aria-label="Ask the engine"
-            style={{ flexShrink: 0, width: 30, height: 30, borderRadius: "50%", border: "none", background: C.ink, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            onClick={submit}
+            disabled={!canAsk}
+            aria-label="Ask"
+            title="Ask the engine"
+            style={{
+              flexShrink: 0,
+              width: 30,
+              height: 30,
+              borderRadius: "50%",
+              border: "none",
+              background: canAsk ? C.ink : C.ink40,
+              color: "#fff",
+              cursor: canAsk ? "pointer" : "not-allowed",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="m5 12 14 0" />
@@ -1209,228 +1326,220 @@ function AskDock({ result, nav }: { result: VerifyResult | null; nav: Nav }) {
             </svg>
           </button>
         </div>
-        {canCompute && (
-          <>
-            <AskChip label="Unit cost @ 1,000" onClick={() => setReply("cost")} />
-            <AskChip label="Where's the crossover?" onClick={() => setReply("crossover")} />
-            <AskChip label="What survives this world?" onClick={() => setReply("materials")} />
-          </>
-        )}
-        <AskChip label="An uncomputable ask" onClick={() => setReply("refusal")} />
+        <AskChip label="Compare routes @ 1,000" disabled={!canAsk} onClick={() => askRoutes(1000)} />
+        <AskChip label="Compare saved decisions →" disabled={!canAsk} onClick={() => void askSaved()} />
+        <AskChip
+          label="An uncomputable ask"
+          disabled={false}
+          onClick={() =>
+            refuse(
+              "The engine can't compute that.",
+              NONDETERMINISTIC_REFUSAL
+            )
+          }
+        />
       </div>
-      <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 9, color: C.ink35 }}>
-        answers are engine-computed artifacts read off this verification — the copilot cannot offer a question the engine can&apos;t compute
+
+      <p style={{ margin: "6px 0 0", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontFamily: MONO, fontSize: 9, color: C.ink35 }}>
+        <span>answers are engine-computed artifacts — only structured asks (compare / should-cost at qty) return numbers</span>
+        <InDev label="FREE-FORM NL — IN DEVELOPMENT" />
       </p>
     </div>
   );
 }
 
-function AskChip({ label, onClick }: { label: string; onClick: () => void }) {
+const ARTIFACT_STYLE: CSSProperties = {
+  maxWidth: 720,
+  marginBottom: 12,
+  border: `1px solid ${C.hair}`,
+  borderRadius: 14,
+  background: "#fafafb",
+  padding: "16px 18px",
+  animation: "vstepIn 300ms cubic-bezier(0.2,0,0,1) both",
+};
+
+function ArtifactHeader({ kicker, onClose }: { kicker: string; onClose: () => void }) {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+      <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: C.ink45 }}>{kicker}</p>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Dismiss"
+        style={{ marginLeft: "auto", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 11, color: C.ink40 }}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+function MonoRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontFamily: MONO, fontSize: 12 }}>
+      <span style={{ color: C.ink60 }}>{label}</span>
+      <span style={{ color: C.ink, textAlign: "right" }}>{value}</span>
+    </div>
+  );
+}
+
+function AskChip({ label, disabled, onClick }: { label: string; disabled: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      style={{ flexShrink: 0, border: `1px solid #dcdce0`, background: "#fff", borderRadius: 999, padding: "7px 13px", fontSize: 11, color: C.ink55, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}
+      disabled={disabled}
+      style={{
+        flexShrink: 0,
+        border: `1px solid ${C.hair}`,
+        background: C.panel,
+        borderRadius: 999,
+        padding: "7px 13px",
+        fontSize: 11,
+        color: disabled ? C.ink35 : C.ink55,
+        cursor: disabled ? "not-allowed" : "pointer",
+        fontFamily: "inherit",
+        whiteSpace: "nowrap",
+        opacity: disabled ? 0.6 : 1,
+      }}
     >
       {label}
     </button>
   );
 }
 
-function AskCard({ children, dashed }: { children: React.ReactNode; dashed?: boolean }) {
+/** "compare routes" — two REAL routes off this part's cost report. */
+function RouteCompareArtifact({ data, onClose }: { data: Extract<RouteCompareResult, { status: "ok" }>; onClose: () => void }) {
+  const deltaColor = data.deltaPct == null ? C.ink45 : data.deltaPct < 0 ? C.pass : C.shop;
   return (
-    <div
-      style={{
-        maxWidth: 720,
-        marginBottom: 12,
-        border: dashed ? `1.5px dashed #d3d3d8` : `1px solid ${C.hair}`,
-        borderRadius: 14,
-        background: dashed ? "transparent" : "#fafafb",
-        padding: "16px 18px",
-        animation: "vstepIn 300ms cubic-bezier(0.2,0,0,1) both",
-      }}
-    >
-      {children}
+    <div style={ARTIFACT_STYLE}>
+      <ArtifactHeader kicker={`ENGINE OUTPUT — COMPUTED, NOT GENERATED · route-vs-route · qty ${NUM(data.snappedQty)}`} onClose={onClose} />
+      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+        <MonoRow label={`${procLabel(data.a.process)} · make-now`} value={`${USD(data.a.unit)}/unit`} />
+        <MonoRow
+          label={`${procLabel(data.b.process)}`}
+          value={
+            <>
+              {USD(data.b.unit)}/unit{" "}
+              {data.deltaPct != null && (
+                <span style={{ color: deltaColor }}>
+                  {data.deltaPct >= 0 ? "+" : ""}
+                  {data.deltaPct}%
+                </span>
+              )}
+            </>
+          }
+        />
+      </div>
+      {data.divergent ? (
+        <p style={{ margin: "10px 0 0", display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap", fontFamily: MONO, fontSize: 10.5, color: C.ink55 }}>
+          <span>
+            divergent driver: {data.divergent.name} {data.divergent.a.toLocaleString("en-US", { maximumFractionDigits: 2 })} vs{" "}
+            {data.divergent.b.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+          </span>
+          <ProvChip p={data.divergent.provenance} />
+        </p>
+      ) : (
+        <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40 }}>
+          the two routes share no common driver to diff — unit costs shown, no driver delta invented.
+        </p>
+      )}
+      <p style={{ margin: "8px 0 0", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: MONO, fontSize: 9.5, color: C.ink35 }}>
+        <ProvChip p="MODEL" />
+        <span>
+          computed from POST /validate/cost for {data.filename}
+          {data.requestedQty != null && data.requestedQty !== data.snappedQty ? ` · nearest computed point to qty ${NUM(data.requestedQty)}` : ""}
+        </span>
+      </p>
     </div>
   );
 }
 
-function AskClearBtn({ onClear }: { onClear: () => void }) {
+/** "should-cost at qty N" — the report's make-now (and tooling) route at that qty. */
+function CostReadoutArtifact({ data, onClose }: { data: CostAtQtyResult; onClose: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClear}
-      aria-label="Dismiss"
-      style={{ marginLeft: "auto", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 11, color: C.ink40 }}
-    >
-      ✕
-    </button>
+    <div style={ARTIFACT_STYLE}>
+      <ArtifactHeader kicker={`ENGINE OUTPUT — COMPUTED, NOT GENERATED · should-cost · qty ${NUM(data.snappedQty)}`} onClose={onClose} />
+      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+        {data.makeNow ? (
+          <MonoRow label={`${procLabel(data.makeNow.process)} · make-now`} value={`${USD(data.makeNow.unit)}/unit`} />
+        ) : (
+          <MonoRow label="make-now route" value="withheld — no estimate at this qty" />
+        )}
+        {data.tooling && <MonoRow label={`${procLabel(data.tooling.process)} · incl. tooling`} value={`${USD(data.tooling.unit)}/unit`} />}
+        <MonoRow label="make-vs-buy crossover" value={data.crossover ? `${NUM(data.crossover)} units` : "none computed"} />
+      </div>
+      <p style={{ margin: "8px 0 0", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: MONO, fontSize: 9.5, color: C.ink35 }}>
+        <ProvChip p="MODEL" />
+        <span>
+          computed from POST /validate/cost for {data.filename}
+          {data.requestedQty != null && data.requestedQty !== data.snappedQty ? ` · nearest computed point to qty ${NUM(data.requestedQty)}` : ""}
+        </span>
+      </p>
+    </div>
   );
 }
 
-function AskReplyCard({
-  reply,
-  result,
-  nav,
-  onClear,
-}: {
-  reply: AskReply;
-  result: VerifyResult | null;
-  nav: Nav;
-  onClear: () => void;
-}) {
-  if (reply === "refusal") {
-    return (
-      <AskCard dashed>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-          <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>The engine can&apos;t compute that.</p>
-          <AskClearBtn onClear={onClear} />
-        </div>
-        <p style={{ margin: "7px 0 0", fontSize: 12.5, lineHeight: 1.6, color: C.ink55 }}>
-          Anything that isn&apos;t a deterministic property of geometry, your machines, or your rates has no engine answer — so
-          none is invented. It can compute: envelope fit · surviving materials · process physics · hours · resource cost · crossovers.
-        </p>
-      </AskCard>
-    );
-  }
-
-  if (reply === "indev") {
-    return (
-      <AskCard dashed>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-          <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>The free-text copilot is being wired up.</p>
-          <InDev label="NL PARSE — IN DEVELOPMENT" />
-          <AskClearBtn onClear={onClear} />
-        </div>
-        <p style={{ margin: "7px 0 0", fontSize: 12.5, lineHeight: 1.6, color: C.ink55 }}>
-          It will route a typed question to the engine&apos;s computable outputs — every one of which is already on this page.
-          For now use a quick ask below: unit cost, crossover, or surviving materials. No answer is ever generated.
-        </p>
-      </AskCard>
-    );
-  }
-
-  const cost = result?.cost ?? null;
-  if (!cost) {
-    return (
-      <AskCard dashed>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-          <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>Nothing is computed yet.</p>
-          <AskClearBtn onClear={onClear} />
-        </div>
-        <p style={{ margin: "7px 0 0", fontSize: 12.5, lineHeight: 1.6, color: C.ink55 }}>
-          Drop a part to run the walk — the copilot answers only from what the engine actually computed.
-        </p>
-      </AskCard>
-    );
-  }
-
-  const makeProc = cost.decision?.make_now_process ?? null;
-  const toolProc = cost.decision?.tooling_process ?? null;
-
-  if (reply === "cost") {
-    const mk = interpUnitCost(cost, makeProc, 1000);
-    const tl = toolProc ? interpUnitCost(cost, toolProc, 1000) : null;
-    return (
-      <AskCard>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-          <Kicker color={C.ink45}>ENGINE OUTPUT — COMPUTED, NOT GENERATED · unit cost · qty 1,000</Kicker>
-          <AskClearBtn onClear={onClear} />
-        </div>
-        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6, fontFamily: MONO, fontSize: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-            <span style={{ color: C.ink60 }}>{procLabel(makeProc)} — make now</span>
-            <span>
-              {USD(mk.unit)}/unit <span style={{ color: C.ink40 }}>· {interpNote(mk)}</span>
-            </span>
-          </div>
-          {toolProc && tl && (
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-              <span style={{ color: C.ink60 }}>{procLabel(toolProc)} — tooled</span>
-              <span>
-                {USD(tl.unit)}/unit <span style={{ color: C.ink40 }}>· {interpNote(tl)}</span>
-              </span>
-            </div>
-          )}
-        </div>
-        <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink35 }}>
-          read off {result?.file.name} · POST /validate/cost — your rates, not a market&apos;s
-        </p>
-      </AskCard>
-    );
-  }
-
-  if (reply === "crossover") {
-    const cross = cost.decision?.crossover_qty ?? null;
-    return (
-      <AskCard>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-          <Kicker color={C.ink45}>ENGINE OUTPUT — COMPUTED, NOT GENERATED · make-vs-tool crossover</Kicker>
-          <AskClearBtn onClear={onClear} />
-        </div>
-        <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 13, color: C.ink }}>
-          {cross != null ? (
-            <>
-              crossover ≈ <span style={{ fontSize: 15 }}>{NUM(cross)}</span> units
-            </>
-          ) : (
-            "no crossover — tooling never pays back at these volumes"
-          )}
-        </p>
-        {cross != null && (
-          <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink50, lineHeight: 1.6 }}>
-            below it: make now on {procLabel(makeProc)} · above it: {toolProc ? procLabel(toolProc) : "a tooled route"} amortizes the tool
-          </p>
-        )}
-        <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink35 }}>read off {result?.file.name} · POST /validate/cost</p>
-      </AskCard>
-    );
-  }
-
-  // reply === "materials"
-  const survivors = Array.from(new Set(cost.estimates.map((e) => e.material).filter((m): m is string => !!m)));
-  const strikes = envStrikes(result?.verification ?? null);
-  const worldDeclared = !!result?.envDeclared || !!result?.verification?.environment_declared;
+/** "compare saved decisions" — a LIVE GET /cost-decisions/compare diff. */
+function SavedCompareArtifact({ data, otherId, onClose, nav }: { data: CostComparison; otherId: string; onClose: () => void; nav: Nav }) {
+  const rows = data.unit_cost_by_qty.slice(0, 6);
+  const nameA = data.a.label || data.a.filename;
+  const nameB = data.b.label || data.b.filename;
   return (
-    <AskCard>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-        <Kicker color={C.ink45}>ENGINE OUTPUT — COMPUTED, NOT GENERATED · materials on the shortlisted routes</Kicker>
-        <AskClearBtn onClear={onClear} />
-      </div>
-      <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 7 }}>
-        {survivors.length > 0 ? (
-          survivors.map((m) => (
-            <span key={m} style={{ display: "inline-flex", alignItems: "center", gap: 7, border: `1px solid ${C.hair}`, borderRadius: 999, padding: "5px 12px", fontFamily: MONO, fontSize: 11.5, color: C.ink }}>
-              <ProvDot p="MEASURED" size={6} />
-              {m}
-            </span>
-          ))
-        ) : (
-          <span style={{ fontFamily: MONO, fontSize: 11, color: C.ink45 }}>material withheld — the engine costed no named material</span>
-        )}
-      </div>
-      {strikes.length > 0 ? (
-        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 5 }}>
-          {strikes.map((s) => (
-            <div key={s.material} style={{ display: "flex", alignItems: "baseline", gap: 8, fontFamily: MONO, fontSize: 11 }}>
-              <span style={{ color: C.fail, textDecoration: "line-through", whiteSpace: "nowrap", flexShrink: 0 }}>{s.material}</span>
-              <span style={{ color: C.ink55, lineHeight: 1.5 }}>{s.reason}</span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p style={{ margin: "9px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink45, lineHeight: 1.6 }}>
-          {worldDeclared
-            ? "the declared world excluded nothing on these routes — every costed material survives it."
-            : "no world declared — these are ambient survivors. Declare a world above to gate them by NACE MR0175 / HDT."}
-        </p>
-      )}
-      <p style={{ margin: "9px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink35 }}>
-        survivors = materials the engine actually costed · excluded ones are struck with their cited standard ·{" "}
-        <button type="button" onClick={() => nav("compare")} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 9.5, color: C.user }}>
-          compare routes →
-        </button>
+    <div style={ARTIFACT_STYLE}>
+      <ArtifactHeader kicker="ENGINE OUTPUT — COMPUTED, NOT GENERATED · GET /cost-decisions/compare" onClose={onClose} />
+      <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink }}>
+        <span style={{ color: C.ink70 }}>A</span> {nameA} <span style={{ color: C.ink40 }}>vs</span> <span style={{ color: C.ink70 }}>B</span> {nameB}
       </p>
-    </AskCard>
+      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+        {rows.map((r) => (
+          <MonoRow
+            key={r.quantity}
+            label={`qty ${NUM(r.quantity)}`}
+            value={
+              <>
+                {USD(r.a?.unit_cost_usd)} vs {USD(r.b?.unit_cost_usd)}
+                {r.delta_pct != null && (
+                  <span style={{ color: r.delta_pct < 0 ? C.pass : C.shop }}>
+                    {" "}
+                    {r.delta_pct >= 0 ? "+" : ""}
+                    {r.delta_pct}%
+                  </span>
+                )}
+              </>
+            }
+          />
+        ))}
+      </div>
+      <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink45, lineHeight: 1.6 }}>
+        make-now: {procLabel(data.diff.make_now_process[0])} vs {procLabel(data.diff.make_now_process[1])} · crossover{" "}
+        {data.diff.crossover_qty[0] ? NUM(data.diff.crossover_qty[0]) : "—"} vs {data.diff.crossover_qty[1] ? NUM(data.diff.crossover_qty[1]) : "—"}
+      </p>
+      <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10 }}>
+        <GhostButton onClick={() => nav("compare")}>Open in Compare →</GhostButton>
+        <span style={{ fontFamily: MONO, fontSize: 9, color: C.ink35 }}>diffed against saved decision {otherId.slice(0, 8)}…</span>
+      </div>
+    </div>
+  );
+}
+
+/** The honest refusal — never a fabricated answer. */
+function RefusalArtifact({ title, reason, nl, onClose }: { title: string; reason: string; nl: boolean; onClose: () => void }) {
+  return (
+    <div style={{ maxWidth: 720, marginBottom: 12, border: `1.5px dashed #d3d3d8`, borderRadius: 14, padding: "16px 18px", animation: "vstepIn 300ms cubic-bezier(0.2,0,0,1) both" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+        <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>{title}</p>
+        {nl && <InDev label="NL ANSWERING — IN DEVELOPMENT" />}
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Dismiss"
+          style={{ marginLeft: "auto", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 11, color: C.ink40 }}
+        >
+          ✕
+        </button>
+      </div>
+      <p style={{ margin: "7px 0 0", fontSize: 12.5, lineHeight: 1.6, color: C.ink55 }}>{reason}</p>
+    </div>
   );
 }
