@@ -1,6 +1,15 @@
 # RESUME — Autonomous Orchestration Loop (live)
 
-**Updated 2026-07-04 ~20:35 ET by Fable.** Directive: loop until CadVerify is a **production-working platform** (pilot bar first, then GA). Fable orchestrates (research+plan+gate); lesser models execute. **PAUSED on account session limit — resets 9pm ET. Do not spawn sub-agents until reset (they die instantly).**
+**Updated 2026-07-04 ~22:00 ET by Fable.** Directive: loop until CadVerify is a **production-working platform** (pilot bar first, then GA). Fable orchestrates (research+plan+gate); lesser models execute. **RESUMED post-reset at 21:54 ET.**
+
+## IN FLIGHT RIGHT NOW (workflow wf_965cbd62-819)
+Four parallel build→3-lens-verify tracks launched ~22:00 ET (opus builders, adversarial verifiers, max 3 fix rounds):
+- **B4 feat/step-spike** — prove STEP ingestion in the CI-built linux/amd64 image (no local Docker; push-triggered spike workflow `.github/workflows/step-spike.yml`). KEY FINDING pre-launch: gmsh (OCC-embedded) is ALREADY pinned in requirements.txt via step_mesher.py w/ 501 degrade; the unproven bit is `import gmsh` inside python:3.12-slim (runtime stage lacks libGLU/X11). cadquery path (step_parser.py) may be unnecessary.
+- **B3 feat/org-membership** — finish + invite-abuse/cross-tenant/auth-regression verify (reusing surviving worktree at 6899cc99…/wt/orgmembership; it was CLEAN, all WIP on branch tip).
+- **B5 feat/cost-unit-safety** — finish + unit-correctness/default-identity/contract verify (worktree 6899cc99…/wt/unitsafety, clean).
+- **B2b feat/pilot-run-path** — flag+arq-worker patch to run-local-app.sh + the pending E2E re-drive (visual should-cost confirm of ee10a85).
+On completion: Fable gates → serialized merge --no-ff into dev → full suite each (only the 24 env fails acceptable) → push origin dev; **prod promotion held until B2b's E2E visually confirms should-cost renders** (that was the explicitly pending item on ee10a85), then push prod to dev tip.
+B2(a) frontend screenshot: ALREADY DONE by the 667a012/e8fea82 human-sim walk — dropped from the plan.
 
 ## North star + the map
 Goal doc: `outputs/production-readiness.md` (ranked blockers, pilot vs GA, shortest pilot path). Gaps: `outputs/product-gaps.md` (48 items + queue). Thesis: `PLATFORM-DNA.md`. Deploy: `outputs/deploy-runbook.md`.
