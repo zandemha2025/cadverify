@@ -3,8 +3,10 @@
 Branch: `feat/org-membership` (worktree `wt/orgmembership`, off `dev` base
 `4d39fec`). Continuation build: a prior builder salvaged most of the beat into
 one WIP commit (`4742b49`, "UNVERIFIED") then died on a transient API error
-before writing any tests or running any gate. This note documents the audit of
-that WIP, the completion, and the M6 test suite that was added.
+before running any gate; a second agent added the M6 suite + this note but died
+on a session limit before it was ever executed. This note documents the audit
+of that WIP, the completion, the M6 test suite, and — see **Verification
+(executed)** at the bottom — the first real green run of the whole thing.
 
 ## What this closes
 
@@ -171,3 +173,34 @@ Single-org byte-identity (existing suite green); tokens via `secrets`, stored
 SHA-256-hashed, single-use, expiring, never logged; Python 3.9-compatible (every
 touched file carries `from __future__ import annotations`, so the PEP-604 unions
 never evaluate at runtime); no frontend; no merge/push.
+
+## Verification (executed) — 2026-07-04
+
+The M6 suite had NEVER been run when this beat was inherited (the commit that
+added it is literally titled "tests unrun"). It has now been executed. All
+numbers below are measured, not estimated. Nothing in the product code needed
+fixing and nothing in the intended scope was left as a stub — the inherited WIP
+was complete and correct; this pass proves it.
+
+- **Live-PG scratch DB** `orgmem_finish` (`postgresql://cadverify:localdev@
+  localhost:5432/orgmem_finish`), created fresh and migrated `alembic upgrade
+  head` cleanly through `0024_org_invites_deact`.
+- **`tests/test_org_membership.py`** against that DB: **17 passed** — and
+  **stable over 3 back-to-back runs** (6 unit + 11 live-PG integration).
+- **Full auth/org/membership/invite subset** (14 files: `test_org_membership`,
+  `test_org_context`, `test_cross_tenant_isolation`, `test_admin_org_rbac`,
+  `test_rbac`, `test_auth_password`, `test_auth_dashboard_session`,
+  `test_auth_oauth`, `test_auth_magic_link`, `test_auth_hashing`,
+  `test_auth_disposable`, `test_auth_scrubbing`, `test_auth_signup_limits`,
+  `test_auth_turnstile`) against the live DB: **108 passed**, stable over 2 runs.
+  The teardown-race flake noted below did NOT surface. The only warnings are the
+  benign LibreSSL urllib3 notice + one `Connection._cancel was never awaited`
+  ResourceWarning (asyncpg teardown), neither a failure.
+- **Full backend suite** (`env -u DATABASE_URL -u CADVERIFY_PARTS_DIR … pytest
+  -q`, i.e. the standard env-unset gate so live-PG suites skip): **24 failed,
+  1232 passed, 56 skipped**. The 24 failures are EXACTLY the known env-only
+  costing set (`test_costing_accuracy` ×8 + `test_costing_gates` ×16) — they
+  fail with `ValueError: string is not a file` because the parts corpus at
+  `CADVERIFY_PARTS_DIR` is absent; none of this beat's changed files touch the
+  costing engine. Zero beat-introduced failures. This matches the pre-recorded
+  final-gate expectation (24 / 1232 / 56) byte-for-byte.
