@@ -3,8 +3,10 @@ name: STEP ingestion spike (B4)
 # Push-triggered on the spike branch only. This builds the ACTUAL deploy image
 # (backend/Dockerfile, linux/amd64, base python:3.12-slim) and proves whether
 # the LIVE STEP path — src/parsers/step_mesher.py (gmsh + embedded OpenCASCADE,
-# invoked by routes.py::_parse_mesh) — can `import gmsh` and end-to-end parse a
-# real .step file INSIDE that image on the deploy target.
+# invoked by routes.py::_parse_mesh) — can `import gmsh`, end-to-end parse a
+# real .step file, AND run the full existing DFM+cost engine on the resulting
+# mesh (routes.py::_run_cost_engine -> costing.estimate_decision) INSIDE that
+# image on the deploy target.
 #
 # The build context is `backend`, so this workflow file (.github/, repo root)
 # and the sample under backend/tests/ (dockerignored) do NOT change the image:
@@ -79,14 +81,19 @@ jobs:
           echo "== import + init/finalize =="
           docker run --rm "$IMG" python -c "import gmsh; gmsh.initialize(); print('IMPORT_GMSH_OK', getattr(gmsh, '__version__', '(no __version__)')); gmsh.finalize(); print('GMSH_INIT_FINALIZE_OK')"
 
-      # (b) Real end-to-end parse through the LIVE code path. The probe script
-      # and sample live under backend/tests/ (dockerignored -> not in image) and
-      # are MOUNTED at run time, so the image stays byte-identical to prod while
-      # we feed it real STEP bytes. The probe calls
-      # src.parsers.step_mesher.step_to_trimesh_from_bytes — the exact function
-      # routes.py::_parse_mesh invokes for .step/.stp — and prints vertex /
-      # triangle counts + watertightness + volume.
-      - name: (b) end-to-end STEP parse via the LIVE gmsh code path
+      # (b) Real end-to-end run through the LIVE code path: STEP bytes -> mesh
+      # (ingestion) THEN the full existing DFM+cost engine on that mesh. The
+      # probe script and sample live under backend/tests/ (dockerignored -> not
+      # in image) and are MOUNTED at run time, so the image stays byte-identical
+      # to prod while we feed it real STEP bytes. The probe calls
+      # src.parsers.step_mesher.step_to_trimesh_from_bytes (the exact function
+      # routes.py::_parse_mesh invokes for .step/.stp) and then
+      # routes.py::_run_cost_engine + costing.estimate_decision (the exact
+      # functions the public /validate/cost demo route runs), printing vertex /
+      # triangle counts + watertightness + volume (PARSE_OK / E2E_STEP_INGEST_OK)
+      # and then the DFM process-score count + a real should-cost number
+      # (DFM_OK / COST_OK / E2E_STEP_COST_OK).
+      - name: (b) end-to-end STEP parse + DFM + cost via the LIVE code path
         run: |
           # PYTHONPATH=/app reproduces prod's import root: the deploy CMD is
           # `uvicorn main:app` from WORKDIR /app, so /app (hence `src`) is on
