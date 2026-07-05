@@ -106,7 +106,7 @@ async def require_api_key(
         raise _401("auth_invalid", "Invalid or revoked API key")
     # §39: an API key owned by a deactivated account is refused. is_active +
     # role ride the ``lookup_api_key`` JOIN, so this is no extra round trip.
-    # (getattr defaults keep hand-built row stubs in unit tests active.)
+    # (getattr defaults keep hand-built row doubles in unit tests active.)
     if getattr(row, "is_active", True) is False:
         raise _403_deactivated()
     role = getattr(row, "role", None) or "analyst"

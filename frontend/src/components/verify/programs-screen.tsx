@@ -12,6 +12,7 @@
  * exposure WITHHELD, never $0 or a guessed demand quantity. A costed part with a
  * DFM-withheld price can never be exposed. Programs are listed from
  * `summary.programs`; there are no invented programs, worlds, or member counts.
+ * World alignment is derived from member part contexts when present.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { C, MONO, USD, NUM, procLabel } from "@/lib/verify/tokens";
@@ -31,7 +32,6 @@ import {
   GhostButton,
   EmptyState,
   Spinner,
-  InDev,
   ConfidenceBand,
 } from "./primitives";
 import { useToast } from "./toast";
@@ -65,8 +65,8 @@ export function ProgramsScreen() {
     void refresh();
   }, [refresh]);
 
-  const programs: PortfolioProgram[] = pf?.summary.programs ?? [];
-  const rows: PortfolioRow[] = pf?.rows ?? [];
+  const programs: PortfolioProgram[] = useMemo(() => pf?.summary.programs ?? [], [pf]);
+  const rows: PortfolioRow[] = useMemo(() => pf?.rows ?? [], [pf]);
 
   // Member parts per program (from the real rows — never invented).
   const membersOf = useCallback(
@@ -99,8 +99,7 @@ export function ProgramsScreen() {
         volume declared, no exposure — never a guessed demand quantity.
       </p>
       <p style={{ margin: "12px 0 0", display: "inline-flex", alignItems: "center", gap: 8, fontFamily: MONO, fontSize: 10.5, color: C.ink45 }}>
-        <InDev label="WORLD INHERITANCE — IN DEVELOPMENT" />
-        declaring a shared world once at the program (parts inherit it) is designed, not yet wired — today each part&apos;s world is declared at the Verify door
+        worlds are read from each part&apos;s declared service environment — shared, mixed, or missing states stay visible
       </p>
 
       {error && (
@@ -119,7 +118,7 @@ export function ProgramsScreen() {
           >
             {pf.summary.excluded_no_cost_count > 0 && (
               <p style={{ margin: 0, fontFamily: MONO, fontSize: 10.5, color: C.ink45 }}>
-                {NUM(pf.summary.excluded_no_cost_count)} drafted part(s) not yet costed — excluded until they carry a verified unit cost
+                {NUM(pf.summary.excluded_no_cost_count)} drafted part(s) require cost — excluded until they carry a verified unit cost
               </p>
             )}
           </EmptyState>

@@ -110,6 +110,9 @@ function STLModel({
   useEffect(() => {
     const dist = TARGET * distanceScale;
     camera.position.set(dist * 0.6, dist * 0.44, dist * 0.68);
+    // R3F camera framing is an imperative three.js boundary; React's compiler
+    // cannot infer that mutating the camera instance here is intentional.
+    // eslint-disable-next-line react-hooks/immutability
     camera.near = 0.05;
     camera.far = 100;
     if ((camera as THREE.PerspectiveCamera).isPerspectiveCamera) {

@@ -9,15 +9,16 @@
  *   - governance        GET /change-requests + approve/reject
  *   - ground-truth      GET (records) + POST /recalibrate + POST /import
  *   - admin             GET /users + PATCH /users/{id}/role + GET /audit-log
+ *                       + usage summary + webhook delivery log
  *   - keys              GET /api/v1/keys
  *
  * Honesty: NO design fixtures. The design's "Midwest Precision CNC · 19 rates",
- * "$52 → $54", the fake usage counters and webhook deliveries are ILLUSTRATIVE
- * mockup data and are NOT reproduced. A governed rate card is DEFAULT assumptions
+ * "$52 → $54", and fake usage counters are ILLUSTRATIVE mockup data and are
+ * NOT reproduced. Usage and webhook rows are read from the durable backend
+ * tables. A governed rate card is DEFAULT assumptions
  * (`validated:false`), never ● SHOP. A calibration band flips SOLID only when the
  * recalibrate endpoint returns `validated:true` from REAL held-out residuals;
- * below the floor it is REFUSED (422) and the band stays hatched. Panels with no
- * backend (webhooks delivery-log, usage metering) are IN DEVELOPMENT, not faked.
+ * below the floor it is REFUSED (422) and the band stays hatched.
  */
 import { API_BASE } from "@/lib/api-base";
 // Reuse the frozen rate-library read client (do not re-implement its reads).
@@ -249,6 +250,44 @@ export interface AuditEntry {
   resource_id: string | null;
   detail: Record<string, unknown> | null;
   result_summary: string | null;
+}
+
+export interface UsageSummary {
+  window_days: number;
+  since: string | null;
+  until: string | null;
+  org_id: string | null;
+  counts: {
+    analyses: number;
+    cost_decisions: number;
+    usage_events: number;
+    webhook_deliveries: number;
+  };
+  event_counts: Record<string, number>;
+  webhook_status_counts: Record<string, number>;
+}
+
+export async function getUsageSummary(days = 30): Promise<UsageSummary> {
+  return getJson(`/admin/usage-summary?days=${encodeURIComponent(String(days))}`);
+}
+
+export interface WebhookDelivery {
+  id: number;
+  batch_id: number;
+  batch_ulid: string;
+  event_type: string;
+  status: string;
+  attempts: number;
+  response_code: number | null;
+  created_at: string | null;
+  last_attempt_at: string | null;
+  next_retry_at: string | null;
+}
+
+export async function listWebhookDeliveries(limit = 20): Promise<{
+  deliveries: WebhookDelivery[];
+}> {
+  return getJson(`/admin/webhook-deliveries?limit=${encodeURIComponent(String(limit))}`);
 }
 
 /** Query the immutable audit log over a bounded range (backend requires start &

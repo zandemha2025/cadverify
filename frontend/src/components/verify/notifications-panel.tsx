@@ -3,12 +3,12 @@
 /**
  * NotificationsPanel — the shell's bell dropdown, made REAL.
  *
- * "States, never nags." The panel has no dedicated backend and no webhook
- * delivery log yet, so it invents nothing. It DERIVES the org's real
- * needs-your-action states from three existing reads (see notifications-api.ts):
- * the latest recorded verification, governed changes awaiting review, and whether
- * the confidence bands are still hatched (n=0 actuals). Empty → the honest
- * "all caught up" state. The webhook DELIVERY LOG stays IN DEVELOPMENT.
+ * "States, never nags." The panel has no dedicated inbox table, so it invents
+ * nothing. It DERIVES the org's real
+ * needs-your-action states from existing reads (see notifications-api.ts):
+ * the latest recorded verification, governed changes awaiting review, whether
+ * the confidence bands are still hatched (n=0 actuals), and the latest webhook
+ * delivery row. Empty → the honest "all caught up" state.
  *
  * Every value shown is a verbatim engine/DB field or is withheld. Encodings per
  * DESIGN-DECISIONS.md: pass/cond status colours; a HATCHED band = assumption
@@ -16,7 +16,7 @@
  */
 import { useEffect, useState } from "react";
 import { C, MONO } from "@/lib/verify/tokens";
-import { InDev, ConfidenceBand, Spinner } from "./primitives";
+import { ConfidenceBand, Spinner } from "./primitives";
 import {
   loadNotifications,
   type NotifState,
@@ -46,7 +46,7 @@ export function NotificationsPanel({
   onClose: () => void;
   nav?: (s: string) => void;
 }) {
-  const [state, setState] = useState<NotifState>({ loading: true, notifs: [], error: null });
+  const [state, setState] = useState<NotifState>({ loading: true, notifs: [], deliveryCount: null, error: null });
 
   useEffect(() => {
     let live = true;
@@ -57,6 +57,7 @@ export function NotificationsPanel({
         setState({
           loading: false,
           notifs: [],
+          deliveryCount: null,
           error: e instanceof Error ? e.message : "could not load",
         })
     );
@@ -150,12 +151,11 @@ export function NotificationsPanel({
           ))}
       </div>
 
-      {/* Delivery log has no backend — honest IN DEVELOPMENT, never faked. */}
       <div style={{ marginTop: 4, borderTop: `1px solid ${C.hair}`, padding: "10px 14px 6px", display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink40, lineHeight: 1.5, flex: 1 }}>
-          Webhook delivery log — verification.completed, band flips
+          Delivery log reads /admin/webhook-deliveries
+          {state.deliveryCount != null ? ` · ${state.deliveryCount} latest row${state.deliveryCount === 1 ? "" : "s"}` : ""}
         </span>
-        <InDev />
       </div>
     </div>
   );

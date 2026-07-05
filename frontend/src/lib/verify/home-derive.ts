@@ -1,7 +1,7 @@
 /**
  * Pure derivations for the Home "verification desk". No fabrication: every row is
- * built from a REAL engine/DB output the caller passed in, or it is not built at
- * all. The design's illustrative demo data (V-0117, object.stl, 268-in-house,
+ * built from a REAL engine/DB output the caller passed in, or it is omitted. The
+ * design's illustrative demo data (V-0117, object.stl, 268-in-house,
  * "labor_rate $52 → $54", etc.) is NEVER hardcoded here — this module only shapes
  * what the org actually has. Unit-tested in home-derive.test.ts.
  *
@@ -129,7 +129,7 @@ export function buildQueue(input: {
 /**
  * The activity feed — a merge of real verifications (cost-decisions) and real
  * governance events (change-requests), newest first. Draft change-requests are
- * not yet events, so they are skipped. Nothing is invented; an org with no
+ * pending records, so they are skipped. Nothing is invented; an org with no
  * activity yields an empty list.
  */
 export function buildActivity(

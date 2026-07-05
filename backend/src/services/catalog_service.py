@@ -641,6 +641,7 @@ def _context_block(ctx_row: Any) -> Optional[dict]:
         "parent_assembly": getattr(ctx_row, "parent_assembly", None),
         "units_per_parent": getattr(ctx_row, "units_per_parent", None),
         "annual_volume": getattr(ctx_row, "annual_volume", None),
+        "service_environment": getattr(ctx_row, "service_environment", None),
         "provenance": "user",
     }
 

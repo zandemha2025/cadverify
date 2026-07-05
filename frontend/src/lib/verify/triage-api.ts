@@ -120,6 +120,14 @@ export interface CapabilityRanking {
   note?: string;
 }
 
+export interface ManifestImportSummary {
+  imported: number;
+  updated: number;
+  skipped: number;
+  total: number;
+  errors: { line: number; reason: string }[];
+}
+
 /** Relay the backend's structured error `detail` as the thrown Error message. */
 async function toError(res: Response): Promise<Error> {
   const body = await res.json().catch(() => null);
@@ -176,6 +184,19 @@ export async function fetchCapabilityUnlocked(
   return res.json();
 }
 
+/** Bulk manifest/BOM ingest: real POST /manifest/import with partial success. */
+export async function importManifestCsv(file: File): Promise<ManifestImportSummary> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${API_BASE}/manifest/import`, {
+    method: "POST",
+    body: form,
+    cache: "no-store",
+  });
+  if (!res.ok) throw await toError(res);
+  return res.json();
+}
+
 /** Human phrase for a makeability verdict (honest — never fabricated). */
 export function verdictPhrase(verdict: string | null): string {
   switch (verdict) {
@@ -191,6 +212,6 @@ export function verdictPhrase(verdict: string | null): string {
     case "not_makeable":
       return "fails physics on every route";
     default:
-      return "not yet evaluated against a declared inventory";
+      return "evaluation requires a declared inventory";
   }
 }

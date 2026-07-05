@@ -36,7 +36,7 @@ export {
   MonoRow,
   ProvenanceChip,
   IllustrativeTag,
-  InDevelopmentChip,
+  ScenarioChip,
   HonestyBand,
   ScrollHint,
   Panel,

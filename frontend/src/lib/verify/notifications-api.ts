@@ -1,22 +1,24 @@
 /**
  * Notifications data layer for the Verify surface — "states, never nags".
  *
- * There is NO notifications backend and NO webhook delivery log wired yet, so
- * nothing here is invented. Instead we DERIVE the org's real "needs-your-action"
- * states from three read surfaces that already exist, each behind the same-origin
+ * There is no separate message-inbox table, so nothing here is invented. Instead
+ * we DERIVE the org's real "needs-your-action" states from read surfaces that
+ * already exist, each behind the same-origin
  * authed proxy (`/api/proxy/*` → backend `/api/v1/*`, httpOnly session cookie):
  *
  *   GET /cost-decisions                      → the latest recorded verification
  *   GET /governance/change-requests?status=  → governed changes awaiting review
  *   GET /ground-truth                        → bands still hatched (n=0 actuals)
+ *   GET /admin/webhook-deliveries            → latest delivery status
  *
  * Every field on a derived notification is a verbatim engine/DB value or is
  * withheld. When a read yields nothing, that state is simply absent — never a
- * fabricated row. The webhook DELIVERY LOG stays IN DEVELOPMENT (no backend).
+ * fabricated row.
  */
 import { API_BASE } from "@/lib/api-base";
 import { fetchCostDecisions } from "@/lib/api";
 import { procLabel, NUM } from "@/lib/verify/tokens";
+import { listWebhookDeliveries } from "@/lib/verify/calibration-api";
 
 /** Where a state row navigates in the shell (screen keys). */
 export type NotifDest = "records" | "calibration" | "verify";
@@ -38,6 +40,7 @@ export interface DerivedNotif {
 export interface NotifState {
   loading: boolean;
   notifs: DerivedNotif[];
+  deliveryCount: number | null;
   /** set ONLY when every read failed (e.g. not signed in) — an honest error,
    *  never a fabricated fallback. Partial failures degrade silently to fewer
    *  states rather than a wrong count. */
@@ -85,17 +88,18 @@ function relTime(iso: string | null | undefined): string {
 }
 
 /**
- * Fetch the three reads in parallel and fold them into the real state list.
- * Each read is isolated: one failing never fakes the others. If ALL three fail
+ * Fetch the reads in parallel and fold them into the real state list.
+ * Each read is isolated: one failing never fakes the others. If every read fails
  * the caller gets `error` (typically "not signed in"), not a hollow empty state.
  */
 export async function loadNotifications(): Promise<NotifState> {
-  const [decisions, changes, truth] = await Promise.allSettled([
+  const [decisions, changes, truth, deliveries] = await Promise.allSettled([
     fetchCostDecisions({ limit: 1 }),
     getJson<{ change_requests: ChangeRequest[] }>(
       "/governance/change-requests?status=proposed"
     ),
     getJson<GroundTruthList>("/ground-truth"),
+    listWebhookDeliveries(1),
   ]);
 
   const notifs: DerivedNotif[] = [];
@@ -149,10 +153,30 @@ export async function loadNotifications(): Promise<NotifState> {
     }
   }
 
+  // 4 ── latest webhook delivery state (real durable delivery row).
+  let deliveryCount: number | null = null;
+  if (deliveries.status === "fulfilled") {
+    deliveryCount = deliveries.value.deliveries.length;
+    const d = deliveries.value.deliveries[0];
+    if (d) {
+      const tone: NotifTone =
+        d.status === "delivered" ? "pass" : d.status === "failed" ? "cond" : "info";
+      const code = d.response_code != null ? ` · HTTP ${d.response_code}` : "";
+      notifs.push({
+        id: `webhook:${d.id}`,
+        tone,
+        title: `Webhook ${d.status} — ${d.event_type}`,
+        meta: `${d.attempts} attempt${d.attempts === 1 ? "" : "s"}${code} · ${relTime(d.last_attempt_at ?? d.created_at)}`,
+        dest: "calibration",
+      });
+    }
+  }
+
   const allFailed =
     decisions.status === "rejected" &&
     changes.status === "rejected" &&
-    truth.status === "rejected";
+    truth.status === "rejected" &&
+    deliveries.status === "rejected";
 
   const firstError =
     decisions.status === "rejected"
@@ -161,11 +185,14 @@ export async function loadNotifications(): Promise<NotifState> {
         ? changes.reason
         : truth.status === "rejected"
           ? truth.reason
+          : deliveries.status === "rejected"
+            ? deliveries.reason
           : null;
 
   return {
     loading: false,
     notifs,
+    deliveryCount,
     error: allFailed
       ? firstError instanceof Error
         ? firstError.message

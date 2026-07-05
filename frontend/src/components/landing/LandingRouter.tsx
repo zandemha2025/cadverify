@@ -28,7 +28,6 @@ import { DoorChooser } from "./DoorChooser";
 import { PartDoor } from "./PartDoor";
 import { CatalogDoor } from "./catalog/CatalogDoor";
 import { PortfolioDoor } from "./portfolio/PortfolioDoor";
-import { ComingDoor } from "./ComingDoor";
 import type { DoorNav } from "./DoorCrossNav";
 
 function readDoor(): string | null {
@@ -86,12 +85,14 @@ export default function LandingRouter() {
 
   const nav: DoorNav = { current: door, onGoDoor: goDoor, onReChoose: reChoose };
 
-  if (door === "part") return <PartDoor nav={nav} />;
-  if (door === "cost") return <CatalogDoor nav={nav} />;
-  if (door === "portfolio") return <PortfolioDoor nav={nav} />;
-  // Exhaustive fallback (all three DoorIds are handled above) — kept so an
-  // unforeseen door id still lands an honest coming-state rather than a blank.
-  return <ComingDoor door={door} nav={nav} />;
+  switch (door) {
+    case "part":
+      return <PartDoor nav={nav} />;
+    case "cost":
+      return <CatalogDoor nav={nav} />;
+    case "portfolio":
+      return <PortfolioDoor nav={nav} />;
+  }
 }
 
 /** Neutral first-paint placeholder — no door flicker before resolution. */

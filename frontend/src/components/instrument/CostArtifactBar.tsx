@@ -6,7 +6,7 @@
  * authed cost route has persisted the decision (`report.saved`), and surfaces
  * the four affordances the flagship surface was missing: SAVE (open in history),
  * EXPORT (PDF / JSON / CSV), and SHARE (public link) — every button hits a real
- * cost-decision endpoint, no lying stubs.
+ * cost-decision endpoint, no fabricated actions.
  *
  * HONESTY (#1 rule): the artifact carries the SAME confidence labeling as the
  * live instrument. The bar states plainly that this is an assumption-based

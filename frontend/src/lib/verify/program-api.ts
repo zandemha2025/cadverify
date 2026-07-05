@@ -12,7 +12,7 @@
  *  - PUT /part-context/{mesh} assigns a part to a program and/or declares its
  *    annual volume. We MERGE-then-write (see `assignContext`) so a program
  *    assignment never silently clobbers the part's declared world
- *    (`service_environment`) — the world every part under the program inherits.
+ *    (`service_environment`) — the world that stays attached to each assigned part.
  *
  * Every call goes SAME-ORIGIN through the Next authed proxy (`/api/proxy/*`), so
  * the httpOnly session cookie authenticates it and no API key touches the browser.
@@ -39,6 +39,7 @@ export interface PortfolioContext {
   parent_assembly: string | null;
   units_per_parent: number | null;
   annual_volume: number | null;
+  service_environment?: Record<string, unknown> | null;
   provenance: string;
 }
 
@@ -150,7 +151,7 @@ export interface ContextPatch {
  * MERGE-then-PUT: the backend's upsert overwrites ALL declared fields, so a naïve
  * `PUT {program}` would wipe the part's declared world and volume. We first read
  * the existing context and re-send the untouched fields (including
- * `service_environment` — the world the program's parts inherit), applying only
+ * `service_environment` — the world the part keeps while assigned), applying only
  * the caller's patch. This keeps the honesty invariant: assigning to a program
  * never silently discards a part's declared world.
  */

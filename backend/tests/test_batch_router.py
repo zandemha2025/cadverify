@@ -149,7 +149,7 @@ def test_create_batch_returns_202(mock_bs, mock_pool):
 
 @patch("src.api.batch_router.batch_service")
 def test_create_batch_s3_returns_501(mock_bs):
-    """S3 input is announced-not-orphaned: 501 S3_INPUT_NOT_IMPLEMENTED."""
+    """S3 input is announced-not-orphaned: 501 S3_INPUT_UNSUPPORTED."""
     from src.db.engine import get_db_session
     from src.auth.require_api_key import require_api_key
 
@@ -160,7 +160,7 @@ def test_create_batch_s3_returns_501(mock_bs):
     resp = client.post("/api/v1/batch", data={"s3_bucket": "my-bucket"})
 
     assert resp.status_code == 501
-    assert resp.json()["detail"]["code"] == "S3_INPUT_NOT_IMPLEMENTED"
+    assert resp.json()["detail"]["code"] == "S3_INPUT_UNSUPPORTED"
     # Must NOT have created a batch row (no orphan).
     mock_bs.create_batch.assert_not_called()
 

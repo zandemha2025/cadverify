@@ -8,7 +8,7 @@ inconsistent measurements.
 Design contract:
     * Everything expensive lives here. Analyzers must not call mesh.ray.* again.
     * All fields are numpy arrays or plain Python objects so the context is
-      pickle-friendly (needed for Celery when SAM-3D lands in Phase 3).
+      pickle-friendly for worker execution.
     * Failure to compute any single field degrades to a safe default
       (np.inf for thickness, empty arrays for topology) — a malformed mesh
       never breaks the analysis; it just produces higher-uncertainty issues.

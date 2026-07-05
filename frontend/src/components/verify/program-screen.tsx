@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * PROGRAMS + PROGRAM DETAIL — the "declare a world once, exposure = your volume ×
- * the engine's unit cost" surface, recreated in the light-instrument register and
- * wired to the REAL org roll-up.
+ * PROGRAMS + PROGRAM DETAIL — the program roll-up and declared-world summary
+ * surface, recreated in the light-instrument register and wired to the REAL org
+ * roll-up.
  *
  * Data:
  *  - GET /api/v1/catalog/portfolio (via program-api) → declared programs, the
@@ -15,8 +15,8 @@
  * Honesty (binding): every figure is engine/DB output or is WITHHELD. Exposure is
  * NEVER computed without a USER-declared volume ("not guessed, not extrapolated").
  * Unit-cost bands are HATCHED until the engine says validated (they are not, today).
- * The single shared program-world that "every part inherits" is a design concept
- * with no backend home yet → shown as IN DEVELOPMENT, never faked with chips.
+ * Program world state is derived from each assigned part's declared
+ * service_environment: shared, mixed, or missing — never invented.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { C, MONO, USD, NUM, procLabel } from "@/lib/verify/tokens";
@@ -34,7 +34,6 @@ import {
   Kicker,
   ProvChip,
   ProvDot,
-  InDev,
   GhostButton,
   EmptyState,
   Spinner,
@@ -45,6 +44,56 @@ import { useToast } from "./toast";
 function fmtExposure(n: number): string {
   if (n >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
   return `$${Math.round(n).toLocaleString("en-US")}`;
+}
+
+function stableWorldKey(env: Record<string, unknown> | null | undefined): string | null {
+  if (!env || typeof env !== "object") return null;
+  const entries = Object.entries(env)
+    .filter(([, v]) => v !== undefined && v !== null && v !== "")
+    .sort(([a], [b]) => a.localeCompare(b));
+  return entries.length ? JSON.stringify(entries) : null;
+}
+
+function worldLabel(env: Record<string, unknown> | null | undefined): string {
+  if (!env || typeof env !== "object") return "no world declared";
+  const parts = Object.entries(env)
+    .filter(([, v]) => v !== undefined && v !== null && v !== "")
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(0, 4)
+    .map(([k, v]) => `${k.replace(/_/g, " ")}=${String(v)}`);
+  return parts.length ? parts.join(" · ") : "declared empty world";
+}
+
+function programWorldSummary(rows: PortfolioRow[]): { label: string; detail: string; tone: string } {
+  if (rows.length === 0) {
+    return { label: "NO MEMBERS", detail: "assign a verified part to summarize its declared world", tone: C.ink45 };
+  }
+  const declared = rows.filter((r) => stableWorldKey(r.context?.service_environment) != null);
+  if (declared.length === 0) {
+    return { label: "WORLD MISSING", detail: "no assigned part has a declared service environment yet", tone: C.cond };
+  }
+  const groups = new Map<string, { env: Record<string, unknown> | null | undefined; count: number }>();
+  for (const row of declared) {
+    const key = stableWorldKey(row.context?.service_environment);
+    if (!key) continue;
+    const group = groups.get(key) ?? { env: row.context?.service_environment, count: 0 };
+    group.count += 1;
+    groups.set(key, group);
+  }
+  if (groups.size === 1) {
+    const only = [...groups.values()][0];
+    const missing = rows.length - declared.length;
+    return {
+      label: "SHARED WORLD",
+      detail: `${only.count} part${only.count === 1 ? "" : "s"} share ${worldLabel(only.env)}${missing ? ` · ${missing} missing` : ""}`,
+      tone: C.pass,
+    };
+  }
+  return {
+    label: "MIXED WORLDS",
+    detail: `${groups.size} declared worlds across ${declared.length} part${declared.length === 1 ? "" : "s"} · review before treating exposure as one environment`,
+    tone: C.cond,
+  };
 }
 
 const HATCH =
@@ -140,9 +189,8 @@ function ProgramIndex({
     <main style={mainStyle} data-screen-label="Programs">
       <h1 style={h1Style}>Programs</h1>
       <p style={{ margin: "8px 0 0", maxWidth: 640, fontSize: 14, lineHeight: 1.6, color: C.ink55 }}>
-        Declare a world once, at the program — every part underneath inherits it, and every inheritance is
-        visible. Exposure is the engine&apos;s verified unit cost × your declared annual volume, computed only
-        when a verified part is assigned.
+        Group verified parts into programs, see whether their declared worlds align, and roll up exposure
+        from the engine&apos;s verified unit cost × your declared annual volume.
       </p>
 
       {error && (
@@ -172,7 +220,7 @@ function ProgramIndex({
         <div style={{ marginTop: 24, maxWidth: 640 }}>
           <EmptyState
             title="No programs declared yet."
-            body="A program groups verified parts under one world and rolls their exposure up to a single $/year. Name one above, then assign a verified part to it — its exposure computes the moment it has a home and a declared volume."
+            body="A program groups verified parts, keeps each part's declared world visible, and rolls exposure up to a single $/year. Name one above, then assign a verified part to it — its exposure computes the moment it has a home and a declared volume."
           />
         </div>
       ) : (
@@ -233,6 +281,7 @@ function ProgramDetail({
 }) {
   const assigned = useMemo(() => rowsInProgram(portfolio, program), [portfolio, program]);
   const candidates = useMemo(() => assignableRows(portfolio, program), [portfolio, program]);
+  const world = useMemo(() => programWorldSummary(assigned), [assigned]);
 
   // Exposure = Σ of each assigned part's honest annualized $/year (engine unit
   // cost × USER-declared volume). Withheld entirely until at least one assigned
@@ -256,7 +305,7 @@ function ProgramDetail({
         await refresh();
         toast(
           volume != null
-            ? `${row.filename} assigned to ${program} — inherits its world · exposure computed`
+            ? `${row.filename} assigned to ${program} — exposure computed from declared volume`
             : `${row.filename} assigned to ${program} — exposure computes once a volume is declared`
         );
       } catch (e) {
@@ -316,14 +365,12 @@ function ProgramDetail({
         </span>
       </div>
 
-      {/* Inherit-world — honest. Per-part world today; a single program world that
-          every part inherits is in development, never faked with condition chips. */}
       <div style={{ marginTop: 14, maxWidth: 1100, border: `1px solid ${C.hair}`, borderRadius: 12, background: C.panel, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <InDev label="INHERIT-WORLD IN DEVELOPMENT" />
+        <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", color: world.tone }}>
+          {world.label}
+        </span>
         <span style={{ fontFamily: MONO, fontSize: 10.5, lineHeight: 1.6, color: C.ink50, flex: "1 1 380px" }}>
-          A single world declared once here and inherited by every part is in development. Today each part
-          declares its own world at the environment door on Verify; that world (● USER) travels with the part
-          and is never overwritten when it is assigned to a program.
+          {world.detail}. Worlds are USER-declared on each part at the Verify door and preserved when a part is assigned here.
         </span>
       </div>
 
@@ -333,7 +380,7 @@ function ProgramDetail({
           <Kicker>ASSIGNED PARTS — {NUM(assigned.length)}</Kicker>
           {assigned.length === 0 ? (
             <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 11, lineHeight: 1.7, color: C.ink45 }}>
-              nothing assigned yet — assign a verified part below · it inherits this program&apos;s world and its
+              nothing assigned yet — assign a verified part below · its declared world stays attached and its
               exposure computes the moment it has a declared volume
             </p>
           ) : (
@@ -478,7 +525,7 @@ function AssignedRow({
   );
 }
 
-/** A costed part not yet in this program: assign it, optionally with a volume. */
+/** A costed part outside this program: assign it, optionally with a volume. */
 function CandidateRow({
   row,
   busy,

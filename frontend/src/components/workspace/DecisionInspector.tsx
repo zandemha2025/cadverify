@@ -15,8 +15,7 @@
  *                  fabricated ±%. Plus the data-locality LOCAL badge.
  *   • Sources    — the driver table, each row provenance-tagged + sourced +
  *                  inline-overridable (re-tags USER, re-costs live).
- *   • Audit      — the applied USER overrides for this estimate (the immutable,
- *                  searchable audit log lands with Governance in Phase 2).
+ *   • Audit      — the applied USER overrides for this estimate.
  *
  * Honesty rail preserved: `confidence.validated` is rendered verbatim; DEFAULT
  * is always a hollow outline ("we're guessing here").
@@ -416,8 +415,8 @@ function AuditView({ overrideKeys }: { overrideKeys: string[] }) {
         </ul>
       )}
       <p className="border-t border-border pt-2.5 text-[11px] leading-relaxed text-subtle-foreground">
-        The immutable, searchable, exportable audit log (who changed / ran / exported what) lands
-        with the Governance zone in Phase 2.
+        This panel records the USER overrides applied to the active estimate; exported decisions
+        preserve the same provenance tags.
       </p>
     </div>
   );

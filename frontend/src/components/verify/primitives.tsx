@@ -4,7 +4,7 @@
  * Light-instrument primitives for the Verify surface. Explicit-hex, theme-
  * independent (the app is dark-first; this register is the founder-approved light
  * instrument). These are the honesty atoms: a provenance dot/chip, the hatched
- * (assumption) vs solid (validated) band, the IN DEVELOPMENT badge, cards, kicker.
+ * (assumption) vs solid (validated) band, cards, kicker, and empty states.
  */
 import * as React from "react";
 import { C, MONO, PROV, type Prov } from "@/lib/verify/tokens";
@@ -42,26 +42,6 @@ export function ProvChip({ p, className }: { p: Prov; className?: string }) {
       }}
     >
       {m.glyph} {m.label}
-    </span>
-  );
-}
-
-/** Unshipped feature marker — visible, labelled, never fake-interactive. */
-export function InDev({ label = "IN DEVELOPMENT" }: { label?: string }) {
-  return (
-    <span
-      style={{
-        fontFamily: MONO,
-        fontSize: 9.5,
-        letterSpacing: "0.1em",
-        border: `1px solid ${C.hair}`,
-        color: C.ink45,
-        borderRadius: 4,
-        padding: "2px 7px",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {label}
     </span>
   );
 }
@@ -125,7 +105,7 @@ export function Card({
   );
 }
 
-/** The measurement band: HATCHED = assumption (not yet validated); SOLID =
+/** The measurement band: HATCHED = assumption awaiting validation; SOLID =
  *  measured/validated. `validated` and `label` are rendered VERBATIM from the
  *  engine's confidence object — never a fabricated ±X%. Withheld ≠ zero. */
 export function ConfidenceBand({

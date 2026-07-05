@@ -189,13 +189,13 @@ def test_s3_bucket_rejected_501_no_batch(mock_bs):
     resp = client.post("/api/v1/batch", data={"s3_bucket": "my-bucket"})
 
     assert resp.status_code == 501, resp.text
-    assert resp.json()["detail"]["code"] == "S3_INPUT_NOT_IMPLEMENTED"
+    assert resp.json()["detail"]["code"] == "S3_INPUT_UNSUPPORTED"
     mock_bs.create_batch.assert_not_called()
 
 
 @patch("src.api.batch_router.batch_service")
 def test_manifest_url_rejected_501_no_batch(mock_bs):
-    """manifest_url (like s3) is advertised but unwired -> 501, no orphan."""
+    """manifest_url (like s3) is disabled -> 501, no orphan."""
     mock_bs.create_batch = AsyncMock()
     app = _build_app()
     client = TestClient(app)
@@ -206,7 +206,7 @@ def test_manifest_url_rejected_501_no_batch(mock_bs):
     )
 
     assert resp.status_code == 501, resp.text
-    assert resp.json()["detail"]["code"] == "S3_INPUT_NOT_IMPLEMENTED"
+    assert resp.json()["detail"]["code"] == "S3_INPUT_UNSUPPORTED"
     mock_bs.create_batch.assert_not_called()
 
 

@@ -25,7 +25,7 @@ import {
 } from "@/lib/api";
 import { C, MONO, USD, NUM, procLabel, normProv } from "@/lib/verify/tokens";
 import { fractionToQty, qtyToFraction, nearestQty, makeNowEstimate } from "@/lib/verify/derive";
-import { Kicker, ProvChip, GhostButton, EmptyState, Spinner, InDev } from "./primitives";
+import { Kicker, ProvChip, GhostButton, EmptyState, Spinner } from "./primitives";
 
 /* ---- band lookup: process → qty → {pct, validated, n} from a detail report --- */
 interface Band {

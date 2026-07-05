@@ -13,14 +13,16 @@
  * engine-derived). Stale verdicts (computed before a machine change) are counted,
  * flagged, never served as fresh. Recreated in the light-instrument register.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { C, MONO, NUM, procLabel } from "@/lib/verify/tokens";
-import { Kicker, EmptyState, Spinner, GhostButton, InDev } from "./primitives";
+import { Kicker, EmptyState, Spinner, GhostButton } from "./primitives";
 import {
   fetchMakeability,
   fetchMakeabilityBucket,
   fetchCapabilityInvestment,
   fetchCapabilityUnlocked,
+  importManifestCsv,
   verdictPhrase,
   type MakeabilityRollup,
   type MakeabilitySummary,
@@ -29,8 +31,6 @@ import {
   type CapabilityRanking,
   type CapabilityEntry,
 } from "@/lib/verify/triage-api";
-
-const PAGE = 100;
 
 /** Translucent fill from an opaque hex — the design's soft bucket tint. */
 function tint(hex: string, a: number): string {
@@ -82,8 +82,8 @@ const BUCKETS: BucketDef[] = [
   },
   {
     key: "unknown",
-    label: "Not yet evaluated",
-    desc: "No verdict yet — no declared inventory, or not costed against one. Never assumed makeable.",
+    label: "Evaluation required",
+    desc: "No declared inventory or costed verdict against one. Never assumed makeable.",
     color: C.def,
     primary: false,
   },
@@ -266,6 +266,32 @@ export function TriageScreen({ nav }: { nav: (s: string) => void }) {
 // ── the honest empty / cold-projection state ────────────────────────────────
 function TriageEmpty({ rollup, nav }: { rollup: MakeabilityRollup; nav: (s: string) => void }) {
   const cold = rollup.cold_projection;
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [summary, setSummary] = useState<string | null>(null);
+
+  const onManifest = useCallback(async (file: File) => {
+    setBusy(true);
+    setSummary(null);
+    try {
+      const s = await importManifestCsv(file);
+      const msg = `${s.imported} imported · ${s.updated} updated · ${s.skipped} skipped`;
+      setSummary(msg);
+      toast.success(`Manifest import complete — ${msg}`);
+      if (s.errors.length) {
+        toast.message(`${s.errors.length} row error(s)`, {
+          description: s.errors.slice(0, 3).map((e) => `line ${e.line}: ${e.reason}`).join(" · "),
+        });
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "manifest import failed";
+      setSummary(msg);
+      toast.error(msg);
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
   return (
     <div style={{ marginTop: 26, maxWidth: 660 }}>
       <EmptyState
@@ -281,8 +307,22 @@ function TriageEmpty({ rollup, nav }: { rollup: MakeabilityRollup; nav: (s: stri
           <GhostButton primary onClick={() => nav("verify")}>
             Verify a part
           </GhostButton>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".csv,text/csv"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void onManifest(f);
+              e.target.value = "";
+            }}
+          />
+          <GhostButton onClick={() => fileRef.current?.click()} disabled={busy}>
+            {busy ? "Importing…" : "Import manifest CSV"}
+          </GhostButton>
           <p style={{ margin: 0, display: "flex", alignItems: "center", gap: 8, fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
-            bulk BOM ingest binds to POST /manifest/import <InDev label="BULK IMPORT — IN DEVELOPMENT" />
+            {summary ?? "bulk BOM ingest posts to /manifest/import with per-line errors"}
           </p>
         </div>
       </EmptyState>

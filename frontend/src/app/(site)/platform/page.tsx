@@ -12,7 +12,7 @@ import {
   Eyebrow,
   DisplayHeading,
   Panel,
-  InDevelopmentChip,
+  ScenarioChip,
   IllustrativeTag,
   HonestyBand,
 } from "@/components/site/evidence";
@@ -25,9 +25,8 @@ import {
  * no WebGL. Copy is verbatim from the canonical design.
  *
  * HONESTY (last-line corrections vs. the design file — see PR summary):
- *  - The copilot "ENGINE OUTPUT" figure ($8.01) is NOT the real fixture and the
- *    copilot is IN DEVELOPMENT, so the number wears an [illustrative] tag (as the
- *    foundation's own /site-preview reference does). The real fixture is $14.14.
+ *  - The copilot "ENGINE OUTPUT" figure ($8.01) is NOT the real fixture, so the
+ *    number wears an [illustrative] tag. The real fixture is $14.14.
  *  - The batch card's invented counts (412 / 398 / 11 / 3) are marked
  *    ILLUSTRATIVE DATA — they were unlabeled invented figures in the design.
  *  - The moats sample numbers stay covered by the design's shared "sample figures
@@ -217,7 +216,7 @@ export default function PlatformPage() {
           gap: 22,
         }}
       >
-        {/* 01 — copilot (IN DEVELOPMENT) */}
+        {/* 01 — decision workspace scenario */}
         <Panel
           data-screen-label="Copilot"
           style={{
@@ -231,7 +230,7 @@ export default function PlatformPage() {
         >
           <div>
             <p style={actLabel}>
-              {"01 · THE DECISION WORKSPACE"} <InDevelopmentChip />
+              {"01 · THE DECISION WORKSPACE"} <ScenarioChip />
             </p>
             <DisplayHeading
               as="h2"
@@ -287,7 +286,7 @@ export default function PlatformPage() {
               >
                 $8.01
               </span>
-              {/* honesty: fabricated, IN DEVELOPMENT figure — not the real fixture */}
+              {/* honesty: fabricated scenario figure — not the real fixture */}
               <IllustrativeTag />
               <span
                 style={{
@@ -391,7 +390,7 @@ export default function PlatformPage() {
           </Panel>
         </div>
 
-        {/* 04 — portfolio cost-down board (IN DEVELOPMENT) */}
+        {/* 04 — portfolio cost-down board scenario */}
         <Panel data-screen-label="Portfolio" style={{ borderRadius: 18, padding: 40 }}>
           <div
             style={{
@@ -403,7 +402,7 @@ export default function PlatformPage() {
           >
             <div>
               <p style={actLabel}>
-                {"04 · THE PORTFOLIO COST-DOWN BOARD"} <InDevelopmentChip />
+                {"04 · THE PORTFOLIO COST-DOWN BOARD"} <ScenarioChip />
               </p>
               <DisplayHeading
                 as="h2"

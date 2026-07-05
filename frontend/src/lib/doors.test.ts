@@ -26,10 +26,10 @@ test("DOORS: exactly the three co-equal doors, each with a first verb", () => {
   }
 });
 
-test("DOORS: only the part door is live; cost/portfolio carry an honest phase", () => {
-  assert.equal(doorById("part").phase, undefined);
-  assert.equal(typeof doorById("cost").phase, "string");
-  assert.equal(typeof doorById("portfolio").phase, "string");
+test("DOORS: all doors are live launch points", () => {
+  for (const d of DOORS) {
+    assert.equal(Object.hasOwn(d, "phase"), false, `${d.id} does not expose roadmap phase metadata`);
+  }
 });
 
 test("DOOR_STORAGE_KEY is the persisted cv_door key", () => {

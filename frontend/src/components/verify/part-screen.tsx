@@ -486,7 +486,7 @@ function StandingCard({
     );
   }
 
-  // drafted — analyzed, not yet costed
+  // drafted — analyzed, cost required
   return (
     <div
       style={{
@@ -496,11 +496,11 @@ function StandingCard({
         padding: "20px 22px",
       }}
     >
-      <Kicker color={C.cond}>DRAFTED — ANALYZED, NOT YET COSTED</Kicker>
+      <Kicker color={C.cond}>DRAFTED — ANALYZED, COST REQUIRED</Kicker>
       <p style={{ margin: "10px 0 0", fontSize: 19, fontWeight: 400 }}>
         {standing.process
           ? `DFM route so far: ${procLabel(standing.process)}`
-          : "Geometry parsed — no route costed yet."}
+          : "Geometry parsed — route costing required."}
       </p>
       <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink50 }}>
         no should-cost until it&apos;s costed against your floor — nothing here is guessed

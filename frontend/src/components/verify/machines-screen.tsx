@@ -28,7 +28,7 @@ import {
 } from "@/lib/verify/machine-catalog-api";
 import { effectiveRateCard, listRateVersions, type EffectiveRateCard, type RateVersionsPage } from "@/lib/verify/rate-api";
 import { fetchCostDecisions, type CostDecisionSummary } from "@/lib/api";
-import { Kicker, ProvDot, ProvChip, GhostButton, EmptyState, Spinner, InDev } from "./primitives";
+import { Kicker, ProvDot, GhostButton, EmptyState, Spinner } from "./primitives";
 
 const PROCESS_OPTIONS = Object.keys(PROCESS_LABELS);
 
@@ -307,9 +307,9 @@ function MachineDetail({
 }
 
 /** Rate history read from the REAL rate-library. A machine carries a single scalar
- *  USER rate; version-pinned SHOP history exists only once a governed accounting
- *  card is bound. We show exactly what is true: the declared rate + whether a
- *  governed card is currently in effect. Per-machine governed binding is IN DEV. */
+ *  USER rate; version-pinned governed history is shown through the effective card.
+ *  We show exactly what is true: the declared rate + whether a governed card is
+ *  currently in effect. */
 function RateHistory({ m }: { m: OwnedMachine }) {
   const [eff, setEff] = useState<EffectiveRateCard | null>(null);
   const [versions, setVersions] = useState<RateVersionsPage | null>(null);
@@ -365,10 +365,10 @@ function RateHistory({ m }: { m: OwnedMachine }) {
         )}
       </div>
 
-      <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, color: C.ink40 }}>old verdicts keep the rate version they were computed with</p>
-        <InDev label="PER-MACHINE GOVERNED BINDING — IN DEVELOPMENT" />
-      </div>
+      <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40, lineHeight: 1.6 }}>
+        old verdicts keep the rate version they were computed with · current effective card:{" "}
+        {usingGoverned ? "governed published card" : "default table / user machine rate"}
+      </p>
     </section>
   );
 }

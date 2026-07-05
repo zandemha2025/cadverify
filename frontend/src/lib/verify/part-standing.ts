@@ -73,7 +73,7 @@ export function standingTag(row: CatalogRowApi): StandingTag {
       return { label: "GEOMETRY INVALID", tone: "fail" };
     case "drafted":
     default:
-      return { label: "DRAFTED — NOT YET COSTED", tone: "cond" };
+      return { label: "DRAFTED — COST REQUIRED", tone: "cond" };
   }
 }
 

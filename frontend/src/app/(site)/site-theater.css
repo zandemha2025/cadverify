@@ -58,7 +58,7 @@
 
   /* ---- status (DARK column) ---- */
   --st-pass: #55b880;
-  --st-conditional: #d9a856;   /* "if redesigned", IN DEVELOPMENT chip hue */
+  --st-conditional: #d9a856;   /* conditional / scenario hue */
   --st-fail: #c96a5e;
 
   /* ---- shape ---- */

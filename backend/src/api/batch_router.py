@@ -74,8 +74,8 @@ async def create_batch(
     """Create a batch for bulk analysis (job_type=dfm) or should-costing
     (job_type=cost).
 
-    Accepts a ZIP file upload. (S3 input is advertised but not yet implemented --
-    see F-ARCH-5: rejected up front with 501 rather than orphaned per-item.)
+    Accepts a ZIP file upload. Remote object-store references are rejected up
+    front with 501 on this server rather than creating orphaned per-item work.
     Returns 202 with batch_id and status URL.
     """
     # W3: validate the job type. Invalid -> 422 structured (mirrors FastAPI's
@@ -111,25 +111,24 @@ async def create_batch(
             },
         )
 
-    # F-ARCH-5 (S3/manifest honesty): the coordinator raises NotImplementedError
-    # per item for remote input, orphaning the batch. Announce, don't orphan:
+    # F-ARCH-5 (S3/manifest honesty): remote object input requires an object-fetch
+    # adapter. Announce, don't orphan:
     # reject at the API with a stable 501 -- BEFORE any Batch row is created (and
     # before we buffer a ZIP) -- so no doomed 'pending' batch is ever persisted.
-    # Covers s3_bucket/s3_prefix AND manifest_url (all advertised, none wired).
-    # Flip S3_INPUT_ENABLED=1 once the connectors wall (W2) lands the real fetch.
+    # Covers s3_bucket/s3_prefix AND manifest_url when the server is not
+    # configured for remote ingestion.
     if not _flag("S3_INPUT_ENABLED", "0") and (
         s3_bucket is not None or s3_prefix is not None or manifest_url is not None
     ):
         raise HTTPException(
             status_code=501,
             detail={
-                "code": "S3_INPUT_NOT_IMPLEMENTED",
+                "code": "S3_INPUT_UNSUPPORTED",
                 "message": (
-                    "S3/manifest batch input is not yet available; upload a ZIP "
-                    "file instead. Remote ingestion is scheduled for the "
-                    "connectors release (W2)."
+                    "S3/manifest batch input is not enabled on this server; "
+                    "upload a ZIP file or import a manifest CSV instead."
                 ),
-                "doc_url": f"{DOC_BASE}/S3_INPUT_NOT_IMPLEMENTED",
+                "doc_url": f"{DOC_BASE}/S3_INPUT_UNSUPPORTED",
             },
         )
 

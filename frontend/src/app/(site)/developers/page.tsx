@@ -131,7 +131,7 @@ export default function DevelopersPage() {
             </p>
             <p className={styles.jsonLine} style={{ color: "rgba(245,245,247,0.6)", animationDelay: "1550ms" }}>
               {I1}&quot;line_items&quot;: {"{"} &quot;labor&quot;: 6.39, &quot;amortized_fixed&quot;: 3.89, &quot;machine&quot;: 3.82, &quot;material&quot;: 0.04 {"}"}{I1}
-              <span style={{ color: PASS }}>// Σ = 14.14 ✓</span>
+              <span style={{ color: PASS }}>{"// Σ = 14.14 ✓"}</span>
             </p>
             <p className={styles.jsonLine} style={{ color: "rgba(245,245,247,0.6)", animationDelay: "1800ms" }}>
               {"}"}
@@ -178,8 +178,7 @@ export default function DevelopersPage() {
           </div>
           <div style={responseBlock}>
             <p style={{ margin: 0, color: "rgba(245,245,247,0.35)" }}>
-              // two calls, one record: /validate answers makeability (routing + DFM); /validate/cost returns the
-              resource-cost record — nothing withheld
+              {"// two calls, one record: /validate answers makeability (routing + DFM); /validate/cost returns the resource-cost record — nothing withheld"}
             </p>
             <p style={respLine}>{"{"}</p>
             <p style={respLine}>

@@ -15,12 +15,14 @@
  * same numbers the Verdict walk shows, tagged ○ MODEL because hours/costs are
  * MODEL). NO capex is invented: the standalone tool price, payback period, and the
  * shared-cell amortization / "which acquisition unlocks the most parts" org ranking
- * are NOT built — they render as explicit IN DEVELOPMENT, never fabricated. When
+ * read from the capability-investment endpoint. Standalone purchase price remains
+ * withheld because the engine does not produce vendor capex. When
  * there is no cost, no decision, or no not-owned route, the honest empty state
  * shows — never a fake chart.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { C, MONO, USD, NUM, procLabel } from "@/lib/verify/tokens";
+import { fetchCapabilityInvestment, type CapabilityRanking } from "@/lib/verify/triage-api";
 import type { VerifyResult } from "@/lib/verify/run";
 import {
   makeNowEstimate,
@@ -30,7 +32,7 @@ import {
   fractionToQty,
   qtyToFraction,
 } from "@/lib/verify/derive";
-import { Kicker, ProvChip, InDev, GhostButton, EmptyState } from "./primitives";
+import { Kicker, ProvChip, GhostButton, EmptyState, Spinner } from "./primitives";
 
 type Nav = (screen: string) => void;
 
@@ -171,6 +173,8 @@ function FullConsideration({
   nav: Nav;
   onClose: () => void;
 }) {
+  const [capability, setCapability] = useState<CapabilityRanking | null>(null);
+  const [capabilityError, setCapabilityError] = useState<string | null>(null);
   const scrubQty = fractionToQty(scrubFrac, Q_MIN, Q_MAX);
   const snappedQty = nearestQty(cost.quantities, scrubQty);
   const makeAt = makeNowEstimate(cost, snappedQty);
@@ -193,6 +197,27 @@ function FullConsideration({
       : crossover != null
         ? snappedQty <= crossover
         : null;
+
+  useEffect(() => {
+    let live = true;
+    fetchCapabilityInvestment().then(
+      (r) => {
+        if (!live) return;
+        setCapability(r);
+        setCapabilityError(null);
+      },
+      (e) => {
+        if (!live) return;
+        setCapability(null);
+        setCapabilityError(e instanceof Error ? e.message : "capability ranking unavailable");
+      }
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const relevant = capability?.ranking.filter((r) => r.acquisition.process === toolProc).slice(0, 3) ?? [];
 
   return (
     <>
@@ -295,21 +320,35 @@ function FullConsideration({
         </p>
       </div>
 
-      {/* ── org-wide capex planning — HONEST IN DEVELOPMENT (no invented capex) ── */}
+      {/* ── org-wide capability ranking — real rows, no invented purchase price ── */}
       <div style={{ marginTop: 16, border: `1px solid ${C.hair}`, borderRadius: 12, background: C.bg, padding: "14px 16px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <p style={{ margin: 0, fontSize: 13.5, fontWeight: 500 }}>Capital &amp; payback, org-wide</p>
-          <InDev />
         </div>
         <p style={{ margin: "8px 0 0", fontSize: 12.5, lineHeight: 1.6, color: C.ink60 }}>
           The engine computes the break-even quantity{crossover != null ? <> (<span style={{ fontFamily: MONO }}>{NUM(crossover)}</span> units)</> : ""}. The
-          standalone tool price, payback period, and shared-cell amortization across the rest of your BOM —
-          which parts one acquisition unlocks, and how the fixed cost spreads — are designed and not yet wired.
-          No capex figure is invented here.
+          standalone vendor tool price is not an engine output, so no purchase price is printed here. The org-wide
+          capability ranking below is read from the same makeability projection as Triage.
         </p>
-        <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
-          binds to the capability-investment ranking (parts × shared cell) — decision.crossover_qty is live today
-        </p>
+        {capability === null && !capabilityError ? (
+          <div style={{ marginTop: 10 }}><Spinner label="reading capability ranking…" /></div>
+        ) : capabilityError ? (
+          <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10, color: C.cond }}>{capabilityError}</p>
+        ) : relevant.length > 0 ? (
+          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6, fontFamily: MONO, fontSize: 10.5 }}>
+            {relevant.map((r) => (
+              <div key={`${r.acquisition.process}-${r.acquisition.gate ?? "gate"}`} style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <span style={{ color: C.shop }}>{r.acquisition.process_label}</span>
+                <span style={{ color: C.ink45, flex: 1 }}>{r.acquisition.gate ?? r.acquisition.kind}</span>
+                <span style={{ color: C.ink }}>{NUM(r.parts_unlocked)} part{r.parts_unlocked === 1 ? "" : "s"} unlocked</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
+            no current triage row names {procLabel(toolProc)} as the single acquisition unlocker
+          </p>
+        )}
       </div>
 
       {note && (
@@ -321,9 +360,7 @@ function FullConsideration({
       {/* ── actions ──────────────────────────────────────────────────────── */}
       <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <GhostButton onClick={() => nav("triage")}>See parts that need new capability →</GhostButton>
-        <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 8 }}>
-          <InDev label="ADD TO CAPABILITY PLAN — PENDING" />
-        </span>
+        <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>capability plan source: Triage ranking</span>
         <GhostButton onClick={onClose}>Not now</GhostButton>
       </div>
     </>

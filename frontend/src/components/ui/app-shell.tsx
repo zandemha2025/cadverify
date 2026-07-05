@@ -9,9 +9,7 @@
  *
  * The Inspector (340) is a PER-DECISION zone owned by the L2 object frame
  * (PartWorkspace), so it mounts inside `children`, not here — the shell reserves
- * the frame and hosts navigation. For Phase 0 the shell hosts the single-part
- * cost/DFM loop; the full Catalog home lands in Phase 1, so the catalog domains
- * are present-but-disabled placeholders (no faked catalog data).
+ * the frame and hosts navigation for the routes that exist in this app tree.
  *
  * Server-gated upstream (AppLayout → verifySession); this is presentation only.
  */
@@ -23,12 +21,6 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import {
   Boxes,
-  Table2,
-  LayoutDashboard,
-  ArrowLeftRight,
-  Settings2,
-  Scale,
-  Cable,
   Code2,
   Command,
   Search,
@@ -38,11 +30,9 @@ import {
   History,
   PiggyBank,
   GitCompareArrows,
-  BookOpen,
   PanelLeftClose,
   PanelLeftOpen,
   ChevronRight,
-  ChevronDown,
   User,
   LogOut,
   Lock,
@@ -67,25 +57,17 @@ type RailItem = {
   id: string;
   label: string;
   icon: LucideIcon;
-  href?: string;
-  phase?: string; // present-but-disabled placeholder for a later wall
+  href: string;
 };
 const RAIL: RailItem[] = [
   { id: "home", label: "Workbench", icon: Boxes, href: "/cost" },
-  { id: "catalog", label: "Catalog", icon: Table2, phase: "Phase 1" },
-  { id: "portfolio", label: "Portfolio", icon: LayoutDashboard, phase: "Phase 3" },
-  { id: "sourcing", label: "Sourcing", icon: ArrowLeftRight, phase: "Phase 4" },
-  { id: "calibration", label: "Calibration", icon: Settings2, phase: "Phase 2" },
-  { id: "governance", label: "Governance", icon: Scale, phase: "Phase 2" },
-  { id: "connect", label: "Connect", icon: Cable, phase: "Phase 4" },
+  { id: "analyze", label: "Analyze DFM", icon: ScanLine, href: "/analyze" },
+  { id: "batch", label: "Batch runs", icon: Layers, href: "/batch" },
+  { id: "decisions", label: "Cost decisions", icon: PiggyBank, href: "/cost-decisions" },
+  { id: "history", label: "Recent analyses", icon: History, href: "/history" },
 ];
 
 function railActive(pathname: string, item: RailItem): boolean {
-  if (!item.href) return false;
-  if (item.id === "home")
-    return ["/cost", "/analyze", "/cost-decisions", "/history", "/batch"].some(
-      (p) => pathname === p || pathname.startsWith(p + "/")
-    );
   return pathname === item.href || pathname.startsWith(item.href + "/");
 }
 
@@ -118,9 +100,7 @@ function IconRail() {
                 "relative flex size-9 items-center justify-center rounded-[var(--radius-sm)] transition-colors",
                 active
                   ? "bg-accent-subtle text-primary"
-                  : item.href
-                    ? "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    : "text-subtle-foreground/60"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
               {active && (
@@ -132,15 +112,9 @@ function IconRail() {
           return (
             <Tooltip.Root key={item.id}>
               <Tooltip.Trigger asChild>
-                {item.href ? (
-                  <Link href={item.href} aria-label={item.label} aria-current={active ? "page" : undefined}>
-                    {inner}
-                  </Link>
-                ) : (
-                  <span aria-disabled className="cursor-default">
-                    {inner}
-                  </span>
-                )}
+                <Link href={item.href} aria-label={item.label} aria-current={active ? "page" : undefined}>
+                  {inner}
+                </Link>
               </Tooltip.Trigger>
               <Tooltip.Portal>
                 <Tooltip.Content
@@ -149,9 +123,6 @@ function IconRail() {
                   className="z-[90] rounded-[var(--radius-sm)] border border-border bg-card px-2 py-1 text-xs text-foreground shadow-pop"
                 >
                   {item.label}
-                  {item.phase && (
-                    <span className="ml-1.5 text-subtle-foreground">· {item.phase}</span>
-                  )}
                 </Tooltip.Content>
               </Tooltip.Portal>
             </Tooltip.Root>
@@ -166,8 +137,7 @@ function IconRail() {
   );
 }
 
-/* ── L1 sidebar — object lists + saved views within a domain. Phase 0 lists the
-   REAL destinations of the single-part loop (no faked catalog rows). ───────── */
+/* ── L1 sidebar — object lists + saved views within a domain. ───────── */
 type NavLink = { label: string; href: string; icon: LucideIcon; hint?: string };
 const WORKSPACE_NAV: NavLink[] = [
   { label: "New analysis", href: "/cost", icon: Calculator, hint: "should-cost · make-vs-buy" },
@@ -242,16 +212,6 @@ function AppSidebar() {
 
       <SidebarSection title="Workspace" links={WORKSPACE_NAV} />
       <SidebarSection title="Ledger" links={LEDGER_NAV} />
-
-      {/* Saved Views — the Phase-1 catalog primitive; scaffolded, not faked. */}
-      <div className="px-2">
-        <p className="px-2 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-subtle-foreground">
-          Saved views
-        </p>
-        <p className="rounded-[var(--radius-sm)] border border-dashed border-border px-2.5 py-2 text-xs leading-relaxed text-subtle-foreground">
-          Pinned catalog queries land with the Governed Catalog in Phase 1.
-        </p>
-      </div>
 
       <div className="flex-1" />
       <p className="p-3 text-[10px] leading-relaxed text-subtle-foreground">

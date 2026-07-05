@@ -5,10 +5,6 @@
  * three first verbs (DROP / OVERRIDE / TRIAGE). Picking one persists `cv_door`
  * and routes; it walls nothing off — every door stays one "Switch door" away.
  *
- * The `part` door is live today; the `cost` and `portfolio` doors carry their
- * honest roadmap phase (mirroring the rail) so the chooser never oversells a
- * surface that lands in FE-4 / FE-5.
- *
  * Tempo-aware via the shared motion primitives: the first session gets the full
  * showcase choreography, returning sessions get the working (near-instant) pace.
  */
@@ -94,11 +90,7 @@ function DoorCard({
         >
           <Icon className="size-[18px]" />
         </span>
-        {door.phase ? (
-          <span className="cv-eyebrow text-subtle-foreground">{door.phase}</span>
-        ) : (
-          <span className="num cv-eyebrow text-accent-text">Live</span>
-        )}
+        <span className="num cv-eyebrow text-accent-text">Live</span>
       </div>
 
       <span className="num mt-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-accent-text">

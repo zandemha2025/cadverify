@@ -16,7 +16,8 @@
  *   - MEMBERS      → admin /users (+ role PATCH). Gated to org-admin (honest).
  *   - AUDIT LOG    → admin /audit-log (immutable, CSV-exportable).
  *   - API KEYS     → /api/v1/keys (real; prefix only).
- *   - WEBHOOKS delivery-log + USAGE metering → NO backend → IN DEVELOPMENT.
+ *   - USAGE        → admin /usage-summary (real persisted counters).
+ *   - WEBHOOKS     → admin /webhook-deliveries (real delivery log).
  *
  * The design's demo org (Midwest Precision CNC, v13, $52→$54, 214 verifications,
  * fake webhook deliveries) is ILLUSTRATIVE mockup data and is NOT reproduced.
@@ -28,9 +29,6 @@ import {
   Card,
   Kicker,
   ProvChip,
-  ProvDot,
-  InDev,
-  EmptyState,
   GhostButton,
   Spinner,
 } from "./primitives";
@@ -50,6 +48,8 @@ import {
   updateMemberRole,
   getAuditLog,
   auditLogCsvUrl,
+  getUsageSummary,
+  listWebhookDeliveries,
   listKeys,
   ASSIGNABLE_ROLES,
   type RateVersionsPage,
@@ -61,6 +61,8 @@ import {
   type InsufficientGroundTruth,
   type Member,
   type AuditEntry,
+  type UsageSummary,
+  type WebhookDelivery,
   type ApiKey,
 } from "@/lib/verify/calibration-api";
 
@@ -412,11 +414,13 @@ function HallmarkPanel() {
   );
 }
 
-// ── API & USAGE — real keys; usage metering IN DEVELOPMENT ───────────────────
+// ── API & USAGE — real keys + persisted usage counters ──────────────────────
 
 function ApiUsagePanel() {
   const [keys, setKeys] = useState<ApiKey[] | null>(null);
+  const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [usageError, setUsageError] = useState<string | null>(null);
 
   useEffect(() => {
     let dead = false;
@@ -434,26 +438,50 @@ function ApiUsagePanel() {
     };
   }, []);
 
+  useEffect(() => {
+    let dead = false;
+    getUsageSummary(30).then(
+      (u) => !dead && setUsage(u),
+      (e) => {
+        if (!dead) {
+          setUsage(null);
+          setUsageError(isGated(e) ? "org-admin required to read usage" : msg(e, "could not load usage"));
+        }
+      }
+    );
+    return () => {
+      dead = true;
+    };
+  }, []);
+
   const active = (keys ?? []).filter((k) => !k.revoked_at);
+  const counts = usage?.counts;
 
   return (
     <Card style={{ padding: "20px 22px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <Kicker>API &amp; USAGE</Kicker>
-        <span style={{ marginLeft: "auto" }}>
-          <InDev label="USAGE METERING — IN DEVELOPMENT" />
-        </span>
-      </div>
+      <Kicker>API &amp; USAGE</Kicker>
 
-      {/* usage counters have NO backend — do not fabricate the design's numbers */}
       <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 7, fontFamily: MONO, fontSize: 11.5 }}>
-        <RowKV k="verifications this month" v="—" vColor={C.ink40} />
-        <RowKV k="API calls" v="—" vColor={C.ink40} />
-        <RowKV k="webhook deliveries" v="—" vColor={C.ink40} />
+        {usage === null && !usageError ? (
+          <Spinner label="loading usage…" />
+        ) : (
+          <>
+            <RowKV k="DFM analyses (30d)" v={String(counts?.analyses ?? 0)} vColor={counts?.analyses ? C.ink : C.ink45} />
+            <RowKV k="saved cost decisions (30d)" v={String(counts?.cost_decisions ?? 0)} vColor={counts?.cost_decisions ? C.ink : C.ink45} />
+            <RowKV k="usage-event rows (30d)" v={String(counts?.usage_events ?? 0)} vColor={counts?.usage_events ? C.ink : C.ink45} />
+            <RowKV k="webhook deliveries (30d)" v={String(counts?.webhook_deliveries ?? 0)} vColor={counts?.webhook_deliveries ? C.ink : C.ink45} />
+          </>
+        )}
       </div>
-      <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink35 }}>
-        no usage-metering backend yet — withheld, not estimated
-      </p>
+      {usageError ? (
+        <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.cond }}>
+          {usageError}
+        </p>
+      ) : (
+        <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink35 }}>
+          read from analyses, cost_decisions, usage_events, and webhook_deliveries — no mock counters
+        </p>
+      )}
 
       {/* real developer keys (prefix only; the secret is shown once at creation) */}
       <div style={{ marginTop: 16 }}>
@@ -768,23 +796,37 @@ function MembersPanel() {
   );
 }
 
-// ── WEBHOOKS — no backend → IN DEVELOPMENT ───────────────────────────────────
+// ── WEBHOOKS — real delivery log ─────────────────────────────────────────────
 
 function WebhooksPanel() {
+  const [deliveries, setDeliveries] = useState<WebhookDelivery[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let dead = false;
+    listWebhookDeliveries(12).then(
+      (p) => !dead && setDeliveries(p.deliveries),
+      (e) => {
+        if (!dead) {
+          setDeliveries([]);
+          setError(isGated(e) ? "org-admin required to read delivery log" : msg(e, "could not load deliveries"));
+        }
+      }
+    );
+    return () => {
+      dead = true;
+    };
+  }, []);
+
   return (
     <Card style={{ padding: "20px 22px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <Kicker>WEBHOOKS — THE RECORD, PUSHED</Kicker>
-        <span style={{ marginLeft: "auto" }}>
-          <InDev />
-        </span>
-      </div>
+      <Kicker>WEBHOOKS — THE RECORD, PUSHED</Kicker>
       <p style={{ margin: "12px 0 0", fontSize: 12.5, lineHeight: 1.6, color: C.ink55 }}>
         Push the full verification record — with provenance, the same JSON the API returns — to your
         PLM/ERP on <span style={{ fontFamily: MONO, fontSize: 11.5, color: C.ink }}>verification.completed</span>,{" "}
         <span style={{ fontFamily: MONO, fontSize: 11.5, color: C.ink }}>validation.flipped</span>, and more.
       </p>
-      <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 7, opacity: 0.55, fontFamily: MONO, fontSize: 10.5 }}>
+      <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 7, fontFamily: MONO, fontSize: 10.5 }}>
         {["verification.completed", "validation.flipped", "triage.finished", "decision.recorded"].map((e) => (
           <span key={e} style={{ border: `1px solid #dcdce0`, color: C.ink50, borderRadius: 999, padding: "5px 12px" }}>
             {e}
@@ -792,9 +834,24 @@ function WebhooksPanel() {
         ))}
       </div>
       <div style={{ marginTop: 12, borderTop: `1px solid #efeff2`, paddingTop: 10 }}>
-        <p style={{ margin: 0, fontFamily: MONO, fontSize: 10.5, color: C.ink45 }}>
-          delivery log — no delivery backend yet; nothing is fabricated here
-        </p>
+        {deliveries === null ? (
+          <Spinner label="loading deliveries…" />
+        ) : deliveries.length === 0 ? (
+          <p style={{ margin: 0, fontFamily: MONO, fontSize: 10.5, color: error ? C.cond : C.ink45, lineHeight: 1.6 }}>
+            {error ?? "no webhook deliveries recorded yet — the log is empty because no batch webhook has fired"}
+          </p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", fontFamily: MONO, fontSize: 10.5 }}>
+            {deliveries.map((d) => (
+              <div key={d.id} style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr 0.6fr 1fr", gap: 10, alignItems: "center", padding: "9px 0", borderBottom: `1px solid #f0f0f3` }}>
+                <span style={{ color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.event_type}</span>
+                <span style={{ color: d.status === "delivered" ? C.pass : d.status === "failed" ? C.fail : C.cond }}>{d.status}</span>
+                <span style={{ color: C.ink45 }}>{d.response_code ?? "—"} · {d.attempts}x</span>
+                <span style={{ color: C.ink45, textAlign: "right" }}>{fmtStamp(d.last_attempt_at ?? d.created_at)}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </Card>
   );

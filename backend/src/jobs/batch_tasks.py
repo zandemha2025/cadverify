@@ -272,14 +272,16 @@ async def _run_cost_item(session, batch, item) -> dict:
 
     start = time.time()
 
-    # ---- read bytes (zip only; s3 stays NotImplemented, same as DFM) --------
+    # ---- read bytes (zip only unless a remote object adapter is configured) --
     if batch.input_mode == "zip":
         blob_dir = _os.getenv("BATCH_BLOB_DIR", "/data/blobs/batch")
         file_path = _os.path.join(blob_dir, batch.ulid, item.filename)
         with open(file_path, "rb") as f:
             file_bytes = f.read()
     elif batch.input_mode == "s3":
-        raise NotImplementedError("S3 item fetch not yet implemented")
+        raise RuntimeError(
+            "S3 batch item fetch is unsupported on this server; upload a ZIP batch or import a manifest CSV."
+        )
     else:
         raise ValueError(f"Unknown input_mode: {batch.input_mode}")
 
@@ -480,8 +482,9 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
                     with open(file_path, "rb") as f:
                         file_bytes = f.read()
                 elif batch.input_mode == "s3":
-                    # S3 fetch placeholder -- would use boto3 in production
-                    raise NotImplementedError("S3 item fetch not yet implemented")
+                    raise RuntimeError(
+                        "S3 batch item fetch is unsupported on this server; upload a ZIP batch or import a manifest CSV."
+                    )
                 else:
                     raise ValueError(f"Unknown input_mode: {batch.input_mode}")
 

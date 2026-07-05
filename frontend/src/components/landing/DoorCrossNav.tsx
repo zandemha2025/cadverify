@@ -54,7 +54,6 @@ export function DoorCrossNav({ nav, className }: { nav: DoorNav; className?: str
           >
             <Icon className="size-3.5 text-subtle-foreground" />
             Open {d.object}
-            {d.phase && <span className="text-subtle-foreground">· {d.phase}</span>}
           </button>
         );
       })}

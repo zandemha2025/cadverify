@@ -21,7 +21,7 @@ import { TriageScreen } from "./triage-screen";
 import { CalibrationScreen } from "./calibration-screen";
 import { HomeScreen } from "./home-screen";
 import { ProgramScreen } from "./program-screen";
-import { CommandPalette, NotificationsPanel } from "./stub-screens";
+import { CommandPalette, NotificationsPanel } from "./command-surfaces";
 import { AcquisitionModal } from "./acquisition-modal";
 import { PartScreen } from "./part-screen";
 import { ToastProvider } from "./toast";

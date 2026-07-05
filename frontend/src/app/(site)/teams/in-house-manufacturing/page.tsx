@@ -8,7 +8,7 @@ import Link from "next/link";
 // their own modules. See sharedChangeRequests re: adding "use client" to
 // scroll-acts.ts so the barrel is server-safe.
 import { SiteShell } from "@/components/site/site-shell";
-import { IllustrativeTag, InDevelopmentChip } from "@/components/site/evidence";
+import { IllustrativeTag, ScenarioChip } from "@/components/site/evidence";
 
 /**
  * /teams/in-house-manufacturing — "For In-House Manufacturing · MRO".
@@ -27,9 +27,9 @@ import { IllustrativeTag, InDevelopmentChip } from "@/components/site/evidence";
  *    illustrative gearbox-BOM batch, cf. Platform.dc.html / Product Triage).
  *    The design left them unlabeled. Here they carry <IllustrativeTag/>,
  *    matching the product's "[illustrative rows] / [illustrative ranking]".
- *  - Triage-at-scale is marked IN DEVELOPMENT (as on Platform.dc.html "THE
- *    DECISION WORKSPACE" and For Sourcing's portfolio board) so an unshipped
- *    batch capability is not presented as already shipped.
+ *  - Triage-at-scale carries a scenario marker (as on Platform.dc.html "THE
+ *    DECISION WORKSPACE" and For Sourcing's portfolio board) so illustrative
+ *    batch figures are not presented as measured customer output.
  * Everything else is the real fixture (object.stl · Ø21.16 × 21.43 ·
  * $30/$95 rates · $14.14 · 0.068 hr · lead 5.6–10.4 d) or the honesty
  * principle itself (withheld ≠ zero; hatched → solid on measured jobs).
@@ -216,11 +216,11 @@ export default function InHouseManufacturingPage() {
           </div>
         </Act>
 
-        {/* 04 — triage at scale (IN DEVELOPMENT; illustrative figures) */}
+        {/* 04 — triage at scale scenario; illustrative figures */}
         <Act n="04">
           <h2 style={{ ...H2, display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
             Then run the whole legacy catalog.
-            <InDevelopmentChip style={{ transform: "translateY(-2px)" }} />
+            <ScenarioChip style={{ transform: "translateY(-2px)" }} />
           </h2>
           <p style={BODY}>
             Triage at scale: the ten-thousand-part backlog collapses into honest buckets &mdash;

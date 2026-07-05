@@ -11,9 +11,8 @@
  *
  * Every queue count, every pulse KPI and every savings figure is computed (pure,
  * `lib/portfolio`) over the HYDRATED parts — real engine fields, no fabricated
- * portfolio-scale number. The savings pipeline is HONEST-THIN: portfolio-scale
- * rolled-up $ is W3 (not built) and stated plainly; what's shown is the real
- * per-part redesign delta where the engine offers a cheaper alternative.
+ * portfolio-scale number. Portfolio totals stay withheld unless their required
+ * saved costs, paid baselines, and volumes exist.
  *
  * This surface only ever mounts under `NEXT_PUBLIC_STAGE_UI` (via LandingRouter),
  * so flag-off never ships it.
@@ -229,10 +228,8 @@ export function PortfolioDoor({ nav }: { nav: DoorNav }) {
               <p>
                 Triage runs over the <span className="text-muted-foreground">{pulse.assessed}</span>{" "}
                 {pulse.assessed === 1 ? "part" : "parts"} you&apos;ve costed — every count and posture
-                figure is real, none is a portfolio-scale estimate. The one-call governed rollup
-                across a full portfolio (and the DFM-batch aggregate) lands in{" "}
-                <span className="text-muted-foreground">Phase 3</span>; run many parts at once today
-                in a{" "}
+                figure is real, and portfolio-scale totals stay withheld unless the required saved
+                parts and volume inputs exist. Run many parts at once in a{" "}
                 <button
                   type="button"
                   onClick={() => router.push("/batch")}
@@ -489,11 +486,10 @@ function SavingsPanel({
         <div className="min-w-0">
           <p className="text-sm font-semibold text-foreground">Savings pipeline</p>
           <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-            Portfolio-scale savings — rolled up across annual volumes into one ranked $ pipeline —
-            needs portfolio cost, which lands in{" "}
-            <span className="text-foreground">Phase 3 (W3)</span>. It is deliberately not estimated
-            here. What&apos;s real today is <span className="text-foreground">per part</span>: where
-            the engine finds a cheaper redesign, its own delta.
+            Portfolio-scale savings require saved unit costs, paid baselines, and annual volumes.
+            When those inputs are absent, totals stay withheld. What&apos;s real here is{" "}
+            <span className="text-foreground">per part</span>: where the engine finds a cheaper
+            redesign, its own delta.
           </p>
         </div>
       </div>

@@ -13,10 +13,8 @@
  * per-door heroes — lives in `components/landing/*`, gated behind
  * `NEXT_PUBLIC_STAGE_UI`.
  *
- * Only the `part` door is fully built in FE-3 (it re-hosts the FE-2 part hero on
- * the real upload path). The `cost` and `portfolio` doors carry the roadmap phase
- * their real surfaces land in (FE-4 catalog grid, FE-5 portfolio queue) so their
- * heroes render an honest coming-state — never a stubbed grid.
+ * Each door opens a real surface: part upload, governed catalog/cost posture, or
+ * portfolio triage.
  */
 
 export type DoorId = "part" | "cost" | "portfolio";
@@ -36,12 +34,6 @@ export interface DoorDef {
   object: string;
   /** one line describing what waits inside */
   blurb: string;
-  /**
-   * The roadmap phase the door's real surface lands in, mirroring the app-shell
-   * rail. `undefined` means the door is live today (only `part` is). A value
-   * means the hero is an honest coming-state.
-   */
-  phase?: string;
 }
 
 export const DOORS: DoorDef[] = [
@@ -60,7 +52,6 @@ export const DOORS: DoorDef[] = [
     persona: "Cost / sourcing engineer",
     object: "catalog",
     blurb: "Live in the drivers, rates and calibration — override an assumption, re-cost.",
-    phase: "Phase 1",
   },
   {
     id: "portfolio",
@@ -69,7 +60,6 @@ export const DOORS: DoorDef[] = [
     persona: "Portfolio / MRO owner",
     object: "portfolio",
     blurb: "Millions of parts — triage the exceptions first, then the savings pipeline.",
-    phase: "Phase 3",
   },
 ];
 

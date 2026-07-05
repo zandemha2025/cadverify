@@ -20,7 +20,7 @@
  * ($14/hr against the real $52/hr Midwest loaded rate). Only the real fixture
  * may be shown as engine output ($14.14, crossover 1,962, $52/hr). So every
  * invented figure here wears an [illustrative] / ILLUSTRATIVE DATA tag, and the
- * unshipped catalog-triage board carries an IN DEVELOPMENT chip. $14.14, the
+ * catalog-triage board carries a scenario marker. $14.14, the
  * crossover 1,962, and $52/hr stay untagged as the only real engine output.
  */
 
@@ -33,7 +33,7 @@ import {
   Eyebrow,
   DisplayHeading,
   IllustrativeTag,
-  InDevelopmentChip,
+  ScenarioChip,
   measureSection,
   smooth,
   clamp01,
@@ -252,8 +252,8 @@ export function SourcingView() {
             </p>
             <p className="st-mono" style={monoLine}>
               validated savings read solid · assumption-based stay hatched · no baseline = withheld{" "}
-              <span style={{ color: "var(--st-conditional)" }}>· board ships with the portfolio backend</span>{" "}
-              <InDevelopmentChip />
+              <span style={{ color: "var(--st-conditional)" }}>· portfolio context required</span>{" "}
+              <ScenarioChip />
             </p>
           </div>
         </div>

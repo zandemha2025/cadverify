@@ -20,11 +20,10 @@
  *    6.39/3.89/3.82/0.04 · band $8.49–19.80 ±40% n=0 · crossover 1,962 ·
  *    routing cnc_turning 0.80 · DFM 1 sidewall <1.0° · Midwest rates
  *    $52/$30 · util 0.80.
- *  - The copilot ($8.01) is an IN DEVELOPMENT what-if; the design dressed it in
+ *  - The copilot ($8.01) is a modeled what-if; the design dressed it in
  *    a filled ● "ENGINE OUTPUT — COMPUTED" chip. That is a filled provenance
  *    dot on a non-fixture figure — a honesty-rule violation. Corrected here to
- *    an [illustrative] tag under the panel's IN DEVELOPMENT chip (matches the
- *    foundation's own /site-preview reference). Nothing else changed.
+ *    an [illustrative] tag under a scenario marker. Nothing else changed.
  */
 
 import * as React from "react";
@@ -36,7 +35,7 @@ import {
   makeHomeChoreography,
   ProvenanceChip,
   IllustrativeTag,
-  InDevelopmentChip,
+  ScenarioChip,
   ScrollHint,
   PILOT_HREF,
   useRafLoop,
@@ -382,7 +381,7 @@ export default function HomePage() {
             <div className="st-card" style={{ padding: 30, display: "flex", flexDirection: "column", gap: 18 }}>
               <div>
                 <p className="st-mono" style={{ margin: 0, display: "flex", alignItems: "center", gap: 10, fontSize: 11, letterSpacing: "0.18em", color: "var(--st-ink-40)" }}>
-                  ASK THE ENGINE <InDevelopmentChip />
+                  ASK THE ENGINE <ScenarioChip />
                 </p>
                 <h3 style={{ margin: "10px 0 0", fontSize: 26, fontWeight: 300, letterSpacing: "-0.02em" }}>A copilot that cannot hallucinate a number.</h3>
                 <p style={{ margin: "12px 0 0", fontSize: 14.5, lineHeight: 1.6, fontWeight: 300, color: "var(--st-ink-55)" }}>
@@ -394,9 +393,9 @@ export default function HomePage() {
                   &ldquo;Should we tool up for 5,000 units next year?&rdquo;
                 </p>
                 {/* HONEST FIX: the design put a filled ● "ENGINE OUTPUT — COMPUTED"
-                    chip on $8.01. $8.01 is not the real fixture and the copilot is
-                    IN DEVELOPMENT, so a filled provenance dot here would violate the
-                    honesty rules. Marked [illustrative] instead. */}
+                    chip on $8.01. $8.01 is not the real fixture, so a filled
+                    provenance dot here would violate the honesty rules. Marked
+                    [illustrative] instead. */}
                 <div style={{ marginTop: 14, display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
                   <span className="st-readout" style={{ fontSize: 34 }}>$8.01</span>
                   <IllustrativeTag />

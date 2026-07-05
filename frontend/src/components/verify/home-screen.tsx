@@ -27,7 +27,7 @@ import { listChangeRequests, type ChangeRequest } from "@/lib/verify/governance-
 import { listGroundTruth, realActualCount } from "@/lib/verify/ground-truth-api";
 import { buildQueue, buildActivity, proposedCount, type QueueRow } from "@/lib/verify/home-derive";
 import { C, MONO, NUM, procLabel } from "@/lib/verify/tokens";
-import { Kicker, InDev } from "./primitives";
+import { Kicker } from "./primitives";
 
 export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (s: string) => void }) {
   const [records, setRecords] = useState<CostDecisionSummary[] | null>(null);
@@ -185,7 +185,7 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
           <button type="button" onClick={() => nav("triage")} style={{ border: `1px solid ${C.hair}`, borderRadius: 14, background: C.panel, padding: "16px 18px", cursor: "pointer", fontFamily: "inherit", color: "inherit", textAlign: "left" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <Kicker>TRIAGE · MAKEABILITY AT SCALE</Kicker>
-              <span style={{ marginLeft: "auto" }}><InDev /></span>
+              <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.08em", color: C.pass }}>LIVE</span>
             </div>
             <p style={{ margin: "10px 0 0", fontSize: 13, color: C.ink }}>Sort a BOM into makeable in-house / outside / needs capability / not makeable.</p>
             <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink45 }}>buckets compute from an uploaded BOM — no counts are shown until one is run</p>

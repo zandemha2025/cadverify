@@ -7,14 +7,11 @@
  * a rate count — the design's "Midwest Precision CNC · 19 rates" is illustrative.
  *
  * Today there is exactly one live calibration context per org (the engine resolves
- * one effective card), so the menu is a truthful STATUS panel, not a fake
- * multi-shop toggle. Switching between multiple authored contexts + version-pinning
- * old records is real in the rate-library but not yet a one-click chip action, so
- * that affordance is marked IN DEVELOPMENT rather than faked.
+ * one effective card), so the menu is a truthful STATUS panel with authored
+ * versions, not a fake multi-shop toggle.
  */
 import { useEffect, useState } from "react";
 import { C, MONO } from "@/lib/verify/tokens";
-import { InDev } from "./primitives";
 import {
   calibrationLabel,
   effectiveRateCard,
@@ -46,6 +43,8 @@ export function CalibrationSwitcher({ onOpenCalibration }: { onOpenCalibration: 
 
   const { label, grounded } = calibrationLabel(eff, page);
   const chip = failed ? "calibration unavailable" : label;
+  const versionCount = page?.versions.length ?? 0;
+  const publishedCount = page?.versions.filter((v) => v.status === "published" || v.is_published).length ?? 0;
 
   return (
     <div style={{ position: "relative" }}>
@@ -127,13 +126,10 @@ export function CalibrationSwitcher({ onOpenCalibration }: { onOpenCalibration: 
                     : "The engine is using the built-in default rate card (v0). Publish a governed card in Calibration & truth to bind your real numbers."}
               </p>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
-              <InDev label="MULTI-CONTEXT SWITCH — IN DEVELOPMENT" />
-            </div>
             <p style={{ margin: "8px 4px 4px", fontFamily: MONO, fontSize: 10, color: C.ink45, lineHeight: 1.55 }}>
-              One-click switching between multiple calibration contexts (with old
-              records staying pinned to their rate version) is designed and not yet
-              wired — nothing here is faked.
+              {failed
+                ? "No rate-library status is claimed while the read is failing."
+                : `${versionCount} authored rate-card version${versionCount === 1 ? "" : "s"} · ${publishedCount} published · old records stay pinned to the version used when computed.`}
             </p>
             <button
               type="button"

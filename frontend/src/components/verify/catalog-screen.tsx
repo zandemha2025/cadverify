@@ -16,12 +16,13 @@
  * mesh to the product, so a neutral glyph stands in and no shape is invented. A
  * DFM-blocked route shows no price; an un-analyzed part shows no findings; the
  * cost band is an assumption (validated=false, n=0) so it renders HATCHED with an
- * ○ MODEL marker, never as measured. The full part-standing page is a separate
- * designed surface, still IN DEVELOPMENT.
+ * ○ MODEL marker, never as measured. The full part-standing page is wired from
+ * the selected catalog row.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchCatalog, type CatalogFacets, type CatalogPagination } from "@/lib/api";
 import { mapCatalogItems, stateFacetCount, type CatalogItem } from "@/lib/catalog-api";
+import { setSelectedPart } from "@/lib/verify/part-selection";
 import { C, MONO, USD, NUM, procLabel } from "@/lib/verify/tokens";
 import {
   Kicker,
@@ -29,7 +30,6 @@ import {
   GhostButton,
   EmptyState,
   Spinner,
-  InDev,
   ConfidenceBand,
 } from "./primitives";
 
@@ -203,8 +203,8 @@ export function CatalogScreen({ nav }: { nav: (s: string) => void }) {
       </div>
       <p style={{ margin: "8px 0 0", maxWidth: 680, fontSize: 13, lineHeight: 1.6, color: C.ink50 }}>
         Every part your org has verified or drafted, unified into one grid — recommended route, unit cost, and DFM
-        findings, each straight from the engine or honestly absent. Geometry previews are withheld: no org-scoped part
-        mesh is served to the product yet, so no shape is invented.
+        findings, each straight from the engine or honestly absent. Geometry previews are withheld: production does not
+        serve org-scoped part meshes to this grid, so no shape is invented.
       </p>
 
       {error && (
@@ -346,7 +346,17 @@ export function CatalogScreen({ nav }: { nav: (s: string) => void }) {
         </>
       ) : null}
 
-      {peek && <PartPeek item={peek} onClose={() => setPeek(null)} />}
+      {peek && (
+        <PartPeek
+          item={peek}
+          onClose={() => setPeek(null)}
+          onOpenStanding={() => {
+            setSelectedPart(peek.partKey);
+            setPeek(null);
+            nav("part");
+          }}
+        />
+      )}
     </main>
   );
 }
@@ -457,9 +467,9 @@ function CatalogCard({ item, onOpen }: { item: CatalogItem; onOpen: () => void }
 }
 
 /** A compact, honest peek at a part's real derived standing — every field is a
- *  cell already in the catalog row (no new fetch). Stands in for the full
- *  part-standing surface (history / blockers / re-verify), which is IN DEVELOPMENT. */
-function PartPeek({ item, onClose }: { item: CatalogItem; onClose: () => void }) {
+ *  cell already in the catalog row (no new fetch). The full standing page opens
+ *  with this part selected. */
+function PartPeek({ item, onClose, onOpenStanding }: { item: CatalogItem; onClose: () => void; onOpenStanding: () => void }) {
   const status = cardStatus(item);
   const uc = item.unitCost;
   const pp = item.posture;
@@ -569,8 +579,8 @@ function PartPeek({ item, onClose }: { item: CatalogItem; onClose: () => void })
         </div>
 
         <p style={{ margin: "16px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          the full part-standing page — history, blockers, re-verify — is a separate surface
-          <InDev label="PART STANDING — IN DEVELOPMENT" />
+          full standing includes history, blockers, context, and record detail
+          <GhostButton onClick={onOpenStanding} style={{ padding: "6px 12px", fontSize: 11 }}>Open standing →</GhostButton>
         </p>
       </div>
     </div>

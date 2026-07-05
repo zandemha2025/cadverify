@@ -495,8 +495,8 @@ export function CatalogDoor({ nav }: { nav: DoorNav }) {
                   <Info className="mt-0.5 size-3.5 shrink-0" />
                   <p>
                     Your catalog exceeded the scan window, so the oldest parts aren&apos;t shown
-                    here. The declared limit is a v1 guard — the denormalized per-part catalog
-                    lands in a follow-up.
+                    here. Narrow the filters or page through the saved decisions to inspect the
+                    rows outside this bounded view.
                   </p>
                 </div>
               )}

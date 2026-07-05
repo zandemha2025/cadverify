@@ -37,7 +37,7 @@ logger = structlog.get_logger("cadverify.corpus")
 router = APIRouter(prefix="/api/v1/corpus", tags=["corpus-labeling"])
 
 # 6-key ontology (spec §1.2). Prefer the shared eval constant; fall back to the
-# literal keys so the tool runs even if the eval package is not built yet.
+# literal keys so the tool runs even when the eval package is unavailable.
 try:  # pragma: no cover - import shape varies during parallel build
     from src.eval.ontology import LABELS as ONTOLOGY_LABELS  # type: ignore
 except Exception:

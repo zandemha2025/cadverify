@@ -1,8 +1,7 @@
 """Manufacturing feature classifier for mesh segments.
 
-Stub implementation uses rule-based geometric heuristics (normal variance,
-curvature, spatial extent).  Designed to be swapped for a trained MLP when
-model weights are available.
+Rule-based implementation using geometric heuristics (normal variance,
+curvature, spatial extent).
 """
 
 from __future__ import annotations

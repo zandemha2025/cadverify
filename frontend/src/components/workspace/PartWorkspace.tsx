@@ -782,8 +782,7 @@ function LoadingPane({ label }: { label: string }) {
 
 /* ------------------------------------------------------------------ */
 /*  History — session scenarios + the durable cost artifact + a quick   */
-/*  no-account copy path. (The persisted, versioned catalog history      */
-/*  lands with Phase 1; Cost decisions live at /cost-decisions today.)   */
+/*  no-account copy path. Cost decisions live at /cost-decisions today.  */
 /* ------------------------------------------------------------------ */
 
 function HistoryPanel({

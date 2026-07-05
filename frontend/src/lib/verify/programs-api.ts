@@ -32,6 +32,7 @@ export interface PortfolioContext {
   parent_assembly: string | null;
   units_per_parent: number | null;
   annual_volume: number | null;
+  service_environment?: Record<string, unknown> | null;
   provenance: "user";
 }
 

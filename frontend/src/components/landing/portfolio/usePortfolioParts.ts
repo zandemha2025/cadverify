@@ -15,9 +15,9 @@
  *
  * The exception queues, the portfolio pulse KPIs and the ranked savings are all
  * computed (pure, `lib/portfolio`) over the HYDRATED parts only — an un-hydrated
- * row is honestly "still loading", never silently classified. There is no
- * server-side portfolio aggregate yet (the one-call governed rollup is W3 /
- * Phase 3); until then we hydrate client-side rather than invent the numbers.
+ * row is honestly "still loading", never silently classified. Client-side
+ * hydration keeps the governed rollup tied to the saved decision rows rather
+ * than inventing missing totals.
  *
  * Liveness mirrors useCatalogRows: a `mountedRef` drops writes after unmount and
  * a monotonic `runIdRef` invalidates a superseded load's in-flight fetches so a

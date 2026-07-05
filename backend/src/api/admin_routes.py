@@ -23,7 +23,7 @@ through them is W1 step 3, deliberately out of scope here.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
@@ -40,7 +40,15 @@ from src.auth.rbac import (
 )
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
-from src.db.models import Analysis, Batch, Membership, User
+from src.db.models import (
+    Analysis,
+    Batch,
+    CostDecision,
+    Membership,
+    UsageEvent,
+    User,
+    WebhookDelivery,
+)
 from src.services import org_service
 from src.services.audit_service import export_audit_csv, query_audit_log
 
@@ -368,6 +376,130 @@ async def reactivate_user(
         resource_id=str(user_id), detail={"reactivated_by": user.user_id},
     ))
     return result
+
+
+# ---------------------------------------------------------------------------
+# GET /usage-summary -- real org usage counters for the product settings panel
+# ---------------------------------------------------------------------------
+
+
+def _iso(dt: datetime | None) -> str | None:
+    return dt.isoformat() if dt else None
+
+
+@router.get("/usage-summary")
+async def get_usage_summary(
+    days: int = Query(30, ge=1, le=90, description="Trailing window in days"),
+    ctx: OrgAuthContext = Depends(require_admin),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Org-scoped usage counters from persisted tables, never design fixtures.
+
+    These are deliberately separate real counts because the product has multiple
+    durable streams: DFM analyses, saved should-cost decisions, usage-event rows,
+    and webhook deliveries. The UI can label each precisely instead of laundering
+    them into one invented "verifications" number.
+    """
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(days=days)
+    org_filter = None if ctx.is_superadmin else ctx.org_id
+
+    async def _count(model, created_col):
+        stmt = select(func.count()).select_from(model).where(created_col >= since)
+        if org_filter is not None:
+            stmt = stmt.where(model.org_id == org_filter)
+        return int((await session.execute(stmt)).scalar_one())
+
+    analyses = await _count(Analysis, Analysis.created_at)
+    cost_decisions = await _count(CostDecision, CostDecision.created_at)
+    usage_events = await _count(UsageEvent, UsageEvent.created_at)
+    webhook_deliveries = await _count(WebhookDelivery, WebhookDelivery.created_at)
+
+    event_stmt = (
+        select(UsageEvent.event_type, func.count())
+        .where(UsageEvent.created_at >= since)
+        .group_by(UsageEvent.event_type)
+        .order_by(UsageEvent.event_type.asc())
+    )
+    if org_filter is not None:
+        event_stmt = event_stmt.where(UsageEvent.org_id == org_filter)
+    event_counts = {
+        str(event_type): int(count)
+        for event_type, count in (await session.execute(event_stmt)).all()
+    }
+
+    delivery_stmt = (
+        select(WebhookDelivery.status, func.count())
+        .where(WebhookDelivery.created_at >= since)
+        .group_by(WebhookDelivery.status)
+        .order_by(WebhookDelivery.status.asc())
+    )
+    if org_filter is not None:
+        delivery_stmt = delivery_stmt.where(WebhookDelivery.org_id == org_filter)
+    delivery_counts = {
+        str(status): int(count)
+        for status, count in (await session.execute(delivery_stmt)).all()
+    }
+
+    return {
+        "window_days": days,
+        "since": _iso(since),
+        "until": _iso(now),
+        "org_id": org_filter,
+        "counts": {
+            "analyses": analyses,
+            "cost_decisions": cost_decisions,
+            "usage_events": usage_events,
+            "webhook_deliveries": webhook_deliveries,
+        },
+        "event_counts": event_counts,
+        "webhook_status_counts": delivery_counts,
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /webhook-deliveries -- latest org-scoped delivery attempts
+# ---------------------------------------------------------------------------
+
+
+@router.get("/webhook-deliveries")
+async def list_webhook_deliveries(
+    limit: int = Query(20, ge=1, le=100),
+    ctx: OrgAuthContext = Depends(require_admin),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Latest webhook deliveries from the durable delivery table.
+
+    The payload is intentionally not returned here; the settings surface needs
+    delivery status and retry timing, not customer payload bodies.
+    """
+    stmt = (
+        select(WebhookDelivery, Batch.ulid)
+        .join(Batch, Batch.id == WebhookDelivery.batch_id)
+        .order_by(WebhookDelivery.created_at.desc(), WebhookDelivery.id.desc())
+        .limit(limit)
+    )
+    if not ctx.is_superadmin:
+        stmt = stmt.where(WebhookDelivery.org_id == ctx.org_id)
+
+    rows = (await session.execute(stmt)).all()
+    return {
+        "deliveries": [
+            {
+                "id": delivery.id,
+                "batch_id": delivery.batch_id,
+                "batch_ulid": batch_ulid,
+                "event_type": delivery.event_type,
+                "status": delivery.status,
+                "attempts": delivery.attempts,
+                "response_code": delivery.response_code,
+                "created_at": _iso(delivery.created_at),
+                "last_attempt_at": _iso(delivery.last_attempt_at),
+                "next_retry_at": _iso(delivery.next_retry_at),
+            }
+            for delivery, batch_ulid in rows
+        ]
+    }
 
 
 # ---------------------------------------------------------------------------

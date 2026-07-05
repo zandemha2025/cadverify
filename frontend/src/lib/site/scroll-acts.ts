@@ -99,7 +99,10 @@ export function useRafLoop(
 ): void {
   const { enabled = true } = opts;
   const cb = useRef(onFrame);
-  cb.current = onFrame;
+
+  useEffect(() => {
+    cb.current = onFrame;
+  }, [onFrame]);
 
   useEffect(() => {
     if (!enabled || typeof window === "undefined") return;

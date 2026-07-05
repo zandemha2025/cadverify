@@ -1,81 +1,15 @@
 "use client";
 
-/**
- * Honest IN DEVELOPMENT surfaces. Everything outside the wired core loop ships as
- * a visible, labelled, non-fake-interactive state styled in the light-instrument
- * register — never a fabricated screen full of invented numbers. Each states what
- * it WILL be and which real seam it will bind to.
- */
+/** Command palette and notification entrypoints for the Verify shell. */
 import * as React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { C, MONO } from "@/lib/verify/tokens";
-import { Kicker, InDev, GhostButton } from "./primitives";
 
-interface StubDef {
-  title: string;
-  lede: string;
-  seam: string;
-}
-
-export const STUBS: Record<string, StubDef> = {
-  compare: {
-    title: "Compare",
-    lede: "Same part, two questions: which calibration, and which route. Every figure banded, never fake-exact.",
-    seam: "binds to GET /api/v1/cost-decisions/compare",
-  },
-  programs: {
-    title: "Programs",
-    lede: "Declare a world once, at the program — every part underneath inherits it. Exposure = verified unit cost × your entered volume, computed only when a verified part is assigned.",
-    seam: "binds to the program/context surface (volume × unit cost = exposure)",
-  },
-  triage: {
-    title: "Triage at scale",
-    lede: "A whole BOM walked through the same verification, collapsed into honest makeability buckets — nothing silently skipped, every count opens into its verdicts.",
-    seam: "binds to the batch / manifest ingest surface",
-  },
-  calibration: {
-    title: "Calibration & truth",
-    lede: "Your rates, the Hallmark ceremony (send actuals → bands flip solid), governed version-pinned changes, members, webhooks, usage, audit log.",
-    seam: "binds to /rate-library, /governance, /ground-truth, webhooks",
-  },
-};
-
-export function StubScreen({ id }: { id: string }) {
-  const def = STUBS[id] ?? { title: id, lede: "This surface is not yet built.", seam: "" };
+function CommandPill({ label }: { label: string }) {
   return (
-    <main style={{ animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both", flex: 1, overflowY: "auto", padding: "30px 34px", background: C.bg }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 300, letterSpacing: "-0.015em" }}>{def.title}</h1>
-        <InDev />
-      </div>
-      <p style={{ margin: "8px 0 0", maxWidth: 640, fontSize: 14, lineHeight: 1.6, color: C.ink55 }}>{def.lede}</p>
-      <div style={{ marginTop: 24, maxWidth: 640, border: "1.5px dashed #c9cbd0", borderRadius: 18, background: C.panel, padding: "34px 30px" }}>
-        <Kicker color={C.ink45}>NOT YET BUILT — AND NOT FAKED</Kicker>
-        <p style={{ margin: "10px 0 0", fontSize: 14, lineHeight: 1.65, color: C.ink60 }}>
-          This surface is designed and its backend seam is ready. It renders as an honest placeholder rather than
-          inventing rows of example data. When it&apos;s wired, every figure here will be engine-computed.
-        </p>
-        {def.seam && <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40 }}>{def.seam}</p>}
-      </div>
-    </main>
-  );
-}
-
-/** Acquisition-consideration modal — honest placeholder (no invented capex math). */
-export function AcquisitionModal({ onClose }: { onClose: () => void }) {
-  return (
-    <Overlay onClose={onClose}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <p style={{ margin: 0, fontSize: 18, fontWeight: 500 }}>Acquisition consideration</p>
-        <InDev />
-        <button type="button" onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontFamily: MONO, fontSize: 14, color: C.ink40 }}>✕</button>
-      </div>
-      <p style={{ margin: "12px 0 0", fontSize: 13, lineHeight: 1.65, color: C.ink60 }}>
-        A not-owned route is stated as a capital consideration — capex vs marginal, org-wide, with the crossover the
-        engine already computed. The full capex model (payback, shared-cell amortization across the BOM) is designed and
-        not yet wired, so no capex figures are invented here.
-      </p>
-    </Overlay>
+    <span style={{ border: `1px dashed ${C.hair}`, borderRadius: 999, padding: "3px 8px", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.08em", color: C.ink45 }}>
+      {label}
+    </span>
   );
 }
 
@@ -93,9 +27,9 @@ interface PaletteCmd {
  * Command palette — a REAL jump-anywhere launcher. Every row is a genuine local
  * action: navigate to a surface (the same targets the H/V/P/R/G/M/T/C hotkeys
  * hit), open the file picker to verify a part, or open the shortcuts sheet. It
- * fabricates nothing — there are no invented engine answers here. Free-text
- * "ask the engine" and part/lakehouse search are labelled IN DEVELOPMENT rather
- * than faked. Typing filters the list; ↑/↓ move, ↵ runs, Esc closes.
+ * fabricates nothing — there are no invented engine answers here. The Verify dock
+ * owns engine asks; the Part screen owns part lookup. Typing filters the list;
+ * ↑/↓ move, ↵ runs, Esc closes.
  */
 export function CommandPalette({
   onClose,
@@ -216,29 +150,14 @@ export function CommandPalette({
           )}
         </div>
         <div style={{ borderTop: `1px solid ${C.hair}`, padding: "9px 16px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <InDev label="ENGINE ASKS & PART SEARCH — IN DEVELOPMENT" />
-          <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink45 }}>the palette jumps and acts — it never fabricates a number</span>
+          <CommandPill label="JUMP & ACT" />
+          <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink45 }}>engine asks live in Verify; part standing lives in Parts</span>
         </div>
       </div>
     </div>
   );
 }
 
-// NotificationsPanel is now REAL (derives states from three live reads); it lives
-// in ./notifications-panel and is re-exported here so the shell's import path
-// (verify-app.tsx: `import { NotificationsPanel } from "./stub-screens"`) is
-// unchanged. It is no longer a stub.
+// NotificationsPanel derives states from live reads and stays colocated with the
+// shell entrypoints for a compact import at the top level.
 export { NotificationsPanel } from "./notifications-panel";
-
-function Overlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(23,24,26,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: 480, maxWidth: "100%", background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 18, boxShadow: "0 18px 50px -18px rgba(23,24,26,0.35)", padding: 24, animation: "vscreenIn 220ms cubic-bezier(0.2,0,0,1) both" }}>
-        {children}
-        <div style={{ marginTop: 18, display: "flex", justifyContent: "flex-end" }}>
-          <GhostButton onClick={onClose}>Close</GhostButton>
-        </div>
-      </div>
-    </div>
-  );
-}

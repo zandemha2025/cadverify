@@ -8,8 +8,8 @@
  *    (filled ●); DEFAULT and MODEL are guesses (hollow ○). Hours are ○ MODEL,
  *    never ● MEASURED. There is no API here to put a filled dot on a MODEL/
  *    DEFAULT value — the type system won't let a page fake it.
- *  - Fabricated example figures must carry <IllustrativeTag/>; unshipped
- *    features carry <InDevelopmentChip/>. Confidence bands are hatched
+ *  - Fabricated example figures must carry <IllustrativeTag/>; modeled
+ *    what-if surfaces carry <ScenarioChip/>. Confidence bands are hatched
  *    (assumption / n=0) until real residuals turn them solid.
  *  - The one real fixture (object.stl · $14.14 · …) is the only thing a page
  *    presents as engine output; everything else is labeled.
@@ -184,8 +184,8 @@ export function IllustrativeTag({ block = false, style, ...rest }: Span & { bloc
   );
 }
 
-/** The "IN DEVELOPMENT" chip for unshipped features (conditional hue). */
-export function InDevelopmentChip({ style, ...rest }: Span) {
+/** Marks a modeled what-if surface without presenting it as measured output. */
+export function ScenarioChip({ style, ...rest }: Span) {
   return (
     <span
       className="st-mono"
@@ -201,7 +201,7 @@ export function InDevelopmentChip({ style, ...rest }: Span) {
       }}
       {...rest}
     >
-      IN DEVELOPMENT
+      SCENARIO
     </span>
   );
 }

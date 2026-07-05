@@ -1,7 +1,7 @@
 """Parse STEP files and convert to trimesh for analysis.
 
-Uses cadquery/OCP (OpenCascade) for STEP parsing. Falls back to a
-stub if cadquery is not installed (it requires OpenCascade C++ libs).
+Uses cadquery/OCP (OpenCascade) for STEP parsing and fails explicitly when the
+required OpenCascade bindings are unavailable.
 """
 
 from __future__ import annotations

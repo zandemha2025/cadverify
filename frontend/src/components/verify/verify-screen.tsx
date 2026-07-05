@@ -18,10 +18,20 @@ import {
   computeCostAtQty,
   compareRoutesAtQty,
   compareSaved,
+  explainVerdict,
+  materialsForReport,
+  driverReadout,
+  timeReadout,
+  crossoverReadout,
   NL_REFUSAL,
   NONDETERMINISTIC_REFUSAL,
   type CostAtQtyResult,
   type RouteCompareResult,
+  type VerdictExplanationResult,
+  type MaterialsResult,
+  type DriverReadoutResult,
+  type TimeReadoutResult,
+  type CrossoverReadoutResult,
 } from "@/lib/verify/ask";
 import {
   driverViews,
@@ -46,7 +56,7 @@ import {
 } from "@/lib/verify/verification";
 import { envelopeSummary } from "@/lib/verify/machine-api";
 import { useToast } from "./toast";
-import { Card, Kicker, ProvChip, ProvDot, InDev, ConfidenceBand, GhostButton, EmptyState, Spinner } from "./primitives";
+import { Card, Kicker, ProvChip, ProvDot, ConfidenceBand, GhostButton, EmptyState, Spinner } from "./primitives";
 import { PipelineOverlay } from "./pipeline-overlay";
 
 /** Light status colour for a verdict/fit tone. */
@@ -72,6 +82,14 @@ const ENV_CHIPS: { key: "temp" | "sour" | "pressure"; label: string }[] = [
   { key: "sour", label: "sour service (H₂S)" },
   { key: "pressure", label: "35 MPa pressure" },
 ];
+
+function StatusChip({ label }: { label: string }) {
+  return (
+    <span style={{ border: `1px dashed ${C.hair}`, borderRadius: 999, padding: "2px 7px", fontFamily: MONO, fontSize: 9, letterSpacing: "0.08em", color: C.ink45, whiteSpace: "nowrap" }}>
+      {label}
+    </span>
+  );
+}
 
 export function VerifyScreen(props: Props) {
   const { result, running, env, setEnv, onPickFile, onReverify, nav } = props;
@@ -423,7 +441,7 @@ function Walk({
                 {!verification && (
                   <>
                     {" "}· per-machine fit is decided by the makeability verification{" "}
-                    <InDev label="ENGINE BLOCK — NOT EVALUATED" /> — the floor is declared; no fit is faked here.
+                    <StatusChip label="MAKEABILITY NOT EVALUATED" /> — the floor is declared; no fit is faked here.
                   </>
                 )}
               </p>
@@ -486,7 +504,7 @@ function Walk({
                 ) : (
                   <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40, lineHeight: 1.6 }}>
                     environment-driven survival filtering (NACE MR0175 / HDT tables) is part of the makeability verification —{" "}
-                    <InDev label="NOT EVALUATED — DECLARE A WORLD" />. Invalid materials are filtered out visibly, never silently.
+                    <StatusChip label="DECLARE A WORLD TO EVALUATE" />. Invalid materials are filtered out visibly, never silently.
                   </p>
                 )}
               </div>
@@ -1119,10 +1137,9 @@ function DecideHallmark({
         <GhostButton onClick={() => nav("records")} disabled={!saved}>
           {saved ? "Open the record →" : "Not persisted"}
         </GhostButton>
-        <InDev label="OUTCOME APPEND — IN DEVELOPMENT" />
         <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink40, lineHeight: 1.5, flex: 1, minWidth: 180 }}>
           {saved
-            ? "the cost-decision is an immutable saved artifact; writing the make/route outcome back onto it is not yet wired."
+            ? "the cost-decision is the immutable saved artifact; your choice above is noted in this verification session and the record opens from Records."
             : "persistence is off for this decision (COST_PERSIST_ENABLED) — it computed, but was not saved server-side."}
         </span>
       </div>
@@ -1173,8 +1190,9 @@ function driverUnit(d: DriverView): string {
  *   • "should-cost at qty N"       → the should-cost at that qty, off the report.
  *   • "compare saved decisions"    → a LIVE GET /api/v1/cost-decisions/compare
  *      diff of this part's persisted decision vs the org's most-recent other one.
- *   • anything else / free text    → REFUSED. Free-form NL has no engine backend
- *      (IN DEVELOPMENT); the engine never invents an answer.
+ *   • natural phrases for verdict, materials, drivers, time, and crossover map
+ *      to deterministic reads of this same report.
+ *   • anything outside the grammar → REFUSED; the engine never invents an answer.
  * No design fixtures, no fabricated figures — every number is selected from a
  * real response or the ask is refused.
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -1185,6 +1203,11 @@ type DockState =
   | { t: "routes"; data: Extract<RouteCompareResult, { status: "ok" }> }
   | { t: "cost"; data: CostAtQtyResult }
   | { t: "saved"; data: CostComparison; otherId: string }
+  | { t: "verdict"; data: VerdictExplanationResult }
+  | { t: "materials"; data: MaterialsResult }
+  | { t: "drivers"; data: DriverReadoutResult }
+  | { t: "time"; data: TimeReadoutResult }
+  | { t: "crossover"; data: CrossoverReadoutResult }
   | { t: "refuse"; title: string; reason: string; nl: boolean };
 
 function AskDock({ cost, running, nav }: { cost: CostReport | null; running: boolean; nav: Nav }) {
@@ -1252,6 +1275,11 @@ function AskDock({ cost, running, nav }: { cost: CostReport | null; running: boo
     if (p.kind === "cost_at_qty") askCost(p.qty);
     else if (p.kind === "compare_routes") askRoutes(p.qty);
     else if (p.kind === "compare_saved") void askSaved();
+    else if (p.kind === "explain_verdict") setState({ t: "verdict", data: explainVerdict(cost) });
+    else if (p.kind === "materials") setState({ t: "materials", data: materialsForReport(cost) });
+    else if (p.kind === "drivers") setState({ t: "drivers", data: driverReadout(cost, p.qty) });
+    else if (p.kind === "time") setState({ t: "time", data: timeReadout(cost, p.qty) });
+    else if (p.kind === "crossover") setState({ t: "crossover", data: crossoverReadout(cost) });
     else refuse("The engine can't compute that.", NL_REFUSAL, true);
   }
 
@@ -1266,6 +1294,11 @@ function AskDock({ cost, running, nav }: { cost: CostReport | null; running: boo
       {state.t === "routes" && <RouteCompareArtifact data={state.data} onClose={clear} />}
       {state.t === "cost" && <CostReadoutArtifact data={state.data} onClose={clear} />}
       {state.t === "saved" && <SavedCompareArtifact data={state.data} otherId={state.otherId} onClose={clear} nav={nav} />}
+      {state.t === "verdict" && <VerdictArtifact data={state.data} onClose={clear} />}
+      {state.t === "materials" && <MaterialsArtifact data={state.data} onClose={clear} />}
+      {state.t === "drivers" && <DriversArtifact data={state.data} onClose={clear} />}
+      {state.t === "time" && <TimeArtifact data={state.data} onClose={clear} />}
+      {state.t === "crossover" && <CrossoverArtifact data={state.data} onClose={clear} />}
       {state.t === "refuse" && <RefusalArtifact title={state.title} reason={state.reason} nl={state.nl} onClose={clear} />}
 
       {/* the ask row */}
@@ -1293,7 +1326,7 @@ function AskDock({ cost, running, nav }: { cost: CostReport | null; running: boo
             disabled={!canAsk}
             placeholder={
               canAsk
-                ? "Ask the engine — “compare routes at qty 1,000” · “should-cost at qty 500”"
+                ? "Ask the engine — “why can we make it?” · “cost drivers at qty 500”"
                 : running
                   ? "computing the walk…"
                   : "Load a part above — the engine answers only about a computed part."
@@ -1328,6 +1361,7 @@ function AskDock({ cost, running, nav }: { cost: CostReport | null; running: boo
         </div>
         <AskChip label="Compare routes @ 1,000" disabled={!canAsk} onClick={() => askRoutes(1000)} />
         <AskChip label="Compare saved decisions →" disabled={!canAsk} onClick={() => void askSaved()} />
+        <AskChip label="Why this verdict?" disabled={!canAsk} onClick={() => cost && setState({ t: "verdict", data: explainVerdict(cost) })} />
         <AskChip
           label="An uncomputable ask"
           disabled={false}
@@ -1341,8 +1375,7 @@ function AskDock({ cost, running, nav }: { cost: CostReport | null; running: boo
       </div>
 
       <p style={{ margin: "6px 0 0", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontFamily: MONO, fontSize: 9, color: C.ink35 }}>
-        <span>answers are engine-computed artifacts — only structured asks (compare / should-cost at qty) return numbers</span>
-        <InDev label="FREE-FORM NL — IN DEVELOPMENT" />
+        <span>answers are deterministic engine artifacts — verdict, materials, drivers, hours, cost, routes, and saved records</span>
       </p>
     </div>
   );
@@ -1523,13 +1556,136 @@ function SavedCompareArtifact({ data, otherId, onClose, nav }: { data: CostCompa
   );
 }
 
+function VerdictArtifact({ data, onClose }: { data: VerdictExplanationResult; onClose: () => void }) {
+  const blockers = data.blockers.slice(0, 3);
+  return (
+    <div style={ARTIFACT_STYLE}>
+      <ArtifactHeader kicker="ENGINE OUTPUT — VERDICT EXPLANATION" onClose={onClose} />
+      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+        <MonoRow label="status" value={data.status} />
+        <MonoRow label="make-now route" value={data.makeNowProcess ? procLabel(data.makeNowProcess) : "withheld"} />
+        <MonoRow label="material" value={data.makeNowMaterial ?? "withheld"} />
+        <MonoRow label="DFM" value={data.dfmReady == null ? "not evaluated" : data.dfmReady ? `ready · ${data.dfmVerdict ?? "pass"}` : `blocked · ${data.dfmVerdict ?? "fail"}`} />
+      </div>
+      {blockers.length > 0 && (
+        <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.fail, lineHeight: 1.6 }}>
+          blockers: {blockers.join(" · ")}
+        </p>
+      )}
+      {data.routingReasoning && (
+        <p style={{ margin: "10px 0 0", fontSize: 12, lineHeight: 1.55, color: C.ink55 }}>{data.routingReasoning}</p>
+      )}
+      {data.note && (
+        <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40, lineHeight: 1.55 }}>engine note: {data.note}</p>
+      )}
+    </div>
+  );
+}
+
+function MaterialsArtifact({ data, onClose }: { data: MaterialsResult; onClose: () => void }) {
+  return (
+    <div style={ARTIFACT_STYLE}>
+      <ArtifactHeader kicker="ENGINE OUTPUT — MATERIAL SURVIVAL" onClose={onClose} />
+      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+        <MonoRow label="declared class" value={data.materialClass} />
+        <MonoRow label="make-now material" value={data.makeNowMaterial ?? "withheld"} />
+        <MonoRow
+          label="surviving materials"
+          value={data.surviving.length ? data.surviving.map((m) => `${m.material} (${m.processes.map(procLabel).join(", ")})`).join(" · ") : "none in costed routes"}
+        />
+        <MonoRow
+          label="blocked materials"
+          value={data.blocked.length ? data.blocked.map((m) => `${m.material} (${m.processes.map(procLabel).join(", ")})`).join(" · ") : "none"}
+        />
+      </div>
+      <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink35 }}>
+        derived from each estimate&apos;s DFM-ready flag — no material is added client-side
+      </p>
+    </div>
+  );
+}
+
+function DriversArtifact({ data, onClose }: { data: DriverReadoutResult; onClose: () => void }) {
+  return (
+    <div style={ARTIFACT_STYLE}>
+      <ArtifactHeader kicker={`ENGINE OUTPUT — COST DRIVERS · qty ${NUM(data.snappedQty)}`} onClose={onClose} />
+      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+        <MonoRow label="route" value={data.process ? procLabel(data.process) : "withheld"} />
+        <MonoRow label="unit cost" value={data.unit != null ? `${USD(data.unit)}/unit` : "withheld"} />
+      </div>
+      {data.drivers.length === 0 ? (
+        <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40 }}>
+          no driver rows on this estimate — none are invented
+        </p>
+      ) : (
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+          {data.drivers.map((d) => (
+            <p key={`${d.name}-${d.unit}`} style={{ margin: 0, display: "flex", alignItems: "center", gap: 8, fontFamily: MONO, fontSize: 10.5, color: C.ink55 }}>
+              <span style={{ flex: 1 }}>{d.name}</span>
+              <span style={{ color: C.ink }}>{d.value.toLocaleString("en-US", { maximumFractionDigits: 3 })}{d.unit ? ` ${d.unit}` : ""}</span>
+              <ProvChip p={d.provenance} />
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TimeArtifact({ data, onClose }: { data: TimeReadoutResult; onClose: () => void }) {
+  return (
+    <div style={ARTIFACT_STYLE}>
+      <ArtifactHeader kicker={`ENGINE OUTPUT — HOURS & LEAD TIME · qty ${NUM(data.snappedQty)}`} onClose={onClose} />
+      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+        <MonoRow label="route" value={data.process ? procLabel(data.process) : "withheld"} />
+        <MonoRow
+          label="lead time"
+          value={data.leadDays ? `${data.leadDays.low}-${data.leadDays.high} days · mid ${data.leadDays.mid}` : "withheld"}
+        />
+      </div>
+      {data.timeDrivers.length > 0 ? (
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+          {data.timeDrivers.map((d) => (
+            <p key={`${d.name}-${d.unit}`} style={{ margin: 0, display: "flex", alignItems: "center", gap: 8, fontFamily: MONO, fontSize: 10.5, color: C.ink55 }}>
+              <span style={{ flex: 1 }}>{d.name}</span>
+              <span style={{ color: C.ink }}>{d.value.toLocaleString("en-US", { maximumFractionDigits: 3 })} {d.unit}</span>
+              <ProvChip p={d.provenance} />
+            </p>
+          ))}
+        </div>
+      ) : (
+        <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40 }}>
+          this estimate carries lead-time days but no separate hour driver rows
+        </p>
+      )}
+    </div>
+  );
+}
+
+function CrossoverArtifact({ data, onClose }: { data: CrossoverReadoutResult; onClose: () => void }) {
+  return (
+    <div style={ARTIFACT_STYLE}>
+      <ArtifactHeader kicker="ENGINE OUTPUT — MAKE-VS-BUY CROSSOVER" onClose={onClose} />
+      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+        <MonoRow label="owned route" value={data.makeNowProcess ? procLabel(data.makeNowProcess) : "withheld"} />
+        <MonoRow label="acquire route" value={data.toolingProcess ? procLabel(data.toolingProcess) : "none"} />
+        <MonoRow label="crossover" value={data.crossover != null ? `${NUM(data.crossover)} units` : "none computed"} />
+        <MonoRow label="tooling DFM" value={data.toolingDfmReady == null ? "not applicable" : data.toolingDfmReady ? "ready" : "conditional redesign"} />
+      </div>
+      {data.note && (
+        <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40, lineHeight: 1.6 }}>engine note: {data.note}</p>
+      )}
+    </div>
+  );
+}
+
 /** The honest refusal — never a fabricated answer. */
 function RefusalArtifact({ title, reason, nl, onClose }: { title: string; reason: string; nl: boolean; onClose: () => void }) {
   return (
     <div style={{ maxWidth: 720, marginBottom: 12, border: `1.5px dashed #d3d3d8`, borderRadius: 14, padding: "16px 18px", animation: "vstepIn 300ms cubic-bezier(0.2,0,0,1) both" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
         <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>{title}</p>
-        {nl && <InDev label="NL ANSWERING — IN DEVELOPMENT" />}
+        {nl && <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink40 }}>DETERMINISTIC REFUSAL</span>}
         <button
           type="button"
           onClick={onClose}
