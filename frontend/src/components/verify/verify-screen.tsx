@@ -34,6 +34,7 @@ import {
 } from "@/lib/verify/verification";
 import { envelopeSummary } from "@/lib/verify/machine-api";
 import { Card, Kicker, ProvChip, ProvDot, InDev, ConfidenceBand, GhostButton, EmptyState } from "./primitives";
+import { PipelineOverlay } from "./pipeline-overlay";
 
 /** Light status colour for a verdict/fit tone. */
 function toneColor(t: Tone): string {
@@ -71,6 +72,7 @@ export function VerifyScreen(props: Props) {
   const door = envDoorStatus(hostile, running, result);
 
   return (
+    <>
     <div
       style={{
         animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both",
@@ -153,6 +155,8 @@ export function VerifyScreen(props: Props) {
         )}
       </div>
     </div>
+    <PipelineOverlay running={running} result={result} fileName={props.fileName} />
+    </>
   );
 }
 
