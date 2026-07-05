@@ -1,0 +1,196 @@
+/* ────────────────────────────────────────────────────────────────────────
+   Page-local styles for /company (dark-theater document page).
+   NOT foundation — scoped to this route. Recreated faithfully from
+   handoff_cadverify_2026-07-04/site/Company.dc.html.
+
+   Two things live here that the shared foundation doesn't provide:
+    1. the animated "flip band" in the Mission section (hatched assumption →
+       solid validated, with the label swapping in step) — the design's four
+       page-local keyframes; and
+    2. the pilot request form field / grid styling (focus states + responsive
+       collapse) that Company.dc.html expressed via the design tool's
+       style-focus attributes.
+
+   Everything renders inside `.site-theater`, so the foundation's
+   prefers-reduced-motion rule already tames these animations. `--st-*` vars
+   resolve from that scope.
+   ──────────────────────────────────────────────────────────────────────── */
+
+/* ── Mission "flip band": the flip we exist for ──────────────────────────── */
+.flipWrap {
+  margin-top: 48px;
+  max-width: 560px;
+}
+.flipTrack {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(245, 245, 247, 0.08);
+  overflow: hidden;
+}
+.flipHatch {
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(245, 245, 247, 0.4) 0 2px,
+    transparent 2px 7px
+  );
+  animation: hatchOut 9s ease-in-out infinite;
+}
+.flipSolid {
+  position: absolute;
+  inset: 0 18% 0 22%;
+  border-radius: 4px;
+  background: rgba(85, 184, 128, 0.85);
+  transform-origin: 40% 50%;
+  animation: solidIn 9s ease-in-out infinite;
+}
+.flipMarker {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: 50%;
+  width: 2px;
+  background: #f5f5f7;
+}
+.flipLabels {
+  position: relative;
+  margin-top: 10px;
+  height: 18px;
+  font-family: var(--st-font-mono);
+  font-size: 11px;
+}
+.flipLabel {
+  position: absolute;
+  margin: 0;
+}
+.flipLabel1 {
+  color: rgba(245, 245, 247, 0.4);
+  animation: labelSwap1 9s ease-in-out infinite;
+}
+.flipLabel2 {
+  color: #55b880;
+  animation: labelSwap2 9s ease-in-out infinite;
+}
+
+@keyframes hatchOut {
+  0%, 42% { opacity: 1; }
+  58%, 88% { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes solidIn {
+  0%, 42% { transform: scaleX(0); }
+  58%, 88% { transform: scaleX(1); }
+  100% { transform: scaleX(0); }
+}
+@keyframes labelSwap1 {
+  0%, 46% { opacity: 1; }
+  54%, 92% { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes labelSwap2 {
+  0%, 46% { opacity: 0; }
+  54%, 92% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ── Mission stats row ───────────────────────────────────────────────────── */
+.statsRow {
+  margin-top: 44px;
+  display: flex;
+  gap: 44px;
+  flex-wrap: wrap;
+  font-family: var(--st-font-mono);
+  font-size: 12px;
+  color: rgba(245, 245, 247, 0.45);
+}
+.statNum {
+  display: block;
+  font-size: 26px;
+  font-weight: 300;
+  color: #f5f5f7;
+  font-family: var(--st-font-display);
+}
+
+/* ── Pilot: the four-week grid ───────────────────────────────────────────── */
+.weekGrid {
+  margin-top: 56px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+}
+.weekCell {
+  border-left: 1px solid rgba(245, 245, 247, 0.12);
+  padding: 4px 28px 0 22px;
+}
+@media (max-width: 860px) {
+  .weekGrid { grid-template-columns: repeat(2, 1fr); row-gap: 34px; }
+}
+@media (max-width: 520px) {
+  .weekGrid { grid-template-columns: 1fr; row-gap: 30px; }
+}
+
+/* ── Pilot: request form ─────────────────────────────────────────────────── */
+.formCard {
+  margin-top: 64px;
+  max-width: 620px;
+  border: 1px solid rgba(245, 245, 247, 0.1);
+  border-radius: 16px;
+  background: #0c0d10;
+  padding: 34px;
+}
+.formGrid {
+  margin-top: 22px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.formGridWide {
+  grid-column: span 2;
+}
+@media (max-width: 520px) {
+  .formGrid { grid-template-columns: 1fr; }
+  .formGridWide { grid-column: span 1; }
+}
+.pilotInput {
+  width: 100%;
+  background: #0a0b0d;
+  border: 1px solid rgba(245, 245, 247, 0.14);
+  border-radius: 8px;
+  padding: 13px 16px;
+  font-size: 14px;
+  color: #f5f5f7;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 200ms;
+}
+.pilotInput::placeholder {
+  color: rgba(245, 245, 247, 0.4);
+}
+.pilotInput:focus {
+  border-color: rgba(245, 245, 247, 0.4);
+}
+.formFoot {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.sendBtn {
+  background: #f5f5f7;
+  color: #050506;
+  border: none;
+  border-radius: 999px;
+  padding: 12px 28px;
+  font-size: 14.5px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 200ms var(--st-ease-cine);
+}
+.sendBtn:hover {
+  transform: scale(1.03);
+}
