@@ -2,31 +2,63 @@
 
 /**
  * YOUR MACHINES — real CRUD against /api/v1/machine-inventory (list / create /
- * get / delete + CSV import). Every declared machine is ● USER (a capability
- * assertion, never a measurement). Absent inventory → the honest "declare your
- * floor" empty state, byte-identical to the feature unused.
+ * get / patch / delete + CSV import) PLUS the full machine DETAIL the design calls
+ * `renderMachine`: the SPEC denominator, a governed RATE HISTORY read from the real
+ * rate-library, and PARTS ROUTED HERE = real cost-decisions whose make-now route is
+ * this machine's process. Every declared capability is ● USER (an assertion, never a
+ * measurement); a rate only re-tags ● SHOP once a governed accounting card is bound.
+ * Absent inventory → the honest "declare your floor" empty state.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { C, MONO, USD, procLabel, PROCESS_LABELS } from "@/lib/verify/tokens";
+import { C, MONO, NUM, USD, procLabel, PROCESS_LABELS } from "@/lib/verify/tokens";
 import {
   listMachines,
   createMachine,
+  updateMachine,
   deleteMachine,
   importMachinesCsv,
   envelopeSummary,
   type OwnedMachine,
   type MachineInput,
 } from "@/lib/verify/machine-api";
-import { Kicker, ProvDot, GhostButton, EmptyState, Spinner } from "./primitives";
+import {
+  fetchMachineCatalog,
+  type MachineCatalogTemplate,
+} from "@/lib/verify/machine-catalog-api";
+import { effectiveRateCard, listRateVersions, type EffectiveRateCard, type RateVersionsPage } from "@/lib/verify/rate-api";
+import { fetchCostDecisions, type CostDecisionSummary } from "@/lib/api";
+import { Kicker, ProvDot, ProvChip, GhostButton, EmptyState, Spinner, InDev } from "./primitives";
 
 const PROCESS_OPTIONS = Object.keys(PROCESS_LABELS);
 
-export function MachinesScreen() {
+/** The design's machine glyph (renderMachines / machine-detail header). */
+function MachineIcon({ color = C.ink60, size = 17 }: { color?: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline-flex", flexShrink: 0 }}>
+      <rect x="3" y="8" width="18" height="12" rx="2" />
+      <path d="M7 8V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v3" />
+      <circle cx="9" cy="14" r="1.6" />
+      <path d="M14 13h4" />
+      <path d="M14 16h4" />
+    </svg>
+  );
+}
+
+/** Honest owned-machine status: everything in YOUR inventory is owned, so the only
+ *  real distinction is whether a rate is declared (marginal costing active) or the
+ *  marginal cost is withheld until one is. Never fabricates "NOT OWNED → ACQUIRE". */
+function machineStatus(m: OwnedMachine): { label: string; color: string } {
+  return m.hourly_rate_usd != null
+    ? { label: "OWNED → MARGINAL", color: C.pass }
+    : { label: "OWNED · NO RATE", color: C.cond };
+}
+
+export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
   const [machines, setMachines] = useState<OwnedMachine[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showAdd, setShowAdd] = useState(false);
-  const [selected, setSelected] = useState<OwnedMachine | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [form, setForm] = useState<{ mode: "add" } | { mode: "edit"; machine: OwnedMachine } | null>(null);
   const csvRef = useRef<HTMLInputElement | null>(null);
 
   const refresh = useCallback(async () => {
@@ -49,7 +81,7 @@ export function MachinesScreen() {
       try {
         await deleteMachine(m.id);
         toast.success(`Removed ${m.name || procLabel(m.process)}`);
-        setSelected(null);
+        setDetailId(null);
         await refresh();
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Delete failed");
@@ -76,24 +108,55 @@ export function MachinesScreen() {
     [refresh]
   );
 
+  const detail = detailId ? (machines ?? []).find((m) => m.id === detailId) ?? null : null;
+
+  // A hidden CSV picker shared by every "import" affordance.
+  const csvInput = (
+    <input
+      ref={csvRef}
+      type="file"
+      accept=".csv,text/csv"
+      style={{ display: "none" }}
+      onChange={(e) => {
+        const f = e.target.files?.[0];
+        if (f) void onCsv(f);
+        e.target.value = "";
+      }}
+    />
+  );
+
+  // ── DETAIL VIEW (renderMachine) ─────────────────────────────────────────────
+  if (detail) {
+    return (
+      <main style={{ animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both", flex: 1, overflowY: "auto", padding: "30px 34px", background: C.bg }}>
+        <MachineDetail
+          m={detail}
+          nav={nav}
+          onBack={() => setDetailId(null)}
+          onEdit={() => setForm({ mode: "edit", machine: detail })}
+          onDelete={() => onDelete(detail)}
+        />
+        {form && (
+          <MachineFormModal
+            mode={form.mode}
+            machine={form.mode === "edit" ? form.machine : undefined}
+            onClose={() => setForm(null)}
+            onSaved={async () => { setForm(null); await refresh(); }}
+          />
+        )}
+      </main>
+    );
+  }
+
+  // ── LIST VIEW (renderMachines) ──────────────────────────────────────────────
   return (
     <main style={{ animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both", flex: 1, overflowY: "auto", padding: "30px 34px", background: C.bg }}>
+      {csvInput}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <h1 style={{ margin: 0, fontSize: 26, fontWeight: 300, letterSpacing: "-0.015em" }}>Your machines</h1>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-          <GhostButton primary onClick={() => setShowAdd(true)}>Add machine</GhostButton>
+          <GhostButton primary onClick={() => setForm({ mode: "add" })}>Add machine</GhostButton>
           <GhostButton onClick={() => csvRef.current?.click()}>Import CSV</GhostButton>
-          <input
-            ref={csvRef}
-            type="file"
-            accept=".csv,text/csv"
-            style={{ display: "none" }}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void onCsv(f);
-              e.target.value = "";
-            }}
-          />
         </div>
       </div>
       <p style={{ margin: "8px 0 0", maxWidth: 620, fontSize: 14, lineHeight: 1.6, color: C.ink55 }}>
@@ -116,7 +179,7 @@ export function MachinesScreen() {
             body="Every verdict is computed against this inventory — envelope, materials, rate, throughput. It's an afternoon of typing or one CSV, and it's the difference between “can it be made” and “can YOU make it.”"
           >
             <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
-              <GhostButton primary onClick={() => setShowAdd(true)}>Add your first machine</GhostButton>
+              <GhostButton primary onClick={() => setForm({ mode: "add" })}>Add your first machine</GhostButton>
               <GhostButton onClick={() => csvRef.current?.click()}>Import machines.csv</GhostButton>
             </div>
           </EmptyState>
@@ -124,18 +187,25 @@ export function MachinesScreen() {
       ) : (
         <div style={{ marginTop: 26, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(310px, 1fr))", gap: 16 }}>
           {machines.map((m) => (
-            <MachineCard key={m.id} m={m} onOpen={() => setSelected(m)} />
+            <MachineCard key={m.id} m={m} onOpen={() => setDetailId(m.id)} />
           ))}
         </div>
       )}
 
-      {showAdd && <AddMachineModal onClose={() => setShowAdd(false)} onCreated={async () => { setShowAdd(false); await refresh(); }} />}
-      {selected && <MachineDetailModal m={selected} onClose={() => setSelected(null)} onDelete={() => onDelete(selected)} />}
+      {form && (
+        <MachineFormModal
+          mode={form.mode}
+          machine={form.mode === "edit" ? form.machine : undefined}
+          onClose={() => setForm(null)}
+          onSaved={async () => { setForm(null); await refresh(); }}
+        />
+      )}
     </main>
   );
 }
 
 function MachineCard({ m, onOpen }: { m: OwnedMachine; onOpen: () => void }) {
+  const st = machineStatus(m);
   return (
     <button
       type="button"
@@ -153,45 +223,238 @@ function MachineCard({ m, onOpen }: { m: OwnedMachine; onOpen: () => void }) {
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <p style={{ margin: 0, fontSize: 16, fontWeight: 500 }}>{m.name || procLabel(m.process)}</p>
-        <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5, fontFamily: MONO, fontSize: 10, color: C.user }}>
-          <ProvDot p="USER" size={6} /> USER
-        </span>
+        <MachineIcon />
+        <p style={{ margin: 0, fontSize: 16, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name || procLabel(m.process)}</p>
+        <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", color: st.color, whiteSpace: "nowrap" }}>{st.label}</span>
       </div>
       <p style={{ margin: "4px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink45 }}>{procLabel(m.process)}{m.count && m.count > 1 ? ` · ×${m.count}` : ""}</p>
       <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 7, fontFamily: MONO, fontSize: 11.5 }}>
         <Row k="envelope" v={envelopeSummary(m) ?? "—"} />
         <Row k="materials" v={(m.materials && m.materials.length ? m.materials.join(", ") : "—")} />
-        <Row k="rate" v={m.hourly_rate_usd != null ? `${USD(m.hourly_rate_usd)}/hr` : "—"} vColor={m.hourly_rate_usd != null ? C.user : C.ink40} />
+        <Row k="rate" v={m.hourly_rate_usd != null ? `${USD(m.hourly_rate_usd)}/hr` : "—"} vColor={m.hourly_rate_usd != null ? C.user : C.ink40} tag={m.hourly_rate_usd != null ? "USER" : undefined} />
         <Row k="max workpiece" v={m.max_workpiece_kg != null ? `${m.max_workpiece_kg} kg` : "—"} />
       </div>
     </button>
   );
 }
 
-function Row({ k, v, vColor = C.ink }: { k: string; v: string; vColor?: string }) {
+function Row({ k, v, vColor = C.ink, tag }: { k: string; v: string; vColor?: string; tag?: "USER" | "SHOP" }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
       <span style={{ color: C.ink45 }}>{k}</span>
-      <span style={{ color: vColor, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "60%" }}>{v}</span>
+      <span style={{ color: vColor, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "62%", display: "inline-flex", alignItems: "center", gap: 5 }}>
+        {v}
+        {tag && <ProvDot p={tag} size={6} />}
+      </span>
     </div>
   );
 }
 
-function ModalShell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+// ── MACHINE DETAIL (renderMachine) ────────────────────────────────────────────
+function MachineDetail({
+  m,
+  nav,
+  onBack,
+  onEdit,
+  onDelete,
+}: {
+  m: OwnedMachine;
+  nav: (s: string) => void;
+  onBack: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const st = machineStatus(m);
+  return (
+    <>
+      <button type="button" onClick={onBack} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", color: C.ink45 }}>← YOUR MACHINES</button>
+      <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 12, maxWidth: 1100, flexWrap: "wrap" }}>
+        <MachineIcon color={C.ink60} size={20} />
+        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 300, letterSpacing: "-0.015em" }}>{m.name || procLabel(m.process)}</h1>
+        <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", color: st.color }}>{st.label}</span>
+        <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 11, color: C.ink45 }}>{procLabel(m.process)}{m.count && m.count > 1 ? ` · ×${m.count}` : ""}</span>
+      </div>
+
+      <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: 16, maxWidth: 1100, alignItems: "start" }}>
+        {/* SPEC — THE DENOMINATOR */}
+        <section style={{ border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
+          <Kicker>SPEC — THE DENOMINATOR · ● USER</Kicker>
+          <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 9, fontFamily: MONO, fontSize: 12 }}>
+            <Row k="envelope" v={envelopeSummary(m) ?? "undeclared"} vColor={envelopeSummary(m) ? C.ink : C.ink40} />
+            <Row k="materials" v={m.materials && m.materials.length ? m.materials.join(", ") : "undeclared"} vColor={m.materials && m.materials.length ? C.ink : C.ink40} />
+            <Row k="rate" v={m.hourly_rate_usd != null ? `${USD(m.hourly_rate_usd)}/hr` : "undeclared"} vColor={m.hourly_rate_usd != null ? C.user : C.ink40} tag={m.hourly_rate_usd != null ? "USER" : undefined} />
+            <Row k="count" v={String(m.count ?? 1)} />
+            <Row k="max workpiece" v={m.max_workpiece_kg != null ? `${m.max_workpiece_kg} kg` : "undeclared"} vColor={m.max_workpiece_kg != null ? C.ink : C.ink40} />
+            <Row k="capital fraction" v={m.capital_frac != null ? String(m.capital_frac) : "undeclared"} vColor={m.capital_frac != null ? C.ink : C.ink40} />
+          </div>
+          {m.notes && <p style={{ margin: "12px 0 0", fontSize: 12.5, lineHeight: 1.55, color: C.ink55 }}>{m.notes}</p>}
+          <p style={{ margin: "14px 0 0", fontFamily: MONO, fontSize: 10, lineHeight: 1.7, color: C.ink40 }}>every envelope check and marginal cost on this floor divides through this card</p>
+          <div style={{ marginTop: 16, display: "flex", gap: 8, alignItems: "center" }}>
+            <GhostButton onClick={onEdit}>Edit specs</GhostButton>
+            <GhostButton onClick={onDelete} style={{ marginLeft: "auto", borderColor: "rgba(194,69,58,0.4)", color: C.fail }}>Delete machine</GhostButton>
+          </div>
+          <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink35 }}>id {m.id.slice(0, 12)}…</p>
+        </section>
+
+        {/* RATE HISTORY + PARTS ROUTED HERE */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <RateHistory m={m} />
+          <RoutedParts m={m} nav={nav} />
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** Rate history read from the REAL rate-library. A machine carries a single scalar
+ *  USER rate; version-pinned SHOP history exists only once a governed accounting
+ *  card is bound. We show exactly what is true: the declared rate + whether a
+ *  governed card is currently in effect. Per-machine governed binding is IN DEV. */
+function RateHistory({ m }: { m: OwnedMachine }) {
+  const [eff, setEff] = useState<EffectiveRateCard | null>(null);
+  const [versions, setVersions] = useState<RateVersionsPage | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    Promise.allSettled([effectiveRateCard(), listRateVersions()]).then(([e, v]) => {
+      if (!live) return;
+      if (e.status === "fulfilled") setEff(e.value);
+      if (v.status === "fulfilled") setVersions(v.value);
+      setLoaded(true);
+    });
+    return () => { live = false; };
+  }, []);
+
+  const declaredDate = m.updated_at || m.created_at;
+  const dateFmt = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString() : "—");
+  const usingGoverned = eff?.using_governed === true;
+  const publishedCount = versions
+    ? versions.versions.filter((x) => x.status === "published" || x.is_published).length
+    : 0;
+
+  return (
+    <section style={{ border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
+      <Kicker>RATE HISTORY — GOVERNED, VERSION-PINNED</Kicker>
+      <div style={{ marginTop: 10, display: "flex", flexDirection: "column" }}>
+        {m.hourly_rate_usd != null ? (
+          <>
+            <HistRow a={`${dateFmt(declaredDate)} · current`} b={`${USD(m.hourly_rate_usd)}/hr`} tag="USER" note="declared by you" />
+            {m.created_at && m.updated_at && m.created_at !== m.updated_at && (
+              <HistRow a={`${dateFmt(m.created_at)} · declared`} b="prior value not retained" note="edits overwrite in place until a governed card is bound" muted />
+            )}
+          </>
+        ) : (
+          <p style={{ margin: "2px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink40 }}>no rate declared — marginal cost is withheld until you set one</p>
+        )}
+      </div>
+
+      <div style={{ marginTop: 12, borderTop: `1px solid #f0f0f3`, paddingTop: 12 }}>
+        {!loaded ? (
+          <Spinner label="reading rate library…" />
+        ) : usingGoverned ? (
+          <p style={{ margin: 0, display: "inline-flex", alignItems: "center", gap: 7, fontFamily: MONO, fontSize: 11, color: C.shop }}>
+            <ProvDot p="SHOP" size={6} /> governed rate card in effect · {publishedCount || versions?.versions.length || 0} published
+          </p>
+        ) : (
+          <p style={{ margin: 0, fontFamily: MONO, fontSize: 11, color: C.ink45 }}>
+            {versions && versions.versions.length > 0
+              ? `${versions.versions.length} rate card version(s) authored — none in effect; this rate is your ● USER declaration`
+              : "no governed rate card in effect — this rate is your ● USER declaration"}
+          </p>
+        )}
+      </div>
+
+      <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, color: C.ink40 }}>old verdicts keep the rate version they were computed with</p>
+        <InDev label="PER-MACHINE GOVERNED BINDING — IN DEVELOPMENT" />
+      </div>
+    </section>
+  );
+}
+
+function HistRow({ a, b, tag, note, muted }: { a: string; b: string; tag?: "USER" | "SHOP"; note?: string; muted?: boolean }) {
+  return (
+    <div style={{ display: "flex", gap: 16, alignItems: "center", padding: "10px 2px", borderBottom: `1px solid #f0f0f3`, fontFamily: MONO, fontSize: 11.5 }}>
+      <span style={{ color: C.ink40, minWidth: 140 }}>{a}</span>
+      <span style={{ color: muted ? C.ink45 : C.ink, display: "inline-flex", alignItems: "center", gap: 6 }}>
+        {b}
+        {tag && <ProvDot p={tag} size={6} />}
+      </span>
+      {note && <span style={{ marginLeft: "auto", color: C.ink40, fontSize: 10 }}>{note}</span>}
+    </div>
+  );
+}
+
+/** PARTS ROUTED HERE — real cost-decisions whose make-now route is this machine's
+ *  process (server-filtered by `process`, defensively re-filtered client-side).
+ *  Empty → the design's honest "nothing routed yet" line. */
+function RoutedParts({ m, nav }: { m: OwnedMachine; nav: (s: string) => void }) {
+  const [rows, setRows] = useState<CostDecisionSummary[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    setRows(null);
+    setError(null);
+    fetchCostDecisions({ process: m.process, limit: 25 }).then(
+      (page) => {
+        if (!live) return;
+        setRows(page.cost_decisions.filter((r) => r.make_now_process === m.process));
+      },
+      (e) => {
+        if (!live) return;
+        setError(e instanceof Error ? e.message : "could not load routed parts");
+        setRows([]);
+      }
+    );
+    return () => { live = false; };
+  }, [m.process]);
+
+  return (
+    <section style={{ border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
+      <Kicker>PARTS ROUTED HERE</Kicker>
+      {error && <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 11, color: C.fail }}>{error}</p>}
+      {rows === null ? (
+        <div style={{ marginTop: 12 }}><Spinner label="reading records…" /></div>
+      ) : rows.length === 0 ? (
+        <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink40 }}>
+          nothing routed yet — verdicts routed to {procLabel(m.process)} will land here as parts are verified
+        </p>
+      ) : (
+        <div style={{ marginTop: 6, display: "flex", flexDirection: "column" }}>
+          {rows.map((r) => (
+            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 2px", borderBottom: `1px solid #f0f0f3` }}>
+              <span style={{ fontFamily: MONO, fontSize: 12, color: C.ink, minWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.label || r.filename}</span>
+              <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink50, flex: 1 }}>
+                {procLabel(r.make_now_process)} · crossover {r.crossover_qty != null ? NUM(r.crossover_qty) : "—"} · {new Date(r.created_at).toLocaleDateString()}
+              </span>
+              <button type="button" onClick={() => nav("records")} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 10.5, color: C.measured }}>open →</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>routed = cost-decisions whose make-now route is this machine&apos;s process</p>
+    </section>
+  );
+}
+
+// ── ADD / EDIT MACHINE MODAL (mForm → POST/PATCH) ─────────────────────────────
+function ModalShell({ title, subtitle, onClose, children }: { title: string; subtitle?: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <div
-      style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(23,24,26,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+      style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(23,24,26,0.4)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
       onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{ width: 520, maxWidth: "100%", maxHeight: "90vh", overflowY: "auto", background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 18, boxShadow: "0 18px 50px -18px rgba(23,24,26,0.35)", padding: 24, animation: "vscreenIn 220ms cubic-bezier(0.2,0,0,1) both" }}
+        style={{ width: 560, maxWidth: "100%", maxHeight: "90vh", overflowY: "auto", background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 18, boxShadow: "0 18px 50px -18px rgba(23,24,26,0.35)", padding: "26px 28px", animation: "vscreenIn 220ms cubic-bezier(0.2,0,0,1) both" }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <p style={{ margin: 0, fontSize: 18, fontWeight: 500 }}>{title}</p>
+          <Kicker>{title}</Kicker>
           <button type="button" onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontFamily: MONO, fontSize: 14, color: C.ink40 }}>✕</button>
         </div>
+        {subtitle && <p style={{ margin: "6px 0 0", fontSize: 12.5, color: C.ink55 }}>{subtitle}</p>}
         {children}
       </div>
     </div>
@@ -201,54 +464,104 @@ function ModalShell({ title, onClose, children }: { title: string; onClose: () =
 const inputStyle: React.CSSProperties = {
   width: "100%",
   background: C.bg,
-  border: `1px solid ${C.hair}`,
+  border: `1px solid #dcdce0`,
   borderRadius: 8,
-  padding: "8px 12px",
+  padding: "10px 12px",
   fontSize: 13,
   color: C.ink,
   fontFamily: "inherit",
   outline: "none",
 };
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children, span }: { label: string; children: React.ReactNode; span?: boolean }) {
   return (
-    <label style={{ display: "block" }}>
+    <label style={{ display: "block", gridColumn: span ? "span 2" : undefined }}>
       <span style={{ display: "block", fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: C.ink45, marginBottom: 5 }}>{label}</span>
       {children}
     </label>
   );
 }
 
-function AddMachineModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void | Promise<void> }) {
-  const [name, setName] = useState("");
-  const [process, setProcess] = useState("cnc_3axis");
-  const [count, setCount] = useState("1");
-  const [rate, setRate] = useState("");
-  const [maxKg, setMaxKg] = useState("");
-  const [materials, setMaterials] = useState("");
-  const [x, setX] = useState("");
-  const [y, setY] = useState("");
-  const [z, setZ] = useState("");
-  const [swing, setSwing] = useState("");
-  const [between, setBetween] = useState("");
+const num = (s: string): number | undefined => {
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : undefined;
+};
+
+const capNum = (cap: Record<string, unknown>, k: string): string => {
+  const v = cap[k];
+  return typeof v === "number" && Number.isFinite(v) ? String(v) : "";
+};
+
+function MachineFormModal({
+  mode,
+  machine,
+  onClose,
+  onSaved,
+}: {
+  mode: "add" | "edit";
+  machine?: OwnedMachine;
+  onClose: () => void;
+  onSaved: () => void | Promise<void>;
+}) {
+  const baseCap = (machine?.capabilities as Record<string, unknown>) || {};
+  const [name, setName] = useState(machine?.name ?? "");
+  const [process, setProcess] = useState(machine?.process ?? "cnc_3axis");
+  const [count, setCount] = useState(machine?.count != null ? String(machine.count) : "1");
+  const [rate, setRate] = useState(machine?.hourly_rate_usd != null ? String(machine.hourly_rate_usd) : "");
+  const [maxKg, setMaxKg] = useState(machine?.max_workpiece_kg != null ? String(machine.max_workpiece_kg) : "");
+  const [materials, setMaterials] = useState(machine?.materials?.join(", ") ?? "");
+  const [notes, setNotes] = useState(machine?.notes ?? "");
+  const [x, setX] = useState(capNum(baseCap, "x"));
+  const [y, setY] = useState(capNum(baseCap, "y"));
+  const [z, setZ] = useState(capNum(baseCap, "z"));
+  const [swing, setSwing] = useState(capNum(baseCap, "swing_dia"));
+  const [between, setBetween] = useState(capNum(baseCap, "between_centers"));
   const [busy, setBusy] = useState(false);
+
+  // Catalog prefill (add-mode only): the REAL GET /catalog editable templates.
+  const [catalog, setCatalog] = useState<MachineCatalogTemplate[] | null>(null);
+  useEffect(() => {
+    if (mode !== "add") return;
+    let live = true;
+    fetchMachineCatalog().then(
+      (c) => { if (live) setCatalog(c); },
+      () => { if (live) setCatalog([]); }
+    );
+    return () => { live = false; };
+  }, [mode]);
 
   const isTurning = process === "cnc_turning";
 
+  const applyTemplate = (idx: number) => {
+    const t = catalog?.[idx];
+    if (!t) return;
+    if (t.name) setName(t.name);
+    if (t.process) setProcess(t.process);
+    const cap = (t.capabilities as Record<string, unknown>) || {};
+    setX(capNum(cap, "x"));
+    setY(capNum(cap, "y"));
+    setZ(capNum(cap, "z"));
+    setSwing(capNum(cap, "swing_dia"));
+    setBetween(capNum(cap, "between_centers"));
+    setMaterials(t.materials?.join(", ") ?? "");
+    setMaxKg(t.max_workpiece_kg != null ? String(t.max_workpiece_kg) : "");
+    // A catalog template carries NO rate — the org declares its own. Notes are the
+    // template's "edit before saving" reminder.
+    setNotes(t.notes ?? "");
+  };
+
   const submit = async () => {
     setBusy(true);
-    const num = (s: string): number | undefined => {
-      const n = parseFloat(s);
-      return Number.isFinite(n) ? n : undefined;
-    };
-    const cap: Record<string, number> = {};
+    // Preserve non-envelope capability keys on edit; overwrite the ones we manage.
+    const cap: Record<string, unknown> = { ...baseCap };
+    delete cap.x; delete cap.y; delete cap.z; delete cap.swing_dia; delete cap.between_centers;
     if (isTurning) {
-      if (num(swing) != null) cap.swing_dia = num(swing)!;
-      if (num(between) != null) cap.between_centers = num(between)!;
+      if (num(swing) != null) cap.swing_dia = num(swing);
+      if (num(between) != null) cap.between_centers = num(between);
     } else {
-      if (num(x) != null) cap.x = num(x)!;
-      if (num(y) != null) cap.y = num(y)!;
-      if (num(z) != null) cap.z = num(z)!;
+      if (num(x) != null) cap.x = num(x);
+      if (num(y) != null) cap.y = num(y);
+      if (num(z) != null) cap.z = num(z);
     }
     const body: MachineInput = {
       name: name.trim() || null,
@@ -258,22 +571,49 @@ function AddMachineModal({ onClose, onCreated }: { onClose: () => void; onCreate
       max_workpiece_kg: num(maxKg) ?? null,
       materials: materials.trim() ? materials.split(",").map((s) => s.trim()).filter(Boolean) : null,
       capabilities: Object.keys(cap).length ? cap : null,
+      notes: notes.trim() || null,
     };
     try {
-      await createMachine(body);
-      toast.success(`Declared ${body.name || procLabel(process)} — ● USER`);
-      await onCreated();
+      if (mode === "edit" && machine) {
+        await updateMachine(machine.id, body);
+        toast.success(`Updated ${body.name || procLabel(process)}`);
+      } else {
+        await createMachine(body);
+        toast.success(`Declared ${body.name || procLabel(process)} — ● USER`);
+      }
+      await onSaved();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Create failed");
+      toast.error(e instanceof Error ? e.message : "Save failed");
       setBusy(false);
     }
   };
 
   return (
-    <ModalShell title="Add a machine — declare the denominator" onClose={onClose}>
-      <p style={{ margin: "6px 0 16px", fontFamily: MONO, fontSize: 10.5, color: C.ink45, display: "inline-flex", alignItems: "center", gap: 6 }}>
-        <ProvDot p="USER" size={6} /> a declared capability is a USER assertion, never a measurement of the machine
+    <ModalShell
+      title={mode === "edit" ? "EDIT MACHINE — THE DENOMINATOR OF EVERY VERDICT" : "DECLARE A MACHINE — THE DENOMINATOR OF EVERY VERDICT"}
+      onClose={onClose}
+    >
+      <p style={{ margin: "8px 0 14px", fontFamily: MONO, fontSize: 10.5, color: C.user, display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <ProvDot p="USER" size={6} /> ● USER — a declared capability, never a measurement · bind an accounting export later to re-tag rates ● SHOP
       </p>
+
+      {mode === "add" && catalog && catalog.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <Field label="PREFILL FROM A CATALOG MACHINE (OPTIONAL — YOU EDIT BEFORE SAVING)">
+            <select
+              style={inputStyle}
+              defaultValue=""
+              onChange={(e) => { if (e.target.value !== "") applyTemplate(Number(e.target.value)); }}
+            >
+              <option value="">— start blank —</option>
+              {catalog.map((t, i) => (
+                <option key={`${t.name}-${i}`} value={i}>{t.name || procLabel(t.process)} · {procLabel(t.process)}</option>
+              ))}
+            </select>
+          </Field>
+        </div>
+      )}
+
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <Field label="NAME"><input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="Haas VF-2" /></Field>
         <Field label="PROCESS">
@@ -291,42 +631,20 @@ function AddMachineModal({ onClose, onCreated }: { onClose: () => void; onCreate
             <Field label="BETWEEN CENTERS (mm)"><input style={inputStyle} value={between} onChange={(e) => setBetween(e.target.value)} inputMode="decimal" /></Field>
           </>
         ) : (
-          <>
+          <div style={{ gridColumn: "span 2", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
             <Field label="ENVELOPE X (mm)"><input style={inputStyle} value={x} onChange={(e) => setX(e.target.value)} inputMode="decimal" /></Field>
-            <Field label="ENVELOPE Y (mm)"><input style={inputStyle} value={y} onChange={(e) => setY(e.target.value)} inputMode="decimal" /></Field>
-            <Field label="ENVELOPE Z (mm)"><input style={inputStyle} value={z} onChange={(e) => setZ(e.target.value)} inputMode="decimal" /></Field>
-          </>
+            <Field label="Y (mm)"><input style={inputStyle} value={y} onChange={(e) => setY(e.target.value)} inputMode="decimal" /></Field>
+            <Field label="Z (mm)"><input style={inputStyle} value={z} onChange={(e) => setZ(e.target.value)} inputMode="decimal" /></Field>
+          </div>
         )}
         <Field label="MAX WORKPIECE (kg)"><input style={inputStyle} value={maxKg} onChange={(e) => setMaxKg(e.target.value)} inputMode="decimal" /></Field>
-      </div>
-      <div style={{ marginTop: 12 }}>
         <Field label="MATERIALS (comma-separated)"><input style={inputStyle} value={materials} onChange={(e) => setMaterials(e.target.value)} placeholder="6061, 316L, PP" /></Field>
+        <Field label="NOTES (OPTIONAL)" span><input style={inputStyle} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="throughput note, fixturing, secondary ops…" /></Field>
       </div>
-      <div style={{ marginTop: 18, display: "flex", justifyContent: "flex-end", gap: 10 }}>
-        <GhostButton onClick={onClose}>Cancel</GhostButton>
-        <GhostButton primary disabled={busy} onClick={submit}>{busy ? "Saving…" : "Declare machine"}</GhostButton>
-      </div>
-    </ModalShell>
-  );
-}
 
-function MachineDetailModal({ m, onClose, onDelete }: { m: OwnedMachine; onClose: () => void; onDelete: () => void }) {
-  return (
-    <ModalShell title={m.name || procLabel(m.process)} onClose={onClose}>
-      <p style={{ margin: "4px 0 14px", fontFamily: MONO, fontSize: 10.5, color: C.ink45 }}>{procLabel(m.process)}</p>
-      <Kicker>SPEC — THE DENOMINATOR · ● USER</Kicker>
-      <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 9, fontFamily: MONO, fontSize: 12 }}>
-        <Row k="envelope" v={envelopeSummary(m) ?? "undeclared"} />
-        <Row k="materials" v={m.materials && m.materials.length ? m.materials.join(", ") : "undeclared"} />
-        <Row k="rate" v={m.hourly_rate_usd != null ? `${USD(m.hourly_rate_usd)}/hr` : "undeclared"} vColor={C.user} />
-        <Row k="max workpiece" v={m.max_workpiece_kg != null ? `${m.max_workpiece_kg} kg` : "undeclared"} />
-        <Row k="count" v={String(m.count ?? 1)} />
-        <Row k="capital fraction" v={m.capital_frac != null ? String(m.capital_frac) : "undeclared"} />
-      </div>
-      {m.notes && <p style={{ margin: "12px 0 0", fontSize: 12.5, color: C.ink55 }}>{m.notes}</p>}
-      <div style={{ marginTop: 18, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink40 }}>id {m.id.slice(0, 10)}…</span>
-        <GhostButton onClick={onDelete} style={{ borderColor: "rgba(194,69,58,0.4)", color: C.fail }}>Delete machine</GhostButton>
+      <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 10 }}>
+        <GhostButton primary disabled={busy} onClick={submit}>{busy ? "Saving…" : mode === "edit" ? "Save changes" : "Declare machine"}</GhostButton>
+        <GhostButton onClick={onClose}>Cancel</GhostButton>
       </div>
     </ModalShell>
   );

@@ -15,11 +15,35 @@ import { Stage } from "./stage";
 import { VerifyScreen } from "./verify-screen";
 import { MachinesScreen } from "./machines-screen";
 import { RecordsScreen } from "./records-screen";
+import { CatalogScreen } from "./catalog-screen";
+import { CompareScreen } from "./compare-screen";
+import { TriageScreen } from "./triage-screen";
+import { CalibrationScreen } from "./calibration-screen";
 import { HomeScreen } from "./home-screen";
-import { StubScreen, AcquisitionModal, CommandPalette, NotificationsPanel } from "./stub-screens";
+import { ProgramScreen } from "./program-screen";
+import { CommandPalette, NotificationsPanel } from "./stub-screens";
+import { AcquisitionModal } from "./acquisition-modal";
+import { PartScreen } from "./part-screen";
+import { ToastProvider } from "./toast";
+import { ShortcutsOverlay } from "./shortcuts-overlay";
+import { CalibrationSwitcher } from "./calibration-switcher";
+
+// The shared hotkey nav map — matches the design 1:1 (support.js keydown handler):
+// H/V/P/R/G/M/T/C jump between the surfaces, `?` opens the shortcuts sheet. `c`
+// (Calibration & truth) is the `calibration` screen; `p` is the Parts catalog.
+const HOTKEY_NAV: Record<string, Screen> = {
+  h: "home",
+  v: "verify",
+  p: "catalog",
+  r: "records",
+  g: "programs",
+  m: "machines",
+  t: "triage",
+  c: "calibration",
+};
 
 type Screen =
-  | "home" | "verify" | "catalog" | "compare" | "records" | "programs" | "machines" | "triage" | "calibration"
+  | "home" | "verify" | "catalog" | "part" | "compare" | "records" | "programs" | "program" | "machines" | "triage" | "calibration"
   | "acquisition" | "palette";
 
 const RAIL: { key: Screen; label: string; d: string }[] = [
@@ -37,8 +61,11 @@ const CRUMB: Record<string, string> = {
   home: "Home",
   verify: "Verify",
   catalog: "Parts",
+  compare: "Parts / Compare",
+  part: "Parts / Standing",
   records: "Records",
   programs: "Programs",
+  program: "Programs",
   machines: "Your machines",
   triage: "Triage at scale",
   calibration: "Calibration & truth",
@@ -51,6 +78,7 @@ export function VerifyApp() {
   const [running, setRunning] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   // A REAL signal for the rail footer: are any of the org's machines declaring an
   // hourly rate (i.e. a shop rate is actually bound)? null while loading → the dot
   // stays hollow/neutral until a bound rate is detected — never a hardcoded claim.
@@ -111,15 +139,33 @@ export function VerifyApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [env]);
 
-  // hotkeys — ⌘K palette · Esc closes overlays
+  // hotkeys — ⌘K palette · H/V/P/R/G/M/T/C nav · ? shortcuts · Esc closes all
+  // (matches the design's keydown handler in support.js). Typing in a field never
+  // triggers nav; modifier chords other than ⌘K are left to the browser.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const tag = ((e.target as HTMLElement | null)?.tagName ?? "").toLowerCase();
+      const typing = tag === "input" || tag === "textarea" || tag === "select";
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
+        setShortcutsOpen(false);
         setScreen((s) => (s === "palette" ? "home" : "palette"));
-      } else if (e.key === "Escape") {
+        return;
+      }
+      if (e.key === "Escape") {
         setNotifOpen(false);
+        setShortcutsOpen(false);
         setScreen((s) => (s === "palette" || s === "acquisition" ? "verify" : s));
+        return;
+      }
+      if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+      const k = e.key.toLowerCase();
+      const target = HOTKEY_NAV[k];
+      if (target) {
+        setShortcutsOpen(false);
+        setScreen(target);
+      } else if (e.key === "?") {
+        setShortcutsOpen(true);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -129,6 +175,7 @@ export function VerifyApp() {
   const onVerify = screen === "verify";
 
   return (
+    <ToastProvider>
     <div style={{ height: "100vh", display: "flex", background: C.bg, color: C.ink, fontFamily: SANS, WebkitFontSmoothing: "antialiased", fontSize: 14 }}>
       <style>{KEYFRAMES}</style>
       <input
@@ -201,10 +248,20 @@ export function VerifyApp() {
             )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <CalibrationSwitcher onOpenCalibration={() => setScreen("calibration")} />
             <button type="button" onClick={() => setScreen("palette")} title="Command palette (⌘K)" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${C.hair}`, background: "#fff", borderRadius: 999, padding: "7px 13px", fontFamily: MONO, fontSize: 11, color: C.ink55, cursor: "pointer" }}>⌘K</button>
             <button type="button" onClick={() => setNotifOpen((v) => !v)} title="Notifications" style={{ width: 32, height: 32, borderRadius: "50%", border: `1px solid ${C.hair}`, background: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", color: C.ink55 }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>
             </button>
+            <input
+              readOnly
+              value=""
+              placeholder="Search or jump…"
+              title="Search or jump to any surface — opens the command palette (⌘K)"
+              onMouseDown={(e) => { e.preventDefault(); setScreen("palette"); }}
+              onFocus={() => setScreen("palette")}
+              style={{ width: 160, background: C.sunken, border: `1px solid ${C.hair}`, borderRadius: 999, padding: "7px 14px", fontSize: 12.5, color: C.ink, fontFamily: "inherit", outline: "none", cursor: "text" }}
+            />
             <button type="button" onClick={pickFile} style={{ background: C.ink, color: "#fff", border: "none", borderRadius: 999, padding: "8px 18px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>Verify a part</button>
           </div>
         </header>
@@ -241,16 +298,28 @@ export function VerifyApp() {
             />
           </div>
         )}
-        {screen === "machines" && <MachinesScreen />}
+        {screen === "machines" && <MachinesScreen nav={nav} />}
         {screen === "records" && <RecordsScreen nav={nav} />}
-        {(screen === "catalog" || screen === "compare" || screen === "programs" || screen === "triage" || screen === "calibration") && (
-          <StubScreen id={screen} />
-        )}
+        {screen === "catalog" && <CatalogScreen nav={nav} />}
+        {screen === "part" && <PartScreen nav={nav} />}
+        {screen === "compare" && <CompareScreen nav={nav} />}
+        {(screen === "programs" || screen === "program") && <ProgramScreen nav={nav} screen={screen} />}
+        {screen === "triage" && <TriageScreen nav={nav} />}
+        {screen === "calibration" && <CalibrationScreen />}
       </div>
 
-      {screen === "acquisition" && <AcquisitionModal onClose={() => setScreen("verify")} />}
-      {screen === "palette" && <CommandPalette onClose={() => setScreen("home")} nav={nav} />}
+      {screen === "acquisition" && <AcquisitionModal onClose={() => setScreen("verify")} result={result} nav={nav} />}
+      {screen === "palette" && (
+        <CommandPalette
+          onClose={() => setScreen("home")}
+          nav={nav}
+          onVerify={pickFile}
+          onShortcuts={() => { setScreen("home"); setShortcutsOpen(true); }}
+        />
+      )}
+      {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
     </div>
+    </ToastProvider>
   );
 }
 
@@ -259,4 +328,5 @@ const KEYFRAMES = `
 @keyframes vscreenIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes vstepIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes vtraceIn { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes vtoastIn { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 `;

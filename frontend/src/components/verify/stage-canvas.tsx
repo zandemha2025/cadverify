@@ -10,8 +10,8 @@
  * engine's MEASURED bbox (an honest envelope, not a fake shape) once costing
  * returns it, or a neutral placeholder before any measurement exists.
  */
-import { useEffect, useMemo, useState, Suspense } from "react";
-import { Canvas, useLoader } from "@react-three/fiber";
+import { useEffect, useMemo, useRef, useState, Suspense, type ReactNode } from "react";
+import { Canvas, useLoader, useFrame } from "@react-three/fiber";
 import { OrbitControls, Center, ContactShadows, Environment, Lightformer } from "@react-three/drei";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
@@ -73,6 +73,54 @@ function BoxEnvelope({ bbox, xray }: { bbox: [number, number, number] | null; xr
   );
 }
 
+/** Seat-in-assembly cinematic: the part recedes (the view "pulls back") as it
+ *  drops into its home in a larger assembly. Purely visual — it scales the part
+ *  group down; it asserts nothing about the part or its cost. */
+function SeatGroup({ seat, children }: { seat: boolean; children: ReactNode }) {
+  const ref = useRef<THREE.Group>(null);
+  useFrame(() => {
+    const g = ref.current;
+    if (!g) return;
+    const target = seat ? 0.62 : 1;
+    const s = THREE.MathUtils.lerp(g.scale.x, target, 0.08);
+    g.scale.setScalar(Math.abs(s - target) < 0.002 ? target : s);
+  });
+  return <group ref={ref}>{children}</group>;
+}
+
+/** The ghost housing that converges around the part when it is seated — a
+ *  translucent cavity (inner walls, BackSide) that fades in. Illustrative context
+ *  only: no real neighboring geometry is claimed; it is a designed placeholder for
+ *  the part's home, which is why it stays a featureless ghost. */
+function GhostHousing({ seat }: { seat: boolean }) {
+  const ref = useRef<THREE.Mesh>(null);
+  useFrame(() => {
+    const m = ref.current;
+    if (!m) return;
+    const mat = m.material as THREE.MeshStandardMaterial;
+    const target = seat ? 0.16 : 0;
+    mat.opacity = THREE.MathUtils.lerp(mat.opacity, target, 0.08);
+    m.visible = mat.opacity > 0.004;
+    const ts = seat ? 1 : 0.82;
+    const s = THREE.MathUtils.lerp(m.scale.x, ts, 0.08);
+    m.scale.setScalar(s);
+  });
+  return (
+    <mesh ref={ref} visible={false}>
+      <boxGeometry args={[2.9, 2.9, 2.9]} />
+      <meshStandardMaterial
+        color="#7f8a99"
+        transparent
+        opacity={0}
+        metalness={0.05}
+        roughness={0.85}
+        side={THREE.BackSide}
+        depthWrite={false}
+      />
+    </mesh>
+  );
+}
+
 function AutoOrbit({ on }: { on: boolean }) {
   return (
     <OrbitControls
@@ -96,6 +144,7 @@ export default function StageCanvas({
   xray,
   hostile,
   autoOrbit,
+  seat,
 }: {
   fileUrl: string | null;
   isStl: boolean;
@@ -103,6 +152,7 @@ export default function StageCanvas({
   xray: boolean;
   hostile: boolean;
   autoOrbit: boolean;
+  seat: boolean;
 }) {
   const [ready, setReady] = useState(false);
   useEffect(() => setReady(true), []);
@@ -125,11 +175,14 @@ export default function StageCanvas({
       />
       <directionalLight position={[0, -4, 3]} intensity={0.25} color="#e8ecf1" />
       <Suspense fallback={<BoxEnvelope bbox={bbox} xray={xray} />}>
-        {fileUrl && isStl ? (
-          <StlPart url={fileUrl} xray={xray} hostile={hostile} />
-        ) : (
-          <BoxEnvelope bbox={bbox} xray={xray} />
-        )}
+        <SeatGroup seat={seat}>
+          {fileUrl && isStl ? (
+            <StlPart url={fileUrl} xray={xray} hostile={hostile} />
+          ) : (
+            <BoxEnvelope bbox={bbox} xray={xray} />
+          )}
+          <GhostHousing seat={seat} />
+        </SeatGroup>
         <Environment resolution={128} frames={1}>
           <Lightformer form="rect" intensity={2.6} position={[0, 5, 1]} rotation={[-Math.PI / 2, 0, 0]} scale={[10, 6, 1]} color="#ffffff" />
           <Lightformer form="rect" intensity={1.1} position={[-5, 1.5, 3]} scale={[5, 6, 1]} color="#e6ebf1" />
