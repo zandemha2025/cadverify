@@ -1,0 +1,103 @@
+name: STEP ingestion spike (B4)
+
+# Push-triggered on the spike branch only. This builds the ACTUAL deploy image
+# (backend/Dockerfile, linux/amd64, base python:3.12-slim) and proves whether
+# the LIVE STEP path — src/parsers/step_mesher.py (gmsh + embedded OpenCASCADE,
+# invoked by routes.py::_parse_mesh) — can `import gmsh` and end-to-end parse a
+# real .step file INSIDE that image on the deploy target.
+#
+# The build context is `backend`, so this workflow file (.github/, repo root)
+# and the sample under backend/tests/ (dockerignored) do NOT change the image:
+# the image built here is byte-identical to what Fly.io would deploy from dev.
+on:
+  push:
+    branches: [feat/step-spike]
+
+jobs:
+  step-image-proof:
+    name: Build deploy image + prove STEP ingestion
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      IMG: cadverify-stepspike:ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Build the real deploy image and LOAD it into the local docker daemon so
+      # we can `docker run` it. ubuntu-latest is amd64, so linux/amd64 builds
+      # natively (no QEMU). The Dockerfile ADDs a ~150MB SAM-2 checkpoint from
+      # dl.fbaipublicfiles.com at build time; if that host flakes the build
+      # fails on the ADD line. We retry the whole build once. gha cache means
+      # the retry (and any Dockerfile-fix re-push) reuses the heavy builder
+      # layer (pip install + the 150MB download) instead of redoing it.
+      - name: Build deploy image (retry once for SAM-2 CDN flake)
+        run: |
+          set -o pipefail
+          build() {
+            docker buildx build \
+              --platform linux/amd64 \
+              --load \
+              --cache-from type=gha \
+              --cache-to type=gha,mode=max \
+              -t "$IMG" \
+              -f backend/Dockerfile \
+              backend
+          }
+          if ! build 2>&1 | tee build1.log; then
+            echo "::warning::First image build failed — retrying once (possible SAM-2 CDN flake from dl.fbaipublicfiles.com)"
+            if grep -qi "fbaipublicfiles\|sam2\|ADD failed\|dial tcp\|TLS handshake\|timeout" build1.log; then
+              echo "::warning::Failure log mentions the SAM-2 download / network — treating as CDN flake"
+            fi
+            sleep 15
+            build
+          fi
+
+      - name: Report image size
+        run: |
+          echo "== docker image ls =="
+          docker image ls "$IMG"
+          BYTES=$(docker image inspect "$IMG" --format '{{.Size}}')
+          echo "IMAGE_SIZE_BYTES=$BYTES"
+          echo "IMAGE_SIZE_HUMAN=$(python3 -c "print(f'{$BYTES/1024/1024:.1f} MiB')")"
+
+      # (a) Can the deploy image even import gmsh? This is the crux: the gmsh
+      # manylinux wheel bundles libgmsh but links against system OpenGL/GLU/X11
+      # shared objects. If the runtime stage is missing any, this step fails
+      # with the exact missing .so name in the log — which tells us what apt
+      # package to add.
+      - name: (a) import gmsh inside the deploy image
+        run: |
+          docker run --rm "$IMG" python -c "import gmsh; gmsh.initialize(); print('IMPORT_GMSH_OK', getattr(gmsh, '__version__', '(no __version__)')); gmsh.finalize(); print('GMSH_INIT_FINALIZE_OK')"
+
+      # (b) Real end-to-end parse through the LIVE code path. The probe script
+      # and sample live under backend/tests/ (dockerignored -> not in image) and
+      # are MOUNTED at run time, so the image stays byte-identical to prod while
+      # we feed it real STEP bytes. The probe calls
+      # src.parsers.step_mesher.step_to_trimesh_from_bytes — the exact function
+      # routes.py::_parse_mesh invokes for .step/.stp — and prints vertex /
+      # triangle counts + watertightness + volume.
+      - name: (b) end-to-end STEP parse via the LIVE gmsh code path
+        run: |
+          docker run --rm \
+            -v "$PWD/backend/tests/assets:/samples:ro" \
+            -e SAMPLE=/samples/cube.step \
+            "$IMG" python /samples/_step_spike_probe.py
+
+      # (c) NON-FATAL context for the pilot recommendation. The LIVE path is
+      # gmsh, NOT cadquery, so cadquery is not required to answer the blocker.
+      # This only records whether a cp312 manylinux wheel for cadquery-ocp
+      # (the heavy OpenCASCADE dep) even resolves, as evidence for the
+      # B-rep/PMI upgrade question. Never fails the job.
+      - name: (c) cadquery-ocp cp312 wheel availability probe (non-fatal)
+        continue-on-error: true
+        run: |
+          docker run --rm "$IMG" sh -c '
+            echo "--- cadquery-ocp available versions (cp312 linux) ---"
+            pip index versions cadquery-ocp || true
+            echo "--- cadquery available versions ---"
+            pip index versions cadquery || true
+          ' || true
