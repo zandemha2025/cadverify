@@ -31,9 +31,17 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.auth.rbac import OrgAuthContext, OrgRole, require_org_role
+from src.auth.rbac import (
+    OrgAuthContext,
+    OrgRole,
+    Role,
+    require_org_role,
+    require_role,
+)
+from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 from src.db.models import Analysis, Batch, Membership, User
+from src.services import org_service
 from src.services.audit_service import export_audit_csv, query_audit_log
 
 logger = logging.getLogger("cadverify.admin")
@@ -299,6 +307,67 @@ async def update_user_role(
         "email": target.email,
         "role": target.role,
     }
+
+
+# ---------------------------------------------------------------------------
+# POST /users/{user_id}/deactivate | /reactivate -- account-level (superadmin)
+# ---------------------------------------------------------------------------
+#
+# DESIGN CHOICE (documented): deactivation is ACCOUNT-LEVEL, not org-level. A
+# user may belong to several orgs; flipping ``is_active`` blocks EVERY auth path
+# (login, Google/SAML/magic re-provision, existing sessions, and the user's API
+# keys), so it is a platform-staff (superadmin) action — an org admin must not be
+# able to lock a shared account out of every other org. Org admins instead REMOVE
+# a member from THEIR org (DELETE /api/v1/orgs/members/{id}), which is org-scoped
+# and takes effect immediately via membership re-validation. This split keeps
+# authority proportional to blast radius.
+
+require_superadmin = require_role(Role.superadmin)
+
+
+@router.post("/users/{user_id}/deactivate")
+async def deactivate_user(
+    user_id: int,
+    user: AuthedUser = Depends(require_superadmin),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Deactivate an account (superadmin). Blocks every auth path; the user's
+    existing sessions and API keys stop working immediately."""
+    if user.user_id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot deactivate yourself")
+    result = await org_service.set_user_active(session, user_id, active=False)
+    await session.commit()
+
+    import asyncio
+    from src.services.audit_service import _lookup_email, fire_and_forget_audit
+    _actor_email = await _lookup_email(user.user_id)
+    asyncio.create_task(fire_and_forget_audit(
+        user_id=user.user_id, user_email=_actor_email,
+        action="user.deactivated", resource_type="user",
+        resource_id=str(user_id), detail={"deactivated_by": user.user_id},
+    ))
+    return result
+
+
+@router.post("/users/{user_id}/reactivate")
+async def reactivate_user(
+    user_id: int,
+    user: AuthedUser = Depends(require_superadmin),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Reactivate a deactivated account (superadmin)."""
+    result = await org_service.set_user_active(session, user_id, active=True)
+    await session.commit()
+
+    import asyncio
+    from src.services.audit_service import _lookup_email, fire_and_forget_audit
+    _actor_email = await _lookup_email(user.user_id)
+    asyncio.create_task(fire_and_forget_audit(
+        user_id=user.user_id, user_email=_actor_email,
+        action="user.reactivated", resource_type="user",
+        resource_id=str(user_id), detail={"reactivated_by": user.user_id},
+    ))
+    return result
 
 
 # ---------------------------------------------------------------------------

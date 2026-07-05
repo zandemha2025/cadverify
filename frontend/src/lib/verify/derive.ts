@@ -118,6 +118,25 @@ function humanizeDriver(name: string): string {
   );
 }
 
+/** Time-unit tokens — a driver denominated in these is HOURS, and hours are MODEL
+ *  (computed from a nesting/time assumption), never MEASURED. DESIGN-DECISIONS.md
+ *  is binding: "hours are ○ MODEL, only geometry is ● MEASURED". */
+const TIME_UNITS = new Set(["hr", "hrs", "hour", "hours", "min", "mins", "minute", "minutes", "s", "sec", "secs", "hr/part", "hr/build"]);
+
+/** Provenance for a driver, refined so an UNGROUNDED time (hours) driver reads
+ *  ○ MODEL rather than the generic ○ DEFAULT — matching the binding "hours are
+ *  MODEL" rule. It ONLY ever refines the label of an already-hollow (DEFAULT)
+ *  provenance for a time-denominated driver; a grounded MEASURED/SHOP/USER value
+ *  is NEVER downgraded, and a non-time DEFAULT stays DEFAULT. Never upgrades a
+ *  hollow value to a filled/grounded one. */
+export function driverProvenance(d: CostDriver): Prov {
+  const p = normProv(d.provenance);
+  if (p === "DEFAULT" && TIME_UNITS.has(String(d.unit ?? "").toLowerCase().trim())) {
+    return "MODEL";
+  }
+  return p;
+}
+
 /** The estimate's drivers, provenance normalized, labelled — verbatim values. */
 export function driverViews(est: CostEstimate | null): DriverView[] {
   if (!est) return [];
@@ -126,7 +145,7 @@ export function driverViews(est: CostEstimate | null): DriverView[] {
     label: humanizeDriver(d.name),
     value: d.value,
     unit: d.unit,
-    provenance: normProv(d.provenance),
+    provenance: driverProvenance(d),
     source: d.source,
     errorBandPct: d.error_band_pct,
   }));

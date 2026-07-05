@@ -33,6 +33,7 @@ export function Stage({
   autoOrbit: boolean;
 }) {
   const [xray, setXray] = useState(false);
+  const [seat, setSeat] = useState(false);
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const isStl = useMemo(
     () => !!file && file.name.toLowerCase().endsWith(".stl"),
@@ -67,6 +68,7 @@ export function Stage({
           xray={xray}
           hostile={hostile}
           autoOrbit={autoOrbit}
+          seat={seat}
         />
       </div>
 
@@ -108,6 +110,19 @@ export function Stage({
         >
           <span aria-hidden style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />
           X-ray
+        </GhostButton>
+        <GhostButton
+          onClick={() => setSeat((v) => !v)}
+          title="Seat the part in a ghost housing and pull the camera back — its home in the assembly"
+          style={{
+            padding: "8px 16px",
+            fontSize: 12,
+            border: seat ? `1px solid ${C.ink}` : `1px solid #d8d8dc`,
+            background: seat ? C.ink : "#ffffff",
+            color: seat ? "#ffffff" : C.ink,
+          }}
+        >
+          Seat in assembly
         </GhostButton>
         <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink35, paddingLeft: 6, whiteSpace: "nowrap" }}>
           drag to orbit

@@ -25,6 +25,12 @@ class ApiKeyRow:
     hmac_index: str
     secret_hash: str
     revoked_at: object
+    # Org-membership beat: the owner's platform role + account-active flag,
+    # JOINed in ``lookup_api_key`` so the API-key auth path can enforce
+    # deactivation and read the role in a SINGLE query (no extra round trip).
+    # Defaulted so any legacy positional constructor still works.
+    role: str = "analyst"
+    is_active: bool = True
 
 
 async def upsert_user(
@@ -52,9 +58,57 @@ async def upsert_user(
         from src.auth.org_context import ensure_personal_org
 
         uid = int(row[0])
+        # §39 SSO re-provision hole: a returning account that an admin has
+        # DEACTIVATED must NOT be resurrected by an SSO/magic re-login. The
+        # ON CONFLICT above only backfills google_sub — it never clears
+        # is_active — but the login flow must still refuse to hand back a
+        # session/key. Raise a clean 403 BEFORE provisioning/committing (the
+        # `async with` block exits without commit). A brand-new user is active
+        # by server-default, so this only ever blocks an offboarded account.
+        active = (
+            await s.execute(
+                text("SELECT is_active FROM users WHERE id = :u"),
+                {"u": uid},
+            )
+        ).first()
+        if active is not None and active[0] is False:
+            raise _account_deactivated()
         await ensure_personal_org(s, uid, email)
         await s.commit()
         return uid
+
+
+def _account_deactivated() -> "HTTPException":
+    """403 for a deactivated account attempting any auth path (shared shape)."""
+    from fastapi import HTTPException
+
+    return HTTPException(
+        status_code=403,
+        detail={
+            "code": "account_deactivated",
+            "message": "This account has been deactivated.",
+            "doc_url": "https://docs.cadverify.com/errors#account_deactivated",
+        },
+    )
+
+
+async def user_is_active(user_id: int) -> bool:
+    """True unless the user row exists AND is explicitly deactivated.
+
+    The account-level deactivation read (§39) shared by the login and
+    session-validation paths. A missing user is treated as active (existence is
+    not this check's concern — it preserves the pre-beat behaviour for a valid
+    session whose user row was hard-deleted); only an explicit ``is_active =
+    false`` blocks. Opens its own session like the other auth helpers here.
+    """
+    async with _session()() as s:
+        r = (
+            await s.execute(
+                text("SELECT is_active FROM users WHERE id = :u"),
+                {"u": user_id},
+            )
+        ).first()
+    return True if r is None else bool(r[0])
 
 
 async def create_password_user(
@@ -196,8 +250,10 @@ async def lookup_api_key(hmac_idx: str) -> ApiKeyRow | None:
         r = (
             await s.execute(
                 text(
-                    "SELECT id, user_id, prefix, hmac_index, secret_hash, revoked_at "
-                    "FROM api_keys WHERE hmac_index = :h"
+                    "SELECT k.id, k.user_id, k.prefix, k.hmac_index, k.secret_hash, "
+                    "k.revoked_at, u.role, u.is_active "
+                    "FROM api_keys k JOIN users u ON u.id = k.user_id "
+                    "WHERE k.hmac_index = :h"
                 ),
                 {"h": hmac_idx},
             )
@@ -233,9 +289,16 @@ async def lookup_org_membership(user_id: int) -> tuple[str, str] | None:
         r = (
             await s.execute(
                 text(
-                    "SELECT org_id, org_role FROM memberships "
-                    "WHERE user_id = :uid "
-                    "ORDER BY created_at ASC, id ASC LIMIT 1"
+                    "SELECT m.org_id, m.org_role FROM memberships m "
+                    "WHERE m.user_id = :uid "
+                    # Org-membership beat: resolve the ACTIVE org — the user's
+                    # current_org_id when it names a live membership (put first
+                    # via IS NOT DISTINCT FROM so NULL/stale falls through), else
+                    # the oldest membership. Single-membership users have one row,
+                    # so this is byte-identical to the pre-beat oldest rule.
+                    "ORDER BY (m.org_id IS NOT DISTINCT FROM "
+                    "(SELECT current_org_id FROM users WHERE id = :uid)) DESC, "
+                    "m.created_at ASC, m.id ASC LIMIT 1"
                 ),
                 {"uid": user_id},
             )

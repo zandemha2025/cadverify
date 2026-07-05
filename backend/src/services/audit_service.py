@@ -100,6 +100,38 @@ async def fire_and_forget_audit(**kwargs) -> None:
     await log_action(**kwargs)
 
 
+def emit_event(
+    actor_id: int | None,
+    action: str,
+    resource_type: str,
+    resource_id: str | None = None,
+    detail: dict | None = None,
+) -> None:
+    """Fire-and-forget a product audit event, resolving the actor's email.
+
+    The shared one-liner behind the §35 product events (decision/machine/library/
+    governance/ground-truth): schedule a background task that looks up the actor
+    email and writes one ``audit_log`` row. Best-effort — never blocks or breaks
+    the request; a scheduling failure is swallowed (audit is not load-bearing for
+    the mutation that already committed).
+    """
+    async def _run():
+        email = await _lookup_email(actor_id)
+        await log_action(
+            user_id=actor_id,
+            user_email=email,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            detail=detail,
+        )
+
+    try:
+        asyncio.create_task(_run())
+    except Exception:
+        logger.warning("failed to schedule audit event %s", action, exc_info=True)
+
+
 # ---------------------------------------------------------------------------
 # Read / Query
 # ---------------------------------------------------------------------------

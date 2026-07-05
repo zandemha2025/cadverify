@@ -9,9 +9,20 @@
  * gates render the honest unknown/feature state — NEVER a fabricated verdict. The
  * walk stops honestly at a failed gate (geometry invalid → no downstream compute).
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { C, MONO, USD, NUM, procLabel, statusColor } from "@/lib/verify/tokens";
 import type { VerifyResult } from "@/lib/verify/run";
+import type { CostReport, CostComparison } from "@/lib/api";
+import {
+  parseAsk,
+  computeCostAtQty,
+  compareRoutesAtQty,
+  compareSaved,
+  NL_REFUSAL,
+  NONDETERMINISTIC_REFUSAL,
+  type CostAtQtyResult,
+  type RouteCompareResult,
+} from "@/lib/verify/ask";
 import {
   driverViews,
   makeNowEstimate,
@@ -22,6 +33,7 @@ import {
   provenanceMix,
   type DriverView,
 } from "@/lib/verify/derive";
+import { interpUnitCost, type InterpPoint } from "@/lib/verify/scrub";
 import {
   verdictBannerModel,
   perRouteRows,
@@ -33,7 +45,9 @@ import {
   type VerificationBlock,
 } from "@/lib/verify/verification";
 import { envelopeSummary } from "@/lib/verify/machine-api";
-import { Card, Kicker, ProvChip, ProvDot, InDev, ConfidenceBand, GhostButton, EmptyState } from "./primitives";
+import { useToast } from "./toast";
+import { Card, Kicker, ProvChip, ProvDot, InDev, ConfidenceBand, GhostButton, EmptyState, Spinner } from "./primitives";
+import { PipelineOverlay } from "./pipeline-overlay";
 
 /** Light status colour for a verdict/fit tone. */
 function toneColor(t: Tone): string {
@@ -63,6 +77,13 @@ export function VerifyScreen(props: Props) {
   const { result, running, env, setEnv, onPickFile, onReverify, nav } = props;
   const [scrubFrac, setScrubFrac] = useState(0.5);
   const [disclose, setDisclose] = useState<string | null>(null);
+  // The user's recorded make/route/acquire/redesign decision for THIS verification.
+  // Session state (there is no engine endpoint to append the outcome yet — the
+  // Decide card is honest about that). Reset whenever a new run lands.
+  const [decision, setDecision] = useState<string | null>(null);
+  useEffect(() => {
+    setDecision(null);
+  }, [result]);
 
   const hostile = env.temp || env.sour || env.pressure;
   // The env door tells the EXACT truth about the round-trip. `result` reflects the
@@ -71,6 +92,7 @@ export function VerifyScreen(props: Props) {
   const door = envDoorStatus(hostile, running, result);
 
   return (
+    <>
     <div
       style={{
         animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both",
@@ -79,10 +101,9 @@ export function VerifyScreen(props: Props) {
         display: "flex",
         flexDirection: "column",
         background: C.bg,
-        overflowY: "auto",
       }}
     >
-      <div style={{ flex: 1, padding: "26px 30px 30px" }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "26px 30px 20px" }}>
         {/* the question */}
         <p
           style={{
@@ -147,12 +168,22 @@ export function VerifyScreen(props: Props) {
             setScrubFrac={setScrubFrac}
             disclose={disclose}
             setDisclose={setDisclose}
+            decision={decision}
+            setDecision={setDecision}
             onReverify={onReverify}
             nav={nav}
           />
         )}
       </div>
+
+      {/* ask the engine — a docked row, separate from the scrolling walk. It is a
+          front door to what the engine ACTUALLY computed for this part (real slices
+          of `result`) plus the honest refusal for anything non-deterministic; it
+          never generates a number. */}
+      <AskDock cost={result?.cost ?? null} running={running} nav={nav} />
     </div>
+    <PipelineOverlay running={running} result={result} fileName={props.fileName} />
+    </>
   );
 }
 
@@ -272,8 +303,8 @@ function StepShell({
 }: {
   n: number;
   title: string;
-  right?: React.ReactNode;
-  children: React.ReactNode;
+  right?: ReactNode;
+  children: ReactNode;
   delayMs?: number;
 }) {
   return (
@@ -302,6 +333,8 @@ function Walk({
   setScrubFrac,
   disclose,
   setDisclose,
+  decision,
+  setDecision,
   onReverify,
   nav,
 }: {
@@ -310,6 +343,8 @@ function Walk({
   setScrubFrac: (f: number) => void;
   disclose: string | null;
   setDisclose: (s: string | null) => void;
+  decision: string | null;
+  setDecision: (d: string | null) => void;
   onReverify: () => void;
   nav: Nav;
 }) {
@@ -482,6 +517,7 @@ function Walk({
                   makeAtQty={makeAtQty}
                   toolAtQty={toolAtQty}
                   snappedQty={snappedQty}
+                  scrubQty={scrubQty}
                   scrubFrac={scrubFrac}
                   setScrubFrac={setScrubFrac}
                   crossover={crossover}
@@ -494,7 +530,7 @@ function Walk({
             )}
 
             {/* decide + hallmark */}
-            {cost && <DecideHallmark result={result} nav={nav} />}
+            {cost && <DecideHallmark result={result} decision={decision} setDecision={setDecision} nav={nav} />}
           </>
         )}
 
@@ -608,7 +644,7 @@ function VerdictBanner({
   );
 }
 
-function BannerFrame({ children, borderColor, bg }: { children: React.ReactNode; borderColor: string; bg: string }) {
+function BannerFrame({ children, borderColor, bg }: { children: ReactNode; borderColor: string; bg: string }) {
   return (
     <div
       style={{
@@ -863,6 +899,7 @@ function ResourceCost({
   makeAtQty,
   toolAtQty,
   snappedQty,
+  scrubQty,
   scrubFrac,
   setScrubFrac,
   crossover,
@@ -875,6 +912,7 @@ function ResourceCost({
   makeAtQty: ReturnType<typeof makeNowEstimate>;
   toolAtQty: ReturnType<typeof toolingEstimate>;
   snappedQty: number;
+  scrubQty: number;
   scrubFrac: number;
   setScrubFrac: (f: number) => void;
   crossover: number | null;
@@ -883,6 +921,11 @@ function ResourceCost({
   verification: VerificationBlock | null;
   nav: Nav;
 }) {
+  // The scrub reads the REAL 6-point ladder: at a computed qty it is the engine's
+  // own unit cost; between two points it interpolates those two real points along
+  // the amortization curve (labelled, never presented as a fresh compute).
+  const makeInterp = interpUnitCost(cost, makeProcess, scrubQty);
+  const toolInterp = toolingProcess ? interpUnitCost(cost, toolingProcess, scrubQty) : null;
   // The machine-specific MARGINAL rate: when a PASSING owned machine re-costs this
   // route at its OWN declared rate, the header reads OWNED → MARGINAL and names the
   // machine + rate (SHOP provenance). Absent → the generic MAKE NOW header.
@@ -901,8 +944,8 @@ function ResourceCost({
     <>
       <div style={{ marginTop: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.1em", color: C.ink45 }}>
-          QUANTITY <span style={{ color: C.ink }}>{NUM(snappedQty)}</span>
-          <span style={{ color: C.ink40 }}> · computed at the nearest real point</span>
+          QUANTITY <span style={{ color: C.ink }}>{NUM(scrubQty)}</span>
+          <span style={{ color: C.ink40 }}> · {interpNote(makeInterp)}</span>
         </span>
         <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink40 }}>annual volume · <span style={{ color: C.user }}>program not set</span></span>
       </div>
@@ -932,8 +975,9 @@ function ResourceCost({
             {procLabel(makeProcess)} — {marginal ? "OWNED → MARGINAL" : "MAKE NOW"}
           </p>
           <p style={{ margin: "8px 0 0", fontSize: 26, fontWeight: 300, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
-            {USD(makeAtQty?.unit_cost_usd)} <span style={{ fontSize: 13, color: C.ink45 }}>/unit at this qty</span>
+            {USD(makeInterp.unit)} <span style={{ fontSize: 13, color: C.ink45 }}>/unit at this qty</span>
           </p>
+          <p style={{ margin: "3px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink40 }}>{interpNote(makeInterp)}</p>
           {marginal && (
             <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, lineHeight: 1.6, color: C.shop }}>
               {marginal.machine ? `on ${marginal.machine} ` : ""}at {USD(marginal.rateUsd)}/hr · <ProvChip p="SHOP" /> — your machine&apos;s own marginal rate, owned capital sunk
@@ -941,6 +985,7 @@ function ResourceCost({
           )}
           <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, lineHeight: 1.7, color: C.ink45 }}>
             hours × your rates + mass × your lot price · {mix.groundedPct}% of drivers grounded (● measured/shop/user)
+            <br />band &amp; drivers read at computed qty {NUM(snappedQty)}
           </p>
           <div style={{ marginTop: 10 }}>
             <ConfidenceBand validated={validated} pointFraction={pointFrac} />
@@ -958,8 +1003,9 @@ function ResourceCost({
               {procLabel(toolingProcess)} — NOT OWNED → ACQUIRE
             </p>
             <p style={{ margin: "8px 0 0", fontSize: 26, fontWeight: 300, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
-              {USD(toolAtQty.unit_cost_usd)} <span style={{ fontSize: 13, color: C.ink45 }}>/unit incl. tooling</span>
+              {USD(toolInterp?.unit ?? toolAtQty.unit_cost_usd)} <span style={{ fontSize: 13, color: C.ink45 }}>/unit incl. tooling</span>
             </p>
+            {toolInterp && <p style={{ margin: "3px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink40 }}>{interpNote(toolInterp)}</p>}
             <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, lineHeight: 1.7, color: C.ink45 }}>
               {crossover ? `amortizes past ${NUM(crossover)} units` : "no crossover — tooling never pays back at these volumes"}
               {toolAtQty.dfm_ready ? "" : " · conditional on a DFM redesign"}
@@ -979,24 +1025,108 @@ function ResourceCost({
   );
 }
 
-function DecideHallmark({ result, nav }: { result: VerifyResult; nav: Nav }) {
+const DECIDE_OPTS: { key: string; label: string }[] = [
+  { key: "inhouse", label: "Make in-house" },
+  { key: "outside", label: "Make outside" },
+  { key: "acquire", label: "Acquire capability" },
+  { key: "redesign", label: "Redesign" },
+];
+
+function DecideHallmark({
+  result,
+  decision,
+  setDecision,
+  nav,
+}: {
+  result: VerifyResult;
+  decision: string | null;
+  setDecision: (d: string | null) => void;
+  nav: Nav;
+}) {
+  const toast = useToast();
   const saved = result.cost?.saved;
   const est = result.cost ? makeNowEstimate(result.cost) : null;
   const validated = est?.confidence?.validated ?? false;
+  const decidedLabel = DECIDE_OPTS.find((o) => o.key === decision)?.label ?? null;
+  // Real, verbatim id of the persisted cost-decision artifact (never the design's
+  // fixture "V-0117"). A short handle for the line; the full record opens in Records.
+  const shortId = saved?.id ? `#${saved.id.slice(0, 8)}` : null;
+  const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+  const choose = (key: string, label: string) => {
+    const withdrawing = decision === key;
+    setDecision(withdrawing ? null : key);
+    if (withdrawing) {
+      toast(`Decision withdrawn — ${label}`);
+      return;
+    }
+    // Honest: the user's outcome is noted on THIS verification (session). The
+    // cost-decision artifact itself is what's persisted (POST /validate/cost); the
+    // toast asserts only what actually happened.
+    toast(saved ? `${label} — noted · cost-decision ${shortId} is saved` : `${label} — noted on this verification`);
+    if (key === "acquire") nav("acquisition");
+  };
+
   return (
     <Card>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <p style={{ margin: 0, fontSize: 15, fontWeight: 500, marginRight: "auto" }}>Decide</p>
-        <GhostButton onClick={() => nav("records")} disabled={!saved}>
-          {saved ? "Saved as a record" : "Not persisted"}
-        </GhostButton>
-        <InDev label="DECISION APPEND — PENDING" />
+        {DECIDE_OPTS.map((o) => {
+          const on = decision === o.key;
+          return (
+            <button
+              key={o.key}
+              type="button"
+              onClick={() => choose(o.key, o.label)}
+              style={{
+                background: on ? C.ink : "none",
+                border: `1px solid ${on ? C.ink : "#d8d8dc"}`,
+                borderRadius: 999,
+                color: on ? "#ffffff" : C.ink,
+                padding: "9px 16px",
+                fontSize: 12.5,
+                fontWeight: 500,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                transition: "all 150ms",
+              }}
+            >
+              {o.label}
+            </button>
+          );
+        })}
       </div>
-      <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink45, lineHeight: 1.6 }}>
-        {saved
-          ? "this verification is saved as an immutable cost-decision record. Tagging the outcome make / route-outside appends to that record — engine surface pending."
-          : "persistence is off for this decision (COST_PERSIST_ENABLED) — it computed, but was not saved."}
-      </p>
+
+      {decidedLabel ? (
+        <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.pass, lineHeight: 1.6, animation: "vtraceIn 300ms cubic-bezier(0.2,0,0,1) both" }}>
+          ✓ {decidedLabel} — noted on this verification · {today}
+          {saved ? (
+            <>
+              {" "}· cost-decision <span style={{ color: C.ink }}>{shortId}</span> is the persisted artifact
+            </>
+          ) : (
+            " · this session only (persistence off)"
+          )}
+        </p>
+      ) : (
+        <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40, lineHeight: 1.6 }}>
+          next → pick one above · your choice is noted on this verification
+          {saved ? " beside the saved cost-decision record" : ""}.
+        </p>
+      )}
+
+      <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <GhostButton onClick={() => nav("records")} disabled={!saved}>
+          {saved ? "Open the record →" : "Not persisted"}
+        </GhostButton>
+        <InDev label="OUTCOME APPEND — IN DEVELOPMENT" />
+        <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink40, lineHeight: 1.5, flex: 1, minWidth: 180 }}>
+          {saved
+            ? "the cost-decision is an immutable saved artifact; writing the make/route outcome back onto it is not yet wired."
+            : "persistence is off for this decision (COST_PERSIST_ENABLED) — it computed, but was not saved server-side."}
+        </span>
+      </div>
+
       <div style={{ marginTop: 16, borderTop: `1px solid #efeff2`, paddingTop: 14, display: "flex", alignItems: "center", gap: 14 }}>
         <div style={{ flex: 1 }}>
           <ConfidenceBand validated={validated} pointFraction={0.5} />
@@ -1012,6 +1142,15 @@ function DecideHallmark({ result, nav }: { result: VerifyResult; nav: Nav }) {
   );
 }
 
+/** Honest label for a scrubbed cost: engine-exact at a computed point, an explicit
+ *  interpolation of two real points between them, or a clamp at the ladder's edge. */
+function interpNote(p: InterpPoint): string {
+  if (p.unit == null) return "no computed estimate on this route";
+  if (p.exact) return "engine-exact — a computed point";
+  if (p.clamped) return `clamped to the ${p.lo === p.hi ? NUM(p.lo) : ""} computed point — not extrapolated`;
+  return `interpolated between computed ${NUM(p.lo)} and ${NUM(p.hi)}`;
+}
+
 /* ── driver value formatting — never invents units the engine didn't send ── */
 function formatDriverValue(d: DriverView): string {
   if (d.unit === "usd") return USD(d.value);
@@ -1022,4 +1161,385 @@ function driverUnit(d: DriverView): string {
   if (d.unit === "usd") return "";
   if (d.unit === "count") return "";
   return d.unit;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * ASK-THE-ENGINE DOCK — docked at the foot of the walk.
+ *
+ * The dock's contract IS the honesty rule: an answer is only ever an
+ * ENGINE-COMPUTED ARTIFACT, never generated prose with numbers in it.
+ *   • "compare routes [at qty N]"  → the make-now route vs the tooling / next
+ *      route, read off THIS part's real CostReport (POST /validate/cost output).
+ *   • "should-cost at qty N"       → the should-cost at that qty, off the report.
+ *   • "compare saved decisions"    → a LIVE GET /api/v1/cost-decisions/compare
+ *      diff of this part's persisted decision vs the org's most-recent other one.
+ *   • anything else / free text    → REFUSED. Free-form NL has no engine backend
+ *      (IN DEVELOPMENT); the engine never invents an answer.
+ * No design fixtures, no fabricated figures — every number is selected from a
+ * real response or the ask is refused.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+type DockState =
+  | { t: "idle" }
+  | { t: "loading" }
+  | { t: "routes"; data: Extract<RouteCompareResult, { status: "ok" }> }
+  | { t: "cost"; data: CostAtQtyResult }
+  | { t: "saved"; data: CostComparison; otherId: string }
+  | { t: "refuse"; title: string; reason: string; nl: boolean };
+
+function AskDock({ cost, running, nav }: { cost: CostReport | null; running: boolean; nav: Nav }) {
+  const [text, setText] = useState("");
+  const [state, setState] = useState<DockState>({ t: "idle" });
+  const canAsk = !!cost && !running;
+
+  function refuse(title: string, reason: string, nl = false) {
+    setState({ t: "refuse", title, reason, nl });
+  }
+  function clear() {
+    setState({ t: "idle" });
+  }
+
+  function askRoutes(qty: number | null) {
+    if (!cost) return;
+    const r = compareRoutesAtQty(cost, qty);
+    if (r.status === "single") {
+      refuse(
+        "Nothing to compare — one route.",
+        "Only one route was costed for this part, so there is no second route to diff. The should-cost above already carries every driver for that route."
+      );
+    } else {
+      setState({ t: "routes", data: r });
+    }
+  }
+
+  function askCost(qty: number | null) {
+    if (!cost) return;
+    setState({ t: "cost", data: computeCostAtQty(cost, qty) });
+  }
+
+  async function askSaved() {
+    if (!cost) return;
+    setState({ t: "loading" });
+    const res = await compareSaved(cost.saved?.id ?? null);
+    if (res.status === "ok") {
+      setState({ t: "saved", data: res.comparison, otherId: res.otherId });
+    } else if (res.status === "not_saved") {
+      refuse(
+        "No saved decision to compare.",
+        "This part's decision was not persisted (persistence is off for this run), so there is no record id to diff against. Save a verification, then ask again."
+      );
+    } else if (res.status === "need_second") {
+      refuse(
+        "Only one decision on record.",
+        "Compare needs a second saved decision — this org has just this one on record. Verify another part (or the same part under a new calibration) and it becomes comparable."
+      );
+    } else {
+      refuse(
+        "Compare unavailable.",
+        `The compare call did not return (${res.message}). No diff is shown rather than a fabricated one.`
+      );
+    }
+  }
+
+  function submit() {
+    const raw = text.trim();
+    if (!raw) return;
+    if (!cost) {
+      refuse("No part loaded.", "Load a part above first — the engine answers only about a part it has actually computed.");
+      return;
+    }
+    const p = parseAsk(raw);
+    if (p.kind === "cost_at_qty") askCost(p.qty);
+    else if (p.kind === "compare_routes") askRoutes(p.qty);
+    else if (p.kind === "compare_saved") void askSaved();
+    else refuse("The engine can't compute that.", NL_REFUSAL, true);
+  }
+
+  return (
+    <div style={{ flexShrink: 0, borderTop: `1px solid ${C.hair2}`, background: C.panel, padding: "10px 30px" }}>
+      {/* the answer — an engine artifact, never prose-with-numbers */}
+      {state.t === "loading" && (
+        <div style={ARTIFACT_STYLE}>
+          <Spinner label="asking GET /cost-decisions/compare…" />
+        </div>
+      )}
+      {state.t === "routes" && <RouteCompareArtifact data={state.data} onClose={clear} />}
+      {state.t === "cost" && <CostReadoutArtifact data={state.data} onClose={clear} />}
+      {state.t === "saved" && <SavedCompareArtifact data={state.data} otherId={state.otherId} onClose={clear} nav={nav} />}
+      {state.t === "refuse" && <RefusalArtifact title={state.title} reason={state.reason} nl={state.nl} onClose={clear} />}
+
+      {/* the ask row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, maxWidth: 820, flexWrap: "wrap" }}>
+        <div
+          style={{
+            flex: 1,
+            minWidth: 240,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            border: `1px solid ${canAsk ? "#dcdce0" : C.hair}`,
+            borderRadius: 999,
+            padding: "4px 4px 4px 16px",
+            background: canAsk ? C.sunken : "#fafafb",
+            opacity: canAsk ? 1 : 0.7,
+          }}
+        >
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submit();
+            }}
+            disabled={!canAsk}
+            placeholder={
+              canAsk
+                ? "Ask the engine — “compare routes at qty 1,000” · “should-cost at qty 500”"
+                : running
+                  ? "computing the walk…"
+                  : "Load a part above — the engine answers only about a computed part."
+            }
+            style={{ flex: 1, minWidth: 0, background: "none", border: "none", outline: "none", fontSize: 13, color: C.ink, fontFamily: "inherit" }}
+          />
+          <button
+            type="button"
+            onClick={submit}
+            disabled={!canAsk}
+            aria-label="Ask"
+            title="Ask the engine"
+            style={{
+              flexShrink: 0,
+              width: 30,
+              height: 30,
+              borderRadius: "50%",
+              border: "none",
+              background: canAsk ? C.ink : C.ink40,
+              color: "#fff",
+              cursor: canAsk ? "pointer" : "not-allowed",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m5 12 14 0" />
+              <path d="m13 5 7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+        <AskChip label="Compare routes @ 1,000" disabled={!canAsk} onClick={() => askRoutes(1000)} />
+        <AskChip label="Compare saved decisions →" disabled={!canAsk} onClick={() => void askSaved()} />
+        <AskChip
+          label="An uncomputable ask"
+          disabled={false}
+          onClick={() =>
+            refuse(
+              "The engine can't compute that.",
+              NONDETERMINISTIC_REFUSAL
+            )
+          }
+        />
+      </div>
+
+      <p style={{ margin: "6px 0 0", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontFamily: MONO, fontSize: 9, color: C.ink35 }}>
+        <span>answers are engine-computed artifacts — only structured asks (compare / should-cost at qty) return numbers</span>
+        <InDev label="FREE-FORM NL — IN DEVELOPMENT" />
+      </p>
+    </div>
+  );
+}
+
+const ARTIFACT_STYLE: CSSProperties = {
+  maxWidth: 720,
+  marginBottom: 12,
+  border: `1px solid ${C.hair}`,
+  borderRadius: 14,
+  background: "#fafafb",
+  padding: "16px 18px",
+  animation: "vstepIn 300ms cubic-bezier(0.2,0,0,1) both",
+};
+
+function ArtifactHeader({ kicker, onClose }: { kicker: string; onClose: () => void }) {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+      <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: C.ink45 }}>{kicker}</p>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Dismiss"
+        style={{ marginLeft: "auto", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 11, color: C.ink40 }}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+function MonoRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontFamily: MONO, fontSize: 12 }}>
+      <span style={{ color: C.ink60 }}>{label}</span>
+      <span style={{ color: C.ink, textAlign: "right" }}>{value}</span>
+    </div>
+  );
+}
+
+function AskChip({ label, disabled, onClick }: { label: string; disabled: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        flexShrink: 0,
+        border: `1px solid ${C.hair}`,
+        background: C.panel,
+        borderRadius: 999,
+        padding: "7px 13px",
+        fontSize: 11,
+        color: disabled ? C.ink35 : C.ink55,
+        cursor: disabled ? "not-allowed" : "pointer",
+        fontFamily: "inherit",
+        whiteSpace: "nowrap",
+        opacity: disabled ? 0.6 : 1,
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+/** "compare routes" — two REAL routes off this part's cost report. */
+function RouteCompareArtifact({ data, onClose }: { data: Extract<RouteCompareResult, { status: "ok" }>; onClose: () => void }) {
+  const deltaColor = data.deltaPct == null ? C.ink45 : data.deltaPct < 0 ? C.pass : C.shop;
+  return (
+    <div style={ARTIFACT_STYLE}>
+      <ArtifactHeader kicker={`ENGINE OUTPUT — COMPUTED, NOT GENERATED · route-vs-route · qty ${NUM(data.snappedQty)}`} onClose={onClose} />
+      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+        <MonoRow label={`${procLabel(data.a.process)} · make-now`} value={`${USD(data.a.unit)}/unit`} />
+        <MonoRow
+          label={`${procLabel(data.b.process)}`}
+          value={
+            <>
+              {USD(data.b.unit)}/unit{" "}
+              {data.deltaPct != null && (
+                <span style={{ color: deltaColor }}>
+                  {data.deltaPct >= 0 ? "+" : ""}
+                  {data.deltaPct}%
+                </span>
+              )}
+            </>
+          }
+        />
+      </div>
+      {data.divergent ? (
+        <p style={{ margin: "10px 0 0", display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap", fontFamily: MONO, fontSize: 10.5, color: C.ink55 }}>
+          <span>
+            divergent driver: {data.divergent.name} {data.divergent.a.toLocaleString("en-US", { maximumFractionDigits: 2 })} vs{" "}
+            {data.divergent.b.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+          </span>
+          <ProvChip p={data.divergent.provenance} />
+        </p>
+      ) : (
+        <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40 }}>
+          the two routes share no common driver to diff — unit costs shown, no driver delta invented.
+        </p>
+      )}
+      <p style={{ margin: "8px 0 0", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: MONO, fontSize: 9.5, color: C.ink35 }}>
+        <ProvChip p="MODEL" />
+        <span>
+          computed from POST /validate/cost for {data.filename}
+          {data.requestedQty != null && data.requestedQty !== data.snappedQty ? ` · nearest computed point to qty ${NUM(data.requestedQty)}` : ""}
+        </span>
+      </p>
+    </div>
+  );
+}
+
+/** "should-cost at qty N" — the report's make-now (and tooling) route at that qty. */
+function CostReadoutArtifact({ data, onClose }: { data: CostAtQtyResult; onClose: () => void }) {
+  return (
+    <div style={ARTIFACT_STYLE}>
+      <ArtifactHeader kicker={`ENGINE OUTPUT — COMPUTED, NOT GENERATED · should-cost · qty ${NUM(data.snappedQty)}`} onClose={onClose} />
+      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+        {data.makeNow ? (
+          <MonoRow label={`${procLabel(data.makeNow.process)} · make-now`} value={`${USD(data.makeNow.unit)}/unit`} />
+        ) : (
+          <MonoRow label="make-now route" value="withheld — no estimate at this qty" />
+        )}
+        {data.tooling && <MonoRow label={`${procLabel(data.tooling.process)} · incl. tooling`} value={`${USD(data.tooling.unit)}/unit`} />}
+        <MonoRow label="make-vs-buy crossover" value={data.crossover ? `${NUM(data.crossover)} units` : "none computed"} />
+      </div>
+      <p style={{ margin: "8px 0 0", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: MONO, fontSize: 9.5, color: C.ink35 }}>
+        <ProvChip p="MODEL" />
+        <span>
+          computed from POST /validate/cost for {data.filename}
+          {data.requestedQty != null && data.requestedQty !== data.snappedQty ? ` · nearest computed point to qty ${NUM(data.requestedQty)}` : ""}
+        </span>
+      </p>
+    </div>
+  );
+}
+
+/** "compare saved decisions" — a LIVE GET /cost-decisions/compare diff. */
+function SavedCompareArtifact({ data, otherId, onClose, nav }: { data: CostComparison; otherId: string; onClose: () => void; nav: Nav }) {
+  const rows = data.unit_cost_by_qty.slice(0, 6);
+  const nameA = data.a.label || data.a.filename;
+  const nameB = data.b.label || data.b.filename;
+  return (
+    <div style={ARTIFACT_STYLE}>
+      <ArtifactHeader kicker="ENGINE OUTPUT — COMPUTED, NOT GENERATED · GET /cost-decisions/compare" onClose={onClose} />
+      <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink }}>
+        <span style={{ color: C.ink70 }}>A</span> {nameA} <span style={{ color: C.ink40 }}>vs</span> <span style={{ color: C.ink70 }}>B</span> {nameB}
+      </p>
+      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+        {rows.map((r) => (
+          <MonoRow
+            key={r.quantity}
+            label={`qty ${NUM(r.quantity)}`}
+            value={
+              <>
+                {USD(r.a?.unit_cost_usd)} vs {USD(r.b?.unit_cost_usd)}
+                {r.delta_pct != null && (
+                  <span style={{ color: r.delta_pct < 0 ? C.pass : C.shop }}>
+                    {" "}
+                    {r.delta_pct >= 0 ? "+" : ""}
+                    {r.delta_pct}%
+                  </span>
+                )}
+              </>
+            }
+          />
+        ))}
+      </div>
+      <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink45, lineHeight: 1.6 }}>
+        make-now: {procLabel(data.diff.make_now_process[0])} vs {procLabel(data.diff.make_now_process[1])} · crossover{" "}
+        {data.diff.crossover_qty[0] ? NUM(data.diff.crossover_qty[0]) : "—"} vs {data.diff.crossover_qty[1] ? NUM(data.diff.crossover_qty[1]) : "—"}
+      </p>
+      <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10 }}>
+        <GhostButton onClick={() => nav("compare")}>Open in Compare →</GhostButton>
+        <span style={{ fontFamily: MONO, fontSize: 9, color: C.ink35 }}>diffed against saved decision {otherId.slice(0, 8)}…</span>
+      </div>
+    </div>
+  );
+}
+
+/** The honest refusal — never a fabricated answer. */
+function RefusalArtifact({ title, reason, nl, onClose }: { title: string; reason: string; nl: boolean; onClose: () => void }) {
+  return (
+    <div style={{ maxWidth: 720, marginBottom: 12, border: `1.5px dashed #d3d3d8`, borderRadius: 14, padding: "16px 18px", animation: "vstepIn 300ms cubic-bezier(0.2,0,0,1) both" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+        <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>{title}</p>
+        {nl && <InDev label="NL ANSWERING — IN DEVELOPMENT" />}
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Dismiss"
+          style={{ marginLeft: "auto", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 11, color: C.ink40 }}
+        >
+          ✕
+        </button>
+      </div>
+      <p style={{ margin: "7px 0 0", fontSize: 12.5, lineHeight: 1.6, color: C.ink55 }}>{reason}</p>
+    </div>
+  );
 }
