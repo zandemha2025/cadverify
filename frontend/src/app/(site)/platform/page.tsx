@@ -357,7 +357,7 @@ export default function PlatformPage() {
                 color: "var(--st-prov-measured)",
               }}
             >
-              {"● MEASURED — 710 faces · watertight · Ø21 × 21.5 mm"}
+              {"● MEASURED — 423 faces · watertight · Ø21 × 21.5 mm"}
             </p>
           </Panel>
 
