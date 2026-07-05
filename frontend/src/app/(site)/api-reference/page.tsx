@@ -19,7 +19,7 @@ export default function ApiReferencePage() {
           The interactive OpenAPI console remains the source of truth. This page exists so the public site has a durable developer doorway.
         </p>
         <div style={{ marginTop: 36, display: "flex", flexWrap: "wrap", gap: 12 }}>
-          <Link href="/scalar" className="st-pill st-pill-solid">Open API console</Link>
+          <a href="/scalar" className="st-pill st-pill-solid">Open API console</a>
           <Link href="/developers" className="st-pill">Developer overview</Link>
         </div>
         <pre style={{ marginTop: 44, overflowX: "auto", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 18, padding: 24, color: "rgba(255,255,255,0.72)", background: "rgba(255,255,255,0.04)" }}>{`POST /api/v1/validate

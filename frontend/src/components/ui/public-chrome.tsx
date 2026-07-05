@@ -83,9 +83,9 @@ export function PublicFooter() {
   return (
     <footer className="border-t border-border bg-card">
       <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-center gap-6 px-4 py-8 text-sm text-muted-foreground lg:px-8">
-        <Link href="/scalar" className="transition-colors hover:text-foreground">
+        <a href="/scalar" className="transition-colors hover:text-foreground">
           API reference
-        </Link>
+        </a>
         <Link href="/privacy" className="transition-colors hover:text-foreground">
           Privacy
         </Link>
