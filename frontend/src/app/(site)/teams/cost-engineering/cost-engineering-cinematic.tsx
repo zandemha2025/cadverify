@@ -382,9 +382,9 @@ export default function CostEngineeringCinematic() {
               All teams
             </a>
           </div>
-          <p style={{ margin: "64px 0 0" }}>
+          <div style={{ margin: "64px 0 0" }}>
             <SiteFooterTagline />
-          </p>
+          </div>
         </div>
       </section>
     </>
