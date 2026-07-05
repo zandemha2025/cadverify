@@ -15,6 +15,7 @@ import { Stage } from "./stage";
 import { VerifyScreen } from "./verify-screen";
 import { MachinesScreen } from "./machines-screen";
 import { RecordsScreen } from "./records-screen";
+import { CompareScreen } from "./compare-screen";
 import { HomeScreen } from "./home-screen";
 import { StubScreen, AcquisitionModal, CommandPalette, NotificationsPanel } from "./stub-screens";
 import { ToastProvider } from "./toast";
@@ -54,6 +55,7 @@ const CRUMB: Record<string, string> = {
   home: "Home",
   verify: "Verify",
   catalog: "Parts",
+  compare: "Parts / Compare",
   records: "Records",
   programs: "Programs",
   machines: "Your machines",
@@ -281,7 +283,8 @@ export function VerifyApp() {
         )}
         {screen === "machines" && <MachinesScreen />}
         {screen === "records" && <RecordsScreen nav={nav} />}
-        {(screen === "catalog" || screen === "compare" || screen === "programs" || screen === "triage" || screen === "calibration") && (
+        {screen === "compare" && <CompareScreen nav={nav} />}
+        {(screen === "catalog" || screen === "programs" || screen === "triage" || screen === "calibration") && (
           <StubScreen id={screen} />
         )}
       </div>
