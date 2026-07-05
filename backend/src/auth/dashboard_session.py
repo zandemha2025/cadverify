@@ -118,4 +118,24 @@ async def require_dashboard_session(request: Request) -> int:
                 "doc_url": "https://docs.cadverify.com/errors#dashboard_auth_required",
             },
         )
+    # §39: a deactivated account's existing dashboard session is refused (this is
+    # the validator behind /api/v1/keys and /auth/me). Degrades OPEN if the DB is
+    # unavailable (e.g. a mocked unit test): login + the API-key path + SSO
+    # re-provision are the hard gates, so a session-path fail-open on infra error
+    # never widens the envelope. Lazy import avoids a models<->session cycle.
+    try:
+        from src.auth.models import user_is_active
+
+        active = await user_is_active(uid)
+    except Exception:
+        active = True
+    if not active:
+        raise HTTPException(
+            403,
+            detail={
+                "code": "account_deactivated",
+                "message": "This account has been deactivated.",
+                "doc_url": "https://docs.cadverify.com/errors#account_deactivated",
+            },
+        )
     return uid

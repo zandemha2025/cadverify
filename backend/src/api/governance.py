@@ -133,6 +133,20 @@ async def approve_change_request(
     row, published = await svc.approve(session, org_id, request_id, ctx.user_id)
     lib = svc._library_for(row.asset_type)
     await session.commit()
+    from src.services.audit_service import emit_event
+    emit_event(
+        ctx.user_id, "governance.approved", "change_request", str(row.id),
+        {"org_id": org_id, "asset_type": row.asset_type,
+         "published_version_id": getattr(published, "id", None)},
+    )
+    # Approval PUBLISHES the target draft through the library's own path — record
+    # the resulting publish too, so the library timeline is complete.
+    emit_event(
+        ctx.user_id, "library.version_published", row.asset_type,
+        str(getattr(published, "id", "")),
+        {"org_id": org_id, "library": row.asset_type, "via": "governance",
+         "version": getattr(published, "version", None)},
+    )
     return {
         "change_request": svc.serialize_request(row),
         "published_version": lib.serialize_version(published, include_payload=True),
@@ -153,4 +167,9 @@ async def reject_change_request(
     org_id = await _write_org(ctx, session)
     row = await svc.reject(session, org_id, request_id, ctx.user_id, note=body.note)
     await session.commit()
+    from src.services.audit_service import emit_event
+    emit_event(
+        ctx.user_id, "governance.rejected", "change_request", str(row.id),
+        {"org_id": org_id, "asset_type": row.asset_type},
+    )
     return svc.serialize_request(row)

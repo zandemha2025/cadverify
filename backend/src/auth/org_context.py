@@ -20,11 +20,11 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.db.models import Batch, Membership
+from src.db.models import Batch, Membership, User
 
 # org_role values allowed by the memberships CHECK constraint (migration 0009).
 ORG_ROLES = ("admin", "member", "viewer")
@@ -58,7 +58,7 @@ def personal_org_name(email: str) -> str:
 
 
 def caller_org_subquery(user_id: int):
-    """Correlated scalar subquery → the org_id that owns ``user_id``.
+    """Correlated scalar expression → the org_id that owns ``user_id``.
 
     W1 step 3 — the isolation predicate for every org-scoped **read**::
 
@@ -67,41 +67,62 @@ def caller_org_subquery(user_id: int):
     Threading the org boundary as a subquery (rather than a separate
     ``resolve_org`` round-trip) is deliberate: each org-scoped read stays a
     SINGLE ``session.execute`` — byte-for-byte the same one-query-per-read shape
-    as the pre-W1 ``WHERE user_id == :u`` idiom. Nothing that counts DB round
-    trips changes, so mocks that stub an *ordered* ``execute`` sequence keep
-    working untouched. The oldest-membership tie-break matches ``resolve_org``
-    and ``lookup_org_membership`` so a user's reads and writes always resolve to
-    the same org (self-consistent for the defensive multi-membership case).
+    as the pre-W1 ``WHERE user_id == :u`` idiom.
 
-    ``user_id`` binds as a literal parameter, so the returned subquery is
+    Resolution (org-membership beat): ``COALESCE(validated_current, oldest)`` —
+    the user's ``current_org_id`` when it names a LIVE membership, else the
+    oldest membership. This is what makes org-switch real: a member who switched
+    to org B reads B's rows; a stale/removed ``current_org_id`` (points at an org
+    the user no longer belongs to) yields no ``validated_current`` row and falls
+    back safely to a real membership — it never leaks the removed org and never
+    errors. For a user with exactly ONE membership the two branches resolve to
+    the same org, so single-org behaviour is byte-identical to the pre-beat
+    oldest-membership rule (the entire isolation matrix passes unchanged).
+
+    ``user_id`` binds as a literal parameter, so the returned expression is
     self-contained (not correlated against the outer table) — safe to drop into
     any ``select`` regardless of what it reads from.
     """
-    return (
+    current_org = (
+        select(User.current_org_id).where(User.id == user_id).scalar_subquery()
+    )
+    validated_current = (
+        select(Membership.org_id)
+        .where(
+            Membership.user_id == user_id,
+            Membership.org_id == current_org,
+        )
+        .limit(1)
+        .scalar_subquery()
+    )
+    oldest = (
         select(Membership.org_id)
         .where(Membership.user_id == user_id)
         .order_by(Membership.created_at.asc(), Membership.id.asc())
         .limit(1)
         .scalar_subquery()
     )
+    return func.coalesce(validated_current, oldest)
 
 
 async def resolve_org(session: AsyncSession, user_id: int) -> Optional[str]:
-    """Return the org_id that owns ``user_id`` (single-org v1), else None.
+    """Return the org_id that owns ``user_id`` — the caller's ACTIVE org, else None.
 
-    Pure read of the ``memberships`` table. Deterministic when (defensively)
-    more than one membership exists: oldest membership wins. Returns None for a
-    user with no membership (e.g. a mocked test session, or a user not yet
-    provisioned) — callers on real Postgres always have a membership because
-    signup provisions one and the 0009 backfill covers pre-existing users.
+    Pure read of ``memberships`` (validated against ``users.current_org_id``):
+    identical resolution to :func:`caller_org_subquery` — the current org when it
+    names a live membership, else the oldest membership. A user with a single
+    membership always resolves to that one org (byte-identical to the pre-beat
+    rule); a stale/removed ``current_org_id`` falls back to a real membership and
+    NEVER 500s or leaks the removed org. Returns None for a user with no
+    membership (a mocked test session, or a not-yet-provisioned user) — callers
+    on real Postgres always have a membership (signup + the 0009 backfill).
+
+    Membership is RE-VALIDATED on every call (not a cached claim), so a removed
+    member loses access immediately.
     """
-    stmt = (
-        select(Membership.org_id)
-        .where(Membership.user_id == user_id)
-        .order_by(Membership.created_at.asc(), Membership.id.asc())
-        .limit(1)
-    )
-    return (await session.execute(stmt)).scalar_one_or_none()
+    return (
+        await session.execute(select(caller_org_subquery(user_id)))
+    ).scalar_one_or_none()
 
 
 async def resolve_org_via_batch(
