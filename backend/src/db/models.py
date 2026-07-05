@@ -135,6 +135,57 @@ class Membership(Base):
     organization: Mapped[Organization] = relationship(back_populates="memberships")
 
 
+class OrgInvite(Base):
+    """A single-use, hashed, expiring invitation to join an org (0024).
+
+    The membership-LIFECYCLE seam on top of 0009's tenancy isolation: an org
+    admin issues an invite for an ``email`` + ``role``; the raw token is emailed
+    (or returned to the admin) exactly once and NEVER persisted — only its
+    SHA-256 ``token_hash`` is stored, so a DB leak cannot be replayed. Accepting
+    (an authenticated user presenting the raw token) creates a ``memberships``
+    row. Single-use + expiry are enforced by the accept path: an invite is
+    redeemable only while ``accepted_at IS NULL AND revoked_at IS NULL AND
+    expires_at > now()``. ``role`` is checked to admin/member/viewer (mirrors
+    the memberships CHECK) and may never exceed the inviter's own org role.
+    """
+
+    __tablename__ = "org_invites"
+    __table_args__ = (
+        Index("ix_org_invites_token_hash", "token_hash", unique=True),
+        Index("ix_org_invites_org", "org_id"),
+        Index("ix_org_invites_org_email", "org_id", "email"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+    role: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="member"
+    )
+    # SHA-256 hex of the raw token — the raw token is NEVER stored.
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
+    created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    accepted_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    accepted_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 # ---------------------------------------------------------------------------
 # Phase 2 tables (mirror 0001 migration)
 # ---------------------------------------------------------------------------
@@ -161,6 +212,17 @@ class User(Base):
         Text, server_default="analyst", nullable=False
     )
     password_hash: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Org-membership beat (§39): account-level deactivation. ``is_active`` is a
+    # security control (no feature flag) — false blocks EVERY auth path (login,
+    # Google/SAML/magic re-provision, existing sessions, and API keys the user
+    # owns). Server-default true so every pre-existing row is active and the
+    # platform is byte-identical until an admin (superadmin) deactivates.
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, server_default="true", nullable=False
+    )
+    deactivated_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
     # W1: the user's active org (pointer). Intentionally NULLABLE — it breaks
     # the users<->organizations bootstrap cycle at signup, and accommodates the
     # future superadmin split (W1 step 2). Not the tenancy source of truth; the

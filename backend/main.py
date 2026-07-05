@@ -39,6 +39,7 @@ from src.api.part_context import router as part_context_router
 from src.api.groundtruth import router as groundtruth_router
 from src.api.manifest import router as manifest_router
 from src.api.machine_inventory import router as machine_inventory_router
+from src.api.org_routes import router as org_router
 from src.api.share import public_share_router, share_router
 from src.auth.keys_api import router as keys_router
 from src.auth.magic_link import router as magic_router
@@ -264,6 +265,10 @@ app.include_router(
     prefix="/api/v1/machine-inventory",
     tags=["machine-inventory"],
 )
+# Org membership lifecycle (§32): create/invite/accept/members/role/switch — the
+# multi-user seam on top of 0009's tenancy isolation. Org-scoped; single-org
+# callers are byte-identical (the whole isolation matrix is unchanged).
+app.include_router(org_router, prefix="/api/v1/orgs", tags=["orgs"])
 # Email + password auth (signup/login/logout/me). Mounted UNCONDITIONALLY — it
 # is the primary login method that works end-to-end locally with zero external
 # infra, independent of AUTH_MODE.

@@ -210,4 +210,11 @@ async def publish_shop_profile(
         session, org_id, version_id, effective_from=body.effective_from
     )
     await session.commit()
+    from src.services.audit_service import emit_event
+    emit_event(
+        ctx.user_id, "library.version_published", "shop_profile",
+        str(row.id),
+        {"org_id": org_id, "library": "shop", "version": row.version,
+         "slug": getattr(row, "slug", None)},
+    )
     return svc.serialize_version(row, include_payload=True)
