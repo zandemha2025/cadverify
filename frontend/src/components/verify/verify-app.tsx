@@ -18,9 +18,10 @@ import { RecordsScreen } from "./records-screen";
 import { CatalogScreen } from "./catalog-screen";
 import { CompareScreen } from "./compare-screen";
 import { TriageScreen } from "./triage-screen";
+import { CalibrationScreen } from "./calibration-screen";
 import { HomeScreen } from "./home-screen";
 import { ProgramScreen } from "./program-screen";
-import { StubScreen, CommandPalette, NotificationsPanel } from "./stub-screens";
+import { CommandPalette, NotificationsPanel } from "./stub-screens";
 import { AcquisitionModal } from "./acquisition-modal";
 import { PartScreen } from "./part-screen";
 import { ToastProvider } from "./toast";
@@ -304,9 +305,7 @@ export function VerifyApp() {
         {screen === "compare" && <CompareScreen nav={nav} />}
         {(screen === "programs" || screen === "program") && <ProgramScreen nav={nav} screen={screen} />}
         {screen === "triage" && <TriageScreen nav={nav} />}
-        {screen === "calibration" && (
-          <StubScreen id={screen} />
-        )}
+        {screen === "calibration" && <CalibrationScreen />}
       </div>
 
       {screen === "acquisition" && <AcquisitionModal onClose={() => setScreen("verify")} result={result} nav={nav} />}
