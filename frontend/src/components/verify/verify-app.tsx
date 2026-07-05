@@ -15,6 +15,7 @@ import { Stage } from "./stage";
 import { VerifyScreen } from "./verify-screen";
 import { MachinesScreen } from "./machines-screen";
 import { RecordsScreen } from "./records-screen";
+import { CalibrationScreen } from "./calibration-screen";
 import { HomeScreen } from "./home-screen";
 import { StubScreen, AcquisitionModal, CommandPalette, NotificationsPanel } from "./stub-screens";
 import { ToastProvider } from "./toast";
@@ -281,7 +282,8 @@ export function VerifyApp() {
         )}
         {screen === "machines" && <MachinesScreen />}
         {screen === "records" && <RecordsScreen nav={nav} />}
-        {(screen === "catalog" || screen === "compare" || screen === "programs" || screen === "triage" || screen === "calibration") && (
+        {screen === "calibration" && <CalibrationScreen />}
+        {(screen === "catalog" || screen === "compare" || screen === "programs" || screen === "triage") && (
           <StubScreen id={screen} />
         )}
       </div>
