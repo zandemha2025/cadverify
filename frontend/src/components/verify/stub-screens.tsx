@@ -108,21 +108,11 @@ export function CommandPalette({ onClose, nav }: { onClose: () => void; nav: (s:
   );
 }
 
-export function NotificationsPanel({ onClose }: { onClose: () => void }) {
-  return (
-    <div style={{ position: "fixed", top: 58, right: 18, zIndex: 45, width: 340, background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 16, boxShadow: "0 18px 50px -18px rgba(23,24,26,0.25)", padding: 8, animation: "vscreenIn 200ms cubic-bezier(0.2,0,0,1) both" }}>
-      <div style={{ display: "flex", alignItems: "center", padding: "10px 14px 8px" }}>
-        <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: C.ink45 }}>NOTIFICATIONS</p>
-        <span style={{ marginLeft: 8 }}><InDev /></span>
-        <button type="button" onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontFamily: MONO, fontSize: 12, color: C.ink40 }}>✕</button>
-      </div>
-      <p style={{ margin: 0, padding: "4px 14px 14px", fontFamily: MONO, fontSize: 11, color: C.ink50, lineHeight: 1.6 }}>
-        States, never nags. Real notifications bind to the webhook delivery log (verification.completed, band flips) — not
-        yet wired, so nothing is invented here.
-      </p>
-    </div>
-  );
-}
+// NotificationsPanel is now REAL (derives states from three live reads); it lives
+// in ./notifications-panel and is re-exported here so the shell's import path
+// (verify-app.tsx: `import { NotificationsPanel } from "./stub-screens"`) is
+// unchanged. It is no longer a stub.
+export { NotificationsPanel } from "./notifications-panel";
 
 function Overlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
