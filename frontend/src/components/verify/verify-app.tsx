@@ -293,7 +293,7 @@ export function VerifyApp() {
             />
           </div>
         )}
-        {screen === "machines" && <MachinesScreen />}
+        {screen === "machines" && <MachinesScreen nav={nav} />}
         {screen === "records" && <RecordsScreen nav={nav} />}
         {screen === "catalog" && <CatalogScreen nav={nav} />}
         {screen === "compare" && <CompareScreen nav={nav} />}
