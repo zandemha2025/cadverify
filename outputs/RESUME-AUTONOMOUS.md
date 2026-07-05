@@ -2,14 +2,15 @@
 
 **Updated 2026-07-04 ~22:00 ET by Fable.** Directive: loop until CadVerify is a **production-working platform** (pilot bar first, then GA). Fable orchestrates (research+plan+gate); lesser models execute. **RESUMED post-reset at 21:54 ET.**
 
-## IN FLIGHT RIGHT NOW (workflow wf_965cbd62-819)
-Four parallel build→3-lens-verify tracks launched ~22:00 ET (opus builders, adversarial verifiers, max 3 fix rounds):
-- **B4 feat/step-spike** — prove STEP ingestion in the CI-built linux/amd64 image (no local Docker; push-triggered spike workflow `.github/workflows/step-spike.yml`). KEY FINDING pre-launch: gmsh (OCC-embedded) is ALREADY pinned in requirements.txt via step_mesher.py w/ 501 degrade; the unproven bit is `import gmsh` inside python:3.12-slim (runtime stage lacks libGLU/X11). cadquery path (step_parser.py) may be unnecessary.
-- **B3 feat/org-membership** — finish + invite-abuse/cross-tenant/auth-regression verify (reusing surviving worktree at 6899cc99…/wt/orgmembership; it was CLEAN, all WIP on branch tip).
-- **B5 feat/cost-unit-safety** — finish + unit-correctness/default-identity/contract verify (worktree 6899cc99…/wt/unitsafety, clean).
-- **B2b feat/pilot-run-path** — flag+arq-worker patch to run-local-app.sh + the pending E2E re-drive (visual should-cost confirm of ee10a85).
-On completion: Fable gates → serialized merge --no-ff into dev → full suite each (only the 24 env fails acceptable) → push origin dev; **prod promotion held until B2b's E2E visually confirms should-cost renders** (that was the explicitly pending item on ee10a85), then push prod to dev tip.
-B2(a) frontend screenshot: ALREADY DONE by the 667a012/e8fea82 human-sim walk — dropped from the plan.
+## GATE RESULTS (workflow wf_965cbd62-819 — COMPLETE ~23:30 ET)
+Four tracks build→3-lens adversarial verify. **dev now @ 40c3524**, suite 1239 passed / 24 env-only fails (8 test_costing_accuracy + 16 test_costing_gates, CADVERIFY_PARTS_DIR — the known non-regression), 44 skipped.
+- **B4 feat/step-spike — MERGED (163b0b5 lineage).** DEFINITIVE CI-proven answer: the UNMODIFIED deploy image **501s on every STEP**; a runtime-stage Dockerfile fix (now on dev) makes gmsh/OpenCASCADE ingest STEP in the real linux/amd64 image (CI run 28726761818 proved parse→watertight trimesh→volume). gmsh is the live path; cadquery/step_parser.py NOT needed. **HONEST LIMIT:** DFM+cost on STEP geometry proven LOCALLY + wired into the CI probe to prove in-image on the next push of feat/step-spike (needs a push).
+- **B5 feat/cost-unit-safety — MERGED (backend deliverable only).** units param (mm|inch), exactly-once rescale, implausible-bbox WARNING; ~16,387× inch mis-cost fixed; default/mm path byte-identical to dev (hash-identical @4 seeds). Branch's run.ts/outputs drift EXCLUDED as base-drift (branch was cut from 282d4a8).
+- **B2b feat/pilot-run-path — MERGED.** run-local-app.sh exports NEXT_PUBLIC_VERIFY_UI=1 + starts arq worker (redis-probe guarded). **E2E re-drive CONFIRMED: should-cost renders live at $21.98/unit (visually inspected)** — this was the explicitly pending gate on ee10a85. **→ prod-promotion condition now CLEARED.**
+- **B3 feat/org-membership — NOT MERGED. Real security defect survived 3 rounds:** a mirror-direction normalize_email collision still lets a DIFFERENT account redeem an admin invite (recipient-binding bypass, org_service.py accept_invite). Proper fix: bind invite to a resolved user_id at creation OR deny ambiguous normalize-collisions OR backfill legacy email_lower. **Relaunched as a focused fix→3-lens verify.** invite-abuse + auth-regression lenses already PASS; only cross-tenant remains.
+
+## PUSH BLOCKED (needs user)
+`git push origin dev` and `prod` were DENIED by the auto-mode classifier (direct push to shared integration branch). dev is advanced LOCALLY through 40c3524; nothing lost. **prod promotion is otherwise READY** (B2b cleared its condition). Needs: a Bash push permission rule, or the user to run the push. Same applies to pushing feat/step-spike to get B4's in-image cost proof.
 
 ## North star + the map
 Goal doc: `outputs/production-readiness.md` (ranked blockers, pilot vs GA, shortest pilot path). Gaps: `outputs/product-gaps.md` (48 items + queue). Thesis: `PLATFORM-DNA.md`. Deploy: `outputs/deploy-runbook.md`.
