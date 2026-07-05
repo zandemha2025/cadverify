@@ -86,6 +86,15 @@ export function PublicFooter() {
         <Link href="/scalar" className="transition-colors hover:text-foreground">
           API reference
         </Link>
+        <Link href="/privacy" className="transition-colors hover:text-foreground">
+          Privacy
+        </Link>
+        <Link href="/terms" className="transition-colors hover:text-foreground">
+          Terms
+        </Link>
+        <Link href="/status" className="transition-colors hover:text-foreground">
+          Status
+        </Link>
         <Link href="/docs" className="transition-colors hover:text-foreground">
           Quickstart
         </Link>

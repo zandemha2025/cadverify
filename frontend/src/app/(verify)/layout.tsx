@@ -1,6 +1,11 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { VERIFY_UI } from "@/lib/verify-flag";
 import { verifySession } from "@/lib/dal";
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 /**
  * The product Verify surface's own shell — a SEPARATE route group from `(app)`

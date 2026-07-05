@@ -58,7 +58,7 @@ export default function SignupPage() {
         return;
       }
       // Signed up + auto-logged-in; land on the platform.
-      window.location.href = "/analyze";
+      window.location.href = "/onboarding";
     } catch {
       setError("Could not reach the server. Is the backend running?");
     } finally {
@@ -148,12 +148,16 @@ export default function SignupPage() {
                 required
                 placeholder="you@company.com"
               />
-              <Script
-                src="https://challenges.cloudflare.com/turnstile/v0/api.js"
-                async
-                defer
-              />
-              <div className="cf-turnstile" data-sitekey={sitekey} />
+              {sitekey && (
+                <>
+                  <Script
+                    src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+                    async
+                    defer
+                  />
+                  <div className="cf-turnstile" data-sitekey={sitekey} />
+                </>
+              )}
               <Button type="submit" variant="ghost" className="w-full">
                 Email me a magic link
               </Button>

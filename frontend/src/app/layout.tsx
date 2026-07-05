@@ -29,9 +29,32 @@ const archivo = Archivo({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL || "https://cadverify.com"
+  ),
   title: "CadVerify — verification, made of glass",
   description:
     "Makeability verification: can this part be made — on your machines, in materials that survive its world — and what will it really take? Should-cost is one artifact inside the verdict, never the destination.",
+  alternates: { canonical: "/" },
+  icons: {
+    icon: "/icon.svg",
+  },
+  openGraph: {
+    title: "CadVerify — verification, made of glass",
+    description:
+      "Makeability verification for real manufacturing decisions.",
+    url: "/",
+    siteName: "CadVerify",
+    images: [{ url: "/opengraph-image", width: 1200, height: 630 }],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "CadVerify — verification, made of glass",
+    description:
+      "Makeability verification for real manufacturing decisions.",
+    images: ["/opengraph-image"],
+  },
 };
 
 export default function RootLayout({

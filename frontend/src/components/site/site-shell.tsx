@@ -99,10 +99,10 @@ export function SiteFooter() {
       <div className="st-footer-legal">
         <span>© {new Date().getFullYear()} CadVerify, Inc.</span>
         <span className="st-footer-links">
-          <span>Privacy</span>
-          <span>Terms</span>
-          <span>DPA</span>
-          <span>Status</span>
+          <Link href="/privacy">Privacy</Link>
+          <Link href="/terms">Terms</Link>
+          <Link href="/dpa">DPA</Link>
+          <Link href="/status">Status</Link>
         </span>
       </div>
     </footer>

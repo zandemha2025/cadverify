@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { AppShell } from "@/components/ui/app-shell";
 import { AuthProvider } from "@/components/ui/auth-provider";
 import { TempoProvider } from "@/lib/tempo";
@@ -9,6 +10,10 @@ import { verifySession } from "@/lib/dal";
 // unreferenced, so the rendered UI is unchanged.
 import "@fontsource-variable/instrument-sans";
 import "@fontsource-variable/jetbrains-mono";
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 /**
  * The single enterprise shell wrapping every authed surface. This is a SERVER
