@@ -13,6 +13,9 @@ HONESTY / SECURITY rails:
     expiring (default 7 days). A DB leak cannot be replayed into a membership.
   * An invite's role may never exceed the inviter's own org role; accepting an
     invite may never ESCALATE an existing member's role.
+  * An invite is bound to its recipient email — only the account whose email
+    matches may redeem it, so a leaked/forwarded token cannot be claimed by a
+    different logged-in user (no cross-account grant, incl. admin seats).
   * An org can never lose its last admin (demote/remove/leave all guard it).
 
 Single-org invariant: none of this changes behaviour for a user with exactly one
@@ -31,6 +34,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
+from src.auth.disposable import normalize_email
 from src.auth.org_context import personal_org_slug
 from src.db.models import Membership, OrgInvite, Organization, User
 
@@ -269,9 +273,12 @@ async def accept_invite(
     ``(membership, invite, created)`` where ``created`` is False when the user
     was already a member (in which case the role is NOT escalated).
 
-    Enforces single-use (``accepted_at``/``revoked_at`` NULL), expiry, and the
-    hash compare (the raw token is never stored). Consumes the invite atomically
-    with the membership write.
+    Enforces single-use (``accepted_at``/``revoked_at`` NULL), expiry, the hash
+    compare (the raw token is never stored), AND recipient binding: only the
+    account whose email matches the invite's may redeem it. A leaked/forwarded
+    token cannot be claimed by another logged-in user, and an invite can never
+    escalate a *different* account into the org (including at admin). Consumes
+    the invite atomically with the membership write.
     """
     if not raw_token or not raw_token.strip():
         raise _400("An invite token is required.")
@@ -289,6 +296,22 @@ async def accept_invite(
         raise _409("This invite has already been used.")
     if _as_aware(inv.expires_at) < _now():
         raise _409("This invite has expired.")
+
+    # Recipient binding (§39): an invite is bound to the email it was minted
+    # for. Compare against the accepting account's identity email — normalised
+    # BOTH sides the same way the account's unique ``email_lower`` is derived
+    # (lower-case, strip +tags, collapse gmail dots), so exactly the invited
+    # account (and no other) can redeem, regardless of case/alias variance.
+    # Without this, any authenticated holder of the raw token (email forward,
+    # shared inbox, no-email admin paste, shoulder-surf) could claim the seat —
+    # including an admin seat in another tenant.
+    accepting = (
+        await session.execute(select(User).where(User.id == user_id))
+    ).scalars().first()
+    if accepting is None:
+        raise _404("Accepting user not found.")
+    if normalize_email(accepting.email) != normalize_email(inv.email):
+        raise _403("This invite was issued to a different email address.")
 
     existing = await _get_membership(session, inv.org_id, user_id)
     if existing is not None:

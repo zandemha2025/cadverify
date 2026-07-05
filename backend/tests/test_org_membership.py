@@ -271,12 +271,15 @@ async def test_invite_lifecycle():
 
         # ---- issue: token returned once, only the hash persisted -------------
         async with eng.get_session_factory()() as s:
+            # Invite the invitee at their REAL account email (mixed-case, so we
+            # still prove normalisation); recipient-binding requires the token
+            # be redeemed by the account it was minted for.
             inv, raw = await svc.create_invite(
-                s, org_a, "admin", "Invitee@Example.com", "member", admin
+                s, org_a, "admin", f"ORGM-{tag}-Invitee@Example.com", "member", admin
             )
             await s.commit()
             inv_id = inv.id
-            assert inv.email == "invitee@example.com"      # normalised
+            assert inv.email == f"orgm-{tag}-invitee@example.com"   # normalised
             assert inv.token_hash == svc.hash_invite_token(raw)
             assert raw not in inv.token_hash
         # The raw token is NOWHERE in the row.
@@ -378,12 +381,78 @@ async def test_invite_lifecycle():
                 text("UPDATE memberships SET org_role='admin' WHERE org_id=:o AND user_id=:u"),
                 {"o": org_a, "u": invitee},
             )
-            inv5, raw5 = await svc.create_invite(s, org_a, "admin", "invitee@example.com", "member", admin)
+            inv5, raw5 = await svc.create_invite(s, org_a, "admin", f"orgm-{tag}-invitee@example.com", "member", admin)
             await s.commit()
             m5, _, created5 = await svc.accept_invite(s, invitee, raw5)
             await s.commit()
             assert created5 is False
             assert m5.org_role == "admin"     # NOT downgraded to the invite's role
+    finally:
+        await _teardown(eng, users, orgs)
+        await eng.dispose_engine()
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Recipient binding — a token minted for one email cannot be redeemed by a
+# DIFFERENT authenticated account (invite-abuse / cross-tenant admin grant).
+# ══════════════════════════════════════════════════════════════════════════
+
+
+@_requires_pg
+@pytest.mark.asyncio
+async def test_invite_recipient_binding_rejects_wrong_email():
+    """The core invite-abuse guard: an admin invite minted for victim@... may be
+    redeemed ONLY by the victim's account. A different logged-in user (not the
+    invitee, not a member) presenting the raw token is rejected with 403 and NO
+    membership is created — closing the 'claim a leaked/forwarded seat, incl.
+    admin of another tenant' vector."""
+    import src.db.engine as eng
+    from fastapi import HTTPException
+
+    tag = uuid.uuid4().hex[:10]
+    users: list[int] = []
+    orgs: list[str] = []
+    try:
+        async with eng.get_session_factory()() as s:
+            org_a = await _mk_org(s, tag, "A")
+            orgs.append(org_a)
+            admin = await _mk_user(s, tag, "admin")
+            attacker = await _mk_user(s, tag, "attacker")
+            users += [admin, attacker]
+            await _mk_membership(s, org_a, admin, "admin")
+            await s.commit()
+
+        # admin mints an ADMIN invite for a victim who has no account here
+        victim_email = f"orgm-{tag}-victim@example.com"
+        async with eng.get_session_factory()() as s:
+            inv, raw = await svc.create_invite(
+                s, org_a, "admin", victim_email, "admin", admin
+            )
+            await s.commit()
+
+        # a DIFFERENT authenticated user (the attacker) presents the raw token
+        async with eng.get_session_factory()() as s:
+            with pytest.raises(HTTPException) as e:
+                await svc.accept_invite(s, attacker, raw)
+            assert e.value.status_code == 403
+            await s.rollback()
+
+        # NO membership was granted to the attacker; the invite is still pending
+        async with eng.get_session_factory()() as s:
+            granted = (
+                await s.execute(
+                    text("SELECT 1 FROM memberships WHERE org_id=:o AND user_id=:u"),
+                    {"o": org_a, "u": attacker},
+                )
+            ).first()
+            assert granted is None
+            still_pending = (
+                await s.execute(
+                    text("SELECT accepted_at FROM org_invites WHERE id=:i"),
+                    {"i": inv.id},
+                )
+            ).first()[0]
+            assert still_pending is None       # token not consumed by the abuse
     finally:
         await _teardown(eng, users, orgs)
         await eng.dispose_engine()
