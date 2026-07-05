@@ -458,6 +458,111 @@ async def test_invite_recipient_binding_rejects_wrong_email():
         await eng.dispose_engine()
 
 
+async def _mk_user_raw(s, email, email_lower, *, role="analyst"):
+    """Insert a user with an EXPLICIT email/email_lower pair.
+
+    ``_mk_user`` derives email_lower from the label, so it can't build the
+    normalise-collision scenario. This lets a test plant a row whose stored
+    email_lower is NON-normalised (as SAML historically provisioned) yet still
+    passes the unique(email_lower) constraint — i.e. a distinct account that
+    normalise-collides with another.
+    """
+    row = (
+        await s.execute(
+            text(
+                "INSERT INTO users (email, email_lower, role, auth_provider) "
+                "VALUES (:e, :el, :r, 'saml') RETURNING id"
+            ),
+            {"e": email, "el": email_lower, "r": role},
+        )
+    ).first()
+    return int(row[0])
+
+
+@_requires_pg
+@pytest.mark.asyncio
+async def test_invite_recipient_binding_rejects_normalize_collision():
+    """Regression for the normalize_email-collision bypass.
+
+    Account uniqueness is on ``email_lower``, but SAML historically stored a
+    NON-normalised email_lower (gmail dots/+tags retained), so two DISTINCT
+    accounts can collide under ``normalize_email``. The old guard re-derived the
+    accepting identity via ``normalize_email(accepting.email)`` and so treated the
+    colliding attacker row as the invitee — granting cross-account ADMIN into
+    another org. The guard now keys on the stored ``email_lower`` (the real unique
+    identity), so:
+      * the colliding attacker (email_lower keeps the dot) is REFUSED (403), and
+      * the genuinely-invited victim (email_lower == normalised invite) SUCCEEDS.
+    """
+    import src.db.engine as eng
+    from fastapi import HTTPException
+
+    tag = uuid.uuid4().hex[:10]
+    users: list[int] = []
+    orgs: list[str] = []
+    try:
+        # victim: normalised email_lower (the account the admin intends to invite)
+        victim_email = f"pv{tag}victim@gmail.com"
+        # attacker: DISTINCT row whose email_lower retains a gmail dot, so it is a
+        # different unique key yet normalise-collides with the victim's.
+        attacker_email = f"pv{tag}.victim@gmail.com"
+        from src.auth.disposable import normalize_email as _ne
+        assert _ne(attacker_email) == _ne(victim_email)     # they DO collide
+        assert attacker_email != victim_email               # but are distinct rows
+
+        async with eng.get_session_factory()() as s:
+            org_a = await _mk_org(s, tag, "A")
+            orgs.append(org_a)
+            admin = await _mk_user(s, tag, "admin")
+            victim = await _mk_user_raw(s, victim_email, victim_email)
+            attacker = await _mk_user_raw(s, attacker_email, attacker_email)
+            users += [admin, victim, attacker]
+            await _mk_membership(s, org_a, admin, "admin")
+            await s.commit()
+
+        # admin mints an ADMIN invite bound to the victim's email
+        async with eng.get_session_factory()() as s:
+            inv, raw = await svc.create_invite(
+                s, org_a, "admin", victim_email, "admin", admin
+            )
+            await s.commit()
+
+        # the colliding attacker (a DIFFERENT user_id) presents the raw token
+        async with eng.get_session_factory()() as s:
+            with pytest.raises(HTTPException) as e:
+                await svc.accept_invite(s, attacker, raw)
+            assert e.value.status_code == 403
+            await s.rollback()
+
+        # NO membership granted to the attacker; invite still pending (not consumed)
+        async with eng.get_session_factory()() as s:
+            granted = (
+                await s.execute(
+                    text("SELECT org_role FROM memberships WHERE org_id=:o AND user_id=:u"),
+                    {"o": org_a, "u": attacker},
+                )
+            ).first()
+            assert granted is None, f"attacker wrongly granted {granted!r}"
+            still_pending = (
+                await s.execute(
+                    text("SELECT accepted_at FROM org_invites WHERE id=:i"),
+                    {"i": inv.id},
+                )
+            ).first()[0]
+            assert still_pending is None
+
+        # COMPLETENESS: the genuinely-invited victim CAN still redeem it.
+        async with eng.get_session_factory()() as s:
+            m, _, created = await svc.accept_invite(s, victim, raw)
+            await s.commit()
+            assert created is True
+            assert m.org_role == "admin"
+            assert m.user_id == victim
+    finally:
+        await _teardown(eng, users, orgs)
+        await eng.dispose_engine()
+
+
 # ══════════════════════════════════════════════════════════════════════════
 # Multi-membership resolution + switch (+ stale current_org_id fallback)
 # ══════════════════════════════════════════════════════════════════════════

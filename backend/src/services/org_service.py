@@ -298,19 +298,34 @@ async def accept_invite(
         raise _409("This invite has expired.")
 
     # Recipient binding (§39): an invite is bound to the email it was minted
-    # for. Compare against the accepting account's identity email — normalised
-    # BOTH sides the same way the account's unique ``email_lower`` is derived
-    # (lower-case, strip +tags, collapse gmail dots), so exactly the invited
-    # account (and no other) can redeem, regardless of case/alias variance.
-    # Without this, any authenticated holder of the raw token (email forward,
-    # shared inbox, no-email admin paste, shoulder-surf) could claim the seat —
-    # including an admin seat in another tenant.
+    # for, and may be redeemed by EXACTLY the invited account — no other.
+    #
+    # We bind to the account's REAL uniqueness key: ``users.email_lower`` is the
+    # column the unique index and every login lookup key on, so it — not a fresh
+    # re-derivation from ``accepting.email`` — is the identity that must match.
+    # Compare it against the invite email reduced the SAME way (``normalize_email``:
+    # lower-case, strip +tags, collapse gmail dots), which is exactly how every
+    # provisioning path sets ``email_lower`` (password/oauth/magic, and SAML after
+    # the saml.py fix that made its ``email_lower`` normalised too).
+    #
+    # The prior guard re-derived with ``normalize_email(accepting.email)`` and was
+    # UNSOUND: because SAML historically stored a NON-normalised ``email_lower``
+    # (dots/+tags retained), two DISTINCT account rows can normalise-collide
+    # (e.g. ``a.b@gmail.com`` vs ``ab@gmail.com``). Re-normalising the wrong
+    # account's raw email then matched the invite, letting a *different* account
+    # redeem — including into an ADMIN seat in another tenant. Keying on the
+    # stored ``email_lower`` (a real, unique row identity) closes that: a colliding
+    # SAML row's own ``email_lower`` differs from the normalised invite key, so it
+    # is refused. Without any binding, any authenticated holder of the raw token
+    # (email forward, shared inbox, no-email admin paste, shoulder-surf) could
+    # claim the seat.
     accepting = (
         await session.execute(select(User).where(User.id == user_id))
     ).scalars().first()
     if accepting is None:
         raise _404("Accepting user not found.")
-    if normalize_email(accepting.email) != normalize_email(inv.email):
+    account_key = accepting.email_lower or normalize_email(accepting.email or "")
+    if account_key != normalize_email(inv.email):
         raise _403("This invite was issued to a different email address.")
 
     existing = await _get_membership(session, inv.org_id, user_id)
