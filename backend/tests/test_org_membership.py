@@ -38,6 +38,42 @@ _requires_pg = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def _loop_hermetic_engine():
+    """Bind the asyncpg pool to each test's OWN event loop (loop hermeticity).
+
+    ``src.db.engine`` keeps the async engine + session factory as module-level
+    singletons. asyncpg attaches every pooled connection (and its Futures) to
+    whichever event loop first opened it. pytest-asyncio runs each test on a
+    fresh, function-scoped loop, so a pool opened — and left set — by an
+    earlier live-Postgres test in another file is bound to a now-closed loop.
+    Reusing it (SQLAlchemy's ``pool_pre_ping`` checkout pings the stale
+    connection) raises ``RuntimeError: got Future attached to a different
+    loop`` at this test's first DB call. In the full suite that is exactly the
+    cross-loop poisoning that makes ``test_invite_lifecycle`` explode while it
+    passes in isolation.
+
+    We drop the singleton before every test so ``get_session_factory()``
+    lazily rebuilds an engine bound to THIS loop, and again after so this file
+    never hands a live-loop pool to the next one. We deliberately do NOT
+    ``await engine.dispose()`` on the inherited engine — that would drive I/O
+    on the foreign, dead loop; abandoning the reference lets it be reclaimed
+    (the same benign leak that already exists suite-wide without this file).
+    The per-test ``dispose_engine()`` calls inside the tests still run and
+    cleanly tear down the engine we built on this loop. Mirrors
+    ``tests/test_db_pool.py::reset_engine``.
+    """
+    import src.db.engine as _eng
+
+    _eng._ENGINE = None
+    _eng._SESSION_FACTORY = None
+    try:
+        yield
+    finally:
+        _eng._ENGINE = None
+        _eng._SESSION_FACTORY = None
+
+
 # ══════════════════════════════════════════════════════════════════════════
 # Pure unit tests — the invite token contract (no DB)
 # ══════════════════════════════════════════════════════════════════════════
