@@ -143,7 +143,7 @@ export default function DesignEngineeringPage() {
 
       {/* act 1 — the flag */}
       <section ref={sec1} style={act(150)}>
-        <div style={sticky("center")}>
+        <div style={sticky("flex-start")}>
           <div ref={cap1 as React.RefObject<HTMLDivElement>} style={{ maxWidth: 460, opacity: 0 }}>
             <Eyebrow index="01" style={{ color: "var(--st-conditional)" }}>
               Upload mid-design
@@ -194,7 +194,7 @@ export default function DesignEngineeringPage() {
 
       {/* act 3 — the fix */}
       <section ref={sec3} style={act(160)}>
-        <div style={sticky("center")}>
+        <div style={sticky("flex-start")}>
           <div ref={cap3 as React.RefObject<HTMLDivElement>} style={{ maxWidth: 460, opacity: 0 }}>
             <Eyebrow index="03" style={{ color: "var(--st-pass)" }}>
               Fix it, re-run
