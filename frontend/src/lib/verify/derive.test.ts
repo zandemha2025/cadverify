@@ -22,6 +22,7 @@ import {
   fractionToQty,
   qtyToFraction,
   driverViews,
+  driverProvenance,
   provenanceMix,
 } from "./derive.ts";
 import type { CostReport, CostEstimate } from "@/lib/api";
@@ -149,4 +150,27 @@ test("driverViews carries engine provenance + verbatim source; mix counts ground
   assert.equal(mix.default, 1);
   assert.equal(mix.groundedPct, 67); // 2 of 3 grounded
   assert.equal(provenanceMix(null).total, 0);
+});
+
+test("hours are MODEL: an ungrounded time driver reads ○ MODEL, geometry stays ● MEASURED", () => {
+  // an hours-denominated driver the engine left DEFAULT → refined to MODEL (never grounded)
+  assert.equal(
+    driverProvenance({ name: "machine_time", value: 0.068, unit: "hr/part", provenance: "DEFAULT", source: "", error_band_pct: null }),
+    "MODEL"
+  );
+  // a grounded time driver is NEVER downgraded to MODEL
+  assert.equal(
+    driverProvenance({ name: "labor_time", value: 0.082, unit: "hr", provenance: "SHOP", source: "", error_band_pct: null }),
+    "SHOP"
+  );
+  // a non-time DEFAULT driver stays DEFAULT (only hours become MODEL)
+  assert.equal(
+    driverProvenance({ name: "parts_per_build", value: 223, unit: "count", provenance: "DEFAULT", source: "", error_band_pct: null }),
+    "DEFAULT"
+  );
+  // measured geometry stays MEASURED
+  assert.equal(
+    driverProvenance({ name: "material_mass", value: 4.2, unit: "g", provenance: "MEASURED", source: "", error_band_pct: null }),
+    "MEASURED"
+  );
 });

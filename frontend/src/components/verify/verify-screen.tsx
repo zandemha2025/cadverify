@@ -9,7 +9,7 @@
  * gates render the honest unknown/feature state — NEVER a fabricated verdict. The
  * walk stops honestly at a failed gate (geometry invalid → no downstream compute).
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { C, MONO, USD, NUM, procLabel, statusColor } from "@/lib/verify/tokens";
 import type { VerifyResult } from "@/lib/verify/run";
 import {
@@ -22,6 +22,7 @@ import {
   provenanceMix,
   type DriverView,
 } from "@/lib/verify/derive";
+import { interpUnitCost, type InterpPoint } from "@/lib/verify/scrub";
 import {
   verdictBannerModel,
   perRouteRows,
@@ -33,6 +34,7 @@ import {
   type VerificationBlock,
 } from "@/lib/verify/verification";
 import { envelopeSummary } from "@/lib/verify/machine-api";
+import { useToast } from "./toast";
 import { Card, Kicker, ProvChip, ProvDot, InDev, ConfidenceBand, GhostButton, EmptyState } from "./primitives";
 import { PipelineOverlay } from "./pipeline-overlay";
 
@@ -64,6 +66,13 @@ export function VerifyScreen(props: Props) {
   const { result, running, env, setEnv, onPickFile, onReverify, nav } = props;
   const [scrubFrac, setScrubFrac] = useState(0.5);
   const [disclose, setDisclose] = useState<string | null>(null);
+  // The user's recorded make/route/acquire/redesign decision for THIS verification.
+  // Session state (there is no engine endpoint to append the outcome yet — the
+  // Decide card is honest about that). Reset whenever a new run lands.
+  const [decision, setDecision] = useState<string | null>(null);
+  useEffect(() => {
+    setDecision(null);
+  }, [result]);
 
   const hostile = env.temp || env.sour || env.pressure;
   // The env door tells the EXACT truth about the round-trip. `result` reflects the
@@ -81,10 +90,9 @@ export function VerifyScreen(props: Props) {
         display: "flex",
         flexDirection: "column",
         background: C.bg,
-        overflowY: "auto",
       }}
     >
-      <div style={{ flex: 1, padding: "26px 30px 30px" }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "26px 30px 20px" }}>
         {/* the question */}
         <p
           style={{
@@ -149,11 +157,19 @@ export function VerifyScreen(props: Props) {
             setScrubFrac={setScrubFrac}
             disclose={disclose}
             setDisclose={setDisclose}
+            decision={decision}
+            setDecision={setDecision}
             onReverify={onReverify}
             nav={nav}
           />
         )}
       </div>
+
+      {/* ask the engine — a docked row, separate from the scrolling walk. It is a
+          front door to what the engine ACTUALLY computed for this part (real slices
+          of `result`) plus the honest refusal for anything non-deterministic; it
+          never generates a number. */}
+      <AskDock result={result} nav={nav} />
     </div>
     <PipelineOverlay running={running} result={result} fileName={props.fileName} />
     </>
@@ -306,6 +322,8 @@ function Walk({
   setScrubFrac,
   disclose,
   setDisclose,
+  decision,
+  setDecision,
   onReverify,
   nav,
 }: {
@@ -314,6 +332,8 @@ function Walk({
   setScrubFrac: (f: number) => void;
   disclose: string | null;
   setDisclose: (s: string | null) => void;
+  decision: string | null;
+  setDecision: (d: string | null) => void;
   onReverify: () => void;
   nav: Nav;
 }) {
@@ -486,6 +506,7 @@ function Walk({
                   makeAtQty={makeAtQty}
                   toolAtQty={toolAtQty}
                   snappedQty={snappedQty}
+                  scrubQty={scrubQty}
                   scrubFrac={scrubFrac}
                   setScrubFrac={setScrubFrac}
                   crossover={crossover}
@@ -498,7 +519,7 @@ function Walk({
             )}
 
             {/* decide + hallmark */}
-            {cost && <DecideHallmark result={result} nav={nav} />}
+            {cost && <DecideHallmark result={result} decision={decision} setDecision={setDecision} nav={nav} />}
           </>
         )}
 
@@ -867,6 +888,7 @@ function ResourceCost({
   makeAtQty,
   toolAtQty,
   snappedQty,
+  scrubQty,
   scrubFrac,
   setScrubFrac,
   crossover,
@@ -879,6 +901,7 @@ function ResourceCost({
   makeAtQty: ReturnType<typeof makeNowEstimate>;
   toolAtQty: ReturnType<typeof toolingEstimate>;
   snappedQty: number;
+  scrubQty: number;
   scrubFrac: number;
   setScrubFrac: (f: number) => void;
   crossover: number | null;
@@ -887,6 +910,11 @@ function ResourceCost({
   verification: VerificationBlock | null;
   nav: Nav;
 }) {
+  // The scrub reads the REAL 6-point ladder: at a computed qty it is the engine's
+  // own unit cost; between two points it interpolates those two real points along
+  // the amortization curve (labelled, never presented as a fresh compute).
+  const makeInterp = interpUnitCost(cost, makeProcess, scrubQty);
+  const toolInterp = toolingProcess ? interpUnitCost(cost, toolingProcess, scrubQty) : null;
   // The machine-specific MARGINAL rate: when a PASSING owned machine re-costs this
   // route at its OWN declared rate, the header reads OWNED → MARGINAL and names the
   // machine + rate (SHOP provenance). Absent → the generic MAKE NOW header.
@@ -905,8 +933,8 @@ function ResourceCost({
     <>
       <div style={{ marginTop: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.1em", color: C.ink45 }}>
-          QUANTITY <span style={{ color: C.ink }}>{NUM(snappedQty)}</span>
-          <span style={{ color: C.ink40 }}> · computed at the nearest real point</span>
+          QUANTITY <span style={{ color: C.ink }}>{NUM(scrubQty)}</span>
+          <span style={{ color: C.ink40 }}> · {interpNote(makeInterp)}</span>
         </span>
         <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink40 }}>annual volume · <span style={{ color: C.user }}>program not set</span></span>
       </div>
@@ -936,8 +964,9 @@ function ResourceCost({
             {procLabel(makeProcess)} — {marginal ? "OWNED → MARGINAL" : "MAKE NOW"}
           </p>
           <p style={{ margin: "8px 0 0", fontSize: 26, fontWeight: 300, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
-            {USD(makeAtQty?.unit_cost_usd)} <span style={{ fontSize: 13, color: C.ink45 }}>/unit at this qty</span>
+            {USD(makeInterp.unit)} <span style={{ fontSize: 13, color: C.ink45 }}>/unit at this qty</span>
           </p>
+          <p style={{ margin: "3px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink40 }}>{interpNote(makeInterp)}</p>
           {marginal && (
             <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, lineHeight: 1.6, color: C.shop }}>
               {marginal.machine ? `on ${marginal.machine} ` : ""}at {USD(marginal.rateUsd)}/hr · <ProvChip p="SHOP" /> — your machine&apos;s own marginal rate, owned capital sunk
@@ -945,6 +974,7 @@ function ResourceCost({
           )}
           <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, lineHeight: 1.7, color: C.ink45 }}>
             hours × your rates + mass × your lot price · {mix.groundedPct}% of drivers grounded (● measured/shop/user)
+            <br />band &amp; drivers read at computed qty {NUM(snappedQty)}
           </p>
           <div style={{ marginTop: 10 }}>
             <ConfidenceBand validated={validated} pointFraction={pointFrac} />
@@ -962,8 +992,9 @@ function ResourceCost({
               {procLabel(toolingProcess)} — NOT OWNED → ACQUIRE
             </p>
             <p style={{ margin: "8px 0 0", fontSize: 26, fontWeight: 300, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
-              {USD(toolAtQty.unit_cost_usd)} <span style={{ fontSize: 13, color: C.ink45 }}>/unit incl. tooling</span>
+              {USD(toolInterp?.unit ?? toolAtQty.unit_cost_usd)} <span style={{ fontSize: 13, color: C.ink45 }}>/unit incl. tooling</span>
             </p>
+            {toolInterp && <p style={{ margin: "3px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink40 }}>{interpNote(toolInterp)}</p>}
             <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, lineHeight: 1.7, color: C.ink45 }}>
               {crossover ? `amortizes past ${NUM(crossover)} units` : "no crossover — tooling never pays back at these volumes"}
               {toolAtQty.dfm_ready ? "" : " · conditional on a DFM redesign"}
@@ -983,24 +1014,108 @@ function ResourceCost({
   );
 }
 
-function DecideHallmark({ result, nav }: { result: VerifyResult; nav: Nav }) {
+const DECIDE_OPTS: { key: string; label: string }[] = [
+  { key: "inhouse", label: "Make in-house" },
+  { key: "outside", label: "Make outside" },
+  { key: "acquire", label: "Acquire capability" },
+  { key: "redesign", label: "Redesign" },
+];
+
+function DecideHallmark({
+  result,
+  decision,
+  setDecision,
+  nav,
+}: {
+  result: VerifyResult;
+  decision: string | null;
+  setDecision: (d: string | null) => void;
+  nav: Nav;
+}) {
+  const toast = useToast();
   const saved = result.cost?.saved;
   const est = result.cost ? makeNowEstimate(result.cost) : null;
   const validated = est?.confidence?.validated ?? false;
+  const decidedLabel = DECIDE_OPTS.find((o) => o.key === decision)?.label ?? null;
+  // Real, verbatim id of the persisted cost-decision artifact (never the design's
+  // fixture "V-0117"). A short handle for the line; the full record opens in Records.
+  const shortId = saved?.id ? `#${saved.id.slice(0, 8)}` : null;
+  const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+  const choose = (key: string, label: string) => {
+    const withdrawing = decision === key;
+    setDecision(withdrawing ? null : key);
+    if (withdrawing) {
+      toast(`Decision withdrawn — ${label}`);
+      return;
+    }
+    // Honest: the user's outcome is noted on THIS verification (session). The
+    // cost-decision artifact itself is what's persisted (POST /validate/cost); the
+    // toast asserts only what actually happened.
+    toast(saved ? `${label} — noted · cost-decision ${shortId} is saved` : `${label} — noted on this verification`);
+    if (key === "acquire") nav("acquisition");
+  };
+
   return (
     <Card>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <p style={{ margin: 0, fontSize: 15, fontWeight: 500, marginRight: "auto" }}>Decide</p>
-        <GhostButton onClick={() => nav("records")} disabled={!saved}>
-          {saved ? "Saved as a record" : "Not persisted"}
-        </GhostButton>
-        <InDev label="DECISION APPEND — PENDING" />
+        {DECIDE_OPTS.map((o) => {
+          const on = decision === o.key;
+          return (
+            <button
+              key={o.key}
+              type="button"
+              onClick={() => choose(o.key, o.label)}
+              style={{
+                background: on ? C.ink : "none",
+                border: `1px solid ${on ? C.ink : "#d8d8dc"}`,
+                borderRadius: 999,
+                color: on ? "#ffffff" : C.ink,
+                padding: "9px 16px",
+                fontSize: 12.5,
+                fontWeight: 500,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                transition: "all 150ms",
+              }}
+            >
+              {o.label}
+            </button>
+          );
+        })}
       </div>
-      <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink45, lineHeight: 1.6 }}>
-        {saved
-          ? "this verification is saved as an immutable cost-decision record. Tagging the outcome make / route-outside appends to that record — engine surface pending."
-          : "persistence is off for this decision (COST_PERSIST_ENABLED) — it computed, but was not saved."}
-      </p>
+
+      {decidedLabel ? (
+        <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.pass, lineHeight: 1.6, animation: "vtraceIn 300ms cubic-bezier(0.2,0,0,1) both" }}>
+          ✓ {decidedLabel} — noted on this verification · {today}
+          {saved ? (
+            <>
+              {" "}· cost-decision <span style={{ color: C.ink }}>{shortId}</span> is the persisted artifact
+            </>
+          ) : (
+            " · this session only (persistence off)"
+          )}
+        </p>
+      ) : (
+        <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40, lineHeight: 1.6 }}>
+          next → pick one above · your choice is noted on this verification
+          {saved ? " beside the saved cost-decision record" : ""}.
+        </p>
+      )}
+
+      <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <GhostButton onClick={() => nav("records")} disabled={!saved}>
+          {saved ? "Open the record →" : "Not persisted"}
+        </GhostButton>
+        <InDev label="OUTCOME APPEND — IN DEVELOPMENT" />
+        <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink40, lineHeight: 1.5, flex: 1, minWidth: 180 }}>
+          {saved
+            ? "the cost-decision is an immutable saved artifact; writing the make/route outcome back onto it is not yet wired."
+            : "persistence is off for this decision (COST_PERSIST_ENABLED) — it computed, but was not saved server-side."}
+        </span>
+      </div>
+
       <div style={{ marginTop: 16, borderTop: `1px solid #efeff2`, paddingTop: 14, display: "flex", alignItems: "center", gap: 14 }}>
         <div style={{ flex: 1 }}>
           <ConfidenceBand validated={validated} pointFraction={0.5} />
@@ -1016,6 +1131,15 @@ function DecideHallmark({ result, nav }: { result: VerifyResult; nav: Nav }) {
   );
 }
 
+/** Honest label for a scrubbed cost: engine-exact at a computed point, an explicit
+ *  interpolation of two real points between them, or a clamp at the ladder's edge. */
+function interpNote(p: InterpPoint): string {
+  if (p.unit == null) return "no computed estimate on this route";
+  if (p.exact) return "engine-exact — a computed point";
+  if (p.clamped) return `clamped to the ${p.lo === p.hi ? NUM(p.lo) : ""} computed point — not extrapolated`;
+  return `interpolated between computed ${NUM(p.lo)} and ${NUM(p.hi)}`;
+}
+
 /* ── driver value formatting — never invents units the engine didn't send ── */
 function formatDriverValue(d: DriverView): string {
   if (d.unit === "usd") return USD(d.value);
@@ -1026,4 +1150,287 @@ function driverUnit(d: DriverView): string {
   if (d.unit === "usd") return "";
   if (d.unit === "count") return "";
   return d.unit;
+}
+
+/* ─── ASK DOCK ────────────────────────────────────────────────────────────────
+ * A docked "ask the engine" row. The engine only answers DETERMINISTIC questions,
+ * and it answers them from what it ACTUALLY computed for THIS part (real slices of
+ * `result`) — never a generated number. The quick asks read the loaded run; the
+ * free-text parser is honestly IN DEVELOPMENT; anything non-deterministic gets the
+ * honest refusal. No fabricated shop-vs-shop fixture is presented as real.
+ */
+type AskReply = "cost" | "crossover" | "materials" | "refusal" | "indev";
+
+function AskDock({ result, nav }: { result: VerifyResult | null; nav: Nav }) {
+  const [reply, setReply] = useState<AskReply | null>(null);
+  const [q, setQ] = useState("");
+  const canCompute = !!result?.cost;
+
+  // A new run clears a stale reply so the dock never shows the previous part's answer.
+  useEffect(() => {
+    setReply(null);
+  }, [result]);
+
+  return (
+    <div style={{ flexShrink: 0, borderTop: `1px solid ${C.hair2}`, background: C.panel, padding: "10px 30px" }}>
+      {reply && <AskReplyCard reply={reply} result={result} nav={nav} onClear={() => setReply(null)} />}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, maxWidth: 900, flexWrap: "wrap" }}>
+        <div
+          style={{
+            flex: 1,
+            minWidth: 220,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            border: `1px solid #dcdce0`,
+            borderRadius: 999,
+            padding: "4px 4px 4px 16px",
+            background: C.bg,
+          }}
+        >
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") setReply("indev");
+            }}
+            placeholder="Ask the engine — 'what's the unit cost at 1,000 on my floor?'"
+            style={{ flex: 1, minWidth: 0, background: "none", border: "none", outline: "none", fontSize: 13, color: C.ink, fontFamily: "inherit" }}
+          />
+          <button
+            type="button"
+            onClick={() => setReply("indev")}
+            aria-label="Ask the engine"
+            style={{ flexShrink: 0, width: 30, height: 30, borderRadius: "50%", border: "none", background: C.ink, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m5 12 14 0" />
+              <path d="m13 5 7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+        {canCompute && (
+          <>
+            <AskChip label="Unit cost @ 1,000" onClick={() => setReply("cost")} />
+            <AskChip label="Where's the crossover?" onClick={() => setReply("crossover")} />
+            <AskChip label="What survives this world?" onClick={() => setReply("materials")} />
+          </>
+        )}
+        <AskChip label="An uncomputable ask" onClick={() => setReply("refusal")} />
+      </div>
+      <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 9, color: C.ink35 }}>
+        answers are engine-computed artifacts read off this verification — the copilot cannot offer a question the engine can&apos;t compute
+      </p>
+    </div>
+  );
+}
+
+function AskChip({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{ flexShrink: 0, border: `1px solid #dcdce0`, background: "#fff", borderRadius: 999, padding: "7px 13px", fontSize: 11, color: C.ink55, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function AskCard({ children, dashed }: { children: React.ReactNode; dashed?: boolean }) {
+  return (
+    <div
+      style={{
+        maxWidth: 720,
+        marginBottom: 12,
+        border: dashed ? `1.5px dashed #d3d3d8` : `1px solid ${C.hair}`,
+        borderRadius: 14,
+        background: dashed ? "transparent" : "#fafafb",
+        padding: "16px 18px",
+        animation: "vstepIn 300ms cubic-bezier(0.2,0,0,1) both",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function AskClearBtn({ onClear }: { onClear: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClear}
+      aria-label="Dismiss"
+      style={{ marginLeft: "auto", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 11, color: C.ink40 }}
+    >
+      ✕
+    </button>
+  );
+}
+
+function AskReplyCard({
+  reply,
+  result,
+  nav,
+  onClear,
+}: {
+  reply: AskReply;
+  result: VerifyResult | null;
+  nav: Nav;
+  onClear: () => void;
+}) {
+  if (reply === "refusal") {
+    return (
+      <AskCard dashed>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>The engine can&apos;t compute that.</p>
+          <AskClearBtn onClear={onClear} />
+        </div>
+        <p style={{ margin: "7px 0 0", fontSize: 12.5, lineHeight: 1.6, color: C.ink55 }}>
+          Anything that isn&apos;t a deterministic property of geometry, your machines, or your rates has no engine answer — so
+          none is invented. It can compute: envelope fit · surviving materials · process physics · hours · resource cost · crossovers.
+        </p>
+      </AskCard>
+    );
+  }
+
+  if (reply === "indev") {
+    return (
+      <AskCard dashed>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>The free-text copilot is being wired up.</p>
+          <InDev label="NL PARSE — IN DEVELOPMENT" />
+          <AskClearBtn onClear={onClear} />
+        </div>
+        <p style={{ margin: "7px 0 0", fontSize: 12.5, lineHeight: 1.6, color: C.ink55 }}>
+          It will route a typed question to the engine&apos;s computable outputs — every one of which is already on this page.
+          For now use a quick ask below: unit cost, crossover, or surviving materials. No answer is ever generated.
+        </p>
+      </AskCard>
+    );
+  }
+
+  const cost = result?.cost ?? null;
+  if (!cost) {
+    return (
+      <AskCard dashed>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>Nothing is computed yet.</p>
+          <AskClearBtn onClear={onClear} />
+        </div>
+        <p style={{ margin: "7px 0 0", fontSize: 12.5, lineHeight: 1.6, color: C.ink55 }}>
+          Drop a part to run the walk — the copilot answers only from what the engine actually computed.
+        </p>
+      </AskCard>
+    );
+  }
+
+  const makeProc = cost.decision?.make_now_process ?? null;
+  const toolProc = cost.decision?.tooling_process ?? null;
+
+  if (reply === "cost") {
+    const mk = interpUnitCost(cost, makeProc, 1000);
+    const tl = toolProc ? interpUnitCost(cost, toolProc, 1000) : null;
+    return (
+      <AskCard>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+          <Kicker color={C.ink45}>ENGINE OUTPUT — COMPUTED, NOT GENERATED · unit cost · qty 1,000</Kicker>
+          <AskClearBtn onClear={onClear} />
+        </div>
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6, fontFamily: MONO, fontSize: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+            <span style={{ color: C.ink60 }}>{procLabel(makeProc)} — make now</span>
+            <span>
+              {USD(mk.unit)}/unit <span style={{ color: C.ink40 }}>· {interpNote(mk)}</span>
+            </span>
+          </div>
+          {toolProc && tl && (
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <span style={{ color: C.ink60 }}>{procLabel(toolProc)} — tooled</span>
+              <span>
+                {USD(tl.unit)}/unit <span style={{ color: C.ink40 }}>· {interpNote(tl)}</span>
+              </span>
+            </div>
+          )}
+        </div>
+        <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink35 }}>
+          read off {result?.file.name} · POST /validate/cost — your rates, not a market&apos;s
+        </p>
+      </AskCard>
+    );
+  }
+
+  if (reply === "crossover") {
+    const cross = cost.decision?.crossover_qty ?? null;
+    return (
+      <AskCard>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+          <Kicker color={C.ink45}>ENGINE OUTPUT — COMPUTED, NOT GENERATED · make-vs-tool crossover</Kicker>
+          <AskClearBtn onClear={onClear} />
+        </div>
+        <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 13, color: C.ink }}>
+          {cross != null ? (
+            <>
+              crossover ≈ <span style={{ fontSize: 15 }}>{NUM(cross)}</span> units
+            </>
+          ) : (
+            "no crossover — tooling never pays back at these volumes"
+          )}
+        </p>
+        {cross != null && (
+          <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink50, lineHeight: 1.6 }}>
+            below it: make now on {procLabel(makeProc)} · above it: {toolProc ? procLabel(toolProc) : "a tooled route"} amortizes the tool
+          </p>
+        )}
+        <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink35 }}>read off {result?.file.name} · POST /validate/cost</p>
+      </AskCard>
+    );
+  }
+
+  // reply === "materials"
+  const survivors = Array.from(new Set(cost.estimates.map((e) => e.material).filter((m): m is string => !!m)));
+  const strikes = envStrikes(result?.verification ?? null);
+  const worldDeclared = !!result?.envDeclared || !!result?.verification?.environment_declared;
+  return (
+    <AskCard>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+        <Kicker color={C.ink45}>ENGINE OUTPUT — COMPUTED, NOT GENERATED · materials on the shortlisted routes</Kicker>
+        <AskClearBtn onClear={onClear} />
+      </div>
+      <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 7 }}>
+        {survivors.length > 0 ? (
+          survivors.map((m) => (
+            <span key={m} style={{ display: "inline-flex", alignItems: "center", gap: 7, border: `1px solid ${C.hair}`, borderRadius: 999, padding: "5px 12px", fontFamily: MONO, fontSize: 11.5, color: C.ink }}>
+              <ProvDot p="MEASURED" size={6} />
+              {m}
+            </span>
+          ))
+        ) : (
+          <span style={{ fontFamily: MONO, fontSize: 11, color: C.ink45 }}>material withheld — the engine costed no named material</span>
+        )}
+      </div>
+      {strikes.length > 0 ? (
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 5 }}>
+          {strikes.map((s) => (
+            <div key={s.material} style={{ display: "flex", alignItems: "baseline", gap: 8, fontFamily: MONO, fontSize: 11 }}>
+              <span style={{ color: C.fail, textDecoration: "line-through", whiteSpace: "nowrap", flexShrink: 0 }}>{s.material}</span>
+              <span style={{ color: C.ink55, lineHeight: 1.5 }}>{s.reason}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p style={{ margin: "9px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink45, lineHeight: 1.6 }}>
+          {worldDeclared
+            ? "the declared world excluded nothing on these routes — every costed material survives it."
+            : "no world declared — these are ambient survivors. Declare a world above to gate them by NACE MR0175 / HDT."}
+        </p>
+      )}
+      <p style={{ margin: "9px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink35 }}>
+        survivors = materials the engine actually costed · excluded ones are struck with their cited standard ·{" "}
+        <button type="button" onClick={() => nav("compare")} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 9.5, color: C.user }}>
+          compare routes →
+        </button>
+      </p>
+    </AskCard>
+  );
 }
