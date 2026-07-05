@@ -243,6 +243,15 @@ export function VerifyApp() {
             <button type="button" onClick={() => setNotifOpen((v) => !v)} title="Notifications" style={{ width: 32, height: 32, borderRadius: "50%", border: `1px solid ${C.hair}`, background: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", color: C.ink55 }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>
             </button>
+            <input
+              readOnly
+              value=""
+              placeholder="Search or jump…"
+              title="Search or jump to any surface — opens the command palette (⌘K)"
+              onMouseDown={(e) => { e.preventDefault(); setScreen("palette"); }}
+              onFocus={() => setScreen("palette")}
+              style={{ width: 160, background: C.sunken, border: `1px solid ${C.hair}`, borderRadius: 999, padding: "7px 14px", fontSize: 12.5, color: C.ink, fontFamily: "inherit", outline: "none", cursor: "text" }}
+            />
             <button type="button" onClick={pickFile} style={{ background: C.ink, color: "#fff", border: "none", borderRadius: 999, padding: "8px 18px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>Verify a part</button>
           </div>
         </header>
@@ -287,7 +296,14 @@ export function VerifyApp() {
       </div>
 
       {screen === "acquisition" && <AcquisitionModal onClose={() => setScreen("verify")} />}
-      {screen === "palette" && <CommandPalette onClose={() => setScreen("home")} nav={nav} />}
+      {screen === "palette" && (
+        <CommandPalette
+          onClose={() => setScreen("home")}
+          nav={nav}
+          onVerify={pickFile}
+          onShortcuts={() => { setScreen("home"); setShortcutsOpen(true); }}
+        />
+      )}
       {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
     </div>
     </ToastProvider>
