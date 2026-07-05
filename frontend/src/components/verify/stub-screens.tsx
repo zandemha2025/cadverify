@@ -126,6 +126,7 @@ export function CommandPalette({
       { id: "home", label: "Go to Home", keys: "H", terms: "home desk start", run: go("home") },
       { id: "verify", label: "Go to Verify", keys: "V", terms: "verify verdict result", run: go("verify") },
       { id: "catalog", label: "Go to Parts", hint: "catalog", keys: "P", terms: "parts catalog grid", run: go("catalog") },
+      { id: "part", label: "Go to Part standing page", hint: "selected part", terms: "part standing detail memory context history blocker", run: go("part") },
       { id: "records", label: "Go to Records", keys: "R", terms: "records history log verifications", run: go("records") },
       { id: "programs", label: "Go to Programs", keys: "G", terms: "programs portfolio exposure", run: go("programs") },
       { id: "machines", label: "Go to Your machines", keys: "M", terms: "machines inventory shop floor", run: go("machines") },
