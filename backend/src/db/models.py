@@ -172,6 +172,15 @@ class OrgInvite(Base):
     created_by: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # The account this invite was minted for, resolved by an EXACT ``email_lower``
+    # match at creation (the real, unique row identity — never a normalise-
+    # collision). Acceptance requires ``accepting.id == invited_user_id``, which
+    # defeats BOTH directions of the normalize_email collision. NULLABLE: an
+    # invite for an email with no account yet resolves to NULL and acceptance
+    # falls back to a collision-safe email check.
+    invited_user_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     accepted_by: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

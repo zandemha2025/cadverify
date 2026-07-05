@@ -13,9 +13,15 @@ HONESTY / SECURITY rails:
     expiring (default 7 days). A DB leak cannot be replayed into a membership.
   * An invite's role may never exceed the inviter's own org role; accepting an
     invite may never ESCALATE an existing member's role.
-  * An invite is bound to its recipient email — only the account whose email
-    matches may redeem it, so a leaked/forwarded token cannot be claimed by a
-    different logged-in user (no cross-account grant, incl. admin seats).
+  * An invite is bound to a RESOLVED account row: at creation the invited email
+    is matched EXACTLY against ``users.email_lower`` (the unique key) and stored
+    as ``invited_user_id``; acceptance requires ``accepting.id == invited_user_id``.
+    That defeats BOTH directions of the ``normalize_email`` collision (legacy-SAML
+    rows kept a non-normalised ``email_lower``, so two distinct accounts can
+    dot/+tag-collide) — a leaked/forwarded token or a colliding sibling account
+    cannot be claimed by a different logged-in user (no cross-account grant, incl.
+    admin seats). When no account exists yet (invite-then-signup) the binding is
+    NULL and acceptance falls back to a collision-safe, ambiguity-refusing check.
   * An org can never lose its last admin (demote/remove/leave all guard it).
 
 Single-org invariant: none of this changes behaviour for a user with exactly one
@@ -187,6 +193,16 @@ async def create_invite(
                 f"({inviter_role})."
             )
 
+    # Recipient binding (§39), part 1 — resolve the invited email to a SPECIFIC
+    # account row NOW, by an EXACT ``email_lower`` match. ``email_lower`` is the
+    # unique key, so this is the real row identity (never a normalise-collision):
+    # in a collision pair (``a.b@gmail.com`` legacy-SAML vs ``ab@gmail.com``) the
+    # exact match picks exactly the intended row. Acceptance then requires the
+    # redeemer's id to equal this — which defeats BOTH directions of the
+    # collision. NULL means no account exists yet (invite-then-signup); acceptance
+    # falls back to a collision-safe email check for that case.
+    invited_user_id = await _resolve_invited_user_id(session, email_norm)
+
     raw, token_hash = generate_invite_token()
     invite = OrgInvite(
         org_id=org_id,
@@ -195,10 +211,66 @@ async def create_invite(
         token_hash=token_hash,
         expires_at=_now() + timedelta(days=_invite_ttl_days()),
         created_by=created_by,
+        invited_user_id=invited_user_id,
     )
     session.add(invite)
     await session.flush()
     return invite, raw
+
+
+async def _resolve_invited_user_id(
+    session: AsyncSession, email_lower: str
+) -> Optional[int]:
+    """Resolve an invited email to a user id by an EXACT ``email_lower`` match.
+
+    ``email_lower`` carries a UNIQUE index, so this returns at most one row — the
+    real, unambiguous account identity. It deliberately does NOT fall back to a
+    ``normalize_email`` match: a mere normalise-collision (a distinct legacy row
+    that dots/tags-collide) must NOT bind the invite, or an attacker holding the
+    colliding form could be resolved as the recipient. Returns ``None`` when no
+    account exactly owns the email yet (the invite-then-signup case).
+    """
+    if not email_lower:
+        return None
+    row = (
+        await session.execute(
+            select(User.id).where(User.email_lower == email_lower)
+        )
+    ).scalars().first()
+    return int(row) if row is not None else None
+
+
+async def _other_account_normalize_collides(
+    session: AsyncSession, invite_email: str, accepting_user_id: int
+) -> bool:
+    """True iff a DIFFERENT account (id != ``accepting_user_id``) normalise-
+    collides with ``invite_email`` — i.e. the collision is AMBIGUOUS.
+
+    Used only on the unbound (``invited_user_id IS NULL``) acceptance fallback to
+    forbid a variant-form redemption whenever more than one account maps to the
+    invited address. ``normalize_email`` is Python-only, so candidates are pulled
+    by (lower-cased) domain — which normalisation always preserves — and matched
+    in Python. The domain filter can only OVER-select (the ``.`` in a LIKE is a
+    wildcard), so it never misses a colliding row → the guard never fails open.
+    """
+    inv_norm = normalize_email(invite_email or "")
+    domain = inv_norm.rsplit("@", 1)[-1]
+    if not domain:
+        return False
+    rows = (
+        await session.execute(
+            select(User.id, User.email_lower, User.email).where(
+                func.lower(User.email_lower).like("%@" + domain)
+            )
+        )
+    ).all()
+    for uid, email_lower, email in rows:
+        if uid == accepting_user_id:
+            continue
+        key = email_lower or email or ""
+        if normalize_email(key) == inv_norm:
+            return True
+    return False
 
 
 def _invite_status(inv: OrgInvite) -> str:
@@ -297,36 +369,56 @@ async def accept_invite(
     if _as_aware(inv.expires_at) < _now():
         raise _409("This invite has expired.")
 
-    # Recipient binding (§39): an invite is bound to the email it was minted
-    # for, and may be redeemed by EXACTLY the invited account — no other.
+    # Recipient binding (§39): an invite is bound to EXACTLY the invited account
+    # and may be redeemed by no other — a leaked/forwarded token, a shared inbox,
+    # an admin no-email paste, or a normalise-collision sibling must all be
+    # refused (no cross-account grant, incl. an admin seat in another tenant).
     #
-    # We bind to the account's REAL uniqueness key: ``users.email_lower`` is the
-    # column the unique index and every login lookup key on, so it — not a fresh
-    # re-derivation from ``accepting.email`` — is the identity that must match.
-    # Compare it against the invite email reduced the SAME way (``normalize_email``:
-    # lower-case, strip +tags, collapse gmail dots), which is exactly how every
-    # provisioning path sets ``email_lower`` (password/oauth/magic, and SAML after
-    # the saml.py fix that made its ``email_lower`` normalised too).
+    # PRIMARY: the invite was resolved to a SPECIFIC account row at creation
+    # (``invited_user_id``, an EXACT ``email_lower`` match — the real unique row
+    # identity, never a normalise-collision). Requiring ``accepting.id`` to equal
+    # it defeats BOTH directions of the collision, because the exact match at
+    # creation already picked the intended row out of any colliding pair
+    # (``a.b@gmail.com`` legacy-SAML vs ``ab@gmail.com``). A distinct colliding
+    # account simply has a different id and is refused.
     #
-    # The prior guard re-derived with ``normalize_email(accepting.email)`` and was
-    # UNSOUND: because SAML historically stored a NON-normalised ``email_lower``
-    # (dots/+tags retained), two DISTINCT account rows can normalise-collide
-    # (e.g. ``a.b@gmail.com`` vs ``ab@gmail.com``). Re-normalising the wrong
-    # account's raw email then matched the invite, letting a *different* account
-    # redeem — including into an ADMIN seat in another tenant. Keying on the
-    # stored ``email_lower`` (a real, unique row identity) closes that: a colliding
-    # SAML row's own ``email_lower`` differs from the normalised invite key, so it
-    # is refused. Without any binding, any authenticated holder of the raw token
-    # (email forward, shared inbox, no-email admin paste, shoulder-surf) could
-    # claim the seat.
+    # The prior guard compared ``accepting.email_lower`` against
+    # ``normalize_email(inv.email)``. That was UNSOUND in the MIRROR direction:
+    # when the invitee is a legacy-SAML row whose ``email_lower`` is NON-normalised
+    # (dots/+tags retained) and a DISTINCT account holds the normalised form, the
+    # normalised account matched the invite and redeemed it — up to admin — into
+    # an org it was never invited to. Binding to a resolved id removes the whole
+    # normalise-collision surface.
     accepting = (
         await session.execute(select(User).where(User.id == user_id))
     ).scalars().first()
     if accepting is None:
         raise _404("Accepting user not found.")
-    account_key = accepting.email_lower or normalize_email(accepting.email or "")
-    if account_key != normalize_email(inv.email):
-        raise _403("This invite was issued to a different email address.")
+
+    if inv.invited_user_id is not None:
+        # Bound to a concrete row — the ONLY sound identity check.
+        if accepting.id != inv.invited_user_id:
+            raise _403("This invite was issued to a different account.")
+    else:
+        # FALLBACK: no account existed at creation (invite-then-signup). Bind
+        # collision-safely now. An EXACT ``email_lower`` == ``inv.email`` match is
+        # the unique-key identity and always safe. A variant (dot/+tag) match is
+        # allowed ONLY when it is UNAMBIGUOUS — i.e. no OTHER account also
+        # normalise-collides with the invited address; otherwise redemption is
+        # refused rather than silently granting one of several collision siblings.
+        account_key = accepting.email_lower or normalize_email(
+            accepting.email or ""
+        )
+        inv_email = (inv.email or "").strip().lower()
+        exact = account_key == inv_email
+        variant = normalize_email(account_key) == normalize_email(inv_email)
+        if not exact and not (
+            variant
+            and not await _other_account_normalize_collides(
+                session, inv_email, accepting.id
+            )
+        ):
+            raise _403("This invite was issued to a different email address.")
 
     existing = await _get_membership(session, inv.org_id, user_id)
     if existing is not None:
