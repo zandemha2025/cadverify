@@ -279,7 +279,7 @@ export function VerifyApp() {
             />
           </div>
         )}
-        {screen === "machines" && <MachinesScreen />}
+        {screen === "machines" && <MachinesScreen nav={nav} />}
         {screen === "records" && <RecordsScreen nav={nav} />}
         {(screen === "catalog" || screen === "compare" || screen === "programs" || screen === "triage" || screen === "calibration") && (
           <StubScreen id={screen} />
