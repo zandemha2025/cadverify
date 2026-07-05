@@ -45,6 +45,11 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglu1-mesa \
+    libxcursor1 \
+    libxfixes3 \
+    libxft2 \
+    libxinerama1 \
+    libgomp1 \
     libglib2.0-0 \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
@@ -57,14 +62,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
-# STEP ingestion (B4): the gmsh manylinux wheel (embedded OpenCASCADE kernel,
-# src/parsers/step_mesher.py — the LIVE .step/.stp path) dlopens libGLU at
-# import time; the base slim image ships libGL (libgl1) but NOT libGLU, so
-# `import gmsh` died with `OSError: libGLU.so.1: cannot open shared object
-# file` and is_step_supported() degraded the upload route to 501. libglu1-mesa
-# above provides libGLU.so.1. Proven by CI: run 28726509921 (fail, libGLU
-# missing) -> this branch (pass). Headless meshing needs no X server / GLX
-# context — occ.importShapes + mesh.generate(2) are CPU-only.
+# STEP ingestion (B4): the gmsh manylinux wheel (libgmsh.so, embedded
+# OpenCASCADE kernel = the LIVE .step/.stp path in src/parsers/step_mesher.py)
+# is dlopened at `import gmsh`. It links the FLTK GUI X-stack + OpenMP even
+# though we only ever mesh headless (occ.importShapes + mesh.generate(2) are
+# CPU-only, no X server / GLX context needed). The python:3.12-slim base ships
+# none of these, so import died and is_step_supported() -> False -> the upload
+# route 501'd on every STEP. `ldd libgmsh.so` inside the built image (CI run
+# 28726614420) enumerated the full set of missing runtime .so's:
+#   libGLU.so.1     -> libglu1-mesa
+#   libXcursor.so.1 -> libxcursor1
+#   libXfixes.so.3  -> libxfixes3
+#   libXft.so.2     -> libxft2
+#   libXinerama.so.1-> libxinerama1
+#   libgomp.so.1    -> libgomp1  (GCC OpenMP; present in builder via
+#                                 build-essential, absent from slim runtime)
+# The named packages transitively pull libX11/libXrender/libXext/libfontconfig
+# etc. Evidence chain: run 28726509921 (fail: libGLU) -> run 28726614420
+# (fail: the 4 X libs + libgomp, all surfaced at once via ldd) -> this commit.
 
 # Create non-root user (T-06A-01 mitigation)
 RUN useradd --create-home --shell /bin/bash cadverify
