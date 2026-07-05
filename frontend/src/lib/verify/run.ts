@@ -79,8 +79,10 @@ export interface VerifyResult {
 }
 
 /** Log-spaced quantity ladder the scrub interpolates over — the crossover story
- *  needs real computed points on both sides of the tooling break-even. */
-export const QTY_LADDER = [1, 10, 50, 100, 250, 500, 1000, 2000, 5000, 10000];
+ *  needs real computed points on both sides of the tooling break-even.
+ *  Capped at 6 points to honor the backend contract (`_MAX_QTYS = 6` in
+ *  routes.py); these bracket the typical crossover (~1–2k) on both sides. */
+export const QTY_LADDER = [1, 100, 1000, 2000, 5000, 10000];
 
 /**
  * POST /validate/cost directly so we can pass `owned_processes` (marginal
