@@ -29,9 +29,9 @@ const archivo = Archivo({
 });
 
 export const metadata: Metadata = {
-  title: "CadVerify — Know what the part should cost. And why.",
+  title: "CadVerify — verification, made of glass",
   description:
-    "Glass-box, per-shop-calibrated should-cost for real CAD parts. Every cost driver measured, sourced, and editable — the decision, not a fake-exact price.",
+    "Makeability verification: can this part be made — on your machines, in materials that survive its world — and what will it really take? Should-cost is one artifact inside the verdict, never the destination.",
 };
 
 export default function RootLayout({
