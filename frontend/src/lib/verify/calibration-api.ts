@@ -258,21 +258,27 @@ export async function getAuditLog(days = 30): Promise<{
   next_cursor: string | null;
   has_more: boolean;
 }> {
-  const end = new Date();
-  const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
-  const q = `start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(
-    end.toISOString()
-  )}&limit=50`;
+  const { start, end } = auditRange(days);
+  const q = `start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&limit=50`;
   return getJson(`/admin/audit-log?${q}`);
 }
 
 /** The same-origin URL for a CSV export of the audit log (a real download). */
 export function auditLogCsvUrl(days = 30): string {
-  const end = new Date();
-  const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
+  const { start, end } = auditRange(days);
   return `${API_BASE}/admin/audit-log?start=${encodeURIComponent(
-    start.toISOString()
-  )}&end=${encodeURIComponent(end.toISOString())}&format=csv`;
+    start
+  )}&end=${encodeURIComponent(end)}&format=csv`;
+}
+
+/** ISO range for the audit query, with an explicit `+00:00` offset instead of a
+ *  bare `Z`. Python's `datetime.fromisoformat` on the local 3.9 venv rejects the
+ *  `Z` suffix (3.12 accepts it) — the offset form parses on every version AND
+ *  stays timezone-aware to match the DB's timestamptz column. */
+function auditRange(days: number): { start: string; end: string } {
+  const now = Date.now();
+  const iso = (ms: number) => new Date(ms).toISOString().replace("Z", "+00:00");
+  return { start: iso(now - days * 24 * 60 * 60 * 1000), end: iso(now) };
 }
 
 // ── developer keys (real; also surfaced at /settings/developer) ──
