@@ -22,3 +22,29 @@ Screenshots in this dir. FIRST reachable-nodes pass; full flow-tree (part drop, 
 - **PASS** zero console errors during the walk.
 - **FINDING [nav]** rail hotkeys m/r/h did NOT change the screen (03/04/05 byte-identical to home) — nav is via rail-icon CLICKS, not the H/V/P/R/G/M/T/C hotkeys the design README claims. Either hotkeys are unwired or need focus. Drive rail clicks in the fuller pass; decide whether hotkeys should work.
 - **NOT YET DRIVEN (next agent, full flow-tree):** part drop → verdict walk, environment door + NACE re-verify, Phase C machine verdict, negative/unknown/geometry-invalid branches, provenance disclosure, units + STEP edge cases, network/auth-failure states. Harness: scratchpad/verify-e2e.mjs (extend it; drive rail clicks + a real file drop).
+
+
+## Deep walk 2 (rail clicks + part drop) 2026-07-05T01:39:44.509Z
+- [PASS] signup
+- [PASS] authed /verify -- http://localhost:3000/verify
+- [PASS] rail buttons found -- 9 buttons
+- [OBSERVED] rail click [0] Home -> screen -- Good morning.
+- [OBSERVED] rail click [1] Verify -> screen -- No part yet
+- [OBSERVED] rail click [2] Parts -> screen -- Parts catalog
+- [OBSERVED] rail click [3] Records -> screen -- Records
+- [OBSERVED] rail click [4] Programs -> screen -- Programs
+- [OBSERVED] rail click [5] Your machines -> screen -- Your machines
+- [OBSERVED] rail click [6] Triage -> screen -- Triage at scale
+- [OBSERVED] rail click [7] Calibration & truth -> screen -- Calibration & truth
+- [PASS] file input present -- 1 inputs
+- [PASS] part uploaded (test_cube.stl)
+- [PASS] verdict/DFM rendered --  @keyframes vspin { to { transform: rotate(360deg); } } @keyframes vscreenIn { from { opac
+- [PASS] honesty on verdict screen -- searched
+- [OBSERVED] console errors -- Failed to load resource: the server responded with a status of 400 (Bad Request)
+
+## Money-path bug — found, fixed, status (human-sim E2E, main-loop)
+- **PASS** rail-CLICK nav works across all 8 surfaces (Home, Verify, Parts, Records, Programs, Your Machines, Triage, Calibration & truth). Screenshots rail-0..7.
+- **FINDING [nav]** rail HOTKEYS (m/r/h) do nothing; nav is click-only. Decide whether hotkeys should work (design README claims H/V/P/R/G/M/T/C).
+- **PASS** part drop → verdict walk renders live: real 3D geometry on the stage (test_cube.stl), environment door, and the HONEST UNKNOWN verdict ("should-cost unavailable / makeability not evaluated — declare your floor or a world, never assumed"). No fabricated verdict. Screenshot 10-verdict-walk.png.
+- **BUG FOUND (money path) → FIXED:** `POST /validate/cost -> 400 "At most 6 quantities allowed"` on EVERY drop — UI sent a 10-point QTY_LADDER; backend caps at `_MAX_QTYS=6` (routes.py:233). Cost degraded to "should-cost unavailable". Missed by unit tests AND the backend curl-proof (both sent ≤6 qty). Fix: clamp QTY_LADDER to 6 log-spaced points (run.ts) — merged to dev (ee10a85), tsc+181 tests+build green. **Live visual re-confirm PENDING** (signup rate-limited 429 this session after many test accounts) — reset agent: clean re-drive to confirm the should-cost + crossover render.
+- **FINDING [chrome]** the login/auth page is dark and still tagged "should-cost, made of glass" (old thesis) — auth chrome not re-thesised to "verification, made of glass". Minor.
