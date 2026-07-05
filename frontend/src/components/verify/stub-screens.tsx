@@ -119,7 +119,6 @@ export function CommandPalette({
   const all: PaletteCmd[] = useMemo(() => {
     const go = (s: string) => () => {
       nav(s);
-      onClose();
     };
     const list: PaletteCmd[] = [
       { id: "verify-part", label: "Verify a part", hint: "open a STEP or STL", terms: "verify part upload drop stl step file measure cost", run: () => { onVerify?.(); onClose(); } },
