@@ -88,9 +88,15 @@ jobs:
       # triangle counts + watertightness + volume.
       - name: (b) end-to-end STEP parse via the LIVE gmsh code path
         run: |
+          # PYTHONPATH=/app reproduces prod's import root: the deploy CMD is
+          # `uvicorn main:app` from WORKDIR /app, so /app (hence `src`) is on
+          # sys.path. Running the mounted probe by path would otherwise put
+          # /samples on sys.path instead of /app (ModuleNotFoundError: src).
           docker run --rm \
             -v "$PWD/backend/tests/assets:/samples:ro" \
             -e SAMPLE=/samples/cube.step \
+            -e PYTHONPATH=/app \
+            -w /app \
             "$IMG" python /samples/_step_spike_probe.py
 
       # (c) NON-FATAL context for the pilot recommendation. The LIVE path is
