@@ -16,6 +16,7 @@ import { VerifyScreen } from "./verify-screen";
 import { MachinesScreen } from "./machines-screen";
 import { RecordsScreen } from "./records-screen";
 import { HomeScreen } from "./home-screen";
+import { PartScreen } from "./part-screen";
 import { StubScreen, AcquisitionModal, CommandPalette, NotificationsPanel } from "./stub-screens";
 import { ToastProvider } from "./toast";
 import { ShortcutsOverlay } from "./shortcuts-overlay";
@@ -36,7 +37,7 @@ const HOTKEY_NAV: Record<string, Screen> = {
 };
 
 type Screen =
-  | "home" | "verify" | "catalog" | "compare" | "records" | "programs" | "machines" | "triage" | "calibration"
+  | "home" | "verify" | "catalog" | "part" | "compare" | "records" | "programs" | "machines" | "triage" | "calibration"
   | "acquisition" | "palette";
 
 const RAIL: { key: Screen; label: string; d: string }[] = [
@@ -54,6 +55,7 @@ const CRUMB: Record<string, string> = {
   home: "Home",
   verify: "Verify",
   catalog: "Parts",
+  part: "Parts / Standing",
   records: "Records",
   programs: "Programs",
   machines: "Your machines",
@@ -281,6 +283,7 @@ export function VerifyApp() {
         )}
         {screen === "machines" && <MachinesScreen />}
         {screen === "records" && <RecordsScreen nav={nav} />}
+        {screen === "part" && <PartScreen nav={nav} />}
         {(screen === "catalog" || screen === "compare" || screen === "programs" || screen === "triage" || screen === "calibration") && (
           <StubScreen id={screen} />
         )}

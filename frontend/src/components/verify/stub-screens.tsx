@@ -90,6 +90,7 @@ export function CommandPalette({ onClose, nav }: { onClose: () => void; nav: (s:
     { label: "Go to Records", go: "records" },
     { label: "Go to Your machines", go: "machines" },
     { label: "Go to Parts (catalog)", go: "catalog" },
+    { label: "Go to Part standing page", go: "part" },
     { label: "Go to Programs", go: "programs" },
     { label: "Go to Triage", go: "triage" },
     { label: "Go to Calibration & truth", go: "calibration" },
@@ -99,7 +100,7 @@ export function CommandPalette({ onClose, nav }: { onClose: () => void; nav: (s:
       <div onClick={(e) => e.stopPropagation()} style={{ width: 520, maxWidth: "90%", background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 16, boxShadow: "0 18px 50px -18px rgba(23,24,26,0.35)", padding: 10, animation: "vscreenIn 200ms cubic-bezier(0.2,0,0,1) both" }}>
         <p style={{ margin: 0, padding: "10px 14px 8px", fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: C.ink45 }}>JUMP ANYWHERE · scripted use-cases and engine asks are IN DEVELOPMENT</p>
         {cmds.map((c) => (
-          <button key={c.go} type="button" onClick={() => { nav(c.go); onClose(); }} style={{ width: "100%", textAlign: "left", background: "none", border: "none", borderRadius: 10, padding: "10px 14px", cursor: "pointer", fontFamily: "inherit", fontSize: 13, color: C.ink }}>
+          <button key={c.go} type="button" onClick={() => { onClose(); nav(c.go); }} style={{ width: "100%", textAlign: "left", background: "none", border: "none", borderRadius: 10, padding: "10px 14px", cursor: "pointer", fontFamily: "inherit", fontSize: 13, color: C.ink }}>
             {c.label}
           </button>
         ))}
