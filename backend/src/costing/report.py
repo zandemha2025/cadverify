@@ -40,6 +40,14 @@ def report_to_dict(report) -> dict:
     verification = getattr(report, "verification", None)
     if verification is not None:
         d["verification"] = verification
+    # Units safety net (B5): out-of-range plausibility WARNINGS on the mm-interpreted
+    # geometry (confirm mm vs inch). Same tail-append + truthiness guard as
+    # verification: EMPTY (any plausible part, the default/mm path) => NO key added
+    # => serialized output is BYTE-IDENTICAL to pre-B5. These are honest warnings
+    # (MEASURED geometry vs ASSUMED units), never a corrected number or a verdict.
+    unit_warnings = getattr(report, "unit_warnings", None)
+    if unit_warnings:
+        d["unit_warnings"] = unit_warnings
     return d
 
 

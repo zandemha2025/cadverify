@@ -230,6 +230,11 @@ _COMPLEXITY = {"simple", "moderate", "complex", "very_complex"}
 _MATERIAL_CLASSES = {"polymer", "aluminum", "steel", "stainless", "titanium"}
 _REGIONS = {"US", "EU", "MX", "CN", "IN", "SA"}
 _TOLERANCE_CLASSES = {"standard", "precision", "tight"}
+# Declared CAD source units (B5). STL/mesh vertices carry no unit metadata; the
+# engine has always interpreted them as mm. A caller may DECLARE the source units
+# so an inch-authored part is scaled ×25.4 into mm at the parse seam (exactly once)
+# instead of silently mis-costing by ~16,000×. Unset => mm (byte-identical default).
+_SOURCE_UNITS = {"mm", "inch"}
 _MAX_QTYS = 6
 _MAX_QTY = 10_000_000
 _MAX_OVERRIDES = 64  # cap ad-hoc rate/driver overrides per request
@@ -692,6 +697,7 @@ async def _run_cost_decision(
     overrides: Optional[str] = None,
     owned_processes: Optional[str] = None,
     tolerance_class: Optional[str] = None,
+    units: Optional[str] = None,
     user: Optional[AuthedUser] = None,
     session: Optional[AsyncSession] = None,
 ) -> dict:
@@ -750,6 +756,16 @@ async def _run_cost_decision(
             detail=f"Unknown region '{region}'. Use one of {sorted(_REGIONS)}",
         )
     effective_region = region or "US"
+    # units: None => unset (DEFAULT mm, byte-identical, silent as it always was); a
+    # supplied value must be a known source unit and is treated USER. The DECLARATION
+    # is what drives the exactly-once mm rescale at the parse seam below.
+    units_is_user = units is not None
+    if units is not None and units not in _SOURCE_UNITS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown units '{units}'. Use one of {sorted(_SOURCE_UNITS)}",
+        )
+    effective_units = units or "mm"
     # ── Shop binding: governed (DB) profile first, else the flat-file allowlist ──
     # W4 slice 2: when SHOP_LIBRARY_ENABLED and the caller's org has a PUBLISHED
     # shop profile for this slug in effect now, bind its DECLARED overrides as
@@ -773,6 +789,16 @@ async def _run_cost_decision(
     mesh, suffix = await _parse_mesh_async(  # 400/413/501, 504 on parse timeout
         data, file.filename or "unknown"
     )
+    # ── B5 units landmine: rescale the mesh into mm EXACTLY ONCE, here at the parse
+    # seam, BEFORE any geometry/DFM/cost extraction. mm (default/unset) => the SAME
+    # mesh object untouched => byte-identical; inch => a ×25.4 copy so volume
+    # (×25.4³ ≈ 16,387×), area, bbox and wall thickness all stay coherent and every
+    # downstream consumer (DFM, machine-fit, cost, analogy) reads the ONE real part.
+    # This is the SINGLE geometry-scaling site: nothing downstream rescales
+    # (EstimateOptions.units is declarative only), so there is exactly one
+    # conversion, never a double.
+    from src.costing.units import scale_mesh_to_mm
+    mesh = scale_mesh_to_mm(mesh, effective_units)
 
     from src.costing import estimate_decision, EstimateOptions, report_to_dict
 
@@ -791,6 +817,8 @@ async def _run_cost_decision(
         owned_processes=owned,
         tolerance_class=effective_tolerance,
         tolerance_class_is_user=tolerance_is_user,
+        units=effective_units,
+        units_is_user=units_is_user,
     )
 
     # ---- MEASURED confidence band from a persisted org calibration (W5) ----
@@ -1169,6 +1197,15 @@ async def validate_cost(
                     "+ inspection) and widens the confidence band. STATED input, "
                     "not measured GD&T; the factor is a DEFAULT assumption.",
     ),
+    units: Optional[str] = Form(
+        None,
+        description="Declared CAD source units: mm|inch (unset => mm, byte-identical). "
+                    "STL/mesh files carry NO units; an inch-authored part read as mm "
+                    "mis-costs by ~16,000× (×25.4³ volume). Declaring inch scales the "
+                    "mesh ×25.4 into mm ONCE before geometry/DFM/cost so the whole "
+                    "decision reads the real part. STATED input; a plausibility WARNING "
+                    "still fires if the mm-interpreted size looks wrong.",
+    ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -1198,6 +1235,7 @@ async def validate_cost(
         overrides=overrides,
         owned_processes=owned_processes,
         tolerance_class=tolerance_class,
+        units=units,
         user=user,
         session=session,
     )
@@ -1234,6 +1272,12 @@ async def validate_cost_demo(
                     "standard, byte-identical). Honest machining multiplier on the "
                     "tolerance-sensitive CNC terms + band widening. STATED input.",
     ),
+    units: Optional[str] = Form(
+        None,
+        description="Declared CAD source units: mm|inch (unset => mm, byte-identical). "
+                    "Inch-authored meshes are scaled ×25.4 into mm ONCE before costing; "
+                    "otherwise an inch part read as mm mis-costs by ~16,000×.",
+    ),
 ):
     """Public demo of the should-cost / make-vs-buy decision — NO auth.
 
@@ -1256,6 +1300,7 @@ async def validate_cost_demo(
         shop=shop,
         overrides=overrides,
         tolerance_class=tolerance_class,
+        units=units,
     )
 
 

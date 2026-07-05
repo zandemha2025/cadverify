@@ -97,6 +97,18 @@ class EstimateOptions:
     # Feeds the environment gate (drops env-invalid materials/routes with a cited
     # exclusion). None (default) => the gate is a no-op => byte-identical.
     service_environment: "dict | None" = None
+    # ── declared CAD source units (B5 units landmine) ────────────────────────
+    # STL carries NO units; the engine interprets vertex coordinates as MILLIMETRES.
+    # An inch-authored STL therefore silently mis-costs by 25.4**3 (~16,387x). The
+    # caller may DECLARE the source units (mm|inch); the ACTUAL geometric scaling
+    # into mm happens at the parse seam (routes.scale_mesh_to_mm) BEFORE geometry
+    # and DFM are extracted, so DFM + machine-fit + cost all read the SAME real
+    # part. This field is DECLARATIVE — it records what was declared for the
+    # provenance line + the plausibility net; it does NOT itself rescale geometry.
+    # "mm" (default/unset) => byte-identical. units_is_user=True when the caller
+    # explicitly supplied it => the source_units assumption line is USER-tagged.
+    units: str = "mm"
+    units_is_user: bool = False
 
     def __post_init__(self):
         from src.costing.rates import normalize_tolerance_class
@@ -122,6 +134,12 @@ class DecisionReport:
     # (default) => no inventory AND no declared environment => report_to_dict adds
     # NO key => byte-identical to pre-Phase-C output.
     verification: Optional[dict] = None
+    # Units safety net (B5): structured out-of-range-volume warnings — the honest
+    # flag that the mm-interpreted geometry is implausible for a single part
+    # (confirm mm vs inch). EMPTY (default, plausible part) => report_to_dict adds
+    # NO key => byte-identical. Populated only when the plausibility net fires;
+    # each entry is provenance-honest (MEASURED geometry vs ASSUMED units).
+    unit_warnings: list = field(default_factory=list)
 
 
 def _geo_summary(g) -> dict:
@@ -132,6 +150,26 @@ def _geo_summary(g) -> dict:
         "watertight": bool(g.is_watertight),
         "face_count": int(g.face_count or 0),
     }
+
+
+def _unit_plausibility_warnings(g, options: "EstimateOptions") -> list:
+    """B5 honest safety net: flag when the mm-interpreted geometry is implausible
+    for a single manufacturable part under the DECLARED/assumed source units.
+
+    Read on the RAW (unrounded) final costed geometry — the mesh has already been
+    scaled into mm at the parse seam — so it fires when an undeclared inch part
+    reads as a grain, or a metre-authored part reads as a building. We deliberately
+    use the unrounded volume/bbox here (not the 2-decimal _geo_summary) so a
+    sub-mm³ part's volume signal is not rounded away before the check. Returns []
+    on any plausible part => report_to_dict adds NO key => the default/mm path stays
+    byte-identical. This is a WARNING, never a corrected number: the volume/bbox
+    are MEASURED, the units are ASSUMED (honesty rules)."""
+    from src.costing.units import implausible_volume_warning
+    vol_cm3 = (g.volume or 0.0) / 1000.0
+    dims = tuple(g.bounding_box.dimensions)
+    max_bbox = max(dims) if dims else 0.0
+    w = implausible_volume_warning(vol_cm3, max_bbox, assumed_units=options.units)
+    return [w] if w is not None else []
 
 
 def _global_assumptions(rates: RateCard, options: EstimateOptions, region: str) -> list:
@@ -196,6 +234,24 @@ def _global_assumptions(rates: RateCard, options: EstimateOptions, region: str) 
             f"capital/amortization share of the loaded machine rate removed for "
             f"OWNED, in-house processes ({owned_names}) — sunk on gear the org "
             f"already owns [assumption, not shop-validated]"))
+    # ── declared CAD source units (B5) — only when the caller EXPLICITLY declared
+    # them (units_is_user). STL carries no units; a declaration is USER-tagged and
+    # the geometry was scaled into mm before costing. Unset/default mm => no line
+    # added => byte-identical (the mm assumption stays the silent, unchanged
+    # default it has always been).
+    if options.units_is_user:
+        from src.costing.units import unit_scale
+        scale = unit_scale(options.units)
+        # Only DISCLOSE the declaration when it ACTUALLY rescaled the geometry
+        # (scale != 1.0). Declaring the canonical unit (mm, scale 1.0) is a no-op
+        # that changes no number, so it adds NO line and stays byte-identical to
+        # the unset default — honouring the "unspecified OR mm ⇒ identical" invariant.
+        if scale != 1.0:
+            out.append(Driver(
+                "source_units", scale, "×", Provenance.USER,
+                f"CAD source units declared '{options.units}' (USER) — geometry "
+                f"scaled ×{scale:g} into mm at the parse seam before costing "
+                f"(volume ×{scale**3:g})"))
     return out
 
 
@@ -228,15 +284,17 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
     has_error = any(i.severity == Severity.ERROR for i in result.universal_issues)
     invalid = (g.volume is None) or (g.volume <= 0.0) or (not g.is_watertight) or has_error
     if invalid:
+        geo = _geo_summary(g)
         return DecisionReport(
             filename=result.filename,
             status="GEOMETRY_INVALID",
             reason=("Geometry is not a measurable solid (volume ≤ 0 or non-watertight). "
                     "Cost requires a watertight, positive-volume mesh. Repair required."),
-            geometry=_geo_summary(g),
+            geometry=geo,
             material_class=options.material_class,
             quantities=list(options.quantities),
             engine_feasibility=feas,
+            unit_warnings=_unit_plausibility_warnings(g, options),
         )
 
     # ── drivers → routing → cost/leadtime → decision ───────────────────
@@ -400,10 +458,11 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
             "Decision: no environment-valid make-as-is option — "
             + env_excluded["note"] + ".")
 
+    geo = _geo_summary(g)
     return DecisionReport(
         filename=result.filename,
         status="OK",
-        geometry=_geo_summary(g),
+        geometry=geo,
         material_class=options.material_class,
         quantities=list(options.quantities),
         estimates=estimates_serialized,
@@ -413,6 +472,7 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
         notes=notes,
         routing=routing_info,
         verification=verification,
+        unit_warnings=_unit_plausibility_warnings(g, options),
     )
 
 
