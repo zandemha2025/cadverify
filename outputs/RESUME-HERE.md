@@ -124,7 +124,7 @@ I asked the founder to pick the **WORLD** (single biggest design decision) from 
 5. **Stop the `:3100` preview server** when done (it's a `nohup next start`).
 
 ## 6. HUMAN-GATE QUEUE (prepared, never self-certified)
-- **Cost/DFM correctness → Zoox Head of Manufacturing** on real parts + real quotes → load into `groundtruth.py` held-out eval. Caveats to hand over: CNC curve MAGNITUDE; sampled wall-thickness tail error (~567% at discontinuities); systematic under-costing (hull stock, no features, no NRE/inspection); the ±40% band is n=0. Packet basis: `outputs/verify/*.md` + `outputs/validation-packet.md` + `outputs/truth-engine-validation.md`.
+- **Cost/DFM correctness → Zoox Head of Manufacturing** on real parts + real quotes → load into `groundtruth.py` held-out eval. Caveats to hand over (corrected 2026-07-04): CNC curve MAGNITUDE; sampled wall-thickness tail error (~567% at discontinuities); systematic bias from a hull/bbox stock proxy with NO feature recognition (pockets/holes/threads not modeled — direction plausible, magnitude wrong); the ±40–60% band is itself an n=0 assumption, not a measured error. NOTE: NRE (CAM programming) and first-article/in-process inspection ARE now costed (Zoox-caveated) — earlier drafts of this sheet wrongly said "no NRE/inspection". Packet basis: `outputs/verify/*.md` + `outputs/validation-packet.md` + `outputs/truth-engine-validation.md`.
 - **Security → SAML vs a real IdP + pen test** (security engineer / accredited firm). Public cost-share sanitization already verified.
 - **SOC 2 → auditor. ITAR/export + data-residency → legal** (Replicate egress now killed).
 - **Load/soak → SRE** on real Postgres+Redis+worker (memory bounded; capacity envelope needs a real run).
