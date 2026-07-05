@@ -1,7 +1,7 @@
 import base64
 import os
 import time
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException, Response
@@ -99,13 +99,21 @@ def test_set_session_cookie_has_correct_flags():
 
 
 @pytest.mark.asyncio
-async def test_require_dashboard_session_valid():
+async def test_require_dashboard_session_valid(monkeypatch):
     from src.auth.dashboard_session import (
         COOKIE_NAME,
         require_dashboard_session,
         sign,
     )
 
+    # §39 added an account-active check after the 401 guard. This is a no-DB
+    # unit test, so mock the active read (require_dashboard_session lazy-imports
+    # user_is_active from src.auth.models) — else it opens the process-global
+    # engine and binds its asyncpg pool to THIS test's event loop, poisoning the
+    # next live-PG test with a stale cross-loop pool.
+    import src.auth.models as _models
+
+    monkeypatch.setattr(_models, "user_is_active", AsyncMock(return_value=True))
     req = MagicMock()
     req.cookies = {COOKIE_NAME: sign(7)}
     assert await require_dashboard_session(req) == 7

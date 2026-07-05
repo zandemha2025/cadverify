@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response
 
 from src.auth.dashboard_session import clear_session_cookie, set_session_cookie
+from src.auth.disposable import normalize_email
 from src.auth.hashing import hmac_index, mint_token
 from src.auth.models import create_api_key, upsert_user, user_has_active_api_key
 
@@ -123,7 +124,14 @@ async def _saml_provision_user(email: str) -> int:
     Creates user row if not exists, mints an API key if none present.
     SAML users default to 'viewer' role.
     """
-    email_lower = email.strip().lower()
+    # Derive email_lower with the SAME canonicalisation as every other auth path
+    # (password/oauth/magic all use normalize_email). SAML previously used a bare
+    # ``strip().lower()`` that RETAINED gmail dots/+tags, so a SAML-provisioned
+    # row could be a DISTINCT account that still normalise-collides with another
+    # user — the exact inconsistency that let an invite's recipient-binding guard
+    # be bypassed for a cross-tenant admin grant. Normalising here makes
+    # ``email_lower`` (the unique key) agree with that guard.
+    email_lower = normalize_email(email)
     user_id = await upsert_user(
         email=email,
         google_sub=None,

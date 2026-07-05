@@ -264,4 +264,10 @@ async def publish_rate_card(
         session, org_id, version_id, effective_from=body.effective_from
     )
     await session.commit()
+    from src.services.audit_service import emit_event
+    emit_event(
+        ctx.user_id, "library.version_published", "rate_card",
+        str(row.id),
+        {"org_id": org_id, "library": "rate", "version": row.version},
+    )
     return svc.serialize_version(row, include_payload=True)

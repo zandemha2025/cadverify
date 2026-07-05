@@ -189,6 +189,15 @@ async def login(body: LoginIn, request: Request) -> dict:
 
     user_id, password_hash, role = creds
 
+    # §39: refuse a deactivated account — but only AFTER the password check
+    # above passed, so an outsider guessing emails still gets the generic
+    # invalid_credentials (no account-existence enumeration); only the real
+    # offboarded user (correct password) sees account_deactivated.
+    from src.auth.models import user_is_active
+
+    if not await user_is_active(user_id):
+        raise _err(403, "account_deactivated", "This account has been deactivated.")
+
     # Opportunistic re-hash if Argon2 parameters were upgraded.
     if password_hash is not None and password_needs_rehash(password_hash):
         try:

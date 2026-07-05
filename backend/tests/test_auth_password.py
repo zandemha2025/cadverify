@@ -117,6 +117,11 @@ async def test_require_api_key_accepts_session_cookie(monkeypatch):
     from src.auth import require_api_key as rak
 
     monkeypatch.setattr(rak, "lookup_user_role", AsyncMock(return_value="analyst"))
+    # §39 added an account-active check on the session-cookie path. This is a
+    # no-DB unit test (like test_require_api_key.py) — mock the active read too,
+    # else it opens the global engine and binds its asyncpg pool to THIS test's
+    # event loop, poisoning the next live-PG test (a stale cross-loop pool).
+    monkeypatch.setattr(rak, "user_is_active", AsyncMock(return_value=True))
     req = _Req(cookies={"dash_session": sign(7)})
     user = await rak.require_api_key(req, authorization=None)
     assert user.user_id == 7
