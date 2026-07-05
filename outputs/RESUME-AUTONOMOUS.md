@@ -15,6 +15,9 @@ B2(a) frontend screenshot: ALREADY DONE by the 667a012/e8fea82 human-sim walk �
 Goal doc: `outputs/production-readiness.md` (ranked blockers, pilot vs GA, shortest pilot path). Gaps: `outputs/product-gaps.md` (48 items + queue). Thesis: `PLATFORM-DNA.md`. Deploy: `outputs/deploy-runbook.md`.
 **Strategic key:** B1 (validated accuracy) gates GA but can ONLY be closed by running a pilot — the pilot manufactures the evidence GA needs. So: get to the pilot bar cheaply, let the pilot generate ground truth.
 
+## FOUNDER DECISION (2026-07-04 evening) — DROP-AUDIT RUBRIC
+The core moment (file in → audit runs) is judged on five bars: **1 cinematic · 2 data true · 3 environment correct+cinematic · 4 drillable · 5 conversational.** Full text + consequences in `outputs/product-gaps.md` (bottom). Every human-sim walk now returns a five-bar scorecard. §10 ask-the-engine (bar 5) and §B8 wiring (bar 4) elevated in the GA queue. First rubric audit of live /verify runs as soon as B2b leaves the app up.
+
 ## FOUNDER DECISION (2026-07-04)
 First partner = **Aramco-scale: millions of parts, EVERY file + part type.** → **B4 STEP ingestion is now the #1 HARD PILOT blocker** (needs OpenCascade/OCP on the deploy target — known-hard; STL-only = empty pilot). "Millions of parts" = the pilot IS triage-at-scale (Phase D done; scale/perf now matters). "Every type" → weldments/multi-body/sheet-metal + GD&T matter, but the honest move is triage BUCKETS what it can't yet verify rather than needing 100% day one.
 **Still-open founder scope calls:** §38 execution bridge (make-outside/acquire → RFQ?), §43 which verticals the environment door learns next, §44 weldments/sheet-metal in pilot or GA.
