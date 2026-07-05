@@ -77,7 +77,7 @@ function Hero() {
       </h1>
       <p style={{ margin: "26px 0 0", maxWidth: 620, fontSize: 18, lineHeight: 1.65, fontWeight: 300, color: "var(--st-ink-60)" }}>
         A CAD file passes through five stages, and every one of them opens. The panels below render the cost-truth
-        engine&apos;s own report for a real part — object.stl, calibrated to a real shop. Nothing on this page is a mockup.
+        engine&apos;s own report for a real part — object.stl, calibrated to a real shop, with every panel tied to explicit inputs and outputs.
       </p>
       <p style={{ margin: "16px 0 0", maxWidth: 620, fontSize: 15, lineHeight: 1.65, fontWeight: 300, color: "var(--st-ink-45)" }}>
         The question it answers, in order:{" "}

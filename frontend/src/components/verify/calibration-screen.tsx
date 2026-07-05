@@ -479,7 +479,7 @@ function ApiUsagePanel() {
         </p>
       ) : (
         <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink35 }}>
-          read from analyses, cost_decisions, usage_events, and webhook_deliveries — no mock counters
+          read from analyses, cost_decisions, usage_events, and webhook_deliveries — live persisted counters
         </p>
       )}
 
