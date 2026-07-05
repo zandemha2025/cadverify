@@ -16,7 +16,8 @@ import { VerifyScreen } from "./verify-screen";
 import { MachinesScreen } from "./machines-screen";
 import { RecordsScreen } from "./records-screen";
 import { HomeScreen } from "./home-screen";
-import { StubScreen, AcquisitionModal, CommandPalette, NotificationsPanel } from "./stub-screens";
+import { StubScreen, CommandPalette, NotificationsPanel } from "./stub-screens";
+import { AcquisitionModal } from "./acquisition-modal";
 import { ToastProvider } from "./toast";
 import { ShortcutsOverlay } from "./shortcuts-overlay";
 import { CalibrationSwitcher } from "./calibration-switcher";
@@ -286,7 +287,7 @@ export function VerifyApp() {
         )}
       </div>
 
-      {screen === "acquisition" && <AcquisitionModal onClose={() => setScreen("verify")} />}
+      {screen === "acquisition" && <AcquisitionModal onClose={() => setScreen("verify")} result={result} nav={nav} />}
       {screen === "palette" && <CommandPalette onClose={() => setScreen("home")} nav={nav} />}
       {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
     </div>
