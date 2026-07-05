@@ -69,8 +69,14 @@ jobs:
       # shared objects. If the runtime stage is missing any, this step fails
       # with the exact missing .so name in the log — which tells us what apt
       # package to add.
+      # First enumerate EVERY unresolved shared-object dep of the gmsh wheel's
+      # native lib in one shot (so we never chase missing libs one push at a
+      # time), then actually import + init/finalize the OCC kernel.
       - name: (a) import gmsh inside the deploy image
         run: |
+          echo "== ldd on the gmsh native lib: any 'not found' below is a missing runtime .so =="
+          docker run --rm "$IMG" sh -c 'f=$(find /opt/venv -name "libgmsh*" 2>/dev/null | head -1); echo "libgmsh: $f"; ldd "$f" 2>/dev/null | grep -i "not found" || echo "NO_MISSING_SHARED_OBJECTS"' || true
+          echo "== import + init/finalize =="
           docker run --rm "$IMG" python -c "import gmsh; gmsh.initialize(); print('IMPORT_GMSH_OK', getattr(gmsh, '__version__', '(no __version__)')); gmsh.finalize(); print('GMSH_INIT_FINALIZE_OK')"
 
       # (b) Real end-to-end parse through the LIVE code path. The probe script

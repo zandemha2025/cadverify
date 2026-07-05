@@ -44,6 +44,7 @@ WORKDIR /app
 # Runtime-only system deps (no build-essential)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
+    libglu1-mesa \
     libglib2.0-0 \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
@@ -55,6 +56,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxmlsec1 \
     fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
+
+# STEP ingestion (B4): the gmsh manylinux wheel (embedded OpenCASCADE kernel,
+# src/parsers/step_mesher.py — the LIVE .step/.stp path) dlopens libGLU at
+# import time; the base slim image ships libGL (libgl1) but NOT libGLU, so
+# `import gmsh` died with `OSError: libGLU.so.1: cannot open shared object
+# file` and is_step_supported() degraded the upload route to 501. libglu1-mesa
+# above provides libGLU.so.1. Proven by CI: run 28726509921 (fail, libGLU
+# missing) -> this branch (pass). Headless meshing needs no X server / GLX
+# context — occ.importShapes + mesh.generate(2) are CPU-only.
 
 # Create non-root user (T-06A-01 mitigation)
 RUN useradd --create-home --shell /bin/bash cadverify
