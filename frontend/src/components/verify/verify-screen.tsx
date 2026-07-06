@@ -72,6 +72,8 @@ interface Props {
   fileName: string | null;
   env: { temp: boolean; sour: boolean; pressure: boolean };
   setEnv: (e: { temp: boolean; sour: boolean; pressure: boolean }) => void;
+  materialClass: string;
+  setMaterialClass: (materialClass: string) => void;
   onPickFile: () => void;
   onReverify: () => void;
   nav: Nav;
@@ -83,6 +85,14 @@ const ENV_CHIPS: { key: "temp" | "sour" | "pressure"; label: string }[] = [
   { key: "pressure", label: "35 MPa pressure" },
 ];
 
+const MATERIAL_CLASSES = [
+  { key: "polymer", label: "Polymer" },
+  { key: "aluminum", label: "Aluminum" },
+  { key: "steel", label: "Steel" },
+  { key: "stainless", label: "Stainless" },
+  { key: "titanium", label: "Titanium" },
+];
+
 function StatusChip({ label }: { label: string }) {
   return (
     <span style={{ border: `1px dashed ${C.hair}`, borderRadius: 999, padding: "2px 7px", fontFamily: MONO, fontSize: 9, letterSpacing: "0.08em", color: C.ink45, whiteSpace: "nowrap" }}>
@@ -92,7 +102,17 @@ function StatusChip({ label }: { label: string }) {
 }
 
 export function VerifyScreen(props: Props) {
-  const { result, running, env, setEnv, onPickFile, onReverify, nav } = props;
+  const {
+    result,
+    running,
+    env,
+    setEnv,
+    materialClass,
+    setMaterialClass,
+    onPickFile,
+    onReverify,
+    nav,
+  } = props;
   const [scrubFrac, setScrubFrac] = useState(0.5);
   const [disclose, setDisclose] = useState<string | null>(null);
   // The user's recorded make/route/acquire/redesign decision for THIS verification.
@@ -172,6 +192,34 @@ export function VerifyScreen(props: Props) {
           <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: door.color, lineHeight: 1.6 }}>
             {door.line}
           </p>
+          <div style={{ marginTop: 16, borderTop: `1px solid ${C.hair2}`, paddingTop: 14 }}>
+            <Kicker>DECLARED MATERIAL CLASS · <span style={{ color: C.user }}>● USER</span></Kicker>
+            <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {MATERIAL_CLASSES.map((m) => {
+                const on = materialClass === m.key;
+                return (
+                  <button
+                    key={m.key}
+                    type="button"
+                    onClick={() => setMaterialClass(m.key)}
+                    style={{
+                      border: on ? `1px solid ${C.user}` : `1px solid ${C.hair}`,
+                      background: on ? "rgba(122,99,201,0.1)" : "#ffffff",
+                      color: on ? C.user : C.ink70,
+                      borderRadius: 999,
+                      padding: "7px 13px",
+                      fontSize: 12,
+                      cursor: "pointer",
+                      fontFamily: MONO,
+                      transition: "all 150ms",
+                    }}
+                  >
+                    {m.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </section>
 
         {/* the walk */}

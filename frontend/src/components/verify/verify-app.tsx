@@ -74,6 +74,7 @@ const CRUMB: Record<string, string> = {
 export function VerifyApp() {
   const [screen, setScreen] = useState<Screen>("home");
   const [env, setEnv] = useState({ temp: false, sour: false, pressure: false });
+  const [materialClass, setMaterialClass] = useState("polymer");
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [running, setRunning] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -104,13 +105,13 @@ export function VerifyApp() {
       setRunning(true);
       setResult(null);
       try {
-        const r = await runVerification({ file: f, env, materialClass: "polymer" });
+        const r = await runVerification({ file: f, env, materialClass });
         setResult(r);
       } finally {
         setRunning(false);
       }
     },
-    [env]
+    [env, materialClass]
   );
 
   const onReverify = useCallback(() => {
@@ -138,6 +139,16 @@ export function VerifyApp() {
     if (latestFile.current) void runVerify(latestFile.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [env]);
+
+  const firstMaterial = useRef(true);
+  useEffect(() => {
+    if (firstMaterial.current) {
+      firstMaterial.current = false;
+      return;
+    }
+    if (latestFile.current) void runVerify(latestFile.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [materialClass]);
 
   // hotkeys — ⌘K palette · H/V/P/R/G/M/T/C nav · ? shortcuts · Esc closes all
   // (matches the design's keydown handler in support.js). Typing in a field never
@@ -292,6 +303,8 @@ export function VerifyApp() {
               fileName={result?.file?.name ?? file?.name ?? null}
               env={env}
               setEnv={setEnv}
+              materialClass={materialClass}
+              setMaterialClass={setMaterialClass}
               onPickFile={pickFile}
               onReverify={onReverify}
               nav={nav}
