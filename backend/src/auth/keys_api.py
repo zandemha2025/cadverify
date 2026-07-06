@@ -2,7 +2,7 @@
 
 All routes require a dashboard session cookie (Depends(require_dashboard_session)).
 Plaintext tokens are delivered exactly once via a tightly-scoped `cv_mint_once`
-cookie (path=/dashboard/keys, Max-Age=60, SameSite=Lax, Secure). The frontend
+cookie (path=/settings/developer, Max-Age=60, SameSite=Lax, Secure). The frontend
 scrubs the cookie on mount (see RevealOnceModal.tsx).
 """
 from __future__ import annotations
@@ -18,6 +18,7 @@ from src.auth.hashing import hmac_index, mint_token
 from src.auth.models import _session, create_api_key
 
 router = APIRouter(prefix="/api/v1/keys", tags=["keys"])
+KEY_REVEAL_PATH = "/settings/developer"
 
 # W1 step 3 — org boundary as defense-in-depth on personal API-key management.
 # API keys are *personal* credentials (owned via the dashboard session's
@@ -60,7 +61,7 @@ def _set_reveal_cookie(response: Response, token: str) -> None:
         secure=True,
         httponly=False,  # intentional — JS reads + scrubs (see RevealOnceModal)
         samesite="lax",
-        path="/dashboard/keys",
+        path=KEY_REVEAL_PATH,
     )
 
 

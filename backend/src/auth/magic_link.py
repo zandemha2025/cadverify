@@ -142,7 +142,7 @@ async def magic_verify(token: str):
     # Mint a key only when the account has none active (S3). Returning users
     # sign in via magic link repeatedly; each login must not spawn a new key.
     if await user_has_active_api_key(user_id):
-        resp = RedirectResponse(url="/dashboard/keys", status_code=303)
+        resp = RedirectResponse(url="/settings/developer", status_code=303)
         set_session_cookie(resp, user_id)
         return resp
 
@@ -151,7 +151,7 @@ async def magic_verify(token: str):
         user_id, "Default", prefix, hmac_index(full_token), secret_hash
     )
     resp = RedirectResponse(
-        url=f"/dashboard/keys?new=1&prefix={prefix}", status_code=303
+        url=f"/settings/developer?new=1&prefix={prefix}", status_code=303
     )
     # 30-day dashboard session cookie (HMAC-signed, HttpOnly, Secure, SameSite=Lax).
     set_session_cookie(resp, user_id)
@@ -164,6 +164,6 @@ async def magic_verify(token: str):
         httponly=False,
         samesite="lax",
         domain=".cadverify.com",
-        path="/dashboard/keys",
+        path="/settings/developer",
     )
     return resp

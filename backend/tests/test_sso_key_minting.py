@@ -113,7 +113,7 @@ def test_google_callback_skips_when_key_exists():
         resp = client.get("/auth/google/callback")
 
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/dashboard/keys"
+    assert resp.headers["location"] == "/settings/developer"
     assert "new=1" not in resp.headers["location"]
     assert "cv_mint_once" not in resp.headers.get("set-cookie", "")
     mock_create.assert_not_called()
@@ -174,6 +174,6 @@ def test_magic_verify_skips_when_key_exists():
         resp = client.get("/auth/magic/verify?token=abc")
 
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/dashboard/keys"
+    assert resp.headers["location"] == "/settings/developer"
     assert "cv_mint_once" not in resp.headers.get("set-cookie", "")
     mock_create.assert_not_called()

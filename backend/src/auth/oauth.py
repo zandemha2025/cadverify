@@ -3,7 +3,7 @@
 Mounted under /auth:
   GET /google/start    → 302 to Google with state + nonce
   GET /google/callback → validates state, upserts user, mints API key,
-                          303 to /dashboard/keys?new=1 with cv_mint_once cookie
+                          303 to /settings/developer?new=1 with cv_mint_once cookie
 """
 from __future__ import annotations
 
@@ -87,7 +87,7 @@ async def google_callback(request: Request):
     # keeps their existing key(s) — logging in must not spawn a fresh key nor
     # attempt a one-time reveal of a secret we can no longer show.
     if await user_has_active_api_key(user_id):
-        resp = RedirectResponse(url="/dashboard/keys", status_code=303)
+        resp = RedirectResponse(url="/settings/developer", status_code=303)
         set_session_cookie(resp, user_id)
         return resp
 
@@ -96,7 +96,7 @@ async def google_callback(request: Request):
         user_id, "Default", prefix, hmac_index(full_token), secret_hash
     )
     resp = RedirectResponse(
-        url=f"/dashboard/keys?new=1&prefix={prefix}", status_code=303
+        url=f"/settings/developer?new=1&prefix={prefix}", status_code=303
     )
     # 30-day dashboard session cookie (HMAC-signed, HttpOnly, Secure, SameSite=Lax).
     set_session_cookie(resp, user_id)
@@ -108,6 +108,6 @@ async def google_callback(request: Request):
         httponly=False,
         samesite="lax",
         domain=".cadverify.com",
-        path="/dashboard/keys",
+        path="/settings/developer",
     )
     return resp

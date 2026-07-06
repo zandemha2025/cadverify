@@ -16,14 +16,37 @@ export function RevealOnceModal() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    const m = document.cookie.match(/(?:^|;\s*)cv_mint_once=([^;]+)/);
-    if (m) {
+    let interval: number | null = null;
+    let timeout: number | null = null;
+
+    const readRevealCookie = () => {
+      if (token) return true;
+      const m = document.cookie.match(/(?:^|;\s*)cv_mint_once=([^;]+)/);
+      if (!m) return false;
       setToken(decodeURIComponent(m[1]));
+      setAck(false);
+      setCopied(false);
       // scrub immediately so a reload doesn't re-reveal
+      document.cookie = "cv_mint_once=; Max-Age=0; path=/settings/developer";
+      document.cookie = "cv_mint_once=; Max-Age=0; path=/dashboard/keys";
       document.cookie = "cv_mint_once=; Max-Age=0; path=/keys";
       document.cookie = "cv_mint_once=; Max-Age=0; path=/";
-    }
-  }, []);
+      if (interval != null) window.clearInterval(interval);
+      if (timeout != null) window.clearTimeout(timeout);
+      return true;
+    };
+
+    if (readRevealCookie()) return;
+    interval = window.setInterval(readRevealCookie, 250);
+    timeout = window.setTimeout(() => {
+      if (interval != null) window.clearInterval(interval);
+    }, 10_000);
+
+    return () => {
+      if (interval != null) window.clearInterval(interval);
+      if (timeout != null) window.clearTimeout(timeout);
+    };
+  }, [token]);
 
   async function copy() {
     if (!token) return;
@@ -33,6 +56,8 @@ export function RevealOnceModal() {
 
   function dismiss() {
     setToken(null);
+    setAck(false);
+    setCopied(false);
     // Paranoid: also clear sessionStorage if anything else mirrored it.
     try {
       sessionStorage.removeItem("cv_mint_once");
