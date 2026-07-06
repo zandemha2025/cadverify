@@ -22,10 +22,11 @@ export function makeNowEstimate(
   qty?: number
 ): CostEstimate | null {
   const proc = cost.decision?.make_now_process;
+  const estimates = cost.estimates.filter((e) => !e.environment_excluded);
   const pool = proc
-    ? cost.estimates.filter((e) => e.process === proc)
-    : cost.estimates;
-  if (pool.length === 0) return cost.estimates[0] ?? null;
+    ? estimates.filter((e) => e.process === proc)
+    : estimates;
+  if (pool.length === 0) return null;
   if (qty != null) {
     const exact = pool.find((e) => e.quantity === qty);
     if (exact) return exact;
@@ -41,7 +42,9 @@ export function toolingEstimate(
 ): CostEstimate | null {
   const proc = cost.decision?.tooling_process;
   if (!proc) return null;
-  const pool = cost.estimates.filter((e) => e.process === proc);
+  const pool = cost.estimates.filter(
+    (e) => e.process === proc && !e.environment_excluded
+  );
   if (pool.length === 0) return null;
   if (qty != null) {
     const exact = pool.find((e) => e.quantity === qty);
@@ -58,7 +61,9 @@ export function unitCostByQty(
   const out = new Map<number, number>();
   if (!process) return out;
   for (const e of cost.estimates) {
-    if (e.process === process) out.set(e.quantity, e.unit_cost_usd);
+    if (e.process === process && !e.environment_excluded) {
+      out.set(e.quantity, e.unit_cost_usd);
+    }
   }
   return out;
 }

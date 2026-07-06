@@ -143,6 +143,23 @@ test("deriveStanding: a withheld (blocked) price is NEVER carried as a number", 
   assert.equal(s.unitCostUsd, null);
 });
 
+test("deriveStanding: an environment-excluded detail estimate withholds fallback price", () => {
+  const s = deriveStanding(
+    row({ unit_cost: null, route_blocker_count: 0 }),
+    detailWith({
+      material: "304 Stainless",
+      environment_excluded: true,
+      environment_exclusion_reason:
+        "304 Stainless excluded: sour service requires NACE MR0175 qualification",
+    })
+  );
+
+  assert.equal(s.kind, "blocked");
+  assert.equal(s.withheld, true);
+  assert.equal(s.unitCostUsd, null);
+  assert.equal(s.material, "4140");
+});
+
 test("deriveStanding: validated defaults false (assumption band, n=0) → hatched", () => {
   const s = deriveStanding(row(), null);
   assert.equal(s.validated, false);

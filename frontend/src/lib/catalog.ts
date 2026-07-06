@@ -11,8 +11,9 @@
  *
  *   • route          — decision.make_now_process / material (the recommended make).
  *   • unit $         — the make-now estimate's unit_cost_usd. WITHHELD (null) when
- *                      the route is DFM-blocked, so the grid never prints a price
- *                      for a part that can't be made as-designed (D1 honesty).
+ *                      the route is DFM-blocked or environment-excluded, so the
+ *                      grid never prints a price for a part that can't be made
+ *                      as-designed or under the declared world (D1 honesty).
  *   • posture        — the provenance mix of that estimate's drivers: filled =
  *                      grounded (MEASURED / SHOP / USER), hollow = guess (DEFAULT).
  *   • route blockers — the make-now estimate's `dfm_blockers` count (route-scoped,
@@ -149,7 +150,8 @@ export function posture(drivers: readonly CostDriver[] | null | undefined): Post
 export function makeNowEstimate(report: CostReport | null | undefined): CostEstimate | null {
   const proc = report?.decision?.make_now_process?.trim();
   if (!report || !proc) return null;
-  return report.estimates.find((e) => e.process === proc) ?? null;
+  const pool = report.estimates.filter((e) => e.process === proc);
+  return pool.find((e) => !e.environment_excluded) ?? pool[0] ?? null;
 }
 
 /** Whether any driver carries a given provenance. */
@@ -182,7 +184,8 @@ export function deriveCatalogMetrics(report: CostReport | null | undefined): Cat
     };
   }
 
-  const blocked = !est.dfm_ready;
+  const envBlocked = Boolean(est.environment_excluded);
+  const blocked = !est.dfm_ready || envBlocked;
   const blockers = est.dfm_blockers ?? [];
   const post = posture(est.drivers);
 
@@ -197,11 +200,15 @@ export function deriveCatalogMetrics(report: CostReport | null | undefined): Cat
     routeProcess: est.process || report?.decision?.make_now_process?.trim() || null,
     routeMaterial: est.material || report?.decision?.make_now_material?.trim() || null,
     refQty: Number.isFinite(est.quantity) ? est.quantity : null,
-    // Withhold the price on a DFM-blocked route — never print a make-price for a
-    // part that can't be made as-designed.
+    // Withhold the price on an invalid route — never print a make-price for a
+    // part that can't be made as-designed or under the declared environment.
     unitUsd: blocked ? null : est.unit_cost_usd,
     blocked,
-    withheldReason: blocked ? blockers[0] ?? "Recommended route is not DFM-ready." : null,
+    withheldReason: blocked
+      ? est.environment_exclusion_reason
+        ?? blockers[0]
+        ?? "Recommended route is not valid for the declared manufacturing world."
+      : null,
     routeBlockerCount: blockers.length,
     posture: post,
     lifecycle,

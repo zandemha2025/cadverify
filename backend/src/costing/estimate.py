@@ -332,7 +332,8 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
         },
     }
     elig = eligible_processes(result, drivers, options.material_class, rates,
-                              strict_dfm=options.strict_dfm)
+                              strict_dfm=options.strict_dfm,
+                              env=options.service_environment)
 
     # ── Phase C: machine-inventory verification (additive; no-op when unused) ──
     # Only engaged when the org DECLARED machines OR a service environment. When

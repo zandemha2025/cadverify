@@ -171,6 +171,24 @@ test("environment-excluded verdict: gates is the failed gate; the record is not 
   assert.match(m.stages[4].detail, /not computed past the failed gate/);
 });
 
+test("environment-excluded estimate: record withholds unit cost instead of showing a dollar", () => {
+  const excluded = {
+    ...est("cnc_turning", 1000, 14.14),
+    environment_excluded: true,
+    environment_exclusion_reason:
+      "304 Stainless excluded: sour service requires NACE MR0175 qualification",
+  };
+  const r = result({
+    cost: report({ estimates: [excluded] }),
+    validation: { best_process: "cnc_turning" } as unknown as ValidationResult,
+  });
+  const m = pipelineModelFrom(r, false, null);
+
+  assert.equal(m.stopIndex, -1);
+  assert.equal(m.stages[4].state, "withheld");
+  assert.doesNotMatch(m.stages[4].detail, /\$/);
+});
+
 test("makeable_in_house verdict: gates clears, the record lands", () => {
   const v: VerificationBlock = { verdict: "makeable_in_house", best_machine: "Haas ST-10" };
   const r = result({ cost: report(), verification: v });

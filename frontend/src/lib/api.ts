@@ -669,6 +669,10 @@ export interface CostEstimate {
    *  region / measured / citation), not merely restate its message. Absent on
    *  reports produced before the cost-blocker relink. */
   dfm_blocker_details?: Issue[];
+  /** True when the declared service environment excludes this process/material pair. */
+  environment_excluded?: boolean;
+  /** Cited reason for environment_excluded, usually naming the governing standard. */
+  environment_exclusion_reason?: string;
   line_items: Record<string, number>;
   drivers: CostDriver[];
   lead_time: CostLeadTime;

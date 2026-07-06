@@ -107,6 +107,39 @@ test("toolingEstimate returns null when the engine declared no tooling route", (
   assert.equal(toolingEstimate(r), null);
 });
 
+test("environment-excluded estimates are withheld from verify cost reads", () => {
+  const invalid = {
+    ...est("cnc_3axis", 1000, 11.5),
+    material: "304 Stainless",
+    environment_excluded: true,
+    environment_exclusion_reason:
+      "304 Stainless excluded: sour service requires NACE MR0175 qualification",
+  };
+  const valid = { ...est("cnc_3axis", 10, 21.5), material: "API 13Cr" };
+  const toolInvalid = {
+    ...est("investment_casting", 1000, 8.5),
+    material: "304 Stainless",
+    environment_excluded: true,
+  };
+  const r = report([invalid, valid, toolInvalid], {
+    make_now_process: "cnc_3axis",
+    make_now_material: "API 13Cr",
+    tooling_process: "investment_casting",
+    tooling_dfm_ready: true,
+    crossover_qty: null,
+    recommendation: {},
+    if_redesigned: {},
+    note: "",
+  });
+
+  assert.equal(makeNowEstimate(r)?.unit_cost_usd, 21.5);
+  assert.equal(toolingEstimate(r), null);
+
+  const costs = unitCostByQty(r, "cnc_3axis");
+  assert.equal(costs.has(1000), false);
+  assert.equal(costs.get(10), 21.5);
+});
+
 test("unitCostByQty maps only the engine's computed points for a process", () => {
   const r = report([est("mjf", 10, 14.14), est("mjf", 1000, 7.2), est("im", 1000, 6.1)], null);
   const m = unitCostByQty(r, "mjf");

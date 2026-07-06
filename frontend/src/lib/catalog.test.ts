@@ -132,6 +132,23 @@ test("makeNowEstimate: returns the FIRST estimate for the make-now process", () 
   assert.equal(est?.unit_cost_usd, 42.5); // first cnc row (qty 50), not the qty-5000 row
 });
 
+test("makeNowEstimate: prefers a valid estimate over an environment-excluded same-process row", () => {
+  const r = report({
+    estimates: [
+      estimate({
+        process: "cnc_3axis",
+        quantity: 50,
+        unit_cost_usd: 99,
+        environment_excluded: true,
+      }),
+      estimate({ process: "cnc_3axis", quantity: 50, unit_cost_usd: 42.5 }),
+    ],
+    decision: decision({ make_now_process: "cnc_3axis" }),
+  });
+  const est = makeNowEstimate(r);
+  assert.equal(est?.unit_cost_usd, 42.5);
+});
+
 test("makeNowEstimate: null when there is no decision or no matching estimate", () => {
   assert.equal(makeNowEstimate(report({ decision: null })), null);
   assert.equal(
@@ -202,6 +219,27 @@ test("deriveCatalogMetrics: DFM-blocked route → blocked, price WITHHELD, reaso
   assert.equal(m.unitUsd, null); // withheld — no price on an unmakeable route
   assert.equal(m.withheldReason, "Wall 0.4mm below 0.8mm minimum");
   assert.equal(m.routeBlockerCount, 2);
+});
+
+test("deriveCatalogMetrics: environment-excluded route → blocked, price WITHHELD, citation surfaced", () => {
+  const r = report({
+    estimates: [
+      estimate({
+        material: "304 Stainless",
+        environment_excluded: true,
+        environment_exclusion_reason:
+          "304 Stainless excluded: sour service requires NACE MR0175 qualification",
+      }),
+    ],
+  });
+  const m = deriveCatalogMetrics(r);
+  assert.equal(m.blocked, true);
+  assert.equal(m.lifecycle, "blocked");
+  assert.equal(m.unitUsd, null);
+  assert.equal(
+    m.withheldReason,
+    "304 Stainless excluded: sour service requires NACE MR0175 qualification"
+  );
 });
 
 test("deriveCatalogMetrics: a validated confidence band → validated (brass)", () => {

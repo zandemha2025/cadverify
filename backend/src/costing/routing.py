@@ -7,17 +7,24 @@ re-derives a sane material per class and a sane process shortlist.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Optional
 
 from src.analysis.models import ProcessType
+from src.costing.makeability import environment_gate
 from src.profiles.database import get_materials_for_process
-from src.costing.rates import COSTED_PROCESSES, MATERIAL_FAMILY, RateCard
+from src.costing.rates import (
+    COSTED_PROCESSES,
+    MATERIAL_FAMILY,
+    RateCard,
+    process_family,
+)
 
 PT = ProcessType
 
 DIE_CAST_CLASSES = {"aluminum", "steel", "stainless"}
 SHEET_METAL_CLASSES = {"aluminum", "steel", "stainless", "copper"}
+MAKE_NOW_FAMILIES = {"additive", "subtractive", "fabrication"}
 
 
 # Inertia-eigenvalue tolerance for the rotational test. MUST match the CNC-turning
@@ -112,7 +119,47 @@ def material_family(material_name: str) -> Optional[str]:
 _DED_FEEDSTOCK_PROCS = (PT.DMLS, PT.SLM, PT.EBM, PT.BINDER_JET)
 
 
-def select_material(process: ProcessType, material_class: str, rates: RateCard):
+def _material_props(material) -> dict:
+    if is_dataclass(material):
+        return asdict(material)
+    return {
+        "name": getattr(material, "name", str(material)),
+        "density": getattr(material, "density", None),
+    }
+
+
+def _env_preferred_materials(process: ProcessType, mats: list, env: dict | None) -> list:
+    """Return the environment-valid subset when one exists.
+
+    If the declared environment excludes every candidate, keep the original
+    candidate pool so the downstream verification block can still cite exactly
+    why the chosen route/material is invalid instead of hiding the route.
+    """
+    if not env or not mats:
+        return mats
+    props = {m.name: _material_props(m) for m in mats}
+    valid, _ = environment_gate([process.value], [m.name for m in mats], env, props)
+    valid_names = set(valid.get("materials") or [])
+    if not valid_names:
+        return mats
+    return [m for m in mats if m.name in valid_names]
+
+
+def _item_env_valid(item: dict, env: dict | None) -> bool:
+    if not env:
+        return True
+    process = item["process"]
+    mat = item["material"]
+    props = {mat.name: _material_props(mat)}
+    valid, _ = environment_gate([process.value], [mat.name], env, props)
+    return (
+        process.value in set(valid.get("routes") or [])
+        and mat.name in set(valid.get("materials") or [])
+    )
+
+
+def select_material(process: ProcessType, material_class: str, rates: RateCard,
+                    env: dict | None = None):
     """Cheapest material compatible with (process, material_class) — the sane
     default pick. No positional materials[0]; no superalloy on a polymer part.
     Returns a MaterialProfile or None (process not eligible for this class).
@@ -134,10 +181,12 @@ def select_material(process: ProcessType, material_class: str, rates: RateCard):
                     mats.append(m)
     if not mats:
         return None
+    mats = _env_preferred_materials(process, mats, env)
     return min(mats, key=lambda m: m.cost_per_kg)
 
 
-def select_sheet_material(material_class: str, rates: RateCard):
+def select_sheet_material(material_class: str, rates: RateCard,
+                          env: dict | None = None):
     """Sheet metal is inherently metal. Prefer the requested class when it is a
     sheet family; otherwise fall back to the cheapest sheet stock (by blank cost
     = density × $/kg) as a clearly-stated default. Returns a MaterialProfile."""
@@ -147,6 +196,7 @@ def select_sheet_material(material_class: str, rates: RateCard):
         return None
     in_class = [m for m in mats if MATERIAL_FAMILY.get(m.name) == material_class]
     pool = in_class if in_class else mats
+    pool = _env_preferred_materials(PT.SHEET_METAL, pool, env)
     return min(pool, key=lambda m: m.density * m.cost_per_kg)
 
 
@@ -165,7 +215,7 @@ def _routing_sane(process: ProcessType, material_class: str, drivers) -> bool:
 
 
 def eligible_processes(result, drivers, material_class: str, rates: RateCard,
-                       strict_dfm: bool = False):
+                       strict_dfm: bool = False, env: dict | None = None):
     """Return the costable shortlist as a list of dicts:
 
         {process, material, score(ProcessScore)}
@@ -187,25 +237,45 @@ def eligible_processes(result, drivers, material_class: str, rates: RateCard,
     enforced regardless of strict_dfm — gate G2 holds in both modes.
     """
     by_proc = {ps.process: ps for ps in result.process_scores}
-    out = []
-    for process in COSTED_PROCESSES:
-        ps = by_proc.get(process)
-        if ps is None:
-            continue
-        if not _routing_sane(process, material_class, drivers):
-            continue
-        if process == PT.SHEET_METAL:
-            # sheet metal is always a metal; pick metal stock regardless of the
-            # (polymer) default class so the flat-panel route yields a real $.
-            mat = select_sheet_material(material_class, rates)
-        else:
-            mat = select_material(process, material_class, rates)
-        if mat is None:
-            continue
-        if strict_dfm and (ps.verdict == "fail" or ps.score <= 0):
-            continue
-        out.append({"process": process, "material": mat, "score": ps})
-    return out
+
+    def build(env_for_materials: dict | None) -> list:
+        out = []
+        for process in COSTED_PROCESSES:
+            ps = by_proc.get(process)
+            if ps is None:
+                continue
+            if not _routing_sane(process, material_class, drivers):
+                continue
+            if process == PT.SHEET_METAL:
+                # sheet metal is always a metal; pick metal stock regardless of the
+                # (polymer) default class so the flat-panel route yields a real $.
+                mat = select_sheet_material(material_class, rates,
+                                            env=env_for_materials)
+            else:
+                mat = select_material(process, material_class, rates,
+                                      env=env_for_materials)
+            if mat is None:
+                continue
+            if strict_dfm and (ps.verdict == "fail" or ps.score <= 0):
+                continue
+            out.append({"process": process, "material": mat, "score": ps})
+        return out
+
+    legacy = build(None)
+    if not env:
+        return legacy
+
+    # Preserve the legacy shortlist when it already contains at least one valid
+    # make-as-is route. That keeps excluded alternatives visible and cited. If the
+    # legacy cheapest-by-class picks would leave the user with no environment-valid
+    # make route (the sour-service stainless failure), re-rank materials within
+    # each process against the declared environment.
+    has_env_valid_make = any(
+        process_family(item["process"]) in MAKE_NOW_FAMILIES
+        and _item_env_valid(item, env)
+        for item in legacy
+    )
+    return legacy if has_env_valid_make else build(env)
 
 
 # ──────────────────────────────────────────────────────────────────────────

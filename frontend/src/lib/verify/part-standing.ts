@@ -28,7 +28,9 @@ function makeNowEstimate(cost: CostReport): CostEstimate | null {
   const proc = cost.decision?.make_now_process;
   const pool = proc ? cost.estimates.filter((e) => e.process === proc) : cost.estimates;
   if (pool.length === 0) return cost.estimates[0] ?? null;
-  return pool.reduce((a, b) => (b.quantity > a.quantity ? b : a));
+  const usable = pool.filter((e) => !e.environment_excluded);
+  const ranked = usable.length > 0 ? usable : pool;
+  return ranked.reduce((a, b) => (b.quantity > a.quantity ? b : a));
 }
 
 // ---------------------------------------------------------------------------
@@ -106,17 +108,21 @@ export function deriveStanding(
   row: CatalogRowApi,
   detail: CostDecisionDetail | null
 ): PartStanding {
-  const kind = standingKind(row);
   const est = detail?.result ? makeNowEstimate(detail.result) : null;
+  const detailWithheld = Boolean(est?.environment_excluded);
+  const kind = detailWithheld ? "blocked" : standingKind(row);
   const conf = est?.confidence;
   return {
     kind,
     process: row.recommended_route?.process ?? detail?.make_now_process ?? null,
     routeSource: row.recommended_route?.source ?? null,
     material: row.recommended_route?.material ?? est?.material ?? null,
-    unitCostUsd: row.unit_cost?.withheld ? null : row.unit_cost?.usd ?? est?.unit_cost_usd ?? null,
+    unitCostUsd:
+      row.unit_cost?.withheld || detailWithheld
+        ? null
+        : row.unit_cost?.usd ?? est?.unit_cost_usd ?? null,
     costQty: row.unit_cost?.qty ?? est?.quantity ?? null,
-    withheld: Boolean(row.unit_cost?.withheld),
+    withheld: Boolean(row.unit_cost?.withheld || detailWithheld),
     // Prefer the record's own confidence flag; fall back to the row's.
     validated: conf?.validated ?? row.unit_cost?.validated ?? false,
     bandLabel: conf?.label ?? null,
