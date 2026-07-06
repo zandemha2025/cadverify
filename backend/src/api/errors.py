@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -26,12 +28,21 @@ ERROR_CODES: dict[int, str] = {
 DOC_BASE = "https://docs.cadverify.com/errors"
 
 
-def _build_error(status_code: int, code: str, message: str) -> dict:
-    return {
+def _build_error(
+    status_code: int,
+    code: str,
+    message: str,
+    *,
+    detail: Any | None = None,
+) -> dict:
+    payload = {
         "code": code,
         "message": message,
         "doc_url": f"{DOC_BASE}/{code}",
     }
+    if detail is not None:
+        payload["detail"] = detail
+    return payload
 
 
 async def structured_http_error_handler(
@@ -43,10 +54,15 @@ async def structured_http_error_handler(
         return JSONResponse(
             status_code=exc.status_code, content=exc.detail
         )
-    message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+    if isinstance(exc.detail, dict):
+        message = str(exc.detail.get("message") or exc.detail.get("reason") or exc.detail)
+        detail = exc.detail
+    else:
+        message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+        detail = None
     return JSONResponse(
         status_code=exc.status_code,
-        content=_build_error(exc.status_code, code, message),
+        content=_build_error(exc.status_code, code, message, detail=detail),
     )
 
 
