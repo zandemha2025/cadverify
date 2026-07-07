@@ -23,6 +23,11 @@ def _load_migration_with_mock_op():
     # per-user loop is a no-op and Phase 1 + Phase 3 DDL still execute.
     mock_op.get_bind.return_value.execute.return_value.fetchall.return_value = []
 
+    # 0009 imports org_context, which imports the ORM models. Keep those modules
+    # outside patch.dict(sys.modules, ...) so repeated fixture loads do not drop
+    # src.db.models while leaving its SQLAlchemy metadata populated.
+    import src.auth.org_context  # noqa: F401
+
     migration_path = (
         Path(__file__).parent.parent
         / "alembic"
