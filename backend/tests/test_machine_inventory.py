@@ -313,9 +313,13 @@ def test_validate_context_rejects_bad_env():
 # in ISOLATION. These guards compose the REAL app (main.app) so any future
 # re-claim of an existing route fails loudly.
 def _real_app():
+    import importlib
     import main
 
-    return main.app
+    # Some endpoint tests install dependency overrides or reload ``main`` with
+    # altered auth modes. These guards are about the composed route table itself,
+    # so always inspect a fresh app instance.
+    return importlib.reload(main).app
 
 
 def _routes_for(app, path: str):
