@@ -319,10 +319,14 @@ def _real_app():
 
 
 def _routes_for(app, path: str):
+    routes = getattr(getattr(app, "router", None), "routes", None)
+    if routes is None:
+        routes = getattr(app, "routes", [])
     return [
         r
-        for r in app.routes
-        if getattr(r, "path", None) == path and getattr(r, "methods", None)
+        for r in routes
+        if (getattr(r, "path", None) or getattr(r, "path_format", None)) == path
+        and getattr(r, "methods", None)
     ]
 
 
