@@ -210,6 +210,7 @@ class P7RoleFailureQA {
     this.evidence = {};
     this.contexts = [];
     this.expectedRequestFailure = [];
+    this.expectedConsoleErrors = [];
     this.tempDirs = [];
   }
 
@@ -245,7 +246,8 @@ class P7RoleFailureQA {
       const text = msg.text();
       if (
         /favicon\.ico|ResizeObserver loop limit exceeded/i.test(text) ||
-        /Failed to load resource: the server responded with a status of (401|403|404|422|503)/i.test(text)
+        /Failed to load resource: the server responded with a status of (401|403|404|422|503)/i.test(text) ||
+        this.isExpectedConsoleError(text)
       ) {
         return;
       }
@@ -280,6 +282,18 @@ class P7RoleFailureQA {
 
   issue(severity, title, detail, screenshot = null, url = this.page?.url?.() || "") {
     this.issues.push({ severity, title, detail, screenshot, url });
+  }
+
+  expectConsoleError(pattern, ttlMs = 10_000) {
+    this.expectedConsoleErrors.push({ pattern, expiresAt: Date.now() + ttlMs });
+  }
+
+  isExpectedConsoleError(text) {
+    const now = Date.now();
+    this.expectedConsoleErrors = this.expectedConsoleErrors.filter(
+      (entry) => entry.expiresAt >= now
+    );
+    return this.expectedConsoleErrors.some((entry) => entry.pattern.test(text));
   }
 
   async shot(name, fullPage = false, page = this.page) {
@@ -563,6 +577,7 @@ class P7RoleFailureQA {
     await this.step("network failure on login renders explicit recovery copy", async () => {
       await this.context.clearCookies();
       this.expectedRequestFailure.push(/\/api\/auth\/login(?:$|\?)/);
+      this.expectConsoleError(/Failed to load resource: net::ERR_FAILED/i, 15_000);
       await this.page.route("**/api/auth/login", (route) => route.abort("failed"));
       try {
         await this.goto("/login", "login-network-failure");
@@ -573,6 +588,7 @@ class P7RoleFailureQA {
         await this.scanVisibleText("login-network-failure-result");
         return { screenshot: await this.shot("login-network-failure-result") };
       } finally {
+        this.expectConsoleError(/Failed to load resource: net::ERR_FAILED/i, 3_000);
         await this.page.unroute("**/api/auth/login").catch(() => {});
         this.expectedRequestFailure = this.expectedRequestFailure.filter(
           (pattern) => String(pattern) !== String(/\/api\/auth\/login(?:$|\?)/)
