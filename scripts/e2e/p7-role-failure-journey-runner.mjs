@@ -1,12 +1,15 @@
+import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const pw = require("playwright-core");
+const execFileAsync = promisify(execFile);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -527,12 +530,71 @@ class P7RoleFailureQA {
     return { context, page, label, source: "signup", email, password };
   }
 
+  async seedPasswordUser(email, password) {
+    const script = `
+import asyncio
+import json
+import sys
+
+from src.auth.disposable import normalize_email
+from src.auth.hashing import hash_password
+from src.auth.models import create_password_user
+
+
+async def main() -> None:
+    email = sys.argv[1]
+    password = sys.argv[2]
+    user_id = await create_password_user(
+        email=email,
+        email_lower=normalize_email(email),
+        password_hash=hash_password(password),
+        disposable_flag=False,
+    )
+    if user_id is None:
+        raise SystemExit("email already exists")
+    print(json.dumps({"id": int(user_id), "email": email}))
+
+
+asyncio.run(main())
+`;
+    const backendRoot = path.join(repoRoot, "backend");
+    const { stdout, stderr } = await execFileAsync(
+      process.env.PYTHON || "python",
+      ["-c", script, email, password],
+      {
+        cwd: backendRoot,
+        env: {
+          ...process.env,
+          PYTHONPATH: backendRoot,
+        },
+        timeout: 30_000,
+        maxBuffer: 1024 * 1024,
+      }
+    );
+    if (stderr?.trim()) {
+      this.evidence.seededPasswordUserStderr = stderr.trim().slice(0, 1000);
+    }
+    return JSON.parse(stdout);
+  }
+
+  async seededPasswordContext(prefix, label) {
+    const context = await this.newContext();
+    const page = await context.newPage();
+    this.attachPage(page);
+    const email = uniqueEmail(prefix);
+    const password = "Passw0rd123";
+    const user = await this.seedPasswordUser(email, password);
+    await this.loginWithCredentials(page, email, password, label);
+    await this.assertAuthenticated(page, label);
+    return { context, page, label, source: "seeded-password-user", email, password, userId: user.id };
+  }
+
   async selfSeedViewerContext() {
     if (!this.primary) {
       throw new SkipStep("no primary org-admin session was available to invite a viewer");
     }
 
-    const viewer = await this.signupContext("p7-viewer", "self-seeded-viewer");
+    const viewer = await this.seededPasswordContext("p7-viewer", "self-seeded-viewer");
     const invite = await this.proxyJson(this.primary.context, "/api/proxy/orgs/invites", {
       method: "POST",
       body: { email: viewer.email, role: "viewer" },
