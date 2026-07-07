@@ -322,16 +322,33 @@ def _real_app():
     return importlib.reload(main).app
 
 
-def _routes_for(app, path: str):
-    routes = getattr(getattr(app, "router", None), "routes", None)
+def _join_route(prefix: str, path: str) -> str:
+    if not prefix:
+        return path or ""
+    if not path:
+        return prefix
+    return f"{prefix.rstrip('/')}/{path.lstrip('/')}"
+
+
+def _iter_routes_with_paths(app_or_router, prefix: str = ""):
+    routes = getattr(getattr(app_or_router, "router", None), "routes", None)
     if routes is None:
-        routes = getattr(app, "routes", [])
-    return [
-        r
-        for r in routes
-        if (getattr(r, "path", None) or getattr(r, "path_format", None)) == path
-        and getattr(r, "methods", None)
-    ]
+        routes = getattr(app_or_router, "routes", [])
+    for route in routes:
+        include_context = getattr(route, "include_context", None)
+        original_router = getattr(route, "original_router", None)
+        if include_context is not None and original_router is not None:
+            child_prefix = _join_route(prefix, getattr(include_context, "prefix", ""))
+            yield from _iter_routes_with_paths(original_router, child_prefix)
+            continue
+
+        route_path = getattr(route, "path", None) or getattr(route, "path_format", None)
+        if route_path is not None and getattr(route, "methods", None):
+            yield route, _join_route(prefix, route_path)
+
+
+def _routes_for(app, path: str):
+    return [r for r, route_path in _iter_routes_with_paths(app) if route_path == path]
 
 
 def test_machine_inventory_list_reachable_on_real_app():
@@ -368,9 +385,8 @@ def test_no_duplicate_route_registration_in_real_app():
 
     app = _real_app()
     pairs: list = []
-    for r in app.routes:
+    for r, path in _iter_routes_with_paths(app):
         methods = getattr(r, "methods", None)
-        path = getattr(r, "path", None)
         if not methods or not path:
             continue
         for m in methods:
