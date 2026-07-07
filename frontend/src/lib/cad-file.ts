@@ -8,11 +8,11 @@
  * is the front-door guard so an unsupported file never reaches the workspace.)
  */
 
-export const CAD_EXTS = ["stl", "step", "stp"] as const;
+export const CAD_EXTS = ["stl", "step", "stp", "iges", "igs"] as const;
 export type CadExt = (typeof CAD_EXTS)[number];
 
 /** the `accept=` attribute string for the <input type=file> / Dropzone. */
-export const CAD_ACCEPT = ".stl,.step,.stp";
+export const CAD_ACCEPT = CAD_EXTS.map((ext) => `.${ext}`).join(",");
 
 /** the lowercased extension of a filename, or null when it has none. */
 export function fileExt(name: string): string | null {

@@ -55,7 +55,7 @@ export function CommandPalette({
       nav(s);
     };
     const list: PaletteCmd[] = [
-      { id: "verify-part", label: "Verify a part", hint: "open a STEP or STL", terms: "verify part upload drop stl step file measure cost", run: () => { onVerify?.(); onClose(); } },
+      { id: "verify-part", label: "Verify a part", hint: "open STL, STEP or IGES", terms: "verify part upload drop stl step stp iges igs file measure cost", run: () => { onVerify?.(); onClose(); } },
       { id: "home", label: "Go to Home", keys: "H", terms: "home desk start", run: go("home") },
       { id: "verify", label: "Go to Verify", keys: "V", terms: "verify verdict result", run: go("verify") },
       { id: "catalog", label: "Go to Parts", hint: "catalog", keys: "P", terms: "parts catalog grid", run: go("catalog") },

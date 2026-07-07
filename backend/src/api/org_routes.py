@@ -34,6 +34,7 @@ from src.auth.rbac import OrgAuthContext, OrgRole, Role, require_org_role, requi
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 from src.services import org_service as svc
+from src.services import org_saml_service as saml_svc
 from src.services.audit_service import _lookup_email, fire_and_forget_audit
 
 logger = logging.getLogger("cadverify.orgs")
@@ -61,6 +62,12 @@ class RoleBody(BaseModel):
 
 class SwitchBody(BaseModel):
     org_id: str
+
+
+class SamlGroupMappingBody(BaseModel):
+    attribute_name: str
+    group_value: str
+    org_role: str = "member"
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -176,6 +183,85 @@ async def switch_org(
     await session.commit()
     _emit(user.user_id, "org.switched", body.org_id, {"org_role": result["org_role"]})
     return result
+
+
+# ── SAML group mappings ───────────────────────────────────────────────────────
+@router.get("/saml/group-mappings")
+@limiter.limit("120/hour;1000/day")
+async def list_saml_group_mappings(
+    request: Request,
+    response: Response,
+    ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """List the caller org's SAML JIT group-to-role mappings."""
+    org_id = await _ctx_org(ctx, session)
+    return {"mappings": await saml_svc.list_saml_group_mappings(session, org_id)}
+
+
+@router.post("/saml/group-mappings", dependencies=[Depends(require_kill_switch_open)])
+@limiter.limit("60/hour;300/day")
+async def create_saml_group_mapping(
+    request: Request,
+    response: Response,
+    body: SamlGroupMappingBody,
+    ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Create one SAML JIT mapping for the caller org."""
+    org_id = await _ctx_org(ctx, session)
+    row = await saml_svc.create_saml_group_mapping(
+        session,
+        org_id,
+        attribute_name=body.attribute_name,
+        group_value=body.group_value,
+        org_role=body.org_role,
+        created_by=ctx.user_id,
+    )
+    await session.commit()
+    response.status_code = 201
+    _emit(
+        ctx.user_id,
+        "saml.group_mapping.created",
+        str(row.id),
+        {
+            "org_id": org_id,
+            "attribute_name": row.attribute_name,
+            "group_value": row.group_value,
+            "org_role": row.org_role,
+        },
+    )
+    return saml_svc.serialize_mapping(row)
+
+
+@router.delete(
+    "/saml/group-mappings/{mapping_id}",
+    dependencies=[Depends(require_kill_switch_open)],
+)
+@limiter.limit("60/hour;300/day")
+async def delete_saml_group_mapping(
+    request: Request,
+    response: Response,
+    mapping_id: int,
+    ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Delete one SAML JIT mapping from the caller org."""
+    org_id = await _ctx_org(ctx, session)
+    row = await saml_svc.delete_saml_group_mapping(session, org_id, mapping_id)
+    await session.commit()
+    _emit(
+        ctx.user_id,
+        "saml.group_mapping.deleted",
+        str(row.id),
+        {
+            "org_id": org_id,
+            "attribute_name": row.attribute_name,
+            "group_value": row.group_value,
+            "org_role": row.org_role,
+        },
+    )
+    return {"deleted": True, "id": row.id, "org_id": org_id}
 
 
 # ── invites ───────────────────────────────────────────────────────────────────

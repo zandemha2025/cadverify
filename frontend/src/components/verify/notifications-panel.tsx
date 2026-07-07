@@ -1,24 +1,18 @@
 "use client";
 
 /**
- * NotificationsPanel — the shell's bell dropdown, made REAL.
+ * NotificationsPanel — the shell's bell dropdown, backed by durable inbox rows.
  *
- * "States, never nags." The panel has no dedicated inbox table, so it invents
- * nothing. It DERIVES the org's real
- * needs-your-action states from existing reads (see notifications-api.ts):
- * the latest recorded verification, governed changes awaiting review, whether
- * the confidence bands are still hatched (n=0 actuals), and the latest webhook
- * delivery row. Empty → the honest "all caught up" state.
- *
- * Every value shown is a verbatim engine/DB field or is withheld. Encodings per
- * DESIGN-DECISIONS.md: pass/cond status colours; a HATCHED band = assumption
- * (n=0), which is exactly why "bands still hatched" carries the hatched glyph.
+ * "States, never nags." Rows are emitted beside domain mutations and can be
+ * marked read per user. Empty -> the honest "all caught up" state.
  */
 import { useEffect, useState } from "react";
 import { C, MONO } from "@/lib/verify/tokens";
 import { ConfidenceBand, Spinner } from "./primitives";
 import {
   loadNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
   type NotifState,
   type DerivedNotif,
   type NotifDest,
@@ -66,13 +60,20 @@ export function NotificationsPanel({
     };
   }, []);
 
-  const go = (dest: NotifDest) => {
+  const go = (n: DerivedNotif) => {
+    markNotificationRead(n.id).catch(() => {});
+    const dest = n.dest;
     if (nav) nav(dest);
     else
       window.dispatchEvent(
         new KeyboardEvent("keydown", { key: HOTKEY[dest], bubbles: true })
       );
     onClose();
+  };
+
+  const clearAll = () => {
+    markAllNotificationsRead().catch(() => {});
+    setState((s) => ({ ...s, notifs: [] }));
   };
 
   const { loading, notifs, error } = state;
@@ -94,15 +95,24 @@ export function NotificationsPanel({
         animation: "vscreenIn 200ms cubic-bezier(0.2,0,0,1) both",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", padding: "10px 14px 8px" }}>
-        <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: C.ink45 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px 8px" }}>
+        <p style={{ margin: 0, flex: 1, fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: C.ink45 }}>
           NOTIFICATIONS — STATES, NEVER NAGS
         </p>
+        {!loading && notifs.length > 0 && (
+          <button
+            type="button"
+            onClick={clearAll}
+            style={{ background: "none", border: "none", cursor: "pointer", fontFamily: MONO, fontSize: 10, color: C.ink45 }}
+          >
+            MARK ALL READ
+          </button>
+        )}
         <button
           type="button"
           onClick={onClose}
           aria-label="Close notifications"
-          style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontFamily: MONO, fontSize: 12, color: C.ink40 }}
+          style={{ background: "none", border: "none", cursor: "pointer", fontFamily: MONO, fontSize: 12, color: C.ink40 }}
         >
           ✕
         </button>
@@ -135,7 +145,7 @@ export function NotificationsPanel({
             <button
               key={n.id}
               type="button"
-              onClick={() => go(n.dest)}
+              onClick={() => go(n)}
               style={{ width: "100%", textAlign: "left", background: "none", border: "none", borderRadius: 10, padding: "10px 14px", cursor: "pointer", fontFamily: "inherit", color: "inherit", transition: "background 120ms" }}
               onMouseEnter={(e) => (e.currentTarget.style.background = C.bg)}
               onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
@@ -153,8 +163,7 @@ export function NotificationsPanel({
 
       <div style={{ marginTop: 4, borderTop: `1px solid ${C.hair}`, padding: "10px 14px 6px", display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink40, lineHeight: 1.5, flex: 1 }}>
-          Delivery log reads /admin/webhook-deliveries
-          {state.deliveryCount != null ? ` · ${state.deliveryCount} latest row${state.deliveryCount === 1 ? "" : "s"}` : ""}
+          Read states stay out of this queue.
         </span>
       </div>
     </div>

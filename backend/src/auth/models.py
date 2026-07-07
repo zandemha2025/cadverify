@@ -33,23 +33,45 @@ class ApiKeyRow:
     is_active: bool = True
 
 
+@dataclass
+class SessionUserRow:
+    user_id: int
+    role: str
+    is_active: bool
+    session_version: int
+
+
 async def upsert_user(
     email: str,
     google_sub: str | None,
     email_lower: str,
     disposable_flag: bool = False,
+    auth_provider: str = "google",
 ) -> int:
+    provider = (auth_provider or "google").strip().lower()
     async with _session()() as s:
         row = (
             await s.execute(
                 text(
-                    "INSERT INTO users (email, email_lower, google_sub, disposable_flag) "
-                    "VALUES (:e, :el, :g, :d) "
+                    "INSERT INTO users (email, email_lower, google_sub, auth_provider, disposable_flag) "
+                    "VALUES (:e, :el, :g, :ap, :d) "
                     "ON CONFLICT (email_lower) DO UPDATE SET "
-                    "google_sub = COALESCE(users.google_sub, EXCLUDED.google_sub) "
+                    "google_sub = COALESCE(users.google_sub, EXCLUDED.google_sub), "
+                    "auth_provider = CASE "
+                    "WHEN users.google_sub IS NULL "
+                    "AND users.auth_provider = 'google' "
+                    "AND EXCLUDED.google_sub IS NULL "
+                    "THEN EXCLUDED.auth_provider "
+                    "ELSE users.auth_provider END "
                     "RETURNING id"
                 ),
-                {"e": email, "el": email_lower, "g": google_sub, "d": disposable_flag},
+                {
+                    "e": email,
+                    "el": email_lower,
+                    "g": google_sub,
+                    "ap": provider,
+                    "d": disposable_flag,
+                },
             )
         ).first()
         # W1: guarantee the (possibly brand-new) user has a personal org +
@@ -109,6 +131,57 @@ async def user_is_active(user_id: int) -> bool:
             )
         ).first()
     return True if r is None else bool(r[0])
+
+
+async def lookup_session_user(user_id: int) -> SessionUserRow | None:
+    """Return the current session-validation state for a dashboard user."""
+    async with _session()() as s:
+        r = (
+            await s.execute(
+                text(
+                    "SELECT id, role, is_active, session_version "
+                    "FROM users WHERE id = :u"
+                ),
+                {"u": user_id},
+            )
+        ).first()
+    if r is None:
+        return None
+    return SessionUserRow(
+        user_id=int(r[0]),
+        role=r[1] or "analyst",
+        is_active=bool(r[2]),
+        session_version=int(r[3] or 0),
+    )
+
+
+async def get_user_session_version(user_id: int) -> int:
+    """Current dashboard-session version, defaulting to 0 for absent rows."""
+    row = await lookup_session_user(user_id)
+    return 0 if row is None else row.session_version
+
+
+async def bump_session_version(user_id: int) -> int | None:
+    """Invalidate all existing dashboard sessions for a user.
+
+    Stateless HMAC sessions remain cheap, but the signed payload carries this
+    monotonically increasing user-row version. Incrementing it revokes every
+    older cookie without storing per-session rows.
+    """
+    async with _session()() as s:
+        r = (
+            await s.execute(
+                text(
+                    "UPDATE users "
+                    "SET session_version = session_version + 1 "
+                    "WHERE id = :u "
+                    "RETURNING session_version"
+                ),
+                {"u": user_id},
+            )
+        ).first()
+        await s.commit()
+    return None if r is None else int(r[0])
 
 
 async def create_password_user(

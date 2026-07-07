@@ -63,11 +63,29 @@ async def test_health_worker_unknown_when_no_heartbeat(monkeypatch):
     """Redis reachable but no arq heartbeat key -> worker 'unknown' (honest)."""
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379")
     monkeypatch.delenv("RELEASE", raising=False)
+    monkeypatch.delenv("WORKER_STRICT_HEALTH", raising=False)
     with _mock_pg_ok(), _mock_redis(ping_ok=True, worker_key_present=False):
         resp = await _get_health()
     data = resp.json()
     assert resp.status_code == 200
     assert data["async"]["worker"] == "unknown"
+    assert data["async"]["worker_strict"] is False
+
+
+@pytest.mark.asyncio
+async def test_health_worker_strict_degrades_when_heartbeat_missing(monkeypatch):
+    """WORKER_STRICT_HEALTH=1 makes missing arq heartbeat a readiness failure."""
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379")
+    monkeypatch.setenv("WORKER_STRICT_HEALTH", "1")
+    monkeypatch.delenv("RELEASE", raising=False)
+    with _mock_pg_ok(), _mock_redis(ping_ok=True, worker_key_present=False):
+        resp = await _get_health()
+    data = resp.json()
+    assert resp.status_code == 503
+    assert data["status"] == "degraded"
+    assert data["async"]["redis"] is True
+    assert data["async"]["worker"] == "unknown"
+    assert data["async"]["worker_strict"] is True
 
 
 @pytest.mark.asyncio

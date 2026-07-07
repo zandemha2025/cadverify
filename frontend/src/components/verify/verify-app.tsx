@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { C, MONO, SANS } from "@/lib/verify/tokens";
 import { runVerification, type VerifyResult } from "@/lib/verify/run";
 import { listMachines } from "@/lib/verify/machine-api";
+import { CAD_ACCEPT } from "@/lib/cad-file";
 import { Stage } from "./stage";
 import { VerifyScreen } from "./verify-screen";
 import { MachinesScreen } from "./machines-screen";
@@ -192,7 +193,7 @@ export function VerifyApp() {
       <input
         ref={fileRef}
         type="file"
-        accept=".stl,.step,.stp,model/stl,application/step"
+        accept={`${CAD_ACCEPT},model/stl,application/step`}
         style={{ display: "none" }}
         onChange={(e) => {
           const f = e.target.files?.[0];
@@ -290,7 +291,7 @@ export function VerifyApp() {
                   ? `Ø/bbox ${result.cost.geometry.bbox_mm.map((n) => n.toFixed(1)).join(" × ")} mm · ${result.cost.geometry.volume_cm3.toFixed(2)} cm³`
                   : running
                     ? "measuring geometry…"
-                    : "drop a STEP or STL to measure"
+                    : "drop STL, STEP or IGES to measure"
               }
               meta2={result?.cost?.geometry ? `watertight ${String(result.cost.geometry.watertight)} · ● MEASURED` : undefined}
               bbox={result?.cost?.geometry?.bbox_mm ?? null}

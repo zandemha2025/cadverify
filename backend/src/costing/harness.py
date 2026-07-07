@@ -31,7 +31,9 @@ from __future__ import annotations
 import math
 import os
 import statistics
+import zipfile
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -79,6 +81,48 @@ PARTS_DIR_DEFAULT = os.environ.get(
     "/private/tmp/claude-501/-Users-nazeem-Desktop-developer-cadverify/"
     "3182c9c6-e59b-4394-a584-d9c4cd4ce0dc/scratchpad/parts",
 )
+
+
+def has_sample_parts(parts_dir: str, sample=SAMPLE_PARTS) -> bool:
+    """True only when every frozen fixture file is present on disk."""
+    return bool(parts_dir) and os.path.isdir(parts_dir) and all(
+        os.path.isfile(os.path.join(parts_dir, fname)) for fname, _meta in sample
+    )
+
+
+def ensure_fixture_parts_dir(parts_dir: Optional[str] = None) -> str:
+    """Resolve the real-parts fixture directory, extracting the local archive.
+
+    The old default points at an agent scratchpad that may exist but be empty.
+    When the repo-local automotive batch zip is available, extract it into the
+    ignored pytest cache so real validation tests run against real geometry.
+    An explicit CADVERIFY_PARTS_DIR is respected even if incomplete.
+    """
+    explicit = parts_dir is not None or bool(os.environ.get("CADVERIFY_PARTS_DIR"))
+    candidate = parts_dir or PARTS_DIR_DEFAULT
+    if has_sample_parts(candidate):
+        return candidate
+    if explicit:
+        return candidate
+
+    repo_root = Path(__file__).resolve().parents[3]
+    archive = repo_root / "ecu_automotive_batch2.zip"
+    if not archive.exists():
+        return candidate
+
+    extracted = repo_root / ".pytest_cache" / "parts" / archive.stem
+    extracted_str = str(extracted)
+    if has_sample_parts(extracted_str):
+        return extracted_str
+
+    extracted.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(archive) as zf:
+        for member in zf.infolist():
+            target = Path(member.filename)
+            if member.is_dir() or target.is_absolute() or ".." in target.parts:
+                continue
+            zf.extract(member, extracted)
+    return extracted_str if has_sample_parts(extracted_str) else candidate
 
 # ──────────────────────────────────────────────────────────────────────────
 # 1. Independent reference constants (public price/throughput BANDS)
@@ -682,7 +726,7 @@ REPORT_PATH = "/Users/nazeem/Desktop/developer/cadverify/outputs/accuracy-report
 def main(argv=None) -> int:
     import warnings
     warnings.simplefilter("ignore")
-    parts_dir = os.environ.get("CADVERIFY_PARTS_DIR", PARTS_DIR_DEFAULT)
+    parts_dir = ensure_fixture_parts_dir()
     res = run_harness(parts_dir)
     report = build_report(res)
     out = os.environ.get("CADVERIFY_ACCURACY_REPORT", REPORT_PATH)

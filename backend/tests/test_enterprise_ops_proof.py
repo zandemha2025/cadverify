@@ -1,0 +1,150 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import yaml
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def read(path: str) -> str:
+    return (ROOT / path).read_text(encoding="utf-8")
+
+
+def load_yaml(path: str) -> dict:
+    return yaml.safe_load(read(path))
+
+
+def workflow_triggers(workflow: dict) -> dict:
+    # PyYAML follows YAML 1.1 and parses the GitHub Actions "on" key as True.
+    return workflow.get("on") or workflow[True]
+
+
+def service_env(service: dict) -> set[str]:
+    env = service.get("environment", [])
+    if isinstance(env, dict):
+        return {f"{key}={value}" for key, value in env.items()}
+    return set(env)
+
+
+def healthcheck_command(service: dict) -> str:
+    return "\n".join(service["healthcheck"]["test"])
+
+
+def assert_contains_all(text: str, expected: list[str]) -> None:
+    missing = [needle for needle in expected if needle not in text]
+    assert missing == []
+
+
+def test_ci_runs_on_dev_and_prs_with_container_proof():
+    workflow = load_yaml(".github/workflows/ci.yml")
+    triggers = workflow_triggers(workflow)
+
+    for event in ("push", "pull_request"):
+        branches = triggers[event]["branches"]
+        assert "dev" in branches
+        assert "main" in branches
+
+    docker_job = workflow["jobs"]["docker-build"]
+    assert set(docker_job["needs"]) == {"backend", "frontend"}
+
+    step_names = {step.get("name") for step in docker_job["steps"]}
+    assert "Validate Compose deploy configs" in step_names
+    assert "Build frontend production image (proof only)" in step_names
+    assert "Build backend production image and push on main" in step_names
+
+    deploy_job = workflow["jobs"]["deploy"]
+    assert deploy_job["if"] == "github.ref == 'refs/heads/main' && github.event_name == 'push'"
+
+
+def test_frontend_dockerfile_matches_current_next_runtime_mode():
+    next_config = read("frontend/next.config.ts")
+    dockerfile = read("frontend/Dockerfile")
+    enabled_standalone_lines = [
+        line for line in next_config.splitlines()
+        if 'output: "standalone"' in line and not line.lstrip().startswith("//")
+    ]
+
+    assert enabled_standalone_lines == []
+    assert ".next/standalone" not in dockerfile
+    assert "RUN npm prune --omit=dev" in dockerfile
+    assert "COPY --from=builder /app/node_modules ./node_modules" in dockerfile
+    assert "COPY --from=builder /app/.next ./.next" in dockerfile
+    assert 'CMD ["npm", "run", "start"]' in dockerfile
+
+
+def test_compose_configs_have_smokeable_frontend_and_backend():
+    local = load_yaml("docker-compose.yml")
+    enterprise = load_yaml("cadverify-enterprise/docker-compose.yml")
+
+    assert local["services"]["backend"]["build"] == "./backend"
+    assert local["services"]["frontend"]["build"] == "./frontend"
+    assert enterprise["services"]["backend"]["image"] == "cadverify-backend:latest"
+    assert enterprise["services"]["frontend"]["image"] == "cadverify-frontend:latest"
+
+    for compose in (local, enterprise):
+        backend = compose["services"]["backend"]
+        frontend = compose["services"]["frontend"]
+
+        assert "127.0.0.1:8000/health" in healthcheck_command(backend)
+        assert "python -c" in healthcheck_command(backend)
+        assert "127.0.0.1:3000" in healthcheck_command(frontend)
+        assert "node -e" in healthcheck_command(frontend)
+        assert "NEXT_PUBLIC_API_BASE=http://localhost:8000" in service_env(frontend)
+        assert "postgres" in compose["services"]
+        assert "redis" in compose["services"]
+        assert "pgdata" in compose["volumes"]
+
+    assert "blobs" in enterprise["volumes"]
+    assert "redis-data" in enterprise["volumes"]
+    assert "./saml:/app/saml:ro" in enterprise["services"]["backend"]["volumes"]
+
+
+def test_fly_configs_describe_deploy_surface_without_external_proof_claims():
+    backend = read("backend/fly.toml")
+    frontend = read("frontend/fly.toml")
+
+    assert_contains_all(
+        backend,
+        [
+            'app = "cadvrfy-api"',
+            '[processes]',
+            'web = "uvicorn main:app',
+            'worker = "arq src.jobs.worker.WorkerSettings"',
+            '[http_service]',
+            "internal_port = 8000",
+            "force_https = true",
+            "destination = \"/data\"",
+            "[deploy]",
+            "alembic upgrade head",
+        ],
+    )
+
+    assert_contains_all(
+        frontend,
+        [
+            'app = "cadverify-web"',
+            "[env]",
+            'API_BASE = "https://cadvrfy-api.fly.dev"',
+            'NEXT_PUBLIC_API_BASE = "https://cadvrfy-api.fly.dev"',
+            "[http_service]",
+            "internal_port = 3000",
+            "force_https = true",
+        ],
+    )
+
+
+def test_admin_queue_health_surface_is_real_and_pii_safe():
+    admin = read("backend/src/api/admin_routes.py")
+    service = read("backend/src/services/ops_health_service.py")
+    script = read("scripts/ops/check-queue-health.py")
+
+    assert '@router.get("/ops/queue-health")' in admin
+    assert "summarize_queue_health(session, org_id=org_filter)" in admin
+    assert "require_admin = require_org_role(OrgRole.admin)" in admin
+    assert "WebhookDelivery.payload_json" not in service
+    assert "BatchItem.filename" not in service
+    assert "User.email" not in service
+    assert "CADVERIFY_API_KEY" in script
+    assert "/api/v1/admin/ops/queue-health" in script

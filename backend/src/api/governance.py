@@ -36,6 +36,7 @@ from src.auth.rbac import (
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 from src.services import governance_service as svc
+from src.services import notification_service
 
 logger = logging.getLogger("cadverify.governance")
 
@@ -81,6 +82,20 @@ async def propose_change_request(
         title=body.title,
         note=body.note,
         proposed_by=ctx.user_id,
+    )
+    await notification_service.emit_notification(
+        session,
+        org_id=org_id,
+        actor_user_id=ctx.user_id,
+        kind="governance.change_requested",
+        severity="cond",
+        title="Governed change awaiting review",
+        body=body.title or body.asset_type or "library change",
+        dest="calibration",
+        source_type="change_request",
+        source_id=str(row.id),
+        audience_role="admin",
+        metadata={"asset_type": row.asset_type, "target_version_id": row.target_version_id},
     )
     await session.commit()
     return svc.serialize_request(row)
@@ -132,6 +147,13 @@ async def approve_change_request(
     org_id = await _write_org(ctx, session)
     row, published = await svc.approve(session, org_id, request_id, ctx.user_id)
     lib = svc._library_for(row.asset_type)
+    await notification_service.resolve_by_source(
+        session,
+        org_id=org_id,
+        kind="governance.change_requested",
+        source_type="change_request",
+        source_id=str(row.id),
+    )
     await session.commit()
     from src.services.audit_service import emit_event
     emit_event(
@@ -166,6 +188,13 @@ async def reject_change_request(
     """Reject a PROPOSED request — the draft stays a draft (admin)."""
     org_id = await _write_org(ctx, session)
     row = await svc.reject(session, org_id, request_id, ctx.user_id, note=body.note)
+    await notification_service.resolve_by_source(
+        session,
+        org_id=org_id,
+        kind="governance.change_requested",
+        source_type="change_request",
+        source_id=str(row.id),
+    )
     await session.commit()
     from src.services.audit_service import emit_event
     emit_event(

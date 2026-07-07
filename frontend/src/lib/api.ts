@@ -900,7 +900,17 @@ export function costEstimate(
 /* ------------------------------------------------------------------ */
 
 /** One row of the cost-decision history list (denormalized for listing). */
-export interface CostDecisionSummary {
+export interface CostDecisionGovernance {
+  approval_status?: "unreviewed" | "approved" | string;
+  approved_by_user_id?: number | null;
+  approved_at?: string | null;
+  approval_note?: string | null;
+  is_stale?: boolean;
+  stale_at?: string | null;
+  stale_reason?: string | null;
+}
+
+export interface CostDecisionSummary extends CostDecisionGovernance {
   id: string;
   filename: string;
   file_type: string;
@@ -921,7 +931,7 @@ export interface CostDecisionsPage {
 }
 
 /** Full saved decision envelope — `result` is the verbatim report_to_dict. */
-export interface CostDecisionDetail {
+export interface CostDecisionDetail extends CostDecisionGovernance {
   id: string;
   filename: string;
   file_type: string;
@@ -1001,6 +1011,91 @@ export interface CostShareResult {
   share_short_id: string;
 }
 
+export interface CostApprovalResult extends CostDecisionGovernance {
+  id: string;
+}
+
+export interface RfqPackageWarning {
+  code: string;
+  decision_id?: string;
+  message: string;
+}
+
+export interface RfqPackageSummary {
+  id: string;
+  title: string;
+  supplier_name: string | null;
+  status: "generated" | "archived" | string;
+  item_count: number;
+  approved_count: number;
+  stale_count: number;
+  unvalidated_count: number;
+  raw_cad_included: boolean;
+  live_supplier_send: boolean;
+  warnings: RfqPackageWarning[];
+  metadata: Record<string, unknown>;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface RfqPackageDetail extends RfqPackageSummary {
+  items: Array<{
+    decision: {
+      id: string;
+      filename: string;
+      approval_status: string;
+      is_stale: boolean;
+      unvalidated_confidence: boolean;
+      make_now_process: string | null;
+      crossover_qty: number | null;
+    };
+    declared_part?: Record<string, unknown> | null;
+    part_context?: Record<string, unknown> | null;
+    raw_cad?: { included: boolean; reason?: string; source?: string } | null;
+  }>;
+}
+
+export interface RfqPackagesPage {
+  packages: RfqPackageSummary[];
+}
+
+export async function fetchRfqPackages(limit = 50): Promise<RfqPackagesPage> {
+  const url = new URL(`${API_BASE}/rfq-packages`, window.location.origin);
+  url.searchParams.set("limit", String(limit));
+  return apiClient.fetchJson<RfqPackagesPage>(url.toString());
+}
+
+export async function fetchRfqPackage(id: string): Promise<RfqPackageDetail> {
+  const body = await apiClient.fetchJson<{ package: RfqPackageDetail }>(
+    `${API_BASE}/rfq-packages/${id}`
+  );
+  return body.package;
+}
+
+export async function createRfqPackage(input: {
+  decisionIds: string[];
+  title?: string;
+  supplierName?: string;
+  note?: string;
+  includeRawCad?: boolean;
+}): Promise<RfqPackageDetail> {
+  const body = await apiClient.fetchJson<{ package: RfqPackageDetail }>(
+    `${API_BASE}/rfq-packages`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        decision_ids: input.decisionIds,
+        title: input.title?.trim() || null,
+        supplier_name: input.supplierName?.trim() || null,
+        note: input.note?.trim() || null,
+        include_raw_cad: Boolean(input.includeRawCad),
+      }),
+    }
+  );
+  return body.package;
+}
+
 /** Paginated list of the user's saved cost decisions. */
 export async function fetchCostDecisions(params: {
   cursor?: string;
@@ -1025,6 +1120,31 @@ export async function fetchCostDecisions(params: {
 /** Full saved cost decision by id (owner-scoped; 404 for others). */
 export async function fetchCostDecision(id: string): Promise<CostDecisionDetail> {
   return apiClient.fetchJson<CostDecisionDetail>(`${API_BASE}/cost-decisions/${id}`);
+}
+
+/** Approve/sign off a saved cost decision without changing its artifact JSON. */
+export async function approveCostDecision(
+  id: string,
+  note?: string
+): Promise<CostApprovalResult> {
+  return apiClient.fetchJson<CostApprovalResult>(
+    `${API_BASE}/cost-decisions/${id}/approve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note: note?.trim() || null }),
+    }
+  );
+}
+
+/** Reopen a saved cost decision's signoff while keeping the artifact immutable. */
+export async function reopenCostDecisionApproval(
+  id: string
+): Promise<CostApprovalResult> {
+  return apiClient.fetchJson<CostApprovalResult>(
+    `${API_BASE}/cost-decisions/${id}/approve`,
+    { method: "DELETE" }
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -1196,6 +1316,12 @@ export async function exportCostJson(id: string, filename: string): Promise<void
 export async function exportCostCsv(id: string, filename: string): Promise<void> {
   const res = await apiClient.fetch(`${API_BASE}/cost-decisions/${id}/export.csv`);
   triggerBlobDownload(await res.blob(), `${costStem(filename)}-cost.csv`);
+}
+
+/** Download a generated RFQ/supplier evidence ZIP. */
+export async function downloadRfqPackage(id: string, title?: string | null): Promise<void> {
+  const res = await apiClient.fetch(`${API_BASE}/rfq-packages/${id}/download.zip`);
+  triggerBlobDownload(await res.blob(), `${costStem(title || "rfq-package")}-rfq.zip`);
 }
 
 /** Create a public share link for a saved cost decision (idempotent). */

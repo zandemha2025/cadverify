@@ -51,6 +51,7 @@ from src.db.models import (
 )
 from src.services import org_service
 from src.services.audit_service import export_audit_csv, query_audit_log
+from src.services.ops_health_service import summarize_queue_health
 
 logger = logging.getLogger("cadverify.admin")
 
@@ -378,6 +379,27 @@ async def reactivate_user(
     return result
 
 
+@router.post("/users/{user_id}/revoke-sessions")
+async def revoke_user_sessions(
+    user_id: int,
+    user: AuthedUser = Depends(require_superadmin),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Invalidate every dashboard session for an account (superadmin)."""
+    result = await org_service.revoke_user_sessions(session, user_id)
+    await session.commit()
+
+    import asyncio
+    from src.services.audit_service import _lookup_email, fire_and_forget_audit
+    _actor_email = await _lookup_email(user.user_id)
+    asyncio.create_task(fire_and_forget_audit(
+        user_id=user.user_id, user_email=_actor_email,
+        action="user.sessions_revoked", resource_type="user",
+        resource_id=str(user_id), detail={"revoked_by": user.user_id},
+    ))
+    return result
+
+
 # ---------------------------------------------------------------------------
 # GET /usage-summary -- real org usage counters for the product settings panel
 # ---------------------------------------------------------------------------
@@ -500,6 +522,21 @@ async def list_webhook_deliveries(
             for delivery, batch_ulid in rows
         ]
     }
+
+
+# ---------------------------------------------------------------------------
+# GET /ops/queue-health -- org-scoped async/batch/worker posture
+# ---------------------------------------------------------------------------
+
+
+@router.get("/ops/queue-health")
+async def get_ops_queue_health(
+    ctx: OrgAuthContext = Depends(require_admin),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """PII-free queue, batch, webhook, and worker posture for operators."""
+    org_filter = None if ctx.is_superadmin else ctx.org_id
+    return await summarize_queue_health(session, org_id=org_filter)
 
 
 # ---------------------------------------------------------------------------

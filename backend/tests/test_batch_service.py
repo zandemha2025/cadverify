@@ -116,6 +116,21 @@ def test_extract_zip_valid(tmp_path, monkeypatch):
         assert r["size"] > 0
 
 
+def test_extract_zip_accepts_iges_aliases(tmp_path, monkeypatch):
+    """IGES/IGS are first-class batch CAD inputs, matching the validate route."""
+    monkeypatch.setattr(
+        "src.services.batch_service.BATCH_BLOB_DIR", str(tmp_path)
+    )
+    zip_bytes = _make_zip({
+        "legacy.iges": b"IGES placeholder bytes",
+        "alias.igs": b"IGS placeholder bytes",
+    })
+    results = extract_zip_to_items(zip_bytes, "test-batch-iges")
+    assert [r["filename"] for r in results] == ["legacy.iges", "alias.igs"]
+    assert all("path" in r for r in results)
+    assert all(os.path.exists(r["path"]) for r in results)
+
+
 def test_extract_zip_ignores_non_cad(tmp_path, monkeypatch):
     """ZIP with .txt files skips them silently."""
     monkeypatch.setattr(
@@ -129,6 +144,27 @@ def test_extract_zip_ignores_non_cad(tmp_path, monkeypatch):
     results = extract_zip_to_items(zip_bytes, "test-batch-002")
     assert len(results) == 1
     assert results[0]["filename"] == "part.stl"
+
+
+def test_extract_zip_triages_native_and_drawing_files(tmp_path, monkeypatch):
+    """Native CAD/drawing files become visible skipped rows, not silent drops."""
+    monkeypatch.setattr(
+        "src.services.batch_service.BATCH_BLOB_DIR", str(tmp_path)
+    )
+    zip_bytes = _make_zip({
+        "assembly/gearbox.SLDASM": b"solidworks assembly",
+        "drawings/plate.DWG": b"autocad drawing",
+        "readme.txt": b"still ignored",
+        "part.step": b"ISO-10303-21; fake step data",
+    })
+    results = extract_zip_to_items(zip_bytes, "test-batch-triage")
+    by_name = {r["filename"]: r for r in results}
+    assert set(by_name) == {"gearbox.SLDASM", "plate.DWG", "part.step"}
+    assert by_name["part.step"]["path"]
+    assert by_name["gearbox.SLDASM"]["status"] == "skipped"
+    assert "Unsupported native CAD file type .sldasm" in by_name["gearbox.SLDASM"]["error"]
+    assert by_name["plate.DWG"]["status"] == "skipped"
+    assert "Unsupported drawing file type .dwg" in by_name["plate.DWG"]["error"]
 
 
 def test_extract_zip_oversized_file_skipped(tmp_path, monkeypatch):

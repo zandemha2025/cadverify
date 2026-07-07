@@ -115,7 +115,7 @@ export default function CompanyView() {
             <WeekCell
               week="WEEK 1"
               title="Bring 10–50 parts"
-              body="STEP or STL, plus your machine list — the floor is the denominator of every verdict — and 12 months of paid prices where you have them. Deployed in our cloud, your VPC, or air-gapped."
+              body="STL, STEP or IGES, plus your machine list — the floor is the denominator of every verdict — and 12 months of paid prices where you have them. Deployed in our cloud, your VPC, or air-gapped."
             />
             <WeekCell
               week="WEEK 2"

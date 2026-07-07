@@ -30,11 +30,14 @@ from src.api.reconstruct_router import router as reconstruct_router
 from src.api.admin_routes import router as admin_router
 from src.api.routes import router
 from src.api.cost_decisions import public_cost_share_router, router as cost_decisions_router
+from src.api.rfq_packages import router as rfq_packages_router
 from src.api.catalog import router as catalog_router
 from src.api.rate_library import router as rate_library_router
 from src.api.shop_library import router as shop_library_router
 from src.api.material_library import router as material_library_router
 from src.api.governance import router as governance_router
+from src.api.notifications import router as notifications_router
+from src.api.integrations import router as integrations_router
 from src.api.part_context import router as part_context_router
 from src.api.groundtruth import router as groundtruth_router
 from src.api.manifest import router as manifest_router
@@ -214,6 +217,9 @@ app.include_router(public_share_router, prefix="/s")
 # Cost-decision persistence surface (Phase 2 gap #3): list/detail/export/share/compare
 app.include_router(cost_decisions_router, prefix="/api/v1/cost-decisions")
 app.include_router(public_cost_share_router, prefix="/s")
+# RFQ/supplier evidence packages: downloadable, local packages built from saved
+# decisions; no live supplier send or supplier-network claim.
+app.include_router(rfq_packages_router, prefix="/api/v1/rfq-packages")
 # Catalog read surface (W1 step 4): the org-scoped parts×decisions grid.
 app.include_router(catalog_router, prefix="/api/v1/catalog", tags=["catalog"])
 # Governed rate-library (W4 slice 1): versioned, effective-dated rate-card asset.
@@ -236,6 +242,15 @@ app.include_router(
 # the governed rate-card / shop-profile libraries (approval publishes the draft).
 app.include_router(
     governance_router, prefix="/api/v1/governance", tags=["governance"]
+)
+# Durable workflow inbox (P5): first-class rows emitted beside domain mutations.
+app.include_router(
+    notifications_router, prefix="/api/v1/notifications", tags=["notifications"]
+)
+# Offline integration apparatus (P6): connector registry plus run ledger for
+# SAP/PLM/ground-truth CSV dry-runs and imports.
+app.include_router(
+    integrations_router, prefix="/api/v1/integrations", tags=["integrations"]
 )
 # Declared part-context (W3.5 rung-1): user-declared program/assembly/volume so
 # the portfolio roll-up can state an honest $/year.

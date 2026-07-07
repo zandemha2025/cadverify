@@ -19,6 +19,16 @@ import { EmptyState } from "@/components/ui/empty-state";
 
 const MAX_LOADED_ITEMS = 500;
 
+function governanceLabel(
+  row: CostDecisionSummary
+): { label: string; tone: "pass" | "warn" | "neutral" } {
+  if (row.is_stale) return { label: "Stale", tone: "warn" };
+  if (row.approval_status === "approved") {
+    return { label: "Approved", tone: "pass" };
+  }
+  return { label: "Unreviewed", tone: "neutral" };
+}
+
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const secs = Math.floor(diff / 1000);
@@ -119,6 +129,14 @@ export default function CostDecisionHistoryTable({ onRateLimitsUpdate }: Props) 
           ) : (
             <span className="text-muted-foreground">—</span>
           ),
+      },
+      {
+        accessorKey: "approval_status",
+        header: "Governance",
+        cell: ({ row }) => {
+          const gov = governanceLabel(row.original);
+          return <StatusBadge tone={gov.tone} label={gov.label} size="sm" />;
+        },
       },
       {
         accessorKey: "created_at",

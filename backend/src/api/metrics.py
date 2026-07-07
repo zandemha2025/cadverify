@@ -28,6 +28,7 @@ from src.api.metrics_registry import (
     PROMETHEUS_AVAILABLE,
     observe_http_request,
     render_latest,
+    update_queue_metrics,
 )
 
 router = APIRouter()
@@ -89,6 +90,19 @@ async def metrics() -> Response:
     """Prometheus text exposition of the core CADVerify metrics."""
     if not _metrics_enabled():
         return Response(status_code=404)
+    if PROMETHEUS_AVAILABLE:
+        try:
+            from src.db.engine import get_session_factory
+            from src.services.ops_health_service import summarize_queue_health
+
+            async with get_session_factory()() as session:
+                update_queue_metrics(await summarize_queue_health(session, org_id=None))
+        except Exception:
+            # Metrics must stay scrapeable even if the DB is momentarily
+            # unavailable. /health is the dependency gate; stale/missing queue
+            # gauges are safer than turning the scrape endpoint into another
+            # failing dependency.
+            pass
     payload, content_type = render_latest()
     if payload is None:
         # prometheus-client not installed — honest 503 rather than an empty body.

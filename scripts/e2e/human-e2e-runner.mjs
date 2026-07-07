@@ -71,6 +71,8 @@ const appRoutes = [
   { path: "/batch", signal: /Batch|Start batch|ZIP/i },
   { path: "/cost-decisions", signal: /Cost history|saved should-cost/i },
   { path: "/cost-decisions/compare", signal: /Compare cost decisions|Pick two saved decisions/i },
+  { path: "/rfq-packages", signal: /RFQ packages|Generated packages|New package/i },
+  { path: "/integrations", signal: /Integrations|Connector runs|Recent runs/i },
   { path: "/history", signal: /History|recent analyses/i },
   { path: "/reconstruct", signal: /Image to 3D|Reconstruct|photographs/i },
   { path: "/label", signal: /Parts \(Label\)|Labeling|corpus|label/i },

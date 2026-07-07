@@ -44,7 +44,26 @@ BATCH_MAX_FILE_BYTES = int(os.getenv("BATCH_MAX_FILE_BYTES", str(100 * 1024**2))
 MAX_COMPRESSION_RATIO = 100
 DEFAULT_BATCH_CONCURRENCY = int(os.getenv("DEFAULT_BATCH_CONCURRENCY", "10"))
 BATCH_BLOB_DIR = os.getenv("BATCH_BLOB_DIR", "/data/blobs/batch")
-VALID_EXTENSIONS = {".stl", ".step", ".stp"}
+VALID_EXTENSIONS = {".stl", ".step", ".stp", ".iges", ".igs"}
+NATIVE_CAD_EXTENSIONS = {
+    ".sldprt",
+    ".sldasm",
+    ".slddrw",
+    ".prt",
+    ".asm",
+    ".ipt",
+    ".iam",
+    ".catpart",
+    ".catproduct",
+    ".x_t",
+    ".x_b",
+    ".sat",
+    ".sab",
+    ".jt",
+    ".3dxml",
+}
+DRAWING_EXTENSIONS = {".dwg", ".dxf", ".drw", ".idw"}
+CAD_TRIAGE_EXTENSIONS = NATIVE_CAD_EXTENSIONS | DRAWING_EXTENSIONS
 
 _VALID_PRIORITIES = {"low", "normal", "high"}
 _CSV_EXPORT_PAGE_SIZE = 200
@@ -175,6 +194,15 @@ def _dedup_name(base: str, seen: set[str]) -> str:
         i += 1
 
 
+def _unsupported_cad_error(ext: str) -> str:
+    kind = "drawing" if ext in DRAWING_EXTENSIONS else "native CAD"
+    return (
+        f"Unsupported {kind} file type {ext or '(none)'}. "
+        "Upload STL, STEP/STP, or IGES/IGS for batch analysis; native CAD and "
+        "drawings require conversion before processing."
+    )
+
+
 def _extract_zipfile(zf: zipfile.ZipFile, batch_ulid: str) -> list[dict]:
     """Core extraction shared by the bytes- and path-based entry points.
 
@@ -201,12 +229,12 @@ def _extract_zipfile(zf: zipfile.ZipFile, batch_ulid: str) -> list[dict]:
         if not base:
             continue
         ext = os.path.splitext(base)[1].lower()
-        if ext not in VALID_EXTENSIONS:
+        if ext not in VALID_EXTENSIONS and ext not in CAD_TRIAGE_EXTENSIONS:
             continue  # skip non-CAD silently
         # Assign the final on-disk name up front (deduped) so both skip records
         # and extracted files carry a distinct, stable filename.
         safe_name = _dedup_name(base, seen) if dedup else base
-        cad_entries.append((info, safe_name))
+        cad_entries.append((info, safe_name, ext))
 
     if len(cad_entries) > BATCH_MAX_ITEMS:
         raise ValueError(
@@ -214,7 +242,16 @@ def _extract_zipfile(zf: zipfile.ZipFile, batch_ulid: str) -> list[dict]:
             f"exceeding limit of {BATCH_MAX_ITEMS}"
         )
 
-    for info, safe_name in cad_entries:
+    for info, safe_name, ext in cad_entries:
+        if ext in CAD_TRIAGE_EXTENSIONS:
+            results.append({
+                "filename": safe_name,
+                "status": "skipped",
+                "error": _unsupported_cad_error(ext),
+                "size": info.file_size,
+            })
+            continue
+
         # Pre-check uncompressed size
         if info.file_size > BATCH_MAX_FILE_BYTES:
             results.append({

@@ -56,6 +56,67 @@ def test_good_csv_yields_all_real_rows():
     assert rows[2]["currency"] == "USD"
 
 
+def test_csv_actuals_metadata_round_trips():
+    digest = "a" * 64
+    csv_text = (
+        "part_id,process,quantity,actual_unit_cost_usd,source_type,vendor_quote_id,"
+        "invoice_date,actual_machine_hours,actual_setup_hours,actual_labor_hours,"
+        "actual_inspection_hours,actual_cycle_seconds,evidence_sha256,evidence_uri\n"
+        f"pump.step,cnc_3axis,12,155.25,invoice,INV-44,2026-06-30,"
+        f"3.5,0.75,1.25,0.5,930,{digest},customer://invoices/INV-44.pdf\n"
+    )
+    rows, errors = svc.parse_ground_truth_csv(csv_text)
+    assert errors == []
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["stand_in"] is False
+    assert row["source_type"] == "invoice"
+    assert row["vendor_quote_id"] == "INV-44"
+    assert row["invoice_date"] == "2026-06-30"
+    assert row["actual_machine_hours"] == 3.5
+    assert row["actual_setup_hours"] == 0.75
+    assert row["actual_labor_hours"] == 1.25
+    assert row["actual_inspection_hours"] == 0.5
+    assert row["actual_cycle_seconds"] == 930
+    assert row["evidence_sha256"] == digest
+    assert row["evidence_uri"] == "customer://invoices/INV-44.pdf"
+
+
+def test_csv_synthetic_source_type_forces_stand_in():
+    csv_text = (
+        "part_id,process,quantity,actual_unit_cost_usd,source_type,source\n"
+        "seed.step,cnc_3axis,12,155.25,seed,synthetic fixture\n"
+        "demo.step,sls,4,21.00,demo,demo fixture\n"
+    )
+    rows, errors = svc.parse_ground_truth_csv(csv_text)
+    assert errors == []
+    assert len(rows) == 2
+    assert all(row["stand_in"] is True for row in rows)
+    assert [row["source_type"] for row in rows] == ["seed", "demo"]
+
+
+def test_csv_metadata_validation_reports_line_errors():
+    csv_text = (
+        "part_id,process,quantity,actual_unit_cost_usd,source_type,invoice_date,"
+        "actual_machine_hours,evidence_sha256\n"
+        "bad-source.stl,sls,10,5.00,maybe,2026-06-30,1.0,"
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+        "bad-date.stl,sls,10,5.00,actual,06/30/2026,1.0,"
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+        "bad-hours.stl,sls,10,5.00,actual,2026-06-30,-1,"
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+        "bad-digest.stl,sls,10,5.00,actual,2026-06-30,1.0,not-a-sha\n"
+    )
+    rows, errors = svc.parse_ground_truth_csv(csv_text)
+    assert rows == []
+    by_line = {e["line"]: e["reason"] for e in errors}
+    assert set(by_line) == {2, 3, 4, 5}
+    assert "source_type" in by_line[2]
+    assert "invoice_date" in by_line[3]
+    assert "actual_machine_hours" in by_line[4]
+    assert "evidence_sha256" in by_line[5]
+
+
 def test_mixed_csv_reports_precise_per_line_errors():
     csv_text = (
         "part_id,process,quantity,actual_unit_cost_usd,material_class\n"

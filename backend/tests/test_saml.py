@@ -42,6 +42,7 @@ def _mock_saml_auth():
     mock_auth.get_errors.return_value = []
     mock_auth.is_authenticated.return_value = True
     mock_auth.get_nameid.return_value = "user@enterprise.com"
+    mock_auth.get_attributes.return_value = {}
 
     # Metadata support
     mock_settings = MagicMock()
@@ -88,10 +89,12 @@ def test_saml_login_redirect(mock_build_auth):
 
 
 @patch("src.auth.saml._saml_provision_user", new_callable=AsyncMock)
+@patch("src.auth.saml.get_user_session_version", new_callable=AsyncMock)
 @patch("src.auth.saml._build_auth")
-def test_saml_acs_provisions_user(mock_build_auth, mock_provision):
+def test_saml_acs_provisions_user(mock_build_auth, mock_session_version, mock_provision):
     """POST /auth/saml/acs provisions user and sets session cookie."""
     mock_build_auth.return_value = _mock_saml_auth()
+    mock_session_version.return_value = 0
     mock_provision.return_value = 42
     app = _make_app("saml")
     client = TestClient(app, follow_redirects=False)
@@ -101,6 +104,69 @@ def test_saml_acs_provisions_user(mock_build_auth, mock_provision):
     mock_provision.assert_called_once_with("user@enterprise.com")
     # Session cookie should be set
     assert "dash_session" in resp.headers.get("set-cookie", "")
+
+
+@patch("src.auth.saml._apply_saml_group_assignment_for_login", new_callable=AsyncMock)
+@patch("src.auth.saml._saml_provision_user", new_callable=AsyncMock)
+@patch("src.auth.saml.get_user_session_version", new_callable=AsyncMock)
+@patch("src.auth.saml._build_auth")
+def test_saml_acs_applies_group_assignment(
+    mock_build_auth, mock_session_version, mock_provision, mock_assignment
+):
+    """POST /auth/saml/acs applies IdP group attributes before issuing session."""
+    from src.services.org_saml_service import SamlGroupAssignment
+
+    mock_auth = _mock_saml_auth()
+    mock_auth.get_attributes.return_value = {
+        "memberOf": ["cn=cad-engineers"],
+        "department": "AM",
+    }
+    mock_build_auth.return_value = mock_auth
+    mock_session_version.return_value = 0
+    mock_provision.return_value = 42
+    mock_assignment.return_value = SamlGroupAssignment(
+        matched=True, org_id="org_enterprise", org_role="member", created=True
+    )
+    app = _make_app("saml")
+    client = TestClient(app, follow_redirects=False)
+
+    resp = client.post("/auth/saml/acs", data={"SAMLResponse": "base64data"})
+
+    assert resp.status_code == 303
+    mock_assignment.assert_awaited_once_with(
+        42, {"memberOf": ["cn=cad-engineers"], "department": ["AM"]}
+    )
+    assert "dash_session" in resp.headers.get("set-cookie", "")
+
+
+@patch("src.auth.saml._apply_saml_group_assignment_for_login", new_callable=AsyncMock)
+@patch("src.auth.saml._saml_provision_user", new_callable=AsyncMock)
+@patch("src.auth.saml._build_auth")
+def test_saml_acs_ambiguous_group_mapping_blocks_session(
+    mock_build_auth, mock_provision, mock_assignment
+):
+    """Ambiguous IdP group mappings fail closed and do not set a session."""
+    from fastapi import HTTPException
+
+    mock_auth = _mock_saml_auth()
+    mock_auth.get_attributes.return_value = {"memberOf": ["cn=shared-cad"]}
+    mock_build_auth.return_value = mock_auth
+    mock_provision.return_value = 42
+    mock_assignment.side_effect = HTTPException(
+        403,
+        detail={
+            "code": "saml_group_mapping_ambiguous",
+            "message": "ambiguous",
+        },
+    )
+    app = _make_app("saml")
+    client = TestClient(app, follow_redirects=False, raise_server_exceptions=False)
+
+    resp = client.post("/auth/saml/acs", data={"SAMLResponse": "base64data"})
+
+    assert resp.status_code == 403
+    assert "saml_group_mapping_ambiguous" in resp.text
+    assert "dash_session" not in resp.headers.get("set-cookie", "")
 
 
 @patch("src.auth.saml._build_auth")
@@ -230,6 +296,13 @@ async def test_saml_provision_mints_when_no_active_key(
     uid = await _saml_provision_user("User@Example.com")
 
     assert uid == 5
+    mock_upsert.assert_awaited_once_with(
+        email="User@Example.com",
+        google_sub=None,
+        email_lower="user@example.com",
+        disposable_flag=False,
+        auth_provider="saml",
+    )
     mock_create.assert_awaited_once()
 
 
@@ -249,4 +322,11 @@ async def test_saml_provision_skips_when_key_exists(
     uid = await _saml_provision_user("User@Example.com")
 
     assert uid == 5
+    mock_upsert.assert_awaited_once_with(
+        email="User@Example.com",
+        google_sub=None,
+        email_lower="user@example.com",
+        disposable_flag=False,
+        auth_provider="saml",
+    )
     mock_create.assert_not_called()

@@ -16,7 +16,19 @@ from fastapi.responses import RedirectResponse, Response
 from src.auth.dashboard_session import clear_session_cookie, set_session_cookie
 from src.auth.disposable import normalize_email
 from src.auth.hashing import hmac_index, mint_token
-from src.auth.models import create_api_key, upsert_user, user_has_active_api_key
+from src.auth.models import (
+    create_api_key,
+    get_user_session_version,
+    upsert_user,
+    user_has_active_api_key,
+)
+from src.db.engine import get_session_factory
+from src.services.org_saml_service import (
+    SamlGroupAssignment,
+    SamlGroupMappingAmbiguousError,
+    apply_saml_group_assignment,
+    normalize_saml_attributes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +149,7 @@ async def _saml_provision_user(email: str) -> int:
         google_sub=None,
         email_lower=email_lower,
         disposable_flag=False,
+        auth_provider="saml",
     )
 
     # Mint a default API key only if the user has none active. Re-minting on
@@ -160,6 +173,45 @@ async def _saml_provision_user(email: str) -> int:
     ))
 
     return user_id
+
+
+def _extract_saml_attributes(auth) -> dict[str, list[str]]:
+    getter = getattr(auth, "get_attributes", None)
+    if getter is None:
+        return {}
+    try:
+        return normalize_saml_attributes(getter())
+    except Exception:
+        logger.warning("failed to read SAML assertion attributes", exc_info=True)
+        return {}
+
+
+async def _apply_saml_group_assignment_for_login(
+    user_id: int, attributes: dict[str, list[str]]
+) -> SamlGroupAssignment:
+    async with get_session_factory()() as session:
+        try:
+            assignment = await apply_saml_group_assignment(session, user_id, attributes)
+            await session.commit()
+            return assignment
+        except SamlGroupMappingAmbiguousError as exc:
+            await session.rollback()
+            logger.warning(
+                "SAML group mapping matched multiple orgs for user_id=%s org_count=%d",
+                user_id,
+                len(exc.org_ids),
+            )
+            raise HTTPException(
+                403,
+                detail={
+                    "code": "saml_group_mapping_ambiguous",
+                    "message": (
+                        "SAML assertion matched group mappings in multiple "
+                        "organizations. Ask an administrator to correct the mapping."
+                    ),
+                    "doc_url": "https://docs.cadverify.com/errors#saml_group_mapping_ambiguous",
+                },
+            ) from exc
 
 
 @router.get("/login")
@@ -212,6 +264,12 @@ async def saml_acs(request: Request):
         )
 
     user_id = await _saml_provision_user(email)
+    saml_attributes = _extract_saml_attributes(auth)
+    group_assignment = SamlGroupAssignment(matched=False)
+    if saml_attributes:
+        group_assignment = await _apply_saml_group_assignment_for_login(
+            user_id, saml_attributes
+        )
 
     # Audit: auth.login
     import asyncio
@@ -219,12 +277,19 @@ async def saml_acs(request: Request):
     asyncio.create_task(fire_and_forget_audit(
         user_id=user_id, user_email=email,
         action="auth.login", resource_type="session",
-        detail={"auth_provider": "saml"},
+        detail={
+            "auth_provider": "saml",
+            "saml_group_assignment": group_assignment.to_audit_detail(),
+        },
     ))
 
     dashboard_url = os.getenv("DASHBOARD_ORIGIN", "https://cadverify.com")
     resp = RedirectResponse(url=f"{dashboard_url}/dashboard", status_code=303)
-    set_session_cookie(resp, user_id)
+    set_session_cookie(
+        resp,
+        user_id,
+        session_version=await get_user_session_version(user_id),
+    )
     return resp
 
 

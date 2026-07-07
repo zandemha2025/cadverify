@@ -20,8 +20,12 @@ const SESSION_COOKIE = "dash_session";
 const GATED = [
   "/analyze",
   "/cost",
+  "/cost-decisions",
   "/batch",
   "/history",
+  "/integrations",
+  "/notifications",
+  "/rfq-packages",
   "/analyses",
   "/label",
   "/reconstruct",

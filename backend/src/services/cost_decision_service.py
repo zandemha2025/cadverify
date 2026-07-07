@@ -19,10 +19,11 @@ import io
 import json
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
@@ -33,6 +34,9 @@ from src.db.models import CostDecision, UsageEvent
 from src.services.share_service import generate_short_id
 
 logger = logging.getLogger("cadverify.cost_decision_service")
+
+APPROVAL_UNREVIEWED = "unreviewed"
+APPROVAL_APPROVED = "approved"
 
 
 def cost_persist_enabled() -> bool:
@@ -174,6 +178,31 @@ async def persist_cost_decision(
 
     await _refresh_summary_for(session, decision)
 
+    try:
+        from src.services import notification_service
+
+        await notification_service.emit_notification(
+            session,
+            org_id=decision.org_id,
+            actor_user_id=user.user_id,
+            kind="decision.created",
+            severity="pass",
+            title=f"Verification recorded - {filename}",
+            body=(
+                f"make-now {make_now}" if make_now else "cost decision recorded"
+            ),
+            dest="records",
+            source_type="cost_decision",
+            source_id=decision.ulid,
+            metadata={"filename": filename, "crossover_qty": crossover},
+        )
+    except Exception:
+        logger.warning(
+            "Failed to emit decision.created notification for %s",
+            decision.ulid,
+            exc_info=True,
+        )
+
     # Audit: decision.created (§35 — decisions themselves were previously
     # unaudited, so "why did we decide in March?" was unanswerable). Fired only
     # on a NEW persist (dedup hits return above), best-effort, off the request
@@ -287,6 +316,39 @@ def _list_item(d: CostDecision) -> dict:
         "created_at": d.created_at.isoformat(),
         "is_public": d.is_public,
         "share_url": f"/s/cost/{d.share_short_id}" if d.share_short_id else None,
+        **governance_fields(d),
+    }
+
+
+def _iso(dt) -> str | None:
+    return dt.isoformat() if isinstance(dt, datetime) else None
+
+
+def _is_stale(d: CostDecision, now: datetime | None = None) -> bool:
+    stale_at = getattr(d, "stale_at", None)
+    if not isinstance(stale_at, datetime):
+        return False
+    now = now or datetime.now(timezone.utc)
+    if stale_at.tzinfo is None:
+        stale_at = stale_at.replace(tzinfo=timezone.utc)
+    return stale_at <= now
+
+
+def governance_fields(d: CostDecision) -> dict:
+    """Serializable signoff/staleness metadata for list/detail/public-safe reads.
+
+    ``is_stale`` is time-aware: a library publish scheduled in the future records
+    ``stale_at`` now, but does not claim the saved decision is stale until that
+    effective instant arrives.
+    """
+    return {
+        "approval_status": getattr(d, "approval_status", None) or APPROVAL_UNREVIEWED,
+        "approved_by_user_id": getattr(d, "approved_by_user_id", None),
+        "approved_at": _iso(getattr(d, "approved_at", None)),
+        "approval_note": getattr(d, "approval_note", None),
+        "is_stale": _is_stale(d),
+        "stale_at": _iso(getattr(d, "stale_at", None)),
+        "stale_reason": getattr(d, "stale_reason", None),
     }
 
 
@@ -307,6 +369,75 @@ async def get_owned(
     if row is None:
         raise HTTPException(status_code=404, detail="Cost decision not found")
     return row
+
+
+def _clean_note(note: Optional[str]) -> Optional[str]:
+    if note is None:
+        return None
+    note = note.strip()
+    if not note:
+        return None
+    return note[:1000]
+
+
+async def approve_owned(
+    session: AsyncSession,
+    ulid: str,
+    user_id: int,
+    *,
+    note: Optional[str] = None,
+) -> CostDecision:
+    """Approve/sign off a saved decision in the caller's org."""
+    d = await get_owned(session, ulid, user_id)
+    d.approval_status = APPROVAL_APPROVED
+    d.approved_by_user_id = user_id
+    d.approved_at = datetime.now(timezone.utc)
+    d.approval_note = _clean_note(note)
+    await session.commit()
+    logger.info("Cost decision %s approved by user %d", ulid, user_id)
+    return d
+
+
+async def reopen_owned(
+    session: AsyncSession,
+    ulid: str,
+    user_id: int,
+) -> CostDecision:
+    """Remove approval from a saved decision without deleting the artifact."""
+    d = await get_owned(session, ulid, user_id)
+    d.approval_status = APPROVAL_UNREVIEWED
+    d.approved_by_user_id = None
+    d.approved_at = None
+    d.approval_note = None
+    await session.commit()
+    logger.info("Cost decision %s approval reopened by user %d", ulid, user_id)
+    return d
+
+
+async def mark_org_decisions_stale(
+    session: AsyncSession,
+    org_id: str,
+    *,
+    reason: str,
+    stale_at: Optional[datetime] = None,
+) -> int:
+    """Mark existing org decisions stale after governed assumptions change.
+
+    This is deliberately additive: the saved glass-box artifact is never edited.
+    It gains a stale marker saying the record predates a governed library update
+    and should be re-costed before being used as a current decision.
+    """
+    when = stale_at or datetime.now(timezone.utc)
+    result = await session.execute(
+        update(CostDecision)
+        .where(
+            CostDecision.org_id == org_id,
+            CostDecision.created_at < when,
+            CostDecision.stale_at.is_(None),
+        )
+        .values(stale_at=when, stale_reason=reason)
+    )
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 # ---------------------------------------------------------------------------

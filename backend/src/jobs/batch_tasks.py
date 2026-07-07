@@ -199,9 +199,12 @@ async def sweep_orphaned_batches(ctx: dict) -> int:
     session_factory = get_session_factory()
     async with session_factory() as session:
         reaped = await batch_service.sweep_orphaned_batches(session)
-        if reaped:
-            await session.commit()
     if reaped:
+        await session.commit()
+    if reaped:
+        from src.api.metrics_registry import record_orphan_sweep
+
+        record_orphan_sweep(reaped)
         logger.warning("Orphan sweep reaped %d stuck batch(es)", reaped)
     return reaped
 

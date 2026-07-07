@@ -11,7 +11,8 @@
     "test:e2e": "node scripts/e2e-smoke.mjs",
     "test:e2e:human": "node ../scripts/e2e/human-e2e-runner.mjs",
     "test:e2e:enterprise": "node ../scripts/e2e/enterprise-domain-runner.mjs",
-    "test:e2e:full": "npm run test:e2e:human && npm run test:e2e:enterprise"
+    "test:e2e:p7": "node ../scripts/e2e/p7-role-failure-journey-runner.mjs",
+    "test:e2e:full": "npm run test:e2e:human && npm run test:e2e:enterprise && npm run test:e2e:p7"
   },
   "dependencies": {
     "@fontsource-variable/instrument-sans": "^5.2.8",

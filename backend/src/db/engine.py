@@ -81,14 +81,12 @@ def get_engine():
         # Pool sizing is env-driven (F-ARCH-6): the batch coordinator and worker
         # concurrency can hold several sessions at once, so operators must be
         # able to size the pool to their deployment instead of a hardcoded 5.
-        pool_size = int(os.getenv("DB_POOL_SIZE", "5"))
-        max_overflow = int(os.getenv("DB_MAX_OVERFLOW", "10"))
-        _ENGINE = create_async_engine(
-            _async_url(_ensure_prod_tls(os.environ["DATABASE_URL"])),
-            pool_pre_ping=True,
-            pool_size=pool_size,
-            max_overflow=max_overflow,
-        )
+        url = _async_url(_ensure_prod_tls(os.environ["DATABASE_URL"]))
+        kwargs = {"pool_pre_ping": True}
+        if not url.startswith("sqlite"):
+            kwargs["pool_size"] = int(os.getenv("DB_POOL_SIZE", "5"))
+            kwargs["max_overflow"] = int(os.getenv("DB_MAX_OVERFLOW", "10"))
+        _ENGINE = create_async_engine(url, **kwargs)
     return _ENGINE
 
 

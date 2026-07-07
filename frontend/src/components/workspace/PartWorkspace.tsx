@@ -41,6 +41,7 @@ import { severityTone, verdictLabel, verdictTone, procLabel } from "@/lib/status
 import { parseCalibration, pickEstimate } from "@/lib/cost-views";
 import { costPersistUiEnabled } from "@/lib/cost-decision";
 import { flattenIssues } from "@/components/IssueList";
+import { CAD_ACCEPT, isSupportedCad, supportedCadLabel } from "@/lib/cad-file";
 
 import { Button } from "@/components/ui/button";
 import { Dropzone } from "@/components/ui/dropzone";
@@ -105,8 +106,6 @@ const SEVERITY_HEX: Record<string, string> = STAGE_UI
       pass: "#3fb37f",
       neutral: "#93a1b3",
     };
-
-const ACCEPT = ".stl,.step,.stp";
 
 type WorkTab = "decision" | "routing" | "glassbox" | "compare" | "history";
 
@@ -335,9 +334,8 @@ export default function PartWorkspace({
 
   const handleFile = useCallback(
     (selected: File) => {
-      const ext = selected.name.split(".").pop()?.toLowerCase();
-      if (!ext || !["stl", "step", "stp"].includes(ext)) {
-        setCostError("Unsupported file type. Use .stl, .step, or .stp");
+      if (!isSupportedCad(selected.name)) {
+        setCostError(`Unsupported file type. Use ${supportedCadLabel()}.`);
         return;
       }
       if (validateQty(opts.qty)) {
@@ -459,10 +457,10 @@ export default function PartWorkspace({
           </p>
         </div>
         <Dropzone
-          accept={ACCEPT}
+          accept={CAD_ACCEPT}
           onFiles={(files) => files[0] && handleFile(files[0])}
           isLoading={costLoading}
-          hint="STEP, STP or STL · CAD is parsed and discarded in-process · zero egress"
+          hint="STL, STEP, STP, IGES or IGS · CAD is parsed and discarded in-process · zero egress"
         />
         {costError && <ErrorState message={costError} onRetry={() => setCostError(null)} />}
         <Card>

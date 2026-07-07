@@ -26,7 +26,12 @@ from src.auth.dashboard_session import set_session_cookie
 from src.auth.disposable import classify, normalize_email
 from src.auth.disposable_list import get_soft_flag_set
 from src.auth.hashing import hmac_index, mint_token
-from src.auth.models import create_api_key, upsert_user, user_has_active_api_key
+from src.auth.models import (
+    create_api_key,
+    get_user_session_version,
+    upsert_user,
+    user_has_active_api_key,
+)
 from src.auth.redis_util import require_redis_url
 from src.auth.signup_limits import per_email_signup_limit, per_ip_signup_limit
 from src.auth.turnstile import verify_turnstile
@@ -137,13 +142,17 @@ async def magic_verify(token: str):
                 "doc_url": "https://docs.cadverify.com/errors#magic_link_used",
             },
         )
-    user_id = await upsert_user(stored, None, stored)
+    user_id = await upsert_user(stored, None, stored, auth_provider="magic_link")
 
     # Mint a key only when the account has none active (S3). Returning users
     # sign in via magic link repeatedly; each login must not spawn a new key.
     if await user_has_active_api_key(user_id):
         resp = RedirectResponse(url="/settings/developer", status_code=303)
-        set_session_cookie(resp, user_id)
+        set_session_cookie(
+            resp,
+            user_id,
+            session_version=await get_user_session_version(user_id),
+        )
         return resp
 
     full_token, prefix, secret_hash = mint_token()
@@ -154,7 +163,11 @@ async def magic_verify(token: str):
         url=f"/settings/developer?new=1&prefix={prefix}", status_code=303
     )
     # 30-day dashboard session cookie (HMAC-signed, HttpOnly, Secure, SameSite=Lax).
-    set_session_cookie(resp, user_id)
+    set_session_cookie(
+        resp,
+        user_id,
+        session_version=await get_user_session_version(user_id),
+    )
     # Transient reveal cookie for one-time key display.
     resp.set_cookie(
         "cv_mint_once",

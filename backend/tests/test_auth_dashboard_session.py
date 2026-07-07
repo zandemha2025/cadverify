@@ -12,10 +12,14 @@ def setup_module():
 
 
 def test_sign_unsign_roundtrip():
-    from src.auth.dashboard_session import sign, unsign
+    from src.auth.dashboard_session import sign, unsign, unsign_payload
 
     c = sign(42)
     assert unsign(c) == 42
+    payload = unsign_payload(sign(42, session_version=7))
+    assert payload is not None
+    assert payload.user_id == 42
+    assert payload.session_version == 7
 
 
 _B64URL_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
@@ -106,17 +110,55 @@ async def test_require_dashboard_session_valid(monkeypatch):
         sign,
     )
 
-    # §39 added an account-active check after the 401 guard. This is a no-DB
-    # unit test, so mock the active read (require_dashboard_session lazy-imports
-    # user_is_active from src.auth.models) — else it opens the process-global
-    # engine and binds its asyncpg pool to THIS test's event loop, poisoning the
-    # next live-PG test with a stale cross-loop pool.
+    # Unit test, no DB: mock the lazy-imported user/session row lookup so this
+    # does not bind the process-global engine to this test's event loop.
     import src.auth.models as _models
 
-    monkeypatch.setattr(_models, "user_is_active", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        _models,
+        "lookup_session_user",
+        AsyncMock(
+            return_value=_models.SessionUserRow(
+                user_id=7,
+                role="analyst",
+                is_active=True,
+                session_version=3,
+            )
+        ),
+    )
     req = MagicMock()
-    req.cookies = {COOKIE_NAME: sign(7)}
+    req.cookies = {COOKIE_NAME: sign(7, session_version=3)}
     assert await require_dashboard_session(req) == 7
+
+
+@pytest.mark.asyncio
+async def test_require_dashboard_session_rejects_revoked(monkeypatch):
+    from src.auth.dashboard_session import (
+        COOKIE_NAME,
+        require_dashboard_session,
+        sign,
+    )
+
+    import src.auth.models as _models
+
+    monkeypatch.setattr(
+        _models,
+        "lookup_session_user",
+        AsyncMock(
+            return_value=_models.SessionUserRow(
+                user_id=7,
+                role="analyst",
+                is_active=True,
+                session_version=4,
+            )
+        ),
+    )
+    req = MagicMock()
+    req.cookies = {COOKIE_NAME: sign(7, session_version=3)}
+    with pytest.raises(HTTPException) as exc:
+        await require_dashboard_session(req)
+    assert exc.value.status_code == 401
+    assert exc.value.detail["code"] == "session_revoked"
 
 
 @pytest.mark.asyncio
@@ -178,11 +220,26 @@ def test_legacy_single_blob_format_fails_closed():
 
     from src.auth.dashboard_session import _secret, unsign
 
-    body = b"42.1700000000"
+    body = f"42.{int(time.time())}".encode()
     sig = hmac.new(_secret(), body, hashlib.sha256).digest()[:16]
     legacy = _b64.urlsafe_b64encode(body + b"." + sig).rstrip(b"=").decode()
     assert "." not in legacy  # old format never contains the delimiter
     assert unsign(legacy) is None
+
+
+def test_pre_0028_two_field_cookie_is_version_zero():
+    import hashlib
+    import hmac
+
+    from src.auth.dashboard_session import _b64url_encode, _secret, unsign_payload
+
+    body = f"42.{int(time.time())}".encode()
+    sig = hmac.new(_secret(), body, hashlib.sha256).digest()[:16]
+    cookie = f"{_b64url_encode(body)}.{_b64url_encode(sig)}"
+    payload = unsign_payload(cookie)
+    assert payload is not None
+    assert payload.user_id == 42
+    assert payload.session_version == 0
 
 
 def test_uid_zero_and_large_roundtrip():

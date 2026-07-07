@@ -82,6 +82,16 @@ class GroundTruthRecord:
     region: Optional[str] = None      # explicit region override (None = let shop/option decide)
     currency: str = "USD"
     source: str = ""                  # provenance of the number (quote #, PO, vendor) — audit trail
+    source_type: str = "actual"       # actual|quote|invoice|pilot|synthetic|seed|demo
+    vendor_quote_id: Optional[str] = None
+    invoice_date: Optional[str] = None
+    actual_machine_hours: Optional[float] = None
+    actual_setup_hours: Optional[float] = None
+    actual_labor_hours: Optional[float] = None
+    actual_inspection_hours: Optional[float] = None
+    actual_cycle_seconds: Optional[float] = None
+    evidence_sha256: Optional[str] = None
+    evidence_uri: Optional[str] = None
     stand_in: bool = True             # True = synthetic STAND-IN; False = real ground truth
     part_path: Optional[str] = None   # explicit STL path; else resolved from part_id under parts_dir
     notes: str = ""

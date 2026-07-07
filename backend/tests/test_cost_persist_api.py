@@ -109,6 +109,7 @@ def client(monkeypatch):
 
 def _session_returning(*, scalar_one=None, all_rows=None, first=None):
     session = AsyncMock()
+    session.add = MagicMock()
     exec_result = MagicMock()
     exec_result.scalar_one_or_none.return_value = scalar_one
     exec_result.scalars.return_value.all.return_value = all_rows or []
@@ -292,6 +293,10 @@ def test_list_cost_decisions(client, real_result_json):
     assert item["make_now_process"]
     assert "crossover_qty" in item
     assert item["quantities"] == [50, 5000]
+    assert item["approval_status"] == "unreviewed"
+    assert item["approved_at"] is None
+    assert item["is_stale"] is False
+    assert item["stale_reason"] is None
     assert body["has_more"] is False
 
 
@@ -325,6 +330,55 @@ def test_detail_owner_ok(client, real_result_json):
     assert body["id"] == "01DETAIL0000000000000000A"
     assert body["result"]["status"] == "OK"
     assert body["make_now_process"]
+    assert body["approval_status"] == "unreviewed"
+    assert body["is_stale"] is False
+
+
+def test_approve_and_reopen_cost_decision(client, real_result_json):
+    cl, app = client
+    dec = _make_decision("01APPROVE000000000000000A", real_result_json, user_id=42)
+    _override(app, _session_returning(scalar_one=dec), user_id=42)
+
+    r = cl.post(
+        "/api/v1/cost-decisions/01APPROVE000000000000000A/approve",
+        json={"note": "Approved for RFQ packet"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["approval_status"] == "approved"
+    assert body["approved_by_user_id"] == 42
+    assert body["approved_at"] is not None
+    assert body["approval_note"] == "Approved for RFQ packet"
+    assert dec.result_json["status"] == "OK"  # signoff never mutates the artifact
+
+    r = cl.delete("/api/v1/cost-decisions/01APPROVE000000000000000A/approve")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["approval_status"] == "unreviewed"
+    assert body["approved_by_user_id"] is None
+    assert body["approved_at"] is None
+    assert body["approval_note"] is None
+
+
+@pytest.mark.asyncio
+async def test_mark_org_decisions_stale_dispatches_update():
+    from src.services import cost_decision_service as svc
+
+    session = AsyncMock()
+    result = MagicMock()
+    result.rowcount = 7
+    session.execute.return_value = result
+    when = datetime(2026, 7, 7, 12, 0, 0, tzinfo=timezone.utc)
+
+    count = await svc.mark_org_decisions_stale(
+        session,
+        "org_123",
+        reason="rate_library_published:v2",
+        stale_at=when,
+    )
+
+    assert count == 7
+    session.execute.assert_awaited_once()
 
 
 def test_detail_wrong_user_is_404(client):

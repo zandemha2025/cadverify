@@ -348,7 +348,7 @@ function DropPrompt({ onPickFile }: { onPickFile: () => void }) {
     <div style={{ marginTop: 18 }}>
       <EmptyState
         title="Drop a part to begin the walk."
-        body="STEP or STL. It's parsed in-process and the mesh is discarded — the engine keeps the decision, never your CAD. Nothing on this page is shown until the engine computes it."
+        body="STL, STEP or IGES. It's parsed in-process and the mesh is discarded — the engine keeps the decision, never your CAD. Nothing on this page is shown until the engine computes it."
       >
         <GhostButton primary onClick={onPickFile}>
           Browse files

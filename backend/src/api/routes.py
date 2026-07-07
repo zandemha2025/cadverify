@@ -474,7 +474,7 @@ async def validate_file(
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Upload a STEP or STL file and get manufacturing validation results."""
+    """Upload an STL, STEP/STP, or IGES/IGS file and get manufacturing validation results."""
     # Validate rule pack early (before reading file bytes)
     if rule_pack:
         pack = get_rule_pack(rule_pack)
@@ -1321,7 +1321,7 @@ async def validate_repair(
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Upload a STEP or STL file, attempt mesh repair, and get before/after analysis."""
+    """Upload an STL, STEP/STP, or IGES/IGS file, attempt mesh repair, and get before/after analysis."""
     if rule_pack:
         pack = get_rule_pack(rule_pack)
         if pack is None:

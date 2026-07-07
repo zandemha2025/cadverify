@@ -75,7 +75,7 @@ export default function DocsPage() {
             1. Quick start with curl
           </h2>
           <p className="mb-2 text-muted-foreground">
-            Send a STEP or STL file and get manufacturability feedback in one
+            Send an STL, STEP/STP or IGES/IGS file and get manufacturability feedback in one
             request:
           </p>
           <CodeBlock

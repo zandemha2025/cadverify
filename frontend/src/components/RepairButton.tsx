@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Wrench } from "lucide-react";
 import { toast } from "sonner";
 import { repairAnalysis } from "@/lib/api";
+import { CAD_ACCEPT } from "@/lib/cad-file";
 import type { RepairResult, Issue } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
@@ -77,7 +78,7 @@ export default function RepairButton({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".stl,.step,.stp"
+        accept={CAD_ACCEPT}
         className="hidden"
         onChange={handleFileChange}
       />

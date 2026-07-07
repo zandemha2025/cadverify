@@ -23,6 +23,8 @@ import csv
 import io
 import logging
 import os
+import re
+from datetime import date
 from typing import Optional
 
 from sqlalchemy import delete, func, select
@@ -50,13 +52,23 @@ KNOWN_PROCESSES = frozenset(p.value for p in ProcessType)
 KNOWN_MATERIAL_CLASSES = frozenset(
     {"polymer", "aluminum", "steel", "stainless", "titanium"}
 )
+KNOWN_SOURCE_TYPES = frozenset(
+    {"actual", "quote", "invoice", "pilot", "synthetic", "seed", "demo", "stand_in"}
+)
+SYNTHETIC_SOURCE_TYPES = frozenset({"synthetic", "seed", "demo", "stand_in"})
+_SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
 # Exact CSV columns. Required first, then optional (all lower-case, header row
-# order-independent). Imported rows are ALWAYS real (stand_in=False) — there is
-# deliberately no stand_in column: this path is for REAL historical costs only.
+# order-independent). Imported rows default to real historical costs, but an
+# explicit synthetic/seed/demo source_type is forced to stand_in=True so it can
+# exercise dashboards without ever counting toward validated accuracy.
 CSV_REQUIRED_COLUMNS = ("part_id", "process", "quantity", "actual_unit_cost_usd")
 CSV_OPTIONAL_COLUMNS = (
-    "material_class", "shop", "region", "currency", "source", "part_path", "notes"
+    "material_class", "shop", "region", "currency", "source", "source_type",
+    "vendor_quote_id", "invoice_date", "actual_machine_hours",
+    "actual_setup_hours", "actual_labor_hours", "actual_inspection_hours",
+    "actual_cycle_seconds", "evidence_sha256", "evidence_uri", "part_path",
+    "notes",
 )
 CSV_HEADER = ",".join(CSV_REQUIRED_COLUMNS + CSV_OPTIONAL_COLUMNS)
 
@@ -135,6 +147,68 @@ def _clean(v) -> str:
     return (v or "").strip()
 
 
+def _parse_optional_float(raw: str, name: str, row_errs: list) -> Optional[float]:
+    if not raw:
+        return None
+    try:
+        val = float(raw)
+    except ValueError:
+        row_errs.append(f"{name} not a number ('{raw}')")
+        return None
+    if val < 0:
+        row_errs.append(f"{name} must be >= 0 (got {val})")
+        return None
+    return val
+
+
+def _parse_optional_date(raw: str, name: str, row_errs: list) -> Optional[date]:
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        row_errs.append(f"{name} must be YYYY-MM-DD (got '{raw}')")
+        return None
+
+
+def _normal_source_type(raw: str) -> str:
+    return (raw or "actual").strip().lower()
+
+
+def _is_synthetic_source_type(source_type: str) -> bool:
+    return _normal_source_type(source_type) in SYNTHETIC_SOURCE_TYPES
+
+
+def _normal_payload_source_type(payload: dict) -> str:
+    source_type = _normal_source_type(payload.get("source_type") or "actual")
+    if source_type not in KNOWN_SOURCE_TYPES:
+        raise ValueError(
+            f"source_type must be one of {', '.join(sorted(KNOWN_SOURCE_TYPES))} "
+            f"(got '{source_type}')"
+        )
+    return source_type
+
+
+def _normal_invoice_date(value) -> Optional[date]:
+    if value is None or value == "":
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError as exc:
+        raise ValueError(f"invoice_date must be YYYY-MM-DD (got '{value}')") from exc
+
+
+def _normal_evidence_sha256(value) -> Optional[str]:
+    if value is None or value == "":
+        return None
+    digest = str(value).strip().lower()
+    if not _SHA256_RE.fullmatch(digest):
+        raise ValueError("evidence_sha256 must be a 64-character hex digest")
+    return digest
+
+
 def parse_ground_truth_csv(text: str):
     """Parse a historical-cost CSV into (rows, errors) — STRICT and HONEST.
 
@@ -145,8 +219,9 @@ def parse_ground_truth_csv(text: str):
     Contract (see ``CSV_HEADER``): required columns are ``part_id``, ``process``,
     ``quantity``, ``actual_unit_cost_usd``; optional columns are
     ``material_class`` (default ``polymer``), ``shop``, ``region``, ``currency``
-    (default ``USD``), ``source``, ``part_path``, ``notes``. There is no
-    ``stand_in`` column — this path only ingests REAL data.
+    (default ``USD``), ``source``, source/evidence/hour metadata, ``part_path``,
+    ``notes``. There is no ``stand_in`` column: use ``source_type=synthetic``,
+    ``seed``, ``demo``, or ``stand_in`` to deliberately ingest a stand-in row.
 
     Honesty rails:
       * A malformed ROW is reported (unknown process, unknown material class,
@@ -252,6 +327,33 @@ def parse_ground_truth_csv(text: str):
                 f"currency must be a 3-letter code (got '{currency}')"
             )
 
+        source_type = _normal_source_type(cell(record, "source_type") or "actual")
+        if source_type not in KNOWN_SOURCE_TYPES:
+            row_errs.append(
+                f"source_type must be one of {', '.join(sorted(KNOWN_SOURCE_TYPES))} "
+                f"(got '{source_type}')"
+            )
+
+        invoice_date = _parse_optional_date(cell(record, "invoice_date"), "invoice_date", row_errs)
+        actual_machine_hours = _parse_optional_float(
+            cell(record, "actual_machine_hours"), "actual_machine_hours", row_errs
+        )
+        actual_setup_hours = _parse_optional_float(
+            cell(record, "actual_setup_hours"), "actual_setup_hours", row_errs
+        )
+        actual_labor_hours = _parse_optional_float(
+            cell(record, "actual_labor_hours"), "actual_labor_hours", row_errs
+        )
+        actual_inspection_hours = _parse_optional_float(
+            cell(record, "actual_inspection_hours"), "actual_inspection_hours", row_errs
+        )
+        actual_cycle_seconds = _parse_optional_float(
+            cell(record, "actual_cycle_seconds"), "actual_cycle_seconds", row_errs
+        )
+        evidence_sha256 = cell(record, "evidence_sha256") or None
+        if evidence_sha256 and not _SHA256_RE.fullmatch(evidence_sha256):
+            row_errs.append("evidence_sha256 must be a 64-character hex digest")
+
         if row_errs:
             errors.append({"line": line, "reason": "; ".join(row_errs)})
             continue
@@ -266,9 +368,19 @@ def parse_ground_truth_csv(text: str):
             "region": cell(record, "region") or None,
             "currency": currency,
             "source": cell(record, "source"),
+            "source_type": source_type,
+            "vendor_quote_id": cell(record, "vendor_quote_id") or None,
+            "invoice_date": invoice_date.isoformat() if invoice_date else None,
+            "actual_machine_hours": actual_machine_hours,
+            "actual_setup_hours": actual_setup_hours,
+            "actual_labor_hours": actual_labor_hours,
+            "actual_inspection_hours": actual_inspection_hours,
+            "actual_cycle_seconds": actual_cycle_seconds,
+            "evidence_sha256": evidence_sha256.lower() if evidence_sha256 else None,
+            "evidence_uri": cell(record, "evidence_uri") or None,
             "part_path": safe_part_path,
             "notes": cell(record, "notes"),
-            "stand_in": False,  # imported historical costs are REAL
+            "stand_in": _is_synthetic_source_type(source_type),
         })
 
     return rows, errors
@@ -310,6 +422,16 @@ def row_to_public(r: GroundTruthRecordRow) -> dict:
         "region": r.region,
         "currency": r.currency,
         "source": r.source,
+        "source_type": r.source_type,
+        "vendor_quote_id": r.vendor_quote_id,
+        "invoice_date": r.invoice_date.isoformat() if r.invoice_date else None,
+        "actual_machine_hours": r.actual_machine_hours,
+        "actual_setup_hours": r.actual_setup_hours,
+        "actual_labor_hours": r.actual_labor_hours,
+        "actual_inspection_hours": r.actual_inspection_hours,
+        "actual_cycle_seconds": r.actual_cycle_seconds,
+        "evidence_sha256": r.evidence_sha256,
+        "evidence_uri": r.evidence_uri,
         "stand_in": r.stand_in,
         "part_path": r.part_path,
         "notes": r.notes,
@@ -334,6 +456,16 @@ def _row_to_gt(r: GroundTruthRecordRow) -> GroundTruthRecord:
         region=r.region,
         currency=r.currency or "USD",
         source=r.source or "",
+        source_type=r.source_type or "actual",
+        vendor_quote_id=r.vendor_quote_id,
+        invoice_date=(r.invoice_date.isoformat() if r.invoice_date else None),
+        actual_machine_hours=r.actual_machine_hours,
+        actual_setup_hours=r.actual_setup_hours,
+        actual_labor_hours=r.actual_labor_hours,
+        actual_inspection_hours=r.actual_inspection_hours,
+        actual_cycle_seconds=r.actual_cycle_seconds,
+        evidence_sha256=r.evidence_sha256,
+        evidence_uri=r.evidence_uri,
         stand_in=bool(r.stand_in),
         part_path=r.part_path,
         notes=r.notes or "",
@@ -424,6 +556,11 @@ async def ingest_record(
     still succeeds. Geometry is never fabricated. The CSV bulk path
     (``import_records``) funnels through here, so it inherits this unchanged.
     """
+    source_type = _normal_payload_source_type(payload)
+    stand_in = bool(payload.get("stand_in", False)) or _is_synthetic_source_type(source_type)
+    invoice_date = _normal_invoice_date(payload.get("invoice_date"))
+    evidence_sha256 = _normal_evidence_sha256(payload.get("evidence_sha256"))
+
     gt = GroundTruthRecord(
         part_id=payload["part_id"],
         process=payload["process"],
@@ -434,7 +571,17 @@ async def ingest_record(
         region=payload.get("region"),
         currency=payload.get("currency") or "USD",
         source=payload.get("source") or "",
-        stand_in=bool(payload.get("stand_in", False)),
+        source_type=source_type,
+        vendor_quote_id=payload.get("vendor_quote_id"),
+        invoice_date=invoice_date.isoformat() if invoice_date else None,
+        actual_machine_hours=payload.get("actual_machine_hours"),
+        actual_setup_hours=payload.get("actual_setup_hours"),
+        actual_labor_hours=payload.get("actual_labor_hours"),
+        actual_inspection_hours=payload.get("actual_inspection_hours"),
+        actual_cycle_seconds=payload.get("actual_cycle_seconds"),
+        evidence_sha256=evidence_sha256,
+        evidence_uri=payload.get("evidence_uri"),
+        stand_in=stand_in,
         # network-supplied path is confined to a safe relative corpus path
         # (raises UnsafePartPath -> ValueError -> the API maps it to 400).
         part_path=sanitize_part_path(payload.get("part_path")),
@@ -483,6 +630,16 @@ async def ingest_record(
         region=gt.region,
         currency=gt.currency,
         source=gt.source,
+        source_type=gt.source_type,
+        vendor_quote_id=gt.vendor_quote_id,
+        invoice_date=invoice_date,
+        actual_machine_hours=gt.actual_machine_hours,
+        actual_setup_hours=gt.actual_setup_hours,
+        actual_labor_hours=gt.actual_labor_hours,
+        actual_inspection_hours=gt.actual_inspection_hours,
+        actual_cycle_seconds=gt.actual_cycle_seconds,
+        evidence_sha256=evidence_sha256,
+        evidence_uri=gt.evidence_uri,
         stand_in=gt.stand_in,
         part_path=gt.part_path,
         notes=gt.notes,

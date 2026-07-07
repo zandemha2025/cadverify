@@ -26,6 +26,8 @@ import {
   Search,
   ScanLine,
   Calculator,
+  Database,
+  FileCheck2,
   Layers,
   History,
   PiggyBank,
@@ -50,7 +52,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 const FLUID = new Set(["/cost", "/analyze"]);
 /* The genuinely local cost/DFM decision path — the ONLY place we assert
    zero-egress (image→mesh reconstruction is out of scope, handled elsewhere). */
-const LOCAL_PATHS = ["/cost", "/analyze", "/cost-decisions", "/history", "/batch"];
+const LOCAL_PATHS = ["/cost", "/analyze", "/cost-decisions", "/history", "/batch", "/rfq-packages"];
 
 /* ── L1 icon rail — the object domains you fly between (catalog-forward). ──── */
 type RailItem = {
@@ -147,7 +149,9 @@ const WORKSPACE_NAV: NavLink[] = [
 const LEDGER_NAV: NavLink[] = [
   { label: "Cost decisions", href: "/cost-decisions", icon: PiggyBank, hint: "saved" },
   { label: "Compare A/B", href: "/cost-decisions/compare", icon: GitCompareArrows },
+  { label: "RFQ packages", href: "/rfq-packages", icon: FileCheck2 },
   { label: "Recent analyses", href: "/history", icon: History },
+  { label: "Integrations", href: "/integrations", icon: Database },
   { label: "API & docs", href: "/settings/developer", icon: Code2 },
 ];
 

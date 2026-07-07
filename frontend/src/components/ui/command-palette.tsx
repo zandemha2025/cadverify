@@ -19,6 +19,8 @@ import * as Dialog from "@radix-ui/react-dialog";
 import {
   ScanLine,
   Calculator,
+  Database,
+  FileCheck2,
   Layers,
   History,
   PiggyBank,
@@ -59,7 +61,9 @@ const COMMANDS: Command[] = [
   { id: "batch", label: "Batch analysis", hint: "many parts at once", keywords: "zip upload bulk", icon: Layers, section: "Go to", run: (c) => c.push("/batch") },
   { id: "cost-decisions", label: "Cost history", hint: "saved should-cost decisions", keywords: "saved should cost make vs buy decisions export share compare artifact", icon: PiggyBank, section: "Go to", run: (c) => c.push("/cost-decisions") },
   { id: "cost-decisions/compare", label: "Compare cost decisions", hint: "two decisions side by side", keywords: "compare diff make vs buy cost side by side", icon: GitCompareArrows, section: "Go to", run: (c) => c.push("/cost-decisions/compare") },
+  { id: "rfq-packages", label: "RFQ packages", hint: "supplier evidence ZIPs", keywords: "rfq supplier package procurement export zip evidence", icon: FileCheck2, section: "Go to", run: (c) => c.push("/rfq-packages") },
   { id: "history", label: "History", hint: "recent analyses · quota", keywords: "past quota usage", icon: History, section: "Go to", run: (c) => c.push("/history") },
+  { id: "integrations", label: "Integrations", hint: "ERP · PLM · actuals", keywords: "sap erp plm actuals csv connector runs imports", icon: Database, section: "Go to", run: (c) => c.push("/integrations") },
   { id: "developer", label: "Developer", hint: "API keys", keywords: "api keys tokens settings", icon: Code2, section: "Go to", run: (c) => c.push("/settings/developer") },
   { id: "docs", label: "API docs", keywords: "reference openapi scalar", icon: BookOpen, section: "Go to", run: (c) => c.push("/docs") },
   { id: "label", label: "Parts (Label)", hint: "corpus annotator", keywords: "corpus label internal", icon: Tags, section: "Go to", devOnly: true, run: (c) => c.push("/label") },

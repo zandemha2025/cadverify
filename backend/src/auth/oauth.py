@@ -16,7 +16,12 @@ from fastapi.responses import RedirectResponse
 from src.auth.dashboard_session import set_session_cookie
 from src.auth.disposable import normalize_email
 from src.auth.hashing import hmac_index, mint_token
-from src.auth.models import create_api_key, upsert_user, user_has_active_api_key
+from src.auth.models import (
+    create_api_key,
+    get_user_session_version,
+    upsert_user,
+    user_has_active_api_key,
+)
 from src.auth.signup_limits import per_ip_signup_limit
 
 oauth = OAuth()
@@ -81,14 +86,18 @@ async def google_callback(request: Request):
             },
         )
     email_norm = normalize_email(email)
-    user_id = await upsert_user(email, sub, email_norm)
+    user_id = await upsert_user(email, sub, email_norm, auth_provider="google")
 
     # Mint a key only when the account has none active (S3). A returning user
     # keeps their existing key(s) — logging in must not spawn a fresh key nor
     # attempt a one-time reveal of a secret we can no longer show.
     if await user_has_active_api_key(user_id):
         resp = RedirectResponse(url="/settings/developer", status_code=303)
-        set_session_cookie(resp, user_id)
+        set_session_cookie(
+            resp,
+            user_id,
+            session_version=await get_user_session_version(user_id),
+        )
         return resp
 
     full_token, prefix, secret_hash = mint_token()
@@ -99,7 +108,11 @@ async def google_callback(request: Request):
         url=f"/settings/developer?new=1&prefix={prefix}", status_code=303
     )
     # 30-day dashboard session cookie (HMAC-signed, HttpOnly, Secure, SameSite=Lax).
-    set_session_cookie(resp, user_id)
+    set_session_cookie(
+        resp,
+        user_id,
+        session_version=await get_user_session_version(user_id),
+    )
     resp.set_cookie(
         "cv_mint_once",
         full_token,

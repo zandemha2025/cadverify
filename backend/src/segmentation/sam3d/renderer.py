@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 # Optional dependency guard
 # ---------------------------------------------------------------------------
 _PYRENDER_AVAILABLE = False
+_FACE_ID_RENDERING_AVAILABLE = False
 try:
     import pyrender  # noqa: F401
 
@@ -34,6 +35,11 @@ except ImportError:
 def is_renderer_available() -> bool:
     """Return True if the rendering backend is installed."""
     return _PYRENDER_AVAILABLE
+
+
+def is_face_id_rendering_available() -> bool:
+    """Return True only after the renderer can emit real per-face ID buffers."""
+    return _FACE_ID_RENDERING_AVAILABLE
 
 
 # ---------------------------------------------------------------------------
@@ -170,10 +176,10 @@ def _render_single_view(
         finally:
             renderer.delete()
 
-        # Face-ID buffer: placeholder filled with -1 (real implementation
-        # would use a custom shader pass that writes per-face IDs into an
-        # integer framebuffer).  This is the scaffolding gap that will be
-        # filled when we integrate the custom rendering pass.
+        # Face-ID buffer is intentionally all -1 until a real custom shader pass
+        # writes per-face IDs into an integer framebuffer. Availability checks
+        # stay false while this gap exists, so SAM-3D is never advertised as
+        # operational from this scaffold alone.
         face_ids = np.full(resolution, -1, dtype=np.int32)
 
         return ViewRender(

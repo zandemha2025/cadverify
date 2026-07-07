@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import date
 from typing import AsyncIterator, Optional
 
 from fastapi import (
@@ -111,6 +112,40 @@ class GroundTruthIn(BaseModel):
     currency: str = "USD"
     source: str = Field(
         "", description="Provenance of the number (quote #, PO, vendor) — audit trail."
+    )
+    source_type: str = Field(
+        "actual",
+        description=(
+            "actual|quote|invoice|pilot|synthetic|seed|demo|stand_in. "
+            "Synthetic/seed/demo/stand_in are forced to stand_in=True and never validate."
+        ),
+    )
+    vendor_quote_id: Optional[str] = Field(
+        None, description="Customer/vendor quote, PO line, or invoice identifier."
+    )
+    invoice_date: Optional[date] = Field(
+        None, description="Invoice/quote date when known (YYYY-MM-DD)."
+    )
+    actual_machine_hours: Optional[float] = Field(
+        None, ge=0, description="Observed machine hours from the real job."
+    )
+    actual_setup_hours: Optional[float] = Field(
+        None, ge=0, description="Observed setup hours from the real job."
+    )
+    actual_labor_hours: Optional[float] = Field(
+        None, ge=0, description="Observed labor hours from the real job."
+    )
+    actual_inspection_hours: Optional[float] = Field(
+        None, ge=0, description="Observed inspection/FAI hours from the real job."
+    )
+    actual_cycle_seconds: Optional[float] = Field(
+        None, ge=0, description="Observed per-unit cycle seconds when available."
+    )
+    evidence_sha256: Optional[str] = Field(
+        None, description="SHA-256 of the source artifact, quote, invoice, or job traveler."
+    )
+    evidence_uri: Optional[str] = Field(
+        None, description="Customer-controlled reference to the source artifact."
     )
     stand_in: bool = Field(
         False,
@@ -238,12 +273,16 @@ async def import_template(
 
     Required columns: ``part_id, process, quantity, actual_unit_cost_usd``.
     Optional: ``material_class`` (default polymer), ``shop``, ``region``,
-    ``currency`` (default USD), ``source``, ``part_path``, ``notes``. There is no
-    ``stand_in`` column — imported rows are REAL (stand_in=False) by contract.
+    ``currency`` (default USD), ``source``, source/evidence/hour metadata,
+    ``part_path``, ``notes``. There is no ``stand_in`` column; use
+    ``source_type=synthetic|seed|demo|stand_in`` for rows that should exercise
+    the apparatus without counting as real ground truth.
     """
     example = (
         "widget-a.stl,cnc_3axis,100,42.50,aluminum,acme-shop,US,USD,"
-        "PO-1001,,first article"
+        "PO-1001,quote,Q-1001,2026-06-30,1.2,0.4,0.8,0.2,43.2,"
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,"
+        "customer://quotes/Q-1001.pdf,,first article"
     )
     return svc.CSV_HEADER + "\n" + example + "\n"
 
@@ -269,7 +308,9 @@ async def import_ground_truth(
     Partial success is honest: a file with some bad rows returns 200 with the
     valid rows imported and the per-line errors listed. A fully-invalid (or
     empty-of-valid-rows) file still returns 200 with ``imported=0`` and the
-    errors — the endpoint reports, it does not crash. The columns are documented
+    errors — the endpoint reports, it does not crash. A row whose
+    ``source_type`` is synthetic/seed/demo/stand_in is imported as ``stand_in``
+    and never counts toward the validation floor. The columns are documented
     at ``GET /import/template`` and in ``groundtruth_service.CSV_HEADER``.
 
     Returns ``{imported, skipped, total, errors:[{line, reason}]}``.

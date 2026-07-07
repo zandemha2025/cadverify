@@ -23,12 +23,14 @@ Nothing filters by ``org_id`` yet -- this is a pure foundation layer (W1 step 1)
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
+    Date,
     Float,
     ForeignKey,
     Index,
@@ -75,6 +77,9 @@ class Organization(Base):
         back_populates="organization", lazy="selectin"
     )
     memberships: Mapped[List[Membership]] = relationship(
+        back_populates="organization", lazy="selectin"
+    )
+    saml_group_mappings: Mapped[List[SamlGroupMapping]] = relationship(
         back_populates="organization", lazy="selectin"
     )
 
@@ -133,6 +138,57 @@ class Membership(Base):
 
     # relationships
     organization: Mapped[Organization] = relationship(back_populates="memberships")
+
+
+class SamlGroupMapping(Base):
+    """Maps a SAML assertion attribute value to an org-scoped role.
+
+    This is intentionally a JIT assignment rule, not SCIM: on SAML login a
+    matching group can grant/promote membership and select the active org, but
+    absence from a group does not deprovision or demote a manual admin.
+    """
+
+    __tablename__ = "saml_group_mappings"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id",
+            "attribute_name",
+            "group_value",
+            name="uq_saml_group_mappings_org_attr_value",
+        ),
+        CheckConstraint(
+            "org_role IN ('viewer','member','admin')",
+            name="ck_saml_group_mappings_org_role",
+        ),
+        Index("ix_saml_group_mappings_org", "org_id"),
+        Index("ix_saml_group_mappings_attr_value", "attribute_name", "group_value"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    attribute_name: Mapped[str] = mapped_column(Text, nullable=False)
+    group_value: Mapped[str] = mapped_column(Text, nullable=False)
+    org_role: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="viewer"
+    )
+    created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    organization: Mapped[Organization] = relationship(
+        back_populates="saml_group_mappings"
+    )
 
 
 class OrgInvite(Base):
@@ -232,6 +288,9 @@ class User(Base):
     deactivated_at: Mapped[Optional[datetime]] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
+    session_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
     # W1: the user's active org (pointer). Intentionally NULLABLE — it breaks
     # the users<->organizations bootstrap cycle at signup, and accommodates the
     # future superadmin split (W1 step 2). Not the tenancy source of truth; the
@@ -245,7 +304,9 @@ class User(Base):
     analyses: Mapped[List[Analysis]] = relationship(back_populates="user", lazy="selectin")
     batches: Mapped[List[Batch]] = relationship(back_populates="user", lazy="selectin")
     cost_decisions: Mapped[List[CostDecision]] = relationship(
-        back_populates="user", lazy="selectin"
+        back_populates="user",
+        lazy="selectin",
+        foreign_keys="CostDecision.user_id",
     )
 
 
@@ -401,6 +462,20 @@ class CostDecision(Base):
     crossover_qty: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     quantities: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     label: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    approval_status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="unreviewed"
+    )
+    approved_by_user_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    approved_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    approval_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    stale_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    stale_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_public: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
@@ -412,7 +487,9 @@ class CostDecision(Base):
     )
 
     # relationships
-    user: Mapped[User] = relationship(back_populates="cost_decisions")
+    user: Mapped[User] = relationship(
+        back_populates="cost_decisions", foreign_keys=[user_id]
+    )
 
 
 class Job(Base):
@@ -664,6 +741,80 @@ class WebhookDelivery(Base):
     batch: Mapped[Batch] = relationship(back_populates="webhook_deliveries")
 
 
+class Notification(Base):
+    """Durable org inbox row.
+
+    Unlike the older client-derived notification surface, this is a first-class
+    workflow row emitted next to the domain mutation that needs attention. Audit
+    stays compliance history; notifications are operator workflow state.
+    """
+
+    __tablename__ = "notifications"
+    __table_args__ = (
+        Index("ix_notifications_org_status_created", "org_id", "status", "created_at"),
+        UniqueConstraint(
+            "org_id",
+            "kind",
+            "source_type",
+            "source_id",
+            name="uq_notifications_source",
+        ),
+        Index("ix_notifications_org_kind_source", "org_id", "kind", "source_type", "source_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    actor_user_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    severity: Mapped[str] = mapped_column(Text, nullable=False, server_default="info")
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="open")
+    audience_role: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    dest: Mapped[str] = mapped_column(Text, nullable=False, server_default="verify")
+    source_type: Mapped[str] = mapped_column(Text, nullable=False)
+    source_id: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+
+
+class NotificationRead(Base):
+    """Per-user read marker for a durable org notification."""
+
+    __tablename__ = "notification_reads"
+    __table_args__ = (
+        UniqueConstraint(
+            "notification_id",
+            "user_id",
+            name="uq_notification_reads_notification_user",
+        ),
+        Index("ix_notification_reads_user_read", "user_id", "read_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    notification_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("notifications.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    read_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 # ---------------------------------------------------------------------------
 # Phase 12 tables (migration 0006)
 # ---------------------------------------------------------------------------
@@ -748,6 +899,16 @@ class GroundTruthRecordRow(Base):
     region: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     currency: Mapped[str] = mapped_column(Text, nullable=False, server_default="USD")
     source: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    source_type: Mapped[str] = mapped_column(Text, nullable=False, server_default="actual")
+    vendor_quote_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    invoice_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    actual_machine_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    actual_setup_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    actual_labor_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    actual_inspection_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    actual_cycle_seconds: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    evidence_sha256: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    evidence_uri: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     stand_in: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
@@ -1429,6 +1590,125 @@ class ManifestPart(Base):
     created_by: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+# ---------------------------------------------------------------------------
+# P6 (migration 0030): offline connector-run ledger
+# ---------------------------------------------------------------------------
+
+
+class IntegrationRun(Base):
+    """One offline connector/dry-run/import attempt for an org feed.
+
+    This is the enterprise integration apparatus before live SAP/PLM credentials
+    exist: record the exact connector, source system, file hash, row counts,
+    errors, and outcome while deliberately not storing raw CSV by default.
+    """
+
+    __tablename__ = "integration_runs"
+    __table_args__ = (
+        Index("ix_integration_runs_org_created", "org_id", "created_at"),
+        Index("ix_integration_runs_org_connector", "org_id", "connector_id"),
+        Index("ix_integration_runs_org_status", "org_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    connector_id: Mapped[str] = mapped_column(Text, nullable=False)
+    source_system: Mapped[str] = mapped_column(Text, nullable=False)
+    source_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    mode: Mapped[str] = mapped_column(Text, nullable=False, server_default="dry_run")
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    filename: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    file_sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    file_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    rows_total: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    rows_valid: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    rows_invalid: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    imported_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    updated_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    skipped_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    raw_stored: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    errors_json: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(JSONB, nullable=True)
+    metadata_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# P5/P6 (migration 0032): RFQ / supplier evidence package ledger
+# ---------------------------------------------------------------------------
+
+
+class RfqPackage(Base):
+    """A durable supplier/RFQ evidence package assembled from approved decisions.
+
+    This is an export workflow, not a supplier network. The package snapshots
+    selected cost-decision evidence, manifest/context enrichment, and warning
+    flags while explicitly recording that raw CAD is not included and no live
+    supplier send happened.
+    """
+
+    __tablename__ = "rfq_packages"
+    __table_args__ = (
+        Index("ix_rfq_packages_org_created", "org_id", "created_at"),
+        Index("ix_rfq_packages_org_status", "org_id", "status"),
+        CheckConstraint(
+            "status IN ('generated','archived')",
+            name="ck_rfq_packages_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    supplier_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="generated"
+    )
+    item_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    approved_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    stale_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    unvalidated_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    raw_cad_included: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    live_supplier_send: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    items_json: Mapped[List[Dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    warnings_json: Mapped[List[Dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    metadata_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )

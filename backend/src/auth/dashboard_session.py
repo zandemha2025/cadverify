@@ -28,11 +28,19 @@ import hashlib
 import hmac
 import os
 import time
+from dataclasses import dataclass
 
 from fastapi import HTTPException, Request, Response
 
 COOKIE_NAME = "dash_session"
 MAX_AGE = 30 * 24 * 3600
+
+
+@dataclass(frozen=True)
+class SessionPayload:
+    user_id: int
+    issued_at: int
+    session_version: int = 0
 
 
 def _secret() -> bytes:
@@ -53,9 +61,14 @@ def _b64url_decode(seg: str) -> bytes:
     return base64.urlsafe_b64decode(seg + pad)
 
 
-def sign(user_id: int, issued_at: int | None = None) -> str:
+def sign(
+    user_id: int,
+    issued_at: int | None = None,
+    *,
+    session_version: int = 0,
+) -> str:
     iat = issued_at if issued_at is not None else int(time.time())
-    body = f"{user_id}.{iat}".encode()
+    body = f"{user_id}.{iat}.{int(session_version)}".encode()
     sig = hmac.new(_secret(), body, hashlib.sha256).digest()[:16]
     # JWT-style: encode body and sig as SEPARATE base64url segments joined by a
     # literal ".". The base64url alphabet excludes ".", so a raw signature byte
@@ -64,7 +77,7 @@ def sign(user_id: int, issued_at: int | None = None) -> str:
     return f"{_b64url_encode(body)}.{_b64url_encode(sig)}"
 
 
-def unsign(cookie: str) -> int | None:
+def unsign_payload(cookie: str) -> SessionPayload | None:
     try:
         # Exactly two segments. Legacy single-blob cookies contain no "." and
         # yield one segment -> rejected (fail closed; see module docstring).
@@ -76,19 +89,43 @@ def unsign(cookie: str) -> int | None:
         expected = hmac.new(_secret(), body, hashlib.sha256).digest()[:16]
         if not hmac.compare_digest(sig, expected):
             return None
-        uid_s, iat_s = body.decode().split(".", 1)
+        fields = body.decode().split(".")
+        if len(fields) == 2:
+            # Current pre-0028 tokens: user_id.iat. Treat as version 0 so the
+            # migration does not force a global logout; any explicit revocation
+            # bumps the DB version and invalidates these tokens.
+            uid_s, iat_s = fields
+            version_s = "0"
+        elif len(fields) == 3:
+            uid_s, iat_s, version_s = fields
+        else:
+            return None
         iat = int(iat_s)
         if time.time() - iat > MAX_AGE:
             return None
-        return int(uid_s)
+        return SessionPayload(
+            user_id=int(uid_s),
+            issued_at=iat,
+            session_version=int(version_s),
+        )
     except Exception:
         return None
 
 
-def set_session_cookie(response: Response, user_id: int) -> None:
+def unsign(cookie: str) -> int | None:
+    payload = unsign_payload(cookie)
+    return None if payload is None else payload.user_id
+
+
+def set_session_cookie(
+    response: Response,
+    user_id: int,
+    *,
+    session_version: int = 0,
+) -> None:
     response.set_cookie(
         COOKIE_NAME,
-        sign(user_id),
+        sign(user_id, session_version=session_version),
         max_age=MAX_AGE,
         domain=os.getenv("SESSION_COOKIE_DOMAIN", ".cadverify.com"),
         path="/",
@@ -108,8 +145,8 @@ def clear_session_cookie(response: Response) -> None:
 
 async def require_dashboard_session(request: Request) -> int:
     c = request.cookies.get(COOKIE_NAME)
-    uid = unsign(c) if c else None
-    if uid is None:
+    payload = unsign_payload(c) if c else None
+    if payload is None:
         raise HTTPException(
             401,
             detail={
@@ -119,17 +156,28 @@ async def require_dashboard_session(request: Request) -> int:
             },
         )
     # §39: a deactivated account's existing dashboard session is refused (this is
-    # the validator behind /api/v1/keys and /auth/me). Degrades OPEN if the DB is
-    # unavailable (e.g. a mocked unit test): login + the API-key path + SSO
-    # re-provision are the hard gates, so a session-path fail-open on infra error
-    # never widens the envelope. Lazy import avoids a models<->session cycle.
+    # the validator behind /api/v1/keys and /auth/me). The same DB read also
+    # checks session_version, giving operators server-side revocation for
+    # otherwise stateless HMAC cookies. Degrades OPEN only if the DB is
+    # unavailable in a mocked/unit-test style environment.
+    db_unavailable = False
     try:
-        from src.auth.models import user_is_active
+        from src.auth.models import lookup_session_user
 
-        active = await user_is_active(uid)
+        row = await lookup_session_user(payload.user_id)
     except Exception:
-        active = True
-    if not active:
+        row = None
+        db_unavailable = True
+    if row is None and not db_unavailable:
+        raise HTTPException(
+            401,
+            detail={
+                "code": "dashboard_auth_required",
+                "message": "Dashboard session required.",
+                "doc_url": "https://docs.cadverify.com/errors#dashboard_auth_required",
+            },
+        )
+    if row is not None and not row.is_active:
         raise HTTPException(
             403,
             detail={
@@ -138,4 +186,13 @@ async def require_dashboard_session(request: Request) -> int:
                 "doc_url": "https://docs.cadverify.com/errors#account_deactivated",
             },
         )
-    return uid
+    if row is not None and row.session_version != payload.session_version:
+        raise HTTPException(
+            401,
+            detail={
+                "code": "session_revoked",
+                "message": "This session has been revoked. Log in again.",
+                "doc_url": "https://docs.cadverify.com/errors#session_revoked",
+            },
+        )
+    return payload.user_id

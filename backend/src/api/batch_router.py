@@ -1,6 +1,6 @@
 """Batch API endpoints -- create, status, items, CSV export, cancel.
 
-POST /api/v1/batch          -- create batch (ZIP upload or S3 reference)
+POST /api/v1/batch          -- create batch (ZIP upload)
 GET  /api/v1/batch/{id}     -- batch progress
 GET  /api/v1/batch/{id}/items    -- paginated items
 GET  /api/v1/batch/{id}/results/csv -- CSV export
@@ -112,14 +112,10 @@ async def create_batch(
         )
 
     # F-ARCH-5 (S3/manifest honesty): remote object input requires an object-fetch
-    # adapter. Announce, don't orphan:
-    # reject at the API with a stable 501 -- BEFORE any Batch row is created (and
-    # before we buffer a ZIP) -- so no doomed 'pending' batch is ever persisted.
-    # Covers s3_bucket/s3_prefix AND manifest_url when the server is not
-    # configured for remote ingestion.
-    if not _flag("S3_INPUT_ENABLED", "0") and (
-        s3_bucket is not None or s3_prefix is not None or manifest_url is not None
-    ):
+    # adapter. No adapter exists in this codebase yet, so reject remote references
+    # unconditionally before any Batch row is created. This avoids an env flag
+    # accidentally creating a doomed "pending" batch that the worker cannot fetch.
+    if s3_bucket is not None or s3_prefix is not None or manifest_url is not None:
         raise HTTPException(
             status_code=501,
             detail={
@@ -258,6 +254,11 @@ async def create_batch(
                 session, batch.id, items_data
             )
             batch.total_items = count
+            batch.failed_items = sum(
+                1
+                for item in items_data
+                if item.get("status") in {"failed", "skipped"}
+            )
     finally:
         if zip_tmp_path is not None:
             try:

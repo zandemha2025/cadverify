@@ -80,13 +80,17 @@ def test_google_callback_mints_when_no_active_key():
     app = _oauth_app()
     with patch("src.auth.oauth.oauth") as mock_oauth, patch(
         "src.auth.oauth.upsert_user", new_callable=AsyncMock, return_value=5
-    ), patch(
+    ) as mock_upsert, patch(
         "src.auth.oauth.user_has_active_api_key",
         new_callable=AsyncMock,
         return_value=False,
     ), patch(
         "src.auth.oauth.create_api_key", new_callable=AsyncMock, return_value=1
-    ) as mock_create:
+    ) as mock_create, patch(
+        "src.auth.oauth.get_user_session_version",
+        new_callable=AsyncMock,
+        return_value=0,
+    ):
         mock_oauth.google.authorize_access_token = AsyncMock(return_value=_TOKEN)
         client = TestClient(app, follow_redirects=False)
         resp = client.get("/auth/google/callback")
@@ -94,6 +98,9 @@ def test_google_callback_mints_when_no_active_key():
     assert resp.status_code == 303
     assert "new=1" in resp.headers["location"]
     assert "cv_mint_once" in resp.headers.get("set-cookie", "")
+    mock_upsert.assert_awaited_once_with(
+        "user@example.com", "sub-123", "user@example.com", auth_provider="google"
+    )
     mock_create.assert_awaited_once()
 
 
@@ -101,13 +108,17 @@ def test_google_callback_skips_when_key_exists():
     app = _oauth_app()
     with patch("src.auth.oauth.oauth") as mock_oauth, patch(
         "src.auth.oauth.upsert_user", new_callable=AsyncMock, return_value=5
-    ), patch(
+    ) as mock_upsert, patch(
         "src.auth.oauth.user_has_active_api_key",
         new_callable=AsyncMock,
         return_value=True,
     ), patch(
         "src.auth.oauth.create_api_key", new_callable=AsyncMock
-    ) as mock_create:
+    ) as mock_create, patch(
+        "src.auth.oauth.get_user_session_version",
+        new_callable=AsyncMock,
+        return_value=0,
+    ):
         mock_oauth.google.authorize_access_token = AsyncMock(return_value=_TOKEN)
         client = TestClient(app, follow_redirects=False)
         resp = client.get("/auth/google/callback")
@@ -116,6 +127,9 @@ def test_google_callback_skips_when_key_exists():
     assert resp.headers["location"] == "/settings/developer"
     assert "new=1" not in resp.headers["location"]
     assert "cv_mint_once" not in resp.headers.get("set-cookie", "")
+    mock_upsert.assert_awaited_once_with(
+        "user@example.com", "sub-123", "user@example.com", auth_provider="google"
+    )
     mock_create.assert_not_called()
 
 
@@ -140,18 +154,25 @@ def test_magic_verify_mints_when_no_active_key():
         "src.auth.magic_link._r", return_value=fake_redis
     ), patch(
         "src.auth.magic_link.upsert_user", new_callable=AsyncMock, return_value=5
-    ), patch(
+    ) as mock_upsert, patch(
         "src.auth.magic_link.user_has_active_api_key",
         new_callable=AsyncMock,
         return_value=False,
     ), patch(
         "src.auth.magic_link.create_api_key", new_callable=AsyncMock, return_value=1
-    ) as mock_create:
+    ) as mock_create, patch(
+        "src.auth.magic_link.get_user_session_version",
+        new_callable=AsyncMock,
+        return_value=0,
+    ):
         client = TestClient(app, follow_redirects=False)
         resp = client.get("/auth/magic/verify?token=abc")
 
     assert resp.status_code == 303
     assert "new=1" in resp.headers["location"]
+    mock_upsert.assert_awaited_once_with(
+        "user@example.com", None, "user@example.com", auth_provider="magic_link"
+    )
     mock_create.assert_awaited_once()
 
 
@@ -163,17 +184,24 @@ def test_magic_verify_skips_when_key_exists():
         "src.auth.magic_link._r", return_value=fake_redis
     ), patch(
         "src.auth.magic_link.upsert_user", new_callable=AsyncMock, return_value=5
-    ), patch(
+    ) as mock_upsert, patch(
         "src.auth.magic_link.user_has_active_api_key",
         new_callable=AsyncMock,
         return_value=True,
     ), patch(
         "src.auth.magic_link.create_api_key", new_callable=AsyncMock
-    ) as mock_create:
+    ) as mock_create, patch(
+        "src.auth.magic_link.get_user_session_version",
+        new_callable=AsyncMock,
+        return_value=0,
+    ):
         client = TestClient(app, follow_redirects=False)
         resp = client.get("/auth/magic/verify?token=abc")
 
     assert resp.status_code == 303
     assert resp.headers["location"] == "/settings/developer"
     assert "cv_mint_once" not in resp.headers.get("set-cookie", "")
+    mock_upsert.assert_awaited_once_with(
+        "user@example.com", None, "user@example.com", auth_provider="magic_link"
+    )
     mock_create.assert_not_called()

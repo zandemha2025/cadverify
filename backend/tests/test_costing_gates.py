@@ -19,12 +19,9 @@ import pytest
 
 from src.costing import estimate_decision, EstimateOptions
 from src.costing.cli import _run_engine
+from src.costing.harness import ensure_fixture_parts_dir
 
-PARTS_DIR = os.environ.get(
-    "CADVERIFY_PARTS_DIR",
-    "/private/tmp/claude-501/-Users-nazeem-Desktop-developer-cadverify/"
-    "3182c9c6-e59b-4394-a584-d9c4cd4ce0dc/scratchpad/parts",
-)
+PARTS_DIR = ensure_fixture_parts_dir()
 
 ECU = "1090523_b8dd5bfe-0a71-405c-906b-aa8dc51a6c30_EK_0BD1_ECU_Firewall_mount.stl"
 TBA = "printables_122552_ThrottleBodyAdapter.stl"
@@ -33,8 +30,14 @@ MAF = ("655044_0b409a7e-0e9d-424a-81ae-5261cd5f4181_MITSUBISHI_LANCER_1993-"
 RING = "printables_122552_ThrottleBodyRingOuter.stl"
 
 pytestmark = pytest.mark.skipif(
-    not os.path.isdir(PARTS_DIR),
-    reason=f"real parts dir not present: {PARTS_DIR}",
+    not (
+        os.path.isdir(PARTS_DIR)
+        and all(
+            os.path.isfile(os.path.join(PARTS_DIR, fname))
+            for fname in (ECU, TBA, MAF, RING)
+        )
+    ),
+    reason=f"real parts fixture batch not present: {PARTS_DIR}",
 )
 
 

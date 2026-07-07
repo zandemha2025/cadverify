@@ -22,19 +22,22 @@ import {
   Check,
   Download,
   ExternalLink,
+  FileCheck2,
   FileJson,
   Share2,
   Sheet,
 } from "lucide-react";
 import {
   downloadCostPdf,
+  createRfqPackage,
+  downloadRfqPackage,
   exportCostJson,
   exportCostCsv,
   shareCostDecision,
 } from "@/lib/api";
 import ShareModal from "@/components/ShareModal";
 
-type Action = "pdf" | "json" | "csv" | "share";
+type Action = "pdf" | "json" | "csv" | "rfq" | "share";
 
 function BarButton({
   icon: Icon,
@@ -100,6 +103,15 @@ export function CostArtifactBar({
       setShowModal(true);
     });
 
+  const onRfqPackage = () =>
+    run("rfq", async () => {
+      const pkg = await createRfqPackage({
+        decisionIds: [saved.id],
+        title: `RFQ package - ${filename}`,
+      });
+      await downloadRfqPackage(pkg.id, pkg.title);
+    });
+
   return (
     <div className="mt-5 border-t border-border pt-4">
       <div className="flex items-center gap-2">
@@ -139,6 +151,12 @@ export function CostArtifactBar({
           label="CSV"
           busy={busy === "csv"}
           onClick={() => run("csv", () => exportCostCsv(saved.id, filename))}
+        />
+        <BarButton
+          icon={FileCheck2}
+          label="RFQ ZIP"
+          busy={busy === "rfq"}
+          onClick={onRfqPackage}
         />
         <BarButton
           icon={Share2}

@@ -30,7 +30,9 @@ from src.auth.dashboard_session import (
 from src.auth.disposable import classify, normalize_email
 from src.auth.hashing import hash_password, password_needs_rehash, verify_password
 from src.auth.models import (
+    bump_session_version,
     create_password_user,
+    get_user_session_version,
     get_login_credentials,
     get_user_public,
     update_password_hash,
@@ -214,17 +216,31 @@ async def login(body: LoginIn, request: Request) -> dict:
     )
     return {
         "user": {"id": user_id, "email": email, "role": role},
-        "session": sign(user_id),
+        "session": sign(
+            user_id,
+            session_version=await get_user_session_version(user_id),
+        ),
     }
 
 
 @router.post("/logout")
 async def logout(response: Response) -> dict:
-    # Sessions are stateless HMAC tokens — nothing to revoke server-side. The
-    # authoritative cookie clear happens in the Next.js logout route on the
-    # first-party cookie; clearing here is harmless and idempotent.
+    # Single-browser logout clears the cookie. Use /logout-all or the admin
+    # revoke-sessions route to bump users.session_version and invalidate every
+    # outstanding dashboard cookie for the account.
     clear_session_cookie(response)
     return {"ok": True}
+
+
+@router.post("/logout-all")
+async def logout_all(
+    response: Response,
+    user_id: int = Depends(require_dashboard_session),
+) -> dict:
+    """Revoke every dashboard session for the current user."""
+    version = await bump_session_version(user_id)
+    clear_session_cookie(response)
+    return {"ok": True, "session_version": version}
 
 
 @router.get("/me")

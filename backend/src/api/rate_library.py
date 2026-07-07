@@ -36,6 +36,7 @@ from src.auth.rbac import (
 )
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
+from src.services import cost_decision_service
 from src.services import rate_library_service as svc
 
 logger = logging.getLogger("cadverify.rate_library")
@@ -262,6 +263,12 @@ async def publish_rate_card(
     org_id = await _write_org(ctx, session)
     row = await svc.publish_version(
         session, org_id, version_id, effective_from=body.effective_from
+    )
+    await cost_decision_service.mark_org_decisions_stale(
+        session,
+        org_id,
+        reason=f"rate_library_published:v{row.version}",
+        stale_at=row.effective_from,
     )
     await session.commit()
     from src.services.audit_service import emit_event

@@ -16,7 +16,12 @@ import pytest
 from httpx import AsyncClient, ASGITransport
 
 from main import app
-from src.api.metrics_registry import PROMETHEUS_AVAILABLE, record_cost_decision
+from src.api.metrics_registry import (
+    PROMETHEUS_AVAILABLE,
+    record_cost_decision,
+    record_orphan_sweep,
+    update_queue_metrics,
+)
 
 requires_prom = pytest.mark.skipif(
     not PROMETHEUS_AVAILABLE, reason="prometheus-client not installed"
@@ -54,6 +59,11 @@ async def test_metrics_endpoint_returns_prometheus_text():
         "cadverify_http_request_duration_seconds",
         "cadverify_cost_decisions_total",
         "cadverify_analysis_duration_seconds",
+        "cadverify_jobs_current",
+        "cadverify_batches_current",
+        "cadverify_batch_items_current",
+        "cadverify_webhook_deliveries_current",
+        "cadverify_async_worker_up",
     ):
         assert name in body
 
@@ -100,6 +110,34 @@ async def test_cost_decision_counter_increments_with_outcome():
     assert after == before + 1.0
 
 
+@requires_prom
+def test_queue_metrics_use_bounded_status_labels():
+    update_queue_metrics({
+        "async": {"worker": "ok"},
+        "jobs": {"status_counts": {"queued": 2, "weird-ulid-01ABC": 7}},
+        "batches": {"status_counts": {"processing": 1}, "stale_heartbeat_count": 3},
+        "batch_items": {"status_counts": {"queued": 4, "completed": 9}},
+        "webhooks": {"status_counts": {"pending": 5}, "retry_due_count": 2},
+    })
+
+    assert _sample("cadverify_jobs_current", {"status": "queued"}) == 2.0
+    assert _sample("cadverify_jobs_current", {"status": "other"}) == 7.0
+    assert _sample("cadverify_batches_current", {"status": "processing"}) == 1.0
+    assert _sample("cadverify_batch_items_current", {"status": "queued"}) == 4.0
+    assert _sample("cadverify_webhook_deliveries_current", {"status": "pending"}) == 5.0
+    assert _sample("cadverify_async_worker_up", {}) == 1.0
+    assert _sample("cadverify_batches_stale_heartbeat_current", {}) == 3.0
+    assert _sample("cadverify_webhook_retries_due_current", {}) == 2.0
+
+
+@requires_prom
+def test_orphan_sweep_counter_increments_by_reaped_count():
+    before = _sample("cadverify_orphan_sweeps_total", {}) or 0.0
+    record_orphan_sweep(3)
+    after = _sample("cadverify_orphan_sweeps_total", {}) or 0.0
+    assert after == before + 3.0
+
+
 @pytest.mark.asyncio
 @requires_prom
 async def test_metrics_payload_has_no_secret_or_pii():
@@ -116,6 +154,7 @@ async def test_metrics_payload_has_no_secret_or_pii():
         _FAKE_ULID,          # ULID / id
         ".stl",              # filename fragment
         ".step",
+        "weird-ulid-01ABC",   # unknown queue statuses are bucketed as other
     ):
         assert needle not in body
 

@@ -101,7 +101,7 @@ def test_clean_email_trims_and_validates():
 
 # ──────────────────────────────────────────────────────────────
 # require_api_key dashboard-session cookie fallback — no DB
-# (lookup_user_role mocked, like test_require_api_key.py)
+# (lookup_session_user mocked, like test_require_api_key.py)
 # ──────────────────────────────────────────────────────────────
 
 
@@ -115,13 +115,20 @@ class _Req:
 @pytest.mark.asyncio
 async def test_require_api_key_accepts_session_cookie(monkeypatch):
     from src.auth import require_api_key as rak
+    from src.auth.models import SessionUserRow
 
-    monkeypatch.setattr(rak, "lookup_user_role", AsyncMock(return_value="analyst"))
-    # §39 added an account-active check on the session-cookie path. This is a
-    # no-DB unit test (like test_require_api_key.py) — mock the active read too,
-    # else it opens the global engine and binds its asyncpg pool to THIS test's
-    # event loop, poisoning the next live-PG test (a stale cross-loop pool).
-    monkeypatch.setattr(rak, "user_is_active", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        rak,
+        "lookup_session_user",
+        AsyncMock(
+            return_value=SessionUserRow(
+                user_id=7,
+                role="analyst",
+                is_active=True,
+                session_version=0,
+            )
+        ),
+    )
     req = _Req(cookies={"dash_session": sign(7)})
     user = await rak.require_api_key(req, authorization=None)
     assert user.user_id == 7
@@ -129,6 +136,32 @@ async def test_require_api_key_accepts_session_cookie(monkeypatch):
     assert user.key_prefix == "session"
     assert user.role == "analyst"
     assert req.state.authed_user is user
+
+
+@pytest.mark.asyncio
+async def test_require_api_key_rejects_revoked_session_cookie(monkeypatch):
+    from src.auth import require_api_key as rak
+    from src.auth.models import SessionUserRow
+
+    monkeypatch.setattr(
+        rak,
+        "lookup_session_user",
+        AsyncMock(
+            return_value=SessionUserRow(
+                user_id=7,
+                role="analyst",
+                is_active=True,
+                session_version=2,
+            )
+        ),
+    )
+    with pytest.raises(HTTPException) as exc:
+        await rak.require_api_key(
+            _Req(cookies={"dash_session": sign(7, session_version=1)}),
+            authorization=None,
+        )
+    assert exc.value.status_code == 401
+    assert exc.value.detail["code"] == "session_revoked"
 
 
 @pytest.mark.asyncio
@@ -277,10 +310,37 @@ async def test_full_signup_login_me_protected_flow():
             assert r.status_code == 401
             assert r.json()["detail"]["code"] == "auth_missing"
 
-            # 10. logout -> 200 ok
+            # 10. logout -> 200 ok (single-browser cookie clear)
             r = await ac.post("/auth/logout")
             assert r.status_code == 200
             assert r.json()["ok"] is True
+
+            # 11. logout-all with the live cookie bumps server-side version;
+            # the old cookie is rejected everywhere after that.
+            r = await ac.post(
+                "/auth/logout-all",
+                headers={"Cookie": f"dash_session={login_token}"},
+            )
+            assert r.status_code == 200, r.text
+            assert r.json()["ok"] is True
+            assert r.json()["session_version"] == 1
+
+            r = await ac.get(
+                "/protected", headers={"Cookie": f"dash_session={login_token}"}
+            )
+            assert r.status_code == 401
+            assert r.json()["detail"]["code"] == "session_revoked"
+
+            # A fresh login receives the current version and works again.
+            r = await ac.post(
+                "/auth/login", json={"email": email, "password": password}
+            )
+            assert r.status_code == 200, r.text
+            fresh_token = r.json()["session"]
+            r = await ac.get(
+                "/protected", headers={"Cookie": f"dash_session={fresh_token}"}
+            )
+            assert r.status_code == 200, r.text
     finally:
         # Clean up the test user + dispose the engine (same loop).
         try:

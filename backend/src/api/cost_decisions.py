@@ -13,6 +13,8 @@ Routes (mounted at /api/v1/cost-decisions):
   GET    ""                      list (cursor paginated; filter process/date)
   GET    /compare?ids=a,b        structured diff of two owned decisions
   GET    /{id}                   full result_json envelope (owner-scoped, 404)
+  POST   /{id}/approve           approve/sign off a decision
+  DELETE /{id}/approve           reopen approval
   GET    /{id}/pdf               cost-report PDF
   GET    /{id}/export.json       raw result_json
   GET    /{id}/export.csv        estimates / line-items CSV table
@@ -29,6 +31,7 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,6 +48,10 @@ logger = logging.getLogger("cadverify.cost_decisions")
 
 router = APIRouter(tags=["cost-decisions"])
 public_cost_share_router = APIRouter(tags=["cost-decisions"])
+
+
+class ApprovalBody(BaseModel):
+    note: str | None = None
 
 
 def _parse_dt(value: str, field: str) -> datetime:
@@ -147,7 +154,43 @@ async def get_cost_decision(
         "quantities": d.quantities or [],
         "is_public": d.is_public,
         "share_url": f"/s/cost/{d.share_short_id}" if d.share_short_id else None,
+        **svc.governance_fields(d),
         "result": d.result_json,
+    }
+
+
+@router.post("/{decision_id}/approve")
+@limiter.limit("60/hour;300/day")
+async def approve_cost_decision(
+    decision_id: str,
+    body: ApprovalBody,
+    request: Request,
+    response: Response,
+    user: AuthedUser = Depends(require_role(Role.analyst)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Approve/sign off a saved decision without changing its engine artifact."""
+    d = await svc.approve_owned(session, decision_id, user.user_id, note=body.note)
+    return {
+        "id": d.ulid,
+        **svc.governance_fields(d),
+    }
+
+
+@router.delete("/{decision_id}/approve")
+@limiter.limit("60/hour;300/day")
+async def reopen_cost_decision_approval(
+    decision_id: str,
+    request: Request,
+    response: Response,
+    user: AuthedUser = Depends(require_role(Role.analyst)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Reopen approval/signoff while keeping the saved decision immutable."""
+    d = await svc.reopen_owned(session, decision_id, user.user_id)
+    return {
+        "id": d.ulid,
+        **svc.governance_fields(d),
     }
 
 

@@ -608,6 +608,8 @@ async def set_user_active(
     ).scalars().first()
     if user is None:
         raise _404("User not found.")
+    if bool(user.is_active) != active:
+        user.session_version = int(user.session_version or 0) + 1
     user.is_active = active
     user.deactivated_at = None if active else _now()
     await session.flush()
@@ -615,7 +617,24 @@ async def set_user_active(
         "user_id": user.id,
         "email": user.email,
         "is_active": user.is_active,
+        "session_version": user.session_version,
         "deactivated_at": (
             user.deactivated_at.isoformat() if user.deactivated_at else None
         ),
+    }
+
+
+async def revoke_user_sessions(session: AsyncSession, target_user_id: int) -> dict:
+    """Bump ``session_version`` to invalidate every dashboard cookie."""
+    user = (
+        await session.execute(select(User).where(User.id == target_user_id))
+    ).scalars().first()
+    if user is None:
+        raise _404("User not found.")
+    user.session_version = int(user.session_version or 0) + 1
+    await session.flush()
+    return {
+        "user_id": user.id,
+        "email": user.email,
+        "session_version": user.session_version,
     }

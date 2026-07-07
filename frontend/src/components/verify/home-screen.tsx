@@ -167,7 +167,7 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
         {/* right stack */}
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <button type="button" onClick={onPickFile} style={{ border: `1.5px dashed #c9cbd0`, borderRadius: 14, background: C.panel, padding: 18, cursor: "pointer", fontFamily: "inherit", color: "inherit", textAlign: "center" }}>
-            <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>Drop a part — STEP or STL</p>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>Drop a part — STL, STEP or IGES</p>
             <p style={{ margin: "5px 0 0", fontSize: 11, color: C.ink45 }}>parsed in-process · discarded</p>
             <span style={{ display: "inline-block", marginTop: 10, background: C.ink, color: "#fff", borderRadius: 999, padding: "8px 18px", fontSize: 12, fontWeight: 500 }}>Browse files</span>
           </button>

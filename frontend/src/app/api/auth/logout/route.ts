@@ -1,7 +1,7 @@
 /**
- * Same-origin logout. Clears the first-party httpOnly cookie (the authoritative
- * action — the session is a stateless HMAC token, nothing to revoke server-side)
- * and best-effort notifies the backend.
+ * Same-origin logout. Clears this browser's first-party httpOnly cookie and
+ * best-effort notifies the backend. Account-wide revocation uses backend
+ * session_version via /auth/logout-all or the admin revoke-sessions route.
  */
 import { NextResponse } from "next/server";
 import { backendUrl } from "@/lib/api-base";

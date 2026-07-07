@@ -8,6 +8,8 @@ but *absent*, the endpoint reports the truth and returns ``degraded`` (503).
 
 Off-switch: ASYNC_STRICT_HEALTH=0 makes the async tier's absence non-fatal to
 the overall status (it is still reported truthfully in the ``async`` block).
+Worker gate: WORKER_STRICT_HEALTH=1 also treats a missing arq heartbeat as
+degraded when Redis is reachable and the async tier is expected.
 """
 
 from __future__ import annotations
@@ -48,6 +50,7 @@ async def health_check():
     """
     version = os.getenv("RELEASE", "dev")
     strict = _flag("ASYNC_STRICT_HEALTH", "1")
+    worker_strict = _flag("WORKER_STRICT_HEALTH", "0")
 
     # Postgres probe
     postgres_ok = False
@@ -102,6 +105,7 @@ async def health_check():
         "redis": redis_ok,
         "worker": worker_state,
         "expected": async_expected,
+        "worker_strict": worker_strict,
     }
 
     # Honest reconstruction capability report (not a health gate: reconstruction
@@ -124,7 +128,9 @@ async def health_check():
     # but unreachable. Worker "unknown" is honest uncertainty, not a failure, so
     # it does not gate status.
     async_degraded = strict and async_expected and not redis_ok
+    worker_degraded = worker_strict and async_expected and redis_ok and worker_state != "ok"
     healthy = postgres_ok and not async_degraded
+    healthy = healthy and not worker_degraded
 
     return JSONResponse(
         content={

@@ -38,7 +38,7 @@ import styles from "./developers.module.css";
 export const metadata: Metadata = {
   title: "Developers — CadVerify",
   description:
-    "The engine is an API. Send a STEP or STL file, get back the full auditable report — routing, DFM, drivers with provenance, confidence, decision. Or self-host the whole stack with Docker Compose.",
+    "The engine is an API. Send an STL, STEP/STP or IGES/IGS file, get back the full auditable report — routing, DFM, drivers with provenance, confidence, decision. Or self-host the whole stack with Docker Compose.",
 };
 
 // JSON syntax hues (design values; tokens where the foundation defines them).
@@ -75,7 +75,7 @@ export default function DevelopersPage() {
             color: "rgba(245,245,247,0.62)",
           }}
         >
-          Send a STEP or STL file, get back the full auditable report — routing, DFM, drivers with
+          Send an STL, STEP/STP or IGES/IGS file, get back the full auditable report — routing, DFM, drivers with
           provenance, confidence, decision. Or self-host the entire stack with Docker Compose.
         </p>
 

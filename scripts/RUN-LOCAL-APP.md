@@ -1,7 +1,9 @@
 # Run CadVerify as a local web app
 
-One step. No terminal knowledge needed. No signup, no API key. Your CAD files
-stay on your Mac — they are parsed in memory and never uploaded anywhere.
+One step. No terminal knowledge needed. The full platform is account-gated, so
+create a local email/password account on first launch. Your CAD files stay on
+your Mac and the app talks only to your local backend unless you configure
+external services yourself.
 
 ## Start it
 
@@ -22,10 +24,13 @@ Either:
 
 1. The backend (the cost/decision engine) starts on `http://127.0.0.1:8000`.
 2. The web app (the page you use) starts on `http://localhost:3000`.
-3. Your browser opens automatically to **http://localhost:3000/cost**.
-4. Drag a CAD file (`.stl`, `.step`, or `.stp`) onto the page. In a few seconds
-   you get the **should-cost** ($/unit by quantity), **lead time**, and the
-   **make-vs-buy** decision with a full, provenance-tagged driver breakdown.
+3. Your browser opens automatically to **http://localhost:3000**.
+4. Sign up or log in with a local account. Passwords need at least 8 characters,
+   one letter, and one digit.
+5. Use the app navigation to open **Cost**, **Analyze**, **Batch**, **Verify**,
+   **Cost Decisions**, **RFQ Packages**, or **Integrations**. Drag a CAD file
+   (`.stl`, `.step`, `.stp`, `.iges`, or `.igs`) into the relevant workflow to
+   get DFM results, should-cost, provenance, and make-vs-buy evidence.
 
 The very first time you drop a file the page may take a few seconds to "warm
 up" (compile) — that is normal and only happens once per launch.
@@ -38,10 +43,10 @@ also frees the ports first, so it is always safe to run again.)
 
 ## Local-only guarantee
 
-- No account, no login, no API key required.
-- The cost page uses a public **local** endpoint (`/api/v1/validate/cost/demo`)
-  that does **not** save your files, does **not** write to any database, and
-  makes **no** network calls with your CAD. Everything runs on `localhost`.
+- A local account is required for the full platform because saved decisions,
+  org settings, RFQ packages, notifications, and audit trails are tenant-scoped.
+- The historical public cost-demo endpoint (`/api/v1/validate/cost/demo`) remains
+  local-only, but the product surface is intentionally auth-gated.
 - Nothing about your part leaves this machine.
 
 ## If something doesn't start
