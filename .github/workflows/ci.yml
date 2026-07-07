@@ -114,7 +114,7 @@ jobs:
         run: |
           pip install pyright==1.1.411
           mkdir -p build
-          pyright src/ --pythonversion 3.12 --outputjson > build/pyright-report.json || true
+          pyright src/ --pythonversion 3.12 --pythonpath "$(python -c 'import sys; print(sys.executable)')" --outputjson > build/pyright-report.json || true
           python3 scripts/ci/check_pyright_baseline.py build/pyright-report.json
         # Blocking (F-ARCH-7): was continue-on-error: true, silently never
         # gating anything. It is now a real regression ratchet against

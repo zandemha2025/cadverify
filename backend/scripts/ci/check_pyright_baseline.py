@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Enforce a pyright error-count ratchet so the typecheck gate can be blocking.
 
-Context (F-ARCH-7 CI audit): `pyright src/ --pythonversion 3.12` currently
-reports a real, pre-existing 127 errors across ~25 files (Trimesh's
+Context (F-ARCH-7 CI audit): `pyright src/ --pythonversion 3.12 --pythonpath
+<active-ci-python>` currently reports a real, pre-existing 237 errors across
+~55 files (Trimesh's
 `Geometry` vs `Trimesh` union typing, optional GPU deps like torch/pyrender
 that are deliberately absent from requirements.txt, gmsh/OCP/cadquery
 possibly-unbound patterns from optional-import guards, and None-safety gaps
