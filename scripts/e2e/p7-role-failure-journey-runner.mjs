@@ -96,7 +96,7 @@ Optional auth hooks:
   E2E_SESSION_COOKIE=<dash_session>                 Use an existing primary session.
   E2E_STORAGE_STATE=/path/to/state.json             Use Playwright storage state.
   E2E_LOGIN_EMAIL=<email> E2E_LOGIN_PASSWORD=<pw>   Log in as primary user.
-  E2E_VIEWER_EMAIL=<email> E2E_VIEWER_PASSWORD=<pw> Run seeded low-role checks.
+  E2E_VIEWER_EMAIL=<email> E2E_VIEWER_PASSWORD=<pw> Use external low-role credentials.
   E2E_VIEWER_SESSION_COOKIE=<dash_session>          Seeded low-role session cookie.
   E2E_VIEWER_STORAGE_STATE=/path/to/state.json      Seeded low-role storage state.
 
@@ -502,6 +502,75 @@ class P7RoleFailureQA {
     }
     await this.assertAuthenticated(page, label);
     return { context, page, label, source: storageState ? "storage" : sessionCookie ? "cookie" : "credentials" };
+  }
+
+  async signupContext(prefix, label) {
+    const context = await this.newContext();
+    const page = await context.newPage();
+    this.attachPage(page);
+    const email = uniqueEmail(prefix);
+    const password = "Passw0rd123";
+    await this.goto("/signup", `${label}-signup`, { page });
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Password").fill(password);
+    await page.getByRole("button", { name: /^Create account$/i }).click();
+    await page.waitForURL((url) => !String(url).includes("/signup"), { timeout: 25_000 }).catch(() => {});
+    await page.waitForTimeout(1000);
+    const text = await this.visibleText(page).catch(() => "");
+    if (/Could not reach the server/i.test(text)) {
+      throw new SkipStep(`${label} signup could not reach the backend`);
+    }
+    if (/Could not create your account|already registered|error/i.test(text) && /\/signup/.test(page.url())) {
+      throw new Error(`${label} signup did not complete: ${text.slice(0, 260).replace(/\s+/g, " ")}`);
+    }
+    await this.assertAuthenticated(page, label);
+    return { context, page, label, source: "signup", email, password };
+  }
+
+  async selfSeedViewerContext() {
+    if (!this.primary) {
+      throw new SkipStep("no primary org-admin session was available to invite a viewer");
+    }
+
+    const viewer = await this.signupContext("p7-viewer", "self-seeded-viewer");
+    const invite = await this.proxyJson(this.primary.context, "/api/proxy/orgs/invites", {
+      method: "POST",
+      body: { email: viewer.email, role: "viewer" },
+    });
+    if (!invite.ok) {
+      throw new Error(`viewer invite failed with ${invite.status}: ${responseDetail(invite.body)}`);
+    }
+
+    const acceptLink = String(invite.body?.accept_link || "");
+    const token = searchParam(acceptLink, "token");
+    if (!token) {
+      throw new Error(`viewer invite did not return an accept token: ${responseDetail(invite.body)}`);
+    }
+
+    const accept = await this.proxyJson(viewer.context, "/api/proxy/orgs/invites/accept", {
+      method: "POST",
+      body: { token },
+    });
+    if (!accept.ok) {
+      throw new Error(`viewer invite accept failed with ${accept.status}: ${responseDetail(accept.body)}`);
+    }
+    assert(accept.body?.org_role === "viewer", `viewer invite accepted as ${accept.body?.org_role}`);
+    assert(accept.body?.org_id, "viewer invite accept did not return org_id");
+
+    const switched = await this.proxyJson(viewer.context, "/api/proxy/orgs/switch", {
+      method: "POST",
+      body: { org_id: accept.body.org_id },
+    });
+    if (!switched.ok) {
+      throw new Error(`viewer org switch failed with ${switched.status}: ${responseDetail(switched.body)}`);
+    }
+    assert(switched.body?.org_role === "viewer", `viewer switched as ${switched.body?.org_role}`);
+    await this.assertAuthenticated(viewer.page, "self-seeded-viewer-switched");
+
+    viewer.source = "self-seeded-invite";
+    viewer.orgId = accept.body.org_id;
+    viewer.orgRole = "viewer";
+    return viewer;
   }
 
   async runUnauthenticatedRedirects() {
@@ -928,25 +997,26 @@ class P7RoleFailureQA {
   }
 
   async runSeededLowRoleChecks() {
-    await this.step("seeded low-role credentials are available", async () => {
-      const lowRole = await this.authContextFromHooks("VIEWER", "seeded-viewer");
-      if (!lowRole) {
-        throw new SkipStep(
-          "no E2E_VIEWER_* auth hook supplied; low-role journey intentionally skipped"
-        );
-      }
+    await this.step("low-role viewer session is available", async () => {
+      const lowRole =
+        (await this.authContextFromHooks("VIEWER", "seeded-viewer")) ||
+        (await this.selfSeedViewerContext());
       this.lowRole = lowRole;
-      this.evidence.lowRoleAuth = { source: lowRole.source };
+      this.evidence.lowRoleAuth = {
+        source: lowRole.source,
+        org_id: lowRole.orgId || null,
+        org_role: lowRole.orgRole || null,
+      };
       return {
         page: lowRole.page,
         url: lowRole.page.url(),
-        screenshot: await this.shot("seeded-viewer-authenticated", false, lowRole.page),
+        screenshot: await this.shot("low-role-viewer-authenticated", false, lowRole.page),
       };
     });
 
     if (!this.lowRole) return;
 
-    await this.step("seeded low-role admin API is denied", async () => {
+    await this.step("low-role admin API is denied", async () => {
       const response = await this.lowRole.context.request.get("/api/proxy/admin/users");
       const body = await this.readResponseJson(response);
       assert(
@@ -960,7 +1030,7 @@ class P7RoleFailureQA {
       return { url: targetUrl("/api/proxy/admin/users"), screenshot: null };
     });
 
-    await this.step("seeded low-role Verify members panel shows gated copy when mounted", async () => {
+    await this.step("low-role Verify members panel shows gated copy when mounted", async () => {
       const page = this.lowRole.page;
       const res = await page.goto("/verify", { waitUntil: "domcontentloaded", timeout: 30_000 });
       await page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => {});
@@ -1141,13 +1211,13 @@ class P7RoleFailureQA {
 - Login failures: bad credentials plus injected network failure copy.
 - Authenticated failure paths when a primary session is available: unsupported batch upload and injected cost-history API failure.
 - Cost-decision governance when a saved decision can be created: browser-driven approve, reopen, and stale-warning display after a governed rate-card publish.
-- Seeded low-role checks when E2E_VIEWER_* hooks are supplied.
+- Low-role checks using external E2E_VIEWER_* hooks when supplied, otherwise a self-seeded invited org viewer.
 - Visible-copy sweep for unfinished language: in development, under construction, coming soon, not implemented, TODO/TBD, stub, mock, placeholder, partial, S3 reference, ComingDoor, StubScreen.
 
 ## Optional Auth Hooks
 
 - Primary hook supplied: ${data.seededHooks.primary ? "yes" : "no"}
-- Viewer/low-role hook supplied: ${data.seededHooks.viewer ? "yes" : "no"}
+- Viewer/low-role hook supplied: ${data.seededHooks.viewer ? "yes" : "no"}; source: ${data.evidence.lowRoleAuth?.source || "not created"}
 
 ## Issues
 
