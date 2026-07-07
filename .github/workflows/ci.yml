@@ -285,6 +285,7 @@ jobs:
             .gstack/qa-reports/screenshots/**
             e2e-app.log
           if-no-files-found: warn
+          include-hidden-files: true
 
       - name: Stop local app
         if: always()

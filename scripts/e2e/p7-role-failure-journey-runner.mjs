@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -14,6 +14,7 @@ const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../..");
+const backendRoot = path.join(repoRoot, "backend");
 const baseUrl = cleanBaseUrl(process.env.APP_URL || "http://localhost:3000");
 const cubePath = path.join(repoRoot, "backend/tests/assets/cube.step");
 const outputRoot = process.env.E2E_ARTIFACT_DIR
@@ -146,6 +147,30 @@ function isIgnorableRequestFailure(url, method, failure) {
 
 function uniqueEmail(prefix = "p7") {
   return `${prefix}-${Date.now()}-${process.pid}-${randomBytes(4).toString("hex")}@example.com`;
+}
+
+async function pathExists(filename) {
+  try {
+    await access(filename);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function resolvePythonExecutable() {
+  const configured = process.env.PYTHON?.trim();
+  if (configured) {
+    return /[\\/]/.test(configured) && !path.isAbsolute(configured)
+      ? path.resolve(repoRoot, configured)
+      : configured;
+  }
+  const venvPython =
+    process.platform === "win32"
+      ? path.join(backendRoot, ".venv", "Scripts", "python.exe")
+      : path.join(backendRoot, ".venv", "bin", "python");
+  if (await pathExists(venvPython)) return venvPython;
+  return "python";
 }
 
 function assert(condition, message) {
@@ -557,9 +582,12 @@ async def main() -> None:
 
 asyncio.run(main())
 `;
-    const backendRoot = path.join(repoRoot, "backend");
+    const python = await resolvePythonExecutable();
+    this.evidence.seededPasswordUserPython = python.startsWith(repoRoot)
+      ? path.relative(repoRoot, python)
+      : python;
     const { stdout, stderr } = await execFileAsync(
-      process.env.PYTHON || "python",
+      python,
       ["-c", script, email, password],
       {
         cwd: backendRoot,
@@ -1221,6 +1249,14 @@ asyncio.run(main())
           skippedSteps,
           failedSteps,
           issues: this.issues.length,
+          failed: this.steps
+            .filter((s) => s.status === "fail")
+            .map((s) => ({ name: s.name, error: s.error, url: s.url })),
+          issueDetails: this.issues.map((i) => ({
+            severity: i.severity,
+            title: i.title,
+            detail: i.detail,
+          })),
           report: artifacts.md,
           screenshots: screenshotDir,
         },
