@@ -319,12 +319,10 @@ def _real_app():
 
 
 def _routes_for(app, path: str):
-    from starlette.routing import Route
-
     return [
         r
         for r in app.routes
-        if isinstance(r, Route) and getattr(r, "path", None) == path
+        if getattr(r, "path", None) == path and getattr(r, "methods", None)
     ]
 
 
