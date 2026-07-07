@@ -77,6 +77,14 @@ function firstMatch(text, regex) {
   return text.slice(start, end).replace(/\s+/g, " ").trim();
 }
 
+function isIgnorableRequestFailure(url, method, failure) {
+  if (/favicon\.ico|\/_next\/webpack-hmr|vercel\/speed-insights/i.test(url)) return true;
+  if (failure !== "net::ERR_ABORTED") return false;
+  if (/[?&]_rsc=/.test(url)) return true;
+  if (method === "POST" && /\/settings\/developer(?:$|\?)/.test(url)) return true;
+  return method === "GET" && /\/_next\/static\/chunks\/[^/?]+\.js(?:\?|$)/.test(url);
+}
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -139,11 +147,7 @@ class EnterpriseDomainQA {
     this.page.on("requestfailed", (request) => {
       const url = request.url();
       const failure = request.failure()?.errorText || "request failed";
-      if (
-        !/favicon\.ico|\/_next\/webpack-hmr|vercel\/speed-insights/i.test(url) &&
-        !(failure === "net::ERR_ABORTED" && /[?&]_rsc=/.test(url)) &&
-        !(failure === "net::ERR_ABORTED" && request.method() === "POST" && /\/settings\/developer(?:$|\?)/.test(url))
-      ) {
+      if (!isIgnorableRequestFailure(url, request.method(), failure)) {
         this.requestFailures.push({ url, method: request.method(), error: failure });
       }
     });

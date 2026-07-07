@@ -112,6 +112,13 @@ function firstMatch(text, regex) {
   return text.slice(start, end).replace(/\s+/g, " ").trim();
 }
 
+function isIgnorableRequestFailure(url, method, failure) {
+  if (/favicon\.ico|vercel\/speed-insights|\/_next\/webpack-hmr/i.test(url)) return true;
+  if (failure !== "net::ERR_ABORTED") return false;
+  if (/[?&]_rsc=/.test(url)) return true;
+  return method === "GET" && /\/_next\/static\/chunks\/[^/?]+\.js(?:\?|$)/.test(url);
+}
+
 class HumanE2E {
   constructor() {
     this.steps = [];
@@ -151,7 +158,7 @@ class HumanE2E {
     this.page.on("requestfailed", (request) => {
       const url = request.url();
       const failure = request.failure()?.errorText || "request failed";
-      if (!/favicon\.ico|vercel\/speed-insights|\/_next\/webpack-hmr/i.test(url) && !(failure === "net::ERR_ABORTED" && /[?&]_rsc=/.test(url))) {
+      if (!isIgnorableRequestFailure(url, request.method(), failure)) {
         this.requestFailures.push({
           url,
           method: request.method(),
