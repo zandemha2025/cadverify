@@ -86,6 +86,11 @@ async def _check_cache(
 # ---------------------------------------------------------------------------
 
 
+def _nullable_api_key_id(user: AuthedUser) -> int | None:
+    """Return a real API-key FK, or NULL for dashboard-session auth."""
+    return user.api_key_id or None
+
+
 async def _persist_analysis(
     session: AsyncSession,
     user: AuthedUser,
@@ -107,7 +112,7 @@ async def _persist_analysis(
         ulid=str(ULID()),
         user_id=user.user_id,
         org_id=await resolve_org(session, user.user_id),
-        api_key_id=user.api_key_id,
+        api_key_id=_nullable_api_key_id(user),
         mesh_hash=mesh_hash,
         process_set_hash=process_set_hash,
         analysis_version=analysis_version,
@@ -153,7 +158,7 @@ async def _write_usage_event(
     event = UsageEvent(
         user_id=user.user_id,
         org_id=await resolve_org(session, user.user_id),
-        api_key_id=user.api_key_id,
+        api_key_id=_nullable_api_key_id(user),
         event_type=event_type,
         analysis_id=analysis_id,
         mesh_hash=mesh_hash,
