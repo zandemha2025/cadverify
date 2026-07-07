@@ -149,6 +149,114 @@ jobs:
       - name: Build
         run: npm run build
 
+  browser-e2e:
+    name: Browser E2E (human + enterprise)
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cadverify
+          POSTGRES_PASSWORD: cadverify_ci
+          POSTGRES_DB: cadverify
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://cadverify:cadverify_ci@localhost:5432/cadverify
+      REDIS_URL: redis://localhost:6379
+      RATE_LIBRARY_ENABLED: "1"
+      SHOP_LIBRARY_ENABLED: "1"
+      MATERIAL_LIBRARY_ENABLED: "1"
+      E2E_RUN_ID: ci-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: browser-actions/setup-chrome@v1
+
+      - name: Install backend dependencies
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/bin/python -m pip install --upgrade pip
+          backend/.venv/bin/python -m pip install -r backend/requirements.txt
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Start full local app
+        run: |
+          set -euo pipefail
+          bash scripts/run-local-app.sh > e2e-app.log 2>&1 &
+          echo $! > e2e-app.pid
+          for _ in $(seq 1 180); do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null \
+              && curl -fsS http://localhost:3000 >/dev/null; then
+              echo "Local app is ready."
+              exit 0
+            fi
+            if ! kill -0 "$(cat e2e-app.pid)" 2>/dev/null; then
+              echo "Local app exited before becoming ready."
+              tail -300 e2e-app.log || true
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "Timed out waiting for local app."
+          tail -300 e2e-app.log || true
+          exit 1
+
+      - name: Run human and enterprise browser journeys
+        run: npm run test:e2e:full --prefix frontend
+
+      - name: Upload browser E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .gstack/qa-reports/*.json
+            .gstack/qa-reports/*.md
+            .gstack/qa-reports/screenshots/**
+            e2e-app.log
+          if-no-files-found: warn
+
+      - name: Stop local app
+        if: always()
+        run: |
+          if [ -f e2e-app.pid ]; then
+            kill "$(cat e2e-app.pid)" 2>/dev/null || true
+          fi
+          sleep 3
+          pkill -f "uvicorn main:app" 2>/dev/null || true
+          pkill -f "next start" 2>/dev/null || true
+          pkill -f "arq src.jobs.worker.WorkerSettings" 2>/dev/null || true
+
   docker-build:
     name: Docker Build
     runs-on: ubuntu-latest
@@ -179,7 +287,7 @@ jobs:
   deploy:
     name: Deploy to Fly.io
     runs-on: ubuntu-latest
-    needs: [backend, frontend, docker-build]
+    needs: [backend, frontend, browser-e2e, docker-build]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
