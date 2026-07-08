@@ -101,3 +101,7 @@ backend/data/*
 
 # sample batch archives (not source; regenerable test fixtures)
 *.zip
+
+# audit screenshot evidence (kept on disk, not committed — binary bloat)
+outputs/audit-2026-07-08/*.png
+outputs/audit-2026-07-08/*.json
