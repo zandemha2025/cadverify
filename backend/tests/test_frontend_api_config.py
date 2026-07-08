@@ -27,7 +27,11 @@ def test_frontend_uses_browser_reachable_api_base():
         assert "cf-turnstile" not in auth_page
         assert "startMagic" not in auth_page
         assert "/auth/google/start" not in auth_page
-        assert "SSO can be enabled when provider credentials are configured." in auth_page
+    # Both auth pages were componentized onto AuthFrame; each still states
+    # honestly that SSO is conditional on configured provider credentials
+    # (never a fabricated third-party button). The copy differs per page.
+    assert "Enterprise SSO is enabled when a provider is connected." in signup_page
+    assert "SSO appears when provider credentials are configured." in login_page
 
 
 def test_next_api_proxy_is_not_used_for_large_uploads():
@@ -56,14 +60,19 @@ def test_deploy_configs_reference_live_backend_origin():
 
 
 def test_public_docs_use_live_urls_and_route_shims_exist():
+    # /docs is now a compatibility redirect to /developers (the dark-theater
+    # API quickstart). The live-URL contract moved with it — assert the redirect
+    # shim on /docs and the live/absent URLs on its target, /developers.
     docs = read("frontend/src/app/docs/page.tsx")
+    developers = read("frontend/src/app/(site)/developers/page.tsx")
     scalar_route = read("frontend/src/app/scalar/route.ts")
 
-    assert "https://cadvrfy-api.fly.dev/api/v1/validate" in docs
-    assert "https://cadvrfy.vercel.app" in docs
-    assert "https://github.com/zandemha2025/cadverify" in docs
-    assert "https://api.cadverify.com" not in docs
-    assert "https://github.com/cadverify/cadverify" not in docs
+    assert 'redirect("/developers")' in docs
+
+    assert "https://cadvrfy-api.fly.dev/api/v1/validate" in developers
+    assert "https://github.com/zandemha2025/cadverify" in developers
+    assert "https://api.cadverify.com" not in developers
+    assert "https://github.com/cadverify/cadverify" not in developers
     assert 'backendUrl("/docs")' in scalar_route
 
     # Legacy URLs now resolve via next.config redirects (the physical shim pages

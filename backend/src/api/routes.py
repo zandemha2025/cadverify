@@ -1466,7 +1466,10 @@ def _to_response(
             "bounding_box_mm": [round(d, 1) for d in result.geometry.bounding_box.dimensions],
             "is_watertight": result.geometry.is_watertight,
             "is_manifold": result.geometry.is_manifold,
-            "center_of_mass": [round(c, 2) for c in result.geometry.center_of_mass],
+            "center_of_mass": [
+                round(c, 2) if c is not None else None
+                for c in result.geometry.center_of_mass
+            ],
             "units": result.geometry.units,
         },
         "segments": [

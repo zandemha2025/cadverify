@@ -10,6 +10,7 @@ import asyncio
 import gc
 import hashlib
 import logging
+import math
 import os
 import time
 from typing import Optional
@@ -91,6 +92,31 @@ def _nullable_api_key_id(user: AuthedUser) -> int | None:
     return user.api_key_id or None
 
 
+def _sanitize_nonfinite(value):
+    """Recursively replace non-finite floats (NaN / ±Inf) with ``None``.
+
+    A degenerate / zero-volume mesh makes trimesh emit NaN for stats like
+    center_of_mass; NaN and Inf are *not* valid JSON, so an unsanitized
+    result_json makes the asyncpg JSONB INSERT raise
+    ``InvalidTextRepresentationError`` and the endpoint returns HTTP 500.
+
+    This is the persist-boundary guard: non-finite → ``null`` (honest
+    "uncomputable", never a fabricated ``0``). The verdict itself is untouched
+    — the user still gets the honest "geometry invalid" answer, just without a
+    crash. Applied to the whole result dict as defense-in-depth on top of the
+    per-stat guard in ``analyze_geometry``.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {k: _sanitize_nonfinite(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_nonfinite(v) for v in value]
+    return value
+
+
 async def _persist_analysis(
     session: AsyncSession,
     user: AuthedUser,
@@ -107,6 +133,10 @@ async def _persist_analysis(
 ) -> Analysis:
     """Insert a new Analysis row and flush to get the assigned id."""
     from src.auth.org_context import resolve_org
+
+    # Persist-boundary guard: strip non-finite floats (NaN/±Inf) so the JSONB
+    # INSERT cannot throw InvalidTextRepresentationError (degenerate meshes).
+    result_json = _sanitize_nonfinite(result_json)
 
     analysis = Analysis(
         ulid=str(ULID()),

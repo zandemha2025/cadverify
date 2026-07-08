@@ -42,7 +42,14 @@ def analyze_geometry(mesh: trimesh.Trimesh) -> GeometryInfo:
         max_y=float(bounds[1][1]),
         max_z=float(bounds[1][2]),
     )
+    # A degenerate / zero-volume mesh makes trimesh return a non-finite
+    # center_mass (NaN/±Inf). Emit honest absence (None) per-component rather
+    # than propagating NaN — the engine won't guess a coordinate it cannot
+    # compute, and NaN is not valid JSON for the persisted JSONB result.
     com = mesh.center_mass
+    center_of_mass = tuple(
+        float(c) if np.isfinite(c) else None for c in com
+    )
     return GeometryInfo(
         vertex_count=len(mesh.vertices),
         face_count=len(mesh.faces),
@@ -52,7 +59,7 @@ def analyze_geometry(mesh: trimesh.Trimesh) -> GeometryInfo:
         is_watertight=bool(mesh.is_watertight),
         is_manifold=bool(mesh.is_watertight),  # trimesh: watertight ≈ manifold
         euler_number=int(mesh.euler_number),
-        center_of_mass=(float(com[0]), float(com[1]), float(com[2])),
+        center_of_mass=center_of_mass,
     )
 
 
