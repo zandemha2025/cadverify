@@ -1,0 +1,30 @@
+name: Incoloy 825
+aliases: [Alloy 825, UNS N08825, 2.4858]
+alloy_designation: UNS N08825
+standards: [ASTM B425, ASTM B564, UNS N08825, NACE MR0175]
+processes: [cnc_3axis, cnc_5axis, cnc_turning, forging, wire_edm]
+mechanical:
+  density_g_cm3: 8.14
+  tensile_mpa: 585
+  yield_mpa: 235
+  elongation_pct: 30
+  hardness_hrc: 20
+  thermal_conductivity_w_mk: 11.1
+  machinability_index: 20
+  max_temperature_c: 540
+dfm:
+  min_wall_mm: 0.6
+  min_wall_by_process:
+    cnc_3axis: 0.8
+    cnc_5axis: 0.6
+    cnc_turning: 0.8
+    forging: 3.0
+    wire_edm: 0.3
+  cost_per_kg_usd:
+    wrought: 25
+compliance:
+  nace_mr0175: true
+  biocompatible: false
+  itar: false
+  sour_service: true
+notes: "Ni-Fe-Cr alloy with Mo/Cu for acid and sour-service resistance (H2S, CO2, chlorides). Common CRA cladding and downhole tubing. NACE MR0175 compliant."

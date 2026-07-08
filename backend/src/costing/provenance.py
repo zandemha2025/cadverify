@@ -65,6 +65,15 @@ class CostEstimate:
     dfm_verdict: str = "pass"       # engine verdict: pass | issues | fail
     dfm_score: float = 1.0
     dfm_blockers: list = field(default_factory=list)   # ERROR-severity issue messages
+    # Structured counterpart to dfm_blockers: the FULL serialized Issue for each
+    # ERROR blocker (code, affected_faces, region_center, measured/required,
+    # process, citation, scope) so the cost view can LOCATE a blocker on the
+    # part — not just print its message. Same order as dfm_blockers.
+    dfm_blocker_details: list = field(default_factory=list)
+    # True when this process was costed as OWNED / in-house (marginal machine
+    # rate — capital amortization removed because the org owns the gear; see
+    # rates.machine_capital_frac). Default False => fully-loaded (rent-the-time).
+    owned_in_house: bool = False
 
     def assert_sums(self, tol: float = 0.01) -> None:
         """Hard invariant (gate G3): unit cost == sum of line items, or it is a bug."""

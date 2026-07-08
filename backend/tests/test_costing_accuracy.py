@@ -14,17 +14,15 @@ passes the procedural model tests).
 
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from src.costing import harness
 
-PARTS_DIR = os.environ.get("CADVERIFY_PARTS_DIR", harness.PARTS_DIR_DEFAULT)
+PARTS_DIR = harness.ensure_fixture_parts_dir()
 
 pytestmark = pytest.mark.skipif(
-    not os.path.isdir(PARTS_DIR),
-    reason=f"real parts dir not present: {PARTS_DIR}",
+    not harness.has_sample_parts(PARTS_DIR),
+    reason=f"real parts fixture batch not present: {PARTS_DIR}",
 )
 
 

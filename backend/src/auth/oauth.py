@@ -3,7 +3,7 @@
 Mounted under /auth:
   GET /google/start    → 302 to Google with state + nonce
   GET /google/callback → validates state, upserts user, mints API key,
-                          303 to /dashboard/keys?new=1 with cv_mint_once cookie
+                          303 to /settings/developer?new=1 with cv_mint_once cookie
 """
 from __future__ import annotations
 
@@ -16,7 +16,12 @@ from fastapi.responses import RedirectResponse
 from src.auth.dashboard_session import set_session_cookie
 from src.auth.disposable import normalize_email
 from src.auth.hashing import hmac_index, mint_token
-from src.auth.models import create_api_key, upsert_user
+from src.auth.models import (
+    create_api_key,
+    get_user_session_version,
+    upsert_user,
+    user_has_active_api_key,
+)
 from src.auth.signup_limits import per_ip_signup_limit
 
 oauth = OAuth()
@@ -43,7 +48,14 @@ async def google_start(request: Request):
     # Per-email limit is NOT applied here — it would lock out legitimate
     # re-sign-ins; applied only at magic-link start where one email = one
     # fresh signup intent.
-    await per_ip_signup_limit(request)
+    #
+    # Gated behind REDIS_URL exactly like the password-signup path
+    # (src/auth/password.py::_run_abuse_controls) — deploy-gated: no rate
+    # limiting in local/dev without Redis configured. Previously this call
+    # was unconditional, so it raised KeyError (os.environ["REDIS_URL"]) on
+    # any environment without Redis instead of degrading gracefully.
+    if os.getenv("REDIS_URL"):
+        await per_ip_signup_limit(request)
     redirect_uri = f"{_api_origin()}/auth/google/callback"
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
@@ -74,16 +86,33 @@ async def google_callback(request: Request):
             },
         )
     email_norm = normalize_email(email)
-    user_id = await upsert_user(email, sub, email_norm)
+    user_id = await upsert_user(email, sub, email_norm, auth_provider="google")
+
+    # Mint a key only when the account has none active (S3). A returning user
+    # keeps their existing key(s) — logging in must not spawn a fresh key nor
+    # attempt a one-time reveal of a secret we can no longer show.
+    if await user_has_active_api_key(user_id):
+        resp = RedirectResponse(url="/settings/developer", status_code=303)
+        set_session_cookie(
+            resp,
+            user_id,
+            session_version=await get_user_session_version(user_id),
+        )
+        return resp
+
     full_token, prefix, secret_hash = mint_token()
     await create_api_key(
         user_id, "Default", prefix, hmac_index(full_token), secret_hash
     )
     resp = RedirectResponse(
-        url=f"/dashboard/keys?new=1&prefix={prefix}", status_code=303
+        url=f"/settings/developer?new=1&prefix={prefix}", status_code=303
     )
     # 30-day dashboard session cookie (HMAC-signed, HttpOnly, Secure, SameSite=Lax).
-    set_session_cookie(resp, user_id)
+    set_session_cookie(
+        resp,
+        user_id,
+        session_version=await get_user_session_version(user_id),
+    )
     resp.set_cookie(
         "cv_mint_once",
         full_token,
@@ -92,6 +121,6 @@ async def google_callback(request: Request):
         httponly=False,
         samesite="lax",
         domain=".cadverify.com",
-        path="/dashboard/keys",
+        path="/settings/developer",
     )
     return resp

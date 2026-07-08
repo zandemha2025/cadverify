@@ -1,10 +1,10 @@
-import LivingInstrument from "@/components/instrument/LivingInstrument";
+import PartWorkspace from "@/components/workspace/PartWorkspace";
 
 /**
- * Analyze entry to THE LIVING INSTRUMENT. Same one-canvas part experience, landed
- * with the DFM flag rail open and the top issue spotlighted ON the geometry — the
- * cost decision and the scrubber are right there too. Session-authed.
+ * Analyze entry to the L2 DECISION frame — same one-drop object, landed on the
+ * Manufacturing-engineer lens (Routing & DFM), findings scoped to the
+ * recommended route and two-way linked to the 3D part. Session-authed.
  */
 export default function AnalyzePage() {
-  return <LivingInstrument focus="dfm" />;
+  return <PartWorkspace defaultRole="mfg" />;
 }

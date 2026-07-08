@@ -46,11 +46,50 @@ def crossover(fixed_a: float, var_a: float, fixed_b: float, var_b: float) -> Opt
 
     unit_a(q) = fixed_a/q + var_a ; unit_b(q) = fixed_b/q + var_b
     => q* = (fixed_b - fixed_a) / (var_a - var_b)
+
+    CLOSED FORM — exact only when both variable costs are qty-CONSTANT. Once a
+    make process carries a volume/learning curve (S1: machining conversion cost
+    falls with qty) its variable cost is qty-dependent and this formula is no
+    longer exact; the decision layer then prefers ``_numerical_crossover`` (below),
+    which scans the ACTUAL per-qty unit costs. This form is retained for the
+    constant-variable case and as a documented fallback.
     """
     if var_a == var_b:
         return None
     q = (fixed_b - fixed_a) / (var_a - var_b)
     return q if q > 1 else None
+
+
+def _numerical_crossover(unit_cost_fn, make_pv: str, tool_pv: str,
+                         q_lo: float, q_cap: int = 10_000_000) -> Optional[float]:
+    """Honest crossover for qty-DEPENDENT unit costs (S1 volume/learning).
+
+    Returns the smallest integer quantity q where the tooling route's ACTUAL
+    per-unit cost drops to/below the make route's ACTUAL per-unit cost, found by
+    evaluating both real cost curves (``unit_cost_fn(process_value, q)``) — no
+    fixed/variable reconstruction, so it stays correct when machining variable
+    cost itself falls with volume. None when tooling never overtakes make within
+    ``q_cap`` (or is already cheaper at q_lo). Monotone in tooling fixed cost:
+    a pricier tool pushes the crossover right, as expected.
+    """
+    def diff(q: int) -> float:                       # >0 once tooling is the cheaper route
+        return unit_cost_fn(make_pv, int(q)) - unit_cost_fn(tool_pv, int(q))
+
+    lo = max(2, int(q_lo))
+    if diff(lo) >= 0:
+        return None                                  # tooling already cheaper at low qty
+    hi = lo
+    while hi < q_cap and diff(hi) < 0:
+        hi = min(hi * 2, q_cap)                      # geometric bracket for the sign change
+    if diff(hi) < 0:
+        return None                                  # tooling never wins within the cap
+    while hi - lo > 1:                               # bisect to the crossover integer
+        mid = (lo + hi) // 2
+        if diff(mid) < 0:
+            lo = mid
+        else:
+            hi = mid
+    return float(hi) if hi > 1 else None
 
 
 def _family(pv: str) -> str:
@@ -77,29 +116,51 @@ def _caveat(est) -> str:
     return ""
 
 
-def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key) -> Optional[Decision]:
+def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
+                unit_cost_fn=None, excluded_pv=None, env_note=None) -> Optional[Decision]:
     """estimates_by_pq: {(process_value, qty): CostEstimate} for every eligible
     (process, qty). Decision ranks by REAL per-qty unit cost (not a fixed/var
     reconstruction), so the headline make process and the low-qty recommendation
     are computed from the same ranking and can never disagree.
+
+    unit_cost_fn (optional): ``(process_value, qty) -> unit_cost_usd``, a real
+    cost evaluator at ARBITRARY qty. When supplied, the make-vs-buy crossover is
+    computed NUMERICALLY from the actual per-qty cost curves — the honest method
+    once machining variable cost falls with volume (S1). Falls back to the
+    closed-form ``crossover`` (single-qty fixed/var split) when absent.
+
+    excluded_pv (optional): the set of process_values whose (process, material)
+    pair the DECLARED service-environment gate ruled out (spec §6). Those routes
+    are DROPPED from the shortlist the crossover / recommendation / if-redesigned
+    tiers range over, so the headline can never recommend an environment-invalid
+    material while the verdict cites its exclusion. EMPTY / None (the default, and
+    every no-environment path) => nothing is dropped and the whole decision — the
+    ranking AND the note — is byte-identical to pre-gate behaviour.
+    env_note (optional): a pre-built human clause naming the environment
+    constraint; appended to ``note`` ONLY when the exclusion actually changed the
+    make-as-is headline (see below).
     """
     if not estimates_by_pq:
         return None
 
     quantities = list(quantities)
     q_lo, q_hi = min(quantities), max(quantities)
-    proc_values = sorted({pv for (pv, _q) in estimates_by_pq})
+    excluded_pv = set(excluded_pv or ())
+    all_pv = sorted({pv for (pv, _q) in estimates_by_pq})
+    proc_values = [pv for pv in all_pv if pv not in excluded_pv]
 
     def est_at(pv, q):
         return estimates_by_pq[(pv, q)]
 
-    def make_ready_ranked(q):
-        cands = [est_at(pv, q) for pv in proc_values
+    def make_ready_ranked(q, pvs=None):
+        pvs = proc_values if pvs is None else pvs
+        cands = [est_at(pv, q) for pv in pvs
                  if _family(pv) in MAKE_NOW_FAMILIES and est_at(pv, q).dfm_ready]
         return sorted(cands, key=lambda e: e.unit_cost_usd)
 
-    def make_any_ranked(q):  # fallback if no DFM-ready make process exists
-        cands = [est_at(pv, q) for pv in proc_values if _family(pv) in MAKE_NOW_FAMILIES]
+    def make_any_ranked(q, pvs=None):  # fallback if no DFM-ready make process exists
+        pvs = proc_values if pvs is None else pvs
+        cands = [est_at(pv, q) for pv in pvs if _family(pv) in MAKE_NOW_FAMILIES]
         return sorted(cands, key=lambda e: e.unit_cost_usd)
 
     def tool_ranked(q):
@@ -108,6 +169,10 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key) -> Optional
 
     ready_lo = make_ready_ranked(q_lo) or make_any_ranked(q_lo)
     if not ready_lo:
+        # Every make-as-is candidate was environment-excluded (or none existed):
+        # honestly ABSENT — no recommendation is fabricated from an excluded pair.
+        # Aligns with the absent-decision shape (report_to_dict serializes None,
+        # exactly as it does for GEOMETRY_INVALID / no-estimates).
         return None
     make_now = ready_lo[0]
 
@@ -116,8 +181,12 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key) -> Optional
 
     q_star = None
     if tool_champion is not None and tool_champion.process != make_now.process:
-        q_star = crossover(make_now.fixed_cost_usd, make_now.variable_cost_usd,
-                           tool_champion.fixed_cost_usd, tool_champion.variable_cost_usd)
+        if unit_cost_fn is not None:
+            q_star = _numerical_crossover(unit_cost_fn, make_now.process,
+                                          tool_champion.process, q_lo)
+        else:
+            q_star = crossover(make_now.fixed_cost_usd, make_now.variable_cost_usd,
+                               tool_champion.fixed_cost_usd, tool_champion.variable_cost_usd)
 
     # ---- per-qty tiers --------------------------------------------------
     recommendation: dict = {}
@@ -155,6 +224,16 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key) -> Optional
     note = _build_note(make_now, tool_champion, q_star, q_lo, q_hi,
                        round(make_now.unit_cost_usd, 2),
                        round(tool_champion.unit_cost_usd, 2) if tool_champion else None)
+
+    # State the environment constraint in the note ONLY when it CHANGED the
+    # make-as-is headline: the cheapest make candidate over the FULL (unfiltered)
+    # shortlist was environment-excluded, so the surviving pick differs. No
+    # exclusion / unchanged headline => the note is byte-identical.
+    if excluded_pv and env_note:
+        full_ready_lo = (make_ready_ranked(q_lo, pvs=all_pv)
+                         or make_any_ranked(q_lo, pvs=all_pv))
+        if full_ready_lo and full_ready_lo[0].process != make_now.process:
+            note = note + " " + env_note
 
     return Decision(
         make_now_process=make_now.process,

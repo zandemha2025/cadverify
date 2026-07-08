@@ -20,7 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src import __version__ as _app_version
-from src.analysis.base_analyzer import analyze_geometry, run_universal_checks
+from src.analysis.base_analyzer import (
+    analyze_geometry,
+    decimation_issue,
+    run_universal_checks,
+)
 from src.analysis.context import GeometryContext
 from src.analysis.features import detect_all as detect_features
 from src.analysis.models import AnalysisResult, ProcessType, Severity
@@ -82,6 +86,11 @@ async def _check_cache(
 # ---------------------------------------------------------------------------
 
 
+def _nullable_api_key_id(user: AuthedUser) -> int | None:
+    """Return a real API-key FK, or NULL for dashboard-session auth."""
+    return user.api_key_id or None
+
+
 async def _persist_analysis(
     session: AsyncSession,
     user: AuthedUser,
@@ -97,10 +106,13 @@ async def _persist_analysis(
     duration_ms: float,
 ) -> Analysis:
     """Insert a new Analysis row and flush to get the assigned id."""
+    from src.auth.org_context import resolve_org
+
     analysis = Analysis(
         ulid=str(ULID()),
         user_id=user.user_id,
-        api_key_id=user.api_key_id,
+        org_id=await resolve_org(session, user.user_id),
+        api_key_id=_nullable_api_key_id(user),
         mesh_hash=mesh_hash,
         process_set_hash=process_set_hash,
         analysis_version=analysis_version,
@@ -114,6 +126,15 @@ async def _persist_analysis(
     )
     session.add(analysis)
     await session.flush()  # get id assigned
+
+    # Maintain the materialized per-part catalog projection (Aramco GAP 2 — scale
+    # to millions). Same-transaction + graceful-degrade: a projection failure is
+    # isolated in a SAVEPOINT and swallowed, never breaking this persist.
+    from src.services import part_summary_service
+
+    await part_summary_service.refresh_part_summary_safe(
+        session, analysis.org_id, analysis.mesh_hash
+    )
     return analysis
 
 
@@ -132,9 +153,12 @@ async def _write_usage_event(
     face_count: int | None,
 ) -> None:
     """Append a usage_events row (same transaction as analysis persist)."""
+    from src.auth.org_context import resolve_org
+
     event = UsageEvent(
         user_id=user.user_id,
-        api_key_id=user.api_key_id,
+        org_id=await resolve_org(session, user.user_id),
+        api_key_id=_nullable_api_key_id(user),
         event_type=event_type,
         analysis_id=analysis_id,
         mesh_hash=mesh_hash,
@@ -180,6 +204,7 @@ async def run_analysis(
     rule_pack: str | None,
     user: AuthedUser,
     session: AsyncSession,
+    include_thickness: bool = False,
 ) -> dict:
     """Full analysis pipeline: hash -> dedup check -> analyze -> persist -> track.
 
@@ -211,10 +236,16 @@ async def run_analysis(
     # 4. Analysis version from package
     analysis_version = _app_version
 
-    # 5. Cache check
-    cached = await _check_cache(
-        session, user.user_id, mesh_hash, process_set_hash, analysis_version
-    )
+    # 5. Cache check.
+    # The wall-thickness map is opt-in and deliberately NOT persisted (it would
+    # bloat every cached row). It needs a live GeometryContext, which only the
+    # fresh path builds — so when the caller asks for it we skip the cache short
+    # circuit and run analysis, then attach the map to the RETURNED dict only.
+    cached = None
+    if not include_thickness:
+        cached = await _check_cache(
+            session, user.user_id, mesh_hash, process_set_hash, analysis_version
+        )
 
     if cached is not None:
         # 6. Cache HIT
@@ -255,9 +286,15 @@ async def run_analysis(
     def _run_analysis_sync():
         geometry = analyze_geometry(mesh)
         ctx = GeometryContext.build(mesh, geometry)
-        features = detect_features(mesh)
+        # ctx.mesh == mesh unless build() decimated an oversize mesh; detect on
+        # ctx.mesh so feature indices align with the context per-face arrays.
+        features = detect_features(ctx.mesh)
         ctx.features = features
         universal_issues = run_universal_checks(mesh)
+        # Honestly surface to the user when the mesh was decimated for analysis.
+        dec_issue = decimation_issue(ctx)
+        if dec_issue is not None:
+            universal_issues.append(dec_issue)
 
         process_scores = []
         for proc in target_processes:
@@ -342,6 +379,17 @@ async def run_analysis(
     _face_count = geometry.face_count
     _verdict = result.overall_verdict
 
+    # Opt-in wall-thickness map: serialize from the live ctx BEFORE it is freed.
+    # Kept out of result_dict so the persisted/cached JSON stays lean; attached
+    # to the returned dict only (see below).
+    _thickness_map = None
+    if include_thickness:
+        from src.analysis.serialization import serialize_wall_thickness
+
+        _thickness_map = serialize_wall_thickness(
+            ctx.wall_thickness, decimation=(ctx.metadata or {}).get("decimation")
+        )
+
     # Release mesh + context memory before async persist
     try:
         mesh._cache.clear()
@@ -409,12 +457,24 @@ async def run_analysis(
                 cached.duration_ms,
                 cached.face_count,
             )
-            return cached.result_json
+            return _with_thickness(cached.result_json, _thickness_map)
         # If re-query also fails, just return the computed result
         # (usage event lost but the user still gets their response).
         logger.warning("Re-query after IntegrityError returned None — returning computed result")
 
-    return result_dict
+    return _with_thickness(result_dict, _thickness_map)
+
+
+def _with_thickness(result_dict: dict, thickness_map: dict | None) -> dict:
+    """Attach the opt-in wall-thickness map to a RETURNED response dict.
+
+    Returns a shallow copy with ``wall_thickness_map`` added so the map never
+    ends up on the persisted/cached ``result_dict`` (default responses stay
+    lean). A no-op when the map was not requested.
+    """
+    if not thickness_map:
+        return result_dict
+    return {**result_dict, "wall_thickness_map": thickness_map}
 
 
 async def get_latest_analysis_id(

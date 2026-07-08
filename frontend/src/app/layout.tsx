@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Archivo } from "next/font/google";
 import { Toaster } from "sonner";
+import { STAGE_UI } from "@/lib/stage-flag";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,9 +14,13 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// Display voice: Archivo, loaded WITH the width axis (`wdth`) so the headlines
-// and the monumental hero number can use the Expanded width — the signature
-// "bold industrial confidence" cut, not a quiet neutral UI sans.
+// MARKETING-ONLY. Archivo was the authed app's display voice pre-"Governed
+// Catalog" re-founding; that identity retired it in favor of Geist Mono for
+// the one hero metric (see globals.css --font-display comment). It's loaded
+// here — WITH the width axis (`wdth`) for the Expanded cut — only as the
+// `--font-display` fallback the (deferred) marketing surfaces still consume;
+// the authed app never sets it. Keep the import until the marketing
+// re-founding decision lands; do not read this as the app's current voice.
 const archivo = Archivo({
   variable: "--font-archivo",
   subsets: ["latin"],
@@ -24,9 +29,32 @@ const archivo = Archivo({
 });
 
 export const metadata: Metadata = {
-  title: "CadVerify — Know what the part should cost. And why.",
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL || "https://cadverify.com"
+  ),
+  title: "CadVerify — verification, made of glass",
   description:
-    "Glass-box, per-shop-calibrated should-cost for real CAD parts. Every cost driver measured, sourced, and editable — the decision, not a fake-exact price.",
+    "Makeability verification: can this part be made — on your machines, in materials that survive its world — and what will it really take? Should-cost is one artifact inside the verdict, never the destination.",
+  alternates: { canonical: "/" },
+  icons: {
+    icon: "/icon.svg",
+  },
+  openGraph: {
+    title: "CadVerify — verification, made of glass",
+    description:
+      "Makeability verification for real manufacturing decisions.",
+    url: "/",
+    siteName: "CadVerify",
+    images: [{ url: "/opengraph-image", width: 1200, height: 630 }],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "CadVerify — verification, made of glass",
+    description:
+      "Makeability verification for real manufacturing decisions.",
+    images: ["/opengraph-image"],
+  },
 };
 
 export default function RootLayout({
@@ -37,15 +65,21 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      // Stage-UI gate: when NEXT_PUBLIC_STAGE_UI is on, `[data-stage]` swaps the
+      // semantic tokens onto the D5 stage register (see globals.css). Off = the
+      // attribute is omitted entirely → today's graphite UI, byte-identical.
+      data-stage={STAGE_UI ? "" : undefined}
       className={`${geistSans.variable} ${geistMono.variable} ${archivo.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <head>
-        {/* No-flash theme: apply the persisted theme before paint. */}
+        {/* No-flash theme: DARK-FIRST. The authed app defaults to dark graphite
+            (the command register); only a user who has pinned light opts out.
+            Applied before paint so the theme never flickers. */}
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "try{var t=localStorage.getItem('cv_theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark')}}catch(e){}",
+              "try{if(localStorage.getItem('cv_theme')!=='light'){document.documentElement.classList.add('dark')}}catch(e){document.documentElement.classList.add('dark')}",
           }}
         />
       </head>

@@ -82,11 +82,47 @@ class GroundTruthRecord:
     region: Optional[str] = None      # explicit region override (None = let shop/option decide)
     currency: str = "USD"
     source: str = ""                  # provenance of the number (quote #, PO, vendor) — audit trail
+    source_type: str = "actual"       # actual|quote|invoice|pilot|synthetic|seed|demo
+    vendor_quote_id: Optional[str] = None
+    invoice_date: Optional[str] = None
+    actual_machine_hours: Optional[float] = None
+    actual_setup_hours: Optional[float] = None
+    actual_labor_hours: Optional[float] = None
+    actual_inspection_hours: Optional[float] = None
+    actual_cycle_seconds: Optional[float] = None
+    evidence_sha256: Optional[str] = None
+    evidence_uri: Optional[str] = None
     stand_in: bool = True             # True = synthetic STAND-IN; False = real ground truth
     part_path: Optional[str] = None   # explicit STL path; else resolved from part_id under parts_dir
     notes: str = ""
+    # ── P1 analogy-to-quote k-NN geometry (all Optional / NULLABLE). ──────────
+    # The MEASURED cost-drivers (``analogy_estimator.FEATURE_KEYS``) this record
+    # carries so it can be a geometric neighbour. Populated best-effort when the
+    # part's mesh resolves; any None => the analogy k-NN skips this record. Never
+    # assumed — extracted from the CAD or left None.
+    volume_cm3: Optional[float] = None
+    surface_area_cm2: Optional[float] = None
+    max_bbox_mm: Optional[float] = None
+    face_count: Optional[int] = None
     created: str = field(default_factory=lambda: date.today().isoformat())
     schema_version: int = SCHEMA_VERSION
+
+    @property
+    def geometry_features(self) -> Optional[dict]:
+        """The record's MEASURED geometry as the mapping ``analogy_estimator``
+        consumes (``analogy_estimator._features_for`` reads this attr) — or None
+        when any driver is missing, so the analogy k-NN honestly skips it. A
+        property (not a dataclass field): it never enters ``to_dict``/dedup and
+        stays None for records whose mesh never resolved."""
+        if (self.volume_cm3 is None or self.surface_area_cm2 is None
+                or self.max_bbox_mm is None or self.face_count is None):
+            return None
+        return {
+            "volume_cm3": self.volume_cm3,
+            "surface_area_cm2": self.surface_area_cm2,
+            "max_bbox_mm": self.max_bbox_mm,
+            "face_count": self.face_count,
+        }
 
     def __post_init__(self) -> None:
         if not self.part_id:

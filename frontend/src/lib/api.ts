@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 import * as Sentry from "@sentry/nextjs";
 import { API_BASE, browserOrBackendUrl } from "./api-base";
+import type { AnalysisListRow } from "./recent-parts";
 
 export interface GeometryInfo {
   vertices: number;
@@ -14,17 +15,47 @@ export interface GeometryInfo {
   units: string;
 }
 
+/**
+ * A structured manufacturing-standard reference, serialized by the backend
+ * (`serialize_citation`) as `{standard?, clause?, text?, rule_id?}` with every
+ * null field DROPPED. The honesty contract that governs the render:
+ *
+ *   • `standard` PRESENT  → a real source (AMS/ASTM/ISO/NADCA/vendor guide);
+ *     render it as a citation chip (`standard` + optional `clause`).
+ *   • `standard` ABSENT   → the descriptor case: the analyzer's `cite=` string
+ *     did not parse to a real source, so only `text` survives. Render it as
+ *     plain descriptive text — NEVER promote a descriptor to a fake citation.
+ *
+ * The whole `citation` key is omitted when the issue is genuinely uncited.
+ */
+export interface IssueCitation {
+  standard?: string;
+  clause?: string;
+  text?: string;
+  rule_id?: string;
+}
+
 export interface Issue {
   code: string;
   severity: "error" | "warning" | "info";
   message: string;
   fix_suggestion: string | null;
   process?: string;
+  /** TRUE total of affected faces (no longer clipped by the analyzers). */
   affected_face_count?: number;
+  /** up to MAX_SERIALIZED_AFFECTED_FACES (2000) indices for the 3D highlight. */
   affected_faces_sample?: number[];
+  /** set by the serializer when affected_face_count > 2000: the sample is capped,
+   *  the honest total is still in affected_face_count (nothing silently dropped). */
+  affected_faces_truncated?: boolean;
   region_center?: [number, number, number];
   measured_value?: number;
   required_value?: number;
+  /** structured standard reference; absent when the issue is uncited. */
+  citation?: IssueCitation;
+  /** "localized" when the finding has faces or a region center; "whole_part"
+   *  when it is honestly unlocalizable (no faked location). */
+  scope?: "localized" | "whole_part";
 }
 
 export interface Segment {
@@ -42,6 +73,9 @@ export interface ProcessScore {
   recommended_material: string | null;
   recommended_machine: string | null;
   estimated_cost_factor: number | null;
+  /** the analyzer's standards bibliography (AMS/ASTM/ISO/NADCA/vendor) behind
+   *  this process's thresholds; [] when the analyzer declares none. */
+  standards?: string[];
   issues: Issue[];
 }
 
@@ -73,6 +107,24 @@ export interface RulePackInfo {
   mandatory_issue_count: number;
 }
 
+/**
+ * Opt-in per-face wall-thickness map for a thin-wall heatmap. Returned under
+ * `wall_thickness_map` ONLY when the request passed `include_thickness=true`
+ * (never persisted/cached). `values[i]` is the inward-ray wall thickness (mm) of
+ * analyzed-mesh face `i` — the SAME index space as `Issue.affected_faces_sample`
+ * — or `null` where thickness is uncomputable (open/degenerate face). When the
+ * analyzed mesh was decimated, `decimated` is true and indices map to the
+ * approximated geometry, not the original upload.
+ */
+export interface WallThicknessMap {
+  n_faces: number;
+  units: string; // "mm"
+  values: (number | null)[];
+  note: string;
+  decimated?: boolean;
+  original_faces?: number;
+}
+
 export interface ValidationResult {
   filename: string;
   file_type: string;
@@ -86,6 +138,8 @@ export interface ValidationResult {
   priority_fixes: PriorityFix[];
   features?: FeatureInfo[];
   rule_pack?: { name: string; version: string };
+  /** present only when the analysis was requested with include_thickness. */
+  wall_thickness_map?: WallThicknessMap;
 }
 
 export interface Material {
@@ -300,7 +354,10 @@ const apiClient = {
 export async function validateFile(
   file: File,
   processes?: string[],
-  rulePack?: string
+  rulePack?: string,
+  /** opt-in: request the per-face wall-thickness map for a thin-wall heatmap.
+   *  Off by default → no query param → response is byte-identical to before. */
+  includeThickness?: boolean
 ): Promise<ValidationResult> {
   const formData = new FormData();
   formData.append("file", file);
@@ -311,6 +368,9 @@ export async function validateFile(
   }
   if (rulePack) {
     params.set("rule_pack", rulePack);
+  }
+  if (includeThickness) {
+    params.set("include_thickness", "true");
   }
 
   let url = `${API_BASE}/validate`;
@@ -370,6 +430,23 @@ export async function fetchAnalyses(params: {
   const rateLimits = getLatestRateLimits();
   const data = await res.json();
   return { ...data, rateLimits };
+}
+
+/**
+ * Fetch the most recent analyses for the landing "recent parts" strip, typed to
+ * the REAL list-endpoint shape (`AnalysisListRow`) rather than the legacy
+ * `AnalysisSummary` that mistypes the row (see `lib/recent-parts.ts`). Returns
+ * only the honest rows; the strip needs no pagination/rate-limit envelope.
+ */
+export async function fetchRecentAnalyses(
+  limit: number
+): Promise<AnalysisListRow[]> {
+  const url = new URL(`${API_BASE}/analyses`, window.location.origin);
+  url.searchParams.set("limit", String(limit));
+
+  const res = await apiClient.fetch(url.toString());
+  const data = (await res.json()) as { analyses?: AnalysisListRow[] };
+  return data.analyses ?? [];
 }
 
 /* ------------------------------------------------------------------ */
@@ -585,7 +662,17 @@ export interface CostEstimate {
   dfm_ready: boolean;
   dfm_verdict: "pass" | "issues" | "fail";
   dfm_score: number;
+  /** ERROR-severity blocker MESSAGES (kept for text consumers). */
   dfm_blockers: string[];
+  /** The same blockers as FULL serialized Issues — same order/source as
+   *  `dfm_blockers` — so a cost-side blocker can locate on the part (faces /
+   *  region / measured / citation), not merely restate its message. Absent on
+   *  reports produced before the cost-blocker relink. */
+  dfm_blocker_details?: Issue[];
+  /** True when the declared service environment excludes this process/material pair. */
+  environment_excluded?: boolean;
+  /** Cited reason for environment_excluded, usually naming the governing standard. */
+  environment_exclusion_reason?: string;
   line_items: Record<string, number>;
   drivers: CostDriver[];
   lead_time: CostLeadTime;
@@ -656,6 +743,12 @@ export interface CostReport {
   notes: string[];
   assumptions: CostAssumption[];
   decision: CostDecision | null;
+  /**
+   * Present when the authed cost route persisted this decision (Phase 2 gap #3).
+   * `id` is the durable cost-decision ulid; `url` is its backend detail path.
+   * Absent on the demo route or when COST_PERSIST_ENABLED is off.
+   */
+  saved?: { id: string; url: string };
 }
 
 export interface CostOptions {
@@ -796,4 +889,473 @@ export function costEstimate(
   opts: CostOptions
 ): Promise<CostReport> {
   return _costEstimate(file, opts);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Cost-decision persistence (Phase 2 gap #3 — save/export/share/compare) */
+/*  Contract: outputs/impl/cost-persist-note.md. Base is /api/v1 via the   */
+/*  same-origin authed proxy (require_role viewer for reads, analyst for    */
+/*  share). result_json.decision keys round-trip as STRINGS through JSONB — */
+/*  read them via lib/cost-decision helpers, never as numeric keys.         */
+/* ------------------------------------------------------------------ */
+
+/** One row of the cost-decision history list (denormalized for listing). */
+export interface CostDecisionGovernance {
+  approval_status?: "unreviewed" | "approved" | string;
+  approved_by_user_id?: number | null;
+  approved_at?: string | null;
+  approval_note?: string | null;
+  is_stale?: boolean;
+  stale_at?: string | null;
+  stale_reason?: string | null;
+}
+
+export interface CostDecisionSummary extends CostDecisionGovernance {
+  id: string;
+  filename: string;
+  file_type: string;
+  label: string | null;
+  make_now_process: string | null;
+  crossover_qty: number | null;
+  quantities: number[];
+  created_at: string;
+  is_public: boolean;
+  share_url: string | null;
+}
+
+export interface CostDecisionsPage {
+  cost_decisions: CostDecisionSummary[];
+  next_cursor: string | null;
+  has_more: boolean;
+  rateLimits?: RateLimits;
+}
+
+/** Full saved decision envelope — `result` is the verbatim report_to_dict. */
+export interface CostDecisionDetail extends CostDecisionGovernance {
+  id: string;
+  filename: string;
+  file_type: string;
+  label: string | null;
+  created_at: string;
+  engine_version: string | null;
+  make_now_process: string | null;
+  crossover_qty: number | null;
+  quantities: number[];
+  is_public: boolean;
+  share_url: string | null;
+  result: CostReport;
+}
+
+/**
+ * Sanitized public cost-decision payload (GET /s/cost/{short_id}). ZERO owner
+ * PII — the decision content (provenance + honest confidence band) is intact.
+ */
+export interface SharedCostDecision {
+  filename: string;
+  file_type: string;
+  label: string | null;
+  created_at: string;
+  make_now_process: string | null;
+  crossover_qty: number | null;
+  quantities: number[];
+  geometry: CostGeometry;
+  material_class: string | null;
+  routing: CostRouting | null;
+  estimates: CostEstimate[];
+  decision: CostDecision | null;
+  assumptions: CostAssumption[];
+  engine_feasibility: CostFeasibility[];
+  notes: string[];
+  status: string | null;
+}
+
+/** Summary side of a compare (one decision). */
+export interface CostCompareSummary {
+  id: string;
+  filename: string;
+  label: string | null;
+  make_now_process: string | null;
+  make_now_material: string | null;
+  tooling_process: string | null;
+  crossover_qty: number | null;
+  material_class: string | null;
+  created_at: string;
+}
+
+export interface CostCompareUnitRow {
+  quantity: number;
+  a: { process: string | null; unit_cost_usd: number | null } | null;
+  b: { process: string | null; unit_cost_usd: number | null } | null;
+  delta_usd: number | null;
+  delta_pct: number | null;
+}
+
+/** Structured diff of two owned cost decisions (GET /cost-decisions/compare). */
+export interface CostComparison {
+  a: CostCompareSummary;
+  b: CostCompareSummary;
+  unit_cost_by_qty: CostCompareUnitRow[];
+  diff: {
+    make_now_process: [string | null, string | null];
+    tooling_process: [string | null, string | null];
+    crossover_qty: [number | null, number | null];
+  };
+  unit_costs_by_process: {
+    a: Record<string, Record<string, number>>;
+    b: Record<string, Record<string, number>>;
+  };
+}
+
+export interface CostShareResult {
+  share_url: string;
+  share_short_id: string;
+}
+
+export interface CostApprovalResult extends CostDecisionGovernance {
+  id: string;
+}
+
+export interface RfqPackageWarning {
+  code: string;
+  decision_id?: string;
+  message: string;
+}
+
+export interface RfqPackageSummary {
+  id: string;
+  title: string;
+  supplier_name: string | null;
+  status: "generated" | "archived" | string;
+  item_count: number;
+  approved_count: number;
+  stale_count: number;
+  unvalidated_count: number;
+  raw_cad_included: boolean;
+  live_supplier_send: boolean;
+  warnings: RfqPackageWarning[];
+  metadata: Record<string, unknown>;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface RfqPackageDetail extends RfqPackageSummary {
+  items: Array<{
+    decision: {
+      id: string;
+      filename: string;
+      approval_status: string;
+      is_stale: boolean;
+      unvalidated_confidence: boolean;
+      make_now_process: string | null;
+      crossover_qty: number | null;
+    };
+    declared_part?: Record<string, unknown> | null;
+    part_context?: Record<string, unknown> | null;
+    raw_cad?: { included: boolean; reason?: string; source?: string } | null;
+  }>;
+}
+
+export interface RfqPackagesPage {
+  packages: RfqPackageSummary[];
+}
+
+export async function fetchRfqPackages(limit = 50): Promise<RfqPackagesPage> {
+  const url = new URL(`${API_BASE}/rfq-packages`, window.location.origin);
+  url.searchParams.set("limit", String(limit));
+  return apiClient.fetchJson<RfqPackagesPage>(url.toString());
+}
+
+export async function fetchRfqPackage(id: string): Promise<RfqPackageDetail> {
+  const body = await apiClient.fetchJson<{ package: RfqPackageDetail }>(
+    `${API_BASE}/rfq-packages/${id}`
+  );
+  return body.package;
+}
+
+export async function createRfqPackage(input: {
+  decisionIds: string[];
+  title?: string;
+  supplierName?: string;
+  note?: string;
+  includeRawCad?: boolean;
+}): Promise<RfqPackageDetail> {
+  const body = await apiClient.fetchJson<{ package: RfqPackageDetail }>(
+    `${API_BASE}/rfq-packages`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        decision_ids: input.decisionIds,
+        title: input.title?.trim() || null,
+        supplier_name: input.supplierName?.trim() || null,
+        note: input.note?.trim() || null,
+        include_raw_cad: Boolean(input.includeRawCad),
+      }),
+    }
+  );
+  return body.package;
+}
+
+/** Paginated list of the user's saved cost decisions. */
+export async function fetchCostDecisions(params: {
+  cursor?: string;
+  limit?: number;
+  process?: string;
+  createdAfter?: string;
+  createdBefore?: string;
+}): Promise<CostDecisionsPage> {
+  const url = new URL(`${API_BASE}/cost-decisions`, window.location.origin);
+  if (params.cursor) url.searchParams.set("cursor", params.cursor);
+  if (params.limit) url.searchParams.set("limit", String(params.limit));
+  if (params.process) url.searchParams.set("process", params.process);
+  if (params.createdAfter) url.searchParams.set("created_after", params.createdAfter);
+  if (params.createdBefore) url.searchParams.set("created_before", params.createdBefore);
+
+  const res = await apiClient.fetch(url.toString());
+  const rateLimits = getLatestRateLimits();
+  const data = await res.json();
+  return { ...data, rateLimits };
+}
+
+/** Full saved cost decision by id (owner-scoped; 404 for others). */
+export async function fetchCostDecision(id: string): Promise<CostDecisionDetail> {
+  return apiClient.fetchJson<CostDecisionDetail>(`${API_BASE}/cost-decisions/${id}`);
+}
+
+/** Approve/sign off a saved cost decision without changing its artifact JSON. */
+export async function approveCostDecision(
+  id: string,
+  note?: string
+): Promise<CostApprovalResult> {
+  return apiClient.fetchJson<CostApprovalResult>(
+    `${API_BASE}/cost-decisions/${id}/approve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note: note?.trim() || null }),
+    }
+  );
+}
+
+/** Reopen a saved cost decision's signoff while keeping the artifact immutable. */
+export async function reopenCostDecisionApproval(
+  id: string
+): Promise<CostApprovalResult> {
+  return apiClient.fetchJson<CostApprovalResult>(
+    `${API_BASE}/cost-decisions/${id}/approve`,
+    { method: "DELETE" }
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Catalog — the org-scoped parts×decisions grid (W1.4, GET /catalog) */
+/*  The lakehouse read surface the FE-4 catalog door consumes instead   */
+/*  of joining /analyses + /cost-decisions on the client. Every field    */
+/*  mirrors backend/src/api/catalog.py + catalog_service.derive_row      */
+/*  VERBATIM — a value the endpoint does not carry is null, never faked.  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The recommended make route for a catalog part. `source` distinguishes a
+ * costed decision's make-now route (`"costed"`) from a raw DFM suggestion on a
+ * part that has not been costed yet (`"dfm"`).
+ */
+export interface CatalogRoute {
+  process: string;
+  material: string | null;
+  source: "costed" | "dfm";
+}
+
+/**
+ * Unit cost for a catalog row's recommended route. `usd` is null and `withheld`
+ * true on a DFM-blocked route — the grid never prints a make-price for a part
+ * that can't be made as-designed. `validated` rides the engine confidence band
+ * (false for every assumption-based band today — no ground truth yet).
+ */
+export interface CatalogUnitCost {
+  usd: number | null;
+  qty: number | null;
+  currency: string;
+  withheld: boolean;
+  withheld_reason: string | null;
+  validated: boolean;
+}
+
+/**
+ * Route-scoped DFM finding counts. Null when the part has no analysis (a cost
+ * decision alone does not embed the DFM Issue array) — an honest absence, never
+ * faked as zero.
+ */
+export interface CatalogFindings {
+  total: number;
+  critical: number;
+  advisory: number;
+  info: number;
+  scoped_process: string;
+}
+
+/** Provenance mix across the make-now estimate's drivers (server-derived). */
+export interface CatalogPosture {
+  measured: number;
+  shop: number;
+  user: number;
+  default: number;
+  total: number;
+  grounded: number;
+  guess: number;
+  grounded_pct: number;
+}
+
+/** A link to a source artifact (the analysis or the cost decision) for a part. */
+export interface CatalogRef {
+  id: string;
+  url: string;
+}
+
+/** One catalog grid row — one part (distinct mesh) in the caller's org. */
+export interface CatalogRowApi {
+  part_key: string;
+  filename: string;
+  file_type: string;
+  lifecycle_state: "Drafted" | "Costed";
+  recommended_route: CatalogRoute | null;
+  unit_cost: CatalogUnitCost | null;
+  findings: CatalogFindings | null;
+  provenance_posture: CatalogPosture | null;
+  route_blocker_count: number;
+  cost_decision: CatalogRef | null;
+  analysis: CatalogRef | null;
+  updated_at: string;
+}
+
+export interface CatalogPagination {
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+  has_more: boolean;
+}
+
+/** Facet summary over the FULL org catalog (pre-filter) — real counts. */
+export interface CatalogFacets {
+  state: Record<string, number>;
+  route: Record<string, number>;
+  findings: { with_findings: number; without_findings: number; unknown: number };
+}
+
+/** The filters the server actually applied (echoed back, canonicalized). */
+export interface CatalogFilters {
+  state: string | null;
+  route: string | null;
+  has_findings: boolean | null;
+}
+
+export interface CatalogPage {
+  rows: CatalogRowApi[];
+  pagination: CatalogPagination;
+  facets: CatalogFacets;
+  /** true when the org exceeded the scan cap and some older parts were omitted. */
+  truncated: boolean;
+  filters: CatalogFilters;
+  rateLimits?: RateLimits;
+}
+
+export interface CatalogQuery {
+  page?: number;
+  pageSize?: number;
+  state?: "Drafted" | "Costed" | null;
+  route?: string | null;
+  hasFindings?: boolean | null;
+}
+
+/** Paginated org-scoped catalog grid (GET /api/v1/catalog). */
+export async function fetchCatalog(params: CatalogQuery = {}): Promise<CatalogPage> {
+  const url = new URL(`${API_BASE}/catalog`, window.location.origin);
+  if (params.page) url.searchParams.set("page", String(params.page));
+  if (params.pageSize) url.searchParams.set("page_size", String(params.pageSize));
+  if (params.state) url.searchParams.set("state", params.state);
+  if (params.route) url.searchParams.set("route", params.route);
+  if (params.hasFindings != null) {
+    url.searchParams.set("has_findings", String(params.hasFindings));
+  }
+  const res = await apiClient.fetch(url.toString());
+  const rateLimits = getLatestRateLimits();
+  const data = await res.json();
+  return { ...data, rateLimits };
+}
+
+/** Trigger a browser download of `blob` as `filename` (shared by the exporters). */
+function triggerBlobDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function costStem(filename: string): string {
+  return filename.replace(/\.[^.]+$/, "");
+}
+
+/** Download the cost-report PDF for a saved decision. */
+export async function downloadCostPdf(id: string, filename: string): Promise<void> {
+  const res = await apiClient.fetch(`${API_BASE}/cost-decisions/${id}/pdf`);
+  triggerBlobDownload(await res.blob(), `${costStem(filename)}-cost-report.pdf`);
+}
+
+/** Export the raw glass-box decision JSON (result_json) for a saved decision. */
+export async function exportCostJson(id: string, filename: string): Promise<void> {
+  const res = await apiClient.fetch(`${API_BASE}/cost-decisions/${id}/export.json`);
+  triggerBlobDownload(await res.blob(), `${costStem(filename)}-cost.json`);
+}
+
+/** Export the estimates / line-items table as CSV (honest confidence columns). */
+export async function exportCostCsv(id: string, filename: string): Promise<void> {
+  const res = await apiClient.fetch(`${API_BASE}/cost-decisions/${id}/export.csv`);
+  triggerBlobDownload(await res.blob(), `${costStem(filename)}-cost.csv`);
+}
+
+/** Download a generated RFQ/supplier evidence ZIP. */
+export async function downloadRfqPackage(id: string, title?: string | null): Promise<void> {
+  const res = await apiClient.fetch(`${API_BASE}/rfq-packages/${id}/download.zip`);
+  triggerBlobDownload(await res.blob(), `${costStem(title || "rfq-package")}-rfq.zip`);
+}
+
+/** Create a public share link for a saved cost decision (idempotent). */
+export async function shareCostDecision(id: string): Promise<CostShareResult> {
+  return apiClient.fetchJson<CostShareResult>(`${API_BASE}/cost-decisions/${id}/share`, {
+    method: "POST",
+  });
+}
+
+/** Revoke a cost decision's public share link. */
+export async function unshareCostDecision(id: string): Promise<void> {
+  await apiClient.fetch(`${API_BASE}/cost-decisions/${id}/share`, { method: "DELETE" });
+}
+
+/** Public sanitized cost-decision view (no auth). Mirrors fetchSharedAnalysis. */
+export async function fetchSharedCostDecision(
+  shortId: string
+): Promise<SharedCostDecision> {
+  const res = await fetch(browserOrBackendUrl(`/s/cost/${shortId}`));
+  if (!res.ok) {
+    throw new Error(
+      res.status === 404 ? "Shared cost decision not found" : "Failed to fetch"
+    );
+  }
+  return res.json();
+}
+
+/** Structured side-by-side diff of two owned cost decisions. */
+export async function compareCostDecisions(
+  idA: string,
+  idB: string
+): Promise<CostComparison> {
+  const ids = encodeURIComponent(`${idA},${idB}`);
+  return apiClient.fetchJson<CostComparison>(
+    `${API_BASE}/cost-decisions/compare?ids=${ids}`
+  );
 }

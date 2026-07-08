@@ -21,7 +21,7 @@ from src.matcher.profile_matcher import rank_processes, score_process
 import src.analysis.processes  # noqa: F401  populate registry
 
 from src.costing import estimate_decision, EstimateOptions
-from src.costing.decision import crossover
+from src.costing.decision import crossover, _numerical_crossover
 
 
 def _analyze(mesh) -> AnalysisResult:
@@ -213,8 +213,17 @@ def test_per_lot_setup_recurs():
 
 
 def test_region_split_material_not_labor_scaled():
-    """#4: material scales with region_material (~0.98), machine with region_labor
-    (0.55) — commodity material is NOT discounted like regional shop labor."""
+    """#4 + E-now #2: material scales with region_material (~0.98); the MACHINE
+    line scales by the capital/labor SPLIT — only the operator-labor share
+    (machine_labor_frac) of the blended machine rate follows region_labor
+    (CN 0.55); the capital/facility/energy share stays a global commodity (×1).
+    So the machine multiplier is NOT the raw 0.55 (that whole-rate discount was
+    the M8 bug), and commodity material is still not discounted like labor."""
+    from src.costing.rates import build_rate_card
+    rc = build_rate_card()
+    frac = rc.g("machine_labor_frac")
+    rl_cn = rc.region_labor("CN")
+    expected_mach = (1.0 - frac) + frac * rl_cn      # capital global ×1 + labor share ×rl
     result, mesh, feats = _analyze(_bulky_block())
     us = estimate_decision(result, mesh, feats, EstimateOptions(quantities=[100], region="US"))
     cn = estimate_decision(result, mesh, feats, EstimateOptions(quantities=[100], region="CN"))
@@ -223,8 +232,129 @@ def test_region_split_material_not_labor_scaled():
     mat_ratio = cn_sls["line_items"]["material"] / us_sls["line_items"]["material"]
     mach_ratio = cn_sls["line_items"]["machine"] / us_sls["line_items"]["machine"]
     assert abs(mat_ratio - 0.98) < 0.02, mat_ratio
-    assert abs(mach_ratio - 0.55) < 0.02, mach_ratio
+    assert abs(mach_ratio - expected_mach) < 0.02, mach_ratio
+    # the split makes the offshore machine discount LESS aggressive than the raw
+    # regional-labor factor (the fixed M8 bug over-discounted it all the way to 0.55)
+    assert mach_ratio > rl_cn + 0.02, (mach_ratio, rl_cn)
     assert mat_ratio > mach_ratio, "material must not be discounted like labor"
+
+
+# ── S1: CNC volume/learning economics ───────────────────────────────────────
+def test_cnc_unit_cost_decreases_with_volume():
+    """S1: machined unit cost must DROP with volume (Wright learning on attended
+    conversion cost) — non-increasing across 100→1k→10k→100k and a meaningful
+    (>=25%) drop 100→10k — and Σ = unit_cost must still hold at every qty. The
+    old model was VOLUME-INVARIANT (flat $/unit across the whole range)."""
+    result, mesh, feats = _analyze(_bulky_block())
+    qtys = [100, 1000, 10000, 100000]
+    report = estimate_decision(result, mesh, feats,
+                               EstimateOptions(quantities=qtys, material_class="aluminum"))
+    for proc in ("cnc_3axis", "cnc_5axis"):
+        series = [(q, _est(report, proc, q)) for q in qtys]
+        assert all(e is not None for _q, e in series), f"{proc} missing an estimate"
+        costs = [e["unit_cost_usd"] for _q, e in series]
+        # (a) monotone non-increasing with volume (was flat/invariant)
+        for lo, hi in zip(costs, costs[1:]):
+            assert hi <= lo + 1e-6, f"{proc} cost must not rise with qty: {costs}"
+        # meaningful real-world drop: >=25% from qty 100 -> 10k (target 30-60%)
+        drop = 1.0 - costs[2] / costs[0]
+        assert drop >= 0.25, f"{proc} 100->10k drop only {drop:.0%} (expected >=25%): {costs}"
+        # (b) Σ invariant intact at every qty
+        for q, e in series:
+            s = sum(e["line_items"].values())
+            assert abs(e["unit_cost_usd"] - round(s, 2)) < 0.02, (
+                f"{proc} qty {q}: {e['unit_cost_usd']} != Σ {s}")
+    # not a flat model any more: qty-100 vs qty-100k must differ substantially
+    c100 = _est(report, "cnc_3axis", 100)["unit_cost_usd"]
+    c100k = _est(report, "cnc_3axis", 100000)["unit_cost_usd"]
+    assert c100k < 0.6 * c100, f"cnc_3axis still ~flat: {c100} -> {c100k}"
+
+
+def test_learning_neutral_at_and_below_first_lot():
+    """The learning curve is anchored at the first production lot (lot_size=100
+    for CNC): no learning credited at/below one lot, so qty<=100 conversion cost
+    is unchanged (protects the low-volume should-cost accuracy) — and toggling the
+    curve off (learning_rate=1.0) recovers the flat behavior exactly."""
+    result, mesh, feats = _analyze(_bulky_block())
+    # at qty 100 (== lot_size) there is no learning driver and cost == flat model
+    on = estimate_decision(result, mesh, feats,
+                           EstimateOptions(quantities=[100], material_class="aluminum"))
+    off = estimate_decision(result, mesh, feats, EstimateOptions(
+        quantities=[100], material_class="aluminum",
+        rate_overrides={"learning_rate": 1.0}))
+    for proc in ("cnc_3axis", "cnc_5axis"):
+        e_on = _est(on, proc, 100)
+        e_off = _est(off, proc, 100)
+        assert abs(e_on["unit_cost_usd"] - e_off["unit_cost_usd"]) < 1e-6
+        assert _driver(e_on, "learning_curve") is None, "no learning at the first lot"
+    # above the lot, disabling learning yields a strictly higher unit cost
+    on10k = estimate_decision(result, mesh, feats,
+                              EstimateOptions(quantities=[10000], material_class="aluminum"))
+    off10k = estimate_decision(result, mesh, feats, EstimateOptions(
+        quantities=[10000], material_class="aluminum",
+        rate_overrides={"learning_rate": 1.0}))
+    e_on = _est(on10k, "cnc_3axis", 10000)
+    e_off = _est(off10k, "cnc_3axis", 10000)
+    assert e_on["unit_cost_usd"] < e_off["unit_cost_usd"]
+    assert _driver(e_on, "learning_curve") is not None
+
+
+def test_numerical_crossover_finite_and_ordered():
+    """S1 crossover: the numerical make-vs-buy crossover is finite, ordered, and
+    monotone in tooling fixed cost — and a make route that LEARNS (variable cost
+    falls with volume) stays competitive to a HIGHER quantity, pushing the tooling
+    crossover to the right (the exact direction the flat model got wrong)."""
+    # flat make ($40 var, $200 fixed) vs high-fixed tooling ($4 var, $30k fixed)
+    def make_flat(pv, q):
+        return 200.0 / q + 40.0
+
+    def tool(pv, q, fixed=30000.0):
+        return fixed / q + 4.0
+
+    q1 = _numerical_crossover(lambda pv, q: make_flat(pv, q) if pv == "make" else tool(pv, q),
+                              "make", "tool", q_lo=50)
+    assert q1 is not None and q1 > 1
+    # closed form agrees within one unit: q* = (30000-200)/(40-4) ~ 827.8
+    assert abs(q1 - 827.8) <= 1.5, q1
+
+    # raise tooling fixed -> crossover moves right (monotone)
+    q2 = _numerical_crossover(
+        lambda pv, q: make_flat(pv, q) if pv == "make" else tool(pv, q, fixed=60000.0),
+        "make", "tool", q_lo=50)
+    assert q2 is not None and q2 > q1
+
+    # a make route WITH learning (90%/doubling, anchored at 100) undercuts the flat
+    # make at volume, so tooling overtakes it LATER -> crossover strictly larger.
+    import math
+
+    def make_learn(pv, q):
+        mult = min(1.0, (q / 100.0) ** (math.log(0.90) / math.log(2.0)))
+        return 200.0 / q + 40.0 * mult
+
+    q3 = _numerical_crossover(
+        lambda pv, q: make_learn(pv, q) if pv == "make" else tool(pv, q),
+        "make", "tool", q_lo=50)
+    assert q3 is not None and q3 > q1, (
+        f"learning should keep machining competitive longer: flat {q1} vs learn {q3}")
+
+
+def test_learning_keeps_machining_competitive_at_volume():
+    """S1 end-to-end: with the learning curve ON, machining (CNC) is a cheaper
+    make-as-is option at high qty than it was under the flat model — the platform's
+    volume 'decision' now rests on machining cost that behaves like machining."""
+    result, mesh, feats = _analyze(_bulky_block())
+    import os
+    os.environ["CADVERIFY_CNC_LEARNING"] = "0"
+    try:
+        flat = estimate_decision(result, mesh, feats, EstimateOptions(
+            quantities=[100, 100000], material_class="aluminum"))
+    finally:
+        os.environ["CADVERIFY_CNC_LEARNING"] = "1"
+    learned = estimate_decision(result, mesh, feats, EstimateOptions(
+        quantities=[100, 100000], material_class="aluminum"))
+    flat_hi = _est(flat, "cnc_3axis", 100000)["unit_cost_usd"]
+    learn_hi = _est(learned, "cnc_3axis", 100000)["unit_cost_usd"]
+    assert learn_hi < flat_hi, f"learning must lower high-qty CNC: {flat_hi} -> {learn_hi}"
 
 
 def test_cavity_complexity_tooling():

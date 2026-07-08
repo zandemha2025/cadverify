@@ -4,7 +4,9 @@
  * Optimistic presence check on every gated route: a request to a platform URL
  * with no session cookie is redirected to /login BEFORE the page renders (this
  * is the server-side gate the security audit requires — not a client hide).
- * Authed users hitting /login or /signup are bounced to the platform.
+ * Auth pages are not bounced on cookie presence alone: the proxy cannot validate
+ * the HMAC/session against the backend, and stale cookies would otherwise loop
+ * between /login and the gated app.
  *
  * The HMAC signature cannot be validated here (Next forbids crypto/DB in proxy),
  * so this is the cheap optimistic check; the authoritative validator is the DAL
@@ -18,8 +20,12 @@ const SESSION_COOKIE = "dash_session";
 const GATED = [
   "/analyze",
   "/cost",
+  "/cost-decisions",
   "/batch",
   "/history",
+  "/integrations",
+  "/notifications",
+  "/rfq-packages",
   "/analyses",
   "/label",
   "/reconstruct",
@@ -27,8 +33,6 @@ const GATED = [
   "/settings",
   "/design-system",
 ];
-const AUTH_PAGES = ["/login", "/signup"];
-
 export default function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const hasSession = Boolean(req.cookies.get(SESSION_COOKIE)?.value);
@@ -40,10 +44,6 @@ export default function proxy(req: NextRequest) {
     const url = new URL("/login", req.nextUrl);
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
-  }
-
-  if (AUTH_PAGES.includes(pathname) && hasSession) {
-    return NextResponse.redirect(new URL("/analyze", req.nextUrl));
   }
 
   return NextResponse.next();

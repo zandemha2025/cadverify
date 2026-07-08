@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    html, body { margin: 0; padding: 0; background: #050506; }
+    * { box-sizing: border-box; }
+    ::selection { background: rgba(255,255,255,0.2); }
+    @keyframes heroIn { from { opacity: 0; transform: translateY(24px); filter: blur(10px); } to { opacity: 1; transform: translateY(0); filter: blur(0); } }
+  </style>
+</helmet>
+
+<div style="background: #050506; color: #f5f5f7; font-family: 'Helvetica Neue', -apple-system, BlinkMacSystemFont, system-ui, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh;">
+
+  <header style="position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; padding: 22px 48px; background: rgba(5,5,6,0.82); backdrop-filter: blur(14px); border-bottom: 1px solid rgba(245,245,247,0.07);">
+    <a href="Direction - Cinematic.dc.html" style="font-size: 17px; font-weight: 500; letter-spacing: 0.06em; color: #f5f5f7; text-decoration: none;">CadVerify</a>
+    <nav style="display: flex; align-items: center; gap: 32px; font-size: 13.5px;">
+      <a href="Method.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none;" style-hover="color: #f5f5f7;">Method</a>
+      <a href="Platform.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none;" style-hover="color: #f5f5f7;">Platform</a>
+      <a href="Teams.dc.html" style="color: #f5f5f7; text-decoration: none;">Teams</a>
+      <a href="Security.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none;" style-hover="color: #f5f5f7;">Security</a>
+      <a href="Company.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none;" style-hover="color: #f5f5f7;">Company</a>
+      <a href="Company.dc.html#pilot" style="border: 1px solid rgba(245,245,247,0.35); border-radius: 999px; padding: 8px 20px; color: #f5f5f7; text-decoration: none; transition: all 200ms;" style-hover="background: #f5f5f7; color: #050506;">Request a pilot</a>
+    </nav>
+  </header>
+
+  <!-- hero -->
+  <section data-screen-label="Hero" style="max-width: 880px; margin: 0 auto; padding: 110px 48px 80px;">
+    <p style="margin: 0; animation: heroIn 1.2s cubic-bezier(0.16,1,0.3,1) 0.2s both;"><a href="Teams.dc.html" style="font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(245,245,247,0.45); text-decoration: none;">Teams / In-house manufacturing · MRO</a></p>
+    <h1 style="margin: 24px 0 0; font-size: clamp(44px, 5.2vw, 72px); line-height: 1.03; font-weight: 300; letter-spacing: -0.03em; animation: heroIn 1.2s cubic-bezier(0.16,1,0.3,1) 0.4s both;">"Can WE make this —<br>on OUR machines?"</h1>
+    <p style="margin: 26px 0 0; max-width: 620px; font-size: 18px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.62); animation: heroIn 1.2s cubic-bezier(0.16,1,0.3,1) 0.6s both;">You run a captive shop inside an operator. Ten thousand legacy parts, suppliers that vanish, lead times that stop production — and a floor full of capability nobody has indexed. This is the journey from that backlog to a verdict per part, computed against your own machines.</p>
+  </section>
+
+  <!-- journey -->
+  <section style="max-width: 880px; margin: 0 auto; padding: 0 48px 40px; display: flex; flex-direction: column; gap: 84px;">
+
+    <div data-screen-label="J1" style="display: grid; grid-template-columns: 120px 1fr; gap: 36px;">
+      <span style="font-size: 56px; font-weight: 200; color: rgba(245,245,247,0.16); line-height: 1; text-align: right; font-variant-numeric: tabular-nums;">01</span>
+      <div>
+        <h2 style="margin: 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em;">A supplier goes dark. Production doesn't wait.</h2>
+        <p style="margin: 14px 0 0; font-size: 15.5px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.58);">The obsolete-parts problem: a pump shaft last bought in 2019, the vendor gone, the drawing in a PLM export. Today the question "could our own shop make it?" takes a week of walking the floor and asking. It should take twelve seconds.</p>
+        <div style="margin-top: 20px; border: 1px solid rgba(245,245,247,0.1); border-radius: 12px; background: #0c0d10; padding: 20px 22px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12px; line-height: 1.9;">
+          <p style="margin: 0; color: rgba(245,245,247,0.35); font-size: 10px; letter-spacing: 0.12em;">OBJECT.STL · DROPPED AT 09:41</p>
+          <p style="margin: 8px 0 0; color: rgba(245,245,247,0.65);">measured Ø21.16 × 21.43 · watertight ✓ · routed rotational → cnc_turning · 412 ms</p>
+        </div>
+      </div>
+    </div>
+
+    <div data-screen-label="J2" style="display: grid; grid-template-columns: 120px 1fr; gap: 36px;">
+      <span style="font-size: 56px; font-weight: 200; color: rgba(245,245,247,0.16); line-height: 1; text-align: right; font-variant-numeric: tabular-nums;">02</span>
+      <div>
+        <h2 style="margin: 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em;">Declare the floor once. It becomes the denominator.</h2>
+        <p style="margin: 14px 0 0; font-size: 15.5px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.58);">Every machine you own — type, build envelope, materials, loaded rate, throughput — declared in an afternoon or imported as CSV. From then on, every verdict in the org is computed against <em style="font-style: normal; color: rgba(245,245,247,0.85);">your</em> capability, not a generic shop's.</p>
+        <div style="margin-top: 20px; border: 1px solid rgba(245,245,247,0.1); border-radius: 12px; background: #0c0d10; padding: 20px 22px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12px; line-height: 1.9;">
+          <p style="margin: 0; color: #c9834f;">● M2 Pro (MJF) $30/hr · ST-20 mill-turn $95/hr · VF-2 · UMC-500 — OWNED → MARGINAL</p>
+          <p style="margin: 0; color: rgba(245,245,247,0.45);">○ gaps stay visible defaults — never silently filled</p>
+        </div>
+      </div>
+    </div>
+
+    <div data-screen-label="J3" style="display: grid; grid-template-columns: 120px 1fr; gap: 36px;">
+      <span style="font-size: 56px; font-weight: 200; color: rgba(245,245,247,0.16); line-height: 1; text-align: right; font-variant-numeric: tabular-nums;">03</span>
+      <div>
+        <h2 style="margin: 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em;">The verdict answers with a machine name.</h2>
+        <p style="margin: 14px 0 0; font-size: 15.5px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.58);">Not "makeable" — <em style="font-style: normal; color: rgba(245,245,247,0.85);">"yes, on your M2 Pro, in PP, 0.068 machine-hours and 4.2 grams per part, $14.14 marginal at your rates."</em> And when the answer is no, it says why: exceeds every envelope you own, or the declared world (sour service, 120 °C) strikes the material — with the NACE or HDT reason named.</p>
+        <div style="margin-top: 20px; border: 1px solid rgba(245,245,247,0.1); border-radius: 12px; background: #0c0d10; padding: 20px 22px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12px; line-height: 1.9;">
+          <p style="margin: 0; color: #55b880;">✓ MAKEABLE IN-HOUSE — M2 Pro · $14.14/unit marginal · lead 5.6–10.4 days</p>
+          <p style="margin: 6px 0 0; color: rgba(245,245,247,0.45);">vs last paid price on file: none — <span style="color: rgba(245,245,247,0.65);">withheld, not invented</span></p>
+        </div>
+      </div>
+    </div>
+
+    <div data-screen-label="J4" style="display: grid; grid-template-columns: 120px 1fr; gap: 36px;">
+      <span style="font-size: 56px; font-weight: 200; color: rgba(245,245,247,0.16); line-height: 1; text-align: right; font-variant-numeric: tabular-nums;">04</span>
+      <div>
+        <h2 style="margin: 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em;">Then run the whole legacy catalog.</h2>
+        <p style="margin: 14px 0 0; font-size: 15.5px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.58);">Triage at scale: the ten-thousand-part backlog collapses into honest buckets — makeable in-house, makeable outside, needs new capability, not makeable as drawn. The capability bucket ranks the acquisition that unlocks the most parts, so the capex case writes itself from the geometry up.</p>
+        <div style="margin-top: 20px; border: 1px solid rgba(245,245,247,0.1); border-radius: 12px; background: #0c0d10; padding: 20px 22px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12px; line-height: 1.9;">
+          <p style="margin: 0; color: rgba(245,245,247,0.65);">268 in-house · 97 outside · <span style="color: #d9a856;">36 need capability</span> · <span style="color: #c96a5e;">11 not makeable</span></p>
+          <p style="margin: 6px 0 0; color: #d9a856;">one IM cell unlocks 22 of 36 — the ranked consideration, not a hunch</p>
+        </div>
+      </div>
+    </div>
+
+    <div data-screen-label="J5" style="display: grid; grid-template-columns: 120px 1fr; gap: 36px;">
+      <span style="font-size: 56px; font-weight: 200; color: rgba(245,245,247,0.16); line-height: 1; text-align: right; font-variant-numeric: tabular-nums;">05</span>
+      <div>
+        <h2 style="margin: 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em;">Your floor sends reality back.</h2>
+        <p style="margin: 14px 0 0; font-size: 15.5px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.58);">You own the machines, so you own the ground truth: real machine-hours flow back from the jobs you run, and the engine's bands flip from hatched assumption to measured residual — on your parts, your floor. A captive shop is the flywheel's best customer.</p>
+        <div style="margin-top: 20px; border: 1px solid rgba(85,184,128,0.25); border-radius: 12px; background: rgba(85,184,128,0.04); padding: 20px 22px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12px; line-height: 1.9;">
+          <p style="margin: 0; color: #55b880;">actual hours returned → bands flip hatched → solid (measured)</p>
+          <p style="margin: 0; color: rgba(245,245,247,0.45);">"validated" will only ever mean measured on your jobs</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section data-screen-label="CTA" style="padding: 100px 48px 110px; text-align: center;">
+    <h2 style="margin: 0; font-size: clamp(32px, 3.8vw, 52px); line-height: 1.06; font-weight: 300; letter-spacing: -0.028em;">Bring the part your supplier abandoned.<br>And your machine list.</h2>
+    <div style="margin-top: 36px; display: flex; justify-content: center; gap: 16px;">
+      <a href="Company.dc.html#pilot" style="background: #f5f5f7; color: #050506; border-radius: 999px; padding: 14px 32px; font-size: 15px; font-weight: 500; text-decoration: none;">Request a pilot</a>
+      <a href="Teams.dc.html" style="border: 1px solid rgba(245,245,247,0.35); border-radius: 999px; padding: 14px 32px; font-size: 15px; color: #f5f5f7; text-decoration: none;">All teams</a>
+    </div>
+  </section>
+
+  <footer style="border-top: 1px solid rgba(245,245,247,0.07); padding: 34px 48px; display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; color: rgba(245,245,247,0.4);">
+    <span>CadVerify — verification, made of glass</span>
+    <span style="display: flex; gap: 26px;">
+      <a href="Direction - Cinematic.dc.html" style="color: inherit; text-decoration: none;">Home</a>
+      <a href="Teams.dc.html" style="color: inherit; text-decoration: none;">Teams</a>
+      <a href="Company.dc.html" style="color: inherit; text-decoration: none;">Company</a>
+    </span>
+  </footer>
+</div>
+</x-dc>
+</body>
+</html>

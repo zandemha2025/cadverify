@@ -118,12 +118,36 @@ def test_macro_box_produces_finite_wall_thickness(macro_box_5m):
 def test_analysis_timeout_returns_504(monkeypatch):
     """CORE-06: tight ANALYSIS_TIMEOUT_SEC on a non-trivial mesh yields 504.
 
-    Uses a medium-size icosphere so the STL export is fast but any
-    analysis work reliably overruns a 1ms budget.
+    ANALYSIS_TIMEOUT_SEC=0.001 alone does NOT reliably force the timeout
+    path: routes.py's ``_analysis_timeout_sec()`` clamps to a 0.1s floor
+    (``max(0.1, float(os.getenv(...)))``), and a subdivisions=5 icosphere
+    (~20k faces) can analyze in well under 100ms on fast hardware (~94.5ms
+    observed on one dev machine) -- so this test deterministically got a
+    200 instead of a 504 there. Rather than depend on the analyzer being
+    slower than the floor by luck of the hardware, monkeypatch the analysis
+    entry point that ``analysis_service.run_analysis`` calls
+    (``analyze_geometry``) so it sleeps past the floor before delegating to
+    the real implementation. That guarantees the ``asyncio.wait_for(...,
+    timeout=timeout_sec)`` in ``run_analysis`` always times out, regardless
+    of how fast the underlying analyzer runs on any given machine.
     """
     monkeypatch.setenv("ANALYSIS_TIMEOUT_SEC", "0.001")
     monkeypatch.setenv("ALLOWED_ORIGINS", "http://localhost:3000")
     monkeypatch.setenv("MAX_UPLOAD_MB", "100")
+
+    import time as _time
+
+    from src.analysis.base_analyzer import analyze_geometry as _real_analyze_geometry
+    from src.services import analysis_service as _analysis_service
+
+    def _slow_analyze_geometry(mesh):
+        # 0.3s comfortably exceeds the routes.py 0.1s enforced floor on any
+        # hardware, making the asyncio.wait_for timeout deterministic.
+        _time.sleep(0.3)
+        return _real_analyze_geometry(mesh)
+
+    monkeypatch.setattr(_analysis_service, "analyze_geometry", _slow_analyze_geometry)
+
     import main
     importlib.reload(main)
     client = TestClient(main.app)

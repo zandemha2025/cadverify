@@ -31,7 +31,9 @@ from __future__ import annotations
 import math
 import os
 import statistics
+import zipfile
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -79,6 +81,48 @@ PARTS_DIR_DEFAULT = os.environ.get(
     "/private/tmp/claude-501/-Users-nazeem-Desktop-developer-cadverify/"
     "3182c9c6-e59b-4394-a584-d9c4cd4ce0dc/scratchpad/parts",
 )
+
+
+def has_sample_parts(parts_dir: str, sample=SAMPLE_PARTS) -> bool:
+    """True only when every frozen fixture file is present on disk."""
+    return bool(parts_dir) and os.path.isdir(parts_dir) and all(
+        os.path.isfile(os.path.join(parts_dir, fname)) for fname, _meta in sample
+    )
+
+
+def ensure_fixture_parts_dir(parts_dir: Optional[str] = None) -> str:
+    """Resolve the real-parts fixture directory, extracting the local archive.
+
+    The old default points at an agent scratchpad that may exist but be empty.
+    When the repo-local automotive batch zip is available, extract it into the
+    ignored pytest cache so real validation tests run against real geometry.
+    An explicit CADVERIFY_PARTS_DIR is respected even if incomplete.
+    """
+    explicit = parts_dir is not None or bool(os.environ.get("CADVERIFY_PARTS_DIR"))
+    candidate = parts_dir or PARTS_DIR_DEFAULT
+    if has_sample_parts(candidate):
+        return candidate
+    if explicit:
+        return candidate
+
+    repo_root = Path(__file__).resolve().parents[3]
+    archive = repo_root / "ecu_automotive_batch2.zip"
+    if not archive.exists():
+        return candidate
+
+    extracted = repo_root / ".pytest_cache" / "parts" / archive.stem
+    extracted_str = str(extracted)
+    if has_sample_parts(extracted_str):
+        return extracted_str
+
+    extracted.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(archive) as zf:
+        for member in zf.infolist():
+            target = Path(member.filename)
+            if member.is_dir() or target.is_absolute() or ".." in target.parts:
+                continue
+            zf.extract(member, extracted)
+    return extracted_str if has_sample_parts(extracted_str) else candidate
 
 # ──────────────────────────────────────────────────────────────────────────
 # 1. Independent reference constants (public price/throughput BANDS)
@@ -608,12 +652,19 @@ def build_report(res: HarnessResult) -> str:
              f"layer). This collapses the prior +60..+75% medium-part over-cost into the "
              f"+/-60% band. Build-job powder-bed/DLP (median {_med(am_nested):+.0%}) "
              f"remains nested per the build-job model.")
-    L.append(f"- **CNC and IM are well-characterized** (CNC median "
-             f"{per_proc.get('cnc_3axis', {}).get('median_signed_err', 0):+.0%} on "
-             f"3-axis, all CNC 100% in band; IM "
+    L.append(f"- **CNC and IM are well-characterized** (CNC 3-axis median "
+             f"{per_proc.get('cnc_3axis', {}).get('median_signed_err', 0):+.0%}, "
+             f"{per_proc.get('cnc_3axis', {}).get('pct_in_band', 0):.0f}% in band; IM "
              f"{per_proc.get('injection_molding', {}).get('median_signed_err', 0):+.0%}, "
-             f"100% in band) — the removal-math and tooling-tier references corroborate "
-             f"V1 across the whole size range.")
+             f"{per_proc.get('injection_molding', {}).get('pct_in_band', 0):.0f}% in band) "
+             f"— the removal-math and tooling-tier references corroborate V1 across the "
+             f"whole size range. NOTE (S1): V1 now credits a volume/learning curve on "
+             f"machined conversion cost (per-unit cost falls with qty), while the R2 "
+             f"reference is deliberately qty-FLAT; so at the qty-1000 reference point a "
+             f"couple of small-cross-section turned parts (already near the band floor) "
+             f"sit just below the flat reference — a KNOWN residual in the documented "
+             f"direction of the fix, not a defect. A volume-aware CNC reference would "
+             f"re-center it; that is left to the ground-truth-quote calibration path.")
     L.append("")
     L.append("Per-process medians (the bias each process carries):")
     L.append("")
@@ -675,7 +726,7 @@ REPORT_PATH = "/Users/nazeem/Desktop/developer/cadverify/outputs/accuracy-report
 def main(argv=None) -> int:
     import warnings
     warnings.simplefilter("ignore")
-    parts_dir = os.environ.get("CADVERIFY_PARTS_DIR", PARTS_DIR_DEFAULT)
+    parts_dir = ensure_fixture_parts_dir()
     res = run_harness(parts_dir)
     report = build_report(res)
     out = os.environ.get("CADVERIFY_ACCURACY_REPORT", REPORT_PATH)

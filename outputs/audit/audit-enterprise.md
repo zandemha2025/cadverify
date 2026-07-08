@@ -98,8 +98,8 @@ Evidence paths are absolute. "Live:" means I hit the running server.
 - `charts/cadverify/templates/secret-saml.yaml` sets `sp-key.pem: ""` / `sp-cert.pem: ""` — signed AuthnRequests/metadata won't work out of the box.
 - Root `/.env.example` lists `SESSION_SECRET` / `HMAC_SECRET`, but the code requires `API_KEY_PEPPER` + `DASHBOARD_SESSION_SECRET` (absent from that file). An operator copying it gets a backend that 500s on the first auth call. (`cadverify-enterprise/.env.example` is closer but still omits `DASHBOARD_SESSION_SECRET`.)
 
-### S11. Sessions cannot be revoked
-- Sessions are stateless HMAC tokens; `logout` only clears the cookie and admits *"nothing to revoke server-side"* — `password.py:212-218`. A stolen `dash_session` is valid for its full 30 days regardless of "logout," password change, or admin action. No server-side session store, no revocation list.
+### S11. Sessions can now be revoked by version
+- Resolved in Cycle 6: dashboard cookies remain HMAC tokens, but carry `users.session_version`. `/auth/logout-all`, superadmin `revoke-sessions`, and account deactivation increment the user-row version, so older cookies are rejected as `session_revoked`.
 
 ---
 

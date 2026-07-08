@@ -17,6 +17,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.auth.org_context import caller_org_subquery
 from src.db.models import Analysis
 
 logger = logging.getLogger("cadverify.share_service")
@@ -37,10 +38,13 @@ async def create_share(
 
     Returns the share URL and short ID. If already shared, returns the
     existing share URL without generating a new ID.
+
+    W1 step 3: org-scoped — only an analysis in the caller's org can be shared;
+    another org's analysis is invisible (404), never 403.
     """
     stmt = select(Analysis).where(
         Analysis.ulid == analysis_ulid,
-        Analysis.user_id == user_id,
+        Analysis.org_id == caller_org_subquery(user_id),
     )
     result = await session.execute(stmt)
     analysis = result.scalar_one_or_none()
@@ -84,10 +88,13 @@ async def create_share(
 async def revoke_share(
     analysis_ulid: str, user_id: int, session: AsyncSession
 ) -> None:
-    """Revoke sharing — null the short ID and set is_public=false."""
+    """Revoke sharing — null the short ID and set is_public=false.
+
+    W1 step 3: org-scoped lookup (see ``create_share``).
+    """
     stmt = select(Analysis).where(
         Analysis.ulid == analysis_ulid,
-        Analysis.user_id == user_id,
+        Analysis.org_id == caller_org_subquery(user_id),
     )
     result = await session.execute(stmt)
     analysis = result.scalar_one_or_none()

@@ -66,8 +66,16 @@ async def log_action(
     """Insert an audit_log row. Swallows DB errors to avoid breaking requests."""
     try:
         async with get_session_factory()() as session:
+            from src.auth.org_context import resolve_org
+
+            org_id = (
+                await resolve_org(session, user_id)
+                if user_id is not None
+                else None
+            )
             entry = AuditLog(
                 user_id=user_id,
+                org_id=org_id,
                 user_email=user_email,
                 action=action,
                 resource_type=resource_type,
@@ -92,6 +100,38 @@ async def fire_and_forget_audit(**kwargs) -> None:
     await log_action(**kwargs)
 
 
+def emit_event(
+    actor_id: int | None,
+    action: str,
+    resource_type: str,
+    resource_id: str | None = None,
+    detail: dict | None = None,
+) -> None:
+    """Fire-and-forget a product audit event, resolving the actor's email.
+
+    The shared one-liner behind the §35 product events (decision/machine/library/
+    governance/ground-truth): schedule a background task that looks up the actor
+    email and writes one ``audit_log`` row. Best-effort — never blocks or breaks
+    the request; a scheduling failure is swallowed (audit is not load-bearing for
+    the mutation that already committed).
+    """
+    async def _run():
+        email = await _lookup_email(actor_id)
+        await log_action(
+            user_id=actor_id,
+            user_email=email,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            detail=detail,
+        )
+
+    try:
+        asyncio.create_task(_run())
+    except Exception:
+        logger.warning("failed to schedule audit event %s", action, exc_info=True)
+
+
 # ---------------------------------------------------------------------------
 # Read / Query
 # ---------------------------------------------------------------------------
@@ -105,13 +145,17 @@ async def query_audit_log(
     end: datetime,
     user_id: int | None = None,
     action: str | None = None,
+    org_id: str | None = None,
     cursor: str | None = None,
     limit: int = _DEFAULT_LIMIT,
     session: AsyncSession | None = None,
 ) -> dict:
     """Query audit_log with time range, optional filters, cursor pagination.
 
-    Returns {"entries": [...], "next_cursor": ..., "has_more": ...}.
+    ``org_id`` bounds the result to a single organization (W1 step 2 — an
+    org-admin passes their org; a superadmin passes None for the unfiltered,
+    platform-wide view). Returns
+    {"entries": [...], "next_cursor": ..., "has_more": ...}.
     """
     limit = max(1, min(limit, _MAX_LIMIT))
 
@@ -132,6 +176,8 @@ async def query_audit_log(
             stmt = stmt.where(AuditLog.user_id == user_id)
         if action is not None:
             stmt = stmt.where(AuditLog.action == action)
+        if org_id is not None:
+            stmt = stmt.where(AuditLog.org_id == org_id)
         if cursor is not None:
             stmt = stmt.where(AuditLog.id > int(cursor))
 
@@ -169,12 +215,14 @@ async def export_audit_csv(
     end: datetime,
     user_id: int | None = None,
     action: str | None = None,
+    org_id: str | None = None,
     session: AsyncSession | None = None,
 ) -> str:
     """Return CSV string of audit entries matching filters.
 
-    Columns: timestamp, user_email, action, resource_type, resource_id,
-    ip_address, file_hash, result_summary.
+    ``org_id`` bounds the export to a single organization (None = platform-wide,
+    superadmin only). Columns: timestamp, user_email, action, resource_type,
+    resource_id, ip_address, file_hash, result_summary.
     """
     should_close = False
     if session is None:
@@ -192,6 +240,8 @@ async def export_audit_csv(
             stmt = stmt.where(AuditLog.user_id == user_id)
         if action is not None:
             stmt = stmt.where(AuditLog.action == action)
+        if org_id is not None:
+            stmt = stmt.where(AuditLog.org_id == org_id)
 
         rows = (await session.execute(stmt)).scalars().all()
 

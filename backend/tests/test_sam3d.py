@@ -14,6 +14,7 @@ from src.segmentation.sam3d.config import SAM3DConfig
 from src.segmentation.sam3d.types import Mask, SemanticLabel, SemanticSegment, ViewRender
 from src.segmentation.sam3d.pipeline import is_sam3d_available, segment_sam3d
 from src.segmentation.sam3d import cache
+from src.segmentation.sam3d import backbone
 from src.segmentation.sam3d import classifier
 from src.segmentation.sam3d import lifter
 from src.segmentation.sam3d import renderer
@@ -162,8 +163,31 @@ class TestPipeline:
         result = segment_sam3d(cube_mesh, config=cfg)
         assert result == []
 
-    def test_is_available_when_enabled(self, monkeypatch):
+    def test_is_unavailable_when_enabled_but_dependencies_missing(self, monkeypatch):
         monkeypatch.setenv("SAM3D_ENABLED", "true")
+        monkeypatch.setenv("SAM3D_MODEL_PATH", "/missing/sam2.pt")
+        monkeypatch.setattr(renderer, "_PYRENDER_AVAILABLE", False)
+        monkeypatch.setattr(backbone, "_SAM2_AVAILABLE", False)
+        assert is_sam3d_available() is False
+
+    def test_is_unavailable_until_face_id_rendering_exists(self, monkeypatch, tmp_path):
+        model_path = tmp_path / "sam2.pt"
+        model_path.write_bytes(b"weights")
+        monkeypatch.setenv("SAM3D_ENABLED", "true")
+        monkeypatch.setenv("SAM3D_MODEL_PATH", str(model_path))
+        monkeypatch.setattr(renderer, "_PYRENDER_AVAILABLE", True)
+        monkeypatch.setattr(renderer, "_FACE_ID_RENDERING_AVAILABLE", False)
+        monkeypatch.setattr(backbone, "_SAM2_AVAILABLE", True)
+        assert is_sam3d_available() is False
+
+    def test_is_available_when_enabled_with_operational_renderer_and_weights(self, monkeypatch, tmp_path):
+        model_path = tmp_path / "sam2.pt"
+        model_path.write_bytes(b"weights")
+        monkeypatch.setenv("SAM3D_ENABLED", "true")
+        monkeypatch.setenv("SAM3D_MODEL_PATH", str(model_path))
+        monkeypatch.setattr(renderer, "_PYRENDER_AVAILABLE", True)
+        monkeypatch.setattr(renderer, "_FACE_ID_RENDERING_AVAILABLE", True)
+        monkeypatch.setattr(backbone, "_SAM2_AVAILABLE", True)
         assert is_sam3d_available() is True
 
 

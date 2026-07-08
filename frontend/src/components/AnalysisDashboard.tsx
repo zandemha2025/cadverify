@@ -1,11 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import type { ValidationResult } from "@/lib/api";
 import { verdictTone, verdictLabel, procLabel } from "@/lib/status";
+import { partitionDfmByRoute, dfmScopedFlagsEnabled } from "@/lib/dfm-scope";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/ui/status-badge";
-import IssueList, { flattenIssues, type IndexedIssue } from "./IssueList";
+import IssueList, { type IndexedIssue } from "./IssueList";
 import ProcessScoreCard from "./ProcessScoreCard";
 import FeaturesList from "./FeaturesList";
 
@@ -22,15 +24,27 @@ export default function AnalysisDashboard({
   selectedIssueKey,
   onSelectIssue,
 }: AnalysisDashboardProps) {
+  const [showAllCandidates, setShowAllCandidates] = useState(false);
   const tone = verdictTone(result.overall_verdict);
   const dims = result.geometry.bounding_box_mm;
-  const issues = flattenIssues(result);
 
-  const allIssues = [
+  // FRAGILE-1: scope the "Manufacturability issues" list to the route the part
+  // will actually be made by (best_process) instead of the union across all 21
+  // candidate processes; the rest stay reachable under an honest, de-emphasized
+  // "only on other candidate processes" expander. Keys stay canonical (from the
+  // full flatten) so the 3D two-way highlight linking keeps working.
+  const scoped = dfmScopedFlagsEnabled();
+  const dfm = partitionDfmByRoute(result, result.best_process);
+  const routeIssues = scoped ? dfm.route : dfm.all;
+  const extraIssues = scoped ? dfm.extra : [];
+  const routeLabel = result.best_process
+    ? procLabel(result.best_process)
+    : "part-level checks";
+
+  const citationTags = extractCitationTags([
     ...result.universal_issues,
     ...result.process_scores.flatMap((ps) => ps.issues),
-  ];
-  const citationTags = extractCitationTags(allIssues);
+  ]);
 
   return (
     <div className="space-y-6">
@@ -93,14 +107,23 @@ export default function AnalysisDashboard({
         />
       </div>
 
-      {/* Issues (Required / Advisory / Notes) — linked to geometry */}
+      {/* Issues (Required / Advisory / Notes) — scoped to the recommended route,
+          linked to geometry. The union across all candidate processes stays
+          reachable under an honest, de-emphasized expander. */}
       <div>
-        <h3 className="mb-3 text-base font-semibold leading-[22px] text-foreground">
-          Manufacturability issues
-        </h3>
-        {issues.length > 0 ? (
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+          <h3 className="text-base font-semibold leading-[22px] text-foreground">
+            Manufacturability issues
+          </h3>
+          {scoped && (
+            <span className="text-xs text-muted-foreground">
+              on recommended route · {routeLabel}
+            </span>
+          )}
+        </div>
+        {routeIssues.length > 0 ? (
           <IssueList
-            items={issues}
+            items={routeIssues}
             selectedKey={selectedIssueKey}
             onSelect={onSelectIssue}
           />
@@ -110,11 +133,42 @@ export default function AnalysisDashboard({
               <div className="flex items-center gap-2">
                 <StatusBadge tone="pass" label="Pass" size="sm" />
                 <span className="text-sm text-foreground">
-                  No DFM issues found across the evaluated processes.
+                  {scoped && extraIssues.length > 0
+                    ? `No DFM issues on the recommended route (${routeLabel}).`
+                    : "No DFM issues found across the evaluated processes."}
                 </span>
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {scoped && extraIssues.length > 0 && (
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={() => setShowAllCandidates((o) => !o)}
+              aria-expanded={showAllCandidates}
+              className="text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            >
+              {showAllCandidates ? "Hide" : "Show"} {extraIssues.length}{" "}
+              {extraIssues.length === 1 ? "issue" : "issues"} only on other
+              candidate processes ({dfm.candidateProcessCount} evaluated)
+            </button>
+            {showAllCandidates && (
+              <div className="mt-3 rounded-[var(--radius)] border border-dashed border-border p-3">
+                <p className="mb-3 text-xs text-muted-foreground">
+                  These flags come from candidate processes the part is not
+                  routed to (e.g. casting/molding checks on a printed part). They
+                  are not part of the recommended route.
+                </p>
+                <IssueList
+                  items={extraIssues}
+                  selectedKey={selectedIssueKey}
+                  onSelect={onSelectIssue}
+                />
+              </div>
+            )}
+          </div>
         )}
       </div>
 

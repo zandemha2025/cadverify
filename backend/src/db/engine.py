@@ -27,6 +27,42 @@ _ENGINE = None
 _SESSION_FACTORY: Optional[async_sessionmaker[AsyncSession]] = None
 
 
+def _is_production() -> bool:
+    """True when RELEASE names a real deployment (not a dev/test/local build)."""
+    return os.getenv("RELEASE", "dev").strip().lower() not in {
+        "",
+        "dev",
+        "development",
+        "local",
+        "test",
+        "ci",
+    }
+
+
+_LOCAL_DB_HOSTS = {"localhost", "127.0.0.1", "::1", "postgres", ""}
+
+
+def _ensure_prod_tls(url: str) -> str:
+    """Default sslmode=require for production databases (M4).
+
+    Local dev (localhost / the docker-compose 'postgres' service) has no TLS,
+    so this is a no-op outside production and for local hosts. Never overrides
+    an explicit sslmode/ssl already in the URL. Off-switch: DB_REQUIRE_TLS=0.
+    """
+    if os.getenv("DB_REQUIRE_TLS", "1") == "0" or not _is_production():
+        return url
+    lowered = url.lower()
+    if "sslmode=" in lowered or "ssl=" in lowered:
+        return url
+    from urllib.parse import urlsplit
+
+    host = (urlsplit(url).hostname or "").lower()
+    if host in _LOCAL_DB_HOSTS or host.endswith(".local"):
+        return url
+    sep = "&" if "?" in url else "?"
+    return f"{url}{sep}sslmode=require"
+
+
 def _async_url(url: str) -> str:
     """Convert postgresql:// to postgresql+asyncpg:// and fix unsupported params."""
     if url.startswith("postgresql://"):
@@ -42,11 +78,15 @@ def get_engine():
     """Return (and lazily create) the async engine singleton."""
     global _ENGINE
     if _ENGINE is None:
-        _ENGINE = create_async_engine(
-            _async_url(os.environ["DATABASE_URL"]),
-            pool_pre_ping=True,
-            pool_size=5,
-        )
+        # Pool sizing is env-driven (F-ARCH-6): the batch coordinator and worker
+        # concurrency can hold several sessions at once, so operators must be
+        # able to size the pool to their deployment instead of a hardcoded 5.
+        url = _async_url(_ensure_prod_tls(os.environ["DATABASE_URL"]))
+        kwargs = {"pool_pre_ping": True}
+        if not url.startswith("sqlite"):
+            kwargs["pool_size"] = int(os.getenv("DB_POOL_SIZE", "5"))
+            kwargs["max_overflow"] = int(os.getenv("DB_MAX_OVERFLOW", "10"))
+        _ENGINE = create_async_engine(url, **kwargs)
     return _ENGINE
 
 

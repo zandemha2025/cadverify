@@ -1,5 +1,5 @@
-name: Mild Steel (Sheet)
-aliases: [A36, 1018, CR Steel, Low Carbon Steel]
+name: Mild Steel
+aliases: [A36, 1018, CR Steel, Low Carbon Steel, Mild Steel (Sheet)]
 alloy_designation: ASTM A36
 standards: [ASTM A36, ASTM A1011, SAE J403-1018]
 processes: [sheet_metal, forging, cnc_3axis, cnc_turning]

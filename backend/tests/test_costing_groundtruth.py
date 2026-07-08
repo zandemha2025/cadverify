@@ -26,11 +26,14 @@ from src.costing.groundtruth import (
 
 PARTS_DIR = os.environ.get("CADVERIFY_PARTS_DIR")
 if not PARTS_DIR:
-    from src.costing.harness import PARTS_DIR_DEFAULT
-    PARTS_DIR = PARTS_DIR_DEFAULT
+    from src.costing.harness import ensure_fixture_parts_dir
+    PARTS_DIR = ensure_fixture_parts_dir()
+from src.costing.harness import has_sample_parts
 
 requires_parts = pytest.mark.skipif(
-    not os.path.isdir(PARTS_DIR), reason=f"real parts dir not present: {PARTS_DIR}")
+    not has_sample_parts(PARTS_DIR),
+    reason=f"real parts fixture batch not present: {PARTS_DIR}",
+)
 
 
 # ── helpers ─────────────────────────────────────────────────────────────────

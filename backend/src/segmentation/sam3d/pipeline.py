@@ -6,6 +6,7 @@ and manufacturing feature classification.
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -13,7 +14,7 @@ import numpy as np
 from src.segmentation.sam3d import cache
 from src.segmentation.sam3d import classifier
 from src.segmentation.sam3d import renderer
-from src.segmentation.sam3d.backbone import SAM2Backbone
+from src.segmentation.sam3d.backbone import SAM2Backbone, is_backbone_available
 from src.segmentation.sam3d.config import SAM3DConfig
 from src.segmentation.sam3d import lifter
 from src.segmentation.sam3d.types import SemanticSegment
@@ -36,9 +37,16 @@ def _get_backbone(config: SAM3DConfig) -> SAM2Backbone:
 
 
 def is_sam3d_available() -> bool:
-    """Check whether the SAM-3D pipeline is enabled via configuration."""
+    """Return True only when SAM-3D is configured and operationally loadable."""
     config = SAM3DConfig.from_env()
-    return config.enabled
+    return (
+        config.enabled
+        and renderer.is_renderer_available()
+        and renderer.is_face_id_rendering_available()
+        and is_backbone_available()
+        and bool(config.model_path)
+        and os.path.exists(config.model_path)
+    )
 
 
 def segment_sam3d(

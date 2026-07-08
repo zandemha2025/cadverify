@@ -1,7 +1,10 @@
 """Tests for structured error responses."""
 
+import json
+
 import pytest
 from httpx import AsyncClient, ASGITransport
+from starlette.exceptions import HTTPException
 from main import app
 
 
@@ -37,3 +40,21 @@ async def test_error_codes_are_upper_snake():
     for status, code in ERROR_CODES.items():
         assert code == code.upper(), f"Code {code} for {status} is not uppercase"
         assert " " not in code, f"Code {code} contains spaces"
+
+
+@pytest.mark.asyncio
+async def test_wrapped_dict_detail_is_preserved():
+    """Dict details without a custom code remain machine-readable."""
+    from src.api.errors import structured_http_error_handler
+
+    resp = await structured_http_error_handler(
+        None,
+        HTTPException(
+            status_code=422,
+            detail={"reason": "below floor", "n_real": 4, "min_real": 8},
+        ),
+    )
+    data = json.loads(resp.body)
+    assert data["code"] == "VALIDATION_ERROR"
+    assert data["message"] == "below floor"
+    assert data["detail"] == {"reason": "below floor", "n_real": 4, "min_real": 8}

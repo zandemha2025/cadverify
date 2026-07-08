@@ -24,9 +24,30 @@ class TestYamlFilesLoad:
         materials_dir = Path(__file__).resolve().parent.parent / "src" / "profiles" / "materials"
         return sorted(materials_dir.glob("*.yaml"))
 
-    def test_yaml_directory_has_15_files(self):
+    def test_yaml_directory_has_expected_files(self):
+        # 15 original + 10 oil-&-gas / API-spec alloy pack (2026-07-04).
         files = self._yaml_files()
-        assert len(files) == 15, f"Expected 15 YAML files, found {len(files)}: {[f.name for f in files]}"
+        assert len(files) >= 25, f"Expected >=25 YAML files, found {len(files)}: {[f.name for f in files]}"
+
+    def test_oil_and_gas_pack_present(self):
+        """The API-spec alloy pack loads with a family, density, and $/kg."""
+        from src.costing.rates import MATERIAL_FAMILY
+        from src.profiles.database import MATERIALS
+
+        by_name = {m.name: m for m in MATERIALS}
+        pack = {
+            "AISI 4130": "steel", "AISI 4140": "steel",
+            "ASTM A105": "steel", "ASTM A182 F22": "steel",
+            "API 13Cr": "stainless", "Super 13Cr": "stainless",
+            "Super Duplex 2507": "stainless", "F6NM": "stainless",
+            "Incoloy 825": "nickel", "Hastelloy C276": "nickel",
+        }
+        for name, family in pack.items():
+            assert name in by_name, f"{name} missing from MATERIALS"
+            m = by_name[name]
+            assert m.density and m.density > 0, f"{name} missing density"
+            assert m.cost_per_kg and m.cost_per_kg > 0, f"{name} missing $/kg"
+            assert MATERIAL_FAMILY.get(name) == family, f"{name} family != {family}"
 
     def test_all_yaml_files_parse(self):
         import yaml

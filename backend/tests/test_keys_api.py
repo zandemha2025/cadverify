@@ -129,7 +129,7 @@ def test_create_key_returns_prefix_and_sets_reveal_cookie(client):
     assert "prefix" in body and len(body["prefix"]) == 8
     sc = r.headers.get("set-cookie", "")
     assert "cv_mint_once=cv_live_" in sc
-    assert "Path=/dashboard/keys" in sc
+    assert "Path=/settings/developer" in sc
     assert "Max-Age=60" in sc
 
 

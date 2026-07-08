@@ -1,0 +1,50 @@
+/* ────────────────────────────────────────────────────────────────────────
+   Page-local motion for /security — the "where your data travels, and stops"
+   beam. Ported verbatim from handoff_cadverify_2026-07-04/site/Security.dc.html
+   (the @keyframes beamTravel / nodeDiscard defined in its <helmet> style).
+
+   These are page-local (NOT foundation): the beam is unique to this page, so
+   the keyframes live in a CSS module here rather than the shared site-theater
+   tokens. Applying the animation through module classes (not inline styles)
+   keeps the hashed keyframe names bound. Reduced-motion is honored by the
+   global `.site-theater *` rule in site-theater.css.
+   ──────────────────────────────────────────────────────────────────────── */
+
+@keyframes beamTravel {
+  0%  { left: 0%;   opacity: 0; }
+  8%  { opacity: 1; }
+  30% { left: 31%;  opacity: 1; }
+  36% { opacity: 0; }
+  40% { left: 34%;  opacity: 0; }
+  46% { left: 34%;  opacity: 1; }
+  66% { left: 65%;  opacity: 1; }
+  72% { opacity: 0; }
+  76% { left: 68%;  opacity: 0; }
+  82% { left: 68%;  opacity: 1; }
+  96% { left: 97%;  opacity: 1; }
+  100%{ left: 100%; opacity: 0; }
+}
+
+@keyframes nodeDiscard {
+  0%, 26%  { opacity: 1; }
+  32%, 38% { opacity: 0.25; }
+  44%, 100%{ opacity: 1; }
+}
+
+/* the travelling scan pulse along the data track */
+.beam {
+  position: absolute;
+  top: 50%;
+  width: 46px;
+  height: 2px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, #f5f5f7);
+  box-shadow: 0 0 18px rgba(245, 245, 247, 0.6);
+  animation: beamTravel 7s linear infinite;
+}
+
+/* the YOUR CAD node dims as the beam passes and the geometry is discarded */
+.node {
+  animation: nodeDiscard 7s linear infinite;
+}

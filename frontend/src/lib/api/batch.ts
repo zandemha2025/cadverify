@@ -132,41 +132,6 @@ export async function createBatch(
 }
 
 /**
- * Create a batch from an S3 reference (no file upload).
- * Uses FormData because the backend expects Form(...) parameters.
- */
-export async function createBatchS3(params: {
-  s3Bucket: string;
-  s3Prefix: string;
-  manifestUrl?: string;
-  webhookUrl?: string;
-  webhookSecret?: string;
-  concurrencyLimit?: number;
-}): Promise<BatchCreateResponse> {
-  const formData = new FormData();
-  formData.append("s3_bucket", params.s3Bucket);
-  formData.append("s3_prefix", params.s3Prefix);
-
-  if (params.manifestUrl) {
-    formData.append("manifest_url", params.manifestUrl);
-  }
-  if (params.webhookUrl) {
-    formData.append("webhook_url", params.webhookUrl);
-  }
-  if (params.webhookSecret) {
-    formData.append("webhook_secret", params.webhookSecret);
-  }
-  if (params.concurrencyLimit != null) {
-    formData.append("concurrency_limit", String(params.concurrencyLimit));
-  }
-
-  return apiFetchJson<BatchCreateResponse>(`${API_BASE}/batch`, {
-    method: "POST",
-    body: formData,
-  });
-}
-
-/**
  * Get batch progress (denormalized counters).
  */
 export async function getBatchProgress(

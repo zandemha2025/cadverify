@@ -72,26 +72,56 @@ def detect_cylinders(
         if len(comp) < min_face_count:
             continue
 
-        comp_normals = normals[comp]
+        comp_arr = np.asarray(comp, dtype=np.int64)
+        comp_normals = normals[comp_arr]
+        comp_centroids = centroids[comp_arr]
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            normal_lengths = np.linalg.norm(comp_normals, axis=1)
+        finite_faces = (
+            np.isfinite(comp_normals).all(axis=1)
+            & np.isfinite(comp_centroids).all(axis=1)
+            & np.isfinite(normal_lengths)
+            & (normal_lengths > 1e-9)
+            & (normal_lengths < 10.0)
+        )
+        if int(finite_faces.sum()) < min_face_count:
+            continue
+        if not np.all(finite_faces):
+            comp_arr = comp_arr[finite_faces]
+            comp_normals = comp_normals[finite_faces]
+            comp_centroids = comp_centroids[finite_faces]
+            normal_lengths = normal_lengths[finite_faces]
+        comp_normals = comp_normals / normal_lengths[:, None]
+
         # Axis = smallest-singular-vector direction of the normal matrix.
         try:
             _, sv, vh = np.linalg.svd(comp_normals, full_matrices=False)
         except np.linalg.LinAlgError:
             continue
         axis = vh[-1]
-        axis /= np.linalg.norm(axis) or 1.0
+        axis_norm = np.linalg.norm(axis)
+        if not np.isfinite(axis_norm) or axis_norm <= 1e-12:
+            continue
+        axis = axis / axis_norm
 
-        residual = float(np.mean(np.abs(comp_normals @ axis)))
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            residual = float(np.mean(np.abs(comp_normals @ axis)))
+        if not np.isfinite(residual):
+            continue
         if residual > max_axis_residual:
             continue
 
-        comp_centroids = centroids[comp]
         mean = comp_centroids.mean(axis=0)
+        if not np.isfinite(mean).all():
+            continue
         rel = comp_centroids - mean
 
         # Remove the component along the axis; the remainder is the radial
         # distance from the axis for each face's centroid.
-        axial = rel @ axis
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            axial = rel @ axis
+        if not np.isfinite(axial).all():
+            continue
         radial = rel - np.outer(axial, axis)
         radii = np.linalg.norm(radial, axis=1)
         radius = float(radii.mean())
@@ -102,12 +132,20 @@ def detect_cylinders(
         # triangle centroids. Centroids of tall skinny side-triangles sit at
         # h/3 and 2h/3, so their range underestimates the true height.
         try:
-            face_verts = np.asarray(mesh.faces[comp], dtype=np.int64)
+            face_verts = np.asarray(mesh.faces[comp_arr], dtype=np.int64)
             unique_v = np.unique(face_verts)
-            v_axial = (np.asarray(mesh.vertices)[unique_v] - mean) @ axis
+            comp_vertices = np.asarray(mesh.vertices)[unique_v]
+            if not np.isfinite(comp_vertices).all():
+                raise ValueError("non-finite component vertex")
+            with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+                v_axial = (comp_vertices - mean) @ axis
+            if not np.isfinite(v_axial).all():
+                raise ValueError("non-finite component axial extent")
             depth = float(v_axial.max() - v_axial.min())
         except Exception:
             depth = float(axial.max() - axial.min())
+        if not np.isfinite(depth):
+            continue
 
         # Hole vs boss: does the average face normal point toward the axis?
         # For a hole (interior surface), the outward normal faces inward
@@ -120,14 +158,18 @@ def detect_cylinders(
             where=radial_norm > 1e-12,
         )
         dot = float(np.mean(np.sum(comp_normals * radial_unit, axis=1)))
+        if not np.isfinite(dot):
+            continue
         kind = FeatureKind.CYLINDER_HOLE if dot < 0 else FeatureKind.CYLINDER_BOSS
 
-        area = float(face_areas[comp].sum())
+        area = float(face_areas[comp_arr].sum())
+        if not np.isfinite(area):
+            continue
 
         features.append(
             Feature(
                 kind=kind,
-                face_indices=list(comp),
+                face_indices=[int(i) for i in comp_arr],
                 centroid=tuple(float(v) for v in mean),
                 axis=tuple(float(v) for v in axis),
                 radius=radius,

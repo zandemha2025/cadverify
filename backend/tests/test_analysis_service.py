@@ -16,6 +16,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.auth.require_api_key import AuthedUser
+from src.db.models import Analysis, UsageEvent
 from src.services.analysis_service import (
     compute_mesh_hash,
     compute_process_set_hash,
@@ -171,6 +173,7 @@ async def test_run_analysis_fresh_persists(db_session, authed_user, _mock_route_
     a = analyses[0]
     assert a.mesh_hash == compute_mesh_hash(file_bytes)
     assert a.filename == "cube.stl"
+    assert a.api_key_id == authed_user.api_key_id
 
 
 @pytest.mark.asyncio
@@ -222,6 +225,40 @@ async def test_run_analysis_writes_usage_event(db_session, authed_user, _mock_ro
     events = [obj for obj in db_session._added if hasattr(obj, "event_type")]
     assert len(events) >= 1
     assert events[0].event_type == "analysis_complete"
+
+
+@pytest.mark.asyncio
+async def test_run_analysis_session_auth_uses_nullable_api_key_fk(
+    db_session,
+    test_user,
+    _mock_route_helpers,
+    _mock_pipeline,
+):
+    """Dashboard-session auth uses api_key_id=0 only in memory, never as an FK."""
+    from src.services.analysis_service import run_analysis
+
+    session_user = AuthedUser(
+        user_id=test_user,
+        api_key_id=0,
+        key_prefix="session",
+        role="analyst",
+    )
+
+    await run_analysis(
+        file_bytes=b"session mesh",
+        filename="cube.stl",
+        processes="fdm",
+        rule_pack=None,
+        user=session_user,
+        session=db_session,
+    )
+
+    analyses = [obj for obj in db_session._added if isinstance(obj, Analysis)]
+    events = [obj for obj in db_session._added if isinstance(obj, UsageEvent)]
+    assert analyses
+    assert events
+    assert analyses[0].api_key_id is None
+    assert events[0].api_key_id is None
 
 
 @pytest.mark.asyncio

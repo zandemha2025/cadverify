@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import warnings
+from types import SimpleNamespace
+
+import numpy as np
+
 from src.analysis.features import detect_all
 from src.analysis.features.base import FeatureKind
 from src.analysis.features.cylinders import detect_cylinders
@@ -49,3 +54,42 @@ def test_detect_all_runs_on_empty_mesh():
 
     empty = trimesh.Trimesh(vertices=np.zeros((0, 3)), faces=np.zeros((0, 3), dtype=int))
     assert detect_all(empty) == []
+
+
+def test_cylinder_detector_skips_non_finite_components_without_runtime_warnings():
+    """Real CAD tessellation can contain degenerate faces; skip them quietly."""
+    mesh = SimpleNamespace(
+        faces=np.array(
+            [
+                [0, 1, 2],
+                [2, 3, 0],
+                [0, 2, 4],
+                [2, 5, 4],
+                [1, 6, 2],
+                [2, 6, 7],
+            ],
+            dtype=np.int64,
+        ),
+        vertices=np.zeros((8, 3), dtype=np.float64),
+        face_normals=np.array(
+            [
+                [1.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [np.inf, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+            ],
+            dtype=np.float64,
+        ),
+        triangles_center=np.zeros((6, 3), dtype=np.float64),
+        face_adjacency=np.array([[0, 1], [1, 2], [2, 3], [3, 4], [4, 5]], dtype=np.int64),
+        face_adjacency_angles=np.zeros(5, dtype=np.float64),
+        area_faces=np.ones(6, dtype=np.float64),
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", RuntimeWarning)
+        assert detect_cylinders(mesh) == []
+
+    assert caught == []

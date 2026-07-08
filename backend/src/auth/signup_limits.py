@@ -8,14 +8,14 @@ AUTH-08:
 """
 from __future__ import annotations
 
-import os
-
 import redis.asyncio as aioredis
 from fastapi import HTTPException, Request
 
+from src.auth.redis_util import require_redis_url
+
 
 def _r() -> aioredis.Redis:
-    return aioredis.from_url(os.environ["REDIS_URL"], decode_responses=True)
+    return aioredis.from_url(require_redis_url(), decode_responses=True)
 
 
 def _err(code: str, msg: str, retry: int) -> HTTPException:

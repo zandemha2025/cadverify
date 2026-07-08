@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    html, body { margin: 0; padding: 0; background: #050506; }
+    * { box-sizing: border-box; }
+    ::selection { background: rgba(255,255,255,0.2); }
+  </style>
+</helmet>
+
+<div style="background: #050506; color: #f5f5f7; font-family: 'Helvetica Neue', -apple-system, BlinkMacSystemFont, system-ui, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh;">
+
+  <!-- nav -->
+  <header style="position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; padding: 22px 48px; background: rgba(5,5,6,0.82); backdrop-filter: blur(14px); border-bottom: 1px solid rgba(245,245,247,0.07);">
+    <a href="Direction - Cinematic.dc.html" style="font-size: 17px; font-weight: 500; letter-spacing: 0.06em; color: #f5f5f7; text-decoration: none;">CadVerify</a>
+    <nav style="display: flex; align-items: center; gap: 36px; font-size: 13.5px;">
+      <a href="Method.dc.html" style="color: #f5f5f7; text-decoration: none;">Method</a>
+      <a href="Platform.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Platform</a>
+      <a href="Teams.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Teams</a>
+      <a href="Security.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Security</a>
+      <a href="Developers.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Developers</a>
+      <a href="Company.dc.html" style="color: rgba(245,245,247,0.6); text-decoration: none; transition: color 200ms;" style-hover="color: #f5f5f7;">Company</a>
+      <a href="Company.dc.html#pilot" style="border: 1px solid rgba(245,245,247,0.35); border-radius: 999px; padding: 8px 20px; color: #f5f5f7; text-decoration: none; transition: all 200ms;" style-hover="background: #f5f5f7; color: #050506;">Request a pilot</a>
+    </nav>
+  </header>
+
+  <!-- hero -->
+  <section data-screen-label="Method hero" style="max-width: 880px; margin: 0 auto; padding: 110px 48px 90px;">
+    <p style="margin: 0; font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(245,245,247,0.45);">Method</p>
+    <h1 style="margin: 24px 0 0; font-size: clamp(44px, 5.2vw, 72px); line-height: 1.03; font-weight: 300; letter-spacing: -0.03em;">One file in.<br>The whole model out.</h1>
+    <p style="margin: 26px 0 0; max-width: 620px; font-size: 18px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.62);">A CAD file passes through five stages, and every one of them opens. The panels below render the cost-truth engine's own report for a real part — object.stl, calibrated to a real shop. Nothing on this page is a mockup.</p>
+    <p style="margin: 16px 0 0; max-width: 620px; font-size: 15px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.5);">The question it answers, in order: <span style="color: rgba(245,245,247,0.8);">can it be made — on your machines, in materials that survive its world — and what will it really take?</span> The dollar is the last stop, not the destination.</p>
+    <div style="margin-top: 22px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px;">
+      <span style="border: 1px solid rgba(245,245,247,0.18); border-radius: 999px; padding: 5px 13px; color: rgba(245,245,247,0.7);">1 envelope — your machines</span>
+      <span style="color: rgba(245,245,247,0.25);">→</span>
+      <span style="border: 1px solid rgba(245,245,247,0.18); border-radius: 999px; padding: 5px 13px; color: rgba(245,245,247,0.7);">2 materials — its world</span>
+      <span style="color: rgba(245,245,247,0.25);">→</span>
+      <span style="border: 1px solid rgba(245,245,247,0.18); border-radius: 999px; padding: 5px 13px; color: rgba(245,245,247,0.7);">3 process physics</span>
+      <span style="color: rgba(245,245,247,0.25);">→</span>
+      <span style="border: 1px solid rgba(245,245,247,0.18); border-radius: 999px; padding: 5px 13px; color: rgba(245,245,247,0.7);">4 hours + mass</span>
+      <span style="color: rgba(245,245,247,0.25);">→</span>
+      <span style="border: 1px solid rgba(245,245,247,0.18); border-radius: 999px; padding: 5px 13px; color: rgba(245,245,247,0.7);">5 resource cost</span>
+    </div>
+  </section>
+
+  <!-- the record assembles — scroll-driven Σ -->
+  <section ref="{{ asmSec }}" data-screen-label="The record assembles" style="position: relative; height: 240vh; border-top: 1px solid rgba(245,245,247,0.07); background: #070709;">
+    <div style="position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 48px;">
+      <p style="margin: 0 0 34px; font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(245,245,247,0.4);">Watch the record assemble</p>
+      <div style="width: 100%; max-width: 560px; font-family: ui-monospace, 'SF Mono', monospace;">
+        <div ref="{{ row0 }}" style="display: flex; justify-content: space-between; align-items: baseline; padding: 13px 0; border-bottom: 1px solid rgba(245,245,247,0.09); opacity: 0;"><span style="font-size: 14px; color: rgba(245,245,247,0.6);">labor <span style="font-size: 11px; color: rgba(245,245,247,0.3);">— 0.082 hr × $52/hr</span></span><span style="font-size: 17px; color: #f5f5f7;">$6.39 <span style="font-size: 10px; color: #c9834f;">● SHOP</span></span></div>
+        <div ref="{{ row1 }}" style="display: flex; justify-content: space-between; align-items: baseline; padding: 13px 0; border-bottom: 1px solid rgba(245,245,247,0.09); opacity: 0;"><span style="font-size: 14px; color: rgba(245,245,247,0.6);">amortized fixed <span style="font-size: 11px; color: rgba(245,245,247,0.3);">— setup ÷ 10 units</span></span><span style="font-size: 17px; color: #f5f5f7;">$3.89 <span style="font-size: 10px; color: #c9834f;">● SHOP</span></span></div>
+        <div ref="{{ row2 }}" style="display: flex; justify-content: space-between; align-items: baseline; padding: 13px 0; border-bottom: 1px solid rgba(245,245,247,0.09); opacity: 0;"><span style="font-size: 14px; color: rgba(245,245,247,0.6);">machine <span style="font-size: 11px; color: rgba(245,245,247,0.3);">— 15.2 hr build ÷ 223 parts</span></span><span style="font-size: 17px; color: #f5f5f7;">$3.82 <span style="font-size: 10px; color: #c9834f;">● SHOP</span></span></div>
+        <div ref="{{ row3 }}" style="display: flex; justify-content: space-between; align-items: baseline; padding: 13px 0; opacity: 0;"><span style="font-size: 14px; color: rgba(245,245,247,0.6);">material <span style="font-size: 11px; color: rgba(245,245,247,0.3);">— 4.63 cm³ × $7/kg lot</span></span><span style="font-size: 17px; color: #f5f5f7;">$0.04 <span style="font-size: 10px; color: #c9834f;">● SHOP</span></span></div>
+        <div ref="{{ rowSum }}" style="border-top: 1px solid rgba(245,245,247,0.35); margin-top: 6px; padding-top: 22px; display: flex; justify-content: space-between; align-items: baseline; opacity: 0;">
+          <span style="font-size: 13px; letter-spacing: 0.18em; color: rgba(245,245,247,0.45);">Σ / UNIT</span>
+          <span style="font-family: 'Helvetica Neue', sans-serif; font-size: clamp(56px, 7vw, 96px); font-weight: 200; letter-spacing: -0.04em; line-height: 1; color: #f5f5f7;">$14.14</span>
+        </div>
+        <p ref="{{ rowNote }}" style="margin: 20px 0 0; text-align: right; font-size: 11px; color: rgba(245,245,247,0.35); opacity: 0;">reconciles exactly — no naked totals, ever</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- stages -->
+  <section style="max-width: 880px; margin: 0 auto; padding: 80px 48px 40px; display: flex; flex-direction: column; gap: 88px;">
+
+    <!-- 01 -->
+    <div data-screen-label="Stage 01" style="display: grid; grid-template-columns: 120px 1fr; gap: 36px;">
+      <span style="font-size: 56px; font-weight: 200; color: rgba(245,245,247,0.16); line-height: 1; text-align: right; font-variant-numeric: tabular-nums;">01</span>
+      <div>
+        <h2 style="margin: 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em;">Measure the geometry.</h2>
+        <p style="margin: 14px 0 0; font-size: 15.5px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.58);">The engine reads the part itself — volume, bounding box, wall thickness, watertightness. These are MEASURED facts taken directly from your CAD, the ground everything else stands on. The mesh is parsed in-process and discarded.</p>
+        <div style="margin-top: 22px; border: 1px solid rgba(245,245,247,0.1); border-radius: 14px; background: #0c0d10; padding: 22px;">
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12px;">
+            <span style="display: inline-flex; align-items: center; gap: 7px; border: 1px solid rgba(106,165,216,0.3); border-radius: 6px; padding: 5px 10px;"><span aria-hidden="true" style="width: 7px; height: 7px; border-radius: 50%; background: #6aa5d8;"></span><span style="color: rgba(245,245,247,0.65);">volume</span><span style="color: #6aa5d8;">4.63 cm³</span></span>
+            <span style="display: inline-flex; align-items: center; gap: 7px; border: 1px solid rgba(106,165,216,0.3); border-radius: 6px; padding: 5px 10px;"><span aria-hidden="true" style="width: 7px; height: 7px; border-radius: 50%; background: #6aa5d8;"></span><span style="color: rgba(245,245,247,0.65);">bbox</span><span style="color: #6aa5d8;">21.2 × 21.4 × 21.5 mm</span></span>
+            <span style="display: inline-flex; align-items: center; gap: 7px; border: 1px solid rgba(106,165,216,0.3); border-radius: 6px; padding: 5px 10px;"><span aria-hidden="true" style="width: 7px; height: 7px; border-radius: 50%; background: #6aa5d8;"></span><span style="color: rgba(245,245,247,0.65);">nominal wall</span><span style="color: #6aa5d8;">6.17 mm</span></span>
+            <span style="display: inline-flex; align-items: center; gap: 7px; border: 1px solid rgba(106,165,216,0.3); border-radius: 6px; padding: 5px 10px;"><span aria-hidden="true" style="width: 7px; height: 7px; border-radius: 50%; background: #6aa5d8;"></span><span style="color: rgba(245,245,247,0.65);">watertight</span><span style="color: #6aa5d8;">yes</span></span>
+          </div>
+          <p style="margin: 14px 0 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; color: rgba(245,245,247,0.38);">tagged ● MEASURED — read directly from the geometry you uploaded</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 02 -->
+    <div data-screen-label="Stage 02" style="display: grid; grid-template-columns: 120px 1fr; gap: 36px;">
+      <span style="font-size: 56px; font-weight: 200; color: rgba(245,245,247,0.16); line-height: 1; text-align: right; font-variant-numeric: tabular-nums;">02</span>
+      <div>
+        <h2 style="margin: 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em;">Route it — and say why.</h2>
+        <p style="margin: 14px 0 0; font-size: 15.5px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.58);">Before anything downstream is computed, the engine decides whether — and how — the part can be made, from its shape — and shows the reasoning, not just a verdict. Every DFM blocker states the measured value against the threshold and points at the offending faces.</p>
+        <div style="margin-top: 22px; border: 1px solid rgba(245,245,247,0.1); border-radius: 14px; background: #0c0d10; overflow: hidden;">
+          <div style="padding: 20px 22px; border-bottom: 1px solid rgba(245,245,247,0.07);">
+            <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 10.5px; letter-spacing: 0.16em; color: rgba(245,245,247,0.4);">GEOMETRIC ROUTING · CONFIDENCE 0.80 · ARCHETYPE ROTATIONAL</p>
+            <p style="margin: 10px 0 0; font-size: 21px; font-weight: 400;">→ CNC turning</p>
+            <p style="margin: 10px 0 0; font-size: 14px; line-height: 1.6; font-weight: 300; color: rgba(245,245,247,0.6); border-left: 2px solid rgba(106,165,216,0.4); padding-left: 14px;">"Axisymmetric cross-section (round, turnable): axis 21mm × Ø21mm → CNC turning / mill-turn. A round metal part is rarely powder-bed printed at production volume."</p>
+          </div>
+          <div style="padding: 16px 22px; display: flex; flex-direction: column; gap: 8px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12px;">
+            <div style="display: flex; justify-content: space-between;"><span style="color: rgba(245,245,247,0.55);">cnc_turning · mjf · cnc_5axis</span><span style="color: #d9a856;">issues 0.8–0.9</span></div>
+            <div style="display: flex; justify-content: space-between;"><span style="color: rgba(245,245,247,0.55);">cnc_3axis — 423 faces (59.6%) undercut</span><span style="color: #c96a5e;">fail</span></div>
+            <div style="display: flex; justify-content: space-between;"><span style="color: rgba(245,245,247,0.55);">injection_molding — 1 sidewall &lt; 1.0° draft</span><span style="color: #c96a5e;">fail</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 03 -->
+    <div data-screen-label="Stage 03" style="display: grid; grid-template-columns: 120px 1fr; gap: 36px;">
+      <span style="font-size: 56px; font-weight: 200; color: rgba(245,245,247,0.16); line-height: 1; text-align: right; font-variant-numeric: tabular-nums;">03</span>
+      <div>
+        <h2 style="margin: 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em;">Open the cost.</h2>
+        <p style="margin: 14px 0 0; font-size: 15.5px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.58);">Every driver on the table, provenance-tagged and sourced, with line items summing visibly to the unit cost — no naked totals. Anything generic is flagged DEFAULT, so you see exactly where the model is guessing before you ask.</p>
+        <div style="margin-top: 22px; border: 1px solid rgba(245,245,247,0.1); border-radius: 14px; background: #0c0d10; padding: 22px;">
+          <div style="display: flex; flex-direction: column; gap: 9px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12.5px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;"><span style="color: rgba(245,245,247,0.6);">labor — 0.082 hr × $52/hr</span><span style="display: flex; gap: 10px;"><span>$6.39</span><span style="color: #c9834f;">● SHOP ±20%</span></span></div>
+            <div style="display: flex; justify-content: space-between; align-items: center;"><span style="color: rgba(245,245,247,0.6);">setup — 0.5 hr ÷ 10 units</span><span style="display: flex; gap: 10px;"><span>$3.89</span><span style="color: #c9834f;">● SHOP ±20%</span></span></div>
+            <div style="display: flex; justify-content: space-between; align-items: center;"><span style="color: rgba(245,245,247,0.6);">machine — 15.2 hr build ÷ 223 parts</span><span style="display: flex; gap: 10px;"><span>$3.82</span><span style="color: #c9834f;">● SHOP ±40%</span></span></div>
+            <div style="display: flex; justify-content: space-between; align-items: center;"><span style="color: rgba(245,245,247,0.6);">material — 4.63 cm³ × $7/kg shop lot</span><span style="display: flex; gap: 10px;"><span>$0.04</span><span style="color: #c9834f;">● SHOP ±5%</span></span></div>
+            <div style="display: flex; justify-content: space-between; align-items: center;"><span style="color: rgba(245,245,247,0.6);">nesting — 223 parts/build packing model</span><span style="display: flex; gap: 10px;"><span>223</span><span style="color: rgba(245,245,247,0.4);">○ DEFAULT</span></span></div>
+            <div style="display: flex; justify-content: space-between; border-top: 1px solid rgba(245,245,247,0.1); padding-top: 10px; margin-top: 2px;"><span style="color: rgba(245,245,247,0.75);">Σ line items = unit cost</span><span style="color: #55b880;">$14.14 ✓</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 04 -->
+    <div data-screen-label="Stage 04" style="display: grid; grid-template-columns: 120px 1fr; gap: 36px;">
+      <span style="font-size: 56px; font-weight: 200; color: rgba(245,245,247,0.16); line-height: 1; text-align: right; font-variant-numeric: tabular-nums;">04</span>
+      <div>
+        <h2 style="margin: 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em;">Calibrate it to your shop.</h2>
+        <p style="margin: 14px 0 0; font-size: 15.5px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.58);">Bind a shop's real labor, machine and material rates and the whole model re-costs to their reality. Each bound rate is tagged SHOP and carries its source. Every rate that isn't bound stays a visible DEFAULT — your numbers become yours, and the gaps stay honest.</p>
+        <div style="margin-top: 22px; border: 1px solid rgba(245,245,247,0.1); border-radius: 14px; background: #0c0d10; padding: 22px;">
+          <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 10.5px; letter-spacing: 0.16em; color: #c9834f;">● CALIBRATED TO MIDWEST PRECISION CNC — 19 RATES BOUND</p>
+          <p style="margin: 8px 0 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; color: rgba(245,245,247,0.4);">source: shop accounting export 2026-Q2 (loaded rates + negotiated resin lots)</p>
+          <div style="margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11.5px;">
+            <span style="border: 1px solid rgba(201,131,79,0.3); border-radius: 6px; padding: 4px 10px; color: rgba(245,245,247,0.75); white-space: nowrap;">labor <span style="color: #c9834f;">$52/hr</span></span>
+            <span style="border: 1px solid rgba(201,131,79,0.3); border-radius: 6px; padding: 4px 10px; color: rgba(245,245,247,0.75); white-space: nowrap;">CNC-3ax <span style="color: #c9834f;">$95/hr</span></span>
+            <span style="border: 1px solid rgba(201,131,79,0.3); border-radius: 6px; padding: 4px 10px; color: rgba(245,245,247,0.75); white-space: nowrap;">MJF <span style="color: #c9834f;">$30/hr</span></span>
+            <span style="border: 1px solid rgba(201,131,79,0.3); border-radius: 6px; padding: 4px 10px; color: rgba(245,245,247,0.75); white-space: nowrap;">margin <span style="color: #c9834f;">0.30</span></span>
+            <span style="border: 1px solid rgba(201,131,79,0.3); border-radius: 6px; padding: 4px 10px; color: rgba(245,245,247,0.75); white-space: nowrap;">utilization <span style="color: #c9834f;">0.80</span></span>
+            <span style="border: 1px dashed rgba(245,245,247,0.2); border-radius: 6px; padding: 4px 10px; color: rgba(245,245,247,0.45);">stock_allowance 1.10× ○ DEFAULT</span>
+            <span style="border: 1px dashed rgba(245,245,247,0.2); border-radius: 6px; padding: 4px 10px; color: rgba(245,245,247,0.45);">n_cavities 1 ○ DEFAULT</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 05 -->
+    <div data-screen-label="Stage 05" style="display: grid; grid-template-columns: 120px 1fr; gap: 36px;">
+      <span style="font-size: 56px; font-weight: 200; color: rgba(245,245,247,0.16); line-height: 1; text-align: right; font-variant-numeric: tabular-nums;">05</span>
+      <div>
+        <h2 style="margin: 0; font-size: 30px; font-weight: 300; letter-spacing: -0.02em;">Make the decision.</h2>
+        <p style="margin: 14px 0 0; font-size: 15.5px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.58);">The output is a choice, not a price: make by which process, and the quantity where you should tool up instead — carried with confidence bands, never a fake-exact figure.</p>
+        <div style="margin-top: 22px; border: 1px solid rgba(245,245,247,0.1); border-radius: 14px; background: #0c0d10; padding: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 26px;">
+          <div>
+            <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 10.5px; letter-spacing: 0.16em; color: rgba(245,245,247,0.4);">RESOURCE COST · MAKE NOW · MJF (PP) · QTY 10</p>
+            <p style="margin: 12px 0 0; font-size: 52px; font-weight: 200; letter-spacing: -0.035em; line-height: 1; font-variant-numeric: tabular-nums;">$14.14</p>
+            <div style="margin-top: 16px; position: relative; height: 6px; border-radius: 3px; background: rgba(245,245,247,0.08); overflow: hidden;">
+              <div style="position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, rgba(245,245,247,0.4) 0 2px, transparent 2px 7px);"></div>
+              <span aria-hidden="true" style="position: absolute; top: -2px; bottom: -2px; left: 50%; width: 2px; background: #f5f5f7;"></span>
+            </div>
+            <p style="margin: 9px 0 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; color: rgba(245,245,247,0.4);">$8.49 — ±40% · assumption-based · n=0 — $19.80</p>
+          </div>
+          <div style="border-left: 1px solid rgba(245,245,247,0.08); padding-left: 26px; display: flex; flex-direction: column; justify-content: center; gap: 14px;">
+            <div><p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 10.5px; letter-spacing: 0.14em; color: rgba(245,245,247,0.4);">LEAD TIME</p><p style="margin: 5px 0 0; font-size: 19px; font-weight: 300;">5.6 – 10.4 days</p></div>
+            <div><p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 10.5px; letter-spacing: 0.14em; color: rgba(245,245,247,0.4);">CROSSOVER</p><p style="margin: 5px 0 0; font-size: 19px; font-weight: 300;">MJF wins ≤ 1,962 units</p><p style="margin: 4px 0 0; font-size: 12.5px; font-weight: 300; color: #d9a856;">injection molding above — if redesigned, never a current quote</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- honesty rail -->
+  <section data-screen-label="Honesty rail" style="border-top: 1px solid rgba(245,245,247,0.07); border-bottom: 1px solid rgba(245,245,247,0.07); background: #070709; padding: 90px 48px;">
+    <div style="max-width: 880px; margin: 0 auto;">
+      <p style="margin: 0; font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(245,245,247,0.45);">Reading the receipts</p>
+      <h2 style="margin: 20px 0 0; font-size: clamp(30px, 3.4vw, 44px); line-height: 1.1; font-weight: 300; letter-spacing: -0.025em; max-width: 700px;">Two marks tell you everything: where a number came from, and whether we've earned it.</h2>
+      <div style="margin-top: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div style="border: 1px solid rgba(245,245,247,0.1); border-radius: 14px; background: #0c0d10; padding: 26px;">
+          <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.18em; color: rgba(245,245,247,0.4);">PROVENANCE — THE FILL OF THE DOT</p>
+          <p style="margin: 14px 0 0; font-size: 14.5px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.6);">Filled means grounded — measured off your geometry, bound to your shop, or overridden by you. A hollow ring means a generic DEFAULT: we're guessing, and we're telling you so.</p>
+          <div style="margin-top: 20px; display: flex; flex-wrap: wrap; gap: 16px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11.5px;">
+            <span style="display: inline-flex; align-items: center; gap: 7px;"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; background: #6aa5d8;"></span><span style="color: #6aa5d8;">MEASURED</span></span>
+            <span style="display: inline-flex; align-items: center; gap: 7px;"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; background: #c9834f;"></span><span style="color: #c9834f;">SHOP</span></span>
+            <span style="display: inline-flex; align-items: center; gap: 7px;"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; background: #a08ad8;"></span><span style="color: #a08ad8;">USER</span></span>
+            <span style="display: inline-flex; align-items: center; gap: 7px;"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; border: 2px solid #6b7280; background: transparent;"></span><span style="color: #6b7280;">DEFAULT</span></span>
+          </div>
+        </div>
+        <div style="border: 1px solid rgba(245,245,247,0.1); border-radius: 14px; background: #0c0d10; padding: 26px;">
+          <p style="margin: 0; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; letter-spacing: 0.18em; color: rgba(245,245,247,0.4);">CONFIDENCE — THE TEXTURE OF THE BAND</p>
+          <p style="margin: 14px 0 0; font-size: 14.5px; line-height: 1.65; font-weight: 300; color: rgba(245,245,247,0.6);">Hatched means assumption-based, not yet validated. It goes solid — and reads "validated on N of your parts" — only after real costs on your held-out parts back it. We never print an accuracy figure we haven't measured.</p>
+          <div style="margin-top: 20px; display: flex; flex-direction: column; gap: 12px;">
+            <div style="position: relative; height: 6px; border-radius: 3px; background: rgba(245,245,247,0.08); overflow: hidden;"><div style="position: absolute; inset: 0; background-image: repeating-linear-gradient(135deg, rgba(245,245,247,0.4) 0 2px, transparent 2px 7px);"></div></div>
+            <div style="position: relative; height: 6px; border-radius: 3px; background: rgba(245,245,247,0.08); overflow: hidden;"><div style="position: absolute; inset: 0 18% 0 22%; border-radius: 3px; background: rgba(85,184,128,0.8);"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- the objection -->
+  <section data-screen-label="The objection" style="max-width: 880px; margin: 0 auto; padding: 90px 48px 20px;">
+    <p style="margin: 0; font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(245,245,247,0.45);">The question everyone asks</p>
+    <h2 style="margin: 20px 0 0; font-size: clamp(30px, 3.4vw, 44px); line-height: 1.1; font-weight: 300; letter-spacing: -0.025em;">"±40%? Why would I trust that?"</h2>
+    <div style="margin-top: 26px; max-width: 680px; display: flex; flex-direction: column; gap: 18px; font-size: 16.5px; line-height: 1.7; font-weight: 300; color: rgba(245,245,247,0.65);">
+      <p style="margin: 0;">Because it's true. ±40% is what an uncalibrated should-cost honestly knows before it has seen your shops and your invoices — the stated assumption band of the defaults it leaned on, not a measured accuracy dressed up as one.</p>
+      <p style="margin: 0;">The vendors printing "±5% accurate" on slide four can't tell you what it was measured on, because it wasn't. We'd rather hand you a wide band you can narrow — bind your rates, send back real costs, watch it validate to a measured residual on your held-out parts — than a narrow number you can't check.</p>
+      <p style="margin: 0; color: rgba(245,245,247,0.85);">The wide band isn't the method's weakness. It's the proof the method doesn't lie.</p>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section data-screen-label="Method CTA" style="padding: 110px 48px; text-align: center;">
+    <h2 style="margin: 0; font-size: clamp(32px, 3.8vw, 52px); line-height: 1.06; font-weight: 300; letter-spacing: -0.028em;">See it on a part you choose.</h2>
+    <p style="margin: 20px auto 0; max-width: 480px; font-size: 16.5px; line-height: 1.6; font-weight: 300; color: rgba(245,245,247,0.6);">Run your own part, or bring a real one and calibrate it to your shop.</p>
+    <div style="margin-top: 36px; display: flex; justify-content: center; gap: 16px;">
+      <span style="background: #f5f5f7; color: #050506; border-radius: 999px; padding: 14px 32px; font-size: 15px; font-weight: 500; cursor: pointer;">Cost a part</span>
+      <a href="Platform.dc.html" style="border: 1px solid rgba(245,245,247,0.35); border-radius: 999px; padding: 14px 32px; font-size: 15px; color: #f5f5f7; text-decoration: none;">Explore the platform</a>
+    </div>
+  </section>
+
+  <!-- footer -->
+  <footer style="border-top: 1px solid rgba(245,245,247,0.07); padding: 34px 48px; display: flex; flex-direction: column; gap: 14px; font-size: 12.5px; color: rgba(245,245,247,0.4);">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <span>CadVerify — verification, made of glass</span>
+      <span style="display: flex; gap: 26px;">
+        <a href="Direction - Cinematic.dc.html" style="color: inherit; text-decoration: none;">Home</a>
+        <a href="Method.dc.html" style="color: inherit; text-decoration: none;">Method</a>
+        <a href="Platform.dc.html" style="color: inherit; text-decoration: none;">Platform</a>
+        <a href="Teams.dc.html" style="color: inherit; text-decoration: none;">Teams</a>
+        <a href="Security.dc.html" style="color: inherit; text-decoration: none;">Security</a>
+        <a href="Developers.dc.html" style="color: inherit; text-decoration: none;">Developers</a>
+        <a href="Company.dc.html" style="color: inherit; text-decoration: none;">Company</a>
+      </span>
+    </div>
+    <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; color: rgba(245,245,247,0.28);">
+      <span>© 2026 CadVerify, Inc.</span>
+      <span style="display: flex; gap: 22px;"><span style="cursor: pointer;">Privacy</span><span style="cursor: pointer;">Terms</span><span style="cursor: pointer;">DPA</span><span style="cursor: pointer;">Status</span></span>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      asmSec: (el) => (this._sec = el),
+      row0: (el) => (this._r0 = el),
+      row1: (el) => (this._r1 = el),
+      row2: (el) => (this._r2 = el),
+      row3: (el) => (this._r3 = el),
+      rowSum: (el) => (this._rs = el),
+      rowNote: (el) => (this._rn = el),
+    };
+  }
+  componentDidMount() {
+    this._dead = false;
+    const clamp01 = (v) => Math.max(0, Math.min(1, v));
+    const smooth = (v) => v * v * (3 - 2 * v);
+    const loop = () => {
+      if (this._dead) return;
+      this._raf = requestAnimationFrame(loop);
+      const el = this._sec;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const vh = window.innerHeight;
+      const p = clamp01(-r.top / Math.max(1, r.height - vh));
+      const rows = [this._r0, this._r1, this._r2, this._r3];
+      rows.forEach((row, i) => {
+        if (!row) return;
+        const v = smooth(clamp01((p - (0.08 + i * 0.14)) / 0.12));
+        row.style.opacity = v.toFixed(3);
+        row.style.transform = "translateY(" + ((1 - v) * 22).toFixed(1) + "px)";
+      });
+      if (this._rs) {
+        const v = smooth(clamp01((p - 0.68) / 0.14));
+        this._rs.style.opacity = v.toFixed(3);
+        this._rs.style.transform = "scale(" + (0.96 + v * 0.04).toFixed(3) + ")";
+      }
+      if (this._rn) this._rn.style.opacity = smooth(clamp01((p - 0.84) / 0.1)).toFixed(3);
+    };
+    loop();
+  }
+  componentWillUnmount() {
+    this._dead = true;
+    cancelAnimationFrame(this._raf);
+  }
+}
+</script>
+</body>
+</html>

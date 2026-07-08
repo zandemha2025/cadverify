@@ -19,6 +19,7 @@ authlib==1.3.2
 resend==2.4.0
 sqlalchemy==2.0.36
 asyncpg==0.30.0
+aiosqlite==0.20.0
 python-ulid>=3.0.0,<4.0.0
 alembic==1.14.0
 redis==5.2.0
@@ -29,6 +30,9 @@ itsdangerous>=2.2.0
 slowapi>=0.1.9
 structlog==24.4.0
 sentry-sdk==2.18.0
+# Prometheus text-exposition for the /metrics scrape target (enterprise
+# observability). Pure-python, no system deps.
+prometheus-client>=0.20.0
 fakeredis==2.26.0
 weasyprint>=62.0
 jinja2>=3.1.0

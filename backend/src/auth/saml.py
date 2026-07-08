@@ -14,8 +14,21 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response
 
 from src.auth.dashboard_session import clear_session_cookie, set_session_cookie
+from src.auth.disposable import normalize_email
 from src.auth.hashing import hmac_index, mint_token
-from src.auth.models import create_api_key, upsert_user
+from src.auth.models import (
+    create_api_key,
+    get_user_session_version,
+    upsert_user,
+    user_has_active_api_key,
+)
+from src.db.engine import get_session_factory
+from src.services.org_saml_service import (
+    SamlGroupAssignment,
+    SamlGroupMappingAmbiguousError,
+    apply_saml_group_assignment,
+    normalize_saml_attributes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,11 +78,29 @@ async def _build_request_data_with_post(request: Request) -> dict:
     return data
 
 
+def _expand_env(value):
+    """Recursively apply os.path.expandvars to every string in a JSON tree.
+
+    Lets the documented ${SAML_SP_ENTITY_ID} / ${SAML_IDP_X509_CERT} style
+    placeholders in settings.json resolve from the environment at load time.
+    An undefined ${VAR} is left verbatim by expandvars (python3-saml then
+    surfaces the misconfiguration), rather than being silently blanked.
+    """
+    if isinstance(value, str):
+        return os.path.expandvars(value)
+    if isinstance(value, dict):
+        return {k: _expand_env(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_expand_env(v) for v in value]
+    return value
+
+
 def _load_saml_settings() -> dict:
     """Load SAML settings from config directory.
 
     Reads settings.json and advanced_settings.json from the directory
-    specified by SAML_CONFIG_DIR env var (default: 'saml/').
+    specified by SAML_CONFIG_DIR env var (default: 'saml/'). String values
+    are passed through os.path.expandvars so ${ENV_VAR} templates resolve.
     """
     config_dir = Path(os.getenv("SAML_CONFIG_DIR", "saml/"))
     settings_path = config_dir / "settings.json"
@@ -89,7 +120,7 @@ def _load_saml_settings() -> dict:
             advanced = json.load(f)
         settings.update(advanced)
 
-    return settings
+    return _expand_env(settings)
 
 
 def _build_auth(request: Request, request_data: dict):
@@ -105,19 +136,29 @@ async def _saml_provision_user(email: str) -> int:
     Creates user row if not exists, mints an API key if none present.
     SAML users default to 'viewer' role.
     """
-    email_lower = email.strip().lower()
+    # Derive email_lower with the SAME canonicalisation as every other auth path
+    # (password/oauth/magic all use normalize_email). SAML previously used a bare
+    # ``strip().lower()`` that RETAINED gmail dots/+tags, so a SAML-provisioned
+    # row could be a DISTINCT account that still normalise-collides with another
+    # user — the exact inconsistency that let an invite's recipient-binding guard
+    # be bypassed for a cross-tenant admin grant. Normalising here makes
+    # ``email_lower`` (the unique key) agree with that guard.
+    email_lower = normalize_email(email)
     user_id = await upsert_user(
         email=email,
         google_sub=None,
         email_lower=email_lower,
         disposable_flag=False,
+        auth_provider="saml",
     )
 
-    # Mint a default API key for new SAML users
-    full_token, prefix, secret_hash = mint_token()
-    await create_api_key(
-        user_id, "SAML Default", prefix, hmac_index(full_token), secret_hash
-    )
+    # Mint a default API key only if the user has none active. Re-minting on
+    # every SSO login would orphan keys and churn the user's integrations (S3).
+    if not await user_has_active_api_key(user_id):
+        full_token, prefix, secret_hash = mint_token()
+        await create_api_key(
+            user_id, "SAML Default", prefix, hmac_index(full_token), secret_hash
+        )
 
     logger.info("SAML user provisioned: email=%s user_id=%d", email_lower, user_id)
 
@@ -132,6 +173,45 @@ async def _saml_provision_user(email: str) -> int:
     ))
 
     return user_id
+
+
+def _extract_saml_attributes(auth) -> dict[str, list[str]]:
+    getter = getattr(auth, "get_attributes", None)
+    if getter is None:
+        return {}
+    try:
+        return normalize_saml_attributes(getter())
+    except Exception:
+        logger.warning("failed to read SAML assertion attributes", exc_info=True)
+        return {}
+
+
+async def _apply_saml_group_assignment_for_login(
+    user_id: int, attributes: dict[str, list[str]]
+) -> SamlGroupAssignment:
+    async with get_session_factory()() as session:
+        try:
+            assignment = await apply_saml_group_assignment(session, user_id, attributes)
+            await session.commit()
+            return assignment
+        except SamlGroupMappingAmbiguousError as exc:
+            await session.rollback()
+            logger.warning(
+                "SAML group mapping matched multiple orgs for user_id=%s org_count=%d",
+                user_id,
+                len(exc.org_ids),
+            )
+            raise HTTPException(
+                403,
+                detail={
+                    "code": "saml_group_mapping_ambiguous",
+                    "message": (
+                        "SAML assertion matched group mappings in multiple "
+                        "organizations. Ask an administrator to correct the mapping."
+                    ),
+                    "doc_url": "https://docs.cadverify.com/errors#saml_group_mapping_ambiguous",
+                },
+            ) from exc
 
 
 @router.get("/login")
@@ -184,6 +264,12 @@ async def saml_acs(request: Request):
         )
 
     user_id = await _saml_provision_user(email)
+    saml_attributes = _extract_saml_attributes(auth)
+    group_assignment = SamlGroupAssignment(matched=False)
+    if saml_attributes:
+        group_assignment = await _apply_saml_group_assignment_for_login(
+            user_id, saml_attributes
+        )
 
     # Audit: auth.login
     import asyncio
@@ -191,12 +277,19 @@ async def saml_acs(request: Request):
     asyncio.create_task(fire_and_forget_audit(
         user_id=user_id, user_email=email,
         action="auth.login", resource_type="session",
-        detail={"auth_provider": "saml"},
+        detail={
+            "auth_provider": "saml",
+            "saml_group_assignment": group_assignment.to_audit_detail(),
+        },
     ))
 
     dashboard_url = os.getenv("DASHBOARD_ORIGIN", "https://cadverify.com")
     resp = RedirectResponse(url=f"{dashboard_url}/dashboard", status_code=303)
-    set_session_cookie(resp, user_id)
+    set_session_cookie(
+        resp,
+        user_id,
+        session_version=await get_user_session_version(user_id),
+    )
     return resp
 
 

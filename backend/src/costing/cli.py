@@ -26,7 +26,11 @@ def _run_engine(path: str):
     """Canonical engine sequence (mirrors routes.py::validate_public)."""
     import trimesh
     import src.analysis.processes  # noqa: F401  populate registry
-    from src.analysis.base_analyzer import analyze_geometry, run_universal_checks
+    from src.analysis.base_analyzer import (
+        analyze_geometry,
+        decimation_issue,
+        run_universal_checks,
+    )
     from src.analysis.context import GeometryContext
     from src.analysis.features import detect_all as detect_features
     from src.matcher.profile_matcher import rank_processes, score_process
@@ -37,8 +41,14 @@ def _run_engine(path: str):
     mesh = trimesh.load(path, force="mesh")
     geometry = analyze_geometry(mesh)
     ctx = GeometryContext.build(mesh, geometry)
-    ctx.features = detect_features(mesh)
+    # ctx.mesh == mesh unless build() decimated an oversize mesh; detect on
+    # ctx.mesh so feature indices align with the context per-face arrays.
+    ctx.features = detect_features(ctx.mesh)
     universal = run_universal_checks(mesh)
+    # Honestly surface to the user when the mesh was decimated for analysis.
+    dec_issue = decimation_issue(ctx)
+    if dec_issue is not None:
+        universal.append(dec_issue)
     scores = [score_process(get_analyzer(p).analyze(ctx), geometry, p)
               for p in pbase._REGISTRY if get_analyzer(p)]
     result = AnalysisResult(

@@ -156,6 +156,7 @@ def _apply_auth_bypass(app) -> None:
         DB, while still allowing the pipeline result to pass through.
         """
         session = AsyncMock()
+        session.add = MagicMock()
         # _check_cache returns None (always cache miss) so the full pipeline runs
         exec_result = MagicMock()
         exec_result.scalars.return_value.first.return_value = None

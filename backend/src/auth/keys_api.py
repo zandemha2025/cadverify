@@ -2,7 +2,7 @@
 
 All routes require a dashboard session cookie (Depends(require_dashboard_session)).
 Plaintext tokens are delivered exactly once via a tightly-scoped `cv_mint_once`
-cookie (path=/dashboard/keys, Max-Age=60, SameSite=Lax, Secure). The frontend
+cookie (path=/settings/developer, Max-Age=60, SameSite=Lax, Secure). The frontend
 scrubs the cookie on mount (see RevealOnceModal.tsx).
 """
 from __future__ import annotations
@@ -18,6 +18,22 @@ from src.auth.hashing import hmac_index, mint_token
 from src.auth.models import _session, create_api_key
 
 router = APIRouter(prefix="/api/v1/keys", tags=["keys"])
+KEY_REVEAL_PATH = "/settings/developer"
+
+# W1 step 3 — org boundary as defense-in-depth on personal API-key management.
+# API keys are *personal* credentials (owned via the dashboard session's
+# user_id), so ``user_id`` stays the primary isolation predicate: even an
+# org-mate must never rotate/revoke another member's key. This correlated
+# subquery ADDS the tenant boundary (a key can only be touched from within its
+# own org) without relaxing the per-user lock. It never locks an owner out: the
+# same invariant that lets ``api_keys.org_id`` be NOT NULL — every key is stamped
+# with ``resolve_org(user)`` at creation, and every user has a membership
+# (signup provisioning + the 0009 backfill) — guarantees this subquery resolves
+# to exactly the key's own org. It reuses the existing ``:u`` bind (no new param).
+_ORG_SCOPE_SQL = (
+    "org_id = (SELECT org_id FROM memberships WHERE user_id = :u "
+    "ORDER BY created_at ASC, id ASC LIMIT 1)"
+)
 
 
 class KeyOut(BaseModel):
@@ -45,7 +61,7 @@ def _set_reveal_cookie(response: Response, token: str) -> None:
         secure=True,
         httponly=False,  # intentional — JS reads + scrubs (see RevealOnceModal)
         samesite="lax",
-        path="/dashboard/keys",
+        path=KEY_REVEAL_PATH,
     )
 
 
@@ -56,7 +72,8 @@ async def list_keys(user_id: int = Depends(require_dashboard_session)):
             await s.execute(
                 text(
                     "SELECT id, name, prefix, created_at, last_used_at, revoked_at "
-                    "FROM api_keys WHERE user_id = :u ORDER BY created_at DESC"
+                    f"FROM api_keys WHERE user_id = :u AND {_ORG_SCOPE_SQL} "
+                    "ORDER BY created_at DESC"
                 ),
                 {"u": user_id},
             )
@@ -99,7 +116,8 @@ async def rotate_key(
             await s.execute(
                 text(
                     "UPDATE api_keys SET revoked_at = now() "
-                    "WHERE id = :i AND user_id = :u AND revoked_at IS NULL "
+                    f"WHERE id = :i AND user_id = :u AND {_ORG_SCOPE_SQL} "
+                    "AND revoked_at IS NULL "
                     "RETURNING name"
                 ),
                 {"i": key_id, "u": user_id},
@@ -133,7 +151,8 @@ async def revoke_key(
             await s.execute(
                 text(
                     "UPDATE api_keys SET revoked_at = now() "
-                    "WHERE id = :i AND user_id = :u AND revoked_at IS NULL "
+                    f"WHERE id = :i AND user_id = :u AND {_ORG_SCOPE_SQL} "
+                    "AND revoked_at IS NULL "
                     "RETURNING id"
                 ),
                 {"i": key_id, "u": user_id},
@@ -163,7 +182,8 @@ async def rename_key(
             await s.execute(
                 text(
                     "UPDATE api_keys SET name = :n "
-                    "WHERE id = :i AND user_id = :u RETURNING id"
+                    f"WHERE id = :i AND user_id = :u AND {_ORG_SCOPE_SQL} "
+                    "RETURNING id"
                 ),
                 {"i": key_id, "u": user_id, "n": body.name},
             )

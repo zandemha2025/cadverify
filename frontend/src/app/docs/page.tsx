@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useCallback } from "react";
 import {
   PublicHeader,
-  PublicNavLink,
   PublicFooter,
 } from "@/components/ui/public-chrome";
 import { Button } from "@/components/ui/button";
@@ -58,7 +57,9 @@ export default function DocsPage() {
   return (
     <div className="flex min-h-screen flex-col bg-canvas">
       <PublicHeader>
-        <PublicNavLink href="/scalar">API reference</PublicNavLink>
+        <Button asChild variant="ghost" size="sm">
+          <a href="/scalar">API reference</a>
+        </Button>
       </PublicHeader>
 
       <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-12 lg:px-8">
@@ -74,7 +75,7 @@ export default function DocsPage() {
             1. Quick start with curl
           </h2>
           <p className="mb-2 text-muted-foreground">
-            Send a STEP or STL file and get manufacturability feedback in one
+            Send an STL, STEP/STP or IGES/IGS file and get manufacturability feedback in one
             request:
           </p>
           <CodeBlock
@@ -88,9 +89,9 @@ export default function DocsPage() {
             Replace{" "}
             <code className="num rounded bg-muted px-1">cv_live_YOUR_KEY</code>{" "}
             with your actual API key. See the{" "}
-            <Link href="/scalar" className="text-primary hover:underline">
+            <a href="/scalar" className="text-primary hover:underline">
               full API reference
-            </Link>{" "}
+            </a>{" "}
             for all available parameters and response fields.
           </p>
         </section>
@@ -152,8 +153,8 @@ docker compose up -d
             </li>
             <li>
               View your keys and usage at{" "}
-              <Link href="/keys" className="text-primary hover:underline">
-                {APP_URL}/keys
+              <Link href="/settings/developer" className="text-primary hover:underline">
+                {APP_URL}/settings/developer
               </Link>
               .
             </li>
@@ -179,7 +180,7 @@ curl -X POST ${API_VALIDATE_URL} \\
             <Link href="/signup">Get an API key</Link>
           </Button>
           <Button asChild variant="secondary">
-            <Link href="/scalar">Full API reference</Link>
+            <a href="/scalar">Full API reference</a>
           </Button>
         </div>
       </main>

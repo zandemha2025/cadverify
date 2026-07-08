@@ -19,14 +19,17 @@ import * as Dialog from "@radix-ui/react-dialog";
 import {
   ScanLine,
   Calculator,
+  Database,
+  FileCheck2,
   Layers,
   History,
+  PiggyBank,
+  GitCompareArrows,
   Code2,
   BookOpen,
   Tags,
   Palette,
   Moon,
-  Sun,
   LogOut,
   Search,
   CornerDownLeft,
@@ -56,7 +59,11 @@ const COMMANDS: Command[] = [
   { id: "analyze", label: "Analyze a part", hint: "DFM · geometry", keywords: "dfm flags manufacturability geometry inspect", icon: ScanLine, section: "Go to", run: (c) => c.push("/analyze") },
   { id: "cost", label: "Cost & make-vs-buy", hint: "the instrument", keywords: "should cost price quantity crossover breakeven scrubber", icon: Calculator, section: "Go to", run: (c) => c.push("/cost") },
   { id: "batch", label: "Batch analysis", hint: "many parts at once", keywords: "zip upload bulk", icon: Layers, section: "Go to", run: (c) => c.push("/batch") },
+  { id: "cost-decisions", label: "Cost history", hint: "saved should-cost decisions", keywords: "saved should cost make vs buy decisions export share compare artifact", icon: PiggyBank, section: "Go to", run: (c) => c.push("/cost-decisions") },
+  { id: "cost-decisions/compare", label: "Compare cost decisions", hint: "two decisions side by side", keywords: "compare diff make vs buy cost side by side", icon: GitCompareArrows, section: "Go to", run: (c) => c.push("/cost-decisions/compare") },
+  { id: "rfq-packages", label: "RFQ packages", hint: "supplier evidence ZIPs", keywords: "rfq supplier package procurement export zip evidence", icon: FileCheck2, section: "Go to", run: (c) => c.push("/rfq-packages") },
   { id: "history", label: "History", hint: "recent analyses · quota", keywords: "past quota usage", icon: History, section: "Go to", run: (c) => c.push("/history") },
+  { id: "integrations", label: "Integrations", hint: "ERP · PLM · actuals", keywords: "sap erp plm actuals csv connector runs imports", icon: Database, section: "Go to", run: (c) => c.push("/integrations") },
   { id: "developer", label: "Developer", hint: "API keys", keywords: "api keys tokens settings", icon: Code2, section: "Go to", run: (c) => c.push("/settings/developer") },
   { id: "docs", label: "API docs", keywords: "reference openapi scalar", icon: BookOpen, section: "Go to", run: (c) => c.push("/docs") },
   { id: "label", label: "Parts (Label)", hint: "corpus annotator", keywords: "corpus label internal", icon: Tags, section: "Go to", devOnly: true, run: (c) => c.push("/label") },
@@ -237,13 +244,12 @@ export function CommandPaletteProvider({
                   </p>
                   {group.items.map(({ c, i }) => {
                     const Icon = c.icon;
+                    // Route for this destination, matched by exact segment (so
+                    // /cost and /cost-decisions never both read "current").
+                    const route = c.id === "developer" ? "/settings/developer" : "/" + c.id;
                     const current =
                       c.section === "Go to" &&
-                      (pathname === "/analyze" || pathname === "/cost"
-                        ? c.id === (pathname === "/analyze" ? "analyze" : "cost")
-                        : pathname.startsWith(
-                            c.id === "developer" ? "/settings/developer" : "/" + c.id
-                          ));
+                      (pathname === route || pathname.startsWith(route + "/"));
                     const isActive = i === active;
                     return (
                       <button

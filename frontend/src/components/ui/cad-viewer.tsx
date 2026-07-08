@@ -12,10 +12,14 @@ import {
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { cn } from "@/lib/utils";
+import { STAGE_UI } from "@/lib/stage-flag";
+import { computeHighlightVertexColors } from "@/lib/highlight-colors";
 
-/* Non-highlighted faces keep a cool machined tint when vertex-colouring is on
-   (i.e. during DFM inspection) so the flagged faces still pop against them. */
-const BASE_COLOR = new THREE.Color("#8ea6c4");
+/* Non-highlighted faces keep a machined tint when vertex-colouring is on (i.e.
+   during DFM inspection) so the flagged faces still pop against them. Stage
+   register: a warm-neutral machined grey under the stage-lit rig; legacy: the
+   cool Datum-blue graphite tint. Gated so flag-off is byte-identical. */
+const BASE_COLOR = new THREE.Color(STAGE_UI ? "#c2bfb8" : "#8ea6c4");
 
 /* Every part is normalised so its largest dimension spans TARGET world units.
    This makes the studio lighting, contact shadow, and hero framing look
@@ -25,7 +29,9 @@ const TARGET = 2;
 function STLModel({
   url,
   highlightFaces,
-  highlightColor = "#f8716e",
+  // Default face-highlight = the ERROR tone: stage crimson vs legacy coral. The
+  // caller (PartWorkspace) passes an explicit severity hex; this is the fallback.
+  highlightColor = STAGE_UI ? "#e05252" : "#f8716e",
   ghostUnhighlighted,
   onFaceClick,
   distanceScale = 1.6,
@@ -44,6 +50,7 @@ function STLModel({
 }) {
   const geometry = useLoader(STLLoader, url);
   const meshRef = useRef<THREE.Mesh>(null);
+  const materialRef = useRef<THREE.MeshStandardMaterial>(null);
   const hasHighlights = !!highlightFaces && highlightFaces.length > 0;
   const highlight = useMemo(() => new THREE.Color(highlightColor), [highlightColor]);
 
@@ -70,28 +77,31 @@ function STLModel({
     if (!geometry) return;
     const pos = geometry.getAttribute("position");
     if (!pos) return;
+    const material = materialRef.current;
     if (!hasHighlights) {
       geometry.deleteAttribute("color");
+      // R3F just flipped `material.vertexColors` back to false via a bare
+      // assignment; force the shader to recompile so it stops sampling the
+      // colour channel we just deleted.
+      if (material) material.needsUpdate = true;
       return;
     }
-    const count = pos.count;
-    const colors = new Float32Array(count * 3);
-    for (let v = 0; v < count; v++) {
-      colors[v * 3] = BASE_COLOR.r;
-      colors[v * 3 + 1] = BASE_COLOR.g;
-      colors[v * 3 + 2] = BASE_COLOR.b;
-    }
-    for (const f of highlightFaces!) {
-      for (let k = 0; k < 3; k++) {
-        const v = f * 3 + k;
-        if (v < count) {
-          colors[v * 3] = highlight.r;
-          colors[v * 3 + 1] = highlight.g;
-          colors[v * 3 + 2] = highlight.b;
-        }
-      }
-    }
-    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    const colors = computeHighlightVertexColors(
+      pos.count,
+      highlightFaces!,
+      BASE_COLOR,
+      highlight
+    );
+    const colorAttribute = new THREE.BufferAttribute(colors, 3);
+    colorAttribute.needsUpdate = true;
+    geometry.setAttribute("color", colorAttribute);
+    // ROOT-CAUSE FIX (locate highlight never rendered): @react-three/fiber's
+    // applyProps sets `material.vertexColors = true` with a plain assignment and
+    // never flips `material.needsUpdate`, so three.js keeps the cached program
+    // that was compiled WITHOUT the `USE_COLOR` define and silently ignores this
+    // colour attribute — the flagged faces stay the base tone. Flipping
+    // needsUpdate forces the program rebuild so the vertex colours actually paint.
+    if (material) material.needsUpdate = true;
   }, [geometry, hasHighlights, highlightFaces, highlight]);
 
   // Hero camera frame — a well-composed 3/4 with a gentle downward tilt, pulled
@@ -100,6 +110,9 @@ function STLModel({
   useEffect(() => {
     const dist = TARGET * distanceScale;
     camera.position.set(dist * 0.6, dist * 0.44, dist * 0.68);
+    // R3F camera framing is an imperative three.js boundary; React's compiler
+    // cannot infer that mutating the camera instance here is intentional.
+    // eslint-disable-next-line react-hooks/immutability
     camera.near = 0.05;
     camera.far = 100;
     if ((camera as THREE.PerspectiveCamera).isPerspectiveCamera) {
@@ -128,6 +141,7 @@ function STLModel({
             Inspecting (highlights on): the material relaxes to a matte technical
             read so the flagged faces stay unmistakable. */}
         <meshStandardMaterial
+          ref={materialRef}
           color={hasHighlights ? "#ffffff" : "#bcc6d2"}
           vertexColors={hasHighlights}
           metalness={hasHighlights ? 0.35 : 0.9}
@@ -143,9 +157,50 @@ function STLModel({
 }
 
 /** A compact studio rig baked into the environment map: a big soft key overhead,
- *  a Datum-tinted fill, and a cool rim behind — the reflections that make the
- *  machined part read as a rendered product shot. */
+ *  a tinted fill, and a rim behind — the reflections that make the machined part
+ *  read as a rendered product shot. Stage register: a warm-white key over a
+ *  neutral fill and a quiet steel rim (one warm light source, Apple-cinematic).
+ *  Legacy: the Datum-cool blueprint rig. Gated so flag-off is byte-identical. */
 function StudioRig() {
+  if (STAGE_UI) {
+    return (
+      <Environment resolution={256} frames={1}>
+        {/* broad warm-white key from above — the single stage light */}
+        <Lightformer
+          form="rect"
+          intensity={3.3}
+          position={[0, 5, 1]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          scale={[10, 6, 1]}
+          color="#fbf6ee"
+        />
+        {/* neutral fill from the front-left, warm-side of grey */}
+        <Lightformer
+          form="rect"
+          intensity={1.4}
+          position={[-5, 1.5, 3]}
+          scale={[5, 6, 1]}
+          color="#d8d4cc"
+        />
+        {/* quiet steel rim from behind-right — separates part from the stage */}
+        <Lightformer
+          form="rect"
+          intensity={1.3}
+          position={[5, 2.5, -4]}
+          scale={[6, 6, 1]}
+          color="#8fa0a6"
+        />
+        {/* small warm ring for a crisp specular catch */}
+        <Lightformer
+          form="ring"
+          intensity={1.4}
+          position={[3, 4, 2]}
+          scale={2.5}
+          color="#fff4e6"
+        />
+      </Environment>
+    );
+  }
   return (
     <Environment resolution={256} frames={1}>
       {/* broad soft key from above */}
@@ -241,20 +296,31 @@ export default function CadViewer({
       className={cn(
         "h-full overflow-hidden rounded-[var(--radius)] border",
         instrument
-          ? "border-[#22344f]"
-          : "border-border bg-gradient-to-b from-neutral-100 to-neutral-200",
+          ? STAGE_UI
+            ? "border-[#252a2f]"
+            : "border-[#22344f]"
+          : "border-border bg-card-raised",
         className
       )}
       style={
         instrument
-          ? {
-              // A Datum-blue bloom centred where the part sits (the part "sits in
-              // light"), over a deep near-black twilight ground — the WebGL canvas
-              // is transparent so this glow reads behind the part.
-              background:
-                "radial-gradient(66% 58% at 50% 47%, rgba(50,124,188,0.34) 0%, rgba(50,124,188,0) 62%)," +
-                "radial-gradient(120% 118% at 50% -6%, #15273f 0%, #0c1828 50%, #070d17 100%)",
-            }
+          ? STAGE_UI
+            ? {
+                // Stage: a warm-white key bloom centred where the hero part sits,
+                // over the stage-0 floor (one light source, no decorative colour —
+                // molten is rationed for the cost answer, not the lighting).
+                background:
+                  "radial-gradient(60% 54% at 50% 42%, rgba(244,242,238,0.09) 0%, rgba(244,242,238,0) 60%)," +
+                  "radial-gradient(120% 118% at 50% -8%, #14171a 0%, #0c0e10 52%, #08090b 100%)",
+              }
+            : {
+                // Legacy: a Datum-blue bloom centred where the part sits (the part
+                // "sits in light"), over a deep near-black twilight ground — the
+                // WebGL canvas is transparent so this glow reads behind the part.
+                background:
+                  "radial-gradient(66% 58% at 50% 47%, rgba(50,124,188,0.34) 0%, rgba(50,124,188,0) 62%)," +
+                  "radial-gradient(120% 118% at 50% -6%, #15273f 0%, #0c1828 50%, #070d17 100%)",
+              }
           : undefined
       }
     >
@@ -264,15 +330,27 @@ export default function CadViewer({
         camera={{ fov: 38, near: 0.05, far: 100, position: [2, 1.6, 2.4] }}
       >
         {instrument ? (
-          <>
-            <ambientLight intensity={0.35} />
-            {/* direct key for a bright specular streak on the metal */}
-            <directionalLight position={[6, 9, 5]} intensity={1.8} color="#ffffff" />
-            {/* Datum rim from behind — the cyanotype edge */}
-            <directionalLight position={[-6, 3, -5]} intensity={0.7} color="#5b9bd6" />
-            {/* gentle underfill so the shadowed side isn't dead */}
-            <directionalLight position={[0, -4, 3]} intensity={0.28} color="#b9d0e8" />
-          </>
+          STAGE_UI ? (
+            <>
+              <ambientLight intensity={0.32} />
+              {/* the single warm key — a bright specular streak on the metal */}
+              <directionalLight position={[6, 9, 5]} intensity={2.0} color="#fff4e6" />
+              {/* quiet steel rim from behind — separates part from the stage */}
+              <directionalLight position={[-6, 3, -5]} intensity={0.55} color="#8fa0a6" />
+              {/* gentle warm underfill so the shadowed side isn't dead */}
+              <directionalLight position={[0, -4, 3]} intensity={0.24} color="#e8e2d6" />
+            </>
+          ) : (
+            <>
+              <ambientLight intensity={0.35} />
+              {/* direct key for a bright specular streak on the metal */}
+              <directionalLight position={[6, 9, 5]} intensity={1.8} color="#ffffff" />
+              {/* Datum rim from behind — the cyanotype edge */}
+              <directionalLight position={[-6, 3, -5]} intensity={0.7} color="#5b9bd6" />
+              {/* gentle underfill so the shadowed side isn't dead */}
+              <directionalLight position={[0, -4, 3]} intensity={0.28} color="#b9d0e8" />
+            </>
+          )
         ) : (
           <>
             <ambientLight intensity={0.45} />
@@ -301,9 +379,9 @@ export default function CadViewer({
             scale={TARGET * 3.4}
             far={TARGET * 2}
             blur={2.6}
-            opacity={instrument ? 0.72 : 0.5}
+            opacity={instrument ? (STAGE_UI ? 0.75 : 0.72) : 0.5}
             resolution={512}
-            color={instrument ? "#03080f" : "#334155"}
+            color={instrument ? (STAGE_UI ? "#050506" : "#03080f") : "#334155"}
             frames={1}
           />
         </Suspense>
@@ -318,7 +396,7 @@ export default function CadViewer({
         />
         {!instrument && (
           <gridHelper
-            args={[8, 16, "#cfc8bd", "#e4dfd6"]}
+            args={[8, 16, "#3a4655", "#232c37"]}
             position={[0, -halfH - 0.01, 0]}
           />
         )}

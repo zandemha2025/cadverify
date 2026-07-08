@@ -1,10 +1,15 @@
 name: CI / Deploy
 
 on:
+  workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   backend:
@@ -13,6 +18,45 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # F-ARCH-7 (G1, multi-tenant migration gate): real service containers,
+    # not sqlite/mocks — DATABASE_URL/REDIS_URL are live for the whole job so
+    # the Postgres-gated integration test (test_auth_password.py::_requires_pg)
+    # runs for real instead of skipping.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cadverify
+          POSTGRES_PASSWORD: cadverify_ci
+          POSTGRES_DB: cadverify
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cadverify -d cadverify"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://cadverify:cadverify_ci@localhost:5432/cadverify
+      REDIS_URL: redis://localhost:6379
+      # NOTE: a live REDIS_URL also flips src.auth.password._run_abuse_controls
+      # from its no-infra no-op to the real per-IP signup rate limiter
+      # (src/auth/signup_limits.py, 3 attempts/IP/hour). That's intentional —
+      # it's the same "REDIS_URL configured" behavior prod runs — but it means
+      # test_full_signup_login_me_protected_flow's 2 real /auth/signup calls
+      # spend real quota against this job's Redis. Fine today (only that one
+      # test hits the real endpoint); if a future test adds more real
+      # /auth/signup HTTP calls sharing the default TestClient IP, watch for
+      # 429 signup_rate_limited flakes from cumulative quota within one job.
     steps:
       - uses: actions/checkout@v4
 
@@ -22,10 +66,45 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
 
+      - name: Install native CAD/runtime libraries
+        run: |
+          # GitHub runners ship extra Microsoft apt feeds that occasionally
+          # fail signature fetches independently of Ubuntu package health.
+          # Disable only those runner-provided feeds before installing the CAD
+          # libraries this job actually needs.
+          for source in /etc/apt/sources.list.d/azure-cli.* /etc/apt/sources.list.d/microsoft-prod.*; do
+            if [ -e "$source" ]; then
+              sudo mv "$source" "$source.disabled"
+            fi
+          done
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends \
+            libgl1 \
+            libglu1-mesa \
+            libxcursor1 \
+            libxfixes3 \
+            libxft2 \
+            libxinerama1 \
+            libgomp1 \
+            postgresql-client
+
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
           pip install pytest httpx
+
+      - name: Real-database migration smoke (upgrade -> downgrade -> upgrade)
+        # Proves the migration chain actually runs against Postgres and is
+        # reversible — test_migration_*.py only mocks alembic.op and proves
+        # nothing about real DDL. Ends at head so "Run tests" below sees a
+        # fully migrated schema.
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
+
+      - name: Postgres restore drill
+        run: ../scripts/ops/postgres-restore-drill.sh
 
       - name: Run tests
         run: pytest -v
@@ -37,9 +116,14 @@ jobs:
 
       - name: Typecheck
         run: |
-          pip install pyright
-          pyright src/ --pythonversion 3.12
-        continue-on-error: true
+          pip install pyright==1.1.411
+          mkdir -p build
+          pyright src/ --pythonversion 3.12 --pythonpath "$(python -c 'import sys; print(sys.executable)')" --outputjson > build/pyright-report.json || true
+          python3 scripts/ci/check_pyright_baseline.py build/pyright-report.json
+        # Blocking (F-ARCH-7): was continue-on-error: true, silently never
+        # gating anything. It is now a real regression ratchet against
+        # scripts/ci/pyright_baseline.txt — see that file + the checker
+        # script's docstring for why it isn't a flat "0 errors" gate yet.
 
   route-auth-coverage:
     name: Every /api/v1 route calls require_api_key
@@ -95,10 +179,134 @@ jobs:
       - name: Build
         run: npm run build
 
-  docker-build:
-    name: Docker Build
+  browser-e2e:
+    name: Browser E2E (human + enterprise)
     runs-on: ubuntu-latest
-    needs: [backend]
+    needs: [backend, frontend]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cadverify
+          POSTGRES_PASSWORD: cadverify_ci
+          POSTGRES_DB: cadverify
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cadverify -d cadverify"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://cadverify:cadverify_ci@localhost:5432/cadverify
+      REDIS_URL: redis://localhost:6379
+      RATE_LIBRARY_ENABLED: "1"
+      SHOP_LIBRARY_ENABLED: "1"
+      MATERIAL_LIBRARY_ENABLED: "1"
+      E2E_RUN_ID: ci-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: browser-actions/setup-chrome@v1
+
+      - name: Install backend dependencies
+        run: |
+          for source in /etc/apt/sources.list.d/azure-cli.* /etc/apt/sources.list.d/microsoft-prod.*; do
+            if [ -e "$source" ]; then
+              sudo mv "$source" "$source.disabled"
+            fi
+          done
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends \
+            libgl1 \
+            libglu1-mesa \
+            libxcursor1 \
+            libxfixes3 \
+            libxft2 \
+            libxinerama1 \
+            libgomp1 \
+            postgresql-client
+          python -m venv backend/.venv
+          backend/.venv/bin/python -m pip install --upgrade pip
+          backend/.venv/bin/python -m pip install -r backend/requirements.txt
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Start full local app
+        run: |
+          set -euo pipefail
+          bash scripts/run-local-app.sh > e2e-app.log 2>&1 &
+          echo $! > e2e-app.pid
+          for _ in $(seq 1 180); do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null \
+              && curl -fsS http://localhost:3000 >/dev/null; then
+              echo "Local app is ready."
+              exit 0
+            fi
+            if ! kill -0 "$(cat e2e-app.pid)" 2>/dev/null; then
+              echo "Local app exited before becoming ready."
+              tail -300 e2e-app.log || true
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "Timed out waiting for local app."
+          tail -300 e2e-app.log || true
+          exit 1
+
+      - name: Run human and enterprise browser journeys
+        run: npm run test:e2e:full --prefix frontend
+
+      - name: Upload browser E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .gstack/qa-reports/*.json
+            .gstack/qa-reports/*.md
+            .gstack/qa-reports/screenshots/**
+            e2e-app.log
+          if-no-files-found: warn
+          include-hidden-files: true
+
+      - name: Stop local app
+        if: always()
+        run: |
+          if [ -f e2e-app.pid ]; then
+            kill "$(cat e2e-app.pid)" 2>/dev/null || true
+          fi
+          sleep 3
+          pkill -f "uvicorn main:app" 2>/dev/null || true
+          pkill -f "next start" 2>/dev/null || true
+          pkill -f "arq src.jobs.worker.WorkerSettings" 2>/dev/null || true
+
+  docker-build:
+    name: Container Images & Deploy Config Proof
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
     permissions:
       contents: read
     steps:
@@ -107,25 +315,53 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - uses: azure/setup-helm@v4
+
+      - name: Validate Compose deploy configs
+        run: |
+          printf '%s\n' \
+            'POSTGRES_PASSWORD=cadverify_ci' \
+            'DATABASE_URL=postgresql+asyncpg://cadverify:cadverify_ci@postgres:5432/cadverify' \
+            'REDIS_URL=redis://redis:6379/0' \
+            > .env
+          cp cadverify-enterprise/.env.example cadverify-enterprise/.env
+          docker compose -f docker-compose.yml config --quiet
+          docker compose -f cadverify-enterprise/docker-compose.yml config --quiet
+
+      - name: Lint and render Helm chart
+        run: |
+          helm lint charts/cadverify
+          helm template cadverify charts/cadverify -f charts/cadverify/values-enterprise.yaml >/tmp/cadverify-rendered.yaml
+
       - name: Login to Fly.io Registry
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
           echo "${{ secrets.FLY_API_TOKEN }}" | docker login registry.fly.io -u x --password-stdin
 
-      - name: Build and push
+      - name: Build frontend production image and push on main
+        uses: docker/build-push-action@v5
+        with:
+          context: frontend
+          push: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+          tags: cadverify-frontend:proof,registry.fly.io/cadverify-web:${{ github.sha }},registry.fly.io/cadverify-web:latest
+          platforms: linux/amd64
+          cache-from: type=gha,scope=frontend-image
+          cache-to: type=gha,mode=max,scope=frontend-image
+
+      - name: Build backend production image and push on main
         uses: docker/build-push-action@v5
         with:
           context: backend
           push: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
           tags: registry.fly.io/cadvrfy-api:${{ github.sha }},registry.fly.io/cadvrfy-api:latest
           platforms: linux/amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=backend-image
+          cache-to: type=gha,mode=max,scope=backend-image
 
   deploy:
     name: Deploy to Fly.io
     runs-on: ubuntu-latest
-    needs: [backend, frontend, docker-build]
+    needs: [backend, frontend, browser-e2e, docker-build]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
@@ -137,6 +373,15 @@ jobs:
           flyctl deploy \
             --config backend/fly.toml \
             --image registry.fly.io/cadvrfy-api:${{ github.sha }} \
+            --env RELEASE=${{ github.sha }}
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Deploy frontend (pre-built image)
+        run: |
+          flyctl deploy \
+            --config frontend/fly.toml \
+            --image registry.fly.io/cadverify-web:${{ github.sha }} \
             --env RELEASE=${{ github.sha }}
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

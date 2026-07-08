@@ -89,7 +89,11 @@ class TestReconstructEndpoint:
     """Tests for POST /api/v1/reconstruct."""
 
     def test_reconstruct_endpoint_202(self):
-        """POST with 1 image returns 202 with job_id, status, poll_url, estimated_seconds."""
+        """POST with 1 image returns 202 when reconstruction is available.
+
+        With the honest zero-egress default, the endpoint refuses work it cannot
+        run; here we assert the happy path with reconstruction available.
+        """
         test_app = FastAPI()
         test_app.include_router(router)
         test_app.dependency_overrides[require_api_key] = _override_auth
@@ -98,6 +102,15 @@ class TestReconstructEndpoint:
         mock_job = _make_job()
 
         with patch(
+            "src.services.reconstruction_service.check_reconstruction_availability",
+            return_value={
+                "available": True,
+                "configured_backend": "local",
+                "effective_backend": "local",
+                "egress": False,
+                "reason": "local reconstruction -- no customer data leaves the deployment",
+            },
+        ), patch(
             "src.services.reconstruction_service.create_reconstruction_job",
             new_callable=AsyncMock,
             return_value=mock_job,
@@ -115,6 +128,78 @@ class TestReconstructEndpoint:
         assert body["status"] == "queued"
         assert "poll_url" in body
         assert body["estimated_seconds"] == 30
+
+    def test_reconstruct_announces_unavailable_no_local_no_optin(self, monkeypatch):
+        """No local model + no remote opt-in => honest 501, NO silent egress, NO job.
+
+        This is the core HONESTY / zero-egress guarantee: a request must be
+        announced as unavailable rather than quietly shipping customer imagery
+        to a third-party cloud.
+        """
+        # Force the "no local model, no opt-in" world regardless of host env.
+        monkeypatch.delenv("RECONSTRUCTION_BACKEND", raising=False)
+        monkeypatch.delenv("RECONSTRUCTION_ALLOW_REMOTE_EGRESS", raising=False)
+
+        test_app = FastAPI()
+        test_app.include_router(router)
+        # Register the production structured-error handler so the stable
+        # RECONSTRUCTION_UNAVAILABLE code surfaces the same way it does live.
+        from fastapi import HTTPException as _FastAPIHTTPException
+        from starlette.exceptions import HTTPException as _StarletteHTTPException
+
+        from src.api.errors import structured_http_error_handler
+
+        test_app.add_exception_handler(_FastAPIHTTPException, structured_http_error_handler)
+        test_app.add_exception_handler(_StarletteHTTPException, structured_http_error_handler)
+        test_app.dependency_overrides[require_api_key] = _override_auth
+        test_app.dependency_overrides[get_db_session] = _override_session
+
+        create_mock = AsyncMock()
+        with patch(
+            "src.services.reconstruction_service.local_backend_available",
+            return_value=False,
+        ), patch(
+            "src.services.reconstruction_service.create_reconstruction_job",
+            new=create_mock,
+        ):
+            client = TestClient(test_app)
+            img_bytes = _make_test_image_bytes()
+            resp = client.post(
+                "/api/v1/reconstruct",
+                files=[("images", ("test.png", img_bytes, "image/png"))],
+            )
+
+        assert resp.status_code == 501
+        body = resp.json()
+        assert body["code"] == "RECONSTRUCTION_UNAVAILABLE"
+        assert "remote egress is not enabled" in body["message"]
+        # Critically: no job was created and nothing was egressed.
+        create_mock.assert_not_called()
+
+    def test_reconstruct_remote_opt_in_wired(self, monkeypatch):
+        """Explicit remote opt-in => availability gate passes, job path is wired."""
+        monkeypatch.setenv("RECONSTRUCTION_BACKEND", "remote")
+
+        test_app = FastAPI()
+        test_app.include_router(router)
+        test_app.dependency_overrides[require_api_key] = _override_auth
+        test_app.dependency_overrides[get_db_session] = _override_session
+
+        mock_job = _make_job()
+        with patch(
+            "src.services.reconstruction_service.create_reconstruction_job",
+            new_callable=AsyncMock,
+            return_value=mock_job,
+        ):
+            client = TestClient(test_app)
+            img_bytes = _make_test_image_bytes()
+            resp = client.post(
+                "/api/v1/reconstruct",
+                files=[("images", ("test.png", img_bytes, "image/png"))],
+            )
+
+        assert resp.status_code == 202
+        assert resp.json()["job_id"] == mock_job.ulid
 
     def test_reconstruct_rejects_no_images(self):
         """POST with no images returns 422 (FastAPI validation)."""

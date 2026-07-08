@@ -56,14 +56,15 @@ DATABASE_URL=postgresql://cadverify:localdev@localhost:5432/cadverify .venv/bin/
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
 | POST | `/auth/signup` | none | Validate email + password policy, disposable hard-reject, `create_password_user` (Argon2 hash), → `200 {user, session}` or `409 email_taken` / `400 weak_password`/`invalid_email`/`email_domain_blocked`. |
-| POST | `/auth/login` | none | Generic `401 invalid_credentials` for unknown email / no-password (OAuth) / wrong password (no enumeration). Success → `200 {user, session}`. Opportunistic Argon2 re-hash. |
-| POST | `/auth/logout` | none | Stateless HMAC session — nothing to revoke. `clear_session_cookie` (harmless) → `200 {ok:true}`. |
-| GET | `/auth/me` | `dash_session` cookie | `require_dashboard_session` → `unsign` → user; → `200 {id,email,role,auth_provider}` or `401 dashboard_auth_required`. |
+| POST | `/auth/login` | none | Generic `401 invalid_credentials` for unknown email / no-password (OAuth) / wrong password (no enumeration). Success → `200 {user, session}` with current `session_version`. Opportunistic Argon2 re-hash. |
+| POST | `/auth/logout` | none | Clear this browser's cookie → `200 {ok:true}`. |
+| POST | `/auth/logout-all` | `dash_session` cookie | Increment `users.session_version`, clear cookie, reject every older dashboard cookie. |
+| GET | `/auth/me` | `dash_session` cookie | `require_dashboard_session` → HMAC/expiry + `session_version` validation → user; → `200 {id,email,role,auth_provider}` or `401 dashboard_auth_required`/`session_revoked`. |
 
 **Session transport:** signup/login return the signed token in the JSON `session`
 field. The Next.js server (not browser JS) sets the first-party httpOnly
 `dash_session` cookie; every later request is verified by `unsign`. No
-cross-domain `Set-Cookie`. Token = `dashboard_session.sign(user_id)` (30-day HMAC).
+cross-domain `Set-Cookie`. Token = `dashboard_session.sign(user_id, session_version)` (30-day HMAC).
 
 **Password policy (server-enforced, `_validate_password`):** 8–128 chars, ≥1
 letter AND ≥1 digit. `400 weak_password` otherwise.

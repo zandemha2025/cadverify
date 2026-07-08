@@ -390,9 +390,13 @@ async def test_concurrent_duplicate_upload(db_session, authed_user, _pipeline_pa
         exec_hit = MagicMock()
         exec_hit.scalars.return_value.first.return_value = cached_analysis
 
-        # First execute (cache check) returns None, second (re-query) returns cached
+        # Sequence of execute() calls in the persist path:
+        #   1. cache check -> None (miss)
+        #   2. W1 resolve_org read (stamps org_id on the new row) -> None here
+        #   3. re-query after the IntegrityError -> cached row
         db_session.execute.side_effect = [
             MagicMock(scalars=MagicMock(return_value=MagicMock(first=MagicMock(return_value=None)))),
+            MagicMock(scalar_one_or_none=MagicMock(return_value=None)),  # resolve_org
             exec_hit,  # re-query after IntegrityError
         ]
 

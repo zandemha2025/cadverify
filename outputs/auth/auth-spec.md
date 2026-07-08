@@ -267,17 +267,18 @@ class LoginIn(BaseModel):
    ("Invalid email or password.") in all three branches (no user enumeration,
    no "this account uses Google" leak).
 4. (If `password_needs_rehash` → re-hash and UPDATE; optional.)
-5. Success → `200 {"user": {"id", "email", "role"}, "session": sign(user_id)}`.
+5. Success → `200 {"user": {"id", "email", "role"}, "session": sign(user_id, session_version=current_user_session_version)}`.
 
 **POST `/auth/logout`**
-Session is stateless (HMAC) → nothing to revoke server-side. Return
-`200 {"ok": true}` and call `clear_session_cookie(response)` (harmless; the
-real cookie clear happens in the Next.js logout route on the first-party
-cookie). Idempotent; requires no valid session.
+Single-browser logout clears the cookie and returns `200 {"ok": true}`.
+Account-wide revocation is handled by `/auth/logout-all` or the superadmin
+`/api/v1/admin/users/{id}/revoke-sessions` route, which increment
+`users.session_version` so every older dashboard cookie is rejected.
 
 **GET `/auth/me`**  (dependency `user_id = Depends(require_dashboard_session)`)
 - `require_dashboard_session` reads the `dash_session` cookie (forwarded by
-  Next), `unsign`s it, returns `user_id` or raises `401 dashboard_auth_required`.
+  Next), verifies HMAC/expiry, compares `session_version` against the user row,
+  returns `user_id`, or raises `401 dashboard_auth_required` / `session_revoked`.
 - `row = await get_user_public(user_id)`; if None → `401 dashboard_auth_required`.
 - `200 {"id": user_id, "email": row.email, "role": row.role, "auth_provider": row.auth_provider}`.
 

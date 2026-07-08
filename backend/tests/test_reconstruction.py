@@ -231,6 +231,104 @@ class TestConfidenceMessage:
 # ---------------------------------------------------------------------------
 
 
+class TestZeroEgressBackendResolution:
+    """The HONESTY / zero-egress-by-default invariant (F-ARCH-4 fix).
+
+    Default backend is local-only: no customer-derived imagery leaves the
+    deployment without an explicit, informed operator opt-in. When no local
+    model is installed and remote egress is not opted in, reconstruction
+    announces itself unavailable instead of silently egressing.
+    """
+
+    def test_default_is_local_never_remote(self, monkeypatch):
+        from src.services import reconstruction_service as rs
+
+        monkeypatch.delenv("RECONSTRUCTION_BACKEND", raising=False)
+        monkeypatch.delenv("RECONSTRUCTION_ALLOW_REMOTE_EGRESS", raising=False)
+        assert rs.DEFAULT_RECONSTRUCTION_BACKEND == "local"
+        assert rs.configured_backend() == "local"
+
+    def test_no_local_no_optin_is_unavailable_not_egress(self, monkeypatch):
+        """Core guarantee: unavailable is announced, never a silent egress."""
+        from src.services import reconstruction_service as rs
+
+        monkeypatch.delenv("RECONSTRUCTION_BACKEND", raising=False)
+        monkeypatch.delenv("RECONSTRUCTION_ALLOW_REMOTE_EGRESS", raising=False)
+        monkeypatch.setattr(rs, "local_backend_available", lambda: False)
+
+        with pytest.raises(rs.ReconstructionUnavailableError) as exc:
+            rs.resolve_reconstruction_backend()
+        assert exc.value.code == "RECONSTRUCTION_UNAVAILABLE"
+
+        report = rs.check_reconstruction_availability()
+        assert report["available"] is False
+        assert report["egress"] is False
+        assert report["effective_backend"] == "none"
+
+        # The factory must refuse -- it must NOT hand back a remote (egress) engine.
+        with pytest.raises(rs.ReconstructionUnavailableError):
+            rs.get_reconstruction_engine()
+
+    def test_local_available_is_local_no_egress(self, monkeypatch):
+        from src.services import reconstruction_service as rs
+
+        monkeypatch.delenv("RECONSTRUCTION_BACKEND", raising=False)
+        monkeypatch.delenv("RECONSTRUCTION_ALLOW_REMOTE_EGRESS", raising=False)
+        monkeypatch.setattr(rs, "local_backend_available", lambda: True)
+
+        backend, egress = rs.resolve_reconstruction_backend()
+        assert backend == "local"
+        assert egress is False
+        report = rs.check_reconstruction_availability()
+        assert report["available"] is True
+        assert report["egress"] is False
+
+    def test_explicit_remote_backend_opts_in_to_egress(self, monkeypatch):
+        from src.services import reconstruction_service as rs
+
+        monkeypatch.setenv("RECONSTRUCTION_BACKEND", "remote")
+        backend, egress = rs.resolve_reconstruction_backend()
+        assert backend == "remote"
+        assert egress is True
+        report = rs.check_reconstruction_availability()
+        assert report["available"] is True
+        assert report["egress"] is True
+
+    def test_allow_remote_egress_flag_enables_fallback(self, monkeypatch):
+        """No local model but explicit egress opt-in => remote fallback allowed."""
+        from src.services import reconstruction_service as rs
+
+        monkeypatch.delenv("RECONSTRUCTION_BACKEND", raising=False)
+        monkeypatch.setenv("RECONSTRUCTION_ALLOW_REMOTE_EGRESS", "1")
+        monkeypatch.setattr(rs, "local_backend_available", lambda: False)
+
+        backend, egress = rs.resolve_reconstruction_backend()
+        assert backend == "remote"
+        assert egress is True
+        assert rs.remote_egress_allowed() is True
+
+    def test_backend_none_is_disabled(self, monkeypatch):
+        from src.services import reconstruction_service as rs
+
+        monkeypatch.setenv("RECONSTRUCTION_BACKEND", "none")
+        with pytest.raises(rs.ReconstructionUnavailableError):
+            rs.resolve_reconstruction_backend()
+        assert rs.check_reconstruction_availability()["available"] is False
+
+    def test_egress_factory_logs_acknowledgment(self, monkeypatch, caplog):
+        """Every egress path must log a loud data-egress acknowledgment."""
+        import logging
+
+        from src.services import reconstruction_service as rs
+
+        monkeypatch.setenv("RECONSTRUCTION_BACKEND", "remote")
+        monkeypatch.setenv("REPLICATE_API_TOKEN", "test-token")
+        with caplog.at_level(logging.WARNING, logger="cadverify.reconstruction_service"):
+            engine = rs.get_reconstruction_engine()
+        assert engine is not None
+        assert any("DATA EGRESS" in rec.getMessage() for rec in caplog.records)
+
+
 class TestEngineProtocol:
     def test_local_is_subclass(self):
         """LocalTripoSR must be a subclass of ReconstructionEngine."""

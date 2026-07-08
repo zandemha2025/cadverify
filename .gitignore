@@ -92,6 +92,9 @@ tmp/
 # Cycle 4 — local corpus + human labels (CAD-as-IP, never committed)
 # ──────────────────────────────────────────────────────────────
 data/
+!backend/data/
+backend/data/*
+!backend/data/shop_profiles/
 
 # local dev auth secrets (run-local-app.sh)
 .env.local-auth

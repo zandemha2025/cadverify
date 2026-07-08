@@ -33,7 +33,7 @@ _HAS_GMSH = False
 try:
     import gmsh  # noqa: F401
     _HAS_GMSH = True
-except ImportError:
+except (ImportError, OSError):
     pass
 
 # gmsh is process-global / not thread-safe; serialize across worker threads.

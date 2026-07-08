@@ -110,7 +110,11 @@ def test_create_batch_returns_202(mock_bs, mock_pool):
 
     mock_batch = _make_batch(status="pending")
     mock_bs.create_batch = AsyncMock(return_value=mock_batch)
-    mock_bs.extract_zip_to_items.return_value = [
+    # New streamed-upload path (F-ARCH-9): temp file + path-based extraction.
+    mock_bs.stream_upload_to_tempfile = AsyncMock(
+        return_value="/tmp/cv_batch_does_not_exist.zip"
+    )
+    mock_bs.extract_zip_path_to_items.return_value = [
         {"filename": "part.stl", "path": "/tmp/part.stl", "size": 100}
     ]
     mock_bs.create_batch_items = AsyncMock(return_value=1)
@@ -133,6 +137,142 @@ def test_create_batch_returns_202(mock_bs, mock_pool):
     assert "status_url" in data
     # Ensure webhook_secret is NOT in response (T-09-03)
     assert "webhook_secret" not in data
+    mock_bs.stream_upload_to_tempfile.assert_awaited_once()
+
+    app.dependency_overrides.clear()
+
+
+@patch("src.jobs.arq_backend.get_arq_pool")
+@patch("src.api.batch_router.batch_service")
+def test_create_batch_counts_initial_skipped_items_as_failed(mock_bs, mock_pool):
+    """Unsupported CAD rows are terminal on create, so progress is not fake-pending."""
+    from src.db.engine import get_db_session
+    from src.auth.require_api_key import require_api_key
+    import io
+    import zipfile
+
+    app.dependency_overrides[require_api_key] = _override_auth
+    app.dependency_overrides[get_db_session] = _override_session
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("part.step", b"ISO-10303-21; fake step data")
+        zf.writestr("native.sldprt", b"native bytes")
+    buf.seek(0)
+
+    mock_batch = _make_batch(
+        status="pending", total_items=0, completed_items=0, failed_items=0
+    )
+    mock_bs.create_batch = AsyncMock(return_value=mock_batch)
+    mock_bs.stream_upload_to_tempfile = AsyncMock(
+        return_value="/tmp/cv_batch_does_not_exist.zip"
+    )
+    mock_bs.extract_zip_path_to_items.return_value = [
+        {"filename": "part.step", "path": "/tmp/part.step", "size": 100},
+        {
+            "filename": "native.sldprt",
+            "status": "skipped",
+            "error": "Unsupported native CAD file type .sldprt.",
+            "size": 200,
+        },
+    ]
+    mock_bs.create_batch_items = AsyncMock(return_value=2)
+
+    mock_arq = AsyncMock()
+    mock_arq.enqueue_job = AsyncMock()
+    mock_pool.return_value = mock_arq
+
+    client = TestClient(app)
+    resp = client.post(
+        "/api/v1/batch",
+        files={"file": ("test.zip", buf, "application/zip")},
+    )
+
+    assert resp.status_code == 202, resp.text
+    assert mock_batch.total_items == 2
+    assert mock_batch.failed_items == 1
+
+    app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# POST /batch -- S3 input rejected up front (F-ARCH-5)
+# ---------------------------------------------------------------------------
+
+
+@patch("src.api.batch_router.batch_service")
+def test_create_batch_s3_returns_501(mock_bs):
+    """S3 input is announced-not-orphaned: 501 S3_INPUT_UNSUPPORTED."""
+    from src.db.engine import get_db_session
+    from src.auth.require_api_key import require_api_key
+
+    app.dependency_overrides[require_api_key] = _override_auth
+    app.dependency_overrides[get_db_session] = _override_session
+
+    client = TestClient(app)
+    resp = client.post("/api/v1/batch", data={"s3_bucket": "my-bucket"})
+
+    assert resp.status_code == 501
+    assert resp.json()["detail"]["code"] == "S3_INPUT_UNSUPPORTED"
+    # Must NOT have created a batch row (no orphan).
+    mock_bs.create_batch.assert_not_called()
+
+    app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# POST /batch -- enqueue failure marks batch failed + 503 (F-ARCH-1)
+# ---------------------------------------------------------------------------
+
+
+@patch("src.jobs.arq_backend.get_arq_pool")
+@patch("src.api.batch_router.batch_service")
+def test_create_batch_enqueue_failure_marks_failed_503(mock_bs, mock_pool):
+    """If coordinator enqueue fails, mark batch failed and return honest 503."""
+    from src.db.engine import get_db_session
+    from src.auth.require_api_key import require_api_key
+    import io
+    import zipfile
+
+    app.dependency_overrides[require_api_key] = _override_auth
+    app.dependency_overrides[get_db_session] = _override_session
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("part.stl", b"solid test\nendsolid test")
+    buf.seek(0)
+
+    mock_batch = _make_batch(status="pending")
+    mock_bs.create_batch = AsyncMock(return_value=mock_batch)
+    mock_bs.stream_upload_to_tempfile = AsyncMock(
+        return_value="/tmp/cv_batch_does_not_exist.zip"
+    )
+    mock_bs.extract_zip_path_to_items.return_value = [
+        {"filename": "part.stl", "path": "/tmp/part.stl", "size": 100}
+    ]
+    mock_bs.create_batch_items = AsyncMock(return_value=1)
+    # F-ARCH-1/#3: enqueue-failure path terminalizes the batch's items.
+    mock_bs.mark_pending_items_terminal = AsyncMock()
+
+    # Enqueue blows up.
+    mock_arq = AsyncMock()
+    mock_arq.enqueue_job = AsyncMock(side_effect=RuntimeError("redis down"))
+    mock_pool.return_value = mock_arq
+
+    client = TestClient(app)
+    resp = client.post(
+        "/api/v1/batch",
+        files={"file": ("test.zip", buf, "application/zip")},
+    )
+
+    assert resp.status_code == 503
+    assert resp.json()["detail"]["code"] == "BATCH_ENQUEUE_FAILED"
+    mock_bs.mark_batch_failed.assert_called_once_with(mock_batch, "enqueue_failed")
+    # Items moved off 'pending' so progress endpoints don't advertise dead work.
+    mock_bs.mark_pending_items_terminal.assert_awaited_once()
+    _pos, _kw = mock_bs.mark_pending_items_terminal.await_args
+    assert _pos[1] == mock_batch.id
+    assert _pos[2] == "skipped"
 
     app.dependency_overrides.clear()
 

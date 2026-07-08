@@ -72,3 +72,47 @@ def test_successful_response_has_ratelimit_headers(client_with_limits):
     # slowapi's headers_enabled populates these on 200 responses too.
     assert "X-RateLimit-Limit" in r.headers
     assert "X-RateLimit-Remaining" in r.headers
+
+
+# ---------------------------------------------------------------------------
+# Storage backend resolution (F-ARCH-3): fail loud in production
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_storage_uri_requires_redis_in_production(monkeypatch):
+    """RELEASE set + no REDIS_URL -> fail loud (not silent memory:// fallback)."""
+    monkeypatch.setenv("RELEASE", "prod-v1")
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    monkeypatch.delenv("RATE_LIMIT_ALLOW_MEMORY", raising=False)
+    import src.auth.rate_limit as rl
+
+    with pytest.raises(RuntimeError, match="REDIS_URL"):
+        rl._resolve_storage_uri()
+
+
+def test_resolve_storage_uri_memory_off_switch(monkeypatch):
+    """RATE_LIMIT_ALLOW_MEMORY=1 lets production opt into memory:// explicitly."""
+    monkeypatch.setenv("RELEASE", "prod-v1")
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    monkeypatch.setenv("RATE_LIMIT_ALLOW_MEMORY", "1")
+    import src.auth.rate_limit as rl
+
+    assert rl._resolve_storage_uri() == "memory://"
+
+
+def test_resolve_storage_uri_dev_defaults_memory(monkeypatch):
+    """Dev/test (no RELEASE) keeps the memory:// convenience default."""
+    monkeypatch.delenv("RELEASE", raising=False)
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    import src.auth.rate_limit as rl
+
+    assert rl._resolve_storage_uri() == "memory://"
+
+
+def test_resolve_storage_uri_uses_real_redis(monkeypatch):
+    """A real REDIS_URL is always used verbatim."""
+    monkeypatch.setenv("RELEASE", "prod-v1")
+    monkeypatch.setenv("REDIS_URL", "redis://cache:6379")
+    import src.auth.rate_limit as rl
+
+    assert rl._resolve_storage_uri() == "redis://cache:6379"

@@ -31,6 +31,23 @@ def report_to_dict(report) -> dict:
         ],
         "decision": asdict(report.decision) if report.decision else None,
     }
+    # Machine-inventory verification block (Phase C). Added ONLY when the org
+    # actually declared machines or a service environment (report.verification is
+    # not None). No declaration → the key is NEVER added → the serialized output
+    # is BYTE-IDENTICAL to pre-Phase-C (honesty invariant §2.1). This must stay a
+    # tail-append with a truthiness guard: an always-on key here would break the
+    # byte-identity regression test on purpose.
+    verification = getattr(report, "verification", None)
+    if verification is not None:
+        d["verification"] = verification
+    # Units safety net (B5): out-of-range plausibility WARNINGS on the mm-interpreted
+    # geometry (confirm mm vs inch). Same tail-append + truthiness guard as
+    # verification: EMPTY (any plausible part, the default/mm path) => NO key added
+    # => serialized output is BYTE-IDENTICAL to pre-B5. These are honest warnings
+    # (MEASURED geometry vs ASSUMED units), never a corrected number or a verdict.
+    unit_warnings = getattr(report, "unit_warnings", None)
+    if unit_warnings:
+        d["unit_warnings"] = unit_warnings
     return d
 
 
