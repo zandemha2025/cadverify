@@ -57,7 +57,7 @@ All read via per-module `os.getenv`/`os.environ` — there is **no central setti
 **SAML gotcha (real, documented in the chart itself):** `charts/cadverify/values.yaml:49-57` — `templates/secret-saml.yaml` ships `sp-key.pem`/`sp-cert.pem` as **empty string placeholders** by default. Fine for receiving unsigned assertions; SP request signing / encrypted assertions will **silently fail** with an empty key until you supply real PEMs via `--set-file samlSecrets.spKey=... --set-file samlSecrets.spCert=...` or an external/sealed secret.
 
 ### Auth mode
-`AUTH_MODE` (default `"google"`, chart default also `"google"` per `values.yaml:73`, enterprise overlay `values-enterprise.yaml:9` sets `"saml"`) — one of `google | saml | hybrid`. Password auth (`/auth/signup`, `/auth/login`) is mounted **unconditionally regardless of `AUTH_MODE`** (`main.py:267-270`) — it is the only login method guaranteed to work with zero external auth infra.
+`AUTH_MODE` (default `"google"`, chart default also `"google"` per `values.yaml:73`, enterprise overlay `values-enterprise.yaml:9` sets `"saml"`, Fly SaaS demo sets `"password"`) — one of `password | google | saml | hybrid`. Password auth (`/auth/signup`, `/auth/login`) is mounted **unconditionally regardless of `AUTH_MODE`** (`main.py:267-270`) — it is the only login method guaranteed to work with zero external auth infra.
 
 ### Object storage
 **There is no S3/blob object-store integration today.** There is no `boto3`/S3 client in `backend/requirements.txt`, and remote batch references now reject unconditionally with `501 S3_INPUT_UNSUPPORTED` before any batch row is created. All blobs (meshes, batch inputs, PDFs, SAM-3D cache) live on **local disk** under `BLOB_STORAGE_PATH=/data/blobs` (and its children `MESH_BLOB_DIR`, `RECON_BLOB_DIR`, `BATCH_BLOB_DIR`, `PDF_CACHE_DIR`, `SAM3D_CACHE_DIR`). This is a real, persistent volume, not optional:
@@ -177,7 +177,7 @@ All flags are per-module `os.getenv` reads (no central settings/registry) — th
 | `WEBHOOK_SSRF_GUARD_ENABLED` | `1` (on) | `src/services/url_guard.py:56` — leave on |
 | `LABELING_ENABLED` | off | **Must stay off in prod** — mounts the dev-only corpus/label routes and widens CORS to localhost (`main.py:62-68,290-297`) |
 | `COST_PERSIST_ENABLED` | `true` (on) | `src/services/cost_decision_service.py:40` — leave on |
-| `AUTH_MODE` | `"google"` | `google \| saml \| hybrid` — set per deployment; chart default matches, enterprise overlay sets `saml` |
+| `AUTH_MODE` | `"google"` | `password \| google \| saml \| hybrid` — set per deployment; chart default matches, enterprise overlay sets `saml`, Fly SaaS demo sets `password` |
 
 ---
 

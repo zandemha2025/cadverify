@@ -59,6 +59,23 @@ def test_prod_saml_mode_skips_google_check(monkeypatch):
     main._assert_production_secrets()  # no raise — google not used
 
 
+def test_prod_password_mode_skips_external_provider_checks(monkeypatch):
+    monkeypatch.setenv("RELEASE", "v1.0.0")
+    monkeypatch.setenv("SESSION_SECRET", "a-real-strong-secret")
+    monkeypatch.setenv("AUTH_MODE", "password")
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "dummy")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "dummy")
+    main._assert_production_secrets()  # no raise — password auth is mounted unconditionally
+
+
+def test_prod_unknown_auth_mode_refuses(monkeypatch):
+    monkeypatch.setenv("RELEASE", "v1.0.0")
+    monkeypatch.setenv("SESSION_SECRET", "a-real-strong-secret")
+    monkeypatch.setenv("AUTH_MODE", "banana")
+    with pytest.raises(RuntimeError, match="AUTH_MODE"):
+        main._assert_production_secrets()
+
+
 def test_prod_with_real_secrets_passes(monkeypatch):
     monkeypatch.setenv("RELEASE", "v1.0.0")
     monkeypatch.setenv("SESSION_SECRET", "a-real-strong-secret")

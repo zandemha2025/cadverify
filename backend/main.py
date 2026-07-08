@@ -103,6 +103,12 @@ def _assert_production_secrets() -> None:
             f"(RELEASE={os.getenv('RELEASE')!r}); refusing to start."
         )
     auth_mode = os.getenv("AUTH_MODE", "google")
+    allowed_auth_modes = {"password", "google", "saml", "hybrid"}
+    if auth_mode not in allowed_auth_modes:
+        raise RuntimeError(
+            f"AUTH_MODE={auth_mode!r} is not supported in production; "
+            f"expected one of {sorted(allowed_auth_modes)}."
+        )
     if auth_mode in ("google", "hybrid"):
         for var in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"):
             if os.getenv(var, "dummy").strip() in ("", "dummy"):
@@ -289,7 +295,7 @@ app.include_router(org_router, prefix="/api/v1/orgs", tags=["orgs"])
 # infra, independent of AUTH_MODE.
 app.include_router(password_router, prefix="/auth")
 
-# AUTH_MODE gating: saml | google | hybrid (default: google)
+# AUTH_MODE gating: password | saml | google | hybrid (default: google)
 AUTH_MODE = os.getenv("AUTH_MODE", "google")
 
 if AUTH_MODE in ("google", "hybrid"):

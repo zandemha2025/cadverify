@@ -2,9 +2,6 @@
 
 import * as React from "react";
 import Link from "next/link";
-import Script from "next/script";
-import { browserOrBackendUrl } from "@/lib/api-base";
-import { startMagic } from "./actions";
 import { PublicHeader } from "@/components/ui/public-chrome";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,10 +25,6 @@ function passwordProblem(pw: string): string | null {
 }
 
 export default function SignupPage() {
-  const sitekey =
-    process.env.NEXT_PUBLIC_TURNSTILE_SITEKEY?.replace(/\\[rn]/g, "").trim() ||
-    "";
-
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
@@ -128,42 +121,8 @@ export default function SignupPage() {
               </Link>
             </p>
 
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span className="h-px flex-1 bg-border" />
-              or
-              <span className="h-px flex-1 bg-border" />
-            </div>
-
-            {/* Secondary / enterprise options — deploy-gated (need credentials). */}
-            <Button asChild variant="secondary" className="w-full">
-              <a href={browserOrBackendUrl("/auth/google/start")}>
-                Continue with Google
-              </a>
-            </Button>
-
-            <form action={startMagic} className="space-y-3">
-              <Input
-                name="email"
-                type="email"
-                required
-                placeholder="you@company.com"
-              />
-              {sitekey && (
-                <>
-                  <Script
-                    src="https://challenges.cloudflare.com/turnstile/v0/api.js"
-                    async
-                    defer
-                  />
-                  <div className="cf-turnstile" data-sitekey={sitekey} />
-                </>
-              )}
-              <Button type="submit" variant="ghost" className="w-full">
-                Email me a magic link
-              </Button>
-            </form>
             <p className="text-center text-xs text-muted-foreground">
-              Google / SSO / magic-link require server credentials.
+              SSO can be enabled when provider credentials are configured.
             </p>
           </CardContent>
         </Card>

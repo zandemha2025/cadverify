@@ -4,7 +4,6 @@ import * as React from "react";
 import { Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { browserOrBackendUrl } from "@/lib/api-base";
 import { STAGE_UI } from "@/lib/stage-flag";
 import { PublicHeader } from "@/components/ui/public-chrome";
 
@@ -115,20 +114,8 @@ function LoginForm() {
           </Link>
         </p>
 
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="h-px flex-1 bg-border" />
-          or
-          <span className="h-px flex-1 bg-border" />
-        </div>
-
-        {/* Secondary providers — deploy-gated (need provider credentials). */}
-        <Button asChild variant="secondary" className="w-full">
-          <a href={browserOrBackendUrl("/auth/google/start")}>
-            Continue with Google
-          </a>
-        </Button>
         <p className="text-center text-xs text-muted-foreground">
-          Google / SSO / magic-link require server credentials.
+          SSO can be enabled when provider credentials are configured.
         </p>
       </CardContent>
     </Card>
