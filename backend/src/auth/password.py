@@ -110,10 +110,12 @@ async def _run_abuse_controls(request: Request, email_norm: str) -> str:
     inline as a 400). Locally (no REDIS_URL) only the in-process disposable list
     runs — no captcha, no rate limiter — so signup works with zero infra.
     """
-    # Per-IP throttle: only when Redis is configured (deploy-gated).
-    if os.getenv("REDIS_URL"):
-        from src.auth.signup_limits import per_ip_signup_limit
+    # Per-IP throttle: only when Redis is configured (deploy-gated). The local
+    # E2E launcher intentionally creates many throwaway accounts from 127.0.0.1;
+    # allow that only outside production so repeated proof runs stay deterministic.
+    from src.auth.signup_limits import ip_signup_limit_enabled, per_ip_signup_limit
 
+    if ip_signup_limit_enabled():
         await per_ip_signup_limit(request)
 
     # Disposable classification. Soft-flag set lives in Redis; use an empty set

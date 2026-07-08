@@ -955,7 +955,7 @@ def _authpath_app():
 
 @_requires_pg
 @pytest.mark.asyncio
-async def test_deactivation_blocks_password_login():
+async def test_deactivation_blocks_password_login(monkeypatch):
     import src.db.engine as eng
     from httpx import ASGITransport, AsyncClient
 
@@ -963,6 +963,8 @@ async def test_deactivation_blocks_password_login():
     email = f"pwdeact-{tag}@example.com"
     users: list[int] = []
     orgs: list[str] = []
+    monkeypatch.setenv("SIGNUP_RATE_LIMIT_DISABLED", "1")
+    monkeypatch.delenv("RELEASE", raising=False)
     app = _authpath_app()
     transport = ASGITransport(app=app)
     try:

@@ -1,7 +1,9 @@
-"""slowapi limiter keyed by api_key_id, with GitHub-style 429 response.
+"""slowapi limiter keyed by caller identity, with GitHub-style 429 response.
 
-Keyed on request.state.authed_user.api_key_id (set by require_api_key).
-Falls back to client IP when no authed user is present (public routes).
+API keys are bucketed by request.state.authed_user.api_key_id (set by
+require_api_key). Dashboard-session users have api_key_id=0, so they are
+bucketed by user_id instead of all sharing one "key:0" quota. Public routes
+fall back to client IP.
 
 Storage: Redis when REDIS_URL is set, else in-memory. With
 in_memory_fallback_enabled=True, if Redis becomes unreachable slowapi
@@ -23,7 +25,10 @@ _TRUTHY = {"1", "true", "yes", "on"}
 def _api_key_id(request: Request) -> str:
     u = getattr(request.state, "authed_user", None)
     if u is not None:
-        return f"key:{u.api_key_id}"
+        api_key_id = int(getattr(u, "api_key_id", 0) or 0)
+        if api_key_id > 0:
+            return f"key:{api_key_id}"
+        return f"user:{u.user_id}"
     host = request.client.host if request.client else "unknown"
     return f"ip:{host}"
 
@@ -55,12 +60,23 @@ def _resolve_storage_uri() -> str:
     return "memory://"
 
 
+def _limiter_enabled() -> bool:
+    """Allow deterministic test/E2E harnesses to disable route throttles.
+
+    Production ignores this switch: rate limiting remains enabled whenever
+    RELEASE is set.
+    """
+    disabled = os.getenv("RATE_LIMIT_DISABLED", "0").strip().lower() in _TRUTHY
+    return not (disabled and not os.getenv("RELEASE"))
+
+
 limiter = Limiter(
     key_func=_api_key_id,
     storage_uri=_resolve_storage_uri(),
     strategy="fixed-window",
     headers_enabled=True,
     in_memory_fallback_enabled=True,
+    enabled=_limiter_enabled(),
 )
 
 

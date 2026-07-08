@@ -28,7 +28,7 @@ from src.auth.hashing import (
     password_needs_rehash,
     verify_password,
 )
-from src.auth.password import _clean_email, _validate_password
+from src.auth.password import _clean_email, _run_abuse_controls, _validate_password
 
 _PG = os.environ.get("DATABASE_URL", "").startswith("postgresql")
 _requires_pg = pytest.mark.skipif(
@@ -97,6 +97,34 @@ def test_clean_email_trims_and_validates():
         with pytest.raises(HTTPException) as exc:
             _clean_email(bad)
         assert exc.value.detail["code"] == "invalid_email"
+
+
+@pytest.mark.asyncio
+async def test_signup_rate_limit_can_be_disabled_for_local_e2e(monkeypatch):
+    monkeypatch.setenv("REDIS_URL", "redis://cache:6379")
+    monkeypatch.setenv("SIGNUP_RATE_LIMIT_DISABLED", "1")
+    monkeypatch.delenv("RELEASE", raising=False)
+
+    assert await _run_abuse_controls(_Req(), "local-e2e@example.com") == "ok"
+
+
+@pytest.mark.asyncio
+async def test_signup_rate_limit_disable_is_ignored_in_release(monkeypatch):
+    import src.auth.signup_limits as signup_limits
+
+    called = False
+
+    async def record_call(request):  # noqa: ANN001
+        nonlocal called
+        called = True
+
+    monkeypatch.setenv("REDIS_URL", "redis://cache:6379")
+    monkeypatch.setenv("SIGNUP_RATE_LIMIT_DISABLED", "1")
+    monkeypatch.setenv("RELEASE", "2026.07.08")
+    monkeypatch.setattr(signup_limits, "per_ip_signup_limit", record_call)
+
+    assert await _run_abuse_controls(_Req(), "prod@example.com") == "ok"
+    assert called is True
 
 
 # ──────────────────────────────────────────────────────────────
@@ -210,7 +238,7 @@ def _build_app() -> FastAPI:
 
 @_requires_pg
 @pytest.mark.asyncio
-async def test_full_signup_login_me_protected_flow():
+async def test_full_signup_login_me_protected_flow(monkeypatch):
     from httpx import ASGITransport, AsyncClient
     from sqlalchemy import text
 
@@ -220,6 +248,8 @@ async def test_full_signup_login_me_protected_flow():
     email = f"pwtest-{uuid.uuid4().hex[:12]}@example.com"
     email_norm = normalize_email(email)
     password = "Passw0rd123"
+    monkeypatch.setenv("SIGNUP_RATE_LIMIT_DISABLED", "1")
+    monkeypatch.delenv("RELEASE", raising=False)
     app = _build_app()
     transport = ASGITransport(app=app)
 

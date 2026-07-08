@@ -15,6 +15,28 @@ class FakeReq:
     client = type("C", (), {"host": "1.1.1.1"})()
 
 
+def test_ip_signup_limit_enabled_requires_redis(monkeypatch):
+    from src.auth.signup_limits import ip_signup_limit_enabled
+
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    monkeypatch.delenv("SIGNUP_RATE_LIMIT_DISABLED", raising=False)
+    monkeypatch.delenv("RELEASE", raising=False)
+
+    assert ip_signup_limit_enabled() is False
+
+
+def test_ip_signup_limit_disabled_only_outside_release(monkeypatch):
+    from src.auth.signup_limits import ip_signup_limit_enabled
+
+    monkeypatch.setenv("REDIS_URL", "redis://cache:6379")
+    monkeypatch.setenv("SIGNUP_RATE_LIMIT_DISABLED", "1")
+    monkeypatch.delenv("RELEASE", raising=False)
+    assert ip_signup_limit_enabled() is False
+
+    monkeypatch.setenv("RELEASE", "prod-v1")
+    assert ip_signup_limit_enabled() is True
+
+
 @pytest.mark.asyncio
 async def test_per_ip_allows_3(fake_redis):
     from src.auth.signup_limits import per_ip_signup_limit

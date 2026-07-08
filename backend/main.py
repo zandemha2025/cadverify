@@ -39,6 +39,7 @@ from src.api.material_library import router as material_library_router
 from src.api.governance import router as governance_router
 from src.api.notifications import router as notifications_router
 from src.api.integrations import router as integrations_router
+from src.api.scim import router as scim_router
 from src.api.part_context import router as part_context_router
 from src.api.groundtruth import router as groundtruth_router
 from src.api.manifest import router as manifest_router
@@ -307,6 +308,9 @@ app.include_router(
 # multi-user seam on top of 0009's tenancy isolation. Org-scoped; single-org
 # callers are byte-identical (the whole isolation matrix is unchanged).
 app.include_router(org_router, prefix="/api/v1/orgs", tags=["orgs"])
+# SCIM 2.0 enterprise provisioning. Mounted at the IdP-standard path rather
+# than under /api/v1 so Okta/Entra can target it directly.
+app.include_router(scim_router)
 # Email + password auth (signup/login/logout/me). Mounted UNCONDITIONALLY — it
 # is the primary login method that works end-to-end locally with zero external
 # infra, independent of AUTH_MODE.

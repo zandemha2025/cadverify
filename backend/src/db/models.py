@@ -340,6 +340,115 @@ class ApiKey(Base):
 
 
 # ---------------------------------------------------------------------------
+# P8 (migration 0034): SCIM org-scoped identity lifecycle ledger
+# ---------------------------------------------------------------------------
+
+
+class ScimIdentity(Base):
+    """Org-scoped SCIM resource state for IdP-managed users.
+
+    Membership is the access-control truth. This row is the identity-lifecycle
+    truth: it persists the SCIM resource after ``active=false`` removes the user's
+    org membership, so Okta/Entra-style providers can still read/update the
+    inactive resource without granting app access.
+    """
+
+    __tablename__ = "scim_identities"
+    __table_args__ = (
+        UniqueConstraint("org_id", "user_id", name="uq_scim_identities_org_user"),
+        UniqueConstraint(
+            "org_id", "external_id", name="uq_scim_identities_org_external"
+        ),
+        CheckConstraint(
+            "org_role IN ('viewer','member','admin')",
+            name="ck_scim_identities_org_role",
+        ),
+        Index("ix_scim_identities_org_active", "org_id", "active"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    external_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    org_role: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="viewer"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+# ---------------------------------------------------------------------------
+# P8 (migration 0035): encrypted connector credential profiles
+# ---------------------------------------------------------------------------
+
+
+class ConnectorCredentialProfile(Base):
+    """Org-scoped encrypted credentials for sandbox/live connector probes.
+
+    API responses expose only the profile ULID, connector id, label, base URL,
+    auth type, fingerprint, and revocation status. The encrypted secret blob is
+    used only server-side and must never be serialized.
+    """
+
+    __tablename__ = "connector_credential_profiles"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id",
+            "connector_id",
+            "label",
+            name="uq_connector_credentials_org_connector_label",
+        ),
+        Index(
+            "ix_connector_credentials_org_connector",
+            "org_id",
+            "connector_id",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    connector_id: Mapped[str] = mapped_column(Text, nullable=False)
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    base_url: Mapped[str] = mapped_column(Text, nullable=False)
+    auth_type: Mapped[str] = mapped_column(Text, nullable=False)
+    encrypted_secret_json: Mapped[str] = mapped_column(Text, nullable=False)
+    secret_fingerprint: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    metadata_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Phase 3 tables (migration 0002)
 # ---------------------------------------------------------------------------
 
@@ -1599,16 +1708,16 @@ class ManifestPart(Base):
 
 
 # ---------------------------------------------------------------------------
-# P6 (migration 0030): offline connector-run ledger
+# P6/P8 (migrations 0030, 0033): connector-run evidence ledger
 # ---------------------------------------------------------------------------
 
 
 class IntegrationRun(Base):
-    """One offline connector/dry-run/import attempt for an org feed.
+    """One connector/dry-run/import attempt for an org feed.
 
-    This is the enterprise integration apparatus before live SAP/PLM credentials
-    exist: record the exact connector, source system, file hash, row counts,
-    errors, and outcome while deliberately not storing raw CSV by default.
+    The first version was offline CSV only. The expanded ledger preserves that
+    boundary and adds promotion-level evidence for sandbox/live connectors so
+    simulated SAP/PLM/RFQ proof cannot be mislabeled as a live integration.
     """
 
     __tablename__ = "integration_runs"
@@ -1616,6 +1725,7 @@ class IntegrationRun(Base):
         Index("ix_integration_runs_org_created", "org_id", "created_at"),
         Index("ix_integration_runs_org_connector", "org_id", "connector_id"),
         Index("ix_integration_runs_org_status", "org_id", "status"),
+        Index("ix_integration_runs_org_boundary", "org_id", "boundary_label"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -1629,13 +1739,33 @@ class IntegrationRun(Base):
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     connector_id: Mapped[str] = mapped_column(Text, nullable=False)
+    connector_mode: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="offline_csv"
+    )
+    boundary_label: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="exported_fixture"
+    )
     source_system: Mapped[str] = mapped_column(Text, nullable=False)
     source_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    api_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    api_version: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    external_tenant_hash: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    correlation_ids_json: Mapped[Optional[List[str]]] = mapped_column(
+        JSONB, nullable=True
+    )
+    watermark: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    idempotency_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     mode: Mapped[str] = mapped_column(Text, nullable=False, server_default="dry_run")
     status: Mapped[str] = mapped_column(Text, nullable=False)
     filename: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     file_sha256: Mapped[str] = mapped_column(Text, nullable=False)
     file_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    source_record_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    normalized_record_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
     rows_total: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     rows_valid: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     rows_invalid: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")

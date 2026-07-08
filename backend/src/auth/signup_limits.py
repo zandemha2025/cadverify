@@ -8,14 +8,28 @@ AUTH-08:
 """
 from __future__ import annotations
 
+import os
+
 import redis.asyncio as aioredis
 from fastapi import HTTPException, Request
 
 from src.auth.redis_util import require_redis_url
 
+_TRUTHY = {"1", "true", "yes", "on"}
+
 
 def _r() -> aioredis.Redis:
     return aioredis.from_url(require_redis_url(), decode_responses=True)
+
+
+def ip_signup_limit_enabled() -> bool:
+    """Return True when the per-IP signup throttle should run.
+
+    The bypass is for deterministic local/CI proof runs only. Production ignores
+    SIGNUP_RATE_LIMIT_DISABLED whenever RELEASE is set.
+    """
+    disabled = os.getenv("SIGNUP_RATE_LIMIT_DISABLED", "0").strip().lower() in _TRUTHY
+    return bool(os.getenv("REDIS_URL")) and not (disabled and not os.getenv("RELEASE"))
 
 
 def _err(code: str, msg: str, retry: int) -> HTTPException:

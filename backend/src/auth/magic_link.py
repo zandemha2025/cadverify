@@ -33,7 +33,11 @@ from src.auth.models import (
     user_has_active_api_key,
 )
 from src.auth.redis_util import require_redis_url
-from src.auth.signup_limits import per_email_signup_limit, per_ip_signup_limit
+from src.auth.signup_limits import (
+    ip_signup_limit_enabled,
+    per_email_signup_limit,
+    per_ip_signup_limit,
+)
 from src.auth.turnstile import verify_turnstile
 
 router = APIRouter()
@@ -84,7 +88,8 @@ async def magic_start(
     # AUTH-08: cheapest check first (per-IP window), then Turnstile, then
     # per-email window. Hard-reject throwaway domains; soft-flag disposables
     # into a tighter 1/7d cap (D-11 override).
-    await per_ip_signup_limit(request)
+    if ip_signup_limit_enabled():
+        await per_ip_signup_limit(request)
     await verify_turnstile(
         cf_turnstile_response,
         request.client.host if request.client else None,
