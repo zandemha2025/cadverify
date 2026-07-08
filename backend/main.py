@@ -49,6 +49,7 @@ from src.api.share import public_share_router, share_router
 from src.auth.keys_api import router as keys_router
 from src.auth.magic_link import router as magic_router
 from src.auth.oauth import router as oauth_router
+from src.auth.oidc import router as oidc_router
 from src.auth.password import router as password_router
 from src.auth.saml import router as saml_router
 from src.auth.rate_limit import limiter, rate_limit_handler
@@ -121,7 +122,7 @@ def _assert_production_secrets() -> None:
             f"production build (RELEASE={os.getenv('RELEASE')!r}); refusing to start."
         )
     auth_mode = os.getenv("AUTH_MODE", "google")
-    allowed_auth_modes = {"password", "google", "saml", "hybrid"}
+    allowed_auth_modes = {"password", "google", "saml", "oidc", "hybrid"}
     if auth_mode not in allowed_auth_modes:
         raise RuntimeError(
             f"AUTH_MODE={auth_mode!r} is not supported in production; "
@@ -325,6 +326,11 @@ if AUTH_MODE in ("google", "hybrid"):
 
 if AUTH_MODE in ("saml", "hybrid"):
     app.include_router(saml_router, prefix="/auth")
+# OIDC RP (Okta/Entra/Ping) — Authorization Code + PKCE landing in the SAME
+# session/org/group model as SAML. Mounted under /auth/oidc, parallel to the
+# SAML SP, and gated on AUTH_MODE like the other SSO providers.
+if AUTH_MODE in ("oidc", "hybrid"):
+    app.include_router(oidc_router, prefix="/auth")
 app.include_router(admin_router)
 app.include_router(keys_router)
 app.include_router(health_router)

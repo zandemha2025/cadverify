@@ -7,6 +7,7 @@ tenant access on the next request.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -77,6 +78,107 @@ def _role_from_payload(payload: dict[str, Any], default: str = "viewer") -> str:
         if candidate in VALID_ORG_ROLES:
             return candidate
     return default
+
+
+# ---------------------------------------------------------------------------
+# RFC 7644 §3.5.2 PatchOp parsing (op verb + attribute-path grammar)
+# ---------------------------------------------------------------------------
+
+_VALID_PATCH_OPS = {"add", "replace", "remove"}
+
+# A pragmatic subset of the SCIM attribute-path grammar (RFC 7644 §3.5.2 +
+# the filter grammar of §3.4.2.2) that covers what Okta and Entra actually
+# emit: a bare attribute (``active``), a value-path filter
+# (``members[value eq "123"]``), a sub-attribute (``name.formatted``), and the
+# combination (``emails[type eq "work"].value``). URN-prefixed extension paths
+# (``urn:...:User:orgRole``) are matched by the leading-attribute alternative.
+_PATCH_PATH_RE = re.compile(
+    r"""^\s*
+        (?P<attr>[^\[\].\s]+)
+        (?:\[\s*(?P<fattr>[^\s\]]+)\s+(?P<fop>\w+)\s+"(?P<fval>[^"]*)"\s*\])?
+        (?:\.(?P<sub>[^\[\].\s]+))?
+        \s*$""",
+    re.VERBOSE,
+)
+
+
+def _parse_patch_path(path: Any) -> tuple[str, tuple[str, str] | None, str | None]:
+    """Return ``(attr_lower, (filter_attr_lower, filter_value) | None, sub_lower)``.
+
+    An empty/omitted path returns ``("", None, None)`` (a whole-resource
+    PatchOp). A path that does not parse raises a SCIM 400 ``invalidPath`` — it
+    must never surface as a 500.
+    """
+    if path is None:
+        return ("", None, None)
+    if not isinstance(path, str):
+        raise _scim_error(400, f"PATCH path must be a string, got {type(path).__name__}.", "invalidPath")
+    raw = path.strip()
+    if not raw:
+        return ("", None, None)
+    match = _PATCH_PATH_RE.match(raw)
+    if match is None:
+        raise _scim_error(400, f"Unparseable PATCH path {path!r}.", "invalidPath")
+    attr = match.group("attr").strip().lower()
+    filt: tuple[str, str] | None = None
+    if match.group("fattr"):
+        fop = (match.group("fop") or "").lower()
+        if fop != "eq":
+            raise _scim_error(
+                400,
+                f"Unsupported PATCH filter operator {match.group('fop')!r} (only 'eq').",
+                "invalidPath",
+            )
+        filt = (match.group("fattr").strip().lower(), match.group("fval"))
+    sub = match.group("sub").strip().lower() if match.group("sub") else None
+    return (attr, filt, sub)
+
+
+def _coerce_bool(value: Any) -> bool:
+    """Coerce a SCIM value to bool. Okta sends a JSON bool; Entra sometimes
+    sends the string ``"True"``/``"False"``. Anything else is ``invalidValue``.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, list) and len(value) == 1:
+        return _coerce_bool(value[0])
+    if isinstance(value, str):
+        token = value.strip().lower()
+        if token in {"true", "1"}:
+            return True
+        if token in {"false", "0"}:
+            return False
+    raise _scim_error(400, f"Invalid boolean value {value!r}.", "invalidValue")
+
+
+def _role_from_patch_value(value: Any, current: str) -> str:
+    """Resolve an org role from a ``roles`` PatchOp value (list | dict | str)."""
+    if isinstance(value, list):
+        items = value
+    else:
+        items = [value]
+    return _role_from_payload({"roles": items}, current)
+
+
+def _email_from_patch_value(value: Any, sub_attr: str | None) -> str | None:
+    """Extract a primary email string from an ``emails`` PatchOp value.
+
+    Handles ``emails[type eq "work"].value`` (``sub_attr='value'`` + str value),
+    a bare string, a single ``{"value": ...}`` object, or a list of such.
+    """
+    if sub_attr == "value" and isinstance(value, str):
+        return value.strip() or None
+    if isinstance(value, str):
+        return value.strip() or None
+    if isinstance(value, dict):
+        candidate = value.get("value")
+        return str(candidate).strip() or None if candidate else None
+    if isinstance(value, list):
+        for item in value:
+            got = _email_from_patch_value(item, sub_attr)
+            if got:
+                return got
+    return None
 
 
 def service_provider_config() -> dict[str, Any]:
@@ -461,6 +563,51 @@ async def list_users(
     }
 
 
+def _apply_user_value_bag(
+    value: dict[str, Any], active: bool, role: str, email_change: str | None
+) -> tuple[bool, str, str | None]:
+    """Apply a pathless PatchOp value object (Entra's shape) case-insensitively."""
+    for key, item in value.items():
+        low = str(key).strip().lower()
+        if low == "active":
+            active = _coerce_bool(item)
+        elif low == "roles":
+            role = _role_from_patch_value(item, role)
+        elif low == "emails":
+            email_change = _email_from_patch_value(item, None) or email_change
+        elif low == "username" and isinstance(item, str) and item.strip():
+            email_change = item.strip()
+        elif low.startswith("urn:cadverify") and isinstance(item, dict):
+            role = _role_from_payload({low: item}, role)
+        # 'name' and any unknown attribute in a value bag are ignored (no 400):
+        # a pathless replace legitimately carries the whole resource.
+    return active, role, email_change
+
+
+async def _apply_email_change(session: AsyncSession, user: User, new_email: str) -> None:
+    """Update the user's primary email from a PATCH, guarding the unique key.
+
+    A case/format-only change updates only the display ``email``. A change that
+    lands on a DIFFERENT normalized identity that another row already holds is a
+    SCIM 409 ``uniqueness`` (never an unhandled IntegrityError/500).
+    """
+    new_lower = normalize_email(new_email)
+    current_lower = (user.email_lower or "").lower()
+    if new_lower != current_lower:
+        clash = (
+            await session.execute(
+                select(User).where(User.email_lower == new_lower, User.id != user.id)
+            )
+        ).scalars().first()
+        if clash is not None:
+            raise _scim_error(409, "Email already in use by another user.", "uniqueness")
+        user.email = new_email
+        user.email_lower = new_lower
+    elif user.email != new_email:
+        user.email = new_email
+    await session.flush()
+
+
 async def patch_user(
     session: AsyncSession,
     *,
@@ -479,23 +626,56 @@ async def patch_user(
     membership = await _membership(session, org_id, int(user.id))
     role = identity.org_role if identity is not None else "viewer"
     active = bool(identity.active)
+    email_change: str | None = None
 
-    for op in payload.get("Operations") or []:
+    operations = payload.get("Operations")
+    if operations is None or not isinstance(operations, list):
+        raise _scim_error(
+            400, "PatchOp requires an 'Operations' array.", "invalidSyntax"
+        )
+
+    for op in operations:
         if not isinstance(op, dict):
-            continue
-        path = str(op.get("path") or "").strip().lower()
+            raise _scim_error(400, "Each PatchOp operation must be an object.", "invalidSyntax")
+        verb = str(op.get("op") or "").strip().lower()
+        if verb not in _VALID_PATCH_OPS:
+            raise _scim_error(400, f"Unsupported PatchOp op {op.get('op')!r}.", "invalidSyntax")
+        attr, _filt, sub = _parse_patch_path(op.get("path"))
         value = op.get("value")
-        if path == "active":
-            active = bool(value)
-        elif not path and isinstance(value, dict) and "active" in value:
-            active = bool(value["active"])
-        elif path in {"roles", "urn:cadverify:params:scim:schemas:extension:2.0:user.orgrole"}:
-            role = _role_from_payload({"roles": value if isinstance(value, list) else [value]}, role)
-        elif not path and isinstance(value, dict):
-            if "roles" in value:
-                role = _role_from_payload(value, role)
-            if "urn:cadverify:params:scim:schemas:extension:2.0:User" in value:
-                role = _role_from_payload(value, role)
+
+        if attr == "":
+            # Whole-resource op: Entra sends ``replace`` with a value object.
+            if verb == "remove":
+                raise _scim_error(400, "A 'remove' PatchOp requires a path.", "noTarget")
+            if not isinstance(value, dict):
+                raise _scim_error(
+                    400, "A pathless PatchOp value must be an object.", "invalidValue"
+                )
+            active, role, email_change = _apply_user_value_bag(
+                value, active, role, email_change
+            )
+        elif attr == "active":
+            if verb != "remove":  # remove of a boolean attr is tolerated as a no-op
+                active = _coerce_bool(value)
+        elif attr == "roles":
+            role = "viewer" if verb == "remove" else _role_from_patch_value(value, role)
+        elif attr == "orgrole" or attr.startswith("urn:cadverify"):
+            role = "viewer" if verb == "remove" else _clean_role(value, role)
+        elif attr == "emails":
+            if verb != "remove":
+                email_change = _email_from_patch_value(value, sub) or email_change
+        elif attr == "username":
+            if verb != "remove" and isinstance(value, str) and value.strip():
+                email_change = value.strip()
+        elif attr == "name":
+            # No dedicated name column (name.formatted is derived from email);
+            # accept and ignore rather than 400 so Okta's name sync is a no-op.
+            continue
+        else:
+            raise _scim_error(400, f"Unsupported PATCH path {op.get('path')!r}.", "invalidPath")
+
+    if email_change:
+        await _apply_email_change(session, user, email_change)
 
     if active:
         membership = await _ensure_membership(session, org_id=org_id, user=user, role=role)
@@ -565,44 +745,141 @@ async def patch_group(
     role = ROLE_BY_GROUP_ID.get(group_id)
     if role is None:
         raise _scim_error(404, "SCIM group not found.")
-    for op in payload.get("Operations") or []:
+
+    operations = payload.get("Operations")
+    if operations is None or not isinstance(operations, list):
+        raise _scim_error(
+            400, "PatchOp requires an 'Operations' array.", "invalidSyntax"
+        )
+
+    for op in operations:
         if not isinstance(op, dict):
+            raise _scim_error(400, "Each PatchOp operation must be an object.", "invalidSyntax")
+        verb = str(op.get("op") or "").strip().lower()
+        if verb not in _VALID_PATCH_OPS:
+            raise _scim_error(400, f"Unsupported PatchOp op {op.get('op')!r}.", "invalidSyntax")
+        attr, filt, _sub = _parse_patch_path(op.get("path"))
+
+        # Group PatchOps only touch 'members' (and displayName, which we do not
+        # persist). Ignore non-member paths rather than 400 so an IdP syncing
+        # displayName is a tolerated no-op. A pathless op is treated as members.
+        if attr not in ("", "members"):
             continue
-        action = str(op.get("op") or "").strip().lower()
-        value = op.get("value") or []
-        members = value if isinstance(value, list) else [value]
-        for member in members:
-            if not isinstance(member, dict) or not member.get("value"):
-                continue
-            user = await _user_by_id(session, int(member["value"]))
+
+        member_ids = _extract_member_ids(op.get("value"), filt, attr)
+
+        if verb == "remove" and filt is None and not member_ids and attr == "members":
+            # ``{"op":"remove","path":"members"}`` clears the whole group.
+            member_ids = await _current_role_member_ids(session, org_id, role)
+
+        if verb == "replace" and attr in ("", "members"):
+            await _replace_group_members(session, org_id, role, member_ids)
+            continue
+
+        for raw_id in member_ids:
+            user = await _resolve_member_user(session, raw_id)
             if user is None:
                 continue
-            if action == "add":
+            if verb in ("add", "replace"):
                 await _ensure_membership(session, org_id=org_id, user=user, role=role)
                 await _ensure_identity(
                     session, org_id=org_id, user=user, role=role, active=True
                 )
-            elif action == "remove":
-                membership = await _membership(session, org_id, int(user.id))
-                if membership is not None and membership.org_role == role:
-                    if role == "viewer":
-                        await _deprovision_membership(session, org_id=org_id, user=user)
-                        await _ensure_identity(
-                            session,
-                            org_id=org_id,
-                            user=user,
-                            role=role,
-                            active=False,
-                        )
-                    else:
-                        await _ensure_membership(
-                            session, org_id=org_id, user=user, role="viewer"
-                        )
-                        await _ensure_identity(
-                            session,
-                            org_id=org_id,
-                            user=user,
-                            role="viewer",
-                            active=True,
-                        )
+            elif verb == "remove":
+                await _remove_from_role_group(session, org_id, role, user)
     return await get_group(session, org_id=org_id, group_id=group_id, base_url=base_url)
+
+
+def _extract_member_ids(
+    value: Any, filt: tuple[str, str] | None, attr: str
+) -> list[str]:
+    """Collect member ids from a value-path filter and/or a value list/object.
+
+    Covers Okta's ``members[value eq "123"]`` (id in the filter, no value) and
+    Entra's ``{"path":"members","value":[{"value":"123"}]}`` (id in the value).
+    """
+    ids: list[str] = []
+    if filt is not None and filt[0] == "value":
+        ids.append(filt[1])
+    items: list[Any]
+    if isinstance(value, list):
+        items = value
+    elif isinstance(value, dict):
+        # A pathless value bag may wrap the list under 'members'.
+        if attr == "" and isinstance(value.get("members"), list):
+            items = value["members"]
+        else:
+            items = [value]
+    elif value is None:
+        items = []
+    else:
+        items = [value]
+    for item in items:
+        if isinstance(item, dict) and item.get("value") is not None:
+            ids.append(str(item["value"]))
+        elif isinstance(item, (str, int)):
+            ids.append(str(item))
+    return ids
+
+
+async def _resolve_member_user(session: AsyncSession, raw_id: str) -> User | None:
+    """Parse a SCIM member id to an int and load the user, or 400 invalidValue."""
+    try:
+        parsed = int(str(raw_id).strip())
+    except (TypeError, ValueError) as exc:
+        raise _scim_error(400, f"Invalid member value {raw_id!r}.", "invalidValue") from exc
+    return await _user_by_id(session, parsed)
+
+
+async def _current_role_member_ids(
+    session: AsyncSession, org_id: str, role: str
+) -> list[str]:
+    rows = (
+        await session.execute(
+            select(Membership.user_id).where(
+                Membership.org_id == org_id, Membership.org_role == role
+            )
+        )
+    ).scalars().all()
+    return [str(int(uid)) for uid in rows]
+
+
+async def _remove_from_role_group(
+    session: AsyncSession, org_id: str, role: str, user: User
+) -> None:
+    """Remove a user from a role group. A viewer removal deprovisions the org
+    membership; a higher-role removal demotes to viewer (preserving access),
+    mirroring the original semantics and the last-admin protection."""
+    membership = await _membership(session, org_id, int(user.id))
+    if membership is None or membership.org_role != role:
+        return
+    if role == "viewer":
+        await _deprovision_membership(session, org_id=org_id, user=user)
+        await _ensure_identity(session, org_id=org_id, user=user, role=role, active=False)
+    else:
+        await _ensure_membership(session, org_id=org_id, user=user, role="viewer")
+        await _ensure_identity(session, org_id=org_id, user=user, role="viewer", active=True)
+
+
+async def _replace_group_members(
+    session: AsyncSession, org_id: str, role: str, member_ids: list[str]
+) -> None:
+    """RFC 7644 ``replace`` on ``members``: the listed ids become the exact
+    membership set of the role group — add the newcomers, remove the absent."""
+    desired: set[int] = set()
+    for raw_id in member_ids:
+        user = await _resolve_member_user(session, raw_id)
+        if user is not None:
+            desired.add(int(user.id))
+    current = {
+        int(uid) for uid in (await _current_role_member_ids(session, org_id, role))
+    }
+    for uid in desired - current:
+        user = await _user_by_id(session, uid)
+        if user is not None:
+            await _ensure_membership(session, org_id=org_id, user=user, role=role)
+            await _ensure_identity(session, org_id=org_id, user=user, role=role, active=True)
+    for uid in current - desired:
+        user = await _user_by_id(session, uid)
+        if user is not None:
+            await _remove_from_role_group(session, org_id, role, user)
