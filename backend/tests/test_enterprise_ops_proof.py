@@ -135,7 +135,7 @@ def test_fly_configs_describe_deploy_surface_without_external_proof_claims():
     assert_contains_all(
         frontend,
         [
-            'app = "cadverify-web"',
+            'app = "cadvrfy-web"',
             "[env]",
             'API_BASE = "https://cadvrfy-api.fly.dev"',
             'NEXT_PUBLIC_API_BASE = "https://cadvrfy-api.fly.dev"',
@@ -144,7 +144,7 @@ def test_fly_configs_describe_deploy_surface_without_external_proof_claims():
             "force_https = true",
         ],
     )
-    assert "registry.fly.io/cadverify-web:${{ github.sha }}" in workflow
+    assert "registry.fly.io/cadvrfy-web:${{ github.sha }}" in workflow
     assert "--config frontend/fly.toml" in workflow
 
 
