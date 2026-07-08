@@ -200,7 +200,7 @@ async function main() {
       );
       contains(frontendPackage, "test:e2e:real-cad-corpus", "test:e2e:ops-load", "test:e2e:ops-restore", "test:e2e:readiness");
       contains(backendFly, 'app = "cadvrfy-api"', "alembic upgrade head");
-      contains(frontendFly, 'app = "cadverify-web"', "force_https = true");
+      contains(frontendFly, 'app = "cadvrfy-web"', "force_https = true");
       return {
         deployTargets: ["backend Fly app", "frontend Fly app", "Helm render", "Docker images"],
       };
