@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.analysis.models import AnalysisResult, Issue, ProcessType
 from src.analysis.rules import available_rule_packs, get_rule_pack
 from src.api.metrics_registry import observe_analysis_duration, record_cost_decision
+from src.obs import tracing
 from src.api.upload_validation import (
     demo_max_triangles,
     enforce_stl_triangle_count_cap,
@@ -817,6 +818,14 @@ async def _run_cost_decision(
 
     t0 = time.perf_counter()
 
+    # Tracing (opt-in, no-op when off): stamp the already-bound request id onto
+    # the active server span so a trace correlates with the structured logs. No
+    # new PII — request_id is the same opaque correlation id RequestIDMiddleware
+    # already bound to structlog.
+    if tracing.is_active():
+        _rid = structlog.contextvars.get_contextvars().get("request_id")
+        tracing.set_current_attributes(**{"cadverify.request_id": _rid})
+
     # ---- validate options (fail fast, before reading bytes) --------------
     quantities = _parse_qty_list(qty)
     if complexity not in _COMPLEXITY:
@@ -878,20 +887,26 @@ async def _run_cost_decision(
     _validate_overrides(rate_overrides)           # 400 on unknown key (fail fast)
     owned = _parse_owned_processes(owned_processes)  # 400 on unknown process id
 
-    data = await _read_capped(file)  # 413 on size, 400 on empty
-    mesh, suffix = await _parse_mesh_async(  # 400/413/501, 504 on parse timeout
-        data, file.filename or "unknown"
-    )
-    # ── B5 units landmine: rescale the mesh into mm EXACTLY ONCE, here at the parse
-    # seam, BEFORE any geometry/DFM/cost extraction. mm (default/unset) => the SAME
-    # mesh object untouched => byte-identical; inch => a ×25.4 copy so volume
-    # (×25.4³ ≈ 16,387×), area, bbox and wall thickness all stay coherent and every
-    # downstream consumer (DFM, machine-fit, cost, analogy) reads the ONE real part.
-    # This is the SINGLE geometry-scaling site: nothing downstream rescales
-    # (EstimateOptions.units is declarative only), so there is exactly one
-    # conversion, never a double.
-    from src.costing.units import scale_mesh_to_mm
-    mesh = scale_mesh_to_mm(mesh, effective_units)
+    # Span 1/4 — mesh parse: read the upload, tessellate/parse to a trimesh,
+    # and rescale into mm. No-op context when tracing is off.
+    with tracing.span("cost.parse_mesh") as _sp_parse:
+        data = await _read_capped(file)  # 413 on size, 400 on empty
+        mesh, suffix = await _parse_mesh_async(  # 400/413/501, 504 on parse timeout
+            data, file.filename or "unknown"
+        )
+        # ── B5 units landmine: rescale the mesh into mm EXACTLY ONCE, here at the parse
+        # seam, BEFORE any geometry/DFM/cost extraction. mm (default/unset) => the SAME
+        # mesh object untouched => byte-identical; inch => a ×25.4 copy so volume
+        # (×25.4³ ≈ 16,387×), area, bbox and wall thickness all stay coherent and every
+        # downstream consumer (DFM, machine-fit, cost, analogy) reads the ONE real part.
+        # This is the SINGLE geometry-scaling site: nothing downstream rescales
+        # (EstimateOptions.units is declarative only), so there is exactly one
+        # conversion, never a double.
+        from src.costing.units import scale_mesh_to_mm
+        mesh = scale_mesh_to_mm(mesh, effective_units)
+        tracing.set_attr(_sp_parse, "cadverify.file.suffix", suffix)
+        tracing.set_attr(_sp_parse, "cadverify.file.bytes", len(data))
+        tracing.set_attr(_sp_parse, "cadverify.units", effective_units)
 
     from src.costing import estimate_decision, EstimateOptions, report_to_dict
 
@@ -938,6 +953,9 @@ async def _run_cost_decision(
         # a mocked/unprovisioned session (no real org_id) is treated as "no
         # calibration" — leaving behaviour byte-identical to pre-W5.
         if isinstance(cal_org_id, str) and cal_org_id:
+            # Tracing: stamp the resolved org id onto the server span (opaque
+            # identifier already in scope, not new PII). No-op when off.
+            tracing.set_current_attributes(**{"cadverify.org_id": cal_org_id})
             # ── Phase C: machine-inventory verification feed ─────────────────
             # Resolve the caller org's DECLARED owned machines + shop-level
             # secondary ops + THIS part's DECLARED service environment, and thread
@@ -1069,75 +1087,102 @@ async def _run_cost_decision(
     # the flag — the band is an authed-product feature.
     run_ensemble = ensemble_enabled() and user is not None
 
-    def _run():
-        result, m, features = _run_cost_engine(mesh, file.filename or "unknown")
-        rep = estimate_decision(result, m, features, options)
-        unc = None
-        if run_ensemble and rep.status != "GEOMETRY_INVALID":
-            # ── P1 analogy query geometry ────────────────────────────────────
-            # THIS part's MEASURED cost-drivers (analogy_estimator.FEATURE_KEYS),
-            # extracted by the SAME engine extraction the records were populated
-            # with. Only computed when the org actually has records to match
-            # against — otherwise geometry stays None and the analogy is never
-            # engaged (band byte-identical). Best-effort: an extraction failure
-            # leaves geometry None (analogy abstains), never fails the estimate.
-            geom_features = None
-            if analogy_records:
-                try:
-                    from src.costing.drivers import extract_drivers
+    # Snapshot the OTel context on the event loop so the DFM / should-cost spans
+    # created inside the executor thread nest under the compute span (contextvars
+    # do not cross the thread boundary on their own). No-op / None when tracing
+    # is off. _otel_ctx is captured below, inside the cost.compute span.
+    _otel_ctx = None
 
-                    dr = extract_drivers(result.geometry, m, features)
-                    if (dr.volume_cm3 > 0 and dr.surface_area_cm2 > 0
-                            and dr.max_bbox_mm > 0 and dr.face_count > 0):
-                        geom_features = {
-                            "volume_cm3": float(dr.volume_cm3),
-                            "surface_area_cm2": float(dr.surface_area_cm2),
-                            "max_bbox_mm": float(dr.max_bbox_mm),
-                            "face_count": int(dr.face_count),
-                        }
-                except Exception:
-                    geom_features = None
-            # Reuse the org's W5 residual_model when one was bound above; else
-            # None -> the honest pre-data assumption spread (validated=False).
-            # records + geometry activate the analogy-to-quote k-NN member: it
-            # contributes to the POINT via BLUE ONLY when it finds >= min_real
-            # REAL same-process neighbours WITH geometry; otherwise it ABSTAINS
-            # and the band is byte-identical to the assumption spread. The
-            # measured residual path (validated) is unchanged and still wins.
-            ens = ensemble_estimate(
-                result, m, features, options,
-                residual_model=getattr(options, "residual_model", None),
-                records=analogy_records,
-                geometry=geom_features,
-            )
-            unc = ens.to_dict()
-        return rep, unc
+    def _run():
+        _otel_tok = tracing.attach_context(_otel_ctx)
+        try:
+            # Span 2/4 — DFM / geometry analysis (the cost engine's mesh pass).
+            with tracing.span("cost.dfm_analysis") as _sp_dfm:
+                result, m, features = _run_cost_engine(mesh, file.filename or "unknown")
+                geo = result.geometry if isinstance(result.geometry, dict) else {}
+                tracing.set_attr(_sp_dfm, "cadverify.face_count", geo.get("face_count"))
+            # Span 3/4 — should-cost decision (make-vs-buy costing).
+            with tracing.span("cost.should_cost") as _sp_cost:
+                rep = estimate_decision(result, m, features, options)
+                tracing.set_attr(_sp_cost, "cadverify.status", rep.status)
+            unc = None
+            if run_ensemble and rep.status != "GEOMETRY_INVALID":
+                with tracing.span("cost.ensemble"):
+                    unc = _run_ensemble_band(
+                        result, m, features, options, analogy_records
+                    )
+            return rep, unc
+        finally:
+            tracing.detach_context(_otel_tok)
+
+    def _run_ensemble_band(result, m, features, options, analogy_records):
+        # ── P1 analogy query geometry ────────────────────────────────────
+        # THIS part's MEASURED cost-drivers (analogy_estimator.FEATURE_KEYS),
+        # extracted by the SAME engine extraction the records were populated
+        # with. Only computed when the org actually has records to match
+        # against — otherwise geometry stays None and the analogy is never
+        # engaged (band byte-identical). Best-effort: an extraction failure
+        # leaves geometry None (analogy abstains), never fails the estimate.
+        geom_features = None
+        if analogy_records:
+            try:
+                from src.costing.drivers import extract_drivers
+
+                dr = extract_drivers(result.geometry, m, features)
+                if (dr.volume_cm3 > 0 and dr.surface_area_cm2 > 0
+                        and dr.max_bbox_mm > 0 and dr.face_count > 0):
+                    geom_features = {
+                        "volume_cm3": float(dr.volume_cm3),
+                        "surface_area_cm2": float(dr.surface_area_cm2),
+                        "max_bbox_mm": float(dr.max_bbox_mm),
+                        "face_count": int(dr.face_count),
+                    }
+            except Exception:
+                geom_features = None
+        # Reuse the org's W5 residual_model when one was bound above; else
+        # None -> the honest pre-data assumption spread (validated=False).
+        # records + geometry activate the analogy-to-quote k-NN member: it
+        # contributes to the POINT via BLUE ONLY when it finds >= min_real
+        # REAL same-process neighbours WITH geometry; otherwise it ABSTAINS
+        # and the band is byte-identical to the assumption spread. The
+        # measured residual path (validated) is unchanged and still wins.
+        ens = ensemble_estimate(
+            result, m, features, options,
+            residual_model=getattr(options, "residual_model", None),
+            records=analogy_records,
+            geometry=geom_features,
+        )
+        return ens.to_dict()
 
     timeout = _analysis_timeout_sec()
     loop = asyncio.get_event_loop()
-    try:
-        report, uncertainty = await asyncio.wait_for(
-            loop.run_in_executor(None, _run), timeout=timeout
-        )
-    except asyncio.TimeoutError:
-        # Bounded compute that ran over budget — structured warning, then 504.
-        slog.warning(
-            "cost_timeout",
-            file_sha8=hashlib.sha256(data).hexdigest()[:8],
-            suffix=suffix,
-            n_qty=len(quantities),
-            region=effective_region,
-            material_class=material_class,
-            shop=shop_slug,
-            timeout_sec=round(timeout, 1),
-            duration_ms=round((time.perf_counter() - t0) * 1000, 1),
-        )
-        # Observability: bounded compute that ran over budget is an error outcome.
-        record_cost_decision("error")
-        raise HTTPException(
-            status_code=504,
-            detail=f"Cost analysis exceeded {timeout:.0f}s timeout.",
-        )
+    # Parent span for the off-loop compute; capture the OTel context INSIDE it so
+    # the executor-thread DFM / should-cost child spans nest here. No-op when off.
+    with tracing.span("cost.compute"):
+        _otel_ctx = tracing.capture_context()
+        try:
+            report, uncertainty = await asyncio.wait_for(
+                loop.run_in_executor(None, _run), timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            # Bounded compute that ran over budget — structured warning, then 504.
+            slog.warning(
+                "cost_timeout",
+                file_sha8=hashlib.sha256(data).hexdigest()[:8],
+                suffix=suffix,
+                n_qty=len(quantities),
+                region=effective_region,
+                material_class=material_class,
+                shop=shop_slug,
+                timeout_sec=round(timeout, 1),
+                duration_ms=round((time.perf_counter() - t0) * 1000, 1),
+            )
+            # Observability: bounded compute over budget is an error outcome.
+            record_cost_decision("error")
+            raise HTTPException(
+                status_code=504,
+                detail=f"Cost analysis exceeded {timeout:.0f}s timeout.",
+            )
 
     # One structured outcome event per costed request. status carries OK vs
     # GEOMETRY_INVALID, so this single emit covers both the success and the
@@ -1180,7 +1225,9 @@ async def _run_cost_decision(
         )
 
     record_cost_decision("ok")
-    result_dict = report_to_dict(report)
+    # Span 4/4 — serialize the glass-box decision to the response dict.
+    with tracing.span("cost.serialize"):
+        result_dict = report_to_dict(report)
 
     # ---- persist for authenticated callers (Phase 2 gap #3) --------------
     # Turns the flagship decision into a durable artifact (list/export/share/

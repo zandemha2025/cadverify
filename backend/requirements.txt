@@ -47,3 +47,8 @@ arq>=0.27.0
 rembg>=2.0.0
 Pillow>=10.0.0
 python3-saml>=1.16.0
+# OpenTelemetry tracing is OPT-IN and OFF by default (src/obs/tracing.py). Its
+# dependencies are deliberately NOT listed here so the default runtime image
+# stays lean and the hot path imports zero OTel when unconfigured. To enable
+# tracing, install the optional set: pip install -r requirements-otel.txt
+# (see that file + outputs/ops-observability-2026-07-08.md for the switches).

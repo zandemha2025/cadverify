@@ -187,6 +187,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# OpenTelemetry tracing — OPT-IN and OFF by default. setup_tracing() returns
+# immediately (importing nothing, changing nothing) unless OTEL_TRACING_ENABLED
+# is truthy or OTEL_EXPORTER_OTLP_ENDPOINT is set, so an unconfigured deploy is
+# byte-identical and pays zero cost. When enabled it auto-instruments incoming
+# requests and exports via OTLP (endpoint set) or a console exporter. The manual
+# stage spans on the costed path live in src/api/routes.py; the tracer no-ops
+# them when this did not activate. See src/obs/tracing.py.
+from src.obs.tracing import setup_tracing
+
+if setup_tracing(app):
+    logger.info("OpenTelemetry tracing ENABLED")
+
 # Request-ID middleware — outermost so every request gets a correlation ID
 # before CORS, rate-limiting, or any router sees it.
 app.add_middleware(RequestIDMiddleware)
