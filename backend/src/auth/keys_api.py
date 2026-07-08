@@ -71,7 +71,9 @@ async def list_keys(user_id: int = Depends(require_dashboard_session)):
         rows = (
             await s.execute(
                 text(
-                    "SELECT id, name, prefix, created_at, last_used_at, revoked_at "
+                    # nosec B608: no user input in the SQL text — _ORG_SCOPE_SQL
+                    # is a module constant and every value (:u) is a bound param.
+                    "SELECT id, name, prefix, created_at, last_used_at, revoked_at "  # nosec B608
                     f"FROM api_keys WHERE user_id = :u AND {_ORG_SCOPE_SQL} "
                     "ORDER BY created_at DESC"
                 ),
@@ -115,7 +117,8 @@ async def rotate_key(
         r = (
             await s.execute(
                 text(
-                    "UPDATE api_keys SET revoked_at = now() "
+                    # nosec B608: static constant SQL + bound params (:i, :u).
+                    "UPDATE api_keys SET revoked_at = now() "  # nosec B608
                     f"WHERE id = :i AND user_id = :u AND {_ORG_SCOPE_SQL} "
                     "AND revoked_at IS NULL "
                     "RETURNING name"
@@ -150,7 +153,8 @@ async def revoke_key(
         r = (
             await s.execute(
                 text(
-                    "UPDATE api_keys SET revoked_at = now() "
+                    # nosec B608: static constant SQL + bound params (:i, :u).
+                    "UPDATE api_keys SET revoked_at = now() "  # nosec B608
                     f"WHERE id = :i AND user_id = :u AND {_ORG_SCOPE_SQL} "
                     "AND revoked_at IS NULL "
                     "RETURNING id"
@@ -181,7 +185,8 @@ async def rename_key(
         r = (
             await s.execute(
                 text(
-                    "UPDATE api_keys SET name = :n "
+                    # nosec B608: static constant SQL + bound params (:n, :i, :u).
+                    "UPDATE api_keys SET name = :n "  # nosec B608
                     f"WHERE id = :i AND user_id = :u AND {_ORG_SCOPE_SQL} "
                     "RETURNING id"
                 ),

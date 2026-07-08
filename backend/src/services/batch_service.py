@@ -739,7 +739,9 @@ async def update_batch_counters(
         raise ValueError(f"Invalid counter field: {field}")
 
     await session.execute(
-        text(f"UPDATE batches SET {field} = {field} + 1 WHERE id = :batch_id"),
+        # nosec B608: {field} is not user input — it is validated above against a
+        # fixed allowlist ('completed_items'|'failed_items') and batch_id is bound.
+        text(f"UPDATE batches SET {field} = {field} + 1 WHERE id = :batch_id"),  # nosec B608
         {"batch_id": batch_id},
     )
 

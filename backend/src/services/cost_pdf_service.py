@@ -14,7 +14,7 @@ import os
 import re
 from pathlib import Path
 
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,9 +30,13 @@ _TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "pdf"
 
 _cost_pdf_semaphore = asyncio.Semaphore(2)
 
+# autoescape on: mirrors pdf_service — user-controlled values (filename, etc.)
+# are interpolated into HTML that WeasyPrint parses, so escaping is required to
+# stop markup injection into the rendered PDF. No |safe expressions in the
+# template, so no legitimate output changes.
 _jinja_env = Environment(
     loader=FileSystemLoader(str(_TEMPLATE_DIR)),
-    autoescape=False,
+    autoescape=select_autoescape(("html", "xml")),
 )
 
 

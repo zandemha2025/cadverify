@@ -316,7 +316,12 @@ def select_stratified(cands: list[dict], target: int) -> list[dict]:
                 break
 
     def order_key(c: dict) -> str:
-        return hashlib.sha1(c["file_id"].encode()).hexdigest()
+        # Non-cryptographic: SHA1 is only a stable deterministic shuffle key for
+        # even corpus stratification — never used for integrity or secrecy.
+        # usedforsecurity=False documents that intent and clears bandit B324.
+        return hashlib.sha1(
+            c["file_id"].encode(), usedforsecurity=False
+        ).hexdigest()
 
     per_bucket = max(1, target // len(FACE_BUCKETS))
     chosen: list[dict] = []
