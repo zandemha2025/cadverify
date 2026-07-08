@@ -105,10 +105,12 @@ def test_compose_configs_have_smokeable_frontend_and_backend():
         assert "postgres" in compose["services"]
         assert "redis" in compose["services"]
         assert "pgdata" in compose["volumes"]
+        assert "RATE_LIBRARY_ENABLED=1" in service_env(backend)
 
     assert "blobs" in enterprise["volumes"]
     assert "redis-data" in enterprise["volumes"]
     assert "./saml:/app/saml:ro" in enterprise["services"]["backend"]["volumes"]
+    assert "RATE_LIBRARY_ENABLED=1" in service_env(enterprise["services"]["worker"])
 
 
 def test_fly_configs_describe_deploy_surface_without_external_proof_claims():
@@ -121,14 +123,19 @@ def test_fly_configs_describe_deploy_surface_without_external_proof_claims():
         [
             'app = "cadvrfy-api"',
             '[processes]',
-            'web = "uvicorn main:app',
+            'web = "uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1 --no-server-header"',
             'worker = "arq src.jobs.worker.WorkerSettings"',
             '[http_service]',
             "internal_port = 8000",
             "force_https = true",
             "destination = \"/data\"",
+            "ARQ_HEALTH_KEY = \"arq:queue:health-check\"",
+            "WORKER_STRICT_HEALTH = \"1\"",
+            "RATE_LIBRARY_ENABLED = \"1\"",
+            "ANALYSIS_TIMEOUT_SEC = \"60\"",
             "[deploy]",
             "alembic upgrade head",
+            'memory = "2gb"',
         ],
     )
 
@@ -146,6 +153,28 @@ def test_fly_configs_describe_deploy_surface_without_external_proof_claims():
     )
     assert "registry.fly.io/cadvrfy-web:${{ github.sha }}" in workflow
     assert "--config frontend/fly.toml" in workflow
+    assert "flyctl scale count web=1 worker=1 --app cadvrfy-api --yes" in workflow
+    assert "node scripts/ops/fly-required-secrets-gate.mjs" in workflow
+    assert "node scripts/ops/fly-live-health-gate.mjs" in workflow
+
+
+def test_worker_and_deploy_health_gate_require_arq_worker_heartbeat():
+    worker = read("backend/src/jobs/worker.py")
+    health = read("backend/src/api/health.py")
+    ops = read("backend/src/services/ops_health_service.py")
+    gate = read("scripts/ops/fly-live-health-gate.mjs")
+    secrets_gate = read("scripts/ops/fly-required-secrets-gate.mjs")
+
+    assert 'health_check_key = os.getenv("ARQ_HEALTH_KEY", "arq:queue:health-check")' in worker
+    assert 'worker_strict = _flag("WORKER_STRICT_HEALTH", "0")' in health
+    assert 'worker_degraded = worker_strict and async_expected and redis_ok and worker_state != "ok"' in health
+    assert 'health_key = os.getenv("ARQ_HEALTH_KEY", "arq:queue:health-check")' in ops
+    assert 'body?.async?.worker === "ok"' in gate
+    assert 'body?.async?.worker_strict === true' in gate
+    assert 'CADVERIFY_REQUIRE_WORKER_STRICT' in gate
+    assert "API_KEY_PEPPER" in secrets_gate
+    assert "CONNECTOR_SECRET_KEY" in secrets_gate
+    assert "CONNECTOR_FINGERPRINT_KEY" in secrets_gate
 
 
 def test_helm_chart_gates_multi_replica_blob_and_worker_ops():
@@ -171,14 +200,25 @@ def test_pre_human_real_cad_and_ops_gates_are_in_full_e2e_chain():
     restore = read("scripts/ops/postgres-restore-drill.sh")
     load = read("scripts/ops/api-load-smoke.mjs")
     readiness = read("scripts/e2e/enterprise-prehuman-readiness.mjs")
+    scim_idp = read("scripts/e2e/scim-idp-lifecycle.mjs")
+    connector_replay = read("scripts/e2e/connector-sandbox-fixture-replay.mjs")
 
+    assert "test:e2e:scim-idp" in package
+    assert "test:e2e:connector-fixtures" in package
     assert "test:e2e:real-cad-corpus" in package
     assert "test:e2e:ops-restore" in package
     assert "test:e2e:ops-load" in package
     assert "test:e2e:readiness" in package
+    assert "npm run test:e2e:scim-idp" in package
+    assert "npm run test:e2e:connector-fixtures" in package
     assert "NIST-PMI-STEP-Files.zip" in real_cad
     assert "NIST-MTC-Assembly.zip" in real_cad
     assert "block_network_sockets" in real_cad
+    assert "SCIM protocol lifecycle simulation" in scim_idp
+    assert "CADVERIFY_SCIM_TOKEN" in scim_idp
+    assert "sap_s4hana_product_bom_readonly" in connector_replay
+    assert "windchill_part_bom_readonly" in connector_replay
+    assert "offline sandbox fixture replay, not live vendor certification" in connector_replay
     assert "pg_dump" in restore
     assert "pg_restore" in restore
     assert "/api/v1/validate/cost/demo" in load

@@ -86,5 +86,6 @@ class WorkerSettings:
     # heartbeat-based orphan sweeper.
     job_timeout = 600
     health_check_interval = 30
+    health_check_key = os.getenv("ARQ_HEALTH_KEY", "arq:queue:health-check")
     retry_jobs = True
     max_tries = 2

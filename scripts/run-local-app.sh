@@ -37,6 +37,8 @@ APP_URL="http://localhost:${FRONTEND_PORT}"
 # ── env: kill-switch open + localhost CORS + local database ─────────────────
 export ACCEPTING_NEW_ANALYSES=true   # kill-switch OPEN -> analyses accepted
 export LABELING_ENABLED=1            # main.py broadens CORS to localhost:3000
+export RATE_LIBRARY_ENABLED=1        # enterprise governed rate cards are active
+export SIGNUP_RATE_LIMIT_DISABLED=1  # local proof runs create many throwaway accounts
 export DATABASE_URL="${DATABASE_URL:-postgresql://cadverify:localdev@localhost:5432/cadverify}"
 
 # Persistent local auth secrets so sessions survive restarts (gitignored file).
@@ -156,6 +158,7 @@ export NEXT_PUBLIC_API_BASE="http://localhost:${BACKEND_PORT}"
 # Mount the product /verify surface. NEXT_PUBLIC_* is inlined at BUILD time, so
 # this MUST be exported before `npm run build` (flag-off, /verify 404s).
 export NEXT_PUBLIC_VERIFY_UI=1
+export NEXT_PUBLIC_SHOW_DEV_TOOLS=1
 log "Building the frontend (production build — ~1–2 min the first time; instant after)…"
 if ! ( cd "$FRONTEND_DIR" && npm run build ); then
   err "Frontend build failed — see the output above."; exit 1

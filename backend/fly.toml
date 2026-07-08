@@ -5,7 +5,7 @@ primary_region = "iad"
   dockerfile = "Dockerfile"
 
 [processes]
-  web = "uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2 --no-server-header"
+  web = "uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1 --no-server-header"
   worker = "arq src.jobs.worker.WorkerSettings"
 
 [env]
@@ -15,8 +15,11 @@ primary_region = "iad"
   DEMO_MAX_TRIANGLES = "500000"
   SAM3D_ENABLED = "false"
   ACCEPTING_NEW_ANALYSES = "true"
-  ANALYSIS_TIMEOUT_SEC = "30"
+  RATE_LIBRARY_ENABLED = "1"
+  ANALYSIS_TIMEOUT_SEC = "60"
   BLOB_STORAGE_PATH = "/data/blobs"
+  ARQ_HEALTH_KEY = "arq:queue:health-check"
+  WORKER_STRICT_HEALTH = "1"
 
 [http_service]
   processes = ["web"]
@@ -48,6 +51,6 @@ primary_region = "iad"
   release_command = "sh -c 'DATABASE_URL=$DATABASE_URL_DIRECT alembic upgrade head'"
 
 [[vm]]
-  memory = "1gb"
+  memory = "2gb"
   cpu_kind = "shared"
   cpus = 2

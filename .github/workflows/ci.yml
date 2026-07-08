@@ -48,15 +48,12 @@ jobs:
     env:
       DATABASE_URL: postgresql://cadverify:cadverify_ci@localhost:5432/cadverify
       REDIS_URL: redis://localhost:6379
-      # NOTE: a live REDIS_URL also flips src.auth.password._run_abuse_controls
-      # from its no-infra no-op to the real per-IP signup rate limiter
-      # (src/auth/signup_limits.py, 3 attempts/IP/hour). That's intentional —
-      # it's the same "REDIS_URL configured" behavior prod runs — but it means
-      # test_full_signup_login_me_protected_flow's 2 real /auth/signup calls
-      # spend real quota against this job's Redis. Fine today (only that one
-      # test hits the real endpoint); if a future test adds more real
-      # /auth/signup HTTP calls sharing the default TestClient IP, watch for
-      # 429 signup_rate_limited flakes from cumulative quota within one job.
+      RATE_LIMIT_DISABLED: "1"
+      SIGNUP_RATE_LIMIT_DISABLED: "1"
+      # CI keeps Redis live for worker/async coverage, but disables route/signup
+      # throttles so unrelated integration tests do not share one job-wide
+      # rate-limit bucket. backend/tests/test_rate_limit.py and
+      # backend/tests/test_auth_signup_limits.py prove the throttles themselves.
     steps:
       - uses: actions/checkout@v4
 
@@ -209,6 +206,8 @@ jobs:
     env:
       DATABASE_URL: postgresql://cadverify:cadverify_ci@localhost:5432/cadverify
       REDIS_URL: redis://localhost:6379
+      RATE_LIMIT_DISABLED: "1"
+      SIGNUP_RATE_LIMIT_DISABLED: "1"
       RATE_LIBRARY_ENABLED: "1"
       SHOP_LIBRARY_ENABLED: "1"
       MATERIAL_LIBRARY_ENABLED: "1"
@@ -376,6 +375,28 @@ jobs:
             --env RELEASE=${{ github.sha }}
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Ensure backend web and worker process groups
+        run: |
+          flyctl scale count web=1 worker=1 --app cadvrfy-api --yes
+          node scripts/ops/fly-ensure-process-groups.mjs
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_APP_NAME: cadvrfy-api
+          FLY_REQUIRED_PROCESS_GROUPS: web,worker
+
+      - name: Verify backend required Fly secrets
+        run: node scripts/ops/fly-required-secrets-gate.mjs
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_APP_NAME: cadvrfy-api
+
+      - name: Verify backend worker-strict health
+        run: node scripts/ops/fly-live-health-gate.mjs
+        env:
+          CADVERIFY_API_URL: https://cadvrfy-api.fly.dev
+          CADVERIFY_REQUIRE_WORKER: "1"
+          CADVERIFY_REQUIRE_WORKER_STRICT: "1"
 
       - name: Deploy frontend (pre-built image)
         run: |

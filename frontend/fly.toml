@@ -7,6 +7,8 @@ primary_region = "iad"
 [env]
   API_BASE = "https://cadvrfy-api.fly.dev"
   NEXT_PUBLIC_API_BASE = "https://cadvrfy-api.fly.dev"
+  NEXT_PUBLIC_VERIFY_UI = "1"
+  NEXT_PUBLIC_SHOW_DEV_TOOLS = "0"
 
 [http_service]
   internal_port = 3000
