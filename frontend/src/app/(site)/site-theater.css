@@ -80,6 +80,7 @@
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   min-height: 100%;
+  overflow-x: clip;
 }
 
 .site-theater ::selection {
@@ -335,6 +336,7 @@
   font-size: 13.5px;
 }
 @media (max-width: 720px) {
+  .site-theater { overflow-x: hidden; }
   .st-nav { padding: 18px 22px; }
   .st-navrow { gap: 18px; }
   .st-navrow .st-navlink { display: none; }

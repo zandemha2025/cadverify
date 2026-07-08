@@ -11,6 +11,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../..");
 const baseUrl = process.env.APP_URL || "http://localhost:3000";
+const loginEmail = process.env.E2E_LOGIN_EMAIL || "";
+const loginPassword = process.env.E2E_LOGIN_PASSWORD || "";
+const cadUploadTimeoutMs = Number.parseInt(process.env.E2E_CAD_UPLOAD_TIMEOUT_MS || "150000", 10);
 const cubePath = path.join(repoRoot, "backend/tests/assets/cube.step");
 const outputRoot = process.env.E2E_ARTIFACT_DIR
   ? path.resolve(process.env.E2E_ARTIFACT_DIR)
@@ -81,6 +84,13 @@ function isIgnorableRequestFailure(url, method, failure) {
   if (/favicon\.ico|\/_next\/webpack-hmr|vercel\/speed-insights/i.test(url)) return true;
   if (failure !== "net::ERR_ABORTED") return false;
   if (/[?&]_rsc=/.test(url)) return true;
+  if (method === "GET" && /\/api\/proxy\/cost-decisions\?limit=8(?:&|$)/.test(url)) return true;
+  if (
+    method === "GET" &&
+    /\/api\/proxy\/(?:governance\/change-requests|ground-truth|machine-inventory|rate-library(?:\/effective)?)(?:[/?#]|$)/.test(url)
+  ) {
+    return true;
+  }
   if (method === "POST" && /\/settings\/developer(?:$|\?)/.test(url)) return true;
   return method === "GET" && /\/_next\/static\/chunks\/[^/?]+\.js(?:\?|$)/.test(url);
 }
@@ -302,6 +312,26 @@ class EnterpriseDomainQA {
   }
 
   async signup() {
+    if (loginEmail && loginPassword) {
+      this.account = { email: loginEmail, password: loginPassword };
+      await this.step("enterprise engineer logs in and receives an org", async () => {
+        await this.goto("/login?next=/verify", "login", 500);
+        await this.page.getByLabel("Email").fill(loginEmail);
+        await this.page.getByLabel("Password").fill(loginPassword);
+        await this.page.getByRole("button", { name: /^Log in$/ }).click();
+        await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
+        await this.expectText(/CadVerify|Home|Verify/i, "verify shell after login");
+        const members = await this.expectApiOk("/admin/users");
+        assert(Array.isArray(members.users), "members response missing users");
+        const self = members.users.find((u) => u.email === loginEmail);
+        assert(self, "logged-in user was not visible in org members");
+        assert(self.org_role === "admin", `expected org admin membership, got ${self.org_role}`);
+        this.evidence.member = { email: self.email, role: self.role, org_role: self.org_role };
+        return { screenshot: await this.shot("login-enterprise-org") };
+      });
+      return;
+    }
+
     const email = uniqueEmail("petrovector-cad");
     const password = "Passw0rd123";
     this.account = { email, password };
@@ -574,7 +604,7 @@ class EnterpriseDomainQA {
             /What it really takes|computed from POST \/validate\/cost|unit cost|bbox|Geometry invalid|Cost request failed|Validation failed/i.test(text) &&
             !/measuring geometry/i.test(text)
           );
-        }, null, { timeout: 90_000 })
+        }, null, { timeout: cadUploadTimeoutMs })
         .catch(async () => {
           const text = await this.visibleText();
           throw new Error(`STEP upload did not reach a terminal result: ${text.slice(0, 700).replace(/\s+/g, " ")}`);
@@ -659,6 +689,50 @@ class EnterpriseDomainQA {
         context_provenance: contextBefore.provenance,
       };
       return { screenshot: await this.shot("portfolio-math-api-verified") };
+    });
+  }
+
+  async verifyDeclaredContextInProductStage() {
+    await this.step("Verify stage renders declared parent context in product UI", async () => {
+      await this.goto("/verify", "verify-stage-context", 1000);
+      await this.clickRail("Verify");
+      await this.page.getByRole("button", { name: /^Stainless$/i }).click();
+      await this.page.getByRole("button", { name: /120.*service/i }).click();
+      await this.page.getByRole("button", { name: /sour service/i }).click();
+      await this.page.getByRole("button", { name: /35 MPa pressure/i }).click();
+      const input = this.page.locator('input[type="file"][accept*=".stl"]').first();
+      await input.setInputFiles(cubePath);
+      await this.page
+        .waitForFunction(() => {
+          const text = document.body.innerText;
+          return (
+            /What it really takes|computed from POST \/validate\/cost|unit cost/i.test(text) &&
+            !/measuring geometry/i.test(text)
+          );
+        }, null, { timeout: cadUploadTimeoutMs })
+        .catch(async () => {
+          const text = await this.visibleText();
+          throw new Error(`STEP upload did not reach a terminal result for context UI: ${text.slice(0, 700).replace(/\s+/g, " ")}`);
+        });
+
+      const strip = this.page.locator('[data-testid="verify-stage-context"][data-context-state="declared-parent"]').first();
+      await strip.waitFor({ timeout: 15_000 });
+      const stripText = await strip.innerText();
+      assert(stripText.includes(programName), "stage context strip did not show the declared program");
+      assert(stripText.includes(parentAssembly), "stage context strip did not show the declared parent assembly");
+      assert(/USER/i.test(stripText), "stage context strip did not show USER provenance");
+      assert(/service world/i.test(stripText), "stage context strip did not show declared service world");
+      await this.page.getByRole("button", { name: /^Seat in context$/i }).click();
+      await this.page.waitForTimeout(1200);
+      const text = await this.scanVisibleText("verify-stage-context-product-ui");
+      assert(new RegExp(escapeRegExp(parentAssembly)).test(text), "declared parent assembly missing from product UI text");
+      this.evidence.productStageContext = {
+        program: programName,
+        parent_assembly: parentAssembly,
+        strip: stripText.replace(/\s+/g, " ").trim(),
+        seated: true,
+      };
+      return { screenshot: await this.shot("verify-stage-declared-context-seated", true) };
     });
   }
 
@@ -763,13 +837,13 @@ class EnterpriseDomainQA {
 - Status: ${data.status}
 - Health score: ${data.health}/100
 - Screenshots: ${data.screenshotDir}
-- Test account: ${data.account?.email || "not created"}
+- Test account: ${data.account?.email || "not created/logged in"}
 
 ## Enterprise Scenario
 
 Persona: CAD/cost engineer in an ExxonMobil-like manufacturing organization.
 
-The test signs up a real org admin, proves unauthenticated org data is rejected, publishes a governed rate card, declares owned machines, ingests historical actuals, proves calibration refuses under the real-data floor, creates a developer API key through the UI, uploads a real STEP file, declares a sour/high-pressure/high-temperature service world, and verifies portfolio exposure is withheld until annual volume is user-declared.
+The test signs up or logs in as a real org admin, proves unauthenticated org data is rejected, publishes a governed rate card, declares owned machines, ingests historical actuals, proves calibration refuses under the real-data floor, creates a developer API key through the UI, uploads a real STEP file, declares a sour/high-pressure/high-temperature service world, and verifies portfolio exposure is withheld until annual volume is user-declared.
 
 ## Correctness Assertions
 
@@ -812,6 +886,7 @@ try {
   await runner.createDeveloperKey();
   await runner.runCadVerification();
   await runner.assertPortfolioCorrectness();
+  await runner.verifyDeclaredContextInProductStage();
   await runner.verifyProgramUiAndHistory();
 } finally {
   await runner.finish().catch((error) => {

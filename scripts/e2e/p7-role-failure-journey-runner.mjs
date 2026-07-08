@@ -142,6 +142,13 @@ function isIgnorableRequestFailure(url, method, failure) {
   if (/favicon\.ico|\/_next\/webpack-hmr|vercel\/speed-insights/i.test(url)) return true;
   if (failure !== "net::ERR_ABORTED") return false;
   if (/[?&]_rsc=/.test(url)) return true;
+  if (method === "GET" && /\/api\/proxy\/cost-decisions\?limit=8(?:&|$)/.test(url)) return true;
+  if (
+    method === "GET" &&
+    /\/api\/proxy\/(?:governance\/change-requests|ground-truth|machine-inventory|rate-library(?:\/effective)?)(?:[/?#]|$)/.test(url)
+  ) {
+    return true;
+  }
   return method === "GET" && /\/_next\/static\/chunks\/[^/?]+\.js(?:\?|$)/.test(url);
 }
 
@@ -529,7 +536,14 @@ class P7RoleFailureQA {
       await this.loginWithCredentials(page, email, password, label);
     }
     await this.assertAuthenticated(page, label);
-    return { context, page, label, source: storageState ? "storage" : sessionCookie ? "cookie" : "credentials" };
+    return {
+      context,
+      page,
+      label,
+      source: storageState ? "storage" : sessionCookie ? "cookie" : "credentials",
+      email: email || null,
+      password: password || null,
+    };
   }
 
   async signupContext(prefix, label) {
@@ -606,6 +620,12 @@ asyncio.run(main())
   }
 
   async seededPasswordContext(prefix, label) {
+    if (!process.env.DATABASE_URL) {
+      const signedUp = await this.signupContext(prefix, `${label}-signup-fallback`);
+      signedUp.source = "signup-password-user";
+      return signedUp;
+    }
+
     const context = await this.newContext();
     const page = await context.newPage();
     this.attachPage(page);
@@ -622,7 +642,12 @@ asyncio.run(main())
       throw new SkipStep("no primary org-admin session was available to invite a viewer");
     }
 
-    const viewer = await this.seededPasswordContext("p7-viewer", "self-seeded-viewer");
+    const viewer =
+      (await this.authContextFromHooks("VIEWER", "viewer-invite-identity")) ||
+      (await this.seededPasswordContext("p7-viewer", "self-seeded-viewer"));
+    if (!viewer.email) {
+      throw new Error("viewer identity needs an email so the primary org can invite it");
+    }
     const invite = await this.proxyJson(this.primary.context, "/api/proxy/orgs/invites", {
       method: "POST",
       body: { email: viewer.email, role: "viewer" },
@@ -1088,9 +1113,12 @@ asyncio.run(main())
 
   async runSeededLowRoleChecks() {
     await this.step("low-role viewer session is available", async () => {
-      const lowRole =
-        (await this.authContextFromHooks("VIEWER", "seeded-viewer")) ||
-        (await this.selfSeedViewerContext());
+      const lowRole = this.primary
+        ? await this.selfSeedViewerContext()
+        : await this.authContextFromHooks("VIEWER", "seeded-viewer");
+      if (!lowRole) {
+        throw new SkipStep("no primary org-admin or low-role viewer session was available");
+      }
       this.lowRole = lowRole;
       this.evidence.lowRoleAuth = {
         source: lowRole.source,

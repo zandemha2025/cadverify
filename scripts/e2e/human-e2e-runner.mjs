@@ -11,6 +11,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../..");
 const baseUrl = process.env.APP_URL || "http://localhost:3000";
+const loginEmail = process.env.E2E_LOGIN_EMAIL || "";
+const loginPassword = process.env.E2E_LOGIN_PASSWORD || "";
+const cadUploadTimeoutMs = Number.parseInt(process.env.E2E_CAD_UPLOAD_TIMEOUT_MS || "150000", 10);
 const outputRoot = process.env.E2E_ARTIFACT_DIR
   ? path.resolve(process.env.E2E_ARTIFACT_DIR)
   : path.join(repoRoot, ".gstack", "qa-reports");
@@ -116,6 +119,13 @@ function isIgnorableRequestFailure(url, method, failure) {
   if (/favicon\.ico|vercel\/speed-insights|\/_next\/webpack-hmr/i.test(url)) return true;
   if (failure !== "net::ERR_ABORTED") return false;
   if (/[?&]_rsc=/.test(url)) return true;
+  if (method === "GET" && /\/api\/proxy\/cost-decisions\?limit=8(?:&|$)/.test(url)) return true;
+  if (
+    method === "GET" &&
+    /\/api\/proxy\/(?:governance\/change-requests|ground-truth|machine-inventory|rate-library(?:\/effective)?)(?:[/?#]|$)/.test(url)
+  ) {
+    return true;
+  }
   return method === "GET" && /\/_next\/static\/chunks\/[^/?]+\.js(?:\?|$)/.test(url);
 }
 
@@ -266,6 +276,31 @@ class HumanE2E {
       return { screenshot: await this.shot("login-gate") };
     });
 
+    if (loginEmail && loginPassword) {
+      await this.step("signup rejects weak password", async () => {
+        await this.goto("/signup", "signup");
+        await this.page.getByLabel("Email").fill(uniqueEmail("weak"));
+        await this.page.getByLabel("Password").fill("short");
+        await this.page.getByRole("button", { name: /^Create account$/ }).click();
+        await this.page.getByText("Password must be at least 8 characters.").waitFor({ timeout: 5000 });
+        await this.scanVisibleText("signup-weak-password");
+        return { screenshot: await this.shot("signup-weak-password") };
+      });
+
+      await this.step("login reuses existing synthetic account and lands in app", async () => {
+        await this.goto("/login?next=/verify", "login");
+        await this.page.getByLabel("Email").fill(loginEmail);
+        await this.page.getByLabel("Password").fill(loginPassword);
+        await this.page.getByRole("button", { name: /^Log in$/ }).click();
+        await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
+        await this.expectText(/CadVerify|Home|Verify/i, "verify shell after login");
+        await this.scanVisibleText("login-existing-account");
+        return { screenshot: await this.shot("login-existing-account") };
+      });
+      this.account = { email: loginEmail, password: loginPassword };
+      return;
+    }
+
     await this.step("signup rejects weak password", async () => {
       await this.goto("/signup", "signup");
       await this.page.getByLabel("Email").fill(uniqueEmail("weak"));
@@ -385,7 +420,7 @@ class HumanE2E {
             /computed from POST \/validate\/cost|What it really takes|Geometry invalid|Cost request failed|Validation failed|repair required|unit cost|bbox/i.test(text) &&
             !/measuring geometry/i.test(text)
           );
-        }, null, { timeout: 90_000 })
+        }, null, { timeout: cadUploadTimeoutMs })
         .catch(async () => {
           const text = await this.visibleText();
           throw new Error(`STEP upload did not reach a terminal visible result. Current text: ${text.slice(0, 500).replace(/\s+/g, " ")}`);

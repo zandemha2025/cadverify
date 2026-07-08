@@ -27,6 +27,10 @@ const reportSpecs = {
     title: "P7 Role and Failure Journey",
     file: `p7-role-failure-${runId}.json`,
   },
+  assembly: {
+    title: "Assembly Context Visual Fidelity",
+    file: `assembly-visual-fidelity-${runId}.json`,
+  },
 };
 
 const publicRoutes = [
@@ -88,6 +92,7 @@ const enterpriseSteps = [
   "Developer settings creates and reveals an API key exactly once",
   "CAD engineer verifies a real STEP file in a declared service world",
   "portfolio withholds exposure until declared volume, then computes server-side math",
+  "Verify stage renders declared parent context in product UI",
   "Programs UI and cost history show the verified enterprise part",
 ];
 
@@ -142,7 +147,7 @@ function exactStep(name) {
   return `^${escapeRegExp(name)}$`;
 }
 
-function req(id, report, step, persona, surface, branch) {
+function req(id, report, step, persona, surface, branch, options = {}) {
   return {
     id,
     report,
@@ -150,6 +155,7 @@ function req(id, report, step, persona, surface, branch) {
     persona,
     surface,
     branch,
+    alternatives: options.alternatives || [],
   };
 }
 
@@ -186,7 +192,15 @@ const requirements = [
     "signup creates real account and lands in app",
     "New user",
     "Signup",
-    "Create a real local account and land in authenticated product UI."
+    "Create a real local account and land in authenticated product UI.",
+    {
+      alternatives: [
+        {
+          report: "enterprise",
+          stepPattern: exactStep("enterprise engineer signs up and receives an org"),
+        },
+      ],
+    }
   ),
   req(
     "verify.shell-authenticated",
@@ -255,6 +269,22 @@ const requirements = [
     "CAD engineer",
     "CAD analysis",
     "Upload and process a real STEP fixture through the browser."
+  ),
+  req(
+    "assembly-context.automotive",
+    "assembly",
+    "DOOR-HANDLE-ASSEMBLY-FIDELITY-001: part seats into parent assembly within transform tolerance",
+    "CAD engineer",
+    "Populated assembly context",
+    "Render a part inside its parent assembly with declared automotive service environment, then seat it and verify transform/pixel evidence."
+  ),
+  req(
+    "assembly-context.oil-gas",
+    "assembly",
+    "VALVE-STEM-ASSEMBLY-FIDELITY-001: part seats into parent assembly within transform tolerance",
+    "CAD engineer",
+    "Populated assembly context",
+    "Render a part inside its parent assembly with declared severe-service environment, then seat it and verify transform/pixel evidence."
   ),
   ...enterpriseSteps.map((step, index) =>
     req(
@@ -365,17 +395,30 @@ function reportProblems(reports) {
 }
 
 function coverageFor(requirement, reports) {
-  const report = reports[requirement.report];
-  const pattern = new RegExp(requirement.stepPattern);
-  const matches = report.steps.filter((step) => step.status === "pass" && pattern.test(step.name));
+  const candidates = [
+    { report: requirement.report, stepPattern: requirement.stepPattern },
+    ...(requirement.alternatives || []),
+  ];
+  const matches = [];
+  for (const candidate of candidates) {
+    const report = reports[candidate.report];
+    if (!report) continue;
+    const pattern = new RegExp(candidate.stepPattern);
+    for (const step of report.steps) {
+      if (step.status === "pass" && pattern.test(step.name)) {
+        matches.push({
+          report: candidate.report,
+          name: step.name,
+          url: step.url || "",
+          screenshot: step.screenshot || null,
+        });
+      }
+    }
+  }
   return {
     ...requirement,
     covered: matches.length > 0,
-    matches: matches.map((step) => ({
-      name: step.name,
-      url: step.url || "",
-      screenshot: step.screenshot || null,
-    })),
+    matches,
   };
 }
 

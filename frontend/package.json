@@ -10,16 +10,21 @@
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test src/lib/dfm-scope.test.ts src/lib/cost-decision.test.ts src/lib/breakeven.test.ts src/lib/cost-views.test.ts src/lib/tempo-core.test.ts src/lib/findings.test.ts src/lib/highlight-colors.test.ts src/lib/inspection-bind.test.ts src/lib/doors.test.ts src/lib/cad-file.test.ts src/lib/recent-parts.test.ts src/lib/catalog.test.ts src/lib/portfolio.test.ts src/lib/catalog-api.test.ts src/lib/verify/derive.test.ts src/lib/verify/verification.test.ts src/lib/verify/pipeline.test.ts src/lib/verify/home-derive.test.ts src/lib/verify/scrub.test.ts src/lib/verify/part-standing.test.ts",
     "test:e2e": "node scripts/e2e-smoke.mjs",
     "test:e2e:human": "node ../scripts/e2e/human-e2e-runner.mjs",
+    "test:e2e:site-design": "node ../scripts/e2e/site-design-fidelity.mjs",
     "test:e2e:enterprise": "node ../scripts/e2e/enterprise-domain-runner.mjs",
     "test:e2e:p7": "node ../scripts/e2e/p7-role-failure-journey-runner.mjs",
     "test:e2e:journey-coverage": "node ../scripts/e2e/human-sim-journey-coverage.mjs",
     "test:e2e:enterprise-gauntlet": "node ../scripts/e2e/synthetic-enterprise-gauntlet.mjs",
     "test:e2e:answer-fidelity": "node ../scripts/e2e/enterprise-answer-fidelity.mjs",
+    "test:e2e:assembly-fidelity": "node ../scripts/e2e/assembly-visual-fidelity.mjs",
+    "test:e2e:enterprise-presence": "node ../scripts/e2e/enterprise-systems-presence.mjs",
+    "test:e2e:scim-idp": "node ../scripts/e2e/scim-idp-lifecycle.mjs",
+    "test:e2e:connector-fixtures": "node ../scripts/e2e/connector-sandbox-fixture-replay.mjs",
     "test:e2e:real-cad-corpus": "sh -c 'if [ -x ../backend/.venv/bin/python ]; then ../backend/.venv/bin/python ../scripts/prehuman/real_cad_corpus.py; else python3 ../scripts/prehuman/real_cad_corpus.py; fi'",
     "test:e2e:ops-restore": "bash ../scripts/ops/postgres-restore-drill.sh",
     "test:e2e:ops-load": "node ../scripts/ops/api-load-smoke.mjs",
     "test:e2e:readiness": "node ../scripts/e2e/enterprise-prehuman-readiness.mjs",
-    "test:e2e:full": "npm run test:e2e:human && npm run test:e2e:enterprise && npm run test:e2e:p7 && npm run test:e2e:journey-coverage && npm run test:e2e:enterprise-gauntlet && npm run test:e2e:answer-fidelity && npm run test:e2e:real-cad-corpus && npm run test:e2e:ops-restore && npm run test:e2e:ops-load && npm run test:e2e:readiness"
+    "test:e2e:full": "npm run test:e2e:human && npm run test:e2e:site-design && npm run test:e2e:enterprise && npm run test:e2e:p7 && npm run test:e2e:assembly-fidelity && npm run test:e2e:journey-coverage && npm run test:e2e:enterprise-gauntlet && npm run test:e2e:answer-fidelity && npm run test:e2e:enterprise-presence && npm run test:e2e:scim-idp && npm run test:e2e:connector-fixtures && npm run test:e2e:real-cad-corpus && npm run test:e2e:ops-restore && npm run test:e2e:ops-load && npm run test:e2e:readiness"
   },
   "dependencies": {
     "@fontsource-variable/instrument-sans": "^5.2.8",

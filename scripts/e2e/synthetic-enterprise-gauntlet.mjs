@@ -20,6 +20,7 @@ const files = {
   enterprise: path.join(outputRoot, `enterprise-domain-${runId}.json`),
   p7: path.join(outputRoot, `p7-role-failure-${runId}.json`),
   coverage: path.join(outputRoot, `human-sim-journey-coverage-${runId}.json`),
+  assemblyFidelity: path.join(outputRoot, `assembly-visual-fidelity-${runId}.json`),
   integrationService: path.join(repoRoot, "backend/src/services/integration_service.py"),
   rfqService: path.join(repoRoot, "backend/src/services/rfq_package_service.py"),
   samlService: path.join(repoRoot, "backend/src/services/org_saml_service.py"),
@@ -105,12 +106,13 @@ async function scenario(id, domain, simulation, fn) {
 }
 
 async function main() {
-  const [human, enterprise, p7, coverage, integrationService, rfqService, samlService, routeAuthCheck] =
+  const [human, enterprise, p7, coverage, assemblyFidelity, integrationService, rfqService, samlService, routeAuthCheck] =
     await Promise.all([
       readJson(files.human),
       readJson(files.enterprise),
       readJson(files.p7),
       readJson(files.coverage),
+      readJson(files.assemblyFidelity),
       readText(files.integrationService),
       readText(files.rfqService),
       readText(files.samlService),
@@ -206,6 +208,44 @@ async function main() {
           cadFixture: enterprise.evidence.portfolio.filename,
           meshHash: enterprise.evidence.meshHash,
           serviceEnvironment: syntheticOrg.operatingEnvelope.serviceEnvironment,
+        };
+      }
+    ),
+    await scenario(
+      "ASSEMBLY-CONTEXT-001",
+      "Populated engineering environment and assembly visual fidelity",
+      "Simulate customer-populated assembly context: part identity, parent assembly, service environment, transform, and seated render evidence.",
+      async () => {
+        assert(assemblyFidelity.status === "PASS", `assembly fidelity status ${assemblyFidelity.status}`);
+        assert(
+          hasStep(enterprise, "Verify stage renders declared parent context in product UI"),
+          "real Verify product UI did not prove declared parent context"
+        );
+        assert(
+          enterprise.evidence?.productStageContext?.parent_assembly === enterprise.evidence?.portfolio?.parent_assembly,
+          "product stage parent assembly did not match portfolio context"
+        );
+        assert((assemblyFidelity.cases || []).length >= 2, "assembly fixture corpus is too small");
+        assert(/parent assembly identity/.test(assemblyFidelity.boundary || ""), "assembly boundary missing parent context");
+        const fixtures = [];
+        for (const item of assemblyFidelity.cases || []) {
+          assert(item.status === "PASS", `${item.fixtureId} did not pass`);
+          assert(item.placement?.maxAnchorErrorMm <= item.placement?.toleranceMm, `${item.fixtureId} transform tolerance failed`);
+          assert(item.render?.visualDelta?.changedSampledPixels > 0, `${item.fixtureId} render did not change from exploded to seated`);
+          fixtures.push({
+            fixtureId: item.fixtureId,
+            parentAssemblyId: item.parentAssemblyId,
+            partId: item.partId,
+            maxAnchorErrorMm: item.placement.maxAnchorErrorMm,
+            changedSampledPixels: item.render.visualDelta.changedSampledPixels,
+          });
+        }
+        return {
+          fixtureDriven: true,
+          fixtureCount: fixtures.length,
+          productStageContext: enterprise.evidence.productStageContext,
+          fixtures,
+          boundary: "synthetic populated assembly context, not native CAD/customer certification",
         };
       }
     ),
