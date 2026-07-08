@@ -113,6 +113,11 @@ async def test_part_context_upsert_read_and_isolation():
                 "parent_assembly": "chassis",
                 "units_per_parent": 4,
                 "annual_volume": 12000,
+                "service_environment": {
+                    "max_temp_c": 120,
+                    "sour_service": True,
+                    "pressure_bar": 350,
+                },
             },
         )
         assert r.status_code == 200, r.text
@@ -128,9 +133,12 @@ async def test_part_context_upsert_read_and_isolation():
         assert got["parent_assembly"] == "chassis"
         assert got["units_per_parent"] == 4
         assert got["annual_volume"] == 12000
+        assert got["service_environment"]["max_temp_c"] == 120
+        assert got["service_environment"]["sour_service"] is True
         assert got["provenance"] == "user"
 
-        # --- re-declare updates the SAME (org, mesh) row in place -----------
+        # --- re-declare updates supplied fields but preserves omitted context
+        #     so Verify can refresh service_environment without erasing lineage.
         r = await c.put(
             f"/api/v1/part-context/{mesh}",
             json={"program": "Zoox-2", "annual_volume": 9000},
@@ -140,7 +148,21 @@ async def test_part_context_upsert_read_and_isolation():
         got = r.json()
         assert got["program"] == "Zoox-2"
         assert got["annual_volume"] == 9000
-        assert got["units_per_parent"] is None  # cleared — declared set only
+        assert got["parent_assembly"] == "chassis"
+        assert got["units_per_parent"] == 4
+        assert got["service_environment"]["pressure_bar"] == 350
+
+        # --- explicit null still clears a declared field --------------------
+        r = await c.put(
+            f"/api/v1/part-context/{mesh}",
+            json={"parent_assembly": None},
+        )
+        assert r.status_code == 200, r.text
+        r = await c.get(f"/api/v1/part-context/{mesh}")
+        got = r.json()
+        assert got["program"] == "Zoox-2"
+        assert got["parent_assembly"] is None
+        assert got["units_per_parent"] == 4
 
         # --- a non-positive declared volume is a 400 ------------------------
         r = await c.put(

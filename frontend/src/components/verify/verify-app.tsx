@@ -297,6 +297,8 @@ export function VerifyApp() {
               bbox={result?.cost?.geometry?.bbox_mm ?? null}
               hostile={env.temp || env.sour || env.pressure}
               autoOrbit={running}
+              context={result?.partContext ?? null}
+              contextError={result?.partContextError ?? null}
             />
             <VerifyScreen
               result={result}

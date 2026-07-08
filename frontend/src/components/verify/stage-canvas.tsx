@@ -8,7 +8,7 @@
  * Honesty: a dropped STL is rendered from its real geometry. A STEP file cannot be
  * parsed in the browser, so the stage falls back to a wireframe box sized to the
  * engine's MEASURED bbox (an honest envelope, not a fake shape) once costing
- * returns it, or a neutral placeholder before any measurement exists.
+ * returns it, or a neutral cube before any measurement exists.
  */
 import { useEffect, useMemo, useRef, useState, Suspense, type ReactNode } from "react";
 import { Canvas, useLoader, useFrame } from "@react-three/fiber";
@@ -17,6 +17,13 @@ import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
 const TARGET = 2;
+
+export interface StageAssemblyContext {
+  parentAssembly: string | null;
+  program: string | null;
+  unitsPerParent: number | null;
+  serviceWorldDeclared: boolean;
+}
 
 function StlPart({ url, xray, hostile }: { url: string; xray: boolean; hostile: boolean }) {
   const geometry = useLoader(STLLoader, url);
@@ -90,8 +97,8 @@ function SeatGroup({ seat, children }: { seat: boolean; children: ReactNode }) {
 
 /** The ghost housing that converges around the part when it is seated — a
  *  translucent cavity (inner walls, BackSide) that fades in. Illustrative context
- *  only: no real neighboring geometry is claimed; it is a designed placeholder for
- *  the part's home, which is why it stays a featureless ghost. */
+ *  only: no real neighboring geometry is claimed; it is a schematic visual home,
+ *  which is why it stays featureless. */
 function GhostHousing({ seat }: { seat: boolean }) {
   const ref = useRef<THREE.Mesh>(null);
   useFrame(() => {
@@ -121,6 +128,95 @@ function GhostHousing({ seat }: { seat: boolean }) {
   );
 }
 
+/** Declared-context envelope: not exact neighboring CAD, but a USER-declared
+ * parent-assembly seat. Exact STEP/PLM assembly geometry can replace this
+ * envelope once present; until then it stays visibly schematic and tagged in
+ * the DOM readout rather than pretending to be measured CAD. */
+function AssemblyEnvelope({
+  seat,
+  context,
+  hostile,
+}: {
+  seat: boolean;
+  context: StageAssemblyContext | null;
+  hostile: boolean;
+}) {
+  const ref = useRef<THREE.Group>(null);
+  const hasParent = Boolean(context?.parentAssembly);
+  useFrame(() => {
+    const g = ref.current;
+    if (!g) return;
+    const targetOpacity = seat && hasParent ? 1 : 0;
+    for (const child of g.children) {
+      if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+        child.material.opacity = THREE.MathUtils.lerp(child.material.opacity, targetOpacity, 0.09);
+        child.visible = child.material.opacity > 0.01;
+      }
+    }
+    const targetY = seat ? -0.02 : 0.18;
+    g.position.y = THREE.MathUtils.lerp(g.position.y, targetY, 0.08);
+    const s = THREE.MathUtils.lerp(g.scale.x, seat ? 1 : 0.92, 0.08);
+    g.scale.setScalar(s);
+  });
+
+  const materials = useMemo(
+    () => ({
+      parent: new THREE.MeshStandardMaterial({
+        color: hostile ? "#7a675f" : "#65717f",
+        metalness: 0.24,
+        roughness: 0.72,
+        transparent: true,
+        opacity: 0,
+      }),
+      pocket: new THREE.MeshStandardMaterial({
+        color: hostile ? "#4f3c35" : "#3d4b58",
+        metalness: 0.12,
+        roughness: 0.82,
+        transparent: true,
+        opacity: 0,
+      }),
+      anchor: new THREE.MeshStandardMaterial({
+        color: "#b06a35",
+        metalness: 0.45,
+        roughness: 0.38,
+        transparent: true,
+        opacity: 0,
+      }),
+      rim: new THREE.MeshStandardMaterial({
+        color: hostile || context?.serviceWorldDeclared ? "#d49a62" : "#8fa0a6",
+        metalness: 0.08,
+        roughness: 0.7,
+        transparent: true,
+        opacity: 0,
+        wireframe: true,
+      }),
+    }),
+    [hostile, context?.serviceWorldDeclared]
+  );
+
+  if (!hasParent) return <GhostHousing seat={seat} />;
+
+  return (
+    <group ref={ref} position={[0, 0.18, -0.16]} scale={0.92}>
+      <mesh visible={false} position={[0, 0, -0.1]} material={materials.parent}>
+        <boxGeometry args={[2.92, 1.72, 0.1]} />
+      </mesh>
+      <mesh visible={false} position={[0, 0, -0.025]} material={materials.pocket}>
+        <boxGeometry args={[1.62, 0.48, 0.08]} />
+      </mesh>
+      <mesh visible={false} position={[-0.64, 0, 0.05]} material={materials.anchor}>
+        <sphereGeometry args={[0.052, 20, 14]} />
+      </mesh>
+      <mesh visible={false} position={[0.64, 0, 0.05]} material={materials.anchor}>
+        <sphereGeometry args={[0.052, 20, 14]} />
+      </mesh>
+      <mesh visible={false} position={[0, 0, 0.015]} material={materials.rim}>
+        <boxGeometry args={[1.85, 0.62, 0.12]} />
+      </mesh>
+    </group>
+  );
+}
+
 function AutoOrbit({ on }: { on: boolean }) {
   return (
     <OrbitControls
@@ -145,6 +241,7 @@ export default function StageCanvas({
   hostile,
   autoOrbit,
   seat,
+  assemblyContext,
 }: {
   fileUrl: string | null;
   isStl: boolean;
@@ -153,6 +250,7 @@ export default function StageCanvas({
   hostile: boolean;
   autoOrbit: boolean;
   seat: boolean;
+  assemblyContext: StageAssemblyContext | null;
 }) {
   const [ready, setReady] = useState(false);
   useEffect(() => setReady(true), []);
@@ -181,7 +279,7 @@ export default function StageCanvas({
           ) : (
             <BoxEnvelope bbox={bbox} xray={xray} />
           )}
-          <GhostHousing seat={seat} />
+          <AssemblyEnvelope seat={seat} context={assemblyContext} hostile={hostile} />
         </SeatGroup>
         <Environment resolution={128} frames={1}>
           <Lightformer form="rect" intensity={2.6} position={[0, 5, 1]} rotation={[-Math.PI / 2, 0, 0]} scale={[10, 6, 1]} color="#ffffff" />

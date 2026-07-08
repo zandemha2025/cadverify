@@ -27,6 +27,7 @@ import {
   declarePartContext,
   envToServiceEnvironment,
 } from "./part-context";
+import { fetchPartContext, type PartContext } from "./part-context-read";
 
 // Re-export so existing importers keep resolving these off `run` unchanged.
 export type { VerificationBlock, MakeabilityLattice } from "./verification";
@@ -76,6 +77,11 @@ export interface VerifyResult {
   envDeclared: boolean;
   envCaptured: boolean;
   envError: string | null;
+  /** SHA-256 of the uploaded bytes, matching the backend's mesh_hash. */
+  meshHash: string | null;
+  /** Existing/persisted USER context for this part, if the org declared one. */
+  partContext: PartContext | null;
+  partContextError: string | null;
 }
 
 /** Log-spaced quantity ladder the scrub interpolates over — the crossover story
@@ -155,24 +161,30 @@ export async function runVerification(input: VerifyInput): Promise<VerifyResult>
   const envDeclared = Object.keys(serviceEnv).length > 0;
   let envCaptured = false;
   let envError: string | null = null;
+  let partContext: PartContext | null = null;
+  let partContextError: string | null = null;
   const meshHash = await computeMeshHash(input.file).catch(() => null);
   if (meshHash) {
     const declared = await declarePartContext(meshHash, serviceEnv);
     envCaptured = declared.ok && envDeclared;
     if (envDeclared && !declared.ok) envError = declared.error;
+    const fresh = await fetchPartContext(meshHash);
+    if (fresh.error) partContextError = fresh.error;
+    partContext = fresh.context ?? null;
   } else if (envDeclared) {
     envError = "could not compute this part's mesh hash in the browser";
   }
 
   // Validation and costing run after the env is on the record, so the cost route
-  // reads the just-written context. (Validation carries no env; it can parallel.)
-  const [validationOut, costOut] = await Promise.all([
-    validateFile(input.file).then(
-      (v) => ({ v, err: null as string | null }),
-      (e) => ({ v: null as ValidationResult | null, err: e instanceof Error ? e.message : "Validation failed" })
-    ),
-    postCost(input, owned),
-  ]);
+  // reads the just-written context. Keep them sequential: both parse and analyze
+  // the uploaded CAD, and firing them together doubles peak production memory for
+  // one user action. Cost still runs even if validation fails, so partial results
+  // remain honest.
+  const validationOut = await validateFile(input.file).then(
+    (v) => ({ v, err: null as string | null }),
+    (e) => ({ v: null as ValidationResult | null, err: e instanceof Error ? e.message : "Validation failed" })
+  );
+  const costOut = await postCost(input, owned);
 
   // The verification block rides the cost response when the org declared machines
   // and/or this part's environment; its ABSENCE (never a fabricated value) drives
@@ -194,6 +206,9 @@ export async function runVerification(input: VerifyInput): Promise<VerifyResult>
     envDeclared,
     envCaptured,
     envError,
+    meshHash,
+    partContext,
+    partContextError,
   };
 }
 

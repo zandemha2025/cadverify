@@ -169,7 +169,10 @@ async def upsert_context(
 
     Org-scoped: only ever touches the caller-org's row for this mesh. Validates
     the declared quantities first (``ValueError`` on a non-positive count). Only
-    the four declared fields are written; ``created_by`` is stamped on insert.
+    On insert, all declared fields are written from the body. On update, only
+    fields actually present in the request are changed, so a Verify-world refresh
+    cannot erase separately declared lineage/demand context by omission.
+    ``created_by`` is stamped on insert.
     """
     validate_context(fields)
     row = await get_context(session, org_id, mesh_hash)
@@ -184,7 +187,8 @@ async def upsert_context(
         session.add(row)
     else:
         for key in DECLARED_FIELDS:
-            setattr(row, key, fields.get(key))
+            if key in fields:
+                setattr(row, key, fields.get(key))
     await session.flush()
     return row
 

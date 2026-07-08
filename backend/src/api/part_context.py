@@ -94,7 +94,7 @@ async def declare_part_context(
             session,
             org_id,
             mesh_hash,
-            body.model_dump(),
+            body.model_dump(exclude_unset=True),
             created_by=user.user_id,
         )
     except ValueError as exc:
