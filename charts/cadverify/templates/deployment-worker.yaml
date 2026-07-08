@@ -48,6 +48,22 @@ spec:
               mountPath: /app/saml
               readOnly: true
             {{- end }}
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import src.jobs.worker"
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import src.jobs.worker"
+            initialDelaySeconds: 10
+            periodSeconds: 15
           resources:
             {{- toYaml .Values.resources.worker | nindent 12 }}
       volumes:

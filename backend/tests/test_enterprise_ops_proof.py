@@ -51,11 +51,21 @@ def test_ci_runs_on_dev_and_prs_with_container_proof():
 
     step_names = {step.get("name") for step in docker_job["steps"]}
     assert "Validate Compose deploy configs" in step_names
-    assert "Build frontend production image (proof only)" in step_names
+    assert "Lint and render Helm chart" in step_names
+    assert "Build frontend production image and push on main" in step_names
     assert "Build backend production image and push on main" in step_names
 
     deploy_job = workflow["jobs"]["deploy"]
     assert deploy_job["if"] == "github.ref == 'refs/heads/main' && github.event_name == 'push'"
+    deploy_steps = {step.get("name") for step in deploy_job["steps"]}
+    assert "Deploy backend (pre-built image)" in deploy_steps
+    assert "Deploy frontend (pre-built image)" in deploy_steps
+
+    backend_steps = {step.get("name") for step in workflow["jobs"]["backend"]["steps"]}
+    assert "Postgres restore drill" in backend_steps
+
+    browser_steps = {step.get("name") for step in workflow["jobs"]["browser-e2e"]["steps"]}
+    assert "Run human and enterprise browser journeys" in browser_steps
 
 
 def test_frontend_dockerfile_matches_current_next_runtime_mode():
@@ -104,6 +114,7 @@ def test_compose_configs_have_smokeable_frontend_and_backend():
 def test_fly_configs_describe_deploy_surface_without_external_proof_claims():
     backend = read("backend/fly.toml")
     frontend = read("frontend/fly.toml")
+    workflow = read(".github/workflows/ci.yml")
 
     assert_contains_all(
         backend,
@@ -133,6 +144,45 @@ def test_fly_configs_describe_deploy_surface_without_external_proof_claims():
             "force_https = true",
         ],
     )
+    assert "registry.fly.io/cadverify-web:${{ github.sha }}" in workflow
+    assert "--config frontend/fly.toml" in workflow
+
+
+def test_helm_chart_gates_multi_replica_blob_and_worker_ops():
+    values = load_yaml("charts/cadverify/values.yaml")
+    worker = read("charts/cadverify/templates/deployment-worker.yaml")
+    pvc = read("charts/cadverify/templates/pvc-blobs.yaml")
+    workflow = read(".github/workflows/ci.yml")
+
+    assert values["replicaCount"]["backend"] > 1
+    assert values["replicaCount"]["worker"] > 1
+    assert "ReadWriteMany" in values["persistence"]["blobs"]["accessModes"]
+    assert ".Values.persistence.blobs.accessModes" in pvc
+    assert "livenessProbe:" in worker
+    assert "readinessProbe:" in worker
+    assert "import src.jobs.worker" in worker
+    assert "helm lint charts/cadverify" in workflow
+    assert "helm template cadverify charts/cadverify" in workflow
+
+
+def test_pre_human_real_cad_and_ops_gates_are_in_full_e2e_chain():
+    package = read("frontend/package.json")
+    real_cad = read("scripts/prehuman/real_cad_corpus.py")
+    restore = read("scripts/ops/postgres-restore-drill.sh")
+    load = read("scripts/ops/api-load-smoke.mjs")
+    readiness = read("scripts/e2e/enterprise-prehuman-readiness.mjs")
+
+    assert "test:e2e:real-cad-corpus" in package
+    assert "test:e2e:ops-restore" in package
+    assert "test:e2e:ops-load" in package
+    assert "test:e2e:readiness" in package
+    assert "NIST-PMI-STEP-Files.zip" in real_cad
+    assert "NIST-MTC-Assembly.zip" in real_cad
+    assert "block_network_sockets" in real_cad
+    assert "pg_dump" in restore
+    assert "pg_restore" in restore
+    assert "/api/v1/validate/cost/demo" in load
+    assert "enterprise-prehuman-readiness" in readiness
 
 
 def test_admin_queue_health_surface_is_real_and_pii_safe():

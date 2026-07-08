@@ -41,6 +41,11 @@ persistence:
     enabled: true
     size: 50Gi
     storageClass: ""
+    # Backend + worker replicas both mount blob storage. Multi-replica installs
+    # need a ReadWriteMany class or an external blob backend; do not leave this
+    # as implicit ReadWriteOnce in enterprise renders.
+    accessModes:
+      - ReadWriteMany
   postgres:
     enabled: true
     size: 20Gi

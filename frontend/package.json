@@ -15,7 +15,11 @@
     "test:e2e:journey-coverage": "node ../scripts/e2e/human-sim-journey-coverage.mjs",
     "test:e2e:enterprise-gauntlet": "node ../scripts/e2e/synthetic-enterprise-gauntlet.mjs",
     "test:e2e:answer-fidelity": "node ../scripts/e2e/enterprise-answer-fidelity.mjs",
-    "test:e2e:full": "npm run test:e2e:human && npm run test:e2e:enterprise && npm run test:e2e:p7 && npm run test:e2e:journey-coverage && npm run test:e2e:enterprise-gauntlet && npm run test:e2e:answer-fidelity"
+    "test:e2e:real-cad-corpus": "sh -c 'if [ -x ../backend/.venv/bin/python ]; then ../backend/.venv/bin/python ../scripts/prehuman/real_cad_corpus.py; else python3 ../scripts/prehuman/real_cad_corpus.py; fi'",
+    "test:e2e:ops-restore": "bash ../scripts/ops/postgres-restore-drill.sh",
+    "test:e2e:ops-load": "node ../scripts/ops/api-load-smoke.mjs",
+    "test:e2e:readiness": "node ../scripts/e2e/enterprise-prehuman-readiness.mjs",
+    "test:e2e:full": "npm run test:e2e:human && npm run test:e2e:enterprise && npm run test:e2e:p7 && npm run test:e2e:journey-coverage && npm run test:e2e:enterprise-gauntlet && npm run test:e2e:answer-fidelity && npm run test:e2e:real-cad-corpus && npm run test:e2e:ops-restore && npm run test:e2e:ops-load && npm run test:e2e:readiness"
   },
   "dependencies": {
     "@fontsource-variable/instrument-sans": "^5.2.8",

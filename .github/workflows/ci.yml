@@ -85,7 +85,8 @@ jobs:
             libxfixes3 \
             libxft2 \
             libxinerama1 \
-            libgomp1
+            libgomp1 \
+            postgresql-client
 
       - name: Install dependencies
         run: |
@@ -101,6 +102,9 @@ jobs:
           alembic upgrade head
           alembic downgrade base
           alembic upgrade head
+
+      - name: Postgres restore drill
+        run: ../scripts/ops/postgres-restore-drill.sh
 
       - name: Run tests
         run: pytest -v
@@ -241,7 +245,8 @@ jobs:
             libxfixes3 \
             libxft2 \
             libxinerama1 \
-            libgomp1
+            libgomp1 \
+            postgresql-client
           python -m venv backend/.venv
           backend/.venv/bin/python -m pip install --upgrade pip
           backend/.venv/bin/python -m pip install -r backend/requirements.txt
@@ -310,6 +315,8 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - uses: azure/setup-helm@v4
+
       - name: Validate Compose deploy configs
         run: |
           printf '%s\n' \
@@ -321,20 +328,25 @@ jobs:
           docker compose -f docker-compose.yml config --quiet
           docker compose -f cadverify-enterprise/docker-compose.yml config --quiet
 
-      - name: Build frontend production image (proof only)
-        uses: docker/build-push-action@v5
-        with:
-          context: frontend
-          push: false
-          tags: cadverify-frontend:proof
-          platforms: linux/amd64
-          cache-from: type=gha,scope=frontend-image
-          cache-to: type=gha,mode=max,scope=frontend-image
+      - name: Lint and render Helm chart
+        run: |
+          helm lint charts/cadverify
+          helm template cadverify charts/cadverify -f charts/cadverify/values-enterprise.yaml >/tmp/cadverify-rendered.yaml
 
       - name: Login to Fly.io Registry
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
           echo "${{ secrets.FLY_API_TOKEN }}" | docker login registry.fly.io -u x --password-stdin
+
+      - name: Build frontend production image and push on main
+        uses: docker/build-push-action@v5
+        with:
+          context: frontend
+          push: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+          tags: cadverify-frontend:proof,registry.fly.io/cadverify-web:${{ github.sha }},registry.fly.io/cadverify-web:latest
+          platforms: linux/amd64
+          cache-from: type=gha,scope=frontend-image
+          cache-to: type=gha,mode=max,scope=frontend-image
 
       - name: Build backend production image and push on main
         uses: docker/build-push-action@v5
@@ -361,6 +373,15 @@ jobs:
           flyctl deploy \
             --config backend/fly.toml \
             --image registry.fly.io/cadvrfy-api:${{ github.sha }} \
+            --env RELEASE=${{ github.sha }}
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Deploy frontend (pre-built image)
+        run: |
+          flyctl deploy \
+            --config frontend/fly.toml \
+            --image registry.fly.io/cadverify-web:${{ github.sha }} \
             --env RELEASE=${{ github.sha }}
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
