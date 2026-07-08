@@ -41,6 +41,7 @@ from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.fixes.fix_suggester import get_priority_fixes
+from src.parsers import mesh_cache
 from src.parsers.step_mesher import is_step_supported, step_to_trimesh_from_bytes
 from src.parsers.stl_parser import parse_stl_from_bytes
 from src.profiles.database import MACHINES, MATERIALS, get_all_processes
@@ -113,23 +114,46 @@ def _parse_mesh(data: bytes, filename: str):
         )
     # CORE-07: defense-in-depth — verify magic bytes before dispatching
     # to parser libs (cadquery/trimesh can crash on adversarial input).
+    # Kept BEFORE the cache lookup so unsupported/corrupt uploads still 400
+    # exactly as today (same bytes => same magic result on a hit).
     validate_magic(data, suffix)
+
+    # PERF: mutation-safe parsed-mesh cache. The SAME part is re-parsed by the
+    # validate + cost + preview burst; gmsh/OCC tessellation is ~seconds. On a
+    # HIT we return a deep copy (never the shared object); on a MISS we return
+    # the freshly-parsed original (byte-identical to pre-cache behavior) and the
+    # cache retains an independent copy. See parsers/mesh_cache.py for the full
+    # correctness argument, bounds, and opt-out (MESH_PARSE_CACHE_DISABLED).
+    cache = None
+    cache_key = None
+    if not mesh_cache.is_disabled():
+        cache = mesh_cache.get_cache()
+        cache_key = mesh_cache.key_for(data, suffix)
+
     try:
+        if cache is not None:
+            cached = cache.get(cache_key)
+            if cached is not None:
+                # HIT: the cache stores only the PARSE. The triangle cap is a
+                # per-REQUEST policy (MAX_TRIANGLES is read from env each call),
+                # so re-enforce it on the copy — a cap lowered since the entry
+                # was populated must still 400, exactly as a fresh parse would.
+                enforce_triangle_cap(cached)
+                return cached, suffix
         if suffix == ".stl":
             enforce_stl_triangle_count_cap(data)
             mesh = parse_stl_from_bytes(data, filename)
             enforce_triangle_cap(mesh)
-            return mesh, suffix
-        if not is_step_supported():
-            raise HTTPException(
-                status_code=501,
-                detail="STEP parsing is unavailable on this server (gmsh not installed).",
-            )
-        # gmsh -> triangulated shell (DFM + cost path). The post-mesh triangle
-        # cap below is the hard stop for runaway tessellation (assemblies).
-        mesh = step_to_trimesh_from_bytes(data, filename)
-        enforce_triangle_cap(mesh)   # 400 if tessellation exceeded MAX_TRIANGLES
-        return mesh, suffix
+        else:
+            if not is_step_supported():
+                raise HTTPException(
+                    status_code=501,
+                    detail="STEP parsing is unavailable on this server (gmsh not installed).",
+                )
+            # gmsh -> triangulated shell (DFM + cost path). The post-mesh
+            # triangle cap is the hard stop for runaway tessellation.
+            mesh = step_to_trimesh_from_bytes(data, filename)
+            enforce_triangle_cap(mesh)  # 400 if tessellation exceeded MAX_TRIANGLES
     except HTTPException:
         raise
     except ValueError as e:
@@ -138,6 +162,10 @@ def _parse_mesh(data: bytes, filename: str):
     except Exception:
         logger.exception("Mesh parsing failed for %s", filename)
         raise HTTPException(status_code=400, detail="Failed to parse mesh file")
+
+    if cache is not None:
+        cache.put(cache_key, mesh)
+    return mesh, suffix
 
 
 async def _parse_mesh_async(data: bytes, filename: str):
