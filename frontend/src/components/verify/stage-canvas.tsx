@@ -5,18 +5,28 @@
  * dynamically imported with ssr:false by stage.tsx. Reuses three's STLLoader (the
  * same loader the app's CadViewer uses).
  *
- * Honesty: a dropped STL is rendered from its real geometry. A STEP file cannot be
- * parsed in the browser, so the stage falls back to a wireframe box sized to the
- * engine's MEASURED bbox (an honest envelope, not a fake shape) once costing
- * returns it, or a neutral cube before any measurement exists.
+ * Honesty: a dropped STL is rendered from its real geometry. A STEP/IGES part
+ * cannot be parsed in the browser, so the stage fetches its REAL tessellated
+ * shell (a decimated GLB) from our own backend and renders THAT — the part looks
+ * like itself. Only when that shell is genuinely unavailable (still resolving, or
+ * tessellation failed) does the stage fall back to a wireframe box sized to the
+ * engine's MEASURED bbox (an honest envelope, not a fake shape), or a neutral cube
+ * before any measurement exists. The GLB is a MESH-LEVEL shell (NOT B-rep / GD&T /
+ * PMI) served zero-egress from our backend; it makes the part look right, it
+ * asserts no analytic-surface semantics.
  */
 import { useEffect, useMemo, useRef, useState, Suspense, type ReactNode } from "react";
 import { Canvas, useLoader, useFrame } from "@react-three/fiber";
 import { OrbitControls, Center, ContactShadows, Environment, Lightformer } from "@react-three/drei";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 const TARGET = 2;
+
+/** The kind of geometry the stage is rendering — drives the honest render-mode
+ *  readout in stage.tsx. */
+export type StageRenderKind = "stl" | "glb";
 
 export interface StageAssemblyContext {
   parentAssembly: string | null;
@@ -25,23 +35,29 @@ export interface StageAssemblyContext {
   serviceWorldDeclared: boolean;
 }
 
-function StlPart({ url, xray, hostile }: { url: string; xray: boolean; hostile: boolean }) {
-  const geometry = useLoader(STLLoader, url);
-  const norm = useMemo(() => {
-    if (!geometry) return { scale: 1, half: 1 };
-    geometry.computeVertexNormals();
-    geometry.center();
+/** Normalise a BufferGeometry into the TARGET frame (centred, unit-ish scale) and
+ *  render it with the shared studio material — the SAME look for STL and the GLB
+ *  shell so the two paths are visually identical (x-ray, verdict tint, shading). */
+function PartMesh({
+  geometry,
+  xray,
+  hostile,
+}: {
+  geometry: THREE.BufferGeometry;
+  xray: boolean;
+  hostile: boolean;
+}) {
+  const scale = useMemo(() => {
     geometry.computeBoundingBox();
     const size = new THREE.Vector3();
     geometry.boundingBox?.getSize(size);
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
-    const scale = TARGET / maxDim;
-    return { scale, half: (size.y * scale) / 2 };
+    return TARGET / maxDim;
   }, [geometry]);
 
   return (
     <Center>
-      <mesh geometry={geometry} scale={norm.scale}>
+      <mesh geometry={geometry} scale={scale}>
         <meshStandardMaterial
           color={hostile ? "#d8c6b6" : "#c6ccd4"}
           metalness={xray ? 0.1 : 0.85}
@@ -55,6 +71,45 @@ function StlPart({ url, xray, hostile }: { url: string; xray: boolean; hostile: 
       </mesh>
     </Center>
   );
+}
+
+function StlPart({ url, xray, hostile }: { url: string; xray: boolean; hostile: boolean }) {
+  const raw = useLoader(STLLoader, url);
+  const geometry = useMemo(() => {
+    const g = raw.clone();
+    g.computeVertexNormals();
+    g.center();
+    return g;
+  }, [raw]);
+  return <PartMesh geometry={geometry} xray={xray} hostile={hostile} />;
+}
+
+/** The REAL tessellated shell for a STEP/IGES part, streamed from our backend as
+ *  a decimated GLB and rendered as its true shape (replacing the bbox envelope).
+ *  We extract the first mesh's geometry, bake its node transform (trimesh's GLB
+ *  export carries a Y-up conversion on the node) so orientation is faithful, then
+ *  render it through the same PartMesh as STL. */
+function GlbPart({ url, xray, hostile }: { url: string; xray: boolean; hostile: boolean }) {
+  const gltf = useLoader(GLTFLoader, url);
+  const geometry = useMemo(() => {
+    let found: THREE.BufferGeometry | null = null;
+    gltf.scene.updateMatrixWorld(true);
+    gltf.scene.traverse((obj) => {
+      if (found) return;
+      const mesh = obj as THREE.Mesh;
+      if (mesh.isMesh && mesh.geometry) {
+        const g = (mesh.geometry as THREE.BufferGeometry).clone();
+        g.applyMatrix4(mesh.matrixWorld);
+        g.computeVertexNormals();
+        g.center();
+        found = g;
+      }
+    });
+    return found;
+  }, [gltf]);
+
+  if (!geometry) return null;
+  return <PartMesh geometry={geometry} xray={xray} hostile={hostile} />;
 }
 
 function BoxEnvelope({ bbox, xray }: { bbox: [number, number, number] | null; xray: boolean }) {
@@ -234,8 +289,8 @@ function AutoOrbit({ on }: { on: boolean }) {
 }
 
 export default function StageCanvas({
-  fileUrl,
-  isStl,
+  renderUrl,
+  renderKind,
   bbox,
   xray,
   hostile,
@@ -243,8 +298,11 @@ export default function StageCanvas({
   seat,
   assemblyContext,
 }: {
-  fileUrl: string | null;
-  isStl: boolean;
+  /** object URL for the geometry to render (STL blob or the backend GLB shell),
+   *  or null → the honest bbox envelope fallback. */
+  renderUrl: string | null;
+  /** which loader to use for renderUrl; null → fall back to the box. */
+  renderKind: StageRenderKind | null;
   bbox: [number, number, number] | null;
   xray: boolean;
   hostile: boolean;
@@ -274,8 +332,10 @@ export default function StageCanvas({
       <directionalLight position={[0, -4, 3]} intensity={0.25} color="#e8ecf1" />
       <Suspense fallback={<BoxEnvelope bbox={bbox} xray={xray} />}>
         <SeatGroup seat={seat}>
-          {fileUrl && isStl ? (
-            <StlPart url={fileUrl} xray={xray} hostile={hostile} />
+          {renderUrl && renderKind === "stl" ? (
+            <StlPart url={renderUrl} xray={xray} hostile={hostile} />
+          ) : renderUrl && renderKind === "glb" ? (
+            <GlbPart url={renderUrl} xray={xray} hostile={hostile} />
           ) : (
             <BoxEnvelope bbox={bbox} xray={xray} />
           )}

@@ -9,7 +9,8 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { C, MONO } from "@/lib/verify/tokens";
 import type { PartContext } from "@/lib/verify/part-context-read";
-import type { StageAssemblyContext } from "./stage-canvas";
+import type { StageAssemblyContext, StageRenderKind } from "./stage-canvas";
+import { fetchPreviewMesh, type PreviewMesh } from "@/lib/verify/preview-mesh";
 import { GhostButton, ProvChip } from "./primitives";
 
 const StageCanvas = dynamic(() => import("./stage-canvas"), {
@@ -40,11 +41,10 @@ export function Stage({
 }) {
   const [xray, setXray] = useState(false);
   const [seat, setSeat] = useState(false);
-  const [fileUrl, setFileUrl] = useState<string | null>(null);
-  const isStl = useMemo(
-    () => !!file && file.name.toLowerCase().endsWith(".stl"),
-    [file]
-  );
+  const [renderUrl, setRenderUrl] = useState<string | null>(null);
+  const [renderKind, setRenderKind] = useState<StageRenderKind | null>(null);
+  const [preview, setPreview] = useState<PreviewMesh | null>(null);
+  const [resolvingShell, setResolvingShell] = useState(false);
   const assemblyContext = useMemo<StageAssemblyContext | null>(
     () => ({
       parentAssembly: context?.parent_assembly ?? null,
@@ -62,14 +62,73 @@ export function Stage({
     if (!hasParent) setSeat(false);
   }, [hasParent]);
 
+  // Resolve the geometry the stage renders.
+  //  • STL  → parse the real geometry in-browser (STLLoader), no network needed.
+  //  • STEP/IGES → fetch the part's REAL tessellated shell from our own backend
+  //    (zero-egress GLB) and render THAT instead of a bbox box. While the shell
+  //    is resolving, or if it is genuinely unavailable, the honest box remains.
   useEffect(() => {
-    if (file && file.name.toLowerCase().endsWith(".stl")) {
+    setPreview((prev) => {
+      prev?.revoke();
+      return null;
+    });
+    if (!file) {
+      setRenderUrl(null);
+      setRenderKind(null);
+      setResolvingShell(false);
+      return;
+    }
+    if (file.name.toLowerCase().endsWith(".stl")) {
       const url = URL.createObjectURL(file);
-      setFileUrl(url);
+      setRenderUrl(url);
+      setRenderKind("stl");
+      setResolvingShell(false);
       return () => URL.revokeObjectURL(url);
     }
-    setFileUrl(null);
+    // STEP/IGES: stream the decimated shell from the backend.
+    let cancelled = false;
+    let pm: PreviewMesh | null = null;
+    setRenderUrl(null);
+    setRenderKind(null);
+    setResolvingShell(true);
+    void fetchPreviewMesh(file)
+      .then((res) => {
+        if (cancelled) {
+          res?.revoke();
+          return;
+        }
+        if (res) {
+          pm = res;
+          setPreview(res);
+          setRenderUrl(res.url);
+          setRenderKind("glb");
+        }
+        setResolvingShell(false);
+      })
+      .catch(() => {
+        if (!cancelled) setResolvingShell(false);
+      });
+    return () => {
+      cancelled = true;
+      pm?.revoke();
+    };
   }, [file]);
+
+  // Honest render-mode readout: what the viewer is actually looking at.
+  const renderMode: { state: string; label: string } = renderKind === "stl"
+    ? { state: "real-stl", label: "real geometry · STL" }
+    : renderKind === "glb"
+      ? {
+          state: "real-shell",
+          label: preview?.decimated && preview.previewFaces
+            ? `real shell · ${Math.round(preview.previewFaces / 1000)}k-tri preview`
+            : "real shell · tessellated preview",
+        }
+      : resolvingShell
+        ? { state: "resolving", label: "resolving real shape…" }
+        : file
+          ? { state: "bbox-envelope", label: "bbox envelope · shell unavailable" }
+          : { state: "empty", label: "no part yet" };
 
   return (
     <main
@@ -85,8 +144,8 @@ export function Stage({
     >
       <div style={{ position: "absolute", inset: 0, cursor: "grab" }}>
         <StageCanvas
-          fileUrl={fileUrl}
-          isStl={isStl}
+          renderUrl={renderUrl}
+          renderKind={renderKind}
           bbox={bbox}
           xray={xray}
           hostile={hostile}
@@ -108,6 +167,26 @@ export function Stage({
               <span style={{ color: C.measured }}>{meta2}</span>
             </>
           )}
+        </p>
+        {/* Honest render-mode readout: is the viewer looking at the part's REAL
+            geometry / tessellated shell, or the bbox envelope fallback? A real
+            shell is a MESH-LEVEL preview (not B-rep/PMI), served zero-egress. */}
+        <p
+          data-testid="verify-stage-render-mode"
+          data-render-state={renderMode.state}
+          style={{
+            margin: "6px 0 0",
+            fontFamily: MONO,
+            fontSize: 10,
+            letterSpacing: "0.02em",
+            color:
+              renderMode.state === "real-shell" || renderMode.state === "real-stl"
+                ? C.measured
+                : C.ink40,
+          }}
+        >
+          <span aria-hidden>{renderMode.state === "bbox-envelope" ? "▢ " : "● "}</span>
+          {renderMode.label}
         </p>
       </div>
 

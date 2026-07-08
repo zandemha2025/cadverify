@@ -29,6 +29,11 @@ const RELAY_HEADERS = [
   "x-ratelimit-remaining",
   "x-ratelimit-reset",
   "retry-after",
+  // Preview-mesh provenance (honest decimation readout for the Verify stage).
+  "x-mesh-original-faces",
+  "x-mesh-preview-faces",
+  "x-mesh-decimated",
+  "x-mesh-source",
 ];
 
 async function handle(

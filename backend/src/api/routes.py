@@ -541,6 +541,99 @@ async def validate_file(
     return result
 
 
+# ──────────────────────────────────────────────────────────────
+# Browser preview mesh (POST /validate/preview-mesh)
+# ──────────────────────────────────────────────────────────────
+# The Verify stage renders a dropped STL from its real geometry, but a STEP/IGES
+# part cannot be parsed in the browser, so the stage historically fell back to a
+# bounding-BOX envelope — a real trust hit ("my part became a box"). The backend
+# already tessellates STEP/IGES to a real triangle shell (gmsh/OCC) for the DFM +
+# cost engine; this endpoint streams that SAME shell back, decimated to a budget a
+# WebGL canvas can render at 60fps, so the part looks like itself.
+#
+# Zero-egress: the CAD is parsed + tessellated in-process and the GLB is returned
+# straight through the authed same-origin proxy. Nothing is written to disk, put
+# in an external cache, or sent to any third party — the mesh is served from OUR
+# backend only. This is a MESH-LEVEL (triangulated shell) preview, NOT B-rep /
+# GD&T / PMI: it makes the part LOOK right, it does not assert analytic-surface
+# semantics.
+def _preview_faces_target() -> int:
+    """Target triangle count for the browser shell (default 50k)."""
+    try:
+        return max(1000, int(os.getenv("PREVIEW_MESH_TARGET_FACES", "50000")))
+    except ValueError:
+        return 50000
+
+
+def _preview_faces_max() -> int:
+    """Hard ceiling for the browser shell (default 150k)."""
+    try:
+        return max(1000, int(os.getenv("PREVIEW_MESH_MAX_FACES", "150000")))
+    except ValueError:
+        return 150000
+
+
+def _build_preview_glb(mesh, filename: str) -> tuple[bytes, int, int, bool]:
+    """Decimate the tessellated shell to the browser budget and export GLB bytes.
+
+    Reuses the engine's quadric/vertex-cluster decimation (``_decimate_to``, the
+    same path ``MAX_ANALYSIS_FACES`` uses) so the preview shares the analysis
+    mesh's fidelity story. Returns ``(glb_bytes, original_faces, preview_faces,
+    decimated)``. Pure in-process trimesh — no disk, no network (zero-egress).
+    """
+    from src.analysis.context import _decimate_to
+
+    original = int(len(mesh.faces))
+    out = mesh
+    decimated = False
+    target = _preview_faces_target()
+    if original > target:
+        reduced, _strategy = _decimate_to(mesh, target)
+        if reduced is not None and 0 < len(reduced.faces) < original:
+            out = reduced
+            decimated = True
+    glb = out.export(file_type="glb")
+    return bytes(glb), original, int(len(out.faces)), decimated
+
+
+@router.post("/validate/preview-mesh", dependencies=[Depends(require_kill_switch_open)])
+@limiter.limit("120/hour;1000/day")
+async def validate_preview_mesh(
+    request: Request,
+    file: UploadFile = File(...),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
+):
+    """Return a decimated, browser-renderable GLB of the part's REAL tessellated
+    shell so the Verify stage renders STEP/IGES/STL parts as themselves, not a box.
+
+    Keyed by the upload the stage already holds (the same File it sends to
+    ``/validate`` + ``/validate/cost``); org-scoped + session-authed like every
+    other data call. Zero-egress + mesh-level caveat: see the section header.
+    """
+    data = await _read_capped(file)
+    mesh, suffix = await _parse_mesh_async(data, file.filename or "upload")
+    try:
+        glb, original_faces, preview_faces, decimated = _build_preview_glb(
+            mesh, file.filename or "upload"
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Preview mesh export failed for %s", file.filename)
+        raise HTTPException(
+            status_code=400, detail="Could not build a preview mesh for this file."
+        )
+
+    headers = {
+        "X-Mesh-Original-Faces": str(original_faces),
+        "X-Mesh-Preview-Faces": str(preview_faces),
+        "X-Mesh-Decimated": "true" if decimated else "false",
+        "X-Mesh-Source": suffix.lstrip("."),
+        "Cache-Control": "no-store",
+    }
+    return Response(content=glb, media_type="model/gltf-binary", headers=headers)
+
+
 @router.post("/validate/quick", dependencies=[Depends(require_kill_switch_open)])
 @limiter.limit("60/hour;500/day")
 async def validate_quick(
