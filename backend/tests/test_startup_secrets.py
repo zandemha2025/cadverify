@@ -6,9 +6,19 @@ default secrets.
 """
 from __future__ import annotations
 
+import base64
+
 import pytest
 
 import main
+
+
+VALID_DASHBOARD_SESSION_SECRET = base64.b64encode(b"d" * 32).decode()
+
+
+def set_valid_session_secrets(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", "a-real-strong-secret")
+    monkeypatch.setenv("DASHBOARD_SESSION_SECRET", VALID_DASHBOARD_SESSION_SECRET)
 
 
 def test_is_production_matrix(monkeypatch):
@@ -42,7 +52,7 @@ def test_prod_dev_only_session_secret_refuses(monkeypatch):
 
 def test_prod_dummy_google_creds_refuse(monkeypatch):
     monkeypatch.setenv("RELEASE", "v1.0.0")
-    monkeypatch.setenv("SESSION_SECRET", "a-real-strong-secret")
+    set_valid_session_secrets(monkeypatch)
     monkeypatch.setenv("AUTH_MODE", "google")
     monkeypatch.setenv("GOOGLE_CLIENT_ID", "dummy")
     monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "dummy")
@@ -50,9 +60,25 @@ def test_prod_dummy_google_creds_refuse(monkeypatch):
         main._assert_production_secrets()
 
 
-def test_prod_saml_mode_skips_google_check(monkeypatch):
+def test_prod_missing_dashboard_session_secret_refuses(monkeypatch):
     monkeypatch.setenv("RELEASE", "v1.0.0")
     monkeypatch.setenv("SESSION_SECRET", "a-real-strong-secret")
+    monkeypatch.delenv("DASHBOARD_SESSION_SECRET", raising=False)
+    with pytest.raises(RuntimeError, match="DASHBOARD_SESSION_SECRET"):
+        main._assert_production_secrets()
+
+
+def test_prod_short_dashboard_session_secret_refuses(monkeypatch):
+    monkeypatch.setenv("RELEASE", "v1.0.0")
+    monkeypatch.setenv("SESSION_SECRET", "a-real-strong-secret")
+    monkeypatch.setenv("DASHBOARD_SESSION_SECRET", base64.b64encode(b"x" * 31).decode())
+    with pytest.raises(RuntimeError, match="DASHBOARD_SESSION_SECRET"):
+        main._assert_production_secrets()
+
+
+def test_prod_saml_mode_skips_google_check(monkeypatch):
+    monkeypatch.setenv("RELEASE", "v1.0.0")
+    set_valid_session_secrets(monkeypatch)
     monkeypatch.setenv("AUTH_MODE", "saml")
     monkeypatch.setenv("GOOGLE_CLIENT_ID", "dummy")
     monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "dummy")
@@ -61,7 +87,7 @@ def test_prod_saml_mode_skips_google_check(monkeypatch):
 
 def test_prod_password_mode_skips_external_provider_checks(monkeypatch):
     monkeypatch.setenv("RELEASE", "v1.0.0")
-    monkeypatch.setenv("SESSION_SECRET", "a-real-strong-secret")
+    set_valid_session_secrets(monkeypatch)
     monkeypatch.setenv("AUTH_MODE", "password")
     monkeypatch.setenv("GOOGLE_CLIENT_ID", "dummy")
     monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "dummy")
@@ -70,7 +96,7 @@ def test_prod_password_mode_skips_external_provider_checks(monkeypatch):
 
 def test_prod_unknown_auth_mode_refuses(monkeypatch):
     monkeypatch.setenv("RELEASE", "v1.0.0")
-    monkeypatch.setenv("SESSION_SECRET", "a-real-strong-secret")
+    set_valid_session_secrets(monkeypatch)
     monkeypatch.setenv("AUTH_MODE", "banana")
     with pytest.raises(RuntimeError, match="AUTH_MODE"):
         main._assert_production_secrets()
@@ -78,7 +104,7 @@ def test_prod_unknown_auth_mode_refuses(monkeypatch):
 
 def test_prod_with_real_secrets_passes(monkeypatch):
     monkeypatch.setenv("RELEASE", "v1.0.0")
-    monkeypatch.setenv("SESSION_SECRET", "a-real-strong-secret")
+    set_valid_session_secrets(monkeypatch)
     monkeypatch.setenv("AUTH_MODE", "google")
     monkeypatch.setenv("GOOGLE_CLIENT_ID", "real-id.apps.googleusercontent.com")
     monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "real-secret")

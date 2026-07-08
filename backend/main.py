@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -101,6 +102,22 @@ def _assert_production_secrets() -> None:
         raise RuntimeError(
             "SESSION_SECRET is unset or 'dev-only' in a production build "
             f"(RELEASE={os.getenv('RELEASE')!r}); refusing to start."
+        )
+    dashboard_session_secret = os.getenv("DASHBOARD_SESSION_SECRET", "").strip()
+    try:
+        decoded_dashboard_session_secret = base64.b64decode(
+            dashboard_session_secret, validate=True
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            "DASHBOARD_SESSION_SECRET must be base64 and decode to >=32 bytes "
+            f"in a production build (RELEASE={os.getenv('RELEASE')!r}); "
+            "refusing to start."
+        ) from exc
+    if len(decoded_dashboard_session_secret) < 32:
+        raise RuntimeError(
+            "DASHBOARD_SESSION_SECRET must decode to >=32 bytes in a "
+            f"production build (RELEASE={os.getenv('RELEASE')!r}); refusing to start."
         )
     auth_mode = os.getenv("AUTH_MODE", "google")
     allowed_auth_modes = {"password", "google", "saml", "hybrid"}
