@@ -8,6 +8,7 @@ passes.
 from __future__ import annotations
 
 import io
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import numpy as np
@@ -33,6 +34,8 @@ from src.reconstruction.scoring import (
     confidence_level,
     confidence_message,
 )
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 # ---------------------------------------------------------------------------
@@ -334,8 +337,7 @@ class TestEngineProtocol:
         """LocalTripoSR must be a subclass of ReconstructionEngine."""
         import ast
 
-        with open("src/reconstruction/local_triposr.py") as f:
-            tree = ast.parse(f.read())
+        tree = ast.parse((BACKEND_ROOT / "src/reconstruction/local_triposr.py").read_text())
         classes = {
             n.name: [b.attr if hasattr(b, "attr") else b.id for b in n.bases]
             for n in ast.walk(tree)
@@ -347,8 +349,7 @@ class TestEngineProtocol:
         """RemoteTripoSR must be a subclass of ReconstructionEngine."""
         import ast
 
-        with open("src/reconstruction/remote_triposr.py") as f:
-            tree = ast.parse(f.read())
+        tree = ast.parse((BACKEND_ROOT / "src/reconstruction/remote_triposr.py").read_text())
         classes = {
             n.name: [b.attr if hasattr(b, "attr") else b.id for b in n.bases]
             for n in ast.walk(tree)
