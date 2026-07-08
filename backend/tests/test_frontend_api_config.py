@@ -13,15 +13,21 @@ def test_frontend_uses_browser_reachable_api_base():
     batch_client = read("frontend/src/lib/api/batch.ts")
     api_base = read("frontend/src/lib/api-base.ts")
     signup_page = read("frontend/src/app/(auth)/signup/page.tsx")
+    login_page = read("frontend/src/app/(auth)/login/page.tsx")
 
     assert "https://cadvrfy-api.fly.dev" in api_base
     assert "NEXT_PUBLIC_API_BASE" in api_base
     assert '.replace(/\\\\[rn]/g, "")' in api_base
-    assert '.replace(/\\\\[rn]/g, "").trim()' in signup_page
     assert "process.env.NEXT_PUBLIC_API_URL" not in api_client
     assert "process.env.NEXT_PUBLIC_API_URL" not in batch_client
     assert "http://localhost:8000/api/v1" not in api_client
     assert "http://localhost:8000/api/v1" not in batch_client
+    for auth_page in (signup_page, login_page):
+        assert "Continue with Google" not in auth_page
+        assert "cf-turnstile" not in auth_page
+        assert "startMagic" not in auth_page
+        assert "/auth/google/start" not in auth_page
+        assert "SSO can be enabled when provider credentials are configured." in auth_page
 
 
 def test_next_api_proxy_is_not_used_for_large_uploads():
