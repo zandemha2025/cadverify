@@ -29,6 +29,7 @@ from src.auth.dashboard_session import (
 )
 from src.auth.disposable import classify, normalize_email
 from src.auth.hashing import hash_password, password_needs_rehash, verify_password
+from src.auth.rate_limit import limiter
 from src.auth.models import (
     bump_session_version,
     create_password_user,
@@ -177,7 +178,17 @@ async def signup(body: SignupIn, request: Request) -> dict:
 
 
 @router.post("/login")
-async def login(body: LoginIn, request: Request) -> dict:
+# Per-IP brute-force throttle. Failed AND successful attempts both count, so a
+# password-guessing bot from one source is capped hard while a human fumbling a
+# password still has ample headroom. Enterprise tenants authenticate via
+# SAML/OIDC (their own IdP throttles), so shared-NAT contention on this route is
+# not the enterprise path. Keyed by IP for unauthenticated callers (see
+# rate_limit._api_key_id). Requires REDIS_URL in production to be effective
+# across replicas (fail-loud enforced by _resolve_storage_uri).
+@limiter.limit("10/minute;100/hour")
+async def login(body: LoginIn, request: Request, response: Response) -> dict:
+    # `response` is unused by the handler but required so slowapi can inject the
+    # X-RateLimit-* headers on the success path (headers_enabled=True).
     email = _clean_email(body.email)
     email_norm = normalize_email(email)
 
