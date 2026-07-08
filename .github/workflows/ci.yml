@@ -343,7 +343,7 @@ jobs:
         with:
           context: frontend
           push: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
-          tags: registry.fly.io/cadverify-web:${{ github.sha }},registry.fly.io/cadverify-web:latest
+          tags: registry.fly.io/cadvrfy-web:${{ github.sha }},registry.fly.io/cadvrfy-web:latest
           platforms: linux/amd64
           cache-from: type=gha,scope=frontend-image
           cache-to: type=gha,mode=max,scope=frontend-image
@@ -381,7 +381,7 @@ jobs:
         run: |
           flyctl deploy \
             --config frontend/fly.toml \
-            --image registry.fly.io/cadverify-web:${{ github.sha }} \
+            --image registry.fly.io/cadvrfy-web:${{ github.sha }} \
             --env RELEASE=${{ github.sha }}
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

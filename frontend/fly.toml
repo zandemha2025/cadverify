@@ -1,4 +1,4 @@
-app = "cadverify-web"
+app = "cadvrfy-web"
 primary_region = "iad"
 
 [build]
