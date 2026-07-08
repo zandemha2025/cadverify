@@ -53,6 +53,11 @@ PUBLIC_ALLOWLIST: dict[str, set[tuple[str, str]]] = {
     "health.py": {
         # Liveness/readiness probe — no secrets, must answer before auth is ready.
         ("get", "/health"),
+        # Deep dependency health (DB/Redis/worker-heartbeat/queue-depth). Same
+        # public-probe rationale as /health: no PII/secrets, machine-readable
+        # dependency posture only (booleans, states, counts) so orchestrators
+        # and readiness gates can poll it before auth is available.
+        ("get", "/health/deep"),
     },
     "cost_decisions.py": {
         # Sanitized public cost-share view (share-link only, no PII/provenance).

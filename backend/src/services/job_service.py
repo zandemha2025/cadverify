@@ -19,14 +19,27 @@ MESH_BLOB_DIR = os.getenv("MESH_BLOB_DIR", "/data/blobs/meshes")
 
 
 async def save_mesh_blob(mesh_hash: str, file_bytes: bytes) -> str:
-    """Save mesh bytes to blob storage. Returns blob path. Idempotent."""
+    """Save mesh bytes to blob storage. Returns a locator. Idempotent.
+
+    Wired through the object-store abstraction (:mod:`src.storage`). With the
+    default local backend this is byte-for-byte identical to the historical
+    behavior: the blob lands at ``$MESH_BLOB_DIR/{hash}.bin`` and the returned
+    value is that absolute filesystem path (which ``jobs/tasks.py`` opens with
+    ``open(path, 'rb')``). Only when an operator opts into ``OBJECT_STORE_
+    BACKEND=s3`` does the return value become an ``s3://`` locator -- that read
+    path is a documented follow-on migration, not silently enabled here.
+    """
+    from src.storage import LocalObjectStore, get_object_store
+
     blob_dir = os.getenv("MESH_BLOB_DIR", MESH_BLOB_DIR)
-    os.makedirs(blob_dir, exist_ok=True)
-    blob_path = os.path.join(blob_dir, f"{mesh_hash}.bin")
-    if not os.path.exists(blob_path):
-        with open(blob_path, "wb") as f:
-            f.write(file_bytes)
-    return blob_path
+    store = get_object_store("meshes", default_root=blob_dir)
+    key = f"{mesh_hash}.bin"
+    if not store.exists(key):
+        store.put(key, file_bytes, content_type="application/octet-stream")
+    # Preserve the historical contract: local backend returns the on-disk path.
+    if isinstance(store, LocalObjectStore):
+        return store.local_path(key)
+    return store.url(key)
 
 
 async def create_sam3d_job(
