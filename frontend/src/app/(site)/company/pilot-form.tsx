@@ -5,20 +5,34 @@
  *
  * Ported faithfully from handoff_cadverify_2026-07-04/site/Company.dc.html: work
  * email, company, and "what do you make?" fields, the deployment note, and the
- * Send pill. Kept as a semantic <form> with real labelled controls; there is no
- * lead-capture endpoint wired yet, so submit is a no-op guard (never a faked
- * "we received it" success, which would be dishonest). The copy is verbatim
- * canonical — do not rewrite it.
+ * Send pill. There is no lead-capture endpoint wired yet, so submit opens a
+ * real addressed email draft instead of faking a server-side receipt.
  */
 
 import * as React from "react";
 import styles from "./company.module.css";
 
 export function PilotForm() {
+  const [sentToMail, setSentToMail] = React.useState(false);
+
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    // No lead-capture backend is wired on this branch. Guard the default nav
-    // so the form does not post to itself; do not fake a success state.
     e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    const email = String(form.get("email") || "").trim();
+    const company = String(form.get("company") || "").trim();
+    const what = String(form.get("what") || "").trim();
+    const subject = encodeURIComponent(`CadVerify pilot request${company ? ` — ${company}` : ""}`);
+    const body = encodeURIComponent([
+      "Pilot request",
+      "",
+      `Work email: ${email}`,
+      `Company: ${company}`,
+      `What we make: ${what}`,
+      "",
+      "Deployment preference: cloud / VPC / air-gapped",
+    ].join("\n"));
+    setSentToMail(true);
+    window.location.href = `mailto:pilots@cadverify.com?subject=${subject}&body=${body}`;
   }
 
   return (
@@ -32,27 +46,36 @@ export function PilotForm() {
         We reply within two business days. Security teams welcome from day one.
       </p>
       <div className={styles.formGrid}>
-        <input
-          className={styles.pilotInput}
-          name="email"
-          type="email"
-          placeholder="Work email"
-          aria-label="Work email"
-          autoComplete="email"
-        />
-        <input
-          className={styles.pilotInput}
-          name="company"
-          placeholder="Company"
-          aria-label="Company"
-          autoComplete="organization"
-        />
-        <input
-          className={`${styles.pilotInput} ${styles.formGridWide}`}
-          name="what"
-          placeholder="What do you make?"
-          aria-label="What do you make?"
-        />
+        <label className={styles.fieldLabel}>
+          <span>Work email</span>
+          <input
+            className={styles.pilotInput}
+            name="email"
+            type="email"
+            placeholder="you@company.com"
+            autoComplete="email"
+            required
+          />
+        </label>
+        <label className={styles.fieldLabel}>
+          <span>Company</span>
+          <input
+            className={styles.pilotInput}
+            name="company"
+            placeholder="Company name"
+            autoComplete="organization"
+            required
+          />
+        </label>
+        <label className={`${styles.fieldLabel} ${styles.formGridWide}`}>
+          <span>What do you make?</span>
+          <input
+            className={styles.pilotInput}
+            name="what"
+            placeholder="Parts, programs, materials, or supplier flow"
+            required
+          />
+        </label>
       </div>
       <div className={styles.formFoot}>
         <span
@@ -65,6 +88,11 @@ export function PilotForm() {
           Send
         </button>
       </div>
+      <p className={styles.mailFallback}>
+        {sentToMail ? "Email draft opened." : "Submits through your email client."} Direct:
+        {" "}
+        <a href="mailto:pilots@cadverify.com">pilots@cadverify.com</a>
+      </p>
     </form>
   );
 }

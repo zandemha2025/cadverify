@@ -553,7 +553,10 @@ const railNav: React.CSSProperties = {
 const railButton: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
+  justifyContent: "flex-end",
   gap: 10,
+  minWidth: 44,
+  minHeight: 44,
   background: "none",
   border: "none",
   padding: 0,
