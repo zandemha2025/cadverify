@@ -132,6 +132,7 @@ export function VerifyScreen(props: Props) {
   return (
     <>
     <div
+      className="cv-verify-walk"
       style={{
         animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both",
         flex: 1,
@@ -141,7 +142,7 @@ export function VerifyScreen(props: Props) {
         background: C.bg,
       }}
     >
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "26px 30px 20px" }}>
+      <div className="cv-verify-walk-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "26px 30px 20px" }}>
         {/* the question */}
         <p
           style={{
@@ -1389,8 +1390,8 @@ function AskDock({ cost, running, nav }: { cost: CostReport | null; running: boo
             title="Ask the engine"
             style={{
               flexShrink: 0,
-              width: 30,
-              height: 30,
+              width: 44,
+              height: 44,
               borderRadius: "50%",
               border: "none",
               background: canAsk ? C.ink : C.ink40,

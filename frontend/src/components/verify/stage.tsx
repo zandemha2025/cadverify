@@ -73,6 +73,7 @@ export function Stage({
 
   return (
     <main
+      className="cv-verify-stage"
       style={{
         width: "42%",
         minWidth: 380,
@@ -148,7 +149,7 @@ export function Stage({
           disabled={!hasParent}
           title={
             hasParent
-              ? "Seat the part in its declared parent context"
+              ? "Seat the part in its declared parent assembly"
               : "No parent assembly has been declared for this part"
           }
           style={{
@@ -159,7 +160,7 @@ export function Stage({
             color: seat && hasParent ? "#ffffff" : C.ink,
           }}
         >
-          {hasParent ? "Seat in context" : "No parent assembly"}
+          {hasParent ? "Seat in assembly" : "No parent assembly"}
         </GhostButton>
         <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink35, paddingLeft: 6, whiteSpace: "nowrap" }}>
           drag to orbit
