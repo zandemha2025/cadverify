@@ -645,10 +645,18 @@ class EnterpriseDomainQA {
 
       this.evidence.portfolio = {
         filename: rowAfter.filename,
+        mesh_hash: this.evidence.meshHash,
         unit_cost_usd: rowAfter.unit_cost.usd,
         annual_volume: annualVolume,
         annualized_cost_usd: rowAfter.annualized_cost_usd,
+        expected_annualized_cost_usd: expectedAnnualized,
+        withheld_before_volume: rowBefore.annualized_cost_usd == null,
+        withheld_reason: rowBefore.annualized_reason,
         program: programName,
+        parent_assembly: rowAfter.context.parent_assembly,
+        units_per_parent: rowAfter.context.units_per_parent,
+        service_environment: rowAfter.context.service_environment,
+        context_provenance: contextBefore.provenance,
       };
       return { screenshot: await this.shot("portfolio-math-api-verified") };
     });

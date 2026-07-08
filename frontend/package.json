@@ -13,7 +13,9 @@
     "test:e2e:enterprise": "node ../scripts/e2e/enterprise-domain-runner.mjs",
     "test:e2e:p7": "node ../scripts/e2e/p7-role-failure-journey-runner.mjs",
     "test:e2e:journey-coverage": "node ../scripts/e2e/human-sim-journey-coverage.mjs",
-    "test:e2e:full": "npm run test:e2e:human && npm run test:e2e:enterprise && npm run test:e2e:p7 && npm run test:e2e:journey-coverage"
+    "test:e2e:enterprise-gauntlet": "node ../scripts/e2e/synthetic-enterprise-gauntlet.mjs",
+    "test:e2e:answer-fidelity": "node ../scripts/e2e/enterprise-answer-fidelity.mjs",
+    "test:e2e:full": "npm run test:e2e:human && npm run test:e2e:enterprise && npm run test:e2e:p7 && npm run test:e2e:journey-coverage && npm run test:e2e:enterprise-gauntlet && npm run test:e2e:answer-fidelity"
   },
   "dependencies": {
     "@fontsource-variable/instrument-sans": "^5.2.8",
