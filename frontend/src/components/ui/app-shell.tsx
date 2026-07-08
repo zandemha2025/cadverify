@@ -62,7 +62,8 @@ type RailItem = {
   href: string;
 };
 const RAIL: RailItem[] = [
-  { id: "home", label: "Workbench", icon: Boxes, href: "/cost" },
+  { id: "verify", label: "Verify workspace", icon: FileCheck2, href: "/verify" },
+  { id: "home", label: "Legacy workbench", icon: Boxes, href: "/cost" },
   { id: "analyze", label: "Analyze DFM", icon: ScanLine, href: "/analyze" },
   { id: "batch", label: "Batch runs", icon: Layers, href: "/batch" },
   { id: "decisions", label: "Cost decisions", icon: PiggyBank, href: "/cost-decisions" },
@@ -83,7 +84,7 @@ function IconRail() {
       >
         {/* brand mark — the datum crosshair, cobalt */}
         <Link
-          href="/cost"
+          href="/verify"
           aria-label="CadVerify"
           className="mb-2 flex size-9 items-center justify-center rounded-[var(--radius-sm)] text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
@@ -142,7 +143,8 @@ function IconRail() {
 /* ── L1 sidebar — object lists + saved views within a domain. ───────── */
 type NavLink = { label: string; href: string; icon: LucideIcon; hint?: string };
 const WORKSPACE_NAV: NavLink[] = [
-  { label: "New analysis", href: "/cost", icon: Calculator, hint: "should-cost · make-vs-buy" },
+  { label: "Verify workspace", href: "/verify", icon: FileCheck2, hint: "canonical product surface" },
+  { label: "Legacy analysis", href: "/cost", icon: Calculator, hint: "should-cost · make-vs-buy" },
   { label: "Analyze DFM", href: "/analyze", icon: ScanLine, hint: "geometry · flags" },
   { label: "Batch run", href: "/batch", icon: Layers, hint: "many parts" },
 ];

@@ -2,22 +2,16 @@
 
 import * as React from "react";
 import { Suspense } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { STAGE_UI } from "@/lib/stage-flag";
-import { PublicHeader } from "@/components/ui/public-chrome";
+import { AuthField, AuthFrame, AuthSubmit, AuthTextLink } from "@/components/auth/auth-frame";
 
 /**
  * Where a fresh login lands when no `next` was requested. Flag-on (D5 FE-3): the
- * three-door landing router at /cost, so the door chooser can greet a first-run
- * user. Flag-off: today's /analyze. `STAGE_UI` is a compile-time constant, so
- * this folds to "/analyze" and behaviour is byte-identical when the flag is off.
+ * A fresh login lands on the canonical light-instrument workspace. Legacy cost
+ * and DFM routes remain reachable from inside the app, but they are no longer
+ * the product's front door.
  */
-const POST_LOGIN_HOME = STAGE_UI ? "/cost" : "/analyze";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Field } from "@/components/ui/field";
-import { Card, CardContent } from "@/components/ui/card";
+const POST_LOGIN_HOME = "/verify";
 
 function errorMessage(data: unknown, fallback: string): string {
   if (data && typeof data === "object") {
@@ -61,76 +55,54 @@ function LoginForm() {
   }
 
   return (
-    <Card className="w-full max-w-sm">
-      <CardContent className="space-y-6">
-        <div className="space-y-1">
-          <h1 className="text-xl font-semibold text-foreground">
-            Log in to CadVerify
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Welcome back. Enter your email and password.
-          </p>
-        </div>
-
-        <form onSubmit={onSubmit} className="space-y-4">
-          <Field label="Email" htmlFor="email">
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              required
-              placeholder="you@company.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </Field>
-          <Field label="Password" htmlFor="password" error={error}>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              placeholder="Your password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </Field>
-          <Button
-            type="submit"
-            variant="primary"
-            className="w-full"
-            loading={loading}
-          >
-            Log in
-          </Button>
-        </form>
-
-        <p className="text-center text-sm text-muted-foreground">
-          New here?{" "}
-          <Link href="/signup" className="font-medium text-primary hover:underline">
-            Create an account
-          </Link>
-        </p>
-
-        <p className="text-center text-xs text-muted-foreground">
-          SSO can be enabled when provider credentials are configured.
-        </p>
-      </CardContent>
-    </Card>
+    <AuthFrame
+      eyebrow="Secure workspace"
+      title="Log in to CadVerify"
+      body="Enter the workspace where part, machine, material, and decision records stay auditable."
+      footer={
+        <>
+          New here? <AuthTextLink href="/signup">Create an account</AuthTextLink>
+          <br />
+          <span className="st-mono" style={{ fontSize: 11, color: "rgba(245,245,247,0.4)" }}>
+            SSO appears when provider credentials are configured.
+          </span>
+        </>
+      }
+    >
+      <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <AuthField
+          id="email"
+          name="email"
+          label="Email"
+          type="email"
+          autoComplete="email"
+          required
+          placeholder="you@company.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <AuthField
+          id="password"
+          name="password"
+          label="Password"
+          type="password"
+          autoComplete="current-password"
+          required
+          placeholder="Your password"
+          value={password}
+          error={error}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <AuthSubmit loading={loading}>Log in</AuthSubmit>
+      </form>
+    </AuthFrame>
   );
 }
 
 export default function LoginPage() {
   return (
-    <div className="flex min-h-screen flex-col bg-canvas">
-      <PublicHeader showCta={false} />
-      <main className="flex flex-1 items-center justify-center px-4 py-16">
-        <Suspense fallback={null}>
-          <LoginForm />
-        </Suspense>
-      </main>
-    </div>
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }

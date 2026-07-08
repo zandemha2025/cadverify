@@ -4,9 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { PublicHeader } from "@/components/ui/public-chrome";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { AuthFrame } from "@/components/auth/auth-frame";
 import { Spinner } from "@/components/ui/spinner";
 
 type State =
@@ -73,81 +71,93 @@ function AcceptInviteInner() {
   const loginNext = `/login?next=${encodeURIComponent(`/orgs/accept?token=${token}`)}`;
 
   return (
-    <Card className="w-full max-w-md">
-      <CardContent className="space-y-6 text-center">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Organization invite
-        </p>
+    <div style={{ display: "flex", flexDirection: "column", gap: 18, textAlign: "center" }}>
         {state.kind === "loading" && (
           <div className="space-y-4">
             <Spinner className="mx-auto" />
-            <h1 className="text-2xl font-semibold text-foreground">
+            <h2 style={{ margin: 0, color: "#f5f5f7", fontSize: 22, fontWeight: 400 }}>
               Checking invitation
-            </h1>
+            </h2>
           </div>
         )}
         {state.kind === "missing" && (
           <>
-            <h1 className="text-2xl font-semibold text-foreground">
+            <h2 style={{ margin: 0, color: "#f5f5f7", fontSize: 22, fontWeight: 400 }}>
               Invite token missing.
-            </h1>
-            <p className="text-sm leading-6 text-muted-foreground">
+            </h2>
+            <p style={{ margin: 0, color: "rgba(245,245,247,0.58)", fontSize: 14, lineHeight: 1.7 }}>
               Open the exact link your CadVerify admin sent. Tokens are single-use and never guessed here.
             </p>
           </>
         )}
         {state.kind === "login" && (
           <>
-            <h1 className="text-2xl font-semibold text-foreground">
+            <h2 style={{ margin: 0, color: "#f5f5f7", fontSize: 22, fontWeight: 400 }}>
               Log in as the invited account.
-            </h1>
-            <p className="text-sm leading-6 text-muted-foreground">
+            </h2>
+            <p style={{ margin: 0, color: "rgba(245,245,247,0.58)", fontSize: 14, lineHeight: 1.7 }}>
               The backend binds invites to the invited account. Sign in, then this page will redeem the token.
             </p>
-            <Button asChild>
-              <Link href={loginNext}>Log in to accept</Link>
-            </Button>
+            <PrimaryLink href={loginNext}>Log in to accept</PrimaryLink>
           </>
         )}
         {state.kind === "accepted" && (
           <>
-            <h1 className="text-2xl font-semibold text-foreground">
+            <h2 style={{ margin: 0, color: "#f5f5f7", fontSize: 22, fontWeight: 400 }}>
               Invitation accepted.
-            </h1>
-            <p className="text-sm leading-6 text-muted-foreground">
+            </h2>
+            <p style={{ margin: 0, color: "rgba(245,245,247,0.58)", fontSize: 14, lineHeight: 1.7 }}>
               {state.created
                 ? `You joined the organization as ${state.orgRole}.`
                 : `You were already a member; the invite was consumed without changing your role (${state.orgRole}).`}
             </p>
-            <Button asChild>
-              <Link href="/verify">Open CadVerify</Link>
-            </Button>
+            <PrimaryLink href="/verify">Open CadVerify</PrimaryLink>
           </>
         )}
         {state.kind === "error" && (
           <>
-            <h1 className="text-2xl font-semibold text-foreground">
+            <h2 style={{ margin: 0, color: "#f5f5f7", fontSize: 22, fontWeight: 400 }}>
               Invite not accepted.
-            </h1>
-            <p className="text-sm leading-6 text-muted-foreground">
+            </h2>
+            <p style={{ margin: 0, color: "rgba(245,245,247,0.58)", fontSize: 14, lineHeight: 1.7 }}>
               {state.message}
             </p>
           </>
         )}
-      </CardContent>
-    </Card>
+    </div>
   );
 }
 
 export default function AcceptInvitePage() {
   return (
-    <div className="flex min-h-screen flex-col bg-canvas">
-      <PublicHeader showCta={false} />
-      <main className="flex flex-1 items-center justify-center px-4 py-16">
-        <Suspense fallback={<Spinner />}>
-          <AcceptInviteInner />
-        </Suspense>
-      </main>
-    </div>
+    <AuthFrame
+      eyebrow="Organization invite"
+      title="Join the workspace"
+      body="Invites are redeemed by the backend and bound to the invited account."
+    >
+      <Suspense fallback={<Spinner />}>
+        <AcceptInviteInner />
+      </Suspense>
+    </AuthFrame>
+  );
+}
+
+function PrimaryLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link
+      href={href}
+      style={{
+        alignSelf: "center",
+        borderRadius: 999,
+        padding: "11px 18px",
+        background: "#f5f5f7",
+        color: "#050506",
+        textDecoration: "none",
+        fontSize: 13,
+        fontWeight: 500,
+      }}
+    >
+      {children}
+    </Link>
   );
 }

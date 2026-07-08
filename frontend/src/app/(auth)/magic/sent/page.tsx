@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { PublicHeader } from "@/components/ui/public-chrome";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { AuthFrame } from "@/components/auth/auth-frame";
 
 export const metadata: Metadata = {
   title: "Magic link sent - CadVerify",
@@ -16,33 +14,23 @@ export default async function MagicSentPage({
 }) {
   const { email } = await searchParams;
   return (
-    <div className="flex min-h-screen flex-col bg-canvas">
-      <PublicHeader showCta={false} />
-      <main className="flex flex-1 items-center justify-center px-4 py-16">
-        <Card className="w-full max-w-md">
-          <CardContent className="space-y-6 text-center">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Magic link
-            </p>
-            <h1 className="text-2xl font-semibold text-foreground">
-              Check your email.
-            </h1>
-            <p className="text-sm leading-6 text-muted-foreground">
-              {email
-                ? `If ${email} is allowed to sign in, a single-use link is on its way.`
-                : "If that address is allowed to sign in, a single-use link is on its way."}
-            </p>
-            <div className="flex justify-center gap-3">
-              <Button asChild variant="secondary">
-                <Link href="/login">Back to login</Link>
-              </Button>
-              <Button asChild>
-                <Link href="/signup">Try another email</Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </main>
-    </div>
+    <AuthFrame
+      eyebrow="Magic link"
+      title="Check your email."
+      body={
+        email
+          ? `If ${email} is allowed to sign in, a single-use link is on its way.`
+          : "If that address is allowed to sign in, a single-use link is on its way."
+      }
+    >
+      <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
+        <Link href="/login" style={{ border: "1px solid rgba(245,245,247,0.18)", borderRadius: 999, padding: "11px 18px", color: "#f5f5f7", textDecoration: "none", fontSize: 13 }}>
+          Back to login
+        </Link>
+        <Link href="/signup" style={{ borderRadius: 999, padding: "11px 18px", background: "#f5f5f7", color: "#050506", textDecoration: "none", fontSize: 13, fontWeight: 500 }}>
+          Try another email
+        </Link>
+      </div>
+    </AuthFrame>
   );
 }
