@@ -1,0 +1,667 @@
+{
+  "status": "PASS",
+  "generatedAt": "2026-07-09T04:43:36.762Z",
+  "runId": "2026-07-09",
+  "boundary": "This proves deterministic assembly/context population for synthetic customer-like fixtures: parent assembly identity, part identity, coordinate system, declared service environment, part-to-parent transform, browser WebGL render health, and visual change from exploded to seated state. It is not customer proprietary CAD, native CAD certification, vendor certification, or live customer signoff.",
+  "fixtures": [
+    "/home/user/cadverify/scripts/e2e/fixtures/door-handle-assembly.fixture.json"
+  ],
+  "cases": [
+    {
+      "status": "PASS",
+      "fixtureFile": "/home/user/cadverify/scripts/e2e/fixtures/door-handle-assembly.fixture.json",
+      "fixtureId": "DOOR-HANDLE-ASSEMBLY-FIDELITY-001",
+      "fixtureName": "Toyota-style Camry front-door handle lab fixture",
+      "fixtureHash": "a826bd8bbf339257b1c0fbcb0bc26c44398d5a0e41f598fb76541f57c7c1a3a2",
+      "parentAssemblyId": "front-left-door-shell",
+      "partId": "exterior-door-handle",
+      "simulatorUrl": "http://127.0.0.1:35315",
+      "steps": [
+        {
+          "name": "assembly fixture declares parent, part, coordinate system, and environment",
+          "status": "pass",
+          "ms": 0,
+          "evidence": {
+            "parentAssembly": "front-left-door-shell",
+            "parentKind": "automotive-door-outer-panel",
+            "part": "exterior-door-handle",
+            "partKind": "pull-handle",
+            "coordinateSystem": {
+              "units": "mm",
+              "x": "door width, hinge side negative and latch side positive",
+              "y": "door height, sill negative and beltline positive",
+              "z": "outward normal from exterior door skin"
+            },
+            "serviceEnvironment": {
+              "name": "exterior automotive door service",
+              "temperatureMinC": -35,
+              "temperatureMaxC": 85,
+              "uvExposure": true,
+              "saltSpray": true,
+              "slamCycles": 150000,
+              "waterIngressTest": "rain-wash spray"
+            },
+            "fixtureHash": "a826bd8bbf339257b1c0fbcb0bc26c44398d5a0e41f598fb76541f57c7c1a3a2"
+          }
+        },
+        {
+          "name": "browser renders exploded and seated populated-context states",
+          "status": "pass",
+          "ms": 1340,
+          "evidence": {
+            "screenshotBytes": {
+              "before": 106105,
+              "after": 101264
+            },
+            "beforePixelHash": "535dc814",
+            "afterPixelHash": "deee344b",
+            "visualDelta": {
+              "changedSampledPixels": 3792,
+              "samples": 64800,
+              "meanDelta": 8
+            }
+          }
+        },
+        {
+          "name": "part seats into parent assembly within transform tolerance",
+          "status": "pass",
+          "ms": 0,
+          "evidence": {
+            "anchorErrors": [
+              {
+                "id": "front-mount-left",
+                "transformedMm": [
+                  188,
+                  -120,
+                  25.5
+                ],
+                "targetMm": [
+                  188,
+                  -120,
+                  25.5
+                ],
+                "errorMm": 0
+              },
+              {
+                "id": "front-mount-right",
+                "transformedMm": [
+                  332,
+                  -120,
+                  25.5
+                ],
+                "targetMm": [
+                  332,
+                  -120,
+                  25.5
+                ],
+                "errorMm": 0
+              }
+            ],
+            "maxAnchorErrorMm": 0,
+            "toleranceMm": 0.5,
+            "standoffMm": 3,
+            "requiredStandOffMm": 3,
+            "lateralOffsetMm": [
+              0,
+              0
+            ],
+            "pocketSlackMm": [
+              22.5,
+              17
+            ],
+            "environment": {
+              "name": "exterior automotive door service",
+              "temperatureMinC": -35,
+              "temperatureMaxC": 85,
+              "uvExposure": true,
+              "saltSpray": true,
+              "slamCycles": 150000,
+              "waterIngressTest": "rain-wash spray"
+            },
+            "parentAssemblyId": "front-left-door-shell",
+            "partId": "exterior-door-handle"
+          }
+        },
+        {
+          "name": "seated canvas has nonblank cinematic and part-specific pixel evidence",
+          "status": "pass",
+          "ms": 0,
+          "evidence": {
+            "before": {
+              "label": "exploded-preview",
+              "width": 960,
+              "height": 540,
+              "pixelHash": "535dc814",
+              "handleCenter": {
+                "x": 522,
+                "y": 270,
+                "ndc": [
+                  0.0866,
+                  0,
+                  0.9915
+                ]
+              },
+              "doorCenter": {
+                "x": 525,
+                "y": 266,
+                "ndc": [
+                  0.0936,
+                  -0.0148,
+                  0.9917
+                ]
+              },
+              "full": {
+                "count": 14400,
+                "sampledColors": 412,
+                "nonBackground": 11486,
+                "nonBackgroundRatio": 0.7976,
+                "darkPixels": 444,
+                "doorPixels": 11054,
+                "goldPixels": 0,
+                "luminanceRange": 240.93
+              },
+              "handleZone": {
+                "count": 19293,
+                "sampledColors": 262,
+                "nonBackground": 19293,
+                "nonBackgroundRatio": 1,
+                "darkPixels": 445,
+                "doorPixels": 18865,
+                "goldPixels": 18,
+                "luminanceRange": 213.29
+              },
+              "doorZone": {
+                "count": 13741,
+                "sampledColors": 285,
+                "nonBackground": 13741,
+                "nonBackgroundRatio": 1,
+                "darkPixels": 1794,
+                "doorPixels": 12084,
+                "goldPixels": 6,
+                "luminanceRange": 213.29
+              }
+            },
+            "after": {
+              "label": "seated-in-door",
+              "width": 960,
+              "height": 540,
+              "pixelHash": "deee344b",
+              "handleCenter": {
+                "x": 522,
+                "y": 270,
+                "ndc": [
+                  0.0866,
+                  0,
+                  0.9915
+                ]
+              },
+              "doorCenter": {
+                "x": 525,
+                "y": 266,
+                "ndc": [
+                  0.0936,
+                  -0.0148,
+                  0.9917
+                ]
+              },
+              "full": {
+                "count": 14400,
+                "sampledColors": 342,
+                "nonBackground": 11486,
+                "nonBackgroundRatio": 0.7976,
+                "darkPixels": 316,
+                "doorPixels": 11184,
+                "goldPixels": 0,
+                "luminanceRange": 241.65
+              },
+              "handleZone": {
+                "count": 19293,
+                "sampledColors": 885,
+                "nonBackground": 19293,
+                "nonBackgroundRatio": 1,
+                "darkPixels": 9379,
+                "doorPixels": 10215,
+                "goldPixels": 0,
+                "luminanceRange": 203.65
+              },
+              "doorZone": {
+                "count": 13741,
+                "sampledColors": 680,
+                "nonBackground": 13741,
+                "nonBackgroundRatio": 1,
+                "darkPixels": 2792,
+                "doorPixels": 11110,
+                "goldPixels": 0,
+                "luminanceRange": 188.86
+              }
+            },
+            "visualDelta": {
+              "changedSampledPixels": 3792,
+              "samples": 64800,
+              "meanDelta": 8
+            }
+          }
+        }
+      ],
+      "failed": [],
+      "error": null,
+      "boundary": "Synthetic automotive door-handle assembly fixture for CadVerify QA. It is not Toyota proprietary CAD, native CAD vendor certification, or customer signoff.",
+      "placement": {
+        "anchorErrors": [
+          {
+            "id": "front-mount-left",
+            "transformedMm": [
+              188,
+              -120,
+              25.5
+            ],
+            "targetMm": [
+              188,
+              -120,
+              25.5
+            ],
+            "errorMm": 0
+          },
+          {
+            "id": "front-mount-right",
+            "transformedMm": [
+              332,
+              -120,
+              25.5
+            ],
+            "targetMm": [
+              332,
+              -120,
+              25.5
+            ],
+            "errorMm": 0
+          }
+        ],
+        "maxAnchorErrorMm": 0,
+        "toleranceMm": 0.5,
+        "standoffMm": 3,
+        "requiredStandOffMm": 3,
+        "lateralOffsetMm": [
+          0,
+          0
+        ],
+        "pocketSlackMm": [
+          22.5,
+          17
+        ],
+        "environment": {
+          "name": "exterior automotive door service",
+          "temperatureMinC": -35,
+          "temperatureMaxC": 85,
+          "uvExposure": true,
+          "saltSpray": true,
+          "slamCycles": 150000,
+          "waterIngressTest": "rain-wash spray"
+        },
+        "parentAssemblyId": "front-left-door-shell",
+        "partId": "exterior-door-handle"
+      },
+      "render": {
+        "before": {
+          "label": "exploded-preview",
+          "width": 960,
+          "height": 540,
+          "pixelHash": "535dc814",
+          "handleCenter": {
+            "x": 522,
+            "y": 270,
+            "ndc": [
+              0.0866,
+              0,
+              0.9915
+            ]
+          },
+          "doorCenter": {
+            "x": 525,
+            "y": 266,
+            "ndc": [
+              0.0936,
+              -0.0148,
+              0.9917
+            ]
+          },
+          "full": {
+            "count": 14400,
+            "sampledColors": 412,
+            "nonBackground": 11486,
+            "nonBackgroundRatio": 0.7976,
+            "darkPixels": 444,
+            "doorPixels": 11054,
+            "goldPixels": 0,
+            "luminanceRange": 240.93
+          },
+          "handleZone": {
+            "count": 19293,
+            "sampledColors": 262,
+            "nonBackground": 19293,
+            "nonBackgroundRatio": 1,
+            "darkPixels": 445,
+            "doorPixels": 18865,
+            "goldPixels": 18,
+            "luminanceRange": 213.29
+          },
+          "doorZone": {
+            "count": 13741,
+            "sampledColors": 285,
+            "nonBackground": 13741,
+            "nonBackgroundRatio": 1,
+            "darkPixels": 1794,
+            "doorPixels": 12084,
+            "goldPixels": 6,
+            "luminanceRange": 213.29
+          }
+        },
+        "after": {
+          "label": "seated-in-door",
+          "width": 960,
+          "height": 540,
+          "pixelHash": "deee344b",
+          "handleCenter": {
+            "x": 522,
+            "y": 270,
+            "ndc": [
+              0.0866,
+              0,
+              0.9915
+            ]
+          },
+          "doorCenter": {
+            "x": 525,
+            "y": 266,
+            "ndc": [
+              0.0936,
+              -0.0148,
+              0.9917
+            ]
+          },
+          "full": {
+            "count": 14400,
+            "sampledColors": 342,
+            "nonBackground": 11486,
+            "nonBackgroundRatio": 0.7976,
+            "darkPixels": 316,
+            "doorPixels": 11184,
+            "goldPixels": 0,
+            "luminanceRange": 241.65
+          },
+          "handleZone": {
+            "count": 19293,
+            "sampledColors": 885,
+            "nonBackground": 19293,
+            "nonBackgroundRatio": 1,
+            "darkPixels": 9379,
+            "doorPixels": 10215,
+            "goldPixels": 0,
+            "luminanceRange": 203.65
+          },
+          "doorZone": {
+            "count": 13741,
+            "sampledColors": 680,
+            "nonBackground": 13741,
+            "nonBackgroundRatio": 1,
+            "darkPixels": 2792,
+            "doorPixels": 11110,
+            "goldPixels": 0,
+            "luminanceRange": 188.86
+          }
+        },
+        "visualDelta": {
+          "changedSampledPixels": 3792,
+          "samples": 64800,
+          "meanDelta": 8
+        }
+      },
+      "screenshots": {
+        "before": "/home/user/cadverify/outputs/human-sim/assembly-proto/screenshots/assembly-visual-fidelity-2026-07-09/01-door-handle-assembly-fidelity-001-exploded-preview.png",
+        "after": "/home/user/cadverify/outputs/human-sim/assembly-proto/screenshots/assembly-visual-fidelity-2026-07-09/02-door-handle-assembly-fidelity-001-seated-in-parent.png"
+      },
+      "screenshotBytes": {
+        "before": 106105,
+        "after": 101264
+      },
+      "consoleErrors": [],
+      "requestFailures": []
+    }
+  ],
+  "steps": [
+    {
+      "name": "DOOR-HANDLE-ASSEMBLY-FIDELITY-001: assembly fixture declares parent, part, coordinate system, and environment",
+      "status": "pass",
+      "ms": 0,
+      "evidence": {
+        "parentAssembly": "front-left-door-shell",
+        "parentKind": "automotive-door-outer-panel",
+        "part": "exterior-door-handle",
+        "partKind": "pull-handle",
+        "coordinateSystem": {
+          "units": "mm",
+          "x": "door width, hinge side negative and latch side positive",
+          "y": "door height, sill negative and beltline positive",
+          "z": "outward normal from exterior door skin"
+        },
+        "serviceEnvironment": {
+          "name": "exterior automotive door service",
+          "temperatureMinC": -35,
+          "temperatureMaxC": 85,
+          "uvExposure": true,
+          "saltSpray": true,
+          "slamCycles": 150000,
+          "waterIngressTest": "rain-wash spray"
+        },
+        "fixtureHash": "a826bd8bbf339257b1c0fbcb0bc26c44398d5a0e41f598fb76541f57c7c1a3a2"
+      },
+      "fixtureId": "DOOR-HANDLE-ASSEMBLY-FIDELITY-001",
+      "url": "http://127.0.0.1:35315"
+    },
+    {
+      "name": "DOOR-HANDLE-ASSEMBLY-FIDELITY-001: browser renders exploded and seated populated-context states",
+      "status": "pass",
+      "ms": 1340,
+      "evidence": {
+        "screenshotBytes": {
+          "before": 106105,
+          "after": 101264
+        },
+        "beforePixelHash": "535dc814",
+        "afterPixelHash": "deee344b",
+        "visualDelta": {
+          "changedSampledPixels": 3792,
+          "samples": 64800,
+          "meanDelta": 8
+        }
+      },
+      "fixtureId": "DOOR-HANDLE-ASSEMBLY-FIDELITY-001",
+      "url": "http://127.0.0.1:35315"
+    },
+    {
+      "name": "DOOR-HANDLE-ASSEMBLY-FIDELITY-001: part seats into parent assembly within transform tolerance",
+      "status": "pass",
+      "ms": 0,
+      "evidence": {
+        "anchorErrors": [
+          {
+            "id": "front-mount-left",
+            "transformedMm": [
+              188,
+              -120,
+              25.5
+            ],
+            "targetMm": [
+              188,
+              -120,
+              25.5
+            ],
+            "errorMm": 0
+          },
+          {
+            "id": "front-mount-right",
+            "transformedMm": [
+              332,
+              -120,
+              25.5
+            ],
+            "targetMm": [
+              332,
+              -120,
+              25.5
+            ],
+            "errorMm": 0
+          }
+        ],
+        "maxAnchorErrorMm": 0,
+        "toleranceMm": 0.5,
+        "standoffMm": 3,
+        "requiredStandOffMm": 3,
+        "lateralOffsetMm": [
+          0,
+          0
+        ],
+        "pocketSlackMm": [
+          22.5,
+          17
+        ],
+        "environment": {
+          "name": "exterior automotive door service",
+          "temperatureMinC": -35,
+          "temperatureMaxC": 85,
+          "uvExposure": true,
+          "saltSpray": true,
+          "slamCycles": 150000,
+          "waterIngressTest": "rain-wash spray"
+        },
+        "parentAssemblyId": "front-left-door-shell",
+        "partId": "exterior-door-handle"
+      },
+      "fixtureId": "DOOR-HANDLE-ASSEMBLY-FIDELITY-001",
+      "url": "http://127.0.0.1:35315"
+    },
+    {
+      "name": "DOOR-HANDLE-ASSEMBLY-FIDELITY-001: seated canvas has nonblank cinematic and part-specific pixel evidence",
+      "status": "pass",
+      "ms": 0,
+      "evidence": {
+        "before": {
+          "label": "exploded-preview",
+          "width": 960,
+          "height": 540,
+          "pixelHash": "535dc814",
+          "handleCenter": {
+            "x": 522,
+            "y": 270,
+            "ndc": [
+              0.0866,
+              0,
+              0.9915
+            ]
+          },
+          "doorCenter": {
+            "x": 525,
+            "y": 266,
+            "ndc": [
+              0.0936,
+              -0.0148,
+              0.9917
+            ]
+          },
+          "full": {
+            "count": 14400,
+            "sampledColors": 412,
+            "nonBackground": 11486,
+            "nonBackgroundRatio": 0.7976,
+            "darkPixels": 444,
+            "doorPixels": 11054,
+            "goldPixels": 0,
+            "luminanceRange": 240.93
+          },
+          "handleZone": {
+            "count": 19293,
+            "sampledColors": 262,
+            "nonBackground": 19293,
+            "nonBackgroundRatio": 1,
+            "darkPixels": 445,
+            "doorPixels": 18865,
+            "goldPixels": 18,
+            "luminanceRange": 213.29
+          },
+          "doorZone": {
+            "count": 13741,
+            "sampledColors": 285,
+            "nonBackground": 13741,
+            "nonBackgroundRatio": 1,
+            "darkPixels": 1794,
+            "doorPixels": 12084,
+            "goldPixels": 6,
+            "luminanceRange": 213.29
+          }
+        },
+        "after": {
+          "label": "seated-in-door",
+          "width": 960,
+          "height": 540,
+          "pixelHash": "deee344b",
+          "handleCenter": {
+            "x": 522,
+            "y": 270,
+            "ndc": [
+              0.0866,
+              0,
+              0.9915
+            ]
+          },
+          "doorCenter": {
+            "x": 525,
+            "y": 266,
+            "ndc": [
+              0.0936,
+              -0.0148,
+              0.9917
+            ]
+          },
+          "full": {
+            "count": 14400,
+            "sampledColors": 342,
+            "nonBackground": 11486,
+            "nonBackgroundRatio": 0.7976,
+            "darkPixels": 316,
+            "doorPixels": 11184,
+            "goldPixels": 0,
+            "luminanceRange": 241.65
+          },
+          "handleZone": {
+            "count": 19293,
+            "sampledColors": 885,
+            "nonBackground": 19293,
+            "nonBackgroundRatio": 1,
+            "darkPixels": 9379,
+            "doorPixels": 10215,
+            "goldPixels": 0,
+            "luminanceRange": 203.65
+          },
+          "doorZone": {
+            "count": 13741,
+            "sampledColors": 680,
+            "nonBackground": 13741,
+            "nonBackgroundRatio": 1,
+            "darkPixels": 2792,
+            "doorPixels": 11110,
+            "goldPixels": 0,
+            "luminanceRange": 188.86
+          }
+        },
+        "visualDelta": {
+          "changedSampledPixels": 3792,
+          "samples": 64800,
+          "meanDelta": 8
+        }
+      },
+      "fixtureId": "DOOR-HANDLE-ASSEMBLY-FIDELITY-001",
+      "url": "http://127.0.0.1:35315"
+    }
+  ],
+  "failed": []
+}
