@@ -1,0 +1,61 @@
+PERIODIC-SURFACE PART: END-TO-END BUDGET PROOF (real run, this box)
+====================================================================
+Date:        2026-07-09
+Box:         4 CPUs, gmsh 4.15.2, spawn ProcessPool workers=3
+Driver:      src.api.routes._parse_mesh_async  (the REAL async path: applies
+             ANALYSIS_TIMEOUT_SEC via asyncio.wait_for AND the spawn process pool)
+Budget:      ANALYSIS_TIMEOUT_SEC=60s (route default)
+Per-rung caps @60s budget: rung0=24.0s  rung1=15.0s  rung2=15.0s  (sum 54s < 60s)
+Cache:       cleared before each part (forces a real parse; no warm-hit shortcut)
+
+THE BUG (measured before the fix)
+---------------------------------
+Retry-ladder rung 0 = gmsh default 2D algorithm. On a periodic-surface part it
+GRINDS then fails; only THEN does the fast MeshAdapt recovery rung run. Direct
+timing on this box:
+  * ctc_05 rung 0 (default algo, curvature): > 180s and still running (killed) -> FAIL
+  * ctc_05 rung 1 (MeshAdapt, uniform):      3.9s -> OK, 56196 nodes
+Because the route wraps tessellation in wait_for(ANALYSIS_TIMEOUT_SEC=60s), the
+whole ladder exceeded the budget -> the user got a 504; the recovery never landed.
+
+THE FIX (per-rung wall-clock cap in a killable subprocess; parse_pool)
+----------------------------------------------------------------------
+Each ladder rung is a separately-submitted, separately-timed unit. rung 0 runs on
+the shared warm pool with a 24s cap; its periodic GRIND is abandoned at the cap and
+the recovery rungs run in dedicated single-worker spawn subprocesses, HARD-KILLED
+(SIGKILL) at their caps. gmsh.mesh.generate is an uninterruptible C call, so only a
+subprocess SIGKILL reclaims a grinding rung.
+
+AFTER — real end-to-end timings (_parse_mesh_async, 60s budget, cache cleared)
+-----------------------------------------------------------------------------
+ctc_02 (periodic)             OK   time= 32.7s  faces=198218 verts= 99089 watertight=True volume=47149606.3
+ctc_04 (periodic)             OK   time= 28.8s  faces=122664 verts= 61266 watertight=True volume=17544192.7
+ctc_05 (periodic)             OK   time= 28.9s  faces=112428 verts= 56196 watertight=True volume=12704178.3
+ftc_11 (fast/non-periodic)    OK   time=  1.9s  faces= 55960 verts= 27980 watertight=True volume=5117.3
+(script exited cleanly, EXIT=0 — the rung-0 grinder is SIGKILLed, not orphaned)
+
+RESULT
+------
+  BEFORE: periodic parts (ctc_02/04/05) -> rung-0 grind > 120s -> route 504 (no analysis).
+  AFTER : ctc_02 32.7s | ctc_04 28.8s | ctc_05 28.9s  -> VALID watertight shell,
+          each WELL under the 45s target and the 60s route budget.
+  Fast part ftc_11 unaffected: 1.9s, same geometry (rung 0 succeeds far under its
+  24s cap -> byte-identical primary path; no meaningful latency regression).
+
+  Dominant cost on periodic parts is the 24s rung-0 cap (min(0.4*budget,25s)) plus
+  the ~5-9s recovery mesh. The cap is intentionally generous so a slow-but-valid
+  NON-periodic part (heaviest observed on this corpus ~5s) still completes rung 0
+  and stays byte-identical, rather than being diverted to the coarser MeshAdapt rung.
+
+MECHANISM NOTE (honest)
+-----------------------
+Mechanism #1 (cheap periodic pre-detection to SKIP rung 0) was investigated and
+REJECTED on this box: the only cheap gmsh signal (surface parametric periodicity /
+wrap) is ANTI-correlated with the failure. The FAST part ftc_11 has 4 periodic
+(cylinder) surfaces that mesh fine in ~1.4s, while the problematic ctc_02/04/05
+report ZERO by that test. Diverting on periodicity would (a) wrongly divert fast
+parts -> break byte-identity, and (b) miss the real failure. gmsh's Python API
+exposes no reliable cheap signal for the SPECIFIC "Impossible to mesh periodic
+surface N" condition. Per the task's explicit fallback, we rely on Mechanism #2
+(per-rung wall-clock cap in a killable subprocess), which is mechanism-agnostic and
+demonstrably works here.

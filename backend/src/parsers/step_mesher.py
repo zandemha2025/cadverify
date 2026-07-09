@@ -92,6 +92,11 @@ class _StepReadError(Exception):
     different mesh algorithm cannot fix an unreadable/invalid STEP file."""
 
 
+class _EmptyMeshError(Exception):
+    """A rung tessellated the (readable) shape but produced an empty mesh.
+    Retryable: a more robust rung may still yield a non-empty shell."""
+
+
 def is_step_supported() -> bool:
     """True iff the gmsh STEP path is importable."""
     return _HAS_GMSH
@@ -186,50 +191,114 @@ def _tessellate_once(path: str, algorithm, curvature_pts: float, heal: bool):
         gmsh.finalize()
 
 
-def _mesh_step_file(path: str) -> trimesh.Trimesh:
+def _run_rung(path: str, idx: int) -> trimesh.Trimesh:
+    """Execute a SINGLE ladder rung (by index) and return a processed
+    ``trimesh.Trimesh``.
+
+    Serialized on ``_GMSH_LOCK`` (the gmsh context is process-global). Raises
+    ``_StepReadError`` if OCC cannot read the shape (caller aborts the ladder),
+    ``_EmptyMeshError`` if the rung produced an empty mesh (caller advances), or
+    any OTHER exception if the rung failed to mesh a readable shape (caller
+    advances). This is the ONE place a rung runs — both the in-thread ladder
+    (``_mesh_step_file``) and the per-rung subprocess orchestrator
+    (``parse_pool``) call it, so rung logic/order stay identical across paths.
+
+    Isolating ONE rung per call is what makes the per-rung wall-clock cap possible
+    in ``parse_pool``: gmsh's ``mesh.generate`` is an uninterruptible in-thread C
+    call, so a rung can only be time-bounded by running THIS function in a
+    separately-timed, killable subprocess.
+    """
+    _name, algorithm, curvature_pts, heal = _MESH_RUNGS[idx]
     with _GMSH_LOCK:                         # serialize the global gmsh context
-        last_msg = ""
-        for idx, (name, algorithm, curvature_pts, heal) in enumerate(_MESH_RUNGS):
-            try:
-                verts, faces = _tessellate_once(path, algorithm, curvature_pts, heal)
-            except _StepReadError as exc:
-                # Unreadable STEP: retrying with another algorithm cannot help.
-                raise ValueError(
-                    "Could not read STEP geometry (not a valid/supported STEP file)."
-                ) from exc
-            except Exception as exc:            # this rung failed to MESH the shape
-                last_msg = str(exc)
-                nxt = _MESH_RUNGS[idx + 1][0] if idx + 1 < len(_MESH_RUNGS) else None
-                if nxt is not None:
-                    logger.info(
-                        "step mesher rung '%s' failed (%s); retrying with rung '%s'",
-                        name, last_msg[:120], nxt,
-                    )
-                continue
+        verts, faces = _tessellate_once(path, algorithm, curvature_pts, heal)
+    # process=True merges coincident vertices -> recovers watertightness on single
+    # solids whose faces share edges.
+    mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=True)
+    if len(mesh.vertices) == 0 or len(mesh.faces) == 0:
+        raise _EmptyMeshError("STEP tessellation yielded an empty mesh.")
+    return mesh
 
-            # process=True merges coincident vertices -> recovers watertightness on
-            # single solids whose faces share edges. Under the lock is fine (numpy).
-            mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=True)
-            if len(mesh.vertices) == 0 or len(mesh.faces) == 0:
-                last_msg = "STEP tessellation yielded an empty mesh."
-                continue
-            if idx > 0:
-                logger.info(
-                    "step mesher recovered on retry rung '%s' (faces=%d, watertight=%s)",
-                    name, len(mesh.faces), mesh.is_watertight,
-                )
-            return mesh
 
-        # Every rung failed -> a SPECIFIC, honest error naming the cause. The route
-        # maps ValueError -> 400 with this detail (NOT the generic "Failed to parse
-        # mesh file"), so the client learns WHY the part could not be tessellated.
-        n = len(_MESH_RUNGS)
-        if "periodic" in last_msg.lower():
-            raise ValueError(
-                f"Could not tessellate this part: gmsh cannot mesh a periodic "
-                f"surface in the geometry (all {n} mesh strategies failed)."
-            )
-        raise ValueError(
-            f"Could not tessellate this part: gmsh could not mesh the geometry "
-            f"[{last_msg[:120]}] (all {n} mesh strategies failed)."
+def mesh_single_rung_from_bytes(data: bytes, filename: str, idx: int) -> trimesh.Trimesh:
+    """Worker entry: run ONE ladder rung (``idx``) on STEP bytes IN THIS PROCESS.
+
+    Mirrors ``step_to_trimesh_from_bytes``' temp-file discipline (0o600, guaranteed
+    unlink). Picklable/importable at module scope so ``parse_pool`` can dispatch it
+    to a spawn subprocess and time/kill it per rung. Raises the same tagged
+    exceptions as ``_run_rung`` (``_StepReadError`` -> abort; ``_EmptyMeshError`` /
+    other -> advance), which the orchestrator maps exactly as the in-thread ladder.
+    """
+    if not _HAS_GMSH:
+        raise RuntimeError("gmsh not installed")
+
+    import tempfile
+    suffix = Path(filename).suffix.lower() or ".step"
+    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False, mode="w+b")
+    try:
+        os.chmod(tmp.name, 0o600)
+        tmp.write(data)
+        tmp.flush()
+        tmp.close()
+        return _run_rung(tmp.name, idx)
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except FileNotFoundError:
+            pass
+
+
+def ladder_failure_error(last_msg: str) -> ValueError:
+    """Build the SPECIFIC, honest error raised when EVERY ladder rung failed.
+
+    The route maps this ``ValueError`` -> 400 with this detail (NOT the generic
+    "Failed to parse mesh file"), so the client learns WHY the part could not be
+    tessellated. Shared by the in-thread ladder and the subprocess orchestrator so
+    both surface byte-for-byte the same honest message.
+    """
+    n = len(_MESH_RUNGS)
+    if "periodic" in last_msg.lower():
+        return ValueError(
+            f"Could not tessellate this part: gmsh cannot mesh a periodic "
+            f"surface in the geometry (all {n} mesh strategies failed)."
         )
+    return ValueError(
+        f"Could not tessellate this part: gmsh could not mesh the geometry "
+        f"[{last_msg[:120]}] (all {n} mesh strategies failed)."
+    )
+
+
+def _mesh_step_file(path: str) -> trimesh.Trimesh:
+    """In-thread retry ladder (unchanged output). The route runs this off the event
+    loop; ``parse_pool`` uses the subprocess orchestrator instead so each rung is
+    separately time-bounded. Both share ``_run_rung`` + ``ladder_failure_error``."""
+    last_msg = ""
+    for idx, (name, _algo, _curv, _heal) in enumerate(_MESH_RUNGS):
+        try:
+            mesh = _run_rung(path, idx)
+        except _StepReadError as exc:
+            # Unreadable STEP: retrying with another algorithm cannot help.
+            raise ValueError(
+                "Could not read STEP geometry (not a valid/supported STEP file)."
+            ) from exc
+        except _EmptyMeshError as exc:
+            last_msg = str(exc)
+            continue
+        except Exception as exc:                # this rung failed to MESH the shape
+            last_msg = str(exc)
+            nxt = _MESH_RUNGS[idx + 1][0] if idx + 1 < len(_MESH_RUNGS) else None
+            if nxt is not None:
+                logger.info(
+                    "step mesher rung '%s' failed (%s); retrying with rung '%s'",
+                    name, last_msg[:120], nxt,
+                )
+            continue
+
+        if idx > 0:
+            logger.info(
+                "step mesher recovered on retry rung '%s' (faces=%d, watertight=%s)",
+                name, len(mesh.faces), mesh.is_watertight,
+            )
+        return mesh
+
+    # Every rung failed -> a SPECIFIC, honest error naming the cause.
+    raise ladder_failure_error(last_msg)
