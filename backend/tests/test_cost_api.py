@@ -389,8 +389,16 @@ def test_cost_parse_timeout_is_clean_504(client, cube_10mm, stl_bytes_of, monkey
     import time as _time
 
     from src.api import routes
+    from src.parsers import mesh_cache
 
     monkeypatch.setenv("ANALYSIS_TIMEOUT_SEC", "0.1")
+    # This test proves a real PARSE that overruns the budget 504s — so it must
+    # start from a COLD cache. Otherwise the parsed-mesh cache (a process-wide
+    # singleton another test may have warmed with this same cube) short-circuits
+    # before the parse and legitimately returns 200. The single-flight warm-hit
+    # shortcut makes that cache hit effective; clearing here restores the
+    # cold-cache precondition the timeout assertion depends on.
+    mesh_cache.get_cache().clear()
 
     real_parse = routes._parse_mesh
 

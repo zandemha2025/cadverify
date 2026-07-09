@@ -195,7 +195,102 @@ def _parse_mesh(data: bytes, filename: str):
     return mesh, suffix
 
 
+def _inflight_parses():
+    """Loop-local single-flight registry: ``cache_key -> shared parse Task``.
+
+    Concurrent parses of byte-IDENTICAL content (the validate + cost + preview
+    burst the Verify stage fires on ONE upload) must not each pay a full parse on
+    a cold cache. We coordinate them so exactly ONE tessellation runs and every
+    caller AWAITS that shared result. The registry is attached to the RUNNING
+    loop (never a module global) so a Task can never cross event loops — pytest
+    spins a fresh loop per test, and a Future bound to a dead loop would break
+    (mirrors parse_pool._ladder_semaphore).
+
+    Concurrency primitive: the single-threaded event loop itself. The
+    check-then-register in ``_parse_mesh_async`` never ``await``s between reading
+    and writing the registry, so it is atomic and elects exactly one leader. A
+    race at worst re-parses; it can never deadlock or hand out a half-built mesh.
+    """
+    import asyncio
+
+    loop = asyncio.get_event_loop()
+    reg = getattr(loop, "_cadverify_parse_inflight", None)
+    if reg is None:
+        reg = {}
+        setattr(loop, "_cadverify_parse_inflight", reg)
+    return reg
+
+
 async def _parse_mesh_async(data: bytes, filename: str):
+    """SINGLE-FLIGHT front door: dedupe concurrent parses of the SAME upload.
+
+    All async callers (``/validate``, ``/validate/cost``, ``/validate/preview-
+    mesh``) route through here. On a cold cache the three fire at once; without
+    coordination each starts its OWN ~30s tessellation on a 3-worker pool, so
+    ``/validate/preview-mesh`` blows ANALYSIS_TIMEOUT_SEC and 504s while
+    ``/validate`` already returned 200. Here they instead SHARE one parse: the
+    first request runs it as a detached Task, the rest AWAIT that Task, and every
+    caller gets an INDEPENDENT copy — so preview-mesh no longer times out.
+
+    Invariants preserved verbatim by delegating the real work to
+    ``_parse_mesh_async_uncoordinated``: the process pool, the per-rung caps, the
+    504-on-timeout, and single-part byte-identity.
+      * WARM HIT shortcuts BEFORE any single-flight bookkeeping (one copy, exactly
+        as the cache alone would serve it).
+      * MESH_PARSE_CACHE_DISABLED restores today's independent-parse behavior
+        (N concurrent = N parses) — a full escape hatch.
+      * COPY-ON-HIT: the shared parse is PRISTINE (never mutated) and every caller
+        receives ``mesh.copy()``; waiters never share a mutable object.
+      * SHARED FAILURE: a raised parse error (400/501/504) propagates identically
+        to every awaiter — a waiter sees the same exception, it never hangs.
+    """
+    import asyncio
+
+    # Disabled cache => no coordination: today's exact behavior (N concurrent =
+    # N independent parses). Keeps the switch a full escape hatch.
+    if mesh_cache.is_disabled():
+        return await _parse_mesh_async_uncoordinated(data, filename)
+
+    loop = asyncio.get_event_loop()
+
+    # Warm-cache probe FIRST (magic-validated, sha256 off the loop), so a warm hit
+    # shortcuts before any single-flight bookkeeping. _pooled_prelude raises the
+    # same 400 for an unsupported/corrupt upload, before we register anything.
+    suffix, cache, cache_key, cached = await loop.run_in_executor(
+        None, _pooled_prelude, data, filename
+    )
+    if cached is not None:
+        return cached, suffix
+    if cache is None or cache_key is None:  # defensive; disabled handled above
+        return await _parse_mesh_async_uncoordinated(data, filename)
+
+    # SINGLE-FLIGHT: elect one leader to run the real parse as a SHARED Task; all
+    # others await it. The Task is detached from any single request, so a caller
+    # disconnecting (its await cancelled) never kills the parse the others need.
+    reg = _inflight_parses()
+    task = reg.get(cache_key)
+    if task is None:
+        task = loop.create_task(_parse_mesh_async_uncoordinated(data, filename))
+        reg[cache_key] = task
+
+        def _clear(t: "asyncio.Task", k=cache_key, r=reg) -> None:
+            if r.get(k) is t:
+                r.pop(k, None)
+            # Retrieve any exception so a leaderless failure doesn't log
+            # "Task exception was never retrieved"; awaiters still re-raise it.
+            if not t.cancelled():
+                t.exception()
+
+        task.add_done_callback(_clear)
+
+    # shield: cancelling THIS awaiter must not cancel the shared parse the other
+    # waiters depend on. The shared result is the PRISTINE raw parse; copy it so
+    # each caller owns an independent mesh (copy-on-hit invariant).
+    mesh, suffix = await asyncio.shield(task)
+    return mesh.copy(), suffix
+
+
+async def _parse_mesh_async_uncoordinated(data: bytes, filename: str):
     """Parse off the event loop, bounded by ANALYSIS_TIMEOUT_SEC -> 504.
 
     Default: STEP/IGES raw tessellation is dispatched to a spawn ProcessPool so
@@ -204,6 +299,10 @@ async def _parse_mesh_async(data: bytes, filename: str):
     and the triangle-cap policy. STL stays in-thread (sub-second; pickle would
     cost more than the parse). Kill switch PARSE_PROCESS_POOL_DISABLED=1 restores
     today's exact in-thread behavior.
+
+    This is the REAL work; concurrent same-content callers are deduped one layer
+    up in ``_parse_mesh_async`` (single-flight). Call this directly only to BYPASS
+    that dedup (e.g. the disabled-cache escape hatch, or a perf BEFORE baseline).
     """
     import asyncio
 
