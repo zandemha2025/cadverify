@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutTimeout
 from typing import Optional
@@ -146,18 +147,24 @@ def _quantities_by_design(model) -> dict[str, int]:
 
 
 # ── Per-part DFM + should-cost (REUSES the single-part engine) ──────────────
-def _dfm_summary(result) -> dict:
+def _dfm_summary(result, material_class: str, prefer: Optional[list[str]] = None) -> dict:
     """Compact DFM view built from the SAME ``AnalysisResult`` the ``/validate``
     route serializes — the verdict, the best process, and the top issues. Not a
-    reimplementation: ``result`` came straight out of ``_run_cost_engine``."""
+    reimplementation: ``result`` came straight out of ``_run_cost_engine``.
+
+    ``best_process`` is MATERIAL-AWARE here (Fix 1+2): chosen only among processes
+    makeable in ``material_class`` and, on a tie at the top DFM score, biased
+    toward ``prefer`` (the cost make-now + the geometric routing pick) so the DFM
+    headline AGREES with — or is a sane sibling of — the dollar route. A steel/
+    aluminum bolt can therefore never show a resin "best process": that was the
+    material-blind bug where resin/powder won purely on having the fewest geometry
+    constraints, floating a "best: DLP Resin" above a "make-now: CNC Turning".
+    """
+    from src.matcher.profile_matcher import best_process_for_material
+
     issues = list(result.universal_issues)
-    # best process by score (same rule as AnalysisResult.overall_verdict)
-    best_proc = None
-    if result.best_process is not None:
-        best_proc = result.best_process.value
-    elif result.process_scores:
-        best = max(result.process_scores, key=lambda s: s.score)
-        best_proc = best.process.value
+    best_pt = best_process_for_material(result, material_class, prefer=prefer)
+    best_proc = best_pt.value if best_pt is not None else None
     # Surface the most severe issues first (error before warning before info).
     _rank = {"error": 0, "warning": 1, "info": 2}
     top = sorted(
@@ -167,6 +174,10 @@ def _dfm_summary(result) -> dict:
     return {
         "verdict": result.overall_verdict,
         "best_process": best_proc,
+        "best_process_basis": (
+            f"most-manufacturable process makeable in the "
+            f"'{material_class}' material class (material-aware DFM)"
+        ),
         "issue_count": len(issues),
         "top_issues": [
             {
@@ -197,6 +208,113 @@ def _compact_estimates(rd: dict) -> list[dict]:
             "lead_time": e.get("lead_time"),
         })
     return out
+
+
+# ── COTS / standard-hardware detection (Fix 3) ──────────────────────────────
+# Catalog BUY-price estimates for standard off-the-shelf fasteners. These are
+# labelled DEFAULT/estimate catalog ranges (McMaster/Fastenal-class, common
+# sizes & grades, single-unit price) — NOT a live quote and NOT derived from the
+# geometry. Provenance is surfaced honestly so a buyer never mistakes them for a
+# vendor quotation. (point_usd, (low_usd, high_usd)).
+_COTS_CATALOG: dict[str, tuple[float, tuple[float, float]]] = {
+    "bolt":     (0.75, (0.20, 3.00)),
+    "screw":    (0.30, (0.05, 1.50)),
+    "nut":      (0.20, (0.05, 1.00)),
+    "washer":   (0.05, (0.01, 0.30)),
+    "stud":     (1.00, (0.30, 5.00)),
+    "rivet":    (0.10, (0.02, 0.60)),
+    "dowel":    (0.30, (0.05, 2.00)),
+    "pin":      (0.30, (0.05, 2.00)),
+    "standoff": (0.60, (0.15, 3.00)),
+    "spacer":   (0.40, (0.10, 2.00)),
+    "fastener": (0.50, (0.10, 3.00)),
+}
+
+# Longest keywords first so "cap screw"/"machine screw"/"hex bolt" bind before a
+# bare token; each maps to a catalog kind above.
+_COTS_NAME_TOKENS: list[tuple[str, str]] = [
+    ("machine screw", "screw"), ("cap screw", "screw"), ("set screw", "screw"),
+    ("hex bolt", "bolt"), ("hex nut", "nut"), ("lock nut", "nut"),
+    ("lock washer", "washer"), ("flat washer", "washer"),
+    ("bolt", "bolt"), ("screw", "screw"), ("nut", "nut"), ("washer", "washer"),
+    ("stud", "stud"), ("rivet", "rivet"), ("dowel", "dowel"),
+    ("standoff", "standoff"), ("spacer", "spacer"),
+    ("fastener", "fastener"),
+]
+
+# A geometry-only fastener is SMALL. Absolute cap in mm on the largest bounding-box
+# extent — a real M-hardware fastener is well under this; a bracket/plate is not.
+_COTS_MAX_DIM_MM = 60.0
+
+
+def classify_cots_fastener(name: str, occurrence: str, features=None,
+                           max_dim_mm: Optional[float] = None) -> Optional[dict]:
+    """Detect a standard off-the-shelf fastener (buy, not make).
+
+    Two honest signals (name/occurrence match AND/OR small threaded geometry):
+      * NAME/OCCURRENCE token match {bolt, nut, screw, washer, stud, …} — the
+        strong, high-confidence signal (AP203 names the design, e.g. "bolt").
+      * GEOMETRY: a SMALL part (largest extent < ~60mm) that ALSO carries a
+        detected THREAD feature — a medium-confidence signal for hardware the
+        product tree did not name. A small part with NO thread is NOT flagged
+        (a small bracket is not a fastener).
+
+    Returns a COTS block (kind, confidence, detected_by, catalog buy-price with
+    provenance + honesty note) or None. Never invents a fault; a COTS part still
+    gets its full should-cost as the in-house fabrication upper-bound.
+    """
+    hay = f"{name or ''} {occurrence or ''}".lower()
+    kind = None
+    detected_by = None
+    confidence = None
+    for token, mapped in _COTS_NAME_TOKENS:
+        # Word-boundary match so 'pin' does not fire on 'spindle', 'nut' on
+        # 'walnut', 'washer' on 'washerless' — only a real fastener token counts.
+        if re.search(r"\b" + re.escape(token) + r"\b", hay):
+            kind = mapped
+            detected_by = f"product/occurrence name matches '{token}'"
+            confidence = "high"
+            break
+
+    if kind is None:
+        # Geometry-only path: small AND threaded => generic fastener.
+        has_thread = False
+        if features:
+            for f in features:
+                ftype = getattr(getattr(f, "kind", None), "value", None) \
+                    or getattr(getattr(f, "feature_type", None), "value", None)
+                if ftype == "thread":
+                    has_thread = True
+                    break
+        if has_thread and max_dim_mm is not None and max_dim_mm <= _COTS_MAX_DIM_MM:
+            kind = "fastener"
+            detected_by = (
+                f"geometry: small threaded solid (largest extent "
+                f"{max_dim_mm:.1f}mm ≤ {_COTS_MAX_DIM_MM:.0f}mm with a detected thread)"
+            )
+            confidence = "medium"
+
+    if kind is None:
+        return None
+
+    point, (low, high) = _COTS_CATALOG.get(kind, _COTS_CATALOG["fastener"])
+    return {
+        "is_cots": True,
+        "kind": kind,
+        "confidence": confidence,
+        "detected_by": detected_by,
+        "recommendation": "BUY — standard off-the-shelf fastener; do not machine in-house",
+        "buy_price_usd": point,
+        "buy_price_range_usd": [low, high],
+        "buy_price_provenance": "DEFAULT",
+        "note": (
+            "Standard off-the-shelf fastener — BUY, not make. The buy-price is a "
+            "labelled catalog estimate (McMaster/Fastenal-class, common size/grade, "
+            "single-unit; provenance DEFAULT), NOT a live quote. The should-cost "
+            "figures below are the fabrication UPPER-BOUND if this were machined "
+            "in-house — they are not the recommended cost for a catalog part."
+        ),
+    }
 
 
 def analyze_one_part(
@@ -250,7 +368,24 @@ def analyze_one_part(
         )
         report = estimate_decision(result, m, features, options)
         rd = report_to_dict(report)
-        base["dfm_summary"] = _dfm_summary(result)
+
+        # COTS / standard-hardware detection (Fix 3). Small-threaded geometry uses
+        # the part's largest world extent + the engine's detected features.
+        max_dim = max((float(d) for d in part.world.bbox_size), default=0.0)
+        cots = classify_cots_fastener(
+            part.name, getattr(part, "occurrence", "") or "",
+            features=features, max_dim_mm=max_dim,
+        )
+
+        # Prefer the cost make-now + the geometric routing pick when breaking a
+        # DFM-score tie for best_process, so the DFM headline agrees with the
+        # dollar route (Fix 2). Order matters: make-now first.
+        dec = rd.get("decision") or {}
+        routing = rd.get("routing") or {}
+        prefer = [p for p in (dec.get("make_now_process"),
+                              routing.get("recommended_process")) if p]
+        base["dfm_summary"] = _dfm_summary(result, material_class, prefer=prefer)
+
         if rd.get("status") == "GEOMETRY_INVALID":
             # A real, honest engine refusal (volume<=0 / non-watertight): surfaced,
             # never faked into a cost.
@@ -259,8 +394,7 @@ def analyze_one_part(
                 "reason": rd.get("reason"),
             }
         else:
-            dec = rd.get("decision") or {}
-            base["should_cost"] = {
+            should_cost = {
                 "status": rd.get("status"),
                 "cost_quantity": int(cost_quantity),
                 "make_now_process": dec.get("make_now_process"),
@@ -269,6 +403,19 @@ def analyze_one_part(
                 "recommendation": dec.get("recommendation"),
                 "estimates": _compact_estimates(rd),
             }
+            if cots:
+                # Re-frame the machined figure honestly for a catalog part: it is
+                # the in-house fabrication upper-bound, NOT the recommended cost.
+                should_cost["cost_basis"] = "fabrication_upper_bound_if_made_in_house"
+                should_cost["cost_basis_note"] = (
+                    "This part is a standard COTS fastener (see 'cots'): the "
+                    "should-cost figures are what it would cost to MAKE it in-house "
+                    "(a fabrication upper-bound), not the recommended buy cost."
+                )
+            base["should_cost"] = should_cost
+
+        if cots:
+            base["cots"] = cots
         return base
     except Exception as exc:  # honest per-part error, never breaks the assembly
         logger.info("per-part analysis failed for %s: %s", part.tree_path, exc)

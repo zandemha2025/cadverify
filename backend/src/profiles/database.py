@@ -112,6 +112,38 @@ def get_materials_for_process(process: ProcessType) -> list[MaterialProfile]:
     return [m for m in MATERIALS if process in m.process_types]
 
 
+def processes_for_material_class(material_class: str) -> frozenset[ProcessType]:
+    """Every ProcessType that can actually be made in the given material class.
+
+    Derived from the SAME source of truth the cost path uses — the merged
+    ``MATERIALS`` profiles (their ``process_types``) keyed by the material-family
+    map (``rates.MATERIAL_FAMILY``). A class → the union of the process_types of
+    every material profile whose family == that class. This is authoritative and
+    can never drift from costing's ``select_material`` (which also filters
+    ``get_materials_for_process`` by ``MATERIAL_FAMILY == material_class``).
+
+    Example (with the shipped/merged profiles):
+      * ``"aluminum"`` → {cnc_3axis, cnc_5axis, cnc_turning, die_casting, dmls,
+        forging, investment_casting, sand_casting, sheet_metal, slm}
+        — NO resin/SLS/MJF/FDM/binder-jet (correctly excluded for a metal).
+      * ``"polymer"`` → {fdm, sla, dlp, sls, mjf, injection_molding, cnc_3axis,
+        cnc_5axis, cnc_turning} — polymer processes only.
+
+    An unknown class returns an empty set (the caller must treat that as "no
+    filter / material unknown", never as "nothing is makeable").
+    """
+    # Imported lazily: rates.py imports only src.analysis.models so there is no
+    # import cycle either way, but keeping it local lets database.py be imported
+    # by early bootstrap paths without pulling in the rate card.
+    from src.costing.rates import MATERIAL_FAMILY
+
+    procs: set[ProcessType] = set()
+    for m in MATERIALS:
+        if MATERIAL_FAMILY.get(m.name) == material_class:
+            procs.update(m.process_types)
+    return frozenset(procs)
+
+
 def get_machines_for_process(process: ProcessType) -> list[MachineProfile]:
     """Get all machines for a given process."""
     return [m for m in MACHINES if m.process_type == process]

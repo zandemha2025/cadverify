@@ -2062,6 +2062,15 @@ def _to_response(
         "file_type": result.file_type,
         "overall_verdict": result.overall_verdict,
         "best_process": result.best_process.value if result.best_process else None,
+        # HONEST label: /validate declares no material, so best_process is a pure
+        # geometry-manufacturability ranking (the process with the fewest DFM
+        # constraints), NOT a material-aware recommendation. Declare a material
+        # class via /validate/cost (or the assembly per-part path) to get the
+        # material-aware best process that agrees with the cost route.
+        "best_process_basis": (
+            "geometry-manufacturability; material not declared"
+            if result.best_process else None
+        ),
         "analysis_time_ms": result.analysis_time_ms,
         "geometry": {
             "vertices": result.geometry.vertex_count,
