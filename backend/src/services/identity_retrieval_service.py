@@ -46,24 +46,96 @@ from src.eval import similarity
 from src.services import part_signature_service as sigsvc
 
 # ---------------------------------------------------------------------------
-# Confidence calibration — documented, honest, and deliberately conservative.
+# SHAPE-FAITHFUL identity distance — down-weight re-tessellation-sensitive dims.
 #
-# geometry_similarity(distance): a z-scored L2 distance d ≥ 0 in the ORG's own
-# 18-dim feature space is mapped to a similarity in (0,1] by an exponential decay
-#     geometry_similarity = exp(-d / GEOM_DECAY)
-# It is MONOTONIC (nearer ⇒ higher), 1.0 only at an exact-match (d=0), and a
-# documented PROXY — never a probability. GEOM_DECAY is the distance at which the
-# proxy falls to 1/e (~0.37): with per-dimension z-scoring, a full-population
-# standard deviation of separation summed across dims lands here, so a
-# near-duplicate (fraction of a std away) scores high while a genuinely different
-# shape (several stds away) decays toward 0.
+# The 18-dim signature (``similarity.DIMS``) mixes two very different kinds of
+# feature. Some describe the part's actual 3-D SHAPE, derived from global geometry
+# (bounding-box ratios, hull-volume solidity, area/diag² compactness, wall/diag,
+# absolute log-scale) — these are stable under a re-mesh. The rest are artifacts of
+# the specific TESSELLATION and of the FLAT/CURVED/CYLINDER feature classifier
+# (face count, watertight flag, body/genus topology, hole/boss/flat/curved counts
+# and their area fractions) — these move when the SAME part is re-meshed even though
+# its shape is unchanged.
+#
+# We proved this on the flagship asset: ``bracket_A`` and its genuine revision
+# ``bracket_A_rev`` (1 % rescale + sub-0.1 mm jitter) have IDENTICAL shape
+# descriptors, yet the classifier reports 38 vs 4 FLAT facets and flat_area_frac
+# 1.00 vs 0.40 — a huge move in feature space for zero shape change. Z-scoring then
+# magnifies it (a low-spread feature dim explodes). So for IDENTITY matching only
+# (NOT the eval-harness vector in ``similarity.py``) we weight the distance to the
+# re-mesh-ROBUST shape/scale descriptors and DROP the tessellation/classifier dims.
+#
+# Weight per dim (index → similarity.DIMS name). 1.0 = keep, 0.0 = drop:
+#   0  elongation        1.0  bbox ratio d2/d1        — shape, re-mesh robust
+#   1  flatness          1.0  bbox ratio d3/d1        — shape, re-mesh robust
+#   2  squareness        1.0  bbox ratio d3/d2        — shape, re-mesh robust
+#   3  solidity          1.0  |vol|/hullV             — shape, re-mesh robust
+#   4  compactness       1.0  A/diag²                 — shape, re-mesh robust
+#   5  rel_wall          1.0  median_wall/diag        — shape, re-mesh robust
+#   6  log_faces         0.0  log10(n_faces)          — PURE tessellation density
+#   7  log_diag          1.0  log10(diag)             — absolute scale, re-mesh
+#                                                        robust; a genuine revision's
+#                                                        ≤few-% rescale barely moves
+#                                                        it, but it keeps a tiny part
+#                                                        from matching a huge one
+#   8  watertight        0.0  1/0                      — flips on a re-mesh
+#   9  log_bodies        0.0  log1p(body_count)       — connected-component artifact
+#   10 genus_proxy       0.0  (2-euler)/2             — topology, re-mesh sensitive
+#   11 log_n_holes       0.0  classifier count        — feature-detection sensitive
+#   12 log_n_bosses      0.0  classifier count        — feature-detection sensitive
+#   13 log_n_flats       0.0  classifier count        — the worst mover (38↔4)
+#   14 log_n_curved      0.0  classifier count        — feature-detection sensitive
+#   15 flat_area_frac    0.0  classifier area frac    — moved 1.00↔0.40 on the rev
+#   16 curved_area_frac  0.0  classifier area frac    — feature-detection sensitive
+#   17 largest_flat_frac 0.0  classifier area frac    — feature-detection sensitive
+#
+# The kept 7 dims are exactly the scale-invariant SHAPE descriptors plus absolute
+# log-scale — everything computed from global geometry, nothing from the classifier.
 # ---------------------------------------------------------------------------
-GEOM_DECAY = 2.5
+IDENTITY_DIM_WEIGHTS: list[float] = [
+    1.0, 1.0, 1.0, 1.0, 1.0, 1.0,  # 0-5  shape descriptors
+    0.0,                            # 6    log_faces (tessellation density)
+    1.0,                            # 7    log_diag (absolute scale, robust)
+    0.0, 0.0, 0.0,                  # 8-10 watertight / bodies / genus (topology)
+    0.0, 0.0, 0.0, 0.0,             # 11-14 hole/boss/flat/curved counts
+    0.0, 0.0, 0.0,                  # 15-17 area fractions (classifier-derived)
+]
+
+# ---------------------------------------------------------------------------
+# Confidence calibration — documented, honest, recalibrated against REAL pairs on
+# the shape-faithful distance above (measured in a realistic 7-part org corpus):
+#
+#   bracket_A ↔ bracket_A_rev (genuine revision, same part) : dist ≈ 0.505
+#   bracket_A ↔ torus_unrelated (genuinely different shape)  : dist ≈ 41.0
+#   plate ↔ l-bracket (two distinct-but-similar flat slabs)  : dist ≈ 0.73
+#   bracket_A ↔ disc (moderately different)                  : dist ≈ 4.10
+#
+# geometry_similarity(distance): the shape-faithful z-scored L2 distance d ≥ 0 is
+# mapped to a similarity in (0,1] by an exponential decay
+#     geometry_similarity = exp(-d / GEOM_DECAY)
+# MONOTONIC (nearer ⇒ higher), 1.0 only at an exact match (d=0), a documented PROXY
+# — never a probability. GEOM_DECAY = 2.0 is recalibrated for the shape-faithful
+# metric so the genuine revision at d≈0.505 lands sim≈0.78 (a clean MEDIUM, grounded)
+# while the torus at d≈41 decays to ≈0 (LOW, never suggested).
+# ---------------------------------------------------------------------------
+GEOM_DECAY = 2.0
 
 # A geometry distance at/under this is treated as a near-DUPLICATE — close enough
-# that geometry ALONE can carry a HIGH bucket even without a name agreeing. Picked
-# well inside GEOM_DECAY so only a genuinely tiny separation qualifies.
-GEOM_NEAR_DUPLICATE_DIST = 0.60
+# that geometry ALONE can carry a HIGH bucket even without a name agreeing. Set
+# BELOW the measured genuine-revision distance (≈0.505) so a revision alone reads
+# MEDIUM, never HIGH — HIGH stays reserved for a near-EXACT re-verify (d→0) or real
+# name agreement. (Recalibrated from 0.60 for the shape-faithful metric.)
+GEOM_NEAR_DUPLICATE_DIST = 0.35
+
+# Lever 2 — the honest LOW-confidence "closest in your library" floor. When the top
+# match is real but BELOW the MEDIUM auto-suggest bar, we surface it as a distinct,
+# clearly-labeled low-confidence candidate ONLY when it is BOTH non-trivial (its
+# geometry proxy clears LOW_SUGGEST_SIM — well above the torus's ≈0) AND clearly
+# separated from the runner-up (its proxy beats the 2nd-best by LOW_SUGGEST_MARGIN,
+# so an ambiguous crowd of equidistant parts yields NO single suggestion). Below the
+# floor (the torus) → nothing. Never auto-asserted — always a user-confirmed hint.
+LOW_SUGGEST_SIM = 0.35
+LOW_SUGGEST_MARGIN = 0.08
 
 # Blend: combined = GEOM_WEIGHT*geometry + (1-GEOM_WEIGHT)*name, BUT only when a
 # name hint AND a declared name exist to compare. Geometry is the anchor (it is
@@ -132,6 +204,14 @@ class IdentityMatchResult:
     caveats: list[str] = field(default_factory=list)
     provenance: Optional[str] = None
     corpus_size: int = 0
+    # Lever 2 — an HONEST low-confidence suggestion. Set ONLY when the result is NOT
+    # grounded (top match below the MEDIUM bar) yet the closest prior part is clearly
+    # above noise AND well-separated from the runner-up (see LOW_SUGGEST_* floors).
+    # It is the SAME IdentityMatch object, surfaced as a distinct "closest in your
+    # library — low confidence, is this it?" candidate the user confirms; NEVER
+    # auto-asserted. None whenever grounded (the confident card carries it) or when
+    # nothing clears the floor (e.g. an unrelated part like the torus).
+    closest_unconfirmed: Optional[IdentityMatch] = None
 
     def to_dict(self) -> dict:
         return {
@@ -141,6 +221,11 @@ class IdentityMatchResult:
             "caveats": self.caveats,
             "provenance": self.provenance,
             "corpus_size": self.corpus_size,
+            "closest_unconfirmed": (
+                self.closest_unconfirmed.to_dict()
+                if self.closest_unconfirmed is not None
+                else None
+            ),
         }
 
 
@@ -246,10 +331,16 @@ def _rank_matches(
     name_hint: Optional[str],
     k: int,
 ) -> list[IdentityMatch]:
-    """z-score the org matrix, compute L2 distance to each stored signature, and
-    return the top-k as ranked IdentityMatches. Reuses ``similarity._zscore`` so the
-    distance is the SAME z-scored L2 the rest of the codebase uses — no hand-rolled
-    second metric."""
+    """z-score the org matrix, compute a SHAPE-FAITHFUL weighted L2 distance to each
+    stored signature, and return the top-k as ranked IdentityMatches.
+
+    Reuses ``similarity._zscore`` (the SAME z-scoring the rest of the codebase uses),
+    then applies ``IDENTITY_DIM_WEIGHTS`` on the identity path ONLY: each z-scored
+    component is scaled by ``sqrt(weight)`` before the L2 norm, so a weight of 1.0
+    keeps a dim, 0.0 drops it. This makes the identity distance robust to pure
+    re-tessellation (dropped tessellation/classifier dims) while keeping the scale-
+    invariant SHAPE descriptors — WITHOUT touching ``similarity.py``'s vector used by
+    the eval harness."""
     rows = np.asarray(
         [sig.signature for sig in signatures], dtype=np.float64
     )
@@ -262,6 +353,17 @@ def _rank_matches(
 
     qz = similarity._zscore(np.asarray(query_vec, dtype=np.float64), mean, std)
     Xz = similarity._zscore(rows, mean, std)
+
+    # Shape-faithful weighting: scale each z-scored dim by sqrt(weight) so the L2
+    # norm below is the weighted distance. Aligned to the signature dimensionality;
+    # if a signature is an unexpected width we fall back to unit weights (never crash
+    # on a legacy row).
+    w = np.asarray(IDENTITY_DIM_WEIGHTS, dtype=np.float64)
+    if w.shape[0] != qz.shape[-1]:
+        w = np.ones(qz.shape[-1], dtype=np.float64)
+    sqrt_w = np.sqrt(w)
+    qz = qz * sqrt_w
+    Xz = Xz * sqrt_w
 
     scored: list[IdentityMatch] = []
     for i, sig in enumerate(signatures):
@@ -291,6 +393,38 @@ def _rank_matches(
         key=lambda m: (-m.combined_confidence, m.geometry_distance, m.mesh_hash)
     )
     return scored[: max(1, int(k))]
+
+
+def select_closest_unconfirmed(matches: list[IdentityMatch]) -> Optional[IdentityMatch]:
+    """Lever 2 — pick the honest LOW-confidence "closest in your library" candidate,
+    or ``None``. PURE (no DB) so it is unit-testable directly.
+
+    Returns the top match ONLY when it is a genuine, confirmable suggestion below the
+    MEDIUM bar:
+      * it carries a declared identity (a name or part-number to actually show);
+      * its geometry proxy clears ``LOW_SUGGEST_SIM`` — non-trivial, well above the
+        ≈0 an unrelated part (the torus) scores; and
+      * it is separated from the runner-up by ``LOW_SUGGEST_MARGIN`` (proxy gap), so
+        an ambiguous crowd of equidistant neighbours yields NO single suggestion.
+    Callers use this ONLY when the result is not grounded — a grounded top match is
+    carried by the confident card instead. Never auto-asserted; always a hint to
+    confirm.
+    """
+    if not matches:
+        return None
+    top = matches[0]
+    has_identity = bool(
+        (top.declared_name and top.declared_name.strip())
+        or (top.declared_part_id and top.declared_part_id.strip())
+    )
+    if not has_identity:
+        return None
+    if top.geometry_similarity < LOW_SUGGEST_SIM:
+        return None
+    runner_sim = matches[1].geometry_similarity if len(matches) > 1 else 0.0
+    if (top.geometry_similarity - runner_sim) < LOW_SUGGEST_MARGIN:
+        return None
+    return top
 
 
 # ---------------------------------------------------------------------------
@@ -371,11 +505,25 @@ async def _retrieve_from_vector(
     top = matches[0] if matches else None
     grounded = bool(top and top.confidence_bucket in ("HIGH", "MEDIUM"))
 
+    # Lever 2 — a below-MEDIUM but real, well-separated closest part is surfaced as an
+    # honest low-confidence suggestion (ONLY when NOT grounded; the confident card
+    # carries a grounded top match). An unrelated part (torus) clears neither bar.
+    closest_unconfirmed = (
+        None if grounded else select_closest_unconfirmed(matches)
+    )
+
     reason: Optional[str]
     if grounded:
         reason = (
             f"top match is {top.confidence_bucket} confidence "
             f"({top.combined_confidence:.0%}) — a retrieved suggestion to confirm"
+        )
+    elif closest_unconfirmed is not None:
+        reason = (
+            "no MEDIUM/HIGH match, but the closest prior part is well-separated — "
+            f"surfaced as a LOW-confidence suggestion "
+            f"({closest_unconfirmed.geometry_similarity:.0%} geometry) to confirm, "
+            "never asserted"
         )
     else:
         reason = (
@@ -390,4 +538,5 @@ async def _retrieve_from_vector(
         caveats=[_SUGGESTION_NOTE, _GEOM_PROXY_NOTE],
         provenance=PROVENANCE,
         corpus_size=corpus_size,
+        closest_unconfirmed=closest_unconfirmed,
     )

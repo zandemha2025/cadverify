@@ -23,6 +23,8 @@ import {
   noMatchLine,
   runnerUps,
   runnerUpLabel,
+  closestUnconfirmedModel,
+  closestLead,
   type IdentityMatch,
   type IdentityResult,
 } from "./identity.ts";
@@ -54,6 +56,7 @@ function mkResult(over: Partial<IdentityResult> = {}): IdentityResult {
     ],
     provenance: "RETRIEVED (org corpus: geometry k-NN + name match)",
     corpus_size: 4,
+    closest_unconfirmed: null,
     ...over,
   };
 }
@@ -106,6 +109,63 @@ test("empty corpus / null → nothing at all (no fabricated identity)", () => {
 test("a grounded match with no declared identity yields no card (nothing to assert)", () => {
   const res = mkResult({ matches: [mkMatch({ declared_name: null, declared_part_id: null })] });
   assert.equal(identityCardModel(res), null);
+});
+
+test("Lever 2 — a NOT-grounded result with closest_unconfirmed → a LOW-confidence model", () => {
+  const cu = mkMatch({
+    declared_name: "Mounting bracket L",
+    declared_part_id: "PN-BRK-001",
+    program: "Chassis-2024",
+    confidence_bucket: "LOW",
+    combined_confidence: 0.47,
+    geometry_similarity: 0.47,
+    name_similarity: null,
+  });
+  const res = mkResult({
+    grounded: false,
+    matches: [cu, mkMatch({ combined_confidence: 0.2, geometry_similarity: 0.2 })],
+    corpus_size: 6,
+    closest_unconfirmed: cu,
+  });
+  const low = closestUnconfirmedModel(res);
+  assert.ok(low);
+  assert.equal(low.pct, 47);
+  assert.equal(low.lead, "Closest in your library: Mounting bracket L · PN-BRK-001");
+  assert.equal(low.program, "Chassis-2024");
+  assert.match(low.caveat, /low confidence/i);
+  // The confident-card model is NOT produced for a non-grounded result…
+  assert.equal(identityCardModel(res), null);
+  // …and the quiet no-match line yields to the softer card (returns null here).
+  assert.equal(noMatchLine(res), null);
+});
+
+test("Lever 2 — no closest_unconfirmed (e.g. an unrelated part) → NOTHING, and the quiet line returns", () => {
+  const res = mkResult({
+    grounded: false,
+    matches: [mkMatch({ confidence_bucket: "LOW", combined_confidence: 0.02, geometry_similarity: 0.0 })],
+    corpus_size: 6,
+    closest_unconfirmed: null,
+  });
+  assert.equal(closestUnconfirmedModel(res), null); // never fabricate a suggestion
+  assert.equal(noMatchLine(res), "No confident match in your part library yet");
+  // A GROUNDED result never produces the low-confidence model (confident card owns it).
+  assert.equal(closestUnconfirmedModel(mkResult({ grounded: true, closest_unconfirmed: mkMatch() })), null);
+  // A closest candidate with no declared identity → nothing to suggest.
+  const noId = mkResult({
+    grounded: false,
+    closest_unconfirmed: mkMatch({ declared_name: null, declared_part_id: null }),
+  });
+  assert.equal(closestUnconfirmedModel(noId), null);
+});
+
+test("readIdentity round-trips closest_unconfirmed; closestLead degrades honestly", () => {
+  const cu = mkMatch({ declared_name: "Widget", declared_part_id: "PN-9" });
+  const parsed = readIdentity({ identity: mkResult({ grounded: false, closest_unconfirmed: cu }) });
+  assert.equal(parsed?.closest_unconfirmed?.declared_part_id, "PN-9");
+  // absent field tolerated → null
+  assert.equal(readIdentity({ identity: mkResult() })?.closest_unconfirmed, null);
+  assert.equal(closestLead(mkMatch({ declared_part_id: null })), "Closest in your library: Mounting plate bracket");
+  assert.equal(closestLead(mkMatch({ declared_name: null, declared_part_id: null })), "");
 });
 
 test("runner-ups are surfaced for transparency", () => {

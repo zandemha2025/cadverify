@@ -35,6 +35,12 @@ export interface IdentityResult {
   caveats: string[];
   provenance: string | null;
   corpus_size: number;
+  /** Lever 2 — the honest LOW-confidence "closest in your library" candidate. Set
+   *  by the backend ONLY when the result is NOT grounded yet the closest prior part
+   *  is clearly above noise AND well-separated from the runner-up. It is a
+   *  SUGGESTION the user confirms, NEVER an assertion; null when grounded (the
+   *  confident card carries it) or when nothing clears the floor (e.g. the torus). */
+  closest_unconfirmed: IdentityMatch | null;
 }
 
 /** Read the `identity` block off a cost response, or null when absent (anonymous /
@@ -45,6 +51,7 @@ export function readIdentity(cost: unknown): IdentityResult | null {
   if (!id || typeof id !== "object") return null;
   const r = id as Partial<IdentityResult>;
   if (typeof r.grounded !== "boolean" || !Array.isArray(r.matches)) return null;
+  const cu = (r as { closest_unconfirmed?: unknown }).closest_unconfirmed;
   return {
     grounded: r.grounded,
     matches: r.matches as IdentityMatch[],
@@ -52,6 +59,8 @@ export function readIdentity(cost: unknown): IdentityResult | null {
     caveats: Array.isArray(r.caveats) ? r.caveats : [],
     provenance: r.provenance ?? null,
     corpus_size: typeof r.corpus_size === "number" ? r.corpus_size : 0,
+    closest_unconfirmed:
+      cu && typeof cu === "object" ? (cu as IdentityMatch) : null,
   };
 }
 
@@ -119,10 +128,60 @@ export function identityCardModel(id: IdentityResult | null): IdentityCardModel 
   };
 }
 
+/** The lead line for a LOW-confidence closest candidate:
+ *    "Closest in your library: {declared_name} · {declared_part_id}"
+ *  Degrades honestly when one side is missing; never invents a designation. Returns
+ *  "" when there is nothing declared to show. */
+export function closestLead(m: IdentityMatch): string {
+  const name = (m.declared_name ?? "").trim();
+  const pid = (m.declared_part_id ?? "").trim();
+  const body = name && pid ? `${name} · ${pid}` : name || pid;
+  return body ? `Closest in your library: ${body}` : "";
+}
+
+/** The view-model for the Lever-2 LOW-confidence "closest in your library" card —
+ *  a distinct, SOFTER variant of the identity card. Deliberately mirrors the shape
+ *  of IdentityCardModel where it overlaps so the component can share styling tokens. */
+export interface ClosestUnconfirmedModel {
+  match: IdentityMatch;
+  lead: string;
+  pct: number;
+  program: string | null;
+  caveat: string;
+}
+
+const LOW_CONFIDENCE_CAVEAT =
+  "low confidence — the closest shape in your library, not a confident match. Confirm only if this is really it; retrieval can be wrong.";
+
+/** Build the LOW-confidence closest-candidate view-model, or null when there is
+ *  nothing honest to suggest. Returns a model ONLY when the result is NOT grounded
+ *  (a grounded top match is carried by the confident card) AND the backend set
+ *  `closest_unconfirmed` to a candidate that carries a declared identity. The caller
+ *  renders NOTHING on null — an unrelated part (torus) yields no candidate, so no
+ *  card; the system never asserts a low-confidence match. */
+export function closestUnconfirmedModel(
+  id: IdentityResult | null
+): ClosestUnconfirmedModel | null {
+  if (!id || id.grounded) return null;
+  const match = id.closest_unconfirmed;
+  if (!match) return null;
+  const lead = closestLead(match);
+  if (!lead) return null; // candidate carries no declared identity → nothing to suggest
+  return {
+    match,
+    lead,
+    pct: confidencePct(match),
+    program: match.program,
+    caveat: LOW_CONFIDENCE_CAVEAT,
+  };
+}
+
 /** The quiet one-liner for a NON-grounded result over a NON-empty corpus (the org
- *  has a library but no confident match yet). Returns null when the corpus is empty
- *  or the result is grounded — in those cases the card / nothing is shown instead. */
+ *  has a library but no confident match yet). Returns null when the corpus is empty,
+ *  the result is grounded, OR a LOW-confidence closest candidate is being offered
+ *  instead (that softer card is shown, not this line). */
 export function noMatchLine(id: IdentityResult | null): string | null {
   if (!id || id.grounded || id.corpus_size <= 0) return null;
+  if (closestUnconfirmedModel(id)) return null;
   return "No confident match in your part library yet";
 }

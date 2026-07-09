@@ -58,9 +58,11 @@ import { envelopeSummary } from "@/lib/verify/machine-api";
 import {
   readIdentity,
   identityCardModel,
+  closestUnconfirmedModel,
   noMatchLine,
   runnerUpLabel,
   type IdentityCardModel,
+  type ClosestUnconfirmedModel,
 } from "@/lib/verify/identity";
 import { confirmIdentity } from "@/lib/verify/identity-api";
 import { useToast } from "./toast";
@@ -657,6 +659,9 @@ function IdentitySuggestion({ cost, meshHash }: { cost: CostReport | null; meshH
   const toast = useToast();
   const id = useMemo(() => readIdentity(cost), [cost]);
   const model = useMemo(() => identityCardModel(id), [id]);
+  // Lever 2 — the honest LOW-confidence "closest in your library" candidate (only
+  // present when NOT grounded and the backend surfaced a well-separated closest).
+  const lowModel = useMemo(() => closestUnconfirmedModel(id), [id]);
 
   const [dismissed, setDismissed] = useState(false);
   const [confirmed, setConfirmed] = useState<string | null>(null); // the confirmed designation
@@ -719,6 +724,54 @@ function IdentitySuggestion({ cost, meshHash }: { cost: CostReport | null; meshH
           show again
         </button>
       </p>
+    );
+  }
+
+  // Lever 2 — a real-but-below-MEDIUM closest part: a distinct, SOFTER low-confidence
+  // card the user confirms. Never auto-asserted; an unrelated part (torus) never
+  // reaches here (backend leaves closest_unconfirmed null → lowModel null).
+  if (lowModel) {
+    if (dismissed && !confirmed) {
+      return (
+        <p style={{ margin: "12px 2px 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40 }}>
+          closest-match suggestion dismissed —{" "}
+          <button
+            type="button"
+            onClick={() => setDismissed(false)}
+            style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 10.5, color: C.user }}
+          >
+            show again
+          </button>
+        </p>
+      );
+    }
+    return (
+      <div style={{ marginTop: 12 }}>
+        <ClosestUnconfirmedCard
+          model={lowModel}
+          meshHash={meshHash}
+          confirmed={confirmed}
+          busy={busy}
+          err={err}
+          onConfirm={async (input, label) => {
+            if (!meshHash) {
+              setErr("this part's mesh hash isn't available — re-verify to confirm");
+              return;
+            }
+            setBusy(true);
+            setErr(null);
+            const res = await confirmIdentity({ mesh_hash: meshHash, ...input });
+            setBusy(false);
+            if (res.ok) {
+              setConfirmed(label);
+              toast("Identity confirmed — saved to your part library");
+            } else {
+              setErr(res.error);
+            }
+          }}
+          onNotThis={() => setDismissed(true)}
+        />
+      </div>
     );
   }
 
@@ -897,6 +950,127 @@ function IdentityCard({
               </GhostButton>
             </div>
           )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** The Lever-2 LOW-confidence "closest in your library" card — a deliberately
+ *  SOFTER, visually-distinct variant of IdentityCard (dashed border, muted tone, an
+ *  explicit "LOW CONFIDENCE" label and honest caveat). It reuses the same tokens and
+ *  provenance idiom, but never reads as a confident assertion: it asks "is this it?"
+ *  and the user decides (Confirm / Not this). Shown ONLY when the backend surfaced a
+ *  well-separated closest candidate below the MEDIUM bar; an unrelated part never
+ *  reaches here. */
+function ClosestUnconfirmedCard({
+  model,
+  meshHash,
+  confirmed,
+  busy,
+  err,
+  onConfirm,
+  onNotThis,
+}: {
+  model: ClosestUnconfirmedModel;
+  meshHash: string | null;
+  confirmed: string | null;
+  busy: boolean;
+  err: string | null;
+  onConfirm: (input: { declared_part_id?: string; declared_name?: string; program?: string }, label: string) => void;
+  onNotThis: () => void;
+}) {
+  const m = model.match;
+  return (
+    <div
+      data-testid="identity-closest-card"
+      style={{
+        border: `1px dashed ${C.hair}`,
+        borderLeft: `3px dashed ${C.ink45}`,
+        borderRadius: 14,
+        background: C.sunken,
+        padding: "16px 18px",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <Kicker color={C.ink45}>CLOSEST IN YOUR LIBRARY · LOW CONFIDENCE</Kicker>
+        <span
+          data-testid="identity-closest-prov"
+          title={m.provenance}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 6, fontFamily: MONO,
+            fontSize: 9.5, letterSpacing: "0.04em", color: C.ink45,
+            border: `1px dashed ${C.hair}`, borderRadius: 999, padding: "2px 9px",
+          }}
+        >
+          <span aria-hidden style={{ color: C.user }}>◆</span>
+          RETRIEVED · your part library
+        </span>
+      </div>
+
+      {confirmed ? (
+        <>
+          <p data-testid="identity-closest-confirmed" style={{ margin: "10px 0 0", fontSize: 15, fontWeight: 500, color: C.ink }}>
+            ✓ Identity confirmed — {confirmed}
+          </p>
+          <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink45 }}>
+            saved to your part library as{" "}
+            <span style={{ color: C.user }}>● USER</span> — future look-alike parts will carry it.
+          </p>
+        </>
+      ) : (
+        <>
+          {/* Lead: the closest designation — phrased as a QUESTION, never asserted. */}
+          <p data-testid="identity-closest-lead" style={{ margin: "10px 0 0", fontSize: 15, lineHeight: 1.35, color: C.ink70, fontWeight: 500 }}>
+            {model.lead}
+            {model.program && (
+              <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 400, color: C.ink55 }}>{" "}· {model.program}</span>
+            )}
+          </p>
+
+          {/* Confidence % + explicit low-confidence pill (real fields). */}
+          <div style={{ margin: "9px 0 0", display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+            <span
+              data-testid="identity-closest-confidence"
+              style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.06em", color: C.ink45, border: `1px dashed ${C.ink45}`, borderRadius: 999, padding: "2px 9px" }}
+            >
+              {model.pct}% · LOW CONFIDENCE
+            </span>
+            <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink45 }}>
+              geometry {(m.geometry_similarity * 100).toFixed(0)}%
+              {m.name_similarity != null ? ` · name ${(m.name_similarity * 100).toFixed(0)}%` : " · name n/a"}
+            </span>
+          </div>
+
+          {/* Honest caveat — this is a hint, not a confident match. */}
+          <p style={{ margin: "9px 0 0", fontSize: 11.5, lineHeight: 1.5, color: C.ink55 }}>
+            {model.caveat}
+          </p>
+
+          {err && (
+            <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.fail }}>{err}</p>
+          )}
+
+          {/* Actions — the user decides; the system never asserts. */}
+          <div style={{ marginTop: 13, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <GhostButton
+              disabled={busy || !meshHash}
+              title={meshHash ? "Confirm this identity onto your part library" : "mesh hash unavailable"}
+              onClick={() =>
+                onConfirm(
+                  {
+                    declared_part_id: m.declared_part_id ?? undefined,
+                    declared_name: m.declared_name ?? undefined,
+                    program: m.program ?? undefined,
+                  },
+                  model.lead.replace(/^Closest in your library: /, "")
+                )
+              }
+            >
+              {busy ? "Confirming…" : "Yes, confirm this"}
+            </GhostButton>
+            <GhostButton disabled={busy} onClick={onNotThis}>Not this</GhostButton>
+          </div>
         </>
       )}
     </div>
