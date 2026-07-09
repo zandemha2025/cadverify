@@ -41,7 +41,7 @@ from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.fixes.fix_suggester import get_priority_fixes
-from src.parsers import mesh_cache
+from src.parsers import mesh_cache, parse_pool
 from src.parsers.step_mesher import is_step_supported, step_to_trimesh_from_bytes
 from src.parsers.stl_parser import parse_stl_from_bytes
 from src.profiles.database import MACHINES, MATERIALS, get_all_processes
@@ -102,7 +102,15 @@ async def _read_capped(file: UploadFile) -> bytes:
     return bytes(buf)
 
 
-def _parse_mesh(data: bytes, filename: str):
+def _parse_setup(data: bytes, filename: str):
+    """MAIN-process prelude: suffix gate, magic validation, cache handles.
+
+    Runs in EVERY path (in-thread and pooled). ``validate_magic`` is the
+    untrusted-bytes security gate — it MUST precede any dispatch of the bytes to
+    a parser lib or a pool worker (cadquery/trimesh/gmsh can crash on adversarial
+    input). Kept BEFORE the cache lookup so unsupported/corrupt uploads still 400
+    exactly as before (same bytes => same magic result on a hit).
+    """
     suffix = Path(filename).suffix.lower()
     if suffix not in (".stl", ".step", ".stp", ".iges", ".igs"):
         raise HTTPException(
@@ -112,48 +120,54 @@ def _parse_mesh(data: bytes, filename: str):
                 "Use .stl, .step, .stp, .iges, or .igs"
             ),
         )
-    # CORE-07: defense-in-depth — verify magic bytes before dispatching
-    # to parser libs (cadquery/trimesh can crash on adversarial input).
-    # Kept BEFORE the cache lookup so unsupported/corrupt uploads still 400
-    # exactly as today (same bytes => same magic result on a hit).
     validate_magic(data, suffix)
 
     # PERF: mutation-safe parsed-mesh cache. The SAME part is re-parsed by the
-    # validate + cost + preview burst; gmsh/OCC tessellation is ~seconds. On a
-    # HIT we return a deep copy (never the shared object); on a MISS we return
-    # the freshly-parsed original (byte-identical to pre-cache behavior) and the
-    # cache retains an independent copy. See parsers/mesh_cache.py for the full
-    # correctness argument, bounds, and opt-out (MESH_PARSE_CACHE_DISABLED).
+    # validate + cost + preview burst; gmsh/OCC tessellation is ~seconds. See
+    # parsers/mesh_cache.py for the correctness argument, bounds, and opt-out
+    # (MESH_PARSE_CACHE_DISABLED). A warm hit never touches the process pool.
     cache = None
     cache_key = None
     if not mesh_cache.is_disabled():
         cache = mesh_cache.get_cache()
         cache_key = mesh_cache.key_for(data, suffix)
+    return suffix, cache, cache_key
 
+
+def _cache_hit(cache, cache_key):
+    """Return a deep copy of the cached mesh on a HIT (cap re-enforced), else None.
+
+    The cache stores only the PARSE. The triangle cap is a per-REQUEST policy
+    (MAX_TRIANGLES is read from env each call), so re-enforce it on the copy — a
+    cap lowered since the entry was populated must still 400, exactly as a fresh
+    parse would. ``enforce_triangle_cap`` only ever raises HTTPException(400),
+    which propagates unchanged.
+    """
+    if cache is None:
+        return None
+    cached = cache.get(cache_key)
+    if cached is None:
+        return None
+    enforce_triangle_cap(cached)
+    return cached
+
+
+def _raw_tessellate_in_thread(data: bytes, suffix: str, filename: str):
+    """In-thread raw parse of already-validated bytes -> mesh, with the exact
+    HTTPException mapping the route has always used. NO cache, NO post-parse cap
+    (the caller applies ``enforce_triangle_cap``). This is (a) the kill-switch /
+    STL path and (b) the BrokenProcessPool fallback body for STEP/IGES."""
     try:
-        if cache is not None:
-            cached = cache.get(cache_key)
-            if cached is not None:
-                # HIT: the cache stores only the PARSE. The triangle cap is a
-                # per-REQUEST policy (MAX_TRIANGLES is read from env each call),
-                # so re-enforce it on the copy — a cap lowered since the entry
-                # was populated must still 400, exactly as a fresh parse would.
-                enforce_triangle_cap(cached)
-                return cached, suffix
         if suffix == ".stl":
             enforce_stl_triangle_count_cap(data)
-            mesh = parse_stl_from_bytes(data, filename)
-            enforce_triangle_cap(mesh)
-        else:
-            if not is_step_supported():
-                raise HTTPException(
-                    status_code=501,
-                    detail="STEP parsing is unavailable on this server (gmsh not installed).",
-                )
-            # gmsh -> triangulated shell (DFM + cost path). The post-mesh
-            # triangle cap is the hard stop for runaway tessellation.
-            mesh = step_to_trimesh_from_bytes(data, filename)
-            enforce_triangle_cap(mesh)  # 400 if tessellation exceeded MAX_TRIANGLES
+            return parse_stl_from_bytes(data, filename)
+        if not is_step_supported():
+            raise HTTPException(
+                status_code=501,
+                detail="STEP parsing is unavailable on this server (gmsh not installed).",
+            )
+        # gmsh -> triangulated shell (DFM + cost path).
+        return step_to_trimesh_from_bytes(data, filename)
     except HTTPException:
         raise
     except ValueError as e:
@@ -163,19 +177,65 @@ def _parse_mesh(data: bytes, filename: str):
         logger.exception("Mesh parsing failed for %s", filename)
         raise HTTPException(status_code=400, detail="Failed to parse mesh file")
 
+
+def _parse_mesh(data: bytes, filename: str):
+    """Fully synchronous parse (today's behavior, in-thread tessellation).
+
+    Used directly by tests, by the process-pool kill switch, and as the pool's
+    in-thread fallback. Byte-identical to the pre-pool implementation.
+    """
+    suffix, cache, cache_key = _parse_setup(data, filename)
+    cached = _cache_hit(cache, cache_key)
+    if cached is not None:
+        return cached, suffix
+    mesh = _raw_tessellate_in_thread(data, suffix, filename)
+    enforce_triangle_cap(mesh)  # 400 if tessellation exceeded MAX_TRIANGLES
     if cache is not None:
         cache.put(cache_key, mesh)
     return mesh, suffix
 
 
 async def _parse_mesh_async(data: bytes, filename: str):
-    """Run _parse_mesh off the event loop, bounded by ANALYSIS_TIMEOUT_SEC.
+    """Parse off the event loop, bounded by ANALYSIS_TIMEOUT_SEC -> 504.
 
-    gmsh STEP meshing is CPU-bound and can be slow on complex parts; this keeps
-    the worker responsive and turns a runaway tessellation into a clean 504
-    instead of blocking the event loop. STL parsing is sub-second; it simply
-    runs in a thread now with no behavioural change.
+    Default: STEP/IGES raw tessellation is dispatched to a spawn ProcessPool so
+    concurrent DISTINCT parts parse in PARALLEL (past the GIL + the process-global
+    gmsh lock). The MAIN process keeps the security gate (magic), the mesh cache,
+    and the triangle-cap policy. STL stays in-thread (sub-second; pickle would
+    cost more than the parse). Kill switch PARSE_PROCESS_POOL_DISABLED=1 restores
+    today's exact in-thread behavior.
     """
+    import asyncio
+
+    # ONLY STEP/IGES benefit from the pool (gmsh tessellation is the CPU-bound,
+    # GIL-/gmsh-lock-serialized cost). STL is sub-second — the pickle round-trip
+    # would exceed the parse — so STL AND unsupported suffixes stay on today's
+    # exact in-thread path (which runs the full synchronous _parse_mesh).
+    suffix = Path(filename).suffix.lower()
+    if parse_pool.is_disabled() or suffix not in (".step", ".stp", ".iges", ".igs"):
+        return await _parse_mesh_in_thread_async(data, filename)
+
+    loop = asyncio.get_event_loop()
+    timeout = _analysis_timeout_sec()
+    try:
+        return await asyncio.wait_for(
+            _parse_mesh_pooled(data, filename, loop),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        # future.cancel() can't stop a running pool worker mid-C-tessellation.
+        # Recycle the pool so the runaway is reclaimed (its worker finishes then
+        # exits) instead of leaked; the next request gets a fresh, healthy pool.
+        parse_pool.recycle_pool()
+        raise HTTPException(
+            status_code=504,
+            detail=f"File parsing exceeded {timeout:.0f}s timeout.",
+        )
+
+
+async def _parse_mesh_in_thread_async(data: bytes, filename: str):
+    """Today's exact path: run the fully-synchronous _parse_mesh in the default
+    thread executor under the timeout. The process-pool kill-switch target."""
     import asyncio
 
     loop = asyncio.get_event_loop()
@@ -190,6 +250,57 @@ async def _parse_mesh_async(data: bytes, filename: str):
             status_code=504,
             detail=f"File parsing exceeded {timeout:.0f}s timeout.",
         )
+
+
+async def _parse_mesh_pooled(data: bytes, filename: str, loop):
+    """Process-pool path for STEP/IGES only (STL is filtered out upstream).
+
+    MAIN process: magic + cache + cap. WORKER: raw tessellation only. Composes
+    with the cache: check FIRST, dispatch on miss, cache the returned mesh here.
+    """
+    # MAIN-process prelude off the event loop (sha256 of a large upload is not
+    # free). A warm cache hit short-circuits before the pool.
+    suffix, cache, cache_key, cached = await loop.run_in_executor(
+        None, _pooled_prelude, data, filename
+    )
+    if cached is not None:
+        return cached, suffix
+
+    if not is_step_supported():
+        raise HTTPException(
+            status_code=501,
+            detail="STEP parsing is unavailable on this server (gmsh not installed).",
+        )
+    mesh = await _tessellate_step_via_pool(data, suffix, filename)
+
+    enforce_triangle_cap(mesh)  # per-request policy, MAIN process
+    if cache is not None:
+        # cache.put deep-copies (a few ms for a 185k-face mesh) — off the loop.
+        await loop.run_in_executor(None, cache.put, cache_key, mesh)
+    return mesh, suffix
+
+
+def _pooled_prelude(data: bytes, filename: str):
+    """_parse_setup + cache lookup, packaged for a single executor hop."""
+    suffix, cache, cache_key = _parse_setup(data, filename)
+    cached = _cache_hit(cache, cache_key)
+    return suffix, cache, cache_key, cached
+
+
+async def _tessellate_step_via_pool(data: bytes, suffix: str, filename: str):
+    """Dispatch STEP/IGES raw tessellation to the process pool, mapping worker
+    exceptions to the route's usual codes. parse_pool.submit_async already
+    handles BrokenProcessPool internally (recycle + in-thread fallback), so a
+    dead worker yields a correct mesh here, never a 500."""
+    try:
+        return await parse_pool.submit_async(data, suffix)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception("Mesh parsing failed for %s", filename)
+        raise HTTPException(status_code=400, detail="Failed to parse mesh file")
 
 
 def _resolve_target_processes(processes: Optional[str]) -> list[ProcessType]:
