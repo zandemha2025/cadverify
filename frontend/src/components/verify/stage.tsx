@@ -18,6 +18,19 @@ const StageCanvas = dynamic(() => import("./stage-canvas"), {
   loading: () => null,
 });
 
+/** Honest assembly overlay data for the stage — the whole is real context, not a
+ *  declared parent. Present only when the upload is a multi-part assembly. */
+export interface StageAssembly {
+  /** object URL for the combined assembly GLB (all parts, world positions). */
+  glbUrl: string;
+  /** id of the highlighted part-of-interest (matches a GLB node). */
+  selectedId: string | null;
+  partCount: number;
+  /** the highlighted part's readable name + product-tree path, for the label. */
+  selectedName: string | null;
+  selectedTreePath: string | null;
+}
+
 export function Stage({
   file,
   partName,
@@ -28,6 +41,7 @@ export function Stage({
   autoOrbit,
   context,
   contextError,
+  assembly,
 }: {
   file: File | null;
   partName: string;
@@ -38,6 +52,9 @@ export function Stage({
   autoOrbit: boolean;
   context: PartContext | null;
   contextError: string | null;
+  /** when set, the stage renders the WHOLE assembly in context (part-of-interest
+   *  highlighted) instead of the single-part shell. */
+  assembly: StageAssembly | null;
 }) {
   const [xray, setXray] = useState(false);
   const [seat, setSeat] = useState(false);
@@ -72,6 +89,14 @@ export function Stage({
       prev?.revoke();
       return null;
     });
+    // Assembly mode owns the render (the combined GLB): skip the single-part
+    // shell fetch entirely so the two paths never fight over the canvas.
+    if (assembly) {
+      setRenderUrl(null);
+      setRenderKind(null);
+      setResolvingShell(false);
+      return;
+    }
     if (!file) {
       setRenderUrl(null);
       setRenderKind(null);
@@ -112,10 +137,16 @@ export function Stage({
       cancelled = true;
       pm?.revoke();
     };
-  }, [file]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file, assembly?.glbUrl]);
 
   // Honest render-mode readout: what the viewer is actually looking at.
-  const renderMode: { state: string; label: string } = renderKind === "stl"
+  const renderMode: { state: string; label: string } = assembly
+    ? {
+        state: "real-assembly",
+        label: `real assembly shell · ${assembly.partCount} parts`,
+      }
+    : renderKind === "stl"
     ? { state: "real-stl", label: "real geometry · STL" }
     : renderKind === "glb"
       ? {
@@ -146,6 +177,8 @@ export function Stage({
         <StageCanvas
           renderUrl={renderUrl}
           renderKind={renderKind}
+          assemblyUrl={assembly?.glbUrl ?? null}
+          assemblySelectedId={assembly?.selectedId ?? null}
           bbox={bbox}
           xray={xray}
           hostile={hostile}
@@ -180,7 +213,9 @@ export function Stage({
             fontSize: 10,
             letterSpacing: "0.02em",
             color:
-              renderMode.state === "real-shell" || renderMode.state === "real-stl"
+              renderMode.state === "real-shell" ||
+              renderMode.state === "real-stl" ||
+              renderMode.state === "real-assembly"
                 ? C.measured
                 : C.ink40,
           }}
@@ -188,14 +223,37 @@ export function Stage({
           <span aria-hidden>{renderMode.state === "bbox-envelope" ? "▢ " : "● "}</span>
           {renderMode.label}
         </p>
+        {/* Assembly mode: name the highlighted part-of-interest + its product-tree
+            path, honestly labelled as the selected part inside the whole. */}
+        {assembly && (
+          <p
+            data-testid="verify-stage-selected-part"
+            style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10.5, lineHeight: 1.6, color: C.ink55 }}
+          >
+            <span style={{ color: C.user }}>◆ selected&nbsp;</span>
+            <span style={{ color: C.ink }}>{assembly.selectedName ?? "—"}</span>
+            {assembly.selectedTreePath && (
+              <>
+                <br />
+                <span style={{ color: C.ink40, overflowWrap: "anywhere" }}>
+                  {assembly.selectedTreePath}
+                </span>
+              </>
+            )}
+          </p>
+        )}
       </div>
 
+      {assembly ? (
+        <AssemblyStrip partCount={assembly.partCount} />
+      ) : (
       <ContextStrip
         partName={partName}
         context={context}
         contextError={contextError}
         hasParent={hasParent}
       />
+      )}
 
       <div
         style={{
@@ -221,31 +279,73 @@ export function Stage({
           <span aria-hidden style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />
           X-ray
         </GhostButton>
-        <GhostButton
-          onClick={() => {
-            if (hasParent) setSeat((v) => !v);
-          }}
-          disabled={!hasParent}
-          title={
-            hasParent
-              ? "Seat the part in its declared parent assembly"
-              : "No parent assembly has been declared for this part"
-          }
-          style={{
-            padding: "8px 16px",
-            fontSize: 12,
-            border: seat && hasParent ? `1px solid ${C.ink}` : `1px solid #d8d8dc`,
-            background: seat && hasParent ? C.ink : "#ffffff",
-            color: seat && hasParent ? "#ffffff" : C.ink,
-          }}
-        >
-          {hasParent ? "Seat in assembly" : "No parent assembly"}
-        </GhostButton>
+        {/* The declared-parent seat is a single-part affordance; in real-assembly
+            mode the neighbours are already the context, so it is hidden. */}
+        {!assembly && (
+          <GhostButton
+            onClick={() => {
+              if (hasParent) setSeat((v) => !v);
+            }}
+            disabled={!hasParent}
+            title={
+              hasParent
+                ? "Seat the part in its declared parent assembly"
+                : "No parent assembly has been declared for this part"
+            }
+            style={{
+              padding: "8px 16px",
+              fontSize: 12,
+              border: seat && hasParent ? `1px solid ${C.ink}` : `1px solid #d8d8dc`,
+              background: seat && hasParent ? C.ink : "#ffffff",
+              color: seat && hasParent ? "#ffffff" : C.ink,
+            }}
+          >
+            {hasParent ? "Seat in assembly" : "No parent assembly"}
+          </GhostButton>
+        )}
         <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink35, paddingLeft: 6, whiteSpace: "nowrap" }}>
           drag to orbit
         </span>
       </div>
     </main>
+  );
+}
+
+/** The assembly counterpart of ContextStrip: honest that this is a real
+ *  multi-part assembly (N parts) and that the render shows the part-of-interest
+ *  in its true neighbours — NOT a declared/synthetic parent envelope. */
+function AssemblyStrip({ partCount }: { partCount: number }) {
+  return (
+    <div
+      data-testid="verify-stage-assembly"
+      data-assembly-parts={partCount}
+      style={{
+        position: "absolute",
+        top: 22,
+        right: 20,
+        width: "min(300px, calc(100% - 44px))",
+        border: `1px solid rgba(59,123,184,0.28)`,
+        background: "rgba(255,255,255,0.78)",
+        backdropFilter: "blur(14px)",
+        borderRadius: 12,
+        padding: "12px 13px",
+        boxShadow: "0 12px 34px rgba(23,24,26,0.08)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, letterSpacing: "0.13em", color: C.ink45 }}>
+          ASSEMBLY
+        </p>
+        <span style={{ fontFamily: MONO, fontSize: 10, color: C.measured }}>● real shell</span>
+      </div>
+      <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 11, lineHeight: 1.5, color: C.ink }}>
+        {partCount} parts in world position
+      </p>
+      <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 6 }}>
+        <ContextPill color={C.measured}>part in context</ContextPill>
+        <ContextPill>per-part analysis coming</ContextPill>
+      </div>
+    </div>
   );
 }
 

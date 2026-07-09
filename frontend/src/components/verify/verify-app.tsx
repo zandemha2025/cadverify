@@ -7,12 +7,14 @@
  * hex, theme-independent (the rest of the app is dark-first); flag-off this whole
  * tree is unreachable, so the existing app is byte-identical.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { C, MONO, SANS } from "@/lib/verify/tokens";
 import { runVerification, type VerifyResult } from "@/lib/verify/run";
 import { listMachines } from "@/lib/verify/machine-api";
 import { CAD_ACCEPT } from "@/lib/cad-file";
-import { Stage } from "./stage";
+import { Stage, type StageAssembly } from "./stage";
+import { AssemblyPanel } from "./assembly-panel";
+import { fetchAssembly, defaultPartOfInterest, type AssemblyRender } from "@/lib/verify/assembly";
 import { VerifyScreen } from "./verify-screen";
 import { MachinesScreen } from "./machines-screen";
 import { RecordsScreen } from "./records-screen";
@@ -79,6 +81,10 @@ export function VerifyApp() {
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [running, setRunning] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  // Multi-part assembly render (>= 2 solids): the combined GLB + product tree.
+  // null for single parts, which keep the existing single-shell path untouched.
+  const [assembly, setAssembly] = useState<AssemblyRender | null>(null);
+  const [assemblySelectedId, setAssemblySelectedId] = useState<string | null>(null);
   const [notifOpen, setNotifOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   // A REAL signal for the rail footer: are any of the org's machines declaring an
@@ -112,6 +118,30 @@ export function VerifyApp() {
       setScreen("verify");
       setRunning(true);
       setResult(null);
+      // Reset any prior assembly render (revoke its GLB object URL).
+      setAssembly((prev) => {
+        prev?.revoke();
+        return null;
+      });
+      setAssemblySelectedId(null);
+
+      // Assembly detection runs IN PARALLEL and is best-effort — it only fires the
+      // extra request for STEP/IGES, returns null for a single part or STL, and
+      // never blocks or alters the single-part path. When it resolves to a real
+      // multi-part assembly, the stage + right panel switch to the in-context view.
+      void fetchAssembly(f)
+        .then((asm) => {
+          if (runSeq.current !== seq) {
+            asm?.revoke();
+            return;
+          }
+          if (asm) {
+            setAssembly(asm);
+            setAssemblySelectedId(defaultPartOfInterest(asm.model.parts));
+          }
+        })
+        .catch(() => {});
+
       try {
         const r = await runVerification({ file: f, env, materialClass });
         // Drop a result that a newer run has superseded — last dispatch wins, so the
@@ -194,6 +224,20 @@ export function VerifyApp() {
   }, []);
 
   const onVerify = screen === "verify";
+
+  // The stage's assembly overlay: the highlighted part's name + tree path for the
+  // in-canvas label. null when the upload is a single part (unchanged path).
+  const stageAssembly = useMemo<StageAssembly | null>(() => {
+    if (!assembly) return null;
+    const sel = assembly.model.parts.find((p) => p.id === assemblySelectedId) ?? null;
+    return {
+      glbUrl: assembly.glbUrl,
+      selectedId: assemblySelectedId,
+      partCount: assembly.model.part_count,
+      selectedName: sel ? sel.name || sel.occurrence || sel.id : null,
+      selectedTreePath: sel?.tree_path ?? null,
+    };
+  }, [assembly, assemblySelectedId]);
 
   return (
     <ToastProvider>
@@ -299,31 +343,49 @@ export function VerifyApp() {
               file={file}
               partName={result?.file?.name ?? file?.name ?? "No part yet"}
               meta1={
-                result?.cost?.geometry
+                stageAssembly
+                  ? `assembly · ${stageAssembly.partCount} parts in world position`
+                  : result?.cost?.geometry
                   ? `Ø/bbox ${result.cost.geometry.bbox_mm.map((n) => n.toFixed(1)).join(" × ")} mm · ${result.cost.geometry.volume_cm3.toFixed(2)} cm³`
                   : running
                     ? "measuring geometry…"
                     : "drop STL, STEP or IGES to measure"
               }
-              meta2={result?.cost?.geometry ? `watertight ${String(result.cost.geometry.watertight)} · ● MEASURED` : undefined}
+              meta2={
+                stageAssembly
+                  ? undefined
+                  : result?.cost?.geometry
+                  ? `watertight ${String(result.cost.geometry.watertight)} · ● MEASURED`
+                  : undefined
+              }
               bbox={result?.cost?.geometry?.bbox_mm ?? null}
               hostile={env.temp || env.sour || env.pressure}
-              autoOrbit={running}
+              autoOrbit={running && !stageAssembly}
               context={result?.partContext ?? null}
               contextError={result?.partContextError ?? null}
+              assembly={stageAssembly}
             />
-            <VerifyScreen
-              result={result}
-              running={running}
-              fileName={result?.file?.name ?? file?.name ?? null}
-              env={env}
-              setEnv={setEnv}
-              materialClass={materialClass}
-              setMaterialClass={setMaterialClass}
-              onPickFile={pickFile}
-              onReverify={onReverify}
-              nav={nav}
-            />
+            {stageAssembly && assembly ? (
+              <AssemblyPanel
+                model={assembly.model}
+                fileName={file?.name ?? null}
+                selectedId={assemblySelectedId}
+                onSelect={setAssemblySelectedId}
+              />
+            ) : (
+              <VerifyScreen
+                result={result}
+                running={running}
+                fileName={result?.file?.name ?? file?.name ?? null}
+                env={env}
+                setEnv={setEnv}
+                materialClass={materialClass}
+                setMaterialClass={setMaterialClass}
+                onPickFile={pickFile}
+                onReverify={onReverify}
+                nav={nav}
+              />
+            )}
           </div>
         )}
         {screen === "machines" && <MachinesScreen nav={nav} />}

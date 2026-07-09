@@ -112,6 +112,103 @@ function GlbPart({ url, xray, hostile }: { url: string; xray: boolean; hostile: 
   return <PartMesh geometry={geometry} xray={xray} hostile={hostile} />;
 }
 
+/** The part-in-context render: the WHOLE assembly, every part in its baked world
+ *  position, streamed as ONE combined GLB (named node per part). The part-of-
+ *  interest is rendered with the SAME studio material as the single-part shell
+ *  (identical metalness/roughness/x-ray) so it reads as the same instrument; the
+ *  rest are ghosted to a neutral context — like a part highlighted inside its
+ *  housing, but real geometry. Honest: a MESH-LEVEL shell, no B-rep/PMI.
+ *
+ *  Node matching: trimesh exports each part as a node named by its stable `id`
+ *  (== the GLB node_name). We match the selected id against the mesh's own name
+ *  and its parent's, so highlight tracks the real product-tree part. */
+function AssemblyParts({
+  url,
+  selectedId,
+  xray,
+  hostile,
+}: {
+  url: string;
+  selectedId: string | null;
+  xray: boolean;
+  hostile: boolean;
+}) {
+  const gltf = useLoader(GLTFLoader, url);
+  const meshes = useMemo(() => {
+    const out: { key: string; id: string; geometry: THREE.BufferGeometry }[] = [];
+    gltf.scene.updateMatrixWorld(true);
+    let i = 0;
+    gltf.scene.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (mesh.isMesh && mesh.geometry) {
+        const g = (mesh.geometry as THREE.BufferGeometry).clone();
+        g.applyMatrix4(mesh.matrixWorld);
+        g.computeVertexNormals();
+        const id = mesh.name || mesh.parent?.name || "";
+        out.push({ key: `${id || "part"}-${i++}`, id, geometry: g });
+      }
+    });
+    return out;
+  }, [gltf]);
+
+  // Uniform scale for the WHOLE assembly so it fits the same frame the single
+  // shell uses — parts keep their real relative positions.
+  const scale = useMemo(() => {
+    const bounds = new THREE.Box3();
+    for (const m of meshes) {
+      m.geometry.computeBoundingBox();
+      if (m.geometry.boundingBox) bounds.union(m.geometry.boundingBox);
+    }
+    const size = new THREE.Vector3();
+    bounds.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+    return TARGET / maxDim;
+  }, [meshes]);
+
+  if (meshes.length === 0) return null;
+  // When nothing is explicitly selected, everything renders as the highlighted
+  // material (no dimming) so an assembly never looks broken.
+  const anySelected = selectedId != null && meshes.some((m) => m.id === selectedId);
+
+  return (
+    <Center>
+      <group scale={scale}>
+        {meshes.map((m) => {
+          const highlighted = !anySelected || m.id === selectedId;
+          return (
+            <mesh key={m.key} geometry={m.geometry}>
+              {highlighted ? (
+                <meshStandardMaterial
+                  color={hostile ? "#d8c6b6" : "#c6ccd4"}
+                  metalness={xray ? 0.1 : 0.85}
+                  roughness={xray ? 0.9 : 0.42}
+                  envMapIntensity={1.2}
+                  transparent={xray}
+                  opacity={xray ? 0.32 : 1}
+                  wireframe={xray}
+                  emissive={"#2b6da3"}
+                  emissiveIntensity={xray ? 0.05 : 0.14}
+                />
+              ) : (
+                // Context parts: ghosted neutral shell, same family of material so
+                // it reads as the SAME render — just receded behind the part.
+                <meshStandardMaterial
+                  color="#aeb6c0"
+                  metalness={0.15}
+                  roughness={0.85}
+                  transparent
+                  opacity={xray ? 0.06 : 0.16}
+                  depthWrite={false}
+                />
+              )}
+            </mesh>
+          );
+        })}
+      </group>
+    </Center>
+  );
+}
+
 function BoxEnvelope({ bbox, xray }: { bbox: [number, number, number] | null; xray: boolean }) {
   // Scale the measured bbox into the normalised TARGET frame; neutral cube when
   // there is no measurement yet.
@@ -291,6 +388,8 @@ function AutoOrbit({ on }: { on: boolean }) {
 export default function StageCanvas({
   renderUrl,
   renderKind,
+  assemblyUrl,
+  assemblySelectedId,
   bbox,
   xray,
   hostile,
@@ -303,6 +402,11 @@ export default function StageCanvas({
   renderUrl: string | null;
   /** which loader to use for renderUrl; null → fall back to the box. */
   renderKind: StageRenderKind | null;
+  /** object URL for the combined multi-part assembly GLB. When present, the
+   *  stage renders the WHOLE assembly in context (overrides renderUrl). */
+  assemblyUrl: string | null;
+  /** id of the part-of-interest highlighted inside the assembly. */
+  assemblySelectedId: string | null;
   bbox: [number, number, number] | null;
   xray: boolean;
   hostile: boolean;
@@ -332,14 +436,25 @@ export default function StageCanvas({
       <directionalLight position={[0, -4, 3]} intensity={0.25} color="#e8ecf1" />
       <Suspense fallback={<BoxEnvelope bbox={bbox} xray={xray} />}>
         <SeatGroup seat={seat}>
-          {renderUrl && renderKind === "stl" ? (
+          {assemblyUrl ? (
+            <AssemblyParts
+              url={assemblyUrl}
+              selectedId={assemblySelectedId}
+              xray={xray}
+              hostile={hostile}
+            />
+          ) : renderUrl && renderKind === "stl" ? (
             <StlPart url={renderUrl} xray={xray} hostile={hostile} />
           ) : renderUrl && renderKind === "glb" ? (
             <GlbPart url={renderUrl} xray={xray} hostile={hostile} />
           ) : (
             <BoxEnvelope bbox={bbox} xray={xray} />
           )}
-          <AssemblyEnvelope seat={seat} context={assemblyContext} hostile={hostile} />
+          {/* The declared-parent envelope is a single-part affordance; hide it in
+              real-assembly mode where the neighbours ARE the context. */}
+          {!assemblyUrl && (
+            <AssemblyEnvelope seat={seat} context={assemblyContext} hostile={hostile} />
+          )}
         </SeatGroup>
         <Environment resolution={128} frames={1}>
           <Lightformer form="rect" intensity={2.6} position={[0, 5, 1]} rotation={[-Math.PI / 2, 0, 0]} scale={[10, 6, 1]} color="#ffffff" />
