@@ -38,7 +38,7 @@ import {
   type ValidationResult,
 } from "@/lib/api";
 import { severityTone, verdictLabel, verdictTone, procLabel } from "@/lib/status";
-import { parseCalibration, pickEstimate } from "@/lib/cost-views";
+import { parseCalibration, makeNowStableEstimate } from "@/lib/cost-views";
 import { costPersistUiEnabled } from "@/lib/cost-decision";
 import { flattenIssues } from "@/components/IssueList";
 import { CAD_ACCEPT, isSupportedCad, supportedCadLabel } from "@/lib/cad-file";
@@ -209,7 +209,12 @@ export default function PartWorkspace({
   // the number the whole frame is about — and traces it to its governed sources.
   const inspectorEstimate = useMemo(() => {
     if (!report?.decision) return null;
-    return pickEstimate(report, report.decision.make_now_process);
+    // Anchor to the make-now route's STABLE (largest, setup-amortized) quantity —
+    // the reading the should-cost headline shows — so the Inspector's drivers
+    // reconcile to the SAME qty's unit cost. (F5: this used pickEstimate() with no
+    // qty, which returns the FIRST/smallest-qty estimate and disagreed with the
+    // headline — drivers @qty 100 under a headline @qty 10,000.)
+    return makeNowStableEstimate(report);
   }, [report]);
   const overrideKeys = useMemo(() => Object.keys(opts.overrides ?? {}), [opts.overrides]);
 

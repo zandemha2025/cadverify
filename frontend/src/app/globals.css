@@ -347,6 +347,23 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* ── A11Y (F3 · WCAG 2.4.7): the auth email/password inputs render on the
+   self-contained dark auth panel with inline styles, so their focus ring can't
+   live inline (`:focus-visible` is unexpressible there, and an inline
+   `outline:none` would beat any stylesheet rule). Draw a clearly visible cobalt
+   ring on keyboard focus — 2px solid + offset against the near-black field is
+   well above the 3:1 non-text contrast floor. `:focus` clears the UA default so
+   only our ring shows; `:focus-visible` (source-ordered after) adds it back for
+   keyboard users. */
+.auth-input:focus {
+  outline: none;
+}
+.auth-input:focus-visible {
+  outline: 2px solid #6ba6f4;
+  outline-offset: 2px;
+  border-color: #6ba6f4;
+}
+
 /* Numbers are the product: tabular mono everywhere they appear (the EVIDENCE). */
 .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
 

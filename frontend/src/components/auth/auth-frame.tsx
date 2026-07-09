@@ -32,7 +32,9 @@ const input = {
   padding: "13px 14px",
   fontFamily: "var(--st-font-sans)",
   fontSize: 14,
-  outline: "none",
+  // NOTE: focus styling lives in the `.auth-input` rule in globals.css — a
+  // `:focus-visible` ring can't be expressed inline, and an inline `outline:none`
+  // here would win over any stylesheet rule and re-suppress it (WCAG 2.4.7 / F3).
 } satisfies CSSProperties;
 
 export function AuthFrame({
@@ -99,6 +101,7 @@ export function AuthField({
         {...props}
         aria-invalid={error ? true : undefined}
         aria-describedby={helpId}
+        className="auth-input"
         style={input}
       />
       {(error || hint) && (

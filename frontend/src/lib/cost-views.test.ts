@@ -37,13 +37,14 @@ import {
   costedProcesses,
   costedQuantities,
   pickEstimate,
+  makeNowStableEstimate,
   estimateHalfWidth,
   fmtAssumptionValue,
   parseCalibration,
   buildCompareRows,
   blockersByProcess,
 } from "./cost-views.ts";
-import type { CostReport, CostEstimate, CostAssumption, CostDriver } from "@/lib/api";
+import type { CostReport, CostEstimate, CostAssumption, CostDriver, CostDecision } from "@/lib/api";
 
 /* ---- fixture helpers -------------------------------------------- */
 
@@ -201,6 +202,68 @@ test("pickEstimate breaks an exact-midpoint tie toward the first-seen estimate",
   // 150 is equidistant from 100 and 200; reduce()'s strict `<` keeps `best`
   // (the first element) on a tie rather than overwriting it.
   assert.equal(pickEstimate(r, "cnc_milling", 150)?.quantity, 100);
+});
+
+function decision(over: Partial<CostDecision> = {}): CostDecision {
+  return {
+    make_now_process: "cnc_milling",
+    make_now_material: "aluminum-6061",
+    tooling_process: null,
+    tooling_dfm_ready: false,
+    crossover_qty: null,
+    recommendation: {},
+    if_redesigned: {},
+    note: "",
+    ...over,
+  };
+}
+
+test("makeNowStableEstimate anchors the drivers to the amortized headline qty, not the first (F5)", () => {
+  // The reported mismatch: the Inspector drivers reconciled to qty 100 ($8.72)
+  // while the should-cost headline reads the amortized qty 10,000 ($8.68).
+  const r = report({
+    decision: decision({ make_now_process: "cnc_milling" }),
+    estimates: [
+      est({ process: "cnc_milling", quantity: 100, unit_cost_usd: 8.72 }),
+      est({ process: "cnc_milling", quantity: 10000, unit_cost_usd: 8.68 }),
+    ],
+  });
+  // pickEstimate(no qty) returned the FIRST (smallest) — the bug we replaced.
+  assert.equal(pickEstimate(r, "cnc_milling")?.quantity, 100, "guards the old bug");
+  // makeNowStableEstimate anchors to the LARGEST costed qty (setup amortized).
+  const e = makeNowStableEstimate(r);
+  assert.equal(e?.quantity, 10000, "drivers now read the headline's amortized qty");
+  assert.equal(e?.unit_cost_usd, 8.68, "reconciles to the headline's unit cost");
+});
+
+test("makeNowStableEstimate ignores other processes and is order-independent", () => {
+  const r = report({
+    decision: decision({ make_now_process: "cnc_milling" }),
+    estimates: [
+      est({ process: "cnc_milling", quantity: 10000, unit_cost_usd: 8.68 }),
+      est({ process: "cnc_milling", quantity: 100, unit_cost_usd: 8.72 }),
+      est({ process: "die_casting", quantity: 100000, unit_cost_usd: 2.1 }),
+    ],
+  });
+  assert.equal(makeNowStableEstimate(r)?.quantity, 10000, "largest cnc qty even when listed first");
+});
+
+test("makeNowStableEstimate returns null (never fabricates) with no decision or no make-now estimate", () => {
+  assert.equal(
+    makeNowStableEstimate(report({ estimates: [est({ process: "cnc_milling", quantity: 100, unit_cost_usd: 8.72 })] })),
+    null,
+    "no decision => null"
+  );
+  assert.equal(
+    makeNowStableEstimate(
+      report({
+        decision: decision({ make_now_process: "cnc_milling" }),
+        estimates: [est({ process: "die_casting", quantity: 100, unit_cost_usd: 2.1 })],
+      })
+    ),
+    null,
+    "no estimate for the make-now route => null"
+  );
 });
 
 test("pickEstimate returns null (never a fabricated estimate) for an uncosted process", () => {
