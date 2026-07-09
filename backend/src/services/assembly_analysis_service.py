@@ -130,11 +130,42 @@ _BOUNDARIES = {
 
 # ── Per-part quantity from the product tree ─────────────────────────────────
 def _design_key(part) -> str:
-    """The design a part instance belongs to. AP203 names each unique design once
-    (``bolt``, ``nut``, …); sibling occurrences share the name. Grouping by name is
-    exactly how ``AssemblyModel.unique_designs`` counts instances, so per-part
-    quantity here === that count (kept consistent by construction)."""
+    """The design NAME a part instance belongs to. AP203 names each unique design
+    once (``bolt``, ``nut``, …); sibling occurrences share the name. Used only for
+    the name-keyed ``quantities_by_design`` summary (mirrors
+    ``AssemblyModel.unique_designs``). The ANALYSIS grouping keys on
+    ``_design_signature`` — real B-rep identity, not just the name — so two parts
+    that merely share a name but differ in geometry are NEVER collapsed."""
     return part.name
+
+
+def _design_signature(part) -> tuple:
+    """REAL design identity for grouping identical instances so they get ONE shared
+    analysis. Keys on the B-REP invariants of the solid — the actual design
+    geometry, NOT the per-occurrence tessellation and NOT merely the product name:
+
+      * product NAME (AP203 names each unique design), AND
+      * solid VOLUME from ``occ.getMass`` — a B-rep query, exact and
+        tessellation-INDEPENDENT, invariant under the instance's world placement
+        (rigid motion preserves volume), AND
+      * boundary-FACE count from the B-rep topology — orientation-invariant.
+
+    Two instances of the SAME design share all three: their meshes differ only by
+    per-occurrence tessellation jitter (triangle count wobbles a few tris), which is
+    DELIBERATELY excluded here — that jitter is exactly what used to flip a DFM
+    near-tie and give identical nuts different "best process" answers. Two genuinely
+    different designs that happen to share a name differ in volume or face count and
+    are therefore NOT collapsed (honest: real geometry decides identity, not the
+    label). Volume is rounded to absorb sub-µm transform FP noise, never enough to
+    merge distinct designs.
+    """
+    try:
+        vol = round(float(getattr(part.world, "volume", 0.0) or 0.0), 3)
+    except (TypeError, ValueError):
+        vol = 0.0
+    gs = getattr(part, "geometry_summary", None)
+    nfaces = int(getattr(gs, "num_boundary_faces", 0) or 0) if gs is not None else 0
+    return (part.name, vol, nfaces)
 
 
 def _quantities_by_design(model) -> dict[str, int]:
@@ -143,6 +174,16 @@ def _quantities_by_design(model) -> dict[str, int]:
     counts: dict[str, int] = {}
     for p in model.parts:
         counts[_design_key(p)] = counts.get(_design_key(p), 0) + 1
+    return counts
+
+
+def _design_counts(parts) -> dict[tuple, int]:
+    """design SIGNATURE -> real instance count across the given parts (the FACT fed
+    to the cost engine as this design's per-assembly production volume)."""
+    counts: dict[tuple, int] = {}
+    for p in parts:
+        sig = _design_signature(p)
+        counts[sig] = counts.get(sig, 0) + 1
     return counts
 
 
@@ -317,6 +358,28 @@ def classify_cots_fastener(name: str, occurrence: str, features=None,
     }
 
 
+# Keys ``analyze_one_part`` adds ON TOP of the per-instance base — the DESIGN-LEVEL
+# analysis (process/DFM/cost/cots or an honest error). These are computed ONCE per
+# unique design and applied verbatim to every instance of it, so identical parts get
+# identical answers. Everything NOT in this set (id, name, tree_path, quantity,
+# world_volume, bbox) is genuinely per-instance and stays per-instance.
+_DESIGN_ANALYSIS_KEYS = ("dfm_summary", "should_cost", "cots", "error")
+
+
+def _instance_base(part, quantity: int) -> dict:
+    """The PER-INSTANCE fields of a per_part row: identity + this occurrence's own
+    world position/size + its design quantity. Genuinely per-instance — never
+    shared, even between identical designs (two identical nuts sit in two places)."""
+    return {
+        "id": part.id,
+        "name": part.name,
+        "tree_path": part.tree_path,
+        "quantity": quantity,
+        "world_volume_mm3": round(float(part.world.volume), 2),
+        "bbox_size_mm": [round(float(d), 2) for d in part.world.bbox_size],
+    }
+
+
 def analyze_one_part(
     part,
     *,
@@ -333,15 +396,12 @@ def analyze_one_part(
     NOT reimplemented. Any failure (degenerate mesh, engine error) is caught and
     returned as an HONEST per-part ``error`` so one bad fastener never breaks the
     assembly and never fabricates a number.
+
+    Called ONCE per unique design (on a representative instance); the DESIGN-LEVEL
+    keys of the returned row (``_DESIGN_ANALYSIS_KEYS``) are then shared to every
+    instance of that design.
     """
-    base = {
-        "id": part.id,
-        "name": part.name,
-        "tree_path": part.tree_path,
-        "quantity": quantity,
-        "world_volume_mm3": round(float(part.world.volume), 2),
-        "bbox_size_mm": [round(float(d), 2) for d in part.world.bbox_size],
-    }
+    base = _instance_base(part, quantity)
     mesh = getattr(part, "mesh", None)
     if mesh is None or len(getattr(mesh, "faces", [])) == 0:
         base["error"] = {
@@ -556,10 +616,17 @@ def analyze_assembly_sync(
     """Full P3 analysis of an extracted ``AssemblyModel`` — pure/sync so the route
     runs it in ONE off-loop executor call under a hard ``wait_for``.
 
-    Per-part DFM + should-cost run concurrently on a bounded thread pool (each part
-    isolated: one failure => an honest per-part error), capped at ``max_parts`` and
-    a shared wall-clock deadline; then real interference. Every bound that bites is
-    surfaced. Nothing here reimplements costing — it calls the single-part engine.
+    DFM + should-cost is analyzed ONCE PER UNIQUE DESIGN (grouped by
+    ``_design_signature`` — real B-rep identity, not just name), on one
+    representative instance, then that SAME result is applied to EVERY instance of
+    the design. Identical parts => identical analysis (the 8 AS1 nuts get one
+    ``best_process``, not eight tessellation-jittered ones); and ~5 analyses instead
+    of 18 => faster. The design analyses run concurrently on a bounded thread pool
+    (each design isolated: one failure => an honest per-instance error on all its
+    instances), capped by ``max_parts`` (still an INSTANCE cap) and a shared
+    wall-clock deadline; then real per-instance interference. Per-instance data
+    (world position, bbox, tree_path, interference pairs) stays per-instance.
+    Nothing here reimplements costing — it calls the single-part engine.
     """
     t_start = time.monotonic()
     deadline = t_start + max(1.0, float(time_budget_sec))
@@ -574,44 +641,79 @@ def analyze_assembly_sync(
     if assemblies_per_year is not None and assemblies_per_year > 0:
         apy = int(assemblies_per_year)
 
-    def _job(part):
-        qty = quantities.get(_design_key(part), 1)
+    # Real per-design production volume (signature count across the WHOLE assembly),
+    # fed to costing as this design's quantity — identical for every instance of it.
+    design_counts = _design_counts(all_parts)
+
+    # Group the SELECTED instances by real design identity; analyze each group ONCE.
+    from collections import OrderedDict
+
+    groups: "OrderedDict[tuple, list]" = OrderedDict()
+    for p in selected:
+        groups.setdefault(_design_signature(p), []).append(p)
+
+    def _representative(members: list):
+        """Analyze on an instance that actually has a mesh, so a single empty
+        tessellation among identical siblings never denies the whole design its
+        analysis; fall back to the first if none is meshed (all get NO_MESH)."""
+        for p in members:
+            m = getattr(p, "mesh", None)
+            if m is not None and len(getattr(m, "faces", [])) > 0:
+                return p
+        return members[0]
+
+    def _design_job(sig, rep):
+        qty = design_counts.get(sig, len(groups[sig]))
         cost_qty = qty * apy if apy else qty
-        return analyze_one_part(
-            part,
+        row = analyze_one_part(
+            rep,
             quantity=qty,
             cost_quantity=max(1, int(cost_qty)),
             material_class=material_class,
             region=region,
         )
+        # Keep ONLY the design-level analysis; per-instance base is rebuilt per row.
+        return {k: v for k, v in row.items() if k in _DESIGN_ANALYSIS_KEYS}
 
-    results: list[dict] = []
-    not_analyzed: list[dict] = []
-    workers = min(_analyze_workers(), max(1, len(selected)))
+    # ── Analyze each unique design once (bounded + concurrent) ──────────────
+    reps = {sig: _representative(members) for sig, members in groups.items()}
+    shared_by_sig: dict[tuple, dict] = {}
+    workers = min(_analyze_workers(), max(1, len(reps)))
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(_job, p): p for p in selected}
-        for fut, part in futures.items():
+        futures = {pool.submit(_design_job, sig, rep): sig
+                   for sig, rep in reps.items()}
+        for fut in list(futures):
+            sig = futures[fut]
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                not_analyzed.append({
-                    "id": part.id, "name": part.name, "tree_path": part.tree_path,
-                    "reason": "assembly time budget reached before this part ran",
-                })
                 fut.cancel()
-                continue
+                continue  # design left un-analyzed; instances -> not_analyzed below
             try:
-                results.append(fut.result(timeout=max(0.1, remaining)))
+                shared_by_sig[sig] = fut.result(timeout=max(0.1, remaining))
             except _FutTimeout:
-                not_analyzed.append({
-                    "id": part.id, "name": part.name, "tree_path": part.tree_path,
-                    "reason": "per-part analysis exceeded the assembly time budget",
-                })
-            except Exception as exc:  # defensive: _job already catches, but never leak
-                results.append({
-                    "id": part.id, "name": part.name, "tree_path": part.tree_path,
+                pass  # design timed out; its instances reported not_analyzed
+            except Exception as exc:  # defensive: _design_job already catches
+                shared_by_sig[sig] = {
                     "error": {"code": "ANALYSIS_ERROR",
                               "message": f"{type(exc).__name__}: {exc}"},
-                })
+                }
+
+    # ── Fan the ONE design analysis out to EVERY instance (order preserved) ──
+    results: list[dict] = []
+    not_analyzed: list[dict] = []
+    for part in selected:
+        sig = _design_signature(part)
+        qty = design_counts.get(sig, len(groups.get(sig, [part])))
+        shared = shared_by_sig.get(sig)
+        if shared is None:  # design's analysis did not finish within the budget
+            not_analyzed.append({
+                "id": part.id, "name": part.name, "tree_path": part.tree_path,
+                "reason": "assembly time budget reached before this design was analyzed",
+            })
+            continue
+        row = _instance_base(part, qty)
+        row.update(shared)
+        results.append(row)
 
     for part in all_parts[cap:]:
         not_analyzed.append({
@@ -626,6 +728,7 @@ def analyze_assembly_sync(
         "per_part": results,
         "not_analyzed": not_analyzed,
         "quantities_by_design": quantities,
+        "designs_analyzed": len(shared_by_sig),
         "interference": interference,
         "cost_context": {
             "material_class": material_class,
@@ -644,6 +747,7 @@ def analyze_assembly_sync(
             "parts_not_analyzed": len(not_analyzed),
             "parts_capped": parts_capped,
             "analyze_cap": cap,
+            "unique_designs_analyzed": len(shared_by_sig),
             "interference_pairs": len(interference["pairs"]),
             "elapsed_sec": round(time.monotonic() - t_start, 2),
         },
