@@ -1,0 +1,104 @@
+
+---
+
+---
+
+---
+
+---
+
+---
+
+---
+
+---
+
+---
+
+---
+Default rate card (v0) · none authored
+---
+⌘K
+---
+
+---
+Verify a part
+---
+X-ray
+---
+No parent assembly
+---
+120 °C service
+---
+sour service (H₂S)
+---
+35 MPa pressure
+---
+Polymer
+---
+Aluminum
+---
+Steel
+---
+Stainless
+---
+Titanium
+---
+Open the record →
+---
+Declare your floor →
+---
+MATERIAL
+○ DEFAULT
+
+0.093 $
+---
+PARTS PER BUILD
+○ DEFAULT
+
+68 parts
+---
+MACHINE TIME
+○ DEFAULT
+
+1.406 $
+---
+CYCLE TIME
+○ MODEL
+
+0.176 hr
+---
+LABOR
+○ DEFAULT
+
+7.052 $
+---
+SETUP
+○ DEFAULT
+
+0.13 $
+---
+Open acquisition consideration →
+---
+Make in-house
+---
+Make outside
+---
+Acquire capability
+---
+Redesign
+---
+Open the record →
+---
+See how truth arrives →
+---
+
+---
+Compare routes @ 1,000
+---
+Compare saved decisions →
+---
+Why this verdict?
+---
+An uncomputable ask
+---

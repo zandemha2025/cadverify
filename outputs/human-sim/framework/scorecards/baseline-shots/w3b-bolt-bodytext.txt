@@ -1,0 +1,245 @@
+C
+Verify
+/
+as1-tu-203.stp
+Default rate card (v0) · none authored
+⌘K
+Verify a part
+as1-tu-203.stp
+
+assembly · 18 parts in world position
+
+● real assembly shell · 18 parts
+
+◆ selected bolt
+as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/BOLT/bolt
+
+ASSEMBLY
+
+● real shell
+
+18 parts in world position
+
+part in context
+per-part DFM + cost
+X-ray
+drag to orbit
+
+ASSEMBLY CONTEXT
+
+as1-tu-203.stp
+● 18 parts
+
+Real STEP assembly — 18 solids, 5 unique designs, in their baked world positions. Pick the part of interest to highlight it in context.
+
+PER-PART ANALYSIS — REAL
+
+18/18 costed · 32 contact pairs · 3.7s
+
+Each part run through the SAME DFM + should-cost engine, costed at its real per-assembly quantity (per-assembly instance count (FACT)); aluminum · US, a DEFAULT assumption.
+
+PRODUCT TREE · PART OF INTEREST
+
+● MEASURED
+plate
+as1/PLATE/plate
+×1
+$235.4
+l-bracket
+as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/L-BRACKET/l-bracket
+×2
+$178.9
+l-bracket
+as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/L-BRACKET/l-bracket
+×2
+$178.9
+rod
+as1/ROD-ASSEMBLY/rod-assembly/ROD/rod
+×1
+$201.1
+bolt
+as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/BOLT/bolt
+×6
+≈M12 × 37mm
+BUY
+$0.75
+bolt
+as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/BOLT/bolt
+×6
+≈M12 × 37mm
+BUY
+$0.75
+bolt
+as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/BOLT/bolt
+×6
+≈M12 × 37mm
+BUY
+$0.75
+bolt
+as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/BOLT/bolt
+×6
+≈M12 × 37mm
+BUY
+$0.75
+bolt
+as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/BOLT/bolt
+×6
+≈M12 × 37mm
+BUY
+$0.75
+bolt
+as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/BOLT/bolt
+×6
+≈M12 × 37mm
+BUY
+$0.75
+nut ·3
+as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/NUT::3/nut
+×8
+≈M12 nut
+BUY
+$0.20
+nut ·3
+as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/NUT::3/nut
+×8
+≈M12 nut
+BUY
+$0.20
+nut
+as1/ROD-ASSEMBLY/rod-assembly/NUT::1/nut
+×8
+≈M12 nut
+BUY
+$0.20
+nut ·2
+as1/ROD-ASSEMBLY/rod-assembly/NUT::2/nut
+×8
+≈M12 nut
+BUY
+$0.20
+nut ·3
+as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/NUT::3/nut
+×8
+≈M12 nut
+BUY
+$0.20
+nut ·3
+as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/NUT::3/nut
+×8
+≈M12 nut
+BUY
+$0.20
+nut ·3
+as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/NUT::3/nut
+×8
+≈M12 nut
+BUY
+$0.20
+nut ·3
+as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/NUT::3/nut
+×8
+≈M12 nut
+BUY
+$0.20
+
+SELECTED PART
+
+● MEASURED
+bolt
+DFM ISSUES
+COTS · BUY
+×6 in assembly
+
+as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/BOLT/bolt
+
+BBOX (MM)
+
+30.0 × 15.0 × 37.0
+
+VOLUME (CM³)
+
+3.20
+
+B-REP FACES
+
+7
+
+TRIANGLES
+
+2284
+
+CENTROID (MM)
+
+25, 75, 16
+
+INSTANCE
+
+#1
+
+SHOULD-COST · BUY (STANDARD HARDWARE)
+
+○ DEFAULT
+≈M12 × 37mm
+BUY
+~$0.75
+/unit
+
+Size reconciled with the mating nut in this joint — approximate (≈), from geometry, NOT a verified thread spec; no grade (e.g. 8.8/A2) implied.
+
+Standard off-the-shelf bolt — do not machine in-house. Catalog range $0.20–$3.00.
+
+○
+DEFAULT · catalog estimate (high confidence), not a live quote
+
+MADE-IN-HOUSE · NOT MODELED
+
+Made-in-house fabrication is not modeled for standard hardware — source it as a catalog part (see 'cots' for the BUY price).
+
+Recommendation: BUY — standard off-the-shelf fastener; do not machine in-house
+
+DFM
+
+issues · 0 issues
+
+best process n/a — standard part, BUY (see BUY card)
+
+No DFM issues flagged for this part.
+
+GEOMETRIC CONTACT · INTERFERENCE
+
+● MEASURED
+
+Geometric contact with nut, l-bracket, plate. For fasteners (a bolt through a hole, a nut on a thread) this overlap is EXPECTED — it is a signal an engineer reads, NOT a fault verdict.
+
+contact with nut
+interpenetration · 72 v
+contact with l-bracket
+interpenetration · 210 v
+contact with plate
+interpenetration · 438 v
+
+HONEST BOUNDARIES · FACT vs ASSUMPTION vs GATE
+
+Quantity — FACT
+
+REAL FACT: the per-part quantity is the true instance count of that design in THIS assembly, counted from the extracted product tree. It is fed to the cost engine as the real per-assembly volume signal.
+
+Annual volume — USER-DECLARED
+
+USER-DECLARED: annual volume = per-assembly quantity × assemblies_per_year. assemblies_per_year is not in the geometry; unset => cost is reported at the per-assembly quantity only (the honest FACT), never an invented annual figure.
+
+Material — DEFAULT assumption
+
+DEFAULT ASSUMPTION: AP203/AP214 geometry carries no material. The costed material_class is a stated default (overridable), not derived from the part. A per-part material inference is a future labelled tier.
+
+Interference — REAL geometry, not a verdict
+
+REAL GEOMETRY, NOT A VERDICT: overlap/contact is measured on the world-positioned meshes (vertex containment + nearest-vertex gap). For fasteners (bolt through a hole, nut on a thread) this overlap is EXPECTED and is NOT asserted to be a fault — it is a signal an engineer reads.
+
+Service world — future SUGGESTION
+
+NOT BUILT HERE (future SUGGESTION tier): inferring a part's service world (exterior/internal) from its role/position would be a labelled suggestion the user confirms, never a fabricated fact.
+
+Interface-DFM / GD&T — GATED tier
+
+GATED TIER (needs AP242 + a B-rep kernel / OCP): which faces MATE with a neighbour (interface-DFM) and tolerance STACK-UP are not reconstructable from this triangulated extraction and are NOT faked here.

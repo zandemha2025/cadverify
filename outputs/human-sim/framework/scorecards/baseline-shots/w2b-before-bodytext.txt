@@ -1,0 +1,193 @@
+C
+Verify
+/
+cube.step
+Default rate card (v0) · none authored
+⌘K
+Verify a part
+cube.step
+
+Ø/bbox 20.0 × 15.0 × 10.0 mm · 2.72 cm³
+watertight true · ● MEASURED
+
+● real shell · 41k-tri preview
+
+CONTEXT
+
+not declared
+
+no parent assembly declared
+
+orphan until declared
+X-ray
+No parent assembly
+drag to orbit
+
+Can this be made — on your machines, in materials that survive its world — and what will it really take?
+
+DECLARE ITS WORLD
+
+ambient
+120 °C service
+sour service (H₂S)
+35 MPa pressure
+
+no world declared — the part is verified in ambient conditions.
+
+DECLARED MATERIAL CLASS · ● USER
+
+Polymer
+Aluminum
+Steel
+Stainless
+Titanium
+
+VERDICT · DFM ISSUES · SHOULD-COST COMPUTED
+
+Should-cost $10.68/unit on CNC 3-Axis at qty 10,000
+
+The engine returned routing, DFM, and a glass-box should-cost. Whether it's makeable on your machines is the makeability verification — not evaluated here because no machines and no world are declared. Declare your floor or a world to resolve it, never assumed.
+
+Open the record →
+
+No confident match in your part library yet — geometry retrieved 1 prior part, none confident enough to suggest.
+
+1
+
+Envelope — against your machines
+
+0 machines declared
+
+No machines declared.
+
+Your floor is the denominator of every makeability verdict. Declare it once — a CSV or five minutes of typing.
+
+Declare your floor →
+2
+
+Materials that survive this world
+
+steel
+
+material class steel · route hint steel ○ DEFAULT
+
+environment-driven survival filtering (NACE MR0175 / HDT tables) is part of the makeability verification — DECLARE A WORLD TO EVALUATE. Invalid materials are filtered out visibly, never silently.
+
+3
+
+Process physics — geometry against each route
+
+DLP ResinROUTE PICK
+issues
+CNC 3-Axis
+pass
+CNC 5-Axis
+pass
+Wire EDM
+pass
+SLA Resin
+issues
+SLS (Powder)
+issues
+
+15 priority fixes across routes · overall issues · rendered from POST /validate
+
+4
+
+What it really takes
+
+on CNC 3-Axis · Mild Steel
+
+MATERIAL
+○ DEFAULT
+
+0.041 $
+
+MACHINE TIME
+○ DEFAULT
+
+0.934 $
+
+CYCLE TIME
+○ MODEL
+
+0.025 hr
+
+LABOR
+○ DEFAULT
+
+8.69 $
+
+LEARNING CURVE
+○ DEFAULT
+
+0.497 ×
+
+SETUP
+○ DEFAULT
+
+0.263 $
+
+NRE COST
+○ DEFAULT
+
+0.007 $
+
+INSPECTION COST
+○ DEFAULT
+
+0.696 $
+
+CONSUMABLES COST
+○ DEFAULT
+
+0.047 $
+
+lead 7.7–14.3 days [queue model — not your scheduler] · computed hours are ○ MODEL from an assumption at SHOP rates — tap any driver for its verbatim derivation.
+
+5
+
+Resource cost — yours, not a market's
+
+QUANTITY 100 · engine-exact — a computed point
+annual volume · program not set
+1
+no crossover computed
+10,000
+
+CNC 3-Axis — MAKE NOW
+
+$21.70 /unit at this qty
+
+engine-exact — a computed point
+
+hours × your rates + mass × your lot price · 0% of drivers grounded (● measured/shop/user)
+band & drivers read at computed qty 100
+
+assumption-based, not yet validated
+
+engine note: Make by cnc_3axis (Mild Steel) — $134.32/unit at qty 1, the cheapest make-as-is option and your low-volume pick. cnc_3axis is cheapest at every quantity tested — no tooling crossover.
+
+Decide
+
+Make in-house
+Make outside
+Acquire capability
+Redesign
+
+next → pick one above · your choice is noted on this verification beside the saved cost-decision record.
+
+Open the record →
+the cost-decision is the immutable saved artifact; your choice above is noted in this verification session and the record opens from Records.
+
+this verdict ships hatched — assumption band, not shop-validated · n=0. It flips solid only when your actuals come back.
+
+See how truth arrives →
+Compare routes @ 1,000
+Compare saved decisions →
+Why this verdict?
+An uncomputable ask
+
+answers are deterministic engine artifacts — verdict, materials, drivers, hours, cost, routes, and saved records
+
+Verification complete — deterministic: same input, same verdict, every time
