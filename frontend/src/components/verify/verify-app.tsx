@@ -89,6 +89,12 @@ export function VerifyApp() {
   // The last part the user verified — so a change to the declared world can re-run
   // the verification (re-persist the env + re-cost against it) for the same part.
   const latestFile = useRef<File | null>(null);
+  // Monotonic run token. Selecting a material class (or toggling the world) while a
+  // prior verification is still in flight dispatches a NEW run; without this guard the
+  // two async runs can resolve OUT OF ORDER and a stale result clobbers the fresh one
+  // — the material-chip race where the walk still reads "Polymer" after clicking Steel.
+  // Only the latest-dispatched run is allowed to write result/running state.
+  const runSeq = useRef(0);
 
   const nav = useCallback((s: string) => {
     if (s === "acquisition") return setScreen("acquisition");
@@ -100,6 +106,7 @@ export function VerifyApp() {
 
   const runVerify = useCallback(
     async (f: File) => {
+      const seq = ++runSeq.current;
       setFile(f);
       latestFile.current = f;
       setScreen("verify");
@@ -107,9 +114,11 @@ export function VerifyApp() {
       setResult(null);
       try {
         const r = await runVerification({ file: f, env, materialClass });
-        setResult(r);
+        // Drop a result that a newer run has superseded — last dispatch wins, so the
+        // displayed verdict/material always matches the most recent selection.
+        if (runSeq.current === seq) setResult(r);
       } finally {
-        setRunning(false);
+        if (runSeq.current === seq) setRunning(false);
       }
     },
     [env, materialClass]

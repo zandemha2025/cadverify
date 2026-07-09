@@ -629,7 +629,7 @@ function VerdictBanner({
   makeNow: ReturnType<typeof makeNowEstimate>;
   nav: Nav;
 }) {
-  const { validation, cost, costGeometryInvalid, verification } = result;
+  const { validation, validationError, cost, costError, costGeometryInvalid, verification } = result;
 
   if (costGeometryInvalid) {
     return (
@@ -681,11 +681,57 @@ function VerdictBanner({
     );
   }
 
-  // No makeability block (no inventory + no declared world) → the honest DFM +
-  // should-cost banner; the makeability gate is stated as not-evaluated, never assumed.
+  // No makeability block (no inventory + no declared world). The banner now branches
+  // on what the engine ACTUALLY returned — it never claims a computation that did not
+  // happen. Three honest states:
+  //   1. NOTHING computed (parse/tessellation failed) → "COULD NOT ANALYZE".
+  //   2. routing + DFM computed but NO should-cost      → "SHOULD-COST UNAVAILABLE".
+  //   3. a real should-cost record                      → "SHOULD-COST COMPUTED".
   const dfm = validation?.overall_verdict ?? "unknown";
-  const color = statusColor(dfm);
 
+  // 1 · The engine returned nothing — no routing, no DFM, no cost. This is the part
+  //     that failed to tessellate. Say EXACTLY that; never a fabricated "computed".
+  if (!validation && !cost) {
+    const reason = costError || validationError || null;
+    return (
+      <BannerFrame borderColor={C.fail} bg="rgba(194,69,58,0.03)">
+        <Kicker color={C.fail}>VERDICT · COULD NOT ANALYZE</Kicker>
+        <p style={{ margin: "10px 0 0", fontSize: 24, fontWeight: 400, letterSpacing: "-0.015em", lineHeight: 1.25 }}>
+          This part couldn&apos;t be tessellated.
+        </p>
+        <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 560 }}>
+          The geometry contains a surface our mesher couldn&apos;t triangulate
+          {reason ? <> — <span style={{ fontFamily: MONO, fontSize: 12, color: C.ink55 }}>{reason}</span></> : null}. No
+          routing, DFM, or should-cost was computed, and nothing here is estimated. Re-export the part as a clean solid
+          (no unsupported surface) and re-upload to run the walk.
+        </p>
+      </BannerFrame>
+    );
+  }
+
+  // 2 · Routing + DFM ran, but the should-cost record is unavailable. The kicker does
+  //     NOT claim SHOULD-COST COMPUTED, and the body names only what actually ran.
+  if (!cost) {
+    const color = statusColor(dfm);
+    return (
+      <BannerFrame borderColor={color} bg="rgba(23,24,26,0.015)">
+        <Kicker color={color}>VERDICT · DFM {dfm.toUpperCase()} · SHOULD-COST UNAVAILABLE</Kicker>
+        <p style={{ margin: "10px 0 0", fontSize: 24, fontWeight: 400, letterSpacing: "-0.015em", lineHeight: 1.25 }}>
+          Routing &amp; DFM computed — should-cost unavailable
+        </p>
+        <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 560 }}>
+          The engine returned routing and DFM, but no glass-box should-cost was produced
+          {costError ? <> (<span style={{ fontFamily: MONO, fontSize: 12, color: C.ink55 }}>{costError}</span>)</> : null}. Whether
+          it&apos;s makeable <span style={{ fontWeight: 500 }}>on your machines</span> is the makeability verification — not
+          evaluated here because no machines and no world are declared.
+        </p>
+        {savedCta}
+      </BannerFrame>
+    );
+  }
+
+  // 3 · A real should-cost record — the original honest banner, unchanged.
+  const color = statusColor(dfm);
   return (
     <BannerFrame borderColor={color} bg="rgba(23,24,26,0.015)">
       <Kicker color={color}>VERDICT · DFM {dfm.toUpperCase()} · SHOULD-COST COMPUTED</Kicker>
@@ -695,10 +741,8 @@ function VerdictBanner({
             Should-cost {USD(unit)}/unit on {procLabel(proc)}
             {makeNow ? <span style={{ fontSize: 14, color: C.ink45 }}> at qty {NUM(makeNow.quantity)}</span> : null}
           </>
-        ) : cost ? (
-          <>Should-cost computed</>
         ) : (
-          <>Routing &amp; DFM computed — should-cost unavailable</>
+          <>Should-cost computed</>
         )}
       </p>
       <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 560 }}>
