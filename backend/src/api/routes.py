@@ -774,6 +774,134 @@ async def validate_preview_mesh(
     return Response(content=glb, media_type="model/gltf-binary", headers=headers)
 
 
+# ──────────────────────────────────────────────────────────────
+# Real STEP/IGES assembly ingestion (POST /validate/assembly)
+# ──────────────────────────────────────────────────────────────
+# CadVerify analyzes each part in ISOLATION; the single-part STEP path flattens a
+# file to one shell and refuses assemblies. This endpoint is the assembly-aware
+# sibling: on a multi-solid STEP/IGES it extracts EACH sub-part's own mesh, baked
+# world position (bbox / centroid / volume), name + nested product tree, and a
+# geometry summary — the structured input P2 (part-in-context render) and P3
+# (context-fed analysis) consume. It reuses the SAME OCC import + mesh-size policy
+# + retry ladder + process pool as the single-part path (src/parsers/assembly_
+# mesher.py) and is org-scoped, authed, kill-switched, and rate-limited like every
+# other validate route. Zero-egress: parsed in-process, nothing persisted.
+#
+# Detection: 1 solid -> classified single_part (the caller should use /validate for
+# canonical single-part analysis); >=2 solids -> the assembly model. Honest limits
+# (AP203 drops mates/GD&T; native .SLDASM/.prt need a licensed reader) ride in the
+# response's ``limits`` and are enforced (native formats return a specific 400).
+def _assembly_glb_target_faces() -> int:
+    """Total-face budget for the combined assembly GLB (default 300k for WebGL)."""
+    try:
+        return max(1000, int(os.getenv("ASSEMBLY_GLB_TARGET_FACES", "300000")))
+    except ValueError:
+        return 300000
+
+
+async def _extract_assembly_async(data: bytes, filename: str):
+    """Extract an AssemblyModel off the loop, bounded by ANALYSIS_TIMEOUT_SEC ->
+    504. MAIN process keeps the untrusted-bytes gate (magic) + suffix policy; the
+    CPU-bound multi-solid gmsh extraction runs in the shared spawn pool."""
+    import asyncio
+
+    from src.parsers.assembly_mesher import (
+        ASSEMBLY_SUFFIXES,
+        is_native_cad_suffix,
+        native_cad_error,
+    )
+
+    suffix = Path(filename).suffix.lower()
+    # Native/proprietary CAD -> a SPECIFIC 400 (not a generic unsupported-type), so
+    # the caller learns exactly why (needs a licensed reader) and what to do.
+    if is_native_cad_suffix(suffix):
+        raise HTTPException(status_code=400, detail=str(native_cad_error(suffix)))
+    if suffix not in ASSEMBLY_SUFFIXES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Assembly ingestion needs a STEP/IGES file (got "
+                f"{suffix or 'no suffix'}). Use .step, .stp, .iges, or .igs."
+            ),
+        )
+    # Untrusted-bytes security gate BEFORE any parser touches the bytes (same
+    # discipline as _parse_setup); STEP magic / IGES structure check.
+    validate_magic(data, suffix)
+    if not is_step_supported():
+        raise HTTPException(
+            status_code=501,
+            detail="STEP/IGES parsing is unavailable on this server (gmsh not installed).",
+        )
+
+    loop = asyncio.get_event_loop()
+    timeout = _analysis_timeout_sec()
+    try:
+        return await asyncio.wait_for(
+            parse_pool.submit_assembly_async(data, suffix), timeout=timeout
+        )
+    except asyncio.TimeoutError:
+        parse_pool.recycle_pool()
+        raise HTTPException(
+            status_code=504,
+            detail=f"Assembly parsing exceeded {timeout:.0f}s timeout.",
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception("Assembly extraction failed for %s", filename)
+        raise HTTPException(status_code=400, detail="Failed to parse assembly file")
+
+
+@router.post("/validate/assembly", dependencies=[Depends(require_kill_switch_open)])
+@limiter.limit("60/hour;500/day")
+async def validate_assembly(
+    request: Request,
+    response: Response,
+    file: UploadFile = File(...),
+    format: str = Query(
+        "json",
+        description="'json' (default) for the structured assembly model, or 'glb' "
+        "for one browser-renderable GLB with a named node per part (world "
+        "transforms preserved) for the part-in-context render.",
+    ),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
+):
+    """Ingest a real STEP/IGES ASSEMBLY -> per-part meshes + world positions +
+    nested product tree.
+
+    Returns the structured ``AssemblyModel`` (``format=json``) or a combined GLB
+    (``format=glb``). A single-solid file is classified ``single_part`` (use
+    ``/validate`` for canonical analysis). Native CAD (.SLDASM/.prt/.SAT/...) is
+    refused with a specific 400. Org-scoped + session-authed + zero-egress; the
+    ``limits`` field surfaces what AP203 geometry cannot carry (mates, GD&T).
+    """
+    data = await _read_capped(file)
+    model = await _extract_assembly_async(data, file.filename or "upload.step")
+
+    if format.lower() == "glb":
+        from src.parsers.assembly_mesher import assembly_to_glb
+
+        try:
+            glb = assembly_to_glb(model, target_faces=_assembly_glb_target_faces())
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception:
+            logger.exception("Assembly GLB export failed for %s", file.filename)
+            raise HTTPException(
+                status_code=400, detail="Could not build an assembly GLB for this file."
+            )
+        headers = {
+            "X-Assembly-Kind": model.kind,
+            "X-Assembly-Parts": str(model.part_count),
+            "Cache-Control": "no-store",
+        }
+        return Response(content=glb, media_type="model/gltf-binary", headers=headers)
+
+    return model.to_dict()
+
+
 @router.post("/validate/quick", dependencies=[Depends(require_kill_switch_open)])
 @limiter.limit("60/hour;500/day")
 async def validate_quick(

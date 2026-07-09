@@ -365,3 +365,49 @@ def submit_sync(data: bytes, suffix: str) -> trimesh.Trimesh:
         logger.warning("parse pool broken (sync); recycling + in-thread fallback")
         recycle_pool()
         return tessellate(data, suffix)
+
+
+# ── Assembly ingestion (multi-solid STEP/IGES) ──────────────────────────────
+def _extract_assembly_worker(data: bytes, suffix: str):
+    """PURE, picklable worker entry: extract the full AssemblyModel (per-part
+    meshes + world positions + product tree) IN THIS PROCESS. Module-level so
+    ``ProcessPoolExecutor`` can pickle it by qualified name. Raises plain
+    ``ValueError`` (route -> 400) for a bad/native/unmeshable file."""
+    from src.parsers.assembly_mesher import extract_assembly_from_bytes
+
+    return extract_assembly_from_bytes(data, f"upload{suffix}")
+
+
+async def submit_assembly_async(data: bytes, suffix: str):
+    """Extract an ``AssemblyModel`` off the event loop, bounded by the route
+    budget. Runs the CPU-bound multi-solid gmsh extraction in the shared spawn
+    pool (so N assemblies don't serialize on the GIL/gmsh lock and the loop stays
+    responsive), hard-bounded by ``ANALYSIS_TIMEOUT_SEC`` at the caller. On
+    ``BrokenProcessPool`` (a worker died on adversarial gmsh input) we recycle the
+    pool and extract THIS request in the default thread executor — the caller
+    still gets a correct model, never a 500 (same contract as ``submit_async``).
+
+    The per-assembly retry ladder (primary -> MeshAdapt-uniform -> +OCC-heal) runs
+    WITHIN the worker call (``assembly_mesher._extract_with_ladder``); the caller's
+    outer ``wait_for`` provides the wall-clock bound.
+    """
+    import asyncio
+
+    loop = asyncio.get_event_loop()
+    if is_disabled():
+        return await loop.run_in_executor(
+            None, _extract_assembly_worker, data, suffix
+        )
+    pool = _get_pool()
+    try:
+        cfut = pool.submit(_extract_assembly_worker, data, suffix)
+        return await asyncio.wrap_future(cfut)
+    except BrokenProcessPool:
+        logger.warning(
+            "parse pool worker died during assembly extraction; recycling + "
+            "in-thread fallback"
+        )
+        recycle_pool()
+        return await loop.run_in_executor(
+            None, _extract_assembly_worker, data, suffix
+        )
