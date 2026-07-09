@@ -551,8 +551,14 @@ function PartAnalysisDetail({ analysis }: { analysis: PartAnalysis }) {
               {dfm.verdict} · {dfm.issue_count} issue{dfm.issue_count === 1 ? "" : "s"}
             </span>
           </div>
+          {/* A COTS part's recommendation is BUY (see the BUY card). A machined
+              "best process" on standard hardware is incoherent noise — a thin hex
+              nut is not sheet metal — so we do NOT present it for COTS parts. The
+              geometric DFM findings below still show. */}
           <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink55 }}>
-            best process {procLabel(dfm.best_process)}
+            {cots
+              ? "best process n/a — standard part, BUY (see BUY card)"
+              : `best process ${procLabel(dfm.best_process)}`}
           </p>
           {dfm.top_issues.length > 0 ? (
             <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 7 }}>

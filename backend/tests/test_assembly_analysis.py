@@ -188,6 +188,60 @@ def test_as1_per_part_analysis_all_18(as1_model):
 
 
 @_needs_gmsh
+def test_as1_fastener_sizes_reconciled_with_mating_nut(as1_model):
+    """F1 — the headline assembly intelligence. In every NUT-BOLT joint the bolt and
+    the nut it threads into MUST report the SAME nominal size (an M16 bolt cannot
+    enter an M12 nut). Per-part guesses used to disagree; the joint reconciles them.
+
+    AS1 truth: the bolt bbox (30×15×37) head-over-reads to ~M16 in isolation, but the
+    joint anchors on the nut's cleaner thread nominal -> both read M12, coherently.
+    """
+    import re
+
+    from src.services.assembly_analysis_service import (
+        _joint_id,
+        analyze_assembly_sync,
+    )
+
+    res = analyze_assembly_sync(as1_model, material_class="aluminum", region="US")
+
+    def _mnum(size: str) -> str:
+        m = re.search(r"M(\d+(?:\.\d+)?)", size or "")
+        return m.group(1) if m else ""
+
+    # Group the fastener rows by their joint id.
+    joints: dict[str, dict[str, dict]] = {}
+    for r in res["per_part"]:
+        cots = r.get("cots")
+        if not cots or not cots.get("is_cots"):
+            continue
+        jid = _joint_id(r["tree_path"])
+        joints.setdefault(jid, {})[r["name"]] = cots
+
+    # The real threaded joints: those with BOTH a bolt and a nut.
+    threaded = {jid: fs for jid, fs in joints.items()
+                if "bolt" in fs and "nut" in fs}
+    assert threaded, "expected NUT-BOLT joints in AS1"
+
+    for jid, fs in threaded.items():
+        bolt, nut = fs["bolt"], fs["nut"]
+        # Coherence: bolt and its mating nut share ONE M-number in the same joint.
+        assert _mnum(bolt["nominal_size"]) == _mnum(nut["nominal_size"]), jid
+        # The bolt must NOT read the head-skewed M16 over-size any more.
+        assert "M16" not in bolt["nominal_size"], (jid, bolt["nominal_size"])
+        # For THIS assembly the reconciled thread is M12 (the nut anchor).
+        assert _mnum(bolt["nominal_size"]) == "12", bolt["nominal_size"]
+        assert bolt["nominal_size"] == "≈M12 × 37mm", bolt["nominal_size"]
+        assert nut["nominal_size"] == "≈M12 nut", nut["nominal_size"]
+        # The basis is machine-readable + honest: reconciled, not a lone bbox guess.
+        assert bolt["nominal_size_basis"] == "reconciled_with_mating_nut", jid
+        assert "mating nut" in bolt["nominal_size_note"].lower()
+        # Still approximate, still no grade claimed.
+        assert "≈" in bolt["nominal_size"] and "not a verified" in \
+            bolt["nominal_size_note"].lower()
+
+
+@_needs_gmsh
 def test_as1_real_quantities_from_tree(as1_model):
     """The per-part quantity is the REAL instance count of each design in AS1,
     counted from the extracted product tree: 8 nuts, 6 bolts, 2 l-brackets, 1 rod,

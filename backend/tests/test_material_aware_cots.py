@@ -181,11 +181,21 @@ def test_cots_geometry_path_requires_small_and_threaded():
 def test_infer_fastener_size_bolt_and_nut():
     from src.services.assembly_analysis_service import infer_fastener_size
 
-    # Elongated: shaft ≈ smaller cross-section (8mm -> M8), length ≈ longest axis.
+    # Elongated, no volume: shaft ≈ smaller cross-section (8mm -> M8), length ≈ longest.
     assert infer_fastener_size("bolt", [8.0, 13.0, 30.0]) == "≈M8 × 30mm"
     assert infer_fastener_size("screw", [5.0, 8.0, 20.0]) == "≈M5 × 20mm"
+    # F2: volume-sane shaft ø. The AS1 bolt bbox is 30×15×37 (head-skewed, 2:1
+    # transverse plane) — the raw transverse read of 15 over-sizes to M16. The
+    # volume-implied cylinder ø = √(4·3200/(π·37)) ≈ 10.5mm; min(15, 10.5) snaps to
+    # M10. It MUST NOT read M14/M16.
+    bolt = infer_fastener_size("bolt", [15.0, 30.0, 37.0], volume_mm3=3200)
+    assert bolt == "≈M10 × 37mm"
+    assert "M14" not in bolt and "M16" not in bolt
     # Compact nut: nominal thread ≈ across-flats / 1.6 (AF 13 -> M8).
     assert infer_fastener_size("nut", [6.5, 13.0, 15.0]) == "≈M8 nut"
+    # AS1 nut geometry (3×20×20): across-flats 20 / 1.6 = 12.5 -> M12. Volume is
+    # ignored for compact hardware (the across-flats read is clean).
+    assert infer_fastener_size("nut", [3.0, 20.0, 20.0]) == "≈M12 nut"
     # Degenerate / missing bbox => no guess.
     assert infer_fastener_size("bolt", None) is None
     assert infer_fastener_size("bolt", [0.0, 0.0, 0.0]) is None
@@ -246,4 +256,9 @@ def test_as1_no_resin_for_metal_and_fasteners_are_cots():
     bolt = next(r for r in res["per_part"] if r["name"] == "bolt")
     assert bolt["dfm_summary"]["best_process"] == "cnc_turning"
     assert "make_now_process" not in bolt["should_cost"]
-    assert bolt["cots"]["nominal_size"].startswith("≈M")
+    # F1+F2: the bolt reads a coherent M12 (reconciled with its mating nut), NOT the
+    # head-skewed M16 the raw bbox transverse used to give.
+    assert bolt["cots"]["nominal_size"] == "≈M12 × 37mm"
+    assert bolt["cots"]["nominal_size_basis"] == "reconciled_with_mating_nut"
+    nut = next(r for r in res["per_part"] if r["name"] == "nut")
+    assert nut["cots"]["nominal_size"] == "≈M12 nut"

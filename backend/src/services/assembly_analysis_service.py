@@ -52,6 +52,7 @@ Honesty boundaries (surfaced verbatim in the response ``boundaries`` block):
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 import time
@@ -306,19 +307,29 @@ def _fmt_metric(d_mm: float) -> str:
     return f"M{d_mm:g}"
 
 
-def infer_fastener_size(kind: str, bbox_size_mm) -> Optional[str]:
-    """APPROXIMATE nominal fastener size from the part's world bounding box.
+def infer_fastener_size(kind: str, bbox_size_mm, volume_mm3=None) -> Optional[str]:
+    """APPROXIMATE nominal fastener size from the part's world bounding box (and,
+    for elongated hardware, its solid volume).
 
     Deliberately coarse and clearly labelled elsewhere as "≈, from geometry — not a
     verified thread spec". No grade (8.8/A2) is ever claimed — a bounding box cannot
     measure thread class or material.
 
-      * Elongated hardware (bolt/screw/stud/…): shaft ø ≈ the SMALLER cross-section
-        extent snapped to the nearest metric nominal; length ≈ the longest axis.
-        -> "≈M8 × 30mm".
+      * Elongated hardware (bolt/screw/stud/…): length ≈ the longest axis. The shaft
+        ø is taken as the SMALLER of two UPPER-BOUND estimates, so a head-skewed
+        bounding box can no longer over-read the thread size:
+          - ``d_transverse`` = the smallest transverse extent. This is inflated when
+            the transverse plane is dominated by the head (AS1 bolt: 30×15 — a 2:1,
+            non-circular plane — so ~15 is not a clean shaft ø).
+          - ``d_volume`` = √(4·V / (π·length)) — the diameter of a solid cylinder of
+            the same volume and length. This treats the WHOLE solid (head + shaft) as
+            one cylinder, so it too is an upper bound on the shaft ø.
+        Both bound the true shaft ø from above; ``min`` is the tightest honest guess.
+        (AS1 bolt: min(15, 10.5) → M10, not the M16 the raw bbox transverse gave.)
+        -> "≈M10 × 37mm".
       * Compact hardware (nut/washer/…): nominal thread ≈ the across-flats extent
         (the smaller in-plane dimension) / 1.6 (hex AF ≈ 1.6 × nominal ø), snapped.
-        -> "≈M8 nut".
+        -> "≈M8 nut". (Volume is not used here — the across-flats read is clean.)
 
     Returns None for a degenerate / missing bbox — never guesses from nothing.
     """
@@ -330,9 +341,19 @@ def infer_fastener_size(kind: str, bbox_size_mm) -> Optional[str]:
         return None
     d_small, d_mid, d_long = dims[0], dims[1], dims[2]
     if kind in _ELONGATED_KINDS:
-        dia = _nearest_metric_nominal(d_small)
-        length = int(round(d_long))
-        return f"≈{_fmt_metric(dia)} × {length}mm"
+        length = d_long
+        # d_transverse (smallest cross-section extent) is an upper bound on shaft ø.
+        estimates = [d_small]
+        try:
+            v = float(volume_mm3) if volume_mm3 is not None else None
+        except (TypeError, ValueError):
+            v = None
+        if v is not None and v > 0 and length > 0:
+            # Volume-implied cylinder ø: also an upper bound (whole solid as one
+            # cylinder). Taking the smaller of the two undoes the head over-read.
+            estimates.append(math.sqrt(4.0 * v / (math.pi * length)))
+        dia = _nearest_metric_nominal(min(estimates))
+        return f"≈{_fmt_metric(dia)} × {int(round(length))}mm"
     # Compact hardware: the two larger extents are the across-flats/corners; the
     # smaller in-plane one (d_mid) approximates the across-flats.
     dia = _nearest_metric_nominal(d_mid / 1.6)
@@ -341,7 +362,7 @@ def infer_fastener_size(kind: str, bbox_size_mm) -> Optional[str]:
 
 def classify_cots_fastener(name: str, occurrence: str, features=None,
                            max_dim_mm: Optional[float] = None,
-                           bbox_size_mm=None) -> Optional[dict]:
+                           bbox_size_mm=None, volume_mm3=None) -> Optional[dict]:
     """Detect a standard off-the-shelf fastener (buy, not make).
 
     Two honest signals (name/occurrence match AND/OR small threaded geometry):
@@ -393,7 +414,7 @@ def classify_cots_fastener(name: str, occurrence: str, features=None,
         return None
 
     point, (low, high) = _COTS_CATALOG.get(kind, _COTS_CATALOG["fastener"])
-    nominal_size = infer_fastener_size(kind, bbox_size_mm)
+    nominal_size = infer_fastener_size(kind, bbox_size_mm, volume_mm3=volume_mm3)
     block = {
         "is_cots": True,
         "kind": kind,
@@ -413,9 +434,15 @@ def classify_cots_fastener(name: str, occurrence: str, features=None,
     }
     if nominal_size is not None:
         block["nominal_size"] = nominal_size
+        # Default basis: this part's own geometry. A design-level assembly post-pass
+        # (mate reconciliation) may later upgrade this to
+        # "reconciled_with_mating_nut" for fasteners that thread into a nut.
+        block["nominal_size_basis"] = "geometry_bbox"
         block["nominal_size_note"] = (
-            "Approximate size (≈) inferred from the part's bounding box — a rough "
-            "envelope, NOT a verified thread spec. No grade (e.g. 8.8/A2) is implied."
+            "Approximate size (≈) inferred from the part's geometry (bounding box "
+            "for compact hardware; bbox + solid-volume cylinder for elongated) — a "
+            "rough estimate, NOT a verified thread spec. No grade (e.g. 8.8/A2) is "
+            "implied."
         )
     return block
 
@@ -498,6 +525,7 @@ def analyze_one_part(
             part.name, getattr(part, "occurrence", "") or "",
             features=features, max_dim_mm=max_dim,
             bbox_size_mm=[float(d) for d in part.world.bbox_size],
+            volume_mm3=float(part.world.volume),
         )
 
         # Prefer the cost make-now + the geometric routing pick when breaking a
@@ -670,6 +698,163 @@ def detect_interference(model, *, deadline: Optional[float] = None) -> dict:
     }
 
 
+# ── Mate reconciliation (assembly context corrects the per-part guess) ──────
+def _joint_id(tree_path: Optional[str]) -> Optional[str]:
+    """The joint a fastener sits in = its ``tree_path`` with its OWN trailing design
+    node stripped (the immediate mechanical sub-assembly). AP203 tree paths end in
+    ``.../<OCCURRENCE>/<design>`` (e.g. ``.../NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/
+    BOLT/bolt``), so the joint is the path minus its last two segments
+    (``.../NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly``). A bolt and the nut it threads
+    into share this id — that is what lets the joint reconcile them. Returns None for
+    a path too short to carry a joint."""
+    if not tree_path:
+        return None
+    segs = tree_path.split("/")
+    if len(segs) < 3:
+        return None
+    return "/".join(segs[:-2])
+
+
+def _fastener_length_mm(rep) -> Optional[float]:
+    """Longest world extent of a representative instance — the fastener length used
+    when re-emitting a bolt/screw nominal after reconciliation."""
+    try:
+        dims = sorted(float(d) for d in rep.world.bbox_size)
+    except (TypeError, ValueError, AttributeError):
+        return None
+    if len(dims) < 3 or dims[2] <= 0:
+        return None
+    return dims[2]
+
+
+def _nut_thread_nominal(rep) -> Optional[float]:
+    """The metric thread nominal implied by a NUT's geometry: across-flats / 1.6,
+    snapped. The nut's across-flats ≈ the smaller of its two larger extents — a
+    CLEANER thread proxy than a head-skewed bolt bbox, so the joint anchors on it."""
+    try:
+        dims = sorted(float(d) for d in rep.world.bbox_size)
+    except (TypeError, ValueError, AttributeError):
+        return None
+    if len(dims) < 3 or dims[2] <= 0:
+        return None
+    return _nearest_metric_nominal(dims[1] / 1.6)
+
+
+_RECONCILED_NOTE = (
+    "Size reconciled with the mating nut in this joint — approximate (≈), from "
+    "geometry, NOT a verified thread spec; no grade (e.g. 8.8/A2) implied."
+)
+_VARIES_NOTE = (
+    "Size varies by joint — this design mates with nuts of differing nominal size "
+    "across its joints, so no single reconciled size is asserted; the per-part "
+    "geometry estimate is kept. Approximate (≈), from geometry, NOT a verified "
+    "thread spec; no grade implied."
+)
+
+
+def _reconcile_fastener_sizes(selected, reps: dict, shared_by_sig: dict) -> None:
+    """DESIGN-LEVEL mate reconciliation — the real assembly-context intelligence.
+
+    A per-part bbox guess sizes a bolt and its mating nut INDEPENDENTLY, and they
+    can disagree (an M16 head-read bolt "threading" an M12 nut — physically
+    impossible). Here the JOINT corrects the guess: fasteners that co-occur in a
+    joint are linked into a component; a component that contains a nut is anchored on
+    the nut's cleaner thread nominal, and that ONE nominal is written to every
+    fastener design in the component (bolts keep their own length). Pure/sync,
+    O(parts), no re-mesh — it only mutates the shared per-design ``cots`` blocks.
+
+    Mutates ``shared_by_sig[sig]['cots']`` in place (that dict is shared by every
+    instance of the design, so one write fixes all instances).
+    """
+    from collections import Counter
+
+    # Fastener designs = the ones whose design analysis carries a COTS block.
+    fast: dict = {}
+    for sig, shared in shared_by_sig.items():
+        cots = (shared or {}).get("cots")
+        if cots and cots.get("is_cots") and "nominal_size" in cots:
+            fast[sig] = cots
+    if not fast:
+        return
+
+    # joint id -> set of fastener design signatures present in that joint.
+    joint_sigs: dict = {}
+    for p in selected:
+        sig = _design_signature(p)
+        if sig not in fast:
+            continue
+        jid = _joint_id(getattr(p, "tree_path", None))
+        if jid is None:
+            continue
+        joint_sigs.setdefault(jid, set()).add(sig)
+
+    # Union-find over fastener designs that co-occur in a joint -> components.
+    parent = {sig: sig for sig in fast}
+
+    def _find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def _union(a, b):
+        parent[_find(a)] = _find(b)
+
+    for sigs in joint_sigs.values():
+        members = list(sigs)
+        for other in members[1:]:
+            _union(members[0], other)
+
+    components: dict = {}
+    for sig in fast:
+        components.setdefault(_find(sig), []).append(sig)
+
+    def _set_note(cots: dict, note: str, basis: str) -> None:
+        cots["nominal_size_basis"] = basis
+        cots["nominal_size_note"] = note
+
+    for comp in components.values():
+        nut_sigs = {s for s in comp if fast[s].get("kind") == "nut"}
+        if not nut_sigs:
+            # Lone bolt(s), no mating nut in the joint: keep the per-part volume-sane
+            # estimate (F2). Basis stays "geometry_bbox".
+            continue
+        # Anchor nominal = modal nut thread nominal across the nut INSTANCES that sit
+        # in this component's joints (mixed-size assemblies vote; ties are ambiguous).
+        comp_joint_ids = {jid for jid, sigs in joint_sigs.items()
+                          if sigs & set(comp)}
+        counter: Counter = Counter()
+        for p in selected:
+            if _design_signature(p) not in nut_sigs:
+                continue
+            if _joint_id(getattr(p, "tree_path", None)) not in comp_joint_ids:
+                continue
+            nom = _nut_thread_nominal(p)
+            if nom is not None:
+                counter[nom] += 1
+        if not counter:
+            continue
+        ranked = counter.most_common()
+        ambiguous = len(ranked) > 1 and ranked[0][1] == ranked[1][1]
+        if ambiguous:
+            # The assembly genuinely disagrees — do NOT fabricate one crisp number.
+            for s in comp:
+                _set_note(fast[s], _VARIES_NOTE, "geometry_bbox")
+            continue
+        nominal = ranked[0][0]
+        for s in comp:
+            cots = fast[s]
+            if cots.get("kind") == "nut":
+                cots["nominal_size"] = f"≈{_fmt_metric(nominal)} nut"
+            else:
+                length = _fastener_length_mm(reps.get(s))
+                cots["nominal_size"] = (
+                    f"≈{_fmt_metric(nominal)} × {int(round(length))}mm"
+                    if length is not None else f"≈{_fmt_metric(nominal)}"
+                )
+            _set_note(cots, _RECONCILED_NOTE, "reconciled_with_mating_nut")
+
+
 # ── Orchestration (bounded + concurrent) ────────────────────────────────────
 def analyze_assembly_sync(
     model,
@@ -764,6 +949,11 @@ def analyze_assembly_sync(
                     "error": {"code": "ANALYSIS_ERROR",
                               "message": f"{type(exc).__name__}: {exc}"},
                 }
+
+    # ── Mate reconciliation (F1): the joint corrects the per-part size guess ──
+    # Runs on the per-DESIGN analysis BEFORE fan-out; the shared cots dict is mutated
+    # once per design so every instance inherits the reconciled, coherent size.
+    _reconcile_fastener_sizes(selected, reps, shared_by_sig)
 
     # ── Fan the ONE design analysis out to EVERY instance (order preserved) ──
     results: list[dict] = []
