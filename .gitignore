@@ -107,3 +107,4 @@ outputs/audit-2026-07-08/*.png
 outputs/audit-2026-07-08/*.json
 data/real-corpus/
 data/corpus/
+outputs/human-sim/assembly-real/extract/
