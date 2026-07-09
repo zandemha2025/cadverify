@@ -118,7 +118,107 @@ export interface AssemblyRender {
   revoke: () => void;
 }
 
-async function postAssembly(file: File, format: "json" | "glb"): Promise<Response | null> {
+// ── P3b: the REAL per-part analysis shapes (mirror of the backend
+// assembly_analysis_service payload — see analyze_assembly_sync). Every field
+// is rendered VERBATIM from the engine; nothing here is fabricated. ──────────
+
+/** A single should-cost estimate row (the engine's report_to_dict headline). */
+export interface PartEstimate {
+  process: string | null;
+  material: string | null;
+  quantity: number | null;
+  unit_cost_usd: number | null;
+  fixed_cost_usd: number | null;
+  variable_cost_usd: number | null;
+  est_error_band_pct: number | null;
+  dfm_verdict: string | null;
+  /** The engine's lead-time band object (days), NOT a string. */
+  lead_time: { low_days: number; high_days: number; mid_days?: number } | null;
+}
+
+/** The compact DFM view for a part — the SAME AnalysisResult /validate serializes. */
+export interface PartDfmSummary {
+  verdict: string;
+  best_process: string | null;
+  issue_count: number;
+  top_issues: Array<{ code: string; severity: string; message: string }>;
+}
+
+/** The should-cost block for a part (or an honest engine refusal). */
+export interface PartShouldCost {
+  status: string;
+  reason?: string;
+  cost_quantity?: number;
+  make_now_process?: string | null;
+  make_now_material?: string | null;
+  crossover_qty?: number | null;
+  /** The engine's decision object, keyed by quantity — NOT a string. */
+  recommendation?: Record<string, unknown> | null;
+  estimates?: PartEstimate[];
+}
+
+/** One analyzed part: quantity is a FACT (tree count); dfm/should-cost from the
+ *  single-part engine; `error` is an HONEST per-part failure (never a fake number). */
+export interface PartAnalysis {
+  id: string;
+  name: string;
+  tree_path: string;
+  quantity: number;
+  world_volume_mm3: number;
+  bbox_size_mm: [number, number, number];
+  dfm_summary?: PartDfmSummary;
+  should_cost?: PartShouldCost;
+  error?: { code: string; message: string };
+}
+
+/** A real geometric contact/interference pair — a SIGNAL, not a fault verdict. */
+export interface InterferencePair {
+  part_a: { id: string; name: string; tree_path: string };
+  part_b: { id: string; name: string; tree_path: string };
+  type: "interpenetration" | "contact";
+  penetration_vertices: number;
+  min_gap_mm: number | null;
+  note: string;
+}
+
+export interface InterferenceBlock {
+  method: string;
+  contact_tolerance_mm: number;
+  meshed_parts: number;
+  candidate_pairs: number;
+  pairs_checked: number;
+  pairs_capped: boolean;
+  pairs_cap: number;
+  deadline_reached: boolean;
+  pairs: InterferencePair[];
+}
+
+export interface AssemblyAnalysis {
+  per_part: PartAnalysis[];
+  not_analyzed: Array<{ id: string; name: string; tree_path: string; reason: string }>;
+  quantities_by_design: Record<string, number>;
+  interference: InterferenceBlock;
+  cost_context: {
+    material_class: string;
+    region: string;
+    assemblies_per_year: number | null;
+    quantity_basis: string;
+  };
+  analysis_summary: {
+    parts_total: number;
+    parts_analyzed: number;
+    parts_ok: number;
+    parts_errored: number;
+    parts_not_analyzed: number;
+    parts_capped: boolean;
+    analyze_cap: number;
+    interference_pairs: number;
+    elapsed_sec: number;
+  };
+  boundaries: Record<string, string>;
+}
+
+async function postAssembly(file: File, format: "json" | "glb" | "analysis"): Promise<Response | null> {
   const { API_BASE } = await import("@/lib/api-base");
   const form = new FormData();
   form.append("file", file);
@@ -169,4 +269,29 @@ export async function fetchAssembly(file: File): Promise<AssemblyRender | null> 
     glbUrl,
     revoke: () => URL.revokeObjectURL(glbUrl),
   };
+}
+
+/**
+ * Fetch the REAL P3 per-part analysis for an assembly (`format=analysis`): per-
+ * part DFM verdict + should-cost from the SAME single-part engine, real per-part
+ * quantity from the product tree, and real geometric interference. This is the
+ * heavier call (~15s on AS1 — the per-part cost engine runs on every solid), so
+ * it is fetched SEPARATELY from the fast json+glb render (`fetchAssembly`): the
+ * stage + tree appear immediately, then the analysis merges in when it lands.
+ *
+ * The response is a SUPERSET of `format=json` (the model plus an `analysis`
+ * block); we only need the `analysis` here since the model already rendered.
+ * Returns null on any failure so the panel shows an honest "analysis
+ * unavailable" state and NEVER fabricates a verdict/cost.
+ */
+export async function fetchAssemblyAnalysis(file: File): Promise<AssemblyAnalysis | null> {
+  if (!isAssemblyCandidate(file.name)) return null;
+  const res = await postAssembly(file, "analysis");
+  if (!res || !res.ok) return null;
+  try {
+    const body = (await res.json()) as { analysis?: AssemblyAnalysis };
+    return body.analysis ?? null;
+  } catch {
+    return null;
+  }
 }

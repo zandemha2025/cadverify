@@ -29,6 +29,8 @@ export interface StageAssembly {
   /** the highlighted part's readable name + product-tree path, for the label. */
   selectedName: string | null;
   selectedTreePath: string | null;
+  /** true once the REAL per-part analysis (DFM + cost + interference) has landed. */
+  analysisReady?: boolean;
 }
 
 export function Stage({
@@ -245,7 +247,7 @@ export function Stage({
       </div>
 
       {assembly ? (
-        <AssemblyStrip partCount={assembly.partCount} />
+        <AssemblyStrip partCount={assembly.partCount} analysisReady={!!assembly.analysisReady} />
       ) : (
       <ContextStrip
         partName={partName}
@@ -314,7 +316,7 @@ export function Stage({
 /** The assembly counterpart of ContextStrip: honest that this is a real
  *  multi-part assembly (N parts) and that the render shows the part-of-interest
  *  in its true neighbours — NOT a declared/synthetic parent envelope. */
-function AssemblyStrip({ partCount }: { partCount: number }) {
+function AssemblyStrip({ partCount, analysisReady }: { partCount: number; analysisReady: boolean }) {
   return (
     <div
       data-testid="verify-stage-assembly"
@@ -343,7 +345,11 @@ function AssemblyStrip({ partCount }: { partCount: number }) {
       </p>
       <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 6 }}>
         <ContextPill color={C.measured}>part in context</ContextPill>
-        <ContextPill>per-part analysis coming</ContextPill>
+        {analysisReady ? (
+          <ContextPill color={C.measured}>per-part DFM + cost</ContextPill>
+        ) : (
+          <ContextPill>analysing per-part…</ContextPill>
+        )}
       </div>
     </div>
   );

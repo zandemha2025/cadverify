@@ -14,7 +14,7 @@ import { listMachines } from "@/lib/verify/machine-api";
 import { CAD_ACCEPT } from "@/lib/cad-file";
 import { Stage, type StageAssembly } from "./stage";
 import { AssemblyPanel } from "./assembly-panel";
-import { fetchAssembly, defaultPartOfInterest, type AssemblyRender } from "@/lib/verify/assembly";
+import { fetchAssembly, fetchAssemblyAnalysis, defaultPartOfInterest, type AssemblyRender, type AssemblyAnalysis } from "@/lib/verify/assembly";
 import { VerifyScreen } from "./verify-screen";
 import { MachinesScreen } from "./machines-screen";
 import { RecordsScreen } from "./records-screen";
@@ -85,6 +85,12 @@ export function VerifyApp() {
   // null for single parts, which keep the existing single-shell path untouched.
   const [assembly, setAssembly] = useState<AssemblyRender | null>(null);
   const [assemblySelectedId, setAssemblySelectedId] = useState<string | null>(null);
+  // The REAL P3 per-part analysis (verdict + should-cost + interference), fetched
+  // separately from the fast render because it runs the cost engine on every solid
+  // (~15s on AS1). null until it lands; `assemblyAnalyzing` drives the honest
+  // "analysing per-part…" state while it is in flight.
+  const [assemblyAnalysis, setAssemblyAnalysis] = useState<AssemblyAnalysis | null>(null);
+  const [assemblyAnalyzing, setAssemblyAnalyzing] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   // A REAL signal for the rail footer: are any of the org's machines declaring an
@@ -124,6 +130,8 @@ export function VerifyApp() {
         return null;
       });
       setAssemblySelectedId(null);
+      setAssemblyAnalysis(null);
+      setAssemblyAnalyzing(false);
 
       // Assembly detection runs IN PARALLEL and is best-effort — it only fires the
       // extra request for STEP/IGES, returns null for a single part or STL, and
@@ -138,6 +146,20 @@ export function VerifyApp() {
           if (asm) {
             setAssembly(asm);
             setAssemblySelectedId(defaultPartOfInterest(asm.model.parts));
+            // The heavier per-part analysis (real DFM + should-cost + interference
+            // on every solid, ~15s) now runs; the render is already up. Guarded by
+            // the same run token so a superseded upload never merges stale analysis.
+            setAssemblyAnalyzing(true);
+            void fetchAssemblyAnalysis(f)
+              .then((analysis) => {
+                if (runSeq.current !== seq) return;
+                setAssemblyAnalysis(analysis);
+                setAssemblyAnalyzing(false);
+              })
+              .catch(() => {
+                if (runSeq.current !== seq) return;
+                setAssemblyAnalyzing(false);
+              });
           }
         })
         .catch(() => {});
@@ -236,8 +258,9 @@ export function VerifyApp() {
       partCount: assembly.model.part_count,
       selectedName: sel ? sel.name || sel.occurrence || sel.id : null,
       selectedTreePath: sel?.tree_path ?? null,
+      analysisReady: !!assemblyAnalysis,
     };
-  }, [assembly, assemblySelectedId]);
+  }, [assembly, assemblySelectedId, assemblyAnalysis]);
 
   return (
     <ToastProvider>
@@ -371,6 +394,8 @@ export function VerifyApp() {
                 fileName={file?.name ?? null}
                 selectedId={assemblySelectedId}
                 onSelect={setAssemblySelectedId}
+                analysis={assemblyAnalysis}
+                analyzing={assemblyAnalyzing}
               />
             ) : (
               <VerifyScreen
