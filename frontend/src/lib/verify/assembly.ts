@@ -144,6 +144,23 @@ export interface PartDfmSummary {
   top_issues: Array<{ code: string; severity: string; message: string }>;
 }
 
+/** The COTS / standard-hardware block for a part (bolt/nut/screw/…). When present
+ *  the part is BUY, not make: the should-cost figures are re-framed as the in-house
+ *  fabrication upper-bound, NOT the recommended cost. Mirrors the engine's
+ *  `classify_cots_fastener` output VERBATIM — the buy-price is a labelled DEFAULT
+ *  catalog estimate, never a live quote. */
+export interface PartCots {
+  is_cots: boolean;
+  kind: string;
+  confidence: string;
+  detected_by: string;
+  recommendation: string;
+  buy_price_usd: number;
+  buy_price_range_usd: [number, number];
+  buy_price_provenance: string;
+  note: string;
+}
+
 /** The should-cost block for a part (or an honest engine refusal). */
 export interface PartShouldCost {
   status: string;
@@ -155,6 +172,10 @@ export interface PartShouldCost {
   /** The engine's decision object, keyed by quantity — NOT a string. */
   recommendation?: Record<string, unknown> | null;
   estimates?: PartEstimate[];
+  /** Present ONLY for a COTS part: the machined figures are the in-house
+   *  fabrication upper-bound, not the recommended cost. */
+  cost_basis?: string;
+  cost_basis_note?: string;
 }
 
 /** One analyzed part: quantity is a FACT (tree count); dfm/should-cost from the
@@ -168,6 +189,8 @@ export interface PartAnalysis {
   bbox_size_mm: [number, number, number];
   dfm_summary?: PartDfmSummary;
   should_cost?: PartShouldCost;
+  /** Standard off-the-shelf hardware (BUY, not make) when the engine flagged it. */
+  cots?: PartCots;
   error?: { code: string; message: string };
 }
 

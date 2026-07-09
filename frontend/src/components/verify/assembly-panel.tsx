@@ -31,6 +31,7 @@ import {
   type PartInstance,
   type AssemblyAnalysis,
   type PartAnalysis,
+  type PartCots,
   type PartEstimate,
   type PartShouldCost,
   type InterferencePair,
@@ -253,6 +254,7 @@ function RowReadout({
   const cost = unitCostOf(pa);
   const verdict = pa?.dfm_summary?.verdict;
   const errored = !!pa?.error || pa?.should_cost?.status === "GEOMETRY_INVALID";
+  const cots = pa?.cots?.is_cots ? pa.cots : null;
 
   return (
     <span style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, fontFamily: MONO }}>
@@ -272,7 +274,29 @@ function RowReadout({
           <span aria-hidden style={{ width: 7, height: 7, borderRadius: "50%", background: verdictColor(verdict) }} />
         </span>
       )}
-      {pa && !errored && cost != null && (
+      {/* COTS part: the row shows the BUY price, not the misleading machined figure. */}
+      {pa && !errored && cots && (
+        <span
+          data-testid="row-cots-buy"
+          title={`Standard off-the-shelf ${cots.kind} — BUY, not make. Catalog estimate (DEFAULT), not a live quote.`}
+          style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 42, justifyContent: "flex-end" }}
+        >
+          <span
+            style={{
+              fontSize: 9,
+              letterSpacing: "0.06em",
+              color: C.pass,
+              border: `1px solid ${C.pass}`,
+              borderRadius: 999,
+              padding: "0 5px",
+            }}
+          >
+            BUY
+          </span>
+          <span style={{ fontSize: 11.5, color: C.ink }}>{USD(cots.buy_price_usd)}</span>
+        </span>
+      )}
+      {pa && !errored && !cots && cost != null && (
         <span style={{ fontSize: 11.5, color: C.ink, minWidth: 42, textAlign: "right" }}>{USD(cost)}</span>
       )}
       {pa && errored && (
@@ -395,6 +419,24 @@ function SelectedPartCard({
               DFM {verdict}
             </span>
           )}
+          {analysis?.cots?.is_cots && (
+            <span
+              data-testid="cots-header-chip"
+              title={analysis.cots.note}
+              style={{
+                fontFamily: MONO,
+                fontSize: 10,
+                letterSpacing: "0.06em",
+                border: `1px solid ${C.pass}`,
+                color: C.pass,
+                borderRadius: 999,
+                padding: "2px 9px",
+                textTransform: "uppercase",
+              }}
+            >
+              COTS · BUY
+            </span>
+          )}
           {analysis?.quantity != null && (
             <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink50 }} title="Real instance count in the assembly — a FACT from the product tree">
               ×{analysis.quantity} in assembly
@@ -455,9 +497,14 @@ function PartAnalysisDetail({ analysis }: { analysis: PartAnalysis }) {
   }
   const est = makeNowEstimate(sc);
   const dfm = analysis.dfm_summary;
+  const cots = analysis.cots?.is_cots ? analysis.cots : null;
   return (
     <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 14 }}>
-      {/* should-cost headline + drivers, from the SAME report the /cost route serves. */}
+      {/* should-cost headline. For a COTS fastener the BUY story leads and the
+          machined figure is DEMOTED to a labelled fabrication upper-bound. */}
+      {cots ? (
+        <CotsShouldCost cots={cots} est={est} sc={sc} />
+      ) : (
       <div style={{ border: `1px solid ${C.hair}`, borderRadius: 12, padding: "13px 14px", background: C.sunken }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
           <Kicker>SHOULD-COST</Kicker>
@@ -490,6 +537,7 @@ function PartAnalysisDetail({ analysis }: { analysis: PartAnalysis }) {
           <p style={{ margin: "8px 0 0", fontSize: 12, color: C.ink55 }}>No should-cost estimate returned for this part.</p>
         )}
       </div>
+      )}
 
       {/* DFM summary — the same issues the single-part walk surfaces. */}
       {dfm && (
@@ -519,6 +567,101 @@ function PartAnalysisDetail({ analysis }: { analysis: PartAnalysis }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** The should-cost card for a COTS / standard-hardware part (bolt, nut, screw…).
+ *  The BUY story LEADS (a labelled DEFAULT catalog estimate, not a live quote);
+ *  the machined figure is DEMOTED to a clearly-labelled fabrication upper-bound —
+ *  it is NOT the recommendation. This is the whole point of the fix: a $0.75 bolt
+ *  must read BUY, never "$23.99 make-in-house". */
+function CotsShouldCost({
+  cots,
+  est,
+  sc,
+}: {
+  cots: PartCots;
+  est: PartEstimate | null;
+  sc: PartShouldCost | undefined;
+}) {
+  const [low, high] = cots.buy_price_range_usd ?? [null, null];
+  const fabProc = est?.process ?? sc?.make_now_process ?? null;
+  const fabCost = est?.unit_cost_usd ?? null;
+  return (
+    <div
+      data-testid="cots-should-cost"
+      style={{ border: `1px solid ${C.hair}`, borderLeft: `3px solid ${C.pass}`, borderRadius: 12, padding: "13px 14px", background: C.sunken }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <Kicker>SHOULD-COST · BUY (STANDARD HARDWARE)</Kicker>
+        <ProvChip p="DEFAULT" />
+      </div>
+
+      {/* PRIMARY: the BUY headline. */}
+      <div style={{ margin: "11px 0 0", display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap" }}>
+        <span
+          style={{ fontSize: 9.5, letterSpacing: "0.08em", color: C.pass, border: `1px solid ${C.pass}`, borderRadius: 999, padding: "2px 9px", fontFamily: MONO }}
+        >
+          BUY
+        </span>
+        <span style={{ fontFamily: MONO, fontSize: 22, color: C.ink }}>~{USD(cots.buy_price_usd)}</span>
+        <span style={{ fontSize: 12, color: C.ink45 }}>/unit</span>
+      </div>
+      <p style={{ margin: "8px 0 0", fontSize: 12.5, lineHeight: 1.5, color: C.ink70 }}>
+        Standard off-the-shelf {cots.kind} — <b style={{ fontWeight: 500, color: C.ink }}>do not machine in-house</b>.
+        {low != null && high != null && (
+          <>
+            {" "}Catalog range <span style={{ fontFamily: MONO, color: C.ink }}>{USD(low)}–{USD(high)}</span>.
+          </>
+        )}
+      </p>
+
+      {/* Honest provenance chip — a DEFAULT catalog estimate, NOT a live quote. */}
+      <div style={{ marginTop: 10 }}>
+        <span
+          data-testid="cots-prov-chip"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            fontFamily: MONO,
+            fontSize: 10,
+            letterSpacing: "0.04em",
+            color: C.def,
+            border: `1px solid ${C.hair}`,
+            borderRadius: 999,
+            padding: "3px 10px",
+            background: "#fff",
+          }}
+        >
+          <span aria-hidden style={{ color: C.def }}>○</span>
+          DEFAULT · catalog estimate ({cots.confidence} confidence), not a live quote
+        </span>
+      </div>
+
+      {/* DEMOTED: the machined figure, clearly a fabrication upper-bound, NOT the rec. */}
+      {fabCost != null && (
+        <div
+          data-testid="cots-fab-upper-bound"
+          style={{ marginTop: 12, border: `1px dashed ${C.hair}`, borderRadius: 9, padding: "9px 11px", background: "#fff" }}
+        >
+          <p style={{ margin: 0, fontFamily: MONO, fontSize: 9, letterSpacing: "0.08em", color: C.ink40 }}>
+            FABRICATION UPPER-BOUND · IF MADE IN-HOUSE
+          </p>
+          <p style={{ margin: "4px 0 0", fontSize: 12, lineHeight: 1.5, color: C.ink55 }}>
+            <span style={{ fontFamily: MONO, color: C.ink50 }}>{USD(fabCost)}/unit</span> if this were
+            fabricated in-house on {procLabel(fabProc)}
+            {sc?.make_now_material ? ` in ${sc.make_now_material}` : ""} — a make-it-yourself
+            upper-bound for a catalog part, <b style={{ fontWeight: 500 }}>not the recommended cost</b>.
+          </p>
+        </div>
+      )}
+
+      {/* The recommendation reads BUY — verbatim from the engine. */}
+      <p style={{ margin: "11px 0 0", fontSize: 11.5, lineHeight: 1.5, color: C.ink60 }}>
+        Recommendation: <b style={{ fontWeight: 500, color: C.pass }}>{cots.recommendation}</b>
+      </p>
     </div>
   );
 }
