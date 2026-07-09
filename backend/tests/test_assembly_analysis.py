@@ -148,10 +148,18 @@ def test_as1_per_part_analysis_all_18(as1_model):
         sc = r["should_cost"]
         assert sc["status"] in {"OK", "GEOMETRY_INVALID"}
         if sc["status"] == "OK":
-            assert sc["make_now_process"]
-            assert sc["estimates"], r["name"]
-            for e in sc["estimates"]:
-                assert e["unit_cost_usd"] and e["unit_cost_usd"] > 0
+            if r.get("cots"):
+                # A COTS fastener's answer is the BUY price; the wrong machined fab
+                # figure is DROPPED (not make_now/estimates), replaced by an honest
+                # "not modeled" note. See the cots block for the catalog buy price.
+                assert sc["cost_basis"] == "not_modeled_for_cots", r["name"]
+                assert "make_now_process" not in sc, r["name"]
+                assert "estimates" not in sc, r["name"]
+            else:
+                assert sc["make_now_process"]
+                assert sc["estimates"], r["name"]
+                for e in sc["estimates"]:
+                    assert e["unit_cost_usd"] and e["unit_cost_usd"] > 0
 
     by_name = {}
     for r in per:
@@ -168,11 +176,15 @@ def test_as1_per_part_analysis_all_18(as1_model):
     for br in by_name["l-bracket"]:
         assert br["should_cost"]["status"] == "OK"
         assert br["should_cost"]["make_now_process"].startswith("cnc")
-    # Fasteners handled: real should-cost, not skipped.
+    # Fasteners handled as COTS BUY: a catalog buy price + an approximate inferred
+    # size, NOT a physically-wrong machined fab figure (which is dropped).
     for nm in ("nut", "bolt"):
         for r in by_name[nm]:
             assert r["should_cost"]["status"] == "OK"
-            assert r["should_cost"]["estimates"]
+            assert r["should_cost"]["cost_basis"] == "not_modeled_for_cots"
+            cots = r["cots"]
+            assert cots["is_cots"] is True and cots["buy_price_usd"] > 0
+            assert cots["nominal_size"].startswith("≈M"), nm
 
 
 @_needs_gmsh

@@ -177,6 +177,36 @@ def test_cots_geometry_path_requires_small_and_threaded():
                                   max_dim_mm=20.0) is None
 
 
+# ── Fix 2: approximate geometry-inferred nominal size (Round-5 fix) ──────────
+def test_infer_fastener_size_bolt_and_nut():
+    from src.services.assembly_analysis_service import infer_fastener_size
+
+    # Elongated: shaft ≈ smaller cross-section (8mm -> M8), length ≈ longest axis.
+    assert infer_fastener_size("bolt", [8.0, 13.0, 30.0]) == "≈M8 × 30mm"
+    assert infer_fastener_size("screw", [5.0, 8.0, 20.0]) == "≈M5 × 20mm"
+    # Compact nut: nominal thread ≈ across-flats / 1.6 (AF 13 -> M8).
+    assert infer_fastener_size("nut", [6.5, 13.0, 15.0]) == "≈M8 nut"
+    # Degenerate / missing bbox => no guess.
+    assert infer_fastener_size("bolt", None) is None
+    assert infer_fastener_size("bolt", [0.0, 0.0, 0.0]) is None
+
+
+def test_cots_block_carries_labelled_approximate_size():
+    from src.services.assembly_analysis_service import classify_cots_fastener
+
+    c = classify_cots_fastener("bolt", "", features=None, max_dim_mm=30.0,
+                               bbox_size_mm=[8.0, 13.0, 30.0])
+    assert c is not None
+    assert c["nominal_size"] == "≈M8 × 30mm"
+    # Clearly labelled approximate, no grade claimed.
+    assert "≈" in c["nominal_size_note"] and "not a verified" in c["nominal_size_note"].lower()
+    # No fabrication-upper-bound promise remains in the honest note.
+    assert "upper-bound" not in c["note"].lower()
+    # Without a bbox, the block is still valid — just no size key.
+    c2 = classify_cots_fastener("nut", "", features=None, max_dim_mm=20.0)
+    assert c2 is not None and "nominal_size" not in c2
+
+
 # ── Integration: AS1 end-to-end (gmsh-gated) ────────────────────────────────
 @_needs_gmsh
 def test_as1_no_resin_for_metal_and_fasteners_are_cots():
@@ -201,10 +231,19 @@ def test_as1_no_resin_for_metal_and_fasteners_are_cots():
             cots = r.get("cots")
             assert cots and cots["is_cots"] is True, r["name"]
             assert cots["recommendation"].startswith("BUY"), r["name"]
-            assert r["should_cost"]["cost_basis"] == "fabrication_upper_bound_if_made_in_house"
+            # An approximate metric size is inferred and labelled (Fix 2).
+            assert cots["nominal_size"].startswith("≈M"), r["name"]
+            # The wrong machined fab figure is DROPPED, not re-framed (Fix 1): no
+            # make_now_process/material/estimates on a COTS part's should-cost.
+            sc = r["should_cost"]
+            assert sc["cost_basis"] == "not_modeled_for_cots", r["name"]
+            assert "make_now_process" not in sc, r["name"]
+            assert "make_now_material" not in sc, r["name"]
+            assert "estimates" not in sc, r["name"]
 
-    # The bolt specifically: best_process is the metal turning route, agreeing
-    # with the cost make-now (the exact contradiction the trust-killer flagged).
+    # The bolt still gets an honest DFM best_process (a separate card, no material
+    # or $ attached) — but its should-cost no longer carries a machined figure.
     bolt = next(r for r in res["per_part"] if r["name"] == "bolt")
     assert bolt["dfm_summary"]["best_process"] == "cnc_turning"
-    assert bolt["should_cost"]["make_now_process"] == "cnc_turning"
+    assert "make_now_process" not in bolt["should_cost"]
+    assert bolt["cots"]["nominal_size"].startswith("≈M")

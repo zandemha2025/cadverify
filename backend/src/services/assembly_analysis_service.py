@@ -287,9 +287,61 @@ _COTS_NAME_TOKENS: list[tuple[str, str]] = [
 # extent — a real M-hardware fastener is well under this; a bracket/plate is not.
 _COTS_MAX_DIM_MM = 60.0
 
+# Standard metric nominal thread diameters (mm) we snap an inferred size to.
+_METRIC_NOMINAL_DIA_MM = [1.6, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0,
+                          12.0, 14.0, 16.0, 20.0, 24.0]
+
+# Elongated hardware whose length >> cross-section (shaft-and-head geometry). For
+# these the shaft ø ≈ the smaller cross-section extent; length ≈ the longest axis.
+_ELONGATED_KINDS = {"bolt", "screw", "stud", "dowel", "pin", "rivet", "fastener"}
+
+
+def _nearest_metric_nominal(d_mm: float) -> float:
+    """Snap a measured diameter (mm) to the nearest standard metric nominal."""
+    return min(_METRIC_NOMINAL_DIA_MM, key=lambda m: abs(m - d_mm))
+
+
+def _fmt_metric(d_mm: float) -> str:
+    """'M8', 'M2.5' — no trailing '.0'."""
+    return f"M{d_mm:g}"
+
+
+def infer_fastener_size(kind: str, bbox_size_mm) -> Optional[str]:
+    """APPROXIMATE nominal fastener size from the part's world bounding box.
+
+    Deliberately coarse and clearly labelled elsewhere as "≈, from geometry — not a
+    verified thread spec". No grade (8.8/A2) is ever claimed — a bounding box cannot
+    measure thread class or material.
+
+      * Elongated hardware (bolt/screw/stud/…): shaft ø ≈ the SMALLER cross-section
+        extent snapped to the nearest metric nominal; length ≈ the longest axis.
+        -> "≈M8 × 30mm".
+      * Compact hardware (nut/washer/…): nominal thread ≈ the across-flats extent
+        (the smaller in-plane dimension) / 1.6 (hex AF ≈ 1.6 × nominal ø), snapped.
+        -> "≈M8 nut".
+
+    Returns None for a degenerate / missing bbox — never guesses from nothing.
+    """
+    try:
+        dims = sorted(float(x) for x in (bbox_size_mm or []))
+    except (TypeError, ValueError):
+        return None
+    if len(dims) < 3 or dims[2] <= 0:
+        return None
+    d_small, d_mid, d_long = dims[0], dims[1], dims[2]
+    if kind in _ELONGATED_KINDS:
+        dia = _nearest_metric_nominal(d_small)
+        length = int(round(d_long))
+        return f"≈{_fmt_metric(dia)} × {length}mm"
+    # Compact hardware: the two larger extents are the across-flats/corners; the
+    # smaller in-plane one (d_mid) approximates the across-flats.
+    dia = _nearest_metric_nominal(d_mid / 1.6)
+    return f"≈{_fmt_metric(dia)} {kind}"
+
 
 def classify_cots_fastener(name: str, occurrence: str, features=None,
-                           max_dim_mm: Optional[float] = None) -> Optional[dict]:
+                           max_dim_mm: Optional[float] = None,
+                           bbox_size_mm=None) -> Optional[dict]:
     """Detect a standard off-the-shelf fastener (buy, not make).
 
     Two honest signals (name/occurrence match AND/OR small threaded geometry):
@@ -301,8 +353,10 @@ def classify_cots_fastener(name: str, occurrence: str, features=None,
         (a small bracket is not a fastener).
 
     Returns a COTS block (kind, confidence, detected_by, catalog buy-price with
-    provenance + honesty note) or None. Never invents a fault; a COTS part still
-    gets its full should-cost as the in-house fabrication upper-bound.
+    provenance + honesty note, and an APPROXIMATE geometry-inferred nominal_size)
+    or None. Never invents a fault. The BUY price is the answer for a catalog part;
+    an in-house machined figure is NOT emitted for it (a made-up "sheet-metal
+    aluminium nut" fab cost only misleads), so the caller drops it.
     """
     hay = f"{name or ''} {occurrence or ''}".lower()
     kind = None
@@ -339,7 +393,8 @@ def classify_cots_fastener(name: str, occurrence: str, features=None,
         return None
 
     point, (low, high) = _COTS_CATALOG.get(kind, _COTS_CATALOG["fastener"])
-    return {
+    nominal_size = infer_fastener_size(kind, bbox_size_mm)
+    block = {
         "is_cots": True,
         "kind": kind,
         "confidence": confidence,
@@ -351,11 +406,18 @@ def classify_cots_fastener(name: str, occurrence: str, features=None,
         "note": (
             "Standard off-the-shelf fastener — BUY, not make. The buy-price is a "
             "labelled catalog estimate (McMaster/Fastenal-class, common size/grade, "
-            "single-unit; provenance DEFAULT), NOT a live quote. The should-cost "
-            "figures below are the fabrication UPPER-BOUND if this were machined "
-            "in-house — they are not the recommended cost for a catalog part."
+            "single-unit; provenance DEFAULT), NOT a live quote. Made-in-house "
+            "fabrication is not modeled for standard hardware — source it as a "
+            "catalog part."
         ),
     }
+    if nominal_size is not None:
+        block["nominal_size"] = nominal_size
+        block["nominal_size_note"] = (
+            "Approximate size (≈) inferred from the part's bounding box — a rough "
+            "envelope, NOT a verified thread spec. No grade (e.g. 8.8/A2) is implied."
+        )
+    return block
 
 
 # Keys ``analyze_one_part`` adds ON TOP of the per-instance base — the DESIGN-LEVEL
@@ -435,6 +497,7 @@ def analyze_one_part(
         cots = classify_cots_fastener(
             part.name, getattr(part, "occurrence", "") or "",
             features=features, max_dim_mm=max_dim,
+            bbox_size_mm=[float(d) for d in part.world.bbox_size],
         )
 
         # Prefer the cost make-now + the geometric routing pick when breaking a
@@ -453,8 +516,22 @@ def analyze_one_part(
                 "status": "GEOMETRY_INVALID",
                 "reason": rd.get("reason"),
             }
+        elif cots:
+            # Standard COTS hardware: the BUY price (in 'cots') is the answer. The
+            # in-house machined figure is DROPPED — an aluminium/sheet-metal fab
+            # cost for a steel bolt/nut mis-models fastener physics and can only
+            # mislead. We emit an honest note instead of a wrong number.
+            base["should_cost"] = {
+                "status": rd.get("status"),
+                "cost_quantity": int(cost_quantity),
+                "cost_basis": "not_modeled_for_cots",
+                "cost_basis_note": (
+                    "Made-in-house fabrication is not modeled for standard hardware "
+                    "— source it as a catalog part (see 'cots' for the BUY price)."
+                ),
+            }
         else:
-            should_cost = {
+            base["should_cost"] = {
                 "status": rd.get("status"),
                 "cost_quantity": int(cost_quantity),
                 "make_now_process": dec.get("make_now_process"),
@@ -463,16 +540,6 @@ def analyze_one_part(
                 "recommendation": dec.get("recommendation"),
                 "estimates": _compact_estimates(rd),
             }
-            if cots:
-                # Re-frame the machined figure honestly for a catalog part: it is
-                # the in-house fabrication upper-bound, NOT the recommended cost.
-                should_cost["cost_basis"] = "fabrication_upper_bound_if_made_in_house"
-                should_cost["cost_basis_note"] = (
-                    "This part is a standard COTS fastener (see 'cots'): the "
-                    "should-cost figures are what it would cost to MAKE it in-house "
-                    "(a fabrication upper-bound), not the recommended buy cost."
-                )
-            base["should_cost"] = should_cost
 
         if cots:
             base["cots"] = cots

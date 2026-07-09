@@ -145,10 +145,12 @@ export interface PartDfmSummary {
 }
 
 /** The COTS / standard-hardware block for a part (bolt/nut/screw/…). When present
- *  the part is BUY, not make: the should-cost figures are re-framed as the in-house
- *  fabrication upper-bound, NOT the recommended cost. Mirrors the engine's
- *  `classify_cots_fastener` output VERBATIM — the buy-price is a labelled DEFAULT
- *  catalog estimate, never a live quote. */
+ *  the part is BUY, not make: the answer is the catalog BUY price. No in-house
+ *  machined fab figure is emitted for it (an aluminium/sheet-metal cost for a steel
+ *  fastener mis-models the physics). Mirrors the engine's `classify_cots_fastener`
+ *  output VERBATIM — the buy-price is a labelled DEFAULT catalog estimate, never a
+ *  live quote; `nominal_size` is an APPROXIMATE geometry-inferred size, never a
+ *  verified thread spec. */
 export interface PartCots {
   is_cots: boolean;
   kind: string;
@@ -159,6 +161,10 @@ export interface PartCots {
   buy_price_range_usd: [number, number];
   buy_price_provenance: string;
   note: string;
+  /** Approximate nominal size inferred from the bounding box, e.g. "≈M8 × 30mm"
+   *  (bolt) / "≈M8 nut". Labelled approximate — NOT a verified thread spec. */
+  nominal_size?: string;
+  nominal_size_note?: string;
 }
 
 /** The should-cost block for a part (or an honest engine refusal). */
@@ -172,8 +178,9 @@ export interface PartShouldCost {
   /** The engine's decision object, keyed by quantity — NOT a string. */
   recommendation?: Record<string, unknown> | null;
   estimates?: PartEstimate[];
-  /** Present ONLY for a COTS part: the machined figures are the in-house
-   *  fabrication upper-bound, not the recommended cost. */
+  /** Present ONLY for a COTS part: `cost_basis = "not_modeled_for_cots"` — the
+   *  in-house machined fab figure is intentionally NOT emitted (it would mis-model
+   *  fastener physics); the BUY price in `cots` is the answer. */
   cost_basis?: string;
   cost_basis_note?: string;
 }

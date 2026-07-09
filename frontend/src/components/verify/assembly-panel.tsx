@@ -278,9 +278,12 @@ function RowReadout({
       {pa && !errored && cots && (
         <span
           data-testid="row-cots-buy"
-          title={`Standard off-the-shelf ${cots.kind} — BUY, not make. Catalog estimate (DEFAULT), not a live quote.`}
+          title={`Standard off-the-shelf ${cots.nominal_size ? `${cots.nominal_size} ` : ""}${cots.kind} — BUY, not make. Catalog estimate (DEFAULT), not a live quote.`}
           style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 42, justifyContent: "flex-end" }}
         >
+          {cots.nominal_size && (
+            <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink45 }}>{cots.nominal_size}</span>
+          )}
           <span
             style={{
               fontSize: 9,
@@ -500,10 +503,10 @@ function PartAnalysisDetail({ analysis }: { analysis: PartAnalysis }) {
   const cots = analysis.cots?.is_cots ? analysis.cots : null;
   return (
     <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 14 }}>
-      {/* should-cost headline. For a COTS fastener the BUY story leads and the
-          machined figure is DEMOTED to a labelled fabrication upper-bound. */}
+      {/* should-cost headline. For a COTS fastener the BUY story (with an
+          approximate size) leads; the wrong machined figure is dropped entirely. */}
       {cots ? (
-        <CotsShouldCost cots={cots} est={est} sc={sc} />
+        <CotsShouldCost cots={cots} sc={sc} />
       ) : (
       <div style={{ border: `1px solid ${C.hair}`, borderRadius: 12, padding: "13px 14px", background: C.sunken }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
@@ -578,16 +581,17 @@ function PartAnalysisDetail({ analysis }: { analysis: PartAnalysis }) {
  *  must read BUY, never "$23.99 make-in-house". */
 function CotsShouldCost({
   cots,
-  est,
   sc,
 }: {
   cots: PartCots;
-  est: PartEstimate | null;
   sc: PartShouldCost | undefined;
 }) {
   const [low, high] = cots.buy_price_range_usd ?? [null, null];
-  const fabProc = est?.process ?? sc?.make_now_process ?? null;
-  const fabCost = est?.unit_cost_usd ?? null;
+  const size = cots.nominal_size ?? null;
+  // The honest "fabrication not modeled" line, verbatim from the engine when present.
+  const fabNote =
+    sc?.cost_basis_note ??
+    "Made-in-house fabrication is not modeled for standard hardware — source it as a catalog part.";
   return (
     <div
       data-testid="cots-should-cost"
@@ -598,8 +602,18 @@ function CotsShouldCost({
         <ProvChip p="DEFAULT" />
       </div>
 
-      {/* PRIMARY: the BUY headline. */}
+      {/* PRIMARY: the BUY headline, LED by the approximate size so the buy price is
+          sanity-checkable (≈M8 bolt · BUY ~$0.75/unit). */}
       <div style={{ margin: "11px 0 0", display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap" }}>
+        {size && (
+          <span
+            data-testid="cots-nominal-size"
+            title={cots.nominal_size_note ?? "Approximate size inferred from geometry — not a verified thread spec."}
+            style={{ fontFamily: MONO, fontSize: 13, color: C.ink, borderBottom: `1px dotted ${C.ink45}` }}
+          >
+            {size}
+          </span>
+        )}
         <span
           style={{ fontSize: 9.5, letterSpacing: "0.08em", color: C.pass, border: `1px solid ${C.pass}`, borderRadius: 999, padding: "2px 9px", fontFamily: MONO }}
         >
@@ -608,6 +622,12 @@ function CotsShouldCost({
         <span style={{ fontFamily: MONO, fontSize: 22, color: C.ink }}>~{USD(cots.buy_price_usd)}</span>
         <span style={{ fontSize: 12, color: C.ink45 }}>/unit</span>
       </div>
+      {size && (
+        <p style={{ margin: "5px 0 0", fontSize: 10.5, lineHeight: 1.5, color: C.ink45 }}>
+          {cots.nominal_size_note ??
+            "Approximate size (≈) from geometry — a rough envelope, not a verified thread spec. No grade implied."}
+        </p>
+      )}
       <p style={{ margin: "8px 0 0", fontSize: 12.5, lineHeight: 1.5, color: C.ink70 }}>
         Standard off-the-shelf {cots.kind} — <b style={{ fontWeight: 500, color: C.ink }}>do not machine in-house</b>.
         {low != null && high != null && (
@@ -640,23 +660,19 @@ function CotsShouldCost({
         </span>
       </div>
 
-      {/* DEMOTED: the machined figure, clearly a fabrication upper-bound, NOT the rec. */}
-      {fabCost != null && (
-        <div
-          data-testid="cots-fab-upper-bound"
-          style={{ marginTop: 12, border: `1px dashed ${C.hair}`, borderRadius: 9, padding: "9px 11px", background: "#fff" }}
-        >
-          <p style={{ margin: 0, fontFamily: MONO, fontSize: 9, letterSpacing: "0.08em", color: C.ink40 }}>
-            FABRICATION UPPER-BOUND · IF MADE IN-HOUSE
-          </p>
-          <p style={{ margin: "4px 0 0", fontSize: 12, lineHeight: 1.5, color: C.ink55 }}>
-            <span style={{ fontFamily: MONO, color: C.ink50 }}>{USD(fabCost)}/unit</span> if this were
-            fabricated in-house on {procLabel(fabProc)}
-            {sc?.make_now_material ? ` in ${sc.make_now_material}` : ""} — a make-it-yourself
-            upper-bound for a catalog part, <b style={{ fontWeight: 500 }}>not the recommended cost</b>.
-          </p>
-        </div>
-      )}
+      {/* NO machined fab figure: an aluminium/sheet-metal cost for a steel fastener
+          mis-models the physics, so we drop it and say so honestly instead. */}
+      <div
+        data-testid="cots-fab-not-modeled"
+        style={{ marginTop: 12, border: `1px dashed ${C.hair}`, borderRadius: 9, padding: "9px 11px", background: "#fff" }}
+      >
+        <p style={{ margin: 0, fontFamily: MONO, fontSize: 9, letterSpacing: "0.08em", color: C.ink40 }}>
+          MADE-IN-HOUSE · NOT MODELED
+        </p>
+        <p style={{ margin: "4px 0 0", fontSize: 12, lineHeight: 1.5, color: C.ink55 }}>
+          {fabNote}
+        </p>
+      </div>
 
       {/* The recommendation reads BUY — verbatim from the engine. */}
       <p style={{ margin: "11px 0 0", fontSize: 11.5, lineHeight: 1.5, color: C.ink60 }}>
