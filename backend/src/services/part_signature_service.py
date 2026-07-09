@@ -28,12 +28,17 @@ from __future__ import annotations
 import logging
 from typing import Optional, Sequence
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
 
 from src.db.models import PartSignature
+
+# Source tag on a row whose declared identity a human CONFIRMED (or corrected) —
+# the strongest provenance a corpus row can carry, distinct from the 'upload' the
+# analysis funnel writes and from a bulk 'manifest'/'catalog' import.
+SOURCE_USER_CONFIRMED = "user_confirmed"
 
 logger = logging.getLogger("cadverify.part_signature_service")
 
@@ -146,6 +151,78 @@ async def upsert_signature_safe(
             mesh_hash or "?",
             exc_info=True,
         )
+
+
+def serialize_signature(sig: PartSignature) -> dict:
+    """The corpus row's DECLARED identity, shaped for an API response. Never emits
+    the raw signature vector (a MEASURED geometry proxy, not identity) — only the
+    declared fields + their provenance. ``provenance`` is ``USER`` exactly when the
+    row is ``user_confirmed`` (a human assertion), else the honest 'system'."""
+    confirmed = (sig.source == SOURCE_USER_CONFIRMED)
+    return {
+        "mesh_hash": sig.mesh_hash,
+        "declared_part_id": sig.declared_part_id,
+        "declared_name": sig.declared_name,
+        "program": sig.program,
+        "source": sig.source,
+        "provenance": "USER" if confirmed else "system",
+        "confirmed": confirmed,
+        "updated_at": sig.updated_at.isoformat() if sig.updated_at else None,
+    }
+
+
+async def confirm_identity(
+    session: AsyncSession,
+    org_id: str,
+    mesh_hash: str,
+    *,
+    declared_part_id: Optional[str] = None,
+    declared_name: Optional[str] = None,
+    program: Optional[str] = None,
+) -> Optional[PartSignature]:
+    """Write a human-CONFIRMED identity onto the org's existing corpus row.
+
+    A USER assertion: it stamps ``declared_part_id`` / ``declared_name`` /
+    ``program`` onto the ONE ``(org_id, mesh_hash)`` row and flips ``source`` to
+    ``user_confirmed`` so future retrievals of similar parts carry the human-
+    confirmed identity. Org-scoped by construction — the ``WHERE org_id`` guard
+    means it can NEVER touch another org's row (cross-tenant isolation).
+
+    Only the fields the caller SUPPLIED (non-None) are overwritten; a field left
+    None preserves whatever the row already declared (a confirm of the part number
+    must not blank out a previously-declared program). Returns the refreshed row,
+    or ``None`` when no row exists for ``(org_id, mesh_hash)`` — the caller turns
+    that into a 404 (you can only confirm a part already in your corpus). Does NOT
+    commit — it participates in the caller's transaction.
+    """
+    if not org_id or not mesh_hash:
+        return None
+
+    set_: dict = {"source": SOURCE_USER_CONFIRMED, "updated_at": func.now()}
+    if declared_part_id is not None:
+        set_["declared_part_id"] = declared_part_id
+    if declared_name is not None:
+        set_["declared_name"] = declared_name
+    if program is not None:
+        set_["program"] = program
+
+    stmt = (
+        update(PartSignature)
+        .where(
+            PartSignature.org_id == org_id,
+            PartSignature.mesh_hash == mesh_hash,
+        )
+        .values(**set_)
+        .returning(PartSignature.id)
+    )
+    updated_id = (await session.execute(stmt)).scalar_one_or_none()
+    if updated_id is None:
+        return None
+    return (
+        await session.execute(
+            select(PartSignature).where(PartSignature.id == updated_id)
+        )
+    ).scalar_one()
 
 
 async def list_signatures(session: AsyncSession, org_id: str) -> list[PartSignature]:

@@ -55,6 +55,14 @@ import {
   type VerificationBlock,
 } from "@/lib/verify/verification";
 import { envelopeSummary } from "@/lib/verify/machine-api";
+import {
+  readIdentity,
+  identityCardModel,
+  noMatchLine,
+  runnerUpLabel,
+  type IdentityCardModel,
+} from "@/lib/verify/identity";
+import { confirmIdentity } from "@/lib/verify/identity-api";
 import { useToast } from "./toast";
 import { Card, Kicker, ProvChip, ProvDot, ConfidenceBand, GhostButton, EmptyState, Spinner } from "./primitives";
 import { PipelineOverlay } from "./pipeline-overlay";
@@ -436,6 +444,11 @@ function Walk({
       {/* verdict banner */}
       <VerdictBanner result={result} makeNow={makeNow} nav={nav} />
 
+      {/* retrieval-grounded IDENTITY — the org's closest PRIOR part, a SUGGESTION
+          to confirm (rendered only when the engine grounded one; empty/anonymous
+          corpus renders nothing). */}
+      <IdentitySuggestion cost={cost} meshHash={result.meshHash} />
+
       <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
         {/* 1 · envelope — from the real machine inventory (no faked fit) */}
         <StepShell
@@ -617,6 +630,276 @@ function Walk({
         )}
       </div>
     </section>
+  );
+}
+
+/** Bucket → the light status tone used across the Verify instrument. */
+function identityTone(bucket: string): string {
+  if (bucket === "HIGH") return C.pass;
+  if (bucket === "MEDIUM") return C.cond;
+  return C.ink45;
+}
+
+/**
+ * The retrieval-grounded IDENTITY suggestion, near the TOP of the result. It is
+ * ALWAYS a suggestion the user confirms — the matched designation, its REAL
+ * confidence % + bucket, a provenance chip (RETRIEVED · your part library), the
+ * honest caveat, and the runner-up matches (transparency, not a black box).
+ *
+ * Honesty rails: renders the card ONLY when `identity.grounded === true` AND the
+ * top match carries a declared identity; a non-grounded result over a non-empty
+ * corpus shows a QUIET one-liner; a null / empty-corpus identity renders NOTHING.
+ * Confirm → POST /identity/confirm (this part's mesh_hash + the matched identity);
+ * "Not this" dismisses and reveals a minimal "declare manually" field that also
+ * confirms. Nothing here asserts an identity as fact.
+ */
+function IdentitySuggestion({ cost, meshHash }: { cost: CostReport | null; meshHash: string | null }) {
+  const toast = useToast();
+  const id = useMemo(() => readIdentity(cost), [cost]);
+  const model = useMemo(() => identityCardModel(id), [id]);
+
+  const [dismissed, setDismissed] = useState(false);
+  const [confirmed, setConfirmed] = useState<string | null>(null); // the confirmed designation
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualPart, setManualPart] = useState("");
+
+  // Grounded card path.
+  if (model) {
+    if (dismissed && !manualOpen && !confirmed) {
+      // fall through to the quiet dismissed state below
+    } else {
+      return (
+        <div style={{ marginTop: 12 }}>
+          <IdentityCard
+            model={model}
+            meshHash={meshHash}
+            confirmed={confirmed}
+            busy={busy}
+            err={err}
+            manualOpen={manualOpen}
+            manualPart={manualPart}
+            setManualPart={setManualPart}
+            onConfirm={async (input, label) => {
+              if (!meshHash) {
+                setErr("this part's mesh hash isn't available — re-verify to confirm");
+                return;
+              }
+              setBusy(true);
+              setErr(null);
+              const res = await confirmIdentity({ mesh_hash: meshHash, ...input });
+              setBusy(false);
+              if (res.ok) {
+                setConfirmed(label);
+                setManualOpen(false);
+                toast("Identity confirmed — saved to your part library");
+              } else {
+                setErr(res.error);
+              }
+            }}
+            onNotThis={() => setDismissed(true)}
+            onDeclareManually={() => setManualOpen(true)}
+          />
+        </div>
+      );
+    }
+  }
+
+  // Dismissed the grounded card → a quiet acknowledgement (no noise, reversible).
+  if (model && dismissed) {
+    return (
+      <p style={{ margin: "12px 2px 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40 }}>
+        identity suggestion dismissed —{" "}
+        <button
+          type="button"
+          onClick={() => setDismissed(false)}
+          style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 10.5, color: C.user }}
+        >
+          show again
+        </button>
+      </p>
+    );
+  }
+
+  // Not grounded but the org HAS a library → a quiet, non-intrusive one-liner.
+  const quiet = noMatchLine(id);
+  if (quiet) {
+    return (
+      <p style={{ margin: "12px 2px 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40 }}>
+        {quiet} — geometry retrieved {id?.corpus_size ?? 0} prior part
+        {(id?.corpus_size ?? 0) === 1 ? "" : "s"}, none confident enough to suggest.
+      </p>
+    );
+  }
+
+  // null / empty corpus → render NOTHING (the honest empty; no fabricated identity).
+  return null;
+}
+
+/** The grounded identity card — reuses the light-instrument idiom (Kicker / mono
+ *  evidence / provenance chip) from the other Verify cards. */
+function IdentityCard({
+  model,
+  meshHash,
+  confirmed,
+  busy,
+  err,
+  manualOpen,
+  manualPart,
+  setManualPart,
+  onConfirm,
+  onNotThis,
+  onDeclareManually,
+}: {
+  model: IdentityCardModel;
+  meshHash: string | null;
+  confirmed: string | null;
+  busy: boolean;
+  err: string | null;
+  manualOpen: boolean;
+  manualPart: string;
+  setManualPart: (s: string) => void;
+  onConfirm: (input: { declared_part_id?: string; declared_name?: string; program?: string }, label: string) => void;
+  onNotThis: () => void;
+  onDeclareManually: () => void;
+}) {
+  const tone = identityTone(model.bucket);
+  const m = model.match;
+  return (
+    <div
+      data-testid="identity-card"
+      style={{
+        border: `1px solid ${C.hair}`,
+        borderLeft: `3px solid ${tone}`,
+        borderRadius: 14,
+        background: C.panel,
+        padding: "16px 18px",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <Kicker>PART IDENTITY · RETRIEVED FROM YOUR LIBRARY</Kicker>
+        {/* provenance chip — a retrieved suggestion from the org's own corpus */}
+        <span
+          data-testid="identity-prov"
+          title={m.provenance}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 6, fontFamily: MONO,
+            fontSize: 9.5, letterSpacing: "0.04em", color: C.user,
+            border: `1px solid ${C.hair}`, borderRadius: 999, padding: "2px 9px",
+          }}
+        >
+          <span aria-hidden style={{ color: C.user }}>◆</span>
+          RETRIEVED · your part library
+        </span>
+      </div>
+
+      {confirmed ? (
+        <>
+          <p data-testid="identity-confirmed" style={{ margin: "10px 0 0", fontSize: 15, fontWeight: 500, color: C.ink }}>
+            ✓ Identity confirmed — {confirmed}
+          </p>
+          <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink45 }}>
+            saved to your part library as{" "}
+            <span style={{ color: C.user }}>● USER</span> — future look-alike parts will carry it.
+          </p>
+        </>
+      ) : (
+        <>
+          {/* Lead: the matched designation — a SUGGESTION, never asserted. */}
+          <p data-testid="identity-lead" style={{ margin: "10px 0 0", fontSize: 15, lineHeight: 1.35, color: C.ink, fontWeight: 500 }}>
+            {model.lead}
+            {model.program && (
+              <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 400, color: C.ink55 }}>{" "}· {model.program}</span>
+            )}
+          </p>
+
+          {/* Confidence % + bucket pill (real fields). */}
+          <div style={{ margin: "9px 0 0", display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+            <span
+              data-testid="identity-confidence"
+              style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.06em", color: tone, border: `1px solid ${tone}`, borderRadius: 999, padding: "2px 9px" }}
+            >
+              {model.pct}% · {model.bucket} CONFIDENCE
+            </span>
+            <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink45 }}>
+              geometry {(m.geometry_similarity * 100).toFixed(0)}%
+              {m.name_similarity != null ? ` · name ${(m.name_similarity * 100).toFixed(0)}%` : " · name n/a"}
+            </span>
+          </div>
+
+          {/* Honest caveat — verbatim from the engine when present. */}
+          <p style={{ margin: "9px 0 0", fontSize: 11.5, lineHeight: 1.5, color: C.ink55 }}>
+            {model.caveat}
+          </p>
+
+          {/* Runner-ups — transparency, not a black box. */}
+          {model.runners.length > 0 && (
+            <p data-testid="identity-runners" style={{ margin: "7px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
+              other near matches: {model.runners.map(runnerUpLabel).join(" · ")}
+            </p>
+          )}
+
+          {err && (
+            <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.fail }}>{err}</p>
+          )}
+
+          {/* Actions */}
+          <div style={{ marginTop: 13, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <GhostButton
+              primary
+              disabled={busy || !meshHash}
+              title={meshHash ? "Confirm this identity onto your part library" : "mesh hash unavailable"}
+              onClick={() =>
+                onConfirm(
+                  {
+                    declared_part_id: m.declared_part_id ?? undefined,
+                    declared_name: m.declared_name ?? undefined,
+                    program: m.program ?? undefined,
+                  },
+                  model.lead.replace(/^Looks like your /, "")
+                )
+              }
+            >
+              {busy ? "Confirming…" : "Confirm"}
+            </GhostButton>
+            <GhostButton disabled={busy} onClick={onNotThis}>Not this</GhostButton>
+            {!manualOpen && (
+              <button
+                type="button"
+                onClick={onDeclareManually}
+                style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 10.5, color: C.user }}
+              >
+                declare manually →
+              </button>
+            )}
+          </div>
+
+          {/* Minimal "declare manually" affordance — type the real part #, also confirms. */}
+          {manualOpen && (
+            <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <input
+                data-testid="identity-manual-input"
+                value={manualPart}
+                onChange={(e) => setManualPart(e.target.value)}
+                placeholder="real part # / name"
+                style={{
+                  fontFamily: MONO, fontSize: 12, color: C.ink, background: C.sunken,
+                  border: `1px solid ${C.hair}`, borderRadius: 8, padding: "7px 10px", minWidth: 200,
+                }}
+              />
+              <GhostButton
+                primary
+                disabled={busy || !meshHash || manualPart.trim().length === 0}
+                onClick={() => onConfirm({ declared_part_id: manualPart.trim() }, manualPart.trim())}
+              >
+                {busy ? "Saving…" : "Save identity"}
+              </GhostButton>
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 

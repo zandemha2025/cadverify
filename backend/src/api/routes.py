@@ -1756,6 +1756,48 @@ async def _run_cost_decision(
         result_dict = dict(result_dict)
         result_dict["uncertainty"] = uncertainty
 
+    # ── retrieval-grounded IDENTITY (identity Slice 1, RESPONSE-ONLY) ────────
+    # Attach the org's closest PRIOR parts as a provenance-tagged, confidence-
+    # scored SUGGESTION the user confirms — never an asserted identity. Only for
+    # a real org: the demo route (no user/session) and any anonymous/mock caller
+    # get ``identity: null`` (we never fabricate an identity with no library to
+    # ground it). Best-effort: a retrieval failure logs + degrades to null and
+    # NEVER breaks the live cost response.
+    identity_payload = None
+    if user is not None and session is not None:
+        from src.auth.org_context import resolve_org
+
+        _identity_org = await resolve_org(session, user.user_id)
+        if isinstance(_identity_org, str) and _identity_org:
+            try:
+                from src.services import identity_retrieval_service
+                from src.services.analysis_service import (
+                    compute_mesh_hash as _identity_mesh_hash,
+                )
+
+                # Self-exclusion: pass THIS part's mesh_hash so it is filtered from
+                # the corpus — a part must never match itself, even after the
+                # analysis funnel wrote its own signature back this same request.
+                _self_hash = _identity_mesh_hash(data)
+                _id_result = await identity_retrieval_service.retrieve_identity(
+                    session,
+                    _identity_org,
+                    mesh,
+                    name_hint=file.filename,
+                    exclude_mesh_hash=_self_hash,
+                )
+                identity_payload = _id_result.to_dict()
+            except Exception:
+                logger.warning(
+                    "identity retrieval failed for org %s; cost response served "
+                    "with identity=null (live decision preserved)",
+                    _identity_org,
+                    exc_info=True,
+                )
+                identity_payload = None
+    result_dict = dict(result_dict)
+    result_dict["identity"] = identity_payload
+
     return result_dict
 
 

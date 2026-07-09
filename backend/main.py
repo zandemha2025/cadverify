@@ -41,6 +41,7 @@ from src.api.notifications import router as notifications_router
 from src.api.integrations import router as integrations_router
 from src.api.scim import router as scim_router
 from src.api.part_context import router as part_context_router
+from src.api.identity import router as identity_router
 from src.api.groundtruth import router as groundtruth_router
 from src.api.manifest import router as manifest_router
 from src.api.machine_inventory import router as machine_inventory_router
@@ -293,6 +294,11 @@ app.include_router(
 # the portfolio roll-up can state an honest $/year.
 app.include_router(
     part_context_router, prefix="/api/v1/part-context", tags=["part-context"]
+)
+# Confirmed part identity (identity Slice 1): the human-in-the-loop seam that turns
+# a retrieved SUGGESTION into a USER-asserted identity on the org's corpus row.
+app.include_router(
+    identity_router, prefix="/api/v1/identity", tags=["identity"]
 )
 app.include_router(
     groundtruth_router, prefix="/api/v1/ground-truth", tags=["ground-truth"]

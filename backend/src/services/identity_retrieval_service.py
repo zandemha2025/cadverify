@@ -305,8 +305,9 @@ async def retrieve_identity(
     *,
     name_hint: Optional[str] = None,
     k: int = 5,
+    exclude_mesh_hash: Optional[str] = None,
 ) -> IdentityMatchResult:
-    """Ground a new part's IDENTITY by retrieving the org's closest prior parts.
+    """Ground a new part's IDENTITY by retrieving the org's closest PRIOR parts.
 
     1. Compute the query's 18-dim signature (``similarity.vector_for_mesh`` —
        local, NaN-safe, zero-egress).
@@ -321,10 +322,18 @@ async def retrieve_identity(
        geometry is close AND name agrees, OR geometry is a near-duplicate).
     6. ``grounded`` True only when the top match clears the MEDIUM bar; caveats are
        always attached. The identity is a SUGGESTION, never an assertion.
+
+    ``exclude_mesh_hash`` — the query part's OWN ``mesh_hash``, dropped from the
+    corpus before ranking so a part can NEVER "match itself". This is robust to the
+    write-back ordering: even if the current part's signature is already persisted
+    (a re-verify, or retrieval called after the analysis funnel wrote it back), the
+    self row is filtered out here, and ``corpus_size`` reflects the matchable PRIOR
+    corpus only.
     """
     query_vec = similarity.vector_for_mesh(mesh)
     return await _retrieve_from_vector(
-        session, org_id, query_vec, name_hint=name_hint, k=k
+        session, org_id, query_vec,
+        name_hint=name_hint, k=k, exclude_mesh_hash=exclude_mesh_hash,
     )
 
 
@@ -335,10 +344,16 @@ async def _retrieve_from_vector(
     *,
     name_hint: Optional[str] = None,
     k: int = 5,
+    exclude_mesh_hash: Optional[str] = None,
 ) -> IdentityMatchResult:
     """The corpus-read + rank half of ``retrieve_identity``, split out so a test can
     drive it with a precomputed query vector. Org-scoped read only."""
     signatures = await sigsvc.list_signatures(session, org_id)
+    if exclude_mesh_hash:
+        # Self-exclusion: a part is never its own match. Drop the query part's own
+        # mesh_hash so the ranked matches — and ``corpus_size`` — are over PRIOR
+        # parts only.
+        signatures = [s for s in signatures if s.mesh_hash != exclude_mesh_hash]
     corpus_size = len(signatures)
 
     if corpus_size == 0:
