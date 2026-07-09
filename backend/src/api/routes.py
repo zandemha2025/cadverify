@@ -953,6 +953,57 @@ async def _extract_assembly_async(data: bytes, filename: str):
         raise HTTPException(status_code=400, detail="Failed to parse assembly file")
 
 
+async def _run_assembly_analysis(
+    model,
+    *,
+    material_class: str,
+    region: str,
+    assemblies_per_year: Optional[int],
+) -> dict:
+    """Run the P3 per-part DFM + should-cost + interference off the event loop,
+    bounded by ``ANALYSIS_TIMEOUT_SEC``.
+
+    The whole assembly analysis is ONE off-loop executor call (the per-part cost
+    engine is CPU-bound and must not block the loop). It carries its OWN internal
+    wall-clock deadline (a hair under the route budget) so it degrades HONESTLY
+    ("N of M analyzed") BEFORE the outer ``wait_for`` would 504. On the rare event
+    the internal budget is out-run, the outer guard still bounds the request.
+    Returns the base assembly model (``limits``, tree, positions) PLUS the analysis
+    so the P2 frontend renders position + verdict + cost + quantity + interference
+    from one call.
+    """
+    import asyncio
+
+    from src.services.assembly_analysis_service import analyze_assembly_sync
+
+    timeout = _analysis_timeout_sec()
+    # Internal budget slightly under the route budget so the honest degrade wins.
+    internal_budget = max(1.0, timeout - 2.0)
+    loop = asyncio.get_event_loop()
+    try:
+        analysis = await asyncio.wait_for(
+            loop.run_in_executor(
+                None,
+                lambda: analyze_assembly_sync(
+                    model,
+                    material_class=material_class,
+                    region=region,
+                    assemblies_per_year=assemblies_per_year,
+                    time_budget_sec=internal_budget,
+                ),
+            ),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=504,
+            detail=f"Assembly analysis exceeded {timeout:.0f}s timeout.",
+        )
+    out = model.to_dict()
+    out["analysis"] = analysis
+    return out
+
+
 @router.post("/validate/assembly", dependencies=[Depends(require_kill_switch_open)])
 @limiter.limit("60/hour;500/day")
 async def validate_assembly(
@@ -961,23 +1012,71 @@ async def validate_assembly(
     file: UploadFile = File(...),
     format: str = Query(
         "json",
-        description="'json' (default) for the structured assembly model, or 'glb' "
+        description="'json' (default) for the structured assembly model, 'glb' "
         "for one browser-renderable GLB with a named node per part (world "
-        "transforms preserved) for the part-in-context render.",
+        "transforms preserved) for the part-in-context render, or 'analysis' for "
+        "the P3 context-fed per-part DFM + should-cost + real interference.",
+    ),
+    material_class: Optional[str] = Query(
+        None,
+        description="format=analysis only. DEFAULT ASSUMPTION for should-cost "
+        "(AP203 carries no material): polymer|aluminum|steel|stainless|titanium. "
+        "Unset => aluminum (the common mechanical-assembly default), labelled.",
+    ),
+    region: Optional[str] = Query(
+        None, description="format=analysis only. US|EU|MX|CN|IN|SA (unset => US)."
+    ),
+    assemblies_per_year: Optional[int] = Query(
+        None,
+        description="format=analysis only. USER-DECLARED assemblies/year. When set, "
+        "each part is costed at annual = per-assembly-count × this (labelled "
+        "user-declared); unset => costed at the per-assembly FACT count only.",
     ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
 ):
     """Ingest a real STEP/IGES ASSEMBLY -> per-part meshes + world positions +
-    nested product tree.
+    nested product tree, and (``format=analysis``) run real per-part analysis.
 
-    Returns the structured ``AssemblyModel`` (``format=json``) or a combined GLB
-    (``format=glb``). A single-solid file is classified ``single_part`` (use
-    ``/validate`` for canonical analysis). Native CAD (.SLDASM/.prt/.SAT/...) is
-    refused with a specific 400. Org-scoped + session-authed + zero-egress; the
-    ``limits`` field surfaces what AP203 geometry cannot carry (mates, GD&T).
+    Returns the structured ``AssemblyModel`` (``format=json``), a combined GLB
+    (``format=glb``), or the P3 analysis (``format=analysis``): per-part DFM +
+    should-cost from the SAME single-part engine, real per-part quantity from the
+    product tree, and real geometric interference/contact. A single-solid file is
+    classified ``single_part`` (use ``/validate`` for canonical analysis). Native
+    CAD (.SLDASM/.prt/.SAT/...) is refused with a specific 400. Org-scoped +
+    session-authed + zero-egress; the ``limits``/``boundaries`` fields surface what
+    AP203 geometry cannot carry (mates, GD&T) and what is FACT vs assumption vs gate.
     """
+    fmt = format.lower()
+    # Validate analysis knobs BEFORE the (expensive) extraction, so a bad param is
+    # a fast 400 (mirrors the cost route's fail-fast option validation).
+    if fmt == "analysis":
+        if material_class is not None and material_class not in _MATERIAL_CLASSES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown material_class '{material_class}'. Use one of "
+                       f"{sorted(_MATERIAL_CLASSES)}",
+            )
+        if region is not None and region not in _REGIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown region '{region}'. Use one of {sorted(_REGIONS)}",
+            )
+        if assemblies_per_year is not None and not (1 <= assemblies_per_year <= _MAX_QTY):
+            raise HTTPException(
+                status_code=400,
+                detail=f"assemblies_per_year out of range [1, {_MAX_QTY}]",
+            )
+
     data = await _read_capped(file)
     model = await _extract_assembly_async(data, file.filename or "upload.step")
+
+    if fmt == "analysis":
+        return await _run_assembly_analysis(
+            model,
+            material_class=material_class or "aluminum",
+            region=region or "US",
+            assemblies_per_year=assemblies_per_year,
+        )
 
     if format.lower() == "glb":
         from src.parsers.assembly_mesher import assembly_to_glb
