@@ -1708,6 +1708,70 @@ class ManifestPart(Base):
 
 
 # ---------------------------------------------------------------------------
+# Customer-context layer Slice 1 (migration 0036): org-scoped shape-signature
+# store — the retrieval corpus for part IDENTITY.
+# ---------------------------------------------------------------------------
+
+
+class PartSignature(Base):
+    """One org-scoped geometry SIGNATURE + its (optional) DECLARED identity.
+
+    The corpus behind the customer-context identity-retrieval engine (Slice 1).
+    Geometry alone can never say "this is a Camry LE door handle" — that identity
+    lives in the CUSTOMER's world. So as an org uses CadVerify, each part it sees
+    lands here as an 18-dim shape signature (``src.eval.similarity.feature_vector``)
+    keyed by ``mesh_hash``, together with whatever declared identity the customer
+    gave (their own part number / name / program). On a NEW part we RETRIEVE the
+    closest prior signatures IN THE SAME ORG and surface a provenance-tagged,
+    user-confirmable identity — retrieval GROUNDS identity in their data; we never
+    hallucinate it, and never let a near-miss masquerade as a confident match.
+
+    HONESTY (non-negotiable): the ``signature`` is a MEASURED geometry vector; the
+    declared_* fields are USER/file-declared identity, never inferred from the
+    mesh. A row is a *suggestion source*, never a verified-identity assertion — the
+    retrieval engine always returns a confidence + provenance, and abstains
+    (``grounded=False``) below its stated bar rather than fabricate an identity.
+
+    Mirrors the ``part_contexts`` / ``manifest_parts`` column style: BigInt PK,
+    org_id FK (CASCADE — a corpus is deleted with its org, so cross-tenant
+    isolation holds by construction), ``(org_id, mesh_hash)`` unique. The idempotent
+    upsert (last write wins on the latest declared identity) lives in the service.
+    """
+
+    __tablename__ = "part_signatures"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "mesh_hash", name="uq_part_signatures_org_mesh"
+        ),
+        # Retrieval loads the whole org matrix; the org index scopes that scan.
+        Index("ix_part_signatures_org", "org_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    # sha256 of the normalized mesh — the SAME geometry-part key the catalog /
+    # part_context / part_summary stores use (``analysis_service.compute_mesh_hash``).
+    mesh_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    # The 18-dim MEASURED shape signature (similarity.feature_vector order). Stored
+    # as a JSONB float array — pure numpy, zero-egress to compute and to compare.
+    signature: Mapped[List[float]] = mapped_column(JSONB, nullable=False)
+    # DECLARED identity (nullable — the customer may not have given one yet).
+    declared_part_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    declared_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    program: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Where the signature entered the corpus: 'upload' | 'catalog' | 'manifest'.
+    source: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+# ---------------------------------------------------------------------------
 # P6/P8 (migrations 0030, 0033): connector-run evidence ledger
 # ---------------------------------------------------------------------------
 

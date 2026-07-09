@@ -130,6 +130,7 @@ async def _persist_analysis(
     verdict: str,
     face_count: int,
     duration_ms: float,
+    signature_vec: Optional[list] = None,
 ) -> Analysis:
     """Insert a new Analysis row and flush to get the assigned id."""
     from src.auth.org_context import resolve_org
@@ -164,6 +165,22 @@ async def _persist_analysis(
 
     await part_summary_service.refresh_part_summary_safe(
         session, analysis.org_id, analysis.mesh_hash
+    )
+
+    # Customer-context Slice 1: enter this part into the org's identity-retrieval
+    # corpus (org-scoped shape signature). The name-hint is the uploaded filename
+    # (the name from the file); declared_part_id/program stay NULL until the
+    # customer declares them. Best-effort + graceful-degrade in a SAVEPOINT — a
+    # corpus write can NEVER break this live analysis persist.
+    from src.services import part_signature_service
+
+    await part_signature_service.upsert_signature_safe(
+        session,
+        analysis.org_id,
+        analysis.mesh_hash,
+        signature_vec,
+        declared_name=filename,
+        source="upload",
     )
     return analysis
 
@@ -344,12 +361,32 @@ async def run_analysis(
                 proc_issues = pack.apply(proc_issues, proc)
             ps = score_process(proc_issues, geometry, proc)
             process_scores.append(ps)
-        return geometry, ctx, features, universal_issues, process_scores
+
+        # Customer-context Slice 1: compute the 18-dim shape signature while the
+        # mesh + geometry + ctx are still alive (they are freed before persist).
+        # Best-effort / NON-FATAL — a signature failure must never affect analysis.
+        signature_vec = None
+        try:
+            from src.eval.similarity import feature_vector
+
+            signature_vec = feature_vector(ctx.mesh, geometry, ctx).tolist()
+        except Exception:
+            logger.warning(
+                "shape-signature computation failed — corpus write-back skipped",
+                exc_info=True,
+            )
+        return (
+            geometry, ctx, features, universal_issues, process_scores,
+            signature_vec,
+        )
 
     timeout_sec = analysis_timeout_sec_fn()
     loop = asyncio.get_event_loop()
     try:
-        geometry, ctx, features, universal_issues, process_scores = (
+        (
+            geometry, ctx, features, universal_issues, process_scores,
+            signature_vec,
+        ) = (
             await asyncio.wait_for(
                 loop.run_in_executor(None, _run_analysis_sync),
                 timeout=timeout_sec,
@@ -444,6 +481,7 @@ async def run_analysis(
             verdict=_verdict,
             face_count=_face_count,
             duration_ms=duration_ms,
+            signature_vec=signature_vec,
         )
         await _write_usage_event(
             session,
