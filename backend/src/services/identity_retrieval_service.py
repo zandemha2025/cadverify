@@ -440,11 +440,17 @@ async def retrieve_identity(
     name_hint: Optional[str] = None,
     k: int = 5,
     exclude_mesh_hash: Optional[str] = None,
+    query_vec: Optional[np.ndarray] = None,
 ) -> IdentityMatchResult:
     """Ground a new part's IDENTITY by retrieving the org's closest PRIOR parts.
 
     1. Compute the query's 18-dim signature (``similarity.vector_for_mesh`` —
-       local, NaN-safe, zero-egress).
+       local, NaN-safe, zero-egress). ``query_vec`` may be passed PRECOMPUTED by a
+       caller that already ran the geometry pass (the /validate/cost path reuses the
+       cost engine's analysed geometry — ``similarity.feature_vector`` off the same
+       ``result.geometry`` + ``ctx``, byte-identical to ``vector_for_mesh(mesh)`` —
+       to avoid a redundant SECOND full geometry pass at request time, F2). When
+       ``query_vec`` is None it is computed from ``mesh`` here (unchanged behaviour).
     2. Load the ORG's corpus (``list_signatures`` — ``WHERE org_id = caller``).
        Empty → honest empty result (``grounded=False``, fall-back reason). NEVER
        fabricate.
@@ -464,7 +470,8 @@ async def retrieve_identity(
     self row is filtered out here, and ``corpus_size`` reflects the matchable PRIOR
     corpus only.
     """
-    query_vec = similarity.vector_for_mesh(mesh)
+    if query_vec is None:
+        query_vec = similarity.vector_for_mesh(mesh)
     return await _retrieve_from_vector(
         session, org_id, query_vec,
         name_hint=name_hint, k=k, exclude_mesh_hash=exclude_mesh_hash,

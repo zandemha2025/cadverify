@@ -420,10 +420,17 @@ def _resolve_target_processes(processes: Optional[str]) -> list[ProcessType]:
 # ──────────────────────────────────────────────────────────────
 # Cost decision engine + options parsing (POST /validate/cost)
 # ──────────────────────────────────────────────────────────────
-def _run_cost_engine(mesh, filename: str):
+def _run_cost_engine_ctx(mesh, filename: str):
     """Score every registered process for the cost decision layer (mirrors
     cli._run_engine but from an already-parsed in-memory mesh; no narrowing,
-    no persistence, no network)."""
+    no persistence, no network).
+
+    Returns ``(result, mesh, ctx)`` — the FULL ``GeometryContext`` (not just
+    ``ctx.features``) so a caller can reuse the analysed geometry it already
+    built. The identity feature vector (``similarity.feature_vector``) is derived
+    from ``result.geometry`` + ``ctx`` here rather than re-running a SECOND full
+    geometry pass (``vector_for_mesh`` -> ``geometry_pass``) at request time (F2:
+    that redundant pass cost ~2.0s on a 185k-face part)."""
     import src.analysis.processes  # noqa: F401  populate registry
     from src.analysis.base_analyzer import (
         analyze_geometry,
@@ -462,6 +469,14 @@ def _run_cost_engine(mesh, filename: str):
         process_scores=scores,
     )
     rank_processes(result)
+    return result, mesh, ctx
+
+
+def _run_cost_engine(mesh, filename: str):
+    """Back-compat 3-tuple wrapper: ``(result, mesh, ctx.features)``. Callers that
+    also need the analysed geometry (to reuse it) should call
+    ``_run_cost_engine_ctx`` and read ``ctx.features`` off the returned context."""
+    result, mesh, ctx = _run_cost_engine_ctx(mesh, filename)
     return result, mesh, ctx.features
 
 
@@ -1551,6 +1566,11 @@ async def _run_cost_decision(
     # IP-local + ephemeral by contract and stays byte-identical regardless of
     # the flag — the band is an authed-product feature.
     run_ensemble = ensemble_enabled() and user is not None
+    # F2: only a real authenticated org caller can ground a retrieval-based
+    # identity (the demo/anon path serves identity=null). Gate the reuse of the
+    # cost engine's geometry for the identity signature on that same condition so
+    # the demo path pays exactly zero extra work.
+    identity_wanted = user is not None and session is not None
 
     # Snapshot the OTel context on the event loop so the DFM / should-cost spans
     # created inside the executor thread nest under the compute span (contextvars
@@ -1563,7 +1583,10 @@ async def _run_cost_decision(
         try:
             # Span 2/4 — DFM / geometry analysis (the cost engine's mesh pass).
             with tracing.span("cost.dfm_analysis") as _sp_dfm:
-                result, m, features = _run_cost_engine(mesh, file.filename or "unknown")
+                result, m, ctx = _run_cost_engine_ctx(
+                    mesh, file.filename or "unknown"
+                )
+                features = ctx.features
                 geo = result.geometry if isinstance(result.geometry, dict) else {}
                 tracing.set_attr(_sp_dfm, "cadverify.face_count", geo.get("face_count"))
             # Span 3/4 — should-cost decision (make-vs-buy costing).
@@ -1576,7 +1599,18 @@ async def _run_cost_decision(
                     unc = _run_ensemble_band(
                         result, m, features, options, analogy_records
                     )
-            return rep, unc
+            # F2: compute the identity query signature by REUSING the geometry the
+            # cost engine already analysed (result.geometry + ctx) rather than
+            # re-running a SECOND full geometry pass (vector_for_mesh -> geometry_
+            # pass) in the request-blocking retrieval below. Byte-identical to
+            # vector_for_mesh(mesh) — same geometry/ctx, same math — for a ~2.0s
+            # win on a 185k-face part. Only computed when a real org caller could
+            # actually ground an identity (the demo/anon path stays identity=null).
+            id_vec = None
+            if identity_wanted:
+                from src.eval import similarity
+                id_vec = similarity.feature_vector(m, result.geometry, ctx)
+            return rep, unc, id_vec
         finally:
             tracing.detach_context(_otel_tok)
 
@@ -1626,7 +1660,7 @@ async def _run_cost_decision(
     with tracing.span("cost.compute"):
         _otel_ctx = tracing.capture_context()
         try:
-            report, uncertainty = await asyncio.wait_for(
+            report, uncertainty, identity_vec = await asyncio.wait_for(
                 loop.run_in_executor(None, _run), timeout=timeout
             )
         except asyncio.TimeoutError:
@@ -1785,6 +1819,10 @@ async def _run_cost_decision(
                     mesh,
                     name_hint=file.filename,
                     exclude_mesh_hash=_self_hash,
+                    # F2: reuse the signature computed off the cost engine's already-
+                    # analysed geometry (byte-identical to vector_for_mesh(mesh)) so
+                    # retrieval does NOT re-run a second full geometry pass here.
+                    query_vec=identity_vec,
                 )
                 identity_payload = _id_result.to_dict()
             except Exception:
