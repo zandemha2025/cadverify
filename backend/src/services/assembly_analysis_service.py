@@ -528,6 +528,25 @@ def analyze_one_part(
             volume_mm3=float(part.world.volume),
         )
 
+        # Layer A of part identity: upgrade the APPROXIMATE bbox nominal_size to a
+        # genuine, catalog-checkable identification by measuring the fastener's real
+        # across-flats and matching it to the ISO/DIN standards table. Only attached
+        # when confident (high/medium); a low/None match keeps the approximate size
+        # untouched (never overwrite a labelled approximation with a false ID). The
+        # mate-reconciled nominal_size is preserved either way — identity is the
+        # upgrade LAYER on top, not a replacement.
+        if cots:
+            try:
+                from src.analysis.fastener_standards import identify_standard_fastener
+
+                identity = identify_standard_fastener(
+                    part, cots.get("kind"), features=features
+                )
+                if identity is not None:
+                    cots["identity"] = identity
+            except Exception as exc:  # identity is best-effort; never break analysis
+                logger.info("fastener identity failed for %s: %s", part.tree_path, exc)
+
         # Prefer the cost make-now + the geometric routing pick when breaking a
         # DFM-score tie for best_process, so the DFM headline agrees with the
         # dollar route (Fix 2). Order matters: make-now first.

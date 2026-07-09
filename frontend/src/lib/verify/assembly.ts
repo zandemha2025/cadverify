@@ -151,6 +151,41 @@ export interface PartDfmSummary {
  *  output VERBATIM — the buy-price is a labelled DEFAULT catalog estimate, never a
  *  live quote; `nominal_size` is an APPROXIMATE geometry-inferred size, never a
  *  verified thread spec. */
+/** Layer A part identity — a genuine, catalog-checkable standard-fastener ID that
+ *  UPGRADES the approximate `nominal_size`. Present only when the fastener's REAL
+ *  across-flats (measured from the mesh, not the bbox) cleanly matches the ISO/DIN
+ *  standards catalog with confidence. Mirrors the engine's
+ *  `identify_standard_fastener` output VERBATIM. Honest by construction: the
+ *  across-flats is MEASURED and the size is CATALOG (ISO 4032 / 4014 / 4762); the
+ *  pitch is ASSUMED coarse, and grade/material/SKU are never claimed (see `caveats`). */
+export interface PartCotsIdentity {
+  /** The ISO standard the envelope conforms to, e.g. "ISO 4032". */
+  standard_id: string;
+  /** Human designation, e.g. "M12 hex nut (ISO 4032 / DIN 934)". */
+  designation: string;
+  /** Nominal thread, e.g. "M12". */
+  nominal: string;
+  /** Thread spec with the assumption flagged, e.g. "M12 × 1.75 (coarse, assumed)". */
+  thread: string;
+  /** REAL across-flats measured from the mesh (mm). */
+  across_flats_mm_measured: number;
+  /** The matched standard's nominal across-flats (mm). */
+  across_flats_mm_standard: number;
+  /** |measured − standard| (mm). */
+  residual_mm: number;
+  across_corners_mm_measured?: number;
+  ac_af_ratio?: number;
+  /** True only when the cross-section is a clean hexagon (ratio ~1.155). */
+  hex_confirmed: boolean;
+  confidence: "high" | "medium" | "low" | string;
+  /** e.g. "MEASURED (across-flats, axis via bore_cylinder) + CATALOG (ISO 4032)". */
+  provenance: string;
+  measured_dimension?: string;
+  axis_source?: string;
+  /** Explicit honesty notes (pitch assumed, grade not determinable, envelope not SKU). */
+  caveats: string[];
+}
+
 export interface PartCots {
   is_cots: boolean;
   kind: string;
@@ -165,6 +200,10 @@ export interface PartCots {
    *  (bolt) / "≈M8 nut". Labelled approximate — NOT a verified thread spec. */
   nominal_size?: string;
   nominal_size_note?: string;
+  /** Layer A identity: the catalog-checkable upgrade over `nominal_size`, present
+   *  only when the measured across-flats confidently matches a standard. When absent,
+   *  the approximate `nominal_size` is the best available and is rendered unchanged. */
+  identity?: PartCotsIdentity;
 }
 
 /** The should-cost block for a part (or an honest engine refusal). */

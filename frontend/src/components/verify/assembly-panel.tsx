@@ -32,6 +32,7 @@ import {
   type AssemblyAnalysis,
   type PartAnalysis,
   type PartCots,
+  type PartCotsIdentity,
   type PartEstimate,
   type PartShouldCost,
   type InterferencePair,
@@ -580,6 +581,83 @@ function PartAnalysisDetail({ analysis }: { analysis: PartAnalysis }) {
   );
 }
 
+/** Confidence → tone. HIGH = grounded green; MEDIUM = caution amber; else slate. */
+function identityTone(confidence: string): string {
+  if (confidence === "high") return C.pass;
+  if (confidence === "medium") return C.cond;
+  return C.def;
+}
+
+/** Layer A part identity — the catalog-checkable standard-fastener ID that UPGRADES
+ *  the approximate `nominal_size`. Leads with the designation (e.g. "M12 hex nut ·
+ *  ISO 4032 / DIN 934"), shows MEASURED across-flats vs the standard, the confidence,
+ *  a MEASURED+CATALOG provenance chip, and the honest caveats. Rendered ONLY when the
+ *  engine attached a confident identity; otherwise the approximate size stands. */
+function IdentityBlock({ id }: { id: PartCotsIdentity }) {
+  const tone = identityTone(id.confidence);
+  // "M12 hex nut (ISO 4032 / DIN 934)" -> lead "M12 hex nut", standard "ISO 4032 / DIN 934".
+  const m = id.designation.match(/^(.*?)\s*\((.*)\)\s*$/);
+  const lead = m ? m[1] : id.designation;
+  const standard = m ? m[2] : id.standard_id;
+  return (
+    <div
+      data-testid="cots-identity"
+      style={{ border: `1px solid ${C.hair}`, borderLeft: `3px solid ${tone}`, borderRadius: 10, padding: "11px 13px", background: "#fff", marginBottom: 12 }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <Kicker>PART IDENTITY · STANDARD FASTENER</Kicker>
+        <ProvChip p="MEASURED" />
+      </div>
+
+      {/* Lead: the designation — a real, catalog-checkable identification. */}
+      <p data-testid="cots-identity-designation" style={{ margin: "9px 0 0", fontSize: 14, lineHeight: 1.35, color: C.ink, fontWeight: 500 }}>
+        {lead} <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 400, color: C.ink55 }}>· {standard}</span>
+      </p>
+
+      {/* Measured across-flats vs the standard — the grounded evidence. */}
+      <p style={{ margin: "7px 0 0", fontSize: 12, lineHeight: 1.55, color: C.ink70 }}>
+        Across-flats{" "}
+        <span style={{ fontFamily: MONO, color: C.measured }}>{fx(id.across_flats_mm_measured, 1)} mm</span>{" "}
+        <span style={{ fontSize: 10.5, color: C.ink45 }}>(measured)</span>{" "}
+        vs{" "}
+        <span style={{ fontFamily: MONO, color: C.ink }}>{fx(id.across_flats_mm_standard, 1)} mm</span>{" "}
+        <span style={{ fontSize: 10.5, color: C.ink45 }}>(standard, Δ{fx(id.residual_mm, 1)} mm)</span>. Thread{" "}
+        <span style={{ fontFamily: MONO, color: C.ink }}>{id.thread}</span>.
+      </p>
+
+      {/* Confidence + hex-confirmation + provenance chips. */}
+      <div style={{ margin: "9px 0 0", display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+        <span
+          data-testid="cots-identity-confidence"
+          style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.06em", color: tone, border: `1px solid ${tone}`, borderRadius: 999, padding: "2px 9px" }}
+        >
+          {id.confidence.toUpperCase()} CONFIDENCE
+        </span>
+        <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.06em", color: C.ink45, border: `1px solid ${C.hair}`, borderRadius: 999, padding: "2px 9px" }}>
+          {id.hex_confirmed ? "HEX CONFIRMED" : "HEX NOT CONFIRMED"}
+        </span>
+        <span
+          data-testid="cots-identity-prov"
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.04em", color: C.measured, border: `1px solid ${C.hair}`, borderRadius: 999, padding: "2px 9px" }}
+          title={id.provenance}
+        >
+          <span aria-hidden style={{ color: C.measured }}>●</span>
+          {id.provenance}
+        </span>
+      </div>
+
+      {/* Honest caveats — verbatim from the engine (pitch assumed, no grade, not a SKU). */}
+      {id.caveats.length > 0 && (
+        <ul data-testid="cots-identity-caveats" style={{ margin: "9px 0 0", padding: "0 0 0 15px", listStyle: "disc" }}>
+          {id.caveats.map((c, i) => (
+            <li key={i} style={{ fontSize: 11, lineHeight: 1.5, color: C.ink55, marginTop: i === 0 ? 0 : 3 }}>{c}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /** The should-cost card for a COTS / standard-hardware part (bolt, nut, screw…).
  *  The BUY story LEADS (a labelled DEFAULT catalog estimate, not a live quote);
  *  the machined figure is DEMOTED to a clearly-labelled fabrication upper-bound —
@@ -607,6 +685,12 @@ function CotsShouldCost({
         <Kicker>SHOULD-COST · BUY (STANDARD HARDWARE)</Kicker>
         <ProvChip p="DEFAULT" />
       </div>
+
+      {/* Layer A part identity: the catalog-checkable upgrade over the approximate
+          `nominal_size`, when the measured across-flats confidently matched a
+          standard. Leads the card. When absent, the approximate size below stands
+          unchanged. */}
+      {cots.identity && <IdentityBlock id={cots.identity} />}
 
       {/* PRIMARY: the BUY headline, LED by the approximate size so the buy price is
           sanity-checkable (≈M8 bolt · BUY ~$0.75/unit). */}
