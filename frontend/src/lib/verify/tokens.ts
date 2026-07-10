@@ -33,16 +33,18 @@ export const C = {
   ink35: "rgba(23,24,26,0.6)",
   sunken: "#f6f6f7",
 
-  // provenance (light)
-  measured: "#3b7bb8",
-  shop: "#b06a35",
-  user: "#7a63c9",
-  def: "#6b7280", // DEFAULT + MODEL share slate; MODEL renders "○ MODEL"
+  // provenance (light) — re-based into the WCAG-AA zone for small (<18px) mono
+  // labels. Each hue is preserved but darkened until it clears 4.5:1 on BOTH the
+  // #f6f6f7 and #ffffff surfaces (worst case #f6f6f7). Old values were 3.5–4.4:1.
+  measured: "#3772ab", // 4.68:1
+  shop: "#a06030", // 4.62:1
+  user: "#745cc7", // 4.74:1
+  def: "#69707d", // 4.61:1 · DEFAULT + MODEL share slate; MODEL renders "○ MODEL"
 
   // status
-  pass: "#1f8a5b",
-  cond: "#b07818",
-  fail: "#c2453a",
+  pass: "#1d7f54", // 4.61:1
+  cond: "#966614", // 4.62:1 (amber "issues" label — was 3.79:1, sub-AA)
+  fail: "#c2453a", // 4.62:1 (already AA)
 } as const;
 
 export const MONO =

@@ -1337,11 +1337,29 @@ function ProcessPhysics({ result }: { result: VerifyResult }) {
       </p>
     );
   }
-  const rows = [...v.process_scores].sort((a, b) => b.score - a.score).slice(0, 6);
+  // Reconcile the pick with the MATERIAL-AWARE route. `v.best_process` is a pure
+  // geometry-manufacturability ranking (resins float to the top for having the fewest
+  // DFM constraints) and must never masquerade as "the" pick for, say, a steel part —
+  // that contradicts the cost panel on the same screen. When the cost route has run
+  // with a declared material, its make-now / recommended process is the true route
+  // pick; only fall back to the geometry pick when no material-aware route exists.
+  const materialAwarePick =
+    result.cost?.decision?.make_now_process ??
+    result.cost?.routing?.recommended_process ??
+    null;
+  const pick = materialAwarePick ?? v.best_process;
+  const pickIsMaterialAware = materialAwarePick != null;
+  const sorted = [...v.process_scores].sort((a, b) => b.score - a.score);
+  const rows = sorted.slice(0, 6);
+  // Guarantee the actual route pick is visible even if geometry ranks it outside top-6.
+  if (pick && !rows.some((p) => p.process === pick)) {
+    const pickRow = sorted.find((p) => p.process === pick);
+    if (pickRow) rows.push(pickRow);
+  }
   return (
     <div style={{ marginTop: 12, display: "flex", flexDirection: "column" }}>
       {rows.map((ps) => {
-        const isPick = ps.process === v.best_process;
+        const isPick = ps.process === pick;
         const errCount = ps.issues.filter((i) => i.severity === "error").length;
         return (
           <div
@@ -1352,7 +1370,7 @@ function ProcessPhysics({ result }: { result: VerifyResult }) {
               {procLabel(ps.process)}
               {isPick && (
                 <span style={{ marginLeft: 8, fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.08em", color: C.measured }}>
-                  ROUTE PICK
+                  {pickIsMaterialAware ? "ROUTE PICK" : "GEOMETRY PICK"}
                 </span>
               )}
             </span>
@@ -1380,7 +1398,10 @@ function ProcessPhysics({ result }: { result: VerifyResult }) {
       })}
       <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40 }}>
         {v.priority_fixes.length} priority fix{v.priority_fixes.length === 1 ? "" : "es"} across routes ·{" "}
-        overall {v.overall_verdict} · rendered from POST /validate
+        overall {v.overall_verdict} · DFM scores from POST /validate ·{" "}
+        {pickIsMaterialAware
+          ? `pick reconciled to the material-aware route (${procLabel(pick)})`
+          : "pick is geometry-only — declare a material for the material-aware route"}
       </p>
     </div>
   );

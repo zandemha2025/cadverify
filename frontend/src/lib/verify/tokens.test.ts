@@ -65,6 +65,20 @@ function tokenContrast(token: string): number {
   return Math.min(onBg, onPanel);
 }
 
+/** Parse `#rrggbb` into RGB. */
+function parseHex(value: string): RGB {
+  const m = value.match(/^#([0-9a-fA-F]{6})$/);
+  assert.ok(m, `not a #rrggbb token: ${value}`);
+  const n = parseInt(m![1], 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+/** Effective contrast of an opaque hex token on the worse of the two surfaces. */
+function hexContrast(token: string): number {
+  const rgb = parseHex(token);
+  return Math.min(ratio(rgb, BG), ratio(rgb, PANEL));
+}
+
 const AA_NORMAL = 4.5;
 
 // Every muted-ink rung carries real caption/label/hint copy somewhere in the
@@ -85,6 +99,31 @@ for (const [name, token] of MUTED_TEXT_TOKENS) {
     assert.ok(
       r >= AA_NORMAL,
       `C.${name} contrast ${r.toFixed(2)}:1 is below AA ${AA_NORMAL}:1`,
+    );
+  });
+}
+
+// Provenance + status accents render as small (<18px) mono labels — the
+// "● MEASURED" chip, the amber "N issues" count, the "ROUTE PICK" pill's kin.
+// A human-sim persona measured the old amber (#b07818, 3.79:1) and blue
+// (#3b7bb8, 4.13:1) as sub-AA. Each opaque accent must clear AA on both
+// surfaces; if someone lightens one back below AA this fails loudly.
+const STATUS_TEXT_TOKENS: Array<[string, string]> = [
+  ["measured", C.measured],
+  ["shop", C.shop],
+  ["user", C.user],
+  ["def", C.def],
+  ["pass", C.pass],
+  ["cond", C.cond],
+  ["fail", C.fail],
+];
+
+for (const [name, token] of STATUS_TEXT_TOKENS) {
+  test(`C.${name} accent meets WCAG AA (4.5:1) on both instrument surfaces`, () => {
+    const r = hexContrast(token);
+    assert.ok(
+      r >= AA_NORMAL,
+      `C.${name} accent contrast ${r.toFixed(2)}:1 is below AA ${AA_NORMAL}:1`,
     );
   });
 }
