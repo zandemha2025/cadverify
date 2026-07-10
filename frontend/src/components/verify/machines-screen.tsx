@@ -470,7 +470,9 @@ const inputStyle: React.CSSProperties = {
   fontSize: 13,
   color: C.ink,
   fontFamily: "inherit",
-  outline: "none",
+  // NOTE: no inline `outline:"none"` — that inline rule beat the shell's
+  // `.cv-verify-shell input/select:focus-visible` ring (verify-app KEYFRAMES),
+  // leaving these machine-form fields with no visible keyboard focus (WCAG 2.4.7).
 };
 
 function Field({ label, children, span }: { label: string; children: React.ReactNode; span?: boolean }) {
@@ -638,7 +640,12 @@ function MachineFormModal({
           </div>
         )}
         <Field label="MAX WORKPIECE (kg)"><input style={inputStyle} value={maxKg} onChange={(e) => setMaxKg(e.target.value)} inputMode="decimal" /></Field>
-        <Field label="MATERIALS (comma-separated)"><input style={inputStyle} value={materials} onChange={(e) => setMaterials(e.target.value)} placeholder="6061, 316L, PP" /></Field>
+        <Field label="MATERIALS (comma-separated)">
+          <input style={inputStyle} value={materials} onChange={(e) => setMaterials(e.target.value)} placeholder="6061, 316L, PP" />
+          <span style={{ display: "block", marginTop: 5, fontFamily: MONO, fontSize: 10, lineHeight: 1.5, color: C.ink40 }}>
+            a class (aluminum, steel, stainless, titanium, polymer), a registry name (e.g. 6061-T6 Aluminum, SS316L), or a shorthand (6061, 7075, 304, 316L, PP, 4130, 4140)
+          </span>
+        </Field>
         <Field label="NOTES (OPTIONAL)" span><input style={inputStyle} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="throughput note, fixturing, secondary ops…" /></Field>
       </div>
 

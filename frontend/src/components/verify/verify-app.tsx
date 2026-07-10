@@ -446,7 +446,8 @@ const KEYFRAMES = `
 @keyframes vtoastIn { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
 .cv-verify-shell button:focus-visible,
-.cv-verify-shell input:focus-visible {
+.cv-verify-shell input:focus-visible,
+.cv-verify-shell select:focus-visible {
   outline: 2px solid #17181a;
   outline-offset: 2px;
 }
