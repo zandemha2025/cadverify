@@ -373,11 +373,11 @@ function TriageEmpty({
   return (
     <div style={{ marginTop: 26, maxWidth: 660 }}>
       <EmptyState
-        title={cold ? "The makeability projection is cold." : "No geometry-derived parts to triage yet."}
+        title={cold ? "Makeability hasn't been computed yet." : "No geometry-derived parts to triage yet."}
         body={
           cold
             ? rollup.note ??
-              "This org has parts, but the makeability projection has not been populated (they predate it, or the one-time backfill has not run). Re-cost parts to populate the in-house breakdown."
+              "This org has parts, but makeability hasn't been computed for them yet (they predate it, or the one-time backfill hasn't run). Re-cost parts to populate the in-house breakdown."
             : "Verify parts — or import a whole BOM — and the catalog collapses into honest makeability buckets: makeable in-house, outside, needs new capability, not makeable as drawn. A BOM lands below as a declared cohort; each part needs uploaded geometry before it can be costed."
         }
       >
@@ -389,7 +389,7 @@ function TriageEmpty({
             {busy ? "Importing…" : "Import manifest CSV"}
           </GhostButton>
           <p style={{ margin: 0, display: "flex", alignItems: "center", gap: 8, fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
-            {importMsg ?? "bulk BOM ingest posts to /manifest/import with per-line errors"}
+            {importMsg ?? "Upload a BOM as CSV — one part per row. Rows that can't be read are reported back individually, never silently dropped."}
           </p>
         </div>
       </EmptyState>
@@ -505,7 +505,7 @@ function DeclaredManifestCohort({
 
       {page?.next_cursor && (
         <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
-          more declared parts beyond the {parts.length} shown — keyset-paged
+          more declared parts beyond the {parts.length} shown — more below
         </p>
       )}
 
@@ -736,7 +736,7 @@ function BucketDrillDown({
           {def.label} — {NUM(count)} part{count === 1 ? "" : "s"}
         </p>
         <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
-          each row opens its verdict · keyset-paged, whole inventory
+          each row opens its verdict · whole inventory
         </span>
         <button
           type="button"
@@ -773,7 +773,7 @@ function BucketDrillDown({
             {loadingMore ? "Loading…" : "Load more verdicts"}
           </GhostButton>
           <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
-            more parts beyond the {rows?.length} loaded — cursor-paged
+            more parts beyond the {rows?.length} loaded — more below
           </span>
         </div>
       )}
@@ -975,7 +975,7 @@ function RankRow({
             <GhostButton onClick={() => nav("acquisition")}>Open acquisition consideration →</GhostButton>
             {cursor && (
               <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
-                more unlocked parts beyond the {rows?.length} shown — cursor-paged
+                more unlocked parts beyond the {rows?.length} shown — more below
               </span>
             )}
           </div>

@@ -166,13 +166,13 @@ export function VerifyScreen(props: Props) {
           }}
         >
           Can this be made — <span style={{ fontWeight: 500, color: C.ink }}>on your machines</span>, in
-          materials that survive its world — and what will it really take?
+          materials that survive its service conditions — and what will it really take?
         </p>
 
         {/* environment door */}
         <section style={{ marginTop: 16, border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "18px 20px" }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <Kicker>DECLARE ITS WORLD</Kicker>
+            <Kicker>DECLARE SERVICE CONDITIONS</Kicker>
             <span style={{ fontFamily: MONO, fontSize: 10.5, color: door.chipColor }}>{door.chip}</span>
           </div>
           <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -277,7 +277,7 @@ function envDoorStatus(
       return {
         chip: "● USER · on the record",
         chipColor: C.user,
-        line: "world declared — captured on this part's record (part-context, keyed to its mesh). The verification below reflects it: materials that can't survive this world are struck with their cited standard.",
+        line: "service conditions declared — captured on this part's record. The verification below reflects them: materials that can't survive these conditions are struck with their cited standard.",
         color: C.pass,
       };
     }
@@ -285,7 +285,7 @@ function envDoorStatus(
       chip: "drives this preview only",
       chipColor: C.cond,
       line:
-        "world declared — drives this preview only, NOT captured to the record" +
+        "service conditions declared — drives this preview only, NOT captured to the record" +
         (result.envError ? ` (${result.envError})` : "") +
         ".",
       color: C.cond,
@@ -295,7 +295,7 @@ function envDoorStatus(
     return {
       chip: "ambient",
       chipColor: C.ink40,
-      line: "no world declared — the part is verified in ambient conditions.",
+      line: "no service conditions declared — the part is verified at ambient.",
       color: C.ink40,
     };
   }
@@ -304,15 +304,15 @@ function envDoorStatus(
       chip: running ? "capturing…" : "captured on verify",
       chipColor: C.ink40,
       line: running
-        ? "declaring this world on the part's record, then re-costing against it…"
-        : "world declared — it will be captured on the part's record when you verify, and any material that can't survive it is struck with its cited standard.",
+        ? "declaring these service conditions on the part's record, then re-costing against them…"
+        : "service conditions declared — they'll be captured on the part's record when you verify, and any material that can't survive them is struck with its cited standard.",
       color: C.cond,
     };
   }
   return {
     chip: "ambient",
     chipColor: C.ink40,
-    line: "no world declared — the part will be verified in ambient conditions.",
+    line: "no service conditions declared — the part will be verified at ambient.",
     color: C.ink40,
   };
 }
@@ -328,7 +328,7 @@ function ComputingBanner() {
         padding: "22px 24px",
       }}
     >
-      <Kicker color={C.ink45}>COMPUTING — GATES CHECKING IN</Kicker>
+      <Kicker color={C.ink45}>COMPUTING — RUNNING THE GATES</Kicker>
       <p style={{ margin: "10px 0 0", fontSize: 18, fontWeight: 300 }}>
         Running the part through routing, DFM, and the glass-box should-cost…
       </p>
@@ -464,7 +464,7 @@ function Walk({
               <div style={{ border: "1.5px dashed #d3d3d8", borderRadius: 12, padding: "22px 20px", textAlign: "center" }}>
                 <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>No machines declared.</p>
                 <p style={{ margin: "7px 0 0", fontSize: 12, lineHeight: 1.6, color: C.ink50 }}>
-                  Your floor is the denominator of every makeability verdict. Declare it once — a CSV or five minutes of typing.
+                  Your machine floor is the baseline every makeability verdict is measured against. Declare it once — a CSV or five minutes of typing.
                 </p>
                 <div style={{ marginTop: 12 }}>
                   <GhostButton onClick={() => nav("machines")}>Declare your floor →</GhostButton>
@@ -552,7 +552,7 @@ function Walk({
         {!gateStopped && (
           <>
             {/* 2 · materials */}
-            <StepShell n={2} title="Materials that survive this world" delayMs={120} right={cost?.material_class ?? undefined}>
+            <StepShell n={2} title="Materials that survive these service conditions" delayMs={120} right={cost?.material_class ?? undefined}>
               <div style={{ marginTop: 12 }}>
                 {cost ? (
                   <p style={{ margin: 0, fontFamily: MONO, fontSize: 11.5, color: C.ink60, lineHeight: 1.7 }}>
@@ -1193,7 +1193,7 @@ function VerdictBanner({
           The engine returned routing and DFM, but no glass-box should-cost was produced
           {costError ? <> (<span style={{ fontFamily: MONO, fontSize: 12, color: C.ink55 }}>{costError}</span>)</> : null}. Whether
           it&apos;s makeable <span style={{ fontWeight: 500 }}>on your machines</span> is the makeability verification — not
-          evaluated here because no machines and no world are declared.
+          evaluated here because no machines and no service conditions are declared.
         </p>
         {savedCta}
       </BannerFrame>
@@ -1218,7 +1218,7 @@ function VerdictBanner({
       <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 560 }}>
         The engine returned routing, DFM, and a glass-box should-cost. Whether it&apos;s makeable{" "}
         <span style={{ fontWeight: 500 }}>on your machines</span> is the makeability verification — not evaluated here
-        because no machines and no world are declared. Declare your floor or a world to resolve it, never assumed.
+        because no machines and no service conditions are declared. Declare your floor or the service conditions to resolve it, never assumed.
       </p>
       {savedCta}
     </BannerFrame>
@@ -1308,8 +1308,8 @@ function EnvStrikesBlock({ verification, envDeclared }: { verification: Verifica
     return (
       <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40, lineHeight: 1.6 }}>
         {worldDeclared
-          ? "the declared world was applied — no candidate material on the shortlisted routes is excluded by it."
-          : "no world declared — materials are verified in ambient conditions. Declare a world above to gate them by NACE MR0175 / HDT."}
+          ? "the declared service conditions were applied — no candidate material on the shortlisted routes is excluded by them."
+          : "no service conditions declared — materials are verified at ambient. Declare service conditions above to gate them by NACE MR0175 / HDT."}
       </p>
     );
   }
@@ -1719,12 +1719,12 @@ function DecideHallmark({
 
       <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <GhostButton onClick={() => nav("records")} disabled={!saved}>
-          {saved ? "Open the record →" : "Not persisted"}
+          {saved ? "Open the record →" : "Saving is off"}
         </GhostButton>
         <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink40, lineHeight: 1.5, flex: 1, minWidth: 180 }}>
           {saved
             ? "the cost-decision is the immutable saved artifact; your choice above is noted in this verification session and the record opens from Records."
-            : "persistence is off for this decision (COST_PERSIST_ENABLED) — it computed, but was not saved server-side."}
+            : "record-keeping is turned off for this run — the numbers above are live, but nothing was written to your records."}
         </span>
       </div>
 
@@ -1733,11 +1733,11 @@ function DecideHallmark({
           <ConfidenceBand validated={validated} pointFraction={0.5} />
           <p style={{ margin: "7px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink45, lineHeight: 1.6 }}>
             {validated
-              ? "this verdict ships solid — validated against your actuals."
-              : "this verdict ships hatched — assumption band, not shop-validated · n=0. It flips solid only when your actuals come back."}
+              ? "this verdict is validated — checked against your actuals."
+              : "this verdict is unvalidated — an assumption band, not yet checked against your actuals · n=0. It firms up once your real costs come back."}
           </p>
         </div>
-        <GhostButton onClick={() => nav("calibration")}>See how truth arrives →</GhostButton>
+        <GhostButton onClick={() => nav("calibration")}>How estimates get validated →</GhostButton>
       </div>
     </Card>
   );

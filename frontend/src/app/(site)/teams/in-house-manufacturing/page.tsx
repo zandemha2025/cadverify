@@ -176,7 +176,7 @@ export default function InHouseManufacturingPage() {
 
         {/* 02 */}
         <Act n="02">
-          <h2 style={H2}>Declare the floor once. It becomes the denominator.</h2>
+          <h2 style={H2}>Declare the floor once. Every verdict is measured against it.</h2>
           <p style={BODY}>
             Every machine you own &mdash; type, build envelope, materials, loaded rate, throughput
             &mdash; declared in an afternoon or imported as CSV. From then on, every verdict in the
@@ -267,8 +267,8 @@ export default function InHouseManufacturingPage() {
           <p style={BODY}>
             You own the machines, so you own the ground truth: real machine-hours flow back from the
             jobs you run, and the engine&rsquo;s bands flip from hatched assumption to measured
-            residual &mdash; on your parts, your floor. A captive shop is the flywheel&rsquo;s best
-            customer.
+            residual &mdash; on your parts, your floor. A captive shop is the best place to close that
+            loop: you own the jobs the model learns from.
           </p>
           <div
             style={{

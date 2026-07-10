@@ -850,7 +850,7 @@ function BoundariesCard({ analysis }: { analysis: AssemblyAnalysis }) {
     annual_volume: "Annual volume — USER-DECLARED",
     material_class: "Material — DEFAULT assumption",
     interference: "Interference — REAL geometry, not a verdict",
-    service_world: "Service world — future SUGGESTION",
+    service_world: "Service environment — future SUGGESTION",
     interface_dfm_and_gdt: "Interface-DFM / GD&T — GATED tier",
   };
   const order = ["quantity", "annual_volume", "material_class", "interference", "service_world", "interface_dfm_and_gdt"];

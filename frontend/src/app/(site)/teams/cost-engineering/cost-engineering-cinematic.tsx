@@ -219,7 +219,7 @@ export default function CostEngineeringCinematic() {
             </DisplayHeading>
             <p style={{ margin: "20px 0 0", fontSize: 16.5, lineHeight: 1.6, fontWeight: 300, color: "var(--st-ink-60)" }}>
               Program needs the number by Thursday&apos;s review. The engine walks the part through
-              envelope, materials, physics — then builds the resource-cost record, every driver
+              envelope, materials, physics — then builds the should-cost record, every driver
               sourced. The spreadsheet version of this week used to start with hunting for the last
               analogous part.
             </p>
@@ -250,7 +250,7 @@ export default function CostEngineeringCinematic() {
             </DisplayHeading>
             <p style={{ margin: "20px 0 0", fontSize: 16.5, lineHeight: 1.6, fontWeight: 300, color: "var(--st-ink-60)" }}>
               Every driver drills to its verbatim derivation. Disagree with the machine rate?
-              Override it — the row re-tags USER, the report re-costs server-side, and the audit
+              Override it — the row re-tags USER, the whole estimate re-costs and reconciles, and the audit
               trail keeps both versions.
             </p>
             <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 8 }}>

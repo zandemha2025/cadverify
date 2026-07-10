@@ -135,8 +135,8 @@ export default function DesignEngineeringPage() {
             }}
           >
             You already design to stress, weight, and tolerance — because you can measure them while you work. Now
-            makeability is measurable too: envelope, materials-for-the-world, physics, and what it really takes — at
-            design speed.
+            makeability is measurable too: envelope, materials for the service environment, physics, and true build
+            cost — at design speed.
           </p>
         </div>
       </section>

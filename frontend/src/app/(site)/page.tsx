@@ -239,10 +239,10 @@ export default function HomePage() {
               and chooses the machine.
             </h2>
             <p style={actBody}>
-              Axisymmetric. &Oslash;21 mm. Turnable. Before a single dollar is computed, the engine routes the part the way a manufacturing engineer would — and says its reasoning out loud.
+              Axisymmetric. &Oslash;21 mm. Undercut. Before a single dollar is computed, the engine routes the part the way a manufacturing engineer would — and says its reasoning out loud.
             </p>
             <p className="st-mono" style={{ margin: "22px 0 0", fontSize: 12.5, lineHeight: 1.7, color: "var(--st-ink-40)" }}>
-              rotational &rarr; cnc_turning · confidence 0.80
+              rotational &rarr; mjf · confidence 0.80
               <br />
               envelope — fits 6 of 6 machines you&rsquo;d declare · size is not the constraint
             </p>
@@ -283,7 +283,7 @@ export default function HomePage() {
             <p style={eyebrow}>03 — Context, earned</p>
             <h2 style={{ ...actHeading }}>Then it takes its place.</h2>
             <p style={actBody}>
-              A part never lives alone. When your assembly data is present, the shaft seats into its gearbox — and one unit cost becomes a program number.
+              A part never lives alone. When your assembly data is present, the housing seats into its enclosure — and one unit cost becomes a program-level spend.
             </p>
             <div style={{ marginTop: 22, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }} className="st-mono">
               <span style={{ color: "var(--st-ink-40)", fontSize: 12.5 }}>program &rarr; assembly &rarr; part</span>
@@ -304,10 +304,10 @@ export default function HomePage() {
               $14.14
             </p>
             <p style={{ margin: "22px 0 0", fontSize: 17, fontWeight: 300, color: "var(--st-ink-60)" }}>
-              per unit · MJF (PP) · quantity 10 — the resource cost, one artifact inside the verdict
+              per unit · MJF (PP) · quantity 10 — the should-cost, one line inside the decision
             </p>
             <p className="st-mono" style={{ margin: "10px 0 0", fontSize: 11.5, color: "var(--st-ink-35)" }}>
-              captured cost-truth-engine output · object.stl · Midwest Precision CNC calibration — the same part on every page of this site
+              captured cost-truth-engine output · object.stl · Midwest Precision shop calibration — the same part on every page of this site
             </p>
             <p className="st-mono" style={{ margin: "14px 0 0", fontSize: 12.5, color: "var(--st-ink-40)" }}>
               $8.49 ······ ±40%, assumption-based, not yet validated ······ $19.80
@@ -343,7 +343,7 @@ export default function HomePage() {
                 <span style={{ textDecoration: "line-through", color: "var(--st-ink-35)" }}>Al 6061</span>{" "}
                 <span className="st-mono" style={{ fontSize: 12, color: "var(--st-fail)" }}>fails NACE MR0175</span>
                 <br />
-                <span style={{ fontSize: 14, color: "var(--st-ink-55)" }}>Declare the part&rsquo;s world; what can&rsquo;t survive it is struck — visibly, with the reason.</span>
+                <span style={{ fontSize: 14, color: "var(--st-ink-55)" }}>Declare the part&rsquo;s service conditions; what can&rsquo;t survive them is struck — visibly, with the reason.</span>
               </p>
             </div>
             <div className="st-card" style={{ padding: 26 }}>
@@ -443,7 +443,7 @@ export default function HomePage() {
                 Watch the band go solid.
               </h3>
               <p style={{ margin: "14px 0 0", fontSize: 15, lineHeight: 1.65, fontWeight: 300, color: "var(--st-ink-55)" }}>
-                Every estimate ships hatched — assumption-based, and labeled so. Feed your invoices back and the model validates against your held-out parts. The flip from hatched to solid is the only accuracy claim we will ever make.
+                Every estimate starts unvalidated — assumption-based, and labeled so. Feed your invoices back and the model checks itself against parts you kept back (never shared with us). That flip from assumption to measured is the only accuracy claim we will ever make.
               </p>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 26 }}>
