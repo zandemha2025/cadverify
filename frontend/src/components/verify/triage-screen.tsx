@@ -22,6 +22,8 @@ import {
   fetchMakeabilityBucket,
   fetchCapabilityInvestment,
   fetchCapabilityUnlocked,
+  fetchManifestCoverage,
+  fetchManifest,
   importManifestCsv,
   verdictPhrase,
   type MakeabilityRollup,
@@ -31,6 +33,16 @@ import {
   type CapabilityRanking,
   type CapabilityEntry,
 } from "@/lib/verify/triage-api";
+import {
+  allAwaitingGeometry,
+  awaitingGeometryLabel,
+  coverageHeadline,
+  hasDeclared,
+  partMetaBits,
+  type ManifestCoverage,
+  type ManifestListPage,
+  type ManifestPart,
+} from "@/lib/verify/manifest";
 
 /** Translucent fill from an opaque hex — the design's soft bucket tint. */
 function tint(hex: string, a: number): string {
@@ -101,8 +113,21 @@ export function TriageScreen({ nav }: { nav: (s: string) => void }) {
   const [error, setError] = useState<string | null>(null);
   const [capability, setCapability] = useState<CapabilityRanking | null>(null);
   const [open, setOpen] = useState<MakeabilityBucketKey | null>(null);
+  // The declared manifest (BOM) — a THIRD kind of part identity, geometry-derived
+  // triage cannot surface it. Fetched alongside so an imported BOM never vanishes.
+  const [coverage, setCoverage] = useState<ManifestCoverage | null>(null);
+  const [manifest, setManifest] = useState<ManifestListPage | null>(null);
 
-  useEffect(() => {
+  // Import UI lives at the top level so a successful import can REFETCH both the
+  // geometry-derived buckets AND the declared cohort, updating without a reload.
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [importMsg, setImportMsg] = useState<string | null>(null);
+
+  // Reload the geometry-derived makeability projection AND the declared manifest.
+  // A manifest failure never blocks the buckets (and vice-versa) — each is honest
+  // about its own absence.
+  const reload = useCallback(() => {
     fetchMakeability().then(
       (r) => {
         setRollup(r);
@@ -113,10 +138,49 @@ export function TriageScreen({ nav }: { nav: (s: string) => void }) {
         setRollup(null);
       }
     );
+    fetchManifestCoverage().then(setCoverage, () => setCoverage(null));
+    fetchManifest().then(setManifest, () => setManifest(null));
+  }, []);
+
+  useEffect(() => {
+    reload();
     // The capability ranking is a second cheap GROUP BY; a failure here never
     // blocks the buckets — the panel just stays absent.
     fetchCapabilityInvestment().then(setCapability, () => setCapability(null));
-  }, []);
+  }, [reload]);
+
+  const onManifest = useCallback(
+    async (file: File) => {
+      setBusy(true);
+      setImportMsg(null);
+      try {
+        const sum = await importManifestCsv(file);
+        const msg = `${sum.imported} imported · ${sum.updated} updated · ${sum.skipped} skipped`;
+        setImportMsg(msg);
+        toast.success(`Manifest import complete — ${msg}`);
+        if (sum.errors.length) {
+          toast.message(`${sum.errors.length} row error(s)`, {
+            description: sum.errors
+              .slice(0, 3)
+              .map((e) => `line ${e.line}: ${e.reason}`)
+              .join(" · "),
+          });
+        }
+        // REFETCH so the imported BOM surfaces immediately (declared cohort +
+        // coverage headline) without a page reload — the fix for WA-1.
+        reload();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "manifest import failed";
+        setImportMsg(msg);
+        toast.error(msg);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [reload]
+  );
+
+  const openImport = useCallback(() => fileRef.current?.click(), []);
 
   const s = rollup?.summary;
   const total = s?.total ?? 0;
@@ -162,7 +226,7 @@ export function TriageScreen({ nav }: { nav: (s: string) => void }) {
       )}
 
       {rollup && s && total === 0 && (
-        <TriageEmpty rollup={rollup} nav={nav} />
+        <TriageEmpty rollup={rollup} nav={nav} onImport={openImport} busy={busy} importMsg={importMsg} />
       )}
 
       {rollup && s && total > 0 && (
@@ -259,73 +323,251 @@ export function TriageScreen({ nav }: { nav: (s: string) => void }) {
           </p>
         </>
       )}
+
+      {/* THE DECLARED MANIFEST (BOM) — a distinct, honest cohort. Geometry-derived
+          triage cannot surface these; without this panel an imported BOM vanishes
+          from the whole product. Rendered whenever the org has ANY declared part,
+          in BOTH the empty and populated states. Never given a cost or verdict. */}
+      {hasDeclared(coverage) && (
+        <DeclaredManifestCohort
+          coverage={coverage}
+          page={manifest}
+          onImport={openImport}
+          busy={busy}
+          nav={nav}
+        />
+      )}
+
+      {/* one hidden input drives every import affordance on the screen */}
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".csv,text/csv"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void onManifest(f);
+          e.target.value = "";
+        }}
+      />
     </main>
   );
 }
 
 // ── the honest empty / cold-projection state ────────────────────────────────
-function TriageEmpty({ rollup, nav }: { rollup: MakeabilityRollup; nav: (s: string) => void }) {
+function TriageEmpty({
+  rollup,
+  nav,
+  onImport,
+  busy,
+  importMsg,
+}: {
+  rollup: MakeabilityRollup;
+  nav: (s: string) => void;
+  onImport: () => void;
+  busy: boolean;
+  importMsg: string | null;
+}) {
   const cold = rollup.cold_projection;
-  const fileRef = useRef<HTMLInputElement | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [summary, setSummary] = useState<string | null>(null);
-
-  const onManifest = useCallback(async (file: File) => {
-    setBusy(true);
-    setSummary(null);
-    try {
-      const s = await importManifestCsv(file);
-      const msg = `${s.imported} imported · ${s.updated} updated · ${s.skipped} skipped`;
-      setSummary(msg);
-      toast.success(`Manifest import complete — ${msg}`);
-      if (s.errors.length) {
-        toast.message(`${s.errors.length} row error(s)`, {
-          description: s.errors.slice(0, 3).map((e) => `line ${e.line}: ${e.reason}`).join(" · "),
-        });
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "manifest import failed";
-      setSummary(msg);
-      toast.error(msg);
-    } finally {
-      setBusy(false);
-    }
-  }, []);
 
   return (
     <div style={{ marginTop: 26, maxWidth: 660 }}>
       <EmptyState
-        title={cold ? "The makeability projection is cold." : "No parts to triage yet."}
+        title={cold ? "The makeability projection is cold." : "No geometry-derived parts to triage yet."}
         body={
           cold
             ? rollup.note ??
               "This org has parts, but the makeability projection has not been populated (they predate it, or the one-time backfill has not run). Re-cost parts to populate the in-house breakdown."
-            : "Verify parts — or import a whole BOM — and the catalog collapses into honest makeability buckets: makeable in-house, outside, needs new capability, not makeable as drawn. Failures surface live; nothing is silently skipped, and every count opens into its verdicts."
+            : "Verify parts — or import a whole BOM — and the catalog collapses into honest makeability buckets: makeable in-house, outside, needs new capability, not makeable as drawn. A BOM lands below as a declared cohort; each part needs uploaded geometry before it can be costed."
         }
       >
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
           <GhostButton primary onClick={() => nav("verify")}>
             Verify a part
           </GhostButton>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".csv,text/csv"
-            style={{ display: "none" }}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void onManifest(f);
-              e.target.value = "";
-            }}
-          />
-          <GhostButton onClick={() => fileRef.current?.click()} disabled={busy}>
+          <GhostButton onClick={onImport} disabled={busy}>
             {busy ? "Importing…" : "Import manifest CSV"}
           </GhostButton>
           <p style={{ margin: 0, display: "flex", alignItems: "center", gap: 8, fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
-            {summary ?? "bulk BOM ingest posts to /manifest/import with per-line errors"}
+            {importMsg ?? "bulk BOM ingest posts to /manifest/import with per-line errors"}
           </p>
         </div>
       </EmptyState>
+    </div>
+  );
+}
+
+// ── THE DECLARED MANIFEST (BOM) — a distinct, clearly-labeled honest cohort ───
+// A declared ManifestPart is a THIRD kind of part identity: a user-declared fact
+// with NO geometry, so it CANNOT be costed or make-vs-buy'd. It appears here with
+// only its declared fields and an "awaiting geometry" state — never a fabricated
+// cost, route, or verdict. The coverage headline states the geometry split exactly.
+function DeclaredManifestCohort({
+  coverage,
+  page,
+  onImport,
+  busy,
+  nav,
+}: {
+  coverage: ManifestCoverage;
+  page: ManifestListPage | null;
+  onImport: () => void;
+  busy: boolean;
+  nav: (s: string) => void;
+}) {
+  const g = coverage.geometry;
+  const awaitingAll = allAwaitingGeometry(coverage);
+  const parts = page?.parts ?? [];
+
+  return (
+    <section
+      style={{
+        marginTop: 30,
+        border: `1.5px solid ${C.hair}`,
+        borderRadius: 16,
+        background: C.panel,
+        padding: "22px 24px",
+        maxWidth: 1180,
+        animation: "vstepIn 300ms cubic-bezier(0.2,0,0,1) both",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+        <Kicker color={C.user}>DECLARED INVENTORY · IMPORTED BOM</Kicker>
+        <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
+          user-declared parts · no geometry yet, so not costed
+        </span>
+        <GhostButton onClick={onImport} disabled={busy} style={{ marginLeft: "auto" }}>
+          {busy ? "Importing…" : "Import / re-import BOM"}
+        </GhostButton>
+      </div>
+
+      {/* the honest coverage headline — never overstated */}
+      <p style={{ margin: "12px 0 0", fontSize: 15, lineHeight: 1.6, maxWidth: 780 }}>
+        {coverageHeadline(coverage)}
+      </p>
+
+      {/* the coverage counts — total / with geometry / awaiting geometry */}
+      <div style={{ marginTop: 14, display: "flex", gap: 26, flexWrap: "wrap" }}>
+        <CoverageStat value={coverage.total_declared} label="declared parts" color={C.user} />
+        <CoverageStat value={g.with_geometry} label="with geometry (costed above)" color={C.pass} />
+        <CoverageStat value={g.without_geometry} label="awaiting geometry" color={C.cond} />
+      </div>
+
+      {/* by_program rollup — scalable GROUP BY, an unassigned program stated, never dropped */}
+      {coverage.by_program.length > 0 && (
+        <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {coverage.by_program.map((p) => (
+            <span
+              key={p.program}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 7,
+                border: `1px solid ${C.hair}`,
+                borderRadius: 999,
+                background: C.sunken,
+                padding: "5px 12px",
+                fontSize: 12,
+              }}
+            >
+              <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 500, color: C.ink }}>{NUM(p.count)}</span>
+              <span style={{ color: C.ink55 }}>{p.program}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* the awaiting-geometry cohort — DISTINCT and clearly labeled */}
+      <div style={{ marginTop: 18, display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+        <p style={{ margin: 0, fontSize: 14, fontWeight: 500, color: C.cond }}>
+          {awaitingGeometryLabel(coverage)}
+        </p>
+        <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
+          declared facts only · no cost, no make-vs-buy, no verdict
+        </span>
+      </div>
+
+      {page === null ? (
+        <div style={{ marginTop: 12 }}>
+          <Spinner label="loading the declared manifest…" />
+        </div>
+      ) : parts.length === 0 ? (
+        <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink45 }}>
+          no declared parts on this page.
+        </p>
+      ) : (
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column" }}>
+          {parts.map((p) => (
+            <DeclaredPartRow key={p.id} part={p} awaiting={awaitingAll} />
+          ))}
+        </div>
+      )}
+
+      {page?.next_cursor && (
+        <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
+          more declared parts beyond the {parts.length} shown — keyset-paged
+        </p>
+      )}
+
+      <p style={{ margin: "16px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink35, maxWidth: 780, lineHeight: 1.6 }}>
+        declared rows are user-declared inventory facts — never a cost or make-vs-buy claim. A declared part must have
+        uploaded geometry before it can be costed;{" "}
+        <button
+          type="button"
+          onClick={() => nav("verify")}
+          style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 10.5, color: C.measured }}
+        >
+          verify a part →
+        </button>{" "}
+        and it moves into the makeability buckets above. Geometry match: {g.match}.
+      </p>
+    </section>
+  );
+}
+
+function CoverageStat({ value, label, color }: { value: number; label: string; color: string }) {
+  return (
+    <div>
+      <p style={{ margin: 0, fontSize: 28, fontWeight: 300, letterSpacing: "-0.02em", color }}>{NUM(value)}</p>
+      <p style={{ margin: "2px 0 0", fontSize: 11.5, color: C.ink50 }}>{label}</p>
+    </div>
+  );
+}
+
+// ── one declared part row — declared fields ONLY, never a cost/route/verdict ──
+function DeclaredPartRow({ part, awaiting }: { part: ManifestPart; awaiting: boolean }) {
+  const bits = partMetaBits(part);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "11px 2px", borderBottom: "1px solid #f0f0f3" }}>
+      <span style={{ fontFamily: MONO, fontSize: 12, color: C.ink, minWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {part.part_id}
+      </span>
+      <span style={{ fontSize: 12.5, color: C.ink60, minWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {part.description ?? <span style={{ color: C.ink35 }}>— no description declared</span>}
+      </span>
+      {bits.length > 0 && (
+        <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink45 }}>{bits.join(" · ")}</span>
+      )}
+      {/* honest state — hollow ring = declared/ungrounded; NEVER a makeability verdict */}
+      <span
+        title="A declared part has no geometry to cost. Upload the part to cost it."
+        style={{
+          marginLeft: "auto",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          fontFamily: MONO,
+          fontSize: 10,
+          color: C.cond,
+          border: `1px solid ${tint(C.cond, 0.35)}`,
+          borderRadius: 999,
+          padding: "2px 9px",
+          whiteSpace: "nowrap",
+        }}
+      >
+        <span aria-hidden>○</span>
+        {awaiting ? "awaiting geometry" : "declared"}
+      </span>
     </div>
   );
 }
