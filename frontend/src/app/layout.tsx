@@ -85,7 +85,10 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col">
         {children}
-        <Toaster position="top-right" richColors closeButton />
+        {/* Toasts live bottom-right so they never occlude the top-right control
+            cluster (⌘K / Jump / notifications bell) or their dropdowns — a
+            recurring finding (W4 + W7). One place, fixed everywhere. */}
+        <Toaster position="bottom-right" richColors closeButton />
       </body>
     </html>
   );

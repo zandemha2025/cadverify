@@ -12,6 +12,7 @@ import { C, MONO, SANS } from "@/lib/verify/tokens";
 import { runVerification, type VerifyResult } from "@/lib/verify/run";
 import { listMachines } from "@/lib/verify/machine-api";
 import { CAD_ACCEPT } from "@/lib/cad-file";
+import { VERIFY_PART_CAD_INPUT } from "@/lib/verify/file-inputs";
 import { Stage, type StageAssembly } from "./stage";
 import { AssemblyPanel } from "./assembly-panel";
 import { fetchAssembly, fetchAssemblyAnalysis, defaultPartOfInterest, type AssemblyRender, type AssemblyAnalysis } from "@/lib/verify/assembly";
@@ -268,6 +269,10 @@ export function VerifyApp() {
       <style>{KEYFRAMES}</style>
       <input
         ref={fileRef}
+        id={VERIFY_PART_CAD_INPUT.id}
+        name={VERIFY_PART_CAD_INPUT.name}
+        data-testid={VERIFY_PART_CAD_INPUT.testId}
+        aria-label={VERIFY_PART_CAD_INPUT.ariaLabel}
         type="file"
         accept={`${CAD_ACCEPT},model/stl,application/step`}
         style={{ display: "none" }}

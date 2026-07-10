@@ -161,6 +161,8 @@ export function GhostButton({
   disabled,
   title,
   style,
+  "aria-label": ariaLabel,
+  "aria-controls": ariaControls,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
@@ -168,6 +170,8 @@ export function GhostButton({
   disabled?: boolean;
   title?: string;
   style?: React.CSSProperties;
+  "aria-label"?: string;
+  "aria-controls"?: string;
 }) {
   return (
     <button
@@ -175,6 +179,8 @@ export function GhostButton({
       onClick={onClick}
       disabled={disabled}
       title={title}
+      aria-label={ariaLabel}
+      aria-controls={ariaControls}
       style={{
         display: "inline-flex",
         alignItems: "center",
