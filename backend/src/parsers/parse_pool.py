@@ -169,6 +169,86 @@ def _get_pool() -> ProcessPoolExecutor:
         return _POOL
 
 
+def _prewarm_worker() -> int:
+    """PURE, picklable per-worker warmup — the eager-startup counterpart to
+    ``_rung_worker``. Pays a worker's ONE-TIME cold cost UP FRONT so the first
+    real request that lands on it skips ~0.7s:
+
+      * imports ``src.parsers.step_mesher`` (which pulls trimesh + numpy + gmsh —
+        the ~0.58s import the worker would otherwise pay on its first rung), and
+      * runs a bare ``gmsh.initialize()`` / ``finalize()`` to pay gmsh's one-time
+        runtime init (~0.1s the worker's first mesh would otherwise absorb).
+
+    ANSWER-PRESERVING: it does NO real tessellation — no STEP is read, no mesh is
+    generated, no cost/geometry number is touched. It only moves WHEN the import
+    and init happen (boot instead of first request). Module-level so
+    ``ProcessPoolExecutor`` can pickle it by qualified name.
+
+    Best-effort: on any failure (e.g. gmsh absent) it swallows and returns — the
+    worker still warms lazily on first real use exactly as before.
+    """
+    import os as _os
+    import time as _time
+
+    # Boot-safety self-test hook (OFF by default): lets a caller prove that a
+    # failing warmup does NOT crash boot / block readiness. Never set in prod.
+    if _os.getenv("PARSE_POOL_PREWARM_FORCE_FAIL") == "1":
+        raise RuntimeError("simulated pre-warm failure (boot-safety self-test)")
+
+    # Import the exact mesher stack the first rung would import (trimesh+numpy+gmsh).
+    from src.parsers import step_mesher  # noqa: F401
+    try:
+        import gmsh
+        gmsh.initialize(interruptible=False)
+        gmsh.finalize()
+    except Exception:  # gmsh missing / init hiccup — the real path degrades anyway
+        pass
+    # Briefly hold this worker so the executor engages a DISTINCT worker for each
+    # queued warmup task (rather than reusing one fast worker for all of them),
+    # ensuring every worker in the pool is warmed.
+    _time.sleep(0.25)
+    return _os.getpid()
+
+
+def prewarm(block: bool = False, timeout: float | None = 45.0) -> int:
+    """Eagerly build the shared pool and warm EVERY worker (import the mesher
+    stack + pay gmsh runtime init) so the first real request skips the
+    ~0.7s/worker cold-start tax. Reuses the existing singleton pool — does NOT
+    rebuild it.
+
+    Answer-preserving (runs no real tessellation) and BEST-EFFORT: never raises.
+    Honours the pool kill switch (``is_disabled()``) and a worker warmup failure
+    is logged and swallowed, leaving that worker to warm lazily on first use —
+    boot is never blocked or crashed. Returns the number of warmup tasks
+    dispatched (0 if disabled/skipped).
+
+    ``block=False`` (default) fires the warmups and returns immediately (results
+    complete in the background pool). ``block=True`` waits up to ``timeout`` for
+    each worker to finish warming (used by the startup thread so warmup outcomes
+    are logged, and by tests)."""
+    if is_disabled():
+        logger.info("parse pool pre-warm skipped (pool disabled)")
+        return 0
+    try:
+        pool = _get_pool()
+        n = worker_count()
+        futures = [pool.submit(_prewarm_worker) for _ in range(n)]
+        logger.info("parse pool pre-warm dispatched (workers=%d)", n)
+    except Exception:  # pool build failed — leave lazy warmup intact
+        logger.warning("parse pool pre-warm skipped (pool build error)", exc_info=True)
+        return 0
+    if block:
+        warmed = 0
+        for f in futures:
+            try:
+                f.result(timeout=timeout)
+                warmed += 1
+            except Exception:
+                logger.warning("parse pool worker pre-warm failed", exc_info=True)
+        logger.info("parse pool pre-warm complete (%d/%d workers warm)", warmed, len(futures))
+    return len(futures)
+
+
 def recycle_pool(kill: bool = False) -> None:
     """Tear down the current pool and drop the singleton so the NEXT dispatch
     lazily builds a fresh one.

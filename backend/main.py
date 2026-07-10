@@ -175,9 +175,42 @@ if os.getenv("SENTRY_DSN"):
     )
 
 
+def _prewarm_enabled() -> bool:
+    """Pre-warm the parse pool at startup so the FIRST costed request doesn't pay
+    the ~0.7s/worker cold-start tax (spawn + trimesh/gmsh import + gmsh runtime
+    init). Default ON for a real server; auto-OFF under pytest so test app boots
+    don't spawn a process pool. ``PARSE_POOL_PREWARM`` env overrides either way."""
+    import sys
+
+    raw = os.getenv("PARSE_POOL_PREWARM")
+    if raw is not None:
+        return raw.strip().lower() in ("1", "true", "yes", "on")
+    return "pytest" not in sys.modules
+
+
+def _spawn_parse_pool_prewarm() -> None:
+    """Kick off parse-pool pre-warm on a daemon thread so it NEVER delays
+    readiness or blocks the event loop, and so a warmup failure can't crash boot
+    (``prewarm`` is itself best-effort). Fire-and-forget."""
+    import threading
+
+    from src.parsers import parse_pool
+
+    def _run() -> None:
+        try:
+            parse_pool.prewarm(block=True)
+        except Exception:  # belt-and-suspenders: startup must never crash on warmup
+            logger.warning("parse pool pre-warm thread errored", exc_info=True)
+
+    threading.Thread(target=_run, name="parse-pool-prewarm", daemon=True).start()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("CADVerify starting | cors_regex=%s", CORS_ORIGIN_REGEX)
+    if _prewarm_enabled():
+        logger.info("parse pool pre-warm: enabled (backgrounded, non-blocking)")
+        _spawn_parse_pool_prewarm()
     yield
     logger.info("CADVerify stopping")
 
