@@ -821,6 +821,34 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
     return {"summary": summary, "rows": rows}
 
 
+async def portfolio_delta(
+    session: AsyncSession, org_id: Optional[str], mesh_hash: str
+) -> dict:
+    """The minimal portfolio slice a client needs to PATCH its in-memory
+    portfolio after a single part-context write, instead of refetching the whole
+    (rate-limited) ``GET /portfolio`` on every mutation (Wave-B W6-1).
+
+    Deliberately computed via the SAME ``build_portfolio`` path the read endpoint
+    uses, then narrowed — so the returned figures are byte-identical to what a full
+    refetch would show (the honesty invariant: the displayed rollup NEVER drifts
+    from the engine's). Returns:
+
+    * ``row`` — the recomputed portfolio row for ``mesh_hash`` (its context +
+      annualized ``$/year``), or ``None`` when the part is not a costed portfolio
+      row (e.g. drafted-only, or never costed).
+    * ``programs`` — the full recomputed per-program rollup (``summary.programs``,
+      or ``[]`` when no declared program remains). The client replaces its rollup
+      with this verbatim, so a program that emptied out disappears exactly as a
+      refetch would show.
+    """
+    built = await build_portfolio(session, org_id)
+    row = next(
+        (r for r in built["rows"] if r.get("part_key") == mesh_hash), None
+    )
+    programs = built["summary"].get("programs", [])
+    return {"row": row, "programs": programs}
+
+
 # ---------------------------------------------------------------------------
 # Makeability triage roll-up (W1 value-prop 1) — "can we make it, and how?" at
 # portfolio scale. A THIRD pure aggregation over the SAME catalog rows: it turns

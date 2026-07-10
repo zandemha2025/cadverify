@@ -13,90 +13,37 @@
  *    annual volume. We MERGE-then-write (see `assignContext`) so a program
  *    assignment never silently clobbers the part's declared world
  *    (`service_environment`) — the world that stays attached to each assigned part.
+ *    Its response also carries a `portfolio_delta` (Wave-B W6-1) so the view PATCHES
+ *    local state instead of refetching the whole (rate-limited) portfolio per edit.
  *
  * Every call goes SAME-ORIGIN through the Next authed proxy (`/api/proxy/*`), so
  * the httpOnly session cookie authenticates it and no API key touches the browser.
  * Honesty: a declared context is a USER assertion (`provenance: "user"`), never
  * inferred; exposure is withheld until a volume is declared.
+ *
+ * The portfolio SHAPES and the PURE roll-up/patch helpers live in
+ * `program-rollup.ts` (no runtime imports, unit-tested under `node --test`); this
+ * module is the `fetch` layer over them and re-exports them for callers.
  */
 import { API_BASE } from "@/lib/api-base";
+import type { Portfolio, PortfolioDelta } from "./program-rollup";
 
-/** Withheld-aware unit cost, exactly as the portfolio serializes it
- *  (catalog_service.derive_row). `usd` is null on a DFM-blocked route; `validated`
- *  rides the engine's confidence band (False for every assumption-based band). */
-export interface PortfolioUnitCost {
-  usd: number | null;
-  qty: number | null;
-  currency: string;
-  withheld: boolean;
-  withheld_reason: string | null;
-  validated: boolean;
-}
-
-/** The USER-DECLARED business context on a portfolio row (or null). */
-export interface PortfolioContext {
-  program: string | null;
-  parent_assembly: string | null;
-  units_per_parent: number | null;
-  annual_volume: number | null;
-  service_environment?: Record<string, unknown> | null;
-  provenance: string;
-}
-
-export interface PortfolioSavings {
-  qty: number | string;
-  make_now_unit_usd: number;
-  redesigned_unit_usd: number;
-  save_unit_usd: number;
-  save_pct: number;
-  redesigned_process: string | null;
-  caveat: string | null;
-}
-
-export interface PortfolioRow {
-  part_key: string;
-  filename: string;
-  lifecycle_state: string;
-  make_now_process: string | null;
-  unit_cost: PortfolioUnitCost | null;
-  quantities: number[];
-  validated: boolean | null;
-  crossover_qty: number | null;
-  savings: PortfolioSavings | null;
-  reason?: string;
-  // Additive declared-context enrichment (present only when the org has declared
-  // at least one context — otherwise the row is byte-identical to the base W3).
-  context?: PortfolioContext | null;
-  annualized_cost_usd?: number | null;
-  annualized_savings_usd?: number | null;
-  annualized_reason?: string;
-}
-
-/** Per-program roll-up (summary.programs) — sums are honest: a part's $/year only
- *  contributes when its owner declared an annual_volume. */
-export interface ProgramRollup {
-  program: string;
-  parts: number;
-  annualized_cost_usd: number | null;
-  annualized_savings_usd: number | null;
-}
-
-export interface PortfolioSummary {
-  parts: number;
-  costed: number;
-  drafted: number;
-  excluded_no_cost_count: number;
-  truncated: boolean;
-  posture: Record<string, number>;
-  programs?: ProgramRollup[];
-}
-
-export interface Portfolio {
-  summary: PortfolioSummary;
-  rows: PortfolioRow[];
-  note?: string;
-  context_note?: string;
-}
+export type {
+  PortfolioUnitCost,
+  PortfolioContext,
+  PortfolioSavings,
+  PortfolioRow,
+  ProgramRollup,
+  PortfolioSummary,
+  Portfolio,
+  PortfolioDelta,
+} from "./program-rollup";
+export {
+  declaredPrograms,
+  rowsInProgram,
+  assignableRows,
+  applyPortfolioDelta,
+} from "./program-rollup";
 
 /** Relay the backend's structured error `detail` as the thrown Error message. */
 async function toError(res: Response): Promise<Error> {
@@ -122,6 +69,12 @@ export interface DeclaredContext {
   annual_volume: number | null;
   provenance: string;
   service_environment?: Record<string, unknown> | null;
+}
+
+/** The PUT /part-context response: the declared context plus the portfolio delta. */
+export interface AssignResult {
+  context: DeclaredContext;
+  delta: PortfolioDelta | null;
 }
 
 export async function getContext(
@@ -154,11 +107,14 @@ export interface ContextPatch {
  * `service_environment` — the world the part keeps while assigned), applying only
  * the caller's patch. This keeps the honesty invariant: assigning to a program
  * never silently discards a part's declared world.
+ *
+ * Returns the declared context AND the write's `portfolio_delta` (W6-1) so the
+ * caller can patch its in-memory portfolio instead of a full refetch.
  */
 export async function assignContext(
   meshHash: string,
   patch: ContextPatch
-): Promise<DeclaredContext> {
+): Promise<AssignResult> {
   const existing = await getContext(meshHash).catch(() => null);
 
   const body: Record<string, unknown> = {
@@ -186,50 +142,12 @@ export async function assignContext(
     }
   );
   if (!res.ok) throw await toError(res);
-  return res.json();
-}
-
-/** Declared programs derived from the portfolio: the authoritative
- *  `summary.programs` roll-up when present, else grouped from the rows (so a
- *  freshly-loaded portfolio with contexts but no roll-up still lists them). Rows
- *  without a declared program are ignored. Sorted by name for a stable order. */
-export function declaredPrograms(p: Portfolio): ProgramRollup[] {
-  if (p.summary.programs && p.summary.programs.length) {
-    return [...p.summary.programs].sort((a, b) =>
-      a.program.localeCompare(b.program)
-    );
-  }
-  const groups = new Map<string, ProgramRollup>();
-  for (const r of p.rows) {
-    const name = r.context?.program;
-    if (!name) continue;
-    const g =
-      groups.get(name) ??
-      { program: name, parts: 0, annualized_cost_usd: null, annualized_savings_usd: null };
-    g.parts += 1;
-    if (r.annualized_cost_usd != null) {
-      g.annualized_cost_usd = round2((g.annualized_cost_usd ?? 0) + r.annualized_cost_usd);
-    }
-    if (r.annualized_savings_usd != null) {
-      g.annualized_savings_usd = round2(
-        (g.annualized_savings_usd ?? 0) + r.annualized_savings_usd
-      );
-    }
-    groups.set(name, g);
-  }
-  return [...groups.values()].sort((a, b) => a.program.localeCompare(b.program));
-}
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-
-/** Rows assigned to a program (context.program === name). */
-export function rowsInProgram(p: Portfolio, name: string): PortfolioRow[] {
-  return p.rows.filter((r) => r.context?.program === name);
-}
-
-/** Costed rows NOT in this program — candidates to assign. */
-export function assignableRows(p: Portfolio, name: string): PortfolioRow[] {
-  return p.rows.filter((r) => r.context?.program !== name);
+  const json = await res.json();
+  // The write returns the declared context AND (W6-1) the portfolio delta the
+  // Programs view patches from. `portfolio_delta` is nested; the rest is context.
+  const { portfolio_delta, ...context } = json ?? {};
+  return {
+    context: context as DeclaredContext,
+    delta: (portfolio_delta as PortfolioDelta | undefined) ?? null,
+  };
 }

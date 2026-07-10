@@ -23,10 +23,12 @@ import { C, MONO, USD, NUM, procLabel } from "@/lib/verify/tokens";
 import {
   getPortfolio,
   assignContext,
+  applyPortfolioDelta,
   declaredPrograms,
   rowsInProgram,
   assignableRows,
   type Portfolio,
+  type PortfolioDelta,
   type PortfolioRow,
   type ProgramRollup,
 } from "@/lib/verify/program-api";
@@ -123,6 +125,14 @@ export function ProgramScreen({ nav, screen }: ProgramScreenProps) {
     }
   }, []);
 
+  // W6-1: patch the in-memory portfolio from a write's delta instead of a full
+  // portfolio refetch. The delta is the backend's own build_portfolio output, so
+  // the patched view is byte-identical to a refetch — but costs no rate-limited
+  // GET, so rapid triage edits never trip the portfolio read's 429 lockout.
+  const patch = useCallback((meshHash: string, delta: PortfolioDelta) => {
+    setPortfolio((prev) => (prev ? applyPortfolioDelta(prev, meshHash, delta) : prev));
+  }, []);
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -149,6 +159,7 @@ export function ProgramScreen({ nav, screen }: ProgramScreenProps) {
         onBack={back}
         nav={nav}
         refresh={refresh}
+        patch={patch}
         toast={toast}
       />
     );
@@ -270,6 +281,7 @@ function ProgramDetail({
   onBack,
   nav,
   refresh,
+  patch,
   toast,
 }: {
   portfolio: Portfolio;
@@ -277,6 +289,7 @@ function ProgramDetail({
   onBack: () => void;
   nav: (s: string) => void;
   refresh: () => Promise<void>;
+  patch: (meshHash: string, delta: PortfolioDelta) => void;
   toast: (m: string) => void;
 }) {
   const assigned = useMemo(() => rowsInProgram(portfolio, program), [portfolio, program]);
@@ -301,8 +314,11 @@ function ProgramDetail({
     async (row: PortfolioRow, volume: number | null) => {
       setBusy(true);
       try {
-        await assignContext(row.part_key, { program, annual_volume: volume });
-        await refresh();
+        const { delta } = await assignContext(row.part_key, { program, annual_volume: volume });
+        // W6-1: patch from the write's delta; fall back to a full refetch only if
+        // an older backend didn't return one.
+        if (delta) patch(row.part_key, delta);
+        else await refresh();
         toast(
           volume != null
             ? `${row.filename} assigned to ${program} — exposure computed from declared volume`
@@ -314,15 +330,16 @@ function ProgramDetail({
         setBusy(false);
       }
     },
-    [program, refresh, toast]
+    [program, patch, refresh, toast]
   );
 
   const setVolume = useCallback(
     async (row: PortfolioRow, volume: number | null) => {
       setBusy(true);
       try {
-        await assignContext(row.part_key, { annual_volume: volume });
-        await refresh();
+        const { delta } = await assignContext(row.part_key, { annual_volume: volume });
+        if (delta) patch(row.part_key, delta);
+        else await refresh();
         toast(
           volume != null
             ? `${row.filename}: ${NUM(volume)} units/yr declared · exposure updated`
@@ -334,15 +351,16 @@ function ProgramDetail({
         setBusy(false);
       }
     },
-    [refresh, toast]
+    [patch, refresh, toast]
   );
 
   const unassign = useCallback(
     async (row: PortfolioRow) => {
       setBusy(true);
       try {
-        await assignContext(row.part_key, { program: null });
-        await refresh();
+        const { delta } = await assignContext(row.part_key, { program: null });
+        if (delta) patch(row.part_key, delta);
+        else await refresh();
         toast(`${row.filename} removed from ${program}`);
       } catch (e) {
         toast(`Couldn't remove ${row.filename} — ${e instanceof Error ? e.message : "write failed"}`);
@@ -350,7 +368,7 @@ function ProgramDetail({
         setBusy(false);
       }
     },
-    [program, refresh, toast]
+    [program, patch, refresh, toast]
   );
 
   return (
