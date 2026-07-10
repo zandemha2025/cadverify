@@ -217,7 +217,7 @@ function ProgramIndex({
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") create(); }}
           placeholder="Name a program — e.g. Hydraulic actuator"
-          style={{ flex: "1 1 260px", minWidth: 220, background: C.panel, border: `1px solid #dcdce0`, borderRadius: 10, padding: "10px 14px", fontSize: 13.5, color: C.ink, fontFamily: "inherit", outline: "none" }}
+          style={{ flex: "1 1 260px", minWidth: 220, background: C.panel, border: `1px solid #dcdce0`, borderRadius: 10, padding: "10px 14px", fontSize: 13.5, color: C.ink, fontFamily: "inherit" }}
         />
         <GhostButton primary disabled={!newName.trim()} onClick={create}>Open →</GhostButton>
       </div>
@@ -529,7 +529,7 @@ function AssignedRow({
           onBlur={() => { if (changed) onSetVolume(normalized); }}
           placeholder="volume"
           title="annual volume — USER-declared; blank withholds exposure"
-          style={{ width: 96, background: C.panel, border: `1px solid #dcdce0`, borderRadius: 8, padding: "6px 10px", fontSize: 12, color: C.ink, fontFamily: MONO, outline: "none", textAlign: "right" }}
+          style={{ width: 96, background: C.panel, border: `1px solid #dcdce0`, borderRadius: 8, padding: "6px 10px", fontSize: 12, color: C.ink, fontFamily: MONO, textAlign: "right" }}
         />
         <ProvDot p="USER" size={7} />
       </span>
@@ -575,7 +575,7 @@ function CandidateRow({
         onChange={(e) => setDraft(e.target.value.replace(/[^0-9]/g, ""))}
         placeholder="volume (opt)"
         title="optional annual volume — declare now or later"
-        style={{ width: 104, background: C.panel, border: `1px solid #dcdce0`, borderRadius: 8, padding: "6px 10px", fontSize: 12, color: C.ink, fontFamily: MONO, outline: "none", textAlign: "right" }}
+        style={{ width: 104, background: C.panel, border: `1px solid #dcdce0`, borderRadius: 8, padding: "6px 10px", fontSize: 12, color: C.ink, fontFamily: MONO, textAlign: "right" }}
       />
       <GhostButton disabled={busy} onClick={() => onAssign(volume)}>Assign →</GhostButton>
     </div>

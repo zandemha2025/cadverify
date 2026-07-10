@@ -379,7 +379,7 @@ function UnassignedRow({
                 onChange={(e) => setProgram(e.target.value)}
                 list={listId}
                 placeholder="e.g. Hydraulic actuator"
-                style={{ width: 240, background: "#fff", border: `1px solid #dcdce0`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: C.ink, fontFamily: "inherit", outline: "none" }}
+                style={{ width: 240, background: "#fff", border: `1px solid #dcdce0`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: C.ink, fontFamily: "inherit" }}
               />
               {programNames.length > 0 && (
                 <datalist id={listId}>
@@ -398,7 +398,7 @@ function UnassignedRow({
                 onChange={(e) => setVolume(e.target.value.replace(/[^0-9]/g, ""))}
                 inputMode="numeric"
                 placeholder="units/yr (optional)"
-                style={{ width: 150, background: "#fff", border: `1px solid #dcdce0`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: C.ink, fontFamily: MONO, outline: "none", textAlign: "right" }}
+                style={{ width: 150, background: "#fff", border: `1px solid #dcdce0`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: C.ink, fontFamily: MONO, textAlign: "right" }}
               />
             </label>
             <GhostButton primary onClick={() => void submit()} disabled={busy}>

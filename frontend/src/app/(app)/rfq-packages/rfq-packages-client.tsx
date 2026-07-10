@@ -193,6 +193,7 @@ export function RfqPackagesClient() {
                           checked={selected.includes(decision.id)}
                           onChange={() => toggle(decision.id)}
                           className="size-4"
+                          aria-label={`Include ${decision.filename} in the RFQ package`}
                         />
                       </td>
                       <td className="py-3 pr-4">

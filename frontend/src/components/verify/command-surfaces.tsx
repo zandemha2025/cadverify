@@ -135,7 +135,7 @@ export function CommandPalette({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Jump to a surface or action…"
-            style={{ flex: 1, border: "none", outline: "none", background: "none", fontSize: 14, color: C.ink, fontFamily: "inherit" }}
+            style={{ flex: 1, border: "none", background: "none", fontSize: 14, color: C.ink, fontFamily: "inherit" }}
           />
           <kbd style={{ fontFamily: MONO, fontSize: 10, border: `1px solid ${C.hair}`, borderRadius: 5, padding: "2px 6px", color: C.ink45, background: C.sunken }}>Esc</kbd>
         </div>
@@ -151,7 +151,8 @@ export function CommandPalette({
                 type="button"
                 onClick={c.run}
                 onMouseEnter={() => setActive(i)}
-                style={{ width: "100%", textAlign: "left", background: i === active ? C.sunken : "none", border: "none", borderRadius: 10, padding: "10px 14px", cursor: "pointer", fontFamily: "inherit", fontSize: 13, color: C.ink, display: "flex", alignItems: "center", gap: 10 }}
+                aria-current={i === active ? "true" : undefined}
+                style={{ width: "100%", textAlign: "left", background: i === active ? C.sunken : "none", border: "none", borderRadius: 10, padding: "10px 14px", cursor: "pointer", fontFamily: "inherit", fontSize: 13, color: C.ink, display: "flex", alignItems: "center", gap: 10, boxShadow: i === active ? "inset 3px 0 0 #17181a" : "none" }}
               >
                 <span style={{ flex: 1 }}>
                   {c.label}

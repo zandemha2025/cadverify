@@ -1894,7 +1894,7 @@ function AskDock({ cost, running, nav }: { cost: CostReport | null; running: boo
                   ? "computing the walk…"
                   : "Load a part above — the engine answers only about a computed part."
             }
-            style={{ flex: 1, minWidth: 0, background: "none", border: "none", outline: "none", fontSize: 13, color: C.ink, fontFamily: "inherit" }}
+            style={{ flex: 1, minWidth: 0, background: "none", border: "none", fontSize: 13, color: C.ink, fontFamily: "inherit" }}
           />
           <button
             type="button"

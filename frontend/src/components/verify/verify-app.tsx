@@ -344,7 +344,7 @@ export function VerifyApp() {
           </div>
           <div className="cv-verify-header-actions" style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span className="cv-verify-rate-switcher"><CalibrationSwitcher onOpenCalibration={() => setScreen("calibration")} /></span>
-            <button className="cv-verify-command-button" type="button" onClick={() => setScreen("palette")} title="Command palette (⌘K)" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${C.hair}`, background: "#fff", borderRadius: 999, padding: "7px 13px", fontFamily: MONO, fontSize: 11, color: C.ink55, cursor: "pointer" }}>⌘K</button>
+            <button className="cv-verify-command-button" type="button" onClick={() => setScreen("palette")} title="Command palette (⌘K)" aria-label="Open command palette" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${C.hair}`, background: "#fff", borderRadius: 999, padding: "7px 13px", fontFamily: MONO, fontSize: 11, color: C.ink55, cursor: "pointer" }}>⌘K</button>
             <button className="cv-verify-notification-button" type="button" onClick={() => setNotifOpen((v) => !v)} title="Notifications" aria-label="Notifications" style={{ width: 32, height: 32, borderRadius: "50%", border: `1px solid ${C.hair}`, background: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", color: C.ink55 }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>
             </button>
@@ -356,7 +356,8 @@ export function VerifyApp() {
               title="Jump to any surface or action — opens the command palette (⌘K)"
               onMouseDown={(e) => { e.preventDefault(); setScreen("palette"); }}
               onFocus={() => setScreen("palette")}
-              style={{ width: 160, background: C.sunken, border: `1px solid ${C.hair}`, borderRadius: 999, padding: "7px 14px", fontSize: 12.5, color: C.ink, fontFamily: "inherit", outline: "none", cursor: "text" }}
+              aria-label="Search — jump to any surface or action"
+              style={{ width: 160, background: C.sunken, border: `1px solid ${C.hair}`, borderRadius: 999, padding: "7px 14px", fontSize: 12.5, color: C.ink, fontFamily: "inherit", cursor: "text" }}
             />
             <button className="cv-verify-primary-action" type="button" onClick={pickFile} style={{ background: C.ink, color: "#fff", border: "none", borderRadius: 999, padding: "8px 18px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>Verify a part</button>
           </div>
@@ -450,9 +451,21 @@ const KEYFRAMES = `
 @keyframes vtraceIn { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes vtoastIn { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
+/* One shared keyboard-focus indicator for every interactive element inside the
+   Verify shell. #17181a on the light instrument surface is 16.4:1 vs #f6f6f7 —
+   far above the WCAG 2.4.7 / non-text-contrast 3:1 floor. Covers native controls
+   plus custom rows/cards that opt in via role="button" or a tabindex, and never
+   fires for tabindex="-1" (programmatic-only) targets. Individual components must
+   NOT set inline outline:none — an inline rule would beat this stylesheet one. */
 .cv-verify-shell button:focus-visible,
 .cv-verify-shell input:focus-visible,
-.cv-verify-shell select:focus-visible {
+.cv-verify-shell select:focus-visible,
+.cv-verify-shell textarea:focus-visible,
+.cv-verify-shell a:focus-visible,
+.cv-verify-shell [role="button"]:focus-visible,
+.cv-verify-shell [role="option"]:focus-visible,
+.cv-verify-shell [role="checkbox"]:focus-visible,
+.cv-verify-shell [tabindex]:not([tabindex="-1"]):focus-visible {
   outline: 2px solid #17181a;
   outline-offset: 2px;
 }

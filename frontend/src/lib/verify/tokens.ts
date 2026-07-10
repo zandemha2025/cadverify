@@ -18,13 +18,19 @@ export const C = {
   hair: "#e2e2e6",
   hair2: "#e7e7ea",
   ink: "#17181a",
-  ink70: "rgba(23,24,26,0.7)",
-  ink60: "rgba(23,24,26,0.6)",
-  ink55: "rgba(23,24,26,0.55)",
-  ink50: "rgba(23,24,26,0.5)",
-  ink45: "rgba(23,24,26,0.45)",
-  ink40: "rgba(23,24,26,0.4)",
-  ink35: "rgba(23,24,26,0.35)",
+  // Muted-ink ramp — re-based into the WCAG-AA zone. Every rung is real body/
+  // caption text on the #f6f6f7 / #ffffff instrument surfaces, so the lightest
+  // rung sits at the 4.5:1 AA floor and the scale climbs from there while
+  // staying a visibly ordered light→dark ramp. (Old alphas 0.35–0.60 were
+  // 2.2–4.5:1 — sub-AA for <18px text.) Contrast (min over both surfaces):
+  //   ink35 4.53  ink40 4.84  ink45 5.17  ink50 5.52  ink55 5.91  ink60 6.33  ink70 6.78
+  ink70: "rgba(23,24,26,0.72)",
+  ink60: "rgba(23,24,26,0.7)",
+  ink55: "rgba(23,24,26,0.68)",
+  ink50: "rgba(23,24,26,0.66)",
+  ink45: "rgba(23,24,26,0.64)",
+  ink40: "rgba(23,24,26,0.62)",
+  ink35: "rgba(23,24,26,0.6)",
   sunken: "#f6f6f7",
 
   // provenance (light)

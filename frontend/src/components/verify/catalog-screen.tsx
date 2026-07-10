@@ -273,7 +273,6 @@ export function CatalogScreen({ nav }: { nav: (s: string) => void }) {
                   fontFamily: MONO,
                   color: C.ink,
                   minWidth: 180,
-                  outline: "none",
                 }}
               />
             </div>
