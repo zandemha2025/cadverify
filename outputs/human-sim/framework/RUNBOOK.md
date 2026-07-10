@@ -33,6 +33,10 @@ NEXT_PUBLIC_API_BASE=http://localhost:<backend_port>
 PORT=<frontend_port>
 # then: npm run dev   — and DRIVE via http://localhost:<frontend_port> (never 127.0.0.1: Next 16 blocks cross-origin dev → breaks hydration)
 ```
+**node_modules in a worktree:** Next 16 / Turbopack REJECTS a symlink that points out
+of the tree (`Symlink … points out of the filesystem root`). If a worktree lacks
+`node_modules`, use a hardlink copy: `cp -al /home/user/cadverify/frontend/node_modules node_modules`
+(gitignored; remove before finishing). A plain `ln -s` fails the build.
 
 ## Smoke before driving Playwright
 ```
