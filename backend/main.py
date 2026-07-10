@@ -44,6 +44,7 @@ from src.api.part_context import router as part_context_router
 from src.api.identity import router as identity_router
 from src.api.groundtruth import router as groundtruth_router
 from src.api.manifest import router as manifest_router
+from src.api.bom import router as bom_router
 from src.api.machine_inventory import router as machine_inventory_router
 from src.api.org_routes import router as org_router
 from src.api.share import public_share_router, share_router
@@ -309,6 +310,12 @@ app.include_router(
 app.include_router(
     manifest_router, prefix="/api/v1/manifest", tags=["manifest"]
 )
+# BOM/assembly hierarchy (customer-context Slice 3): the persisted multi-level
+# parent->child tree a part's total rolls up (handle -> door assembly -> vehicle).
+# Two honest sources (a parsed STEP assembly's real edges; a declared BOM CSV/JSON)
+# feed the rolled-up annual volume as an INPUT to the analysis; NO tree → the flat
+# declared volume, byte-identical. Org-scoped; never fabricates a hierarchy.
+app.include_router(bom_router, prefix="/api/v1/bom", tags=["bom"])
 # Machine-inventory (verification-thesis crux): org-owned machine capability
 # registry + shop-level secondary ops. USER-declared; absent inventory is
 # byte-identical (purely additive). The pure matcher (Phase B) consumes the

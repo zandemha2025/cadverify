@@ -683,6 +683,17 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
     ctx_by_mesh = {c.mesh_hash: c for c in contexts}
     has_any_context = bool(ctx_by_mesh)
 
+    # Slice 3: the org's persisted BOM/assembly trees, loaded ONCE. This too is
+    # PURELY ADDITIVE — an org with NO edges leaves ``has_any_bom`` False and the
+    # annual-volume input below is exactly the flat declared value (byte-identical
+    # to the pre-Slice-3 path). When a tree DOES exist, a part whose context names
+    # it (bom_assembly_key + bom_child_ref + bom_roots_per_year) gets its annual
+    # volume ROLLED UP from the real hierarchy, labelled ``annual_volume_basis``.
+    from src.services import bom_service as bomsvc
+
+    org_trees = await bomsvc.load_org_trees(session, org_id) if has_any_context else {}
+    has_any_bom = bool(org_trees)
+
     rows: list[dict] = []
     drafted_count = 0
     agg = _empty_posture_agg()
@@ -731,12 +742,37 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
         # at least one context — otherwise the row is byte-identical to today).
         if has_any_context:
             ctx_row = ctx_by_mesh.get(mesh)
-            annual_volume = getattr(ctx_row, "annual_volume", None) if ctx_row else None
             unit_usd = (unit_cost or {}).get("usd") if unit_cost else None
             save_unit = (savings or {}).get("save_unit_usd") if savings else None
             row["context"] = _context_block(ctx_row)
-            # $/year appears ONLY with a user-declared annual_volume; otherwise
-            # null + an honest reason. Never a fabricated demand quantity.
+            # Slice 3: WHICH volume feeds the annualization. When the org has a BOM
+            # tree AND this part's context names it, prefer the rolled-up multiplier
+            # x vehicles/year (basis 'bom_rollup'); else the flat declared
+            # annual_volume ('declared'); else none ('default'). NEVER a fabricated
+            # rollup. When the org has NO tree at all, this branch is skipped and the
+            # value is the flat declared volume — byte-identical to before Slice 3.
+            if has_any_bom:
+                _ak = getattr(ctx_row, "bom_assembly_key", None) if ctx_row else None
+                _cr = getattr(ctx_row, "bom_child_ref", None) if ctx_row else None
+                _rpy = getattr(ctx_row, "bom_roots_per_year", None) if ctx_row else None
+                _mult = (
+                    bomsvc.rolled_up_multiplier(org_trees[_ak], _cr)
+                    if _ak and _cr and _ak in org_trees
+                    else None
+                )
+                _resolved = bomsvc.resolve_annual_volume(
+                    getattr(ctx_row, "annual_volume", None) if ctx_row else None,
+                    _mult,
+                    _rpy,
+                )
+                annual_volume = _resolved["annual_volume"]
+                row["annual_volume_basis"] = _resolved["annual_volume_basis"]
+            else:
+                annual_volume = (
+                    getattr(ctx_row, "annual_volume", None) if ctx_row else None
+                )
+            # $/year appears ONLY with a real annual_volume (declared or rolled up);
+            # otherwise null + an honest reason. Never a fabricated demand quantity.
             row["annualized_cost_usd"] = pcsvc.annualized_cost(unit_usd, annual_volume)
             row["annualized_savings_usd"] = pcsvc.annualized_cost(
                 save_unit, annual_volume

@@ -37,8 +37,14 @@ DECLARED_FIELDS = (
     "units_per_parent",
     "annual_volume",
     "service_environment",
+    # BOM-rollup linkage (Slice 3): ties this part to a persisted bom_edges tree so
+    # its annual volume rolls up from the real hierarchy instead of the flat
+    # ``annual_volume``. All optional — unset → the flat declared path, byte-identical.
+    "bom_assembly_key",
+    "bom_child_ref",
+    "bom_roots_per_year",
 )
-_POSITIVE_INT_FIELDS = ("units_per_parent", "annual_volume")
+_POSITIVE_INT_FIELDS = ("units_per_parent", "annual_volume", "bom_roots_per_year")
 
 # Declared service-environment schema (machine-inventory §6). Every key is
 # USER-declared, never inferred from the mesh. Numeric temps/pressure, boolean
@@ -216,4 +222,10 @@ def serialize_context(row: Any) -> dict:
     env = getattr(row, "service_environment", None)
     if env is not None:
         out["service_environment"] = env
+    # The BOM-rollup linkage (Slice 3) is surfaced ONLY when actually declared — a
+    # context with no linkage stays byte-identical to the pre-Slice-3 shape.
+    for key in ("bom_assembly_key", "bom_child_ref", "bom_roots_per_year"):
+        val = getattr(row, key, None)
+        if val is not None:
+            out[key] = val
     return out

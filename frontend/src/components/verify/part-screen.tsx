@@ -30,6 +30,12 @@ import {
 import { C, MONO, USD, NUM, procLabel, normProv } from "@/lib/verify/tokens";
 import { makeNowEstimate, driverViews } from "@/lib/verify/derive";
 import { fetchPartContext, type PartContext } from "@/lib/verify/part-context-read";
+import {
+  fetchBomAncestry,
+  bomBreadcrumbView,
+  basisChip,
+  type BomAncestry,
+} from "@/lib/verify/bom";
 import { getSelectedPart } from "@/lib/verify/part-selection";
 import {
   deriveStanding,
@@ -213,6 +219,7 @@ function Standing({ row, nav }: { row: CatalogRowApi; nav: (s: string) => void }
   const [detail, setDetail] = useState<CostDecisionDetail | null>(null);
   const [context, setContext] = useState<PartContext | null>(null);
   const [ctxError, setCtxError] = useState<string | null>(null);
+  const [bom, setBom] = useState<BomAncestry | null>(null);
   const [history, setHistory] = useState<CostDecisionSummary[] | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -222,6 +229,7 @@ function Standing({ row, nav }: { row: CatalogRowApi; nav: (s: string) => void }
     setDetail(null);
     setContext(null);
     setCtxError(null);
+    setBom(null);
     setHistory(null);
 
     const recordId = row.cost_decision?.id ?? null;
@@ -261,6 +269,26 @@ function Standing({ row, nav }: { row: CatalogRowApi; nav: (s: string) => void }
       cancelled = true;
     };
   }, [row.part_key, row.cost_decision?.id, row.filename]);
+
+  // Slice 3: when the declared context ties this part to a real BOM tree, read its
+  // ancestry so we can show the honest "In context: part → … → vehicle" breadcrumb
+  // and the BOM-rollup basis. No linkage (or no tree) → the crumb stays absent; we
+  // never fetch or invent a hierarchy the customer never declared.
+  const bomKey = context?.bom_assembly_key ?? null;
+  const bomChild = context?.bom_child_ref ?? null;
+  useEffect(() => {
+    if (!bomKey || !bomChild) {
+      setBom(null);
+      return;
+    }
+    let cancelled = false;
+    void fetchBomAncestry(bomKey, bomChild).then((a) => {
+      if (!cancelled) setBom(a);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [bomKey, bomChild]);
 
   const standing = deriveStanding(row, detail);
   const blockers = extractBlockers(row, detail);
@@ -373,6 +401,16 @@ function Standing({ row, nav }: { row: CatalogRowApi; nav: (s: string) => void }
             {lin.hasHome ? "open program →" : "assign →"}
           </button>
         </div>
+
+        {/* BOM ancestry (Slice 3) — shown ONLY when a real tree grounds this part.
+            "In context: part → sub-assembly → … → vehicle", plus the derived annual
+            volume with its BASIS chip (BOM ROLLUP vs DECLARED). Never invented. */}
+        <BomContextBar
+          view={bomBreadcrumbView(bom)}
+          basis={basisChip(bom?.has_tree ? "bom_rollup" : context?.annual_volume != null ? "declared" : "default")}
+          rootsPerYear={context?.bom_roots_per_year ?? null}
+          declaredVolume={context?.annual_volume ?? null}
+        />
         {ctxError && (
           <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, color: C.cond }}>
             lineage unavailable — {ctxError}
@@ -406,6 +444,82 @@ function Standing({ row, nav }: { row: CatalogRowApi; nav: (s: string) => void }
           )
         )}
       </div>
+    </div>
+  );
+}
+
+// BOM ancestry breadcrumb (Slice 3). Renders NOTHING unless a real tree grounds
+// this part (view.present) — the honest absent state keeps the flat declared
+// lineage above untouched. When present: "In context: part → … → vehicle", the
+// rolled-up per-vehicle count, and the annual volume with its BASIS chip.
+function BomContextBar({
+  view,
+  basis,
+  rootsPerYear,
+  declaredVolume,
+}: {
+  view: ReturnType<typeof bomBreadcrumbView>;
+  basis: ReturnType<typeof basisChip>;
+  rootsPerYear: number | null;
+  declaredVolume: number | null;
+}) {
+  if (!view.present) return null;
+  const rollup = basis?.tone === "rollup";
+  const chipColor = rollup ? C.measured : C.user;
+  const perYear =
+    view.perVehicle != null && rootsPerYear != null
+      ? view.perVehicle * rootsPerYear
+      : declaredVolume;
+  return (
+    <div
+      style={{
+        border: `1.5px solid ${chipColor}`,
+        borderRadius: 14,
+        padding: "12px 16px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: 0.4, color: C.ink40 }}>
+          IN CONTEXT
+        </span>
+        {basis && (
+          <span
+            style={{
+              fontFamily: MONO,
+              fontSize: 9,
+              letterSpacing: 0.6,
+              color: "#fff",
+              background: chipColor,
+              borderRadius: 5,
+              padding: "2px 6px",
+            }}
+          >
+            {basis.text}
+          </span>
+        )}
+        {view.shared && (
+          <span style={{ fontFamily: MONO, fontSize: 9, color: C.ink40 }}>
+            shared · summed over {view.chain.length ? "all paths" : "paths"}
+          </span>
+        )}
+      </div>
+      <p style={{ margin: 0, fontFamily: MONO, fontSize: 11, lineHeight: 1.6, color: C.ink70 }}>
+        {view.chain.join("  →  ")}
+      </p>
+      {view.perVehicle != null && (
+        <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, color: C.ink45 }}>
+          {`${NUM(view.perVehicle)} per vehicle`}
+          {rootsPerYear != null && perYear != null && (
+            <span style={{ color: C.ink40 }}>
+              {`  ·  ${NUM(view.perVehicle)} × ${NUM(rootsPerYear)}/yr = ${NUM(perYear)}/yr`}
+              {rollup ? " (BOM rollup)" : ""}
+            </span>
+          )}
+        </p>
+      )}
     </div>
   );
 }

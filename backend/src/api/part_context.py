@@ -44,6 +44,12 @@ class DeclareContextBody(BaseModel):
     # PUT: {max_temp_c, min_temp_c, pressure_bar, corrosive, sour_service, medium,
     # standard}. USER-declared, never inferred; validated in the service.
     service_environment: Optional[dict] = None
+    # BOM-rollup linkage (Slice 3): name a persisted bom_edges tree + this part's
+    # child_ref + vehicles/year, so the annual volume rolls up from the real
+    # hierarchy. All optional — unset → the flat declared annual_volume, unchanged.
+    bom_assembly_key: Optional[str] = None
+    bom_child_ref: Optional[str] = None
+    bom_roots_per_year: Optional[int] = None
 
 
 async def _require_org(session: AsyncSession, user_id: int) -> str:

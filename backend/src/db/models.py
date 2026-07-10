@@ -1161,6 +1161,18 @@ class PartContext(Base):
     service_environment: Mapped[Optional[Dict[str, Any]]] = mapped_column(
         JSONB, nullable=True
     )
+    # BOM-rollup linkage (customer-context Slice 3, migration 0037): the OPTIONAL
+    # reference that ties this part to a persisted BOM/assembly tree so its annual
+    # volume can be ROLLED UP from the real hierarchy instead of the flat declared
+    # ``annual_volume``. When ``bom_assembly_key`` + ``bom_child_ref`` name a real
+    # tree (``bom_edges``) AND ``bom_roots_per_year`` is declared, the analysis
+    # prefers ``rolled_up_multiplier x bom_roots_per_year`` (basis 'bom_rollup');
+    # any of them absent (or no tree) → the flat declared path, byte-identical.
+    # HONESTY: these only SELECT which real volume input feeds the (unchanged) cost
+    # math — they never fabricate a hierarchy or a quantity.
+    bom_assembly_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    bom_child_ref: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    bom_roots_per_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_by: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -1767,6 +1779,92 @@ class PartSignature(Base):
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+# ---------------------------------------------------------------------------
+# Customer-context layer Slice 3 (migration 0037): org-scoped BOM/assembly
+# hierarchy — the real multi-level parent->child tree a part's environment and
+# total roll up (handle -> door assembly -> vehicle).
+# ---------------------------------------------------------------------------
+
+
+class BomEdge(Base):
+    """One org-scoped parent->child edge of a real BOM / assembly hierarchy.
+
+    The persisted, multi-level product tree that lets a part's annual volume be
+    ROLLED UP from the customer's own structure instead of a single flat declared
+    field: ``annual_volume = qty_per_parent x ... x parents_per_vehicle x
+    vehicles_per_year``, resolved edge-by-edge to the root. A door handle (child)
+    sits under a door assembly (parent) sits under a vehicle (root); each edge
+    carries how many of the child go into ONE occurrence of the parent
+    (``qty_per_parent``), so the product along the path to the root is the units
+    of that part per one finished vehicle.
+
+    Two honest sources, tagged in ``source``:
+      * ``'assembly_step'`` — DERIVED from a real extracted STEP/IGES assembly's
+        product tree (``assembly_mesher.AssemblyModel``). ``qty_per_parent`` is the
+        MEASURED instance count of a child design under one parent occurrence — a
+        fact recovered from the geometry, never invented.
+      * ``'bom_csv'`` — a customer-declared ``parent_ref,child_ref,qty_per_parent``
+        BOM (CSV/JSON). USER-declared structure, per-row validated; a bad row is
+        reported and skipped, never coerced.
+
+    HONESTY (non-negotiable): an edge is only ever a REAL relationship — derived
+    from a parsed assembly or explicitly declared by the customer. We NEVER
+    fabricate a parent/child link or a quantity. A part with NO edges has no tree
+    and the rollup is not attempted — the analysis falls back to the flat declared
+    ``annual_volume`` (labelled ``'declared'``) exactly as before this table
+    existed. A shared component (a nut used under two sub-assemblies) is a real
+    DAG: ``rolled_up_multiplier`` honestly SUMS the part's count over every path to
+    the root, never double-counts and never drops a path.
+
+    Mirrors the ``manifest_parts`` / ``part_signatures`` column style: BigInt PK,
+    org_id FK (CASCADE — a hierarchy dies with its org, so cross-tenant isolation
+    holds by construction), unique on ``(org_id, assembly_key, parent_ref,
+    child_ref)`` (one edge per parent->child within a tree). The idempotent
+    per-``(org_id, assembly_key)`` replace + the pure ancestry/rollup helpers live
+    in ``bom_service``.
+    """
+
+    __tablename__ = "bom_edges"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id",
+            "assembly_key",
+            "parent_ref",
+            "child_ref",
+            name="uq_bom_edges_org_key_parent_child",
+        ),
+        # Every ancestry/rollup query loads one org's tree by assembly_key.
+        Index("ix_bom_edges_org_key", "org_id", "assembly_key"),
+        # Ancestry walks child->parent; this indexes the "find my parents" step.
+        Index("ix_bom_edges_org_key_child", "org_id", "assembly_key", "child_ref"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    # Which BOM/tree this edge belongs to (an uploaded assembly's key or a
+    # customer BOM name). Scopes a hierarchy so two BOMs in one org never mix.
+    assembly_key: Mapped[str] = mapped_column(Text, nullable=False)
+    # The parent node's ref. NULL only for a synthetic root marker (unused by the
+    # derived sources — every real edge has a concrete parent).
+    parent_ref: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    child_ref: Mapped[str] = mapped_column(Text, nullable=False)
+    # Human-readable child label (product/design name), when distinct from the ref.
+    child_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # How many of the child go into ONE occurrence of the parent. Default 1.
+    qty_per_parent: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("1")
+    )
+    # Depth of the CHILD below the root (root's direct children are depth 1).
+    depth: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    # Provenance: 'assembly_step' (measured from geometry) | 'bom_csv' (declared).
+    source: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
 
