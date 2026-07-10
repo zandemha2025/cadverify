@@ -88,19 +88,34 @@ finding objects. Screenshots live beside them — they are the evidence, not dec
 
 ---
 
-## Honest external gates (cannot be a real 100 in-container — labeled, never faked)
+## Two buckets — so "gate" can never hide "broken"
 
-- **Identity**: live OIDC/SCIM cert against a real Okta/Entra/Ping *tenant* (in-container
-  proves conformance vs a mock IdP, not a live tenant sign-off).
-- **Enterprise systems**: live SAP S/4HANA, Windchill/Teamcenter *tenants*.
-- **Security posture**: SOC 2, independent penetration test.
-- **AI / data accuracy**: validated against real customer ground truth (the cost/routing
-  accuracy harness exists and is leakage-safe, but reads `validated=false` until fed real
-  quotes/labels). Until then this category is reported as "method proven, number gated."
+The score is reported in TWO separate ledgers. This exists so an external-systems
+excuse can never be smuggled in front of a product that doesn't work.
 
-For a gated category the scorecard shows: everything provable in-container = green +
-the specific external input required to close it. That is the honest ceiling, stated as
-such — not rounded up to 100.
+### Bucket A — PRODUCT (must work; target a real 100; NO gate allowed)
+All 12 categories above. This is: does the product do what it promises for a user —
+render, DFM, cost, provenance, environment gate, assembly, identity, auth, permissions,
+the UI. Every point needs in-container evidence (a screenshot / a value / a measured ms).
+**If anything about the product working scores < 100, it is a bug to fix — never a gate.**
+Overall Product score = the MINIMUM across the 12 categories. No averaging, no rounding up.
+If something that is really "the product is broken" ever appears in Bucket B, that is
+cheating and must be called out.
+
+### Bucket B — ENTERPRISE ATTESTATIONS (separate ledger; honestly gated; does NOT touch the Product score)
+A short, explicit list of things that genuinely require real third-party systems this
+container cannot contain. They are NOT part of the 12-category Product score — a user gets
+full product value without any of them. Each is labeled: in-container conformance proven +
+the exact external input needed to close it. Never rounded to 100.
+- **Live SSO/SCIM cert** vs a real Okta/Entra/Ping *tenant* (in-container proves RFC
+  conformance vs a mock IdP, not a live tenant sign-off).
+- **Live enterprise systems**: SAP S/4HANA, Windchill/Teamcenter *tenants*.
+- **Security posture**: SOC 2, independent penetration test. (Note: in-container
+  authz / cross-tenant isolation IS product and lives in Bucket A — it must be 100.)
+- **AI / data accuracy vs real ground truth**: the cost/routing accuracy harness is
+  leakage-safe but reads `validated=false` until fed real customer quotes/labels. This is a
+  limit on *certainty*, not a license to ship a broken answer — the product already discloses
+  it (provenance + error bands). Reported as "method proven, number gated," never as "works".
 
 ---
 
