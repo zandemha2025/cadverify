@@ -1,6 +1,6 @@
 """Provenance model — the tagging *is* the product.
 
-Every number the decision layer emits carries one of four provenance tags so a
+Every number the decision layer emits carries one of five provenance tags so a
 manufacturing engineer can trace where it came from:
 
     MEASURED  — extracted from the CAD (volume, area, bbox). Not assumable.
@@ -8,6 +8,11 @@ manufacturing engineer can trace where it came from:
                 rate overrides). Authoritative, overrides the shop default.
     SHOP      — sourced from the ACTIVE calibrated shop profile (this shop's real
                 labor/machine/material/margin). The shop's own measured reality.
+    CAD       — read from the CAD file's own material annotation (a declared
+                property in the file — not measured from geometry, not assumed).
+                Weaker than USER (the buyer never confirmed it for this quote) but
+                stronger than DEFAULT (it is the file's own stated claim, not our
+                generic guess). A USER declaration always overrides it.
     DEFAULT   — our stated generic assumption (rate card). Always visible, always
                 overridable; the clearly-labeled fallback when no shop is bound.
 
@@ -26,6 +31,11 @@ class Provenance(str, Enum):
     MEASURED = "MEASURED"   # extracted from the CAD — not assumable
     USER = "USER"           # buyer-supplied for this quote — authoritative
     SHOP = "SHOP"           # from the active calibrated shop profile — this shop's reality
+    CAD = "CAD"             # read from the CAD file's own material annotation — a
+                             # declared property in the file, not measured from
+                             # geometry and not assumed. Weaker than USER (never
+                             # confirmed by the buyer for this quote), stronger
+                             # than DEFAULT (it is the file's own stated claim).
     DEFAULT = "DEFAULT"     # our stated assumption — always visible, always overridable
 
 

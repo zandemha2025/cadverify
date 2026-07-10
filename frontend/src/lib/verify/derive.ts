@@ -11,7 +11,7 @@ import type { Prov } from "./tokens";
  *  run under the repo's `node --test` type-stripping runner. */
 function normProv(p: string | null | undefined): Prov {
   const u = String(p ?? "").toUpperCase();
-  if (u === "MEASURED" || u === "SHOP" || u === "USER" || u === "MODEL")
+  if (u === "MEASURED" || u === "SHOP" || u === "USER" || u === "CAD" || u === "MODEL")
     return u as Prov;
   return "DEFAULT";
 }

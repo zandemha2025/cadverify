@@ -1367,10 +1367,41 @@ async def _run_cost_decision(
     _validate_overrides(rate_overrides)           # 400 on unknown key (fail fast)
     owned = _parse_owned_processes(owned_processes)  # 400 on unknown process id
 
+    # material_class: capture the caller's ORIGINAL declaration BEFORE any CAD
+    # fill below. The existing material_class_is_user heuristic (!= "polymer")
+    # must be computed off this original value — filling a non-polymer class
+    # FROM the CAD file must never get flagged USER (that would misrepresent an
+    # unconfirmed CAD annotation as a buyer declaration).
+    material_class_is_user = material_class != "polymer"
+    material_class_from_cad = False
+
     # Span 1/4 — mesh parse: read the upload, tessellate/parse to a trimesh,
     # and rescale into mm. No-op context when tracing is off.
     with tracing.span("cost.parse_mesh") as _sp_parse:
         data = await _read_capped(file)  # 413 on size, 400 on empty
+
+        # ── honest "material read from CAD" slice (no-kernel text scan) ──────
+        # Only fill from the CAD file when the caller left material_class at its
+        # DEFAULT ("polymer"). A real user declaration always wins — this never
+        # runs when material_class_is_user is True. Best-effort, never raises;
+        # a STEP with no declared material (or an STL, which never carries one)
+        # simply finds nothing and this is a no-op => byte-identical.
+        if not material_class_is_user:
+            from src.parsers.step_material import material_class_from_step
+
+            cad_class = material_class_from_step(data)
+            # Restrict the fill to the route's already-validated/costed material
+            # classes (_MATERIAL_CLASSES) — MATERIAL_FAMILY carries a few extra
+            # families (nickel/cobalt/zinc/copper, an oil & gas alloy pack) that
+            # this public route does not accept even as an explicit USER value
+            # (see the material_class Query/Form validation above); silently
+            # routing an unvalidated class in through the CAD side door would be
+            # inconsistent with that gate, so those are left unfilled (falls
+            # through to DEFAULT "polymer", unchanged behaviour).
+            if cad_class and cad_class in _MATERIAL_CLASSES:
+                material_class = cad_class
+                material_class_from_cad = True
+
         mesh, suffix = await _parse_mesh_async(  # 400/413/501, 504 on parse timeout
             data, file.filename or "unknown"
         )
@@ -1393,7 +1424,8 @@ async def _run_cost_decision(
     options = EstimateOptions(
         quantities=quantities,
         material_class=material_class,
-        material_class_is_user=material_class != "polymer",
+        material_class_is_user=material_class_is_user,
+        material_class_from_cad=material_class_from_cad,
         region=effective_region,
         region_is_user=region_is_user,
         shop=shop_binding,

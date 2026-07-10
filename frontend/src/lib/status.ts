@@ -254,7 +254,7 @@ export function procLabel(p: string): string {
 /* Status is never colour-only: each tag also carries fill + label.   */
 /* ------------------------------------------------------------------ */
 
-export type Provenance = "MEASURED" | "SHOP" | "USER" | "DEFAULT";
+export type Provenance = "MEASURED" | "SHOP" | "USER" | "CAD" | "DEFAULT";
 
 export interface ProvenanceMeta {
   /** uppercase tag rendered on the number */
@@ -296,6 +296,15 @@ export const PROVENANCE_META: Record<Provenance, ProvenanceMeta> = {
     dot: "bg-prov-user border-prov-user",
     fg: "text-prov-user",
   },
+  CAD: {
+    label: "CAD",
+    description:
+      "Read from the CAD file's own material annotation — the file's stated claim, not measured from geometry and not confirmed by your team.",
+    filled: true,
+    chip: "bg-prov-cad-bg text-prov-cad border-prov-cad-border",
+    dot: "bg-prov-cad border-prov-cad",
+    fg: "text-prov-cad",
+  },
   DEFAULT: {
     label: "DEFAULT",
     description: "Generic fallback — no calibrated value yet. We're guessing here.",
@@ -311,6 +320,7 @@ export const PROVENANCE: Record<Provenance, string> = {
   MEASURED: PROVENANCE_META.MEASURED.chip,
   SHOP: PROVENANCE_META.SHOP.chip,
   USER: PROVENANCE_META.USER.chip,
+  CAD: PROVENANCE_META.CAD.chip,
   DEFAULT: PROVENANCE_META.DEFAULT.chip,
 };
 

@@ -39,6 +39,7 @@ export const C = {
   measured: "#3772ab", // 4.68:1
   shop: "#a06030", // 4.62:1
   user: "#745cc7", // 4.74:1
+  cad: "#a12d86", // 6.01:1 · read from the CAD file's own material annotation (magenta — distinct from every other provenance + status hue)
   def: "#69707d", // 4.61:1 · DEFAULT + MODEL share slate; MODEL renders "○ MODEL"
 
   // status
@@ -52,7 +53,7 @@ export const MONO =
 export const SANS =
   "'Helvetica Neue', -apple-system, BlinkMacSystemFont, system-ui, sans-serif";
 
-export type Prov = "MEASURED" | "SHOP" | "USER" | "DEFAULT" | "MODEL";
+export type Prov = "MEASURED" | "SHOP" | "USER" | "CAD" | "DEFAULT" | "MODEL";
 
 export interface ProvMeta {
   label: string;
@@ -87,6 +88,13 @@ export const PROV: Record<Prov, ProvMeta> = {
     glyph: "●",
     description: "Declared by your team.",
   },
+  CAD: {
+    label: "CAD",
+    color: C.cad,
+    filled: true,
+    glyph: "●",
+    description: "Read from the CAD file's own material annotation — not measured, not confirmed by your team.",
+  },
   DEFAULT: {
     label: "DEFAULT",
     color: C.def,
@@ -106,7 +114,7 @@ export const PROV: Record<Prov, ProvMeta> = {
 /** Normalise the engine's provenance strings (upper/lowercase) to a Prov key. */
 export function normProv(p: string | null | undefined): Prov {
   const u = String(p ?? "").toUpperCase();
-  if (u === "MEASURED" || u === "SHOP" || u === "USER" || u === "MODEL")
+  if (u === "MEASURED" || u === "SHOP" || u === "USER" || u === "CAD" || u === "MODEL")
     return u as Prov;
   return "DEFAULT";
 }
