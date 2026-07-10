@@ -17,13 +17,14 @@ these in addition to new flows. Grows only. `status`: open | fixed | honest-gate
 - **R05** · COTS fix engine-only, not rendered · W3 · fixed (COTS card in assembly panel) · **fixed**
 - **R06** · fab fallback mis-models fasteners (nut as sheet-metal, bolt as aluminium) · W3 · fixed (drop machined figure for COTS + honest note) · **fixed**
 - **R07** · ≈M16 bolt threading into ≈M12 nut in one joint (mate incoherence) · W3 · fixed (mate reconciliation, commit c6db722) · replay: bolt & nut in a joint share one nominal · **fixed — LIVE re-verified in the baseline (≈M12 both)**
+- **R08** · perf pre-warm must NEVER change the answer · W1 · guard (commit be820c2) · replay: cube.step cost/geometry fingerprint is byte-identical with PARSE_POOL_PREWARM on vs off, and no rung/cap/cache is touched · **fixed — invariance is the regression assertion; latency is a floor, not a bug**
 
 ## Repair status (2026-07-10 re-score — each verified on screen)
 - **F1 → FIXED ✅** identity revision now grounds (72% MEDIUM card → Confirm → saved; torus still no-match). Commit ca05219.
 - **F3 → FIXED ✅** input focus ring now `2px solid #6ba6f4`. Commit 73802ab.
 - **F4 → FIXED ✅** .txt leads with "Unsupported file type" (minor residual toast noted). Commit e29588e.
 - **F5 → FIXED ✅** cost-driver qty reconciles to headline $8.68. Commit 73802ab.
-- **F2 → PARTIAL ⚠️ (OPEN)** redundant 2s identity pass removed (commit 2c32b2a) but cold verify ~22s / assembly 34–58s remain — parse+cost dominate; not decimated because that changes the cost answer. **Product MIN is bound here (Performance 72).**
+- **F2 → PARTIAL ⚠️ (OPEN, HONEST-FLOOR CHARACTERIZED)** redundant 2s identity pass removed (commit 2c32b2a); pre-warm the spawn pool at boot (commit be820c2) removes the first-request startup tax: first cold /validate/cost 6.66s→5.94s (~0.72s, ~11%), fingerprint byte-identical. Remaining cold verify ~5.9s / assembly 34–58s is real mesh COMPUTE (~3.7s) + costing (~2s) — proven load-bearing: coarser tessellation zeroes NIST volume / breaks watertightness, and gmsh threading perturbs curved parts, so BOTH move the cost answer and are FORBIDDEN. Pre-warm is the only answer-preserving win. This is an honest engineering floor, not a defect: the latency is the price of a MEASURED (not estimated) cost. **Product MIN is bound here (Performance).**
 
 Product overall: 70 → **72** (bound by Performance; Security 75 unexercised is next).
 

@@ -66,6 +66,12 @@ product. Genuine e2e, not yet exhaustive. Reaching the /goal = the full matrix
   no geometry aren't yet matched by name in retrieval.
 - **DFM heuristics** (thin-wall ray-cast, single-direction undercut, edge-length "small
   features") are directional proxies, not exact — can misfire.
+- **Cold-verify latency is an honest floor, not a fixable gap.** Redundant identity pass
+  removed and the spawn pool is pre-warmed at boot (first request 6.66s→5.94s, ~11%,
+  fingerprint byte-identical). What remains (~5.9s single / 34–58s assembly) is real mesh
+  COMPUTE + costing: coarsening tessellation or threading gmsh both *change the cost
+  answer* (proven — NIST volume→0, curved-part perturbation), so they're forbidden. The
+  latency is the price of a MEASURED cost. Product Performance is bound by this floor.
 
 ### Honestly gated (need real external systems — Bucket B, never faked)
 - **Accuracy vs real ground truth**: harness is leakage-safe but `validated=false` until
