@@ -84,8 +84,8 @@
         <td>{{ ps.process }}</td>
         <td>{{ ps.score }}</td>
         <td class="verdict-{{ ps.verdict }}">{{ ps.verdict | upper }}</td>
-        <td>{{ ps.recommended_material or '&mdash;' }}</td>
-        <td>{{ ps.recommended_machine or '&mdash;' }}</td>
+        <td>{{ ps.recommended_material or '—' }}</td>
+        <td>{{ ps.recommended_machine or '—' }}</td>
       </tr>
       {% endfor %}
     </tbody>

@@ -91,6 +91,9 @@ async def test_create_package_snapshots_warnings_without_raw_cad(monkeypatch):
         "_raw_cad_payload",
         AsyncMock(return_value=(None, None, {"included": False, "reason": "not_requested"})),
     )
+    # Cache-warm at create is exercised in the integration/perf test; keep this
+    # unit test off the WeasyPrint render path.
+    monkeypatch.setattr(svc, "precompute_cost_pdf", AsyncMock(return_value=b"%PDF"))
 
     package = await svc.create_package(
         session,
@@ -175,7 +178,7 @@ async def test_build_zip_contains_honest_package_files(monkeypatch):
     )
     session = AsyncMock()
     session.execute = AsyncMock(return_value=_Result(first=decision))
-    monkeypatch.setattr(svc, "generate_cost_pdf", AsyncMock(return_value=b"%PDF-test"))
+    monkeypatch.setattr(svc, "cached_cost_pdf", AsyncMock(return_value=b"%PDF-test"))
 
     data = await svc.build_zip(session, package)
     with zipfile.ZipFile(io.BytesIO(data)) as zf:

@@ -9,6 +9,7 @@ confidence band (labeled "assumption-based, not yet validated" — never
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 import re
@@ -29,6 +30,34 @@ PDF_CACHE_DIR = os.getenv("PDF_CACHE_DIR", "/data/pdf-cache/")
 _TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "pdf"
 
 _cost_pdf_semaphore = asyncio.Semaphore(2)
+
+
+def _pdf_store():
+    """Object store for cached cost-report PDFs.
+
+    Uses the ops object-store seam (``src.storage``): local disk by default
+    (rooted at ``PDF_CACHE_DIR``, byte-for-byte the historical file cache) and
+    S3 when an operator opts in. One namespace ("cost-pdf") for every cached
+    cost report — single-PDF downloads and RFQ-package items share it.
+    """
+    from src.storage import get_object_store
+
+    return get_object_store("cost-pdf", default_root=PDF_CACHE_DIR)
+
+
+def _cache_key(ulid: str, fingerprint: str) -> str:
+    """Content-addressed cache key for a decision's rendered PDF.
+
+    Keyed by the decision ULID *and* a fingerprint of the exact render inputs
+    (the rendered HTML), so a cache entry is reused ONLY when the honest content
+    is byte-for-byte what a fresh render would produce. Any change to the
+    decision (result_json, label, engine version, …) changes the HTML, changes
+    the fingerprint, and forces a re-render — the cache can never serve a stale
+    or mismatched PDF. Guards against path traversal on both components.
+    """
+    assert "/" not in ulid and ".." not in ulid, f"Invalid ULID format: {ulid}"
+    assert re.fullmatch(r"[0-9a-f]{8,64}", fingerprint), fingerprint
+    return f"cost-{ulid}-{fingerprint}.pdf"
 
 # autoescape on: mirrors pdf_service — user-controlled values (filename, etc.)
 # are interpolated into HTML that WeasyPrint parses, so escaping is required to
@@ -78,25 +107,75 @@ def render_cost_html(decision: CostDecision) -> str:
     return template.render(**build_cost_pdf_context(decision))
 
 
-def _render_cost_pdf_sync(decision: CostDecision) -> bytes:
+def _render_cost_pdf_sync(decision: CostDecision, html_str: str | None = None) -> bytes:
     """Render cost_report.html to PDF bytes (CPU-bound — call via executor)."""
     from weasyprint import HTML
 
-    html_str = render_cost_html(decision)
+    if html_str is None:
+        html_str = render_cost_html(decision)
     return HTML(string=html_str, base_url=str(_TEMPLATE_DIR)).write_pdf()
 
 
-async def generate_cost_pdf(decision: CostDecision) -> bytes:
+def _fingerprint(html_str: str) -> str:
+    """Stable content fingerprint of a rendered cost report (drives the cache key)."""
+    return hashlib.sha256(html_str.encode("utf-8")).hexdigest()[:16]
+
+
+async def generate_cost_pdf(decision: CostDecision, html_str: str | None = None) -> bytes:
     """Generate a cost-report PDF, bounded by the render semaphore."""
     async with _cost_pdf_semaphore:
         loop = asyncio.get_event_loop()
         pdf_bytes = await loop.run_in_executor(
-            None, _render_cost_pdf_sync, decision
+            None, _render_cost_pdf_sync, decision, html_str
         )
     logger.info(
         "Cost PDF generated for %s (%d bytes)", decision.ulid, len(pdf_bytes)
     )
     return pdf_bytes
+
+
+async def cached_cost_pdf(decision: CostDecision) -> bytes:
+    """Return this decision's cost-report PDF, rendering ONCE and caching bytes.
+
+    Content-addressed: the cache key embeds a fingerprint of the rendered HTML,
+    so a hit is only ever served for byte-identical honest content and stale
+    decisions self-invalidate (new fingerprint → miss → re-render). This is the
+    hot path for BOTH the single-PDF download and every RFQ-package item, so a
+    package download streams stored bytes with no per-request WeasyPrint render.
+    """
+    html_str = render_cost_html(decision)
+    key = _cache_key(decision.ulid, _fingerprint(html_str))
+    store = _pdf_store()
+    try:
+        if store.exists(key):
+            logger.info("Serving cached cost PDF for %s (%s)", decision.ulid, key)
+            return store.get(key)
+    except Exception:  # pragma: no cover - cache read is best-effort
+        logger.warning("Cost PDF cache read failed for %s", key, exc_info=True)
+
+    pdf_bytes = await generate_cost_pdf(decision, html_str)
+    try:
+        store.put(key, pdf_bytes, content_type="application/pdf")
+        logger.info("Cached cost PDF at %s", key)
+    except Exception:  # pragma: no cover - caching is best-effort
+        logger.warning("Failed to cache cost PDF at %s", key, exc_info=True)
+    return pdf_bytes
+
+
+async def precompute_cost_pdf(decision: CostDecision) -> bytes | None:
+    """Warm the PDF cache for a decision (best-effort; never raises).
+
+    Called when the durable evidence is assembled (RFQ-package create), so the
+    heavy WeasyPrint render happens once, up front, and later downloads only
+    stream stored bytes.
+    """
+    try:
+        return await cached_cost_pdf(decision)
+    except Exception:  # pragma: no cover - warming must not break the caller
+        logger.warning(
+            "Cost PDF precompute failed for %s", decision.ulid, exc_info=True
+        )
+        return None
 
 
 async def get_or_generate_cost_pdf(
@@ -117,24 +196,7 @@ async def get_or_generate_cost_pdf(
     if decision is None:
         raise HTTPException(status_code=404, detail="Cost decision not found")
 
-    # Guard against path traversal in the cache filename.
-    assert "/" not in decision.ulid and ".." not in decision.ulid, (
-        f"Invalid ULID format: {decision.ulid}"
-    )
-
-    cache_path = Path(PDF_CACHE_DIR) / f"cost-{decision.ulid}.pdf"
-    if cache_path.exists():
-        logger.info("Serving cached cost PDF for %s", decision.ulid)
-        return cache_path.read_bytes(), decision.filename
-
-    pdf_bytes = await generate_cost_pdf(decision)
-    try:
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        cache_path.write_bytes(pdf_bytes)
-        logger.info("Cached cost PDF at %s", cache_path)
-    except OSError:
-        logger.warning("Failed to cache cost PDF at %s", cache_path, exc_info=True)
-
+    pdf_bytes = await cached_cost_pdf(decision)
     return pdf_bytes, decision.filename
 
 
