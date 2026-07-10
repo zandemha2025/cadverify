@@ -18,6 +18,15 @@ these in addition to new flows. Grows only. `status`: open | fixed | honest-gate
 - **R06** · fab fallback mis-models fasteners (nut as sheet-metal, bolt as aluminium) · W3 · fixed (drop machined figure for COTS + honest note) · **fixed**
 - **R07** · ≈M16 bolt threading into ≈M12 nut in one joint (mate incoherence) · W3 · fixed (mate reconciliation, commit c6db722) · replay: bolt & nut in a joint share one nominal · **fixed — LIVE re-verified in the baseline (≈M12 both)**
 
+## Repair status (2026-07-10 re-score — each verified on screen)
+- **F1 → FIXED ✅** identity revision now grounds (72% MEDIUM card → Confirm → saved; torus still no-match). Commit ca05219.
+- **F3 → FIXED ✅** input focus ring now `2px solid #6ba6f4`. Commit 73802ab.
+- **F4 → FIXED ✅** .txt leads with "Unsupported file type" (minor residual toast noted). Commit e29588e.
+- **F5 → FIXED ✅** cost-driver qty reconciles to headline $8.68. Commit 73802ab.
+- **F2 → PARTIAL ⚠️ (OPEN)** redundant 2s identity pass removed (commit 2c32b2a) but cold verify ~22s / assembly 34–58s remain — parse+cost dominate; not decimated because that changes the cost answer. **Product MIN is bound here (Performance 72).**
+
+Product overall: 70 → **72** (bound by Performance; Security 75 unexercised is next).
+
 ## Baseline run finds (2026-07-09) — open
 
 - **F1** · 2026-07-09 · P2 / W11 identity revision · **major** · repro: onboard `bracket_A.stl`+`identity.csv`, then Verify `bracket_A_rev.stl` (a genuine revision) → expected: an IdentityCard "Looks like your Mounting bracket L · PN-BRK-001 → Confirm"; actual: NO card, "none confident enough to suggest". The flagship parts-master journey can't complete at the baseline confidence threshold. No-fabrication guarantee holds (torus correctly no-match). · fix: tune recall + add an honest low-confidence "closest in your library — confirm?" affordance, keep the no-fabrication rule · **open**
