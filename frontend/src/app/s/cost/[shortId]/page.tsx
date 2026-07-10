@@ -150,7 +150,7 @@ export default async function SharedCostDecisionPage({
       const make = procLabel(dec.make_now_process);
       return dec.tooling_process
         ? `Make below ~${n} units with ${make}; tool up with ${procLabel(dec.tooling_process)} above it.`
-        : `${make} wins below ~${n} units; tooling amortises above it.`;
+        : `${make} wins below ~${n} units; tooling amortizes above it.`;
     }
     return `${procLabel(dec.make_now_process)} stays cheapest at every quantity tested.`;
   })();
