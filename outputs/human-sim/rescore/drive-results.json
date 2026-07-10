@@ -1,0 +1,418 @@
+{
+  "contrast": [
+    {
+      "t": "Default rate card (v0) · none authored",
+      "color": "rgba(23, 24, 26, 0.7)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "12px",
+      "ratio": 17.77
+    },
+    {
+      "t": "FRIDAY, JULY 10",
+      "color": "rgba(23, 24, 26, 0.62)",
+      "bg": "rgb(246, 246, 247)",
+      "size": "10px",
+      "ratio": 16.45
+    },
+    {
+      "t": "Jump to a surface, action, or sample walkthrough…",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "14.5px",
+      "ratio": 17.77
+    },
+    {
+      "t": "DAY ZERO SETUP",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10.5px",
+      "ratio": 17.77
+    },
+    {
+      "t": "real org state only · no seeded tenant facts",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10.5px",
+      "ratio": 17.77
+    },
+    {
+      "t": "Declare machines",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(246, 246, 247)",
+      "size": "13px",
+      "ratio": 16.45
+    },
+    {
+      "t": "floor denominator missing",
+      "color": "rgb(176, 120, 24)",
+      "bg": "rgb(246, 246, 247)",
+      "size": "10.5px",
+      "ratio": 3.51
+    },
+    {
+      "t": "Import rates + actuals",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(246, 246, 247)",
+      "size": "13px",
+      "ratio": 16.45
+    },
+    {
+      "t": "bands stay hatched until actuals arrive",
+      "color": "rgb(176, 120, 24)",
+      "bg": "rgb(246, 246, 247)",
+      "size": "10.5px",
+      "ratio": 3.51
+    },
+    {
+      "t": "Create program context",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(246, 246, 247)",
+      "size": "13px",
+      "ratio": 16.45
+    },
+    {
+      "t": "assembly lineage, service world, units per parent",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(246, 246, 247)",
+      "size": "10.5px",
+      "ratio": 16.45
+    },
+    {
+      "t": "Verify first part",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(246, 246, 247)",
+      "size": "13px",
+      "ratio": 16.45
+    },
+    {
+      "t": "drop STL, STEP or IGES",
+      "color": "rgb(176, 120, 24)",
+      "bg": "rgb(246, 246, 247)",
+      "size": "10.5px",
+      "ratio": 3.51
+    },
+    {
+      "t": "MACHINES DECLARED",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10px",
+      "ratio": 17.77
+    },
+    {
+      "t": "IN REVIEW · GOVERNED",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10px",
+      "ratio": 17.77
+    },
+    {
+      "t": "ACTUALS · GROUND TRUTH",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10px",
+      "ratio": 17.77
+    },
+    {
+      "t": "VALIDATED BANDS · NO DATA YET",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10px",
+      "ratio": 17.77
+    },
+    {
+      "t": "NEEDS YOUR ACTION",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10.5px",
+      "ratio": 17.77
+    },
+    {
+      "t": "Declare your floor",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "13px",
+      "ratio": 17.77
+    },
+    {
+      "t": "everything starts from the denominator — no machines declare",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10px",
+      "ratio": 17.77
+    },
+    {
+      "t": "IN FLIGHT — RECENT VERIFICATIONS",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10.5px",
+      "ratio": 17.77
+    },
+    {
+      "t": "Nothing in flight.",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "14px",
+      "ratio": 17.77
+    },
+    {
+      "t": "Drop a part — STL, STEP or IGES",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "14px",
+      "ratio": 17.77
+    },
+    {
+      "t": "parsed in-process · discarded",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "11px",
+      "ratio": 17.77
+    },
+    {
+      "t": "Browse files",
+      "color": "rgb(255, 255, 255)",
+      "bg": "rgb(23, 24, 26)",
+      "size": "12px",
+      "ratio": 17.77
+    },
+    {
+      "t": "YOUR FLOOR",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10.5px",
+      "ratio": 17.77
+    },
+    {
+      "t": "No machines declared",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "14px",
+      "ratio": 17.77
+    },
+    {
+      "t": "declare your floor — everything starts from the denominator",
+      "color": "rgb(176, 120, 24)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "12px",
+      "ratio": 3.79
+    },
+    {
+      "t": "TRIAGE · MAKEABILITY AT SCALE",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10.5px",
+      "ratio": 17.77
+    },
+    {
+      "t": "Sort a BOM into makeable in-house / outside / needs capabili",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "13px",
+      "ratio": 17.77
+    },
+    {
+      "t": "buckets compute from an uploaded BOM — no counts are shown u",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10.5px",
+      "ratio": 17.77
+    },
+    {
+      "t": "GROUND-TRUTH FLYWHEEL",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10.5px",
+      "ratio": 17.77
+    },
+    {
+      "t": "n=0 · every band still hatched — send actuals back to flip t",
+      "color": "rgb(176, 120, 24)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10.5px",
+      "ratio": 3.79
+    },
+    {
+      "t": "ACTIVITY",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10.5px",
+      "ratio": 17.77
+    },
+    {
+      "t": "nothing yet — your first verification will land here",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10.5px",
+      "ratio": 17.77
+    }
+  ],
+  "timings": {
+    "coldCostResponseMs": 11733,
+    "coldWallMs": 12934,
+    "warmCostResponseMs": 4435,
+    "warmWallMs": 5436
+  },
+  "captured": {
+    "emailFocus": {
+      "outline": "none 0px rgb(245, 245, 247)",
+      "offset": "0px",
+      "border": "rgba(245, 245, 247, 0.16)"
+    },
+    "pwFocus": {
+      "outline": "none 0px rgb(245, 245, 247)",
+      "offset": "0px"
+    },
+    "contrastLowest": [
+      {
+        "t": "floor denominator missing",
+        "color": "rgb(176, 120, 24)",
+        "bg": "rgb(246, 246, 247)",
+        "size": "10.5px",
+        "ratio": 3.51
+      },
+      {
+        "t": "bands stay hatched until actuals arrive",
+        "color": "rgb(176, 120, 24)",
+        "bg": "rgb(246, 246, 247)",
+        "size": "10.5px",
+        "ratio": 3.51
+      },
+      {
+        "t": "drop STL, STEP or IGES",
+        "color": "rgb(176, 120, 24)",
+        "bg": "rgb(246, 246, 247)",
+        "size": "10.5px",
+        "ratio": 3.51
+      },
+      {
+        "t": "declare your floor — everything starts from the denominator",
+        "color": "rgb(176, 120, 24)",
+        "bg": "rgb(255, 255, 255)",
+        "size": "12px",
+        "ratio": 3.79
+      },
+      {
+        "t": "n=0 · every band still hatched — send actuals back to flip t",
+        "color": "rgb(176, 120, 24)",
+        "bg": "rgb(255, 255, 255)",
+        "size": "10.5px",
+        "ratio": 3.79
+      }
+    ],
+    "validate": {
+      "code": "BAD_REQUEST",
+      "message": "Unsupported file type: .txt. Use .stl, .step, .stp, .iges, or .igs",
+      "doc_url": "https://docs.cadverify.com/errors/BAD_REQUEST"
+    },
+    "cost": {
+      "code": "BAD_REQUEST",
+      "message": "Unsupported file type: .txt. Use .stl, .step, .stp, .iges, or .igs",
+      "doc_url": "https://docs.cadverify.com/errors/BAD_REQUEST"
+    },
+    "polymer_best_process": "dlp",
+    "polymer_make_now": "fdm",
+    "steel_best_process": "dlp",
+    "steel_make_now": "cnc_3axis",
+    "steel_process_scores": [
+      {
+        "process": "dlp",
+        "score": 1
+      },
+      {
+        "process": "cnc_3axis",
+        "score": 1
+      },
+      {
+        "process": "cnc_5axis",
+        "score": 1
+      },
+      {
+        "process": "wire_edm",
+        "score": 1
+      },
+      {
+        "process": "sla",
+        "score": 0.9
+      },
+      {
+        "process": "sls",
+        "score": 0.9
+      },
+      {
+        "process": "mjf",
+        "score": 0.9
+      },
+      {
+        "process": "binder_jetting",
+        "score": 0.9
+      },
+      {
+        "process": "ded",
+        "score": 0.9
+      },
+      {
+        "process": "waam",
+        "score": 0.9
+      },
+      {
+        "process": "fdm",
+        "score": 0.8
+      },
+      {
+        "process": "ebm",
+        "score": 0.8
+      },
+      {
+        "process": "sheet_metal",
+        "score": 0.8
+      },
+      {
+        "process": "dmls",
+        "score": 0.7
+      },
+      {
+        "process": "slm",
+        "score": 0.7
+      },
+      {
+        "process": "cnc_turning",
+        "score": 0
+      },
+      {
+        "process": "injection_molding",
+        "score": 0
+      },
+      {
+        "process": "die_casting",
+        "score": 0
+      },
+      {
+        "process": "investment_casting",
+        "score": 0
+      },
+      {
+        "process": "sand_casting",
+        "score": 0
+      },
+      {
+        "process": "forging",
+        "score": 0
+      }
+    ],
+    "qtyLines": [
+      "Should-cost $10.68/unit on CNC 3-Axis at qty 10,000",
+      "0.041 $",
+      "0.934 $",
+      "8.69 $",
+      "0.263 $",
+      "0.007 $",
+      "0.696 $",
+      "0.047 $",
+      "QUANTITY 100 · engine-exact — a computed point",
+      "$21.70 /unit at this qty",
+      "band & drivers read at computed qty 100",
+      "Compare routes @ 1,000"
+    ],
+    "txtErrorText": "C\nVerify\n/\nnotcad.txt\nDefault rate card (v0) · none authored\n⌘K\nVerify a part\nnotcad.txt\n\ndrop STL, STEP or IGES to measure\n\n▢ bbox envelope · shell unavailable\n\nCONTEXT\n\nnot declared\n\nno parent assembly declared\n\norphan until declared\nX-ray\nNo parent assembly\ndrag to orbit\n\nCan this be made — on your machines, in materials that survive its world — and what will it really take?\n\nDECLARE ITS WORLD\n\nambient\n120 °C service\nsour service (H₂S)\n35 MPa pressure\n\nno world declared — the part is verified in ambient conditions.\n\nDECLARED MATERIAL CLASS · ● USER\n\nPolymer\nAluminum\nSteel\nStainless\nTitanium\n\nVERDICT · COULD NOT ANALYZE\n\nWe couldn't read this file.\n\nUnsupported file type: .txt. Use .stl, .step, .stp, .iges, or .igs No routing, DFM, or should-cost was computed, and nothing here is estimated. Upload a CAD part (.stl, .step, .stp, .iges, or .igs) to run the walk.\n\n1\n\nEnvelope — against your machines\n\n0 machines declared\n\nNo machines declared.\n\nYour floor is the denominator of every makeability verdict. Declare it once — a CSV or five minutes of typing.\n\nDeclare your floor →\n2\n\nMaterials that survive this world\n\nmaterial class withheld — costing unavailable\n\nenvironment-driven survival filtering (NACE MR0175 / HDT tables) is part of the makeability verification — DECLARE A WORLD TO EVALUATE. Invalid materials are filtered out visibly, never silently.\n\n3\n\nProcess physics — geometry against each route\n\nrouting/DFM unavailable — Unsupported file type: .txt. Use .stl, .step, .stp, .iges, or .igs · withheld, never faked\n\nCompare routes @ 1,000\nCompare saved decisions →\nWhy this verdict?\nAn uncomputable ask\n\nanswers are deterministic engine artifacts — verdict, materials, drivers, hours, cost, routes, and saved records\n\nCould not analyze — this part couldn't be tessellated; no routing, DFM, or cost was computed"
+  }
+}

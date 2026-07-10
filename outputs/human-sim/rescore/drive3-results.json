@@ -1,0 +1,18 @@
+{
+  "captured": {
+    "polymerCostText": [
+      "Should-cost $8.68/unit on FDM / FFF at qty 10,000",
+      "0.093 $",
+      "1.406 $",
+      "7.052 $",
+      "0.13 $",
+      "QUANTITY 100 · engine-exact — a computed point",
+      "$8.72 /unit at this qty",
+      "hours × your rates + mass × your lot price · 0% of drivers grounded (● measured/shop/user)",
+      "band & drivers read at computed qty 100",
+      "$62.18 /unit incl. tooling",
+      "amortizes past 923 units · conditional on a DFM redesign"
+    ],
+    "steelPhysicsText": "Process physics — geometry against each route\n\nDLP ResinROUTE PICK\nissues\nCNC 3-Axis\npass\nCNC 5-Axis\npass\nWire EDM\npass\nSLA Resin\nissues\nSLS (Powder)\nissues\n\n15 priority fixes across routes · overall issues · rendered from POST /validate\n\n4\n\nWhat it really takes\n\non CNC 3-Axis · Mild Steel\n\nMATERIAL\n○ DEFAULT\n\n0.041 $\n\nMACHINE TIME\n○ DEFAULT\n\n0.934 $\n\nCYCLE TIME\n○ MODEL\n\n0.025 hr\n\nLABOR\n○ DEFAULT\n"
+  }
+}
