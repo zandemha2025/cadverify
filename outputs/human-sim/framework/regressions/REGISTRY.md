@@ -18,6 +18,8 @@ these in addition to new flows. Grows only. `status`: open | fixed | honest-gate
 - **R06** · fab fallback mis-models fasteners (nut as sheet-metal, bolt as aluminium) · W3 · fixed (drop machined figure for COTS + honest note) · **fixed**
 - **R07** · ≈M16 bolt threading into ≈M12 nut in one joint (mate incoherence) · W3 · fixed (mate reconciliation, commit c6db722) · replay: bolt & nut in a joint share one nominal · **fixed — LIVE re-verified in the baseline (≈M12 both)**
 - **R08** · perf pre-warm must NEVER change the answer · W1 · guard (commit be820c2) · replay: cube.step cost/geometry fingerprint is byte-identical with PARSE_POOL_PREWARM on vs off, and no rung/cap/cache is touched · **fixed — invariance is the regression assertion; latency is a floor, not a bug**
+- **R09** · DFM "Process physics" ROUTE PICK badged the geometry-blind /validate best_process (DLP Resin) for a STEEL part, contradicting the CNC-3-Axis cost panel on the same screen · W1/W3 (live re-score) · fixed (commit ffbff76: reconcile pick to cost.decision.make_now_process / routing.recommended_process when a material is declared; geometry pick relabeled "GEOMETRY PICK") · replay: a steel part never shows a resin ROUTE PICK; the physics pick agrees with the make-now route · **fixed**
+- **R10** · status/provenance accents used as small mono labels were sub-AA (amber "issues" #b07818 3.79:1, measured-blue #3b7bb8 4.13:1) · a11y (live re-score) · fixed (commit ffbff76: hue-preserving darken to ≥4.5:1 on both surfaces + tokens.test.ts guard) · replay: every opaque accent clears AA 4.5:1 on #f6f6f7 and #ffffff · **fixed**
 
 ## Repair status (2026-07-10 re-score — each verified on screen)
 - **F1 → FIXED ✅** identity revision now grounds (72% MEDIUM card → Confirm → saved; torus still no-match). Commit ca05219.
@@ -27,6 +29,20 @@ these in addition to new flows. Grows only. `status`: open | fixed | honest-gate
 - **F2 → PARTIAL ⚠️ (OPEN, HONEST-FLOOR CHARACTERIZED)** redundant 2s identity pass removed (commit 2c32b2a); pre-warm the spawn pool at boot (commit be820c2) removes the first-request startup tax: first cold /validate/cost 6.66s→5.94s (~0.72s, ~11%), fingerprint byte-identical. Remaining cold verify ~5.9s / assembly 34–58s is real mesh COMPUTE (~3.7s) + costing (~2s) — proven load-bearing: coarser tessellation zeroes NIST volume / breaks watertightness, and gmsh threading perturbs curved parts, so BOTH move the cost answer and are FORBIDDEN. Pre-warm is the only answer-preserving win. This is an honest engineering floor, not a defect: the latency is the price of a MEASURED (not estimated) cost. **Product MIN is bound here (Performance).**
 
 Product overall: 70 → **72** (bound by Performance; Security 75 unexercised is next).
+
+## Live re-score (2026-07-10, commit 6d7547d — real stack, Playwright + vision)
+Confirmed the two prior score-cappers on screen and replayed the registry:
+- **Accessibility → 4/5.** Both prior caps resolved live: visible cobalt focus ring on
+  the auth inputs; neutral muted ink composites ≈4.3–5.3:1. Remaining cap was small
+  non-neutral accent labels below AA (amber ≈3.79:1, blue ≈4.1:1) → **fixed R10** (all
+  accents now ≥4.5:1, guarded).
+- **Performance → 3/5 (honest floor).** Cold cube 11.7s / warm 4.4s / steel 7.9s
+  (submit→cost, spanning chained /validate + /validate/cost); pre-warm confirmed active.
+  Multi-second cold is the measured-cost floor, not a defect (R08).
+- **Regression replay:** F3 PASS · F4 PASS · F5 PASS · **R04 residual found on screen**
+  (physics ROUTE PICK showed resin for steel) → **fixed R09**.
+- MIN moved off the two caps; next honest bind is the R09/R10 trust+a11y residuals
+  (now fixed) then Security (unexercised). Re-score evidence in `outputs/human-sim/rescore/`.
 
 ## Baseline run finds (2026-07-09) — open
 
