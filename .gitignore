@@ -108,3 +108,6 @@ outputs/audit-2026-07-08/*.json
 data/real-corpus/
 data/corpus/
 outputs/human-sim/assembly-real/extract/
+
+# Human-sim live-stack server logs (transient, never evidence)
+outputs/human-sim/**/*.log
