@@ -433,9 +433,28 @@ def test_cost_concurrent_step_requests_both_ok(client, box_step_bytes):
     process-global gmsh context across the executor threads (no segfault / no
     're-initialized' error). Skips cleanly when gmsh is unavailable."""
     from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    start = Barrier(2)
 
     def _do():
-        return _post(client, "box.step", box_step_bytes, qty="50", material_class="aluminum")
+        # TestClient's HTTPX transport is not a concurrency primitive. Sharing
+        # one client across OS threads intermittently misroutes one request as
+        # a framework-level 404 on Linux, which tests the harness instead of
+        # gmsh serialization. Keep the FastAPI app and process-global lock
+        # shared, but give each worker its own transport.
+        thread_client = TestClient(client.app)
+        try:
+            start.wait()
+            return _post(
+                thread_client,
+                "box.step",
+                box_step_bytes,
+                qty="50",
+                material_class="aluminum",
+            )
+        finally:
+            thread_client.close()
 
     with ThreadPoolExecutor(max_workers=2) as ex:
         futures = [ex.submit(_do) for _ in range(2)]
