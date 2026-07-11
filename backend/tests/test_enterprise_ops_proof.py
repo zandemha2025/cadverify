@@ -37,8 +37,9 @@ def assert_contains_all(text: str, expected: list[str]) -> None:
     assert missing == []
 
 
-def test_ci_runs_on_dev_and_prs_with_container_proof():
+def test_ci_releases_images_and_protected_workflow_promotes_staging_first():
     workflow = load_yaml(".github/workflows/ci.yml")
+    promotion = load_yaml(".github/workflows/saas-promote.yml")
     triggers = workflow_triggers(workflow)
 
     for event in ("push", "pull_request"):
@@ -55,11 +56,20 @@ def test_ci_runs_on_dev_and_prs_with_container_proof():
     assert "Build frontend production image and push on main" in step_names
     assert "Build backend production image and push on main" in step_names
 
-    deploy_job = workflow["jobs"]["deploy"]
-    assert deploy_job["if"] == "github.ref == 'refs/heads/main' && github.event_name == 'push'"
-    deploy_steps = {step.get("name") for step in deploy_job["steps"]}
-    assert "Deploy backend (pre-built image)" in deploy_steps
-    assert "Deploy frontend (pre-built image)" in deploy_steps
+    assert "deploy" not in workflow["jobs"]
+    staging = promotion["jobs"]["deploy-staging"]
+    production = promotion["jobs"]["deploy-production"]
+    assert staging["environment"] == "saas-staging"
+    assert production["environment"] == "saas-production"
+    assert production["needs"] == "deploy-staging"
+    assert staging["if"] == "github.ref == 'refs/heads/main'"
+    staging_steps = {step.get("name") for step in staging["steps"]}
+    production_steps = {step.get("name") for step in production["steps"]}
+    assert "Require a successful CI release for this exact SHA" in staging_steps
+    assert "Download CI-owned immutable release manifest" in staging_steps
+    assert "Deploy and verify staging" in staging_steps
+    assert "Validate isolated production environment contract" in production_steps
+    assert "Deploy and verify production" in production_steps
 
     backend_steps = {step.get("name") for step in workflow["jobs"]["backend"]["steps"]}
     assert "Postgres restore drill" in backend_steps
@@ -79,8 +89,9 @@ def test_frontend_dockerfile_matches_current_next_runtime_mode():
     assert enabled_standalone_lines == []
     assert ".next/standalone" not in dockerfile
     assert "RUN npm prune --omit=dev" in dockerfile
-    assert "COPY --from=builder /app/node_modules ./node_modules" in dockerfile
-    assert "COPY --from=builder /app/.next ./.next" in dockerfile
+    assert "COPY --from=builder --chown=node:node /app/node_modules ./node_modules" in dockerfile
+    assert "USER node" in dockerfile
+    assert "COPY --from=builder --chown=node:node /app/.next ./.next" in dockerfile
     assert 'CMD ["npm", "run", "start"]' in dockerfile
 
 
@@ -101,7 +112,8 @@ def test_compose_configs_have_smokeable_frontend_and_backend():
         assert "python -c" in healthcheck_command(backend)
         assert "127.0.0.1:3000" in healthcheck_command(frontend)
         assert "node -e" in healthcheck_command(frontend)
-        assert "NEXT_PUBLIC_API_BASE=http://localhost:8000" in service_env(frontend)
+        assert "API_BASE=http://backend:8000" in service_env(frontend)
+        assert not any(item.startswith("NEXT_PUBLIC_API_BASE=") for item in service_env(frontend))
         assert "postgres" in compose["services"]
         assert "redis" in compose["services"]
         assert "pgdata" in compose["volumes"]
@@ -128,7 +140,9 @@ def test_fly_configs_describe_deploy_surface_without_external_proof_claims():
             '[http_service]',
             "internal_port = 8000",
             "force_https = true",
-            "destination = \"/data\"",
+            'OBJECT_STORE_BACKEND = "s3"',
+            'METRICS_ENABLED = "0"',
+            'PDF_CACHE_DIR = "/tmp/cadverify/pdf-cache"',
             "ARQ_HEALTH_KEY = \"arq:queue:health-check\"",
             "WORKER_STRICT_HEALTH = \"1\"",
             "RATE_LIBRARY_ENABLED = \"1\"",
@@ -144,18 +158,19 @@ def test_fly_configs_describe_deploy_surface_without_external_proof_claims():
         [
             'app = "cadvrfy-web"',
             "[env]",
-            'API_BASE = "https://cadvrfy-api.fly.dev"',
-            'NEXT_PUBLIC_API_BASE = "https://cadvrfy-api.fly.dev"',
+            'PRODUCTION_PUBLIC_API_TLS_REQUIRED = "1"',
             "[http_service]",
             "internal_port = 3000",
             "force_https = true",
         ],
     )
     assert "registry.fly.io/cadvrfy-web:${{ github.sha }}" in workflow
-    assert "--config frontend/fly.toml" in workflow
-    assert "flyctl scale count web=2 worker=1 --app cadvrfy-api --yes" in workflow
-    assert "node scripts/ops/fly-required-secrets-gate.mjs" in workflow
-    assert "node scripts/ops/fly-live-health-gate.mjs" in workflow
+    promotion = read("scripts/ops/promote-fly-release.sh")
+    assert "--config frontend/fly.toml" in promotion
+    assert 'flyctl scale count web=2 worker=2 --app "$FLY_API_APP" --yes' in promotion
+    assert "node scripts/ops/fly-required-secrets-gate.mjs" in promotion
+    assert "node scripts/ops/fly-live-health-gate.mjs" in promotion
+    assert 'docker manifest inspect "$CADVERIFY_BACKEND_IMAGE"' in promotion
 
 
 def test_worker_and_deploy_health_gate_require_arq_worker_heartbeat():
@@ -172,9 +187,12 @@ def test_worker_and_deploy_health_gate_require_arq_worker_heartbeat():
     assert 'body?.async?.worker === "ok"' in gate
     assert 'body?.async?.worker_strict === true' in gate
     assert 'CADVERIFY_REQUIRE_WORKER_STRICT' in gate
+    assert "AbortSignal.timeout(requestTimeoutMs)" in gate
     assert "API_KEY_PEPPER" in secrets_gate
     assert "CONNECTOR_SECRET_KEY" in secrets_gate
     assert "CONNECTOR_FINGERPRINT_KEY" in secrets_gate
+    assert "DEEP_HEALTH_TOKEN" in secrets_gate
+    assert "CADVERIFY_DEEP_HEALTH_TOKEN" in gate
 
 
 def test_helm_chart_gates_multi_replica_blob_and_worker_ops():
@@ -189,9 +207,26 @@ def test_helm_chart_gates_multi_replica_blob_and_worker_ops():
     assert ".Values.persistence.blobs.accessModes" in pvc
     assert "livenessProbe:" in worker
     assert "readinessProbe:" in worker
-    assert "import src.jobs.worker" in worker
+    assert "kill -0 1" in worker
+    assert "readOnlyRootFilesystem" in read("charts/cadverify/values.yaml")
+    assert "networkPolicy.enabled=true" in read("charts/cadverify/templates/_helpers.tpl")
+    assert "runtimeSecret.existingSecret" in read("charts/cadverify/templates/_helpers.tpl")
     assert "helm lint charts/cadverify" in workflow
     assert "helm template cadverify charts/cadverify" in workflow
+
+
+def test_regulated_secret_gate_validates_saml_security_profile_not_only_files():
+    gate = read("scripts/ops/k8s-required-secrets-gate.sh")
+
+    assert ".strict == true" in gate
+    assert ".security.wantMessagesSigned == true" in gate
+    assert ".security.wantAssertionsSigned == true" in gate
+    assert 'keys - ["contactPerson", "organization", "security"]' in gate
+    assert "rsa-sha256" in gate
+    assert "xmlenc#sha256" in gate
+    assert ".security.rejectDeprecatedAlgorithm == true" in gate
+    assert ".idp.x509cert" in gate
+    assert "base64 --decode | jq -e" in gate
 
 
 def test_pre_human_real_cad_and_ops_gates_are_in_full_e2e_chain():

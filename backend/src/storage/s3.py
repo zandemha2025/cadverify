@@ -10,6 +10,7 @@ never for a deployment that only uses the local adapter.
 """
 from __future__ import annotations
 
+import secrets
 from typing import TYPE_CHECKING, Any, BinaryIO
 
 from src.storage.base import ObjectNotFoundError, ObjectStore, ObjectStoreError, Payload
@@ -39,6 +40,7 @@ class S3ObjectStore(ObjectStore):
         prefix: str = "",
         endpoint_url: str | None = None,
         region_name: str | None = None,
+        kms_key_id: str | None = None,
         client: Any | None = None,
     ):
         if not bucket:
@@ -47,6 +49,7 @@ class S3ObjectStore(ObjectStore):
         self._prefix = prefix.strip("/")
         self._endpoint_url = endpoint_url
         self._region_name = region_name
+        self._kms_key_id = kms_key_id
         self._injected_client = client
         self._cached_client = client
 
@@ -80,20 +83,34 @@ class S3ObjectStore(ObjectStore):
         err = resp.get("Error", {}) if isinstance(resp, dict) else {}
         code = str(err.get("Code", ""))
         status = resp.get("ResponseMetadata", {}).get("HTTPStatusCode") if isinstance(resp, dict) else None
-        return code in {"404", "NoSuchKey", "NoSuchBucket"} or status == 404
+        # A missing bucket is an infrastructure failure, not a missing customer
+        # object. Do not launder it into a user-facing 404.
+        if code == "NoSuchBucket":
+            return False
+        return code in {"404", "NoSuchKey", "NotFound"} or status == 404
 
     # -- write ---------------------------------------------------------------
     def put(self, key: str, data: Payload, *, content_type: str | None = None) -> str:
-        # Coalesce to a single bytes body. boto3 supports streaming bodies, but
-        # a bounded join keeps behavior identical across botocore versions and
-        # avoids surprises with non-seekable streams on retry.
-        body = b"".join(self._iter_chunks(data))
         extra: dict[str, Any] = {}
         if content_type:
             extra["ContentType"] = content_type
-        self._client().put_object(
-            Bucket=self._bucket, Key=self._full_key(key), Body=body, **extra
-        )
+        if self._kms_key_id:
+            extra["ServerSideEncryption"] = "aws:kms"
+            extra["SSEKMSKeyId"] = self._kms_key_id
+        client = self._client()
+        full_key = self._full_key(key)
+        if isinstance(data, (bytes, bytearray, memoryview)):
+            client.put_object(
+                Bucket=self._bucket, Key=full_key, Body=bytes(data), **extra
+            )
+        else:
+            # boto3's managed transfer accepts non-seekable streams and switches
+            # to multipart upload for large objects. This keeps a 5 GiB batch ZIP
+            # entry from being joined into process memory before upload.
+            kwargs: dict[str, Any] = {}
+            if extra:
+                kwargs["ExtraArgs"] = extra
+            client.upload_fileobj(data, self._bucket, full_key, **kwargs)
         return self.url(key)
 
     # -- read ----------------------------------------------------------------
@@ -132,6 +149,72 @@ class S3ObjectStore(ObjectStore):
 
     def url(self, key: str) -> str:
         return f"s3://{self._bucket}/{self._full_key(key)}"
+
+    def list_keys(self, prefix: str = "") -> list[str]:
+        full_prefix = self._full_key(f"{prefix.rstrip('/')}/") if prefix else (
+            f"{self._prefix}/" if self._prefix else ""
+        )
+        paginator = self._client().get_paginator("list_objects_v2")
+        keys: list[str] = []
+        namespace = f"{self._prefix}/" if self._prefix else ""
+        for page in paginator.paginate(Bucket=self._bucket, Prefix=full_prefix):
+            for item in page.get("Contents", []):
+                provider_key = str(item["Key"])
+                key = provider_key[len(namespace):] if namespace else provider_key
+                keys.append(key)
+        return sorted(keys)
+
+    def delete_prefix(self, prefix: str) -> int:
+        keys = self.list_keys(prefix)
+        client = self._client()
+        count = 0
+        for start in range(0, len(keys), 1000):
+            chunk = keys[start : start + 1000]
+            if not chunk:
+                continue
+            response = client.delete_objects(
+                Bucket=self._bucket,
+                Delete={
+                    "Objects": [{"Key": self._full_key(key)} for key in chunk],
+                    "Quiet": True,
+                },
+            )
+            errors = response.get("Errors", []) if isinstance(response, dict) else []
+            if errors:
+                codes = sorted(
+                    {str(item.get("Code", "unknown")) for item in errors}
+                )
+                raise ObjectStoreError(
+                    "S3 prefix deletion was only partially applied "
+                    f"({len(errors)} errors; codes={','.join(codes)})"
+                )
+            count += len(chunk)
+        return count
+
+    def healthcheck(self) -> None:
+        # Prove the exact data-plane permissions the application relies on,
+        # including KMS encryption when configured. A bucket-level HEAD alone
+        # can pass with credentials that are unable to store customer objects.
+        key = f".cadverify-health/{secrets.token_hex(16)}.bin"
+        payload = secrets.token_bytes(32)
+        created = False
+        try:
+            self.put(key, payload, content_type="application/octet-stream")
+            created = True
+            if self.get(key) != payload:
+                raise ObjectStoreError("S3 health canary round-trip mismatch")
+            if key not in self.list_keys(".cadverify-health"):
+                raise ObjectStoreError("S3 health canary was not listable")
+            self.delete(key)
+            created = False
+            if self.exists(key):
+                raise ObjectStoreError("S3 health canary was not deleted")
+        finally:
+            if created:
+                try:
+                    self.delete(key)
+                except Exception:  # noqa: BLE001 - preserve original probe error
+                    pass
 
     def presigned_url(self, key: str, *, expires_in: int = 3600) -> str:
         """Return a time-limited HTTPS URL for ``key`` (S3-specific extra)."""

@@ -55,14 +55,42 @@ def _mock_redis(
     return patch("redis.asyncio.from_url", return_value=r)
 
 
-async def _get_deep():
+async def _get_deep(headers: dict[str, str] | None = None):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        return await client.get("/health/deep")
+        return await client.get("/health/deep", headers=headers)
+
+
+@pytest.mark.asyncio
+async def test_deep_health_is_hidden_without_production_token(monkeypatch):
+    monkeypatch.setenv("PRODUCTION_DEEP_HEALTH_AUTH_REQUIRED", "1")
+    monkeypatch.setenv("DEEP_HEALTH_TOKEN", "h" * 32)
+
+    response = await _get_deep()
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Not found"}
+
+
+@pytest.mark.asyncio
+async def test_deep_health_accepts_constant_time_token_header(monkeypatch):
+    monkeypatch.setenv("PRODUCTION_DEEP_HEALTH_AUTH_REQUIRED", "1")
+    monkeypatch.setenv("DEEP_HEALTH_TOKEN", "h" * 32)
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    monkeypatch.delenv("RELEASE", raising=False)
+
+    with _mock_pg_ok():
+        response = await _get_deep(
+            {"X-CadVerify-Health-Token": "h" * 32}
+        )
+
+    assert response.status_code == 200
 
 
 @pytest.mark.asyncio
 async def test_deep_healthy_reports_all_deps(monkeypatch):
+    monkeypatch.delenv("DEEP_HEALTH_TOKEN", raising=False)
+    monkeypatch.delenv("PRODUCTION_DEEP_HEALTH_AUTH_REQUIRED", raising=False)
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379")
     monkeypatch.delenv("RELEASE", raising=False)
     with _mock_pg_ok(), _mock_redis(heartbeat_age_seconds=5, queue_depth=7):
@@ -76,6 +104,7 @@ async def test_deep_healthy_reports_all_deps(monkeypatch):
     assert checks["worker"]["state"] == "ok"
     assert checks["worker"]["heartbeat_age_seconds"] == 5
     assert checks["queue"]["depth"] == 7
+    assert checks["object_store"]["expected"] is False
 
 
 @pytest.mark.asyncio
@@ -158,3 +187,43 @@ async def test_deep_redis_not_expected_is_ok(monkeypatch):
     assert data["checks"]["redis"]["ok"] is False
     assert data["checks"]["redis"]["expected"] is False
     assert data["checks"]["worker"]["state"] == "unavailable"
+
+
+@pytest.mark.asyncio
+async def test_deep_production_storage_is_a_real_health_gate(monkeypatch):
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379")
+    monkeypatch.setenv("PRODUCTION_STORAGE_REQUIRED", "1")
+    monkeypatch.setenv("OBJECT_STORE_BACKEND", "s3")
+    store = MagicMock()
+    store.healthcheck.side_effect = RuntimeError("bucket unavailable")
+    with (
+        _mock_pg_ok(),
+        _mock_redis(),
+        patch("src.storage.get_object_store", return_value=store),
+    ):
+        resp = await _get_deep()
+    assert resp.status_code == 503
+    check = resp.json()["checks"]["object_store"]
+    assert check == {
+        "ok": False,
+        "expected": True,
+        "backend": "s3",
+        "error": "RuntimeError",
+    }
+
+
+@pytest.mark.asyncio
+async def test_deep_production_storage_passes_when_bucket_is_reachable(monkeypatch):
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379")
+    monkeypatch.setenv("PRODUCTION_STORAGE_REQUIRED", "1")
+    monkeypatch.setenv("OBJECT_STORE_BACKEND", "s3")
+    store = MagicMock()
+    with (
+        _mock_pg_ok(),
+        _mock_redis(),
+        patch("src.storage.get_object_store", return_value=store),
+    ):
+        resp = await _get_deep()
+    assert resp.status_code == 200
+    assert resp.json()["checks"]["object_store"]["ok"] is True
+    store.healthcheck.assert_called_once_with()

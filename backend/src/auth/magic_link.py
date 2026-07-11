@@ -2,7 +2,8 @@
 
 Endpoints (mounted under /auth):
   POST /magic/start  → verify Turnstile, classify email, send Resend email
-  GET  /magic/verify → single-use HMAC check via Redis GETDEL, mint API key
+  POST /magic/exchange → consume token and return a server-to-server session
+  GET  /magic/verify → compatibility callback for older emailed links
 
 Tokens are HMAC-SHA256 signed with MAGIC_LINK_SECRET (distinct from the
 API_KEY_PEPPER). Single-use enforced by Redis GETDEL on the sha256(token)
@@ -10,19 +11,28 @@ key; hard TTL of 15 minutes (D-03).
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
+import html
+import logging
 import os
+import re
 import secrets
 import time
+from dataclasses import dataclass
+from functools import lru_cache
+from urllib.parse import quote
 
 import redis.asyncio as aioredis
 import resend
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, Form, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel, Field
 
-from src.auth.dashboard_session import set_session_cookie
+from src.auth.client_ip import client_ip, require_auth_proxy_if_enabled
+from src.auth.dashboard_session import session_cookie_domain, set_session_cookie, sign
 from src.auth.disposable import classify, normalize_email
 from src.auth.disposable_list import get_soft_flag_set
 from src.auth.hashing import hmac_index, mint_token
@@ -42,13 +52,41 @@ from src.auth.turnstile import verify_turnstile
 
 router = APIRouter()
 TTL = 15 * 60  # 15 minutes per D-03
+logger = logging.getLogger(__name__)
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _err(status: int, code: str, message: str) -> HTTPException:
+    return HTTPException(
+        status,
+        detail={
+            "code": code,
+            "message": message,
+            "doc_url": f"https://docs.cadverify.com/errors#{code}",
+        },
+    )
+
+
+class MagicExchangeIn(BaseModel):
+    token: str = Field(min_length=32, max_length=4096)
+
+
+@dataclass(frozen=True)
+class MagicLogin:
+    user_id: int
+    session_version: int
+    redirect: str
+    key_prefix: str | None = None
+    mint_once: str | None = None
 
 
 def _secret() -> bytes:
     return base64.b64decode(os.environ["MAGIC_LINK_SECRET"])
 
 
+@lru_cache(maxsize=1)
 def _r() -> aioredis.Redis:
+    """One Redis pool per process; auth requests must not create pool leaks."""
     return aioredis.from_url(require_redis_url(), decode_responses=True)
 
 
@@ -79,22 +117,85 @@ def _verify(token: str) -> str | None:
         return None
 
 
+def _token_key(token: str) -> str:
+    return f"magic_link:{hashlib.sha256(token.encode()).hexdigest()}"
+
+
+def _dashboard_url(path: str) -> str:
+    return f"{os.environ['DASHBOARD_ORIGIN'].rstrip('/')}{path}"
+
+
+async def _consume(token: str) -> MagicLogin:
+    """Atomically consume a token and provision its user/session once."""
+    email_norm = _verify(token)
+    if email_norm is None:
+        raise _err(400, "magic_link_invalid", "Magic link invalid or expired.")
+
+    r = _r()
+    key = _token_key(token)
+    remaining_ttl = await r.ttl(key)
+    stored = await r.getdel(key)
+    if stored is None:
+        raise _err(400, "magic_link_used", "Magic link has already been used.")
+    if not hmac.compare_digest(str(stored), email_norm):
+        raise _err(400, "magic_link_invalid", "Magic link invalid or expired.")
+
+    try:
+        user_id = await upsert_user(
+            stored, None, stored, auth_provider="magic_link"
+        )
+        if await user_has_active_api_key(user_id):
+            return MagicLogin(
+                user_id=user_id,
+                session_version=await get_user_session_version(user_id),
+                redirect="/verify",
+            )
+
+        full_token, prefix, secret_hash = mint_token()
+        await create_api_key(
+            user_id, "Default", prefix, hmac_index(full_token), secret_hash
+        )
+        return MagicLogin(
+            user_id=user_id,
+            session_version=await get_user_session_version(user_id),
+            redirect=f"/settings/developer?new=1&prefix={quote(prefix)}",
+            key_prefix=prefix,
+            mint_once=full_token,
+        )
+    except HTTPException:
+        # Account deactivation is intentional and must not make the token
+        # reusable. Other validation failures happen before consumption.
+        raise
+    except Exception:
+        # A transient DB failure must not burn a still-valid emailed token.
+        # NX preserves single-use if another actor somehow recreated the key.
+        if remaining_ttl > 0:
+            try:
+                await r.set(key, stored, ex=remaining_ttl, nx=True)
+            except Exception:
+                logger.warning("Could not restore magic-link token after failure")
+        raise
+
+
 @router.post("/magic/start")
 async def magic_start(
     request: Request,
-    email: str = Form(...),
-    cf_turnstile_response: str = Form(...),
+    email: str = Form(..., max_length=320),
+    cf_turnstile_response: str = Form(..., min_length=1, max_length=4096),
 ):
     # AUTH-08: cheapest check first (per-IP window), then Turnstile, then
     # per-email window. Hard-reject throwaway domains; soft-flag disposables
     # into a tighter 1/7d cap (D-11 override).
+    email_clean = (email or "").strip()
+    if len(email_clean) > 320 or not _EMAIL_RE.match(email_clean):
+        raise _err(400, "invalid_email", "Enter a valid email address.")
     if ip_signup_limit_enabled():
         await per_ip_signup_limit(request)
     await verify_turnstile(
         cf_turnstile_response,
-        request.client.host if request.client else None,
+        client_ip(request),
     )
-    email_norm = normalize_email(email)
+    email_norm = normalize_email(email_clean)
     soft_set = await get_soft_flag_set()
     verdict = classify(email_norm, soft_set)
     if verdict == "hard_reject":
@@ -108,80 +209,107 @@ async def magic_start(
         )
     await per_email_signup_limit(email_norm, soft_flagged=(verdict == "soft_flag"))
     token = _mint(email_norm)
-    key = f"magic_link:{hashlib.sha256(token.encode()).hexdigest()}"
-    await _r().setex(key, TTL, email_norm)
+    key = _token_key(token)
+    r = _r()
+    await r.setex(key, TTL, email_norm)
     resend.api_key = os.environ["RESEND_API_KEY"]
-    link = f"{os.environ['DASHBOARD_ORIGIN']}/magic/verify?token={token}"
-    resend.Emails.send(
-        {
-            "from": os.environ.get("RESEND_FROM", "login@cadverify.com"),
-            "to": email,
-            "subject": "Your CadVerify login link",
-            "html": f'<a href="{link}">Sign in (expires in 15 minutes)</a>',
-        }
-    )
+    # Keep the bearer token in the URL fragment: browsers do not send fragments
+    # to the web server or in referrers. The landing page requires a deliberate
+    # button press, so basic corporate email scanners do not burn the token.
+    link = _dashboard_url(f"/magic/verify#token={token}")
+    payload: resend.Emails.SendParams = {
+        "from": os.environ.get("RESEND_FROM", "login@cadverify.com"),
+        "to": email_clean,
+        "subject": "Your CadVerify login link",
+        "html": (
+            f'<a href="{html.escape(link, quote=True)}">'
+            "Sign in to CadVerify (expires in 15 minutes)</a>"
+        ),
+        "text": f"Sign in to CadVerify (expires in 15 minutes): {link}",
+    }
+    try:
+        # The Resend SDK is synchronous; keep network I/O off the event loop.
+        await asyncio.to_thread(resend.Emails.send, payload)
+    except Exception:
+        # Let the person retry after provider failure. Keep the IP attempt (it
+        # still consumed resources), but roll back both the unusable token and
+        # per-email send window without logging the email or bearer token.
+        try:
+            await r.delete(key, f"signup:email:{email_norm}")
+        except Exception:
+            logger.warning("Could not roll back magic-link send state")
+        logger.warning("Magic-link email provider failed")
+        raise _err(
+            503,
+            "email_delivery_unavailable",
+            "Email delivery is temporarily unavailable. Please try again.",
+        )
     return {"status": "sent"}
 
 
+@router.post("/magic/exchange")
+async def magic_exchange(
+    body: MagicExchangeIn, request: Request, response: Response
+) -> dict:
+    """Exchange a one-time token without putting a session in browser JS."""
+    require_auth_proxy_if_enabled(request)
+    result = await _consume(body.token)
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        "session": sign(
+            result.user_id,
+            session_version=result.session_version,
+        ),
+        "redirect": result.redirect,
+        "key_prefix": result.key_prefix,
+        "mint_once": result.mint_once,
+    }
+
+
 @router.get("/magic/verify")
-async def magic_verify(token: str):
-    email_norm = _verify(token)
-    if email_norm is None:
-        raise HTTPException(
-            400,
-            detail={
-                "code": "magic_link_invalid",
-                "message": "Magic link invalid or expired.",
-                "doc_url": "https://docs.cadverify.com/errors#magic_link_invalid",
-            },
-        )
-    r = _r()
-    key = f"magic_link:{hashlib.sha256(token.encode()).hexdigest()}"
-    stored = await r.getdel(key)  # single-use
-    if stored is None:
-        raise HTTPException(
-            400,
-            detail={
-                "code": "magic_link_used",
-                "message": "Magic link has already been used.",
-                "doc_url": "https://docs.cadverify.com/errors#magic_link_used",
-            },
-        )
-    user_id = await upsert_user(stored, None, stored, auth_provider="magic_link")
+async def magic_verify(
+    token: str = Query(..., min_length=32, max_length=4096),
+):
+    """Compatibility for pre-deploy ``?token=`` emails.
 
-    # Mint a key only when the account has none active (S3). Returning users
-    # sign in via magic link repeatedly; each login must not spawn a new key.
-    if await user_has_active_api_key(user_id):
-        resp = RedirectResponse(url="/settings/developer", status_code=303)
-        set_session_cookie(
-            resp,
-            user_id,
-            session_version=await get_user_session_version(user_id),
+    New links land on the dashboard fragment flow and call POST exchange. This
+    endpoint remains for already-delivered links and explicit API clients.
+    """
+    if os.getenv("PRODUCTION_AUTH_PROXY_REQUIRED", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        # Old links carried the token in a backend query string. With host-only
+        # first-party cookies, consuming it here would set a cookie on the API
+        # host and then redirect an unauthenticated browser to the dashboard.
+        # Preserve compatibility by moving the still-unconsumed token into the
+        # dashboard fragment, where the signed server-to-server exchange owns
+        # session establishment.
+        return RedirectResponse(
+            url=_dashboard_url(f"/magic/verify#token={quote(token, safe='')}"),
+            status_code=303,
         )
-        return resp
 
-    full_token, prefix, secret_hash = mint_token()
-    await create_api_key(
-        user_id, "Default", prefix, hmac_index(full_token), secret_hash
-    )
+    result = await _consume(token)
     resp = RedirectResponse(
-        url=f"/settings/developer?new=1&prefix={prefix}", status_code=303
+        url=_dashboard_url(result.redirect), status_code=303
     )
-    # 30-day dashboard session cookie (HMAC-signed, HttpOnly, Secure, SameSite=Lax).
     set_session_cookie(
         resp,
-        user_id,
-        session_version=await get_user_session_version(user_id),
+        result.user_id,
+        session_version=result.session_version,
     )
-    # Transient reveal cookie for one-time key display.
-    resp.set_cookie(
-        "cv_mint_once",
-        full_token,
-        max_age=60,
-        secure=True,
-        httponly=False,
-        samesite="lax",
-        domain=".cadverify.com",
-        path="/settings/developer",
-    )
+    if result.mint_once is not None:
+        resp.set_cookie(
+            "cv_mint_once",
+            result.mint_once,
+            max_age=60,
+            secure=True,
+            httponly=False,
+            samesite="lax",
+            domain=session_cookie_domain(),
+            path="/settings/developer",
+        )
     return resp

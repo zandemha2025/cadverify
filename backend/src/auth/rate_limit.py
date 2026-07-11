@@ -5,9 +5,10 @@ require_api_key). Dashboard-session users have api_key_id=0, so they are
 bucketed by user_id instead of all sharing one "key:0" quota. Public routes
 fall back to client IP.
 
-Storage: Redis when REDIS_URL is set, else in-memory. With
-in_memory_fallback_enabled=True, if Redis becomes unreachable slowapi
-drops to local memory automatically (documented in 02-RESEARCH §13).
+Storage: Redis when REDIS_URL is set, else in-memory for local/test builds.
+Released processes disable slowapi's per-process fallback because it is not a
+distributed limit; Redis failure is handled as a failed dependency instead of
+silently weakening abuse controls.
 """
 from __future__ import annotations
 
@@ -19,7 +20,14 @@ from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 
+from src.auth.client_ip import client_ip
+
 _TRUTHY = {"1", "true", "yes", "on"}
+_DEV_RELEASES = {"", "dev", "development", "local", "test", "ci"}
+
+
+def _released() -> bool:
+    return os.getenv("RELEASE", "dev").strip().lower() not in _DEV_RELEASES
 
 
 def _api_key_id(request: Request) -> str:
@@ -29,8 +37,7 @@ def _api_key_id(request: Request) -> str:
         if api_key_id > 0:
             return f"key:{api_key_id}"
         return f"user:{u.user_id}"
-    host = request.client.host if request.client else "unknown"
-    return f"ip:{host}"
+    return f"ip:{client_ip(request)}"
 
 
 def _resolve_storage_uri() -> str:
@@ -39,9 +46,9 @@ def _resolve_storage_uri() -> str:
     In-memory storage is per-process and NOT shared across workers, so it is not
     a real rate limit under horizontal scaling. Silently falling back to it in
     production is a lie. When RELEASE is set (production) we require a real
-    REDIS_URL; the documented off-switch RATE_LIMIT_ALLOW_MEMORY=1 lets an
-    operator explicitly opt into in-memory limiting. Dev/test (no RELEASE) keep
-    the memory:// convenience default.
+    REDIS_URL. ``RATE_LIMIT_ALLOW_MEMORY=1`` remains a local compatibility
+    escape hatch, but the shared production startup validator rejects it in any
+    released process. Dev/test keep the memory:// convenience default.
     """
     redis_url = os.getenv("REDIS_URL")
     if redis_url and redis_url != "memory://":
@@ -75,7 +82,10 @@ limiter = Limiter(
     storage_uri=_resolve_storage_uri(),
     strategy="fixed-window",
     headers_enabled=True,
-    in_memory_fallback_enabled=True,
+    # Per-process fallback is useful locally but is not a real distributed
+    # limit. A released process fails closed on Redis errors and health gates
+    # remove it from service instead of silently weakening abuse controls.
+    in_memory_fallback_enabled=not _released(),
     enabled=_limiter_enabled(),
 )
 

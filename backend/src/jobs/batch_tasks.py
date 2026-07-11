@@ -262,7 +262,6 @@ async def _run_cost_item(session, batch, item) -> dict:
     persisted — exactly the route's clean-refusal branch.
     """
     import asyncio
-    import os as _os
     import time
 
     from src import __version__ as _cv_version
@@ -277,10 +276,9 @@ async def _run_cost_item(session, batch, item) -> dict:
 
     # ---- read bytes (zip only unless a remote object adapter is configured) --
     if batch.input_mode == "zip":
-        blob_dir = _os.getenv("BATCH_BLOB_DIR", "/data/blobs/batch")
-        file_path = _os.path.join(blob_dir, batch.ulid, item.filename)
-        with open(file_path, "rb") as f:
-            file_bytes = f.read()
+        file_bytes = await asyncio.to_thread(
+            batch_service.read_batch_blob, batch.ulid, item.filename
+        )
     elif batch.input_mode == "s3":
         raise RuntimeError(
             "S3 batch item fetch is unsupported on this server; upload a ZIP batch or import a manifest CSV."
@@ -473,17 +471,18 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
                 # coordinator/DFM paths are untouched.
                 webhook_extra = await _run_cost_item(session, batch, item)
             else:
-                import os
+                import asyncio
                 import time
 
                 start = time.time()
 
                 # Read file bytes
                 if batch.input_mode == "zip":
-                    blob_dir = os.getenv("BATCH_BLOB_DIR", "/data/blobs/batch")
-                    file_path = os.path.join(blob_dir, batch.ulid, item.filename)
-                    with open(file_path, "rb") as f:
-                        file_bytes = f.read()
+                    file_bytes = await asyncio.to_thread(
+                        batch_service.read_batch_blob,
+                        batch.ulid,
+                        item.filename,
+                    )
                 elif batch.input_mode == "s3":
                     raise RuntimeError(
                         "S3 batch item fetch is unsupported on this server; upload a ZIP batch or import a manifest CSV."

@@ -40,6 +40,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from functools import lru_cache
 from datetime import datetime, timedelta, timezone
 
 import redis.asyncio as aioredis
@@ -94,6 +95,7 @@ def _org_limits_disabled() -> bool:
     return disabled and not os.getenv("RELEASE")
 
 
+@lru_cache(maxsize=1)
 def _r() -> aioredis.Redis:
     return aioredis.from_url(require_redis_url(), decode_responses=True)
 

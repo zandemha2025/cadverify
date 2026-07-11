@@ -1,0 +1,58 @@
+name: Regulated Staging and Production Promotion
+
+on:
+  workflow_dispatch:
+    inputs:
+      aws_region:
+        description: AWS GovCloud region used by both isolated environments
+        required: true
+        type: choice
+        options:
+          - us-gov-west-1
+          - us-gov-east-1
+      release_sha:
+        description: Reviewed 40-character main commit SHA
+        required: true
+        type: string
+      backend_digest:
+        description: KMS-signed backend digest from Regulated Image Release
+        required: true
+        type: string
+      frontend_digest:
+        description: KMS-signed frontend digest from Regulated Image Release
+        required: true
+        type: string
+
+concurrency:
+  group: regulated-promotion
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy-staging:
+    name: Verify and deploy regulated staging
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/regulated-deploy.yml
+    with:
+      target_environment: regulated-staging
+      aws_region: ${{ inputs.aws_region }}
+      release_sha: ${{ inputs.release_sha }}
+      backend_digest: ${{ inputs.backend_digest }}
+      frontend_digest: ${{ inputs.frontend_digest }}
+    secrets: inherit
+
+  deploy-production:
+    name: Promote staged regulated digests to production
+    needs: deploy-staging
+    uses: ./.github/workflows/regulated-deploy.yml
+    with:
+      target_environment: regulated-production
+      aws_region: ${{ inputs.aws_region }}
+      release_sha: ${{ inputs.release_sha }}
+      backend_digest: ${{ inputs.backend_digest }}
+      frontend_digest: ${{ inputs.frontend_digest }}
+      forbidden_boundary_fingerprint: ${{ needs.deploy-staging.outputs.boundary_fingerprint }}
+    secrets: inherit

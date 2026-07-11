@@ -32,6 +32,8 @@ from dataclasses import dataclass
 
 from fastapi import HTTPException, Request, Response
 
+from src.config.production import is_production
+
 COOKIE_NAME = "dash_session"
 MAX_AGE = 30 * 24 * 3600
 
@@ -117,6 +119,17 @@ def unsign(cookie: str) -> int | None:
     return None if payload is None else payload.user_id
 
 
+def session_cookie_domain() -> str | None:
+    """Optional shared parent domain; host-only is the safe default.
+
+    Regulated installs commonly use a non-``cadverify.com`` single-host
+    ingress, while the commercial Next.js exchange sets its own first-party
+    cookie. Operators that intentionally split SSO callback and dashboard
+    subdomains may opt into a reviewed parent domain explicitly.
+    """
+    return os.getenv("SESSION_COOKIE_DOMAIN", "").strip() or None
+
+
 def set_session_cookie(
     response: Response,
     user_id: int,
@@ -127,7 +140,7 @@ def set_session_cookie(
         COOKIE_NAME,
         sign(user_id, session_version=session_version),
         max_age=MAX_AGE,
-        domain=os.getenv("SESSION_COOKIE_DOMAIN", ".cadverify.com"),
+        domain=session_cookie_domain(),
         path="/",
         secure=True,
         httponly=True,
@@ -138,7 +151,7 @@ def set_session_cookie(
 def clear_session_cookie(response: Response) -> None:
     response.delete_cookie(
         COOKIE_NAME,
-        domain=os.getenv("SESSION_COOKIE_DOMAIN", ".cadverify.com"),
+        domain=session_cookie_domain(),
         path="/",
     )
 
@@ -158,14 +171,24 @@ async def require_dashboard_session(request: Request) -> int:
     # §39: a deactivated account's existing dashboard session is refused (this is
     # the validator behind /api/v1/keys and /auth/me). The same DB read also
     # checks session_version, giving operators server-side revocation for
-    # otherwise stateless HMAC cookies. Degrades OPEN only if the DB is
-    # unavailable in a mocked/unit-test style environment.
+    # otherwise stateless HMAC cookies. Released processes fail closed if the
+    # authoritative user/session row cannot be read; local unit-test harnesses
+    # retain the historical no-database convenience.
     db_unavailable = False
     try:
         from src.auth.models import lookup_session_user
 
         row = await lookup_session_user(payload.user_id)
-    except Exception:
+    except Exception as exc:
+        if is_production():
+            raise HTTPException(
+                503,
+                detail={
+                    "code": "auth_dependency_unavailable",
+                    "message": "Authentication is temporarily unavailable.",
+                    "doc_url": "https://docs.cadverify.com/errors#auth_dependency_unavailable",
+                },
+            ) from exc
         row = None
         db_unavailable = True
     if row is None and not db_unavailable:

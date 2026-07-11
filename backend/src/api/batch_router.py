@@ -8,6 +8,7 @@ POST /api/v1/batch/{id}/cancel   -- cancel batch
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import Optional
@@ -188,6 +189,7 @@ async def create_batch(
         except ZipTooLargeError as exc:
             raise HTTPException(status_code=413, detail=str(exc))
 
+    batch: Batch | None = None
     try:
         # Create batch row
         batch = await batch_service.create_batch(
@@ -202,10 +204,14 @@ async def create_batch(
         )
 
         if input_mode == "zip":
+            if zip_tmp_path is None:  # defensive: upload branch must set it
+                raise RuntimeError("batch ZIP temporary file was not created")
             # Extract files to disk (streamed from the temp file, not RAM).
             try:
-                items_data = batch_service.extract_zip_path_to_items(
-                    zip_tmp_path, batch.ulid
+                items_data = await asyncio.to_thread(
+                    batch_service.extract_zip_path_to_items,
+                    zip_tmp_path,
+                    batch.ulid,
                 )
             except ValueError as exc:
                 # Bad archive (zip bomb / too many items): reject, don't orphan.
@@ -261,14 +267,20 @@ async def create_batch(
                 for item in items_data
                 if item.get("status") in {"failed", "skipped"}
             )
+        await session.commit()
+    except BaseException:
+        if batch is not None and input_mode == "zip":
+            try:
+                await asyncio.to_thread(batch_service.cleanup_batch_files, batch.ulid)
+            except Exception:
+                logger.exception("Failed to clean rejected batch blobs for %s", batch.ulid)
+        raise
     finally:
         if zip_tmp_path is not None:
             try:
                 os.unlink(zip_tmp_path)
             except OSError:
                 pass
-
-    await session.commit()
 
     # Enqueue coordinator task. If enqueue fails, the batch row is already
     # committed -- reject-don't-orphan (F-ARCH-1): mark it failed and return an
@@ -288,6 +300,10 @@ async def create_batch(
         # work that can never run. Move them to a terminal state so reads agree.
         await batch_service.mark_pending_items_terminal(session, batch.id, "skipped")
         await session.commit()
+        try:
+            await asyncio.to_thread(batch_service.cleanup_batch_files, batch.ulid)
+        except Exception:
+            logger.exception("Failed to clean unscheduled batch blobs for %s", batch.ulid)
         raise HTTPException(
             status_code=503,
             detail={

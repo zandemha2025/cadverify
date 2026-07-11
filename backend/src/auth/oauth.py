@@ -13,7 +13,7 @@ from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
-from src.auth.dashboard_session import set_session_cookie
+from src.auth.dashboard_session import session_cookie_domain, set_session_cookie
 from src.auth.disposable import normalize_email
 from src.auth.hashing import hmac_index, mint_token
 from src.auth.models import (
@@ -120,7 +120,7 @@ async def google_callback(request: Request):
         secure=True,
         httponly=False,
         samesite="lax",
-        domain=".cadverify.com",
+        domain=session_cookie_domain(),
         path="/settings/developer",
     )
     return resp

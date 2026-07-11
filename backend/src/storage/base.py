@@ -23,8 +23,14 @@ from __future__ import annotations
 import abc
 from typing import BinaryIO, Protocol, Union, runtime_checkable
 
+
+class ReadableBinary(Protocol):
+    """Minimal stream shape accepted by local and managed-transfer adapters."""
+
+    def read(self, size: int = -1, /) -> bytes: ...
+
 # Payload accepted by ``put``: raw bytes or a readable binary stream.
-Payload = Union[bytes, bytearray, memoryview, BinaryIO]
+Payload = Union[bytes, bytearray, memoryview, ReadableBinary]
 
 # Default streaming chunk size (256 KiB) -- bounds memory for large blobs.
 CHUNK_SIZE = 256 * 1024
@@ -62,6 +68,12 @@ class ObjectStoreProtocol(Protocol):
     def exists(self, key: str) -> bool: ...
 
     def url(self, key: str) -> str: ...
+
+    def list_keys(self, prefix: str = "") -> list[str]: ...
+
+    def delete_prefix(self, prefix: str) -> int: ...
+
+    def healthcheck(self) -> None: ...
 
 
 class ObjectStore(abc.ABC):
@@ -110,6 +122,27 @@ class ObjectStore(abc.ABC):
         This does not guarantee the object exists; it is the address a consumer
         would use to fetch it (``file://...`` for local, ``s3://...`` for S3).
         """
+
+    @abc.abstractmethod
+    def list_keys(self, prefix: str = "") -> list[str]:
+        """Return keys below ``prefix`` in stable lexical order.
+
+        Returned keys are relative to this store's namespace, never raw provider
+        paths. Implementations must validate ``prefix`` with the same traversal
+        protections used for ordinary object keys.
+        """
+
+    @abc.abstractmethod
+    def delete_prefix(self, prefix: str) -> int:
+        """Delete every object below ``prefix`` and return the delete count.
+
+        This operation is idempotent. It exists for retention cleanup of batches
+        and reconstruction jobs without exposing provider-specific list APIs.
+        """
+
+    @abc.abstractmethod
+    def healthcheck(self) -> None:
+        """Raise when the configured storage namespace is not reachable."""
 
     # -- shared helpers ------------------------------------------------------
     @staticmethod

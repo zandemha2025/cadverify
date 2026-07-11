@@ -6,11 +6,39 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../..");
 
-const apiBase = (process.env.CADVERIFY_API_URL || "https://cadvrfy-api.fly.dev").replace(/\/$/, "");
+const configuredApiBase = (process.env.CADVERIFY_API_URL || "").trim();
+if (!configuredApiBase) {
+  throw new Error("CADVERIFY_API_URL is required; refusing to probe an implicit deployment");
+}
+const parsedApiBase = new URL(configuredApiBase);
+if (
+  !["http:", "https:"].includes(parsedApiBase.protocol) ||
+  parsedApiBase.username ||
+  parsedApiBase.password ||
+  parsedApiBase.pathname !== "/" ||
+  parsedApiBase.search ||
+  parsedApiBase.hash ||
+  parsedApiBase.origin !== configuredApiBase
+) {
+  throw new Error("CADVERIFY_API_URL must be a canonical HTTP(S) origin");
+}
+const apiBase = configuredApiBase;
 const timeoutMs = Number.parseInt(process.env.CADVERIFY_HEALTH_TIMEOUT_MS || "180000", 10);
 const intervalMs = Number.parseInt(process.env.CADVERIFY_HEALTH_INTERVAL_MS || "5000", 10);
+const requestTimeoutMs = Number.parseInt(
+  process.env.CADVERIFY_HEALTH_REQUEST_TIMEOUT_MS || "15000",
+  10,
+);
+if (!Number.isFinite(requestTimeoutMs) || requestTimeoutMs < 1000) {
+  throw new Error("CADVERIFY_HEALTH_REQUEST_TIMEOUT_MS must be at least 1000");
+}
 const requireWorker = process.env.CADVERIFY_REQUIRE_WORKER !== "0";
 const requireWorkerStrict = process.env.CADVERIFY_REQUIRE_WORKER_STRICT !== "0";
+const requireDeep = process.env.CADVERIFY_REQUIRE_DEEP === "1";
+const deepHealthToken = (process.env.CADVERIFY_DEEP_HEALTH_TOKEN || "").trim();
+if (requireDeep && !deepHealthToken) {
+  throw new Error("CADVERIFY_DEEP_HEALTH_TOKEN is required for a deep health gate");
+}
 const outputRoot = process.env.E2E_ARTIFACT_DIR
   ? path.resolve(process.env.E2E_ARTIFACT_DIR)
   : path.join(repoRoot, ".gstack", "qa-reports");
@@ -25,7 +53,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function verdict(status, body) {
+function verdict(status, body, deepStatus, deepBody) {
   const checks = [
     ["http_200", status === 200, `HTTP status ${status}`],
     ["status_ok", body?.status === "ok", `health status ${body?.status}`],
@@ -46,6 +74,28 @@ function verdict(status, body) {
       `worker_strict ${body?.async?.worker_strict}`,
     ]);
   }
+  if (requireDeep) {
+    checks.push(
+      ["deep_http_200", deepStatus === 200, `deep HTTP status ${deepStatus}`],
+      ["deep_status_ok", deepBody?.status === "ok", `deep status ${deepBody?.status}`],
+      ["deep_postgres", deepBody?.checks?.postgres?.ok === true, `deep postgres ${deepBody?.checks?.postgres?.ok}`],
+      ["deep_redis", deepBody?.checks?.redis?.ok === true, `deep redis ${deepBody?.checks?.redis?.ok}`],
+    );
+    if (deepBody?.checks?.object_store?.expected === true) {
+      checks.push([
+        "deep_object_store",
+        deepBody?.checks?.object_store?.ok === true,
+        `deep object store ${deepBody?.checks?.object_store?.ok}`,
+      ]);
+    }
+    if (requireWorker) {
+      checks.push([
+        "deep_worker_ok",
+        deepBody?.checks?.worker?.state === "ok",
+        `deep worker ${deepBody?.checks?.worker?.state || "missing"}`,
+      ]);
+    }
+  }
   const failed = checks.filter(([, ok]) => !ok);
   return {
     ok: failed.length === 0,
@@ -57,7 +107,10 @@ function verdict(status, body) {
 async function probe() {
   const started = Date.now();
   try {
-    const response = await fetch(`${apiBase}/health`, { cache: "no-store" });
+    const response = await fetch(`${apiBase}/health`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(requestTimeoutMs),
+    });
     const text = await response.text();
     let body = null;
     try {
@@ -65,12 +118,30 @@ async function probe() {
     } catch {
       body = { raw: text.slice(0, 500) };
     }
+    let deepStatus = null;
+    let deepBody = null;
+    if (requireDeep) {
+      const deepResponse = await fetch(`${apiBase}/health/deep`, {
+        cache: "no-store",
+        headers: { "X-CadVerify-Health-Token": deepHealthToken },
+        signal: AbortSignal.timeout(requestTimeoutMs),
+      });
+      deepStatus = deepResponse.status;
+      const deepText = await deepResponse.text();
+      try {
+        deepBody = JSON.parse(deepText);
+      } catch {
+        deepBody = { raw: deepText.slice(0, 500) };
+      }
+    }
     return {
       ok: true,
       durationMs: Date.now() - started,
       httpStatus: response.status,
       body,
-      verdict: verdict(response.status, body),
+      deepHttpStatus: deepStatus,
+      deepBody,
+      verdict: verdict(response.status, body, deepStatus, deepBody),
     };
   } catch (error) {
     return {
@@ -92,7 +163,7 @@ function markdown(data) {
   const rows = data.attempts
     .map((attempt) => {
       const failed = attempt.verdict.failed.map((item) => `${item.id}: ${item.detail}`).join("; ") || "none";
-      return `| ${attempt.index} | ${attempt.httpStatus} | ${attempt.durationMs} | ${attempt.verdict.ok ? "PASS" : "WAIT"} | ${failed} |`;
+      return `| ${attempt.index} | ${attempt.httpStatus} | ${attempt.deepHttpStatus ?? "n/a"} | ${attempt.durationMs} | ${attempt.verdict.ok ? "PASS" : "WAIT"} | ${failed} |`;
     })
     .join("\n");
   return `# Fly Live Health Gate
@@ -101,10 +172,11 @@ function markdown(data) {
 - API: ${data.apiBase}
 - Requires worker: ${data.requireWorker}
 - Requires strict worker gate: ${data.requireWorkerStrict}
+- Requires deep dependency gate: ${data.requireDeep}
 - Attempts: ${data.attempts.length}
 
-| Attempt | HTTP | Duration ms | Verdict | Failed checks |
-| ---: | ---: | ---: | --- | --- |
+| Attempt | HTTP | Deep HTTP | Duration ms | Verdict | Failed checks |
+| ---: | ---: | ---: | ---: | --- | --- |
 ${rows}
 `;
 }
@@ -131,8 +203,10 @@ async function main() {
     apiBase,
     timeoutMs,
     intervalMs,
+    requestTimeoutMs,
     requireWorker,
     requireWorkerStrict,
+    requireDeep,
     final: final || null,
     attempts,
   };
@@ -144,6 +218,7 @@ async function main() {
     apiBase,
     attempts: attempts.length,
     finalHttpStatus: final?.httpStatus,
+    finalDeepHttpStatus: final?.deepHttpStatus,
     finalWorker: final?.body?.async?.worker,
     workerStrict: final?.body?.async?.worker_strict,
     report: artifacts.md,

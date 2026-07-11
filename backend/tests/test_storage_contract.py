@@ -17,7 +17,13 @@ import io
 
 import pytest
 
-from src.storage import LocalObjectStore, ObjectNotFoundError, ObjectStore
+from src.storage import (
+    LocalObjectStore,
+    ObjectNotFoundError,
+    ObjectStore,
+    ObjectStoreError,
+    S3ObjectStore,
+)
 
 # ---------------------------------------------------------------------------
 # Adapter fixtures -- each yields a ready-to-use ObjectStore.
@@ -121,6 +127,22 @@ def test_content_type_is_accepted(store: ObjectStore):
     assert store.get("ct.bin") == b"payload"
 
 
+def test_list_keys_and_delete_prefix(store: ObjectStore):
+    store.put("jobs/a/one.bin", b"1")
+    store.put("jobs/a/two.bin", b"2")
+    store.put("jobs/b/keep.bin", b"3")
+    assert store.list_keys("jobs/a") == ["jobs/a/one.bin", "jobs/a/two.bin"]
+    assert store.delete_prefix("jobs/a") == 2
+    assert store.list_keys("jobs/a") == []
+    assert store.get("jobs/b/keep.bin") == b"3"
+    assert store.delete_prefix("jobs/a") == 0
+
+
+def test_healthcheck_reaches_configured_store(store: ObjectStore):
+    store.healthcheck()
+    assert store.list_keys(".cadverify-health") == []
+
+
 def test_key_traversal_is_rejected(store: ObjectStore):
     with pytest.raises((ValueError, Exception)):
         store.put("../escape.bin", b"nope")
@@ -146,3 +168,44 @@ def test_content_type_recorded_on_s3(s3_store):
     s3_store.put("typed.bin", b"payload", content_type="model/stl")
     head = s3_store._client().head_object(Bucket="cadverify-test", Key="meshes/typed.bin")
     assert head["ContentType"] == "model/stl"
+
+
+def test_kms_headers_are_applied_when_configured(s3_store):
+    store = S3ObjectStore(
+        "cadverify-test",
+        prefix="regulated",
+        kms_key_id="arn:aws:kms:us-east-1:123456789012:key/test-key",
+        client=s3_store._client(),
+    )
+    store.put("part.step", b"step")
+    head = store._client().head_object(
+        Bucket="cadverify-test", Key="regulated/part.step"
+    )
+    assert head["ServerSideEncryption"] == "aws:kms"
+    assert head["SSEKMSKeyId"].endswith("key/test-key")
+
+
+def test_s3_missing_bucket_is_not_laundered_into_object_not_found():
+    exc = RuntimeError("bucket missing")
+    exc.response = {
+        "Error": {"Code": "NoSuchBucket"},
+        "ResponseMetadata": {"HTTPStatusCode": 404},
+    }
+    assert S3ObjectStore._is_not_found(exc) is False
+
+
+def test_s3_delete_prefix_raises_on_partial_provider_failure():
+    class _Paginator:
+        def paginate(self, **_kwargs):
+            return [{"Contents": [{"Key": "prefix/jobs/a.bin"}]}]
+
+    class _Client:
+        def get_paginator(self, _name):
+            return _Paginator()
+
+        def delete_objects(self, **_kwargs):
+            return {"Errors": [{"Code": "AccessDenied", "Key": "prefix/jobs/a.bin"}]}
+
+    store = S3ObjectStore("bucket", prefix="prefix", client=_Client())
+    with pytest.raises(ObjectStoreError, match="partially applied"):
+        store.delete_prefix("jobs")

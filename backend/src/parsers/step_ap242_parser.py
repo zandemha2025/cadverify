@@ -8,21 +8,44 @@ mesh tessellation via cadquery.
 from __future__ import annotations
 
 import os
+import importlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 _HAS_XDE = False
+STEPCAFControl_Reader: Any = None
+TDocStd_Document: Any = None
+XCAFApp_Application: Any = None
+XCAFDoc_DimTolTool: Any = None
+XCAFDoc_ShapeTool: Any = None
+TCollection_ExtendedString: Any = None
+IFSelect_RetDone: Any = None
+TDF_LabelSequence: Any = None
 try:
-    from OCP.STEPCAFControl import STEPCAFControl_Reader
-    from OCP.TDocStd import TDocStd_Document
-    from OCP.XCAFApp import XCAFApp_Application
-    from OCP.XCAFDoc import XCAFDoc_DimTolTool, XCAFDoc_ShapeTool
-    from OCP.TCollection import TCollection_ExtendedString
-    from OCP.IFSelect import IFSelect_RetDone
-    from OCP.TDF import TDF_LabelSequence
+    STEPCAFControl_Reader = getattr(
+        importlib.import_module("OCP.STEPCAFControl"), "STEPCAFControl_Reader"
+    )
+    TDocStd_Document = getattr(
+        importlib.import_module("OCP.TDocStd"), "TDocStd_Document"
+    )
+    XCAFApp_Application = getattr(
+        importlib.import_module("OCP.XCAFApp"), "XCAFApp_Application"
+    )
+    _xcaf_doc = importlib.import_module("OCP.XCAFDoc")
+    XCAFDoc_DimTolTool = getattr(_xcaf_doc, "XCAFDoc_DimTolTool")
+    XCAFDoc_ShapeTool = getattr(_xcaf_doc, "XCAFDoc_ShapeTool")
+    TCollection_ExtendedString = getattr(
+        importlib.import_module("OCP.TCollection"), "TCollection_ExtendedString"
+    )
+    IFSelect_RetDone = getattr(
+        importlib.import_module("OCP.IFSelect"), "IFSelect_RetDone"
+    )
+    TDF_LabelSequence = getattr(
+        importlib.import_module("OCP.TDF"), "TDF_LabelSequence"
+    )
     _HAS_XDE = True
-except ImportError:
+except (ImportError, AttributeError):
     pass
 
 

@@ -14,9 +14,11 @@ degraded when Redis is reachable and the async tier is expected.
 
 from __future__ import annotations
 
+import asyncio
 import os
+import secrets
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
@@ -146,7 +148,7 @@ async def health_check():
 
 
 @router.get("/health/deep")
-async def health_deep():
+async def health_deep(request: Request):
     """Strict dependency-level health with REAL probes and honest degradation.
 
     Unlike the fast ``/health`` liveness check, this reports each dependency's
@@ -172,6 +174,18 @@ async def health_deep():
           }
         }
     """
+    expected_token = os.getenv("DEEP_HEALTH_TOKEN", "").strip()
+    auth_required = _flag("PRODUCTION_DEEP_HEALTH_AUTH_REQUIRED", "0") or bool(
+        expected_token
+    )
+    if auth_required:
+        supplied_token = request.headers.get("X-CadVerify-Health-Token", "")
+        if not expected_token or not secrets.compare_digest(
+            supplied_token, expected_token
+        ):
+            # Hide the dependency surface instead of advertising an auth gate.
+            return JSONResponse(content={"detail": "Not found"}, status_code=404)
+
     from datetime import datetime, timezone
 
     from src.jobs.heartbeat import (
@@ -242,12 +256,30 @@ async def health_deep():
         arq_key_present=arq_key_present,
     )
 
+    # -- Durable object storage --
+    object_backend = os.getenv("OBJECT_STORE_BACKEND", "local").strip().lower()
+    object_expected = (
+        _flag("PRODUCTION_STORAGE_REQUIRED", "0") or object_backend == "s3"
+    )
+    object_ok = False
+    object_err: str | None = None
+    if object_expected:
+        try:
+            from src.storage import get_object_store
+
+            store = get_object_store("health", default_root="/data/blobs/health")
+            await asyncio.to_thread(store.healthcheck)
+            object_ok = True
+        except Exception as exc:  # noqa: BLE001
+            object_err = type(exc).__name__
+
     # -- degradation (honest) --
     async_degraded = strict and async_expected and not redis_ok
     worker_degraded = (
         worker_strict and async_expected and redis_ok and worker_state != "ok"
     )
     healthy = pg_ok and not async_degraded and not worker_degraded
+    healthy = healthy and (not object_expected or object_ok)
 
     body = {
         "status": "ok" if healthy else "degraded",
@@ -267,6 +299,12 @@ async def health_deep():
                 "strict": worker_strict,
             },
             "queue": {"depth": queue_depth, "name": queue_name},
+            "object_store": {
+                "ok": object_ok,
+                "expected": object_expected,
+                "backend": object_backend,
+                "error": object_err,
+            },
         },
     }
     return JSONResponse(content=body, status_code=200 if healthy else 503)

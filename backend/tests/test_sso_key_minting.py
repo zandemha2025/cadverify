@@ -166,7 +166,7 @@ def test_magic_verify_mints_when_no_active_key():
         return_value=0,
     ):
         client = TestClient(app, follow_redirects=False)
-        resp = client.get("/auth/magic/verify?token=abc")
+        resp = client.get(f"/auth/magic/verify?token={'a' * 32}")
 
     assert resp.status_code == 303
     assert "new=1" in resp.headers["location"]
@@ -196,10 +196,10 @@ def test_magic_verify_skips_when_key_exists():
         return_value=0,
     ):
         client = TestClient(app, follow_redirects=False)
-        resp = client.get("/auth/magic/verify?token=abc")
+        resp = client.get(f"/auth/magic/verify?token={'a' * 32}")
 
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/settings/developer"
+    assert resp.headers["location"] == "https://cadverify.com/verify"
     assert "cv_mint_once" not in resp.headers.get("set-cookie", "")
     mock_upsert.assert_awaited_once_with(
         "user@example.com", None, "user@example.com", auth_provider="magic_link"

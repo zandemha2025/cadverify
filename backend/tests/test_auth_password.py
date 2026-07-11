@@ -17,10 +17,11 @@ from __future__ import annotations
 
 import os
 import uuid
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.testclient import TestClient
 
 from src.auth.dashboard_session import sign
 from src.auth.hashing import (
@@ -97,6 +98,89 @@ def test_clean_email_trims_and_validates():
         with pytest.raises(HTTPException) as exc:
             _clean_email(bad)
         assert exc.value.detail["code"] == "invalid_email"
+
+
+def test_released_auth_modes_close_unapproved_password_surfaces(monkeypatch):
+    from src.auth.password import (
+        _password_login_enabled,
+        _public_password_signup_enabled,
+        router,
+    )
+
+    monkeypatch.setenv("RELEASE", "sha-123")
+    monkeypatch.delenv("PASSWORD_LOGIN_ENABLED", raising=False)
+    monkeypatch.delenv("PUBLIC_PASSWORD_SIGNUP_ENABLED", raising=False)
+    monkeypatch.setenv("AUTH_MODE", "saml")
+    assert _password_login_enabled() is False
+    assert _public_password_signup_enabled() is False
+
+    app = FastAPI()
+    app.include_router(router, prefix="/auth")
+    response = TestClient(app).post(
+        "/auth/signup",
+        json={"email": "user@example.com", "password": "Password1"},
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "password_signup_disabled"
+
+    monkeypatch.setenv("AUTH_MODE", "password")
+    assert _password_login_enabled() is True
+    # Released password mode still requires email-first account creation.
+    assert _public_password_signup_enabled() is False
+
+
+def test_production_password_login_rejects_unsigned_direct_callers(monkeypatch):
+    from src.auth.password import router
+
+    monkeypatch.setenv("RELEASE", "sha-123")
+    monkeypatch.setenv("AUTH_MODE", "password")
+    monkeypatch.setenv("PASSWORD_LOGIN_ENABLED", "1")
+    monkeypatch.setenv("PRODUCTION_AUTH_PROXY_REQUIRED", "1")
+    monkeypatch.delenv("AUTH_PROXY_SECRET", raising=False)
+    app = FastAPI()
+    app.include_router(router, prefix="/auth")
+
+    with patch(
+        "src.auth.password.get_login_credentials", new_callable=AsyncMock
+    ) as credentials:
+        response = TestClient(app).post(
+            "/auth/login",
+            json={"email": "user@example.com", "password": "Password1"},
+        )
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "auth_proxy_unavailable"
+    credentials.assert_not_awaited()
+
+
+def test_initial_password_rotates_session_after_verified_login(monkeypatch):
+    from src.auth.dashboard_session import require_dashboard_session, unsign_payload
+    from src.auth.password import router
+
+    monkeypatch.delenv("RELEASE", raising=False)
+    app = FastAPI()
+    app.include_router(router, prefix="/auth")
+    app.dependency_overrides[require_dashboard_session] = lambda: 7
+
+    with patch(
+        "src.auth.password.set_initial_password_hash",
+        new_callable=AsyncMock,
+        return_value=4,
+    ) as set_hash, patch(
+        "src.auth.password.get_user_public",
+        new_callable=AsyncMock,
+        return_value=("user@example.com", "analyst", "magic_link"),
+    ), patch("src.auth.password._fire_audit"):
+        response = TestClient(app).post(
+            "/auth/password/initialize", json={"password": "NewPassword1"}
+        )
+
+    assert response.status_code == 200
+    payload = unsign_payload(response.json()["session"])
+    assert payload is not None
+    assert payload.user_id == 7
+    assert payload.session_version == 4
+    set_hash.assert_awaited_once()
 
 
 @pytest.mark.asyncio

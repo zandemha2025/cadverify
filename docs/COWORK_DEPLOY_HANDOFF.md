@@ -14,12 +14,18 @@ platform (FastAPI backend + gmsh geometry engine + arq worker + Next.js frontend
 automotive, aerospace/defense, job-shops) can sign up and use it. Auth is
 **password + magic-link (no Google)**.
 
-**The app is already hardened and tested for this launch — your job is
-PROVISIONING + DEPLOY, not fixing app code.** Specifically, in the current
+The application has strong test and isolation evidence, but the production
+program is not complete until the commercial or regulated runbook passes. Use
+`docs/DUAL_PRODUCTION_ARCHITECTURE.md` to select the plane. Specifically, in the current
 branch:
-- Full backend test suite: **1626 passing**.
-- Auth: password + magic-link works without Google; a missing launch secret
-  fails the *deploy*, not the first user's login.
+- Backend and frontend regression gates are wired into CI; use the current
+  commit's CI evidence rather than this document as a test-count claim.
+- Auth: password + magic-link works without Google. The magic token is exchanged
+  server-to-server into a first-party dashboard session, and a signed client-IP
+  handoff keeps Redis abuse limits correct behind the web proxy. Missing or
+  mismatched launch secrets fail deployment/handshake, not the first login.
+  Released session checks also fail closed when database-backed revocation state
+  is unavailable.
 - Multi-tenant isolation is verified (cross-org reads → 404, no leaks).
 - Per-org rate limits + daily quota (fail-open) guard against noisy neighbors.
 - A load-critical bug (one heavy STEP freezing all tenants) is fixed + verified.
@@ -30,23 +36,22 @@ branch:
   burst 500'd 55% of requests via DB-pool exhaustion.)
 - Deploy config, secrets gate, and health gates are wired.
 
-**Honest capacity note (not a blocker, but know it):** the single web machine has
-a real throughput ceiling — **~8 concurrent analyses per machine** (each analysis
-is 30–80s of CPU). Above that, users get a *retryable* "server busy" 429, not a
-failure. For 10 orgs in normal use this is invisible; under a *synchronized* burst
-(e.g. all orgs uploading at a kickoff) some requests get told to retry. Levers, in
-order: run web at **≥2 machines** (`fly scale count web=N`), then raise
-`MAX_CONCURRENT_ANALYSES` / `DB_POOL_SIZE` (see §7). A deeper fix (releasing the DB
-connection during compute, to admit more per machine) is written up as a staged
-post-launch follow-up. Also: blobs default to a single volume unless you enable S3
-(see §2).
+**Honest capacity note:** the commercial baseline runs two API and two worker
+Machines. Each API Machine still has a finite CPU-bound analysis ceiling;
+overload is admitted as retryable 429 rather than 5xx. Prove the launch workload
+in isolated staging before promotion. S3 is mandatory and all Fly-local files
+are disposable scratch/cache, so no Machine volume is a data source of truth.
 
 ## 1. Current code state
 
-- Everything is on branch **`claude/resume-review-oxqw0l`**, **not yet merged to
-  `main`**. CI deploys **only on push to `main`** (`.github/workflows/ci.yml`).
-- So step 1 of going live is: get this branch reviewed + **merged to `main`**
-  (it's large — a review pass is prudent), which triggers the deploy pipeline.
+- The production-hardening work is on **`codex/dual-production-readiness`** and
+  is not merged to `main`. The previously inspected PR #23 targets `prod` and is
+  non-mergeable; resolve that branch/PR mismatch before release.
+- A push to protected `main` runs CI and creates scanned digest/SBOM release
+  evidence. It does **not** deploy production. Commercial deployment is the
+  protected staging-then-production workflow; regulated release and deployment
+  use their separate protected workflows and require green CI for the exact
+  regulated source SHA.
 - The regression gate for ANY code change is the full backend suite
   (`cd backend && .venv/bin/python -m pytest -q`). Do not ship a red suite.
 
@@ -54,15 +59,16 @@ post-launch follow-up. Also: blobs default to a single volume unless you enable 
 
 1. **Where to host.** The repo default is **Fly.io** (`backend/fly.toml` app
    `cadvrfy-api`, `frontend/fly.toml` app `cadvrfy-web`) — fastest to stand up,
-   good for a 10-org beta. Alternatives already supported by the repo:
+   the commercial SaaS path. Alternatives already supported by the repo:
    - **Kubernetes** (AWS EKS / GCP GKE / Azure AKS / on-prem) via the Helm chart
      in `charts/cadverify/` — the enterprise-standard path.
    - **Self-host** via `docker-compose.yml`, or the air-gapped
      `cadverify-enterprise/` bundle (SAML) — **likely required for a
      defense/ITAR customer** that can't use public multi-tenant cloud.
-   Recommend **Fly for the beta** unless a defense org needs on-prem *now*.
-2. **Object store.** **S3 (recommended, durable)** vs the single Fly volume
-   (simpler, but a single point of data loss). For paying customers, use S3.
+   Use **AWS GovCloud EKS or an approved customer-controlled Kubernetes target**
+   for regulated/CUI/ITAR workloads; do not mix those workloads into Fly SaaS.
+2. **Object store.** **S3 is mandatory in production.** Fly-local files are
+   ephemeral scratch/cache only.
 3. **Domain** for `DASHBOARD_ORIGIN` (magic-link URLs + cookie origin + CORS).
 
 ## 3. Prerequisites the HUMAN must supply (you can't create these)
@@ -73,10 +79,12 @@ post-launch follow-up. Also: blobs default to a single volume unless you enable 
 | Managed Postgres (Neon / RDS / Cloud SQL) — **pooled + direct URLs** | provider | `DATABASE_URL`, `DATABASE_URL_DIRECT` |
 | Redis (Upstash / Fly Redis / ElastiCache) | provider | `REDIS_URL` |
 | Resend account + **verified sending domain** | resend.com | `RESEND_API_KEY`, `RESEND_FROM` |
-| Cloudflare Turnstile | cloudflare | `TURNSTILE_SECRET` (+ site key for FE) |
+| Cloudflare Turnstile | cloudflare | API `TURNSTILE_SECRET`; web `TURNSTILE_SITE_KEY` |
 | A domain | registrar/DNS | `DASHBOARD_ORIGIN` |
-| (Recommended) S3 bucket + creds | AWS/compatible | `OBJECT_STORE_BACKEND=s3`, `OBJECT_STORE_S3_*` |
-| (Recommended) Sentry project | sentry.io | `SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN` |
+| S3 bucket + least-privilege creds | AWS/approved compatible provider | `OBJECT_STORE_BACKEND=s3`, `OBJECT_STORE_S3_*` |
+| Sentry projects and alert path | sentry.io | `SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN` |
+| GovCloud/customer regulated landing zone + authorized U.S.-person operators | AWS/customer + legal/security owners | EKS/RDS/Redis/S3/KMS/ECR/IdP/OTLP/private values/runner evidence |
+| CUI/ITAR scope, system boundary, data flow, and authorization | export-control counsel + accountable security owner | written approval/evidence, not an application env var |
 
 Note: **Neon is just managed Postgres and Fly is just a container host — neither
 is load-bearing in the code.** Swapping Postgres providers is a connection-string
@@ -84,27 +92,38 @@ change; moving off Fly is the Helm/compose path above.
 
 ## 4. The deploy sequence — follow `docs/LAUNCH_RUNBOOK.md` exactly
 
-That runbook is authoritative (11 sections: prerequisites → provision → secrets →
-object store → deploy → verify → data safety → monitoring → tunables → rollback).
-The spine:
+That runbook is authoritative. The spine:
 
-1. **Provision** the two Fly apps + the `/data` volume (runbook §2).
-2. **Secrets**: run `bash scripts/ops/gen-launch-secrets.sh` — it generates the
+1. **Provision** isolated staging and production Fly API/frontend apps and the
+   external Postgres, Redis, S3, email, DNS, and monitoring resources. Do not
+   provision a shared `/data` volume as a durability mechanism.
+2. **Secrets**: run
+   `CADVERIFY_FLY_APP=<target-api-app> CADVERIFY_FLY_WEB_APP=<target-web-app>
+   bash scripts/ops/gen-launch-secrets.sh`
+   — it generates the
    random secrets (`os.urandom(32)`) as ready-to-paste `fly secrets set` lines and
-   marks the external ones `<FILL_ME: ...>`. Set them all (runbook §3).
-3. **Object store** (runbook §4) — set S3 if chosen.
-4. **Deploy** (runbook §5): merge to `main` (CI deploys) or `fly deploy`.
-   Migrations run automatically (`alembic upgrade head` via `release_command`).
-5. **Verify** (runbook §6) — see acceptance bar below.
+   marks the external ones `<FILL_ME: ...>`. Set them all (runbook §4).
+3. **Object store** (runbook §4) — configure mandatory production S3.
+4. **Release**: merge to protected `main`; CI builds/scans and records exact
+   digests. Run **Commercial SaaS Promotion** with that SHA. Staging must pass
+   before the protected production approval is available. Migrations run via
+   `release_command`; break-glass direct deploy is not the normal path.
+5. **Verify** (runbook §7) — see acceptance bar below.
 
 ## 5. Acceptance criteria — do NOT declare "done" until ALL pass
 
-- [ ] `node scripts/ops/fly-required-secrets-gate.mjs` passes (every required
-      secret is set) — this is also enforced in CI.
-- [ ] `node scripts/ops/fly-live-health-gate.mjs` passes, and `GET /health/deep`
+- [ ] `FLY_APP_NAME=<target-api-app> node scripts/ops/fly-required-secrets-gate.mjs`
+      passes with production
+      storage and observability requirements enabled.
+- [ ] The web secret gate requires `AUTH_PROXY_SECRET,TURNSTILE_SITE_KEY`, and
+      `GET /api/auth/proxy-health` passes after deploy.
+- [ ] `CADVERIFY_DEEP_HEALTH_TOKEN=<matching monitor secret> node
+      scripts/ops/fly-live-health-gate.mjs` passes, and authenticated
+      `GET /health/deep`
       shows **postgres + redis + worker all green** (not degraded).
-- [ ] A real person can **sign up, receive a magic-link email, click it, and log
-      in.** (If no email arrives, the Resend secrets/domain are wrong — see §6.)
+- [ ] A real person can **sign up by verified magic link, set an initial password
+      in Settings → Security, sign out, and log in by password.** Public direct
+      password signup remains disabled. (If no email arrives, inspect Resend.)
 - [ ] A real **STEP upload returns a cost/verdict** (upload `cube.step` or any
       real part).
 - [ ] **Two different orgs cannot see each other's data** (spot-check a
@@ -112,28 +131,43 @@ The spine:
 - [ ] (Recommended) run `node scripts/ops/load-profile.mjs` with
       `CADVERIFY_API_URL=<deployed url>` and confirm `/health` p95 stays low and
       the cost path completes without 5xx.
+- [ ] `docs/PRODUCTION_LAUNCH_AUDIT.md` no longer has a blocking finding for
+      the target plane, with closure evidence reviewed by the accountable owner.
 
 ## 6. Critical gotchas (these silently break a launch)
 
 1. **Real secrets, not the dev stubs.** The dev runbook uses well-known
    `base64('a'/'b'/'c'*32)` and `SESSION_SECRET=dev` / `TURNSTILE_SECRET=test`.
-   These are PUBLIC. Use the values from `gen-launch-secrets.sh`. The startup
-   guard blocks *absent* secrets but a stub base64 would pass the length check —
-   so this is on you to get right.
+   These are PUBLIC. Use the values from `gen-launch-secrets.sh`. Released
+   startup now rejects absent, malformed, short, common-development, and obvious
+   repeated-byte/low-entropy cryptographic stubs; do not weaken or bypass that
+   gate.
 2. **Magic-link needs email.** It's enabled via `AUTH_MODE=password` +
    `MAGIC_LINK_ENABLED=true` (already set in `backend/fly.toml`) **plus** the
-   Resend trio (`RESEND_API_KEY`, `RESEND_FROM`, `DASHBOARD_ORIGIN`). No email
+   Resend pair (`RESEND_API_KEY`, `RESEND_FROM`) and protected runtime
+   `CADVERIFY_DASHBOARD_ORIGIN`. No email
    creds ⇒ no login links go out ⇒ users can't get in.
-3. **The Turnstile env var is `TURNSTILE_SECRET`** (the name the backend reads),
-   not `TURNSTILE_SECRET_KEY` (which some docs use). Wrong name = captcha silently
-   off.
-4. **`DASHBOARD_ORIGIN` must be the real https domain** or magic-link URLs and
-   the session cookie break.
-5. **Enable Postgres backups (Neon PITR / RDS automated backups)** — this is a
+3. **Turnstile uses two keys:** API `TURNSTILE_SECRET` and web
+   `TURNSTILE_SITE_KEY`. Do not use `TURNSTILE_SECRET_KEY`.
+4. **Deployment controls must not be Fly secrets.** Fly secrets override
+   `fly.toml` and deploy-time `--env` values. The promotion gate rejects stale
+   shadowing secrets, including `DASHBOARD_ORIGIN`, auth/storage/release mode,
+   every `PRODUCTION_*` guard, strict-health controls, reconstruction egress,
+   `RATE_LIMIT_ALLOW_MEMORY`, and `NODE_ENV`. Keep
+   `CADVERIFY_DASHBOARD_ORIGIN` as the protected GitHub environment variable
+   and remove every forbidden name reported by the gate before promotion.
+5. **`AUTH_PROXY_SECRET` must be identical on the API and web apps.** Generate
+   it once with the launch generator; promotion proves the pair with the
+   proxy-health handshake.
+6. **Enable Postgres backups (Neon PITR / RDS automated backups)** — this is a
    provider dashboard toggle, not in the repo. Then run
    `scripts/ops/postgres-restore-drill.sh` against a scratch DB to prove restore.
-6. **Frontend cold start**: `frontend/fly.toml` is set to `min_machines_running
-   = 1` so first-hit isn't slow — keep it ≥1.
+7. **Frontend availability**: `frontend/fly.toml` is set to
+   `min_machines_running = 2`; do not reduce it for production.
+8. **Regulated auth is SAML-only in the approved baseline.** The application
+   contains OIDC code, but the protected regulated workflow and manifest gate
+   intentionally require SAML until a separate OIDC boundary/release review is
+   completed. Do not relabel an unreviewed OIDC overlay as production-ready.
 
 ## 7. Post-launch
 
@@ -158,12 +192,14 @@ The spine:
 
 ## 8. Rollback
 
-- `fly releases` → `fly deploy --image <previous>` (runbook §10). Kill-switch
+- Use the previous retained digest through the approved rollback process
+  (runbook §9). Kill-switch
   script: `scripts/ops/kill-switch.sh`.
 
 ---
 
-**Summary for the human:** the code is launch-ready and tested; what remains is
-real infrastructure you provision. Give Cowork the accounts/creds in §3, have it
-follow `docs/LAUNCH_RUNBOOK.md`, and hold it to the §5 acceptance bar. The one
-thing no agent can do for you is create the accounts and hold the API keys.
+**Summary for the human:** the repository contains production gates, but no
+environment is production until its runbook and security verdict pass with real
+infrastructure. Give the operator access to the accounts in §3 without pasting
+credentials into chat, follow the applicable runbook, and hold the release to the
+§5 acceptance bar.

@@ -11,6 +11,7 @@ import os
 from unittest.mock import MagicMock, patch, AsyncMock
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 
@@ -88,6 +89,26 @@ def test_saml_login_redirect(mock_build_auth):
     assert "idp.example.com" in resp.headers.get("location", "")
 
 
+@patch("src.auth.saml._store_saml_request", new_callable=AsyncMock)
+@patch("src.auth.saml._build_auth")
+def test_production_saml_login_records_one_time_request_state(
+    mock_build_auth, mock_store
+):
+    mock_auth = _mock_saml_auth()
+    mock_auth.get_last_request_id.return_value = "saml-request-123"
+    mock_build_auth.return_value = mock_auth
+    app = _make_app("saml")
+    client = TestClient(app, follow_redirects=False)
+
+    with patch.dict(os.environ, {"RELEASE": "prod-sha"}):
+        resp = client.get("/auth/saml/login")
+
+    assert resp.status_code == 302
+    relay_state = mock_auth.login.call_args.kwargs["return_to"]
+    assert len(relay_state) >= 40
+    mock_store.assert_awaited_once_with(relay_state, "saml-request-123")
+
+
 @patch("src.auth.saml._saml_provision_user", new_callable=AsyncMock)
 @patch("src.auth.saml.get_user_session_version", new_callable=AsyncMock)
 @patch("src.auth.saml._build_auth")
@@ -104,6 +125,55 @@ def test_saml_acs_provisions_user(mock_build_auth, mock_session_version, mock_pr
     mock_provision.assert_called_once_with("user@enterprise.com")
     # Session cookie should be set
     assert "dash_session" in resp.headers.get("set-cookie", "")
+
+
+@patch("src.auth.saml._consume_saml_request", new_callable=AsyncMock)
+@patch("src.auth.saml._saml_provision_user", new_callable=AsyncMock)
+@patch("src.auth.saml.get_user_session_version", new_callable=AsyncMock)
+@patch("src.auth.saml._build_auth")
+def test_production_saml_acs_correlates_and_consumes_request_once(
+    mock_build_auth, mock_session_version, mock_provision, mock_consume
+):
+    mock_auth = _mock_saml_auth()
+    mock_build_auth.return_value = mock_auth
+    mock_session_version.return_value = 0
+    mock_provision.return_value = 42
+    mock_consume.return_value = "saml-request-123"
+    app = _make_app("saml")
+    client = TestClient(app, follow_redirects=False)
+    relay_state = "A" * 43
+
+    with patch.dict(os.environ, {"RELEASE": "prod-sha"}):
+        resp = client.post(
+            "/auth/saml/acs",
+            data={"SAMLResponse": "base64data", "RelayState": relay_state},
+        )
+
+    assert resp.status_code == 303
+    mock_consume.assert_awaited_once_with(relay_state)
+    mock_auth.process_response.assert_called_once_with(request_id="saml-request-123")
+
+
+@patch("src.auth.saml._consume_saml_request", new_callable=AsyncMock)
+@patch("src.auth.saml._build_auth")
+def test_production_saml_acs_rejects_missing_expired_or_replayed_state(
+    mock_build_auth, mock_consume
+):
+    mock_auth = _mock_saml_auth()
+    mock_build_auth.return_value = mock_auth
+    mock_consume.return_value = None
+    app = _make_app("saml")
+    client = TestClient(app, follow_redirects=False)
+
+    with patch.dict(os.environ, {"RELEASE": "prod-sha"}):
+        resp = client.post(
+            "/auth/saml/acs",
+            data={"SAMLResponse": "base64data", "RelayState": "A" * 43},
+        )
+
+    assert resp.status_code == 400
+    assert "saml_state_invalid" in resp.text
+    mock_auth.process_response.assert_not_called()
 
 
 @patch("src.auth.saml._apply_saml_group_assignment_for_login", new_callable=AsyncMock)
@@ -183,6 +253,18 @@ def test_saml_acs_rejects_unauthenticated(mock_build_auth):
     assert "saml_not_authenticated" in resp.text
 
 
+@pytest.mark.asyncio
+@patch("src.auth.saml.upsert_user", new_callable=AsyncMock)
+async def test_saml_provision_rejects_non_email_nameid(mock_upsert):
+    from src.auth.saml import _saml_provision_user
+
+    with pytest.raises(HTTPException) as exc:
+        await _saml_provision_user("not-an-email")
+    assert getattr(exc.value, "status_code", None) == 400
+    assert exc.value.detail["code"] == "saml_email_invalid"
+    mock_upsert.assert_not_awaited()
+
+
 def test_auth_mode_saml_disables_google():
     """When AUTH_MODE=saml, /auth/google/start returns 404."""
     app = _make_app("saml")
@@ -233,6 +315,86 @@ def test_saml_logout_redirects_to_idp(mock_build_auth):
     assert "idp.example.com/slo" in resp.headers.get("location", "")
 
 
+@patch("src.auth.saml._store_saml_request", new_callable=AsyncMock)
+@patch("src.auth.saml._build_auth")
+def test_production_saml_logout_records_one_time_request_state(
+    mock_build_auth, mock_store
+):
+    mock_auth = _mock_saml_auth()
+    mock_auth.get_last_request_id.return_value = "saml-logout-123"
+    mock_build_auth.return_value = mock_auth
+    app = _make_app("saml")
+    client = TestClient(app, follow_redirects=False)
+
+    with patch.dict(os.environ, {"RELEASE": "prod-sha"}):
+        resp = client.get("/auth/saml/logout")
+
+    assert resp.status_code == 302
+    relay_state = mock_auth.logout.call_args.kwargs["return_to"]
+    assert len(relay_state) >= 40
+    mock_store.assert_awaited_once_with(relay_state, "saml-logout-123")
+
+
+@patch("src.auth.saml._consume_saml_request", new_callable=AsyncMock)
+@patch("src.auth.saml._build_auth")
+def test_production_saml_redirect_logout_response_is_correlated(
+    mock_build_auth, mock_consume
+):
+    mock_auth = _mock_saml_auth()
+    mock_build_auth.return_value = mock_auth
+    mock_consume.return_value = "saml-logout-123"
+    app = _make_app("saml")
+    client = TestClient(app, follow_redirects=False)
+    relay_state = "A" * 43
+
+    with patch.dict(os.environ, {"RELEASE": "prod-sha"}):
+        resp = client.get(
+            "/auth/saml/sls",
+            params={"SAMLResponse": "base64data", "RelayState": relay_state},
+        )
+
+    assert resp.status_code == 302
+    mock_consume.assert_awaited_once_with(relay_state)
+    mock_auth.process_slo.assert_called_once_with(request_id="saml-logout-123")
+
+
+@patch("src.auth.saml._consume_saml_request", new_callable=AsyncMock)
+@patch("src.auth.saml._build_auth")
+def test_production_saml_logout_rejects_replayed_response(
+    mock_build_auth, mock_consume
+):
+    mock_auth = _mock_saml_auth()
+    mock_build_auth.return_value = mock_auth
+    mock_consume.return_value = None
+    app = _make_app("saml")
+    client = TestClient(app, follow_redirects=False)
+
+    with patch.dict(os.environ, {"RELEASE": "prod-sha"}):
+        resp = client.get(
+            "/auth/saml/sls",
+            params={"SAMLResponse": "base64data", "RelayState": "A" * 43},
+        )
+
+    assert resp.status_code == 400
+    assert "saml_logout_state_invalid" in resp.text
+    mock_auth.process_slo.assert_not_called()
+
+
+@patch("src.auth.saml._build_auth")
+def test_saml_invalid_logout_response_does_not_clear_session(mock_build_auth):
+    mock_auth = _mock_saml_auth()
+    mock_auth.get_errors.return_value = ["invalid_signature"]
+    mock_build_auth.return_value = mock_auth
+    app = _make_app("saml")
+    client = TestClient(app, follow_redirects=False)
+
+    resp = client.post("/auth/saml/sls", data={"SAMLResponse": "bad"})
+
+    assert resp.status_code == 400
+    assert "saml_logout_failed" in resp.text
+    assert "dash_session" not in resp.headers.get("set-cookie", "")
+
+
 # ---------------------------------------------------------------------------
 # S2: settings.json ${ENV_VAR} expansion
 # ---------------------------------------------------------------------------
@@ -273,6 +435,72 @@ def test_saml_settings_undefined_var_left_verbatim(tmp_path, monkeypatch):
 
     s = _load_saml_settings()
     assert s["sp"]["entityId"] == "${SAML_SP_ENTITY_ID}"
+
+
+def _write_production_saml_profile(tmp_path, *, strict: bool = True):
+    (tmp_path / "settings.json").write_text(
+        json.dumps(
+            {
+                "strict": strict,
+                "debug": False,
+                "sp": {
+                    "entityId": "https://cadverify.example.mil",
+                    "assertionConsumerService": {
+                        "url": "https://cadverify.example.mil/auth/saml/acs"
+                    },
+                    "singleLogoutService": {
+                        "url": "https://cadverify.example.mil/auth/saml/sls"
+                    },
+                },
+                "idp": {
+                    "entityId": "https://idp.example.mil",
+                    "singleSignOnService": {"url": "https://idp.example.mil/sso"},
+                    "x509cert": "A" * 300,
+                },
+            }
+        )
+    )
+    (tmp_path / "advanced_settings.json").write_text(
+        json.dumps(
+            {
+                "security": {
+                    "wantMessagesSigned": True,
+                    "wantAssertionsSigned": True,
+                    "wantNameId": True,
+                    "allowSingleLabelDomains": False,
+                    "allowRepeatAttributeName": False,
+                    "rejectDeprecatedAlgorithm": True,
+                    "signatureAlgorithm": (
+                        "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"
+                    ),
+                    "digestAlgorithm": "http://www.w3.org/2001/04/xmlenc#sha256",
+                }
+            }
+        )
+    )
+
+
+def test_production_saml_profile_is_validated_at_startup(tmp_path, monkeypatch):
+    from src.auth.saml import assert_production_saml_settings
+
+    _write_production_saml_profile(tmp_path)
+    monkeypatch.setenv("RELEASE", "prod-sha")
+    monkeypatch.setenv("AUTH_MODE", "saml")
+    monkeypatch.setenv("SAML_CONFIG_DIR", str(tmp_path))
+
+    assert_production_saml_settings()
+
+
+def test_production_saml_profile_rejects_weak_settings(tmp_path, monkeypatch):
+    from src.auth.saml import assert_production_saml_settings
+
+    _write_production_saml_profile(tmp_path, strict=False)
+    monkeypatch.setenv("RELEASE", "prod-sha")
+    monkeypatch.setenv("AUTH_MODE", "saml")
+    monkeypatch.setenv("SAML_CONFIG_DIR", str(tmp_path))
+
+    with pytest.raises(RuntimeError, match="strict mode"):
+        assert_production_saml_settings()
 
 
 # ---------------------------------------------------------------------------

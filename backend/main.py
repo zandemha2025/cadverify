@@ -124,23 +124,12 @@ def _magic_link_enabled() -> bool:
 def _magic_link_requires_valid_secrets() -> bool:
     """Whether boot must fail closed unless magic-link secrets are complete.
 
-    True whenever magic-link is enabled AND either (a) MAGIC_LINK_ENABLED
-    was explicitly forced on, or (b) the config trio is actually present
-    (i.e. someone is really trying to run magic-link, not just inheriting
-    it as a side effect of AUTH_MODE). This is what lets AUTH_MODE=password
-    + Resend/HMAC/DASHBOARD_ORIGIN creds (the launch config) fail the
-    DEPLOY on a missing value instead of 500ing on the first login — while
-    leaving a legacy AUTH_MODE=google/hybrid deployment that has never
-    configured Resend exactly as lax as before (unchanged behavior; that
-    deployment's magic router was already mounted-but-unconfigured pre-fix,
-    and this change is scoped to closing the password-launch gap, not to
-    retroactively hardening every existing google/hybrid deploy)."""
-    if not _magic_link_enabled():
-        return False
-    override = os.getenv("MAGIC_LINK_ENABLED")
-    if override is not None:
-        return override.strip().lower() in ("1", "true", "yes", "on")
-    return _magic_link_configured()
+    Every enabled production provider must be complete at startup. A Google or
+    hybrid deployment that does not want email links must explicitly set
+    ``MAGIC_LINK_ENABLED=0``; leaving an enabled router half-configured would
+    turn the first customer request into a 500.
+    """
+    return _is_production() and _magic_link_enabled()
 
 
 def _assert_production_secrets() -> None:
@@ -149,10 +138,15 @@ def _assert_production_secrets() -> None:
     Mirrors the DASHBOARD_SESSION_SECRET fail-closed pattern (refuse to run
     without a real secret), but as a startup guard so a misconfigured deploy
     crashes loudly instead of silently signing sessions with a well-known key.
-    Off-switch: SECRET_ENFORCEMENT_ENABLED=0 (default on).
+    Secret enforcement cannot be disabled in a released process. Local/test
+    builds remain unaffected.
     """
-    if os.getenv("SECRET_ENFORCEMENT_ENABLED", "1") == "0" or not _is_production():
+    if not _is_production():
         return
+    if os.getenv("SECRET_ENFORCEMENT_ENABLED", "1") == "0":
+        raise RuntimeError(
+            "SECRET_ENFORCEMENT_ENABLED cannot be disabled in a production build"
+        )
     session_secret = os.getenv("SESSION_SECRET", "").strip()
     if not session_secret or session_secret == "dev-only":
         raise RuntimeError(
@@ -222,7 +216,23 @@ def _assert_production_secrets() -> None:
                 )
 
 
+def _assert_production_operations() -> None:
+    """Compatibility wrapper used by startup tests and the API entrypoint."""
+    from src.config.production import assert_production_operations
+
+    assert_production_operations()
+
+
+def _assert_production_identity_config() -> None:
+    """Validate provider-specific production configuration before serving."""
+    from src.auth.saml import assert_production_saml_settings
+
+    assert_production_saml_settings()
+
+
 _assert_production_secrets()
+_assert_production_operations()
+_assert_production_identity_config()
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
@@ -255,6 +265,7 @@ if os.getenv("SENTRY_DSN"):
         before_send=sentry_before_send,
         send_default_pii=False,
         release=os.getenv("RELEASE", "dev"),
+        environment=os.getenv("DEPLOYMENT_ENVIRONMENT", "development"),
     )
 
 
@@ -354,6 +365,10 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.environ.get("SESSION_SECRET", "dev-only"),
+    session_cookie="cv_oauth_state",
+    max_age=15 * 60,
+    same_site="lax",
+    https_only=_is_production(),
 )
 
 # Security response headers (S6) — added LAST so it is the outermost user

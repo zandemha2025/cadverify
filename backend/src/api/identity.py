@@ -145,17 +145,27 @@ async def _read_onboard_zip_files(zip_upload: UploadFile) -> tuple[list, list]:
     ``[(filename, bytes)]`` and ``skipped`` carries the extractor's own skips
     (unsupported native CAD, oversize) as ``{filename, reason}`` — no reinvented ZIP
     handling, no reinvented CAD parsing."""
+    import asyncio
     import os as _os
 
     from src.services import batch_service
+    from ulid import ULID
 
     files: list[tuple[str, bytes]] = []
     skipped: list[dict] = []
+    # A fixed "parts-master" prefix lets simultaneous org imports overwrite or
+    # delete each other's same-named CAD files. Give every request an isolated
+    # temporary namespace; the durable org-scoped rows are created later.
+    object_namespace = f"parts-master-{ULID()}"
     tmp_path = await batch_service.stream_upload_to_tempfile(
         zip_upload, batch_service.BATCH_MAX_ZIP_BYTES
     )
     try:
-        items = batch_service.extract_zip_path_to_items(tmp_path, "parts-master")
+        items = await asyncio.to_thread(
+            batch_service.extract_zip_path_to_items,
+            tmp_path,
+            object_namespace,
+        )
         for item in items:
             if item.get("status") == "skipped":
                 skipped.append({
@@ -163,16 +173,35 @@ async def _read_onboard_zip_files(zip_upload: UploadFile) -> tuple[list, list]:
                     "reason": item.get("error", "skipped by extractor"),
                 })
                 continue
-            path = item.get("path")
-            if not path:
-                continue
-            with open(path, "rb") as fh:
-                files.append((item["filename"], fh.read()))
+            files.append(
+                (
+                    item["filename"],
+                    await asyncio.to_thread(
+                        batch_service.read_batch_blob,
+                        object_namespace,
+                        item["filename"],
+                    ),
+                )
+            )
             try:
-                _os.unlink(path)
-            except OSError:
+                await asyncio.to_thread(
+                    batch_service.delete_batch_blob,
+                    object_namespace,
+                    item["filename"],
+                )
+            except (OSError, KeyError):
                 pass
     finally:
+        try:
+            await asyncio.to_thread(
+                batch_service.cleanup_batch_files,
+                object_namespace,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to clean temporary parts-master objects under %s",
+                object_namespace,
+            )
         try:
             _os.unlink(tmp_path)
         except OSError:

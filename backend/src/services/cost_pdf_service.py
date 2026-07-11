@@ -147,15 +147,20 @@ async def cached_cost_pdf(decision: CostDecision) -> bytes:
     key = _cache_key(decision.ulid, _fingerprint(html_str))
     store = _pdf_store()
     try:
-        if store.exists(key):
+        if await asyncio.to_thread(store.exists, key):
             logger.info("Serving cached cost PDF for %s (%s)", decision.ulid, key)
-            return store.get(key)
+            return await asyncio.to_thread(store.get, key)
     except Exception:  # pragma: no cover - cache read is best-effort
         logger.warning("Cost PDF cache read failed for %s", key, exc_info=True)
 
     pdf_bytes = await generate_cost_pdf(decision, html_str)
     try:
-        store.put(key, pdf_bytes, content_type="application/pdf")
+        await asyncio.to_thread(
+            store.put,
+            key,
+            pdf_bytes,
+            content_type="application/pdf",
+        )
         logger.info("Cached cost PDF at %s", key)
     except Exception:  # pragma: no cover - caching is best-effort
         logger.warning("Failed to cache cost PDF at %s", key, exc_info=True)

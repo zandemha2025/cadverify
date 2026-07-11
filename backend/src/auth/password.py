@@ -20,8 +20,9 @@ import os
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from src.auth.client_ip import require_auth_proxy_if_enabled, require_verified_proxy
 from src.auth.dashboard_session import (
     clear_session_cookie,
     require_dashboard_session,
@@ -36,6 +37,7 @@ from src.auth.models import (
     get_user_session_version,
     get_login_credentials,
     get_user_public,
+    set_initial_password_hash,
     update_password_hash,
 )
 
@@ -48,6 +50,11 @@ _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 _PASSWORD_MIN = 8
 _PASSWORD_MAX = 128
+_TRUTHY = {"1", "true", "yes", "on"}
+_DEV_RELEASES = {"", "dev", "development", "local", "test", "ci"}
+# Always run one Argon2 verification, including unknown/magic-only accounts, so
+# response timing does not become an account/provider enumeration oracle.
+_DUMMY_PASSWORD_HASH = hash_password("CadVerify invalid credential sentinel 9")
 
 
 def _err(status: int, code: str, message: str) -> HTTPException:
@@ -62,13 +69,52 @@ def _err(status: int, code: str, message: str) -> HTTPException:
 
 
 class SignupIn(BaseModel):
-    email: str
-    password: str
+    email: str = Field(max_length=320)
+    password: str = Field(max_length=_PASSWORD_MAX)
 
 
 class LoginIn(BaseModel):
-    email: str
-    password: str
+    email: str = Field(max_length=320)
+    password: str = Field(max_length=_PASSWORD_MAX)
+
+
+class SetInitialPasswordIn(BaseModel):
+    password: str = Field(max_length=_PASSWORD_MAX)
+
+
+def _released() -> bool:
+    return os.getenv("RELEASE", "dev").strip().lower() not in _DEV_RELEASES
+
+
+def _password_login_enabled() -> bool:
+    override = os.getenv("PASSWORD_LOGIN_ENABLED")
+    if override is not None:
+        return override.strip().lower() in _TRUTHY
+    if not _released():
+        return True
+    return os.getenv("AUTH_MODE", "google").strip().lower() in {"password", "hybrid"}
+
+
+def _public_password_signup_enabled() -> bool:
+    if not _password_login_enabled():
+        return False
+    override = os.getenv("PUBLIC_PASSWORD_SIGNUP_ENABLED")
+    if override is not None:
+        return override.strip().lower() in _TRUTHY
+    # Released accounts must prove email ownership through magic/SSO first.
+    return not _released()
+
+
+def _require_password_login() -> None:
+    if not _password_login_enabled():
+        raise _err(404, "password_login_disabled", "Password login is not enabled.")
+
+
+@router.get("/proxy-health", include_in_schema=False)
+async def proxy_health(request: Request) -> dict:
+    """Deployment probe proving the frontend and API share the proxy secret."""
+    require_verified_proxy(request)
+    return {"ok": True}
 
 
 def _clean_email(raw: str) -> str:
@@ -144,13 +190,20 @@ def _fire_audit(**kwargs) -> None:
 
 @router.post("/signup")
 async def signup(body: SignupIn, request: Request) -> dict:
+    if not _public_password_signup_enabled():
+        raise _err(
+            404,
+            "password_signup_disabled",
+            "Create your account with a verified email link.",
+        )
+    require_auth_proxy_if_enabled(request)
     email = _clean_email(body.email)
     _validate_password(body.password)
 
     email_norm = normalize_email(email)
     verdict = await _run_abuse_controls(request, email_norm)
 
-    password_hash = hash_password(body.password)
+    password_hash = await asyncio.to_thread(hash_password, body.password)
     uid = await create_password_user(
         email=email,
         email_lower=email_norm,
@@ -189,19 +242,26 @@ async def signup(body: SignupIn, request: Request) -> dict:
 async def login(body: LoginIn, request: Request, response: Response) -> dict:
     # `response` is unused by the handler but required so slowapi can inject the
     # X-RateLimit-* headers on the success path (headers_enabled=True).
+    _require_password_login()
+    require_auth_proxy_if_enabled(request)
     email = _clean_email(body.email)
     email_norm = normalize_email(email)
 
     creds = await get_login_credentials(email_norm)
     # Identical generic failure for: no such user, no password set (OAuth/SAML
     # account), or wrong password. No user enumeration, no provider leak.
-    if (
-        creds is None
-        or creds[1] is None
-        or not verify_password(creds[1], body.password)
-    ):
+    candidate_hash = (
+        creds[1]
+        if creds is not None and creds[1] is not None
+        else _DUMMY_PASSWORD_HASH
+    )
+    password_valid = await asyncio.to_thread(
+        verify_password, candidate_hash, body.password
+    )
+    if creds is None or creds[1] is None or not password_valid:
         raise _err(401, "invalid_credentials", "Invalid email or password.")
 
+    assert creds is not None and creds[1] is not None
     user_id, password_hash, role = creds
 
     # §39: refuse a deactivated account — but only AFTER the password check
@@ -216,7 +276,8 @@ async def login(body: LoginIn, request: Request, response: Response) -> dict:
     # Opportunistic re-hash if Argon2 parameters were upgraded.
     if password_hash is not None and password_needs_rehash(password_hash):
         try:
-            await update_password_hash(user_id, hash_password(body.password))
+            upgraded_hash = await asyncio.to_thread(hash_password, body.password)
+            await update_password_hash(user_id, upgraded_hash)
         except Exception:
             pass
 
@@ -234,6 +295,36 @@ async def login(body: LoginIn, request: Request, response: Response) -> dict:
             session_version=await get_user_session_version(user_id),
         ),
     }
+
+
+@router.post("/password/initialize")
+async def initialize_password(
+    body: SetInitialPasswordIn,
+    user_id: int = Depends(require_dashboard_session),
+) -> dict:
+    """Add a password once, after magic/SSO has proved account ownership."""
+    _require_password_login()
+    _validate_password(body.password)
+    password_hash = await asyncio.to_thread(hash_password, body.password)
+    version = await set_initial_password_hash(user_id, password_hash)
+    if version is None:
+        raise _err(
+            409,
+            "password_already_set",
+            "A password is already configured for this account.",
+        )
+    # The compare-and-set above rotates every pre-existing session in the same
+    # transaction as the credential write. The Next route replaces the caller's
+    # first-party session with this new version.
+    public = await get_user_public(user_id)
+    _fire_audit(
+        user_id=user_id,
+        user_email=public[0] if public else "",
+        action="auth.password_initialized",
+        resource_type="user",
+        resource_id=str(user_id),
+    )
+    return {"ok": True, "session": sign(user_id, session_version=version)}
 
 
 @router.post("/logout")

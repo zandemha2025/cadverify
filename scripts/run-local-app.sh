@@ -154,7 +154,6 @@ fi
 
 # ── build + start frontend (PRODUCTION build = fast + stable; no dev "rendering" jank) ──
 export API_BASE="http://localhost:${BACKEND_PORT}"
-export NEXT_PUBLIC_API_BASE="http://localhost:${BACKEND_PORT}"
 # Mount the product /verify surface. NEXT_PUBLIC_* is inlined at BUILD time, so
 # this MUST be exported before `npm run build` (flag-off, /verify 404s).
 export NEXT_PUBLIC_VERIFY_UI=1
@@ -179,7 +178,11 @@ for _ in $(seq 1 60); do
   if curl -sS -o /dev/null --max-time 2 "$HEALTH_URL" 2>/dev/null; then backend_ok=1; break; fi
   sleep 1
 done
-[ "$backend_ok" = 1 ] && log "Backend is up (serving on :${BACKEND_PORT})." || warn "Backend not detected yet; continuing anyway."
+if [ "$backend_ok" = 1 ]; then
+  log "Backend is up (serving on :${BACKEND_PORT})."
+else
+  warn "Backend not detected yet; continuing anyway."
+fi
 
 # ── wait for the frontend port to be listening ──────────────────────────────
 log "Waiting for frontend to be ready (first compile can take ~10-30s)…"
@@ -190,7 +193,11 @@ for _ in $(seq 1 90); do
   if port_listening "$FRONTEND_PORT"; then frontend_ok=1; break; fi
   sleep 1
 done
-[ "$frontend_ok" = 1 ] && log "Frontend is up: http://localhost:${FRONTEND_PORT}" || warn "Frontend not detected yet; opening the browser anyway."
+if [ "$frontend_ok" = 1 ]; then
+  log "Frontend is up: http://localhost:${FRONTEND_PORT}"
+else
+  warn "Frontend not detected yet; opening the browser anyway."
+fi
 
 # ── open the app ────────────────────────────────────────────────────────────
 log "Opening $APP_URL …"

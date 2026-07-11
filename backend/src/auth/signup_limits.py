@@ -9,16 +9,20 @@ AUTH-08:
 from __future__ import annotations
 
 import os
+from functools import lru_cache
 
 import redis.asyncio as aioredis
 from fastapi import HTTPException, Request
 
+from src.auth.client_ip import client_ip
 from src.auth.redis_util import require_redis_url
 
 _TRUTHY = {"1", "true", "yes", "on"}
 
 
+@lru_cache(maxsize=1)
 def _r() -> aioredis.Redis:
+    """Reuse one async Redis pool per process across signup attempts."""
     return aioredis.from_url(require_redis_url(), decode_responses=True)
 
 
@@ -45,7 +49,7 @@ def _err(code: str, msg: str, retry: int) -> HTTPException:
 
 
 async def per_ip_signup_limit(request: Request) -> None:
-    ip = request.client.host if request.client else "unknown"
+    ip = client_ip(request)
     key = f"signup:ip:{ip}"
     r = _r()
     n = await r.incr(key)

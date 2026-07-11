@@ -1,97 +1,50 @@
-"use client";
+import Link from "next/link";
+import { AuthFrame, AuthTextLink } from "@/components/auth/auth-frame";
+import { SignupForm } from "./signup-form";
 
-import * as React from "react";
-import { AuthField, AuthFrame, AuthSubmit, AuthTextLink } from "@/components/auth/auth-frame";
-
-function errorMessage(data: unknown, fallback: string): string {
-  if (data && typeof data === "object") {
-    const d = data as { detail?: { message?: string }; message?: string };
-    return d.detail?.message ?? d.message ?? fallback;
-  }
-  return fallback;
-}
-
-/** Mirror of the server-side policy (the server is the source of truth). */
-function passwordProblem(pw: string): string | null {
-  if (pw.length < 8) return "Password must be at least 8 characters.";
-  if (!/[a-zA-Z]/.test(pw)) return "Password must contain at least one letter.";
-  if (!/[0-9]/.test(pw)) return "Password must contain at least one digit.";
-  return null;
-}
+export const dynamic = "force-dynamic";
 
 export default function SignupPage() {
-  const [email, setEmail] = React.useState("");
-  const [password, setPassword] = React.useState("");
-  const [error, setError] = React.useState<string | null>(null);
-  const [loading, setLoading] = React.useState(false);
+  const signupOverride = process.env.PUBLIC_PASSWORD_SIGNUP_ENABLED;
+  const release = (process.env.RELEASE || "dev").trim().toLowerCase();
+  const released = !new Set(["", "dev", "development", "local", "test", "ci"]).has(release);
+  const publicPasswordSignup = signupOverride
+    ? signupOverride === "1"
+    : !released;
+  const magicEnabled = process.env.MAGIC_LINK_UI_ENABLED === "1";
+  const ssoLoginPath = (process.env.SSO_LOGIN_PATH || "").trim();
+  if (publicPasswordSignup) return <SignupForm />;
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const policy = passwordProblem(password);
-    if (policy) {
-      setError(policy);
-      return;
-    }
-    setError(null);
-    setLoading(true);
-    try {
-      const res = await fetch("/api/auth/signup", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(errorMessage(data, "Could not create your account."));
-        return;
-      }
-      // Signed up + auto-logged-in; land on the canonical product workspace.
-      window.location.href = "/verify";
-    } catch {
-      setError("Could not reach the server. Is the backend running?");
-    } finally {
-      setLoading(false);
-    }
+  if (!magicEnabled) {
+    return (
+      <AuthFrame
+        eyebrow="Managed access"
+        title="Contact your organization administrator"
+        body="Accounts in this environment are provisioned through the approved identity provider."
+        footer={<AuthTextLink href="/login">Back to login</AuthTextLink>}
+      >
+        {ssoLoginPath && (
+          <a href={ssoLoginPath} style={{ display: "block", width: "100%", borderRadius: 999, background: "#f5f5f7", color: "#050506", padding: "13px 18px", textAlign: "center", textDecoration: "none", fontSize: 14, fontWeight: 500 }}>
+            Continue with enterprise SSO
+          </a>
+        )}
+      </AuthFrame>
+    );
   }
 
   return (
     <AuthFrame
-      eyebrow="Pilot access"
-      title="Create your account"
-      body="Email and password works immediately. Enterprise SSO is enabled when a provider is connected."
-      footer={
-        <>
-          Already have an account? <AuthTextLink href="/login">Log in</AuthTextLink>
-        </>
-      }
+      eyebrow="Verified access"
+      title="Create your account securely"
+      body="Production accounts begin with a single-use email link. After signing in, you can add a password in Settings → Security."
+      footer={<>Already registered? <AuthTextLink href="/login">Log in</AuthTextLink></>}
     >
-      <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <AuthField
-          id="email"
-          name="email"
-          label="Email"
-          type="email"
-          autoComplete="email"
-          required
-          placeholder="you@company.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <AuthField
-          id="password"
-          name="password"
-          label="Password"
-          type="password"
-          autoComplete="new-password"
-          required
-          placeholder="Create a password"
-          value={password}
-          error={error}
-          hint="At least 8 characters, with a letter and a digit."
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <AuthSubmit loading={loading}>Create account</AuthSubmit>
-      </form>
+      <Link
+        href="/login#magic-link"
+        style={{ display: "block", width: "100%", borderRadius: 999, background: "#f5f5f7", color: "#050506", padding: "13px 18px", textAlign: "center", textDecoration: "none", fontSize: 14, fontWeight: 500 }}
+      >
+        Verify email and continue
+      </Link>
     </AuthFrame>
   );
 }

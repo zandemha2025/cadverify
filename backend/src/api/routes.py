@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.analysis.models import AnalysisResult, Issue, ProcessType
 from src.analysis.rules import available_rule_packs, get_rule_pack
 from src.api.metrics_registry import observe_analysis_duration, record_cost_decision
+from src.api.errors import DOC_BASE
 from src.obs import tracing
 from src.api.upload_validation import (
     demo_max_triangles,
@@ -783,8 +784,28 @@ async def validate_file(
         await session.commit()
 
         # Enqueue arq job
-        queue = await get_job_queue()
-        await queue.enqueue("sam3d", {"mesh_hash": mesh_hash}, job.ulid)
+        try:
+            queue = await get_job_queue()
+            await queue.enqueue("sam3d", {"mesh_hash": mesh_hash}, job.ulid)
+        except Exception:
+            logger.exception("Failed to enqueue SAM-3D job %s", job.ulid)
+            job.status = "failed"
+            job.result_json = {"code": "SAM3D_ENQUEUE_FAILED"}
+            from datetime import datetime, timezone
+
+            job.completed_at = datetime.now(timezone.utc)
+            await session.commit()
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "SAM3D_ENQUEUE_FAILED",
+                    "message": (
+                        "Segmentation could not be scheduled. The job was marked "
+                        "failed; retry after the queue recovers."
+                    ),
+                    "doc_url": f"{DOC_BASE}/SAM3D_ENQUEUE_FAILED",
+                },
+            )
 
         return JSONResponse(
             status_code=202,

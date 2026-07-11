@@ -152,6 +152,13 @@ def _patches(*, report_dict, saved, geometry_invalid=False, reason=None):
     ]
 
 
+def _blob_patch(data: bytes = b"stl data"):
+    """Patch the object-store read seam used by both cost and DFM workers."""
+    import src.services.batch_service as bs_mod
+
+    return patch.object(bs_mod, "read_batch_blob", return_value=data)
+
+
 # ---------------------------------------------------------------------------
 # Cost happy path
 # ---------------------------------------------------------------------------
@@ -172,14 +179,8 @@ async def test_cost_item_happy_path_persists_and_links(mock_gsf):
     saved = SimpleNamespace(id=99, ulid="CD99")
     patches = _patches(report_dict=_result_dict(), saved=saved)
 
-    open_mock = MagicMock(return_value=MagicMock(
-        __enter__=MagicMock(return_value=MagicMock(
-            read=MagicMock(return_value=b"stl data"))),
-        __exit__=MagicMock(return_value=False),
-    ))
-
     with patches[0], patches[1], patches[2], patches[3], patches[4] as counters, \
-         patches[5] as persist, patch("builtins.open", open_mock):
+         patches[5] as persist, _blob_patch():
         await run_batch_item({"redis": AsyncMock()}, item.ulid)
 
     assert item.status == "completed"
@@ -205,18 +206,12 @@ async def test_cost_item_webhook_carries_engine_numbers(mock_gsf):
     saved = SimpleNamespace(id=99, ulid="CD99")
     patches = _patches(report_dict=_result_dict(), saved=saved)
 
-    open_mock = MagicMock(return_value=MagicMock(
-        __enter__=MagicMock(return_value=MagicMock(
-            read=MagicMock(return_value=b"stl data"))),
-        __exit__=MagicMock(return_value=False),
-    ))
-
     import src.services.webhook_service as ws_mod
     delivery = SimpleNamespace(id=7)
     pool = AsyncMock()
 
     with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], \
-         patch("builtins.open", open_mock), \
+         _blob_patch(), \
          patch.object(ws_mod, "create_webhook_delivery", new_callable=AsyncMock,
                       return_value=delivery) as mk_wh:
         await run_batch_item({"redis": pool}, item.ulid)
@@ -252,14 +247,8 @@ async def test_cost_item_geometry_invalid_fails_without_persist(mock_gsf):
         geometry_invalid=True, reason="volume <= 0 (non-watertight)",
     )
 
-    open_mock = MagicMock(return_value=MagicMock(
-        __enter__=MagicMock(return_value=MagicMock(
-            read=MagicMock(return_value=b"bad"))),
-        __exit__=MagicMock(return_value=False),
-    ))
-
     with patches[0], patches[1], patches[2], patches[3], patches[4] as counters, \
-         patches[5] as persist, patch("builtins.open", open_mock):
+         patches[5] as persist, _blob_patch(b"bad"):
         await run_batch_item({"redis": AsyncMock()}, item.ulid)
 
     assert item.status == "failed"
@@ -291,14 +280,8 @@ async def test_cost_item_reuses_deduped_decision_row(mock_gsf):
     existing = SimpleNamespace(id=7, ulid="CDexisting")   # the deduped row
     patches = _patches(report_dict=_result_dict(), saved=existing)
 
-    open_mock = MagicMock(return_value=MagicMock(
-        __enter__=MagicMock(return_value=MagicMock(
-            read=MagicMock(return_value=b"dup"))),
-        __exit__=MagicMock(return_value=False),
-    ))
-
     with patches[0], patches[1], patches[2], patches[3], patches[4], \
-         patches[5] as persist, patch("builtins.open", open_mock):
+         patches[5] as persist, _blob_patch(b"dup"):
         await run_batch_item({"redis": AsyncMock()}, item.ulid)
 
     assert item.status == "completed"
@@ -327,12 +310,6 @@ async def test_dfm_batch_never_hits_cost_path(mock_gsf):
     import src.services.analysis_service as as_mod
     import src.services.batch_service as bs_mod
 
-    open_mock = MagicMock(return_value=MagicMock(
-        __enter__=MagicMock(return_value=MagicMock(
-            read=MagicMock(return_value=b"stl"))),
-        __exit__=MagicMock(return_value=False),
-    ))
-
     with patch.object(bt_mod, "_compute_cost_report") as compute, \
          patch.object(as_mod, "run_analysis", new_callable=AsyncMock,
                       return_value={"verdict": "pass"}) as run_an, \
@@ -340,7 +317,7 @@ async def test_dfm_batch_never_hits_cost_path(mock_gsf):
                       return_value=55), \
          patch.object(as_mod, "compute_mesh_hash", return_value="h"), \
          patch.object(bs_mod, "update_batch_counters", new_callable=AsyncMock), \
-         patch("builtins.open", open_mock):
+         _blob_patch(b"stl"):
         await run_batch_item({"redis": AsyncMock()}, item.ulid)
 
     run_an.assert_awaited_once()          # DFM path taken

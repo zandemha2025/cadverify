@@ -95,6 +95,37 @@ class LocalObjectStore(ObjectStore):
     def url(self, key: str) -> str:
         return self._resolve(key).as_uri()
 
+    def list_keys(self, prefix: str = "") -> list[str]:
+        if prefix:
+            target = self._resolve(prefix)
+        else:
+            target = self._root
+        if target.is_file():
+            return [target.relative_to(self._root).as_posix()]
+        if not target.exists():
+            return []
+        return sorted(
+            path.relative_to(self._root).as_posix()
+            for path in target.rglob("*")
+            if path.is_file()
+        )
+
+    def delete_prefix(self, prefix: str) -> int:
+        target = self._resolve(prefix)
+        if target.is_file():
+            target.unlink()
+            return 1
+        if not target.exists():
+            return 0
+        count = sum(1 for path in target.rglob("*") if path.is_file())
+        shutil.rmtree(target)
+        return count
+
+    def healthcheck(self) -> None:
+        self._root.mkdir(parents=True, exist_ok=True)
+        if not os.access(self._root, os.R_OK | os.W_OK | os.X_OK):
+            raise PermissionError(f"object-store root is not accessible: {self._root}")
+
     def __repr__(self) -> str:  # pragma: no cover - debug aid
         return f"LocalObjectStore(root={self._root!s})"
 

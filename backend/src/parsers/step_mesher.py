@@ -26,6 +26,7 @@ import logging
 import os
 import threading
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import trimesh
@@ -33,8 +34,11 @@ import trimesh
 logger = logging.getLogger("cadverify.step_mesher")
 
 _HAS_GMSH = False
+gmsh: Any = None
 try:
-    import gmsh  # noqa: F401
+    import gmsh as _gmsh
+
+    gmsh = _gmsh
     _HAS_GMSH = True
 except (ImportError, OSError):
     pass

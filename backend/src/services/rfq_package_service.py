@@ -7,10 +7,10 @@ recoverable from same-org batch storage.
 """
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import json
-import os
 import re
 import zipfile
 from dataclasses import dataclass
@@ -159,10 +159,11 @@ async def _raw_cad_payload(
             "reason": "no_same_org_completed_batch_blob",
         }
     item, batch = row
-    path = Path(os.getenv("BATCH_BLOB_DIR", "/data/blobs/batch")) / batch.ulid / item.filename
     try:
-        data = path.read_bytes()
-    except OSError:
+        from src.services.batch_service import read_batch_blob
+
+        data = await asyncio.to_thread(read_batch_blob, batch.ulid, item.filename)
+    except (OSError, KeyError):
         return None, None, {
             "included": False,
             "reason": "same_org_batch_blob_missing",

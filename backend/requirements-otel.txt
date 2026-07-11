@@ -1,11 +1,9 @@
 # OPTIONAL OpenTelemetry tracing dependencies for CADVerify.
 #
-# These are NOT installed by the default runtime image. Tracing is opt-in and
-# OFF by default (see src/obs/tracing.py): an unconfigured deploy imports none
-# of these and is byte-identical. Install them ONLY when you intend to enable
-# tracing:
+# These ship in the production image so regulated deployments can enable a
+# collector without rebuilding. Tracing remains opt-in and OFF by default (see
+# src/obs/tracing.py): an unconfigured process imports none of these modules.
 #
-#     pip install -r requirements-otel.txt
 #     OTEL_TRACING_ENABLED=1 uvicorn main:app            # console/in-memory spans
 #     OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318 uvicorn main:app  # OTLP export
 #

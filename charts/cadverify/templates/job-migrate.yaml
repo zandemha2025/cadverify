@@ -1,14 +1,18 @@
+{{- include "cadverify.validateProductionValues" . }}
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ include "cadverify.fullname" . }}-migrate
   labels:
     {{- include "cadverify.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade
     "helm.sh/hook-weight": "-5"
-    "helm.sh/hook-delete-policy": before-hook-creation
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 900
   template:
     metadata:
       labels:
@@ -16,15 +20,64 @@ spec:
         app.kubernetes.io/component: migrate
     spec:
       restartPolicy: OnFailure
+      serviceAccountName: {{ include "cadverify.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: migrate
-          image: "{{ .Values.image.backend.repository }}:{{ .Values.image.backend.tag }}"
+          image: {{ include "cadverify.backendImage" . | quote }}
           imagePullPolicy: {{ .Values.image.backend.pullPolicy }}
-          command: ["alembic", "upgrade", "head"]
+          command:
+            - /bin/sh
+            - -c
+            - >-
+              if [ -n "${DATABASE_URL_DIRECT:-}" ]; then
+                export DATABASE_URL="$DATABASE_URL_DIRECT";
+              fi;
+              alembic upgrade head
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          {{- if .Values.runtimeSecret.existingSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.runtimeSecret.existingSecret | quote }}
+          {{- end }}
           env:
+            {{- if not .Values.runtimeSecret.existingSecret }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: {{ include "cadverify.fullname" . }}-db
                   key: database-url
-  backoffLimit: 3
+            {{- end }}
+            - name: HOME
+              value: /tmp
+            - name: RELEASE
+              value: {{ .Values.release | quote }}
+            - name: DEPLOYMENT_ENVIRONMENT
+              value: {{ .Values.deploymentEnvironment | quote }}
+            {{- if .Values.production.enabled }}
+            - name: DB_REQUIRE_TLS
+              value: "1"
+            - name: PRODUCTION_TLS_REQUIRED
+              value: "1"
+            {{- end }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi

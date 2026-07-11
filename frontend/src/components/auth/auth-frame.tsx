@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { CSSProperties, InputHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, CSSProperties, InputHTMLAttributes, ReactNode } from "react";
 
 const panel = {
   width: "min(430px, calc(100vw - 32px))",
@@ -116,25 +116,29 @@ export function AuthField({
 export function AuthSubmit({
   children,
   loading,
+  ...props
 }: {
   children: ReactNode;
   loading?: boolean;
-}) {
+} & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children">) {
+  const disabled = Boolean(loading || props.disabled);
   return (
     <button
-      type="submit"
-      disabled={loading}
+      {...props}
+      type={props.type ?? "submit"}
+      disabled={disabled}
       style={{
         width: "100%",
         minHeight: 44,
         border: "none",
         borderRadius: 999,
-        background: loading ? "rgba(245,245,247,0.56)" : "#f5f5f7",
+        background: disabled ? "rgba(245,245,247,0.56)" : "#f5f5f7",
         color: "#050506",
         fontFamily: "var(--st-font-sans)",
         fontSize: 14,
         fontWeight: 500,
-        cursor: loading ? "wait" : "pointer",
+        cursor: loading ? "wait" : disabled ? "not-allowed" : "pointer",
+        ...props.style,
       }}
     >
       {loading ? "Working..." : children}

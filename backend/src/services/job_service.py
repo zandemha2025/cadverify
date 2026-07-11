@@ -1,6 +1,7 @@
 """Job service -- create, query, and manage async jobs."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import Optional
@@ -24,18 +25,22 @@ async def save_mesh_blob(mesh_hash: str, file_bytes: bytes) -> str:
     Wired through the object-store abstraction (:mod:`src.storage`). With the
     default local backend this is byte-for-byte identical to the historical
     behavior: the blob lands at ``$MESH_BLOB_DIR/{hash}.bin`` and the returned
-    value is that absolute filesystem path (which ``jobs/tasks.py`` opens with
-    ``open(path, 'rb')``). Only when an operator opts into ``OBJECT_STORE_
-    BACKEND=s3`` does the return value become an ``s3://`` locator -- that read
-    path is a documented follow-on migration, not silently enabled here.
+    value is that absolute filesystem path. With S3 selected, the worker reads
+    the same key through the object-store interface and no shared volume is
+    required.
     """
     from src.storage import LocalObjectStore, get_object_store
 
     blob_dir = os.getenv("MESH_BLOB_DIR", MESH_BLOB_DIR)
     store = get_object_store("meshes", default_root=blob_dir)
     key = f"{mesh_hash}.bin"
-    if not store.exists(key):
-        store.put(key, file_bytes, content_type="application/octet-stream")
+    if not await asyncio.to_thread(store.exists, key):
+        await asyncio.to_thread(
+            store.put,
+            key,
+            file_bytes,
+            content_type="application/octet-stream",
+        )
     # Preserve the historical contract: local backend returns the on-disk path.
     if isinstance(store, LocalObjectStore):
         return store.local_path(key)

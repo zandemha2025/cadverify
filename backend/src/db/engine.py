@@ -46,18 +46,46 @@ def _ensure_prod_tls(url: str) -> str:
     """Default sslmode=require for production databases (M4).
 
     Local dev (localhost / the docker-compose 'postgres' service) has no TLS,
-    so this is a no-op outside production and for local hosts. Never overrides
-    an explicit sslmode/ssl already in the URL. Off-switch: DB_REQUIRE_TLS=0.
+    so this is a no-op outside production. Released processes reject an
+    explicit TLS bypass before either migrations or application queries can
+    connect; the strict production deployment contract also rejects local
+    plaintext database hosts.
     """
-    if os.getenv("DB_REQUIRE_TLS", "1") == "0" or not _is_production():
+    if not _is_production():
         return url
-    lowered = url.lower()
-    if "sslmode=" in lowered or "ssl=" in lowered:
-        return url
-    from urllib.parse import urlsplit
+    if os.getenv("DB_REQUIRE_TLS", "1").strip().lower() in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }:
+        raise RuntimeError("DB_REQUIRE_TLS cannot be disabled in a released process")
 
-    host = (urlsplit(url).hostname or "").lower()
+    from urllib.parse import parse_qs, urlsplit
+
+    parsed = urlsplit(url)
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    sslmode = [value.lower() for value in query.get("sslmode", [])]
+    ssl = [value.lower() for value in query.get("ssl", [])]
+    secure_modes = {"require", "verify-ca", "verify-full", "true", "1"}
+    if sslmode or ssl:
+        if any(value not in secure_modes for value in (*sslmode, *ssl)):
+            raise RuntimeError(
+                "production database URL contains an insecure TLS mode"
+            )
+        return url
+
+    host = (parsed.hostname or "").lower()
     if host in _LOCAL_DB_HOSTS or host.endswith(".local"):
+        if os.getenv("PRODUCTION_TLS_REQUIRED", "0").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            raise RuntimeError(
+                "strict production database URLs must explicitly enable TLS"
+            )
         return url
     sep = "&" if "?" in url else "?"
     return f"{url}{sep}sslmode=require"
@@ -67,8 +95,10 @@ def _async_url(url: str) -> str:
     """Convert postgresql:// to postgresql+asyncpg:// and fix unsupported params."""
     if url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    # asyncpg uses 'ssl' not 'sslmode'
-    url = url.replace("sslmode=require", "ssl=require")
+    # asyncpg uses 'ssl' not libpq's 'sslmode'. Preserve the requested secure
+    # verification level rather than silently downgrading verify-ca/full.
+    for mode in ("require", "verify-ca", "verify-full"):
+        url = url.replace(f"sslmode={mode}", f"ssl={mode}")
     # asyncpg doesn't support channel_binding param (Neon adds it by default)
     url = url.replace("&channel_binding=require", "").replace("?channel_binding=require&", "?").replace("?channel_binding=require", "")
     return url

@@ -1,0 +1,6 @@
+self-hosted-runner:
+  labels:
+    - govcloud
+    - us-person
+
+config-variables: null

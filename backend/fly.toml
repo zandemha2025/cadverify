@@ -16,7 +16,19 @@ primary_region = "iad"
   # MAGIC_LINK_SECRET, and DASHBOARD_ORIGIN are all set via `fly secrets
   # set`). Do NOT put those secret values here — only `fly secrets set`.
   AUTH_MODE = "password"
+  PASSWORD_LOGIN_ENABLED = "true"
   MAGIC_LINK_ENABLED = "true"
+  PUBLIC_PASSWORD_SIGNUP_ENABLED = "false"
+  SESSION_COOKIE_DOMAIN = ""
+  SECRET_ENFORCEMENT_ENABLED = "1"
+  WEBHOOK_SSRF_GUARD_ENABLED = "1"
+  SECURITY_HEADERS_ENABLED = "1"
+  # Fly exposes the API hostname publicly. Prometheus exposition is intended
+  # only for a private scraper network, so the commercial plane disables it;
+  # Sentry and token-protected deep health remain the SaaS observability paths.
+  METRICS_ENABLED = "0"
+  RECONSTRUCTION_BACKEND = "local"
+  RECONSTRUCTION_ALLOW_REMOTE_EGRESS = "0"
   LOG_LEVEL = "INFO"
   MAX_UPLOAD_MB = "100"
   DEMO_MAX_TRIANGLES = "500000"
@@ -24,9 +36,30 @@ primary_region = "iad"
   ACCEPTING_NEW_ANALYSES = "true"
   RATE_LIBRARY_ENABLED = "1"
   ANALYSIS_TIMEOUT_SEC = "60"
-  BLOB_STORAGE_PATH = "/data/blobs"
+  # Durable customer objects live in S3. Machine-local paths are disposable
+  # scratch/cache only, which keeps all four Machines independent of volumes.
+  BLOB_STORAGE_PATH = "/tmp/cadverify/blobs"
+  BATCH_BLOB_DIR = "/tmp/cadverify/batch"
+  MESH_BLOB_DIR = "/tmp/cadverify/meshes"
+  RECON_BLOB_DIR = "/tmp/cadverify/reconstruct"
+  PDF_CACHE_DIR = "/tmp/cadverify/pdf-cache"
+  SAM3D_CACHE_DIR = "/tmp/cadverify/sam3d-cache"
   ARQ_HEALTH_KEY = "arq:queue:health-check"
   WORKER_STRICT_HEALTH = "1"
+  # Paying-customer production must never fall back to the single Fly volume
+  # or launch without a telemetry sink. Startup guards in main.py enforce the
+  # concrete S3/observability configuration behind these intent flags.
+  PRODUCTION_STORAGE_REQUIRED = "1"
+  PRODUCTION_OBSERVABILITY_REQUIRED = "1"
+  PRODUCTION_TLS_REQUIRED = "1"
+  PRODUCTION_DEEP_HEALTH_AUTH_REQUIRED = "1"
+  PRODUCTION_AUTH_PROXY_REQUIRED = "1"
+  PRODUCTION_VERIFIED_SIGNUP_REQUIRED = "1"
+  PRODUCTION_HOST_ONLY_SESSION_COOKIE_REQUIRED = "1"
+  PRODUCTION_CRYPTO_SECRET_QUALITY_REQUIRED = "1"
+  PRODUCTION_SSRF_GUARD_REQUIRED = "1"
+  PRODUCTION_SECURITY_HEADERS_REQUIRED = "1"
+  OBJECT_STORE_BACKEND = "s3"
 
 [http_service]
   processes = ["web"]
@@ -41,7 +74,7 @@ primary_region = "iad"
   # uvicorn machine at 50 in-flight requests. NOTE: this key only keeps
   # existing machines from being suspended below this count -- it does not by
   # itself create a second machine. The actual machine count is set with
-  # `fly scale count web=2 worker=1 --app cadvrfy-api` (see
+  # `fly scale count web=2 worker=2 --app cadvrfy-api` (see
   # docs/LAUNCH_RUNBOOK.md and .github/workflows/ci.yml's "Ensure backend web
   # and worker process groups" step, which pins this on every deploy).
   min_machines_running = 2
@@ -55,21 +88,14 @@ primary_region = "iad"
     # caps in-flight requests per machine before Fly queues/adds capacity.
     soft_limit = 40
 
-[[mounts]]
-  source = "cadverify_data"
-  destination = "/data"
-  processes = ["web", "worker"]
-  initial_size = "1gb"
-
-# Worker process: always-on, no auto-stop (SAM-3D jobs are long-running).
-# Stays at 1 -- unlike web, worker headroom is not a launch requirement (arq
-# already fans a single worker process out across max_jobs concurrent jobs;
-# see src/jobs/worker.py). Scale independently later if queue depth warrants it.
+# Worker process: two always-on Machines, no auto-stop. Redis owns the durable
+# queue and S3 owns customer blobs, so either worker can resume new work while
+# the other is being restarted or its host is unavailable.
 [[machines]]
   processes = ["worker"]
   auto_stop_machines = "off"
   auto_start_machines = true
-  min_machines_running = 1
+  min_machines_running = 2
 
 [deploy]
   release_command = "sh -c 'DATABASE_URL=$DATABASE_URL_DIRECT alembic upgrade head'"

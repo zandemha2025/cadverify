@@ -156,6 +156,7 @@ const LEDGER_NAV: NavLink[] = [
   { label: "Recent analyses", href: "/history", icon: History },
   { label: "Integrations", href: "/integrations", icon: Database },
   { label: "API & docs", href: "/settings/developer", icon: Code2 },
+  { label: "Security", href: "/settings/security", icon: Lock, hint: "access · password" },
   { label: "Organization", href: "/settings/organization", icon: Building2, hint: "members · SSO" },
 ];
 
@@ -312,6 +313,15 @@ function AccountMenu() {
             </div>
           )}
           <DropdownMenu.Separator className="my-1 h-px bg-border" />
+          <DropdownMenu.Item asChild>
+            <Link
+              href="/settings/security"
+              className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 outline-none hover:bg-muted"
+            >
+              <Lock className="size-4" />
+              Settings · Security
+            </Link>
+          </DropdownMenu.Item>
           <DropdownMenu.Item asChild>
             <Link
               href="/settings/developer"

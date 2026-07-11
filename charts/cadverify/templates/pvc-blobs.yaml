@@ -1,4 +1,4 @@
-{{- if .Values.persistence.blobs.enabled }}
+{{- if and (eq .Values.objectStore.backend "local") .Values.persistence.blobs.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

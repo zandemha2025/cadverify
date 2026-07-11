@@ -50,12 +50,14 @@ def get_object_store(purpose: str, *, default_root: str) -> ObjectStore:
             raise ValueError(
                 "OBJECT_STORE_BACKEND=s3 requires OBJECT_STORE_S3_BUCKET to be set"
             )
-        prefix = os.getenv("OBJECT_STORE_S3_PREFIX", purpose)
+        root_prefix = os.getenv("OBJECT_STORE_S3_PREFIX", "").strip("/")
+        prefix = "/".join(part for part in (root_prefix, purpose) if part)
         return S3ObjectStore(
             bucket,
             prefix=prefix,
             endpoint_url=os.getenv("OBJECT_STORE_S3_ENDPOINT") or None,
             region_name=os.getenv("OBJECT_STORE_S3_REGION") or None,
+            kms_key_id=os.getenv("OBJECT_STORE_S3_KMS_KEY_ID") or None,
         )
     raise ValueError(
         f"unknown OBJECT_STORE_BACKEND={backend!r} (expected 'local' or 's3')"

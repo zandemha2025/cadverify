@@ -16,8 +16,13 @@ from src.jobs.batch_tasks import (
 from src.jobs.heartbeat import worker_heartbeat, write_heartbeat
 from src.jobs.reconstruction_tasks import run_reconstruction_job
 from src.jobs.tasks import run_sam3d_job
+from src.config.production import assert_production_operations
 
 logger = logging.getLogger("cadverify.worker")
+
+# Fail before RedisSettings is constructed so a released worker never connects
+# with incomplete storage, observability, or transport-security configuration.
+assert_production_operations()
 
 
 async def startup(ctx: dict) -> None:

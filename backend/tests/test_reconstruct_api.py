@@ -241,6 +241,108 @@ class TestReconstructEndpoint:
         )
         assert resp.status_code == 401
 
+    def test_reconstruct_queue_failure_is_honest_503(self):
+        test_app = FastAPI()
+        test_app.include_router(router)
+        test_app.dependency_overrides[require_api_key] = _override_auth
+        test_app.dependency_overrides[get_db_session] = _override_session
+
+        from src.services.reconstruction_service import (
+            ReconstructionQueueUnavailableError,
+        )
+
+        with patch(
+            "src.services.reconstruction_service.check_reconstruction_availability",
+            return_value={"available": True},
+        ), patch(
+            "src.services.reconstruction_service.create_reconstruction_job",
+            new_callable=AsyncMock,
+            side_effect=ReconstructionQueueUnavailableError("queue unavailable"),
+        ):
+            client = TestClient(test_app)
+            resp = client.post(
+                "/api/v1/reconstruct",
+                files=[("images", ("test.png", _make_test_image_bytes(), "image/png"))],
+            )
+
+        assert resp.status_code == 503
+        assert resp.json()["detail"]["code"] == "RECONSTRUCTION_ENQUEUE_FAILED"
+
+
+@pytest.mark.asyncio
+async def test_reconstruction_job_commits_before_enqueue():
+    from src.services import reconstruction_service
+
+    events: list[str] = []
+    session = MagicMock()
+    session.add.side_effect = lambda _job: events.append("add")
+    session.flush = AsyncMock(side_effect=lambda: events.append("flush"))
+    session.commit = AsyncMock(side_effect=lambda: events.append("commit"))
+    pool = AsyncMock()
+    pool.enqueue_job.side_effect = lambda *args, **kwargs: events.append("enqueue")
+
+    with (
+        patch("src.auth.org_context.resolve_org", new=AsyncMock(return_value="org-1")),
+        patch.object(
+            reconstruction_service,
+            "save_reconstruction_images",
+            new=AsyncMock(side_effect=lambda *args: events.append("store")),
+        ),
+        patch("src.jobs.arq_backend.get_arq_pool", new=AsyncMock(return_value=pool)),
+        patch("src.reconstruction.preprocessing.validate_image"),
+    ):
+        job = await reconstruction_service.create_reconstruction_job(
+            session,
+            _TEST_USER,
+            [(b"image", "image/png")],
+            None,
+            None,
+        )
+
+    assert job.status == "queued"
+    assert events.index("commit") < events.index("enqueue")
+
+
+@pytest.mark.asyncio
+async def test_reconstruction_enqueue_failure_marks_terminal_and_cleans_blobs():
+    from src.services import reconstruction_service
+
+    captured: list[Job] = []
+    session = MagicMock()
+    session.add.side_effect = captured.append
+    session.flush = AsyncMock()
+    session.commit = AsyncMock()
+    pool = AsyncMock()
+    pool.enqueue_job.side_effect = RuntimeError("redis down")
+    store = MagicMock()
+
+    with (
+        patch("src.auth.org_context.resolve_org", new=AsyncMock(return_value="org-1")),
+        patch.object(
+            reconstruction_service,
+            "save_reconstruction_images",
+            new=AsyncMock(),
+        ),
+        patch.object(reconstruction_service, "_reconstruction_store", return_value=store),
+        patch("src.jobs.arq_backend.get_arq_pool", new=AsyncMock(return_value=pool)),
+        patch("src.reconstruction.preprocessing.validate_image"),
+    ):
+        with pytest.raises(
+            reconstruction_service.ReconstructionQueueUnavailableError
+        ):
+            await reconstruction_service.create_reconstruction_job(
+                session,
+                _TEST_USER,
+                [(b"image", "image/png")],
+                None,
+                None,
+            )
+
+    assert captured[0].status == "failed"
+    assert captured[0].result_json["code"] == "RECONSTRUCTION_ENQUEUE_FAILED"
+    assert session.commit.await_count == 2
+    store.delete_prefix.assert_called_once_with(captured[0].ulid)
+
 
 # ---------------------------------------------------------------------------
 # Tests: GET /api/v1/reconstructions/{id}/mesh.stl
@@ -257,15 +359,15 @@ class TestMeshDownload:
         test_app.dependency_overrides[require_api_key] = _override_auth
         test_app.dependency_overrides[get_db_session] = _override_session
 
-        # Write a test STL to disk
+        # Build test STL bytes
         mesh = trimesh.creation.box(extents=[10, 10, 10])
-        stl_path = str(tmp_path / "mesh.stl")
-        mesh.export(stl_path)
+        stl = io.BytesIO()
+        mesh.export(stl, file_type="stl")
 
         with patch(
-            "src.services.reconstruction_service.get_reconstruction_mesh_path",
+            "src.services.reconstruction_service.open_reconstruction_mesh",
             new_callable=AsyncMock,
-            return_value=stl_path,
+            return_value=io.BytesIO(stl.getvalue()),
         ):
             client = TestClient(test_app)
             resp = client.get("/api/v1/reconstructions/01RECON0000000000000001/mesh.stl")
@@ -281,7 +383,7 @@ class TestMeshDownload:
         test_app.dependency_overrides[get_db_session] = _override_session
 
         with patch(
-            "src.services.reconstruction_service.get_reconstruction_mesh_path",
+            "src.services.reconstruction_service.open_reconstruction_mesh",
             new_callable=AsyncMock,
             return_value=None,  # service returns None for wrong user
         ):
@@ -298,7 +400,7 @@ class TestMeshDownload:
         test_app.dependency_overrides[get_db_session] = _override_session
 
         with patch(
-            "src.services.reconstruction_service.get_reconstruction_mesh_path",
+            "src.services.reconstruction_service.open_reconstruction_mesh",
             new_callable=AsyncMock,
             return_value=None,  # service returns None for incomplete job
         ):
@@ -338,7 +440,7 @@ class TestAutoFeed:
 
         # Set up blob dir with test images
         blob_dir = str(tmp_path / "blobs")
-        job_ulid = "01RECON0000000000000001"
+        job_ulid = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
         input_dir = os.path.join(blob_dir, job_ulid, "input")
         os.makedirs(input_dir, exist_ok=True)
 

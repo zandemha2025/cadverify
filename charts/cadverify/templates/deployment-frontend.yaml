@@ -1,3 +1,4 @@
+{{- include "cadverify.validateProductionValues" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -7,39 +8,131 @@ metadata:
     app.kubernetes.io/component: frontend
 spec:
   replicas: {{ .Values.replicaCount.frontend }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       {{- include "cadverify.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: frontend
   template:
     metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       labels:
         {{- include "cadverify.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: frontend
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
+      serviceAccountName: {{ include "cadverify.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.topologySpreadConstraints.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: {{ .Values.topologySpreadConstraints.maxSkew }}
+          topologyKey: {{ .Values.topologySpreadConstraints.topologyKey | quote }}
+          whenUnsatisfiable: {{ .Values.topologySpreadConstraints.whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              {{- include "cadverify.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: frontend
+      {{- end }}
       containers:
         - name: frontend
-          image: "{{ .Values.image.frontend.repository }}:{{ .Values.image.frontend.tag }}"
+          image: {{ include "cadverify.frontendImage" . | quote }}
           imagePullPolicy: {{ .Values.image.frontend.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           ports:
-            - containerPort: 3000
+            - name: http
+              containerPort: 3000
               protocol: TCP
           env:
+            - name: RELEASE
+              value: {{ .Values.release | quote }}
+            - name: DEPLOYMENT_ENVIRONMENT
+              value: {{ .Values.deploymentEnvironment | quote }}
+            - name: HOME
+              value: /tmp
             - name: API_BASE
-              value: "http://{{ include "cadverify.fullname" . }}-backend:8000"
-            - name: NEXT_PUBLIC_API_BASE
-              value: "http://{{ include "cadverify.fullname" . }}-backend:8000"
+              value: {{ include "cadverify.internalApiBase" . | quote }}
+            - name: AUTH_MODE
+              value: {{ .Values.auth.mode | quote }}
+            {{- if .Values.frontend.ssoLoginPath }}
+            - name: SSO_LOGIN_PATH
+              value: {{ .Values.frontend.ssoLoginPath | quote }}
+            {{- else if or (eq .Values.auth.mode "saml") (eq .Values.auth.mode "hybrid") }}
+            - name: SSO_LOGIN_PATH
+              value: "/auth/saml/login"
+            {{- else if eq .Values.auth.mode "oidc" }}
+            - name: SSO_LOGIN_PATH
+              value: "/auth/oidc/login"
+            {{- end }}
+            {{- if .Values.runtimeSecret.existingSecret }}
+            - name: AUTH_PROXY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.runtimeSecret.existingSecret | quote }}
+                  key: AUTH_PROXY_SECRET
+            {{- end }}
+            - name: MAGIC_LINK_UI_ENABLED
+              value: {{ ternary "1" "0" .Values.frontend.magicLink.enabled | quote }}
+            - name: PUBLIC_PASSWORD_SIGNUP_ENABLED
+              value: {{ ternary "1" "0" .Values.auth.publicPasswordSignup | quote }}
+            {{- if .Values.frontend.magicLink.enabled }}
+            - name: TURNSTILE_SITE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.runtimeSecret.existingSecret | quote }}
+                  key: {{ .Values.frontend.magicLink.siteKeySecretKey | quote }}
+            {{- end }}
+            {{- if .Values.production.enabled }}
+            - name: PRODUCTION_AUTH_PROXY_REQUIRED
+              value: "1"
+            - name: PRODUCTION_VERIFIED_SIGNUP_REQUIRED
+              value: "1"
+            {{- end }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: next-cache
+              mountPath: /app/.next/cache
+          startupProbe:
+            tcpSocket:
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5
           livenessProbe:
-            httpGet:
-              path: /
-              port: 3000
-            initialDelaySeconds: 10
-            periodSeconds: 30
+            tcpSocket:
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /
-              port: 3000
-            initialDelaySeconds: 5
+              port: http
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           resources:
             {{- toYaml .Values.resources.frontend | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: next-cache
+          emptyDir:
+            sizeLimit: 1Gi

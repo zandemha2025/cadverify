@@ -9,11 +9,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../..");
 
-const app = process.env.FLY_APP_NAME || process.env.CADVERIFY_FLY_APP || "cadvrfy-api";
+const app = (process.env.FLY_APP_NAME || process.env.CADVERIFY_FLY_APP || "").trim();
+if (!app) throw new Error("FLY_APP_NAME is required; refusing to inspect an implicit app");
 // This launch runs password + magic-link + Turnstile (backend/fly.toml sets
 // AUTH_MODE=password with MAGIC_LINK_ENABLED=true — no Google OAuth). The
-// magic-link trio (MAGIC_LINK_SECRET, RESEND_API_KEY, RESEND_FROM,
-// DASHBOARD_ORIGIN) and the Turnstile captcha secret gate the magic-link
+// magic-link trio (MAGIC_LINK_SECRET, RESEND_API_KEY, RESEND_FROM) and the
+// Turnstile captcha secret gate the magic-link
 // send/verify flow (src/auth/magic_link.py, src/auth/turnstile.py) — a
 // missing value there previously passed `fly deploy` clean and only 500'd
 // on the first real login (KeyError on the missing os.environ[...]). Adding
@@ -28,10 +29,25 @@ const app = process.env.FLY_APP_NAME || process.env.CADVERIFY_FLY_APP || "cadvrf
 // a plain fly.toml env var, not a secret) so these are added to the flat
 // required set per that constraint.
 const requiredSecrets = (process.env.CADVERIFY_REQUIRED_FLY_SECRETS ||
-  "DATABASE_URL,DATABASE_URL_DIRECT,REDIS_URL,SESSION_SECRET,DASHBOARD_SESSION_SECRET,API_KEY_PEPPER,CONNECTOR_SECRET_KEY,CONNECTOR_FINGERPRINT_KEY,MAGIC_LINK_SECRET,RESEND_API_KEY,RESEND_FROM,DASHBOARD_ORIGIN,TURNSTILE_SECRET")
+  "DATABASE_URL,DATABASE_URL_DIRECT,REDIS_URL,SESSION_SECRET,DASHBOARD_SESSION_SECRET,AUTH_PROXY_SECRET,API_KEY_PEPPER,CONNECTOR_SECRET_KEY,CONNECTOR_FINGERPRINT_KEY,MAGIC_LINK_SECRET,RESEND_API_KEY,RESEND_FROM,TURNSTILE_SECRET,DEEP_HEALTH_TOKEN")
   .split(",")
   .map((item) => item.trim())
   .filter(Boolean);
+const forbiddenSecrets = (process.env.CADVERIFY_FORBIDDEN_FLY_SECRETS || "")
+  .split(",")
+  .map((item) => item.trim())
+  .filter(Boolean);
+const requireProductionStorage = process.env.CADVERIFY_REQUIRE_PRODUCTION_STORAGE === "1";
+const requireObservability = process.env.CADVERIFY_REQUIRE_OBSERVABILITY === "1";
+if (requireProductionStorage) {
+  requiredSecrets.push(
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "OBJECT_STORE_S3_BUCKET",
+    "OBJECT_STORE_S3_REGION",
+  );
+}
+if (requireObservability) requiredSecrets.push("SENTRY_DSN");
 const outputRoot = process.env.E2E_ARTIFACT_DIR
   ? path.resolve(process.env.E2E_ARTIFACT_DIR)
   : path.join(repoRoot, ".gstack", "qa-reports");
@@ -47,46 +63,65 @@ async function fly(args) {
   return stdout;
 }
 
-function parseSecretNames(output) {
-  return output
-    .split(/\r?\n/)
-    .map((line) => {
-      const parts = line.split("│").map((part) => part.trim()).filter(Boolean);
-      return parts.length >= 3 && parts[0] !== "NAME" ? parts[0] : null;
-    })
-    .filter(Boolean);
+function parseSecrets(output) {
+  const parsed = JSON.parse(output);
+  if (!Array.isArray(parsed)) throw new Error("flyctl secrets JSON was not an array");
+  return parsed.map((item) => {
+    if (!item || typeof item.name !== "string" || typeof item.status !== "string") {
+      throw new Error("flyctl secrets JSON contained an invalid record");
+    }
+    return { name: item.name, status: item.status };
+  });
 }
 
 function markdown(data) {
   const rows = data.requiredSecrets
-    .map((name) => `| ${name} | ${data.presentSecrets.includes(name) ? "PASS" : "MISSING"} |`)
+    .map((name) => {
+      const deployed = data.secretStatuses[name];
+      return `| ${name} | ${deployed ? "PASS" : "MISSING"} | ${deployed || "-"} |`;
+    })
     .join("\n");
   return `# Fly Required Secrets Gate
 
 - Status: ${data.status}
 - App: ${data.app}
 - Required secrets checked: ${data.requiredSecrets.length}
+- Requires durable S3 storage: ${data.requireProductionStorage}
+- Requires backend observability: ${data.requireObservability}
 - Missing secrets: ${data.missingSecrets.length ? data.missingSecrets.join(", ") : "none"}
+- Forbidden shadowing secrets present: ${data.presentForbiddenSecrets.length ? data.presentForbiddenSecrets.join(", ") : "none"}
 
-| Secret name | Status |
-| --- | --- |
+| Secret name | Gate | Fly status |
+| --- | --- | --- |
 ${rows}
 `;
 }
 
 async function main() {
   await mkdir(outputRoot, { recursive: true });
-  const output = await fly(["secrets", "list", "--app", app]);
-  const presentSecrets = parseSecretNames(output);
+  const output = await fly(["secrets", "list", "--app", app, "--json"]);
+  const records = parseSecrets(output);
+  const secretStatuses = Object.fromEntries(records.map(({ name, status }) => [name, status]));
+  const presentSecrets = records.map(({ name }) => name);
   const missingSecrets = requiredSecrets.filter((name) => !presentSecrets.includes(name));
-  const status = missingSecrets.length === 0 ? "PASS" : "NEEDS_FIXES";
+  const presentForbiddenSecrets = forbiddenSecrets.filter((name) =>
+    presentSecrets.includes(name)
+  );
+  const status = missingSecrets.length === 0 && presentForbiddenSecrets.length === 0
+    ? "PASS"
+    : "NEEDS_FIXES";
   const data = {
     status,
     generatedAt: new Date().toISOString(),
     app,
     requiredSecrets,
+    forbiddenSecrets,
+    requireProductionStorage,
+    requireObservability,
     presentSecrets,
+    secretStatuses,
     missingSecrets,
+    presentForbiddenSecrets,
   };
   await writeFile(artifacts.json, `${JSON.stringify(data, null, 2)}\n`);
   await writeFile(artifacts.md, markdown(data));
@@ -94,6 +129,7 @@ async function main() {
     status,
     app,
     missingSecrets,
+    presentForbiddenSecrets,
     report: artifacts.md,
   }, null, 2));
   if (status !== "PASS") process.exitCode = 1;

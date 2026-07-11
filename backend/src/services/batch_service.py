@@ -9,7 +9,6 @@ import csv
 import io
 import logging
 import os
-import shutil
 import tempfile
 import zipfile
 from datetime import datetime, timezone
@@ -67,6 +66,34 @@ CAD_TRIAGE_EXTENSIONS = NATIVE_CAD_EXTENSIONS | DRAWING_EXTENSIONS
 
 _VALID_PRIORITIES = {"low", "normal", "high"}
 _CSV_EXPORT_PAGE_SIZE = 200
+
+
+def _batch_store():
+    """Return the configured durable store for extracted batch objects."""
+    from src.storage import get_object_store
+
+    return get_object_store(
+        "batch",
+        default_root=os.getenv("BATCH_BLOB_DIR", BATCH_BLOB_DIR),
+    )
+
+
+def _batch_key(batch_ulid: str, filename: str) -> str:
+    if not batch_ulid or "/" in batch_ulid or "\\" in batch_ulid or batch_ulid in {".", ".."}:
+        raise ValueError("invalid batch identifier for object storage")
+    if not filename or os.path.basename(filename) != filename or filename in {".", ".."}:
+        raise ValueError("invalid batch filename for object storage")
+    return f"{batch_ulid}/{filename}"
+
+
+def read_batch_blob(batch_ulid: str, filename: str) -> bytes:
+    """Read an extracted batch object from local disk or the configured S3 store."""
+    return _batch_store().get(_batch_key(batch_ulid, filename))
+
+
+def delete_batch_blob(batch_ulid: str, filename: str) -> None:
+    """Delete one extracted batch object (idempotent)."""
+    _batch_store().delete(_batch_key(batch_ulid, filename))
 
 # W3 cost-batch job type. BATCH_COST_ENABLED gates the cost path at create time
 # (default ON); when off, a cost batch is rejected 501 (mirrors S3 honesty).
@@ -215,8 +242,9 @@ def _extract_zipfile(zf: zipfile.ZipFile, batch_ulid: str) -> list[dict]:
       (BATCH_ZIP_DEDUP, default on)
     """
     results: list[dict] = []
-    extract_dir = os.path.join(BATCH_BLOB_DIR, batch_ulid)
-    os.makedirs(extract_dir, exist_ok=True)
+    from src.storage import LocalObjectStore
+
+    store = _batch_store()
 
     dedup = _flag("BATCH_ZIP_DEDUP", "1")
     seen: set[str] = set()
@@ -242,44 +270,53 @@ def _extract_zipfile(zf: zipfile.ZipFile, batch_ulid: str) -> list[dict]:
             f"exceeding limit of {BATCH_MAX_ITEMS}"
         )
 
-    for info, safe_name, ext in cad_entries:
-        if ext in CAD_TRIAGE_EXTENSIONS:
+    try:
+        for info, safe_name, ext in cad_entries:
+            if ext in CAD_TRIAGE_EXTENSIONS:
+                results.append({
+                    "filename": safe_name,
+                    "status": "skipped",
+                    "error": _unsupported_cad_error(ext),
+                    "size": info.file_size,
+                })
+                continue
+
+            # Pre-check uncompressed size
+            if info.file_size > BATCH_MAX_FILE_BYTES:
+                results.append({
+                    "filename": safe_name,
+                    "status": "skipped",
+                    "error": f"File size {info.file_size} exceeds limit {BATCH_MAX_FILE_BYTES}",
+                })
+                continue
+
+            # Compression ratio check (zip bomb protection)
+            if info.compress_size > 0:
+                ratio = info.file_size / info.compress_size
+                if ratio > MAX_COMPRESSION_RATIO:
+                    raise ValueError(
+                        f"Compression ratio {ratio:.0f}:1 for '{safe_name}' "
+                        f"exceeds limit {MAX_COMPRESSION_RATIO}:1 (possible zip bomb)"
+                    )
+
+            key = _batch_key(batch_ulid, safe_name)
+            with zf.open(info) as src:
+                locator = store.put(
+                    key,
+                    src,
+                    content_type="application/octet-stream",
+                )
+            path = store.local_path(key) if isinstance(store, LocalObjectStore) else locator
             results.append({
                 "filename": safe_name,
-                "status": "skipped",
-                "error": _unsupported_cad_error(ext),
+                "path": path,
+                "object_key": key,
                 "size": info.file_size,
             })
-            continue
-
-        # Pre-check uncompressed size
-        if info.file_size > BATCH_MAX_FILE_BYTES:
-            results.append({
-                "filename": safe_name,
-                "status": "skipped",
-                "error": f"File size {info.file_size} exceeds limit {BATCH_MAX_FILE_BYTES}",
-            })
-            continue
-
-        # Compression ratio check (zip bomb protection)
-        if info.compress_size > 0:
-            ratio = info.file_size / info.compress_size
-            if ratio > MAX_COMPRESSION_RATIO:
-                raise ValueError(
-                    f"Compression ratio {ratio:.0f}:1 for '{safe_name}' "
-                    f"exceeds limit {MAX_COMPRESSION_RATIO}:1 (possible zip bomb)"
-                )
-
-        # Extract file
-        dest_path = os.path.join(extract_dir, safe_name)
-        with zf.open(info) as src, open(dest_path, "wb") as dst:
-            dst.write(src.read())
-
-        results.append({
-            "filename": safe_name,
-            "path": dest_path,
-            "size": info.file_size,
-        })
+    except BaseException:
+        # A rejected archive must not leave a partially persisted customer batch.
+        store.delete_prefix(batch_ulid)
+        raise
 
     return results
 
@@ -926,13 +963,11 @@ async def sweep_orphaned_batches(
 
 
 def cleanup_batch_files(batch_ulid: str) -> None:
-    """Delete /data/blobs/batch/{batch_ulid}/ directory.
+    """Delete every persisted object for ``batch_ulid``.
 
     Called by cleanup task after retention period.
     """
-    target_dir = os.path.join(BATCH_BLOB_DIR, batch_ulid)
-    if os.path.isdir(target_dir):
-        shutil.rmtree(target_dir)
-        logger.info("Cleaned up batch files: %s", target_dir)
-    else:
-        logger.debug("No batch directory to clean: %s", target_dir)
+    if not batch_ulid or "/" in batch_ulid or "\\" in batch_ulid or batch_ulid in {".", ".."}:
+        raise ValueError("invalid batch identifier for cleanup")
+    deleted = _batch_store().delete_prefix(batch_ulid)
+    logger.info("Cleaned up batch files: batch=%s objects=%d", batch_ulid, deleted)

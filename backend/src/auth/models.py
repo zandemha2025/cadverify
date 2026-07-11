@@ -264,6 +264,31 @@ async def update_password_hash(user_id: int, password_hash: str) -> None:
         await s.commit()
 
 
+async def set_initial_password_hash(user_id: int, password_hash: str) -> int | None:
+    """Atomically add a password and rotate every existing dashboard session.
+
+    Magic-link registration proves control of the email first. This compare-
+    and-set prevents concurrent requests from replacing a credential and keeps
+    ordinary password changes out of a session-only endpoint. Updating the
+    password and session version in one statement prevents a committed password
+    from being paired with an unrotated session if a second DB call fails.
+    """
+    async with _session()() as s:
+        row = (
+            await s.execute(
+                text(
+                    "UPDATE users SET password_hash = :ph, "
+                    "session_version = session_version + 1 "
+                    "WHERE id = :u AND password_hash IS NULL "
+                    "RETURNING session_version"
+                ),
+                {"ph": password_hash, "u": user_id},
+            )
+        ).first()
+        await s.commit()
+    return None if row is None else int(row[0])
+
+
 async def create_api_key(
     user_id: int, name: str, prefix: str, hmac_idx: str, secret_hash: str
 ) -> int:

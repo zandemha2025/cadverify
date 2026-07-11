@@ -10,7 +10,8 @@ Feature-gated: gracefully degrades when OCP XDE modules are not installed.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+import importlib
+from typing import Any, TYPE_CHECKING
 
 from src.analysis.tolerance_models import ToleranceEntry, ToleranceType
 
@@ -21,17 +22,31 @@ logger = logging.getLogger("cadverify.gdt_extractor")
 
 # ── Feature gate: OCP XDE DimTol modules ──────────────────────
 _HAS_XDE = False
+XCAFDimTolObjects_GeomToleranceObject: Any = None
+XCAFDimTolObjects_DimensionObject: Any = None
+XCAFDimTolObjects_DatumObject: Any = None
+XCAFDoc_DimTolTool: Any = None
+TDF_LabelSequence: Any = None
 try:
-    from OCP.XCAFDimTolObjects import (
-        XCAFDimTolObjects_GeomToleranceObject,
-        XCAFDimTolObjects_DimensionObject,
-        XCAFDimTolObjects_DatumObject,
+    _dim_tol_objects = importlib.import_module("OCP.XCAFDimTolObjects")
+    XCAFDimTolObjects_GeomToleranceObject = getattr(
+        _dim_tol_objects, "XCAFDimTolObjects_GeomToleranceObject"
     )
-    from OCP.XCAFDoc import XCAFDoc_DimTolTool
-    from OCP.TDF import TDF_LabelSequence
+    XCAFDimTolObjects_DimensionObject = getattr(
+        _dim_tol_objects, "XCAFDimTolObjects_DimensionObject"
+    )
+    XCAFDimTolObjects_DatumObject = getattr(
+        _dim_tol_objects, "XCAFDimTolObjects_DatumObject"
+    )
+    XCAFDoc_DimTolTool = getattr(
+        importlib.import_module("OCP.XCAFDoc"), "XCAFDoc_DimTolTool"
+    )
+    TDF_LabelSequence = getattr(
+        importlib.import_module("OCP.TDF"), "TDF_LabelSequence"
+    )
 
     _HAS_XDE = True
-except ImportError:
+except (ImportError, AttributeError):
     pass
 
 # ── OCP GeomToleranceType → ToleranceType mapping ─────────────
@@ -168,7 +183,7 @@ def extract_gdt(
 
 
 def _collect_datums(
-    dim_tol_tool: object,
+    dim_tol_tool: Any,
     datum_map: dict[str, str],
     warnings: list[str],
 ) -> None:
@@ -199,8 +214,8 @@ def _collect_datums(
 
 
 def _extract_single_tolerance(
-    dim_tol_tool: object,
-    label: object,
+    dim_tol_tool: Any,
+    label: Any,
     datum_map: dict[str, str],
 ) -> ToleranceEntry | None:
     """Extract a single tolerance entry from a GDT label.
@@ -276,8 +291,8 @@ def _extract_single_tolerance(
 
 
 def _extract_datum_refs(
-    dim_tol_tool: object,
-    tol_label: object,
+    dim_tol_tool: Any,
+    tol_label: Any,
     datum_map: dict[str, str],
 ) -> list[str]:
     """Extract datum reference letters linked to a tolerance label.
