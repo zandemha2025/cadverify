@@ -187,7 +187,8 @@ jobs:
         run: pip install bandit==1.9.4 pip-audit==2.10.1 pip-tools==7.5.3
       - name: Production dependency lock is current
         run: |
-          pip-compile --quiet --generate-hashes --resolver=backtracking --strip-extras --no-header \
+          pip-compile --quiet --generate-hashes --resolver=backtracking --strip-extras \
+            --no-header --no-annotate \
             --output-file /tmp/requirements-prod.lock requirements-prod.txt
           diff -u requirements-prod.lock /tmp/requirements-prod.lock
       - name: Bandit SAST (fail on medium+ severity)

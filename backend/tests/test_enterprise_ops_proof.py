@@ -229,6 +229,13 @@ def test_regulated_secret_gate_validates_saml_security_profile_not_only_files():
     assert "base64 --decode | jq -e" in gate
 
 
+def test_production_lock_gate_is_platform_neutral():
+    workflow = read(".github/workflows/ci.yml")
+
+    assert "--no-header --no-annotate" in workflow
+    assert "diff -u requirements-prod.lock /tmp/requirements-prod.lock" in workflow
+
+
 def test_pre_human_real_cad_and_ops_gates_are_in_full_e2e_chain():
     package = read("frontend/package.json")
     real_cad = read("scripts/prehuman/real_cad_corpus.py")
