@@ -10,8 +10,25 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../..");
 
 const app = process.env.FLY_APP_NAME || process.env.CADVERIFY_FLY_APP || "cadvrfy-api";
+// This launch runs password + magic-link + Turnstile (backend/fly.toml sets
+// AUTH_MODE=password with MAGIC_LINK_ENABLED=true — no Google OAuth). The
+// magic-link trio (MAGIC_LINK_SECRET, RESEND_API_KEY, RESEND_FROM,
+// DASHBOARD_ORIGIN) and the Turnstile captcha secret gate the magic-link
+// send/verify flow (src/auth/magic_link.py, src/auth/turnstile.py) — a
+// missing value there previously passed `fly deploy` clean and only 500'd
+// on the first real login (KeyError on the missing os.environ[...]). Adding
+// them here fails the DEPLOY step instead. Note: the deploy-critical
+// Turnstile env var is TURNSTILE_SECRET (src/auth/turnstile.py:34), not
+// TURNSTILE_SECRET_KEY as some planning docs/.env.example say — using the
+// wrong name here would silently defeat the gate, so this list uses the
+// name the backend actually reads.
+//
+// This script has no conditionally-required notion (it only diffs a flat
+// name list against `fly secrets list`, which can't see AUTH_MODE — that's
+// a plain fly.toml env var, not a secret) so these are added to the flat
+// required set per that constraint.
 const requiredSecrets = (process.env.CADVERIFY_REQUIRED_FLY_SECRETS ||
-  "DATABASE_URL,DATABASE_URL_DIRECT,REDIS_URL,SESSION_SECRET,DASHBOARD_SESSION_SECRET,API_KEY_PEPPER,CONNECTOR_SECRET_KEY,CONNECTOR_FINGERPRINT_KEY")
+  "DATABASE_URL,DATABASE_URL_DIRECT,REDIS_URL,SESSION_SECRET,DASHBOARD_SESSION_SECRET,API_KEY_PEPPER,CONNECTOR_SECRET_KEY,CONNECTOR_FINGERPRINT_KEY,MAGIC_LINK_SECRET,RESEND_API_KEY,RESEND_FROM,DASHBOARD_ORIGIN,TURNSTILE_SECRET")
   .split(",")
   .map((item) => item.trim())
   .filter(Boolean);

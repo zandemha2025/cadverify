@@ -64,3 +64,56 @@ def test_main_wires_auth_routers():
     assert client.get("/auth/google/callback").status_code != 404
     assert client.post("/auth/magic/start").status_code != 404
     assert client.get("/auth/magic/verify").status_code != 404
+
+
+def test_password_mode_with_magic_config_mounts_magic_without_google(monkeypatch):
+    """Launch config: AUTH_MODE=password + the magic-link trio configured
+    (RESEND_API_KEY/MAGIC_LINK_SECRET/DASHBOARD_ORIGIN) must mount
+    /auth/magic/* WITHOUT any Google credentials — magic-link is decoupled
+    from AUTH_MODE (see main._magic_link_enabled)."""
+    import importlib
+
+    from fastapi.testclient import TestClient
+
+    import main as mainmod
+
+    monkeypatch.setenv("AUTH_MODE", "password")
+    monkeypatch.delenv("MAGIC_LINK_ENABLED", raising=False)
+    monkeypatch.setenv("RESEND_API_KEY", "re_test_key")
+    monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GOOGLE_CLIENT_SECRET", raising=False)
+    # MAGIC_LINK_SECRET and DASHBOARD_ORIGIN are already set to valid values
+    # by the autouse _auth_env fixture in conftest.py.
+    importlib.reload(mainmod)
+
+    client = TestClient(mainmod.app, raise_server_exceptions=False)
+    assert client.post("/auth/magic/start").status_code != 404
+    assert client.get("/auth/magic/verify").status_code != 404
+    # Google is NOT mounted — password+magic must not require it.
+    assert client.get("/auth/google/start").status_code == 404
+    assert client.get("/auth/google/callback").status_code == 404
+    # Password auth stays mounted unconditionally.
+    assert client.post("/auth/login").status_code != 404
+
+
+def test_password_mode_without_resend_key_magic_absent(monkeypatch):
+    """AUTH_MODE=password with the magic-link trio incomplete (no
+    RESEND_API_KEY) → magic routes are NOT mounted (unchanged pre-fix
+    behavior for an unconfigured password deployment); password login is
+    unaffected."""
+    import importlib
+
+    from fastapi.testclient import TestClient
+
+    import main as mainmod
+
+    monkeypatch.setenv("AUTH_MODE", "password")
+    monkeypatch.delenv("MAGIC_LINK_ENABLED", raising=False)
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    importlib.reload(mainmod)
+
+    client = TestClient(mainmod.app, raise_server_exceptions=False)
+    assert client.post("/auth/magic/start").status_code == 404
+    assert client.get("/auth/magic/verify").status_code == 404
+    assert client.get("/auth/google/start").status_code == 404
+    assert client.post("/auth/login").status_code != 404

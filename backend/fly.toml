@@ -9,7 +9,14 @@ primary_region = "iad"
   worker = "arq src.jobs.worker.WorkerSettings"
 
 [env]
+  # Launch config: password login + magic-link, no Google OAuth. Magic-link
+  # is decoupled from AUTH_MODE (see backend/main.py:_magic_link_enabled) —
+  # it mounts here because MAGIC_LINK_ENABLED is forced on below (belt and
+  # suspenders; it would also auto-enable once RESEND_API_KEY,
+  # MAGIC_LINK_SECRET, and DASHBOARD_ORIGIN are all set via `fly secrets
+  # set`). Do NOT put those secret values here — only `fly secrets set`.
   AUTH_MODE = "password"
+  MAGIC_LINK_ENABLED = "true"
   LOG_LEVEL = "INFO"
   MAX_UPLOAD_MB = "100"
   DEMO_MAX_TRIANGLES = "500000"

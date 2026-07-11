@@ -91,6 +91,58 @@ def _is_production() -> bool:
     }
 
 
+def _magic_link_configured() -> bool:
+    """True when the magic-link trio (Resend send + HMAC signing + redirect
+    target) is present, independent of AUTH_MODE. This is what lets a
+    password-only launch (AUTH_MODE=password, no Google) still offer
+    magic-link: the router mounts on config, not on provider mode."""
+    return bool(
+        os.getenv("RESEND_API_KEY", "").strip()
+        and os.getenv("MAGIC_LINK_SECRET", "").strip()
+        and os.getenv("DASHBOARD_ORIGIN", "").strip()
+    )
+
+
+def _magic_link_enabled() -> bool:
+    """Single source of truth for whether /auth/magic/* should mount.
+
+    True when:
+      - MAGIC_LINK_ENABLED explicitly overrides it (either direction), or
+      - AUTH_MODE already implies it (google/hybrid — unchanged legacy
+        behavior), or
+      - the magic-link config trio is present (see _magic_link_configured),
+        so AUTH_MODE=password + Resend/HMAC/DASHBOARD_ORIGIN creds gets
+        magic-link WITHOUT needing Google credentials at all.
+    """
+    override = os.getenv("MAGIC_LINK_ENABLED")
+    if override is not None:
+        return override.strip().lower() in ("1", "true", "yes", "on")
+    auth_mode = os.getenv("AUTH_MODE", "google")
+    return auth_mode in ("google", "hybrid") or _magic_link_configured()
+
+
+def _magic_link_requires_valid_secrets() -> bool:
+    """Whether boot must fail closed unless magic-link secrets are complete.
+
+    True whenever magic-link is enabled AND either (a) MAGIC_LINK_ENABLED
+    was explicitly forced on, or (b) the config trio is actually present
+    (i.e. someone is really trying to run magic-link, not just inheriting
+    it as a side effect of AUTH_MODE). This is what lets AUTH_MODE=password
+    + Resend/HMAC/DASHBOARD_ORIGIN creds (the launch config) fail the
+    DEPLOY on a missing value instead of 500ing on the first login — while
+    leaving a legacy AUTH_MODE=google/hybrid deployment that has never
+    configured Resend exactly as lax as before (unchanged behavior; that
+    deployment's magic router was already mounted-but-unconfigured pre-fix,
+    and this change is scoped to closing the password-launch gap, not to
+    retroactively hardening every existing google/hybrid deploy)."""
+    if not _magic_link_enabled():
+        return False
+    override = os.getenv("MAGIC_LINK_ENABLED")
+    if override is not None:
+        return override.strip().lower() in ("1", "true", "yes", "on")
+    return _magic_link_configured()
+
+
 def _assert_production_secrets() -> None:
     """Fail closed in production if auth secrets are still at dev defaults (S5).
 
@@ -136,6 +188,37 @@ def _assert_production_secrets() -> None:
                 raise RuntimeError(
                     f"{var} is unset or the 'dummy' default in a production "
                     f"build with AUTH_MODE={auth_mode}; refusing to start."
+                )
+    # Magic-link is decoupled from Google (a password+magic-link launch must
+    # boot without any Google creds). Whenever magic-link is actually being
+    # used (see _magic_link_requires_valid_secrets), the trio must be
+    # present and MAGIC_LINK_SECRET valid, or a missing value that would
+    # otherwise 500 the first /auth/magic/start call instead fails the
+    # boot, same fail-closed pattern as DASHBOARD_SESSION_SECRET.
+    if _magic_link_requires_valid_secrets():
+        magic_link_secret = os.getenv("MAGIC_LINK_SECRET", "").strip()
+        try:
+            decoded_magic_link_secret = base64.b64decode(
+                magic_link_secret, validate=True
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                "MAGIC_LINK_SECRET must be base64 and decode to >=32 bytes "
+                f"in a production build (RELEASE={os.getenv('RELEASE')!r}) "
+                "with magic-link enabled; refusing to start."
+            ) from exc
+        if len(decoded_magic_link_secret) < 32:
+            raise RuntimeError(
+                "MAGIC_LINK_SECRET must decode to >=32 bytes in a production "
+                f"build (RELEASE={os.getenv('RELEASE')!r}) with magic-link "
+                "enabled; refusing to start."
+            )
+        for var in ("RESEND_API_KEY", "RESEND_FROM", "DASHBOARD_ORIGIN"):
+            if not os.getenv(var, "").strip():
+                raise RuntimeError(
+                    f"{var} is unset in a production build "
+                    f"(RELEASE={os.getenv('RELEASE')!r}) with magic-link "
+                    "enabled; refusing to start."
                 )
 
 
@@ -380,6 +463,14 @@ AUTH_MODE = os.getenv("AUTH_MODE", "google")
 
 if AUTH_MODE in ("google", "hybrid"):
     app.include_router(oauth_router, prefix="/auth")
+
+# Magic-link mounts whenever it is ENABLED (see _magic_link_enabled), not
+# merely when AUTH_MODE is google/hybrid. This is what lets AUTH_MODE=password
+# offer magic-link (RESEND_API_KEY + MAGIC_LINK_SECRET + DASHBOARD_ORIGIN all
+# set, or MAGIC_LINK_ENABLED=1 forces it) without needing Google OAuth at all
+# — the production launch config. google/hybrid keep mounting it exactly as
+# before (unconditionally), so that behavior is unchanged.
+if _magic_link_enabled():
     app.include_router(magic_router, prefix="/auth")
 
 if AUTH_MODE in ("saml", "hybrid"):
