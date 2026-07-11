@@ -145,20 +145,26 @@ async def test_all_rungs_capped_yields_honest_400_within_budget(monkeypatch):
 # ──────────────────────────────────────────────────────────────
 @pytest.mark.slow
 @pytest.mark.asyncio
-async def test_real_rung0_grind_is_hard_killed_near_its_cap():
-    """The REAL periodic fixture makes rung 0 (default algo) grind for 2+ minutes.
-    In a killable subprocess it is SIGKILLed at its cap: ``_run_rung_killable``
-    raises ``_RungTimeout`` shortly after the cap, reclaiming the CPU — instead of
-    grinding uninterruptibly to completion."""
+async def test_real_rung0_is_bounded_or_returns_an_open_fallback():
+    """The REAL periodic fixture cannot win on rung 0.
+
+    Depending on gmsh/platform, the primary algorithm either grinds and is killed
+    at its cap, or returns quickly with a non-watertight shell. Both outcomes are
+    bounded and force the full ladder to advance to the watertight recovery rung.
+    """
     _require_step()
     data = _PERIODIC_FIXTURE.read_bytes()
     cap = 5.0
     t0 = time.perf_counter()
-    with pytest.raises(parse_pool._RungTimeout):
-        await parse_pool._run_rung_killable(data, ".step", 0, cap)
+    try:
+        mesh = await parse_pool._run_rung_killable(data, ".step", 0, cap)
+    except parse_pool._RungTimeout:
+        mesh = None
+    if mesh is not None:
+        assert not mesh.is_watertight, "a watertight primary shell would be a valid win"
     dt = time.perf_counter() - t0
-    # Killed near the cap (allow spawn + kill slack), NOT the 120s+ full grind.
-    assert dt < cap + 10.0, f"rung 0 grind must be killed near its {cap}s cap, took {dt:.1f}s"
+    # Either returned open or was killed near cap; never a multi-minute grind.
+    assert dt < cap + 10.0, f"rung 0 must resolve near its {cap}s cap, took {dt:.1f}s"
 
 
 @pytest.mark.slow

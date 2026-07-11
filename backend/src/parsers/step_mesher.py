@@ -70,6 +70,9 @@ _MAX_SIZE_MM = 50.0          # ceiling so huge parts don't vanish
 #     errors — and can segfault — on the same parts), so we mesh uniformly at
 #     MeshSizeMax: coarser, but a valid closed shell. This rung recovers the known
 #     periodic-surface failures (nist_ctc_02/04/05) to watertight shells in <10s.
+#     Some gmsh/platform combinations do not raise on the primary rung; they
+#     return a non-watertight shell instead. The ladder treats that as a fallback
+#     candidate and still advances to this recovery rung.
 #   * Rung 2 (+ OCC shape healing): last resort for degenerate B-reps — OCC auto-
 #     fix / sew is applied BEFORE import. Coarser still and not guaranteed
 #     watertight, but a non-empty shell is better than a hard failure (the
@@ -99,6 +102,32 @@ class _StepReadError(Exception):
 class _EmptyMeshError(Exception):
     """A rung tessellated the (readable) shape but produced an empty mesh.
     Retryable: a more robust rung may still yield a non-empty shell."""
+
+
+def _shell_defect_count(mesh: trimesh.Trimesh) -> int:
+    """Count unique edges that are not shared by exactly two triangles.
+
+    Used only to rank non-watertight fallback shells. A lower count is a less
+    broken shell; a watertight result never reaches this ranking because it wins
+    the ladder immediately.
+    """
+    inverse = np.asarray(mesh.edges_unique_inverse, dtype=np.int64).reshape(-1)
+    if inverse.size == 0:
+        return 2**63 - 1
+    incidence = np.bincount(inverse)
+    return int(np.count_nonzero(incidence != 2))
+
+
+def _prefer_open_shell(
+    current: trimesh.Trimesh | None,
+    candidate: trimesh.Trimesh,
+) -> trimesh.Trimesh:
+    """Keep the least-defective open shell as the downstream G1 fallback."""
+    if current is None:
+        return candidate
+    if _shell_defect_count(candidate) < _shell_defect_count(current):
+        return candidate
+    return current
 
 
 def is_step_supported() -> bool:
@@ -276,6 +305,7 @@ def _mesh_step_file(path: str) -> trimesh.Trimesh:
     loop; ``parse_pool`` uses the subprocess orchestrator instead so each rung is
     separately time-bounded. Both share ``_run_rung`` + ``ladder_failure_error``."""
     last_msg = ""
+    best_open: trimesh.Trimesh | None = None
     for idx, (name, _algo, _curv, _heal) in enumerate(_MESH_RUNGS):
         try:
             mesh = _run_rung(path, idx)
@@ -297,12 +327,36 @@ def _mesh_step_file(path: str) -> trimesh.Trimesh:
                 )
             continue
 
+        # Non-empty is not enough: a later rung can often close a shell that the
+        # primary algorithm emitted with boundary/non-manifold edges. Preserve
+        # the least-defective open shell so a genuinely open STEP still reaches
+        # the downstream GEOMETRY_INVALID gate if no strategy can close it.
+        if not mesh.is_watertight:
+            best_open = _prefer_open_shell(best_open, mesh)
+            last_msg = f"rung '{name}' produced a non-watertight shell"
+            nxt = _MESH_RUNGS[idx + 1][0] if idx + 1 < len(_MESH_RUNGS) else None
+            if nxt is not None:
+                logger.info(
+                    "step mesher rung '%s' produced an open shell (%d defective "
+                    "edges); retrying with rung '%s'",
+                    name, _shell_defect_count(mesh), nxt,
+                )
+            continue
+
         if idx > 0:
             logger.info(
                 "step mesher recovered on retry rung '%s' (faces=%d, watertight=%s)",
                 name, len(mesh.faces), mesh.is_watertight,
             )
         return mesh
+
+    if best_open is not None:
+        logger.info(
+            "step mesher found no watertight strategy; returning least-defective "
+            "open shell for the downstream geometry gate (faces=%d, defects=%d)",
+            len(best_open.faces), _shell_defect_count(best_open),
+        )
+        return best_open
 
     # Every rung failed -> a SPECIFIC, honest error naming the cause.
     raise ladder_failure_error(last_msg)

@@ -367,6 +367,7 @@ async def submit_async(data: bytes, suffix: str) -> trimesh.Trimesh:
     n = len(sm._MESH_RUNGS)
     caps = _rung_caps(_budget_sec(), n)
     last_msg = ""
+    best_open: trimesh.Trimesh | None = None
 
     async with _ladder_semaphore():
         for idx in range(n):
@@ -405,12 +406,33 @@ async def submit_async(data: bytes, suffix: str) -> trimesh.Trimesh:
                 logger.info("step ladder rung %d failed (%s); advancing", idx, last_msg[:120])
                 continue
 
+            # A platform/version may return quickly from a periodic rung with an
+            # open shell instead of raising or grinding. Keep the best such shell
+            # only as a fallback and continue: a later MeshAdapt rung can close it.
+            if not mesh.is_watertight:
+                best_open = sm._prefer_open_shell(best_open, mesh)
+                last_msg = f"rung {idx} produced a non-watertight shell"
+                logger.info(
+                    "step ladder rung %d produced an open shell (%d defective "
+                    "edges); advancing",
+                    idx, sm._shell_defect_count(mesh),
+                )
+                continue
+
             if idx > 0:
                 logger.info(
                     "step ladder recovered on rung %d (faces=%d, watertight=%s)",
                     idx, len(mesh.faces), mesh.is_watertight,
                 )
             return mesh
+
+    if best_open is not None:
+        logger.info(
+            "step ladder found no watertight strategy; returning least-defective "
+            "open shell for the downstream geometry gate (faces=%d, defects=%d)",
+            len(best_open.faces), sm._shell_defect_count(best_open),
+        )
+        return best_open
 
     # Every rung failed within budget -> the SPECIFIC, honest 400 (not a 504).
     raise sm.ladder_failure_error(last_msg)
