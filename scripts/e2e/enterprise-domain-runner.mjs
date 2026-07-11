@@ -340,15 +340,15 @@ class EnterpriseDomainQA {
       await this.page.getByLabel("Email").fill(email);
       await this.page.getByLabel("Password").fill(password);
       await this.page.getByRole("button", { name: /^Create account$/ }).click();
-      await this.page.waitForURL(/\/onboarding(?:\?|$)/, { timeout: 20_000 });
-      await this.expectText(/Declare your world before the engine prices it/i, "onboarding");
+      await this.page.waitForURL(/\/verify(?:\?|$)/, { timeout: 20_000 });
+      await this.expectText(/DAY ZERO SETUP/i, "first-run Verify setup");
       const members = await this.expectApiOk("/admin/users");
       assert(Array.isArray(members.users), "members response missing users");
       const self = members.users.find((u) => u.email === email);
       assert(self, "new user was not visible in org members");
       assert(self.org_role === "admin", `expected org admin membership, got ${self.org_role}`);
       this.evidence.member = { email: self.email, role: self.role, org_role: self.org_role };
-      return { screenshot: await this.shot("onboarding-enterprise-org") };
+      return { screenshot: await this.shot("first-run-verify-enterprise-org") };
     });
   }
 

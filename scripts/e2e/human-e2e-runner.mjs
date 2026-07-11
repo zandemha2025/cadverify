@@ -317,10 +317,10 @@ class HumanE2E {
       await this.page.getByLabel("Email").fill(email);
       await this.page.getByLabel("Password").fill(password);
       await this.page.getByRole("button", { name: /^Create account$/ }).click();
-      await this.page.waitForURL(/\/onboarding(?:\?|$)/, { timeout: 20_000 });
-      await this.expectText(/Declare your world before the engine prices it/i, "onboarding");
-      await this.scanVisibleText("onboarding");
-      return { screenshot: await this.shot("onboarding") };
+      await this.page.waitForURL(/\/verify(?:\?|$)/, { timeout: 20_000 });
+      await this.expectText(/DAY ZERO SETUP/i, "first-run Verify setup");
+      await this.scanVisibleText("first-run Verify setup");
+      return { screenshot: await this.shot("first-run-verify-setup") };
     });
 
     this.account = { email, password };
@@ -495,7 +495,7 @@ class HumanE2E {
 ## Coverage
 
 - Public marketing routes: home, platform, developers, teams, method, security, status, company.
-- Auth routes: gated /verify redirect, weak-password rejection, real signup, onboarding.
+- Auth routes: gated /verify redirect, weak-password rejection, real signup, canonical first-run Verify setup.
 - Authenticated app: Verify rail surfaces, command palette branch, notifications, batch, cost history, compare, history, reconstruct, label, design system, developer settings.
 - Upload path: real STEP file through the Verify UI using backend/tests/assets/cube.step.
 - Responsive smoke: mobile public home and authenticated Verify shell.
