@@ -34,6 +34,9 @@ const reports = {
 
 const files = {
   workflow: path.join(repoRoot, ".github/workflows/ci.yml"),
+  saasPromotion: path.join(repoRoot, ".github/workflows/saas-promote.yml"),
+  regulatedDeploy: path.join(repoRoot, ".github/workflows/regulated-deploy.yml"),
+  flyPromotionScript: path.join(repoRoot, "scripts/ops/promote-fly-release.sh"),
   frontendPackage: path.join(repoRoot, "frontend/package.json"),
   routeAuth: path.join(repoRoot, "scripts/ci/check_route_auth.py"),
   rfqService: path.join(repoRoot, "backend/src/services/rfq_package_service.py"),
@@ -106,6 +109,9 @@ async function main() {
     loadSmoke,
     restoreDrill,
     workflow,
+    saasPromotion,
+    regulatedDeploy,
+    flyPromotionScript,
     frontendPackage,
     routeAuth,
     rfqService,
@@ -135,6 +141,9 @@ async function main() {
     readJson(reports.loadSmoke),
     readJson(reports.restoreDrill),
     readText(files.workflow),
+    readText(files.saasPromotion),
+    readText(files.regulatedDeploy),
+    readText(files.flyPromotionScript),
     readText(files.frontendPackage),
     readText(files.routeAuth),
     readText(files.rfqService),
@@ -225,11 +234,36 @@ async function main() {
       contains(
         workflow,
         "Build frontend production image and push on main",
-        "Deploy frontend (pre-built image)",
-        "Deploy backend (pre-built image)",
+        "Build backend production image and push on main",
+        "Write immutable commercial release manifest",
         "Lint and render Helm chart",
         "Postgres restore drill",
         "Run human and enterprise browser journeys"
+      );
+      contains(
+        saasPromotion,
+        "Require a successful CI release for this exact SHA",
+        "Download CI-owned immutable release manifest",
+        "Deploy and verify staging",
+        "Deploy and verify production",
+        "environment: saas-staging",
+        "environment: saas-production"
+      );
+      contains(
+        flyPromotionScript,
+        "digest-qualified images",
+        "git merge-base --is-ancestor",
+        'flyctl scale count web=2 worker=2',
+        "fly-live-health-gate.mjs",
+        '--image "$CADVERIFY_BACKEND_IMAGE"',
+        '--image "$CADVERIFY_FRONTEND_IMAGE"'
+      );
+      contains(
+        regulatedDeploy,
+        "Verify and deploy signed digests",
+        "Verify image signatures with the GovCloud KMS key",
+        "Deploy atomically",
+        "Verify rollouts and deep dependency health"
       );
       contains(
         frontendPackage,
@@ -245,7 +279,12 @@ async function main() {
       contains(backendFly, 'app = "cadvrfy-api"', "alembic upgrade head");
       contains(frontendFly, 'app = "cadvrfy-web"', "force_https = true");
       return {
-        deployTargets: ["backend Fly app", "frontend Fly app", "Helm render", "Docker images"],
+        deployTargets: [
+          "immutable commercial images",
+          "isolated Fly staging and production",
+          "signed GovCloud images",
+          "atomic EKS deployment",
+        ],
       };
     }),
 
@@ -254,7 +293,12 @@ async function main() {
       contains(
         workflow,
         "Every /api/v1 route calls require_api_key",
-        "cv_live_ never appears in captured Sentry payload"
+        "Auth material never appears in captured Sentry payload",
+        "cv_live_",
+        "FAKE_SESSION_SENTINEL",
+        "FAKE_MAGIC_TOKEN_SENTINEL",
+        "FAKE_PASSWORD_SENTINEL",
+        "FAKE_TURNSTILE_SENTINEL"
       );
       contains(
         enterpriseOpsTest,
@@ -299,11 +343,18 @@ async function main() {
     await check("HELM-OPS-001", "Kubernetes operational assumptions", async () => {
       contains(helmValues, "accessModes:", "ReadWriteMany");
       contains(helmPvc, ".Values.persistence.blobs.accessModes");
-      contains(helmWorker, "livenessProbe:", "readinessProbe:", "import src.jobs.worker");
+      contains(
+        helmWorker,
+        'command: ["arq", "src.jobs.worker.WorkerSettings"]',
+        "startupProbe:",
+        "livenessProbe:",
+        "readinessProbe:",
+        'command: ["/bin/sh", "-c", "kill -0 1"]'
+      );
       contains(workflow, "helm lint charts/cadverify", "helm template cadverify charts/cadverify");
       return {
         blobPvcMode: "ReadWriteMany configurable",
-        workerProbe: "import probe rendered",
+        workerProbe: "PID 1 command probes rendered",
       };
     }),
 
