@@ -722,7 +722,7 @@ class EnterpriseDomainQA {
       assert(stripText.includes(parentAssembly), "stage context strip did not show the declared parent assembly");
       assert(/USER/i.test(stripText), "stage context strip did not show USER provenance");
       assert(/service world/i.test(stripText), "stage context strip did not show declared service world");
-      await this.page.getByRole("button", { name: /^Seat in context$/i }).click();
+      await this.page.getByRole("button", { name: /^Seat in assembly$/i }).click();
       await this.page.waitForTimeout(1200);
       const text = await this.scanVisibleText("verify-stage-context-product-ui");
       assert(new RegExp(escapeRegExp(parentAssembly)).test(text), "declared parent assembly missing from product UI text");
