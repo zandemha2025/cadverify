@@ -34,6 +34,7 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
   const [records, setRecords] = useState<CostDecisionSummary[] | null>(null);
   const [recordsMore, setRecordsMore] = useState(false);
   const [machineCount, setMachineCount] = useState<number | null>(null);
+  const [ratedMachineCount, setRatedMachineCount] = useState<number | null>(null);
   const [programCount, setProgramCount] = useState<number | null>(null);
   const [changeRequests, setChangeRequests] = useState<ChangeRequest[] | null>(null);
   const [actuals, setActuals] = useState<number | null>(null);
@@ -43,7 +44,22 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
       (p) => { setRecords(p.cost_decisions); setRecordsMore(p.has_more); },
       () => setRecords([])
     );
-    listMachines().then((p) => setMachineCount(p.machines.length), () => setMachineCount(null));
+    listMachines().then(
+      (p) => {
+        setMachineCount(p.machines.length);
+        setRatedMachineCount(
+          p.machines.filter(
+            (machine) =>
+              typeof machine.hourly_rate_usd === "number" &&
+              Number.isFinite(machine.hourly_rate_usd)
+          ).length
+        );
+      },
+      () => {
+        setMachineCount(null);
+        setRatedMachineCount(null);
+      }
+    );
     // Governance + ground-truth are viewer-scoped; a null result means we don't
     // know yet and never produce a nudge. Failures degrade to "no signal", never
     // to a fabricated one.
@@ -55,6 +71,10 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
   const today = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
   const recordCount = records == null ? null : records.length;
   const proposed = changeRequests == null ? null : proposedCount(changeRequests);
+  const missingRateCount =
+    machineCount == null || ratedMachineCount == null
+      ? null
+      : Math.max(0, machineCount - ratedMachineCount);
 
   const queue: QueueRow[] | null =
     changeRequests == null && machineCount == null && actuals == null
@@ -236,10 +256,22 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
           <button type="button" onClick={() => nav("machines")} style={{ border: `1px solid ${C.hair}`, borderRadius: 14, background: C.panel, padding: "16px 18px", cursor: "pointer", fontFamily: "inherit", color: "inherit", textAlign: "left" }}>
             <Kicker>YOUR FLOOR</Kicker>
             <p style={{ margin: "8px 0 0", fontSize: 14 }}>
-              {machineCount == null ? "—" : machineCount === 0 ? "No machines declared" : `${machineCount} machine${machineCount === 1 ? "" : "s"} owned · marginal costing active`}
+              {machineCount == null || missingRateCount == null
+                ? "—"
+                : machineCount === 0
+                  ? "No machines declared"
+                  : missingRateCount === 0
+                    ? `${machineCount} machine${machineCount === 1 ? "" : "s"} owned · all rates declared`
+                    : `${machineCount} machine${machineCount === 1 ? "" : "s"} owned · ${missingRateCount} rate${missingRateCount === 1 ? "" : "s"} missing`}
             </p>
-            <p style={{ margin: "5px 0 0", fontSize: 12, color: machineCount ? C.ink45 : C.cond }}>
-              {machineCount ? "the denominator of every verdict" : "declare your floor — everything starts from the denominator"}
+            <p style={{ margin: "5px 0 0", fontSize: 12, color: machineCount && missingRateCount === 0 ? C.ink45 : C.cond }}>
+              {machineCount == null || missingRateCount == null
+                ? "checking machine rates..."
+                : machineCount === 0
+                ? "declare your floor — everything starts from the denominator"
+                : missingRateCount === 0
+                  ? "marginal costing uses your declared hourly rates"
+                  : "set hourly rates before relying on marginal cost"}
             </p>
           </button>
 
