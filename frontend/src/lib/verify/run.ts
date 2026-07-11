@@ -21,7 +21,7 @@
 import { validateFile, type ValidationResult, type CostReport, type CostGeometry } from "@/lib/api";
 import { API_BASE } from "@/lib/api-base";
 import { listMachines, ownedProcessesFrom, type OwnedMachine } from "./machine-api";
-import type { VerificationBlock } from "./verification";
+import { readVerification, type VerificationBlock } from "./verification";
 import {
   computeMeshHash,
   declarePartContext,
@@ -210,12 +210,4 @@ export async function runVerification(input: VerifyInput): Promise<VerifyResult>
     partContext,
     partContextError,
   };
-}
-
-function readVerification(obj: unknown): VerificationBlock | null {
-  if (obj && typeof obj === "object" && "verification" in obj) {
-    const v = (obj as { verification?: unknown }).verification;
-    if (v && typeof v === "object" && "verdict" in v) return v as VerificationBlock;
-  }
-  return null;
 }

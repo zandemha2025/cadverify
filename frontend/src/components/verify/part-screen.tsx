@@ -46,6 +46,7 @@ import {
   type PartStanding,
   type Blocker,
 } from "@/lib/verify/part-standing";
+import { verdictBannerModel, type VerdictBannerModel } from "@/lib/verify/verification";
 import {
   Kicker,
   ProvChip,
@@ -534,21 +535,50 @@ function StandingCard({
   nav: (s: string) => void;
 }) {
   if (standing.kind === "costed") {
+    const machine: VerdictBannerModel = standing.makeabilityVerdict
+      ? verdictBannerModel(standing.makeabilityVerdict)
+      : {
+          kicker: "SHOULD-COST · MACHINE FIT NOT EVALUATED",
+          title: "Costed route — machine fit not evaluated.",
+          sub: "This record predates a machine-fit verdict or was computed without declared inventory.",
+          tone: "neutral",
+        };
+    const tone = TONE[machine.tone];
+    const border =
+      machine.tone === "pass"
+        ? "rgba(31,138,91,0.45)"
+        : machine.tone === "cond"
+          ? "rgba(176,120,24,0.45)"
+          : machine.tone === "fail"
+            ? "rgba(194,69,58,0.4)"
+            : C.hair;
+    const background =
+      machine.tone === "pass"
+        ? "rgba(31,138,91,0.04)"
+        : machine.tone === "cond"
+          ? "rgba(176,120,24,0.04)"
+          : machine.tone === "fail"
+            ? "rgba(194,69,58,0.03)"
+            : C.panel;
     return (
       <div
         style={{
-          border: `1.5px solid rgba(31,138,91,0.45)`,
+          border: `1.5px solid ${border}`,
           borderRadius: 16,
-          background: "rgba(31,138,91,0.04)",
+          background,
           padding: "20px 22px",
         }}
       >
-        <Kicker color={C.pass}>
-          CURRENT STANDING{standing.recordId ? ` · RECORD #${standing.recordId.slice(-6)}` : ""}
+        <Kicker color={tone}>
+          {machine.kicker}{standing.recordId ? ` · RECORD #${standing.recordId.slice(-6)}` : ""}
         </Kicker>
         <p style={{ margin: "10px 0 0", fontSize: 21, fontWeight: 400, letterSpacing: "-0.015em" }}>
-          Makeable{standing.process ? ` — ${procLabel(standing.process)}` : ""},{" "}
-          {USD(standing.unitCostUsd)}/unit{standing.costQty ? ` @ qty ${NUM(standing.costQty)}` : ""}
+          {machine.title}
+        </p>
+        <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 11.5, color: C.ink55 }}>
+          should-cost route{standing.process ? ` · ${procLabel(standing.process)}` : ""}
+          {standing.unitCostUsd != null ? ` · ${USD(standing.unitCostUsd)}/unit` : ""}
+          {standing.costQty ? ` @ qty ${NUM(standing.costQty)}` : ""}
         </p>
         <div style={{ margin: "12px 0 0", maxWidth: 320 }}>
           <ConfidenceBand validated={standing.validated} />

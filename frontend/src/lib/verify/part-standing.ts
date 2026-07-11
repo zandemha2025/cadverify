@@ -19,6 +19,7 @@ import type {
   CostReport,
   Issue,
 } from "@/lib/api";
+import type { MakeabilityLattice } from "./verification";
 
 /** The make-now route's estimate — the largest-quantity point for the decision's
  *  make-now process (setup fully amortized = the stable read). Inlined (not a
@@ -68,7 +69,7 @@ export function standingKind(row: CatalogRowApi): StandingKind {
 export function standingTag(row: CatalogRowApi): StandingTag {
   switch (standingKind(row)) {
     case "costed":
-      return { label: "VERIFIED · Σ ✓", tone: "pass" };
+      return { label: "COSTED · RECORD", tone: "neutral" };
     case "blocked":
       return { label: "BLOCKED — SEE FINDINGS", tone: "fail" };
     case "invalid":
@@ -102,7 +103,20 @@ export interface PartStanding {
   recordId: string | null;
   /** when this standing was last updated (catalog updated_at, ISO). */
   updatedAt: string;
+  /** Persisted machine-fit lattice, independent of route DFM. Null for records
+   *  that predate machine verification or where it was not evaluated. */
+  makeabilityVerdict: MakeabilityLattice | null;
 }
+
+const MAKEABILITY_VALUES = new Set<MakeabilityLattice>([
+  "makeable_in_house",
+  "makeable_with_secondary_op",
+  "makeable_not_on_owned",
+  "makeable_outsource_only",
+  "environment_excluded",
+  "not_makeable",
+  "unknown",
+]);
 
 export function deriveStanding(
   row: CatalogRowApi,
@@ -112,6 +126,11 @@ export function deriveStanding(
   const detailWithheld = Boolean(est?.environment_excluded);
   const kind = detailWithheld ? "blocked" : standingKind(row);
   const conf = est?.confidence;
+  const rawMakeability = detail?.result.verification?.verdict;
+  const makeabilityVerdict =
+    typeof rawMakeability === "string" && MAKEABILITY_VALUES.has(rawMakeability as MakeabilityLattice)
+      ? (rawMakeability as MakeabilityLattice)
+      : null;
   return {
     kind,
     process: row.recommended_route?.process ?? detail?.make_now_process ?? null,
@@ -129,6 +148,7 @@ export function deriveStanding(
     crossoverQty: detail?.crossover_qty ?? null,
     recordId: row.cost_decision?.id ?? null,
     updatedAt: row.updated_at,
+    makeabilityVerdict,
   };
 }
 
