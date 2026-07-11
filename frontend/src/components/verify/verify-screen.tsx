@@ -10,7 +10,7 @@
  * walk stops honestly at a failed gate (geometry invalid → no downstream compute).
  */
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
-import { C, MONO, USD, NUM, procLabel, statusColor } from "@/lib/verify/tokens";
+import { C, MONO, USD, NUM, procLabel, statusColor, normProv } from "@/lib/verify/tokens";
 import type { VerifyResult } from "@/lib/verify/run";
 import type { CostReport, CostComparison } from "@/lib/api";
 import {
@@ -558,7 +558,7 @@ function Walk({
                   <p style={{ margin: 0, fontFamily: MONO, fontSize: 11.5, color: C.ink60, lineHeight: 1.7 }}>
                     material class <span style={{ color: C.ink }}>{cost.material_class}</span>
                     {cost.routing?.material_hint ? ` · route hint ${cost.routing.material_hint}` : ""}{" "}
-                    <ProvChip p="DEFAULT" />
+                    <ProvChip p={normProv(cost.assumptions?.find((a) => a.name === "material_class")?.provenance)} />
                   </p>
                 ) : (
                   <p style={{ margin: 0, fontFamily: MONO, fontSize: 11.5, color: C.ink50 }}>material class withheld — costing unavailable</p>
