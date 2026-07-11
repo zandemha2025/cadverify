@@ -134,6 +134,7 @@ export function CommandPalette({
             ref={inputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
+            aria-label="Command palette search"
             placeholder="Jump to a surface or action…"
             style={{ flex: 1, border: "none", background: "none", fontSize: 14, color: C.ink, fontFamily: "inherit" }}
           />

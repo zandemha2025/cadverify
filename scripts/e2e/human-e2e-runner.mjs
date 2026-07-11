@@ -346,7 +346,7 @@ class HumanE2E {
 
     await this.step("command palette jumps to Triage", async () => {
       await this.page.locator('button[title="Command palette (⌘K)"]').click();
-      await this.page.locator('input[placeholder="Search or jump to a surface…"]').fill("triage");
+      await this.page.getByRole("textbox", { name: "Command palette search" }).fill("triage");
       await this.page.keyboard.press("Enter");
       await this.page.waitForTimeout(700);
       await this.expectText(/Triage|makeability/i, "command palette triage jump");
