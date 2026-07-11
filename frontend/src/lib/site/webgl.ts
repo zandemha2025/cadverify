@@ -16,3 +16,23 @@ export function acquireWebGlContext(
     return null;
   }
 }
+
+/** One-shot capability probe for components that cannot pass a pre-acquired
+ * context into their renderer (for example react-three-fiber's Canvas). The
+ * probe is released immediately when the browser exposes WEBGL_lose_context,
+ * so it does not consume one of the renderer's scarce live context slots. */
+export function probeWebGlSupport(
+  createCanvas: () => HTMLCanvasElement = () => document.createElement("canvas"),
+): boolean {
+  try {
+    const context = acquireWebGlContext(createCanvas());
+    if (!context) return false;
+    const release = context.getExtension("WEBGL_lose_context") as
+      | { loseContext: () => void }
+      | null;
+    release?.loseContext();
+    return true;
+  } catch {
+    return false;
+  }
+}

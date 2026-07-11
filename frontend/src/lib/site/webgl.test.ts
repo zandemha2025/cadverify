@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { acquireWebGlContext } from "./webgl.ts";
+import { acquireWebGlContext, probeWebGlSupport } from "./webgl.ts";
 
 // Regression: ISSUE-UX-001 — the marketing site crashed when WebGL was absent.
 // Found by /qa on 2026-07-11.
@@ -48,4 +48,31 @@ test("acquireWebGlContext returns null when contexts are absent or blocked", () 
 
   assert.equal(acquireWebGlContext(absent), null);
   assert.equal(acquireWebGlContext(blocked), null);
+});
+
+test("probeWebGlSupport returns false without ever mounting a renderer", () => {
+  const canvas = {
+    getContext() {
+      return null;
+    },
+  } as unknown as HTMLCanvasElement;
+  assert.equal(probeWebGlSupport(() => canvas), false);
+});
+
+test("probeWebGlSupport releases a successful one-shot probe", () => {
+  let released = 0;
+  const context = {
+    getExtension(name: string) {
+      assert.equal(name, "WEBGL_lose_context");
+      return { loseContext: () => { released += 1; } };
+    },
+  } as unknown as WebGL2RenderingContext;
+  const canvas = {
+    getContext(kind: string) {
+      return kind === "webgl2" ? context : null;
+    },
+  } as unknown as HTMLCanvasElement;
+
+  assert.equal(probeWebGlSupport(() => canvas), true);
+  assert.equal(released, 1);
 });

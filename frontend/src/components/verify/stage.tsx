@@ -12,6 +12,7 @@ import type { PartContext } from "@/lib/verify/part-context-read";
 import type { StageAssemblyContext, StageRenderKind } from "./stage-canvas";
 import { fetchPreviewMesh, type PreviewMesh } from "@/lib/verify/preview-mesh";
 import { GhostButton, ProvChip } from "./primitives";
+import { probeWebGlSupport } from "@/lib/site/webgl";
 
 const StageCanvas = dynamic(() => import("./stage-canvas"), {
   ssr: false,
@@ -64,6 +65,7 @@ export function Stage({
   const [renderKind, setRenderKind] = useState<StageRenderKind | null>(null);
   const [preview, setPreview] = useState<PreviewMesh | null>(null);
   const [resolvingShell, setResolvingShell] = useState(false);
+  const [webGlAvailable, setWebGlAvailable] = useState<boolean | null>(null);
   const assemblyContext = useMemo<StageAssemblyContext | null>(
     () => ({
       parentAssembly: context?.parent_assembly ?? null,
@@ -76,6 +78,13 @@ export function Stage({
     [context]
   );
   const hasParent = Boolean(assemblyContext?.parentAssembly);
+
+  // ISSUE-UX-006: react-three-fiber retries renderer creation whenever the
+  // stage re-renders. Probe once before Canvas ever mounts; locked-down/GPU-off
+  // browsers stay on the explicit static envelope and never enter that loop.
+  useEffect(() => {
+    setWebGlAvailable(probeWebGlSupport());
+  }, []);
 
   useEffect(() => {
     if (!hasParent) setSeat(false);
@@ -176,18 +185,26 @@ export function Stage({
       }}
     >
       <div style={{ position: "absolute", inset: 0, cursor: "grab" }}>
-        <StageCanvas
-          renderUrl={renderUrl}
-          renderKind={renderKind}
-          assemblyUrl={assembly?.glbUrl ?? null}
-          assemblySelectedId={assembly?.selectedId ?? null}
-          bbox={bbox}
-          xray={xray}
-          hostile={hostile}
-          autoOrbit={autoOrbit}
-          seat={seat}
-          assemblyContext={assemblyContext}
-        />
+        {webGlAvailable === true ? (
+          <StageCanvas
+            renderUrl={renderUrl}
+            renderKind={renderKind}
+            assemblyUrl={assembly?.glbUrl ?? null}
+            assemblySelectedId={assembly?.selectedId ?? null}
+            bbox={bbox}
+            xray={xray}
+            hostile={hostile}
+            autoOrbit={autoOrbit}
+            seat={seat}
+            assemblyContext={assemblyContext}
+          />
+        ) : (
+          <StaticStageFallback
+            bbox={bbox}
+            hasFile={Boolean(file)}
+            checking={webGlAvailable === null}
+          />
+        )}
       </div>
 
       <div style={{ position: "absolute", top: 22, left: 24, pointerEvents: "none" }}>
@@ -270,6 +287,8 @@ export function Stage({
       >
         <GhostButton
           onClick={() => setXray((v) => !v)}
+          disabled={webGlAvailable !== true}
+          title={webGlAvailable === false ? "X-ray requires interactive 3D support" : "Toggle X-ray view"}
           style={{
             padding: "8px 16px",
             fontSize: 12,
@@ -286,11 +305,13 @@ export function Stage({
         {!assembly && (
           <GhostButton
             onClick={() => {
-              if (hasParent) setSeat((v) => !v);
+              if (hasParent && webGlAvailable === true) setSeat((v) => !v);
             }}
-            disabled={!hasParent}
+            disabled={!hasParent || webGlAvailable !== true}
             title={
-              hasParent
+              webGlAvailable === false
+                ? "Assembly seating requires interactive 3D support"
+                : hasParent
                 ? "Seat the part in its declared parent assembly"
                 : "No parent assembly has been declared for this part"
             }
@@ -306,10 +327,73 @@ export function Stage({
           </GhostButton>
         )}
         <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink35, paddingLeft: 6, whiteSpace: "nowrap" }}>
-          drag to orbit
+          {webGlAvailable === false ? "static preview" : webGlAvailable === null ? "checking 3D…" : "drag to orbit"}
         </span>
       </div>
     </main>
+  );
+}
+
+/** Honest no-WebGL stage: measured envelope, not an invented part silhouette.
+ * All geometry/verdict data remains usable while the unavailable interaction is
+ * named explicitly. */
+function StaticStageFallback({
+  bbox,
+  hasFile,
+  checking,
+}: {
+  bbox: [number, number, number] | null;
+  hasFile: boolean;
+  checking: boolean;
+}) {
+  const dimensions = bbox?.every((n) => Number.isFinite(n) && n > 0)
+    ? `${bbox.map((n) => n.toFixed(1)).join(" × ")} mm`
+    : null;
+  return (
+    <div
+      data-testid="verify-stage-webgl-fallback"
+      data-webgl-state={checking ? "checking" : "unavailable"}
+      role="status"
+      style={{
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 14,
+        padding: "96px 28px 84px",
+        textAlign: "center",
+        color: C.ink55,
+        cursor: "default",
+      }}
+    >
+      <svg width="188" height="132" viewBox="0 0 188 132" fill="none" aria-hidden>
+        <path d="M35 45 90 16l62 31-57 31-60-33Z" fill="rgba(255,255,255,0.55)" stroke="#aeb4bd" />
+        <path d="m35 45 60 33v39L35 82V45Z" fill="rgba(210,215,222,0.32)" stroke="#aeb4bd" />
+        <path d="m95 78 57-31v39l-57 31V78Z" fill="rgba(190,198,208,0.3)" stroke="#aeb4bd" />
+        <path d="M23 117h142M20 112v10m148-10v10" stroke="#c6cbd2" strokeDasharray="4 5" />
+        <circle cx="35" cy="45" r="2.5" fill="#3b7bb8" />
+        <circle cx="95" cy="78" r="2.5" fill="#3b7bb8" />
+        <circle cx="152" cy="47" r="2.5" fill="#3b7bb8" />
+      </svg>
+      <div style={{ maxWidth: 320 }}>
+        <p style={{ margin: 0, fontSize: 13.5, fontWeight: 500, color: C.ink }}>
+          {checking
+            ? "Checking interactive 3D support…"
+            : hasFile
+              ? "Interactive 3D is unavailable in this browser."
+              : "Interactive 3D is unavailable in this browser."}
+        </p>
+        <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10.5, lineHeight: 1.6, color: C.ink45 }}>
+          {dimensions
+            ? `measured envelope · ${dimensions} · geometry and verdict remain available`
+            : hasFile
+              ? "the engine result remains available; measured dimensions appear when parsing completes"
+              : "drop a part to measure its envelope; verification remains fully available"}
+        </p>
+      </div>
+    </div>
   );
 }
 
