@@ -73,6 +73,9 @@ export function SiteNav({ variant = "document", activeHref }: SiteNavProps) {
             {item.label}
           </Link>
         ))}
+        <Link href="/login" className="st-navlink st-navlogin">
+          Log in
+        </Link>
         <Link href={PILOT_HREF} className="st-navcta">
           Request a pilot
         </Link>
@@ -94,6 +97,7 @@ export function SiteFooter() {
               {item.label}
             </Link>
           ))}
+          <Link href="/login">Log in</Link>
         </span>
       </div>
       <div className="st-footer-legal">
