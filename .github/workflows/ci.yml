@@ -384,6 +384,14 @@ jobs:
           push: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
           tags: registry.fly.io/cadvrfy-web:${{ github.sha }},registry.fly.io/cadvrfy-web:latest
           platforms: linux/amd64
+          # NEXT_PUBLIC_SENTRY_DSN must be a build-time value -- Next.js inlines
+          # NEXT_PUBLIC_* into the browser bundle at `next build`, so a Fly
+          # runtime secret alone never reaches client-side Sentry (see
+          # frontend/Dockerfile). Empty when the repo secret is unset, which
+          # keeps Sentry.init(...).enabled false (no-op), matching every other
+          # environment that doesn't set the DSN.
+          build-args: |
+            NEXT_PUBLIC_SENTRY_DSN=${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
           cache-from: type=gha,scope=frontend-image
           cache-to: type=gha,mode=max,scope=frontend-image
 
@@ -417,8 +425,13 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
       - name: Ensure backend web and worker process groups
+        # web=2 matches backend/fly.toml's [http_service] min_machines_running
+        # (launch hardening: headroom so one org's concurrent parses don't
+        # starve another's requests behind a single uvicorn machine). If this
+        # count and the fly.toml value drift, every deploy re-pins the machine
+        # count back to whatever is here, silently undoing a fly.toml edit.
         run: |
-          flyctl scale count web=1 worker=1 --app cadvrfy-api --yes
+          flyctl scale count web=2 worker=1 --app cadvrfy-api --yes
           node scripts/ops/fly-ensure-process-groups.mjs
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

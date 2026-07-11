@@ -42,6 +42,11 @@ weasyprint>=62.0
 jinja2>=3.1.0
 scalar-fastapi>=1.8.0
 arq>=0.27.0
+# S3-compatible object store (src/storage/s3.py). boto3 is imported lazily and
+# only touched when OBJECT_STORE_BACKEND=s3 (the recommended prod backend for
+# durable blobs — see docs/LAUNCH_RUNBOOK.md); the local-volume default never
+# imports it. Listed so the S3 path works out of the box in prod.
+boto3>=1.34.0
 # Local TripoSR GPU inference uses optional heavy dependencies (torch + tsr)
 # installed on GPU workers, not in the base API image.
 rembg>=2.0.0

@@ -15,7 +15,11 @@ primary_region = "iad"
   force_https = true
   auto_stop_machines = "stop"
   auto_start_machines = true
-  min_machines_running = 0
+  # Launch hardening: keep one machine warm so none of the 10 go-live orgs
+  # eats a cold start (Next.js boot + first-request compile) on their first
+  # hit of the day. Was 0 (scale-to-zero); a always-on frontend machine is
+  # cheap relative to a bad first impression during onboarding week.
+  min_machines_running = 1
 
 [[vm]]
   memory = "512mb"

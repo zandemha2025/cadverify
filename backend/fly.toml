@@ -34,12 +34,26 @@ primary_region = "iad"
   force_https = true
   auto_stop_machines = "suspend"
   auto_start_machines = true
-  min_machines_running = 1
+  # Launch hardening: 10 orgs share this app. min_machines_running is scoped
+  # to the "web" process group only (processes = ["web"], above), so this does
+  # NOT change the always-on worker. Was 1 -- bumped to 2 so one org's burst of
+  # concurrent STEP parses can't starve another org's requests behind a single
+  # uvicorn machine at 50 in-flight requests. NOTE: this key only keeps
+  # existing machines from being suspended below this count -- it does not by
+  # itself create a second machine. The actual machine count is set with
+  # `fly scale count web=2 worker=1 --app cadvrfy-api` (see
+  # docs/LAUNCH_RUNBOOK.md and .github/workflows/ci.yml's "Ensure backend web
+  # and worker process groups" step, which pins this on every deploy).
+  min_machines_running = 2
 
   [http_service.concurrency]
     type = "requests"
     hard_limit = 50
-    soft_limit = 25
+    # Raised from 25 -> 40: with 2 web machines already providing headroom,
+    # push the soft limit closer to hard_limit so Fly is less eager to spin up
+    # extra (billed) machines under ordinary bursty load; hard_limit=50 still
+    # caps in-flight requests per machine before Fly queues/adds capacity.
+    soft_limit = 40
 
 [[mounts]]
   source = "cadverify_data"
@@ -47,7 +61,10 @@ primary_region = "iad"
   processes = ["web", "worker"]
   initial_size = "1gb"
 
-# Worker process: always-on, no auto-stop (SAM-3D jobs are long-running)
+# Worker process: always-on, no auto-stop (SAM-3D jobs are long-running).
+# Stays at 1 -- unlike web, worker headroom is not a launch requirement (arq
+# already fans a single worker process out across max_jobs concurrent jobs;
+# see src/jobs/worker.py). Scale independently later if queue depth warrants it.
 [[machines]]
   processes = ["worker"]
   auto_stop_machines = "off"
