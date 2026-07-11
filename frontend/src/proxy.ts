@@ -42,7 +42,7 @@ function contentSecurityPolicy(nonce: string): string {
     style-src 'self' 'unsafe-inline';
     img-src 'self' data: blob: https:;
     font-src 'self' data:;
-    connect-src 'self' https://challenges.cloudflare.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io;
+    connect-src 'self' blob: https://challenges.cloudflare.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io;
     frame-src https://challenges.cloudflare.com;
     worker-src 'self' blob:;
     media-src 'self' blob:;
