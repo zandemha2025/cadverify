@@ -1,4 +1,5 @@
-import { KeyRound } from "lucide-react";
+import Link from "next/link";
+import { BookOpen, KeyRound, TerminalSquare } from "lucide-react";
 import { RevealOnceModal } from "@/components/RevealOnceModal";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
@@ -52,6 +53,23 @@ export default async function DeveloperSettingsPage() {
           </form>
         }
       />
+
+      <Card className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="font-medium text-foreground">Developer resources</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Read the integration guide, then test authenticated requests against the live OpenAPI contract.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="secondary">
+            <Link href="/api-reference"><BookOpen aria-hidden />API reference</Link>
+          </Button>
+          <Button asChild variant="secondary">
+            <a href="/scalar"><TerminalSquare aria-hidden />Open API console</a>
+          </Button>
+        </div>
+      </Card>
 
       {keys.length === 0 ? (
         <EmptyState
