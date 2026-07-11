@@ -40,6 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.org_context import resolve_org
+from src.auth.org_limits import enforce_org_limits
 from src.auth.rate_limit import limiter
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser
@@ -106,6 +107,7 @@ async def ingest_assembly(
     ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
+    _org_limit: None = Depends(enforce_org_limits),
 ):
     """Persist the REAL edge tree of an uploaded STEP/IGES assembly.
 
@@ -144,6 +146,7 @@ async def onboard_bom(
     ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
+    _org_limit: None = Depends(enforce_org_limits),
 ):
     """Onboard a customer BOM (``parent_ref,child_ref,qty_per_parent`` CSV/JSON).
 

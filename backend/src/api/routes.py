@@ -36,6 +36,7 @@ from src.api.upload_validation import (
     validate_magic,
 )
 from src.auth.kill_switch import require_kill_switch_open
+from src.auth.org_limits import enforce_org_limits
 from src.auth.rate_limit import limiter
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
@@ -727,6 +728,7 @@ async def validate_file(
     ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
+    _org_limit: None = Depends(enforce_org_limits),
 ):
     """Upload an STL, STEP/STP, or IGES/IGS file and get manufacturing validation results."""
     # Validate rule pack early (before reading file bytes)
@@ -1048,6 +1050,7 @@ async def validate_assembly(
         "user-declared); unset => costed at the per-assembly FACT count only.",
     ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
+    _org_limit: None = Depends(enforce_org_limits),
 ):
     """Ingest a real STEP/IGES ASSEMBLY -> per-part meshes + world positions +
     nested product tree, and (``format=analysis``) run real per-part analysis.
@@ -1123,6 +1126,7 @@ async def validate_quick(
     file: UploadFile = File(...),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
+    _org_limit: None = Depends(enforce_org_limits),
 ):
     """Quick pass/fail check — universal checks only, no process-specific analysis."""
     data = await _read_capped(file)
@@ -1152,6 +1156,7 @@ async def validate_demo(
             "responses lean."
         ),
     ),
+    _org_limit: None = Depends(enforce_org_limits),
 ):
     """Public demo — full analysis, no auth, no persistence, tight rate limit."""
     import asyncio
@@ -1925,6 +1930,7 @@ async def validate_cost(
     ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
+    _org_limit: None = Depends(enforce_org_limits),
 ):
     """Explainable make-vs-buy should-cost decision for an uploaded STL/STEP part.
 
@@ -1995,6 +2001,7 @@ async def validate_cost_demo(
                     "Inch-authored meshes are scaled ×25.4 into mm ONCE before costing; "
                     "otherwise an inch part read as mm mis-costs by ~16,000×.",
     ),
+    _org_limit: None = Depends(enforce_org_limits),
 ):
     """Public demo of the should-cost / make-vs-buy decision — NO auth.
 

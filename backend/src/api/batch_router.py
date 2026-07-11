@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.errors import DOC_BASE
 from src.auth.org_context import caller_org_subquery
+from src.auth.org_limits import enforce_org_limits
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
@@ -70,6 +71,7 @@ async def create_batch(
     s3_prefix: Optional[str] = Form(None),
     manifest_url: Optional[str] = Form(None),
     manifest: Optional[UploadFile] = File(None),
+    _org_limit: None = Depends(enforce_org_limits),
 ):
     """Create a batch for bulk analysis (job_type=dfm) or should-costing
     (job_type=cost).
