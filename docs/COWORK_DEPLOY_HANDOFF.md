@@ -17,18 +17,29 @@ automotive, aerospace/defense, job-shops) can sign up and use it. Auth is
 **The app is already hardened and tested for this launch — your job is
 PROVISIONING + DEPLOY, not fixing app code.** Specifically, in the current
 branch:
-- Full backend test suite: **1613 passing**.
+- Full backend test suite: **1626 passing**.
 - Auth: password + magic-link works without Google; a missing launch secret
   fails the *deploy*, not the first user's login.
 - Multi-tenant isolation is verified (cross-org reads → 404, no leaks).
 - Per-org rate limits + daily quota (fail-open) guard against noisy neighbors.
 - A load-critical bug (one heavy STEP freezing all tenants) is fixed + verified.
+- **10-org concurrency load-tested + verified:** a burst of 70 concurrent uploads
+  across 10 orgs returns **0% 5xx** — excess load gets an honest, retryable
+  **429 + Retry-After** (admission control), `/health` stays responsive, and no
+  org can starve the others (per-org concurrency cap). (Before this fix the same
+  burst 500'd 55% of requests via DB-pool exhaustion.)
 - Deploy config, secrets gate, and health gates are wired.
 
-**Two honest residuals to know (not blockers):** (1) per-org *submission* is
-throttled but *execution* fair-queueing of the parse pool isn't — handled by
-running the web process at ≥2 machines; watch it under real concurrent heavy
-load. (2) blobs default to a single volume unless you enable S3 (see §Decisions).
+**Honest capacity note (not a blocker, but know it):** the single web machine has
+a real throughput ceiling — **~8 concurrent analyses per machine** (each analysis
+is 30–80s of CPU). Above that, users get a *retryable* "server busy" 429, not a
+failure. For 10 orgs in normal use this is invisible; under a *synchronized* burst
+(e.g. all orgs uploading at a kickoff) some requests get told to retry. Levers, in
+order: run web at **≥2 machines** (`fly scale count web=N`), then raise
+`MAX_CONCURRENT_ANALYSES` / `DB_POOL_SIZE` (see §7). A deeper fix (releasing the DB
+connection during compute, to admit more per machine) is written up as a staged
+post-launch follow-up. Also: blobs default to a single volume unless you enable S3
+(see §2).
 
 ## 1. Current code state
 
@@ -128,14 +139,22 @@ The spine:
 
 - Uptime monitor on `/health`; billing alerts on Fly + the DB provider; confirm
   Sentry is receiving (if DSN set).
-- **Per-org tunables** (adjust from real usage via the admin usage summary):
+- **Per-org rate tunables** (adjust from real usage via the admin usage summary):
   `ORG_RATE_LIMIT_PER_HOUR` (2000), `ORG_RATE_LIMIT_PER_DAY` (20000),
   `ORG_ANALYSES_PER_DAY` (5000). Kill-switch: `ORG_RATE_LIMIT_DISABLED` (only
   bypasses outside a real `RELEASE`).
-- **Watch:** worker/parse-pool saturation under real concurrent heavy uploads
-  (the known compute-fairness residual). If other orgs' light requests queue
-  badly, scale the web + worker process counts (`fly scale count web=N worker=M`)
-  before touching app code.
+- **Capacity / concurrency tunables** (the load-tested admission gate):
+  `MAX_CONCURRENT_ANALYSES` (8 per web machine — keep it under `DB_POOL_SIZE +
+  DB_MAX_OVERFLOW`), `MAX_CONCURRENT_ANALYSES_PER_ORG` (3 — fairness),
+  `DB_POOL_SIZE` (10 → 20 slots), `DB_POOL_TIMEOUT` (10s), `DB_POOL_RECYCLE`
+  (300s). Kill-switch: `ADMISSION_DISABLED` (bypass only outside `RELEASE`).
+- **If users see "server busy, retry" (429 `server_busy`) too often** under real
+  load, in order: (1) `fly scale count web=N` (linear capacity — each machine adds
+  ~8 concurrent), (2) raise `MAX_CONCURRENT_ANALYSES` **and** `DB_POOL_SIZE`
+  together (keep the cap under the pool, and the pool under the DB provider's
+  connection budget × machines), (3) implement the staged "release DB session
+  during compute" follow-up to admit more per machine. **Never** raise the cap
+  above the pool — that reintroduces the 500s the admission gate exists to prevent.
 
 ## 8. Rollback
 
