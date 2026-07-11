@@ -25,7 +25,8 @@ import { fetchCostDecisions, type CostDecisionSummary } from "@/lib/api";
 import { listMachines } from "@/lib/verify/machine-api";
 import { listChangeRequests, type ChangeRequest } from "@/lib/verify/governance-api";
 import { listGroundTruth, realActualCount } from "@/lib/verify/ground-truth-api";
-import { buildQueue, buildActivity, proposedCount, type QueueRow } from "@/lib/verify/home-derive";
+import { getPortfolio, declaredPrograms } from "@/lib/verify/program-api";
+import { buildQueue, buildActivity, buildDayZeroSetup, proposedCount, type QueueRow } from "@/lib/verify/home-derive";
 import { C, MONO, NUM, procLabel } from "@/lib/verify/tokens";
 import { Kicker } from "./primitives";
 
@@ -33,6 +34,7 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
   const [records, setRecords] = useState<CostDecisionSummary[] | null>(null);
   const [recordsMore, setRecordsMore] = useState(false);
   const [machineCount, setMachineCount] = useState<number | null>(null);
+  const [programCount, setProgramCount] = useState<number | null>(null);
   const [changeRequests, setChangeRequests] = useState<ChangeRequest[] | null>(null);
   const [actuals, setActuals] = useState<number | null>(null);
 
@@ -47,6 +49,7 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
     // to a fabricated one.
     listChangeRequests().then((p) => setChangeRequests(p.change_requests), () => setChangeRequests([]));
     listGroundTruth().then((p) => setActuals(realActualCount(p.records)), () => setActuals(null));
+    getPortfolio().then((p) => setProgramCount(declaredPrograms(p).length), () => setProgramCount(null));
   }, []);
 
   const today = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
@@ -64,36 +67,22 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
         });
 
   const activity = buildActivity({ records: records ?? [], changeRequests: changeRequests ?? [] });
-  const setup = [
-    {
-      key: "machines",
-      title: "Declare machines",
-      meta: machineCount == null ? "checking inventory..." : machineCount > 0 ? `${NUM(machineCount)} declared` : "floor denominator missing",
-      state: machineCount == null ? "pending" : machineCount > 0 ? "done" : "needed",
-      action: () => nav("machines"),
-    },
-    {
-      key: "truth",
-      title: "Import rates + actuals",
-      meta: actuals == null ? "checking ground truth..." : actuals > 0 ? `${NUM(actuals)} actuals received` : "bands stay hatched until actuals arrive",
-      state: actuals == null ? "pending" : actuals > 0 ? "done" : "needed",
-      action: () => nav("calibration"),
-    },
-    {
-      key: "program",
-      title: "Create program context",
-      meta: "assembly lineage, service world, units per parent",
-      state: "optional",
-      action: () => nav("programs"),
-    },
-    {
-      key: "verify",
-      title: "Verify first part",
-      meta: recordCount == null ? "checking records..." : recordCount > 0 ? `${NUM(recordCount)} records` : "drop STL, STEP or IGES",
-      state: recordCount == null ? "pending" : recordCount > 0 ? "done" : "needed",
-      action: recordCount ? () => nav("records") : onPickFile,
-    },
-  ];
+  const setup = buildDayZeroSetup({
+    machineCount,
+    recordCount,
+    programCount,
+    realActualCount: actuals,
+  });
+
+  const runSetupStep = (key: (typeof setup)[number]["key"]) => {
+    if (key === "machines") nav("machines");
+    else if (key === "verify") {
+      if (recordCount) nav("records");
+      else onPickFile();
+    }
+    else if (key === "program") nav("programs");
+    else nav("calibration");
+  };
 
   // KPI strip — five honest slots. A count we don't have is "—" (loading) or a
   // real value; the validated-band count is not derivable from any list summary,
@@ -133,11 +122,14 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
         <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
           {setup.map((s, i) => {
             const done = s.state === "done";
+            const locked = s.state === "locked" || s.state === "pending";
             return (
               <button
                 key={s.key}
                 type="button"
-                onClick={s.action}
+                onClick={() => runSetupStep(s.key)}
+                disabled={locked}
+                aria-label={`${s.title}: ${s.meta}`}
                 style={{
                   minHeight: 104,
                   textAlign: "left",
@@ -146,8 +138,9 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
                   background: done ? "rgba(85,184,128,0.06)" : C.sunken,
                   padding: "13px 14px",
                   fontFamily: "inherit",
-                  cursor: "pointer",
+                  cursor: locked ? "not-allowed" : "pointer",
                   color: "inherit",
+                  opacity: locked ? 0.64 : 1,
                 }}
               >
                 <span style={{ display: "inline-flex", width: 23, height: 23, alignItems: "center", justifyContent: "center", borderRadius: "50%", background: done ? C.pass : "#e6e7ea", color: done ? "#fff" : C.ink45, fontFamily: MONO, fontSize: 10 }}>
