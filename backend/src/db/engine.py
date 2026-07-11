@@ -84,8 +84,18 @@ def get_engine():
         url = _async_url(_ensure_prod_tls(os.environ["DATABASE_URL"]))
         kwargs = {"pool_pre_ping": True}
         if not url.startswith("sqlite"):
-            kwargs["pool_size"] = int(os.getenv("DB_POOL_SIZE", "5"))
+            # F-CAP-1: pool_size bumped 5 -> 10 (the /validate family holds a
+            # session for the whole 30-80s analysis, and 5+10 overflow=15 was
+            # too tight under real concurrency; see admission.py for the
+            # companion admission-control gate that keeps in-flight analyses
+            # under the pool's real capacity). pool_timeout fails fast (10s)
+            # instead of the SQLAlchemy default 30s so a saturated pool surfaces
+            # quickly rather than piling up waiters. pool_recycle (300s) drops
+            # connections before they go stale/idle-reaped by the DB side.
+            kwargs["pool_size"] = int(os.getenv("DB_POOL_SIZE", "10"))
             kwargs["max_overflow"] = int(os.getenv("DB_MAX_OVERFLOW", "10"))
+            kwargs["pool_timeout"] = int(os.getenv("DB_POOL_TIMEOUT", "10"))
+            kwargs["pool_recycle"] = int(os.getenv("DB_POOL_RECYCLE", "300"))
         _ENGINE = create_async_engine(url, **kwargs)
     return _ENGINE
 
