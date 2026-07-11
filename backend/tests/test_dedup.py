@@ -37,14 +37,17 @@ def _make_mock_route_helpers(parse_mesh_tracker=None):
     mock_mesh.vertices = [[0, 0, 0]]
     mock_mesh.faces = [[0, 0, 0]]
     mock_parse_mesh.return_value = (mock_mesh, ".stl")
+    # run_analysis / run_quick_analysis now parse via the ASYNC pooled front door
+    # (gauntlet F1 fix — off the event loop), so the tracker lives on the awaited
+    # helper, which is the one actually invoked on a cache miss.
+    mock_parse_mesh_async = AsyncMock(return_value=(mock_mesh, ".stl"))
     if parse_mesh_tracker is not None:
-        original_side_effect = mock_parse_mesh.side_effect
-
         def _tracking_parse(*args, **kwargs):
             parse_mesh_tracker.append(1)
             return (mock_mesh, ".stl")
 
         mock_parse_mesh.side_effect = _tracking_parse
+        mock_parse_mesh_async.side_effect = _tracking_parse
 
     mock_proc = MagicMock()
     mock_proc.value = "fdm"
@@ -60,7 +63,14 @@ def _make_mock_route_helpers(parse_mesh_tracker=None):
     mock_timeout = MagicMock(return_value=30)
     mock_issue_to_dict = MagicMock()
 
-    return (mock_timeout, mock_issue_to_dict, mock_parse_mesh, mock_resolve, mock_to_response)
+    return (
+        mock_timeout,
+        mock_issue_to_dict,
+        mock_parse_mesh,
+        mock_resolve,
+        mock_to_response,
+        mock_parse_mesh_async,
+    )
 
 
 def _make_session_with_cache(cache_store: dict):

@@ -153,7 +153,7 @@ def test_fly_configs_describe_deploy_surface_without_external_proof_claims():
     )
     assert "registry.fly.io/cadvrfy-web:${{ github.sha }}" in workflow
     assert "--config frontend/fly.toml" in workflow
-    assert "flyctl scale count web=1 worker=1 --app cadvrfy-api --yes" in workflow
+    assert "flyctl scale count web=2 worker=1 --app cadvrfy-api --yes" in workflow
     assert "node scripts/ops/fly-required-secrets-gate.mjs" in workflow
     assert "node scripts/ops/fly-live-health-gate.mjs" in workflow
 

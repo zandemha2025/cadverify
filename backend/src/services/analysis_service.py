@@ -227,6 +227,7 @@ def _get_route_helpers():
         _analysis_timeout_sec,
         _issue_to_dict,
         _parse_mesh,
+        _parse_mesh_async,
         _resolve_target_processes,
         _to_response,
     )
@@ -236,6 +237,7 @@ def _get_route_helpers():
         _parse_mesh,
         _resolve_target_processes,
         _to_response,
+        _parse_mesh_async,
     )
 
 
@@ -262,9 +264,10 @@ async def run_analysis(
     (
         analysis_timeout_sec_fn,
         _issue_to_dict,
-        parse_mesh_fn,
+        _parse_mesh_fn,
         resolve_target_processes_fn,
         to_response_fn,
+        parse_mesh_async_fn,
     ) = _get_route_helpers()
 
     start = time.time()
@@ -313,8 +316,14 @@ async def run_analysis(
         )
         return cached.result_json
 
-    # 7. Cache MISS — run full pipeline
-    mesh, suffix = parse_mesh_fn(file_bytes, filename)
+    # 7. Cache MISS — run full pipeline.
+    # Parse via the ASYNC pooled front door (spawn ProcessPool + per-rung hard
+    # wall-clock caps that SIGKILL a runaway worker), NOT the synchronous
+    # parse_mesh_fn — a sync gmsh call here runs on the event-loop thread and a
+    # pathological periodic-surface part (e.g. nist_ctc_05) grinds 2-3 min,
+    # freezing /health, signup, and EVERY other tenant (gauntlet F1). The pooled
+    # path keeps the loop free and surfaces an honest error to just this request.
+    mesh, suffix = await parse_mesh_async_fn(file_bytes, filename)
 
     # Resolve rule pack
     pack = None
@@ -576,9 +585,10 @@ async def run_quick_analysis(
     (
         _analysis_timeout_sec_fn,
         _issue_to_dict,
-        parse_mesh_fn,
+        _parse_mesh_fn,
         _resolve_target_processes_fn,
         _to_response_fn,
+        parse_mesh_async_fn,
     ) = _get_route_helpers()
 
     start = time.time()
@@ -609,8 +619,10 @@ async def run_quick_analysis(
         )
         return cached.result_json
 
-    # Cache miss — run quick analysis
-    mesh, suffix = parse_mesh_fn(file_bytes, filename)
+    # Cache miss — run quick analysis. Async pooled parse (off the event loop,
+    # hard-capped) — same reason as run_analysis: a sync gmsh call here freezes
+    # every tenant on a pathological part (gauntlet F1).
+    mesh, suffix = await parse_mesh_async_fn(file_bytes, filename)
     geometry = analyze_geometry(mesh)
     issues = run_universal_checks(mesh)
     has_errors = any(i.severity == Severity.ERROR for i in issues)

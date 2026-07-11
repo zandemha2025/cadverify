@@ -52,7 +52,7 @@ async def structured_http_error_handler(
     # If detail is already a dict with 'code', use it as-is
     if isinstance(exc.detail, dict) and "code" in exc.detail:
         return JSONResponse(
-            status_code=exc.status_code, content=exc.detail
+            status_code=exc.status_code, content=exc.detail, headers=exc.headers
         )
     if isinstance(exc.detail, dict):
         message = str(exc.detail.get("message") or exc.detail.get("reason") or exc.detail)
@@ -63,6 +63,7 @@ async def structured_http_error_handler(
     return JSONResponse(
         status_code=exc.status_code,
         content=_build_error(exc.status_code, code, message, detail=detail),
+        headers=exc.headers,
     )
 
 
