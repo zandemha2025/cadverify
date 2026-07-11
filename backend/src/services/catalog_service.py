@@ -598,6 +598,139 @@ _NO_VOLUME_REASON = (
 )
 
 
+def recommendation_basis_at_quantity(
+    cost_result_json: dict, quantity: Optional[int]
+) -> Optional[dict]:
+    """The engine's exact recommended unit cost at ``quantity``.
+
+    Annual exposure must never reuse the catalog's quantity-one headline price.
+    This selector accepts only an exact persisted recommendation point and carries
+    its process, material, and confidence through as the traceable pricing basis.
+    Missing/blocked points return ``None`` so callers withhold instead of
+    interpolating or silently substituting another quantity.
+    """
+    if quantity is None:
+        return None
+    decision = cost_result_json.get("decision") or {}
+    at_qty = _lookup_by_qty(decision.get("recommendation") or {}, quantity)
+    if not isinstance(at_qty, dict):
+        return None
+    usd = at_qty.get("unit_cost_usd")
+    raw_process = at_qty.get("process")
+    process = raw_process.strip() if isinstance(raw_process, str) else ""
+    if (
+        isinstance(usd, bool)
+        or not isinstance(usd, (int, float))
+        or usd <= 0
+        or not process
+        or at_qty.get("dfm_ready") is False
+        or at_qty.get("environment_excluded") is True
+    ):
+        return None
+
+    estimate = next(
+        (
+            e
+            for e in cost_result_json.get("estimates") or []
+            if e.get("process") == process
+            and str(e.get("quantity")) == str(quantity)
+        ),
+        None,
+    )
+    if estimate and (
+        estimate.get("dfm_ready") is False
+        or estimate.get("environment_excluded") is True
+    ):
+        return None
+    confidence = (estimate or {}).get("confidence") or {}
+    return {
+        "usd": round(float(usd), 2),
+        "qty": int(quantity),
+        "currency": "USD",
+        "process": process,
+        "material": at_qty.get("material") or (estimate or {}).get("material"),
+        "validated": bool(confidence.get("validated", False)),
+        "basis": "decision.recommendation",
+    }
+
+
+def savings_at_quantity(
+    cost_result_json: dict, quantity: Optional[int]
+) -> Optional[dict]:
+    """Exact engine redesign saving at ``quantity``; never borrowed from another point."""
+    basis = recommendation_basis_at_quantity(cost_result_json, quantity)
+    if basis is None or quantity is None:
+        return None
+    decision = cost_result_json.get("decision") or {}
+    alternative = _lookup_by_qty(decision.get("if_redesigned") or {}, quantity)
+    if not isinstance(alternative, dict):
+        return None
+    redesigned = alternative.get("unit_cost_usd")
+    if (
+        isinstance(redesigned, bool)
+        or not isinstance(redesigned, (int, float))
+        or redesigned <= 0
+    ):
+        return None
+    save_unit = round(basis["usd"] - float(redesigned), 2)
+    if save_unit <= 0:
+        return None
+    return {
+        "qty": int(quantity),
+        "make_now_unit_usd": basis["usd"],
+        "redesigned_unit_usd": round(float(redesigned), 2),
+        "save_unit_usd": save_unit,
+        "redesigned_process": alternative.get("process"),
+        "basis": "decision.if_redesigned",
+    }
+
+
+def annualization_at_quantity(
+    cost_result_json: dict, annual_volume: Optional[int]
+) -> dict:
+    """Exact quantity-matched annualization, or an explicit withheld reason."""
+    if annual_volume is None:
+        return {
+            "annualized_unit_cost": None,
+            "annualized_cost_usd": None,
+            "annualized_savings_usd": None,
+            "annualized_reason": _NO_VOLUME_REASON,
+        }
+    basis = recommendation_basis_at_quantity(cost_result_json, annual_volume)
+    if basis is None:
+        available = sorted(
+            (
+                int(q)
+                for q in ((cost_result_json.get("decision") or {}).get("recommendation") or {})
+                if str(q).isdigit()
+            )
+        )
+        available_text = ", ".join(str(q) for q in available) or "none"
+        return {
+            "annualized_unit_cost": None,
+            "annualized_cost_usd": None,
+            "annualized_savings_usd": None,
+            "annualized_reason": (
+                f"no engine-computed recommendation at annual_volume {annual_volume}; "
+                f"available quantities: {available_text}. Re-verify this CAD after "
+                "declaring the volume to compute that exact point"
+            ),
+        }
+    saving = savings_at_quantity(cost_result_json, annual_volume)
+    annual_cost = pcsvc.annualized_cost(basis["usd"], annual_volume)
+    annual_saving = pcsvc.annualized_cost(
+        (saving or {}).get("save_unit_usd"), annual_volume
+    )
+    return {
+        "annualized_unit_cost": basis,
+        "annualized_cost_usd": round(annual_cost, 2) if annual_cost is not None else None,
+        "annualized_savings_usd": (
+            round(annual_saving, 2) if annual_saving is not None else None
+        ),
+        "annualized_reason": None,
+    }
+
+
 def _group_by_program(rows: list[dict]) -> list[dict]:
     """Per-program roll-up over enriched portfolio rows (pure).
 
@@ -620,9 +753,15 @@ def _group_by_program(rows: list[dict]) -> list[dict]:
                 "parts": 0,
                 "annualized_cost_usd": None,
                 "annualized_savings_usd": None,
+                "declared_volume_parts": 0,
+                "exposed_parts": 0,
             },
         )
         g["parts"] += 1
+        if (r.get("context") or {}).get("annual_volume") is not None:
+            g["declared_volume_parts"] += 1
+        if r.get("annualized_cost_usd") is not None:
+            g["exposed_parts"] += 1
         for key in ("annualized_cost_usd", "annualized_savings_usd"):
             val = r.get(key)
             if val is not None:
@@ -742,8 +881,6 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
         # at least one context — otherwise the row is byte-identical to today).
         if has_any_context:
             ctx_row = ctx_by_mesh.get(mesh)
-            unit_usd = (unit_cost or {}).get("usd") if unit_cost else None
-            save_unit = (savings or {}).get("save_unit_usd") if savings else None
             row["context"] = _context_block(ctx_row)
             # Slice 3: WHICH volume feeds the annualization. When the org has a BOM
             # tree AND this part's context names it, prefer the rolled-up multiplier
@@ -771,14 +908,16 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
                 annual_volume = (
                     getattr(ctx_row, "annual_volume", None) if ctx_row else None
                 )
-            # $/year appears ONLY with a real annual_volume (declared or rolled up);
-            # otherwise null + an honest reason. Never a fabricated demand quantity.
-            row["annualized_cost_usd"] = pcsvc.annualized_cost(unit_usd, annual_volume)
-            row["annualized_savings_usd"] = pcsvc.annualized_cost(
-                save_unit, annual_volume
-            )
-            if annual_volume is None:
-                row["annualized_reason"] = _NO_VOLUME_REASON
+            # $/year uses the engine recommendation at the EXACT resolved annual
+            # volume. Never reuse qty-one, interpolate, or silently substitute a
+            # different quote point. A missing point is explicitly withheld; the
+            # next verification automatically includes the declared volume.
+            annualized = annualization_at_quantity(cost_json, annual_volume)
+            row["annualized_unit_cost"] = annualized["annualized_unit_cost"]
+            row["annualized_cost_usd"] = annualized["annualized_cost_usd"]
+            row["annualized_savings_usd"] = annualized["annualized_savings_usd"]
+            if annualized["annualized_reason"]:
+                row["annualized_reason"] = annualized["annualized_reason"]
 
         rows.append(row)
 

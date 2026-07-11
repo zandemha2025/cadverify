@@ -262,7 +262,9 @@ function ProgramCard({ g, onOpen }: { g: ProgramRollup; onOpen: () => void }) {
           </p>
         ) : (
           <p style={{ margin: 0, fontFamily: MONO, fontSize: 11.5, color: C.cond }}>
-            exposure withheld — no declared volume yet
+            {(g.declared_volume_parts ?? 0) > 0
+              ? "exposure withheld — no engine recommendation at the declared quantity"
+              : "exposure withheld — no declared volume yet"}
           </p>
         )}
       </div>
@@ -296,17 +298,20 @@ function ProgramDetail({
   const candidates = useMemo(() => assignableRows(portfolio, program), [portfolio, program]);
   const world = useMemo(() => programWorldSummary(assigned), [assigned]);
 
-  // Exposure = Σ of each assigned part's honest annualized $/year (engine unit
-  // cost × USER-declared volume). Withheld entirely until at least one assigned
-  // part has a declared volume — never guessed.
-  const withVolume = assigned.filter((r) => r.annualized_cost_usd != null);
-  const exposureSum = withVolume.length
-    ? withVolume.reduce((s, r) => s + (r.annualized_cost_usd ?? 0), 0)
+  // Exposure = Σ of each assigned part's honest annualized $/year (the engine's
+  // exact recommendation at the USER-declared volume × that volume). A declared
+  // quantity without an exact computed point is withheld — never interpolated.
+  const declaredVolumeRows = assigned.filter((r) => r.context?.annual_volume != null);
+  const withExposure = assigned.filter((r) => r.annualized_cost_usd != null);
+  const exposureSum = withExposure.length
+    ? withExposure.reduce((s, r) => s + (r.annualized_cost_usd ?? 0), 0)
     : null;
   // A cost band is HATCHED (assumption) until the engine's confidence says
   // validated — which it is not, today. Only when EVERY exposure-bearing part is
   // validated could this be solid.
-  const allValidated = withVolume.length > 0 && withVolume.every((r) => r.unit_cost?.validated === true);
+  const allValidated =
+    withExposure.length > 0 &&
+    withExposure.every((r) => r.annualized_unit_cost?.validated === true);
 
   const [busy, setBusy] = useState(false);
 
@@ -319,11 +324,12 @@ function ProgramDetail({
         // an older backend didn't return one.
         if (delta) patch(row.part_key, delta);
         else await refresh();
-        toast(
-          volume != null
-            ? `${row.filename} assigned to ${program} — exposure computed from declared volume`
-            : `${row.filename} assigned to ${program} — exposure computes once a volume is declared`
-        );
+        const exposed = delta?.row?.annualized_cost_usd != null;
+        toast(volume == null
+          ? `${row.filename} assigned to ${program} — exposure computes once a volume is declared`
+          : exposed
+            ? `${row.filename} assigned to ${program} — exact-quantity exposure computed`
+            : `${row.filename} assigned — volume saved; re-verify the CAD for an exact-quantity exposure`);
       } catch (e) {
         toast(`Couldn't assign ${row.filename} — ${e instanceof Error ? e.message : "write failed"}`);
       } finally {
@@ -340,11 +346,12 @@ function ProgramDetail({
         const { delta } = await assignContext(row.part_key, { annual_volume: volume });
         if (delta) patch(row.part_key, delta);
         else await refresh();
-        toast(
-          volume != null
-            ? `${row.filename}: ${NUM(volume)} units/yr declared · exposure updated`
-            : `${row.filename}: volume cleared · exposure withheld`
-        );
+        const exposed = delta?.row?.annualized_cost_usd != null;
+        toast(volume == null
+          ? `${row.filename}: volume cleared · exposure withheld`
+          : exposed
+            ? `${row.filename}: ${NUM(volume)} units/yr · exact-quantity exposure updated`
+            : `${row.filename}: ${NUM(volume)} units/yr saved · re-verify the CAD to compute this quantity`);
       } catch (e) {
         toast(`Couldn't update ${row.filename} — ${e instanceof Error ? e.message : "write failed"}`);
       } finally {
@@ -379,7 +386,7 @@ function ProgramDetail({
         <h1 style={{ ...h1Style, fontSize: 26 }}>{program}</h1>
         <span style={{ fontFamily: MONO, fontSize: 10, color: C.user }}>● USER — declared by your team</span>
         <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 11, color: C.ink50 }}>
-          {NUM(assigned.length)} assigned · {NUM(withVolume.length)} with a declared volume
+          {NUM(assigned.length)} assigned · {NUM(declaredVolumeRows.length)} with a declared volume
         </span>
       </div>
 
@@ -410,6 +417,7 @@ function ProgramDetail({
                   busy={busy}
                   onSetVolume={(v) => setVolume(r, v)}
                   onUnassign={() => unassign(r)}
+                  onReverify={() => nav("verify")}
                 />
               ))}
             </div>
@@ -428,8 +436,8 @@ function ProgramDetail({
                 {fmtExposure(exposureSum)} <span style={{ fontSize: 13, color: C.ink45 }}>/yr</span>
               </p>
               <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 11, lineHeight: 1.7, color: C.ink50 }}>
-                = Σ (engine unit cost × your declared volume) over {NUM(withVolume.length)}{" "}
-                {withVolume.length === 1 ? "part" : "parts"} · <span style={{ color: C.user }}>● USER</span> volume
+                = Σ (engine recommendation at each declared annual volume × that volume) over {NUM(withExposure.length)}{" "}
+                {withExposure.length === 1 ? "part" : "parts"} · exact quantity basis · <span style={{ color: C.user }}>● USER</span> volume
               </p>
               <div style={{ marginTop: 12, position: "relative", height: 5, borderRadius: 3, background: "#ececef", overflow: "hidden" }}>
                 <span aria-hidden style={{ position: "absolute", inset: 0, ...(allValidated ? { background: "rgba(31,138,91,0.5)" } : { backgroundImage: HATCH }) }} />
@@ -443,13 +451,19 @@ function ProgramDetail({
           ) : (
             <div style={{ marginTop: 12, border: `1.5px dashed #d3d3d8`, borderRadius: 12, padding: 20, textAlign: "center" }}>
               <p style={{ margin: 0, fontSize: 13.5, fontWeight: 500 }}>
-                {assigned.length === 0 ? "No verified parts assigned." : "No declared volume yet."}
+                {assigned.length === 0
+                  ? "No verified parts assigned."
+                  : declaredVolumeRows.length === 0
+                    ? "No declared volume yet."
+                    : "Exposure withheld at this quantity."}
               </p>
               <p style={{ margin: "7px 0 0", fontSize: 12, lineHeight: 1.6, color: C.ink50 }}>
                 Exposure is not computed — not guessed, not extrapolated.{" "}
                 {assigned.length === 0
                   ? "Assign a verified part below."
-                  : "Declare a part's annual volume to compute it."}
+                  : declaredVolumeRows.length === 0
+                    ? "Declare a part's annual volume to compute it."
+                    : "Re-verify the same CAD; the declared annual volume will be included as an exact engine quantity automatically."}
               </p>
             </div>
           )}
@@ -479,17 +493,20 @@ function ProgramDetail({
 // ── rows ───────────────────────────────────────────────────────────────────
 
 /** A part already assigned to the program: its unit cost, an editable annual
- *  volume (● USER), and its honest $/year exposure (withheld until a volume). */
+ *  volume (● USER), and its honest $/year exposure (withheld until that exact
+ *  quantity has an engine recommendation). */
 function AssignedRow({
   row,
   busy,
   onSetVolume,
   onUnassign,
+  onReverify,
 }: {
   row: PortfolioRow;
   busy: boolean;
   onSetVolume: (v: number | null) => void;
   onUnassign: () => void;
+  onReverify: () => void;
 }) {
   const declared = row.context?.annual_volume ?? null;
   const [draft, setDraft] = useState<string>(declared != null ? String(declared) : "");
@@ -504,41 +521,61 @@ function AssignedRow({
   const changed = normalized !== declared;
 
   const unit = row.unit_cost;
-  const priceLabel = unit?.withheld
-    ? "cost withheld"
-    : unit?.usd != null
-      ? USD(unit.usd)
-      : "—";
+  const basis = row.annualized_unit_cost;
+  const process = basis?.process ?? row.make_now_process;
+  const priceLabel = basis
+    ? USD(basis.usd)
+    : declared != null
+      ? "no exact cost"
+      : unit?.withheld
+        ? "cost withheld"
+        : unit?.usd != null
+          ? USD(unit.usd)
+          : "—";
+  const listId = `annual-volume-${row.part_key.slice(0, 12)}`;
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 2px", borderBottom: `1px solid #f0f0f3`, flexWrap: "wrap" }}>
-      <span style={{ fontFamily: MONO, fontSize: 12, color: C.ink, minWidth: 170, flex: "1 1 170px" }}>{row.filename}</span>
-      <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink45, minWidth: 96 }}>{procLabel(row.make_now_process)}</span>
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: MONO, fontSize: 11, color: unit?.withheld ? C.cond : C.ink }}>
-        {priceLabel}
-        {!unit?.withheld && unit?.usd != null && (
-          <ProvChip p={unit.validated ? "MEASURED" : "MODEL"} />
-        )}
-      </span>
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-        <input
-          value={draft}
-          disabled={busy}
-          onChange={(e) => setDraft(e.target.value.replace(/[^0-9]/g, ""))}
-          onKeyDown={(e) => { if (e.key === "Enter" && changed) onSetVolume(normalized); }}
-          onBlur={() => { if (changed) onSetVolume(normalized); }}
-          placeholder="volume"
-          title="annual volume — USER-declared; blank withholds exposure"
-          style={{ width: 96, background: C.panel, border: `1px solid #dcdce0`, borderRadius: 8, padding: "6px 10px", fontSize: 12, color: C.ink, fontFamily: MONO, textAlign: "right" }}
-        />
-        <ProvDot p="USER" size={7} />
-      </span>
-      <span style={{ minWidth: 108, textAlign: "right", fontFamily: MONO, fontSize: 12, fontVariantNumeric: "tabular-nums", color: row.annualized_cost_usd != null ? C.ink : C.cond }}>
-        {row.annualized_cost_usd != null ? `${fmtExposure(row.annualized_cost_usd)}/yr` : "withheld"}
-      </span>
-      <button type="button" onClick={onUnassign} disabled={busy} title="remove from this program" style={{ background: "none", border: "none", padding: 0, cursor: busy ? "default" : "pointer", fontFamily: MONO, fontSize: 10.5, color: C.ink40 }}>
-        remove
-      </button>
+    <div style={{ borderBottom: `1px solid #f0f0f3`, padding: "11px 2px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <span style={{ fontFamily: MONO, fontSize: 12, color: C.ink, minWidth: 170, flex: "1 1 170px" }}>{row.filename}</span>
+        <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink45, minWidth: 96 }}>{procLabel(process)}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: MONO, fontSize: 11, color: basis || (!unit?.withheld && declared == null) ? C.ink : C.cond }}>
+          {priceLabel}
+          {basis && <span style={{ color: C.ink45 }}>@ qty {NUM(basis.qty)}</span>}
+          {basis && <ProvChip p={basis.validated ? "MEASURED" : "MODEL"} />}
+          {!basis && declared == null && !unit?.withheld && unit?.usd != null && (
+            <><span style={{ color: C.ink45 }}>@ qty {NUM(unit.qty ?? 1)}</span><ProvChip p={unit.validated ? "MEASURED" : "MODEL"} /></>
+          )}
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <input
+            value={draft}
+            list={listId}
+            inputMode="numeric"
+            disabled={busy}
+            onChange={(e) => setDraft(e.target.value.replace(/[^0-9]/g, ""))}
+            onKeyDown={(e) => { if (e.key === "Enter" && changed) onSetVolume(normalized); }}
+            onBlur={() => { if (changed) onSetVolume(normalized); }}
+            placeholder="volume"
+            title={`annual volume — USER-declared; engine points: ${row.quantities.join(", ")}`}
+            style={{ width: 96, background: C.panel, border: `1px solid #dcdce0`, borderRadius: 8, padding: "6px 10px", fontSize: 12, color: C.ink, fontFamily: MONO, textAlign: "right" }}
+          />
+          <datalist id={listId}>{row.quantities.map((quantity) => <option key={quantity} value={quantity} />)}</datalist>
+          <ProvDot p="USER" size={7} />
+        </span>
+        <span style={{ minWidth: 108, textAlign: "right", fontFamily: MONO, fontSize: 12, fontVariantNumeric: "tabular-nums", color: row.annualized_cost_usd != null ? C.ink : C.cond }}>
+          {row.annualized_cost_usd != null ? `${fmtExposure(row.annualized_cost_usd)}/yr` : "withheld"}
+        </span>
+        <button type="button" onClick={onUnassign} disabled={busy} title="remove from this program" style={{ background: "none", border: "none", padding: 0, cursor: busy ? "default" : "pointer", fontFamily: MONO, fontSize: 10.5, color: C.ink40 }}>
+          remove
+        </button>
+      </div>
+      {declared != null && row.annualized_cost_usd == null && row.annualized_reason && (
+        <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <p style={{ margin: 0, flex: "1 1 360px", fontFamily: MONO, fontSize: 10, lineHeight: 1.6, color: C.cond }}>{row.annualized_reason}</p>
+          <button type="button" onClick={onReverify} style={{ border: "none", background: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 10.5, color: C.measured }}>Open Verify →</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -560,6 +597,7 @@ function CandidateRow({
   const unit = row.unit_cost;
   const inOther = row.context?.program;
   const priceLabel = unit?.withheld ? "cost withheld" : unit?.usd != null ? USD(unit.usd) : "—";
+  const listId = `candidate-volume-${row.part_key.slice(0, 12)}`;
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 2px", borderBottom: `1px solid #f0f0f3`, flexWrap: "wrap" }}>
@@ -571,12 +609,15 @@ function CandidateRow({
       ) : null}
       <input
         value={draft}
+        list={listId}
+        inputMode="numeric"
         disabled={busy}
         onChange={(e) => setDraft(e.target.value.replace(/[^0-9]/g, ""))}
         placeholder="volume (opt)"
-        title="optional annual volume — declare now or later"
+        title={`optional annual volume — engine points: ${row.quantities.join(", ")}`}
         style={{ width: 104, background: C.panel, border: `1px solid #dcdce0`, borderRadius: 8, padding: "6px 10px", fontSize: 12, color: C.ink, fontFamily: MONO, textAlign: "right" }}
       />
+      <datalist id={listId}>{row.quantities.map((quantity) => <option key={quantity} value={quantity} />)}</datalist>
       <GhostButton disabled={busy} onClick={() => onAssign(volume)}>Assign →</GhostButton>
     </div>
   );

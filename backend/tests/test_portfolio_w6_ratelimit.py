@@ -55,27 +55,33 @@ def _act_as(app, user_id: int) -> None:
 
 
 def _cost_result(*, unit=230.0, make_now="cnc_3axis"):
-    q = (1000,)
+    # Both edited volumes are real engine points. Program exposure is allowed to
+    # annualize only from an exact recommendation at the declared quantity.
+    q = (1000, 2000)
     return {
         "quantities": list(q),
         "decision": {
             "make_now_process": make_now,
             "make_now_material": "aluminum_6061",
             "crossover_qty": 1200.0,
-            "recommendation": {str(q[0]): {"process": make_now, "unit_cost_usd": unit}},
-            "if_redesigned": {str(q[0]): None},
+            "recommendation": {
+                str(quantity): {"process": make_now, "unit_cost_usd": unit}
+                for quantity in q
+            },
+            "if_redesigned": {str(quantity): None for quantity in q},
         },
         "estimates": [
             {
                 "process": make_now,
                 "material": "aluminum_6061",
-                "quantity": q[0],
+                "quantity": quantity,
                 "unit_cost_usd": unit,
                 "dfm_ready": True,
                 "dfm_blockers": [],
                 "confidence": {"validated": False, "label": "assumption band"},
                 "drivers": [{"name": "labor", "provenance": "SHOP", "source": "shop"}],
             }
+            for quantity in q
         ],
     }
 
@@ -176,6 +182,7 @@ async def test_portfolio_read_limit_raised_and_put_delta_matches_refetch():
             assert r.status_code == 200, r.text
             delta2 = r.json()["portfolio_delta"]
             assert delta2["row"]["annualized_cost_usd"] == 460000.0
+            assert delta2["row"]["annualized_unit_cost"]["qty"] == 2000
             r = await ac.get("/api/v1/catalog/portfolio")
             body2 = r.json()
             fetched2 = next(x for x in body2["rows"] if x["part_key"] == mA)

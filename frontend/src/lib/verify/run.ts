@@ -90,6 +90,33 @@ export interface VerifyResult {
  *  routes.py); these bracket the typical crossover (~1–2k) on both sides. */
 export const QTY_LADDER = [1, 100, 1000, 2000, 5000, 10000];
 
+/** Keep the six-point engine contract while ensuring a declared annual volume
+ *  becomes an exact computed point on the next verification. The closest
+ *  interior ladder point is replaced because the declared point carries the
+ *  same local curve information; the low/high anchors remain intact. */
+export function quantityLadderForAnnual(
+  annualVolume: number | null | undefined
+): number[] {
+  if (
+    annualVolume == null ||
+    !Number.isInteger(annualVolume) ||
+    annualVolume <= 0 ||
+    QTY_LADDER.includes(annualVolume)
+  ) {
+    return QTY_LADDER;
+  }
+  const replaceable = QTY_LADDER.slice(1, -1);
+  const nearest = replaceable.reduce((best, quantity) =>
+    Math.abs(Math.log(quantity) - Math.log(annualVolume)) <
+    Math.abs(Math.log(best) - Math.log(annualVolume))
+      ? quantity
+      : best
+  );
+  return [...QTY_LADDER.filter((quantity) => quantity !== nearest), annualVolume].sort(
+    (a, b) => a - b
+  );
+}
+
 /**
  * POST /validate/cost directly so we can pass `owned_processes` (marginal
  * costing for the org's floor) — the shared `costEstimate` helper does not carry
@@ -98,11 +125,12 @@ export const QTY_LADDER = [1, 100, 1000, 2000, 5000, 10000];
  */
 async function postCost(
   input: VerifyInput,
-  ownedProcesses: string[]
+  ownedProcesses: string[],
+  quantities: number[]
 ): Promise<{ cost: CostReport | null; invalid: CostGeometryInvalid | null; error: string | null }> {
   const form = new FormData();
   form.append("file", input.file);
-  form.append("qty", QTY_LADDER.join(","));
+  form.append("qty", quantities.join(","));
   form.append("cavities", "1");
   form.append("complexity", "moderate");
   form.append("material_class", input.materialClass);
@@ -184,7 +212,11 @@ export async function runVerification(input: VerifyInput): Promise<VerifyResult>
     (v) => ({ v, err: null as string | null }),
     (e) => ({ v: null as ValidationResult | null, err: e instanceof Error ? e.message : "Validation failed" })
   );
-  const costOut = await postCost(input, owned);
+  const costOut = await postCost(
+    input,
+    owned,
+    quantityLadderForAnnual(partContext?.annual_volume)
+  );
 
   // The verification block rides the cost response when the org declared machines
   // and/or this part's environment; its ABSENCE (never a fabricated value) drives

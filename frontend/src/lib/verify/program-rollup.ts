@@ -41,6 +41,18 @@ export interface PortfolioSavings {
   caveat: string | null;
 }
 
+/** Exact engine recommendation used for $/year. Its qty always matches the
+ *  resolved annual volume; absent means exposure is deliberately withheld. */
+export interface AnnualizedUnitCost {
+  usd: number;
+  qty: number;
+  currency: string;
+  process: string;
+  material: string | null;
+  validated: boolean;
+  basis: "decision.recommendation";
+}
+
 export interface PortfolioRow {
   part_key: string;
   filename: string;
@@ -55,6 +67,7 @@ export interface PortfolioRow {
   // Additive declared-context enrichment (present only when the org has declared
   // at least one context — otherwise the row is byte-identical to the base W3).
   context?: PortfolioContext | null;
+  annualized_unit_cost?: AnnualizedUnitCost | null;
   annualized_cost_usd?: number | null;
   annualized_savings_usd?: number | null;
   annualized_reason?: string;
@@ -67,6 +80,8 @@ export interface ProgramRollup {
   parts: number;
   annualized_cost_usd: number | null;
   annualized_savings_usd: number | null;
+  declared_volume_parts?: number;
+  exposed_parts?: number;
 }
 
 export interface PortfolioSummary {
@@ -122,10 +137,19 @@ export function declaredPrograms(p: Portfolio): ProgramRollup[] {
     if (!name) continue;
     const g =
       groups.get(name) ??
-      { program: name, parts: 0, annualized_cost_usd: null, annualized_savings_usd: null };
+      {
+        program: name,
+        parts: 0,
+        annualized_cost_usd: null,
+        annualized_savings_usd: null,
+        declared_volume_parts: 0,
+        exposed_parts: 0,
+      };
     g.parts += 1;
+    if (r.context?.annual_volume != null) g.declared_volume_parts = (g.declared_volume_parts ?? 0) + 1;
     if (r.annualized_cost_usd != null) {
       g.annualized_cost_usd = round2((g.annualized_cost_usd ?? 0) + r.annualized_cost_usd);
+      g.exposed_parts = (g.exposed_parts ?? 0) + 1;
     }
     if (r.annualized_savings_usd != null) {
       g.annualized_savings_usd = round2(
