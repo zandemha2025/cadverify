@@ -36,11 +36,13 @@ export function CommandPalette({
   onClose,
   nav,
   onVerify,
+  onSample,
   onShortcuts,
 }: {
   onClose: () => void;
   nav: (s: string) => void;
   onVerify?: () => void;
+  onSample?: () => void;
   onShortcuts?: () => void;
 }) {
   const [q, setQ] = useState("");
@@ -56,15 +58,10 @@ export function CommandPalette({
     const go = (s: string) => () => {
       nav(s);
     };
-    const sample = (label: string) => () => {
-      nav("verify");
-      toast(`${label} — sample walkthrough selected; upload the sample CAD to compute real outputs.`);
-    };
     const list: PaletteCmd[] = [
       { id: "verify-part", label: "Verify a part", hint: "open STL, STEP or IGES", terms: "verify part upload drop stl step stp iges igs file measure cost", run: () => { onVerify?.(); onClose(); } },
-      { id: "play-fixture", label: "Play use case · real fixture", hint: "sample walkthrough", terms: "play use case real fixture sample walkthrough", run: sample("Real fixture") },
-      { id: "play-impeller", label: "Play use case · negative impeller verdict", hint: "sample walkthrough", terms: "play use case negative impeller sample verdict blocker hostile", run: sample("Negative impeller verdict") },
-      { id: "play-day-zero", label: "Play use case · org day zero", hint: "sample walkthrough", terms: "play use case first run org day zero setup", run: () => { nav("home"); toast("Org day zero — use the setup checklist; no tenant data is fabricated."); } },
+      { id: "run-sample-cube", label: "Run sample · 20 mm cube", hint: "real engine output", terms: "run play use case real fixture sample cube walkthrough", run: () => { onClose(); onSample?.(); } },
+      { id: "guide-day-zero", label: "Guide · organization setup", hint: "open Day Zero checklist", terms: "guide play use case first run org day zero setup", run: () => { nav("home"); toast("Day Zero guide opened — each step reflects your organization’s real state."); } },
       { id: "home", label: "Go to Home", keys: "H", terms: "home desk start", run: go("home") },
       { id: "verify", label: "Go to Verify", keys: "V", terms: "verify verdict result", run: go("verify") },
       { id: "catalog", label: "Go to Parts", hint: "catalog", keys: "P", terms: "parts catalog grid", run: go("catalog") },
@@ -85,7 +82,7 @@ export function CommandPalette({
       list.push({ id: "shortcuts", label: "Keyboard shortcuts", keys: "?", terms: "shortcuts keys help hotkeys", run: () => { onClose(); onShortcuts(); } });
     }
     return list;
-  }, [nav, onClose, onVerify, onShortcuts, toast]);
+  }, [nav, onClose, onVerify, onSample, onShortcuts, toast]);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -167,8 +164,8 @@ export function CommandPalette({
           )}
         </div>
         <div style={{ borderTop: `1px solid ${C.hair}`, padding: "9px 16px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <CommandPill label="JUMP · ACTION · SAMPLE" />
-          <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink45 }}>sample walkthroughs never fabricate tenant records</span>
+          <CommandPill label="JUMP · ACTION · GUIDE" />
+          <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink45 }}>the sample computes real engine output; guides open real org state</span>
         </div>
       </div>
     </div>

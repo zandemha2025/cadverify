@@ -32,6 +32,7 @@ import { ToastProvider } from "./toast";
 import { ShortcutsOverlay } from "./shortcuts-overlay";
 import { CalibrationSwitcher } from "./calibration-switcher";
 import { VerifyAccountMenu } from "./account-menu";
+import { sampleCubeFile } from "@/lib/verify/sample-cad";
 
 // The shared hotkey nav map — matches the design 1:1 (support.js keydown handler):
 // H/V/P/R/G/M/T/C jump between the surfaces, `?` opens the shortcuts sheet. `c`
@@ -182,6 +183,10 @@ export function VerifyApp() {
     if (file) void runVerify(file);
     else pickFile();
   }, [file, runVerify, pickFile]);
+
+  const runSample = useCallback(() => {
+    void runVerify(sampleCubeFile());
+  }, [runVerify]);
 
   // The rail footer's bound-rate signal.
   useEffect(() => {
@@ -437,6 +442,7 @@ export function VerifyApp() {
           onClose={() => setScreen("home")}
           nav={nav}
           onVerify={pickFile}
+          onSample={runSample}
           onShortcuts={() => { setScreen("home"); setShortcutsOpen(true); }}
         />
       )}
