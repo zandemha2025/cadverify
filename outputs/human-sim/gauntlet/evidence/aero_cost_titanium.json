@@ -1,0 +1,3633 @@
+{
+  "filename": "filleted_box.stl",
+  "status": "OK",
+  "reason": null,
+  "geometry": {
+    "volume_cm3": 87.18,
+    "surface_area_cm2": 111.17,
+    "bbox_mm": [
+      59.8,
+      43.2,
+      34.9
+    ],
+    "watertight": true,
+    "face_count": 428
+  },
+  "material_class": "titanium",
+  "quantities": [
+    1,
+    50
+  ],
+  "estimates": [
+    {
+      "process": "waam",
+      "material": "Ti-6Al-4V Grade 5",
+      "quantity": 1,
+      "unit_cost_usd": 300.0,
+      "fixed_cost_usd": 0.0,
+      "variable_cost_usd": 40.36,
+      "est_error_band_pct": 78.0,
+      "confidence": {
+        "low_usd": 66.0,
+        "high_usd": 534.0,
+        "point_usd": 300.0,
+        "level": 0.8,
+        "method": "assumption-band",
+        "validated": false,
+        "n_samples": 0,
+        "half_width_pct": 78.0,
+        "basis": "\u00b178% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+        "label": "assumption-based, not yet validated"
+      },
+      "dfm_ready": true,
+      "dfm_verdict": "issues",
+      "dfm_score": 0.9,
+      "dfm_blockers": [],
+      "dfm_blocker_details": [],
+      "line_items": {
+        "amortized_fixed": 35.0,
+        "material": 19.542,
+        "machine": 13.3241,
+        "labor": 0.0,
+        "finish_machining": 3.9972,
+        "min_charge_floor": 228.1367
+      },
+      "drivers": [
+        {
+          "name": "material_cost",
+          "value": 19.542,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "feedstock (wire/powder) = net 0.3862 kg \u00d7 1.15 near-net overbuild (CAD volume 87.18 cm\u00b3 \u00d7 Ti-6Al-4V Grade 5 density 4.43 g/cm\u00b3) [DED/WAAM assumption, not shop-validated] = 0.4441 kg \u00d7 $40/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+          "error_band_pct": 5.0
+        },
+        {
+          "name": "machine_cost",
+          "value": 13.3241,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "0.1480 hr \u00d7 $90/hr \u00d7 region-labor \u00d71  [deposit 0.4441kg (net 0.3862kg \u00d7 1.15 near-net overbuild) \u00f7 3kg/hr deposition = 0.1480hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]]",
+          "error_band_pct": 60.0
+        },
+        {
+          "name": "cycle_time",
+          "value": 0.148,
+          "unit": "hr",
+          "provenance": "DEFAULT",
+          "source": "deposit 0.4441kg (net 0.3862kg \u00d7 1.15 near-net overbuild) \u00f7 3kg/hr deposition = 0.1480hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]",
+          "error_band_pct": 60.0
+        },
+        {
+          "name": "labor_cost",
+          "value": 0.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "setup_cost",
+          "value": 35.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "setup 1hr \u00d7 $35/hr \u00d7 ceil(1/10) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "finish_machining",
+          "value": 3.9972,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "finish-machining allowance 0.3 \u00d7 deposition machine $13.32 (near-net DED/WAAM ALWAYS needs finishing) [coarse allowance; assumption, not shop-validated]",
+          "error_band_pct": 60.0
+        },
+        {
+          "name": "tolerance_class",
+          "value": 1.0,
+          "unit": "\u00d7",
+          "provenance": "USER",
+          "source": "declared tolerance 'tight': band widened +18pts (uncertainty grows), but NO per-part machining surcharge applies to a ded part in V0 (tolerance is set by the tool/process, not by quantifiable per-part finishing passes) \u2014 cost UNCHANGED. DECLARATION is USER; DEFAULT assumption [not shop-validated]",
+          "error_band_pct": 60.0
+        },
+        {
+          "name": "min_charge_floor",
+          "value": 228.1367,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "shop/order minimum $300/lot \u00d7 1 lots \u00f7 1 = $300.00/unit floor (applied)",
+          "error_band_pct": null
+        }
+      ],
+      "lead_time": {
+        "low_days": 12.6,
+        "high_days": 23.4,
+        "mid_days": 18.0,
+        "components": {
+          "queue": 10.0,
+          "tooling_lead": 0.0,
+          "production": 1.0,
+          "post_process": 4.0,
+          "ship": 3.0
+        },
+        "capacity": {
+          "n_machines": 2,
+          "machine_hours_per_day": 20.0,
+          "provenance": "DEFAULT",
+          "basis": "capacity-bound: 2 machines \u00d7 20 hr/day parallel pool; production = ceil(1\u00b70.148hr \u00f7 (2\u00d720)) = 1 d"
+        }
+      }
+    },
+    {
+      "process": "waam",
+      "material": "Ti-6Al-4V Grade 5",
+      "quantity": 50,
+      "unit_cost_usd": 40.36,
+      "fixed_cost_usd": 0.0,
+      "variable_cost_usd": 40.36,
+      "est_error_band_pct": 78.0,
+      "confidence": {
+        "low_usd": 8.88,
+        "high_usd": 71.85,
+        "point_usd": 40.36,
+        "level": 0.8,
+        "method": "assumption-band",
+        "validated": false,
+        "n_samples": 0,
+        "half_width_pct": 78.0,
+        "basis": "\u00b178% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+        "label": "assumption-based, not yet validated"
+      },
+      "dfm_ready": true,
+      "dfm_verdict": "issues",
+      "dfm_score": 0.9,
+      "dfm_blockers": [],
+      "dfm_blocker_details": [],
+      "line_items": {
+        "amortized_fixed": 3.5,
+        "material": 19.542,
+        "machine": 13.3241,
+        "labor": 0.0,
+        "finish_machining": 3.9972
+      },
+      "drivers": [
+        {
+          "name": "material_cost",
+          "value": 19.542,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "feedstock (wire/powder) = net 0.3862 kg \u00d7 1.15 near-net overbuild (CAD volume 87.18 cm\u00b3 \u00d7 Ti-6Al-4V Grade 5 density 4.43 g/cm\u00b3) [DED/WAAM assumption, not shop-validated] = 0.4441 kg \u00d7 $40/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+          "error_band_pct": 5.0
+        },
+        {
+          "name": "machine_cost",
+          "value": 13.3241,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "0.1480 hr \u00d7 $90/hr \u00d7 region-labor \u00d71  [deposit 0.4441kg (net 0.3862kg \u00d7 1.15 near-net overbuild) \u00f7 3kg/hr deposition = 0.1480hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]]",
+          "error_band_pct": 60.0
+        },
+        {
+          "name": "cycle_time",
+          "value": 0.148,
+          "unit": "hr",
+          "provenance": "DEFAULT",
+          "source": "deposit 0.4441kg (net 0.3862kg \u00d7 1.15 near-net overbuild) \u00f7 3kg/hr deposition = 0.1480hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]",
+          "error_band_pct": 60.0
+        },
+        {
+          "name": "labor_cost",
+          "value": 0.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "setup_cost",
+          "value": 3.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "setup 1hr \u00d7 $35/hr \u00d7 ceil(50/10) = 5 setups \u00f7 50 \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "finish_machining",
+          "value": 3.9972,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "finish-machining allowance 0.3 \u00d7 deposition machine $13.32 (near-net DED/WAAM ALWAYS needs finishing) [coarse allowance; assumption, not shop-validated]",
+          "error_band_pct": 60.0
+        },
+        {
+          "name": "tolerance_class",
+          "value": 1.0,
+          "unit": "\u00d7",
+          "provenance": "USER",
+          "source": "declared tolerance 'tight': band widened +18pts (uncertainty grows), but NO per-part machining surcharge applies to a ded part in V0 (tolerance is set by the tool/process, not by quantifiable per-part finishing passes) \u2014 cost UNCHANGED. DECLARATION is USER; DEFAULT assumption [not shop-validated]",
+          "error_band_pct": 60.0
+        }
+      ],
+      "lead_time": {
+        "low_days": 12.6,
+        "high_days": 23.4,
+        "mid_days": 18.0,
+        "components": {
+          "queue": 10.0,
+          "tooling_lead": 0.0,
+          "production": 1.0,
+          "post_process": 4.0,
+          "ship": 3.0
+        },
+        "capacity": {
+          "n_machines": 2,
+          "machine_hours_per_day": 20.0,
+          "provenance": "DEFAULT",
+          "basis": "capacity-bound: 2 machines \u00d7 20 hr/day parallel pool; production = ceil(50\u00b70.148hr \u00f7 (2\u00d720)) = 1 d"
+        }
+      }
+    },
+    {
+      "process": "slm",
+      "material": "Ti-6Al-4V Grade 5",
+      "quantity": 1,
+      "unit_cost_usd": 888.65,
+      "fixed_cost_usd": 0.0,
+      "variable_cost_usd": 872.61,
+      "est_error_band_pct": 68.0,
+      "confidence": {
+        "low_usd": 284.37,
+        "high_usd": 1492.94,
+        "point_usd": 888.65,
+        "level": 0.8,
+        "method": "assumption-band",
+        "validated": false,
+        "n_samples": 0,
+        "half_width_pct": 68.0,
+        "basis": "\u00b168% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+        "label": "assumption-based, not yet validated"
+      },
+      "dfm_ready": true,
+      "dfm_verdict": "issues",
+      "dfm_score": 0.9,
+      "dfm_blockers": [],
+      "dfm_blocker_details": [],
+      "line_items": {
+        "amortized_fixed": 17.5,
+        "material": 21.3186,
+        "machine": 812.5,
+        "labor": 0.0,
+        "plate_removal": 10.5,
+        "support_removal": 21.0,
+        "stress_relief": 5.8333
+      },
+      "drivers": [
+        {
+          "name": "material_cost",
+          "value": 21.3186,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "powder-bed metal = net 0.3862 kg (CAD volume 87.18 cm\u00b3 \u00d7 Ti-6Al-4V Grade 5 density 4.43 g/cm\u00b3) \u00d7 (1+0.2 support structure printed+removed); powder $/kg assumed at material-DB value [metal-AM assumption, not shop-validated] = 0.4634 kg \u00d7 $40/kg (material-DB unit price (DEFAULT book value); \u00d71 metal-AM powder mult (powder-vs-wrought pricing is a KNOWN refinement, not silently inflated)) \u00d7 (1+0.15 scrap) \u00d7 region-material \u00d71",
+          "error_band_pct": 5.0
+        },
+        {
+          "name": "support_material",
+          "value": 3.5531,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "support structure 0.2\u00d7net = 0.0772 kg powder printed then removed (INCLUDED in material_cost above; surfaced for inspection) [metal-AM assumption, not shop-validated]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "parts_per_build",
+          "value": 12.0,
+          "unit": "parts",
+          "provenance": "DEFAULT",
+          "source": "nesting: packing 0.08 \u00d7 env (250, 250, 325) \u00f7 part bbox (34.9, 43.2, 59.8)+6mm spacing = 12 parts/build",
+          "error_band_pct": null
+        },
+        {
+          "name": "machine_cost",
+          "value": 812.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "4.5139 hr \u00d7 $180/hr \u00d7 region-labor \u00d71  [build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 12 parts/build (packing 0.08, env (250, 250, 325)) = 4.514hr/part]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "cycle_time",
+          "value": 4.5139,
+          "unit": "hr",
+          "provenance": "DEFAULT",
+          "source": "build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 12 parts/build (packing 0.08, env (250, 250, 325)) = 4.514hr/part",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "labor_cost",
+          "value": 0.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "setup_cost",
+          "value": 17.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(1/12) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "plate_removal_cost",
+          "value": 10.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "build-plate removal (wire-EDM/bandsaw off the plate) 0.3hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "support_removal_cost",
+          "value": 21.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "metal support removal (grind/break-off) 0.6hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "stress_relief_cost",
+          "value": 5.8333,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "stress-relief furnace 2hr/build \u00f7 12 parts/build = 0.167hr/part (batch amortized). HIP / solution heat-treat / CNC finish of critical surfaces are part-specific and NOT bundled [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "tolerance_class",
+          "value": 1.0,
+          "unit": "\u00d7",
+          "provenance": "USER",
+          "source": "declared tolerance 'tight': band widened +18pts (uncertainty grows), but NO per-part machining surcharge applies to a metal_powder_bed part in V0 (tolerance is set by the tool/process, not by quantifiable per-part finishing passes) \u2014 cost UNCHANGED. DECLARATION is USER; DEFAULT assumption [not shop-validated]",
+          "error_band_pct": 50.0
+        }
+      ],
+      "lead_time": {
+        "low_days": 9.8,
+        "high_days": 18.2,
+        "mid_days": 14.0,
+        "components": {
+          "queue": 7.0,
+          "tooling_lead": 0.0,
+          "production": 1.0,
+          "post_process": 3.0,
+          "ship": 3.0
+        },
+        "capacity": {
+          "n_machines": 2,
+          "machine_hours_per_day": 20.0,
+          "provenance": "DEFAULT",
+          "basis": "capacity-bound: 2 machines \u00d7 20 hr/day parallel pool; production = ceil(1\u00b74.514hr \u00f7 (2\u00d720)) = 1 d"
+        }
+      }
+    },
+    {
+      "process": "slm",
+      "material": "Ti-6Al-4V Grade 5",
+      "quantity": 50,
+      "unit_cost_usd": 872.9,
+      "fixed_cost_usd": 0.0,
+      "variable_cost_usd": 872.61,
+      "est_error_band_pct": 68.0,
+      "confidence": {
+        "low_usd": 279.33,
+        "high_usd": 1466.48,
+        "point_usd": 872.9,
+        "level": 0.8,
+        "method": "assumption-band",
+        "validated": false,
+        "n_samples": 0,
+        "half_width_pct": 68.0,
+        "basis": "\u00b168% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+        "label": "assumption-based, not yet validated"
+      },
+      "dfm_ready": true,
+      "dfm_verdict": "issues",
+      "dfm_score": 0.9,
+      "dfm_blockers": [],
+      "dfm_blocker_details": [],
+      "line_items": {
+        "amortized_fixed": 1.75,
+        "material": 21.3186,
+        "machine": 812.5,
+        "labor": 0.0,
+        "plate_removal": 10.5,
+        "support_removal": 21.0,
+        "stress_relief": 5.8333
+      },
+      "drivers": [
+        {
+          "name": "material_cost",
+          "value": 21.3186,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "powder-bed metal = net 0.3862 kg (CAD volume 87.18 cm\u00b3 \u00d7 Ti-6Al-4V Grade 5 density 4.43 g/cm\u00b3) \u00d7 (1+0.2 support structure printed+removed); powder $/kg assumed at material-DB value [metal-AM assumption, not shop-validated] = 0.4634 kg \u00d7 $40/kg (material-DB unit price (DEFAULT book value); \u00d71 metal-AM powder mult (powder-vs-wrought pricing is a KNOWN refinement, not silently inflated)) \u00d7 (1+0.15 scrap) \u00d7 region-material \u00d71",
+          "error_band_pct": 5.0
+        },
+        {
+          "name": "support_material",
+          "value": 3.5531,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "support structure 0.2\u00d7net = 0.0772 kg powder printed then removed (INCLUDED in material_cost above; surfaced for inspection) [metal-AM assumption, not shop-validated]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "parts_per_build",
+          "value": 12.0,
+          "unit": "parts",
+          "provenance": "DEFAULT",
+          "source": "nesting: packing 0.08 \u00d7 env (250, 250, 325) \u00f7 part bbox (34.9, 43.2, 59.8)+6mm spacing = 12 parts/build",
+          "error_band_pct": null
+        },
+        {
+          "name": "machine_cost",
+          "value": 812.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "4.5139 hr \u00d7 $180/hr \u00d7 region-labor \u00d71  [build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 12 parts/build (packing 0.08, env (250, 250, 325)) = 4.514hr/part]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "cycle_time",
+          "value": 4.5139,
+          "unit": "hr",
+          "provenance": "DEFAULT",
+          "source": "build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 12 parts/build (packing 0.08, env (250, 250, 325)) = 4.514hr/part",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "labor_cost",
+          "value": 0.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "setup_cost",
+          "value": 1.75,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(50/12) = 5 setups \u00f7 50 \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "plate_removal_cost",
+          "value": 10.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "build-plate removal (wire-EDM/bandsaw off the plate) 0.3hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "support_removal_cost",
+          "value": 21.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "metal support removal (grind/break-off) 0.6hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "stress_relief_cost",
+          "value": 5.8333,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "stress-relief furnace 2hr/build \u00f7 12 parts/build = 0.167hr/part (batch amortized). HIP / solution heat-treat / CNC finish of critical surfaces are part-specific and NOT bundled [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "tolerance_class",
+          "value": 1.0,
+          "unit": "\u00d7",
+          "provenance": "USER",
+          "source": "declared tolerance 'tight': band widened +18pts (uncertainty grows), but NO per-part machining surcharge applies to a metal_powder_bed part in V0 (tolerance is set by the tool/process, not by quantifiable per-part finishing passes) \u2014 cost UNCHANGED. DECLARATION is USER; DEFAULT assumption [not shop-validated]",
+          "error_band_pct": 50.0
+        }
+      ],
+      "lead_time": {
+        "low_days": 13.3,
+        "high_days": 24.7,
+        "mid_days": 19.0,
+        "components": {
+          "queue": 7.0,
+          "tooling_lead": 0.0,
+          "production": 6.0,
+          "post_process": 3.0,
+          "ship": 3.0
+        },
+        "capacity": {
+          "n_machines": 2,
+          "machine_hours_per_day": 20.0,
+          "provenance": "DEFAULT",
+          "basis": "capacity-bound: 2 machines \u00d7 20 hr/day parallel pool; production = ceil(50\u00b74.514hr \u00f7 (2\u00d720)) = 6 d"
+        }
+      }
+    },
+    {
+      "process": "cnc_turning",
+      "material": "Ti6Al4V (Wrought)",
+      "quantity": 1,
+      "unit_cost_usd": 112.69,
+      "fixed_cost_usd": 35.0,
+      "variable_cost_usd": 46.51,
+      "est_error_band_pct": 68.0,
+      "confidence": {
+        "low_usd": 36.06,
+        "high_usd": 189.33,
+        "point_usd": 112.69,
+        "level": 0.8,
+        "method": "assumption-band",
+        "validated": false,
+        "n_samples": 0,
+        "half_width_pct": 68.0,
+        "basis": "\u00b168% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+        "label": "assumption-based, not yet validated"
+      },
+      "dfm_ready": true,
+      "dfm_verdict": "pass",
+      "dfm_score": 1.0,
+      "dfm_blockers": [],
+      "dfm_blocker_details": [],
+      "line_items": {
+        "amortized_fixed": 17.5,
+        "material": 13.3821,
+        "machine": 9.0324,
+        "labor": 10.5,
+        "nre": 35.0,
+        "inspection": 14.875,
+        "consumables": 0.4516,
+        "tolerance": 11.9537
+      },
+      "drivers": [
+        {
+          "name": "material_cost",
+          "value": 13.3821,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "hull volume 87.18 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 Ti6Al4V (Wrought) density 4.43 g/cm\u00b3 = 0.4248 kg \u00d7 $30/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+          "error_band_pct": 5.0
+        },
+        {
+          "name": "machine_cost",
+          "value": 9.0324,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "0.1390 hr \u00d7 $65/hr \u00d7 region-labor \u00d71  [rough 0.0 cm\u00b3 \u00f7 (2 cm\u00b3/min\u00b760) = 0.000 hr + finish 111.2 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.139 hr  [stock bounding cylinder \u03c0\u00b7(39.1/2)\u00b2\u00b759.8 mm = 71.6 cm\u00b3; MRR titanium]]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "cycle_time",
+          "value": 0.139,
+          "unit": "hr",
+          "provenance": "DEFAULT",
+          "source": "rough 0.0 cm\u00b3 \u00f7 (2 cm\u00b3/min\u00b760) = 0.000 hr + finish 111.2 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.139 hr  [stock bounding cylinder \u03c0\u00b7(39.1/2)\u00b2\u00b759.8 mm = 71.6 cm\u00b3; MRR titanium]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "labor_cost",
+          "value": 10.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "post-process 0.3 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "setup_cost",
+          "value": 17.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(1/100) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "nre_cost",
+          "value": 35.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "CAM programming/NRE 1hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 1 order (one-time) [assumption, not shop-validated]",
+          "error_band_pct": 40.0
+        },
+        {
+          "name": "inspection_cost",
+          "value": 14.875,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "first-article 0.4hr \u00d7 1 lot(s) \u00f7 1 + in-process 0.025hr/part = 0.4250hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+          "error_band_pct": 40.0
+        },
+        {
+          "name": "consumables_cost",
+          "value": 0.4516,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "perishable tooling/consumables 0.05 \u00d7 machine $9.03 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+          "error_band_pct": 40.0
+        },
+        {
+          "name": "tolerance_class",
+          "value": 1.5,
+          "unit": "\u00d7",
+          "provenance": "USER",
+          "source": "declared tolerance 'tight' \u2192 \u00d71.5 on the tolerance-sensitive conversion terms (CNC finish pass $9.03 + inspection $14.88 = $23.91) = +$11.95/unit; band widened +18pts (uncertainty grows). DECLARATION is USER; the factor is a DEFAULT assumption [not shop-validated]",
+          "error_band_pct": 50.0
+        }
+      ],
+      "lead_time": {
+        "low_days": 7.0,
+        "high_days": 13.0,
+        "mid_days": 10.0,
+        "components": {
+          "queue": 5.0,
+          "tooling_lead": 0.0,
+          "production": 1.0,
+          "post_process": 1.0,
+          "ship": 3.0
+        },
+        "capacity": {
+          "n_machines": 6,
+          "machine_hours_per_day": 16.0,
+          "provenance": "DEFAULT",
+          "basis": "capacity-bound: 6 machines \u00d7 16 hr/day parallel pool; production = ceil(1\u00b70.139hr \u00f7 (6\u00d716)) = 1 d"
+        }
+      }
+    },
+    {
+      "process": "cnc_turning",
+      "material": "Ti6Al4V (Wrought)",
+      "quantity": 50,
+      "unit_cost_usd": 40.66,
+      "fixed_cost_usd": 35.0,
+      "variable_cost_usd": 39.65,
+      "est_error_band_pct": 68.0,
+      "confidence": {
+        "low_usd": 13.01,
+        "high_usd": 68.32,
+        "point_usd": 40.66,
+        "level": 0.8,
+        "method": "assumption-band",
+        "validated": false,
+        "n_samples": 0,
+        "half_width_pct": 68.0,
+        "basis": "\u00b168% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+        "label": "assumption-based, not yet validated"
+      },
+      "dfm_ready": true,
+      "dfm_verdict": "pass",
+      "dfm_score": 1.0,
+      "dfm_blockers": [],
+      "dfm_blocker_details": [],
+      "line_items": {
+        "amortized_fixed": 0.35,
+        "material": 13.3821,
+        "machine": 9.0324,
+        "labor": 10.5,
+        "nre": 0.7,
+        "inspection": 1.155,
+        "consumables": 0.4516,
+        "tolerance": 5.0937
+      },
+      "drivers": [
+        {
+          "name": "material_cost",
+          "value": 13.3821,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "hull volume 87.18 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 Ti6Al4V (Wrought) density 4.43 g/cm\u00b3 = 0.4248 kg \u00d7 $30/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+          "error_band_pct": 5.0
+        },
+        {
+          "name": "machine_cost",
+          "value": 9.0324,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "0.1390 hr \u00d7 $65/hr \u00d7 region-labor \u00d71  [rough 0.0 cm\u00b3 \u00f7 (2 cm\u00b3/min\u00b760) = 0.000 hr + finish 111.2 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.139 hr  [stock bounding cylinder \u03c0\u00b7(39.1/2)\u00b2\u00b759.8 mm = 71.6 cm\u00b3; MRR titanium]]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "cycle_time",
+          "value": 0.139,
+          "unit": "hr",
+          "provenance": "DEFAULT",
+          "source": "rough 0.0 cm\u00b3 \u00f7 (2 cm\u00b3/min\u00b760) = 0.000 hr + finish 111.2 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.139 hr  [stock bounding cylinder \u03c0\u00b7(39.1/2)\u00b2\u00b759.8 mm = 71.6 cm\u00b3; MRR titanium]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "labor_cost",
+          "value": 10.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "post-process 0.3 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "setup_cost",
+          "value": 0.35,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(50/100) = 1 setups \u00f7 50 \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "nre_cost",
+          "value": 0.7,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "CAM programming/NRE 1hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 50 order (one-time) [assumption, not shop-validated]",
+          "error_band_pct": 40.0
+        },
+        {
+          "name": "inspection_cost",
+          "value": 1.155,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "first-article 0.4hr \u00d7 1 lot(s) \u00f7 50 + in-process 0.025hr/part = 0.0330hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+          "error_band_pct": 40.0
+        },
+        {
+          "name": "consumables_cost",
+          "value": 0.4516,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "perishable tooling/consumables 0.05 \u00d7 machine $9.03 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+          "error_band_pct": 40.0
+        },
+        {
+          "name": "tolerance_class",
+          "value": 1.5,
+          "unit": "\u00d7",
+          "provenance": "USER",
+          "source": "declared tolerance 'tight' \u2192 \u00d71.5 on the tolerance-sensitive conversion terms (CNC finish pass $9.03 + inspection $1.16 = $10.19) = +$5.09/unit; band widened +18pts (uncertainty grows). DECLARATION is USER; the factor is a DEFAULT assumption [not shop-validated]",
+          "error_band_pct": 50.0
+        }
+      ],
+      "lead_time": {
+        "low_days": 7.0,
+        "high_days": 13.0,
+        "mid_days": 10.0,
+        "components": {
+          "queue": 5.0,
+          "tooling_lead": 0.0,
+          "production": 1.0,
+          "post_process": 1.0,
+          "ship": 3.0
+        },
+        "capacity": {
+          "n_machines": 6,
+          "machine_hours_per_day": 16.0,
+          "provenance": "DEFAULT",
+          "basis": "capacity-bound: 6 machines \u00d7 16 hr/day parallel pool; production = ceil(50\u00b70.139hr \u00f7 (6\u00d716)) = 1 d"
+        }
+      }
+    },
+    {
+      "process": "ded",
+      "material": "Ti-6Al-4V Grade 5",
+      "quantity": 1,
+      "unit_cost_usd": 300.0,
+      "fixed_cost_usd": 0.0,
+      "variable_cost_usd": 92.33,
+      "est_error_band_pct": 78.0,
+      "confidence": {
+        "low_usd": 66.0,
+        "high_usd": 534.0,
+        "point_usd": 300.0,
+        "level": 0.8,
+        "method": "assumption-band",
+        "validated": false,
+        "n_samples": 0,
+        "half_width_pct": 78.0,
+        "basis": "\u00b178% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+        "label": "assumption-based, not yet validated"
+      },
+      "dfm_ready": true,
+      "dfm_verdict": "issues",
+      "dfm_score": 0.9,
+      "dfm_blockers": [],
+      "dfm_blocker_details": [],
+      "line_items": {
+        "amortized_fixed": 35.0,
+        "material": 19.542,
+        "machine": 53.2965,
+        "labor": 0.0,
+        "finish_machining": 15.9889,
+        "min_charge_floor": 176.1726
+      },
+      "drivers": [
+        {
+          "name": "material_cost",
+          "value": 19.542,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "feedstock (wire/powder) = net 0.3862 kg \u00d7 1.15 near-net overbuild (CAD volume 87.18 cm\u00b3 \u00d7 Ti-6Al-4V Grade 5 density 4.43 g/cm\u00b3) [DED/WAAM assumption, not shop-validated] = 0.4441 kg \u00d7 $40/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+          "error_band_pct": 5.0
+        },
+        {
+          "name": "machine_cost",
+          "value": 53.2965,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "0.4441 hr \u00d7 $120/hr \u00d7 region-labor \u00d71  [deposit 0.4441kg (net 0.3862kg \u00d7 1.15 near-net overbuild) \u00f7 1kg/hr deposition = 0.4441hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]]",
+          "error_band_pct": 60.0
+        },
+        {
+          "name": "cycle_time",
+          "value": 0.4441,
+          "unit": "hr",
+          "provenance": "DEFAULT",
+          "source": "deposit 0.4441kg (net 0.3862kg \u00d7 1.15 near-net overbuild) \u00f7 1kg/hr deposition = 0.4441hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]",
+          "error_band_pct": 60.0
+        },
+        {
+          "name": "labor_cost",
+          "value": 0.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "setup_cost",
+          "value": 35.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "setup 1hr \u00d7 $35/hr \u00d7 ceil(1/10) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "finish_machining",
+          "value": 15.9889,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "finish-machining allowance 0.3 \u00d7 deposition machine $53.30 (near-net DED/WAAM ALWAYS needs finishing) [coarse allowance; assumption, not shop-validated]",
+          "error_band_pct": 60.0
+        },
+        {
+          "name": "tolerance_class",
+          "value": 1.0,
+          "unit": "\u00d7",
+          "provenance": "USER",
+          "source": "declared tolerance 'tight': band widened +18pts (uncertainty grows), but NO per-part machining surcharge applies to a ded part in V0 (tolerance is set by the tool/process, not by quantifiable per-part finishing passes) \u2014 cost UNCHANGED. DECLARATION is USER; DEFAULT assumption [not shop-validated]",
+          "error_band_pct": 60.0
+        },
+        {
+          "name": "min_charge_floor",
+          "value": 176.1726,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "shop/order minimum $300/lot \u00d7 1 lots \u00f7 1 = $300.00/unit floor (applied)",
+          "error_band_pct": null
+        }
+      ],
+      "lead_time": {
+        "low_days": 12.6,
+        "high_days": 23.4,
+        "mid_days": 18.0,
+        "components": {
+          "queue": 10.0,
+          "tooling_lead": 0.0,
+          "production": 1.0,
+          "post_process": 4.0,
+          "ship": 3.0
+        },
+        "capacity": {
+          "n_machines": 2,
+          "machine_hours_per_day": 20.0,
+          "provenance": "DEFAULT",
+          "basis": "capacity-bound: 2 machines \u00d7 20 hr/day parallel pool; production = ceil(1\u00b70.444hr \u00f7 (2\u00d720)) = 1 d"
+        }
+      }
+    },
+    {
+      "process": "ded",
+      "material": "Ti-6Al-4V Grade 5",
+      "quantity": 50,
+      "unit_cost_usd": 92.33,
+      "fixed_cost_usd": 0.0,
+      "variable_cost_usd": 92.33,
+      "est_error_band_pct": 78.0,
+      "confidence": {
+        "low_usd": 20.31,
+        "high_usd": 164.34,
+        "point_usd": 92.33,
+        "level": 0.8,
+        "method": "assumption-band",
+        "validated": false,
+        "n_samples": 0,
+        "half_width_pct": 78.0,
+        "basis": "\u00b178% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+        "label": "assumption-based, not yet validated"
+      },
+      "dfm_ready": true,
+      "dfm_verdict": "issues",
+      "dfm_score": 0.9,
+      "dfm_blockers": [],
+      "dfm_blocker_details": [],
+      "line_items": {
+        "amortized_fixed": 3.5,
+        "material": 19.542,
+        "machine": 53.2965,
+        "labor": 0.0,
+        "finish_machining": 15.9889
+      },
+      "drivers": [
+        {
+          "name": "material_cost",
+          "value": 19.542,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "feedstock (wire/powder) = net 0.3862 kg \u00d7 1.15 near-net overbuild (CAD volume 87.18 cm\u00b3 \u00d7 Ti-6Al-4V Grade 5 density 4.43 g/cm\u00b3) [DED/WAAM assumption, not shop-validated] = 0.4441 kg \u00d7 $40/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.1 scrap) \u00d7 region-material \u00d71",
+          "error_band_pct": 5.0
+        },
+        {
+          "name": "machine_cost",
+          "value": 53.2965,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "0.4441 hr \u00d7 $120/hr \u00d7 region-labor \u00d71  [deposit 0.4441kg (net 0.3862kg \u00d7 1.15 near-net overbuild) \u00f7 1kg/hr deposition = 0.4441hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]]",
+          "error_band_pct": 60.0
+        },
+        {
+          "name": "cycle_time",
+          "value": 0.4441,
+          "unit": "hr",
+          "provenance": "DEFAULT",
+          "source": "deposit 0.4441kg (net 0.3862kg \u00d7 1.15 near-net overbuild) \u00f7 1kg/hr deposition = 0.4441hr  [COARSE deposition-rate model \u2014 DED/WAAM cost is highly geometry/path/shop-specific; assumption, not shop-validated]",
+          "error_band_pct": 60.0
+        },
+        {
+          "name": "labor_cost",
+          "value": 0.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "setup_cost",
+          "value": 3.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "setup 1hr \u00d7 $35/hr \u00d7 ceil(50/10) = 5 setups \u00f7 50 \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "finish_machining",
+          "value": 15.9889,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "finish-machining allowance 0.3 \u00d7 deposition machine $53.30 (near-net DED/WAAM ALWAYS needs finishing) [coarse allowance; assumption, not shop-validated]",
+          "error_band_pct": 60.0
+        },
+        {
+          "name": "tolerance_class",
+          "value": 1.0,
+          "unit": "\u00d7",
+          "provenance": "USER",
+          "source": "declared tolerance 'tight': band widened +18pts (uncertainty grows), but NO per-part machining surcharge applies to a ded part in V0 (tolerance is set by the tool/process, not by quantifiable per-part finishing passes) \u2014 cost UNCHANGED. DECLARATION is USER; DEFAULT assumption [not shop-validated]",
+          "error_band_pct": 60.0
+        }
+      ],
+      "lead_time": {
+        "low_days": 12.6,
+        "high_days": 23.4,
+        "mid_days": 18.0,
+        "components": {
+          "queue": 10.0,
+          "tooling_lead": 0.0,
+          "production": 1.0,
+          "post_process": 4.0,
+          "ship": 3.0
+        },
+        "capacity": {
+          "n_machines": 2,
+          "machine_hours_per_day": 20.0,
+          "provenance": "DEFAULT",
+          "basis": "capacity-bound: 2 machines \u00d7 20 hr/day parallel pool; production = ceil(50\u00b70.444hr \u00f7 (2\u00d720)) = 1 d"
+        }
+      }
+    },
+    {
+      "process": "forging",
+      "material": "Ti-6Al-4V Grade 5",
+      "quantity": 1,
+      "unit_cost_usd": 66144.29,
+      "fixed_cost_usd": 66000.0,
+      "variable_cost_usd": 39.71,
+      "est_error_band_pct": 73.0,
+      "confidence": {
+        "low_usd": 17858.96,
+        "high_usd": 114429.62,
+        "point_usd": 66144.29,
+        "level": 0.8,
+        "method": "assumption-band",
+        "validated": false,
+        "n_samples": 0,
+        "half_width_pct": 73.0,
+        "basis": "\u00b173% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+        "label": "assumption-based, not yet validated"
+      },
+      "dfm_ready": false,
+      "dfm_verdict": "fail",
+      "dfm_score": 0.0,
+      "dfm_blockers": [
+        "56 sidewall faces (95.4% of sidewall area) below 5.0\u00b0 draft for forging.",
+        "108 faces (25.2%) are undercuts for forging."
+      ],
+      "dfm_blocker_details": [
+        {
+          "code": "INSUFFICIENT_DRAFT",
+          "severity": "error",
+          "message": "56 sidewall faces (95.4% of sidewall area) below 5.0\u00b0 draft for forging.",
+          "fix_suggestion": "Add >= 5.0\u00b0 draft to all walls in pull direction. FIA: 5\u00b0 external, 7-10\u00b0 internal.",
+          "process": "forging",
+          "affected_face_count": 56,
+          "affected_faces_sample": [
+            276,
+            277,
+            278,
+            279,
+            280,
+            281,
+            282,
+            283,
+            288,
+            289,
+            290,
+            291,
+            294,
+            295,
+            298,
+            299,
+            300,
+            301,
+            308,
+            309,
+            310,
+            311,
+            312,
+            313,
+            318,
+            319,
+            320,
+            321,
+            334,
+            335,
+            356,
+            357,
+            358,
+            359,
+            360,
+            361,
+            368,
+            369,
+            370,
+            371,
+            398,
+            399,
+            400,
+            401,
+            404,
+            405,
+            418,
+            419,
+            420,
+            421,
+            422,
+            423,
+            424,
+            425,
+            426,
+            427
+          ],
+          "required_value": 5.0,
+          "citation": {
+            "standard": "FIA",
+            "text": "5\u00b0 external, 7-10\u00b0 internal."
+          },
+          "scope": "localized"
+        },
+        {
+          "code": "UNDERCUT",
+          "severity": "error",
+          "message": "108 faces (25.2%) are undercuts for forging.",
+          "fix_suggestion": "Remove undercuts or plan multi-setup machining. Forging: no undercuts \u2014 die cannot open.",
+          "process": "forging",
+          "affected_face_count": 108,
+          "affected_faces_sample": [
+            0,
+            5,
+            6,
+            8,
+            9,
+            10,
+            20,
+            24,
+            33,
+            34,
+            35,
+            36,
+            37,
+            39,
+            47,
+            48,
+            49,
+            50,
+            51,
+            55,
+            56,
+            57,
+            61,
+            62,
+            63,
+            66,
+            98,
+            99,
+            100,
+            101,
+            102,
+            103,
+            104,
+            105,
+            106,
+            107,
+            109,
+            110,
+            111,
+            112,
+            113,
+            122,
+            125,
+            126,
+            127,
+            129,
+            131,
+            132,
+            133,
+            134,
+            135,
+            136,
+            137,
+            142,
+            143,
+            146,
+            148,
+            149,
+            171,
+            172,
+            185,
+            186,
+            187,
+            188,
+            189,
+            193,
+            194,
+            195,
+            196,
+            197,
+            198,
+            199,
+            200,
+            201,
+            202,
+            203,
+            204,
+            205,
+            206,
+            207,
+            253,
+            254,
+            255,
+            256,
+            296,
+            297,
+            322,
+            323,
+            324,
+            325,
+            326,
+            327,
+            328,
+            329,
+            336,
+            337,
+            346,
+            347,
+            354,
+            355,
+            362,
+            363,
+            364,
+            365,
+            366,
+            367,
+            380,
+            381
+          ],
+          "citation": {
+            "text": "Forging: no undercuts \u2014 die cannot open"
+          },
+          "scope": "localized"
+        }
+      ],
+      "line_items": {
+        "amortized_fixed": 66105.0,
+        "material": 20.2758,
+        "machine": 12.0138,
+        "labor": 7.0
+      },
+      "drivers": [
+        {
+          "name": "material_cost",
+          "value": 20.2758,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "billet from bar = net 0.3862 kg (CAD volume 87.18 cm\u00b3 \u00d7 Ti-6Al-4V Grade 5 density 4.43 g/cm\u00b3) \u00d7 (1+0.25 flash/scale loss) [forge assumption, not shop-validated] = 0.4828 kg \u00d7 $40/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+          "error_band_pct": 5.0
+        },
+        {
+          "name": "machine_cost",
+          "value": 12.0138,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "0.1001 hr \u00d7 $120/hr \u00d7 region-labor \u00d71  [heat 0.483kg billet (net 0.386kg \u00d7 1+0.25 flash/scale) \u00d7 2.5min/kg = 1.2min + press 0.05hr + trim 0.03hr = 0.1001 hr  (near-net blank \u2014 finish machining NOT bundled) [forge assumption, not shop-validated]]",
+          "error_band_pct": 55.0
+        },
+        {
+          "name": "cycle_time",
+          "value": 0.1001,
+          "unit": "hr",
+          "provenance": "DEFAULT",
+          "source": "heat 0.483kg billet (net 0.386kg \u00d7 1+0.25 flash/scale) \u00d7 2.5min/kg = 1.2min + press 0.05hr + trim 0.03hr = 0.1001 hr  (near-net blank \u2014 finish machining NOT bundled) [forge assumption, not shop-validated]",
+          "error_band_pct": 55.0
+        },
+        {
+          "name": "labor_cost",
+          "value": 7.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "post-process 0.2 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "setup_cost",
+          "value": 105.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "setup 3hr \u00d7 $35/hr \u00d7 ceil(1/250) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "tolerance_class",
+          "value": 1.0,
+          "unit": "\u00d7",
+          "provenance": "USER",
+          "source": "declared tolerance 'tight': band widened +18pts (uncertainty grows), but NO per-part machining surcharge applies to a forging part in V0 (tolerance is set by the tool/process, not by quantifiable per-part finishing passes) \u2014 cost UNCHANGED. DECLARATION is USER; DEFAULT assumption [not shop-validated]",
+          "error_band_pct": 55.0
+        },
+        {
+          "name": "tooling_cost",
+          "value": 66000.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "hardened closed-die set: size tier M (max bbox 60mm) \u00d7 2 family-mult \u00d7 very_complex (=2.20) = $66,000; \u00b155%, OVERRIDABLE [assumption, not shop-validated]",
+          "error_band_pct": 55.0
+        }
+      ],
+      "lead_time": {
+        "low_days": 44.8,
+        "high_days": 83.2,
+        "mid_days": 64.0,
+        "components": {
+          "queue": 12.0,
+          "tooling_lead": 45.0,
+          "production": 1.0,
+          "post_process": 3.0,
+          "ship": 3.0
+        },
+        "capacity": {
+          "n_machines": 2,
+          "machine_hours_per_day": 16.0,
+          "provenance": "DEFAULT",
+          "basis": "capacity-bound: 2 machines \u00d7 16 hr/day parallel pool; production = ceil(1\u00b70.100hr \u00f7 (2\u00d716)) = 1 d"
+        }
+      }
+    },
+    {
+      "process": "forging",
+      "material": "Ti-6Al-4V Grade 5",
+      "quantity": 50,
+      "unit_cost_usd": 1361.39,
+      "fixed_cost_usd": 66000.0,
+      "variable_cost_usd": 39.71,
+      "est_error_band_pct": 73.0,
+      "confidence": {
+        "low_usd": 367.58,
+        "high_usd": 2355.2,
+        "point_usd": 1361.39,
+        "level": 0.8,
+        "method": "assumption-band",
+        "validated": false,
+        "n_samples": 0,
+        "half_width_pct": 73.0,
+        "basis": "\u00b173% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+        "label": "assumption-based, not yet validated"
+      },
+      "dfm_ready": false,
+      "dfm_verdict": "fail",
+      "dfm_score": 0.0,
+      "dfm_blockers": [
+        "56 sidewall faces (95.4% of sidewall area) below 5.0\u00b0 draft for forging.",
+        "108 faces (25.2%) are undercuts for forging."
+      ],
+      "dfm_blocker_details": [
+        {
+          "code": "INSUFFICIENT_DRAFT",
+          "severity": "error",
+          "message": "56 sidewall faces (95.4% of sidewall area) below 5.0\u00b0 draft for forging.",
+          "fix_suggestion": "Add >= 5.0\u00b0 draft to all walls in pull direction. FIA: 5\u00b0 external, 7-10\u00b0 internal.",
+          "process": "forging",
+          "affected_face_count": 56,
+          "affected_faces_sample": [
+            276,
+            277,
+            278,
+            279,
+            280,
+            281,
+            282,
+            283,
+            288,
+            289,
+            290,
+            291,
+            294,
+            295,
+            298,
+            299,
+            300,
+            301,
+            308,
+            309,
+            310,
+            311,
+            312,
+            313,
+            318,
+            319,
+            320,
+            321,
+            334,
+            335,
+            356,
+            357,
+            358,
+            359,
+            360,
+            361,
+            368,
+            369,
+            370,
+            371,
+            398,
+            399,
+            400,
+            401,
+            404,
+            405,
+            418,
+            419,
+            420,
+            421,
+            422,
+            423,
+            424,
+            425,
+            426,
+            427
+          ],
+          "required_value": 5.0,
+          "citation": {
+            "standard": "FIA",
+            "text": "5\u00b0 external, 7-10\u00b0 internal."
+          },
+          "scope": "localized"
+        },
+        {
+          "code": "UNDERCUT",
+          "severity": "error",
+          "message": "108 faces (25.2%) are undercuts for forging.",
+          "fix_suggestion": "Remove undercuts or plan multi-setup machining. Forging: no undercuts \u2014 die cannot open.",
+          "process": "forging",
+          "affected_face_count": 108,
+          "affected_faces_sample": [
+            0,
+            5,
+            6,
+            8,
+            9,
+            10,
+            20,
+            24,
+            33,
+            34,
+            35,
+            36,
+            37,
+            39,
+            47,
+            48,
+            49,
+            50,
+            51,
+            55,
+            56,
+            57,
+            61,
+            62,
+            63,
+            66,
+            98,
+            99,
+            100,
+            101,
+            102,
+            103,
+            104,
+            105,
+            106,
+            107,
+            109,
+            110,
+            111,
+            112,
+            113,
+            122,
+            125,
+            126,
+            127,
+            129,
+            131,
+            132,
+            133,
+            134,
+            135,
+            136,
+            137,
+            142,
+            143,
+            146,
+            148,
+            149,
+            171,
+            172,
+            185,
+            186,
+            187,
+            188,
+            189,
+            193,
+            194,
+            195,
+            196,
+            197,
+            198,
+            199,
+            200,
+            201,
+            202,
+            203,
+            204,
+            205,
+            206,
+            207,
+            253,
+            254,
+            255,
+            256,
+            296,
+            297,
+            322,
+            323,
+            324,
+            325,
+            326,
+            327,
+            328,
+            329,
+            336,
+            337,
+            346,
+            347,
+            354,
+            355,
+            362,
+            363,
+            364,
+            365,
+            366,
+            367,
+            380,
+            381
+          ],
+          "citation": {
+            "text": "Forging: no undercuts \u2014 die cannot open"
+          },
+          "scope": "localized"
+        }
+      ],
+      "line_items": {
+        "amortized_fixed": 1322.1,
+        "material": 20.2758,
+        "machine": 12.0138,
+        "labor": 7.0
+      },
+      "drivers": [
+        {
+          "name": "material_cost",
+          "value": 20.2758,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "billet from bar = net 0.3862 kg (CAD volume 87.18 cm\u00b3 \u00d7 Ti-6Al-4V Grade 5 density 4.43 g/cm\u00b3) \u00d7 (1+0.25 flash/scale loss) [forge assumption, not shop-validated] = 0.4828 kg \u00d7 $40/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+          "error_band_pct": 5.0
+        },
+        {
+          "name": "machine_cost",
+          "value": 12.0138,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "0.1001 hr \u00d7 $120/hr \u00d7 region-labor \u00d71  [heat 0.483kg billet (net 0.386kg \u00d7 1+0.25 flash/scale) \u00d7 2.5min/kg = 1.2min + press 0.05hr + trim 0.03hr = 0.1001 hr  (near-net blank \u2014 finish machining NOT bundled) [forge assumption, not shop-validated]]",
+          "error_band_pct": 55.0
+        },
+        {
+          "name": "cycle_time",
+          "value": 0.1001,
+          "unit": "hr",
+          "provenance": "DEFAULT",
+          "source": "heat 0.483kg billet (net 0.386kg \u00d7 1+0.25 flash/scale) \u00d7 2.5min/kg = 1.2min + press 0.05hr + trim 0.03hr = 0.1001 hr  (near-net blank \u2014 finish machining NOT bundled) [forge assumption, not shop-validated]",
+          "error_band_pct": 55.0
+        },
+        {
+          "name": "labor_cost",
+          "value": 7.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "post-process 0.2 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "setup_cost",
+          "value": 2.1,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "setup 3hr \u00d7 $35/hr \u00d7 ceil(50/250) = 1 setups \u00f7 50 \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "tolerance_class",
+          "value": 1.0,
+          "unit": "\u00d7",
+          "provenance": "USER",
+          "source": "declared tolerance 'tight': band widened +18pts (uncertainty grows), but NO per-part machining surcharge applies to a forging part in V0 (tolerance is set by the tool/process, not by quantifiable per-part finishing passes) \u2014 cost UNCHANGED. DECLARATION is USER; DEFAULT assumption [not shop-validated]",
+          "error_band_pct": 55.0
+        },
+        {
+          "name": "tooling_cost",
+          "value": 66000.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "hardened closed-die set: size tier M (max bbox 60mm) \u00d7 2 family-mult \u00d7 very_complex (=2.20) = $66,000; \u00b155%, OVERRIDABLE [assumption, not shop-validated]",
+          "error_band_pct": 55.0
+        }
+      ],
+      "lead_time": {
+        "low_days": 44.8,
+        "high_days": 83.2,
+        "mid_days": 64.0,
+        "components": {
+          "queue": 12.0,
+          "tooling_lead": 45.0,
+          "production": 1.0,
+          "post_process": 3.0,
+          "ship": 3.0
+        },
+        "capacity": {
+          "n_machines": 2,
+          "machine_hours_per_day": 16.0,
+          "provenance": "DEFAULT",
+          "basis": "capacity-bound: 2 machines \u00d7 16 hr/day parallel pool; production = ceil(50\u00b70.100hr \u00f7 (2\u00d716)) = 1 d"
+        }
+      }
+    },
+    {
+      "process": "cnc_3axis",
+      "material": "Ti6Al4V (Wrought)",
+      "quantity": 1,
+      "unit_cost_usd": 184.83,
+      "fixed_cost_usd": 70.0,
+      "variable_cost_usd": 71.51,
+      "est_error_band_pct": 68.0,
+      "confidence": {
+        "low_usd": 59.14,
+        "high_usd": 310.51,
+        "point_usd": 184.83,
+        "level": 0.8,
+        "method": "assumption-band",
+        "validated": false,
+        "n_samples": 0,
+        "half_width_pct": 68.0,
+        "basis": "\u00b168% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+        "label": "assumption-based, not yet validated"
+      },
+      "dfm_ready": false,
+      "dfm_verdict": "fail",
+      "dfm_score": 0.05,
+      "dfm_blockers": [
+        "108 faces (25.2%) are undercuts for cnc_3axis."
+      ],
+      "dfm_blocker_details": [
+        {
+          "code": "UNDERCUT",
+          "severity": "error",
+          "message": "108 faces (25.2%) are undercuts for cnc_3axis.",
+          "fix_suggestion": "Remove undercuts or plan multi-setup machining. 3-axis: tool access from +Z only.",
+          "process": "cnc_3axis",
+          "affected_face_count": 108,
+          "affected_faces_sample": [
+            0,
+            5,
+            6,
+            8,
+            9,
+            10,
+            20,
+            24,
+            33,
+            34,
+            35,
+            36,
+            37,
+            39,
+            47,
+            48,
+            49,
+            50,
+            51,
+            55,
+            56,
+            57,
+            61,
+            62,
+            63,
+            66,
+            98,
+            99,
+            100,
+            101,
+            102,
+            103,
+            104,
+            105,
+            106,
+            107,
+            109,
+            110,
+            111,
+            112,
+            113,
+            122,
+            125,
+            126,
+            127,
+            129,
+            131,
+            132,
+            133,
+            134,
+            135,
+            136,
+            137,
+            142,
+            143,
+            146,
+            148,
+            149,
+            171,
+            172,
+            185,
+            186,
+            187,
+            188,
+            189,
+            193,
+            194,
+            195,
+            196,
+            197,
+            198,
+            199,
+            200,
+            201,
+            202,
+            203,
+            204,
+            205,
+            206,
+            207,
+            253,
+            254,
+            255,
+            256,
+            296,
+            297,
+            322,
+            323,
+            324,
+            325,
+            326,
+            327,
+            328,
+            329,
+            336,
+            337,
+            346,
+            347,
+            354,
+            355,
+            362,
+            363,
+            364,
+            365,
+            366,
+            367,
+            380,
+            381
+          ],
+          "citation": {
+            "text": "3-axis: tool access from +Z only"
+          },
+          "scope": "localized"
+        }
+      ],
+      "line_items": {
+        "amortized_fixed": 26.25,
+        "material": 13.8394,
+        "machine": 21.3931,
+        "labor": 17.5,
+        "nre": 70.0,
+        "inspection": 18.55,
+        "consumables": 1.0697,
+        "tolerance": 16.223
+      },
+      "drivers": [
+        {
+          "name": "material_cost",
+          "value": 13.8394,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "bounding-box billet 90.16 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 Ti6Al4V (Wrought) density 4.43 g/cm\u00b3 [assumption, not shop-validated] = 0.4393 kg \u00d7 $30/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+          "error_band_pct": 5.0
+        },
+        {
+          "name": "machine_cost",
+          "value": 21.3931,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "0.2852 hr \u00d7 $75/hr \u00d7 region-labor \u00d71  [rough 12.0 cm\u00b3 \u00f7 (2 cm\u00b3/min\u00b760) = 0.100 hr + finish 111.2 cm\u00b2 \u00f7 600 cm\u00b2/hr = 0.185 hr  [stock bbox billet 90.2 cm\u00b3 \u00d7 1.10 = 99.2 cm\u00b3 [assumption, not shop-validated]; MRR titanium]]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "cycle_time",
+          "value": 0.2852,
+          "unit": "hr",
+          "provenance": "DEFAULT",
+          "source": "rough 12.0 cm\u00b3 \u00f7 (2 cm\u00b3/min\u00b760) = 0.100 hr + finish 111.2 cm\u00b2 \u00f7 600 cm\u00b2/hr = 0.185 hr  [stock bbox billet 90.2 cm\u00b3 \u00d7 1.10 = 99.2 cm\u00b3 [assumption, not shop-validated]; MRR titanium]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "labor_cost",
+          "value": 17.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "post-process 0.5 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "setup_cost",
+          "value": 26.25,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "setup 0.75hr \u00d7 $35/hr \u00d7 ceil(1/100) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "nre_cost",
+          "value": 70.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "CAM programming/NRE 2hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 1 order (one-time) [assumption, not shop-validated]",
+          "error_band_pct": 40.0
+        },
+        {
+          "name": "inspection_cost",
+          "value": 18.55,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "first-article 0.5hr \u00d7 1 lot(s) \u00f7 1 + in-process 0.03hr/part = 0.5300hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+          "error_band_pct": 40.0
+        },
+        {
+          "name": "consumables_cost",
+          "value": 1.0697,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "perishable tooling/consumables 0.05 \u00d7 machine $21.39 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+          "error_band_pct": 40.0
+        },
+        {
+          "name": "tolerance_class",
+          "value": 1.5,
+          "unit": "\u00d7",
+          "provenance": "USER",
+          "source": "declared tolerance 'tight' \u2192 \u00d71.5 on the tolerance-sensitive conversion terms (CNC finish pass $13.90 + inspection $18.55 = $32.45) = +$16.22/unit; band widened +18pts (uncertainty grows). DECLARATION is USER; the factor is a DEFAULT assumption [not shop-validated]",
+          "error_band_pct": 50.0
+        }
+      ],
+      "lead_time": {
+        "low_days": 7.0,
+        "high_days": 13.0,
+        "mid_days": 10.0,
+        "components": {
+          "queue": 5.0,
+          "tooling_lead": 0.0,
+          "production": 1.0,
+          "post_process": 1.0,
+          "ship": 3.0
+        },
+        "capacity": {
+          "n_machines": 8,
+          "machine_hours_per_day": 16.0,
+          "provenance": "DEFAULT",
+          "basis": "capacity-bound: 8 machines \u00d7 16 hr/day parallel pool; production = ceil(1\u00b70.285hr \u00f7 (8\u00d716)) = 1 d"
+        }
+      }
+    },
+    {
+      "process": "cnc_3axis",
+      "material": "Ti6Al4V (Wrought)",
+      "quantity": 50,
+      "unit_cost_usd": 64.78,
+      "fixed_cost_usd": 70.0,
+      "variable_cost_usd": 62.94,
+      "est_error_band_pct": 68.0,
+      "confidence": {
+        "low_usd": 20.73,
+        "high_usd": 108.82,
+        "point_usd": 64.78,
+        "level": 0.8,
+        "method": "assumption-band",
+        "validated": false,
+        "n_samples": 0,
+        "half_width_pct": 68.0,
+        "basis": "\u00b168% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+        "label": "assumption-based, not yet validated"
+      },
+      "dfm_ready": false,
+      "dfm_verdict": "fail",
+      "dfm_score": 0.05,
+      "dfm_blockers": [
+        "108 faces (25.2%) are undercuts for cnc_3axis."
+      ],
+      "dfm_blocker_details": [
+        {
+          "code": "UNDERCUT",
+          "severity": "error",
+          "message": "108 faces (25.2%) are undercuts for cnc_3axis.",
+          "fix_suggestion": "Remove undercuts or plan multi-setup machining. 3-axis: tool access from +Z only.",
+          "process": "cnc_3axis",
+          "affected_face_count": 108,
+          "affected_faces_sample": [
+            0,
+            5,
+            6,
+            8,
+            9,
+            10,
+            20,
+            24,
+            33,
+            34,
+            35,
+            36,
+            37,
+            39,
+            47,
+            48,
+            49,
+            50,
+            51,
+            55,
+            56,
+            57,
+            61,
+            62,
+            63,
+            66,
+            98,
+            99,
+            100,
+            101,
+            102,
+            103,
+            104,
+            105,
+            106,
+            107,
+            109,
+            110,
+            111,
+            112,
+            113,
+            122,
+            125,
+            126,
+            127,
+            129,
+            131,
+            132,
+            133,
+            134,
+            135,
+            136,
+            137,
+            142,
+            143,
+            146,
+            148,
+            149,
+            171,
+            172,
+            185,
+            186,
+            187,
+            188,
+            189,
+            193,
+            194,
+            195,
+            196,
+            197,
+            198,
+            199,
+            200,
+            201,
+            202,
+            203,
+            204,
+            205,
+            206,
+            207,
+            253,
+            254,
+            255,
+            256,
+            296,
+            297,
+            322,
+            323,
+            324,
+            325,
+            326,
+            327,
+            328,
+            329,
+            336,
+            337,
+            346,
+            347,
+            354,
+            355,
+            362,
+            363,
+            364,
+            365,
+            366,
+            367,
+            380,
+            381
+          ],
+          "citation": {
+            "text": "3-axis: tool access from +Z only"
+          },
+          "scope": "localized"
+        }
+      ],
+      "line_items": {
+        "amortized_fixed": 0.525,
+        "material": 13.8394,
+        "machine": 21.3931,
+        "labor": 17.5,
+        "nre": 1.4,
+        "inspection": 1.4,
+        "consumables": 1.0697,
+        "tolerance": 7.648
+      },
+      "drivers": [
+        {
+          "name": "material_cost",
+          "value": 13.8394,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "bounding-box billet 90.16 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 Ti6Al4V (Wrought) density 4.43 g/cm\u00b3 [assumption, not shop-validated] = 0.4393 kg \u00d7 $30/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+          "error_band_pct": 5.0
+        },
+        {
+          "name": "machine_cost",
+          "value": 21.3931,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "0.2852 hr \u00d7 $75/hr \u00d7 region-labor \u00d71  [rough 12.0 cm\u00b3 \u00f7 (2 cm\u00b3/min\u00b760) = 0.100 hr + finish 111.2 cm\u00b2 \u00f7 600 cm\u00b2/hr = 0.185 hr  [stock bbox billet 90.2 cm\u00b3 \u00d7 1.10 = 99.2 cm\u00b3 [assumption, not shop-validated]; MRR titanium]]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "cycle_time",
+          "value": 0.2852,
+          "unit": "hr",
+          "provenance": "DEFAULT",
+          "source": "rough 12.0 cm\u00b3 \u00f7 (2 cm\u00b3/min\u00b760) = 0.100 hr + finish 111.2 cm\u00b2 \u00f7 600 cm\u00b2/hr = 0.185 hr  [stock bbox billet 90.2 cm\u00b3 \u00d7 1.10 = 99.2 cm\u00b3 [assumption, not shop-validated]; MRR titanium]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "labor_cost",
+          "value": 17.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "post-process 0.5 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "setup_cost",
+          "value": 0.525,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "setup 0.75hr \u00d7 $35/hr \u00d7 ceil(50/100) = 1 setups \u00f7 50 \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "nre_cost",
+          "value": 1.4,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "CAM programming/NRE 2hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 50 order (one-time) [assumption, not shop-validated]",
+          "error_band_pct": 40.0
+        },
+        {
+          "name": "inspection_cost",
+          "value": 1.4,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "first-article 0.5hr \u00d7 1 lot(s) \u00f7 50 + in-process 0.03hr/part = 0.0400hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+          "error_band_pct": 40.0
+        },
+        {
+          "name": "consumables_cost",
+          "value": 1.0697,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "perishable tooling/consumables 0.05 \u00d7 machine $21.39 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+          "error_band_pct": 40.0
+        },
+        {
+          "name": "tolerance_class",
+          "value": 1.5,
+          "unit": "\u00d7",
+          "provenance": "USER",
+          "source": "declared tolerance 'tight' \u2192 \u00d71.5 on the tolerance-sensitive conversion terms (CNC finish pass $13.90 + inspection $1.40 = $15.30) = +$7.65/unit; band widened +18pts (uncertainty grows). DECLARATION is USER; the factor is a DEFAULT assumption [not shop-validated]",
+          "error_band_pct": 50.0
+        }
+      ],
+      "lead_time": {
+        "low_days": 7.0,
+        "high_days": 13.0,
+        "mid_days": 10.0,
+        "components": {
+          "queue": 5.0,
+          "tooling_lead": 0.0,
+          "production": 1.0,
+          "post_process": 1.0,
+          "ship": 3.0
+        },
+        "capacity": {
+          "n_machines": 8,
+          "machine_hours_per_day": 16.0,
+          "provenance": "DEFAULT",
+          "basis": "capacity-bound: 8 machines \u00d7 16 hr/day parallel pool; production = ceil(50\u00b70.285hr \u00f7 (8\u00d716)) = 1 d"
+        }
+      }
+    },
+    {
+      "process": "cnc_5axis",
+      "material": "Ti6Al4V (Wrought)",
+      "quantity": 1,
+      "unit_cost_usd": 262.79,
+      "fixed_cost_usd": 105.0,
+      "variable_cost_usd": 97.16,
+      "est_error_band_pct": 68.0,
+      "confidence": {
+        "low_usd": 84.09,
+        "high_usd": 441.49,
+        "point_usd": 262.79,
+        "level": 0.8,
+        "method": "assumption-band",
+        "validated": false,
+        "n_samples": 0,
+        "half_width_pct": 68.0,
+        "basis": "\u00b168% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+        "label": "assumption-based, not yet validated"
+      },
+      "dfm_ready": true,
+      "dfm_verdict": "issues",
+      "dfm_score": 0.9,
+      "dfm_blockers": [],
+      "dfm_blocker_details": [],
+      "line_items": {
+        "amortized_fixed": 35.0,
+        "material": 13.8394,
+        "machine": 35.4528,
+        "labor": 17.5,
+        "nre": 105.0,
+        "inspection": 28.0,
+        "consumables": 1.7726,
+        "tolerance": 26.2285
+      },
+      "drivers": [
+        {
+          "name": "material_cost",
+          "value": 13.8394,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "bounding-box billet 90.16 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 Ti6Al4V (Wrought) density 4.43 g/cm\u00b3 [assumption, not shop-validated] = 0.4393 kg \u00d7 $30/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+          "error_band_pct": 5.0
+        },
+        {
+          "name": "machine_cost",
+          "value": 35.4528,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "0.3223 hr \u00d7 $110/hr \u00d7 region-labor \u00d71  [rough 12.0 cm\u00b3 \u00f7 (2 cm\u00b3/min\u00b760) = 0.100 hr + finish 111.2 cm\u00b2 \u00f7 500 cm\u00b2/hr = 0.222 hr  [stock bbox billet 90.2 cm\u00b3 \u00d7 1.10 = 99.2 cm\u00b3 [assumption, not shop-validated]; MRR titanium]]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "cycle_time",
+          "value": 0.3223,
+          "unit": "hr",
+          "provenance": "DEFAULT",
+          "source": "rough 12.0 cm\u00b3 \u00f7 (2 cm\u00b3/min\u00b760) = 0.100 hr + finish 111.2 cm\u00b2 \u00f7 500 cm\u00b2/hr = 0.222 hr  [stock bbox billet 90.2 cm\u00b3 \u00d7 1.10 = 99.2 cm\u00b3 [assumption, not shop-validated]; MRR titanium]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "labor_cost",
+          "value": 17.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "post-process 0.5 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "setup_cost",
+          "value": 35.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "setup 1hr \u00d7 $35/hr \u00d7 ceil(1/100) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "nre_cost",
+          "value": 105.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "CAM programming/NRE 3hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 1 order (one-time) [assumption, not shop-validated]",
+          "error_band_pct": 40.0
+        },
+        {
+          "name": "inspection_cost",
+          "value": 28.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "first-article 0.75hr \u00d7 1 lot(s) \u00f7 1 + in-process 0.05hr/part = 0.8000hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+          "error_band_pct": 40.0
+        },
+        {
+          "name": "consumables_cost",
+          "value": 1.7726,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "perishable tooling/consumables 0.05 \u00d7 machine $35.45 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+          "error_band_pct": 40.0
+        },
+        {
+          "name": "tolerance_class",
+          "value": 1.5,
+          "unit": "\u00d7",
+          "provenance": "USER",
+          "source": "declared tolerance 'tight' \u2192 \u00d71.5 on the tolerance-sensitive conversion terms (CNC finish pass $24.46 + inspection $28.00 = $52.46) = +$26.23/unit; band widened +18pts (uncertainty grows). DECLARATION is USER; the factor is a DEFAULT assumption [not shop-validated]",
+          "error_band_pct": 50.0
+        }
+      ],
+      "lead_time": {
+        "low_days": 8.4,
+        "high_days": 15.6,
+        "mid_days": 12.0,
+        "components": {
+          "queue": 7.0,
+          "tooling_lead": 0.0,
+          "production": 1.0,
+          "post_process": 1.0,
+          "ship": 3.0
+        },
+        "capacity": {
+          "n_machines": 4,
+          "machine_hours_per_day": 16.0,
+          "provenance": "DEFAULT",
+          "basis": "capacity-bound: 4 machines \u00d7 16 hr/day parallel pool; production = ceil(1\u00b70.322hr \u00f7 (4\u00d716)) = 1 d"
+        }
+      }
+    },
+    {
+      "process": "cnc_5axis",
+      "material": "Ti6Al4V (Wrought)",
+      "quantity": 50,
+      "unit_cost_usd": 87.01,
+      "fixed_cost_usd": 105.0,
+      "variable_cost_usd": 84.29,
+      "est_error_band_pct": 68.0,
+      "confidence": {
+        "low_usd": 27.84,
+        "high_usd": 146.17,
+        "point_usd": 87.01,
+        "level": 0.8,
+        "method": "assumption-band",
+        "validated": false,
+        "n_samples": 0,
+        "half_width_pct": 68.0,
+        "basis": "\u00b168% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+        "label": "assumption-based, not yet validated"
+      },
+      "dfm_ready": true,
+      "dfm_verdict": "issues",
+      "dfm_score": 0.9,
+      "dfm_blockers": [],
+      "dfm_blocker_details": [],
+      "line_items": {
+        "amortized_fixed": 0.7,
+        "material": 13.8394,
+        "machine": 35.4528,
+        "labor": 17.5,
+        "nre": 2.1,
+        "inspection": 2.275,
+        "consumables": 1.7726,
+        "tolerance": 13.366
+      },
+      "drivers": [
+        {
+          "name": "material_cost",
+          "value": 13.8394,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "bounding-box billet 90.16 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 Ti6Al4V (Wrought) density 4.43 g/cm\u00b3 [assumption, not shop-validated] = 0.4393 kg \u00d7 $30/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+          "error_band_pct": 5.0
+        },
+        {
+          "name": "machine_cost",
+          "value": 35.4528,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "0.3223 hr \u00d7 $110/hr \u00d7 region-labor \u00d71  [rough 12.0 cm\u00b3 \u00f7 (2 cm\u00b3/min\u00b760) = 0.100 hr + finish 111.2 cm\u00b2 \u00f7 500 cm\u00b2/hr = 0.222 hr  [stock bbox billet 90.2 cm\u00b3 \u00d7 1.10 = 99.2 cm\u00b3 [assumption, not shop-validated]; MRR titanium]]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "cycle_time",
+          "value": 0.3223,
+          "unit": "hr",
+          "provenance": "DEFAULT",
+          "source": "rough 12.0 cm\u00b3 \u00f7 (2 cm\u00b3/min\u00b760) = 0.100 hr + finish 111.2 cm\u00b2 \u00f7 500 cm\u00b2/hr = 0.222 hr  [stock bbox billet 90.2 cm\u00b3 \u00d7 1.10 = 99.2 cm\u00b3 [assumption, not shop-validated]; MRR titanium]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "labor_cost",
+          "value": 17.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "post-process 0.5 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "setup_cost",
+          "value": 0.7,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "setup 1hr \u00d7 $35/hr \u00d7 ceil(50/100) = 1 setups \u00f7 50 \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "nre_cost",
+          "value": 2.1,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "CAM programming/NRE 3hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 50 order (one-time) [assumption, not shop-validated]",
+          "error_band_pct": 40.0
+        },
+        {
+          "name": "inspection_cost",
+          "value": 2.275,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "first-article 0.75hr \u00d7 1 lot(s) \u00f7 50 + in-process 0.05hr/part = 0.0650hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+          "error_band_pct": 40.0
+        },
+        {
+          "name": "consumables_cost",
+          "value": 1.7726,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "perishable tooling/consumables 0.05 \u00d7 machine $35.45 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+          "error_band_pct": 40.0
+        },
+        {
+          "name": "tolerance_class",
+          "value": 1.5,
+          "unit": "\u00d7",
+          "provenance": "USER",
+          "source": "declared tolerance 'tight' \u2192 \u00d71.5 on the tolerance-sensitive conversion terms (CNC finish pass $24.46 + inspection $2.27 = $26.73) = +$13.37/unit; band widened +18pts (uncertainty grows). DECLARATION is USER; the factor is a DEFAULT assumption [not shop-validated]",
+          "error_band_pct": 50.0
+        }
+      ],
+      "lead_time": {
+        "low_days": 8.4,
+        "high_days": 15.6,
+        "mid_days": 12.0,
+        "components": {
+          "queue": 7.0,
+          "tooling_lead": 0.0,
+          "production": 1.0,
+          "post_process": 1.0,
+          "ship": 3.0
+        },
+        "capacity": {
+          "n_machines": 4,
+          "machine_hours_per_day": 16.0,
+          "provenance": "DEFAULT",
+          "basis": "capacity-bound: 4 machines \u00d7 16 hr/day parallel pool; production = ceil(50\u00b70.322hr \u00f7 (4\u00d716)) = 1 d"
+        }
+      }
+    },
+    {
+      "process": "investment_casting",
+      "material": "Ti-6Al-4V Grade 5",
+      "quantity": 1,
+      "unit_cost_usd": 29794.8,
+      "fixed_cost_usd": 29700.0,
+      "variable_cost_usd": 42.56,
+      "est_error_band_pct": 73.0,
+      "confidence": {
+        "low_usd": 8044.6,
+        "high_usd": 51545.01,
+        "point_usd": 29794.8,
+        "level": 0.8,
+        "method": "assumption-band",
+        "validated": false,
+        "n_samples": 0,
+        "half_width_pct": 73.0,
+        "basis": "\u00b173% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+        "label": "assumption-based, not yet validated"
+      },
+      "dfm_ready": false,
+      "dfm_verdict": "fail",
+      "dfm_score": 0.0,
+      "dfm_blockers": [
+        "56 sidewall faces (95.4% of sidewall area) below 0.5\u00b0 draft for investment_casting."
+      ],
+      "dfm_blocker_details": [
+        {
+          "code": "INSUFFICIENT_DRAFT",
+          "severity": "error",
+          "message": "56 sidewall faces (95.4% of sidewall area) below 0.5\u00b0 draft for investment_casting.",
+          "fix_suggestion": "Add >= 0.5\u00b0 draft to all walls in pull direction. ICI: 0.5\u00b0 min \u2014 less than other casting methods.",
+          "process": "investment_casting",
+          "affected_face_count": 56,
+          "affected_faces_sample": [
+            276,
+            277,
+            278,
+            279,
+            280,
+            281,
+            282,
+            283,
+            288,
+            289,
+            290,
+            291,
+            294,
+            295,
+            298,
+            299,
+            300,
+            301,
+            308,
+            309,
+            310,
+            311,
+            312,
+            313,
+            318,
+            319,
+            320,
+            321,
+            334,
+            335,
+            356,
+            357,
+            358,
+            359,
+            360,
+            361,
+            368,
+            369,
+            370,
+            371,
+            398,
+            399,
+            400,
+            401,
+            404,
+            405,
+            418,
+            419,
+            420,
+            421,
+            422,
+            423,
+            424,
+            425,
+            426,
+            427
+          ],
+          "required_value": 0.5,
+          "citation": {
+            "standard": "ICI",
+            "text": "0.5\u00b0 min \u2014 less than other casting methods."
+          },
+          "scope": "localized"
+        }
+      ],
+      "line_items": {
+        "amortized_fixed": 29752.5,
+        "material": 22.7089,
+        "machine": 7.3434,
+        "labor": 12.25
+      },
+      "drivers": [
+        {
+          "name": "material_cost",
+          "value": 22.7089,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "poured metal = net 0.3862 kg (CAD volume 87.18 cm\u00b3 \u00d7 Ti-6Al-4V Grade 5 density 4.43 g/cm\u00b3) \u00d7 (1+0.4 gating/riser yield) [foundry assumption, not shop-validated] = 0.5407 kg \u00d7 $40/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+          "error_band_pct": 5.0
+        },
+        {
+          "name": "machine_cost",
+          "value": 7.3434,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "0.1335 hr \u00d7 $55/hr \u00d7 region-labor \u00d71  [pour 0.12hr + solidify/cool 0.541kg poured (net 0.386kg \u00d7 1+0.4 yield) \u00d7 1.5min/kg = 0.8min = 0.1335 hr  [foundry assumption, not shop-validated]]",
+          "error_band_pct": 55.0
+        },
+        {
+          "name": "cycle_time",
+          "value": 0.1335,
+          "unit": "hr",
+          "provenance": "DEFAULT",
+          "source": "pour 0.12hr + solidify/cool 0.541kg poured (net 0.386kg \u00d7 1+0.4 yield) \u00d7 1.5min/kg = 0.8min = 0.1335 hr  [foundry assumption, not shop-validated]",
+          "error_band_pct": 55.0
+        },
+        {
+          "name": "labor_cost",
+          "value": 12.25,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "post-process 0.35 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "setup_cost",
+          "value": 52.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "setup 1.5hr \u00d7 $35/hr \u00d7 ceil(1/200) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "tolerance_class",
+          "value": 1.0,
+          "unit": "\u00d7",
+          "provenance": "USER",
+          "source": "declared tolerance 'tight': band widened +18pts (uncertainty grows), but NO per-part machining surcharge applies to a casting part in V0 (tolerance is set by the tool/process, not by quantifiable per-part finishing passes) \u2014 cost UNCHANGED. DECLARATION is USER; DEFAULT assumption [not shop-validated]",
+          "error_band_pct": 55.0
+        },
+        {
+          "name": "tooling_cost",
+          "value": 29700.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "wax die + ceramic shell: size tier M (max bbox 60mm) \u00d7 0.9 family-mult \u00d7 very_complex (=2.20) = $29,700; \u00b155%, OVERRIDABLE [assumption, not shop-validated]",
+          "error_band_pct": 55.0
+        }
+      ],
+      "lead_time": {
+        "low_days": 33.6,
+        "high_days": 62.4,
+        "mid_days": 48.0,
+        "components": {
+          "queue": 10.0,
+          "tooling_lead": 30.0,
+          "production": 1.0,
+          "post_process": 4.0,
+          "ship": 3.0
+        },
+        "capacity": {
+          "n_machines": 2,
+          "machine_hours_per_day": 16.0,
+          "provenance": "DEFAULT",
+          "basis": "capacity-bound: 2 machines \u00d7 16 hr/day parallel pool; production = ceil(1\u00b70.134hr \u00f7 (2\u00d716)) = 1 d"
+        }
+      }
+    },
+    {
+      "process": "investment_casting",
+      "material": "Ti-6Al-4V Grade 5",
+      "quantity": 50,
+      "unit_cost_usd": 637.35,
+      "fixed_cost_usd": 29700.0,
+      "variable_cost_usd": 42.56,
+      "est_error_band_pct": 73.0,
+      "confidence": {
+        "low_usd": 172.09,
+        "high_usd": 1102.62,
+        "point_usd": 637.35,
+        "level": 0.8,
+        "method": "assumption-band",
+        "validated": false,
+        "n_samples": 0,
+        "half_width_pct": 73.0,
+        "basis": "\u00b173% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+        "label": "assumption-based, not yet validated"
+      },
+      "dfm_ready": false,
+      "dfm_verdict": "fail",
+      "dfm_score": 0.0,
+      "dfm_blockers": [
+        "56 sidewall faces (95.4% of sidewall area) below 0.5\u00b0 draft for investment_casting."
+      ],
+      "dfm_blocker_details": [
+        {
+          "code": "INSUFFICIENT_DRAFT",
+          "severity": "error",
+          "message": "56 sidewall faces (95.4% of sidewall area) below 0.5\u00b0 draft for investment_casting.",
+          "fix_suggestion": "Add >= 0.5\u00b0 draft to all walls in pull direction. ICI: 0.5\u00b0 min \u2014 less than other casting methods.",
+          "process": "investment_casting",
+          "affected_face_count": 56,
+          "affected_faces_sample": [
+            276,
+            277,
+            278,
+            279,
+            280,
+            281,
+            282,
+            283,
+            288,
+            289,
+            290,
+            291,
+            294,
+            295,
+            298,
+            299,
+            300,
+            301,
+            308,
+            309,
+            310,
+            311,
+            312,
+            313,
+            318,
+            319,
+            320,
+            321,
+            334,
+            335,
+            356,
+            357,
+            358,
+            359,
+            360,
+            361,
+            368,
+            369,
+            370,
+            371,
+            398,
+            399,
+            400,
+            401,
+            404,
+            405,
+            418,
+            419,
+            420,
+            421,
+            422,
+            423,
+            424,
+            425,
+            426,
+            427
+          ],
+          "required_value": 0.5,
+          "citation": {
+            "standard": "ICI",
+            "text": "0.5\u00b0 min \u2014 less than other casting methods."
+          },
+          "scope": "localized"
+        }
+      ],
+      "line_items": {
+        "amortized_fixed": 595.05,
+        "material": 22.7089,
+        "machine": 7.3434,
+        "labor": 12.25
+      },
+      "drivers": [
+        {
+          "name": "material_cost",
+          "value": 22.7089,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "poured metal = net 0.3862 kg (CAD volume 87.18 cm\u00b3 \u00d7 Ti-6Al-4V Grade 5 density 4.43 g/cm\u00b3) \u00d7 (1+0.4 gating/riser yield) [foundry assumption, not shop-validated] = 0.5407 kg \u00d7 $40/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+          "error_band_pct": 5.0
+        },
+        {
+          "name": "machine_cost",
+          "value": 7.3434,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "0.1335 hr \u00d7 $55/hr \u00d7 region-labor \u00d71  [pour 0.12hr + solidify/cool 0.541kg poured (net 0.386kg \u00d7 1+0.4 yield) \u00d7 1.5min/kg = 0.8min = 0.1335 hr  [foundry assumption, not shop-validated]]",
+          "error_band_pct": 55.0
+        },
+        {
+          "name": "cycle_time",
+          "value": 0.1335,
+          "unit": "hr",
+          "provenance": "DEFAULT",
+          "source": "pour 0.12hr + solidify/cool 0.541kg poured (net 0.386kg \u00d7 1+0.4 yield) \u00d7 1.5min/kg = 0.8min = 0.1335 hr  [foundry assumption, not shop-validated]",
+          "error_band_pct": 55.0
+        },
+        {
+          "name": "labor_cost",
+          "value": 12.25,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "post-process 0.35 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "setup_cost",
+          "value": 1.05,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "setup 1.5hr \u00d7 $35/hr \u00d7 ceil(50/200) = 1 setups \u00f7 50 \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "tolerance_class",
+          "value": 1.0,
+          "unit": "\u00d7",
+          "provenance": "USER",
+          "source": "declared tolerance 'tight': band widened +18pts (uncertainty grows), but NO per-part machining surcharge applies to a casting part in V0 (tolerance is set by the tool/process, not by quantifiable per-part finishing passes) \u2014 cost UNCHANGED. DECLARATION is USER; DEFAULT assumption [not shop-validated]",
+          "error_band_pct": 55.0
+        },
+        {
+          "name": "tooling_cost",
+          "value": 29700.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "wax die + ceramic shell: size tier M (max bbox 60mm) \u00d7 0.9 family-mult \u00d7 very_complex (=2.20) = $29,700; \u00b155%, OVERRIDABLE [assumption, not shop-validated]",
+          "error_band_pct": 55.0
+        }
+      ],
+      "lead_time": {
+        "low_days": 33.6,
+        "high_days": 62.4,
+        "mid_days": 48.0,
+        "components": {
+          "queue": 10.0,
+          "tooling_lead": 30.0,
+          "production": 1.0,
+          "post_process": 4.0,
+          "ship": 3.0
+        },
+        "capacity": {
+          "n_machines": 2,
+          "machine_hours_per_day": 16.0,
+          "provenance": "DEFAULT",
+          "basis": "capacity-bound: 2 machines \u00d7 16 hr/day parallel pool; production = ceil(50\u00b70.134hr \u00f7 (2\u00d716)) = 1 d"
+        }
+      }
+    },
+    {
+      "process": "ebm",
+      "material": "Ti-6Al-4V Grade 5",
+      "quantity": 1,
+      "unit_cost_usd": 283.76,
+      "fixed_cost_usd": 0.0,
+      "variable_cost_usd": 266.85,
+      "est_error_band_pct": 68.0,
+      "confidence": {
+        "low_usd": 90.8,
+        "high_usd": 476.72,
+        "point_usd": 283.76,
+        "level": 0.8,
+        "method": "assumption-band",
+        "validated": false,
+        "n_samples": 0,
+        "half_width_pct": 68.0,
+        "basis": "\u00b168% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+        "label": "assumption-based, not yet validated"
+      },
+      "dfm_ready": true,
+      "dfm_verdict": "issues",
+      "dfm_score": 0.9,
+      "dfm_blockers": [],
+      "dfm_blocker_details": [],
+      "line_items": {
+        "amortized_fixed": 17.5,
+        "material": 21.3186,
+        "machine": 211.1111,
+        "labor": 0.0,
+        "plate_removal": 10.5,
+        "support_removal": 21.0,
+        "stress_relief": 2.3333
+      },
+      "drivers": [
+        {
+          "name": "material_cost",
+          "value": 21.3186,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "powder-bed metal = net 0.3862 kg (CAD volume 87.18 cm\u00b3 \u00d7 Ti-6Al-4V Grade 5 density 4.43 g/cm\u00b3) \u00d7 (1+0.2 support structure printed+removed); powder $/kg assumed at material-DB value [metal-AM assumption, not shop-validated] = 0.4634 kg \u00d7 $40/kg (material-DB unit price (DEFAULT book value); \u00d71 metal-AM powder mult (powder-vs-wrought pricing is a KNOWN refinement, not silently inflated)) \u00d7 (1+0.15 scrap) \u00d7 region-material \u00d71",
+          "error_band_pct": 5.0
+        },
+        {
+          "name": "support_material",
+          "value": 3.5531,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "support structure 0.2\u00d7net = 0.0772 kg powder printed then removed (INCLUDED in material_cost above; surfaced for inspection) [metal-AM assumption, not shop-validated]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "parts_per_build",
+          "value": 30.0,
+          "unit": "parts",
+          "provenance": "DEFAULT",
+          "source": "nesting: packing 0.08 \u00d7 env (350, 380, 380) \u00f7 part bbox (34.9, 43.2, 59.8)+6mm spacing = 30 parts/build",
+          "error_band_pct": null
+        },
+        {
+          "name": "machine_cost",
+          "value": 211.1111,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "1.4074 hr \u00d7 $150/hr \u00d7 region-labor \u00d71  [build-job 380mm \u00f7 9mm/hr = 42.2hr full build \u00f7 30 parts/build (packing 0.08, env (350, 380, 380)) = 1.407hr/part]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "cycle_time",
+          "value": 1.4074,
+          "unit": "hr",
+          "provenance": "DEFAULT",
+          "source": "build-job 380mm \u00f7 9mm/hr = 42.2hr full build \u00f7 30 parts/build (packing 0.08, env (350, 380, 380)) = 1.407hr/part",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "labor_cost",
+          "value": 0.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "setup_cost",
+          "value": 17.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(1/30) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "plate_removal_cost",
+          "value": 10.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "build-plate removal (wire-EDM/bandsaw off the plate) 0.3hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "support_removal_cost",
+          "value": 21.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "metal support removal (grind/break-off) 0.6hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "stress_relief_cost",
+          "value": 2.3333,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "stress-relief furnace 2hr/build \u00f7 30 parts/build = 0.067hr/part (batch amortized). HIP / solution heat-treat / CNC finish of critical surfaces are part-specific and NOT bundled [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "tolerance_class",
+          "value": 1.0,
+          "unit": "\u00d7",
+          "provenance": "USER",
+          "source": "declared tolerance 'tight': band widened +18pts (uncertainty grows), but NO per-part machining surcharge applies to a metal_powder_bed part in V0 (tolerance is set by the tool/process, not by quantifiable per-part finishing passes) \u2014 cost UNCHANGED. DECLARATION is USER; DEFAULT assumption [not shop-validated]",
+          "error_band_pct": 50.0
+        }
+      ],
+      "lead_time": {
+        "low_days": 9.8,
+        "high_days": 18.2,
+        "mid_days": 14.0,
+        "components": {
+          "queue": 7.0,
+          "tooling_lead": 0.0,
+          "production": 1.0,
+          "post_process": 3.0,
+          "ship": 3.0
+        },
+        "capacity": {
+          "n_machines": 2,
+          "machine_hours_per_day": 20.0,
+          "provenance": "DEFAULT",
+          "basis": "capacity-bound: 2 machines \u00d7 20 hr/day parallel pool; production = ceil(1\u00b71.407hr \u00f7 (2\u00d720)) = 1 d"
+        }
+      }
+    },
+    {
+      "process": "ebm",
+      "material": "Ti-6Al-4V Grade 5",
+      "quantity": 50,
+      "unit_cost_usd": 266.96,
+      "fixed_cost_usd": 0.0,
+      "variable_cost_usd": 266.85,
+      "est_error_band_pct": 68.0,
+      "confidence": {
+        "low_usd": 85.43,
+        "high_usd": 448.5,
+        "point_usd": 266.96,
+        "level": 0.8,
+        "method": "assumption-band",
+        "validated": false,
+        "n_samples": 0,
+        "half_width_pct": 68.0,
+        "basis": "\u00b168% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+        "label": "assumption-based, not yet validated"
+      },
+      "dfm_ready": true,
+      "dfm_verdict": "issues",
+      "dfm_score": 0.9,
+      "dfm_blockers": [],
+      "dfm_blocker_details": [],
+      "line_items": {
+        "amortized_fixed": 0.7,
+        "material": 21.3186,
+        "machine": 211.1111,
+        "labor": 0.0,
+        "plate_removal": 10.5,
+        "support_removal": 21.0,
+        "stress_relief": 2.3333
+      },
+      "drivers": [
+        {
+          "name": "material_cost",
+          "value": 21.3186,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "powder-bed metal = net 0.3862 kg (CAD volume 87.18 cm\u00b3 \u00d7 Ti-6Al-4V Grade 5 density 4.43 g/cm\u00b3) \u00d7 (1+0.2 support structure printed+removed); powder $/kg assumed at material-DB value [metal-AM assumption, not shop-validated] = 0.4634 kg \u00d7 $40/kg (material-DB unit price (DEFAULT book value); \u00d71 metal-AM powder mult (powder-vs-wrought pricing is a KNOWN refinement, not silently inflated)) \u00d7 (1+0.15 scrap) \u00d7 region-material \u00d71",
+          "error_band_pct": 5.0
+        },
+        {
+          "name": "support_material",
+          "value": 3.5531,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "support structure 0.2\u00d7net = 0.0772 kg powder printed then removed (INCLUDED in material_cost above; surfaced for inspection) [metal-AM assumption, not shop-validated]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "parts_per_build",
+          "value": 30.0,
+          "unit": "parts",
+          "provenance": "DEFAULT",
+          "source": "nesting: packing 0.08 \u00d7 env (350, 380, 380) \u00f7 part bbox (34.9, 43.2, 59.8)+6mm spacing = 30 parts/build",
+          "error_band_pct": null
+        },
+        {
+          "name": "machine_cost",
+          "value": 211.1111,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "1.4074 hr \u00d7 $150/hr \u00d7 region-labor \u00d71  [build-job 380mm \u00f7 9mm/hr = 42.2hr full build \u00f7 30 parts/build (packing 0.08, env (350, 380, 380)) = 1.407hr/part]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "cycle_time",
+          "value": 1.4074,
+          "unit": "hr",
+          "provenance": "DEFAULT",
+          "source": "build-job 380mm \u00f7 9mm/hr = 42.2hr full build \u00f7 30 parts/build (packing 0.08, env (350, 380, 380)) = 1.407hr/part",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "labor_cost",
+          "value": 0.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "setup_cost",
+          "value": 0.7,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(50/30) = 2 setups \u00f7 50 \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "plate_removal_cost",
+          "value": 10.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "build-plate removal (wire-EDM/bandsaw off the plate) 0.3hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "support_removal_cost",
+          "value": 21.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "metal support removal (grind/break-off) 0.6hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "stress_relief_cost",
+          "value": 2.3333,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "stress-relief furnace 2hr/build \u00f7 30 parts/build = 0.067hr/part (batch amortized). HIP / solution heat-treat / CNC finish of critical surfaces are part-specific and NOT bundled [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "tolerance_class",
+          "value": 1.0,
+          "unit": "\u00d7",
+          "provenance": "USER",
+          "source": "declared tolerance 'tight': band widened +18pts (uncertainty grows), but NO per-part machining surcharge applies to a metal_powder_bed part in V0 (tolerance is set by the tool/process, not by quantifiable per-part finishing passes) \u2014 cost UNCHANGED. DECLARATION is USER; DEFAULT assumption [not shop-validated]",
+          "error_band_pct": 50.0
+        }
+      ],
+      "lead_time": {
+        "low_days": 10.5,
+        "high_days": 19.5,
+        "mid_days": 15.0,
+        "components": {
+          "queue": 7.0,
+          "tooling_lead": 0.0,
+          "production": 2.0,
+          "post_process": 3.0,
+          "ship": 3.0
+        },
+        "capacity": {
+          "n_machines": 2,
+          "machine_hours_per_day": 20.0,
+          "provenance": "DEFAULT",
+          "basis": "capacity-bound: 2 machines \u00d7 20 hr/day parallel pool; production = ceil(50\u00b71.407hr \u00f7 (2\u00d720)) = 2 d"
+        }
+      }
+    },
+    {
+      "process": "dmls",
+      "material": "Ti-6Al-4V Grade 5",
+      "quantity": 1,
+      "unit_cost_usd": 888.65,
+      "fixed_cost_usd": 0.0,
+      "variable_cost_usd": 872.61,
+      "est_error_band_pct": 68.0,
+      "confidence": {
+        "low_usd": 284.37,
+        "high_usd": 1492.94,
+        "point_usd": 888.65,
+        "level": 0.8,
+        "method": "assumption-band",
+        "validated": false,
+        "n_samples": 0,
+        "half_width_pct": 68.0,
+        "basis": "\u00b168% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+        "label": "assumption-based, not yet validated"
+      },
+      "dfm_ready": true,
+      "dfm_verdict": "issues",
+      "dfm_score": 0.9,
+      "dfm_blockers": [],
+      "dfm_blocker_details": [],
+      "line_items": {
+        "amortized_fixed": 17.5,
+        "material": 21.3186,
+        "machine": 812.5,
+        "labor": 0.0,
+        "plate_removal": 10.5,
+        "support_removal": 21.0,
+        "stress_relief": 5.8333
+      },
+      "drivers": [
+        {
+          "name": "material_cost",
+          "value": 21.3186,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "powder-bed metal = net 0.3862 kg (CAD volume 87.18 cm\u00b3 \u00d7 Ti-6Al-4V Grade 5 density 4.43 g/cm\u00b3) \u00d7 (1+0.2 support structure printed+removed); powder $/kg assumed at material-DB value [metal-AM assumption, not shop-validated] = 0.4634 kg \u00d7 $40/kg (material-DB unit price (DEFAULT book value); \u00d71 metal-AM powder mult (powder-vs-wrought pricing is a KNOWN refinement, not silently inflated)) \u00d7 (1+0.15 scrap) \u00d7 region-material \u00d71",
+          "error_band_pct": 5.0
+        },
+        {
+          "name": "support_material",
+          "value": 3.5531,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "support structure 0.2\u00d7net = 0.0772 kg powder printed then removed (INCLUDED in material_cost above; surfaced for inspection) [metal-AM assumption, not shop-validated]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "parts_per_build",
+          "value": 12.0,
+          "unit": "parts",
+          "provenance": "DEFAULT",
+          "source": "nesting: packing 0.08 \u00d7 env (250, 250, 325) \u00f7 part bbox (34.9, 43.2, 59.8)+6mm spacing = 12 parts/build",
+          "error_band_pct": null
+        },
+        {
+          "name": "machine_cost",
+          "value": 812.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "4.5139 hr \u00d7 $180/hr \u00d7 region-labor \u00d71  [build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 12 parts/build (packing 0.08, env (250, 250, 325)) = 4.514hr/part]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "cycle_time",
+          "value": 4.5139,
+          "unit": "hr",
+          "provenance": "DEFAULT",
+          "source": "build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 12 parts/build (packing 0.08, env (250, 250, 325)) = 4.514hr/part",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "labor_cost",
+          "value": 0.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "setup_cost",
+          "value": 17.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(1/12) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "plate_removal_cost",
+          "value": 10.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "build-plate removal (wire-EDM/bandsaw off the plate) 0.3hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "support_removal_cost",
+          "value": 21.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "metal support removal (grind/break-off) 0.6hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "stress_relief_cost",
+          "value": 5.8333,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "stress-relief furnace 2hr/build \u00f7 12 parts/build = 0.167hr/part (batch amortized). HIP / solution heat-treat / CNC finish of critical surfaces are part-specific and NOT bundled [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "tolerance_class",
+          "value": 1.0,
+          "unit": "\u00d7",
+          "provenance": "USER",
+          "source": "declared tolerance 'tight': band widened +18pts (uncertainty grows), but NO per-part machining surcharge applies to a metal_powder_bed part in V0 (tolerance is set by the tool/process, not by quantifiable per-part finishing passes) \u2014 cost UNCHANGED. DECLARATION is USER; DEFAULT assumption [not shop-validated]",
+          "error_band_pct": 50.0
+        }
+      ],
+      "lead_time": {
+        "low_days": 9.8,
+        "high_days": 18.2,
+        "mid_days": 14.0,
+        "components": {
+          "queue": 7.0,
+          "tooling_lead": 0.0,
+          "production": 1.0,
+          "post_process": 3.0,
+          "ship": 3.0
+        },
+        "capacity": {
+          "n_machines": 2,
+          "machine_hours_per_day": 20.0,
+          "provenance": "DEFAULT",
+          "basis": "capacity-bound: 2 machines \u00d7 20 hr/day parallel pool; production = ceil(1\u00b74.514hr \u00f7 (2\u00d720)) = 1 d"
+        }
+      }
+    },
+    {
+      "process": "dmls",
+      "material": "Ti-6Al-4V Grade 5",
+      "quantity": 50,
+      "unit_cost_usd": 872.9,
+      "fixed_cost_usd": 0.0,
+      "variable_cost_usd": 872.61,
+      "est_error_band_pct": 68.0,
+      "confidence": {
+        "low_usd": 279.33,
+        "high_usd": 1466.48,
+        "point_usd": 872.9,
+        "level": 0.8,
+        "method": "assumption-band",
+        "validated": false,
+        "n_samples": 0,
+        "half_width_pct": 68.0,
+        "basis": "\u00b168% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+        "label": "assumption-based, not yet validated"
+      },
+      "dfm_ready": true,
+      "dfm_verdict": "issues",
+      "dfm_score": 0.9,
+      "dfm_blockers": [],
+      "dfm_blocker_details": [],
+      "line_items": {
+        "amortized_fixed": 1.75,
+        "material": 21.3186,
+        "machine": 812.5,
+        "labor": 0.0,
+        "plate_removal": 10.5,
+        "support_removal": 21.0,
+        "stress_relief": 5.8333
+      },
+      "drivers": [
+        {
+          "name": "material_cost",
+          "value": 21.3186,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "powder-bed metal = net 0.3862 kg (CAD volume 87.18 cm\u00b3 \u00d7 Ti-6Al-4V Grade 5 density 4.43 g/cm\u00b3) \u00d7 (1+0.2 support structure printed+removed); powder $/kg assumed at material-DB value [metal-AM assumption, not shop-validated] = 0.4634 kg \u00d7 $40/kg (material-DB unit price (DEFAULT book value); \u00d71 metal-AM powder mult (powder-vs-wrought pricing is a KNOWN refinement, not silently inflated)) \u00d7 (1+0.15 scrap) \u00d7 region-material \u00d71",
+          "error_band_pct": 5.0
+        },
+        {
+          "name": "support_material",
+          "value": 3.5531,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "support structure 0.2\u00d7net = 0.0772 kg powder printed then removed (INCLUDED in material_cost above; surfaced for inspection) [metal-AM assumption, not shop-validated]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "parts_per_build",
+          "value": 12.0,
+          "unit": "parts",
+          "provenance": "DEFAULT",
+          "source": "nesting: packing 0.08 \u00d7 env (250, 250, 325) \u00f7 part bbox (34.9, 43.2, 59.8)+6mm spacing = 12 parts/build",
+          "error_band_pct": null
+        },
+        {
+          "name": "machine_cost",
+          "value": 812.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "4.5139 hr \u00d7 $180/hr \u00d7 region-labor \u00d71  [build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 12 parts/build (packing 0.08, env (250, 250, 325)) = 4.514hr/part]",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "cycle_time",
+          "value": 4.5139,
+          "unit": "hr",
+          "provenance": "DEFAULT",
+          "source": "build-job 325mm \u00f7 6mm/hr = 54.2hr full build \u00f7 12 parts/build (packing 0.08, env (250, 250, 325)) = 4.514hr/part",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "labor_cost",
+          "value": 0.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "post-process 0 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "setup_cost",
+          "value": 1.75,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(50/12) = 5 setups \u00f7 50 \u00d7 region-labor \u00d71",
+          "error_band_pct": 20.0
+        },
+        {
+          "name": "plate_removal_cost",
+          "value": 10.5,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "build-plate removal (wire-EDM/bandsaw off the plate) 0.3hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "support_removal_cost",
+          "value": 21.0,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "metal support removal (grind/break-off) 0.6hr/part [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "stress_relief_cost",
+          "value": 5.8333,
+          "unit": "$",
+          "provenance": "DEFAULT",
+          "source": "stress-relief furnace 2hr/build \u00f7 12 parts/build = 0.167hr/part (batch amortized). HIP / solution heat-treat / CNC finish of critical surfaces are part-specific and NOT bundled [metal-AM assumption, not shop-validated] \u00d7 $35/hr \u00d7 region-labor \u00d71",
+          "error_band_pct": 50.0
+        },
+        {
+          "name": "tolerance_class",
+          "value": 1.0,
+          "unit": "\u00d7",
+          "provenance": "USER",
+          "source": "declared tolerance 'tight': band widened +18pts (uncertainty grows), but NO per-part machining surcharge applies to a metal_powder_bed part in V0 (tolerance is set by the tool/process, not by quantifiable per-part finishing passes) \u2014 cost UNCHANGED. DECLARATION is USER; DEFAULT assumption [not shop-validated]",
+          "error_band_pct": 50.0
+        }
+      ],
+      "lead_time": {
+        "low_days": 13.3,
+        "high_days": 24.7,
+        "mid_days": 19.0,
+        "components": {
+          "queue": 7.0,
+          "tooling_lead": 0.0,
+          "production": 6.0,
+          "post_process": 3.0,
+          "ship": 3.0
+        },
+        "capacity": {
+          "n_machines": 2,
+          "machine_hours_per_day": 20.0,
+          "provenance": "DEFAULT",
+          "basis": "capacity-bound: 2 machines \u00d7 20 hr/day parallel pool; production = ceil(50\u00b74.514hr \u00f7 (2\u00d720)) = 6 d"
+        }
+      }
+    }
+  ],
+  "engine_feasibility": [
+    {
+      "process": "fdm",
+      "verdict": "issues",
+      "score": 0.9,
+      "costed": true
+    },
+    {
+      "process": "sla",
+      "verdict": "issues",
+      "score": 0.9,
+      "costed": true
+    },
+    {
+      "process": "dlp",
+      "verdict": "issues",
+      "score": 1.0,
+      "costed": true
+    },
+    {
+      "process": "sls",
+      "verdict": "pass",
+      "score": 1.0,
+      "costed": true
+    },
+    {
+      "process": "mjf",
+      "verdict": "pass",
+      "score": 1.0,
+      "costed": true
+    },
+    {
+      "process": "dmls",
+      "verdict": "issues",
+      "score": 0.9,
+      "costed": true
+    },
+    {
+      "process": "slm",
+      "verdict": "issues",
+      "score": 0.9,
+      "costed": true
+    },
+    {
+      "process": "ebm",
+      "verdict": "issues",
+      "score": 0.9,
+      "costed": true
+    },
+    {
+      "process": "binder_jetting",
+      "verdict": "pass",
+      "score": 1.0,
+      "costed": true
+    },
+    {
+      "process": "ded",
+      "verdict": "issues",
+      "score": 0.9,
+      "costed": true
+    },
+    {
+      "process": "waam",
+      "verdict": "issues",
+      "score": 0.9,
+      "costed": true
+    },
+    {
+      "process": "cnc_3axis",
+      "verdict": "fail",
+      "score": 0.05,
+      "costed": true
+    },
+    {
+      "process": "cnc_5axis",
+      "verdict": "issues",
+      "score": 0.9,
+      "costed": true
+    },
+    {
+      "process": "cnc_turning",
+      "verdict": "pass",
+      "score": 1.0,
+      "costed": true
+    },
+    {
+      "process": "wire_edm",
+      "verdict": "fail",
+      "score": 0.0,
+      "costed": true
+    },
+    {
+      "process": "injection_molding",
+      "verdict": "fail",
+      "score": 0.05,
+      "costed": true
+    },
+    {
+      "process": "die_casting",
+      "verdict": "fail",
+      "score": 0.0,
+      "costed": true
+    },
+    {
+      "process": "investment_casting",
+      "verdict": "fail",
+      "score": 0.0,
+      "costed": true
+    },
+    {
+      "process": "sand_casting",
+      "verdict": "fail",
+      "score": 0.0,
+      "costed": true
+    },
+    {
+      "process": "sheet_metal",
+      "verdict": "issues",
+      "score": 0.9,
+      "costed": true
+    },
+    {
+      "process": "forging",
+      "verdict": "fail",
+      "score": 0.0,
+      "costed": true
+    }
+  ],
+  "routing": {
+    "archetype": "rotational",
+    "recommended_process": "cnc_turning",
+    "eval_family": "subtractive",
+    "material_hint": "titanium",
+    "confidence": 0.8,
+    "reasoning": "Axisymmetric cross-section (round, turnable): axis 60mm \u00d7 \u00d839mm \u2192 CNC turning / mill-turn. A round metal part is rarely powder-bed printed at production volume.",
+    "alternatives": [
+      "cnc_5axis",
+      "mjf"
+    ],
+    "drivers": {
+      "sheet_gauge_mm": 34.9,
+      "planar_aspect": 1.24,
+      "bend_count": 1,
+      "outline_perimeter_mm": 206.0,
+      "nominal_wall_mm": 15.68,
+      "rotational": true,
+      "sheet_like": false
+    }
+  },
+  "notes": [
+    "DFM note: processes cnc_3axis, forging, investment_casting are costed but flagged NOT DFM-ready as-modeled (the engine reports ERROR-level blockers \u2014 these parts were modeled for 3D printing, so molding/casting lack draft). Their cost shows the tooling economics *if* the part is redesigned for that process. Set strict_dfm=True to exclude them entirely.",
+    "Geometric routing: this part reads as a 'rotational' \u2192 cnc_turning. Axisymmetric cross-section (round, turnable): axis 60mm \u00d7 \u00d839mm \u2192 CNC turning / mill-turn. A round metal part is rarely powder-bed printed at production volume.",
+    "Absolute cost is \u00b140\u201360% (cycle-time/tooling defaults). The crossover quantity and make-vs-buy direction are robust to it because they depend on the fixed-vs-variable split, driven by your rates."
+  ],
+  "assumptions": [
+    {
+      "name": "labor_rate",
+      "value": 35.0,
+      "unit": "$/hr",
+      "provenance": "DEFAULT",
+      "source": "loaded shop-floor labor"
+    },
+    {
+      "name": "region_labor",
+      "value": 1.0,
+      "unit": "\u00d7",
+      "provenance": "DEFAULT",
+      "source": "region US: labor/machine/setup \u00d71"
+    },
+    {
+      "name": "region_material",
+      "value": 1.0,
+      "unit": "\u00d7",
+      "provenance": "DEFAULT",
+      "source": "region US: commodity material \u00d71 (global feedstock, ~1.0)"
+    },
+    {
+      "name": "region_tooling",
+      "value": 1.0,
+      "unit": "\u00d7",
+      "provenance": "DEFAULT",
+      "source": "region US: tooling \u00d71 (offshore toolmaking labor)"
+    },
+    {
+      "name": "margin",
+      "value": 0.0,
+      "unit": "frac",
+      "provenance": "DEFAULT",
+      "source": "target margin (price vs should-cost)"
+    },
+    {
+      "name": "overhead",
+      "value": 0.0,
+      "unit": "frac",
+      "provenance": "DEFAULT",
+      "source": "indirect burden on conversion cost (machine+labor+setup)"
+    },
+    {
+      "name": "utilization",
+      "value": 1.0,
+      "unit": "frac",
+      "provenance": "DEFAULT",
+      "source": "machine utilization (idle-recovery on machine cost)"
+    },
+    {
+      "name": "stock_allowance",
+      "value": 1.1,
+      "unit": "\u00d7",
+      "provenance": "DEFAULT",
+      "source": "CNC billet oversize (milling: on bounding box; turning: on hull)"
+    },
+    {
+      "name": "machine_labor_frac",
+      "value": 0.35,
+      "unit": "frac",
+      "provenance": "DEFAULT",
+      "source": "operator-labor share of the machine rate that scales with region (capital/facility stays global) [assumption, not shop-validated]"
+    },
+    {
+      "name": "perishable_frac",
+      "value": 0.05,
+      "unit": "frac",
+      "provenance": "DEFAULT",
+      "source": "perishable tooling/consumables as a fraction of CNC machine cost [assumption, not shop-validated]"
+    },
+    {
+      "name": "daily_machine_hours",
+      "value": 8.0,
+      "unit": "hr/day",
+      "provenance": "DEFAULT",
+      "source": "for lead-time production days"
+    },
+    {
+      "name": "n_cavities",
+      "value": 1.0,
+      "unit": "cav",
+      "provenance": "DEFAULT",
+      "source": "formative tooling cavities = 1 (DEFAULT single-cavity should-cost)"
+    },
+    {
+      "name": "complexity",
+      "value": 0.0,
+      "unit": "very_complex",
+      "provenance": "USER",
+      "source": "tooling complexity = very_complex (buyer-supplied)"
+    },
+    {
+      "name": "material_class",
+      "value": 0.0,
+      "unit": "titanium",
+      "provenance": "USER",
+      "source": "material class = titanium (buyer-supplied)"
+    }
+  ],
+  "decision": {
+    "make_now_process": "cnc_turning",
+    "make_now_material": "Ti6Al4V (Wrought)",
+    "tooling_process": null,
+    "tooling_dfm_ready": true,
+    "crossover_qty": null,
+    "recommendation": {
+      "1": {
+        "process": "cnc_turning",
+        "material": "Ti6Al4V (Wrought)",
+        "unit_cost_usd": 112.69,
+        "dfm_ready": true,
+        "dfm_verdict": "pass",
+        "lead_low_days": 7.0,
+        "lead_high_days": 13.0
+      },
+      "50": {
+        "process": "cnc_turning",
+        "material": "Ti6Al4V (Wrought)",
+        "unit_cost_usd": 40.66,
+        "dfm_ready": true,
+        "dfm_verdict": "pass",
+        "lead_low_days": 7.0,
+        "lead_high_days": 13.0
+      }
+    },
+    "if_redesigned": {
+      "1": null,
+      "50": null
+    },
+    "note": "Make by cnc_turning (Ti6Al4V (Wrought)) \u2014 $112.69/unit at qty 1, the cheapest make-as-is option and your low-volume pick. cnc_turning is cheapest at every quantity tested \u2014 no tooling crossover."
+  },
+  "saved": {
+    "id": "01KX7E0QCXQ7YYGDTQ7KHVKDME",
+    "url": "/api/v1/cost-decisions/01KX7E0QCXQ7YYGDTQ7KHVKDME"
+  },
+  "identity": {
+    "grounded": false,
+    "matches": [],
+    "reason": "no org corpus yet \u2014 falls back to standard-catalog + file metadata (never a fabricated identity)",
+    "caveats": [
+      "a retrieved SUGGESTION to confirm, not a verified identity; retrieval can be wrong \u2014 check before trusting.",
+      "geometry_similarity is a documented proxy (exp(-z_scored_L2 / 2.0)), monotonic in geometric closeness \u2014 NOT a probability."
+    ],
+    "provenance": "RETRIEVED (org corpus: geometry k-NN + name match)",
+    "corpus_size": 0,
+    "closest_unconfirmed": null
+  }
+}

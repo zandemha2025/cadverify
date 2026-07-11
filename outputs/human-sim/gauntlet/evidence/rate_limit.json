@@ -1,0 +1,48 @@
+{
+  "orgA": [
+    [
+      200,
+      "3592"
+    ],
+    [
+      200,
+      "3584"
+    ],
+    [
+      200,
+      "3576"
+    ],
+    [
+      429,
+      null
+    ],
+    [
+      429,
+      null
+    ],
+    [
+      429,
+      null
+    ]
+  ],
+  "orgB": [
+    [
+      200,
+      "3597"
+    ],
+    [
+      200,
+      "3594"
+    ],
+    [
+      200,
+      "3591"
+    ],
+    [
+      429,
+      null
+    ]
+  ],
+  "a_429_body": "{\"code\":\"org_quota_exceeded\",\"message\":\"this organization has reached its daily analyses cap of 3; it resets on a rolling ~24h window\",\"doc_url\":\"https://docs.cadverify.com/errors#org_quota_exceeded\"}",
+  "a_retry_after": null
+}
