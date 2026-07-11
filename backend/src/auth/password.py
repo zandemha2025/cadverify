@@ -16,13 +16,23 @@ plaintext password or the Argon2 hash.
 from __future__ import annotations
 
 import asyncio
+import html
+import logging
 import os
 import re
+from typing import Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.auth.client_ip import require_auth_proxy_if_enabled, require_verified_proxy
+from src.auth.client_ip import (
+    client_ip,
+    require_auth_proxy_if_enabled,
+    require_verified_proxy,
+)
 from src.auth.dashboard_session import (
     clear_session_cookie,
     require_dashboard_session,
@@ -40,8 +50,11 @@ from src.auth.models import (
     set_initial_password_hash,
     update_password_hash,
 )
+from src.db.engine import get_db_session
+from src.db.models import AuditLog
 
 router = APIRouter(tags=["auth"])
+logger = logging.getLogger("cadverify.auth")
 
 # A deliberately permissive email shape check (real validation happens at send
 # time for magic-link). Matches the existing project posture of plain-str emails
@@ -82,6 +95,18 @@ class SetInitialPasswordIn(BaseModel):
     password: str = Field(max_length=_PASSWORD_MAX)
 
 
+class PilotRequestIn(BaseModel):
+    """Bounded public-pilot intake. ``website`` is an invisible honeypot."""
+
+    request_id: UUID
+    email: str = Field(max_length=320)
+    company: str = Field(min_length=1, max_length=160)
+    what: str = Field(min_length=1, max_length=2000)
+    deployment: Literal["undecided", "cloud", "vpc", "air-gapped"] = "undecided"
+    turnstile_token: str | None = Field(default=None, max_length=4096)
+    website: str = Field(default="", max_length=200)
+
+
 def _released() -> bool:
     return os.getenv("RELEASE", "dev").strip().lower() not in _DEV_RELEASES
 
@@ -115,6 +140,152 @@ async def proxy_health(request: Request) -> dict:
     """Deployment probe proving the frontend and API share the proxy secret."""
     require_verified_proxy(request)
     return {"ok": True}
+
+
+@router.post("/pilot-request")
+@limiter.limit("5/hour;20/day")
+async def create_pilot_request(
+    body: PilotRequestIn,
+    request: Request,
+    response: Response,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """Persist a public pilot lead before best-effort inbox notification.
+
+    The append-only audit ledger is the durable system of record for this
+    pre-account event. Resend is notification only: provider failure can delay
+    the inbox alert, but it cannot lose a request that the visitor was told we
+    received. ``request_id`` makes browser retries idempotent.
+    """
+    require_auth_proxy_if_enabled(request)
+    receipt = str(body.request_id)
+
+    # Honeypots get the same outward success shape, without consuming Turnstile,
+    # database, or email resources (and without teaching a bot what tripped it).
+    if body.website.strip():
+        return {"status": "received", "receipt": receipt}
+
+    ip = client_ip(request)
+    turnstile_secret = os.getenv("TURNSTILE_SECRET", "").strip()
+    if turnstile_secret:
+        if not body.turnstile_token:
+            raise _err(
+                400,
+                "security_check_required",
+                "Complete the security check, then send the request again.",
+            )
+        from src.auth.turnstile import verify_turnstile
+
+        await verify_turnstile(body.turnstile_token, ip)
+    elif _released():
+        raise _err(
+            503,
+            "pilot_intake_unavailable",
+            "Online pilot intake is temporarily unavailable. Email pilots@cadverify.com.",
+        )
+
+    email = _clean_email(body.email)
+    email_norm = normalize_email(email)
+    company = body.company.strip()
+    what = body.what.strip()
+    if not company or not what:
+        raise _err(400, "pilot_request_incomplete", "Complete every required field.")
+
+    # Same request id => same receipt and no duplicate inbox notification.
+    existing = await session.scalar(
+        select(AuditLog.id)
+        .where(
+            AuditLog.action == "pilot.requested",
+            AuditLog.resource_id == receipt,
+        )
+        .limit(1)
+    )
+    if existing is not None:
+        return {"status": "received", "receipt": receipt}
+
+    user_agent = (request.headers.get("user-agent") or "")[:500] or None
+    session.add(
+        AuditLog(
+            user_id=None,
+            org_id=None,
+            user_email=email_norm,
+            action="pilot.requested",
+            resource_type="pilot_request",
+            resource_id=receipt,
+            detail_json={
+                "company": company,
+                "what": what,
+                "deployment": body.deployment,
+                "source": "company_form",
+            },
+            ip_address=ip,
+            user_agent=user_agent,
+            result_summary="received",
+        )
+    )
+    # Durable first. The provider call below is intentionally outside this
+    # transaction so an email outage cannot roll the lead back.
+    await session.commit()
+
+    delivery = "recorded"
+    resend_key = os.getenv("RESEND_API_KEY", "").strip()
+    resend_from = os.getenv("RESEND_FROM", "").strip()
+    if resend_key and resend_from:
+        try:
+            import resend
+
+            resend.api_key = resend_key
+            inbox = os.getenv("PILOT_INBOX", "pilots@cadverify.com").strip()
+            safe_company = re.sub(r"[\r\n]+", " ", company)
+            safe_what_html = html.escape(what).replace("\n", "<br>")
+            payload: resend.Emails.SendParams = {
+                "from": resend_from,
+                "to": inbox,
+                "reply_to": email,
+                "subject": f"CadVerify pilot request — {safe_company}",
+                "text": (
+                    f"Pilot request {receipt}\n\nWork email: {email}\n"
+                    f"Company: {company}\nDeployment: {body.deployment}\n\n"
+                    f"What they make:\n{what}"
+                ),
+                "html": (
+                    f"<h1>New CadVerify pilot request</h1>"
+                    f"<p><strong>Receipt:</strong> {html.escape(receipt)}</p>"
+                    f"<p><strong>Work email:</strong> {html.escape(email)}<br>"
+                    f"<strong>Company:</strong> {html.escape(company)}<br>"
+                    f"<strong>Deployment:</strong> {html.escape(body.deployment)}</p>"
+                    f"<p><strong>What they make:</strong><br>{safe_what_html}</p>"
+                ),
+            }
+            sent = await asyncio.to_thread(resend.Emails.send, payload)
+            delivery = "notified"
+            session.add(
+                AuditLog(
+                    user_id=None,
+                    org_id=None,
+                    user_email=email_norm,
+                    action="pilot.notification_sent",
+                    resource_type="pilot_request",
+                    resource_id=receipt,
+                    detail_json={
+                        "provider": "resend",
+                        "delivery_id": getattr(sent, "id", None),
+                    },
+                    ip_address=ip,
+                    result_summary="notified",
+                )
+            )
+            await session.commit()
+        except Exception:
+            # The durable request already committed. Alert operators without
+            # logging the lead's email, company, or free text.
+            logger.warning(
+                "Pilot notification provider failed receipt=%s", receipt,
+                exc_info=True,
+            )
+            await session.rollback()
+
+    return {"status": "received", "receipt": receipt, "notification": delivery}
 
 
 def _clean_email(raw: str) -> str:
