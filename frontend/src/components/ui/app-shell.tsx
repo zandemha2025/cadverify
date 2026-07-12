@@ -39,6 +39,7 @@ import {
   Building2,
   LogOut,
   Lock,
+  Menu,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -82,7 +83,7 @@ function IconRail() {
     <Tooltip.Provider delayDuration={200}>
       <nav
         aria-label="Domains"
-        className="flex w-[var(--rail-w)] shrink-0 flex-col items-center gap-1 border-r border-border bg-background py-3"
+        className="hidden w-[var(--rail-w)] shrink-0 flex-col items-center gap-1 border-r border-border bg-background py-3 sm:flex"
       >
         {/* brand mark — the datum crosshair, cobalt */}
         <Link
@@ -205,7 +206,7 @@ function SidebarSection({ title, links }: { title: string; links: NavLink[] }) {
 function AppSidebar() {
   const { open } = useCommandPalette();
   return (
-    <aside className="flex w-[var(--sidebar-w)] shrink-0 flex-col overflow-y-auto border-r border-border bg-background">
+    <aside className="hidden w-[var(--sidebar-w)] shrink-0 flex-col overflow-y-auto border-r border-border bg-background lg:flex">
       {/* ⌘K search — the co-primary navigator lives at the top of the sidebar */}
       <div className="p-2">
         <button
@@ -232,6 +233,49 @@ function AppSidebar() {
   );
 }
 
+function MobileNavigation() {
+  const pathname = usePathname();
+  const links = [...WORKSPACE_NAV, ...LEDGER_NAV];
+
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger
+        aria-label="Open navigation"
+        className="inline-flex size-8 items-center justify-center rounded-[var(--radius-sm)] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:hidden"
+      >
+        <Menu className="size-4" />
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          side="bottom"
+          align="start"
+          sideOffset={8}
+          className="z-[90] max-h-[min(70vh,520px)] min-w-64 overflow-y-auto rounded-[var(--radius)] border border-border bg-card p-1 text-sm shadow-pop"
+        >
+          {links.map((link) => {
+            const Icon = link.icon;
+            const active = pathname === link.href;
+            return (
+              <DropdownMenu.Item key={link.href} asChild>
+                <Link
+                  href={link.href}
+                  className={cn(
+                    "flex cursor-pointer items-center gap-2.5 rounded-sm px-2.5 py-2 outline-none hover:bg-muted focus:bg-muted",
+                    active ? "bg-accent-subtle text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  <Icon className={cn("size-4", active && "text-primary")} />
+                  <span className="font-medium">{link.label}</span>
+                </Link>
+              </DropdownMenu.Item>
+            );
+          })}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
+
 /* ── L1 context bar — the lakehouse breadcrumb + data-locality signal. ─────── */
 function ContextBar({
   sidebarOpen,
@@ -255,11 +299,19 @@ function ContextBar({
 
   return (
     <header className="flex h-[var(--contextbar-h)] shrink-0 items-center gap-2 border-b border-border bg-background px-3">
+      <Link
+        href="/verify"
+        aria-label="ProofShape home"
+        className="num inline-flex size-8 items-center justify-center rounded-[var(--radius-sm)] bg-primary text-xs font-semibold text-primary-foreground sm:hidden"
+      >
+        P
+      </Link>
+      <MobileNavigation />
       <button
         type="button"
         onClick={onToggleSidebar}
         aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
-        className="inline-flex size-7 items-center justify-center rounded-[var(--radius-sm)] text-subtle-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="hidden size-7 items-center justify-center rounded-[var(--radius-sm)] text-subtle-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:inline-flex"
       >
         {sidebarOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
       </button>
@@ -294,6 +346,9 @@ function ContextBar({
           LOCAL · zero-egress
         </span>
       )}
+      <div className="lg:hidden">
+        <AccountMenu />
+      </div>
     </header>
   );
 }
@@ -380,7 +435,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           {fluid ? (
             <div className="h-full">{children}</div>
           ) : (
-            <div className="mx-auto w-full max-w-screen-2xl px-6 py-8 lg:px-8">{children}</div>
+            <div className="mx-auto w-full max-w-screen-2xl px-4 py-5 sm:px-6 sm:py-8 lg:px-8">{children}</div>
           )}
         </main>
       </div>
