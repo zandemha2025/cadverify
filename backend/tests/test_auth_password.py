@@ -17,10 +17,11 @@ from __future__ import annotations
 
 import os
 import uuid
-from unittest.mock import AsyncMock, patch
+from inspect import unwrap
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.testclient import TestClient
 
 from src.auth.dashboard_session import sign
@@ -151,6 +152,130 @@ def test_production_password_login_rejects_unsigned_direct_callers(monkeypatch):
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "auth_proxy_unavailable"
     credentials.assert_not_awaited()
+
+
+# ──────────────────────────────────────────────────────────────
+# Public pilot intake — durable, bounded, and retry-idempotent
+# ──────────────────────────────────────────────────────────────
+
+
+def _pilot_http_request() -> Request:
+    return Request(
+        {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "https",
+            "path": "/auth/pilot-request",
+            "raw_path": b"/auth/pilot-request",
+            "query_string": b"",
+            "headers": [(b"user-agent", b"pilot-intake-test")],
+            "client": ("203.0.113.8", 44321),
+            "server": ("api.cadverify.com", 443),
+        }
+    )
+
+
+def _pilot_body(**overrides):
+    from src.auth.password import PilotRequestIn
+
+    values = {
+        "request_id": uuid.uuid4(),
+        "email": "buyer@example.com",
+        "company": "Example Manufacturing",
+        "what": "Precision valve bodies",
+        "deployment": "cloud",
+        "website": "",
+    }
+    values.update(overrides)
+    return PilotRequestIn(**values)
+
+
+def _pilot_session(*, scalar=None) -> AsyncMock:
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.scalar = AsyncMock(return_value=scalar)
+    return session
+
+
+async def _call_pilot(body, session):
+    from src.auth.password import create_pilot_request
+
+    endpoint = unwrap(create_pilot_request)
+    return await endpoint(body, _pilot_http_request(), Response(), session)
+
+
+@pytest.mark.asyncio
+async def test_pilot_request_commits_before_optional_notification(monkeypatch):
+    monkeypatch.delenv("RELEASE", raising=False)
+    monkeypatch.delenv("TURNSTILE_SECRET", raising=False)
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    monkeypatch.delenv("RESEND_FROM", raising=False)
+    session = _pilot_session()
+    body = _pilot_body()
+
+    result = await _call_pilot(body, session)
+
+    assert result == {
+        "status": "received",
+        "receipt": str(body.request_id),
+        "notification": "recorded",
+    }
+    session.commit.assert_awaited_once()
+    entry = session.add.call_args.args[0]
+    assert entry.action == "pilot.requested"
+    assert entry.resource_id == str(body.request_id)
+    assert entry.user_email == "buyer@example.com"
+
+
+@pytest.mark.asyncio
+async def test_pilot_request_replay_returns_same_receipt_without_write(monkeypatch):
+    monkeypatch.delenv("RELEASE", raising=False)
+    monkeypatch.delenv("TURNSTILE_SECRET", raising=False)
+    session = _pilot_session(scalar=91)
+    body = _pilot_body()
+
+    result = await _call_pilot(body, session)
+
+    assert result == {"status": "received", "receipt": str(body.request_id)}
+    session.add.assert_not_called()
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_pilot_request_honeypot_is_success_without_db_or_provider(monkeypatch):
+    monkeypatch.setenv("RELEASE", "release-sha")
+    monkeypatch.delenv("TURNSTILE_SECRET", raising=False)
+    session = _pilot_session()
+    body = _pilot_body(website="https://bot.example")
+
+    result = await _call_pilot(body, session)
+
+    assert result == {"status": "received", "receipt": str(body.request_id)}
+    session.scalar.assert_not_awaited()
+    session.add.assert_not_called()
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_pilot_request_concurrent_unique_collision_is_idempotent(monkeypatch):
+    from sqlalchemy.exc import IntegrityError
+
+    monkeypatch.delenv("RELEASE", raising=False)
+    monkeypatch.delenv("TURNSTILE_SECRET", raising=False)
+    session = _pilot_session()
+    session.scalar = AsyncMock(side_effect=[None, 92])
+    session.commit = AsyncMock(
+        side_effect=IntegrityError("duplicate receipt", params=None, orig=Exception())
+    )
+    body = _pilot_body()
+
+    result = await _call_pilot(body, session)
+
+    assert result == {"status": "received", "receipt": str(body.request_id)}
+    session.rollback.assert_awaited_once()
+    assert session.scalar.await_count == 2
+    session.add.assert_called_once()
 
 
 def test_initial_password_rotates_session_after_verified_login(monkeypatch):

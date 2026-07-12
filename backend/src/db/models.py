@@ -936,6 +936,17 @@ class AuditLog(Base):
         Index("ix_audit_log_user_timestamp", "user_id", "timestamp"),
         Index("ix_audit_log_action_timestamp", "action", "timestamp"),
         Index("ix_audit_log_org_id", "org_id"),
+        Index(
+            "uq_audit_log_pilot_request_receipt",
+            "resource_id",
+            unique=True,
+            postgresql_where=text(
+                "action = 'pilot.requested' AND resource_id IS NOT NULL"
+            ),
+            sqlite_where=text(
+                "action = 'pilot.requested' AND resource_id IS NOT NULL"
+            ),
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)

@@ -26,6 +26,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.client_ip import (
@@ -225,7 +226,25 @@ async def create_pilot_request(
     )
     # Durable first. The provider call below is intentionally outside this
     # transaction so an email outage cannot roll the lead back.
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        # The pre-check is only a fast path. Two retries can still observe no
+        # row simultaneously, so the database owns the idempotency invariant via
+        # uq_audit_log_pilot_request_receipt. The losing transaction returns the
+        # same durable receipt and must not send a second notification.
+        await session.rollback()
+        concurrent = await session.scalar(
+            select(AuditLog.id)
+            .where(
+                AuditLog.action == "pilot.requested",
+                AuditLog.resource_id == receipt,
+            )
+            .limit(1)
+        )
+        if concurrent is not None:
+            return {"status": "received", "receipt": receipt}
+        raise
 
     delivery = "recorded"
     resend_key = os.getenv("RESEND_API_KEY", "").strip()
