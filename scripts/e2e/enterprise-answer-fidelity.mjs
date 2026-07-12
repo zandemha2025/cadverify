@@ -22,7 +22,11 @@ const expected = {
   cubeSha256: "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a",
   cubeBytes: 19030,
   annualVolume: 12000,
-  capitalBoardUsd: 1000000,
+  procurementThresholdsUsd: {
+    engineerSelfServe: 25000,
+    sourcingManager: 250000,
+    capitalBoard: 1000000,
+  },
   serviceEnvironment: {
     max_temp_c: 120,
     sour_service: true,
@@ -339,7 +343,14 @@ async function main() {
       assert(/no declared annual_volume/i.test(portfolio.withheld_reason || ""), "withheld reason does not explain missing volume");
       assert(portfolio.withheld_until_exact_reverification === true, "portfolio did not withhold the unmatched declared quantity");
       assert(/re-verify this CAD/i.test(portfolio.exact_reverification_reason || ""), "portfolio did not record the exact-quantity recovery step");
-      assert(annualized >= expected.capitalBoardUsd, "annualized exposure did not cross capital-board threshold");
+      assert(
+        annualized >= expected.procurementThresholdsUsd.engineerSelfServe,
+        "annualized exposure did not exceed the engineer self-serve threshold"
+      );
+      assert(
+        annualized < expected.procurementThresholdsUsd.sourcingManager,
+        "annualized exposure did not remain in the sourcing-manager approval band"
+      );
       return {
         exactUnitCostUsd: unitCost,
         exactBasisQuantity: basisQuantity,
@@ -347,7 +358,9 @@ async function main() {
         annualizedCostUsd: annualized,
         expectedAnnualizedCostUsd: expectedAnnualized,
         withheldBeforeVolume: portfolio.withheld_before_volume,
-        capitalBoardThresholdUsd: expected.capitalBoardUsd,
+        requiredApproval: "sourcing_manager",
+        engineerSelfServeThresholdUsd: expected.procurementThresholdsUsd.engineerSelfServe,
+        sourcingManagerThresholdUsd: expected.procurementThresholdsUsd.sourcingManager,
       };
     }),
 

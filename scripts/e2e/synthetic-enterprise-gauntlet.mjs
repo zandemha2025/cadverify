@@ -290,17 +290,24 @@ async function main() {
           /rate_library_published/.test(p7.evidence?.governanceStale?.stale_reason || ""),
           "governance stale reason did not reflect a governed rate publication"
         );
+        const annualizedCostUsd = enterprise.evidence?.portfolio?.annualized_cost_usd;
+        const procurementThresholds = syntheticOrg.operatingEnvelope.procurementThresholdsUsd;
         assert(
-          enterprise.evidence?.portfolio?.annualized_cost_usd >=
-            syntheticOrg.operatingEnvelope.procurementThresholdsUsd.capitalBoard,
-          "portfolio did not cross the synthetic capital-board procurement threshold"
+          annualizedCostUsd >= procurementThresholds.engineerSelfServe,
+          "portfolio did not exceed the engineer self-serve procurement threshold"
+        );
+        assert(
+          annualizedCostUsd < procurementThresholds.sourcingManager,
+          "portfolio did not remain within the synthetic sourcing-manager approval band"
         );
         return {
           initialStatus: p7.evidence.governanceInitial.approval_status,
           reopenedStatus: p7.evidence.governanceApproval.reopened_status,
           staleReason: p7.evidence.governanceStale.stale_reason,
-          annualizedCostUsd: enterprise.evidence.portfolio.annualized_cost_usd,
-          thresholdUsd: syntheticOrg.operatingEnvelope.procurementThresholdsUsd.capitalBoard,
+          annualizedCostUsd,
+          requiredApproval: "sourcing_manager",
+          engineerSelfServeThresholdUsd: procurementThresholds.engineerSelfServe,
+          sourcingManagerThresholdUsd: procurementThresholds.sourcingManager,
         };
       }
     ),
