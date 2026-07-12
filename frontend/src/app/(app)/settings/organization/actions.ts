@@ -100,6 +100,10 @@ export type SsoStatus = {
     state: "reachable" | "not_enabled" | "misconfigured" | "unknown";
     httpStatus: number | null;
   };
+  oidc: {
+    state: "reachable" | "not_enabled" | "misconfigured" | "unknown";
+    httpStatus: number | null;
+  };
   urls: {
     samlAcs: string;
     samlMetadata: string;
@@ -178,12 +182,14 @@ export async function getHealthDeep(): Promise<HealthDeep> {
 /** SSO/SCIM read-only status. The URLs are the BACKEND's IdP-facing endpoints an
  *  admin hands to their IdP; base SSO enablement is deploy-level (AUTH_MODE + IdP
  *  env). SAML gets a genuine reachability probe via the unauthenticated SP
- *  metadata route (no egress, no cookies). OIDC is not live-probed because its
- *  /login triggers IdP discovery egress — its URLs are shown as-configured. */
+ *  metadata route (no egress, no cookies). OIDC uses its local-only status route,
+ *  which validates coordinates without contacting the external IdP. */
 export async function getSsoStatus(): Promise<SsoStatus> {
   const origin = backendOrigin();
   let samlState: SsoStatus["saml"]["state"] = "unknown";
   let samlHttp: number | null = null;
+  let oidcState: SsoStatus["oidc"]["state"] = "unknown";
+  let oidcHttp: number | null = null;
   try {
     const res = await fetch(`${origin}/auth/saml/metadata`, {
       cache: "no-store",
@@ -196,9 +202,22 @@ export async function getSsoStatus(): Promise<SsoStatus> {
   } catch {
     samlState = "unknown";
   }
+  try {
+    const res = await fetch(`${origin}/auth/oidc/status`, {
+      cache: "no-store",
+      redirect: "manual",
+    });
+    oidcHttp = res.status;
+    if (res.ok) oidcState = "reachable";
+    else if (res.status === 404) oidcState = "not_enabled";
+    else oidcState = "misconfigured";
+  } catch {
+    oidcState = "unknown";
+  }
   return {
     backendOrigin: origin,
     saml: { state: samlState, httpStatus: samlHttp },
+    oidc: { state: oidcState, httpStatus: oidcHttp },
     urls: {
       samlAcs: `${origin}/auth/saml/acs`,
       samlMetadata: `${origin}/auth/saml/metadata`,

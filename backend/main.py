@@ -51,7 +51,7 @@ from src.api.share import public_share_router, share_router
 from src.auth.keys_api import router as keys_router
 from src.auth.magic_link import router as magic_router
 from src.auth.oauth import router as oauth_router
-from src.auth.oidc import router as oidc_router
+from src.auth.oidc import oidc_provider_enabled, router as oidc_router
 from src.auth.password import router as password_router
 from src.auth.saml import router as saml_router
 from src.auth.rate_limit import limiter, rate_limit_handler
@@ -225,9 +225,11 @@ def _assert_production_operations() -> None:
 
 def _assert_production_identity_config() -> None:
     """Validate provider-specific production configuration before serving."""
+    from src.auth.oidc import assert_production_oidc_settings
     from src.auth.saml import assert_production_saml_settings
 
     assert_production_saml_settings()
+    assert_production_oidc_settings()
 
 
 _assert_production_secrets()
@@ -491,9 +493,11 @@ if _magic_link_enabled():
 if AUTH_MODE in ("saml", "hybrid"):
     app.include_router(saml_router, prefix="/auth")
 # OIDC RP (Okta/Entra/Ping) — Authorization Code + PKCE landing in the SAME
-# session/org/group model as SAML. Mounted under /auth/oidc, parallel to the
-# SAML SP, and gated on AUTH_MODE like the other SSO providers.
-if AUTH_MODE in ("oidc", "hybrid"):
+# session/org/group model as SAML. Dedicated oidc mode always mounts it; legacy
+# hybrid mode mounts it only when the operator intentionally supplies OIDC
+# coordinates, so existing Google+SAML hybrid deployments do not gain a broken
+# optional login path or a new startup requirement.
+if oidc_provider_enabled(AUTH_MODE):
     app.include_router(oidc_router, prefix="/auth")
 app.include_router(admin_router)
 app.include_router(keys_router)

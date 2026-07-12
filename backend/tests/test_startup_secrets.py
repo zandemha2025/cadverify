@@ -175,6 +175,51 @@ def test_production_storage_refuses_local_backend(monkeypatch):
         main._assert_production_operations()
 
 
+@pytest.mark.parametrize("missing", ["OIDC_ISSUER", "OIDC_CLIENT_ID"])
+def test_production_oidc_requires_identity_coordinates(monkeypatch, missing):
+    monkeypatch.setenv("RELEASE", "v1.0.0")
+    monkeypatch.setenv("AUTH_MODE", "oidc")
+    monkeypatch.setenv("OIDC_ISSUER", "https://idp.example.com")
+    monkeypatch.setenv("OIDC_CLIENT_ID", "cadverify-production")
+    monkeypatch.delenv(missing, raising=False)
+
+    with pytest.raises(RuntimeError, match=missing):
+        main._assert_production_identity_config()
+
+
+def test_production_oidc_rejects_insecure_provider_urls(monkeypatch):
+    monkeypatch.setenv("RELEASE", "v1.0.0")
+    monkeypatch.setenv("AUTH_MODE", "oidc")
+    monkeypatch.setenv("OIDC_ISSUER", "http://idp.example.com")
+    monkeypatch.setenv("OIDC_CLIENT_ID", "cadverify-production")
+
+    with pytest.raises(RuntimeError, match="OIDC_ISSUER"):
+        main._assert_production_identity_config()
+
+
+def test_production_oidc_valid_config_passes_startup(monkeypatch):
+    monkeypatch.setenv("RELEASE", "v1.0.0")
+    monkeypatch.setenv("AUTH_MODE", "oidc")
+    monkeypatch.setenv("OIDC_ISSUER", "https://idp.example.com")
+    monkeypatch.setenv("OIDC_CLIENT_ID", "cadverify-production")
+    monkeypatch.setenv(
+        "OIDC_REDIRECT_URI",
+        "https://api.cadverify.com/auth/oidc/callback",
+    )
+
+    main._assert_production_identity_config()
+
+
+def test_production_oidc_allows_group_mapping_to_be_disabled(monkeypatch):
+    monkeypatch.setenv("RELEASE", "v1.0.0")
+    monkeypatch.setenv("AUTH_MODE", "oidc")
+    monkeypatch.setenv("OIDC_ISSUER", "https://idp.example.com")
+    monkeypatch.setenv("OIDC_CLIENT_ID", "cadverify-production")
+    monkeypatch.setenv("OIDC_GROUPS_CLAIM", "   ")
+
+    main._assert_production_identity_config()
+
+
 @pytest.mark.parametrize("missing", ["OBJECT_STORE_S3_BUCKET", "OBJECT_STORE_S3_REGION"])
 def test_production_storage_requires_s3_coordinates(monkeypatch, missing):
     monkeypatch.setenv("RELEASE", "v1.0.0")

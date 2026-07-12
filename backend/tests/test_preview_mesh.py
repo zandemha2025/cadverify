@@ -80,3 +80,37 @@ def test_preview_mesh_rejects_bad_extension(client):
     )
     # Unparseable → 400 so the stage keeps the HONEST bbox fallback (never a fake).
     assert r.status_code == 400, r.text
+
+
+def test_preview_mesh_honors_analysis_admission_before_parsing(
+    client, cube_10mm, stl_bytes_of
+):
+    """Preview tessellation cannot bypass the same capacity gate as analysis."""
+    import main
+    from fastapi import HTTPException
+
+    from src.api.admission import admit_analysis
+
+    async def reject_at_capacity():
+        raise HTTPException(
+            status_code=429,
+            detail={"code": "server_busy", "message": "capacity closed"},
+        )
+
+    main.app.dependency_overrides[admit_analysis] = reject_at_capacity
+    try:
+        r = client.post(
+            "/api/v1/validate/preview-mesh",
+            files={
+                "file": (
+                    "cube.stl",
+                    stl_bytes_of(cube_10mm),
+                    "application/octet-stream",
+                )
+            },
+        )
+    finally:
+        main.app.dependency_overrides.pop(admit_analysis, None)
+
+    assert r.status_code == 429, r.text
+    assert r.json()["code"] == "server_busy"

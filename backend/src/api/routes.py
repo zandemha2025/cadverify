@@ -881,6 +881,8 @@ async def validate_preview_mesh(
     request: Request,
     file: UploadFile = File(...),
     user: AuthedUser = Depends(require_role(Role.analyst)),
+    _org_limit: None = Depends(enforce_org_limits),
+    _admission: None = Depends(admit_analysis),
 ):
     """Return a decimated, browser-renderable GLB of the part's REAL tessellated
     shell so the Verify stage renders STEP/IGES/STL parts as themselves, not a box.

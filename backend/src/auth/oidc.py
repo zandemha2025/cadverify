@@ -1,8 +1,9 @@
 """OpenID Connect Relying Party (Authorization Code + PKCE).
 
-Mounted under /auth/oidc when AUTH_MODE is 'oidc' or 'hybrid'. Provides an
-enterprise IdP (Okta / Entra / Ping) an OIDC SSO path that lands users in the
-SAME session + org + group-assignment model that SAML already uses:
+Mounted under /auth/oidc when AUTH_MODE is 'oidc', or when a hybrid deployment
+has intentionally supplied OIDC coordinates. Provides an enterprise IdP (Okta /
+Entra / Ping) an OIDC SSO path that lands users in the SAME session + org +
+group-assignment model that SAML already uses:
 
   * GET  /auth/oidc/login    → generate state + nonce + PKCE (S256), stash them
                                in the signed session, 302 to the IdP authorize
@@ -37,6 +38,7 @@ import os
 import secrets
 import time
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 import httpx
 from authlib.jose import JsonWebKey, JsonWebToken
@@ -53,6 +55,7 @@ from src.auth.models import (
     upsert_user,
     user_has_active_api_key,
 )
+from src.config.production import is_production
 from src.db.engine import get_session_factory
 from src.services.org_saml_service import (
     SamlGroupAssignment,
@@ -112,8 +115,12 @@ def _load_oidc_config() -> OidcConfig:
     redirect_uri = (os.getenv("OIDC_REDIRECT_URI") or "").strip() or (
         f"{_api_origin()}/auth/oidc/callback"
     )
-    scopes = (os.getenv("OIDC_SCOPES") or "openid email profile groups").strip()
-    groups_claim = (os.getenv("OIDC_GROUPS_CLAIM") or "groups").strip()
+    raw_groups_claim = os.getenv("OIDC_GROUPS_CLAIM")
+    # Unset keeps the interoperable default. Explicitly blank disables optional
+    # group-to-org mapping for IdPs that authenticate users without group claims.
+    groups_claim = "groups" if raw_groups_claim is None else raw_groups_claim.strip()
+    default_scopes = "openid email profile" + (" groups" if groups_claim else "")
+    scopes = (os.getenv("OIDC_SCOPES") or default_scopes).strip()
     return OidcConfig(
         issuer=issuer,
         client_id=client_id,
@@ -123,6 +130,100 @@ def _load_oidc_config() -> OidcConfig:
         scopes=scopes,
         groups_claim=groups_claim,
     )
+
+
+def _require_valid_url(value: str, field: str, *, require_https: bool) -> None:
+    """Reject malformed OIDC URLs; released deployments additionally require HTTPS."""
+    try:
+        parsed = urlsplit(value)
+        _ = parsed.port
+    except ValueError as exc:
+        raise RuntimeError(f"{field} must be a valid HTTP(S) URL") from exc
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.fragment
+    ):
+        raise RuntimeError(f"{field} must be a credential-free HTTP(S) URL")
+    if require_https and parsed.scheme != "https":
+        raise RuntimeError(f"{field} must use HTTPS in production")
+
+
+def _validate_oidc_config(cfg: OidcConfig, *, require_https: bool) -> None:
+    """Validate local coordinates; only released deployments mandate HTTPS."""
+    _require_valid_url(cfg.issuer, "OIDC_ISSUER", require_https=require_https)
+    _require_valid_url(
+        cfg.discovery_url,
+        "OIDC_DISCOVERY_URL",
+        require_https=require_https,
+    )
+    _require_valid_url(
+        cfg.redirect_uri,
+        "OIDC_REDIRECT_URI",
+        require_https=require_https,
+    )
+    if "openid" not in cfg.scopes.split():
+        raise RuntimeError("OIDC_SCOPES must include 'openid'")
+
+
+def oidc_provider_enabled(auth_mode: str | None = None) -> bool:
+    """Return whether this deployment intentionally exposes the OIDC RP.
+
+    ``oidc`` is explicit and therefore enabled even before validation. ``hybrid``
+    predates OIDC and remains Google+SAML-compatible unless at least one OIDC
+    coordinate is supplied; a partial opt-in is enabled so production validation
+    can reject it instead of silently ignoring an operator typo.
+    """
+    mode = (auth_mode if auth_mode is not None else os.getenv("AUTH_MODE", ""))
+    mode = mode.strip().lower()
+    if mode == "oidc":
+        return True
+    if mode != "hybrid":
+        return False
+    return any(
+        (os.getenv(name) or "").strip()
+        for name in ("OIDC_ISSUER", "OIDC_CLIENT_ID")
+    )
+
+
+@router.get("/status", include_in_schema=False)
+async def oidc_status() -> dict:
+    """Local-only capability probe; validates config without contacting the IdP."""
+    try:
+        cfg = _load_oidc_config()
+        _validate_oidc_config(cfg, require_https=is_production())
+    except HTTPException:
+        raise
+    except RuntimeError as exc:
+        raise HTTPException(
+            500,
+            detail={
+                "code": "oidc_invalid_config",
+                "message": str(exc),
+                "doc_url": "https://docs.cadverify.com/errors#oidc_invalid_config",
+            },
+        ) from exc
+    return {"enabled": True}
+
+
+def assert_production_oidc_settings() -> None:
+    """Fail startup before a released OIDC/hybrid login can be misconfigured."""
+    if not is_production() or not oidc_provider_enabled():
+        return
+
+    try:
+        cfg = _load_oidc_config()
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
+        message = detail.get("message") or "OIDC configuration is incomplete."
+        raise RuntimeError(f"production OIDC configuration invalid: {message}") from exc
+
+    try:
+        _validate_oidc_config(cfg, require_https=True)
+    except RuntimeError as exc:
+        raise RuntimeError(f"production OIDC configuration invalid: {exc}") from exc
 
 
 def _b64url(raw: bytes) -> str:
@@ -287,12 +388,14 @@ async def oidc_callback(request: Request):
         email = _claim_email(claims)
         groups = _claim_groups(claims, cfg.groups_claim)
 
-        # userinfo fallback when the id_token claims are thin (RFC: the id_token
-        # may omit email/groups; the userinfo endpoint carries them).
-        if (not email or not groups) and access_token and userinfo_endpoint:
+        # Userinfo is a fallback only for claims this deployment actually needs.
+        # When group mapping is disabled, an empty group list is intentional and
+        # must not add an avoidable provider request to every successful login.
+        needs_group_fallback = bool(cfg.groups_claim) and not groups
+        if (not email or needs_group_fallback) and access_token and userinfo_endpoint:
             userinfo = await _fetch_userinfo(client, userinfo_endpoint, access_token)
             email = email or _claim_email(userinfo)
-            if not groups:
+            if needs_group_fallback:
                 groups = _claim_groups(userinfo, cfg.groups_claim)
 
     if not email:
@@ -418,6 +521,8 @@ def _claim_email(claims: dict) -> str | None:
 
 
 def _claim_groups(claims: dict, groups_claim: str) -> list[str]:
+    if not groups_claim:
+        return []
     raw = claims.get(groups_claim)
     if raw is None:
         return []

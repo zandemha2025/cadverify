@@ -155,9 +155,10 @@ def _wire_idp(router, idp: MockIdP, *, id_token_holder: dict, userinfo: dict | N
             },
         )
     )
-    router.get(f"{idp.issuer}/userinfo").mock(
+    userinfo_route = router.get(f"{idp.issuer}/userinfo").mock(
         side_effect=lambda req: httpx.Response(200, json=userinfo or {})
     )
+    return userinfo_route
 
 
 def _start_login(client: TestClient) -> tuple[str, str]:
@@ -173,6 +174,92 @@ def _start_login(client: TestClient) -> tuple[str, str]:
     assert q["redirect_uri"] == [REDIRECT_URI]
     assert q.get("code_challenge")  # PKCE challenge present
     return q["state"][0], q["nonce"][0]
+
+
+def test_oidc_group_mapping_can_be_explicitly_disabled(oidc_env, monkeypatch):
+    import src.auth.oidc as oidc
+
+    monkeypatch.setenv("OIDC_GROUPS_CLAIM", "   ")
+    monkeypatch.delenv("OIDC_SCOPES")
+
+    config = oidc._load_oidc_config()
+
+    assert config.groups_claim == ""
+    assert config.scopes == "openid email profile"
+    assert oidc._claim_groups({"groups": ["cad-engineers"]}, config.groups_claim) == []
+
+
+def test_hybrid_oidc_is_optional_but_partial_opt_in_fails_closed(monkeypatch):
+    import src.auth.oidc as oidc
+
+    monkeypatch.setenv("RELEASE", "v1.0.0")
+    monkeypatch.setenv("AUTH_MODE", "hybrid")
+    monkeypatch.delenv("OIDC_ISSUER", raising=False)
+    monkeypatch.delenv("OIDC_CLIENT_ID", raising=False)
+
+    assert oidc.oidc_provider_enabled() is False
+    oidc.assert_production_oidc_settings()
+
+    monkeypatch.setenv("OIDC_ISSUER", ISSUER)
+    assert oidc.oidc_provider_enabled() is True
+    with pytest.raises(RuntimeError, match="OIDC_CLIENT_ID"):
+        oidc.assert_production_oidc_settings()
+
+
+def test_oidc_status_is_a_no_egress_capability_probe(app, oidc_env):
+    with respx.mock(assert_all_called=False) as router:
+        response = TestClient(app).get("/auth/oidc/status")
+
+    assert response.status_code == 200
+    assert response.json() == {"enabled": True}
+    assert len(router.calls) == 0
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("OIDC_ISSUER", "not-a-url"),
+        ("OIDC_DISCOVERY_URL", "not-a-url"),
+        ("OIDC_REDIRECT_URI", "not-a-url"),
+    ],
+)
+def test_oidc_status_rejects_malformed_local_urls(app, oidc_env, monkeypatch, name, value):
+    monkeypatch.setenv(name, value)
+
+    response = TestClient(app).get("/auth/oidc/status")
+
+    assert response.status_code == 500
+    assert response.json()["detail"]["code"] == "oidc_invalid_config"
+    assert name in response.json()["detail"]["message"]
+
+
+def test_oidc_status_allows_http_coordinates_outside_production(app, oidc_env, monkeypatch):
+    monkeypatch.setenv("RELEASE", "dev")
+    monkeypatch.setenv("OIDC_ISSUER", "http://localhost:9000")
+    monkeypatch.setenv(
+        "OIDC_DISCOVERY_URL",
+        "http://localhost:9000/.well-known/openid-configuration",
+    )
+    monkeypatch.setenv(
+        "OIDC_REDIRECT_URI",
+        "http://localhost:3000/auth/oidc/callback",
+    )
+
+    response = TestClient(app).get("/auth/oidc/status")
+
+    assert response.status_code == 200
+    assert response.json() == {"enabled": True}
+
+
+def test_oidc_status_requires_https_in_production(app, oidc_env, monkeypatch):
+    monkeypatch.setenv("RELEASE", "v1.0.0")
+    monkeypatch.setenv("OIDC_ISSUER", "http://localhost:9000")
+
+    response = TestClient(app).get("/auth/oidc/status")
+
+    assert response.status_code == 500
+    assert response.json()["detail"]["code"] == "oidc_invalid_config"
+    assert "HTTPS in production" in response.json()["detail"]["message"]
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -207,6 +294,38 @@ def test_oidc_happy_path_okta_shaped(app, oidc_env, monkeypatch):
     provision.assert_awaited_once_with("engineer@okta-enterprise.com")
     # Group→role assignment reuses the SAML path with the OIDC groups claim.
     assign.assert_awaited_once_with(42, {"groups": ["Everyone", "cad-engineers"]})
+
+
+def test_oidc_disabled_group_mapping_skips_userinfo(app, oidc_env, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    import src.auth.oidc as oidc
+
+    monkeypatch.setenv("OIDC_GROUPS_CLAIM", "   ")
+    monkeypatch.delenv("OIDC_SCOPES")
+    provision = AsyncMock(return_value=43)
+    assign = AsyncMock()
+    monkeypatch.setattr(oidc, "_oidc_provision_user", provision)
+    monkeypatch.setattr(oidc, "_apply_oidc_group_assignment_for_login", assign)
+    monkeypatch.setattr(oidc, "get_user_session_version", AsyncMock(return_value=0))
+
+    idp = MockIdP()
+    holder: dict = {}
+    with respx.mock(assert_all_called=False) as router:
+        userinfo_route = _wire_idp(router, idp, id_token_holder=holder)
+        client = TestClient(app, follow_redirects=False, raise_server_exceptions=False)
+        state, nonce = _start_login(client)
+        holder["id_token"] = idp.mint(
+            nonce=nonce,
+            claims={"sub": "no-groups", "email": "engineer@example.com"},
+        )
+
+        resp = client.get(f"/auth/oidc/callback?code=no-groups&state={state}")
+
+    assert resp.status_code == 303, resp.text
+    assert userinfo_route.called is False
+    provision.assert_awaited_once_with("engineer@example.com")
+    assign.assert_not_awaited()
 
 
 # ══════════════════════════════════════════════════════════════════════════

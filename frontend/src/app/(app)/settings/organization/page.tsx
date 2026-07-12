@@ -375,8 +375,56 @@ export default async function OrganizationSettingsPage() {
             <UrlRow label="SAML ACS (Assertion Consumer Service)" url={sso.urls.samlAcs} />
             <UrlRow label="SAML SP metadata" url={sso.urls.samlMetadata} />
             <UrlRow label="SAML login (SP-initiated)" url={sso.urls.samlLogin} />
-            <UrlRow label="OIDC login" url={sso.urls.oidcLogin} />
-            <UrlRow label="OIDC redirect / callback" url={sso.urls.oidcCallback} />
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-muted-foreground">OIDC relying party:</span>
+              <StatusBadge
+                tone={
+                  sso.oidc.state === "reachable"
+                    ? "pass"
+                    : sso.oidc.state === "misconfigured"
+                      ? "warn"
+                      : "neutral"
+                }
+                label={
+                  sso.oidc.state === "reachable"
+                    ? "Enabled"
+                    : sso.oidc.state === "misconfigured"
+                      ? "Enabled · check provider config"
+                      : sso.oidc.state === "not_enabled"
+                        ? "Not enabled in this deployment"
+                        : "Unknown"
+                }
+                size="sm"
+                icon={false}
+              />
+              {sso.oidc.httpStatus != null && (
+                <span className="num text-xs text-subtle-foreground">
+                  HTTP {sso.oidc.httpStatus}
+                </span>
+              )}
+            </div>
+            <UrlRow
+              label="OIDC login"
+              url={sso.urls.oidcLogin}
+              hint={
+                sso.oidc.state === "reachable"
+                  ? undefined
+                  : sso.oidc.state === "not_enabled"
+                    ? "Setup URL only; login becomes available after OIDC is enabled for this deployment."
+                    : "Available for setup and recovery; login will not work until the provider configuration is healthy."
+              }
+            />
+            <UrlRow
+              label="OIDC redirect / callback"
+              url={sso.urls.oidcCallback}
+              hint={
+                sso.oidc.state === "reachable"
+                  ? undefined
+                  : sso.oidc.state === "not_enabled"
+                    ? "Register this callback with the IdP before enabling OIDC in the deployment."
+                    : "Register this callback with the IdP, then re-check the deployment status above."
+              }
+            />
             <UrlRow
               label="SCIM 2.0 base URL"
               url={sso.urls.scimBase}
