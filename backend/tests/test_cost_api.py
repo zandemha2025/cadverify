@@ -428,37 +428,38 @@ def test_cost_step_unavailable_is_structured_501(client, cube_10mm, stl_bytes_of
     assert r.json()["code"] == "NOT_IMPLEMENTED"
 
 
-def test_cost_concurrent_step_requests_both_ok(client, box_step_bytes):
+@pytest.mark.asyncio
+async def test_cost_concurrent_step_requests_both_ok(client, box_step_bytes):
     """Two simultaneous STEP costs both return 200 — _GMSH_LOCK serializes the
     process-global gmsh context across the executor threads (no segfault / no
     're-initialized' error). Skips cleanly when gmsh is unavailable."""
-    from concurrent.futures import ThreadPoolExecutor
-    from threading import Barrier
+    import asyncio
 
-    start = Barrier(2)
+    import httpx
 
-    def _do():
-        # TestClient's HTTPX transport is not a concurrency primitive. Sharing
-        # one client across OS threads intermittently misroutes one request as
-        # a framework-level 404 on Linux, which tests the harness instead of
-        # gmsh serialization. Keep the FastAPI app and process-global lock
-        # shared, but give each worker its own transport.
-        thread_client = TestClient(client.app)
-        try:
-            start.wait()
-            return _post(
-                thread_client,
-                "box.step",
-                box_step_bytes,
-                qty="50",
-                material_class="aluminum",
+    # Starlette's synchronous TestClient owns a blocking portal and is not a
+    # supported cross-thread concurrency harness. HTTPX's async ASGI transport
+    # exercises two real overlapping requests against the same FastAPI app while
+    # leaving the endpoint's executor threads and process-global gmsh lock intact.
+    transport = httpx.ASGITransport(app=client.app)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+    ) as async_client:
+        async def _do():
+            return await async_client.post(
+                "/api/v1/validate/cost",
+                files={
+                    "file": (
+                        "box.step",
+                        box_step_bytes,
+                        "application/octet-stream",
+                    )
+                },
+                data={"qty": "50", "material_class": "aluminum"},
             )
-        finally:
-            thread_client.close()
 
-    with ThreadPoolExecutor(max_workers=2) as ex:
-        futures = [ex.submit(_do) for _ in range(2)]
-        results = [f.result() for f in futures]
+        results = await asyncio.gather(_do(), _do())
 
     for r in results:
         assert r.status_code == 200, r.text
