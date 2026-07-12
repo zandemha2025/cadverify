@@ -1,11 +1,10 @@
 "use client";
 
 /**
- * The product Verify app — the founder-approved "light instrument" recreated in
- * the production stack and wired to the real engine. One client shell (rail + top
- * bar + screen router) holding all state, behind NEXT_PUBLIC_VERIFY_UI. Explicit-
- * hex, theme-independent (the rest of the app is dark-first); flag-off this whole
- * tree is unreachable, so the existing app is byte-identical.
+ * The Verify workspace is wired to the real engine and mounted inside the shared
+ * authenticated ProofShape shell. This component owns only Verify-local screens
+ * and tools; platform navigation, theme, search, and account controls live in the
+ * common shell.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -26,13 +25,12 @@ import { TriageScreen } from "./triage-screen";
 import { CalibrationScreen } from "./calibration-screen";
 import { HomeScreen } from "./home-screen";
 import { ProgramScreen } from "./program-screen";
-import { CommandPalette, NotificationsPanel } from "./command-surfaces";
+import { CommandPalette } from "./command-surfaces";
 import { AcquisitionModal } from "./acquisition-modal";
 import { PartScreen } from "./part-screen";
 import { ToastProvider } from "./toast";
 import { ShortcutsOverlay } from "./shortcuts-overlay";
 import { CalibrationSwitcher } from "./calibration-switcher";
-import { VerifyAccountMenu } from "./account-menu";
 import { sampleCubeFile } from "@/lib/verify/sample-cad";
 import { designIdFromSearch, designRevisionFromSearch, importDesignStep } from "@/lib/verify/design-import";
 
@@ -65,20 +63,6 @@ const RAIL: { key: Screen; label: string; d: string }[] = [
   { key: "calibration", label: "Calibration & truth", d: "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M2 14h4M10 8h4M18 16h4" },
 ];
 
-const CRUMB: Record<string, string> = {
-  home: "Home",
-  verify: "Verify",
-  catalog: "Parts",
-  compare: "Parts / Compare",
-  part: "Parts / Standing",
-  records: "Records",
-  programs: "Programs",
-  program: "Programs",
-  machines: "Your machines",
-  triage: "Triage at scale",
-  calibration: "Calibration & truth",
-};
-
 export function VerifyApp() {
   const [screen, setScreen] = useState<Screen>("home");
   const [env, setEnv] = useState({ temp: false, sour: false, pressure: false });
@@ -96,7 +80,6 @@ export function VerifyApp() {
   // "analysing per-part…" state while it is in flight.
   const [assemblyAnalysis, setAssemblyAnalysis] = useState<AssemblyAnalysis | null>(null);
   const [assemblyAnalyzing, setAssemblyAnalyzing] = useState(false);
-  const [notifOpen, setNotifOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   // A REAL signal for the rail footer: are any of the org's machines declaring an
   // hourly rate (i.e. a shop rate is actually bound)? null while loading → the dot
@@ -275,7 +258,6 @@ export function VerifyApp() {
         return;
       }
       if (e.key === "Escape") {
-        setNotifOpen(false);
         setShortcutsOpen(false);
         setScreen((s) => (s === "palette" || s === "acquisition" ? "verify" : s));
         return;
@@ -294,8 +276,6 @@ export function VerifyApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const onVerify = screen === "verify";
-
   // The stage's assembly overlay: the highlighted part's name + tree path for the
   // in-canvas label. null when the upload is a single part (unchanged path).
   const stageAssembly = useMemo<StageAssembly | null>(() => {
@@ -313,7 +293,7 @@ export function VerifyApp() {
 
   return (
     <ToastProvider>
-    <div className="cv-verify-shell" style={{ height: "100vh", display: "flex", background: C.bg, color: C.ink, fontFamily: SANS, WebkitFontSmoothing: "antialiased", fontSize: 14 }}>
+    <div className="cv-verify-shell" style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column", background: C.bg, color: C.ink, fontFamily: SANS, WebkitFontSmoothing: "antialiased", fontSize: 14 }}>
       <style>{KEYFRAMES}</style>
       <input
         ref={fileRef}
@@ -331,9 +311,9 @@ export function VerifyApp() {
         }}
       />
 
-      {/* rail */}
-      <nav className="cv-verify-rail" style={{ width: 64, flexShrink: 0, borderRight: `1px solid ${C.hair2}`, background: C.panel, display: "flex", flexDirection: "column", alignItems: "center", padding: "14px 0", gap: 6 }}>
-        <Link href="/designs" aria-label="ProofShape Design Studio" title="ProofShape Design Studio" style={{ width: 30, height: 30, borderRadius: 8, background: C.ink, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: 13, marginBottom: 14, textDecoration: "none" }}>P</Link>
+      {/* Verify-local navigation. Platform navigation stays in AppShell. */}
+      <nav className="cv-verify-workspace-nav" aria-label="Verify workspace sections" style={{ minHeight: 52, flexShrink: 0, borderBottom: `1px solid ${C.hair2}`, background: C.panel, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "6px 14px" }}>
+        <div className="cv-verify-workspace-tabs" style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, overflowX: "auto" }}>
         {RAIL.map((r) => {
           const active = screen === r.key || (r.key === "catalog" && screen === "compare");
           return (
@@ -344,15 +324,17 @@ export function VerifyApp() {
               onClick={() => setScreen(r.key)}
               title={r.label}
               className="cv-verify-rail-button"
-              style={{ width: 40, height: 40, borderRadius: 10, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", background: active ? "#eceef1" : "transparent", color: active ? C.ink : C.ink40, transition: "all 150ms" }}
+              style={{ minWidth: 44, height: 38, padding: "0 10px", borderRadius: 9, border: active ? `1px solid ${C.hair}` : "1px solid transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: active ? "#eceef1" : "transparent", color: active ? C.ink : C.ink50, transition: "background-color 150ms, color 150ms, border-color 150ms", whiteSpace: "nowrap", fontFamily: "inherit", fontSize: 12 }}
             >
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d={r.d} />
               </svg>
+              <span className="cv-verify-rail-label">{r.label}</span>
             </button>
           );
         })}
-        <div style={{ marginTop: "auto" }}>
+        </div>
+        <div className="cv-verify-workspace-actions" style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           <button
             type="button"
             onClick={() => setScreen("calibration")}
@@ -361,7 +343,8 @@ export function VerifyApp() {
                 ? "Your shop rates are bound · ● SHOP — open Calibration & truth"
                 : "Calibration & truth — no shop rate bound yet"
             }
-            style={{ border: "none", background: "none", padding: 4, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            className="cv-verify-rate-dot"
+            style={{ width: 36, height: 36, border: `1px solid ${C.hair}`, borderRadius: 999, background: "#fff", padding: 4, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
           >
             <span
               aria-hidden
@@ -375,44 +358,14 @@ export function VerifyApp() {
               }}
             />
           </button>
+          <span className="cv-verify-rate-switcher"><CalibrationSwitcher onOpenCalibration={() => setScreen("calibration")} /></span>
+          <button className="cv-verify-command-button" type="button" onClick={() => setScreen("palette")} title="Verify commands (⌘K)" aria-label="Open Verify command palette" style={{ display: "inline-flex", alignItems: "center", gap: 6, minHeight: 36, border: `1px solid ${C.hair}`, background: "#fff", borderRadius: 999, padding: "7px 12px", fontFamily: MONO, fontSize: 11, color: C.ink55, cursor: "pointer" }}>Jump <span aria-hidden>⌘K</span></button>
+          <button className="cv-verify-primary-action" type="button" onClick={pickFile} style={{ minHeight: 36, background: C.ink, color: "#fff", border: "none", borderRadius: 999, padding: "8px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>Verify a part</button>
         </div>
       </nav>
 
       {/* main */}
       <div className="cv-verify-main" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <header className="cv-verify-header" style={{ height: 52, flexShrink: 0, borderBottom: `1px solid ${C.hair2}`, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px", background: C.panel }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: C.ink50 }}>
-            <span>{CRUMB[screen] ?? "ProofShape"}</span>
-            {onVerify && result?.file && (
-              <>
-                <span style={{ color: C.ink35 }}>/</span>
-                <span style={{ color: C.ink, fontFamily: MONO, fontSize: 12.5 }}>{result.file.name}</span>
-              </>
-            )}
-          </div>
-          <div className="cv-verify-header-actions" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Link href="/designs" className="cv-verify-design-link" style={{ color: C.ink55, fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}>Design Studio</Link>
-            <span className="cv-verify-rate-switcher"><CalibrationSwitcher onOpenCalibration={() => setScreen("calibration")} /></span>
-            <button className="cv-verify-command-button" type="button" onClick={() => setScreen("palette")} title="Command palette (⌘K)" aria-label="Open command palette" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${C.hair}`, background: "#fff", borderRadius: 999, padding: "7px 13px", fontFamily: MONO, fontSize: 11, color: C.ink55, cursor: "pointer" }}>⌘K</button>
-            <button className="cv-verify-notification-button" type="button" onClick={() => setNotifOpen((v) => !v)} title="Notifications" aria-label="Notifications" style={{ width: 32, height: 32, borderRadius: "50%", border: `1px solid ${C.hair}`, background: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", color: C.ink55 }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>
-            </button>
-            <VerifyAccountMenu />
-            <input
-              className="cv-verify-search"
-              readOnly
-              value=""
-              placeholder="Jump…"
-              title="Jump to any surface or action — opens the command palette (⌘K)"
-              onMouseDown={(e) => { e.preventDefault(); setScreen("palette"); }}
-              onFocus={() => setScreen("palette")}
-              aria-label="Search — jump to any surface or action"
-              style={{ width: 160, background: C.sunken, border: `1px solid ${C.hair}`, borderRadius: 999, padding: "7px 14px", fontSize: 12.5, color: C.ink, fontFamily: "inherit", cursor: "text" }}
-            />
-            <button className="cv-verify-primary-action" type="button" onClick={pickFile} style={{ background: C.ink, color: "#fff", border: "none", borderRadius: 999, padding: "8px 18px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>Verify a part</button>
-          </div>
-        </header>
-
         {designImport && (
           <div
             role={designImport.state === "error" ? "alert" : "status"}
@@ -444,8 +397,6 @@ export function VerifyApp() {
             )}
           </div>
         )}
-
-        {notifOpen && <NotificationsPanel onClose={() => setNotifOpen(false)} />}
 
         {screen === "home" && <HomeScreen onPickFile={pickFile} nav={nav} />}
         {screen === "verify" && (
@@ -557,41 +508,38 @@ const KEYFRAMES = `
   .cv-verify-shell {
     overflow: hidden;
   }
-  .cv-verify-rail {
-    width: 56px !important;
-    padding-block: 12px !important;
+  .cv-verify-workspace-nav {
+    min-height: 52px !important;
+    padding-inline: 8px !important;
+    gap: 6px !important;
+  }
+  .cv-verify-workspace-tabs {
+    flex: 1;
   }
   .cv-verify-rail-button {
     width: 44px !important;
+    min-width: 44px !important;
     height: 44px !important;
+    padding-inline: 0 !important;
   }
-  .cv-verify-main {
-    max-width: calc(100vw - 56px);
-    overflow-x: hidden;
+  .cv-verify-rail-label {
+    display: none;
   }
-  .cv-verify-header {
-    height: 50px !important;
-    padding-inline: 10px !important;
-    gap: 8px;
+  .cv-verify-workspace-actions {
+    gap: 5px !important;
   }
-  .cv-verify-header-actions {
-    gap: 6px !important;
-    min-width: 0;
-  }
-  .cv-verify-rate-switcher,
-  .cv-verify-search,
-  .cv-verify-notification-button {
+  .cv-verify-rate-dot,
+  .cv-verify-command-button,
+  .cv-verify-rate-switcher {
     display: none !important;
   }
-  .cv-verify-command-button {
-    min-width: 44px;
-    min-height: 44px;
-    justify-content: center;
-    padding-inline: 11px !important;
+  .cv-verify-main {
+    max-width: 100vw;
+    overflow-x: hidden;
   }
   .cv-verify-primary-action {
     min-height: 44px;
-    padding-inline: 14px !important;
+    padding-inline: 12px !important;
   }
   .cv-verify-home {
     padding: 24px 14px !important;

@@ -80,9 +80,8 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        {/* No-flash theme: DARK-FIRST. The authed app defaults to dark graphite
-            (the command register); only a user who has pinned light opts out.
-            Applied before paint so the theme never flickers. */}
+        {/* No-flash theme: ProofShape is light-first. Dark remains an explicit
+            user preference, but route changes never imply a theme change. */}
         <script
           nonce={nonce}
           // Browsers deliberately hide a parsed script nonce from DOM attribute
@@ -92,7 +91,7 @@ export default async function RootLayout({
           suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html:
-              "try{if(localStorage.getItem('cv_theme')!=='light'){document.documentElement.classList.add('dark')}}catch(e){document.documentElement.classList.add('dark')}",
+              "try{if(localStorage.getItem('cv_theme')==='dark'){document.documentElement.classList.add('dark')}}catch(e){}",
           }}
         />
       </head>

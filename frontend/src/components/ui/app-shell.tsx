@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * The persistent 4-zone platform shell — the "governed catalog" frame that
- * replaces the single-part instrument's slim top strip (Gen-3) and the orphaned
- * tabbed workspace's ad-hoc chrome (Gen-2). One shell, four zones:
+ * The persistent ProofShape shell shared by every authenticated surface. One
+ * route change never swaps the product frame, theme, account controls, or
+ * navigation model underneath the user.
  *
  *   rail 56 · sidebar 240 (collapsible) · context bar 48 · content · [Inspector]
  *
@@ -40,6 +40,7 @@ import {
   LogOut,
   Lock,
   Menu,
+  Bell,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -51,7 +52,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 
 /* Routes that render full-fluid (the workspace needs its width); everything
    else gets a comfortable reading container. */
-const FLUID = new Set(["/cost", "/analyze"]);
+const FLUID = new Set(["/verify", "/cost", "/analyze"]);
 /* The genuinely local cost/DFM decision path — the ONLY place we assert
    zero-egress (image→mesh reconstruction is out of scope, handled elsewhere). */
 const LOCAL_PATHS = ["/cost", "/analyze", "/cost-decisions", "/history", "/batch", "/rfq-packages"];
@@ -66,7 +67,7 @@ type RailItem = {
 const RAIL: RailItem[] = [
   { id: "verify", label: "Verify workspace", icon: FileCheck2, href: "/verify" },
   { id: "designs", label: "Design Studio", icon: Boxes, href: "/designs" },
-  { id: "home", label: "Legacy workbench", icon: Boxes, href: "/cost" },
+  { id: "home", label: "Should-cost", icon: Calculator, href: "/cost" },
   { id: "analyze", label: "Analyze DFM", icon: ScanLine, href: "/analyze" },
   { id: "batch", label: "Batch runs", icon: Layers, href: "/batch" },
   { id: "decisions", label: "Cost decisions", icon: PiggyBank, href: "/cost-decisions" },
@@ -137,7 +138,6 @@ function IconRail() {
 
         <div className="flex-1" />
         <ThemeToggle className="size-9 border-0 bg-transparent" />
-        <AccountMenu />
       </nav>
     </Tooltip.Provider>
   );
@@ -148,7 +148,7 @@ type NavLink = { label: string; href: string; icon: LucideIcon; hint?: string };
 const WORKSPACE_NAV: NavLink[] = [
   { label: "Verify workspace", href: "/verify", icon: FileCheck2, hint: "canonical product surface" },
   { label: "Design Studio", href: "/designs", icon: Boxes, hint: "create · revise · verify" },
-  { label: "Legacy analysis", href: "/cost", icon: Calculator, hint: "should-cost · make-vs-buy" },
+  { label: "Should-cost workspace", href: "/cost", icon: Calculator, hint: "cost · make-vs-buy" },
   { label: "Analyze DFM", href: "/analyze", icon: ScanLine, hint: "geometry · flags" },
   { label: "Batch run", href: "/batch", icon: Layers, hint: "many parts" },
 ];
@@ -286,16 +286,19 @@ function ContextBar({
 }) {
   const pathname = usePathname();
   const { part } = useInstrumentChrome();
+  const { open } = useCommandPalette();
   const isLocal = LOCAL_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
-  const domain = pathname.startsWith("/designs")
-    ? "designs"
-    : pathname.startsWith("/settings")
-      ? "settings"
-      : pathname.startsWith("/batch")
-        ? "batch"
-        : pathname.startsWith("/integrations")
-          ? "integrations"
-          : "decisions";
+  const domain = pathname.startsWith("/verify")
+    ? "verify"
+    : pathname.startsWith("/designs")
+      ? "designs"
+      : pathname.startsWith("/settings")
+        ? "settings"
+        : pathname.startsWith("/batch")
+          ? "batch"
+          : pathname.startsWith("/integrations")
+            ? "integrations"
+            : "decisions";
 
   return (
     <header className="flex h-[var(--contextbar-h)] shrink-0 items-center gap-2 border-b border-border bg-background px-3">
@@ -346,9 +349,24 @@ function ContextBar({
           LOCAL · zero-egress
         </span>
       )}
-      <div className="lg:hidden">
-        <AccountMenu />
-      </div>
+      <button
+        type="button"
+        onClick={open}
+        aria-label="Search and jump to a workspace"
+        className="hidden h-8 min-w-36 items-center gap-2 rounded-[var(--radius)] border border-border bg-card px-3 text-xs text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex"
+      >
+        <Search className="size-3.5" />
+        <span className="flex-1 text-left">Jump…</span>
+        <kbd className="num text-[10px]">⌘K</kbd>
+      </button>
+      <Link
+        href="/notifications"
+        aria-label="Notifications"
+        className="inline-flex size-8 items-center justify-center rounded-[var(--radius-sm)] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Bell className="size-4" />
+      </Link>
+      <AccountMenu />
     </header>
   );
 }
