@@ -40,6 +40,10 @@ export LABELING_ENABLED=1            # main.py broadens CORS to localhost:3000
 export RATE_LIBRARY_ENABLED=1        # enterprise governed rate cards are active
 export SIGNUP_RATE_LIMIT_DISABLED=1  # local proof runs create many throwaway accounts
 export DATABASE_URL="${DATABASE_URL:-postgresql://cadverify:localdev@localhost:5432/cadverify}"
+# Container defaults use /data/blobs, which is not writable on a normal macOS
+# host. Keep every local object-store namespace under the ignored project data
+# directory unless the operator explicitly supplies another local root.
+export OBJECT_STORE_LOCAL_ROOT="${OBJECT_STORE_LOCAL_ROOT:-$REPO_ROOT/data/local-blobs}"
 
 # Persistent local auth secrets so sessions survive restarts (gitignored file).
 AUTH_ENV_FILE="$REPO_ROOT/.env.local-auth"
@@ -110,6 +114,10 @@ trap cleanup INT TERM EXIT
 command -v npm >/dev/null 2>&1 || { err "npm not found on PATH."; exit 1; }
 [ -d "$FRONTEND_DIR/node_modules" ] || {
   err "frontend/node_modules missing. Run:  (cd '$FRONTEND_DIR' && npm install)"; exit 1; }
+mkdir -p "$OBJECT_STORE_LOCAL_ROOT" || {
+  err "Could not create local object storage at $OBJECT_STORE_LOCAL_ROOT"; exit 1; }
+[ -w "$OBJECT_STORE_LOCAL_ROOT" ] || {
+  err "Local object storage is not writable: $OBJECT_STORE_LOCAL_ROOT"; exit 1; }
 
 # ── ensure the database schema (idempotent) ─────────────────────────────────
 log "Ensuring database schema (alembic upgrade head)…"
