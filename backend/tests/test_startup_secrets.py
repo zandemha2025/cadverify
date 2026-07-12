@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -18,6 +19,17 @@ import main
 
 
 VALID_DASHBOARD_SESSION_SECRET = base64.b64encode(b"d" * 32).decode()
+
+
+def test_default_cors_allows_only_the_configured_dashboard(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_ORIGIN", "https://proofshape.example")
+    monkeypatch.setattr(main, "LABELING_ENABLED", False)
+
+    pattern = main._default_cors_regex()
+
+    assert re.fullmatch(pattern, "https://proofshape.example")
+    assert not re.fullmatch(pattern, "https://attacker.vercel.app")
+    assert not re.fullmatch(pattern, "https://proofshape.example.attacker.test")
 
 
 def set_valid_session_secrets(monkeypatch):

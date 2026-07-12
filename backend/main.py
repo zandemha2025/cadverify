@@ -6,8 +6,10 @@ import asyncio
 import base64
 import logging
 import os
+import re
 import threading
 from contextlib import asynccontextmanager
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI
 from fastapi.exceptions import HTTPException, RequestValidationError
@@ -65,19 +67,37 @@ def _parse_origins(raw: str) -> list[str]:
     return [o.strip() for o in raw.split(",") if o.strip()]
 
 
-# Default CORS regex: prod apex/www + Vercel preview subdomains.
-# Override via CORS_ORIGIN_REGEX env for dev/localhost if needed.
+# Default CORS regex: the one deployment-owned dashboard origin only.
+# Override via CORS_ORIGIN_REGEX for an explicit, reviewed set of origins.
 # When the local labeling tool is enabled (LABELING_ENABLED=1) the regex also
 # allows localhost/127.0.0.1 origins so the /label viewer can stream STLs from
 # the local backend (CAD stays on localhost). An explicit CORS_ORIGIN_REGEX env
 # always wins.
 LABELING_ENABLED = os.getenv("LABELING_ENABLED") == "1"
-_DEFAULT_CORS_REGEX = r"^https://(cadverify\.com|www\.cadverify\.com|[a-z0-9-]+\.vercel\.app)$"
-if LABELING_ENABLED:
-    _DEFAULT_CORS_REGEX = (
-        r"^(https://(cadverify\.com|www\.cadverify\.com|[a-z0-9-]+\.vercel\.app)"
-        r"|https?://(localhost|127\.0\.0\.1)(:\d+)?)$"
-    )
+
+
+def _default_cors_regex() -> str:
+    patterns: list[str] = []
+    dashboard_origin = os.getenv("DASHBOARD_ORIGIN", "").strip().rstrip("/")
+    try:
+        parsed = urlsplit(dashboard_origin)
+    except ValueError:
+        parsed = None
+    if (
+        parsed is not None
+        and parsed.scheme in {"http", "https"}
+        and parsed.netloc
+        and not parsed.path
+        and not parsed.query
+        and not parsed.fragment
+    ):
+        patterns.append(re.escape(dashboard_origin))
+    if LABELING_ENABLED:
+        patterns.append(r"https?://(?:localhost|127\.0\.0\.1)(?::\d+)?")
+    return rf"^(?:{'|'.join(patterns)})$" if patterns else r"(?!)"
+
+
+_DEFAULT_CORS_REGEX = _default_cors_regex()
 CORS_ORIGIN_REGEX = os.getenv("CORS_ORIGIN_REGEX", _DEFAULT_CORS_REGEX)
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
@@ -389,7 +409,7 @@ app.add_exception_handler(StarletteHTTPException, structured_http_error_handler)
 app.add_exception_handler(RequestValidationError, structured_validation_error_handler)
 app.add_middleware(SlowAPIMiddleware)
 
-# CORS: regex origin matches prod apex/www + Vercel preview subdomains.
+# CORS: exact deployment-owned origin by default; no wildcard preview domains.
 # Explicit allow_headers (no wildcard); allow_credentials=False (stateless API,
 # dashboard session lives on a different subdomain).
 app.add_middleware(
