@@ -21,7 +21,11 @@ import numpy as np
 from src.analysis.citations import parse_citation
 from src.analysis.constants import STANDARD_GAUGES
 from src.analysis.context import GeometryContext
-from src.analysis.features.base import Feature, FeatureKind
+from src.analysis.features.base import (
+    Feature,
+    FeatureKind,
+    has_rotational_surface_evidence,
+)
 from src.analysis.models import Issue, ProcessType, Severity
 
 logger = logging.getLogger("cadverify.checks")
@@ -581,14 +585,18 @@ def check_rotational_symmetry(
         # Two eigenvalues should be approximately equal for rotational symmetry
         ratio_01 = eig[0] / eig[1] if eig[1] > 0 else 0
         ratio_12 = eig[1] / eig[2] if eig[2] > 0 else 0
-        is_symmetric = (abs(1.0 - ratio_01) < tolerance) or (abs(1.0 - ratio_12) < tolerance)
+        is_symmetric = (
+            (abs(1.0 - ratio_01) < tolerance)
+            or (abs(1.0 - ratio_12) < tolerance)
+        ) and has_rotational_surface_evidence(ctx.features, ctx.info.surface_area)
         if not is_symmetric:
             return [Issue(
                 code="NOT_ROTATIONALLY_SYMMETRIC",
                 severity=Severity.ERROR,
                 message=(
-                    f"Part lacks rotational symmetry (eigenvalue ratios: "
-                    f"{ratio_01:.2f}, {ratio_12:.2f}). Required for {process.value}."
+                    f"Part lacks positive rotational geometry (eigenvalue ratios: "
+                    f"{ratio_01:.2f}, {ratio_12:.2f}; no material outer cylindrical "
+                    f"surface). Required for {process.value}."
                 ),
                 process=process,
                 fix_suggestion="CNC turning requires axially symmetric geometry. Use mill-turn or 3/5-axis CNC.",

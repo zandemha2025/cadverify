@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Optional
 
 from src.analysis.models import ProcessType
+from src.analysis.features.base import has_rotational_surface_evidence
 from src.costing.makeability import environment_gate
 from src.profiles.database import get_materials_for_process
 from src.costing.rates import (
@@ -61,41 +62,6 @@ def _inertia_axisymmetric(mesh, tolerance: float = ROTATIONAL_INERTIA_TOL) -> bo
         return False
 
 
-def _has_measured_cylindrical_boss(features, surface_area_mm2: float) -> bool:
-    """Require positive curved-surface evidence before claiming a lathe route.
-
-    Similar bounding-box dimensions and inertia moments are necessary for a
-    rotational part, but they are not sufficient: an L bracket and an open box
-    can satisfy both accidentally.  A genuine turned solid exposes at least one
-    measured outer cylindrical surface.  Small bores in an otherwise prismatic
-    part do not count because only ``cylinder_boss`` area is considered.
-    """
-    if not features or surface_area_mm2 <= 0:
-        return False
-    boss_area = 0.0
-    for feature in features:
-        kind = getattr(getattr(feature, "kind", None), "value", getattr(feature, "kind", None))
-        if kind != "cylinder_boss":
-            continue
-        singular_values = (getattr(feature, "metadata", {}) or {}).get(
-            "singular_values", []
-        )
-        # A planar triangulated patch can be fitted as a zero-residual
-        # "cylinder" because all of its normals are identical. A real
-        # cylindrical wall has normal variation in two independent radial
-        # directions, so the second singular value must carry material weight.
-        if (
-            len(singular_values) < 2
-            or float(singular_values[0]) <= 0
-            or float(singular_values[1]) / float(singular_values[0]) < 0.25
-        ):
-            continue
-        area = getattr(feature, "area", 0.0) or 0.0
-        if area > 0:
-            boss_area += float(area)
-    return boss_area >= 0.05 * float(surface_area_mm2)
-
-
 def is_rotational(geometry, mesh=None, features=None):
     """Rotational predicate (spec §5.1) — CONSISTENT with the DFM gate by design.
 
@@ -139,7 +105,7 @@ def is_rotational(geometry, mesh=None, features=None):
     rotational = (
         (roundness >= 0.80)
         and _inertia_axisymmetric(mesh)
-        and _has_measured_cylindrical_boss(
+        and has_rotational_surface_evidence(
             features, float(getattr(geometry, "surface_area", 0.0) or 0.0)
         )
         and (cross_dia >= 5.0)
