@@ -708,7 +708,7 @@ asyncio.run(main())
           throw new SkipStep(`${route.path} returned 404; Verify UI flag appears off in this build`);
         }
         const redirected = isLoginUrl(page.url());
-        const loginCopy = /Log in to CadVerify|Welcome back|Create an account/i.test(text);
+        const loginCopy = /Log in to ProofShape|Welcome back|Create an account/i.test(text);
         assert(
           redirected || loginCopy,
           `${route.path} did not redirect to or render login. URL: ${page.url()}`

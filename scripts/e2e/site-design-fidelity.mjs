@@ -123,7 +123,7 @@ const routeSpecs = [
 ];
 
 const desktopNavSignals = [
-  /CadVerify/i,
+  /ProofShape/i,
   /Method/i,
   /Platform/i,
   /Teams/i,

@@ -320,7 +320,7 @@ class EnterpriseDomainQA {
         await this.page.getByLabel("Password").fill(loginPassword);
         await this.page.getByRole("button", { name: /^Log in$/ }).click();
         await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
-        await this.expectText(/CadVerify|Home|Verify/i, "verify shell after login");
+        await this.expectText(/ProofShape|Home|Verify/i, "verify shell after login");
         const members = await this.expectApiOk("/admin/users");
         assert(Array.isArray(members.users), "members response missing users");
         const self = members.users.find((u) => u.email === loginEmail);

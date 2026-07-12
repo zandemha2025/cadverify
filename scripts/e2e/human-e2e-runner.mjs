@@ -47,11 +47,11 @@ const forbiddenPatterns = [
 ];
 
 const expectedSignals = {
-  "/": [/CadVerify/i, /cost/i],
+  "/": [/ProofShape/i, /cost/i],
   "/platform": [/Platform/i, /Verify/i],
   "/developers": [/Developers/i, /api/i],
   "/api-reference": [/API/i, /validate/i],
-  "/docs": [/API|Docs|CadVerify/i],
+  "/docs": [/API|Docs|ProofShape/i],
   "/teams": [/teams/i, /sourcing/i],
   "/teams/cost-engineering": [/Cost engineering|cost/i],
   "/teams/design-engineering": [/Design engineering|engineering/i],
@@ -61,7 +61,7 @@ const expectedSignals = {
   "/method": [/method/i, /geometry/i],
   "/security": [/security/i, /CAD/i],
   "/status": [/status/i],
-  "/company": [/pilot/i, /CadVerify/i],
+  "/company": [/pilot/i, /ProofShape/i],
   "/pilot-report": [/pilot/i, /report/i],
   "/privacy": [/Privacy/i],
   "/terms": [/Terms/i],
@@ -85,7 +85,7 @@ const appRoutes = [
 ];
 
 const railSurfaces = [
-  { title: "Home", signal: /Home|verification desk|CadVerify/i },
+  { title: "Home", signal: /Home|verification desk|ProofShape/i },
   { title: "Verify", signal: /Drop a part|Verify a part|STEP|STL/i },
   { title: "Parts", signal: /Parts|No parts|catalog/i },
   { title: "Records", signal: /Records|No records|verified/i },
@@ -278,7 +278,7 @@ class HumanE2E {
       await this.context.clearCookies();
       await this.page.goto("/verify", { waitUntil: "domcontentloaded", timeout: 30_000 });
       await this.page.waitForURL(/\/login(?:\?|$)/, { timeout: 12_000 });
-      await this.expectText(/Log in to CadVerify/i, "login gate");
+      await this.expectText(/Log in to ProofShape/i, "login gate");
       await this.scanVisibleText("login-gate");
       return { screenshot: await this.shot("login-gate") };
     });
@@ -300,7 +300,7 @@ class HumanE2E {
         await this.page.getByLabel("Password").fill(loginPassword);
         await this.page.getByRole("button", { name: /^Log in$/ }).click();
         await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
-        await this.expectText(/CadVerify|Home|Verify/i, "verify shell after login");
+        await this.expectText(/ProofShape|Home|Verify/i, "verify shell after login");
         await this.scanVisibleText("login-existing-account");
         return { screenshot: await this.shot("login-existing-account") };
       });
@@ -337,7 +337,7 @@ class HumanE2E {
     await this.step("authenticated /verify loads Verify shell", async () => {
       await this.goto("/verify", "verify shell", { settleMs: 1200 });
       if (/\/login/.test(this.page.url())) throw new Error("authenticated user was redirected back to login");
-      await this.expectText(/CadVerify|Home|Verify/i, "verify shell");
+      await this.expectText(/ProofShape|Home|Verify/i, "verify shell");
       return { screenshot: await this.shot("verify-shell-home") };
     });
 
@@ -352,7 +352,7 @@ class HumanE2E {
     }
 
     await this.step("command palette jumps to Triage", async () => {
-      await this.page.locator('button[title="Command palette (⌘K)"]').click();
+      await this.page.getByRole("button", { name: "Open Verify command palette" }).click();
       await this.page.getByRole("textbox", { name: "Command palette search" }).fill("triage");
       await this.page.keyboard.press("Enter");
       await this.page.waitForTimeout(700);
@@ -361,15 +361,16 @@ class HumanE2E {
       return { screenshot: await this.shot("command-palette-triage") };
     });
 
-    await this.step("notifications panel opens and derives state", async () => {
-      await this.page.locator('button[title="Notifications"]').click();
-      await this.page.getByText(/NOTIFICATIONS|Notifications/i).first().waitFor({ timeout: 8000 });
+    await this.step("notifications inbox opens and derives state", async () => {
+      await this.page.getByRole("link", { name: "Notifications" }).click();
+      await this.page.waitForURL((url) => url.pathname === "/notifications", { timeout: 8000 });
+      await this.page.getByRole("heading", { name: "Notifications" }).waitFor({ timeout: 8000 });
       await this.page.waitForTimeout(1000);
-      const text = await this.scanVisibleText("notifications-panel");
+      const text = await this.scanVisibleText("notifications-inbox");
       if (/couldn.t read your states/i.test(text)) {
-        this.issue("medium", "Notifications panel shows an API read failure", firstMatch(text, /couldn.t read your states[^\n]*/i) || "API read failure");
+        this.issue("medium", "Notifications inbox shows an API read failure", firstMatch(text, /couldn.t read your states[^\n]*/i) || "API read failure");
       }
-      return { screenshot: await this.shot("notifications-panel") };
+      return { screenshot: await this.shot("notifications-inbox") };
     });
   }
 
@@ -398,14 +399,14 @@ class HumanE2E {
     await this.step("mobile public home loads without non-final copy", async () => {
       await this.page.setViewportSize({ width: 390, height: 844 });
       await this.goto("/", "mobile-public-home", { settleMs: 1200 });
-      await this.expectText(/CadVerify|cost/i, "mobile public home");
+      await this.expectText(/ProofShape|cost/i, "mobile public home");
       return { screenshot: await this.shot("mobile-public-home", true) };
     });
 
     await this.step("mobile Verify shell loads authenticated", async () => {
       await this.goto("/verify", "mobile-verify", { settleMs: 1200 });
       if (/\/login/.test(this.page.url())) throw new Error("authenticated mobile user was redirected back to login");
-      await this.expectText(/CadVerify|Home|Verify/i, "mobile verify shell");
+      await this.expectText(/ProofShape|Home|Verify/i, "mobile verify shell");
       return { screenshot: await this.shot("mobile-verify", true) };
     });
 
