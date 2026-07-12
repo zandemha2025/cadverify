@@ -108,27 +108,22 @@ async def confirm_identity(
             status_code=404,
             detail="no part in your library for that mesh_hash (analyze it first)",
         )
+    from src.services.audit_service import emit_event
+
+    await emit_event(
+        session,
+        actor_id=user.user_id,
+        action="identity.confirm",
+        resource_type="part_signature",
+        resource_id=mesh_hash,
+        detail={
+            "declared_part_id": body.declared_part_id,
+            "declared_name": body.declared_name,
+            "program": body.program,
+        },
+        org_id=org_id,
+    )
     await session.commit()
-
-    # Honest audit fire (best-effort, background) — a human asserted an identity.
-    # emit_event resolves the actor email + writes one audit_log row off-request;
-    # a scheduling failure is swallowed, never breaking the confirm that committed.
-    try:
-        from src.services import audit_service
-
-        audit_service.emit_event(
-            actor_id=user.user_id,
-            action="identity.confirm",
-            resource_type="part_signature",
-            resource_id=mesh_hash,
-            detail={
-                "declared_part_id": body.declared_part_id,
-                "declared_name": body.declared_name,
-                "program": body.program,
-            },
-        )
-    except Exception:  # pragma: no cover - audit is best-effort, never fatal
-        logger.warning("identity.confirm audit fire failed", exc_info=True)
 
     return sigsvc.serialize_signature(row)
 

@@ -16,7 +16,6 @@ Verifies the TRUE-BLUE claims of the P3 layer against the real AS1 STEP assembly
 from __future__ import annotations
 
 import importlib
-from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -25,37 +24,15 @@ import trimesh
 from fastapi.testclient import TestClient
 
 from src.parsers.step_mesher import is_step_supported
+from tests.cad_fixtures import as1_fixture_bytes
 
 _needs_gmsh = pytest.mark.skipif(
     not is_step_supported(), reason="gmsh/STEP path unavailable"
 )
 
 
-def _as1_path() -> Path | None:
-    """Locate the real AS1 assembly across the copies that may exist: the
-    gitignored corpus copy (repo root and worktree root), and the copies that ship
-    inside the gmsh distribution's public examples."""
-    import gmsh  # type: ignore
-
-    gbase = Path(gmsh.__file__).resolve()
-    candidates = [
-        Path(__file__).resolve().parents[2] / "data/real-corpus/as1-tu-203.stp",
-        Path("/home/user/cadverify/data/real-corpus/as1-tu-203.stp"),
-        gbase.parent / "share/doc/gmsh/examples/api/as1-tu-203.stp",
-        gbase.parents[3] / "share/doc/gmsh/examples/api/as1-tu-203.stp",
-        gbase.parents[3] / "share/doc/gmsh/examples/boolean/as1-tu-203.stp",
-    ]
-    for c in candidates:
-        if c.exists():
-            return c
-    return None
-
-
 def _as1_bytes() -> bytes:
-    p = _as1_path()
-    if p is None:
-        pytest.skip("AS1 real assembly file not available")
-    return p.read_bytes()
+    return as1_fixture_bytes()
 
 
 # ── Pure interference geometry (synthetic, no gmsh): touching vs clearing ────

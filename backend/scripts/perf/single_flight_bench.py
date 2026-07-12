@@ -27,11 +27,9 @@ from pathlib import Path
 from src.api import routes
 from src.parsers import mesh_cache, parse_pool
 
-PART = Path(
-    "/home/user/cadverify/data/real-corpus/NIST-PMI-STEP-Files/"
-    "AP203 geometry only/nist_ctc_05_asme1_rd.stp"
-)
-CUBE = Path("tests/assets/cube.step")
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
+PART = BACKEND_ROOT / "tests" / "assets" / "nist_periodic_ctc05.stp"
+CUBE = BACKEND_ROOT / "tests" / "assets" / "cube.step"
 N = 3  # the real Verify burst: /validate + /validate/cost + /validate/preview-mesh
 
 

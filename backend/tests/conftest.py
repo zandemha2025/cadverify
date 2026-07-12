@@ -21,6 +21,8 @@ import trimesh
 
 from src.auth.require_api_key import AuthedUser
 
+pytest_plugins = ("tests.ci_skip_policy", "pytester")
+
 
 # ──────────────────────────────────────────────────────────────
 # DB test fixtures — mocked async sessions for Phase 3 tests

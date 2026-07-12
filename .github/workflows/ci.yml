@@ -50,6 +50,7 @@ jobs:
       REDIS_URL: redis://localhost:6379
       RATE_LIMIT_DISABLED: "1"
       SIGNUP_RATE_LIMIT_DISABLED: "1"
+      CADVERIFY_ENFORCE_SKIP_POLICY: "1"
       # CI keeps Redis live for worker/async coverage, but disables route/signup
       # throttles so unrelated integration tests do not share one job-wide
       # rate-limit bucket. backend/tests/test_rate_limit.py and
@@ -345,6 +346,8 @@ jobs:
           exit 1
 
       - name: Run human and enterprise browser journeys
+        env:
+          E2E_FAIL_ON_UNAVAILABLE: "1"
         run: npm run test:e2e:full --prefix frontend
 
       - name: Upload browser E2E artifacts

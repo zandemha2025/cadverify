@@ -11,6 +11,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from src.auth.provisioning import ProvisionedLogin
+from src.services.org_saml_service import SamlGroupAssignment
+
 
 class _FakeSessionCM:
     def __init__(self, session):
@@ -149,59 +152,64 @@ def _magic_app():
 def test_magic_verify_mints_when_no_active_key():
     app = _magic_app()
     fake_redis = AsyncMock()
-    fake_redis.getdel = AsyncMock(return_value="user@example.com")
+    fake_redis.ttl = AsyncMock(return_value=900)
+    fake_redis.getdel = AsyncMock(return_value="1")
     with patch("src.auth.magic_link._verify", return_value="user@example.com"), patch(
         "src.auth.magic_link._r", return_value=fake_redis
     ), patch(
-        "src.auth.magic_link.upsert_user", new_callable=AsyncMock, return_value=5
-    ) as mock_upsert, patch(
-        "src.auth.magic_link.user_has_active_api_key",
+        "src.auth.magic_link.provision_authenticated_login",
         new_callable=AsyncMock,
-        return_value=False,
-    ), patch(
-        "src.auth.magic_link.create_api_key", new_callable=AsyncMock, return_value=1
-    ) as mock_create, patch(
-        "src.auth.magic_link.get_user_session_version",
-        new_callable=AsyncMock,
-        return_value=0,
-    ):
+        return_value=ProvisionedLogin(
+            user_id=5,
+            user_email="user@example.com",
+            session_version=0,
+            created=True,
+            group_assignment=SamlGroupAssignment(matched=False),
+            key_id=1,
+            key_prefix="cv_test1",
+            key_token="cv_live_secret",
+        ),
+    ) as provision:
         client = TestClient(app, follow_redirects=False)
         resp = client.get(f"/auth/magic/verify?token={'a' * 32}")
 
     assert resp.status_code == 303
     assert "new=1" in resp.headers["location"]
-    mock_upsert.assert_awaited_once_with(
-        "user@example.com", None, "user@example.com", auth_provider="magic_link"
+    provision.assert_awaited_once_with(
+        email="user@example.com",
+        provider="magic_link",
+        key_name="Default",
+        default_role="analyst",
     )
-    mock_create.assert_awaited_once()
 
 
 def test_magic_verify_skips_when_key_exists():
     app = _magic_app()
     fake_redis = AsyncMock()
-    fake_redis.getdel = AsyncMock(return_value="user@example.com")
+    fake_redis.ttl = AsyncMock(return_value=900)
+    fake_redis.getdel = AsyncMock(return_value="1")
     with patch("src.auth.magic_link._verify", return_value="user@example.com"), patch(
         "src.auth.magic_link._r", return_value=fake_redis
     ), patch(
-        "src.auth.magic_link.upsert_user", new_callable=AsyncMock, return_value=5
-    ) as mock_upsert, patch(
-        "src.auth.magic_link.user_has_active_api_key",
+        "src.auth.magic_link.provision_authenticated_login",
         new_callable=AsyncMock,
-        return_value=True,
-    ), patch(
-        "src.auth.magic_link.create_api_key", new_callable=AsyncMock
-    ) as mock_create, patch(
-        "src.auth.magic_link.get_user_session_version",
-        new_callable=AsyncMock,
-        return_value=0,
-    ):
+        return_value=ProvisionedLogin(
+            user_id=5,
+            user_email="user@example.com",
+            session_version=0,
+            created=False,
+            group_assignment=SamlGroupAssignment(matched=False),
+        ),
+    ) as provision:
         client = TestClient(app, follow_redirects=False)
         resp = client.get(f"/auth/magic/verify?token={'a' * 32}")
 
     assert resp.status_code == 303
     assert resp.headers["location"] == "https://cadverify.com/verify"
     assert "cv_mint_once" not in resp.headers.get("set-cookie", "")
-    mock_upsert.assert_awaited_once_with(
-        "user@example.com", None, "user@example.com", auth_provider="magic_link"
+    provision.assert_awaited_once_with(
+        email="user@example.com",
+        provider="magic_link",
+        key_name="Default",
+        default_role="analyst",
     )
-    mock_create.assert_not_called()

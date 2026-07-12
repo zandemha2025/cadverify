@@ -40,6 +40,11 @@ existing Fly deployment is staging until every gate below passes.
    origin tag. Backend Sentry DSNs remain unique Fly secrets per environment.
 9. Required reviewers and deployment-branch protection on `saas-production`;
    protect `main` with the complete CI workflow as a required check.
+10. A licensed, provenance-locked supplier holdout and accountable reviewer
+    satisfying `SUPPLIER_HOLDOUT_EVIDENCE.md`. The reviewed summary for each
+    exact release is stored under the same
+    `CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64` secret name in both protected
+    environments so production can revalidate freshness after its approval wait.
 
 ## Pre-deploy
 
@@ -61,7 +66,7 @@ existing Fly deployment is staging until every gate below passes.
    ```bash
    CADVERIFY_REQUIRE_PRODUCTION_STORAGE=1 \
    CADVERIFY_REQUIRE_OBSERVABILITY=1 \
-   CADVERIFY_FORBIDDEN_FLY_SECRETS=DASHBOARD_ORIGIN,AUTH_MODE,MAGIC_LINK_ENABLED,PASSWORD_LOGIN_ENABLED,PUBLIC_PASSWORD_SIGNUP_ENABLED,SESSION_COOKIE_DOMAIN,OBJECT_STORE_BACKEND,RELEASE,DEPLOYMENT_ENVIRONMENT,SECRET_ENFORCEMENT_ENABLED,WEBHOOK_SSRF_GUARD_ENABLED,SECURITY_HEADERS_ENABLED,RECONSTRUCTION_BACKEND,RECONSTRUCTION_ALLOW_REMOTE_EGRESS,PRODUCTION_STORAGE_REQUIRED,PRODUCTION_OBSERVABILITY_REQUIRED,PRODUCTION_TLS_REQUIRED,PRODUCTION_DEEP_HEALTH_AUTH_REQUIRED,PRODUCTION_AUTH_PROXY_REQUIRED,PRODUCTION_VERIFIED_SIGNUP_REQUIRED,PRODUCTION_HOST_ONLY_SESSION_COOKIE_REQUIRED,PRODUCTION_CRYPTO_SECRET_QUALITY_REQUIRED,PRODUCTION_SSRF_GUARD_REQUIRED,PRODUCTION_SECURITY_HEADERS_REQUIRED,ASYNC_STRICT_HEALTH,WORKER_STRICT_HEALTH,RATE_LIMIT_ALLOW_MEMORY,DB_REQUIRE_TLS,NODE_ENV \
+   CADVERIFY_FORBIDDEN_FLY_SECRETS=DASHBOARD_ORIGIN,AUTH_MODE,MAGIC_LINK_ENABLED,PASSWORD_LOGIN_ENABLED,PUBLIC_PASSWORD_SIGNUP_ENABLED,SESSION_COOKIE_DOMAIN,OBJECT_STORE_BACKEND,RELEASE,DEPLOYMENT_ENVIRONMENT,SECRET_ENFORCEMENT_ENABLED,WEBHOOK_SSRF_GUARD_ENABLED,SECURITY_HEADERS_ENABLED,RECONSTRUCTION_BACKEND,RECONSTRUCTION_ALLOW_REMOTE_EGRESS,PRODUCTION_STORAGE_REQUIRED,PRODUCTION_OBSERVABILITY_REQUIRED,PRODUCTION_TLS_REQUIRED,PRODUCTION_DEEP_HEALTH_AUTH_REQUIRED,PRODUCTION_AUTH_PROXY_REQUIRED,PRODUCTION_VERIFIED_SIGNUP_REQUIRED,PRODUCTION_HOST_ONLY_SESSION_COOKIE_REQUIRED,PRODUCTION_CRYPTO_SECRET_QUALITY_REQUIRED,PRODUCTION_SSRF_GUARD_REQUIRED,PRODUCTION_SECURITY_HEADERS_REQUIRED,ASYNC_STRICT_HEALTH,WORKER_STRICT_HEALTH,RATE_LIMIT_ALLOW_MEMORY,PARSE_PROCESS_POOL_DISABLED,DB_REQUIRE_TLS,NODE_ENV \
    FLY_APP_NAME=<target-api-app> \
    node scripts/ops/fly-required-secrets-gate.mjs
 
@@ -81,20 +86,27 @@ Merge the reviewed SHA to protected `main`. CI tests the application, builds and
 scans both images, creates SBOMs, and uploads a CI-owned release manifest with
 their immutable digests. CI does **not** deploy production.
 
-From Actions, run **Commercial SaaS Promotion** on `main` with that exact
-40-character SHA. The workflow:
+Evaluate that exact 40-character main SHA against the frozen supplier holdout,
+retain the confidential artifacts and human approval, and set the base64
+summary described in `SUPPLIER_HOLDOUT_EVIDENCE.md` on the protected
+`saas-staging` and `saas-production` environments. Then run **Commercial SaaS
+Promotion** on `main` with the same SHA. The workflow:
 
 1. requires a successful push-triggered CI run for the SHA and downloads its
    immutable release manifest;
-2. validates staging HTTPS origins, API/web Fly secrets, the absence of every
+2. fails closed unless the protected holdout is recent, release-bound,
+   provenance-locked, independently approved, sufficiently sampled per launch
+   family, and within every accuracy gate;
+3. validates staging HTTPS origins, API/web Fly secrets, the absence of every
    forbidden auth/release/storage/guard shadowing secret, and image manifests;
-3. deploys the digest-qualified backend, runs the migration, scales two API and
+4. deploys the digest-qualified backend, runs the migration, scales two API and
    two workers, and requires deep health before deploying two frontend Machines;
    it then proves the signed client-IP auth proxy end to end;
-4. records staging evidence; then
-5. pauses at the protected `saas-production` environment. After reviewer
-   approval, it rejects any staging resource reuse and promotes the exact same
-   digests through the same gates.
+5. records staging evidence, including only the holdout summary digest; then
+6. pauses at the protected `saas-production` environment. After reviewer
+   approval, it revalidates evidence freshness, requires an exact match to the
+   staging evidence digest, rejects staging resource reuse, and promotes the
+   exact same image digests through the same gates.
 
 The frontend image contains no API hostname. `API_BASE` and the deployment
 environment are supplied only at runtime. Fly machine files are disposable
@@ -126,6 +138,9 @@ The release remains blocked until all of these pass:
   real client IPs instead of one shared frontend-machine address. Unsigned
   direct calls to session-returning password/magic API endpoints must fail.
 - Real STEP upload, cost/verdict, persisted decision, export, and deletion path.
+- Protected supplier-quote evidence for the exact release passes the 20+ part,
+  3+ supplier, launch-family coverage, MAPE/P90, process-bias, provenance,
+  tuning-separation, freshness, and approval gates.
 - Two-organization isolation probe returns 404 across tenants.
 - S3 write/read/delete and lifecycle evidence.
 - Sentry receives a scrubbed test event; uptime alert reaches the on-call path.

@@ -25,6 +25,7 @@ issues, logs, artifacts, or Helm values.
 | Custom API and dashboard HTTPS domains per environment | runtime routing, cookies, magic links, monitoring |
 | Backend Sentry DSN per environment and one commercial browser Sentry project | errors, release correlation, paging |
 | External uptime/paging and accountable on-call owner | operational response |
+| Licensed supplier-quote holdout and accountable accuracy reviewer | release-bound production-accuracy evidence |
 
 Choose regions deliberately and record the latency, residency, backup, and
 support implications. Do not put regulated data in these commercial resources.
@@ -52,6 +53,13 @@ support implications. Do not put regulated data in these commercial resources.
    - `FLY_REGISTRY_TOKEN` for CI image publication, separate from deployment
      tokens; and
    - `NEXT_PUBLIC_SENTRY_DSN` for the commercial browser image.
+
+6. After CI creates the exact release SHA, set the same reviewed base64 summary
+   from `SUPPLIER_HOLDOUT_EVIDENCE.md` as
+   `CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64` in both protected environments. Do
+   not put raw CAD, quote values, supplier identities, or personal data in that
+   summary. Update both secrets for every release. Each job revalidates
+   freshness, and production requires its evidence digest to equal staging's.
 
 The browser DSN is a build-time value. Staging and production promote the same
 frontend digest, so browser events share a commercial project and are separated
@@ -150,7 +158,7 @@ Validate secret names without printing values:
 FLY_APP_NAME=<target-api-app> \
 CADVERIFY_REQUIRE_PRODUCTION_STORAGE=1 \
 CADVERIFY_REQUIRE_OBSERVABILITY=1 \
-CADVERIFY_FORBIDDEN_FLY_SECRETS=DASHBOARD_ORIGIN,AUTH_MODE,MAGIC_LINK_ENABLED,PASSWORD_LOGIN_ENABLED,PUBLIC_PASSWORD_SIGNUP_ENABLED,SESSION_COOKIE_DOMAIN,OBJECT_STORE_BACKEND,RELEASE,DEPLOYMENT_ENVIRONMENT,SECRET_ENFORCEMENT_ENABLED,WEBHOOK_SSRF_GUARD_ENABLED,SECURITY_HEADERS_ENABLED,RECONSTRUCTION_BACKEND,RECONSTRUCTION_ALLOW_REMOTE_EGRESS,PRODUCTION_STORAGE_REQUIRED,PRODUCTION_OBSERVABILITY_REQUIRED,PRODUCTION_TLS_REQUIRED,PRODUCTION_DEEP_HEALTH_AUTH_REQUIRED,PRODUCTION_AUTH_PROXY_REQUIRED,PRODUCTION_VERIFIED_SIGNUP_REQUIRED,PRODUCTION_HOST_ONLY_SESSION_COOKIE_REQUIRED,PRODUCTION_CRYPTO_SECRET_QUALITY_REQUIRED,PRODUCTION_SSRF_GUARD_REQUIRED,PRODUCTION_SECURITY_HEADERS_REQUIRED,ASYNC_STRICT_HEALTH,WORKER_STRICT_HEALTH,RATE_LIMIT_ALLOW_MEMORY,DB_REQUIRE_TLS,NODE_ENV \
+CADVERIFY_FORBIDDEN_FLY_SECRETS=DASHBOARD_ORIGIN,AUTH_MODE,MAGIC_LINK_ENABLED,PASSWORD_LOGIN_ENABLED,PUBLIC_PASSWORD_SIGNUP_ENABLED,SESSION_COOKIE_DOMAIN,OBJECT_STORE_BACKEND,RELEASE,DEPLOYMENT_ENVIRONMENT,SECRET_ENFORCEMENT_ENABLED,WEBHOOK_SSRF_GUARD_ENABLED,SECURITY_HEADERS_ENABLED,RECONSTRUCTION_BACKEND,RECONSTRUCTION_ALLOW_REMOTE_EGRESS,PRODUCTION_STORAGE_REQUIRED,PRODUCTION_OBSERVABILITY_REQUIRED,PRODUCTION_TLS_REQUIRED,PRODUCTION_DEEP_HEALTH_AUTH_REQUIRED,PRODUCTION_AUTH_PROXY_REQUIRED,PRODUCTION_VERIFIED_SIGNUP_REQUIRED,PRODUCTION_HOST_ONLY_SESSION_COOKIE_REQUIRED,PRODUCTION_CRYPTO_SECRET_QUALITY_REQUIRED,PRODUCTION_SSRF_GUARD_REQUIRED,PRODUCTION_SECURITY_HEADERS_REQUIRED,ASYNC_STRICT_HEALTH,WORKER_STRICT_HEALTH,RATE_LIMIT_ALLOW_MEMORY,PARSE_PROCESS_POOL_DISABLED,DB_REQUIRE_TLS,NODE_ENV \
 node scripts/ops/fly-required-secrets-gate.mjs
 
 FLY_APP_NAME=<target-web-app> \
@@ -183,20 +191,26 @@ push-triggered CI workflow succeeded and its release artifact exists.
 ## 6. Promote staging, then production
 
 From the Actions page on `main`, run **Commercial SaaS Promotion** with the exact
-40-character release SHA. `.github/workflows/saas-promote.yml`:
+40-character release SHA only after evaluating that same SHA and setting its
+protected supplier-holdout summary. `.github/workflows/saas-promote.yml`:
 
 1. finds the successful CI run for that SHA and downloads the CI-owned manifest;
-2. validates the SHA, immutable digest references, origins, app isolation, and
+2. validates the protected holdout's schema, age, per-process sample depth,
+   exact release binding,
+   provenance/approval controls, process coverage, and accuracy thresholds;
+3. validates the SHA, immutable digest references, origins, app isolation, and
    required backend secrets before mutation;
-3. deploys the backend digest with a rolling strategy. The Fly release command
+4. deploys the backend digest with a rolling strategy. The Fly release command
    runs `alembic upgrade head` using the direct DB URL;
-4. pins two API and two worker Machines and requires Postgres, Redis, S3, queue,
+5. pins two API and two worker Machines and requires Postgres, Redis, S3, queue,
    and worker-heartbeat deep health;
-5. deploys the same release's frontend digest with runtime `API_BASE`, pins two
+6. deploys the same release's frontend digest with runtime `API_BASE`, pins two
    frontend Machines, and probes the custom dashboard origin;
-6. uploads a non-secret staging record; and
-7. waits for the protected production approval. Production must use distinct
-   apps/origins and exactly the staged image digests.
+7. uploads a non-secret staging record containing the holdout evidence digest;
+   and
+8. waits for the protected production approval. Production revalidates the
+   protected holdout after the wait and requires the same evidence digest,
+   distinct apps/origins, and exactly the staged image digests.
 
 Database migrations are not undone by an application rollback. Review every
 migration for backward compatibility and a compensating plan before approving
@@ -218,6 +232,9 @@ production candidate where safe, retain evidence for all of the following:
   logs out, and exercises logout-all/session revocation.
 - A real STEP file completes upload, parsing, makeability/cost, persistence,
   PDF/export, and authorized deletion.
+- The exact release passes the protected supplier-quote holdout in
+  `SUPPLIER_HOLDOUT_EVIDENCE.md`; the retained approval and confidential
+  artifacts hash to the digests named by the protected summary.
 - Batch ZIP and reconstruction paths complete through S3 and workers.
 - Two real organizations cannot read, mutate, download, or infer one another's
   objects; cross-tenant identifiers return the documented 404 behavior.

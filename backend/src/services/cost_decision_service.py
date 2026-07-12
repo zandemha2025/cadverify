@@ -203,19 +203,15 @@ async def persist_cost_decision(
             exc_info=True,
         )
 
-    # Audit: decision.created (§35 — decisions themselves were previously
-    # unaudited, so "why did we decide in March?" was unanswerable). Fired only
-    # on a NEW persist (dedup hits return above), best-effort, off the request
-    # transaction. Payload carries org + actor + the decision summary — no CAD,
-    # no PII beyond what the audit surface already shows.
-    import asyncio
+    # Audit: decision.created. Added to the same transaction as the decision so
+    # the decision and its evidence cannot diverge.
+    from src.services.audit_service import emit_event
 
-    from src.services.audit_service import _lookup_email, fire_and_forget_audit
-
-    _actor_email = await _lookup_email(user.user_id)
-    asyncio.create_task(fire_and_forget_audit(
-        user_id=user.user_id, user_email=_actor_email,
-        action="decision.created", resource_type="cost_decision",
+    await emit_event(
+        session,
+        actor_id=user.user_id,
+        action="decision.created",
+        resource_type="cost_decision",
         resource_id=decision.ulid,
         detail={
             "org_id": decision.org_id,
@@ -223,7 +219,8 @@ async def persist_cost_decision(
             "make_now_process": make_now,
             "crossover_qty": crossover,
         },
-    ))
+        org_id=decision.org_id,
+    )
     return decision
 
 

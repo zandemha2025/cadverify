@@ -1,12 +1,12 @@
 """Process-pool STEP/IGES parsing — correctness, safety, and concurrency.
 
 CORRECTNESS IS SACRED on the untrusted CAD parse path: a process-pool parse MUST
-produce a mesh byte-identical to the in-thread parse, and every failure mode must
-fall back to a correct result — never a 500, never a hung server. These tests
+produce a mesh byte-identical to the in-thread parse, and crash recovery must
+stay isolated and bounded — never a hung server or in-process retry. These tests
 prove:
   * pooled parse == in-thread parse, byte-for-byte (real spawn worker + pickle);
   * kill switch (PARSE_PROCESS_POOL_DISABLED=1) => in-thread, pool never created;
-  * BrokenProcessPool => recycle + in-thread fallback yields a CORRECT mesh;
+  * BrokenProcessPool => hard recycle + fresh killable subprocess retry;
   * the per-request triangle cap is still enforced on the pooled path (400);
   * the timeout still returns 504 and recycles the pool;
   * the mesh cache composes — a warm hit is served without touching the pool;
@@ -88,6 +88,18 @@ def test_worker_count_bounds_and_override(monkeypatch):
     assert parse_pool.worker_count() >= 1  # falls back to derived default
 
 
+def test_final_shutdown_blocks_late_prewarm_recreation():
+    """A detached startup thread cannot recreate workers after ASGI shutdown."""
+    parse_pool.startup()
+    parse_pool.shutdown(final=True)
+
+    assert parse_pool.prewarm(block=True) == 0
+    assert parse_pool._POOL is None
+
+    # A later test/server lifespan can explicitly reopen the lifecycle.
+    parse_pool.startup()
+
+
 # ──────────────────────────────────────────────────────────────
 # Correctness: pooled parse is byte-identical to in-thread (the crux)
 # ──────────────────────────────────────────────────────────────
@@ -140,7 +152,7 @@ async def test_kill_switch_bypasses_pool(monkeypatch):
 
 
 # ──────────────────────────────────────────────────────────────
-# Robust fallback: BrokenProcessPool -> recycle + in-thread, correct mesh
+# Robust fallback: BrokenProcessPool -> hard recycle + isolated retry
 # ──────────────────────────────────────────────────────────────
 class _FakeBrokenPool:
     def submit(self, *args, **kwargs):
@@ -148,29 +160,96 @@ class _FakeBrokenPool:
 
 
 @pytest.mark.asyncio
-async def test_broken_pool_falls_back_in_thread(monkeypatch):
-    _require_step()
-    data = CUBE_STEP.read_bytes()
-    m_ref, _ = _parse_mesh(data, "cube.step")
-    mesh_cache.get_cache().clear()
+async def test_broken_pool_retries_in_isolated_subprocess(monkeypatch):
+    recycled = {"n": 0, "kill": False}
+    isolated = {"calls": []}
+    expected = trimesh.creation.box(extents=(9, 8, 7))
 
-    recycled = {"n": 0}
-    real_recycle = parse_pool.recycle_pool
-
-    def _spy_recycle():
+    def _spy_recycle(*, kill=False):
         recycled["n"] += 1
-        real_recycle()
+        recycled["kill"] = kill
+
+    async def _isolated_retry(data, suffix, idx, cap):
+        isolated["calls"].append((data, suffix, idx, cap))
+        return expected.copy()
+
+    def _must_not_parse_in_api_process(*_args, **_kwargs):
+        raise AssertionError("crash recovery must not parse in the API process")
 
     monkeypatch.setattr(parse_pool, "recycle_pool", _spy_recycle)
     monkeypatch.setattr(parse_pool, "_get_pool", lambda: _FakeBrokenPool())
+    monkeypatch.setattr(parse_pool, "_run_rung_killable", _isolated_retry)
+    monkeypatch.setattr(parse_pool, "tessellate", _must_not_parse_in_api_process)
 
-    # Must NOT raise 500; must return a correct in-thread mesh.
-    m_fb, s = await _parse_mesh_async(data, "cube.step")
-    assert s == ".step"
-    assert recycled["n"] >= 1, "a broken pool must be recycled"
-    assert np.array_equal(m_fb.faces, m_ref.faces)
-    assert np.array_equal(m_fb.vertices, m_ref.vertices)
-    assert m_fb.volume == m_ref.volume
+    mesh = await parse_pool.submit_async(b"untrusted-step", ".step")
+
+    assert recycled == {"n": 1, "kill": True}
+    assert len(isolated["calls"]) == 1
+    assert isolated["calls"][0][0:3] == (b"untrusted-step", ".step", 0)
+    assert np.array_equal(mesh.faces, expected.faces)
+
+
+def test_sync_broken_pool_retries_in_isolated_subprocess(monkeypatch):
+    expected = trimesh.creation.box()
+    recycled = {"kill": False}
+    calls = []
+
+    monkeypatch.setattr(parse_pool, "_get_pool", lambda: _FakeBrokenPool())
+    monkeypatch.setattr(
+        parse_pool,
+        "recycle_pool",
+        lambda *, kill=False: recycled.update(kill=kill),
+    )
+    monkeypatch.setattr(
+        parse_pool,
+        "_run_tessellate_killable_sync",
+        lambda data, suffix, cap: calls.append((data, suffix, cap)) or expected,
+    )
+    monkeypatch.setattr(
+        parse_pool,
+        "tessellate",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("crash recovery must not parse in the API process")
+        ),
+    )
+
+    mesh = parse_pool.submit_sync(b"untrusted-step", ".step")
+
+    assert mesh is expected
+    assert recycled["kill"] is True
+    assert calls and calls[0][0:2] == (b"untrusted-step", ".step")
+
+
+@pytest.mark.asyncio
+async def test_assembly_broken_pool_retries_in_isolated_subprocess(monkeypatch):
+    expected = object()
+    recycled = {"kill": False}
+    calls = []
+
+    async def _isolated_retry(data, suffix):
+        calls.append((data, suffix))
+        return expected
+
+    monkeypatch.setattr(parse_pool, "_get_pool", lambda: _FakeBrokenPool())
+    monkeypatch.setattr(
+        parse_pool,
+        "recycle_pool",
+        lambda *, kill=False: recycled.update(kill=kill),
+    )
+    monkeypatch.setattr(parse_pool, "_run_assembly_killable", _isolated_retry)
+    monkeypatch.setattr(
+        parse_pool,
+        "_extract_assembly_worker",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("crash recovery must not parse in the API process")
+        ),
+    )
+
+    model = await parse_pool.submit_assembly_async(b"untrusted-step", ".step")
+
+    assert model is expected
+    assert recycled["kill"] is True
+    assert calls == [(b"untrusted-step", ".step")]
 
 
 # ──────────────────────────────────────────────────────────────
@@ -205,13 +284,43 @@ async def test_timeout_returns_504_and_recycles(monkeypatch):
     recycled = {"n": 0}
     monkeypatch.setattr(parse_pool, "submit_async", _slow_submit)
     monkeypatch.setattr(
-        parse_pool, "recycle_pool", lambda: recycled.__setitem__("n", recycled["n"] + 1)
+        parse_pool,
+        "recycle_pool",
+        lambda *, kill=False: recycled.update(n=recycled["n"] + 1, kill=kill),
     )
 
     with pytest.raises(HTTPException) as ei:
         await _parse_mesh_async(_fake_step_bytes(), "part.step")
     assert ei.value.status_code == 504
     assert recycled["n"] >= 1, "timeout must recycle the pool to reclaim a runaway"
+    assert recycled["kill"] is True, "timed-out untrusted CAD workers must be killed"
+
+
+@pytest.mark.asyncio
+async def test_cancelled_parse_hard_kills_pool(monkeypatch):
+    monkeypatch.setattr(routes, "is_step_supported", lambda: True)
+
+    started = asyncio.Event()
+
+    async def _never_finishes(_data, _suffix):
+        started.set()
+        await asyncio.Event().wait()
+
+    recycled = {"kill": False}
+    monkeypatch.setattr(parse_pool, "submit_async", _never_finishes)
+    monkeypatch.setattr(
+        parse_pool,
+        "recycle_pool",
+        lambda *, kill=False: recycled.update(kill=kill),
+    )
+
+    task = asyncio.create_task(_parse_mesh_async(_fake_step_bytes(), "part.step"))
+    await started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert recycled["kill"] is True
 
 
 # ──────────────────────────────────────────────────────────────

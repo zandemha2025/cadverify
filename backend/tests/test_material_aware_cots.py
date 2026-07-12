@@ -26,6 +26,7 @@ from src.analysis.models import (
     ProcessType,
 )
 from src.parsers.step_mesher import is_step_supported
+from tests.cad_fixtures import as1_fixture_bytes
 
 _needs_gmsh = pytest.mark.skipif(
     not is_step_supported(), reason="gmsh/STEP path unavailable"
@@ -220,15 +221,10 @@ def test_cots_block_carries_labelled_approximate_size():
 # ── Integration: AS1 end-to-end (gmsh-gated) ────────────────────────────────
 @_needs_gmsh
 def test_as1_no_resin_for_metal_and_fasteners_are_cots():
-    from pathlib import Path
-
     from src.parsers.assembly_mesher import extract_assembly_from_bytes
     from src.services.assembly_analysis_service import analyze_assembly_sync
 
-    p = Path("/home/user/cadverify/data/real-corpus/as1-tu-203.stp")
-    if not p.exists():
-        pytest.skip("AS1 real assembly file not available")
-    model = extract_assembly_from_bytes(p.read_bytes(), "as1-tu-203.stp")
+    model = extract_assembly_from_bytes(as1_fixture_bytes(), "as1-tu-203.stp")
     res = analyze_assembly_sync(model, material_class="aluminum", region="US")
 
     for r in res["per_part"]:

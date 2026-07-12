@@ -503,15 +503,17 @@ async def run_analysis(
         )
 
         # Audit: analysis.created
-        from src.services.audit_service import fire_and_forget_audit, _lookup_email
-        _audit_email = await _lookup_email(user.user_id)
-        asyncio.create_task(fire_and_forget_audit(
-            user_id=user.user_id, user_email=_audit_email,
-            action="analysis.created", resource_type="analysis",
+        from src.services.audit_service import emit_event
+        await emit_event(
+            session,
+            actor_id=user.user_id,
+            action="analysis.created",
+            resource_type="analysis",
             resource_id=analysis.ulid, file_hash=mesh_hash,
             result_summary=_verdict,
             detail={"process_set_hash": process_set_hash, "file_name": filename},
-        ))
+            org_id=analysis.org_id,
+        )
     except IntegrityError:
         # T-03B-01: Race condition — concurrent duplicate insert.
         # Roll back the failed flush and re-query the winning row.

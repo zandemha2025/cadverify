@@ -48,6 +48,12 @@ def assert_production_operations() -> None:
             "RATE_LIMIT_ALLOW_MEMORY cannot be enabled in a released process"
         )
 
+    if _enabled("PARSE_PROCESS_POOL_DISABLED"):
+        raise RuntimeError(
+            "PARSE_PROCESS_POOL_DISABLED cannot be enabled in production; "
+            "untrusted CAD must run in killable worker processes"
+        )
+
     if _enabled("PRODUCTION_CRYPTO_SECRET_QUALITY_REQUIRED"):
         session_secret = os.getenv("SESSION_SECRET", "").strip()
         if (

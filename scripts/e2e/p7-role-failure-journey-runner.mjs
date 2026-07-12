@@ -27,8 +27,12 @@ const artifacts = {
   md: path.join(outputRoot, `qa-report-p7-role-failure-${runId}.md`),
 };
 
+// This runner is a release gate: a required route that is absent, rejects the
+// seeded session, or returns an upstream/server failure is a failed release—not
+// a green run with skips. Local report-only diagnostics must opt out explicitly.
 const failOnUnavailable =
-  process.argv.includes("--require-app") || process.env.E2E_FAIL_ON_UNAVAILABLE === "1";
+  !process.argv.includes("--allow-unavailable") &&
+  process.env.E2E_FAIL_ON_UNAVAILABLE !== "0";
 
 const launchOptions = {
   channel: "chrome",
@@ -105,8 +109,8 @@ Optional auth hooks:
   E2E_VIEWER_STORAGE_STATE=/path/to/state.json      Seeded low-role storage state.
 
 Behavior:
-  If APP_URL is unavailable, writes an explicit SKIPPED_UNAVAILABLE report and exits 0.
-  Pass --require-app or E2E_FAIL_ON_UNAVAILABLE=1 to make an unavailable app fail.`;
+  Required journey skips and unavailable apps fail by default.
+  Pass --allow-unavailable or E2E_FAIL_ON_UNAVAILABLE=0 only for report-only local diagnostics.`;
 }
 
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
@@ -343,7 +347,7 @@ class P7RoleFailureQA {
       screenshotDir,
       `${String(this.steps.length + 1).padStart(2, "0")}-${slug(name)}.png`
     );
-    await page.screenshot({ path: file, fullPage, animations: "disabled" });
+    await page.screenshot({ path: file, fullPage, animations: "disabled", caret: "initial" });
     return file;
   }
 
@@ -1221,7 +1225,7 @@ asyncio.run(main())
     const passedSteps = this.steps.filter((s) => s.status === "pass").length;
     const status =
       statusOverride ||
-      (blocking.length === 0 && failedSteps === 0
+      (blocking.length === 0 && failedSteps === 0 && !(failOnUnavailable && skippedSteps > 0)
         ? skippedSteps > 0
           ? "PASS_WITH_SKIPS"
           : "PASS"

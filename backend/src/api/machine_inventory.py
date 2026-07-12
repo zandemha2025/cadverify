@@ -121,27 +121,25 @@ async def _require_org(session: AsyncSession, user: AuthedUser) -> str:
     return org_id
 
 
-def _emit_machine_audit(
-    user_id: int, org_id: str, action: str, machine_id: str
+async def _emit_machine_audit(
+    session: AsyncSession,
+    user_id: int,
+    org_id: str,
+    action: str,
+    machine_id: str,
 ) -> None:
-    """Fire-and-forget a machine.* audit event (§35 — machine CRUD was
-    previously unaudited). Best-effort; never blocks the request."""
-    import asyncio
+    """Append a machine event to the caller's mutation transaction."""
+    from src.services.audit_service import emit_event
 
-    from src.services.audit_service import _lookup_email, fire_and_forget_audit
-
-    async def _run():
-        email = await _lookup_email(user_id)
-        await fire_and_forget_audit(
-            user_id=user_id, user_email=email, action=action,
-            resource_type="machine", resource_id=machine_id,
-            detail={"org_id": org_id},
-        )
-
-    try:
-        asyncio.create_task(_run())
-    except Exception:
-        logger.warning("failed to emit %s audit", action, exc_info=True)
+    await emit_event(
+        session,
+        actor_id=user_id,
+        action=action,
+        resource_type="machine",
+        resource_id=machine_id,
+        detail={"org_id": org_id},
+        org_id=org_id,
+    )
 
 
 # ── static / prefix routes FIRST (before the /{id} path param) ────────────────
@@ -294,8 +292,10 @@ async def create_machine(
     # A new machine changes the §0 verdict for many parts → mark the org's
     # makeability projection stale (same txn, visible in the rollup/ranking).
     await part_summary_service.mark_org_makeability_stale_safe(session, org_id)
+    await _emit_machine_audit(
+        session, user.user_id, org_id, "machine.created", row.ulid
+    )
     await session.commit()
-    _emit_machine_audit(user.user_id, org_id, "machine.created", row.ulid)
     response.status_code = 201
     return svc.machine_to_public(row)
 
@@ -355,8 +355,10 @@ async def patch_machine(
         raise HTTPException(status_code=404, detail="no such machine in org")
     # An edited machine changes the §0 verdict for many parts → mark stale.
     await part_summary_service.mark_org_makeability_stale_safe(session, org_id)
+    await _emit_machine_audit(
+        session, user.user_id, org_id, "machine.updated", row.ulid
+    )
     await session.commit()
-    _emit_machine_audit(user.user_id, org_id, "machine.updated", row.ulid)
     return svc.machine_to_public(row)
 
 
@@ -377,6 +379,8 @@ async def delete_machine(
     # A removed machine changes the §0 verdict for many parts (a fit may vanish) →
     # mark the org's makeability projection stale in the same txn.
     await part_summary_service.mark_org_makeability_stale_safe(session, org_id)
+    await _emit_machine_audit(
+        session, user.user_id, org_id, "machine.deleted", machine_id
+    )
     await session.commit()
-    _emit_machine_audit(user.user_id, org_id, "machine.deleted", machine_id)
     return {"deleted": True, "id": machine_id}

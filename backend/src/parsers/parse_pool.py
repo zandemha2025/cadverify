@@ -19,10 +19,10 @@ What lives WHERE (deliberate split):
 Safety invariants:
   * ``spawn`` context ONLY. Forking a running asyncio process inherits held
     locks / event-loop fds and can deadlock; ``spawn`` starts a clean interpreter.
-  * Robust fallback: on ``BrokenProcessPool`` (a worker segfaulted on adversarial
-    gmsh input) we recycle the pool AND parse THIS request in-thread, so the
-    caller still gets a correct mesh — never a 500. Subsequent requests use the
-    recreated pool.
+  * Fail-closed crash recovery: on ``BrokenProcessPool`` (a worker segfaulted on
+    adversarial gmsh input) we hard-recycle the shared pool and retry only in a
+    fresh, single-use, killable subprocess. Untrusted CAD bytes are never parsed
+    in the API process after a worker crash.
   * Only STEP/IGES is dispatched. STL is sub-second; the pickle round-trip would
     cost more than the parse, so the route keeps STL in-thread.
 
@@ -37,7 +37,7 @@ import logging
 import multiprocessing
 import os
 import threading
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, TimeoutError as FuturesTimeout
 from concurrent.futures.process import BrokenProcessPool
 
 import trimesh
@@ -51,6 +51,7 @@ _WORKER_CAP = 8
 
 _POOL_LOCK = threading.Lock()
 _POOL: ProcessPoolExecutor | None = None
+_STOPPING = False
 
 # ── Per-rung wall-clock budget (the periodic-surface fix) ───────────────────
 # gmsh's DEFAULT 2D algorithm (retry-ladder rung 0) grinds for 2+ MINUTES before
@@ -162,6 +163,8 @@ def _get_pool() -> ProcessPoolExecutor:
     """Lazily create the module-level singleton pool (spawn context)."""
     global _POOL
     with _POOL_LOCK:
+        if _STOPPING:
+            raise RuntimeError("parse process pool is stopping")
         if _POOL is None:
             ctx = multiprocessing.get_context("spawn")  # NEVER fork under asyncio
             _POOL = ProcessPoolExecutor(max_workers=worker_count(), mp_context=ctx)
@@ -267,8 +270,8 @@ def recycle_pool(kill: bool = False) -> None:
     an uninterruptible C call, so a rung-0 periodic grind would otherwise keep a
     worker (and a CPU) busy for 2+ minutes AFTER we've abandoned its result — and
     block process exit. We reclaim it immediately. Any SIBLING request sharing the
-    pool recovers via ``submit_async``'s ``BrokenProcessPool`` -> in-thread
-    fallback (a correct mesh, never a 500), so the hard kill is safe. Without
+    pool recovers via ``submit_async``'s isolated retry path, so the hard kill is
+    bounded without moving untrusted parsing into the API process. Without
     ``kill`` we leave live workers alone (default; protects sibling in-flight work).
     """
     global _POOL
@@ -288,12 +291,33 @@ def recycle_pool(kill: bool = False) -> None:
         logger.exception("parse pool shutdown during recycle failed")
 
 
-def shutdown() -> None:
-    """Best-effort teardown for process exit / tests. Idempotent."""
-    global _POOL
+def startup() -> None:
+    """Open the pool lifecycle for one ASGI serving interval."""
+    global _STOPPING
     with _POOL_LOCK:
+        _STOPPING = False
+
+
+def shutdown(*, kill: bool = True, final: bool = False) -> None:
+    """Bounded process-exit teardown. Idempotent and recreation-safe.
+
+    With ``final=True``, ``_STOPPING`` is set while holding the same lock used by
+    ``_get_pool`` so a detached pre-warm thread cannot recreate the singleton
+    after shutdown took ownership. Production shutdown hard-kills active CAD
+    workers because gmsh C calls are not interruptible. Ordinary test cleanup
+    keeps ``final=False`` so a later test can lazily create a fresh pool.
+    """
+    global _POOL, _STOPPING
+    with _POOL_LOCK:
+        _STOPPING = final
         pool, _POOL = _POOL, None
     if pool is not None:
+        if kill:
+            for proc in list(getattr(pool, "_processes", {}).values()):
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
         try:
             pool.shutdown(wait=False, cancel_futures=True)
         except Exception:
@@ -316,8 +340,8 @@ def _ladder_semaphore() -> "asyncio.Semaphore":
 def _hard_kill(ex: ProcessPoolExecutor) -> None:
     """SIGKILL every worker of a single-use executor. Safe to hard-kill because
     each recovery-rung executor owns exactly ONE worker running ONLY this rung —
-    no sibling request shares it (unlike the concurrency pool, which we never
-    hard-kill; see recycle_pool)."""
+    no sibling request shares it. The shared pool is hard-killed only through
+    ``recycle_pool(kill=True)`` when its state is no longer trustworthy."""
     for proc in list(getattr(ex, "_processes", {}).values()):
         try:
             proc.kill()
@@ -341,8 +365,58 @@ async def _run_rung_killable(data: bytes, suffix: str, idx: int, cap: float):
         except asyncio.TimeoutError:
             _hard_kill(ex)
             raise _RungTimeout(f"rung {idx} exceeded {cap:.0f}s cap")
+        except asyncio.CancelledError:
+            # The request disappeared while gmsh was inside an uninterruptible C
+            # call. The executor is single-use, so killing it cannot affect a
+            # sibling request and prevents an orphan parser from surviving.
+            _hard_kill(ex)
+            raise
     finally:
         # wait=False: never block the request on a worker we may have just killed.
+        ex.shutdown(wait=False, cancel_futures=True)
+
+
+def _run_tessellate_killable_sync(
+    data: bytes, suffix: str, cap: float
+) -> trimesh.Trimesh:
+    """Retry a synchronous parse in one fresh subprocess, never in-process.
+
+    This path exists only after the shared pool has crashed. It has its own
+    worker and wall-clock cap, so a second crash or grind cannot poison the API
+    process or leave an unbounded parser behind.
+    """
+    ctx = multiprocessing.get_context("spawn")
+    ex = ProcessPoolExecutor(max_workers=1, mp_context=ctx)
+    try:
+        future = ex.submit(tessellate, data, suffix)
+        try:
+            return future.result(timeout=cap)
+        except FuturesTimeout:
+            _hard_kill(ex)
+            raise TimeoutError(
+                f"isolated tessellation retry exceeded {cap:.0f}s cap"
+            )
+    finally:
+        ex.shutdown(wait=False, cancel_futures=True)
+
+
+async def _run_assembly_killable(data: bytes, suffix: str):
+    """Retry one assembly extraction in a dedicated killable subprocess.
+
+    The route's outer ``wait_for`` owns the total wall-clock budget. If that
+    budget expires or the client disconnects, cancellation reaches this helper
+    and hard-kills its single worker.
+    """
+    ctx = multiprocessing.get_context("spawn")
+    ex = ProcessPoolExecutor(max_workers=1, mp_context=ctx)
+    try:
+        future = ex.submit(_extract_assembly_worker, data, suffix)
+        try:
+            return await asyncio.wrap_future(future)
+        except asyncio.CancelledError:
+            _hard_kill(ex)
+            raise
+    finally:
         ex.shutdown(wait=False, cancel_futures=True)
 
 
@@ -356,10 +430,10 @@ async def submit_async(data: bytes, suffix: str) -> trimesh.Trimesh:
     hard-killed at its cap. This is what lets a periodic part return a valid shell
     WITHIN the route budget instead of 504-ing after a 2-minute rung-0 grind.
 
-    On ``BrokenProcessPool`` (segfaulted worker, adversarial gmsh input) we recycle
-    the shared pool and parse THIS request in the default thread executor — the
-    caller still receives a correct mesh, never a 500 (unchanged contract). Any
-    other worker exception propagates unchanged for the route to map.
+    On ``BrokenProcessPool`` (segfaulted worker, adversarial gmsh input) we
+    hard-recycle the shared pool and retry rung 0 in its own killable subprocess.
+    A second crash advances the bounded ladder; it never moves untrusted bytes
+    into the API process. Other worker exceptions retain the route's mapping.
     """
     from src.parsers import step_mesher as sm
 
@@ -373,7 +447,17 @@ async def submit_async(data: bytes, suffix: str) -> trimesh.Trimesh:
         for idx in range(n):
             try:
                 if idx == 0:
-                    mesh = await _rung0_via_pool(data, suffix, caps[0], loop)
+                    try:
+                        mesh = await _rung0_via_pool(data, suffix, caps[0], loop)
+                    except BrokenProcessPool:
+                        logger.warning(
+                            "parse pool worker died on rung 0; hard-recycling + "
+                            "isolated retry"
+                        )
+                        recycle_pool(kill=True)
+                        mesh = await _run_rung_killable(
+                            data, suffix, idx, caps[idx]
+                        )
                 else:
                     mesh = await _run_rung_killable(data, suffix, idx, caps[idx])
             except sm._StepReadError as exc:
@@ -389,17 +473,10 @@ async def submit_async(data: bytes, suffix: str) -> trimesh.Trimesh:
                 last_msg = str(exc)
                 continue
             except BrokenProcessPool:
-                # A worker died mid-rung. rung 0 keeps its historical contract:
-                # recycle + correct in-thread parse (never a 500). Recovery-rung
-                # crashes just advance to the next rung.
-                if idx == 0:
-                    logger.warning(
-                        "parse pool worker died on rung 0; recycling + in-thread fallback"
-                    )
-                    recycle_pool()
-                    return await loop.run_in_executor(None, tessellate, data, suffix)
                 last_msg = f"rung {idx} worker crashed"
-                logger.warning("step ladder rung %d worker crashed; advancing", idx)
+                logger.warning(
+                    "isolated step ladder rung %d worker crashed; advancing", idx
+                )
                 continue
             except Exception as exc:  # this rung failed to MESH a readable shape
                 last_msg = str(exc)
@@ -451,7 +528,7 @@ async def _rung0_via_pool(data: bytes, suffix: str, cap: float, loop):
     except asyncio.TimeoutError:
         # Hard-kill the grinding worker + rebuild the pool so we don't leak a
         # runaway (or block exit) while the recovery rungs run. Siblings recover
-        # via submit_async's BrokenProcessPool -> in-thread fallback.
+        # via submit_async's BrokenProcessPool -> isolated retry.
         recycle_pool(kill=True)
         raise _RungTimeout(f"rung 0 exceeded {cap:.0f}s cap (periodic-surface grind)")
 
@@ -459,14 +536,15 @@ async def _rung0_via_pool(data: bytes, suffix: str, cap: float, loop):
 def submit_sync(data: bytes, suffix: str) -> trimesh.Trimesh:
     """Synchronous pooled tessellation (round-trips through a worker). For
     correctness tests that assert the pickled mesh is byte-identical to an
-    in-thread parse. Same BrokenProcessPool fallback as ``submit_async``."""
+    in-thread parse. A broken shared pool retries in one fresh, bounded worker;
+    it never parses attacker-controlled bytes in this process."""
     pool = _get_pool()
     try:
         return pool.submit(tessellate, data, suffix).result()
     except BrokenProcessPool:
-        logger.warning("parse pool broken (sync); recycling + in-thread fallback")
-        recycle_pool()
-        return tessellate(data, suffix)
+        logger.warning("parse pool broken (sync); hard-recycling + isolated retry")
+        recycle_pool(kill=True)
+        return _run_tessellate_killable_sync(data, suffix, _budget_sec())
 
 
 # ── Assembly ingestion (multi-solid STEP/IGES) ──────────────────────────────
@@ -485,9 +563,9 @@ async def submit_assembly_async(data: bytes, suffix: str):
     budget. Runs the CPU-bound multi-solid gmsh extraction in the shared spawn
     pool (so N assemblies don't serialize on the GIL/gmsh lock and the loop stays
     responsive), hard-bounded by ``ANALYSIS_TIMEOUT_SEC`` at the caller. On
-    ``BrokenProcessPool`` (a worker died on adversarial gmsh input) we recycle the
-    pool and extract THIS request in the default thread executor — the caller
-    still gets a correct model, never a 500 (same contract as ``submit_async``).
+    ``BrokenProcessPool`` (a worker died on adversarial gmsh input) we hard-
+    recycle the pool and retry THIS request in a dedicated killable subprocess.
+    Untrusted assembly bytes are never parsed in the API process after a crash.
 
     The per-assembly retry ladder (primary -> MeshAdapt-uniform -> +OCC-heal) runs
     WITHIN the worker call (``assembly_mesher._extract_with_ladder``); the caller's
@@ -506,10 +584,8 @@ async def submit_assembly_async(data: bytes, suffix: str):
         return await asyncio.wrap_future(cfut)
     except BrokenProcessPool:
         logger.warning(
-            "parse pool worker died during assembly extraction; recycling + "
-            "in-thread fallback"
+            "parse pool worker died during assembly extraction; hard-recycling + "
+            "isolated retry"
         )
-        recycle_pool()
-        return await loop.run_in_executor(
-            None, _extract_assembly_worker, data, suffix
-        )
+        recycle_pool(kill=True)
+        return await _run_assembly_killable(data, suffix)

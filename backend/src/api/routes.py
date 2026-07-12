@@ -286,11 +286,33 @@ async def _parse_mesh_async(data: bytes, filename: str):
 
         task.add_done_callback(_clear)
 
-    # shield: cancelling THIS awaiter must not cancel the shared parse the other
-    # waiters depend on. The shared result is the PRISTINE raw parse; copy it so
-    # each caller owns an independent mesh (copy-on-hit invariant).
-    mesh, suffix = await asyncio.shield(task)
-    return mesh.copy(), suffix
+    # Track waiter ownership. Cancelling one request must not kill work still
+    # needed by siblings, but once the final waiter disappears the shared task
+    # is abandoned and must cancel/kill its parser child immediately.
+    waiters = getattr(loop, "_cadverify_parse_waiters", None)
+    if waiters is None:
+        waiters = {}
+        setattr(loop, "_cadverify_parse_waiters", waiters)
+    waiters[cache_key] = waiters.get(cache_key, 0) + 1
+    cancelled = False
+    try:
+        mesh, suffix = await asyncio.shield(task)
+        return mesh.copy(), suffix
+    except asyncio.CancelledError:
+        cancelled = True
+        raise
+    finally:
+        remaining = waiters.get(cache_key, 1) - 1
+        if remaining > 0:
+            waiters[cache_key] = remaining
+        else:
+            waiters.pop(cache_key, None)
+            if cancelled and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
 
 async def _parse_mesh_async_uncoordinated(data: bytes, filename: str):
@@ -325,14 +347,20 @@ async def _parse_mesh_async_uncoordinated(data: bytes, filename: str):
             timeout=timeout,
         )
     except asyncio.TimeoutError:
-        # future.cancel() can't stop a running pool worker mid-C-tessellation.
-        # Recycle the pool so the runaway is reclaimed (its worker finishes then
-        # exits) instead of leaked; the next request gets a fresh, healthy pool.
-        parse_pool.recycle_pool()
+        # future.cancel() cannot stop a running gmsh C call. Hard-kill the shared
+        # pool so adversarial CAD cannot keep consuming CPU after the request has
+        # returned 504; sibling requests recover through the existing broken-pool
+        # fallback and the next dispatch gets a fresh pool.
+        parse_pool.recycle_pool(kill=True)
         raise HTTPException(
             status_code=504,
             detail=f"File parsing exceeded {timeout:.0f}s timeout.",
         )
+    except asyncio.CancelledError:
+        # Client disconnect / server cancellation has the same ownership rule as
+        # a timeout: no untrusted parser child may outlive its abandoned request.
+        parse_pool.recycle_pool(kill=True)
+        raise
 
 
 async def _parse_mesh_in_thread_async(data: bytes, filename: str):
@@ -981,11 +1009,14 @@ async def _extract_assembly_async(data: bytes, filename: str):
             parse_pool.submit_assembly_async(data, suffix), timeout=timeout
         )
     except asyncio.TimeoutError:
-        parse_pool.recycle_pool()
+        parse_pool.recycle_pool(kill=True)
         raise HTTPException(
             status_code=504,
             detail=f"Assembly parsing exceeded {timeout:.0f}s timeout.",
         )
+    except asyncio.CancelledError:
+        parse_pool.recycle_pool(kill=True)
+        raise
     except HTTPException:
         raise
     except ValueError as e:

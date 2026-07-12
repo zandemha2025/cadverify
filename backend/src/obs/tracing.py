@@ -26,7 +26,9 @@ not user content), plus non-identifying geometry/size counters.
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
+import threading
 from typing import Any, Optional
 
 _TRUTHY = {"1", "true", "yes", "on"}
@@ -42,6 +44,7 @@ _instrumented_app: Any = None  # the FastAPI app we instrumented (for teardown)
 # One shared no-op context manager reused for every disabled span() call so the
 # off-path allocates nothing. nullcontext is reentrant + reusable.
 _NULL = contextlib.nullcontext()
+logger = logging.getLogger("cadverify.tracing")
 
 
 def tracing_enabled() -> bool:
@@ -150,8 +153,14 @@ def setup_tracing(
     return True
 
 
-def shutdown_tracing() -> None:
-    """Flush + tear down tracing (test isolation / graceful shutdown)."""
+def shutdown_tracing(timeout_seconds: float | None = None) -> bool:
+    """Tear down tracing with one bounded provider shutdown.
+
+    The provider's ``shutdown`` already flushes processors, so calling
+    ``force_flush`` first only doubles the wait. The potentially blocking SDK
+    call runs on a daemon thread and is bounded; ``main.lifespan`` invokes this
+    function off the event loop as well.
+    """
     global _ENABLED, _provider, _tracer, _instrumented_app
     if _instrumented_app is not None:
         try:
@@ -164,15 +173,41 @@ def shutdown_tracing() -> None:
         except Exception:
             pass
         _instrumented_app = None
-    if _provider is not None:
-        try:
-            _provider.force_flush()
-            _provider.shutdown()
-        except Exception:
-            pass
+    provider = _provider
     _ENABLED = False
     _provider = None
     _tracer = None
+    if provider is None:
+        return True
+
+    if timeout_seconds is None:
+        try:
+            timeout_seconds = float(os.getenv("OTEL_SHUTDOWN_TIMEOUT_SEC", "5"))
+        except ValueError:
+            timeout_seconds = 5.0
+    timeout_seconds = max(0.1, timeout_seconds)
+
+    done = threading.Event()
+
+    def _shutdown() -> None:
+        try:
+            provider.shutdown()
+        except Exception:
+            logger.exception("OpenTelemetry provider shutdown failed")
+        finally:
+            done.set()
+
+    threading.Thread(
+        target=_shutdown,
+        name="otel-shutdown",
+        daemon=True,
+    ).start()
+    completed = done.wait(timeout_seconds)
+    if not completed:
+        logger.error(
+            "OpenTelemetry provider shutdown exceeded %.1fs", timeout_seconds
+        )
+    return completed
 
 
 def span(name: str, **attributes: Any):

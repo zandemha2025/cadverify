@@ -669,12 +669,12 @@ async function runBrowser(baseUrl) {
 
     const fixtureId = await page.evaluate(() => window.__cadverifyAssemblyResult?.fixtureId || "assembly-fixture");
     const beforeScreenshot = path.join(screenshotDir, `01-${slug(`${fixtureId}-exploded-preview`)}.png`);
-    await page.screenshot({ path: beforeScreenshot, fullPage: false, animations: "disabled" });
+    await page.screenshot({ path: beforeScreenshot, fullPage: false, animations: "disabled", caret: "initial" });
     await page.getByRole("button", { name: /^Seat /i }).click();
     await page.waitForFunction(() => window.__cadverifyAssemblyResult?.seated === true, null, { timeout: 10_000 });
     const result = await page.evaluate(() => window.__cadverifyAssemblyResult);
     const afterScreenshot = path.join(screenshotDir, `02-${slug(`${fixtureId}-seated-in-parent`)}.png`);
-    await page.screenshot({ path: afterScreenshot, fullPage: false, animations: "disabled" });
+    await page.screenshot({ path: afterScreenshot, fullPage: false, animations: "disabled", caret: "initial" });
     const beforeStat = await stat(beforeScreenshot);
     const afterStat = await stat(afterScreenshot);
     assert(beforeStat.size > 20_000, `before screenshot too small: ${beforeStat.size}`);

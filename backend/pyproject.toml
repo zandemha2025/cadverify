@@ -8,4 +8,6 @@ markers = [
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::PendingDeprecationWarning",
+    "error::RuntimeWarning",
+    "error::pytest.PytestUnraisableExceptionWarning",
 ]

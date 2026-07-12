@@ -244,11 +244,13 @@ async def publish_material_catalog(
         reason=f"material_library_published:v{row.version}",
         stale_at=row.effective_from,
     )
-    await session.commit()
     from src.services.audit_service import emit_event
-    emit_event(
-        ctx.user_id, "library.version_published", "material_catalog",
+
+    await emit_event(
+        session, ctx.user_id, "library.version_published", "material_catalog",
         str(row.id),
         {"org_id": org_id, "library": "material", "version": row.version},
+        org_id=org_id,
     )
+    await session.commit()
     return svc.serialize_version(row, include_payload=True)

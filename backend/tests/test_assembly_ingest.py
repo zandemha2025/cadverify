@@ -24,6 +24,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.parsers.step_mesher import is_step_supported
+from tests.cad_fixtures import as1_fixture_bytes
 
 ASSETS = Path(__file__).parent / "assets"
 
@@ -32,27 +33,8 @@ _needs_gmsh = pytest.mark.skipif(
 )
 
 
-def _as1_path() -> Path | None:
-    """Locate the real AS1 assembly: the gitignored corpus copy, else the copy that
-    ships inside the gmsh distribution's public examples (same file, sha-verified)."""
-    import gmsh  # type: ignore
-
-    candidates = [
-        Path(__file__).resolve().parents[2] / "data/real-corpus/as1-tu-203.stp",
-        Path(gmsh.__file__).resolve().parent
-        / "share/doc/gmsh/examples/api/as1-tu-203.stp",
-    ]
-    for c in candidates:
-        if c.exists():
-            return c
-    return None
-
-
 def _as1_bytes() -> bytes:
-    p = _as1_path()
-    if p is None:
-        pytest.skip("AS1 real assembly file not available")
-    return p.read_bytes()
+    return as1_fixture_bytes()
 
 
 # ── Label -> product-tree parsing (pure, no gmsh) ───────────────────────────

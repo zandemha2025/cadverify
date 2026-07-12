@@ -8,14 +8,21 @@ import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-const require = createRequire("/home/user/cadverify/frontend/package.json");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const require = createRequire(path.join(repoRoot, "frontend/package.json"));
 const pw = require("playwright-core");
 const threeRoot = path.dirname(path.dirname(require.resolve("three")));
 
-const extractDir = "/home/user/cadverify/.claude/worktrees/agent-a72a691632fa055ce/outputs/human-sim/assembly-real/extract";
-const outDir = "/home/user/cadverify/.claude/worktrees/agent-a72a691632fa055ce/outputs/human-sim/assembly-real";
+const outDir = path.resolve(
+  process.env.CADVERIFY_ASSEMBLY_RENDER_DIR
+    ?? path.join(repoRoot, "outputs/human-sim/assembly-real"),
+);
+const extractDir = path.resolve(
+  process.env.CADVERIFY_ASSEMBLY_EXTRACT_DIR ?? path.join(outDir, "extract"),
+);
 const manifest = JSON.parse(readFileSync(path.join(extractDir, "extraction.json"), "utf8"));
 
 // Focus part = the "handle": highlight one L-BRACKET (tag 10) seated among plate/rod/bolts.
@@ -129,11 +136,14 @@ const server = createServer(async (req, res) => {
 await new Promise((r)=>server.listen(0,r));
 const port = server.address().port;
 
-const browser = await pw.chromium.launch({
-  executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+const launchOptions = {
   headless: true,
   args: ["--no-sandbox","--disable-dev-shm-usage","--use-angle=swiftshader","--use-gl=angle"],
-});
+};
+if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE) {
+  launchOptions.executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE;
+}
+const browser = await pw.chromium.launch(launchOptions);
 const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
 page.on("pageerror",(e)=>console.log("PAGEERR",e.message));
 await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "load" });

@@ -1,11 +1,10 @@
 """Tests for audit logging service and admin endpoint.
 
-Covers: log_action, query_audit_log, export_audit_csv, admin endpoint
-access control, and 90-day range limit.
+Covers: transactional/standalone audit writes, fail-closed security mutations,
+query/export, admin access control, and the 90-day range limit.
 """
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -51,6 +50,10 @@ def _mock_session_factory(entries=None):
     """Return a patched get_session_factory that yields a mock session."""
     entries = entries or []
     session = AsyncMock()
+    # SQLAlchemy's AsyncSession.add() is synchronous even though the session's
+    # persistence methods are awaitable. Model that API accurately so tests do
+    # not create an unawaited coroutine warning.
+    session.add = MagicMock()
 
     exec_result = MagicMock()
     exec_result.scalars.return_value.all.return_value = entries
@@ -63,6 +66,107 @@ def _mock_session_factory(entries=None):
     session.__aexit__ = AsyncMock(return_value=False)
 
     return factory, session
+
+
+@pytest.mark.asyncio
+async def test_append_audit_entry_uses_caller_transaction_without_commit():
+    """A mutation owns the one commit boundary for itself and its audit row."""
+    from src.services.audit_service import append_audit_entry
+
+    session = AsyncMock()
+    session.add = MagicMock()
+
+    await append_audit_entry(
+        session,
+        7,
+        "user.role_changed",
+        "user",
+        "9",
+        {"new_role": "admin"},
+        user_email="actor@example.com",
+        org_id="org-1",
+    )
+
+    session.add.assert_called_once()
+    session.commit.assert_not_awaited()
+    entry = session.add.call_args.args[0]
+    assert entry.action == "user.role_changed"
+    assert entry.org_id == "org-1"
+
+
+@pytest.mark.asyncio
+async def test_log_action_propagates_commit_failure():
+    """Standalone auth events fail closed when the ledger cannot commit."""
+    factory, session = _mock_session_factory()
+    session.commit.side_effect = RuntimeError("audit ledger unavailable")
+
+    with patch("src.services.audit_service.get_session_factory", return_value=factory):
+        from src.services.audit_service import log_action
+
+        with pytest.raises(RuntimeError, match="audit ledger unavailable"):
+            await log_action(
+                user_id=42,
+                user_email="test@example.com",
+                action="auth.login",
+                resource_type="session",
+            )
+
+
+@pytest.mark.asyncio
+async def test_api_key_creation_does_not_commit_when_audit_append_fails():
+    """The key secret is never committed without its durable creation event."""
+    from src.auth import models
+    from src.services import audit_service
+
+    session = AsyncMock()
+    insert_result = MagicMock()
+    insert_result.first.return_value = (123,)
+    session.execute.return_value = insert_result
+    factory = MagicMock(return_value=session)
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=False)
+
+    with patch.object(models, "_session", return_value=factory), patch(
+        "src.auth.org_context.resolve_org",
+        new=AsyncMock(return_value="org-1"),
+    ), patch.object(
+        audit_service,
+        "append_audit_entry",
+        new=AsyncMock(side_effect=RuntimeError("audit append failed")),
+    ):
+        with pytest.raises(RuntimeError, match="audit append failed"):
+            await models.create_api_key(7, "prod", "cv_abc", "idx", "hash")
+
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_role_change_does_not_commit_when_audit_append_fails():
+    """A privileged role mutation and its audit evidence are one transaction."""
+    from src.api import admin_routes
+    from src.services import audit_service
+
+    target = MagicMock(id=9, email="target@example.com", role="analyst")
+    query_result = MagicMock()
+    query_result.scalars.return_value.first.return_value = target
+    session = AsyncMock()
+    session.execute.return_value = query_result
+    ctx = MagicMock(user_id=7, is_superadmin=True, org_id="org-1")
+
+    with patch.object(
+        audit_service,
+        "emit_event",
+        new=AsyncMock(side_effect=RuntimeError("audit append failed")),
+    ):
+        with pytest.raises(RuntimeError, match="audit append failed"):
+            await admin_routes.update_user_role(
+                9,
+                admin_routes.RoleUpdate(role="admin"),
+                ctx=ctx,
+                session=session,
+            )
+
+    session.commit.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

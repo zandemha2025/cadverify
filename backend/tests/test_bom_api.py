@@ -21,6 +21,8 @@ import uuid
 
 import pytest
 
+from tests.cad_fixtures import as1_fixture_bytes
+
 _PG = os.environ.get("DATABASE_URL", "").startswith("postgresql")
 _requires_pg = pytest.mark.skipif(
     not _PG, reason="requires local Postgres (set DATABASE_URL=postgresql://...)"
@@ -244,12 +246,6 @@ async def test_as1_real_assembly_ingest_reproduces_hierarchy():
     if not is_step_supported():
         pytest.skip("gmsh not installed — assembly extraction unavailable")
 
-    path = os.path.join(
-        os.path.dirname(__file__), "..", "..", "data", "real-corpus", "as1-tu-203.stp"
-    )
-    if not os.path.exists(path):
-        pytest.skip("AS1 fixture not present")
-
     from src.parsers.assembly_mesher import extract_assembly_from_bytes
     from src.services import bom_service as bom
 
@@ -261,7 +257,7 @@ async def test_as1_real_assembly_ingest_reproduces_hierarchy():
         uid = await _seed_org(s, org, f"as1-{tag}@example.com")
         await s.commit()
 
-    model = extract_assembly_from_bytes(open(path, "rb").read(), "as1-tu-203.stp")
+    model = extract_assembly_from_bytes(as1_fixture_bytes(), "as1-tu-203.stp")
 
     async with eng.get_session_factory()() as s:
         summary = await bom.ingest_assembly(s, org, key, model)

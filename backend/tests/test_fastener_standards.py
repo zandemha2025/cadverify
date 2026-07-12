@@ -10,7 +10,6 @@ Covers three honest claims:
 """
 from __future__ import annotations
 
-from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -25,6 +24,7 @@ from src.analysis.fastener_standards import (
 )
 from src.analysis.features.across_flats import HEX_AC_AF_RATIO, measure_across_flats
 from src.parsers.step_mesher import is_step_supported
+from tests.cad_fixtures import as1_fixture_bytes
 
 _needs_gmsh = pytest.mark.skipif(
     not is_step_supported(), reason="gmsh/STEP path unavailable"
@@ -125,13 +125,7 @@ def test_identify_nonhex_shape_returns_none():
 
 # ── 3. The REAL AS1 nut (honest outcome) ─────────────────────────────────────
 def _as1_bytes() -> bytes:
-    for c in (
-        Path(__file__).resolve().parents[2] / "data/real-corpus/as1-tu-203.stp",
-        Path("/home/user/cadverify/data/real-corpus/as1-tu-203.stp"),
-    ):
-        if c.exists():
-            return c.read_bytes()
-    pytest.skip("AS1 real assembly file not available")
+    return as1_fixture_bytes()
 
 
 @_needs_gmsh

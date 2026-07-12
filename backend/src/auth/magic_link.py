@@ -35,17 +35,17 @@ from src.auth.client_ip import client_ip, require_auth_proxy_if_enabled
 from src.auth.dashboard_session import session_cookie_domain, set_session_cookie, sign
 from src.auth.disposable import classify, normalize_email
 from src.auth.disposable_list import get_soft_flag_set
-from src.auth.hashing import hmac_index, mint_token
-from src.auth.models import (
-    create_api_key,
-    get_user_session_version,
-    upsert_user,
-    user_has_active_api_key,
+from src.auth.magic_keys import (
+    magic_active_key,
+    magic_generation_key,
+    magic_send_key,
+    magic_token_key,
 )
+from src.auth.provisioning import provision_authenticated_login
 from src.auth.redis_util import require_redis_url
 from src.auth.signup_limits import (
     ip_signup_limit_enabled,
-    per_email_signup_limit,
+    per_email_magic_link_limit,
     per_ip_signup_limit,
 )
 from src.auth.turnstile import verify_turnstile
@@ -117,8 +117,120 @@ def _verify(token: str) -> str | None:
         return None
 
 
-def _token_key(token: str) -> str:
-    return f"magic_link:{hashlib.sha256(token.encode()).hexdigest()}"
+def _token_key(token: str, email_normalized: str) -> str:
+    return magic_token_key(email_normalized, token)
+
+
+def _active_token_key(email_normalized: str) -> str:
+    return magic_active_key(email_normalized)
+
+
+_ROTATE_MAGIC_TOKEN_LUA = """
+local generation = redis.call('INCR', KEYS[3])
+redis.call('EXPIRE', KEYS[3], ARGV[1])
+local previous = redis.call('GET', KEYS[1])
+if previous and previous ~= KEYS[2] then
+  redis.call('DEL', previous)
+end
+redis.call('SET', KEYS[2], tostring(generation), 'EX', ARGV[1])
+redis.call('SET', KEYS[1], KEYS[2], 'EX', ARGV[1])
+return generation
+"""
+
+_CLEAR_ACTIVE_POINTER_LUA = """
+if redis.call('GET', KEYS[1]) == KEYS[2] then
+  redis.call('DEL', KEYS[1])
+  return 1
+end
+return 0
+"""
+
+_RESTORE_CONSUMED_TOKEN_LUA = """
+if redis.call('GET', KEYS[3]) ~= ARGV[1] then
+  return 0
+end
+local current = redis.call('GET', KEYS[1])
+if current and current ~= KEYS[2] then
+  return 0
+end
+if redis.call('EXISTS', KEYS[2]) == 0 then
+  redis.call('SET', KEYS[2], ARGV[1], 'EX', ARGV[2])
+end
+redis.call('SET', KEYS[1], KEYS[2], 'EX', ARGV[2])
+return 1
+"""
+
+_CLEANUP_FAILED_SEND_LUA = """
+local current = redis.call('GET', KEYS[1])
+redis.call('DEL', KEYS[2])
+if current == KEYS[2] then
+  redis.call('DEL', KEYS[1])
+  redis.call('DEL', KEYS[3])
+  return 1
+end
+return 0
+"""
+
+
+async def _rotate_magic_token(
+    redis_client,
+    active_key: str,
+    token_key: str,
+    generation_key: str,
+) -> int:
+    """Atomically supersede the prior token and publish this token as active."""
+    generation = await redis_client.eval(
+        _ROTATE_MAGIC_TOKEN_LUA,
+        3,
+        active_key,
+        token_key,
+        generation_key,
+        TTL,
+    )
+    return int(generation)
+
+
+async def _clear_active_pointer(redis_client, active_key: str, token_key: str) -> None:
+    """Delete the pointer only if it still names the consumed token."""
+    await redis_client.eval(
+        _CLEAR_ACTIVE_POINTER_LUA,
+        2,
+        active_key,
+        token_key,
+    )
+
+
+async def _restore_consumed_token(
+    redis_client,
+    active_key: str,
+    token_key: str,
+    generation_key: str,
+    token_generation: int,
+    remaining_ttl: int,
+) -> None:
+    """Restore after DB failure only when no newer token has become active."""
+    await redis_client.eval(
+        _RESTORE_CONSUMED_TOKEN_LUA,
+        3,
+        active_key,
+        token_key,
+        generation_key,
+        token_generation,
+        remaining_ttl,
+    )
+
+
+async def _cleanup_failed_send(
+    redis_client, active_key: str, token_key: str, send_limit_key: str
+) -> None:
+    """Remove this failed token without deleting a newer request's state."""
+    await redis_client.eval(
+        _CLEANUP_FAILED_SEND_LUA,
+        3,
+        active_key,
+        token_key,
+        send_limit_key,
+    )
 
 
 def _dashboard_url(path: str) -> str:
@@ -132,35 +244,44 @@ async def _consume(token: str) -> MagicLogin:
         raise _err(400, "magic_link_invalid", "Magic link invalid or expired.")
 
     r = _r()
-    key = _token_key(token)
+    key = _token_key(token, email_norm)
     remaining_ttl = await r.ttl(key)
     stored = await r.getdel(key)
     if stored is None:
         raise _err(400, "magic_link_used", "Magic link has already been used.")
-    if not hmac.compare_digest(str(stored), email_norm):
+    try:
+        token_generation = int(str(stored))
+    except (TypeError, ValueError):
         raise _err(400, "magic_link_invalid", "Magic link invalid or expired.")
+    active_key = _active_token_key(email_norm)
+    generation_key = magic_generation_key(email_norm)
+    try:
+        await _clear_active_pointer(r, active_key, key)
+    except Exception:
+        # The token itself is already consumed atomically; this pointer is only
+        # for invalidating superseded links and must not weaken login integrity.
+        logger.warning("Could not clear consumed magic-link active pointer")
 
     try:
-        user_id = await upsert_user(
-            stored, None, stored, auth_provider="magic_link"
+        login = await provision_authenticated_login(
+            email=email_norm,
+            provider="magic_link",
+            key_name="Default",
+            default_role="analyst",
         )
-        if await user_has_active_api_key(user_id):
+        if login.key_token is None:
             return MagicLogin(
-                user_id=user_id,
-                session_version=await get_user_session_version(user_id),
+                user_id=login.user_id,
+                session_version=login.session_version,
                 redirect="/verify",
             )
 
-        full_token, prefix, secret_hash = mint_token()
-        await create_api_key(
-            user_id, "Default", prefix, hmac_index(full_token), secret_hash
-        )
         return MagicLogin(
-            user_id=user_id,
-            session_version=await get_user_session_version(user_id),
-            redirect=f"/settings/developer?new=1&prefix={quote(prefix)}",
-            key_prefix=prefix,
-            mint_once=full_token,
+            user_id=login.user_id,
+            session_version=login.session_version,
+            redirect=f"/settings/developer?new=1&prefix={quote(login.key_prefix or '')}",
+            key_prefix=login.key_prefix,
+            mint_once=login.key_token,
         )
     except HTTPException:
         # Account deactivation is intentional and must not make the token
@@ -168,10 +289,18 @@ async def _consume(token: str) -> MagicLogin:
         raise
     except Exception:
         # A transient DB failure must not burn a still-valid emailed token.
-        # NX preserves single-use if another actor somehow recreated the key.
+        # Generation CAS prevents this restore from reviving a token superseded
+        # while the database call was in flight.
         if remaining_ttl > 0:
             try:
-                await r.set(key, stored, ex=remaining_ttl, nx=True)
+                await _restore_consumed_token(
+                    r,
+                    active_key,
+                    key,
+                    generation_key,
+                    token_generation,
+                    remaining_ttl,
+                )
             except Exception:
                 logger.warning("Could not restore magic-link token after failure")
         raise
@@ -207,11 +336,15 @@ async def magic_start(
                 "doc_url": "https://docs.cadverify.com/errors#email_domain_blocked",
             },
         )
-    await per_email_signup_limit(email_norm, soft_flagged=(verdict == "soft_flag"))
+    await per_email_magic_link_limit(
+        email_norm, soft_flagged=(verdict == "soft_flag")
+    )
     token = _mint(email_norm)
-    key = _token_key(token)
+    key = _token_key(token, email_norm)
+    active_key = _active_token_key(email_norm)
+    generation_key = magic_generation_key(email_norm)
     r = _r()
-    await r.setex(key, TTL, email_norm)
+    await _rotate_magic_token(r, active_key, key, generation_key)
     resend.api_key = os.environ["RESEND_API_KEY"]
     # Keep the bearer token in the URL fragment: browsers do not send fragments
     # to the web server or in referrers. The landing page requires a deliberate
@@ -235,7 +368,12 @@ async def magic_start(
         # still consumed resources), but roll back both the unusable token and
         # per-email send window without logging the email or bearer token.
         try:
-            await r.delete(key, f"signup:email:{email_norm}")
+            await _cleanup_failed_send(
+                r,
+                active_key,
+                key,
+                magic_send_key(email_norm),
+            )
         except Exception:
             logger.warning("Could not roll back magic-link send state")
         logger.warning("Magic-link email provider failed")

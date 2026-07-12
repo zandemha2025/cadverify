@@ -80,8 +80,10 @@ export default function HomePage() {
 
   // WebGL choreography — the exact five-act home choreography (foundation).
   const choreography = React.useMemo(
-    () =>
-      makeHomeChoreography({
+    () => {
+      // The factory stores these refs; it reads `.current` only in animation frames.
+      // eslint-disable-next-line react-hooks/refs
+      return makeHomeChoreography({
         routed: sec1,
         glassBox: sec2,
         assembly: sec2b,
@@ -90,9 +92,9 @@ export default function HomePage() {
         numberEl,
         hud1,
         hud2,
-      }),
+      });
+    },
     // refs are stable; the choreography is built once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 

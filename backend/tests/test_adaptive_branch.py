@@ -2,7 +2,7 @@
 
 Pure, deterministic, no I/O. Run:
 
-    /home/user/cadverify/backend/.venv/bin/python -m pytest tests/test_adaptive_branch.py -q
+    .venv/bin/python -m pytest tests/test_adaptive_branch.py -q
 
 Covers (per outputs/research/orchestration-moat.md §1.2 / §5):
   * conjugate update moves the posterior mean toward observed rewards and the

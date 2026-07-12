@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 import os
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -284,12 +286,10 @@ def _prewarm_enabled() -> bool:
     return "pytest" not in sys.modules
 
 
-def _spawn_parse_pool_prewarm() -> None:
+def _spawn_parse_pool_prewarm() -> threading.Thread:
     """Kick off parse-pool pre-warm on a daemon thread so it NEVER delays
     readiness or blocks the event loop, and so a warmup failure can't crash boot
     (``prewarm`` is itself best-effort). Fire-and-forget."""
-    import threading
-
     from src.parsers import parse_pool
 
     def _run() -> None:
@@ -298,17 +298,50 @@ def _spawn_parse_pool_prewarm() -> None:
         except Exception:  # belt-and-suspenders: startup must never crash on warmup
             logger.warning("parse pool pre-warm thread errored", exc_info=True)
 
-    threading.Thread(target=_run, name="parse-pool-prewarm", daemon=True).start()
+    thread = threading.Thread(target=_run, name="parse-pool-prewarm", daemon=True)
+    thread.start()
+    return thread
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("CADVerify starting | cors_regex=%s", CORS_ORIGIN_REGEX)
+    from src.parsers import parse_pool
+
+    parse_pool.startup()
+    prewarm_thread = None
     if _prewarm_enabled():
         logger.info("parse pool pre-warm: enabled (backgrounded, non-blocking)")
-        _spawn_parse_pool_prewarm()
-    yield
-    logger.info("CADVerify stopping")
+        prewarm_thread = _spawn_parse_pool_prewarm()
+    try:
+        yield
+    finally:
+        logger.info("CADVerify stopping")
+
+        # Audit rows commit with their protected mutations, so there is no
+        # detached compliance queue to drain. Stop CAD workers, release pooled
+        # DB connections, then flush tracing. Every cleanup is isolated so one
+        # failing subsystem cannot prevent the remaining shutdown contract.
+        try:
+            parse_pool.shutdown(kill=True, final=True)
+            if prewarm_thread is not None:
+                await asyncio.to_thread(prewarm_thread.join, 1.0)
+                if prewarm_thread.is_alive():
+                    logger.warning("parse pool pre-warm did not stop within 1s")
+        except Exception:
+            logger.exception("failed to stop parse pool")
+        try:
+            from src.db.engine import dispose_engine
+
+            await dispose_engine()
+        except Exception:
+            logger.exception("failed to dispose database engine")
+        try:
+            from src.obs.tracing import shutdown_tracing
+
+            await asyncio.to_thread(shutdown_tracing)
+        except Exception:
+            logger.exception("failed to flush tracing")
 
 
 app = FastAPI(

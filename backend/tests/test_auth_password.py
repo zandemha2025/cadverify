@@ -291,11 +291,7 @@ def test_initial_password_rotates_session_after_verified_login(monkeypatch):
         "src.auth.password.set_initial_password_hash",
         new_callable=AsyncMock,
         return_value=4,
-    ) as set_hash, patch(
-        "src.auth.password.get_user_public",
-        new_callable=AsyncMock,
-        return_value=("user@example.com", "analyst", "magic_link"),
-    ), patch("src.auth.password._fire_audit"):
+    ) as set_hash:
         response = TestClient(app).post(
             "/auth/password/initialize", json={"password": "NewPassword1"}
         )
@@ -306,6 +302,41 @@ def test_initial_password_rotates_session_after_verified_login(monkeypatch):
     assert payload.user_id == 7
     assert payload.session_version == 4
     set_hash.assert_awaited_once()
+
+
+def test_password_login_audit_failure_blocks_session(monkeypatch):
+    from src.auth.password import router
+    from src.services import audit_service
+
+    monkeypatch.delenv("RELEASE", raising=False)
+    app = FastAPI()
+    app.include_router(router, prefix="/auth")
+
+    with patch(
+        "src.auth.password.get_login_credentials",
+        new_callable=AsyncMock,
+        return_value=(7, hash_password("Password1"), "analyst"),
+    ), patch(
+        "src.auth.models.user_is_active",
+        new_callable=AsyncMock,
+        return_value=True,
+    ), patch(
+        "src.auth.password.get_user_session_version",
+        new_callable=AsyncMock,
+        return_value=0,
+    ), patch.object(
+        audit_service,
+        "log_action",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("audit ledger unavailable"),
+    ):
+        response = TestClient(app, raise_server_exceptions=False).post(
+            "/auth/login",
+            json={"email": "user@example.com", "password": "Password1"},
+        )
+
+    assert response.status_code == 500
+    assert "session" not in response.text
 
 
 @pytest.mark.asyncio

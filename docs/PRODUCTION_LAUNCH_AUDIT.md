@@ -35,6 +35,27 @@ this verdict. No production deployment is authorized by this document.
 - Released dashboard-session validation fails closed if the authoritative user
   and revocation state cannot be read; a database outage cannot silently bypass
   deactivation or session-version enforcement.
+- Security-sensitive mutations append their audit row in the same database
+  transaction. OIDC/SAML/magic-link provisioning, default-key state, group
+  assignment, and login evidence commit once before a session is issued; API-key
+  rotation also revokes, replaces, and audits in one transaction. Audit failures
+  therefore roll back or block the protected action instead of being lost in a
+  background task.
+- OIDC users are bound to unique immutable issuer+subject identities. First-time
+  creation requires an explicitly verified email, an existing email cannot be
+  silently linked, and a mapped subject cannot switch to a reassigned address.
+  Discovery must return the exact configured issuer; every discovered endpoint
+  is restricted to credential-free HTTPS on the issuer or an explicitly reviewed
+  origin and is rejected when it resolves to a non-public network destination.
+- Timed-out or cancelled untrusted CAD parses hard-kill their process workers,
+  both API and ARQ startup reject in-process parsing in released builds, and
+  protected browser CI fails required 4xx/5xx/unavailable journey skips.
+- Magic-link rotation/failure cleanup is atomic and cluster-slot safe; corpus
+  assets from GitHub are pinned to a commit with the exact license artifact
+  validated and hashed at that commit.
+- Protected CI rejects unapproved runtime and collection-time skips. Costing,
+  AS1 assembly, NIST STEP, lifecycle cleanup, and OIDC issuer/subject/audience/
+  time/nonce boundaries run from reproducible local fixtures.
 - Initial-password creation and session rotation are one database transaction;
   concurrent parts-master imports use isolated object prefixes, and large
   reconstruction meshes stream from object storage instead of buffering in API
@@ -69,9 +90,9 @@ NIST 800-171, export-control, or customer authorization.
 | Critical | No GovCloud/customer regulated landing zone is provisioned or evidenced. | Approved GovCloud account, private EKS, RDS, Redis, S3/KMS, ECR, IdP, runner, SIEM/OTLP, network controls, backups, and private values with control-owner evidence. |
 | Critical | The regulated CI control plane, action sources, runner image/egress, job logs, and evidence destination have not been approved as part of the boundary. | Written approval for the exact GitHub/GHES control plane and runner design, or move the workflow/evidence path fully in-boundary and retain an approved execution record. |
 | High | The current live Fly applications do not satisfy the new commercial secret/runtime contract; the deployed API predates `/health/deep`, and the frontend was stopped when inspected. | Separate staging/production apps; API/web secrets including one matching `AUTH_PROXY_SECRET`; remove every forbidden config-shadowing Fly secret reported by the gate; custom DNS/TLS; successful protected staging promotion; deep health and proxy handshake; manual auth/STEP/tenant tests. |
-| High | The canonical delivery branch is unresolved: PR #23 targets `prod`, is non-mergeable, while release workflows require protected `main`. | Close/retarget or replace the PR, review the final diff, merge to protected `main`, and record successful CI release evidence. |
-| High | Linux container builds, Trivy scans, full GitHub CI, and production-like soak/DR exercises have not run for this worktree revision. Docker is unavailable locally; three existing gmsh periodic tests fail only on local macOS ARM. | Green GitHub CI on Linux, digest/SBOM artifact, staging load/soak, restore drill, failure drill, and accepted performance thresholds. |
+| High | Production hardening remains in draft PR #24 targeting protected `main`; it is not merged or releasable yet. | Review the final diff, require green protected checks for the exact merge SHA, merge to `main`, and retain the resulting digest/SBOM release evidence. |
 | High | No production acceptance evidence exists for real email, Turnstile, Sentry alert delivery, S3 lifecycle/deletion, custom domains, cross-tenant probes, or rollback. | Execute and retain the acceptance records in the applicable runbook. |
+| High | Cost-model CI proves deterministic regression behavior against internally authored coupons; no real protected supplier holdout has been supplied yet. Both promotion stages now fail closed without fresh, matching evidence bound to the exact release SHA. | Supply the protected record defined in `docs/SUPPLIER_HOLDOUT_EVIDENCE.md`: at least 20 licensed/provenance-locked holdout parts, at least 5 parts and 3 independent suppliers per launch family, retained human approval, MAPE ≤30%, P90 absolute error ≤50%, and every process median bias within ±25%. |
 
 ## Commercial go/no-go rule
 

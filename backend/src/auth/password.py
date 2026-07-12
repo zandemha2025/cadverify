@@ -368,16 +368,6 @@ async def _run_abuse_controls(request: Request, email_norm: str) -> str:
     return verdict
 
 
-def _fire_audit(**kwargs) -> None:
-    """Best-effort audit log; never breaks the auth path if the DB/audit fails."""
-    try:
-        from src.services.audit_service import fire_and_forget_audit
-
-        asyncio.create_task(fire_and_forget_audit(**kwargs))
-    except Exception:
-        pass
-
-
 @router.post("/signup")
 async def signup(body: SignupIn, request: Request) -> dict:
     if not _public_password_signup_enabled():
@@ -407,13 +397,6 @@ async def signup(body: SignupIn, request: Request) -> dict:
             "An account with this email already exists. Log in instead.",
         )
 
-    _fire_audit(
-        user_id=uid,
-        user_email=email,
-        action="auth.signup",
-        resource_type="user",
-        resource_id=str(uid),
-    )
     return {
         "user": {"id": uid, "email": email, "role": "analyst"},
         "session": sign(uid),
@@ -471,7 +454,9 @@ async def login(body: LoginIn, request: Request, response: Response) -> dict:
         except Exception:
             pass
 
-    _fire_audit(
+    from src.services.audit_service import log_action
+
+    await log_action(
         user_id=user_id,
         user_email=email,
         action="auth.login",
@@ -506,14 +491,6 @@ async def initialize_password(
     # The compare-and-set above rotates every pre-existing session in the same
     # transaction as the credential write. The Next route replaces the caller's
     # first-party session with this new version.
-    public = await get_user_public(user_id)
-    _fire_audit(
-        user_id=user_id,
-        user_email=public[0] if public else "",
-        action="auth.password_initialized",
-        resource_type="user",
-        resource_id=str(user_id),
-    )
     return {"ok": True, "session": sign(user_id, session_version=version)}
 
 

@@ -120,6 +120,10 @@ function isIgnorableRequestFailure(url, method, failure) {
   if (failure !== "net::ERR_ABORTED") return false;
   if (/[?&]_rsc=/.test(url)) return true;
   if (method === "GET" && /\/api\/proxy\/cost-decisions\?limit=8(?:&|$)/.test(url)) return true;
+  // The rail sweep intentionally leaves Programs after proving the surface.
+  // A subsequent document navigation may cancel its still-in-flight read; only
+  // that browser-generated ERR_ABORTED is expected (HTTP/network errors remain).
+  if (method === "GET" && /\/api\/proxy\/catalog\/portfolio(?:\?|$)/.test(url)) return true;
   if (
     method === "GET" &&
     /\/api\/proxy\/(?:governance\/change-requests|ground-truth|machine-inventory|rate-library(?:\/effective)?)(?:[/?#]|$)/.test(url)
@@ -188,7 +192,10 @@ class HumanE2E {
 
   async shot(name, fullPage = false) {
     const file = path.join(screenshotDir, `${String(this.steps.length + 1).padStart(2, "0")}-${slug(name)}.png`);
-    await this.page.screenshot({ path: file, fullPage, animations: "disabled" });
+    // Playwright's default caret hiding mutates an input's inline style. If a
+    // screenshot races React hydration, that test-only mutation creates a false
+    // hydration mismatch. Keep the page DOM untouched while capturing evidence.
+    await this.page.screenshot({ path: file, fullPage, animations: "disabled", caret: "initial" });
     return file;
   }
 

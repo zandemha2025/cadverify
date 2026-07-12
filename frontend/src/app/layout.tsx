@@ -85,6 +85,11 @@ export default async function RootLayout({
             Applied before paint so the theme never flickers. */}
         <script
           nonce={nonce}
+          // Browsers deliberately hide a parsed script nonce from DOM attribute
+          // reads. React therefore sees an empty client-side attribute even
+          // though the server supplied the correct nonce; suppress only that
+          // security-defined mismatch on this exact element.
+          suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html:
               "try{if(localStorage.getItem('cv_theme')!=='light'){document.documentElement.classList.add('dark')}}catch(e){document.documentElement.classList.add('dark')}",

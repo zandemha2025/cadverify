@@ -17,24 +17,24 @@ import asyncio
 import os
 import time
 import uuid
+from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
 import respx
-from authlib.jose import JsonWebKey, JsonWebToken
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
+from joserfc import jwk, jwt
 from starlette.middleware.sessions import SessionMiddleware
 
+from src.auth.provisioning import ProvisionedLogin
 from src.services.org_saml_service import SamlGroupAssignment
 
 ISSUER = "https://mock-idp.local"
 CLIENT_ID = "client-abc"
 CLIENT_SECRET = "shhh"
 REDIRECT_URI = "https://api.cadverify.com/auth/oidc/callback"
-
-_JWT = JsonWebToken(["RS256"])
 
 # Realistic fixture claim sets (trimmed to the fields the RP consumes).
 OKTA_CLAIMS = {
@@ -54,8 +54,22 @@ ENTRA_ID_TOKEN_CLAIMS = {
 ENTRA_USERINFO = {
     "sub": "entra-oid-9",
     "preferred_username": "engineer@entra-enterprise.com",
+    "email_verified": True,
     "groups": ["11111111-2222-3333-4444-555555555555", "cad-eng"],
 }
+
+
+def _login_result(
+    user_id: int,
+    assignment: SamlGroupAssignment | None = None,
+) -> ProvisionedLogin:
+    return ProvisionedLogin(
+        user_id=user_id,
+        user_email=f"user-{user_id}@example.com",
+        session_version=0,
+        created=False,
+        group_assignment=assignment or SamlGroupAssignment(matched=False),
+    )
 
 
 class MockIdP:
@@ -67,10 +81,15 @@ class MockIdP:
         self._install_key("kid-1")
 
     def _install_key(self, kid: str) -> None:
-        key = JsonWebKey.generate_key("RSA", 2048, is_private=True)
+        key = jwk.RSAKey.generate_key(2048, private=True)
         self.kid = kid
-        self._priv = {**key.as_dict(is_private=True), "kid": kid}
-        self._pub = {**key.as_dict(is_private=False), "kid": kid, "use": "sig", "alg": "RS256"}
+        self._priv = key
+        self._pub = {
+            **key.as_dict(private=False),
+            "kid": kid,
+            "use": "sig",
+            "alg": "RS256",
+        }
 
     def rotate(self, kid: str) -> None:
         """Replace the serving key (simulates an IdP key rotation)."""
@@ -96,9 +115,10 @@ class MockIdP:
         *,
         nonce: str,
         claims: dict,
-        aud: str | None = None,
+        aud: str | list[str] | None = None,
         exp_delta: int = 300,
         iat_delta: int = 0,
+        omit_claims: set[str] | None = None,
     ) -> str:
         now = int(time.time())
         payload = {
@@ -110,8 +130,14 @@ class MockIdP:
             "exp": now + exp_delta,
         }
         payload.update(claims)
-        token = _JWT.encode({"alg": "RS256", "kid": self.kid}, payload, self._priv)
-        return token.decode() if isinstance(token, bytes) else token
+        for claim in omit_claims or set():
+            payload.pop(claim, None)
+        return jwt.encode(
+            {"alg": "RS256", "kid": self.kid},
+            payload,
+            self._priv,
+            algorithms=["RS256"],
+        )
 
 
 @pytest.fixture
@@ -127,7 +153,17 @@ def oidc_env(monkeypatch):
 
 
 @pytest.fixture
-def app():
+def required_audit(monkeypatch):
+    from src.services import audit_service
+
+    audit = AsyncMock()
+    monkeypatch.setattr(audit_service, "log_action", audit)
+    return audit
+
+
+@pytest.fixture
+def app(required_audit):
+    del required_audit
     from src.auth.oidc import router as oidc_router
 
     application = FastAPI()
@@ -262,6 +298,76 @@ def test_oidc_status_requires_https_in_production(app, oidc_env, monkeypatch):
     assert "HTTPS in production" in response.json()["detail"]["message"]
 
 
+@pytest.mark.asyncio
+async def test_discovery_requires_exact_nonempty_issuer(oidc_env, monkeypatch):
+    import src.auth.oidc as oidc
+
+    cfg = oidc._load_oidc_config()
+    document = MockIdP().discovery()
+    document.pop("issuer")
+    monkeypatch.setattr(
+        oidc, "_fetch_json", AsyncMock(return_value=document)
+    )
+
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(HTTPException) as exc_info:
+            await oidc._discovery(client, cfg)
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.detail["code"] == "oidc_issuer_mismatch"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("field", "endpoint"),
+    [
+        ("token_endpoint", "https://attacker.example/token"),
+        ("jwks_uri", "https://user:password@mock-idp.local/jwks"),
+        ("userinfo_endpoint", "file:///etc/passwd"),
+    ],
+)
+async def test_discovery_rejects_unapproved_or_credentialed_endpoints(
+    oidc_env, monkeypatch, field, endpoint
+):
+    import src.auth.oidc as oidc
+
+    cfg = oidc._load_oidc_config()
+    document = {**MockIdP().discovery(), field: endpoint}
+    monkeypatch.setattr(
+        oidc, "_fetch_json", AsyncMock(return_value=document)
+    )
+
+    async with httpx.AsyncClient() as client:
+        with pytest.raises(HTTPException) as exc_info:
+            await oidc._discovery(client, cfg)
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.detail["code"] == "oidc_discovery_unsafe"
+
+
+@pytest.mark.asyncio
+async def test_production_discovery_rejects_private_allowed_origin(
+    oidc_env, monkeypatch
+):
+    import src.auth.oidc as oidc
+
+    monkeypatch.setenv("RELEASE", "v1.0.0")
+    monkeypatch.setenv(
+        "OIDC_ALLOWED_ENDPOINT_ORIGINS", "https://127.0.0.1"
+    )
+    cfg = oidc._load_oidc_config()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await oidc._validate_provider_endpoint(
+            cfg,
+            "https://127.0.0.1/token",
+            field="token_endpoint",
+        )
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.detail["code"] == "oidc_discovery_unsafe"
+
+
 # ══════════════════════════════════════════════════════════════════════════
 # Happy path — Okta-shaped id_token with groups in the id_token
 # ══════════════════════════════════════════════════════════════════════════
@@ -272,11 +378,11 @@ def test_oidc_happy_path_okta_shaped(app, oidc_env, monkeypatch):
 
     import src.auth.oidc as oidc
 
-    provision = AsyncMock(return_value=42)
-    assign = AsyncMock(return_value=SamlGroupAssignment(matched=True, org_id="org1", org_role="member", created=True))
-    monkeypatch.setattr(oidc, "_oidc_provision_user", provision)
-    monkeypatch.setattr(oidc, "_apply_oidc_group_assignment_for_login", assign)
-    monkeypatch.setattr(oidc, "get_user_session_version", AsyncMock(return_value=0))
+    assignment = SamlGroupAssignment(
+        matched=True, org_id="org1", org_role="member", created=True
+    )
+    provision = AsyncMock(return_value=_login_result(42, assignment))
+    monkeypatch.setattr(oidc, "_oidc_provision_login", provision)
 
     idp = MockIdP()
     holder: dict = {}
@@ -291,9 +397,13 @@ def test_oidc_happy_path_okta_shaped(app, oidc_env, monkeypatch):
     assert resp.status_code == 303, resp.text
     assert resp.headers["location"] == "https://cadverify.com/dashboard"
     assert "dash_session" in resp.headers.get("set-cookie", "")
-    provision.assert_awaited_once_with("engineer@okta-enterprise.com")
-    # Group→role assignment reuses the SAML path with the OIDC groups claim.
-    assign.assert_awaited_once_with(42, {"groups": ["Everyone", "cad-engineers"]})
+    provision.assert_awaited_once_with(
+        email="engineer@okta-enterprise.com",
+        email_verified=True,
+        issuer=ISSUER,
+        subject="00u1okta",
+        groups={"groups": ["Everyone", "cad-engineers"]},
+    )
 
 
 def test_oidc_disabled_group_mapping_skips_userinfo(app, oidc_env, monkeypatch):
@@ -303,11 +413,8 @@ def test_oidc_disabled_group_mapping_skips_userinfo(app, oidc_env, monkeypatch):
 
     monkeypatch.setenv("OIDC_GROUPS_CLAIM", "   ")
     monkeypatch.delenv("OIDC_SCOPES")
-    provision = AsyncMock(return_value=43)
-    assign = AsyncMock()
-    monkeypatch.setattr(oidc, "_oidc_provision_user", provision)
-    monkeypatch.setattr(oidc, "_apply_oidc_group_assignment_for_login", assign)
-    monkeypatch.setattr(oidc, "get_user_session_version", AsyncMock(return_value=0))
+    provision = AsyncMock(return_value=_login_result(43))
+    monkeypatch.setattr(oidc, "_oidc_provision_login", provision)
 
     idp = MockIdP()
     holder: dict = {}
@@ -317,15 +424,24 @@ def test_oidc_disabled_group_mapping_skips_userinfo(app, oidc_env, monkeypatch):
         state, nonce = _start_login(client)
         holder["id_token"] = idp.mint(
             nonce=nonce,
-            claims={"sub": "no-groups", "email": "engineer@example.com"},
+            claims={
+                "sub": "no-groups",
+                "email": "engineer@example.com",
+                "email_verified": True,
+            },
         )
 
         resp = client.get(f"/auth/oidc/callback?code=no-groups&state={state}")
 
     assert resp.status_code == 303, resp.text
     assert userinfo_route.called is False
-    provision.assert_awaited_once_with("engineer@example.com")
-    assign.assert_not_awaited()
+    provision.assert_awaited_once_with(
+        email="engineer@example.com",
+        email_verified=True,
+        issuer=ISSUER,
+        subject="no-groups",
+        groups=None,
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -338,11 +454,8 @@ def test_oidc_happy_path_entra_shaped_userinfo_fallback(app, oidc_env, monkeypat
 
     import src.auth.oidc as oidc
 
-    provision = AsyncMock(return_value=7)
-    assign = AsyncMock(return_value=SamlGroupAssignment(matched=False))
-    monkeypatch.setattr(oidc, "_oidc_provision_user", provision)
-    monkeypatch.setattr(oidc, "_apply_oidc_group_assignment_for_login", assign)
-    monkeypatch.setattr(oidc, "get_user_session_version", AsyncMock(return_value=0))
+    provision = AsyncMock(return_value=_login_result(7))
+    monkeypatch.setattr(oidc, "_oidc_provision_login", provision)
 
     idp = MockIdP()
     holder: dict = {}
@@ -356,10 +469,61 @@ def test_oidc_happy_path_entra_shaped_userinfo_fallback(app, oidc_env, monkeypat
 
     assert resp.status_code == 303, resp.text
     # Email derived from preferred_username; groups pulled from userinfo.
-    provision.assert_awaited_once_with("engineer@entra-enterprise.com")
-    assign.assert_awaited_once_with(
-        7, {"groups": ["11111111-2222-3333-4444-555555555555", "cad-eng"]}
+    provision.assert_awaited_once_with(
+        email="engineer@entra-enterprise.com",
+        email_verified=True,
+        issuer=ISSUER,
+        subject="entra-oid-9",
+        groups={"groups": ["11111111-2222-3333-4444-555555555555", "cad-eng"]},
     )
+
+
+def test_oidc_rejects_userinfo_for_a_different_subject(app, oidc_env, monkeypatch):
+    import src.auth.oidc as oidc
+
+    provision = AsyncMock(return_value=_login_result(7))
+    monkeypatch.setattr(oidc, "_oidc_provision_login", provision)
+    idp = MockIdP()
+    holder: dict = {}
+    mismatched = {**ENTRA_USERINFO, "sub": "attacker-subject"}
+    with respx.mock(assert_all_called=False) as router:
+        _wire_idp(router, idp, id_token_holder=holder, userinfo=mismatched)
+        client = TestClient(app, follow_redirects=False, raise_server_exceptions=False)
+        state, nonce = _start_login(client)
+        holder["id_token"] = idp.mint(nonce=nonce, claims=ENTRA_ID_TOKEN_CLAIMS)
+        resp = client.get(f"/auth/oidc/callback?code=code-e&state={state}")
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "oidc_userinfo_subject_mismatch"
+    provision.assert_not_awaited()
+
+
+def test_oidc_rejects_userinfo_without_a_subject(app, oidc_env, monkeypatch):
+    import src.auth.oidc as oidc
+
+    provision = AsyncMock(return_value=_login_result(7))
+    monkeypatch.setattr(oidc, "_oidc_provision_login", provision)
+    idp = MockIdP()
+    holder: dict = {}
+    missing_subject = {
+        key: value for key, value in ENTRA_USERINFO.items() if key != "sub"
+    }
+    with respx.mock(assert_all_called=False) as router:
+        _wire_idp(
+            router, idp, id_token_holder=holder, userinfo=missing_subject
+        )
+        client = TestClient(
+            app, follow_redirects=False, raise_server_exceptions=False
+        )
+        state, nonce = _start_login(client)
+        holder["id_token"] = idp.mint(
+            nonce=nonce, claims=ENTRA_ID_TOKEN_CLAIMS
+        )
+        resp = client.get(f"/auth/oidc/callback?code=code-e&state={state}")
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "oidc_userinfo_subject_mismatch"
+    provision.assert_not_awaited()
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -376,10 +540,8 @@ def _run_callback_expecting_failure(
 
     import src.auth.oidc as oidc
 
-    provision = AsyncMock(return_value=99)
-    monkeypatch.setattr(oidc, "_oidc_provision_user", provision)
-    monkeypatch.setattr(oidc, "_apply_oidc_group_assignment_for_login", AsyncMock())
-    monkeypatch.setattr(oidc, "get_user_session_version", AsyncMock(return_value=0))
+    provision = AsyncMock(return_value=_login_result(99))
+    monkeypatch.setattr(oidc, "_oidc_provision_login", provision)
 
     idp = MockIdP()
     holder: dict = {}
@@ -438,6 +600,98 @@ def test_oidc_rejects_wrong_aud(app, oidc_env, monkeypatch):
     provision.assert_not_awaited()
 
 
+def test_oidc_rejects_wrong_issuer(app, oidc_env, monkeypatch):
+    resp, provision = _run_callback_expecting_failure(
+        app,
+        monkeypatch,
+        mint_kwargs={
+            "claims": {**OKTA_CLAIMS, "iss": "https://attacker-idp.invalid"}
+        },
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "oidc_invalid_token"
+    provision.assert_not_awaited()
+
+
+@pytest.mark.parametrize("claim", ["iss", "sub", "aud", "exp", "iat"])
+def test_oidc_rejects_missing_required_claim(
+    app, oidc_env, monkeypatch, claim
+):
+    resp, provision = _run_callback_expecting_failure(
+        app,
+        monkeypatch,
+        mint_kwargs={"claims": OKTA_CLAIMS, "omit_claims": {claim}},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "oidc_invalid_token"
+    provision.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "mint_kwargs",
+    [
+        {"claims": OKTA_CLAIMS, "iat_delta": 3600},
+        {"claims": {**OKTA_CLAIMS, "nbf": int(time.time()) + 3600}},
+    ],
+)
+def test_oidc_rejects_not_yet_valid_token(
+    app, oidc_env, monkeypatch, mint_kwargs
+):
+    resp, provision = _run_callback_expecting_failure(
+        app, monkeypatch, mint_kwargs=mint_kwargs
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "oidc_invalid_token"
+    provision.assert_not_awaited()
+
+
+def test_oidc_accepts_multi_audience_with_client_id(app, oidc_env, monkeypatch):
+    from src.auth import oidc
+
+    provision = AsyncMock(return_value=_login_result(57))
+    monkeypatch.setattr(oidc, "_oidc_provision_login", provision)
+
+    idp = MockIdP()
+    holder: dict = {}
+    with respx.mock(assert_all_called=False) as router:
+        _wire_idp(router, idp, id_token_holder=holder)
+        client = TestClient(app, follow_redirects=False, raise_server_exceptions=False)
+        state, nonce = _start_login(client)
+        holder["id_token"] = idp.mint(
+            nonce=nonce,
+            claims=OKTA_CLAIMS,
+            aud=["resource-api", CLIENT_ID],
+        )
+        resp = client.get(f"/auth/oidc/callback?code=c&state={state}")
+
+    assert resp.status_code == 303, resp.text
+    assert "dash_session" in resp.headers.get("set-cookie", "")
+
+
+def test_oidc_transactional_provisioning_failure_blocks_session_issuance(
+    app, oidc_env, monkeypatch
+):
+    from src.auth import oidc
+
+    monkeypatch.setattr(
+        oidc,
+        "_oidc_provision_login",
+        AsyncMock(side_effect=RuntimeError("audit ledger unavailable")),
+    )
+
+    idp = MockIdP()
+    holder: dict = {}
+    with respx.mock(assert_all_called=False) as router:
+        _wire_idp(router, idp, id_token_holder=holder)
+        client = TestClient(app, follow_redirects=False, raise_server_exceptions=False)
+        state, nonce = _start_login(client)
+        holder["id_token"] = idp.mint(nonce=nonce, claims=OKTA_CLAIMS)
+        resp = client.get(f"/auth/oidc/callback?code=c&state={state}")
+
+    assert resp.status_code == 500
+    assert "dash_session" not in resp.headers.get("set-cookie", "")
+
+
 def test_oidc_rejects_tampered_signature(app, oidc_env, monkeypatch):
     def _tamper(token: str) -> str:
         header, payload, sig = token.split(".")
@@ -468,11 +722,8 @@ def test_oidc_verifies_after_key_rotation(app, oidc_env, monkeypatch):
 
     import src.auth.oidc as oidc
 
-    provision = AsyncMock(return_value=55)
-    monkeypatch.setattr(oidc, "_oidc_provision_user", provision)
-    monkeypatch.setattr(oidc, "_apply_oidc_group_assignment_for_login", AsyncMock(
-        return_value=SamlGroupAssignment(matched=False)))
-    monkeypatch.setattr(oidc, "get_user_session_version", AsyncMock(return_value=0))
+    provision = AsyncMock(return_value=_login_result(55))
+    monkeypatch.setattr(oidc, "_oidc_provision_login", provision)
 
     idp = MockIdP()
     idp.rotate("kid-rotated")  # IdP is now serving a new signing key
@@ -580,7 +831,12 @@ def test_oidc_end_to_end_real_provisioning_and_group_role_pg(app, oidc_env, monk
             state, nonce = _start_login(client)
             holder["id_token"] = idp.mint(
                 nonce=nonce,
-                claims={"sub": f"oidc-{tag}", "email": email, "groups": [group_value]},
+                claims={
+                    "sub": f"oidc-{tag}",
+                    "email": email,
+                    "email_verified": True,
+                    "groups": [group_value],
+                },
             )
             resp = client.get(f"/auth/oidc/callback?code=c&state={state}")
 
@@ -632,6 +888,7 @@ def test_oidc_end_to_end_real_provisioning_and_group_role_pg(app, oidc_env, monk
             org_ids = list({org_id, *[r["org_id"] for r in orgs]})
             asyncio.run(_pg("DELETE FROM api_keys WHERE user_id=$1", uid))
             asyncio.run(_pg("DELETE FROM audit_log WHERE user_id=$1", uid))
+            asyncio.run(_pg("DELETE FROM auth_identities WHERE user_id=$1", uid))
             asyncio.run(_pg("DELETE FROM scim_identities WHERE user_id=$1", uid))
             asyncio.run(_pg("DELETE FROM memberships WHERE user_id=$1", uid))
             asyncio.run(_pg("DELETE FROM users WHERE id=$1", uid))

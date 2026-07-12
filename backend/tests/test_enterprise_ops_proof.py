@@ -67,9 +67,45 @@ def test_ci_releases_images_and_protected_workflow_promotes_staging_first():
     production_steps = {step.get("name") for step in production["steps"]}
     assert "Require a successful CI release for this exact SHA" in staging_steps
     assert "Download CI-owned immutable release manifest" in staging_steps
+    assert "Require protected supplier-quote holdout evidence" in staging_steps
     assert "Deploy and verify staging" in staging_steps
     assert "Validate isolated production environment contract" in production_steps
+    assert "Revalidate protected supplier-quote holdout evidence" in production_steps
+    assert "Require production evidence to match staged evidence" in production_steps
     assert "Deploy and verify production" in production_steps
+    staging_step_order = [step.get("name") for step in staging["steps"]]
+    assert staging_step_order.index(
+        "Require protected supplier-quote holdout evidence"
+    ) < staging_step_order.index("Deploy and verify staging")
+    staging_holdout = next(
+        step
+        for step in staging["steps"]
+        if step.get("name") == "Require protected supplier-quote holdout evidence"
+    )
+    assert staging_holdout["env"]["CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64"] == (
+        "${{ secrets.CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64 }}"
+    )
+    assert staging["outputs"]["holdout_evidence_sha256"] == (
+        "${{ steps.holdout.outputs.evidence_sha256 }}"
+    )
+    production_holdout = next(
+        step
+        for step in production["steps"]
+        if step.get("name") == "Revalidate protected supplier-quote holdout evidence"
+    )
+    assert production_holdout["env"]["CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64"] == (
+        "${{ secrets.CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64 }}"
+    )
+    assert production["env"]["STAGING_HOLDOUT_EVIDENCE_SHA256"] == (
+        "${{ needs.deploy-staging.outputs.holdout_evidence_sha256 }}"
+    )
+    production_step_order = [step.get("name") for step in production["steps"]]
+    assert production_step_order.index(
+        "Revalidate protected supplier-quote holdout evidence"
+    ) < production_step_order.index("Deploy and verify production")
+    assert production_step_order.index(
+        "Require production evidence to match staged evidence"
+    ) < production_step_order.index("Deploy and verify production")
 
     backend_steps = {step.get("name") for step in workflow["jobs"]["backend"]["steps"]}
     assert "Postgres restore drill" in backend_steps
@@ -171,6 +207,9 @@ def test_fly_configs_describe_deploy_surface_without_external_proof_claims():
     assert "node scripts/ops/fly-required-secrets-gate.mjs" in promotion
     assert "node scripts/ops/fly-live-health-gate.mjs" in promotion
     assert 'docker manifest inspect "$CADVERIFY_BACKEND_IMAGE"' in promotion
+    assert "CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_SHA256" in promotion
+    assert "supplier_holdout_evidence_sha256=" in promotion
+    assert "PARSE_PROCESS_POOL_DISABLED" in promotion
 
 
 def test_worker_and_deploy_health_gate_require_arq_worker_heartbeat():
@@ -234,6 +273,16 @@ def test_production_lock_gate_is_platform_neutral():
 
     assert "--no-header --no-annotate" in workflow
     assert "diff -u requirements-prod.lock /tmp/requirements-prod.lock" in workflow
+
+
+def test_protected_browser_gate_fails_required_journey_skips():
+    workflow = read(".github/workflows/ci.yml")
+    p7 = read("scripts/e2e/p7-role-failure-journey-runner.mjs")
+
+    assert 'E2E_FAIL_ON_UNAVAILABLE: "1"' in workflow
+    assert '!process.argv.includes("--allow-unavailable")' in p7
+    assert "failOnUnavailable && skippedSteps > 0" in p7
+    assert 'status === "SKIPPED_UNAVAILABLE" && failOnUnavailable' in p7
 
 
 def test_pre_human_real_cad_and_ops_gates_are_in_full_e2e_chain():

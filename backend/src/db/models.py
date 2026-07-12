@@ -310,6 +310,45 @@ class User(Base):
     )
 
 
+class AuthIdentity(Base):
+    """Immutable federated identity binding (migration 0039)."""
+
+    __tablename__ = "auth_identities"
+    __table_args__ = (
+        CheckConstraint(
+            "provider IN ('oidc', 'saml')", name="ck_auth_identities_provider"
+        ),
+        UniqueConstraint(
+            "provider",
+            "issuer",
+            "subject",
+            name="uq_auth_identity_provider_issuer_subject",
+        ),
+        UniqueConstraint(
+            "user_id",
+            "provider",
+            "issuer",
+            name="uq_auth_identity_user_provider_issuer",
+        ),
+        Index("ix_auth_identities_user_id", "user_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    issuer: Mapped[str] = mapped_column(Text, nullable=False)
+    subject: Mapped[str] = mapped_column(Text, nullable=False)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    email_at_link: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_login_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class ApiKey(Base):
     __tablename__ = "api_keys"
     __table_args__ = (Index("ix_api_keys_org_id", "org_id"),)
@@ -957,7 +996,7 @@ class AuditLog(Base):
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     # W1: NULLABLE — system/unauthenticated audit events have no user, hence no
-    # org. User-attributed rows are stamped (backfill + log_action). ondelete
+    # org. User-attributed rows are stamped (backfill + transactional append). ondelete
     # SET NULL: audit history survives org deletion (mirrors user_id).
     org_id: Mapped[Optional[str]] = mapped_column(
         Text, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True

@@ -182,7 +182,7 @@ class EnterpriseDomainQA {
       screenshotDir,
       `${String(this.steps.length + 1).padStart(2, "0")}-${slug(name)}.png`
     );
-    await this.page.screenshot({ path: file, fullPage, animations: "disabled" });
+    await this.page.screenshot({ path: file, fullPage, animations: "disabled", caret: "initial" });
     return file;
   }
 

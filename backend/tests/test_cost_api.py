@@ -20,7 +20,11 @@ def client(monkeypatch):
     import main
 
     importlib.reload(main)  # conftest re-applies the auth/DB bypass on reload
-    return TestClient(main.app)
+    # Keep the client's portal and ASGI lifespan bounded to the test. Returning
+    # an unclosed client can leave dependency cleanup to garbage collection,
+    # which hides real coroutine/session lifecycle regressions behind warnings.
+    with TestClient(main.app) as test_client:
+        yield test_client
 
 
 def _post(client, name, data, **form):
@@ -276,6 +280,7 @@ def test_cost_decision_on_step_box(client, box_step_bytes):
         assert a["provenance"] in ("MEASURED", "USER", "DEFAULT")
 
 
+@pytest.mark.filterwarnings("ignore:invalid value encountered in divide:RuntimeWarning")
 def test_cost_step_non_watertight_is_clean_400(client):
     """An open-shell STEP (non-watertight) -> G1 structured 400 GEOMETRY_INVALID."""
     step = _open_shell_step_bytes()

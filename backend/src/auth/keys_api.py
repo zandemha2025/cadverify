@@ -16,23 +16,26 @@ from sqlalchemy import text
 from src.auth.dashboard_session import require_dashboard_session
 from src.auth.hashing import hmac_index, mint_token
 from src.auth.models import _session, create_api_key
+from src.services.audit_service import append_audit_entry
 
 router = APIRouter(prefix="/api/v1/keys", tags=["keys"])
 KEY_REVEAL_PATH = "/settings/developer"
 
-# W1 step 3 — org boundary as defense-in-depth on personal API-key management.
-# API keys are *personal* credentials (owned via the dashboard session's
-# user_id), so ``user_id`` stays the primary isolation predicate: even an
-# org-mate must never rotate/revoke another member's key. This correlated
-# subquery ADDS the tenant boundary (a key can only be touched from within its
-# own org) without relaxing the per-user lock. It never locks an owner out: the
-# same invariant that lets ``api_keys.org_id`` be NOT NULL — every key is stamped
-# with ``resolve_org(user)`` at creation, and every user has a membership
-# (signup provisioning + the 0009 backfill) — guarantees this subquery resolves
-# to exactly the key's own org. It reuses the existing ``:u`` bind (no new param).
+# Org boundary as defense-in-depth on personal API-key management. ``user_id``
+# remains the primary owner predicate, while the correlated subquery selects
+# the user's validated active organization, falling back to their oldest live
+# membership when ``current_org_id`` is null or stale. This is byte-for-byte the
+# same resolution rule as ``org_context.resolve_org`` and keeps SSO-created keys
+# visible and manageable after a group mapping switches the active org.
 _ORG_SCOPE_SQL = (
-    "org_id = (SELECT org_id FROM memberships WHERE user_id = :u "
-    "ORDER BY created_at ASC, id ASC LIMIT 1)"
+    "org_id = COALESCE("
+    "(SELECT current_m.org_id FROM memberships current_m "
+    "JOIN users current_u ON current_u.id = :u "
+    "AND current_u.current_org_id = current_m.org_id "
+    "WHERE current_m.user_id = :u LIMIT 1), "
+    "(SELECT oldest_m.org_id FROM memberships oldest_m "
+    "WHERE oldest_m.user_id = :u "
+    "ORDER BY oldest_m.created_at ASC, oldest_m.id ASC LIMIT 1))"
 )
 
 
@@ -113,6 +116,7 @@ async def rotate_key(
     response: Response,
     user_id: int = Depends(require_dashboard_session),
 ):
+    token, prefix, secret_hash = mint_token()
     async with _session()() as s:
         r = (
             await s.execute(
@@ -121,12 +125,11 @@ async def rotate_key(
                     "UPDATE api_keys SET revoked_at = now() "  # nosec B608
                     f"WHERE id = :i AND user_id = :u AND {_ORG_SCOPE_SQL} "
                     "AND revoked_at IS NULL "
-                    "RETURNING name"
+                    "RETURNING name, org_id, prefix"
                 ),
                 {"i": key_id, "u": user_id},
             )
         ).first()
-        await s.commit()
         if r is None:
             raise HTTPException(
                 404,
@@ -136,11 +139,46 @@ async def rotate_key(
                     "doc_url": "https://docs.cadverify.com/errors#key_not_found",
                 },
             )
-        name = r[0]
-    token, prefix, secret_hash = mint_token()
-    new_id = await create_api_key(
-        user_id, name, prefix, hmac_index(token), secret_hash
-    )
+        name, org_id, old_prefix = r
+        created = (
+            await s.execute(
+                text(
+                    "INSERT INTO api_keys "
+                    "(user_id, org_id, name, prefix, hmac_index, secret_hash) "
+                    "VALUES (:u, :o, :n, :p, :h, :s) RETURNING id"
+                ),
+                {
+                    "u": user_id,
+                    "o": org_id,
+                    "n": name,
+                    "p": prefix,
+                    "h": hmac_index(token),
+                    "s": secret_hash,
+                },
+            )
+        ).first()
+        if created is None:
+            raise RuntimeError("API key rotation insert returned no row")
+        new_id = int(created[0])
+        await append_audit_entry(
+            s,
+            user_id,
+            "api_key.revoked",
+            "api_key",
+            str(key_id),
+            {"key_prefix": old_prefix, "reason": "rotation", "replacement_id": new_id},
+            org_id=str(org_id),
+        )
+        await append_audit_entry(
+            s,
+            user_id,
+            "api_key.created",
+            "api_key",
+            str(new_id),
+            {"key_prefix": prefix, "rotated_from_id": key_id},
+            org_id=str(org_id),
+        )
+        await s.commit()
     _set_reveal_cookie(response, token)
     return {"id": new_id, "prefix": prefix}
 
@@ -157,21 +195,30 @@ async def revoke_key(
                     "UPDATE api_keys SET revoked_at = now() "  # nosec B608
                     f"WHERE id = :i AND user_id = :u AND {_ORG_SCOPE_SQL} "
                     "AND revoked_at IS NULL "
-                    "RETURNING id"
+                    "RETURNING id, org_id, prefix"
                 ),
                 {"i": key_id, "u": user_id},
             )
         ).first()
-        await s.commit()
-    if r is None:
-        raise HTTPException(
-            404,
-            detail={
-                "code": "key_not_found",
-                "message": "Key not found or already revoked.",
-                "doc_url": "https://docs.cadverify.com/errors#key_not_found",
-            },
+        if r is None:
+            raise HTTPException(
+                404,
+                detail={
+                    "code": "key_not_found",
+                    "message": "Key not found or already revoked.",
+                    "doc_url": "https://docs.cadverify.com/errors#key_not_found",
+                },
+            )
+        await append_audit_entry(
+            s,
+            user_id,
+            "api_key.revoked",
+            "api_key",
+            str(r[0]),
+            {"key_prefix": r[2], "reason": "user_requested"},
+            org_id=str(r[1]),
         )
+        await s.commit()
     return Response(status_code=204)
 
 
@@ -188,19 +235,28 @@ async def rename_key(
                     # nosec B608: static constant SQL + bound params (:n, :i, :u).
                     "UPDATE api_keys SET name = :n "  # nosec B608
                     f"WHERE id = :i AND user_id = :u AND {_ORG_SCOPE_SQL} "
-                    "RETURNING id"
+                    "RETURNING id, org_id, prefix"
                 ),
                 {"i": key_id, "u": user_id, "n": body.name},
             )
         ).first()
-        await s.commit()
-    if r is None:
-        raise HTTPException(
-            404,
-            detail={
-                "code": "key_not_found",
-                "message": "Key not found.",
-                "doc_url": "https://docs.cadverify.com/errors#key_not_found",
-            },
+        if r is None:
+            raise HTTPException(
+                404,
+                detail={
+                    "code": "key_not_found",
+                    "message": "Key not found.",
+                    "doc_url": "https://docs.cadverify.com/errors#key_not_found",
+                },
+            )
+        await append_audit_entry(
+            s,
+            user_id,
+            "api_key.renamed",
+            "api_key",
+            str(r[0]),
+            {"key_prefix": r[2], "name": body.name},
+            org_id=str(r[1]),
         )
+        await s.commit()
     return {"id": key_id, "name": body.name}

@@ -392,8 +392,8 @@ async def create_package(
     # bytes instead of re-rendering all items on every request (the W9-F1
     # gateway-timeout risk — 25 items × ~4s WeasyPrint = ~90s per download).
     #
-    # Warming runs as a background task (mirrors persist_cost_decision's
-    # fire-and-forget audit) so create itself stays ~tens of ms — pushing ~90s of
+    # Warming runs as a background cache task so create itself stays ~tens of ms
+    # — pushing ~90s of
     # rendering into create would only relocate the timeout. The decision ORM
     # rows are already fully loaded, so rendering never touches the (closing)
     # session. build_zip still renders-on-miss, so a download that races the warm

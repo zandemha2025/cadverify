@@ -74,3 +74,34 @@ async def test_per_email_blocks_second_attempt(fake_redis):
     with pytest.raises(HTTPException) as exc:
         await per_email_signup_limit("a@x.com", soft_flagged=False)
     assert exc.value.detail["code"] == "signup_email_limited"
+
+
+@pytest.mark.asyncio
+async def test_magic_link_resend_uses_short_separate_window(fake_redis, monkeypatch):
+    from src.auth.magic_keys import magic_send_key
+    from src.auth.signup_limits import per_email_magic_link_limit
+
+    monkeypatch.setenv("MAGIC_LINK_RESEND_SECONDS", "60")
+    await per_email_magic_link_limit("a@x.com", soft_flagged=False)
+
+    ttl = await fake_redis.ttl(magic_send_key("a@x.com"))
+    assert 0 < ttl <= 60
+    assert await fake_redis.exists("signup:email:a@x.com") == 0
+
+    with pytest.raises(HTTPException) as exc:
+        await per_email_magic_link_limit("a@x.com", soft_flagged=False)
+    assert exc.value.detail["code"] == "magic_link_resend_limited"
+    assert exc.value.headers["Retry-After"]
+
+
+@pytest.mark.asyncio
+async def test_magic_link_soft_domain_window_is_minutes_not_days(
+    fake_redis, monkeypatch
+):
+    from src.auth.magic_keys import magic_send_key
+    from src.auth.signup_limits import per_email_magic_link_limit
+
+    monkeypatch.setenv("MAGIC_LINK_RESEND_SECONDS", "60")
+    await per_email_magic_link_limit("a@soft.example", soft_flagged=True)
+    ttl = await fake_redis.ttl(magic_send_key("a@soft.example"))
+    assert 240 < ttl <= 300

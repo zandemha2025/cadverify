@@ -15,13 +15,12 @@ group-assignment model that SAML already uses:
                                fetch userinfo when claims are thin, then provision
                                the user and apply group→role assignment.
 
-Identity reuse (non-negotiable: one identity model): provisioning mirrors
-``src.auth.saml._saml_provision_user`` (``upsert_user`` with
-``auth_provider='oidc'`` + default-key minting) and group→role assignment
-reuses ``org_saml_service.apply_saml_group_assignment`` — the OIDC ``groups``
-claim is fed in as the assertion-attribute map, so the per-org
-``SamlGroupMapping`` rows govern OIDC exactly as they govern SAML. No second
-identity model is forked.
+Identity binding is immutable: ``(issuer, sub)`` maps through
+``auth_identities`` and verified email can bootstrap only a brand-new account;
+it cannot silently attach a new subject to an existing email. User/org/key
+state, group→role assignment, and audit evidence commit in one transaction
+before the session is signed. The per-org ``SamlGroupMapping`` rows still govern
+OIDC groups exactly as they govern SAML.
 
 Zero-egress testing: discovery, JWKS, token, and userinfo are plain httpx calls
 to the configured issuer. A test stands up a LOCAL mock IdP (in-process RSA
@@ -31,37 +30,35 @@ and NO bypass in this production code.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import logging
 import os
+import re
 import secrets
 import time
 from dataclasses import dataclass
+from typing import cast
 from urllib.parse import urlsplit
 
 import httpx
-from authlib.jose import JsonWebKey, JsonWebToken
-from authlib.jose.errors import JoseError
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
+from joserfc import jwk, jwt
+from joserfc.errors import JoseError
+from joserfc.jwk import KeySetSerialization
+from joserfc.jwt import JWTClaimsRegistry
 
 from src.auth.dashboard_session import set_session_cookie
-from src.auth.disposable import normalize_email
-from src.auth.hashing import hmac_index, mint_token
-from src.auth.models import (
-    create_api_key,
-    get_user_session_version,
-    upsert_user,
-    user_has_active_api_key,
+from src.auth.provisioning import (
+    FederatedIdentity,
+    ProvisionedLogin,
+    provision_authenticated_login,
 )
 from src.config.production import is_production
-from src.db.engine import get_session_factory
-from src.services.org_saml_service import (
-    SamlGroupAssignment,
-    SamlGroupMappingAmbiguousError,
-    apply_saml_group_assignment,
-)
+from src.services.org_saml_service import SamlGroupMappingAmbiguousError
+from src.services.url_guard import UnsafeURLError, validate_public_host
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +67,6 @@ router = APIRouter(prefix="/oidc")
 # Single-use state entries expire quickly; a stale/replayed callback is rejected.
 _STATE_TTL_SECONDS = 600
 _SESSION_KEY = "oidc_flows"
-_JWT = JsonWebToken(["RS256"])
 _HTTP_TIMEOUT = httpx.Timeout(10.0)
 
 
@@ -83,6 +79,8 @@ class OidcConfig:
     redirect_uri: str
     scopes: str
     groups_claim: str
+    email_verified_claim: str
+    allowed_endpoint_origins: tuple[str, ...]
 
 
 def _api_origin() -> str:
@@ -97,7 +95,7 @@ def _load_oidc_config() -> OidcConfig:
     Required: OIDC_ISSUER, OIDC_CLIENT_ID. A misconfigured RP fails closed with
     a clean 500 rather than silently attempting an anonymous flow.
     """
-    issuer = (os.getenv("OIDC_ISSUER") or "").strip().rstrip("/")
+    issuer = (os.getenv("OIDC_ISSUER") or "").strip()
     client_id = (os.getenv("OIDC_CLIENT_ID") or "").strip()
     if not issuer or not client_id:
         raise HTTPException(
@@ -119,8 +117,18 @@ def _load_oidc_config() -> OidcConfig:
     # Unset keeps the interoperable default. Explicitly blank disables optional
     # group-to-org mapping for IdPs that authenticate users without group claims.
     groups_claim = "groups" if raw_groups_claim is None else raw_groups_claim.strip()
+    email_verified_claim = (
+        os.getenv("OIDC_EMAIL_VERIFIED_CLAIM") or "email_verified"
+    ).strip()
     default_scopes = "openid email profile" + (" groups" if groups_claim else "")
     scopes = (os.getenv("OIDC_SCOPES") or default_scopes).strip()
+    allowed_endpoint_origins = tuple(
+        value
+        for value in re.split(
+            r"[\s,]+", (os.getenv("OIDC_ALLOWED_ENDPOINT_ORIGINS") or "").strip()
+        )
+        if value
+    )
     return OidcConfig(
         issuer=issuer,
         client_id=client_id,
@@ -129,6 +137,8 @@ def _load_oidc_config() -> OidcConfig:
         redirect_uri=redirect_uri,
         scopes=scopes,
         groups_claim=groups_claim,
+        email_verified_claim=email_verified_claim,
+        allowed_endpoint_origins=allowed_endpoint_origins,
     )
 
 
@@ -151,6 +161,33 @@ def _require_valid_url(value: str, field: str, *, require_https: bool) -> None:
         raise RuntimeError(f"{field} must use HTTPS in production")
 
 
+def _url_origin(value: str) -> str:
+    """Return a canonical scheme/host/port origin for an already-valid URL."""
+    parsed = urlsplit(value)
+    host = (parsed.hostname or "").lower()
+    if ":" in host:
+        host = f"[{host}]"
+    port = parsed.port
+    default_port = 443 if parsed.scheme.lower() == "https" else 80
+    port_suffix = f":{port}" if port is not None and port != default_port else ""
+    return f"{parsed.scheme.lower()}://{host}{port_suffix}"
+
+
+def _approved_provider_origins(
+    cfg: OidcConfig, *, require_https: bool
+) -> frozenset[str]:
+    """Return the issuer origin plus explicitly reviewed extra IdP origins."""
+    approved = {_url_origin(cfg.issuer)}
+    for value in cfg.allowed_endpoint_origins:
+        field = "OIDC_ALLOWED_ENDPOINT_ORIGINS"
+        _require_valid_url(value, field, require_https=require_https)
+        parsed = urlsplit(value)
+        if parsed.path not in {"", "/"} or parsed.query:
+            raise RuntimeError(f"{field} entries must be bare origins")
+        approved.add(_url_origin(value))
+    return frozenset(approved)
+
+
 def _validate_oidc_config(cfg: OidcConfig, *, require_https: bool) -> None:
     """Validate local coordinates; only released deployments mandate HTTPS."""
     _require_valid_url(cfg.issuer, "OIDC_ISSUER", require_https=require_https)
@@ -164,6 +201,14 @@ def _validate_oidc_config(cfg: OidcConfig, *, require_https: bool) -> None:
         "OIDC_REDIRECT_URI",
         require_https=require_https,
     )
+    if urlsplit(cfg.issuer).query:
+        raise RuntimeError("OIDC_ISSUER must not contain a query string")
+    approved = _approved_provider_origins(cfg, require_https=require_https)
+    if _url_origin(cfg.discovery_url) not in approved:
+        raise RuntimeError(
+            "OIDC_DISCOVERY_URL origin must match OIDC_ISSUER or be listed in "
+            "OIDC_ALLOWED_ENDPOINT_ORIGINS"
+        )
     if "openid" not in cfg.scopes.split():
         raise RuntimeError("OIDC_SCOPES must include 'openid'")
 
@@ -241,7 +286,10 @@ async def _fetch_json(client: httpx.AsyncClient, url: str, *, what: str) -> dict
     try:
         resp = await client.get(url)
         resp.raise_for_status()
-        return resp.json()
+        payload = resp.json()
+        if not isinstance(payload, dict):
+            raise ValueError(f"OIDC {what} must be a JSON object")
+        return payload
     except Exception as exc:  # noqa: BLE001 - map any transport/parse error to 502
         logger.error("OIDC %s fetch failed url=%s err=%s", what, url, exc)
         raise HTTPException(
@@ -254,11 +302,61 @@ async def _fetch_json(client: httpx.AsyncClient, url: str, *, what: str) -> dict
         ) from exc
 
 
+async def _validate_provider_endpoint(
+    cfg: OidcConfig,
+    value: object,
+    *,
+    field: str,
+) -> str:
+    """Validate one discovered endpoint before any redirect or server egress."""
+    if not isinstance(value, str) or not value.strip():
+        raise _bad_callback(
+            "oidc_discovery_failed",
+            f"OIDC discovery has no {field}.",
+            502,
+        )
+    endpoint = value.strip()
+    production = is_production()
+    try:
+        _require_valid_url(endpoint, field, require_https=production)
+        if _url_origin(endpoint) not in _approved_provider_origins(
+            cfg, require_https=production
+        ):
+            raise RuntimeError(
+                "origin is not the configured issuer or an explicitly allowed origin"
+            )
+        if production:
+            host = urlsplit(endpoint).hostname or ""
+            await asyncio.to_thread(validate_public_host, host)
+    except (RuntimeError, UnsafeURLError) as exc:
+        logger.warning("Rejected unsafe OIDC %s: %s", field, exc)
+        raise _bad_callback(
+            "oidc_discovery_unsafe",
+            f"OIDC discovery returned an unsafe {field}.",
+            502,
+        ) from exc
+    return endpoint
+
+
 async def _discovery(client: httpx.AsyncClient, cfg: OidcConfig) -> dict:
+    try:
+        _validate_oidc_config(cfg, require_https=is_production())
+    except RuntimeError as exc:
+        logger.error("OIDC runtime configuration rejected: %s", exc)
+        raise _bad_callback(
+            "oidc_invalid_config",
+            "OIDC configuration is invalid.",
+            500,
+        ) from exc
+    await _validate_provider_endpoint(
+        cfg,
+        cfg.discovery_url,
+        field="discovery endpoint",
+    )
     doc = await _fetch_json(client, cfg.discovery_url, what="discovery document")
     # RFC 8414: the discovery issuer MUST equal the configured issuer.
-    doc_issuer = str(doc.get("issuer") or "").rstrip("/")
-    if doc_issuer and doc_issuer != cfg.issuer:
+    doc_issuer = doc.get("issuer")
+    if not isinstance(doc_issuer, str) or not doc_issuer or doc_issuer != cfg.issuer:
         raise HTTPException(
             502,
             detail={
@@ -266,6 +364,19 @@ async def _discovery(client: httpx.AsyncClient, cfg: OidcConfig) -> dict:
                 "message": "OIDC discovery issuer does not match configuration.",
                 "doc_url": "https://docs.cadverify.com/errors#oidc_issuer_mismatch",
             },
+        )
+    for field in ("authorization_endpoint", "token_endpoint", "jwks_uri"):
+        doc[field] = await _validate_provider_endpoint(
+            cfg,
+            doc.get(field),
+            field=field,
+        )
+    userinfo_endpoint = doc.get("userinfo_endpoint")
+    if userinfo_endpoint is not None:
+        doc["userinfo_endpoint"] = await _validate_provider_endpoint(
+            cfg,
+            userinfo_endpoint,
+            field="userinfo_endpoint",
         )
     return doc
 
@@ -315,11 +426,7 @@ async def oidc_login(request: Request):
     cfg = _load_oidc_config()
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
         discovery = await _discovery(client, cfg)
-    authorize_endpoint = discovery.get("authorization_endpoint")
-    if not authorize_endpoint:
-        raise _bad_callback(
-            "oidc_discovery_failed", "OIDC discovery has no authorization_endpoint.", 502
-        )
+    authorize_endpoint = discovery["authorization_endpoint"]
 
     state = secrets.token_urlsafe(32)
     nonce = secrets.token_urlsafe(32)
@@ -368,13 +475,9 @@ async def oidc_callback(request: Request):
 
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
         discovery = await _discovery(client, cfg)
-        token_endpoint = discovery.get("token_endpoint")
-        jwks_uri = discovery.get("jwks_uri")
+        token_endpoint = discovery["token_endpoint"]
+        jwks_uri = discovery["jwks_uri"]
         userinfo_endpoint = discovery.get("userinfo_endpoint")
-        if not token_endpoint or not jwks_uri:
-            raise _bad_callback(
-                "oidc_discovery_failed", "OIDC discovery missing token/jwks endpoint.", 502
-            )
 
         token_resp = await _exchange_code(client, cfg, token_endpoint, code, verifier)
         id_token = token_resp.get("id_token")
@@ -386,6 +489,7 @@ async def oidc_callback(request: Request):
         claims = _verify_id_token(id_token, cfg, jwks, nonce)
 
         email = _claim_email(claims)
+        email_verified = _claim_email_verified(claims, cfg.email_verified_claim)
         groups = _claim_groups(claims, cfg.groups_claim)
 
         # Userinfo is a fallback only for claims this deployment actually needs.
@@ -394,42 +498,57 @@ async def oidc_callback(request: Request):
         needs_group_fallback = bool(cfg.groups_claim) and not groups
         if (not email or needs_group_fallback) and access_token and userinfo_endpoint:
             userinfo = await _fetch_userinfo(client, userinfo_endpoint, access_token)
-            email = email or _claim_email(userinfo)
+            userinfo_sub = str(userinfo.get("sub") or "").strip()
+            id_token_sub = str(claims.get("sub") or "").strip()
+            if not userinfo_sub or userinfo_sub != id_token_sub:
+                raise _bad_callback(
+                    "oidc_userinfo_subject_mismatch",
+                    "userinfo must carry the verified id_token subject.",
+                )
+            userinfo_email = _claim_email(userinfo)
+            userinfo_verified = _claim_email_verified(
+                userinfo, cfg.email_verified_claim
+            )
+            if not email:
+                email = userinfo_email
+                email_verified = userinfo_verified
+            elif (
+                userinfo_email
+                and userinfo_email.strip().casefold() == email.strip().casefold()
+            ):
+                # A userinfo verification flag may corroborate the same address
+                # carried as preferred_username in a thin Entra id_token.
+                email_verified = email_verified or userinfo_verified
             if needs_group_fallback:
                 groups = _claim_groups(userinfo, cfg.groups_claim)
 
-    if not email:
-        raise _bad_callback("oidc_no_email", "No email claim in id_token or userinfo.")
-
-    user_id = await _oidc_provision_user(email)
-    group_assignment = SamlGroupAssignment(matched=False)
-    if groups:
-        group_assignment = await _apply_oidc_group_assignment_for_login(
-            user_id, {cfg.groups_claim: groups}
+    try:
+        login = await _oidc_provision_login(
+            email=email,
+            email_verified=email_verified,
+            issuer=cfg.issuer,
+            subject=str(claims.get("sub") or ""),
+            groups={cfg.groups_claim: groups} if groups else None,
         )
-
-    import asyncio
-
-    from src.services.audit_service import fire_and_forget_audit
-
-    asyncio.create_task(
-        fire_and_forget_audit(
-            user_id=user_id,
-            user_email=email,
-            action="auth.login",
-            resource_type="session",
+    except SamlGroupMappingAmbiguousError as exc:
+        logger.warning(
+            "OIDC group mapping matched multiple orgs org_count=%d", len(exc.org_ids)
+        )
+        raise HTTPException(
+            403,
             detail={
-                "auth_provider": "oidc",
-                "oidc_group_assignment": group_assignment.to_audit_detail(),
+                "code": "oidc_group_mapping_ambiguous",
+                "message": (
+                    "OIDC groups matched mappings in multiple organizations. "
+                    "Ask an administrator to correct the mapping."
+                ),
+                "doc_url": "https://docs.cadverify.com/errors#oidc_group_mapping_ambiguous",
             },
-        )
-    )
+        ) from exc
 
     dashboard_url = os.getenv("DASHBOARD_ORIGIN", "https://cadverify.com")
     resp = RedirectResponse(url=f"{dashboard_url}/dashboard", status_code=303)
-    set_session_cookie(
-        resp, user_id, session_version=await get_user_session_version(user_id)
-    )
+    set_session_cookie(resp, login.user_id, session_version=login.session_version)
     return resp
 
 
@@ -454,7 +573,10 @@ async def _exchange_code(
     try:
         resp = await client.post(token_endpoint, data=data)
         resp.raise_for_status()
-        return resp.json()
+        payload = resp.json()
+        if not isinstance(payload, dict):
+            raise ValueError("OIDC token response must be a JSON object")
+        return payload
     except Exception as exc:  # noqa: BLE001
         logger.error("OIDC token exchange failed err=%s", exc)
         raise _bad_callback("oidc_token_exchange_failed", "Token exchange failed.")
@@ -464,23 +586,26 @@ def _verify_id_token(id_token: str, cfg: OidcConfig, jwks: dict, nonce: str) -> 
     """Verify the id_token signature (RS256, IdP JWKS) and its standard claims.
 
     Validates the RSA signature against the fetched JWKS, then iss / aud / exp /
-    iat via authlib's claim options + ``validate()``, and finally the nonce
+    iat via joserfc's claims registry, and finally the nonce
     against the value minted at /login. Any failure is a 400 (never a 500).
     """
     try:
-        key_set = JsonWebKey.import_key_set(jwks)
+        key_set = jwk.KeySet.import_key_set(cast(KeySetSerialization, jwks))
     except Exception as exc:  # noqa: BLE001
         raise _bad_callback("oidc_jwks_invalid", "IdP JWKS could not be parsed.", 502)
 
-    claims_options = {
-        "iss": {"essential": True, "value": cfg.issuer},
-        "aud": {"essential": True, "value": cfg.client_id},
-        "exp": {"essential": True},
-        "iat": {"essential": True},
-    }
     try:
-        claims = _JWT.decode(id_token, key_set, claims_options=claims_options)
-        claims.validate()  # exp/iat/nbf + the essential/value options above
+        token = jwt.decode(id_token, key_set, algorithms=["RS256"])
+        claims_registry = JWTClaimsRegistry(
+            iss={"essential": True, "value": cfg.issuer},
+            sub={"essential": True},
+            aud={"essential": True, "value": cfg.client_id},
+            exp={"essential": True},
+            iat={"essential": True},
+            nbf={"essential": False},
+        )
+        claims_registry.validate(token.claims)  # iss/aud/exp/iat/nbf
+        claims = token.claims
     except JoseError as exc:
         logger.warning("OIDC id_token verification failed: %s", exc)
         raise _bad_callback("oidc_invalid_token", f"id_token rejected: {exc}.")
@@ -502,7 +627,8 @@ async def _fetch_userinfo(
             userinfo_endpoint, headers={"Authorization": f"Bearer {access_token}"}
         )
         resp.raise_for_status()
-        return resp.json()
+        payload = resp.json()
+        return payload if isinstance(payload, dict) else {}
     except Exception as exc:  # noqa: BLE001 - userinfo is a best-effort fallback
         logger.warning("OIDC userinfo fetch failed: %s", exc)
         return {}
@@ -518,6 +644,16 @@ def _claim_email(claims: dict) -> str | None:
         if isinstance(value, str) and "@" in value:
             return value.strip()
     return None
+
+
+def _claim_email_verified(claims: dict, claim_name: str) -> bool:
+    """Accept only an explicit true value from the configured verified claim."""
+    if not claim_name:
+        return False
+    value = claims.get(claim_name)
+    return value is True or (
+        isinstance(value, str) and value.strip().lower() == "true"
+    )
 
 
 def _claim_groups(claims: dict, groups_claim: str) -> list[str]:
@@ -538,77 +674,27 @@ def _claim_groups(claims: dict, groups_claim: str) -> list[str]:
     return out
 
 
-async def _oidc_provision_user(email: str) -> int:
-    """Provision/update an OIDC-authenticated user.
-
-    Mirrors ``src.auth.saml._saml_provision_user`` exactly: normalise the email
-    the SAME way as every other auth path, ``upsert_user`` with
-    ``auth_provider='oidc'``, and mint a default API key only when the account
-    has none active (a returning SSO user keeps their keys).
-    """
-    email_lower = normalize_email(email)
-    user_id = await upsert_user(
+async def _oidc_provision_login(
+    *,
+    email: str | None,
+    email_verified: bool,
+    issuer: str,
+    subject: str,
+    groups: dict[str, list[str]] | None,
+) -> ProvisionedLogin:
+    """Single transaction for immutable identity binding, key, groups, and audit."""
+    return await provision_authenticated_login(
         email=email,
-        google_sub=None,
-        email_lower=email_lower,
-        disposable_flag=False,
-        auth_provider="oidc",
+        provider="oidc",
+        key_name="OIDC Default",
+        default_role="viewer",
+        identity=FederatedIdentity(
+            provider="oidc",
+            issuer=issuer,
+            subject=subject,
+            email_verified=email_verified,
+        ),
+        group_attributes=groups,
+        group_detail_key="oidc_group_assignment",
+        login_detail={"issuer": issuer},
     )
-
-    if not await user_has_active_api_key(user_id):
-        full_token, prefix, secret_hash = mint_token()
-        await create_api_key(
-            user_id, "OIDC Default", prefix, hmac_index(full_token), secret_hash
-        )
-
-    logger.info("OIDC user provisioned: email=%s user_id=%d", email_lower, user_id)
-
-    import asyncio
-
-    from src.services.audit_service import fire_and_forget_audit
-
-    asyncio.create_task(
-        fire_and_forget_audit(
-            user_id=user_id,
-            user_email=email,
-            action="user.provisioned",
-            resource_type="user",
-            resource_id=str(user_id),
-            detail={"auth_provider": "oidc", "role": "viewer"},
-        )
-    )
-    return user_id
-
-
-async def _apply_oidc_group_assignment_for_login(
-    user_id: int, attributes: dict[str, list[str]]
-) -> SamlGroupAssignment:
-    """Reuse the SAML group→org-role assignment for OIDC group claims.
-
-    The OIDC ``groups`` claim is handed to the SAME
-    ``apply_saml_group_assignment`` the SAML ACS uses, so the per-org
-    ``SamlGroupMapping`` rows drive OIDC identically (no forked mapping model).
-    """
-    async with get_session_factory()() as session:
-        try:
-            assignment = await apply_saml_group_assignment(session, user_id, attributes)
-            await session.commit()
-            return assignment
-        except SamlGroupMappingAmbiguousError as exc:
-            await session.rollback()
-            logger.warning(
-                "OIDC group mapping matched multiple orgs for user_id=%s org_count=%d",
-                user_id,
-                len(exc.org_ids),
-            )
-            raise HTTPException(
-                403,
-                detail={
-                    "code": "oidc_group_mapping_ambiguous",
-                    "message": (
-                        "OIDC groups matched mappings in multiple organizations. "
-                        "Ask an administrator to correct the mapping."
-                    ),
-                    "doc_url": "https://docs.cadverify.com/errors#oidc_group_mapping_ambiguous",
-                },
-            ) from exc

@@ -7,6 +7,10 @@ default secrets.
 from __future__ import annotations
 
 import base64
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -118,6 +122,40 @@ def test_off_switch_cannot_bypass_released_secret_enforcement(monkeypatch):
     monkeypatch.setenv("SECRET_ENFORCEMENT_ENABLED", "0")
     with pytest.raises(RuntimeError, match="cannot be disabled"):
         main._assert_production_secrets()
+
+
+def test_prod_refuses_unkillable_in_process_cad_parser(monkeypatch):
+    monkeypatch.setenv("RELEASE", "v1.0.0")
+    set_valid_session_secrets(monkeypatch)
+    monkeypatch.setenv("AUTH_MODE", "password")
+    monkeypatch.setenv("MAGIC_LINK_ENABLED", "0")
+    monkeypatch.setenv("PARSE_PROCESS_POOL_DISABLED", "1")
+
+    with pytest.raises(RuntimeError, match="killable worker processes"):
+        main._assert_production_operations()
+
+
+def test_released_worker_import_refuses_unkillable_cad_parser():
+    backend = Path(__file__).resolve().parents[1]
+    env = {
+        **os.environ,
+        "PYTHONPATH": str(backend),
+        "RELEASE": "worker-release-sha",
+        "RATE_LIMIT_ALLOW_MEMORY": "0",
+        "PARSE_PROCESS_POOL_DISABLED": "1",
+    }
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import src.jobs.worker"],
+        cwd=backend,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "killable worker processes" in result.stderr
 
 
 # ──────────────────────────────────────────────────────────────

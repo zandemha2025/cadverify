@@ -35,6 +35,40 @@ branch:
   org can starve the others (per-org concurrency cap). (Before this fix the same
   burst 500'd 55% of requests via DB-pool exhaustion.)
 - Deploy config, secrets gate, and health gates are wired.
+- Protected CI now fails on any unapproved pytest skip, including collection-
+  time/module skips. The only allowlisted
+  skips are the operator-owned local corpus assertion and two optional OCP-XDE
+  checks; costing, AS1 assembly, NIST STEP, and cleanup coverage run from
+  reproducible fixtures. The costing suite is generated from internally authored
+  regression geometry; the historical third-party geometry archive is never
+  fetched or vendored without per-model license review. GitHub corpus imports
+  resolve mutable refs to commits, verify and hash the license artifact at that
+  same commit, and persist immutable source/license provenance. These coupons are not
+  supplier quotes and cannot satisfy the production-accuracy gate. That gate
+  requires a provenance-locked holdout of at least 20 independently quoted
+  parts with MAPE ≤30%, P90 absolute error ≤50%, and every process median bias
+  within ±25%.
+- OIDC token verification uses the maintained `joserfc` API with an explicit
+  RS256 allowlist and required issuer/subject/audience/expiry/issued-at claims,
+  not-before enforcement, nonce validation, userinfo-subject matching, and
+  multi-audience coverage. Discovery requires an exact non-empty issuer and
+  validates every authorization, token, JWKS, and userinfo endpoint before use:
+  HTTPS, no embedded credentials, a reviewed origin, and no private, loopback,
+  link-local, metadata, or reserved destination. OIDC accounts bind to immutable
+  `(issuer, subject)` rows; verified email may bootstrap only a brand-new account
+  and can never silently rebind an existing one. This does not change the
+  regulated plane's SAML-only launch boundary.
+- Compliance-audit rows commit in the same database transaction as protected
+  mutations; OIDC, SAML, and magic-link provisioning, membership/key state, and
+  login events commit once before a session is issued. API-key rotation revokes,
+  replaces, and audits in one transaction. Magic-link token rotation and failure
+  cleanup use cluster-safe atomic Redis compare-and-set state, so delayed provider
+  failures cannot revoke a newer link. There is no detached audit queue to
+  lose at shutdown. Timed-out or abandoned untrusted CAD workers are hard-killed;
+  the application lifespan prevents parse-pool recreation during bounded teardown,
+  disposes the DB, and performs one bounded tracing shutdown off the event loop.
+  Runtime/unawaited-coroutine warnings are blocking test failures rather than
+  ignorable CI noise.
 
 **Honest capacity note:** the commercial baseline runs two API and two worker
 Machines. Each API Machine still has a finite CPU-bound analysis ceiling;
@@ -45,8 +79,8 @@ are disposable scratch/cache, so no Machine volume is a data source of truth.
 ## 1. Current code state
 
 - The production-hardening work is on **`codex/dual-production-readiness`** and
-  is not merged to `main`. The previously inspected PR #23 targets `prod` and is
-  non-mergeable; resolve that branch/PR mismatch before release.
+  is not merged to `main`. Draft PR **#24** targets `main`; the obsolete PR #23
+  targets `prod` and must not be used for release.
 - A push to protected `main` runs CI and creates scanned digest/SBOM release
   evidence. It does **not** deploy production. Commercial deployment is the
   protected staging-then-production workflow; regulated release and deployment
@@ -85,6 +119,7 @@ are disposable scratch/cache, so no Machine volume is a data source of truth.
 | Sentry projects and alert path | sentry.io | `SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN` |
 | GovCloud/customer regulated landing zone + authorized U.S.-person operators | AWS/customer + legal/security owners | EKS/RDS/Redis/S3/KMS/ECR/IdP/OTLP/private values/runner evidence |
 | CUI/ITAR scope, system boundary, data flow, and authorization | export-control counsel + accountable security owner | written approval/evidence, not an application env var |
+| Licensed supplier-quote accuracy holdout | launch customers / sourcing owner | 20+ provenance-locked parts, 3+ suppliers, reviewed approval, and release-bound evidence meeting `docs/SUPPLIER_HOLDOUT_EVIDENCE.md` |
 
 Note: **Neon is just managed Postgres and Fly is just a container host — neither
 is load-bearing in the code.** Swapping Postgres providers is a connection-string
@@ -104,11 +139,18 @@ That runbook is authoritative. The spine:
    random secrets (`os.urandom(32)`) as ready-to-paste `fly secrets set` lines and
    marks the external ones `<FILL_ME: ...>`. Set them all (runbook §4).
 3. **Object store** (runbook §4) — configure mandatory production S3.
-4. **Release**: merge to protected `main`; CI builds/scans and records exact
-   digests. Run **Commercial SaaS Promotion** with that SHA. Staging must pass
-   before the protected production approval is available. Migrations run via
-   `release_command`; break-glass direct deploy is not the normal path.
-5. **Verify** (runbook §7) — see acceptance bar below.
+4. **Release**: merge to protected `main`; CI builds/scans and records the exact
+   release SHA and image digests.
+5. **Accuracy evidence and promotion**: evaluate that exact release against the
+   frozen holdout, then place the reviewed base64 summary from
+   `docs/SUPPLIER_HOLDOUT_EVIDENCE.md` in both protected environment secrets
+   named `CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64`. Run **Commercial SaaS
+   Promotion** with the same SHA. Staging and production independently revalidate
+   the evidence; production also requires its digest to match staging. Either
+   job refuses to deploy missing, stale, changed, or failing evidence. Staging
+   must pass before protected production approval is available. Migrations run
+   via `release_command`; break-glass direct deploy is not the normal path.
+6. **Verify** (runbook §7) — see acceptance bar below.
 
 ## 5. Acceptance criteria — do NOT declare "done" until ALL pass
 
@@ -126,6 +168,9 @@ That runbook is authoritative. The spine:
       password signup remains disabled. (If no email arrives, inspect Resend.)
 - [ ] A real **STEP upload returns a cost/verdict** (upload `cube.step` or any
       real part).
+- [ ] `python -m src.costing.harness --require-production-evidence` passes on
+      the licensed supplier-quote holdout. Internally authored coupons and the
+      historical geometry-only archive are regression evidence only.
 - [ ] **Two different orgs cannot see each other's data** (spot-check a
       cost-decision id across two accounts → 404).
 - [ ] (Recommended) run `node scripts/ops/load-profile.mjs` with
@@ -153,7 +198,7 @@ That runbook is authoritative. The spine:
    `fly.toml` and deploy-time `--env` values. The promotion gate rejects stale
    shadowing secrets, including `DASHBOARD_ORIGIN`, auth/storage/release mode,
    every `PRODUCTION_*` guard, strict-health controls, reconstruction egress,
-   `RATE_LIMIT_ALLOW_MEMORY`, and `NODE_ENV`. Keep
+   `RATE_LIMIT_ALLOW_MEMORY`, `PARSE_PROCESS_POOL_DISABLED`, and `NODE_ENV`. Keep
    `CADVERIFY_DASHBOARD_ORIGIN` as the protected GitHub environment variable
    and remove every forbidden name reported by the gate before promotion.
 5. **`AUTH_PROXY_SECRET` must be identical on the API and web apps.** Generate

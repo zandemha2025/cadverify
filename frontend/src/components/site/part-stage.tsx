@@ -291,9 +291,15 @@ export function PartStage({ className, style, choreography, maxDpr = 2, paused =
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [fallback, setFallback] = useState(false);
   const choreoRef = useRef<Choreography | undefined>(choreography);
-  choreoRef.current = choreography;
   const pausedRef = useRef(paused);
-  pausedRef.current = paused;
+
+  useEffect(() => {
+    choreoRef.current = choreography;
+  }, [choreography]);
+
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -405,7 +411,6 @@ export function PartStage({ className, style, choreography, maxDpr = 2, paused =
       built.dispose();
     };
     // maxDpr is read once at scene build; choreography/paused are ref-tracked.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [maxDpr]);
 
   return (

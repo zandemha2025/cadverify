@@ -265,12 +265,7 @@ async def test_real_periodic_part_shares_one_parse(monkeypatch):
 
     if not is_step_supported():
         pytest.skip("gmsh not installed; STEP parse path unavailable")
-    part = Path(
-        "/home/user/cadverify/data/real-corpus/NIST-PMI-STEP-Files/"
-        "AP203 geometry only/nist_ctc_05_asme1_rd.stp"
-    )
-    if not part.exists():
-        pytest.skip("NIST periodic corpus part not present")
+    part = Path(__file__).parent / "assets" / "nist_periodic_ctc05.stp"
 
     calls = {"n": 0}
     orig = parse_pool.submit_async

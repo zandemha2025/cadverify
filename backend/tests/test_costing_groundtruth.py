@@ -4,7 +4,7 @@ Two layers:
   * PURE (no engine, fast) — record store, split/no-leakage, tuner independence
     from held-out, stand-in exclusion from claimed-real metrics, the confidence
     interval fallback + stand-in-never-validates guarantee, zero network.
-  * ENGINE-BACKED (skipped when the real STL batch is absent) — every estimate
+  * ENGINE-BACKED (always-on internal calibration fixtures) — every estimate
     carries a CI, the CI narrows under a residual model, the unit_cost == Σ
     line-items invariant still holds, and the full stand-in loop RUNS and stays
     honest (PENDING, non-zero held-out error => no overfitting).
@@ -24,7 +24,7 @@ from src.costing.groundtruth import (
     split_records, tune, evaluate, ResidualModel, make_standin_record,
 )
 
-PARTS_DIR = os.environ.get("CADVERIFY_PARTS_DIR")
+PARTS_DIR = os.environ.get("CADVERIFY_CALIBRATION_FIXTURES_DIR")
 if not PARTS_DIR:
     from src.costing.harness import ensure_fixture_parts_dir
     PARTS_DIR = ensure_fixture_parts_dir()
@@ -32,7 +32,7 @@ from src.costing.harness import has_sample_parts
 
 requires_parts = pytest.mark.skipif(
     not has_sample_parts(PARTS_DIR),
-    reason=f"real parts fixture batch not present: {PARTS_DIR}",
+    reason=f"internal calibration fixtures not present: {PARTS_DIR}",
 )
 
 

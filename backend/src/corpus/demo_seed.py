@@ -1,16 +1,14 @@
 """Demo-fallback corpus seeding (Cycle 4, Tool builder).
 
 If the real corpus (``data/corpus/manifest.jsonl``, owned by the Corpus builder)
-is empty at build time, the labeling tool must still be demonstrable. This module
-seeds a LOCAL corpus from the already-downloaded 107 repo parts (Printables +
-ME7.5Duino GitHub — corpus source #2 in spec §2.5) so a reviewer can open /label
-and see a real part in 3D and persist a label.
+is empty at build time, the labeling tool can seed a LOCAL corpus from an
+operator-provided, license-documented directory so a reviewer can open /label,
+see a real part in 3D, and persist a label.
 
-These are GENUINE downloaded meshes (provenance in the parts ``_manifest.csv``),
-not fabricated geometry. Records are written with the same manifest schema (§2.2)
-using the canonical ``analyze_geometry`` pass. They are clearly a fallback: when
-the audited corpus appears, dedup-by-sha256 makes the two consistent and the real
-manifest supersedes this.
+Every accepted mesh must have a source URL and a concrete license in
+``_manifest.csv``. Unknown/"see repo" licenses fail closed; the old private batch
+is therefore never imported implicitly. Records use the canonical
+``analyze_geometry`` pass and remain clearly marked as a demo fallback.
 
 Idempotent: re-running skips parts whose sha256 is already in the manifest.
 """
@@ -31,22 +29,20 @@ from typing import Optional
 import trimesh
 
 from src.analysis.base_analyzer import analyze_geometry
-from src.corpus.paths import MANIFEST, MESH_DIR, ensure_dirs
+from src.corpus.paths import MANIFEST, MESH_DIR, REPO_ROOT, ensure_dirs
+from src.corpus.provenance import has_complete_provenance
 
 logger = logging.getLogger("cadverify.corpus.demo_seed")
 
-# The 88 extracted STLs (+ _manifest.csv) downloaded in earlier cycles.
-DEFAULT_DEMO_PARTS_DIR = (
-    "/private/tmp/claude-501/-Users-nazeem-Desktop-developer-cadverify/"
-    "3182c9c6-e59b-4394-a584-d9c4cd4ce0dc/scratchpad/parts"
-)
+DEFAULT_DEMO_PARTS_DIR = REPO_ROOT / "data" / "demo-parts"
 
 _PRINTABLES_ID = re.compile(r"^(\d{4,})_")
 _MAX_FACES = 2_000_000
 
 
 def demo_parts_dir() -> Path:
-    return Path(os.getenv("CADVERIFY_DEMO_PARTS_DIR", DEFAULT_DEMO_PARTS_DIR))
+    configured = os.getenv("CADVERIFY_DEMO_PARTS_DIR")
+    return Path(configured).expanduser() if configured else DEFAULT_DEMO_PARTS_DIR
 
 
 def _load_provenance(parts_dir: Path) -> dict[str, dict]:
@@ -71,8 +67,6 @@ def _source_url(filename: str, source: str) -> str:
     m = _PRINTABLES_ID.match(filename)
     if m and "printables" in source.lower():
         return f"https://www.printables.com/model/{m.group(1)}"
-    if "me7.5duino" in source.lower() or "github" in source.lower():
-        return "https://github.com/topics/me7-5duino"
     return ""
 
 
@@ -106,6 +100,18 @@ def seed_demo_corpus(parts_dir: Optional[Path] = None) -> int:
     stl_files = sorted(p for p in parts_dir.glob("*.stl") if p.is_file())
     with MANIFEST.open("a") as out:
         for stl in stl_files:
+            row = provenance.get(stl.name, {})
+            source = (row.get("source") or "").strip()
+            source_url = (row.get("source_url") or "").strip() or _source_url(
+                stl.name, source
+            )
+            license_name = (row.get("license") or "").strip()
+            if not has_complete_provenance(source_url, license_name):
+                logger.warning(
+                    "demo_seed: skipping %s without HTTPS source_url + reviewed license",
+                    stl.name,
+                )
+                continue
             try:
                 raw = stl.read_bytes()
             except Exception as exc:
@@ -128,9 +134,6 @@ def seed_demo_corpus(parts_dir: Optional[Path] = None) -> int:
                 continue
 
             geo = analyze_geometry(mesh)
-            row = provenance.get(stl.name, {})
-            source = (row.get("source") or "Local demo fallback").strip()
-
             dest = MESH_DIR / f"{part_id}.stl"
             if not dest.exists():
                 shutil.copyfile(stl, dest)
@@ -139,9 +142,9 @@ def seed_demo_corpus(parts_dir: Optional[Path] = None) -> int:
                 "part_id": part_id,
                 "filename": stl.name,
                 "rel_path": f"meshes/{part_id}.stl",
-                "source_url": _source_url(stl.name, source),
+                "source_url": source_url,
                 "dataset": source,
-                "license": "UNKNOWN",  # per-model license unrecoverable for fallback set
+                "license": license_name,
                 "original_format": "stl",
                 "downloaded_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "n_faces": int(geo.face_count),
