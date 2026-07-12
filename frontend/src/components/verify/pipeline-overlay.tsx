@@ -18,6 +18,7 @@
  * faked. The user can dismiss (✕ / Esc) at any time to jump straight to the walk.
  */
 import { useEffect, useRef, useState } from "react";
+import { analysisFailureCopy } from "@/lib/verify/failure-copy";
 import { C, MONO } from "@/lib/verify/tokens";
 import type { VerifyResult } from "@/lib/verify/run";
 import { pipelineModelFrom, type PipelineStage, type StageState } from "@/lib/verify/pipeline";
@@ -107,7 +108,7 @@ export function PipelineOverlay({
         toast(
           analyzed
             ? "Verification complete — deterministic: same input, same verdict, every time"
-            : "Could not analyze — this part couldn't be tessellated; no routing, DFM, or cost was computed"
+            : analysisFailureCopy(result.costError || result.validationError).toast
         );
         onDone?.();
       }, landedAt + SETTLE_MS + 720)

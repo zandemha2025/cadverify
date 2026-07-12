@@ -10,6 +10,7 @@
  * walk stops honestly at a failed gate (geometry invalid → no downstream compute).
  */
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { analysisFailureCopy } from "@/lib/verify/failure-copy";
 import { C, MONO, USD, NUM, procLabel, statusColor, normProv } from "@/lib/verify/tokens";
 import type { VerifyResult } from "@/lib/verify/run";
 import type { CostReport, CostComparison } from "@/lib/api";
@@ -1150,30 +1151,21 @@ function VerdictBanner({
   //     that failed to tessellate. Say EXACTLY that; never a fabricated "computed".
   if (!validation && !cost) {
     const reason = costError || validationError || null;
-    // Lead with the REAL reason. Only frame it as a tessellation/surface failure
-    // when that's actually what happened — an unsupported file type (e.g. a .txt)
-    // is not a mesher problem and must not be told to "re-export as a clean solid".
-    const unsupported = !!reason && /unsupported file type|use \.stl|not a (?:cad|supported)/i.test(reason);
+    const failure = analysisFailureCopy(reason);
     return (
       <BannerFrame borderColor={C.fail} bg="rgba(194,69,58,0.03)">
         <Kicker color={C.fail}>VERDICT · COULD NOT ANALYZE</Kicker>
         <p style={{ margin: "10px 0 0", fontSize: 24, fontWeight: 400, letterSpacing: "-0.015em", lineHeight: 1.25 }}>
-          {unsupported ? <>We couldn&apos;t read this file.</> : <>This part couldn&apos;t be tessellated.</>}
+          {failure.title}
         </p>
         <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 560 }}>
           {reason ? (
-            <span style={{ fontFamily: MONO, fontSize: 12, color: C.ink55 }}>{reason}</span>
-          ) : unsupported ? (
-            <>Unsupported file type.</>
+            <><span style={{ fontFamily: MONO, fontSize: 12, color: C.ink55 }}>{reason}</span>{" "}</>
           ) : (
-            <>The geometry contains a surface our mesher couldn&apos;t triangulate.</>
-          )}{" "}
-          No routing, DFM, or should-cost was computed, and nothing here is estimated.{" "}
-          {unsupported ? (
-            <>Upload a CAD part (.stl, .step, .stp, .iges, or .igs) to run the walk.</>
-          ) : (
-            <>Re-export the part as a clean solid (no unsupported surface) and re-upload to run the walk.</>
+            <>{failure.explanation} </>
           )}
+          No routing, DFM, or should-cost was computed, and nothing here is estimated.{" "}
+          {failure.action}
         </p>
       </BannerFrame>
     );
