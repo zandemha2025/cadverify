@@ -83,6 +83,7 @@ def test_demo_triangle_cap_returns_413_with_cors(monkeypatch):
     """Public demo must reject oversize STL before expensive analysis."""
     monkeypatch.setenv("DEMO_MAX_TRIANGLES", "10")
     monkeypatch.setenv("MAX_UPLOAD_MB", "100")
+    monkeypatch.setenv("DASHBOARD_ORIGIN", "https://proofshape.example")
     import main
     importlib.reload(main)
     client = TestClient(main.app)
@@ -95,10 +96,10 @@ def test_demo_triangle_cap_returns_413_with_cors(monkeypatch):
                 "application/octet-stream",
             )
         },
-        headers={"Origin": "https://cadvrfy.vercel.app"},
+        headers={"Origin": "https://proofshape.example"},
     )
     assert r.status_code == 413
-    assert r.headers["access-control-allow-origin"] == "https://cadvrfy.vercel.app"
+    assert r.headers["access-control-allow-origin"] == "https://proofshape.example"
     body = r.json()
     assert "message" in body
     assert "DEMO_MAX_TRIANGLES" in body["message"]
