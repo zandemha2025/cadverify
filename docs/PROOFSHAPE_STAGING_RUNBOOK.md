@@ -1,7 +1,7 @@
 # ProofShape non-Arcus staging runbook
 
-Status: code-ready; external account provisioning is not complete  
-Target branch: `codex/proofshape-scalecad-staging`  
+Status: code-ready; external account provisioning is not complete
+Target branch: `codex/proofshape-scalecad-staging`
 Protected existing deployment: Arcus Vercel `eager-euler` — do not modify
 
 ## Outcome

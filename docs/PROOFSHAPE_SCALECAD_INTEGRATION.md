@@ -1,8 +1,8 @@
 # ProofShape Design Studio integration
 
-Status: production-safe first slice implemented on `codex/proofshape-scalecad-staging`  
-Decision date: 2026-07-12  
-Source reference: `zandemha2025/cad-conversational-app` at `7780ed1`  
+Status: production-safe first slice implemented on `codex/proofshape-scalecad-staging`
+Decision date: 2026-07-12
+Source reference: `zandemha2025/cad-conversational-app` at `7780ed1`
 Deployment boundary: new non-Arcus ProofShape staging resources only
 
 ## Executive decision
