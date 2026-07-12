@@ -54,12 +54,14 @@ support implications. Do not put regulated data in these commercial resources.
      tokens; and
    - `NEXT_PUBLIC_SENTRY_DSN` for the commercial browser image.
 
-6. After CI creates the exact release SHA, set the same reviewed base64 summary
+6. Before any production-scoped promotion, set the same reviewed base64 summary
    from `SUPPLIER_HOLDOUT_EVIDENCE.md` as
    `CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64` in both protected environments. Do
    not put raw CAD, quote values, supplier identities, or personal data in that
    summary. Update both secrets for every release. Each job revalidates
    freshness, and production requires its evidence digest to equal staging's.
+   A `staging-only` technical-validation run does not consume this secret and
+   cannot continue to production.
 
 The browser DSN is a build-time value. Staging and production promote the same
 frontend digest, so browser events share a commercial project and are separated
@@ -190,9 +192,15 @@ push-triggered CI workflow succeeded and its release artifact exists.
 
 ## 6. Promote staging, then production
 
-From the Actions page on `main`, run **Commercial SaaS Promotion** with the exact
-40-character release SHA only after evaluating that same SHA and setting its
-protected supplier-holdout summary. `.github/workflows/saas-promote.yml`:
+From the Actions page on `main`, first run **Commercial SaaS Promotion** with the
+exact 40-character release SHA and `promotion_scope=staging-only`. This validates
+the real staging stack but skips the supplier holdout and cannot start the
+production job. Its evidence record is explicitly marked as technical staging,
+not production approval.
+
+After evaluating that same SHA and setting its protected supplier-holdout
+summary, rerun **Commercial SaaS Promotion** with
+`promotion_scope=staging-and-production`. `.github/workflows/saas-promote.yml`:
 
 1. finds the successful CI run for that SHA and downloads the CI-owned manifest;
 2. validates the protected holdout's schema, age, per-process sample depth,

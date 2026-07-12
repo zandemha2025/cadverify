@@ -41,6 +41,7 @@ def test_ci_releases_images_and_protected_workflow_promotes_staging_first():
     workflow = load_yaml(".github/workflows/ci.yml")
     promotion = load_yaml(".github/workflows/saas-promote.yml")
     triggers = workflow_triggers(workflow)
+    promotion_inputs = workflow_triggers(promotion)["workflow_dispatch"]["inputs"]
 
     for event in ("push", "pull_request"):
         branches = triggers[event]["branches"]
@@ -62,7 +63,17 @@ def test_ci_releases_images_and_protected_workflow_promotes_staging_first():
     assert staging["environment"] == "saas-staging"
     assert production["environment"] == "saas-production"
     assert production["needs"] == "deploy-staging"
+    assert production["if"] == "inputs.promotion_scope == 'staging-and-production'"
     assert staging["if"] == "github.ref == 'refs/heads/main'"
+    assert promotion_inputs["promotion_scope"]["default"] == "staging-only"
+    assert promotion_inputs["promotion_scope"]["options"] == [
+        "staging-only",
+        "staging-and-production",
+    ]
+    assert staging["env"]["CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED"] == (
+        "${{ inputs.promotion_scope == 'staging-and-production' && '1' || '0' }}"
+    )
+    assert production["env"]["CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED"] == "1"
     staging_steps = {step.get("name") for step in staging["steps"]}
     production_steps = {step.get("name") for step in production["steps"]}
     assert "Require a successful CI release for this exact SHA" in staging_steps
@@ -81,6 +92,9 @@ def test_ci_releases_images_and_protected_workflow_promotes_staging_first():
         step
         for step in staging["steps"]
         if step.get("name") == "Require protected supplier-quote holdout evidence"
+    )
+    assert staging_holdout["if"] == (
+        "inputs.promotion_scope == 'staging-and-production'"
     )
     assert staging_holdout["env"]["CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64"] == (
         "${{ secrets.CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64 }}"
@@ -208,6 +222,10 @@ def test_fly_configs_describe_deploy_surface_without_external_proof_claims():
     assert "node scripts/ops/fly-live-health-gate.mjs" in promotion
     assert 'docker manifest inspect "$CADVERIFY_BACKEND_IMAGE"' in promotion
     assert "CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_SHA256" in promotion
+    assert 'CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED=${CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED:-1}' in promotion
+    assert 'CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_SHA256="not-required-for-staging-only"' in promotion
+    assert "Production requires protected supplier holdout evidence" in promotion
+    assert "supplier_holdout_required=" in promotion
     assert "supplier_holdout_evidence_sha256=" in promotion
     assert "PARSE_PROCESS_POOL_DISABLED" in promotion
 

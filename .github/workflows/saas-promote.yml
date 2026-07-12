@@ -7,6 +7,14 @@ on:
         description: Reviewed 40-character commit SHA already released by CI
         required: true
         type: string
+      promotion_scope:
+        description: Stop after technical staging, or continue through protected production
+        required: true
+        default: staging-only
+        type: choice
+        options:
+          - staging-only
+          - staging-and-production
 
 concurrency:
   group: commercial-saas-promotion
@@ -39,6 +47,7 @@ jobs:
       CADVERIFY_DEEP_HEALTH_TOKEN: ${{ secrets.CADVERIFY_DEEP_HEALTH_TOKEN }}
       CADVERIFY_RELEASE_SHA: ${{ inputs.release_sha }}
       FLY_TARGET_ENVIRONMENT: saas-staging
+      CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED: ${{ inputs.promotion_scope == 'staging-and-production' && '1' || '0' }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -93,6 +102,7 @@ jobs:
 
       - name: Require protected supplier-quote holdout evidence
         id: holdout
+        if: inputs.promotion_scope == 'staging-and-production'
         working-directory: backend
         env:
           CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64: ${{ secrets.CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64 }}
@@ -132,6 +142,7 @@ jobs:
   deploy-production:
     name: Promote the staged digests to production
     needs: deploy-staging
+    if: inputs.promotion_scope == 'staging-and-production'
     runs-on: ubuntu-latest
     environment: saas-production
     env:
@@ -145,6 +156,7 @@ jobs:
       CADVERIFY_BACKEND_IMAGE: ${{ needs.deploy-staging.outputs.backend_image }}
       CADVERIFY_FRONTEND_IMAGE: ${{ needs.deploy-staging.outputs.frontend_image }}
       FLY_TARGET_ENVIRONMENT: saas-production
+      CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED: "1"
       STAGING_API_APP: ${{ needs.deploy-staging.outputs.api_app }}
       STAGING_FRONTEND_APP: ${{ needs.deploy-staging.outputs.frontend_app }}
       STAGING_API_ORIGIN: ${{ needs.deploy-staging.outputs.api_origin }}

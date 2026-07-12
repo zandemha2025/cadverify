@@ -13,8 +13,10 @@ this verdict. No production deployment is authorized by this document.
 - Commercial images are built from protected `main`, scanned, SBOM-recorded,
   and captured by immutable digest in a CI-owned release artifact.
 - `.github/workflows/saas-promote.yml` deploys that exact release to isolated
-  staging first. Its protected production job depends on staging and reuses the
-  same digests; direct `main`-to-production deployment was removed.
+  staging first. `staging-only` is the default and cannot start production. The
+  explicit `staging-and-production` scope requires protected supplier evidence;
+  its production job depends on staging and reuses the same digests. Direct
+  `main`-to-production deployment was removed.
 - The commercial backend fails closed on missing production S3,
   observability, canonical HTTPS dashboard origin, TLS Redis, and required auth
   secrets. Token-protected deep health probes Postgres, Redis, queue/worker
@@ -92,7 +94,7 @@ NIST 800-171, export-control, or customer authorization.
 | High | The current live Fly applications do not satisfy the new commercial secret/runtime contract; the deployed API predates `/health/deep`, and the frontend was stopped when inspected. | Separate staging/production apps; API/web secrets including one matching `AUTH_PROXY_SECRET`; remove every forbidden config-shadowing Fly secret reported by the gate; custom DNS/TLS; successful protected staging promotion; deep health and proxy handshake; manual auth/STEP/tenant tests. |
 | High | Production hardening remains in draft PR #24 targeting protected `main`; it is not merged or releasable yet. | Review the final diff, require green protected checks for the exact merge SHA, merge to `main`, and retain the resulting digest/SBOM release evidence. |
 | High | No production acceptance evidence exists for real email, Turnstile, Sentry alert delivery, S3 lifecycle/deletion, custom domains, cross-tenant probes, or rollback. | Execute and retain the acceptance records in the applicable runbook. |
-| High | Cost-model CI proves deterministic regression behavior against internally authored coupons; no real protected supplier holdout has been supplied yet. Both promotion stages now fail closed without fresh, matching evidence bound to the exact release SHA. | Supply the protected record defined in `docs/SUPPLIER_HOLDOUT_EVIDENCE.md`: at least 20 licensed/provenance-locked holdout parts, at least 5 parts and 3 independent suppliers per launch family, retained human approval, MAPE ≤30%, P90 absolute error ≤50%, and every process median bias within ±25%. |
+| High | Cost-model CI proves deterministic regression behavior against internally authored coupons; no real protected supplier holdout has been supplied yet. Technical `staging-only` runs are explicitly not approval evidence and cannot reach production. The full `staging-and-production` scope fails closed without fresh, matching evidence bound to the exact release SHA. | Supply the protected record defined in `docs/SUPPLIER_HOLDOUT_EVIDENCE.md`: at least 20 licensed/provenance-locked holdout parts, at least 5 parts and 3 independent suppliers per launch family, retained human approval, MAPE ≤30%, P90 absolute error ≤50%, and every process median bias within ±25%. |
 
 ## Commercial go/no-go rule
 

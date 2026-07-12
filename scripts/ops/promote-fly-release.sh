@@ -22,12 +22,20 @@ for name in \
   CADVERIFY_PUBLIC_API_BASE \
   CADVERIFY_DASHBOARD_ORIGIN \
   CADVERIFY_DEEP_HEALTH_TOKEN \
-  CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_SHA256 \
   CADVERIFY_RELEASE_SHA \
   CADVERIFY_BACKEND_IMAGE \
   CADVERIFY_FRONTEND_IMAGE; do
   require_env "$name"
 done
+
+CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED=${CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED:-1}
+case "$CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED" in
+  0|1) ;;
+  *)
+    printf 'CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED must be 0 or 1\n' >&2
+    exit 1
+    ;;
+esac
 
 for command_name in docker flyctl git node curl; do
   command -v "$command_name" >/dev/null || {
@@ -44,6 +52,12 @@ case "$FLY_TARGET_ENVIRONMENT" in
     ;;
 esac
 
+if [[ "$FLY_TARGET_ENVIRONMENT" == "saas-production" \
+  && "$CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED" != "1" ]]; then
+  printf 'Production requires protected supplier holdout evidence\n' >&2
+  exit 1
+fi
+
 case "$CADVERIFY_RELEASE_SHA" in
   *[!0-9a-f]*|'')
     printf 'CADVERIFY_RELEASE_SHA must be lowercase hexadecimal\n' >&2
@@ -55,16 +69,21 @@ esac
   exit 1
 }
 
-case "$CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_SHA256" in
-  *[!0-9a-f]*|'')
-    printf 'Supplier holdout evidence digest must be lowercase hexadecimal\n' >&2
+if [[ "$CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED" == "1" ]]; then
+  require_env CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_SHA256
+  case "$CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_SHA256" in
+    *[!0-9a-f]*|'')
+      printf 'Supplier holdout evidence digest must be lowercase hexadecimal\n' >&2
+      exit 1
+      ;;
+  esac
+  [[ ${#CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_SHA256} -eq 64 ]] || {
+    printf 'Supplier holdout evidence digest must contain 64 characters\n' >&2
     exit 1
-    ;;
-esac
-[[ ${#CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_SHA256} -eq 64 ]] || {
-  printf 'Supplier holdout evidence digest must contain 64 characters\n' >&2
-  exit 1
-}
+  }
+else
+  CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_SHA256="not-required-for-staging-only"
+fi
 
 for app in "$FLY_API_APP" "$FLY_WEB_APP"; do
   [[ "$app" =~ ^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$ ]] || {
@@ -189,6 +208,7 @@ printf '%s\n' \
   "frontend_app=$FLY_WEB_APP" \
   "api_origin=$CADVERIFY_PUBLIC_API_BASE" \
   "dashboard_origin=$CADVERIFY_DASHBOARD_ORIGIN" \
+  "supplier_holdout_required=$CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED" \
   "supplier_holdout_evidence_sha256=$CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_SHA256" \
   "verified_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   > "$record"

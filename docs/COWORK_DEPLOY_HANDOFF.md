@@ -141,16 +141,20 @@ That runbook is authoritative. The spine:
 3. **Object store** (runbook §4) — configure mandatory production S3.
 4. **Release**: merge to protected `main`; CI builds/scans and records the exact
    release SHA and image digests.
-5. **Accuracy evidence and promotion**: evaluate that exact release against the
-   frozen holdout, then place the reviewed base64 summary from
+5. **Technical staging**: run **Commercial SaaS Promotion** with the exact SHA
+   and `promotion_scope=staging-only`. This deploys and verifies only the
+   isolated staging apps. It records that supplier evidence was not required,
+   cannot start the production job, and is not production-approval evidence.
+6. **Accuracy evidence and production promotion**: evaluate that exact release
+   against the frozen holdout, then place the reviewed base64 summary from
    `docs/SUPPLIER_HOLDOUT_EVIDENCE.md` in both protected environment secrets
-   named `CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64`. Run **Commercial SaaS
-   Promotion** with the same SHA. Staging and production independently revalidate
-   the evidence; production also requires its digest to match staging. Either
-   job refuses to deploy missing, stale, changed, or failing evidence. Staging
-   must pass before protected production approval is available. Migrations run
-   via `release_command`; break-glass direct deploy is not the normal path.
-6. **Verify** (runbook §7) — see acceptance bar below.
+   named `CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64`. Rerun **Commercial SaaS
+   Promotion** with the same SHA and `promotion_scope=staging-and-production`.
+   Staging and production independently revalidate the evidence; production
+   also requires its digest to match staging. Either job refuses to deploy
+   missing, stale, changed, or failing evidence. Migrations run via
+   `release_command`; break-glass direct deploy is not the normal path.
+7. **Verify** (runbook §7) — see acceptance bar below.
 
 ## 5. Acceptance criteria — do NOT declare "done" until ALL pass
 

@@ -90,7 +90,8 @@ Evaluate that exact 40-character main SHA against the frozen supplier holdout,
 retain the confidential artifacts and human approval, and set the base64
 summary described in `SUPPLIER_HOLDOUT_EVIDENCE.md` on the protected
 `saas-staging` and `saas-production` environments. Then run **Commercial SaaS
-Promotion** on `main` with the same SHA. The workflow:
+Promotion** on `main` with the same SHA and
+`promotion_scope=staging-and-production`. The workflow:
 
 1. requires a successful push-triggered CI run for the SHA and downloads its
    immutable release manifest;
