@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CadVerify — one-step LOCAL web app launcher (macOS).
+# ProofShape — one-step LOCAL web app launcher (macOS).
 #
 # Double-click this file in Finder, or run:  bash scripts/run-local-app.sh
 #
@@ -70,9 +70,9 @@ BACK_PID=""
 FRONT_PID=""
 WORKER_PID=""
 
-log()  { printf '\033[1;36m[cadverify]\033[0m %s\n' "$*"; }
-warn() { printf '\033[1;33m[cadverify]\033[0m %s\n' "$*"; }
-err()  { printf '\033[1;31m[cadverify]\033[0m %s\n' "$*" >&2; }
+log()  { printf '\033[1;36m[proofshape]\033[0m %s\n' "$*"; }
+warn() { printf '\033[1;33m[proofshape]\033[0m %s\n' "$*"; }
+err()  { printf '\033[1;31m[proofshape]\033[0m %s\n' "$*" >&2; }
 
 port_listening() { lsof -nP -iTCP:"$1" -sTCP:LISTEN -t >/dev/null 2>&1; }
 
@@ -212,7 +212,7 @@ log "Opening $APP_URL …"
 open "$APP_URL" 2>/dev/null || warn "Could not auto-open the browser. Visit $APP_URL manually."
 
 echo
-log "CadVerify is running."
+log "ProofShape is running."
 log "  • App:      $APP_URL   (Sign up / Log in to enter the platform)"
 log "  • Backend:  http://127.0.0.1:${BACKEND_PORT}"
 [ -n "$WORKER_PID" ] && log "  • Worker:   arq (PID $WORKER_PID) — background jobs on ${REDIS_URL_EFFECTIVE}"

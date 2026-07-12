@@ -7,7 +7,7 @@ Deployment boundary: new non-Arcus ProofShape staging resources only
 
 ## Executive decision
 
-ProofShape keeps CadVerify's hardened application as the system of record and
+ProofShape keeps the existing hardened application as the system of record and
 rebuilds the useful ScaleCAD workflows inside it. ScaleCAD is a capability and
 interaction reference; it is not deployed wholesale and it does not become a
 second application beside ProofShape.

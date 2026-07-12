@@ -659,7 +659,7 @@ export default function PlatformPage() {
                 background: "rgba(245,245,247,0.045)",
               }}
             >
-              <p style={{ ...posLabel, color: "var(--st-ink)" }}>CADVERIFY — THE GLASS BOX</p>
+              <p style={{ ...posLabel, color: "var(--st-ink)" }}>PROOFSHAPE — THE GLASS BOX</p>
               <p style={{ ...posBody, color: "var(--st-ink-70)" }}>
                 {
                   "Every driver visible, sourced, and summing to the unit cost. The hero output is the decision — make-vs-buy and the crossover — and trust is demonstrated on your parts, never asserted on a slide."

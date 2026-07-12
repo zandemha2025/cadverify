@@ -226,8 +226,8 @@ export default function DevelopersPage() {
             used for air-gapped and export-controlled deployments.
           </p>
           <div style={codeBlock}>
-            <p style={codeLine}>git clone https://github.com/zandemha2025/cadverify.git</p>
-            <p style={codeLine}>cd cadverify</p>
+            <p style={codeLine}>git clone "$PROOFSHAPE_DEPLOYMENT_REPOSITORY" proofshape</p>
+            <p style={codeLine}>cd proofshape</p>
             <p style={codeLine}>
               cp .env.example .env{I1}<span style={{ color: "rgba(245,245,247,0.35)" }}># set secrets, storage, origins</span>
             </p>
