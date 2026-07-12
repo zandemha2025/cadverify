@@ -14,6 +14,7 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { cn } from "@/lib/utils";
 import { STAGE_UI } from "@/lib/stage-flag";
 import { computeHighlightVertexColors } from "@/lib/highlight-colors";
+import { probeWebGlSupport } from "@/lib/site/webgl";
 
 /* Non-highlighted faces keep a machined tint when vertex-colouring is on (i.e.
    during DFM inspection) so the flagged faces still pop against them. Stage
@@ -258,7 +259,14 @@ export default function CadViewer({
 }: CadViewerProps) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [halfH, setHalfH] = useState(1);
+  const [webGlAvailable, setWebGlAvailable] = useState<boolean | null>(null);
   const onHalfHeight = useCallback((h: number) => setHalfH(h), []);
+
+  // Probe before react-three-fiber mounts. When GPU/WebGL is unavailable,
+  // mounting Canvas causes repeated renderer retries and leaves a blank panel.
+  useEffect(() => {
+    setWebGlAvailable(probeWebGlSupport());
+  }, []);
 
   useEffect(() => {
     if (file && file.name.toLowerCase().endsWith(".stl")) {
@@ -287,6 +295,33 @@ export default function CadViewer({
         <p className="text-sm">
           {file ? "STEP preview requires backend conversion" : "Upload a file to preview"}
         </p>
+      </div>
+    );
+  }
+
+  if (webGlAvailable !== true) {
+    return (
+      <div
+        role="status"
+        className={cn(
+          "flex h-full flex-col items-center justify-center rounded-[var(--radius)] border px-6 text-center",
+          instrument
+            ? "border-border bg-card-raised text-muted-foreground"
+            : "border-border bg-muted text-muted-foreground",
+          className,
+        )}
+      >
+        <p className="text-sm font-medium text-foreground">
+          {webGlAvailable === null
+            ? "Preparing the interactive preview…"
+            : "Interactive 3D is unavailable in this browser."}
+        </p>
+        {webGlAvailable === false && (
+          <p className="mt-1 max-w-md text-xs leading-5">
+            The generated STEP, measured dimensions, evidence hash, download, and Verify handoff
+            remain available below.
+          </p>
+        )}
       </div>
     );
   }
