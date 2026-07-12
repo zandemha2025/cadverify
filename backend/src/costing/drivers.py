@@ -205,7 +205,7 @@ def extract_drivers(geometry, mesh, features=None) -> GeoDrivers:
     else:
         nominal_wall_mm = 0.0
 
-    rotational, axis_len, cross_dia = is_rotational(geometry, mesh)
+    rotational, axis_len, cross_dia = is_rotational(geometry, mesh, features)
     is_valid = bool((geometry.volume or 0.0) > 0.0 and geometry.is_watertight)
 
     sheet_gauge_mm, planar_aspect, outline_perimeter_mm, sheet_like = _sheet_geometry(

@@ -61,7 +61,42 @@ def _inertia_axisymmetric(mesh, tolerance: float = ROTATIONAL_INERTIA_TOL) -> bo
         return False
 
 
-def is_rotational(geometry, mesh=None):
+def _has_measured_cylindrical_boss(features, surface_area_mm2: float) -> bool:
+    """Require positive curved-surface evidence before claiming a lathe route.
+
+    Similar bounding-box dimensions and inertia moments are necessary for a
+    rotational part, but they are not sufficient: an L bracket and an open box
+    can satisfy both accidentally.  A genuine turned solid exposes at least one
+    measured outer cylindrical surface.  Small bores in an otherwise prismatic
+    part do not count because only ``cylinder_boss`` area is considered.
+    """
+    if not features or surface_area_mm2 <= 0:
+        return False
+    boss_area = 0.0
+    for feature in features:
+        kind = getattr(getattr(feature, "kind", None), "value", getattr(feature, "kind", None))
+        if kind != "cylinder_boss":
+            continue
+        singular_values = (getattr(feature, "metadata", {}) or {}).get(
+            "singular_values", []
+        )
+        # A planar triangulated patch can be fitted as a zero-residual
+        # "cylinder" because all of its normals are identical. A real
+        # cylindrical wall has normal variation in two independent radial
+        # directions, so the second singular value must carry material weight.
+        if (
+            len(singular_values) < 2
+            or float(singular_values[0]) <= 0
+            or float(singular_values[1]) / float(singular_values[0]) < 0.25
+        ):
+            continue
+        area = getattr(feature, "area", 0.0) or 0.0
+        if area > 0:
+            boss_area += float(area)
+    return boss_area >= 0.05 * float(surface_area_mm2)
+
+
+def is_rotational(geometry, mesh=None, features=None):
     """Rotational predicate (spec §5.1) — CONSISTENT with the DFM gate by design.
 
     A part is routed to turning only when BOTH signals agree:
@@ -73,7 +108,10 @@ def is_rotational(geometry, mesh=None):
          tolerance), AND
       2. inertia-eigenvalue axisymmetry (`_inertia_axisymmetric`) — the SAME test
          `checks.check_rotational_symmetry` runs for CNC turning, at the SAME 0.15
-         tolerance.
+         tolerance, AND
+      3. a measured outer cylindrical surface covering at least 5% of the part's
+         surface area. This rejects boxy L brackets and open enclosures whose
+         similar extents and inertia moments otherwise mimic a round part.
 
     Requiring (2) makes `rotational ⟹ the engine's rotational-symmetry DFM check
     passes`, so routing can NEVER headline "turnable" on a part the DFM hard-fails
@@ -101,6 +139,9 @@ def is_rotational(geometry, mesh=None):
     rotational = (
         (roundness >= 0.80)
         and _inertia_axisymmetric(mesh)
+        and _has_measured_cylindrical_boss(
+            features, float(getattr(geometry, "surface_area", 0.0) or 0.0)
+        )
         and (cross_dia >= 5.0)
         and (0.25 <= ld <= 8.0)
     )
