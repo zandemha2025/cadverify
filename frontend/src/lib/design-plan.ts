@@ -30,6 +30,10 @@ export const DEFAULT_DESIGN_FORM: DesignForm = {
   holeInset: 10,
 };
 
+function roundDimension(value: number): number {
+  return Math.round((value + Number.EPSILON) * 1_000_000) / 1_000_000;
+}
+
 export function buildDesignPlan(form: DesignForm): DesignPlan {
   if (form.kind === "plate") {
     const x = form.width / 2 - form.holeInset;
@@ -95,7 +99,12 @@ export function formFromPlan(
       fourCornerHoles: plan.holes.length === 4,
       holeDiameter: first?.diameter_mm ?? DEFAULT_DESIGN_FORM.holeDiameter,
       holeInset: first
-        ? Math.min(plan.width_mm / 2 - Math.abs(first.x_mm), plan.depth_mm / 2 - Math.abs(first.y_mm))
+        ? roundDimension(
+            Math.min(
+              plan.width_mm / 2 - Math.abs(first.x_mm),
+              plan.depth_mm / 2 - Math.abs(first.y_mm),
+            ),
+          )
         : DEFAULT_DESIGN_FORM.holeInset,
     };
   }

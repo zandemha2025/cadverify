@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   DEFAULT_DESIGN_FORM,
   buildDesignPlan,
+  formFromPlan,
   validateDesignForm,
 } from "./design-plan.ts";
 
@@ -22,6 +23,26 @@ test("unsafe edge margin is explained before submission", () => {
     holeInset: 5,
   });
   assert.match(error ?? "", /at least 1 mm/);
+});
+
+test("interpreted hole inset is rounded for a human-readable form value", () => {
+  const form = formFromPlan(
+    {
+      kind: "plate",
+      width_mm: 120,
+      depth_mm: 70,
+      thickness_mm: 8,
+      holes: [
+        { x_mm: -51.6, y_mm: -26.6, diameter_mm: 10 },
+        { x_mm: 51.6, y_mm: -26.6, diameter_mm: 10 },
+        { x_mm: 51.6, y_mm: 26.6, diameter_mm: 10 },
+        { x_mm: -51.6, y_mm: 26.6, diameter_mm: 10 },
+      ],
+    },
+    "Plate 120 × 70 × 8 mm",
+  );
+
+  assert.equal(form.holeInset, 8.4);
 });
 
 test("bracket form emits no executable or free-form operation", () => {
