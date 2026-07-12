@@ -89,7 +89,14 @@ async function handle(
     const v = res.headers.get(h);
     if (v) relayed.set(h, v);
   }
-  return new Response(res.body, { status: res.status, headers: relayed });
+  // Fetch forbids response bodies on 204/205/304 and HEAD. Passing the backend's
+  // empty ReadableStream through anyway makes Chromium report ERR_ABORTED even
+  // though the mutation succeeded (observed on Design Studio archive).
+  const noBody = method === "HEAD" || [204, 205, 304].includes(res.status);
+  return new Response(noBody ? null : res.body, {
+    status: res.status,
+    headers: relayed,
+  });
 }
 
 export const GET = handle;
