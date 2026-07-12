@@ -291,6 +291,15 @@ export function VerifyApp() {
     };
   }, [assembly, assemblySelectedId, assemblyAnalysis]);
 
+  const activeWorkspaceSection: Screen =
+    screen === "compare" || screen === "part"
+      ? "catalog"
+      : screen === "program"
+        ? "programs"
+        : RAIL.some((item) => item.key === screen)
+          ? screen
+          : "home";
+
   return (
     <ToastProvider>
     <div className="cv-verify-shell" style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column", background: C.bg, color: C.ink, fontFamily: SANS, WebkitFontSmoothing: "antialiased", fontSize: 14 }}>
@@ -334,6 +343,16 @@ export function VerifyApp() {
           );
         })}
         </div>
+        <select
+          className="cv-verify-mobile-section"
+          aria-label="Verify workspace section"
+          value={activeWorkspaceSection}
+          onChange={(event) => setScreen(event.target.value as Screen)}
+        >
+          {RAIL.map((item) => (
+            <option key={item.key} value={item.key}>{item.label}</option>
+          ))}
+        </select>
         <div className="cv-verify-workspace-actions" style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           <button
             type="button"
@@ -504,6 +523,43 @@ const KEYFRAMES = `
   outline-offset: 2px;
 }
 
+.cv-verify-mobile-section {
+  display: none;
+}
+
+@media (max-width: 1320px) {
+  .cv-verify-rail-label,
+  .cv-verify-rate-switcher {
+    display: none !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .cv-verify-home-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .cv-verify-setup > div:last-child,
+  .cv-verify-home-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .cv-verify-home-kpis > :last-child {
+    grid-column: 1 / -1;
+  }
+  .cv-verify-screen-split {
+    display: block !important;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  .cv-verify-stage {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 420px;
+    min-height: 420px;
+    border-right: none !important;
+    border-bottom: 1px solid #dedee2;
+  }
+}
+
 @media (max-width: 760px) {
   .cv-verify-shell {
     overflow: hidden;
@@ -514,7 +570,19 @@ const KEYFRAMES = `
     gap: 6px !important;
   }
   .cv-verify-workspace-tabs {
+    display: none !important;
+  }
+  .cv-verify-mobile-section {
+    display: block;
+    min-width: 0;
     flex: 1;
+    height: 44px;
+    border: 1px solid #dedee2;
+    border-radius: 9px;
+    background: #fff;
+    color: #17181a;
+    padding: 0 34px 0 12px;
+    font: 500 13px ${SANS};
   }
   .cv-verify-rail-button {
     width: 44px !important;
@@ -552,33 +620,8 @@ const KEYFRAMES = `
   .cv-verify-shell input:not([type="file"]) {
     min-height: 44px;
   }
-  .cv-verify-home-kpis {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
   .cv-verify-setup {
     padding: 15px 14px !important;
-  }
-  .cv-verify-setup > div:last-child {
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
-  .cv-verify-home-kpis > :last-child {
-    grid-column: 1 / -1;
-  }
-  .cv-verify-home-grid {
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
-  .cv-verify-screen-split {
-    display: block !important;
-    overflow-y: auto;
-    overflow-x: hidden;
-  }
-  .cv-verify-stage {
-    width: 100% !important;
-    min-width: 0 !important;
-    height: 420px;
-    min-height: 420px;
-    border-right: none !important;
-    border-bottom: 1px solid #dedee2;
   }
   .cv-verify-walk-scroll {
     padding: 22px 14px 18px !important;
