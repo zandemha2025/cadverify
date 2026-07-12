@@ -91,8 +91,9 @@ const enterpriseSteps = [
   "Verify UI shows declared machines and governed truth honestly",
   "Developer settings creates and reveals an API key exactly once",
   "CAD engineer verifies a real STEP file in a declared service world",
-  "portfolio withholds exposure until declared volume, then computes server-side math",
+  "portfolio withholds exposure until declared volume is re-verified at its exact quantity",
   "Verify stage renders declared parent context in product UI",
+  "portfolio computes exact server-side exposure after declared-volume re-verification",
   "Programs UI and cost history show the verified enterprise part",
 ];
 

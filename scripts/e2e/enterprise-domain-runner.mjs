@@ -621,8 +621,8 @@ class EnterpriseDomainQA {
     });
   }
 
-  async assertPortfolioCorrectness() {
-    await this.step("portfolio withholds exposure until declared volume, then computes server-side math", async () => {
+  async declarePortfolioContext() {
+    await this.step("portfolio withholds exposure until declared volume is re-verified at its exact quantity", async () => {
       const contextBefore = await this.expectApiOk(`/part-context/${this.evidence.meshHash}`);
       assert(contextBefore.provenance === "user", "part context provenance was not user");
       assert(contextBefore.service_environment?.max_temp_c === serviceEnvironment.max_temp_c, "max_temp_c did not persist");
@@ -657,38 +657,39 @@ class EnterpriseDomainQA {
       const after = await this.expectApiOk("/catalog/portfolio");
       const rowAfter = after.rows.find((r) => r.part_key === this.evidence.meshHash);
       assert(rowAfter, "programmed row disappeared from portfolio");
-      const expectedAnnualized = rowAfter.unit_cost.usd * annualVolume;
-      assert(
-        approxEqual(rowAfter.annualized_cost_usd, expectedAnnualized),
-        `annualized cost mismatch: got ${rowAfter.annualized_cost_usd}, expected ${expectedAnnualized}`
-      );
       assert(rowAfter.context.program === programName, "portfolio context program mismatch");
       assert(rowAfter.context.parent_assembly === parentAssembly, "portfolio parent assembly mismatch");
       assert(rowAfter.context.provenance === "user", "portfolio context provenance mismatch");
+      assert(rowAfter.annualized_unit_cost == null, "portfolio reused a non-matching quantity basis");
+      assert(rowAfter.annualized_cost_usd == null, "portfolio fabricated exposure before exact-quantity verification");
+      assert(
+        new RegExp(`no engine-computed recommendation at annual_volume ${annualVolume}`, "i").test(rowAfter.annualized_reason || ""),
+        "portfolio did not explain the missing exact-quantity recommendation"
+      );
+      assert(/re-verify this CAD/i.test(rowAfter.annualized_reason || ""), "portfolio did not give a re-verification recovery step");
       const rollup = after.summary.programs?.find((p) => p.program === programName);
       assert(rollup, "program rollup missing");
       assert(rollup.parts === 1, `program rollup parts expected 1, got ${rollup.parts}`);
-      assert(
-        approxEqual(rollup.annualized_cost_usd, rowAfter.annualized_cost_usd),
-        "program rollup annualized cost does not match member row"
-      );
+      assert(rollup.declared_volume_parts === 1, "program rollup lost the declared-volume count");
+      assert(rollup.exposed_parts === 0, "program rollup exposed a part without an exact cost point");
+      assert(rollup.annualized_cost_usd == null, "program rollup fabricated exposure before re-verification");
 
       this.evidence.portfolio = {
         filename: rowAfter.filename,
         mesh_hash: this.evidence.meshHash,
-        unit_cost_usd: rowAfter.unit_cost.usd,
+        headline_unit_cost_usd: rowAfter.unit_cost.usd,
         annual_volume: annualVolume,
-        annualized_cost_usd: rowAfter.annualized_cost_usd,
-        expected_annualized_cost_usd: expectedAnnualized,
         withheld_before_volume: rowBefore.annualized_cost_usd == null,
         withheld_reason: rowBefore.annualized_reason,
+        withheld_until_exact_reverification: rowAfter.annualized_cost_usd == null,
+        exact_reverification_reason: rowAfter.annualized_reason,
         program: programName,
         parent_assembly: rowAfter.context.parent_assembly,
         units_per_parent: rowAfter.context.units_per_parent,
         service_environment: rowAfter.context.service_environment,
         context_provenance: contextBefore.provenance,
       };
-      return { screenshot: await this.shot("portfolio-math-api-verified") };
+      return { screenshot: await this.shot("portfolio-awaiting-exact-reverify") };
     });
   }
 
@@ -733,6 +734,46 @@ class EnterpriseDomainQA {
         seated: true,
       };
       return { screenshot: await this.shot("verify-stage-declared-context-seated", true) };
+    });
+  }
+
+  async assertExactQuantityPortfolioCorrectness() {
+    await this.step("portfolio computes exact server-side exposure after declared-volume re-verification", async () => {
+      const after = await this.expectApiOk("/catalog/portfolio");
+      const rowAfter = after.rows.find((r) => r.part_key === this.evidence.meshHash);
+      assert(rowAfter, "re-verified programmed row disappeared from portfolio");
+      const basis = rowAfter.annualized_unit_cost;
+      assert(basis && isFiniteNumber(basis.usd), "exact annualized unit-cost basis missing");
+      assert(basis.qty === annualVolume, `annualized basis quantity drifted: ${basis.qty}`);
+      assert(basis.basis === "decision.recommendation", `annualized basis source drifted: ${basis.basis}`);
+      const expectedAnnualized = basis.usd * annualVolume;
+      assert(
+        approxEqual(rowAfter.annualized_cost_usd, expectedAnnualized),
+        `annualized cost mismatch: got ${rowAfter.annualized_cost_usd}, expected ${expectedAnnualized}`
+      );
+      assert(rowAfter.context.program === programName, "portfolio context program mismatch after re-verification");
+      assert(rowAfter.context.parent_assembly === parentAssembly, "portfolio parent assembly mismatch after re-verification");
+      assert(rowAfter.context.provenance === "user", "portfolio context provenance mismatch after re-verification");
+
+      const rollup = after.summary.programs?.find((p) => p.program === programName);
+      assert(rollup, "program rollup missing after re-verification");
+      assert(rollup.parts === 1, `program rollup parts expected 1, got ${rollup.parts}`);
+      assert(rollup.declared_volume_parts === 1, "program rollup lost the declared-volume count");
+      assert(rollup.exposed_parts === 1, "program rollup did not expose the exact-cost part");
+      assert(
+        approxEqual(rollup.annualized_cost_usd, rowAfter.annualized_cost_usd),
+        "program rollup annualized cost does not match member row"
+      );
+
+      this.evidence.portfolio = {
+        ...this.evidence.portfolio,
+        annualized_unit_cost_usd: basis.usd,
+        annualized_unit_cost_qty: basis.qty,
+        annualized_unit_cost_basis: basis.basis,
+        annualized_cost_usd: rowAfter.annualized_cost_usd,
+        expected_annualized_cost_usd: expectedAnnualized,
+      };
+      return { screenshot: await this.shot("portfolio-exact-quantity-api-verified") };
     });
   }
 
@@ -843,7 +884,7 @@ class EnterpriseDomainQA {
 
 Persona: CAD/cost engineer in an ExxonMobil-like manufacturing organization.
 
-The test signs up or logs in as a real org admin, proves unauthenticated org data is rejected, publishes a governed rate card, declares owned machines, ingests historical actuals, proves calibration refuses under the real-data floor, creates a developer API key through the UI, uploads a real STEP file, declares a sour/high-pressure/high-temperature service world, and verifies portfolio exposure is withheld until annual volume is user-declared.
+The test signs up or logs in as a real org admin, proves unauthenticated org data is rejected, publishes a governed rate card, declares owned machines, ingests historical actuals, proves calibration refuses under the real-data floor, creates a developer API key through the UI, uploads a real STEP file, declares a sour/high-pressure/high-temperature service world, and verifies portfolio exposure remains withheld until the declared annual volume has an exact re-verified engine point.
 
 ## Correctness Assertions
 
@@ -852,7 +893,7 @@ The test signs up or logs in as a real org admin, proves unauthenticated org dat
 - Ground-truth recalibration refuses with 4 real records because the floor is 8.
 - API key creation reveals the one-time secret on /settings/developer.
 - The Verify UI persists the declared service world to part-context before costing.
-- Portfolio annualized exposure is null before annual_volume and equals unit cost × declared volume after declaration.
+- Portfolio annualized exposure is null before annual_volume and after declaration until re-verification; it then equals the engine recommendation at that exact quantity × declared volume.
 - Program roll-up equals the member row exposure and keeps context provenance=user.
 
 ## Evidence
@@ -885,8 +926,9 @@ try {
   await runner.verifyGovernedUiSurfaces();
   await runner.createDeveloperKey();
   await runner.runCadVerification();
-  await runner.assertPortfolioCorrectness();
+  await runner.declarePortfolioContext();
   await runner.verifyDeclaredContextInProductStage();
+  await runner.assertExactQuantityPortfolioCorrectness();
   await runner.verifyProgramUiAndHistory();
 } finally {
   await runner.finish().catch((error) => {

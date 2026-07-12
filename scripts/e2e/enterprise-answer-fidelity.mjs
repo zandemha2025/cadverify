@@ -322,11 +322,14 @@ async function main() {
     }),
 
     await runCheck("CALCULATION-FIDELITY-001", "Cost and procurement math", async () => {
-      const unitCost = number(portfolio.unit_cost_usd, "portfolio.unit_cost_usd");
+      const unitCost = number(portfolio.annualized_unit_cost_usd, "portfolio.annualized_unit_cost_usd");
+      const basisQuantity = number(portfolio.annualized_unit_cost_qty, "portfolio.annualized_unit_cost_qty");
       const annualVolume = number(portfolio.annual_volume, "portfolio.annual_volume");
       const annualized = number(portfolio.annualized_cost_usd, "portfolio.annualized_cost_usd");
       const expectedAnnualized = unitCost * annualVolume;
       assert(annualVolume === expected.annualVolume, `annual volume drifted: ${annualVolume}`);
+      assert(basisQuantity === annualVolume, `annualized basis quantity drifted: ${basisQuantity}`);
+      assert(portfolio.annualized_unit_cost_basis === "decision.recommendation", "annualized basis was not the engine recommendation");
       assert(approxEqual(annualized, expectedAnnualized), `annualized cost mismatch: ${annualized} vs ${expectedAnnualized}`);
       assert(
         approxEqual(number(portfolio.expected_annualized_cost_usd, "portfolio.expected_annualized_cost_usd"), expectedAnnualized),
@@ -334,9 +337,12 @@ async function main() {
       );
       assert(portfolio.withheld_before_volume === true, "portfolio did not prove annualized exposure was withheld before volume");
       assert(/no declared annual_volume/i.test(portfolio.withheld_reason || ""), "withheld reason does not explain missing volume");
+      assert(portfolio.withheld_until_exact_reverification === true, "portfolio did not withhold the unmatched declared quantity");
+      assert(/re-verify this CAD/i.test(portfolio.exact_reverification_reason || ""), "portfolio did not record the exact-quantity recovery step");
       assert(annualized >= expected.capitalBoardUsd, "annualized exposure did not cross capital-board threshold");
       return {
-        unitCostUsd: unitCost,
+        exactUnitCostUsd: unitCost,
+        exactBasisQuantity: basisQuantity,
         annualVolume,
         annualizedCostUsd: annualized,
         expectedAnnualizedCostUsd: expectedAnnualized,
@@ -405,7 +411,7 @@ async function main() {
       screenshots.push(
         await inspectScreenshot(
           enterprise,
-          "portfolio withholds exposure until declared volume, then computes server-side math",
+          "portfolio computes exact server-side exposure after declared-volume re-verification",
           "portfolio math result"
         )
       );
