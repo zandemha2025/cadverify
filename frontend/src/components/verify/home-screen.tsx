@@ -21,6 +21,7 @@
  * rule — those are ⌘K only).
  */
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { fetchCostDecisions, type CostDecisionSummary } from "@/lib/api";
 import { listMachines } from "@/lib/verify/machine-api";
 import { listChangeRequests, type ChangeRequest } from "@/lib/verify/governance-api";
@@ -229,7 +230,7 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
             ) : records.length === 0 ? (
               <div style={{ marginTop: 14, border: "1.5px dashed #d3d3d8", borderRadius: 12, padding: "26px 20px", textAlign: "center" }}>
                 <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>Nothing in flight.</p>
-                <p style={{ margin: "7px 0 0", fontSize: 12, color: C.ink50 }}>Your first verdict is one drop away — and it will be honest about what it doesn&apos;t know yet.</p>
+                <p style={{ margin: "7px 0 0", fontSize: 12, color: C.ink50 }}>Create a safe parametric design or upload existing CAD — either path reaches the same honest verification.</p>
               </div>
             ) : (
               <div style={{ marginTop: 8, display: "flex", flexDirection: "column" }}>
@@ -247,6 +248,16 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
 
         {/* right stack */}
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <Link href="/designs" style={{ border: `1px solid ${C.hair}`, borderRadius: 14, background: C.panel, padding: 18, cursor: "pointer", fontFamily: "inherit", color: "inherit", textAlign: "left", textDecoration: "none", display: "block" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Kicker>START FROM SCRATCH</Kicker>
+              <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.08em", color: C.measured }}>DESIGN STUDIO</span>
+            </div>
+            <p style={{ margin: "10px 0 0", fontSize: 14, fontWeight: 500 }}>Create a plate, bracket, or enclosure</p>
+            <p style={{ margin: "5px 0 0", fontSize: 11.5, lineHeight: 1.55, color: C.ink45 }}>real STEP + STL · immutable revisions · returns here to verify</p>
+            <span style={{ display: "inline-block", marginTop: 10, border: `1px solid ${C.hair}`, borderRadius: 999, padding: "7px 15px", fontSize: 11.5, fontWeight: 500 }}>Open Design Studio →</span>
+          </Link>
+
           <button type="button" onClick={onPickFile} style={{ border: `1.5px dashed #c9cbd0`, borderRadius: 14, background: C.panel, padding: 18, cursor: "pointer", fontFamily: "inherit", color: "inherit", textAlign: "center" }}>
             <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>Drop a part — STL, STEP or IGES</p>
             <p style={{ margin: "5px 0 0", fontSize: 11, color: C.ink45 }}>parsed in-process · discarded</p>

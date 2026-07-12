@@ -8,6 +8,7 @@
  * tree is unreachable, so the existing app is byte-identical.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { C, MONO, SANS } from "@/lib/verify/tokens";
 import { runVerification, type VerifyResult } from "@/lib/verify/run";
 import { listMachines } from "@/lib/verify/machine-api";
@@ -33,6 +34,7 @@ import { ShortcutsOverlay } from "./shortcuts-overlay";
 import { CalibrationSwitcher } from "./calibration-switcher";
 import { VerifyAccountMenu } from "./account-menu";
 import { sampleCubeFile } from "@/lib/verify/sample-cad";
+import { designIdFromSearch, designRevisionFromSearch, importDesignStep } from "@/lib/verify/design-import";
 
 // The shared hotkey nav map — matches the design 1:1 (support.js keydown handler):
 // H/V/P/R/G/M/T/C jump between the surfaces, `?` opens the shortcuts sheet. `c`
@@ -100,6 +102,13 @@ export function VerifyApp() {
   // hourly rate (i.e. a shop rate is actually bound)? null while loading → the dot
   // stays hollow/neutral until a bound rate is detected — never a hardcoded claim.
   const [ratesBound, setRatesBound] = useState<boolean | null>(null);
+  const [designImport, setDesignImport] = useState<
+    | { state: "loading"; message: string }
+    | { state: "ready"; message: string }
+    | { state: "error"; message: string }
+    | null
+  >(null);
+  const designImportStarted = useRef(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   // The last part the user verified — so a change to the declared world can re-run
   // the verification (re-persist the env + re-cost against it) for the same part.
@@ -186,6 +195,39 @@ export function VerifyApp() {
 
   const runSample = useCallback(() => {
     void runVerify(sampleCubeFile());
+  }, [runVerify]);
+
+  // Design Studio handoff: load the exact authenticated STEP revision and feed
+  // it through the same File-based verification path as a manual upload. The
+  // generated artifact gets no privileged shortcut through DFM or costing.
+  useEffect(() => {
+    if (designImportStarted.current) return;
+    const rawDesignId = new URLSearchParams(window.location.search).get("design");
+    if (!rawDesignId) return;
+    designImportStarted.current = true;
+    const designId = designIdFromSearch(window.location.search);
+    if (!designId) {
+      setDesignImport({ state: "error", message: "That Design Studio link is invalid." });
+      return;
+    }
+    const rawRevision = new URLSearchParams(window.location.search).get("revision");
+    const revisionNo = designRevisionFromSearch(window.location.search);
+    if (rawRevision !== null && revisionNo === null) {
+      setDesignImport({ state: "error", message: "That design revision is invalid." });
+      return;
+    }
+    setDesignImport({ state: "loading", message: "Loading the generated STEP revision…" });
+    void importDesignStep(designId, fetch, revisionNo)
+      .then(async (imported) => {
+        setDesignImport({ state: "ready", message: `Imported ${imported.name}. Verification is running.` });
+        await runVerify(imported);
+      })
+      .catch((caught) => {
+        setDesignImport({
+          state: "error",
+          message: caught instanceof Error ? caught.message : "Could not import this design.",
+        });
+      });
   }, [runVerify]);
 
   // The rail footer's bound-rate signal.
@@ -291,7 +333,7 @@ export function VerifyApp() {
 
       {/* rail */}
       <nav className="cv-verify-rail" style={{ width: 64, flexShrink: 0, borderRight: `1px solid ${C.hair2}`, background: C.panel, display: "flex", flexDirection: "column", alignItems: "center", padding: "14px 0", gap: 6 }}>
-        <div style={{ width: 30, height: 30, borderRadius: 8, background: C.ink, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: 13, marginBottom: 14 }}>C</div>
+        <Link href="/designs" aria-label="ProofShape Design Studio" title="ProofShape Design Studio" style={{ width: 30, height: 30, borderRadius: 8, background: C.ink, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: 13, marginBottom: 14, textDecoration: "none" }}>P</Link>
         {RAIL.map((r) => {
           const active = screen === r.key || (r.key === "catalog" && screen === "compare");
           return (
@@ -340,7 +382,7 @@ export function VerifyApp() {
       <div className="cv-verify-main" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <header className="cv-verify-header" style={{ height: 52, flexShrink: 0, borderBottom: `1px solid ${C.hair2}`, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px", background: C.panel }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: C.ink50 }}>
-            <span>{CRUMB[screen] ?? "CadVerify"}</span>
+            <span>{CRUMB[screen] ?? "ProofShape"}</span>
             {onVerify && result?.file && (
               <>
                 <span style={{ color: C.ink35 }}>/</span>
@@ -349,6 +391,7 @@ export function VerifyApp() {
             )}
           </div>
           <div className="cv-verify-header-actions" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Link href="/designs" className="cv-verify-design-link" style={{ color: C.ink55, fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}>Design Studio</Link>
             <span className="cv-verify-rate-switcher"><CalibrationSwitcher onOpenCalibration={() => setScreen("calibration")} /></span>
             <button className="cv-verify-command-button" type="button" onClick={() => setScreen("palette")} title="Command palette (⌘K)" aria-label="Open command palette" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${C.hair}`, background: "#fff", borderRadius: 999, padding: "7px 13px", fontFamily: MONO, fontSize: 11, color: C.ink55, cursor: "pointer" }}>⌘K</button>
             <button className="cv-verify-notification-button" type="button" onClick={() => setNotifOpen((v) => !v)} title="Notifications" aria-label="Notifications" style={{ width: 32, height: 32, borderRadius: "50%", border: `1px solid ${C.hair}`, background: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", color: C.ink55 }}>
@@ -369,6 +412,38 @@ export function VerifyApp() {
             <button className="cv-verify-primary-action" type="button" onClick={pickFile} style={{ background: C.ink, color: "#fff", border: "none", borderRadius: 999, padding: "8px 18px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>Verify a part</button>
           </div>
         </header>
+
+        {designImport && (
+          <div
+            role={designImport.state === "error" ? "alert" : "status"}
+            style={{
+              minHeight: 38,
+              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "8px 20px",
+              borderBottom: `1px solid ${designImport.state === "error" ? "#e6b8b8" : C.hair2}`,
+              background: designImport.state === "error" ? "#fff2f2" : C.sunken,
+              color: designImport.state === "error" ? "#9f2f2f" : C.ink55,
+              fontSize: 12,
+              fontFamily: MONO,
+            }}
+          >
+            {designImport.state === "loading" && <span aria-hidden style={{ animation: "vspin 1s linear infinite" }}>◌</span>}
+            <span>{designImport.message}</span>
+            {designImport.state === "error" && (
+              <Link href="/designs" style={{ marginLeft: "auto", color: "inherit", fontWeight: 600 }}>
+                Return to Design Studio
+              </Link>
+            )}
+            {designImport.state === "ready" && (
+              <button type="button" onClick={() => setDesignImport(null)} style={{ marginLeft: "auto", border: 0, background: "transparent", color: "inherit", cursor: "pointer", fontFamily: "inherit" }}>
+                Dismiss
+              </button>
+            )}
+          </div>
+        )}
 
         {notifOpen && <NotificationsPanel onClose={() => setNotifOpen(false)} />}
 

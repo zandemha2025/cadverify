@@ -1,4 +1,4 @@
-"""CADVerify — Manufacturing Validation API."""
+"""ProofShape — Manufacturing Validation API."""
 
 from __future__ import annotations
 
@@ -49,6 +49,7 @@ from src.api.manifest import router as manifest_router
 from src.api.bom import router as bom_router
 from src.api.machine_inventory import router as machine_inventory_router
 from src.api.org_routes import router as org_router
+from src.api.designs import router as designs_router
 from src.api.share import public_share_router, share_router
 from src.auth.keys_api import router as keys_router
 from src.auth.magic_link import router as magic_router
@@ -305,7 +306,7 @@ def _spawn_parse_pool_prewarm() -> threading.Thread:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("CADVerify starting | cors_regex=%s", CORS_ORIGIN_REGEX)
+    logger.info("ProofShape starting | cors_regex=%s", CORS_ORIGIN_REGEX)
     from src.parsers import parse_pool
 
     parse_pool.startup()
@@ -316,7 +317,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        logger.info("CADVerify stopping")
+        logger.info("ProofShape stopping")
 
         # Audit rows commit with their protected mutations, so there is no
         # detached compliance queue to drain. Stop CAD workers, release pooled
@@ -330,6 +331,12 @@ async def lifespan(app: FastAPI):
                     logger.warning("parse pool pre-warm did not stop within 1s")
         except Exception:
             logger.exception("failed to stop parse pool")
+        try:
+            from src.jobs.arq_backend import close_arq_pool
+
+            await close_arq_pool()
+        except Exception:
+            logger.exception("failed to close ARQ enqueue pool")
         try:
             from src.db.engine import dispose_engine
 
@@ -345,7 +352,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="CADVerify",
+    title="ProofShape API",
     description="Manufacturing validation for STEP and STL files",
     version="0.2.0",
     lifespan=lifespan,
@@ -500,6 +507,10 @@ app.include_router(
 # multi-user seam on top of 0009's tenancy isolation. Org-scoped; single-org
 # callers are byte-identical (the whole isolation matrix is unchanged).
 app.include_router(org_router, prefix="/api/v1/orgs", tags=["orgs"])
+# ProofShape Design Studio: validated operation plans -> immutable STEP/STL
+# revisions. Generation runs on the existing worker plane; no generated source
+# code is ever executed.
+app.include_router(designs_router, prefix="/api/v1/designs", tags=["designs"])
 # SCIM 2.0 enterprise provisioning. Mounted at the IdP-standard path rather
 # than under /api/v1 so Okta/Entra can target it directly.
 app.include_router(scim_router)

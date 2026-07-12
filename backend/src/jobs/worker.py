@@ -1,6 +1,7 @@
 """arq worker settings and startup hooks."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 
@@ -15,6 +16,7 @@ from src.jobs.batch_tasks import (
 )
 from src.jobs.heartbeat import worker_heartbeat, write_heartbeat
 from src.jobs.reconstruction_tasks import run_reconstruction_job
+from src.jobs.design_tasks import run_design_generation_job
 from src.jobs.tasks import run_sam3d_job
 from src.config.production import assert_production_operations
 
@@ -59,6 +61,13 @@ async def startup(ctx: dict) -> None:
 
     await init_engine()
     ctx["db_engine"] = True
+    try:
+        design_concurrency = int(os.getenv("DESIGN_GENERATION_CONCURRENCY", "2"))
+    except ValueError:
+        design_concurrency = 2
+    design_concurrency = max(1, min(design_concurrency, 8))
+    ctx["design_generation_semaphore"] = asyncio.Semaphore(design_concurrency)
+    logger.info("Design generation concurrency=%d", design_concurrency)
 
     # Write an initial worker heartbeat so /health/deep can see liveness the
     # moment the worker is up (before the first cron tick fires).
@@ -79,7 +88,14 @@ async def shutdown(ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions = [run_sam3d_job, run_batch_coordinator, run_batch_item, dispatch_webhook, run_reconstruction_job]
+    functions = [
+        run_sam3d_job,
+        run_batch_coordinator,
+        run_batch_item,
+        dispatch_webhook,
+        run_reconstruction_job,
+        run_design_generation_job,
+    ]
     # Periodic orphan sweep (F-ARCH-1): reap batches stuck in pending/processing.
     # Runs every 5 minutes and once at worker startup as a backstop.
     cron_jobs = [

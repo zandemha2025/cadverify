@@ -45,6 +45,8 @@ Design -- LOOP-LOCAL state (critical):
 """
 from __future__ import annotations
 
+from src.config.public_urls import error_doc_url
+
 import asyncio
 import logging
 import os
@@ -102,7 +104,7 @@ def _admission_err(code: str, message: str, retry_after: int) -> HTTPException:
         detail={
             "code": code,
             "message": message,
-            "doc_url": f"https://docs.cadverify.com/errors#{code}",
+            "doc_url": error_doc_url(code),
         },
     )
 

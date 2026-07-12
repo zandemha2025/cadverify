@@ -1,6 +1,8 @@
 """require_api_key: per-route FastAPI dependency returning AuthedUser."""
 from __future__ import annotations
 
+from src.config.public_urls import error_doc_url
+
 import asyncio
 
 from fastapi import Header, HTTPException, Request
@@ -29,7 +31,7 @@ def _401(code: str, message: str) -> HTTPException:
         detail={
             "code": code,
             "message": message,
-            "doc_url": f"https://docs.cadverify.com/errors#{code}",
+            "doc_url": error_doc_url(code),
         },
     )
 
@@ -40,7 +42,7 @@ def _403_deactivated() -> HTTPException:
         detail={
             "code": "account_deactivated",
             "message": "This account has been deactivated.",
-            "doc_url": "https://docs.cadverify.com/errors#account_deactivated",
+            "doc_url": error_doc_url("account_deactivated"),
         },
     )
 
@@ -102,7 +104,7 @@ async def require_api_key(
             detail={
                 "code": "server_config",
                 "message": "Auth backend misconfigured.",
-                "doc_url": "https://docs.cadverify.com/errors#server_config",
+                "doc_url": error_doc_url("server_config"),
             },
         )
     row = await lookup_api_key(idx)

@@ -11,6 +11,8 @@ AUTH-08:
 """
 from __future__ import annotations
 
+from src.config.public_urls import error_doc_url
+
 import os
 from functools import lru_cache
 
@@ -47,7 +49,7 @@ def _err(code: str, msg: str, retry: int) -> HTTPException:
         detail={
             "code": code,
             "message": msg,
-            "doc_url": f"https://docs.cadverify.com/errors#{code}",
+            "doc_url": error_doc_url(code),
         },
     )
 

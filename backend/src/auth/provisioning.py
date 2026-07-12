@@ -7,6 +7,8 @@ and no signed session may be issued by the caller.
 """
 from __future__ import annotations
 
+from src.config.public_urls import error_doc_url
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -51,7 +53,7 @@ def _auth_error(status: int, code: str, message: str) -> HTTPException:
         detail={
             "code": code,
             "message": message,
-            "doc_url": f"https://docs.cadverify.com/errors#{code}",
+            "doc_url": error_doc_url(code),
         },
     )
 

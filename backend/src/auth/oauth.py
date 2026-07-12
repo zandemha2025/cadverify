@@ -7,6 +7,8 @@ Mounted under /auth:
 """
 from __future__ import annotations
 
+from src.config.public_urls import api_origin, error_doc_url
+
 import os
 
 from authlib.integrations.starlette_client import OAuth
@@ -36,12 +38,6 @@ oauth.register(
 router = APIRouter()
 
 
-def _api_origin() -> str:
-    """Derive API origin from DASHBOARD_ORIGIN for the OAuth redirect URI."""
-    dash = os.environ["DASHBOARD_ORIGIN"]
-    return dash.replace("cadverify.com", "api.cadverify.com")
-
-
 @router.get("/google/start")
 async def google_start(request: Request):
     # AUTH-08: per-IP signup limit applies to OAuth start too (3/hr/IP).
@@ -56,7 +52,7 @@ async def google_start(request: Request):
     # any environment without Redis instead of degrading gracefully.
     if ip_signup_limit_enabled():
         await per_ip_signup_limit(request)
-    redirect_uri = f"{_api_origin()}/auth/google/callback"
+    redirect_uri = f"{api_origin()}/auth/google/callback"
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
@@ -70,7 +66,7 @@ async def google_callback(request: Request):
             detail={
                 "code": "oauth_failed",
                 "message": "Google sign-in failed.",
-                "doc_url": "https://docs.cadverify.com/errors#oauth_failed",
+                "doc_url": error_doc_url("oauth_failed"),
             },
         )
     info = token.get("userinfo") or {}
@@ -82,7 +78,7 @@ async def google_callback(request: Request):
             detail={
                 "code": "oauth_no_email",
                 "message": "Google did not return a verified email.",
-                "doc_url": "https://docs.cadverify.com/errors#oauth_no_email",
+                "doc_url": error_doc_url("oauth_no_email"),
             },
         )
     email_norm = normalize_email(email)

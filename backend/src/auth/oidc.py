@@ -30,6 +30,8 @@ and NO bypass in this production code.
 """
 from __future__ import annotations
 
+from src.config.public_urls import api_origin, dashboard_origin, error_doc_url
+
 import asyncio
 import base64
 import hashlib
@@ -83,12 +85,6 @@ class OidcConfig:
     allowed_endpoint_origins: tuple[str, ...]
 
 
-def _api_origin() -> str:
-    """Derive the API origin from DASHBOARD_ORIGIN (mirrors oauth._api_origin)."""
-    dash = os.getenv("DASHBOARD_ORIGIN", "https://cadverify.com")
-    return dash.replace("cadverify.com", "api.cadverify.com")
-
-
 def _load_oidc_config() -> OidcConfig:
     """Load env-driven OIDC config (parallel to the SAML settings surface).
 
@@ -103,7 +99,7 @@ def _load_oidc_config() -> OidcConfig:
             detail={
                 "code": "oidc_not_configured",
                 "message": "OIDC_ISSUER and OIDC_CLIENT_ID must be configured.",
-                "doc_url": "https://docs.cadverify.com/errors#oidc_not_configured",
+                "doc_url": error_doc_url("oidc_not_configured"),
             },
         )
     client_secret = (os.getenv("OIDC_CLIENT_SECRET") or "").strip() or None
@@ -111,7 +107,7 @@ def _load_oidc_config() -> OidcConfig:
         f"{issuer}/.well-known/openid-configuration"
     )
     redirect_uri = (os.getenv("OIDC_REDIRECT_URI") or "").strip() or (
-        f"{_api_origin()}/auth/oidc/callback"
+        f"{api_origin()}/auth/oidc/callback"
     )
     raw_groups_claim = os.getenv("OIDC_GROUPS_CLAIM")
     # Unset keeps the interoperable default. Explicitly blank disables optional
@@ -247,7 +243,7 @@ async def oidc_status() -> dict:
             detail={
                 "code": "oidc_invalid_config",
                 "message": str(exc),
-                "doc_url": "https://docs.cadverify.com/errors#oidc_invalid_config",
+                "doc_url": error_doc_url("oidc_invalid_config"),
             },
         ) from exc
     return {"enabled": True}
@@ -297,7 +293,7 @@ async def _fetch_json(client: httpx.AsyncClient, url: str, *, what: str) -> dict
             detail={
                 "code": "oidc_discovery_failed",
                 "message": f"Failed to fetch OIDC {what}.",
-                "doc_url": "https://docs.cadverify.com/errors#oidc_discovery_failed",
+                "doc_url": error_doc_url("oidc_discovery_failed"),
             },
         ) from exc
 
@@ -362,7 +358,7 @@ async def _discovery(client: httpx.AsyncClient, cfg: OidcConfig) -> dict:
             detail={
                 "code": "oidc_issuer_mismatch",
                 "message": "OIDC discovery issuer does not match configuration.",
-                "doc_url": "https://docs.cadverify.com/errors#oidc_issuer_mismatch",
+                "doc_url": error_doc_url("oidc_issuer_mismatch"),
             },
         )
     for field in ("authorization_endpoint", "token_endpoint", "jwks_uri"):
@@ -415,7 +411,7 @@ def _bad_callback(code: str, message: str, status: int = 400) -> HTTPException:
         detail={
             "code": code,
             "message": message,
-            "doc_url": f"https://docs.cadverify.com/errors#{code}",
+            "doc_url": error_doc_url(code),
         },
     )
 
@@ -542,11 +538,11 @@ async def oidc_callback(request: Request):
                     "OIDC groups matched mappings in multiple organizations. "
                     "Ask an administrator to correct the mapping."
                 ),
-                "doc_url": "https://docs.cadverify.com/errors#oidc_group_mapping_ambiguous",
+                "doc_url": error_doc_url("oidc_group_mapping_ambiguous"),
             },
         ) from exc
 
-    dashboard_url = os.getenv("DASHBOARD_ORIGIN", "https://cadverify.com")
+    dashboard_url = dashboard_origin()
     resp = RedirectResponse(url=f"{dashboard_url}/dashboard", status_code=303)
     set_session_cookie(resp, login.user_id, session_version=login.session_version)
     return resp

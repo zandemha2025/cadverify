@@ -106,7 +106,7 @@ export function CostGeometryInvalidCard({
       )}
 
       <a
-        href="https://docs.cadverify.com/errors#GEOMETRY_INVALID"
+        href="/docs"
         target="_blank"
         rel="noreferrer"
         className="mt-4 inline-block text-sm font-medium text-primary underline-offset-4 hover:underline"

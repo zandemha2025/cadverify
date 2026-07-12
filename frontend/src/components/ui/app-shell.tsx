@@ -64,6 +64,7 @@ type RailItem = {
 };
 const RAIL: RailItem[] = [
   { id: "verify", label: "Verify workspace", icon: FileCheck2, href: "/verify" },
+  { id: "designs", label: "Design Studio", icon: Boxes, href: "/designs" },
   { id: "home", label: "Legacy workbench", icon: Boxes, href: "/cost" },
   { id: "analyze", label: "Analyze DFM", icon: ScanLine, href: "/analyze" },
   { id: "batch", label: "Batch runs", icon: Layers, href: "/batch" },
@@ -86,7 +87,7 @@ function IconRail() {
         {/* brand mark — the datum crosshair, cobalt */}
         <Link
           href="/verify"
-          aria-label="CadVerify"
+          aria-label="ProofShape"
           className="mb-2 flex size-9 items-center justify-center rounded-[var(--radius-sm)] text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <svg viewBox="0 0 20 20" className="size-5" fill="none" stroke="currentColor" strokeWidth={1.6}>
@@ -145,6 +146,7 @@ function IconRail() {
 type NavLink = { label: string; href: string; icon: LucideIcon; hint?: string };
 const WORKSPACE_NAV: NavLink[] = [
   { label: "Verify workspace", href: "/verify", icon: FileCheck2, hint: "canonical product surface" },
+  { label: "Design Studio", href: "/designs", icon: Boxes, hint: "create · revise · verify" },
   { label: "Legacy analysis", href: "/cost", icon: Calculator, hint: "should-cost · make-vs-buy" },
   { label: "Analyze DFM", href: "/analyze", icon: ScanLine, hint: "geometry · flags" },
   { label: "Batch run", href: "/batch", icon: Layers, hint: "many parts" },
@@ -241,6 +243,15 @@ function ContextBar({
   const pathname = usePathname();
   const { part } = useInstrumentChrome();
   const isLocal = LOCAL_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
+  const domain = pathname.startsWith("/designs")
+    ? "designs"
+    : pathname.startsWith("/settings")
+      ? "settings"
+      : pathname.startsWith("/batch")
+        ? "batch"
+        : pathname.startsWith("/integrations")
+          ? "integrations"
+          : "decisions";
 
   return (
     <header className="flex h-[var(--contextbar-h)] shrink-0 items-center gap-2 border-b border-border bg-background px-3">
@@ -257,7 +268,7 @@ function ContextBar({
       <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
         <span className="num text-muted-foreground">workspace</span>
         <ChevronRight className="size-3.5 shrink-0 text-subtle-foreground" aria-hidden />
-        <span className="num text-muted-foreground">decisions</span>
+        <span className="num text-muted-foreground">{domain}</span>
         {part && (
           <>
             <ChevronRight className="size-3.5 shrink-0 text-subtle-foreground" aria-hidden />

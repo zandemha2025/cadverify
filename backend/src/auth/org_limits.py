@@ -37,6 +37,8 @@ than blocking a request the per-identity limiter and RBAC already gated.
 """
 from __future__ import annotations
 
+from src.config.public_urls import error_doc_url
+
 import logging
 import os
 import time
@@ -110,7 +112,7 @@ def _org_err(code: str, message: str, retry_after: int) -> HTTPException:
         detail={
             "code": code,
             "message": message,
-            "doc_url": f"https://docs.cadverify.com/errors#{code}",
+            "doc_url": error_doc_url(code),
         },
     )
 

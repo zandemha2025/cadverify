@@ -55,7 +55,7 @@ export function AuthFrame({
       <header style={{ borderBottom: "1px solid rgba(245,245,247,0.08)" }}>
         <div style={{ maxWidth: 1180, margin: "0 auto", height: 62, padding: "0 24px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 18 }}>
           <Link href="/" style={{ color: "#f5f5f7", textDecoration: "none", fontSize: 17, letterSpacing: "-0.01em" }}>
-            CadVerify
+            ProofShape
           </Link>
           <Link href="/company" className="st-mono" style={{ color: "rgba(245,245,247,0.56)", textDecoration: "none", fontSize: 11 }}>
             PILOT ACCESS

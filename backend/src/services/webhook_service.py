@@ -176,7 +176,7 @@ async def deliver_webhook(
     headers = {
         "Content-Type": "application/json",
         "X-CadVerify-Signature": signature,
-        "User-Agent": "CadVerify-Webhook/1.0",
+        "User-Agent": "ProofShape-Webhook/1.0",
     }
 
     now = datetime.now(timezone.utc)

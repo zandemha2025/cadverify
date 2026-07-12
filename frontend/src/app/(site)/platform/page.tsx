@@ -36,7 +36,7 @@ import {
  */
 
 export const metadata: Metadata = {
-  title: "Platform — CadVerify",
+  title: "Platform — ProofShape",
   description:
     "One deterministic verification engine underneath; every surface above it renders the same auditable record. From a single part to a million-part legacy catalog, nothing on screen is generated — only computed, sourced, and reconciled.",
 };

@@ -36,7 +36,7 @@ import { Eyebrow, DisplayHeading, IllustrativeTag } from "@/components/site/evid
  */
 
 export const metadata: Metadata = {
-  title: "Teams — CadVerify",
+  title: "Teams — ProofShape",
   description:
     "One record. Five people who have to defend it. The same engine output, read through different lenses — cost engineering, sourcing, design engineering, in-house manufacturing and shop owners.",
 };

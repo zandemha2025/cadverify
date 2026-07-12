@@ -59,6 +59,7 @@ export function CommandPalette({
       nav(s);
     };
     const list: PaletteCmd[] = [
+      { id: "design-studio", label: "Open Design Studio", hint: "create revisioned CAD", terms: "design create cad plate bracket enclosure scratch proofshape", run: () => { window.location.assign("/designs"); } },
       { id: "verify-part", label: "Verify a part", hint: "open STL, STEP or IGES", terms: "verify part upload drop stl step stp iges igs file measure cost", run: () => { onVerify?.(); onClose(); } },
       { id: "run-sample-cube", label: "Run sample · 20 mm cube", hint: "real engine output", terms: "run play use case real fixture sample cube walkthrough", run: () => { onClose(); onSample?.(); } },
       { id: "guide-day-zero", label: "Guide · organization setup", hint: "open Day Zero checklist", terms: "guide play use case first run org day zero setup", run: () => { nav("home"); toast("Day Zero guide opened — each step reflects your organization’s real state."); } },

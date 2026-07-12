@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.errors import DOC_BASE
+from src.config.public_urls import error_doc_url
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
@@ -47,7 +47,7 @@ async def reconstruct(
             detail={
                 "code": "RECONSTRUCTION_UNAVAILABLE",
                 "message": availability["reason"],
-                "doc_url": f"{DOC_BASE}/RECONSTRUCTION_UNAVAILABLE",
+                "doc_url": error_doc_url("RECONSTRUCTION_UNAVAILABLE"),
             },
         )
 
@@ -74,7 +74,7 @@ async def reconstruct(
                     "Reconstruction could not be scheduled. The job was marked "
                     "failed and its uploaded images were removed; please retry."
                 ),
-                "doc_url": f"{DOC_BASE}/RECONSTRUCTION_ENQUEUE_FAILED",
+                "doc_url": error_doc_url("RECONSTRUCTION_ENQUEUE_FAILED"),
             },
         )
 

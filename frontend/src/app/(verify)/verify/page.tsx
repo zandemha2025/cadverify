@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { VerifyApp } from "@/components/verify/verify-app";
 
 export const metadata: Metadata = {
-  title: "Verify — CadVerify",
+  title: "Verify — ProofShape",
   description:
     "Can this part be made, on your machines, in materials that survive its world — and what will it really take?",
 };

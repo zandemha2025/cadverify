@@ -199,7 +199,7 @@ export function PilotForm() {
       </div>
       </>}
       <p className={styles.mailFallback}>
-        Online requests are recorded server-side. Direct fallback: <a href="mailto:pilots@cadverify.com">pilots@cadverify.com</a>. See our <a href="/privacy">privacy notice</a>.
+        Online requests are recorded server-side. If intake is unavailable, retry later rather than sending CAD or quote data by ordinary email. See our <a href="/privacy">privacy notice</a>.
       </p>
     </form>
   );

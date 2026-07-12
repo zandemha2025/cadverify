@@ -57,7 +57,7 @@ def _fmt_money(x: float) -> str:
 
 def render_text(report) -> str:
     L = []
-    L.append(f"CadVerify Decision — {report.filename}")
+    L.append(f"ProofShape Decision — {report.filename}")
     L.append("=" * 72)
     geo = report.geometry
     bbox = "×".join(f"{v:g}" for v in geo["bbox_mm"])

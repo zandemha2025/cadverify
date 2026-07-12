@@ -48,6 +48,16 @@ async def test_enqueue_reconstruction_routes_to_run_reconstruction_job():
 
 
 @pytest.mark.asyncio
+async def test_enqueue_design_routes_to_sandboxed_generation_job():
+    pool = AsyncMock()
+    q = ArqJobQueue(pool)
+    with patch("src.jobs.arq_backend.get_session_factory", return_value=_factory_no_existing()):
+        await q.enqueue("design_generation", {}, "KEY-DESIGN")
+    args, _ = pool.enqueue_job.call_args
+    assert args[0] == "run_design_generation_job"
+
+
+@pytest.mark.asyncio
 async def test_enqueue_unknown_job_type_raises_and_does_not_enqueue():
     pool = AsyncMock()
     q = ArqJobQueue(pool)
@@ -74,3 +84,14 @@ async def test_enqueue_duplicate_returns_existing_without_reenqueue():
         jid = await q.enqueue("sam3d", {}, "KEY1")
     assert jid == "KEY1"
     pool.enqueue_job.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_close_arq_pool_closes_and_clears_singleton():
+    import src.jobs.arq_backend as backend
+
+    pool = AsyncMock()
+    backend._pool = pool
+    await backend.close_arq_pool()
+    pool.aclose.assert_awaited_once()
+    assert backend._pool is None

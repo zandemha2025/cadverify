@@ -42,7 +42,7 @@ function AcceptInviteInner() {
       }).catch(() => null);
       if (!alive) return;
       if (!res) {
-        setState({ kind: "error", message: "Could not reach CadVerify." });
+        setState({ kind: "error", message: "Could not reach ProofShape." });
         return;
       }
       const data = await res.json().catch(() => ({}));
@@ -86,7 +86,7 @@ function AcceptInviteInner() {
               Invite token missing.
             </h2>
             <p style={{ margin: 0, color: "rgba(245,245,247,0.58)", fontSize: 14, lineHeight: 1.7 }}>
-              Open the exact link your CadVerify admin sent. Tokens are single-use and never guessed here.
+              Open the exact link your ProofShape admin sent. Tokens are single-use and never guessed here.
             </p>
           </>
         )}
@@ -111,7 +111,7 @@ function AcceptInviteInner() {
                 ? `You joined the organization as ${state.orgRole}.`
                 : `You were already a member; the invite was consumed without changing your role (${state.orgRole}).`}
             </p>
-            <PrimaryLink href="/verify">Open CadVerify</PrimaryLink>
+            <PrimaryLink href="/verify">Open ProofShape</PrimaryLink>
           </>
         )}
         {state.kind === "error" && (

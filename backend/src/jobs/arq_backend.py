@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import inspect
 from typing import Optional
 
 from arq.connections import ArqRedis, RedisSettings, create_pool
@@ -23,6 +24,7 @@ _pool: Optional[ArqRedis] = None
 _JOB_TYPE_TO_TASK: dict[str, str] = {
     "sam3d": "run_sam3d_job",
     "reconstruction": "run_reconstruction_job",
+    "design_generation": "run_design_generation_job",
 }
 
 
@@ -33,6 +35,25 @@ async def get_arq_pool() -> ArqRedis:
         redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
         _pool = await create_pool(RedisSettings.from_dsn(redis_url))
     return _pool
+
+
+async def close_arq_pool() -> None:
+    """Close and forget the API-side enqueue pool during ASGI shutdown.
+
+    ARQ owns the worker's Redis connection, but API routes create a separate
+    lazy singleton for enqueueing. Closing it avoids leaked sockets/event-loop
+    warnings during deploy shutdowns and test process teardown.
+    """
+    global _pool
+    pool, _pool = _pool, None
+    if pool is None:
+        return
+    close = getattr(pool, "aclose", None) or getattr(pool, "close", None)
+    if close is None:
+        return
+    result = close()
+    if inspect.isawaitable(result):
+        await result
 
 
 class ArqJobQueue(JobQueue):

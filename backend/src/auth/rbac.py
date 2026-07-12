@@ -23,6 +23,8 @@ at all yet still administer any org).
 """
 from __future__ import annotations
 
+from src.config.public_urls import error_doc_url
+
 from enum import Enum
 from typing import Optional
 
@@ -75,7 +77,7 @@ def require_role(min_role: Role):
                 detail={
                     "code": "insufficient_role",
                     "message": f"Requires {min_role.value} role or higher",
-                    "doc_url": "https://docs.cadverify.com/errors#insufficient_role",
+                    "doc_url": error_doc_url("insufficient_role"),
                 },
             )
         return user
@@ -152,7 +154,7 @@ def require_org_role(min_role: OrgRole):
                             f"Requires org {min_role.value} role or higher"
                         ),
                         "doc_url": (
-                            "https://docs.cadverify.com/errors#insufficient_org_role"
+                            error_doc_url("insufficient_org_role")
                         ),
                     },
                 )

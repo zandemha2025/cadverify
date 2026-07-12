@@ -46,7 +46,7 @@ export default async function DeveloperSettingsPage() {
 
       <PageHeader
         title="Developer"
-        subtitle="Create and manage API keys for programmatic access to the CadVerify API."
+        subtitle="Create and manage API keys for programmatic access to the ProofShape API."
         actions={
           <form action={createDefaultKey}>
             <Button type="submit">Create key</Button>
@@ -75,7 +75,7 @@ export default async function DeveloperSettingsPage() {
         <EmptyState
           icon={KeyRound}
           title="No API keys yet"
-          description="Create a key to start using the CadVerify API."
+          description="Create a key to start using the ProofShape API."
           action={
             <form action={createDefaultKey}>
               <Button type="submit">Create key</Button>

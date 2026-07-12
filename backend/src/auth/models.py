@@ -5,6 +5,8 @@ This module retains its raw-SQL query functions for backward compatibility.
 """
 from __future__ import annotations
 
+from src.config.public_urls import error_doc_url
+
 from dataclasses import dataclass
 
 from sqlalchemy import text
@@ -109,7 +111,7 @@ def _account_deactivated() -> "HTTPException":
         detail={
             "code": "account_deactivated",
             "message": "This account has been deactivated.",
-            "doc_url": "https://docs.cadverify.com/errors#account_deactivated",
+            "doc_url": error_doc_url("account_deactivated"),
         },
     )
 

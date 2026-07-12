@@ -37,7 +37,7 @@ import styles from "./developers.module.css";
  */
 
 export const metadata: Metadata = {
-  title: "Developers — CadVerify",
+  title: "Developers — ProofShape",
   description:
     "The engine is an API. Send an STL, STEP/STP or IGES/IGS file, get back the full auditable report — routing, DFM, drivers with provenance, confidence, decision. Or self-host the whole stack with Docker Compose.",
 };

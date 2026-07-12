@@ -575,7 +575,7 @@ def build_report(res: HarnessResult) -> str:
 
     L = []
     title = "Geometry Benchmark" if external_suite else "Cost Model Regression"
-    L.append(f"# CadVerify V1 — {title} (local, independent references)")
+    L.append(f"# ProofShape — {title} (local, independent references)")
     L.append("")
     L.append("**Author:** Accuracy-Harness agent (Cycle 2) · "
              f"**Suite:** {res.suite} · **Status:** MEASURED engine runs · "

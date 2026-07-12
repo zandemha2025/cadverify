@@ -593,7 +593,7 @@ def build_report(loop: LoopResult, *, title_suffix: str = "") -> str:
     L: list = []
     he = loop.heldout_eval
     has_real = he.metrics_real is not None
-    L.append(f"# CadVerify — Ground-Truth Loop: measured accuracy{title_suffix}")
+    L.append(f"# ProofShape — Ground-Truth Loop: measured accuracy{title_suffix}")
     L.append("")
     L.append("**Author:** Ground-Truth-Loop-Builder (Cost-Truth cycle) · "
              "**Status:** RUNS, measured · **Network egress:** zero (CAD-as-IP)")

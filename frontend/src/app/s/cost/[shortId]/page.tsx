@@ -45,13 +45,13 @@ export async function generateMetadata({
         title: `${data.filename} - Should-cost decision`,
         description: `Make by ${make} · assumption-based estimate, not a validated quote`,
         type: "article",
-        siteName: "CadVerify",
+        siteName: "ProofShape",
       },
       twitter: { card: "summary" },
       robots: { index: false, follow: false },
     };
   } catch {
-    return { title: "Shared should-cost - CadVerify", robots: { index: false, follow: false } };
+    return { title: "Shared should-cost - ProofShape", robots: { index: false, follow: false } };
   }
 }
 
@@ -65,7 +65,7 @@ function PublicShell({ children }: { children: React.ReactNode }) {
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex h-14 max-w-3xl items-center gap-2 px-4">
           <Calculator className="size-5 text-primary" />
-          <span className="font-semibold text-foreground">CadVerify</span>
+          <span className="font-semibold text-foreground">ProofShape</span>
           <span className="ml-2 text-xs text-muted-foreground">
             Shared should-cost · read-only
           </span>
@@ -126,7 +126,7 @@ export default async function SharedCostDecisionPage({
               revoked by its owner.
             </p>
             <Button asChild className="mt-6">
-              <Link href="/">Go to CadVerify</Link>
+              <Link href="/">Go to ProofShape</Link>
             </Button>
           </CardContent>
         </Card>
@@ -308,11 +308,11 @@ export default async function SharedCostDecisionPage({
       <Card>
         <CardContent className="text-center">
           <p className="text-sm text-muted-foreground">
-            This is a shared should-cost decision from CadVerify — assumption-based, not a
+            This is a shared should-cost decision from ProofShape — assumption-based, not a
             validated quote.
           </p>
           <Button asChild className="mt-3">
-            <Link href="/">View on CadVerify</Link>
+            <Link href="/">View on ProofShape</Link>
           </Button>
         </CardContent>
       </Card>

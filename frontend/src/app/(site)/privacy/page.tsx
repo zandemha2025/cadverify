@@ -3,8 +3,8 @@ import Link from "next/link";
 import { SiteShell } from "@/components/site/site-shell";
 
 export const metadata: Metadata = {
-  title: "Privacy - CadVerify",
-  description: "How CadVerify handles CAD, account, pilot, and usage data.",
+  title: "Privacy - ProofShape",
+  description: "How ProofShape handles CAD, account, pilot, and usage data.",
 };
 
 export default function PrivacyPage() {
@@ -12,7 +12,7 @@ export default function PrivacyPage() {
     <SiteShell>
       <LegalArticle eyebrow="Privacy" title="CAD stays treated like crown-jewel data.">
         <p>
-          CadVerify processes uploaded files to create verification records: geometry measurements, manufacturability findings, cost drivers, provenance, and user decisions. The product is built to keep the audit record, not to republish your CAD.
+          ProofShape processes uploaded files to create verification records: geometry measurements, manufacturability findings, cost drivers, provenance, and user decisions. The product is built to keep the audit record, not to republish your CAD.
         </p>
         <h2>What we collect</h2>
         <p>
@@ -24,7 +24,7 @@ export default function PrivacyPage() {
         </p>
         <h2>Retention and deletion</h2>
         <p>
-          Pilot and customer retention terms are governed by the applicable agreement. For privacy requests, contact <a href="mailto:security@cadverify.com">security@cadverify.com</a>.
+          Pilot and customer retention terms are governed by the applicable agreement. Submit privacy requests through the pilot intake until the deployment&apos;s dedicated ProofShape privacy address is published.
         </p>
       </LegalArticle>
     </SiteShell>
@@ -49,7 +49,7 @@ function LegalArticle({
       <div style={{ color: "rgba(255,255,255,0.70)", fontSize: 17, lineHeight: 1.75 }}>
         {children}
         <p style={{ marginTop: 34 }}>
-          <Link href="/company#pilot" className="st-pill">Talk to CadVerify</Link>
+          <Link href="/company#pilot" className="st-pill">Talk to ProofShape</Link>
         </p>
       </div>
     </article>

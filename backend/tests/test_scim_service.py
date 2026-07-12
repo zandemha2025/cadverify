@@ -80,6 +80,6 @@ def test_scim_role_groups_are_stable_virtual_ids():
     )
 
     assert body["id"] == "role:admin"
-    assert body["displayName"] == "CadVerify admin"
+    assert body["displayName"] == "ProofShape admin"
     assert body["members"][0]["value"] == "7"
     assert body["members"][0]["$ref"] == "https://api.example/scim/v2/Users/7"

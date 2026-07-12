@@ -2057,3 +2057,135 @@ class RfqPackage(Base):
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+# ---------------------------------------------------------------------------
+# ProofShape Design Studio (migration 0040)
+# ---------------------------------------------------------------------------
+
+
+class DesignProject(Base):
+    """Org-owned design workspace backed by immutable generated revisions.
+
+    The project is the stable user-facing identity. Geometry and its validated
+    operation plan live on :class:`DesignRevision`, so a later edit never
+    overwrites the evidence used by an earlier verification or export.
+    """
+
+    __tablename__ = "design_projects"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('generating','ready','failed','archived')",
+            name="ck_design_projects_status",
+        ),
+        CheckConstraint(
+            "source_kind IN ('template','ai_plan')",
+            name="ck_design_projects_source_kind",
+        ),
+        CheckConstraint(
+            "current_revision >= 1",
+            name="ck_design_projects_current_revision",
+        ),
+        Index("ix_design_projects_org_updated", "org_id", "updated_at"),
+        Index("ix_design_projects_org_status", "org_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="generating"
+    )
+    source_kind: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="template"
+    )
+    current_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="1"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    revisions: Mapped[List[DesignRevision]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        lazy="raise",
+    )
+
+
+class DesignRevision(Base):
+    """One validated operation plan and its generated CAD artifacts."""
+
+    __tablename__ = "design_revisions"
+    __table_args__ = (
+        UniqueConstraint(
+            "design_id", "revision_no", name="uq_design_revisions_design_number"
+        ),
+        CheckConstraint(
+            "status IN ('queued','generating','ready','failed')",
+            name="ck_design_revisions_status",
+        ),
+        CheckConstraint("revision_no >= 1", name="ck_design_revisions_number"),
+        Index("ix_design_revisions_org_created", "org_id", "created_at"),
+        Index("ix_design_revisions_design_status", "design_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, default=lambda: str(ULID())
+    )
+    design_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("design_projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    revision_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="queued"
+    )
+    operation_plan_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    design_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    generation_engine: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="proofshape-occ-v1"
+    )
+    geometry_hash: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    step_object_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    stl_object_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    step_size_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    stl_size_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    geometry_metadata_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSONB, nullable=True
+    )
+    error_code: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    error_detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    started_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+
+    project: Mapped[DesignProject] = relationship(back_populates="revisions")

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from src.config.public_urls import error_doc_url
+
 import hashlib
 import json
 import logging
@@ -28,7 +30,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.analysis.models import AnalysisResult, Issue, ProcessType
 from src.analysis.rules import available_rule_packs, get_rule_pack
 from src.api.metrics_registry import observe_analysis_duration, record_cost_decision
-from src.api.errors import DOC_BASE
 from src.obs import tracing
 from src.api.upload_validation import (
     demo_max_triangles,
@@ -831,7 +832,7 @@ async def validate_file(
                         "Segmentation could not be scheduled. The job was marked "
                         "failed; retry after the queue recovers."
                     ),
-                    "doc_url": f"{DOC_BASE}/SAM3D_ENQUEUE_FAILED",
+                    "doc_url": error_doc_url("SAM3D_ENQUEUE_FAILED"),
                 },
             )
 
@@ -1815,7 +1816,7 @@ async def _run_cost_decision(
                 "code": "GEOMETRY_INVALID",
                 "message": report.reason,
                 "geometry": report.geometry,
-                "doc_url": "https://docs.cadverify.com/errors#GEOMETRY_INVALID",
+                "doc_url": error_doc_url("GEOMETRY_INVALID"),
             },
         )
 

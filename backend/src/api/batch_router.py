@@ -8,6 +8,8 @@ POST /api/v1/batch/{id}/cancel   -- cancel batch
 """
 from __future__ import annotations
 
+from src.config.public_urls import error_doc_url
+
 import asyncio
 import logging
 import os
@@ -27,7 +29,6 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.errors import DOC_BASE
 from src.auth.org_context import caller_org_subquery
 from src.auth.org_limits import enforce_org_limits
 from src.auth.rbac import Role, require_role
@@ -93,7 +94,7 @@ async def create_batch(
                     f"job_type must be one of {sorted(VALID_JOB_TYPES)}; "
                     f"got {job_type!r}."
                 ),
-                "doc_url": f"{DOC_BASE}/INVALID_JOB_TYPE",
+                "doc_url": error_doc_url("INVALID_JOB_TYPE"),
             },
         )
 
@@ -110,7 +111,7 @@ async def create_batch(
                     "Cost batches are not enabled on this server. Set "
                     "BATCH_COST_ENABLED=1 to turn on the should-cost pipeline."
                 ),
-                "doc_url": f"{DOC_BASE}/BATCH_COST_NOT_ENABLED",
+                "doc_url": error_doc_url("BATCH_COST_NOT_ENABLED"),
             },
         )
 
@@ -127,7 +128,7 @@ async def create_batch(
                     "S3/manifest batch input is not enabled on this server; "
                     "upload a ZIP file or import a manifest CSV instead."
                 ),
-                "doc_url": f"{DOC_BASE}/S3_INPUT_UNSUPPORTED",
+                "doc_url": error_doc_url("S3_INPUT_UNSUPPORTED"),
             },
         )
 
@@ -154,7 +155,7 @@ async def create_batch(
                 detail={
                     "code": "webhook_url_rejected",
                     "message": f"webhook_url rejected: {exc}",
-                    "doc_url": "https://docs.cadverify.com/errors#webhook_url_rejected",
+                    "doc_url": error_doc_url("webhook_url_rejected"),
                 },
             )
 
@@ -234,7 +235,7 @@ async def create_batch(
                             detail={
                                 "code": "INVALID_COST_MANIFEST",
                                 "message": str(exc),
-                                "doc_url": f"{DOC_BASE}/INVALID_COST_MANIFEST",
+                                "doc_url": error_doc_url("INVALID_COST_MANIFEST"),
                             },
                         )
                 else:
@@ -312,7 +313,7 @@ async def create_batch(
                     "Batch was accepted but could not be scheduled (job queue "
                     "unavailable). It has been marked failed; please retry."
                 ),
-                "doc_url": f"{DOC_BASE}/BATCH_ENQUEUE_FAILED",
+                "doc_url": error_doc_url("BATCH_ENQUEUE_FAILED"),
             },
         )
 

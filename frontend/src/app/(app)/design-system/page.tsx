@@ -124,7 +124,7 @@ export default function DesignSystemPage() {
       {/* ── Masthead ─────────────────────────────────────────────── */}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <span className="cv-eyebrow">CadVerify · design language 2026</span>
+          <span className="cv-eyebrow">ProofShape · design language 2026</span>
           <h1 className="mt-1.5 text-display-xl font-semibold leading-tight text-foreground">
             The glass box is the hero.
           </h1>

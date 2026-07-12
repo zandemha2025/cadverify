@@ -12,6 +12,8 @@ silently weakening abuse controls.
 """
 from __future__ import annotations
 
+from src.config.public_urls import error_doc_url
+
 import os
 import time
 
@@ -109,6 +111,6 @@ def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse
         content={
             "code": "rate_limited",
             "message": "Rate limit exceeded. Retry after X-RateLimit-Reset.",
-            "doc_url": "https://docs.cadverify.com/errors#rate_limited",
+            "doc_url": error_doc_url("rate_limited"),
         },
     )

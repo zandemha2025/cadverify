@@ -21,7 +21,7 @@ export async function GET() {
   const released = !DEV_RELEASES.has(release);
   const siteKey = (process.env.TURNSTILE_SITE_KEY || "").trim();
   if (released && (siteKey.length < 10 || /\s/.test(siteKey))) {
-    return message(503, "Online intake is temporarily unavailable. Email pilots@cadverify.com.");
+    return message(503, "Online intake is temporarily unavailable. Please retry later.");
   }
   return NextResponse.json(
     { turnstileSiteKey: siteKey || null },
@@ -80,6 +80,6 @@ export async function POST(req: Request) {
       headers: { "cache-control": "no-store" },
     });
   } catch {
-    return message(503, "Could not reach online intake. Email pilots@cadverify.com.");
+    return message(503, "Could not reach online intake. Please retry later.");
   }
 }

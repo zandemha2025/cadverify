@@ -25,6 +25,7 @@ const RELAY_HEADERS = [
   "content-type",
   "content-disposition",
   "content-length",
+  "cache-control",
   "x-ratelimit-limit",
   "x-ratelimit-remaining",
   "x-ratelimit-reset",
@@ -34,6 +35,8 @@ const RELAY_HEADERS = [
   "x-mesh-preview-faces",
   "x-mesh-decimated",
   "x-mesh-source",
+  // Immutable Design Studio STEP evidence used by the Verify handoff.
+  "x-geometry-sha256",
 ];
 
 async function handle(

@@ -18,6 +18,8 @@ no-email fallback (the one-time link is always in the response).
 """
 from __future__ import annotations
 
+from src.config.public_urls import dashboard_origin, error_doc_url
+
 import logging
 import os
 from typing import Optional
@@ -102,8 +104,7 @@ async def _emit(
 
 
 def _invite_link(raw_token: str) -> str:
-    base = os.getenv("DASHBOARD_ORIGIN", "https://cadverify.com").rstrip("/")
-    return f"{base}/orgs/accept?token={raw_token}"
+    return f"{dashboard_origin()}/orgs/accept?token={raw_token}"
 
 
 def _send_invite_email(email: str, link: str, org_name: Optional[str]) -> bool:
@@ -113,7 +114,7 @@ def _send_invite_email(email: str, link: str, org_name: Optional[str]) -> bool:
     sending and rely on the one-time link returned to the admin in the response —
     the flow never breaks on missing email infra. Mirrors magic_link's sender.
     """
-    if not os.getenv("RESEND_API_KEY"):
+    if not os.getenv("RESEND_API_KEY") or not os.getenv("RESEND_FROM"):
         return False
     try:
         import resend
@@ -122,9 +123,9 @@ def _send_invite_email(email: str, link: str, org_name: Optional[str]) -> bool:
         who = f" to {org_name}" if org_name else ""
         resend.Emails.send(
             {
-                "from": os.getenv("RESEND_FROM", "login@cadverify.com"),
+                "from": os.environ["RESEND_FROM"],
                 "to": email,
-                "subject": "You've been invited to a CadVerify organization",
+                "subject": "You've been invited to a ProofShape organization",
                 "html": (
                     f'<p>You\'ve been invited{who}.</p>'
                     f'<p><a href="{link}">Accept the invitation</a> '
@@ -439,7 +440,7 @@ async def remove_member(
             detail={
                 "code": "insufficient_org_role",
                 "message": "Only an org admin may remove another member.",
-                "doc_url": "https://docs.cadverify.com/errors#insufficient_org_role",
+                "doc_url": error_doc_url("insufficient_org_role"),
             },
         )
     await svc.remove_member(session, org_id, user_id, ctx.user_id)

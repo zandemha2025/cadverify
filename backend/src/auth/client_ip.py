@@ -12,6 +12,8 @@ direct API/OAuth traffic while making spoofed forwarding headers useless.
 """
 from __future__ import annotations
 
+from src.config.public_urls import error_doc_url
+
 import base64
 import hashlib
 import hmac
@@ -92,7 +94,7 @@ def require_verified_proxy(request: Request) -> str:
             detail={
                 "code": "auth_proxy_unavailable",
                 "message": "The first-party authentication proxy is unavailable.",
-                "doc_url": "https://docs.cadverify.com/errors#auth_proxy_unavailable",
+                "doc_url": error_doc_url("auth_proxy_unavailable"),
             },
         )
     return forwarded

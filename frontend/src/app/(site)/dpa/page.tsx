@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { SiteShell } from "@/components/site/site-shell";
 
 export const metadata: Metadata = {
-  title: "Data Processing Addendum - CadVerify",
-  description: "CadVerify DPA availability and subprocessors summary.",
+  title: "Data Processing Addendum - ProofShape",
+  description: "ProofShape DPA availability and subprocessors summary.",
 };
 
 export default function DpaPage() {
@@ -24,7 +24,7 @@ export default function DpaPage() {
           </p>
           <h2>Security review</h2>
           <p>
-            Security questionnaires, architecture notes, and deployment boundaries are handled during pilot intake. Contact <a href="mailto:security@cadverify.com">security@cadverify.com</a>.
+            Security questionnaires, architecture notes, and deployment boundaries are handled through the pilot intake. A dedicated ProofShape security address must be published before public launch.
           </p>
         </div>
       </article>

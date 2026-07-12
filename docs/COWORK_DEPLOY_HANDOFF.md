@@ -1,5 +1,15 @@
 # CadVerify — Production Deploy Handoff (for Cowork)
 
+> **ProofShape staging override (2026-07-12):** the active integration work is
+> on `codex/proofshape-scalecad-staging`. ScaleCAD capabilities are being rebuilt
+> inside this hardened platform under the ProofShape brand. Deployment must use
+> newly provisioned, non-Arcus ProofShape resources. Arcus's existing Vercel
+> `eager-euler` project is read-only and explicitly out of scope: do not change
+> its deployment, aliases, environment variables, source settings, or team.
+> Follow `docs/PROOFSHAPE_STAGING_RUNBOOK.md` for the next staging deployment and
+> `docs/PROOFSHAPE_SCALECAD_INTEGRATION.md` for the technical boundary. The
+> production gates below remain authoritative after staging.
+
 **Paste this whole file to Cowork as the task.** It's the context + decisions +
 acceptance bar. The step-by-step commands live in **`docs/LAUNCH_RUNBOOK.md`** —
 this document tells you how to use it and what must not be missed.

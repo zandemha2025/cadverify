@@ -3,8 +3,8 @@ import Link from "next/link";
 import { SiteShell } from "@/components/site/site-shell";
 
 export const metadata: Metadata = {
-  title: "API Reference - CadVerify",
-  description: "CadVerify developer API overview and reference links.",
+  title: "API Reference - ProofShape",
+  description: "ProofShape developer API overview and reference links.",
 };
 
 export default function ApiReferencePage() {

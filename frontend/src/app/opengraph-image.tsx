@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "CadVerify - verification, made of glass";
+export const alt = "ProofShape - verification, made of glass";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -19,7 +19,7 @@ export default function OpenGraphImage() {
         }}
       >
         <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", width: "100%" }}>
-          <div style={{ fontSize: 34, letterSpacing: "-0.02em", fontWeight: 700 }}>CadVerify</div>
+          <div style={{ fontSize: 34, letterSpacing: "-0.02em", fontWeight: 700 }}>ProofShape</div>
           <div style={{ display: "flex", flexDirection: "column" }}>
             <div style={{ fontSize: 88, lineHeight: 0.95, letterSpacing: "-0.07em", fontWeight: 300, maxWidth: 780 }}>
               Verification, made of glass.

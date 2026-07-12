@@ -23,6 +23,8 @@ new-format cookie. This is a deliberate one-time cost to eliminate the
 """
 from __future__ import annotations
 
+from src.config.public_urls import error_doc_url
+
 import base64
 import hashlib
 import hmac
@@ -165,7 +167,7 @@ async def require_dashboard_session(request: Request) -> int:
             detail={
                 "code": "dashboard_auth_required",
                 "message": "Dashboard session required.",
-                "doc_url": "https://docs.cadverify.com/errors#dashboard_auth_required",
+                "doc_url": error_doc_url("dashboard_auth_required"),
             },
         )
     # §39: a deactivated account's existing dashboard session is refused (this is
@@ -186,7 +188,7 @@ async def require_dashboard_session(request: Request) -> int:
                 detail={
                     "code": "auth_dependency_unavailable",
                     "message": "Authentication is temporarily unavailable.",
-                    "doc_url": "https://docs.cadverify.com/errors#auth_dependency_unavailable",
+                    "doc_url": error_doc_url("auth_dependency_unavailable"),
                 },
             ) from exc
         row = None
@@ -197,7 +199,7 @@ async def require_dashboard_session(request: Request) -> int:
             detail={
                 "code": "dashboard_auth_required",
                 "message": "Dashboard session required.",
-                "doc_url": "https://docs.cadverify.com/errors#dashboard_auth_required",
+                "doc_url": error_doc_url("dashboard_auth_required"),
             },
         )
     if row is not None and not row.is_active:
@@ -206,7 +208,7 @@ async def require_dashboard_session(request: Request) -> int:
             detail={
                 "code": "account_deactivated",
                 "message": "This account has been deactivated.",
-                "doc_url": "https://docs.cadverify.com/errors#account_deactivated",
+                "doc_url": error_doc_url("account_deactivated"),
             },
         )
     if row is not None and row.session_version != payload.session_version:
@@ -215,7 +217,7 @@ async def require_dashboard_session(request: Request) -> int:
             detail={
                 "code": "session_revoked",
                 "message": "This session has been revoked. Log in again.",
-                "doc_url": "https://docs.cadverify.com/errors#session_revoked",
+                "doc_url": error_doc_url("session_revoked"),
             },
         )
     return payload.user_id
