@@ -320,6 +320,7 @@ export default function DesignsPage() {
         ...current.filter((item) => item.id !== design.id),
       ]);
       setSelectedId(design.id);
+      setViewedRevisionNo(design.current_revision);
       setEditingId(null);
       setForm({ ...DEFAULT_DESIGN_FORM });
       setDescription("");
