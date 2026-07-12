@@ -5,6 +5,7 @@ import {
   DEFAULT_DESIGN_FORM,
   buildDesignPlan,
   formFromPlan,
+  resolveViewedRevisionNo,
   validateDesignForm,
 } from "./design-plan.ts";
 
@@ -43,6 +44,13 @@ test("interpreted hole inset is rounded for a human-readable form value", () => 
   );
 
   assert.equal(form.holeInset, 8.4);
+});
+
+test("switching designs resets a shared revision number to the new current revision", () => {
+  const revisions = [{ number: 2 }, { number: 1 }];
+
+  assert.equal(resolveViewedRevisionNo(1, revisions, 2, true), 2);
+  assert.equal(resolveViewedRevisionNo(1, revisions, 2, false), 1);
 });
 
 test("bracket form emits no executable or free-form operation", () => {

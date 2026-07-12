@@ -132,6 +132,18 @@ export function formFromPlan(
   };
 }
 
+export function resolveViewedRevisionNo(
+  current: number | null,
+  revisions: Array<{ number: number }>,
+  currentRevision: number,
+  designChanged: boolean,
+): number {
+  if (designChanged) return currentRevision;
+  return current && revisions.some((revision) => revision.number === current)
+    ? current
+    : currentRevision;
+}
+
 export function validateDesignForm(form: DesignForm): string | null {
   if (!form.name.trim()) return "Give the design a name.";
   const positive = [form.width, form.depth, form.thickness];

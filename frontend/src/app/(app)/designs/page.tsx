@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -38,6 +38,7 @@ import {
   buildDesignPlan,
   formFromDesign,
   formFromPlan,
+  resolveViewedRevisionNo,
   validateDesignForm,
   type DesignForm,
   type TemplateKind,
@@ -164,6 +165,7 @@ export default function DesignsPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const revisionDesignIdRef = useRef<string | null>(null);
 
   const selected = useMemo(
     () => designs.find((design) => design.id === selectedId) ?? designs[0] ?? null,
@@ -207,17 +209,23 @@ export default function DesignsPage() {
     if (!selected) {
       setRevisionHistory([]);
       setViewedRevisionNo(null);
+      revisionDesignIdRef.current = null;
       return;
     }
+    const designChanged = revisionDesignIdRef.current !== selected.id;
+    revisionDesignIdRef.current = selected.id;
     let cancelled = false;
     void listDesignRevisions(selected.id).then(
       (revisions) => {
         if (cancelled) return;
         setRevisionHistory(revisions);
         setViewedRevisionNo((current) =>
-          current && revisions.some((revision) => revision.number === current)
-            ? current
-            : selected.current_revision,
+          resolveViewedRevisionNo(
+            current,
+            revisions,
+            selected.current_revision,
+            designChanged,
+          ),
         );
       },
       () => {
