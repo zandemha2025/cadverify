@@ -20,11 +20,13 @@ instead of silently egressing or throwing a confusing 500.
 """
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import logging
 import os
 import re
-from typing import Optional
+from datetime import datetime, timezone
+from typing import BinaryIO, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,6 +50,29 @@ _TRUTHY = {"1", "true", "yes", "on"}
 _ULID_RE = re.compile(r"^[0-9A-Za-z]{26}$")
 
 
+def _reconstruction_store():
+    from src.storage import get_object_store
+
+    return get_object_store(
+        "reconstruct",
+        default_root=os.getenv("RECON_BLOB_DIR", RECON_BLOB_DIR),
+    )
+
+
+def _reconstruction_key(job_ulid: str, relative: str) -> str:
+    _validate_ulid(job_ulid)
+    if not relative or relative.startswith("/") or ".." in relative.split("/"):
+        raise ValueError("invalid reconstruction object key")
+    return f"{job_ulid}/{relative}"
+
+
+async def _cleanup_reconstruction_prefix(prefix: str) -> None:
+    try:
+        await asyncio.to_thread(_reconstruction_store().delete_prefix, prefix)
+    except Exception:
+        logger.exception("Failed to clean reconstruction objects under %s", prefix)
+
+
 class ReconstructionUnavailableError(RuntimeError):
     """Reconstruction cannot run without violating the no-silent-egress rule.
 
@@ -58,6 +83,12 @@ class ReconstructionUnavailableError(RuntimeError):
     """
 
     code = "RECONSTRUCTION_UNAVAILABLE"
+
+
+class ReconstructionQueueUnavailableError(RuntimeError):
+    """A persisted reconstruction job could not be scheduled."""
+
+    code = "RECONSTRUCTION_ENQUEUE_FAILED"
 
 
 def _validate_ulid(ulid: str) -> None:
@@ -202,35 +233,60 @@ def get_reconstruction_engine():
 async def save_reconstruction_images(
     job_ulid: str, images: list[tuple[bytes, str]]
 ) -> str:
-    """Save uploaded images to blob storage. Returns input directory path."""
+    """Save uploaded images to the configured durable object store."""
     _validate_ulid(job_ulid)
-    input_dir = os.path.join(RECON_BLOB_DIR, job_ulid, "input")
-    os.makedirs(input_dir, exist_ok=True)
+    store = _reconstruction_store()
 
-    for i, (img_bytes, content_type) in enumerate(images):
-        # Derive extension from content_type
-        ext_map = {
-            "image/jpeg": "jpg",
-            "image/png": "png",
-            "image/webp": "webp",
-        }
-        ext = ext_map.get(content_type, "bin")
-        filepath = os.path.join(input_dir, f"image_{i:03d}.{ext}")
-        with open(filepath, "wb") as f:
-            f.write(img_bytes)
+    try:
+        for i, (img_bytes, content_type) in enumerate(images):
+            # Derive extension from content_type
+            ext_map = {
+                "image/jpeg": "jpg",
+                "image/png": "png",
+                "image/webp": "webp",
+            }
+            ext = ext_map.get(content_type, "bin")
+            key = _reconstruction_key(job_ulid, f"input/image_{i:03d}.{ext}")
+            await asyncio.to_thread(
+                store.put,
+                key,
+                img_bytes,
+                content_type=content_type,
+            )
+    except BaseException:
+        await _cleanup_reconstruction_prefix(f"{job_ulid}/input")
+        raise
 
-    return input_dir
+    return store.url(_reconstruction_key(job_ulid, "input"))
+
+
+def load_reconstruction_images(job_ulid: str) -> list[tuple[bytes, str]]:
+    """Load deterministic input objects for a reconstruction worker."""
+    store = _reconstruction_store()
+    prefix = _reconstruction_key(job_ulid, "input")
+    ext_to_ct = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "webp": "image/webp",
+    }
+    images: list[tuple[bytes, str]] = []
+    for key in store.list_keys(prefix):
+        ext = key.rsplit(".", 1)[-1].lower()
+        images.append((store.get(key), ext_to_ct.get(ext, "application/octet-stream")))
+    return images
 
 
 async def save_reconstruction_mesh(job_ulid: str, mesh_bytes: bytes) -> str:
-    """Save reconstructed mesh to blob storage. Returns path to mesh.stl."""
-    _validate_ulid(job_ulid)
-    output_dir = os.path.join(RECON_BLOB_DIR, job_ulid, "output")
-    os.makedirs(output_dir, exist_ok=True)
-    mesh_path = os.path.join(output_dir, "mesh.stl")
-    with open(mesh_path, "wb") as f:
-        f.write(mesh_bytes)
-    return mesh_path
+    """Save reconstructed mesh to durable storage and return its locator."""
+    store = _reconstruction_store()
+    key = _reconstruction_key(job_ulid, "output/mesh.stl")
+    return await asyncio.to_thread(
+        store.put,
+        key,
+        mesh_bytes,
+        content_type="application/sla",
+    )
 
 
 async def create_reconstruction_job(
@@ -278,17 +334,36 @@ async def create_reconstruction_job(
     session.add(job)
     await session.flush()
 
-    # Save images to blob storage
-    await save_reconstruction_images(job.ulid, images)
+    # Persist blobs and the DB row before enqueue. This closes the historical
+    # race where a fast worker could consume the job before the request-scoped
+    # transaction committed and report job_not_found.
+    try:
+        await save_reconstruction_images(job.ulid, images)
+        await session.commit()
+    except BaseException:
+        await _cleanup_reconstruction_prefix(job.ulid)
+        raise
 
-    # Enqueue arq task
+    # Enqueue arq task. A queue outage leaves an honest terminal row and no
+    # orphaned customer blobs instead of a forever-queued record.
     from src.jobs.arq_backend import get_arq_pool
-    pool = await get_arq_pool()
-    await pool.enqueue_job(
-        "run_reconstruction_job",
-        job.ulid,
-        _job_id=f"recon_{job.ulid}",
-    )
+
+    try:
+        pool = await get_arq_pool()
+        await pool.enqueue_job(
+            "run_reconstruction_job",
+            job.ulid,
+            _job_id=f"recon_{job.ulid}",
+        )
+    except Exception as exc:
+        job.status = "failed"
+        job.result_json = {"code": "RECONSTRUCTION_ENQUEUE_FAILED"}
+        job.completed_at = datetime.now(timezone.utc)
+        await session.commit()
+        await _cleanup_reconstruction_prefix(job.ulid)
+        raise ReconstructionQueueUnavailableError(
+            "Reconstruction was accepted but could not be scheduled"
+        ) from exc
 
     logger.info(
         "Created reconstruction job %s with %d images for user %s",
@@ -299,13 +374,14 @@ async def create_reconstruction_job(
     return job
 
 
-async def get_reconstruction_mesh_path(
+async def open_reconstruction_mesh(
     session: AsyncSession, job_ulid: str, user_id: int
-) -> Optional[str]:
-    """Return path to reconstructed mesh if job is complete and in caller's org.
+) -> Optional[BinaryIO]:
+    """Open a completed mesh stream when the job is in the caller's org.
 
     Returns None if the job does not exist, belongs to another org, or is not
     yet complete (W1 step 3: org-scoped — ``user_id`` resolves the org boundary).
+    The caller owns and must close the returned stream.
     """
     _validate_ulid(job_ulid)
 
@@ -324,8 +400,10 @@ async def get_reconstruction_mesh_path(
     if job.status not in ("done", "partial"):
         return None
 
-    mesh_path = os.path.join(RECON_BLOB_DIR, job_ulid, "output", "mesh.stl")
-    if not os.path.exists(mesh_path):
-        return None
+    from src.storage import ObjectNotFoundError
 
-    return mesh_path
+    key = _reconstruction_key(job_ulid, "output/mesh.stl")
+    try:
+        return await asyncio.to_thread(_reconstruction_store().open, key)
+    except ObjectNotFoundError:
+        return None

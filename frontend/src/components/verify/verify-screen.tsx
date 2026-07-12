@@ -10,7 +10,7 @@
  * walk stops honestly at a failed gate (geometry invalid → no downstream compute).
  */
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
-import { C, MONO, USD, NUM, procLabel, statusColor } from "@/lib/verify/tokens";
+import { C, MONO, USD, NUM, procLabel, statusColor, normProv } from "@/lib/verify/tokens";
 import type { VerifyResult } from "@/lib/verify/run";
 import type { CostReport, CostComparison } from "@/lib/api";
 import {
@@ -55,6 +55,16 @@ import {
   type VerificationBlock,
 } from "@/lib/verify/verification";
 import { envelopeSummary } from "@/lib/verify/machine-api";
+import {
+  readIdentity,
+  identityCardModel,
+  closestUnconfirmedModel,
+  noMatchLine,
+  runnerUpLabel,
+  type IdentityCardModel,
+  type ClosestUnconfirmedModel,
+} from "@/lib/verify/identity";
+import { confirmIdentity } from "@/lib/verify/identity-api";
 import { useToast } from "./toast";
 import { Card, Kicker, ProvChip, ProvDot, ConfidenceBand, GhostButton, EmptyState, Spinner } from "./primitives";
 import { PipelineOverlay } from "./pipeline-overlay";
@@ -132,6 +142,7 @@ export function VerifyScreen(props: Props) {
   return (
     <>
     <div
+      className="cv-verify-walk"
       style={{
         animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both",
         flex: 1,
@@ -141,7 +152,7 @@ export function VerifyScreen(props: Props) {
         background: C.bg,
       }}
     >
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "26px 30px 20px" }}>
+      <div className="cv-verify-walk-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "26px 30px 20px" }}>
         {/* the question */}
         <p
           style={{
@@ -155,13 +166,13 @@ export function VerifyScreen(props: Props) {
           }}
         >
           Can this be made — <span style={{ fontWeight: 500, color: C.ink }}>on your machines</span>, in
-          materials that survive its world — and what will it really take?
+          materials that survive its service conditions — and what will it really take?
         </p>
 
         {/* environment door */}
         <section style={{ marginTop: 16, border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "18px 20px" }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <Kicker>DECLARE ITS WORLD</Kicker>
+            <Kicker>DECLARE SERVICE CONDITIONS</Kicker>
             <span style={{ fontFamily: MONO, fontSize: 10.5, color: door.chipColor }}>{door.chip}</span>
           </div>
           <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -266,7 +277,7 @@ function envDoorStatus(
       return {
         chip: "● USER · on the record",
         chipColor: C.user,
-        line: "world declared — captured on this part's record (part-context, keyed to its mesh). The verification below reflects it: materials that can't survive this world are struck with their cited standard.",
+        line: "service conditions declared — captured on this part's record. The verification below reflects them: materials that can't survive these conditions are struck with their cited standard.",
         color: C.pass,
       };
     }
@@ -274,7 +285,7 @@ function envDoorStatus(
       chip: "drives this preview only",
       chipColor: C.cond,
       line:
-        "world declared — drives this preview only, NOT captured to the record" +
+        "service conditions declared — drives this preview only, NOT captured to the record" +
         (result.envError ? ` (${result.envError})` : "") +
         ".",
       color: C.cond,
@@ -284,7 +295,7 @@ function envDoorStatus(
     return {
       chip: "ambient",
       chipColor: C.ink40,
-      line: "no world declared — the part is verified in ambient conditions.",
+      line: "no service conditions declared — the part is verified at ambient.",
       color: C.ink40,
     };
   }
@@ -293,15 +304,15 @@ function envDoorStatus(
       chip: running ? "capturing…" : "captured on verify",
       chipColor: C.ink40,
       line: running
-        ? "declaring this world on the part's record, then re-costing against it…"
-        : "world declared — it will be captured on the part's record when you verify, and any material that can't survive it is struck with its cited standard.",
+        ? "declaring these service conditions on the part's record, then re-costing against them…"
+        : "service conditions declared — they'll be captured on the part's record when you verify, and any material that can't survive them is struck with its cited standard.",
       color: C.cond,
     };
   }
   return {
     chip: "ambient",
     chipColor: C.ink40,
-    line: "no world declared — the part will be verified in ambient conditions.",
+    line: "no service conditions declared — the part will be verified at ambient.",
     color: C.ink40,
   };
 }
@@ -317,7 +328,7 @@ function ComputingBanner() {
         padding: "22px 24px",
       }}
     >
-      <Kicker color={C.ink45}>COMPUTING — GATES CHECKING IN</Kicker>
+      <Kicker color={C.ink45}>COMPUTING — RUNNING THE GATES</Kicker>
       <p style={{ margin: "10px 0 0", fontSize: 18, fontWeight: 300 }}>
         Running the part through routing, DFM, and the glass-box should-cost…
       </p>
@@ -435,6 +446,11 @@ function Walk({
       {/* verdict banner */}
       <VerdictBanner result={result} makeNow={makeNow} nav={nav} />
 
+      {/* retrieval-grounded IDENTITY — the org's closest PRIOR part, a SUGGESTION
+          to confirm (rendered only when the engine grounded one; empty/anonymous
+          corpus renders nothing). */}
+      <IdentitySuggestion cost={cost} meshHash={result.meshHash} />
+
       <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
         {/* 1 · envelope — from the real machine inventory (no faked fit) */}
         <StepShell
@@ -448,7 +464,7 @@ function Walk({
               <div style={{ border: "1.5px dashed #d3d3d8", borderRadius: 12, padding: "22px 20px", textAlign: "center" }}>
                 <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>No machines declared.</p>
                 <p style={{ margin: "7px 0 0", fontSize: 12, lineHeight: 1.6, color: C.ink50 }}>
-                  Your floor is the denominator of every makeability verdict. Declare it once — a CSV or five minutes of typing.
+                  Your machine floor is the baseline every makeability verdict is measured against. Declare it once — a CSV or five minutes of typing.
                 </p>
                 <div style={{ marginTop: 12 }}>
                   <GhostButton onClick={() => nav("machines")}>Declare your floor →</GhostButton>
@@ -536,13 +552,13 @@ function Walk({
         {!gateStopped && (
           <>
             {/* 2 · materials */}
-            <StepShell n={2} title="Materials that survive this world" delayMs={120} right={cost?.material_class ?? undefined}>
+            <StepShell n={2} title="Materials that survive these service conditions" delayMs={120} right={cost?.material_class ?? undefined}>
               <div style={{ marginTop: 12 }}>
                 {cost ? (
                   <p style={{ margin: 0, fontFamily: MONO, fontSize: 11.5, color: C.ink60, lineHeight: 1.7 }}>
                     material class <span style={{ color: C.ink }}>{cost.material_class}</span>
                     {cost.routing?.material_hint ? ` · route hint ${cost.routing.material_hint}` : ""}{" "}
-                    <ProvChip p="DEFAULT" />
+                    <ProvChip p={normProv(cost.assumptions?.find((a) => a.name === "material_class")?.provenance)} />
                   </p>
                 ) : (
                   <p style={{ margin: 0, fontFamily: MONO, fontSize: 11.5, color: C.ink50 }}>material class withheld — costing unavailable</p>
@@ -619,6 +635,448 @@ function Walk({
   );
 }
 
+/** Bucket → the light status tone used across the Verify instrument. */
+function identityTone(bucket: string): string {
+  if (bucket === "HIGH") return C.pass;
+  if (bucket === "MEDIUM") return C.cond;
+  return C.ink45;
+}
+
+/**
+ * The retrieval-grounded IDENTITY suggestion, near the TOP of the result. It is
+ * ALWAYS a suggestion the user confirms — the matched designation, its REAL
+ * confidence % + bucket, a provenance chip (RETRIEVED · your part library), the
+ * honest caveat, and the runner-up matches (transparency, not a black box).
+ *
+ * Honesty rails: renders the card ONLY when `identity.grounded === true` AND the
+ * top match carries a declared identity; a non-grounded result over a non-empty
+ * corpus shows a QUIET one-liner; a null / empty-corpus identity renders NOTHING.
+ * Confirm → POST /identity/confirm (this part's mesh_hash + the matched identity);
+ * "Not this" dismisses and reveals a minimal "declare manually" field that also
+ * confirms. Nothing here asserts an identity as fact.
+ */
+function IdentitySuggestion({ cost, meshHash }: { cost: CostReport | null; meshHash: string | null }) {
+  const toast = useToast();
+  const id = useMemo(() => readIdentity(cost), [cost]);
+  const model = useMemo(() => identityCardModel(id), [id]);
+  // Lever 2 — the honest LOW-confidence "closest in your library" candidate (only
+  // present when NOT grounded and the backend surfaced a well-separated closest).
+  const lowModel = useMemo(() => closestUnconfirmedModel(id), [id]);
+
+  const [dismissed, setDismissed] = useState(false);
+  const [confirmed, setConfirmed] = useState<string | null>(null); // the confirmed designation
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualPart, setManualPart] = useState("");
+
+  // Grounded card path.
+  if (model) {
+    if (dismissed && !manualOpen && !confirmed) {
+      // fall through to the quiet dismissed state below
+    } else {
+      return (
+        <div style={{ marginTop: 12 }}>
+          <IdentityCard
+            model={model}
+            meshHash={meshHash}
+            confirmed={confirmed}
+            busy={busy}
+            err={err}
+            manualOpen={manualOpen}
+            manualPart={manualPart}
+            setManualPart={setManualPart}
+            onConfirm={async (input, label) => {
+              if (!meshHash) {
+                setErr("this part's mesh hash isn't available — re-verify to confirm");
+                return;
+              }
+              setBusy(true);
+              setErr(null);
+              const res = await confirmIdentity({ mesh_hash: meshHash, ...input });
+              setBusy(false);
+              if (res.ok) {
+                setConfirmed(label);
+                setManualOpen(false);
+                toast("Identity confirmed — saved to your part library");
+              } else {
+                setErr(res.error);
+              }
+            }}
+            onNotThis={() => setDismissed(true)}
+            onDeclareManually={() => setManualOpen(true)}
+          />
+        </div>
+      );
+    }
+  }
+
+  // Dismissed the grounded card → a quiet acknowledgement (no noise, reversible).
+  if (model && dismissed) {
+    return (
+      <p style={{ margin: "12px 2px 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40 }}>
+        identity suggestion dismissed —{" "}
+        <button
+          type="button"
+          onClick={() => setDismissed(false)}
+          style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 10.5, color: C.user }}
+        >
+          show again
+        </button>
+      </p>
+    );
+  }
+
+  // Lever 2 — a real-but-below-MEDIUM closest part: a distinct, SOFTER low-confidence
+  // card the user confirms. Never auto-asserted; an unrelated part (torus) never
+  // reaches here (backend leaves closest_unconfirmed null → lowModel null).
+  if (lowModel) {
+    if (dismissed && !confirmed) {
+      return (
+        <p style={{ margin: "12px 2px 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40 }}>
+          closest-match suggestion dismissed —{" "}
+          <button
+            type="button"
+            onClick={() => setDismissed(false)}
+            style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 10.5, color: C.user }}
+          >
+            show again
+          </button>
+        </p>
+      );
+    }
+    return (
+      <div style={{ marginTop: 12 }}>
+        <ClosestUnconfirmedCard
+          model={lowModel}
+          meshHash={meshHash}
+          confirmed={confirmed}
+          busy={busy}
+          err={err}
+          onConfirm={async (input, label) => {
+            if (!meshHash) {
+              setErr("this part's mesh hash isn't available — re-verify to confirm");
+              return;
+            }
+            setBusy(true);
+            setErr(null);
+            const res = await confirmIdentity({ mesh_hash: meshHash, ...input });
+            setBusy(false);
+            if (res.ok) {
+              setConfirmed(label);
+              toast("Identity confirmed — saved to your part library");
+            } else {
+              setErr(res.error);
+            }
+          }}
+          onNotThis={() => setDismissed(true)}
+        />
+      </div>
+    );
+  }
+
+  // Not grounded but the org HAS a library → a quiet, non-intrusive one-liner.
+  const quiet = noMatchLine(id);
+  if (quiet) {
+    return (
+      <p style={{ margin: "12px 2px 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40 }}>
+        {quiet} — geometry retrieved {id?.corpus_size ?? 0} prior part
+        {(id?.corpus_size ?? 0) === 1 ? "" : "s"}, none confident enough to suggest.
+      </p>
+    );
+  }
+
+  // null / empty corpus → render NOTHING (the honest empty; no fabricated identity).
+  return null;
+}
+
+/** The grounded identity card — reuses the light-instrument idiom (Kicker / mono
+ *  evidence / provenance chip) from the other Verify cards. */
+function IdentityCard({
+  model,
+  meshHash,
+  confirmed,
+  busy,
+  err,
+  manualOpen,
+  manualPart,
+  setManualPart,
+  onConfirm,
+  onNotThis,
+  onDeclareManually,
+}: {
+  model: IdentityCardModel;
+  meshHash: string | null;
+  confirmed: string | null;
+  busy: boolean;
+  err: string | null;
+  manualOpen: boolean;
+  manualPart: string;
+  setManualPart: (s: string) => void;
+  onConfirm: (input: { declared_part_id?: string; declared_name?: string; program?: string }, label: string) => void;
+  onNotThis: () => void;
+  onDeclareManually: () => void;
+}) {
+  const tone = identityTone(model.bucket);
+  const m = model.match;
+  return (
+    <div
+      data-testid="identity-card"
+      style={{
+        border: `1px solid ${C.hair}`,
+        borderLeft: `3px solid ${tone}`,
+        borderRadius: 14,
+        background: C.panel,
+        padding: "16px 18px",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <Kicker>PART IDENTITY · RETRIEVED FROM YOUR LIBRARY</Kicker>
+        {/* provenance chip — a retrieved suggestion from the org's own corpus */}
+        <span
+          data-testid="identity-prov"
+          title={m.provenance}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 6, fontFamily: MONO,
+            fontSize: 9.5, letterSpacing: "0.04em", color: C.user,
+            border: `1px solid ${C.hair}`, borderRadius: 999, padding: "2px 9px",
+          }}
+        >
+          <span aria-hidden style={{ color: C.user }}>◆</span>
+          RETRIEVED · your part library
+        </span>
+      </div>
+
+      {confirmed ? (
+        <>
+          <p data-testid="identity-confirmed" style={{ margin: "10px 0 0", fontSize: 15, fontWeight: 500, color: C.ink }}>
+            ✓ Identity confirmed — {confirmed}
+          </p>
+          <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink45 }}>
+            saved to your part library as{" "}
+            <span style={{ color: C.user }}>● USER</span> — future look-alike parts will carry it.
+          </p>
+        </>
+      ) : (
+        <>
+          {/* Lead: the matched designation — a SUGGESTION, never asserted. */}
+          <p data-testid="identity-lead" style={{ margin: "10px 0 0", fontSize: 15, lineHeight: 1.35, color: C.ink, fontWeight: 500 }}>
+            {model.lead}
+            {model.program && (
+              <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 400, color: C.ink55 }}>{" "}· {model.program}</span>
+            )}
+          </p>
+
+          {/* Confidence % + bucket pill (real fields). */}
+          <div style={{ margin: "9px 0 0", display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+            <span
+              data-testid="identity-confidence"
+              style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.06em", color: tone, border: `1px solid ${tone}`, borderRadius: 999, padding: "2px 9px" }}
+            >
+              {model.pct}% · {model.bucket} CONFIDENCE
+            </span>
+            <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink45 }}>
+              geometry {(m.geometry_similarity * 100).toFixed(0)}%
+              {m.name_similarity != null ? ` · name ${(m.name_similarity * 100).toFixed(0)}%` : " · name n/a"}
+            </span>
+          </div>
+
+          {/* Honest caveat — verbatim from the engine when present. */}
+          <p style={{ margin: "9px 0 0", fontSize: 11.5, lineHeight: 1.5, color: C.ink55 }}>
+            {model.caveat}
+          </p>
+
+          {/* Runner-ups — transparency, not a black box. */}
+          {model.runners.length > 0 && (
+            <p data-testid="identity-runners" style={{ margin: "7px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
+              other near matches: {model.runners.map(runnerUpLabel).join(" · ")}
+            </p>
+          )}
+
+          {err && (
+            <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.fail }}>{err}</p>
+          )}
+
+          {/* Actions */}
+          <div style={{ marginTop: 13, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <GhostButton
+              primary
+              disabled={busy || !meshHash}
+              title={meshHash ? "Confirm this identity onto your part library" : "mesh hash unavailable"}
+              onClick={() =>
+                onConfirm(
+                  {
+                    declared_part_id: m.declared_part_id ?? undefined,
+                    declared_name: m.declared_name ?? undefined,
+                    program: m.program ?? undefined,
+                  },
+                  model.lead.replace(/^Looks like your /, "")
+                )
+              }
+            >
+              {busy ? "Confirming…" : "Confirm"}
+            </GhostButton>
+            <GhostButton disabled={busy} onClick={onNotThis}>Not this</GhostButton>
+            {!manualOpen && (
+              <button
+                type="button"
+                onClick={onDeclareManually}
+                style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 10.5, color: C.user }}
+              >
+                declare manually →
+              </button>
+            )}
+          </div>
+
+          {/* Minimal "declare manually" affordance — type the real part #, also confirms. */}
+          {manualOpen && (
+            <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <input
+                data-testid="identity-manual-input"
+                value={manualPart}
+                onChange={(e) => setManualPart(e.target.value)}
+                placeholder="real part # / name"
+                style={{
+                  fontFamily: MONO, fontSize: 12, color: C.ink, background: C.sunken,
+                  border: `1px solid ${C.hair}`, borderRadius: 8, padding: "7px 10px", minWidth: 200,
+                }}
+              />
+              <GhostButton
+                primary
+                disabled={busy || !meshHash || manualPart.trim().length === 0}
+                onClick={() => onConfirm({ declared_part_id: manualPart.trim() }, manualPart.trim())}
+              >
+                {busy ? "Saving…" : "Save identity"}
+              </GhostButton>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** The Lever-2 LOW-confidence "closest in your library" card — a deliberately
+ *  SOFTER, visually-distinct variant of IdentityCard (dashed border, muted tone, an
+ *  explicit "LOW CONFIDENCE" label and honest caveat). It reuses the same tokens and
+ *  provenance idiom, but never reads as a confident assertion: it asks "is this it?"
+ *  and the user decides (Confirm / Not this). Shown ONLY when the backend surfaced a
+ *  well-separated closest candidate below the MEDIUM bar; an unrelated part never
+ *  reaches here. */
+function ClosestUnconfirmedCard({
+  model,
+  meshHash,
+  confirmed,
+  busy,
+  err,
+  onConfirm,
+  onNotThis,
+}: {
+  model: ClosestUnconfirmedModel;
+  meshHash: string | null;
+  confirmed: string | null;
+  busy: boolean;
+  err: string | null;
+  onConfirm: (input: { declared_part_id?: string; declared_name?: string; program?: string }, label: string) => void;
+  onNotThis: () => void;
+}) {
+  const m = model.match;
+  return (
+    <div
+      data-testid="identity-closest-card"
+      style={{
+        border: `1px dashed ${C.hair}`,
+        borderLeft: `3px dashed ${C.ink45}`,
+        borderRadius: 14,
+        background: C.sunken,
+        padding: "16px 18px",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <Kicker color={C.ink45}>CLOSEST IN YOUR LIBRARY · LOW CONFIDENCE</Kicker>
+        <span
+          data-testid="identity-closest-prov"
+          title={m.provenance}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 6, fontFamily: MONO,
+            fontSize: 9.5, letterSpacing: "0.04em", color: C.ink45,
+            border: `1px dashed ${C.hair}`, borderRadius: 999, padding: "2px 9px",
+          }}
+        >
+          <span aria-hidden style={{ color: C.user }}>◆</span>
+          RETRIEVED · your part library
+        </span>
+      </div>
+
+      {confirmed ? (
+        <>
+          <p data-testid="identity-closest-confirmed" style={{ margin: "10px 0 0", fontSize: 15, fontWeight: 500, color: C.ink }}>
+            ✓ Identity confirmed — {confirmed}
+          </p>
+          <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink45 }}>
+            saved to your part library as{" "}
+            <span style={{ color: C.user }}>● USER</span> — future look-alike parts will carry it.
+          </p>
+        </>
+      ) : (
+        <>
+          {/* Lead: the closest designation — phrased as a QUESTION, never asserted. */}
+          <p data-testid="identity-closest-lead" style={{ margin: "10px 0 0", fontSize: 15, lineHeight: 1.35, color: C.ink70, fontWeight: 500 }}>
+            {model.lead}
+            {model.program && (
+              <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 400, color: C.ink55 }}>{" "}· {model.program}</span>
+            )}
+          </p>
+
+          {/* Confidence % + explicit low-confidence pill (real fields). */}
+          <div style={{ margin: "9px 0 0", display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+            <span
+              data-testid="identity-closest-confidence"
+              style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.06em", color: C.ink45, border: `1px dashed ${C.ink45}`, borderRadius: 999, padding: "2px 9px" }}
+            >
+              {model.pct}% · LOW CONFIDENCE
+            </span>
+            <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink45 }}>
+              geometry {(m.geometry_similarity * 100).toFixed(0)}%
+              {m.name_similarity != null ? ` · name ${(m.name_similarity * 100).toFixed(0)}%` : " · name n/a"}
+            </span>
+          </div>
+
+          {/* Honest caveat — this is a hint, not a confident match. */}
+          <p style={{ margin: "9px 0 0", fontSize: 11.5, lineHeight: 1.5, color: C.ink55 }}>
+            {model.caveat}
+          </p>
+
+          {err && (
+            <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.fail }}>{err}</p>
+          )}
+
+          {/* Actions — the user decides; the system never asserts. */}
+          <div style={{ marginTop: 13, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <GhostButton
+              disabled={busy || !meshHash}
+              title={meshHash ? "Confirm this identity onto your part library" : "mesh hash unavailable"}
+              onClick={() =>
+                onConfirm(
+                  {
+                    declared_part_id: m.declared_part_id ?? undefined,
+                    declared_name: m.declared_name ?? undefined,
+                    program: m.program ?? undefined,
+                  },
+                  model.lead.replace(/^Closest in your library: /, "")
+                )
+              }
+            >
+              {busy ? "Confirming…" : "Yes, confirm this"}
+            </GhostButton>
+            <GhostButton disabled={busy} onClick={onNotThis}>Not this</GhostButton>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function VerdictBanner({
   result,
   makeNow,
@@ -628,7 +1086,7 @@ function VerdictBanner({
   makeNow: ReturnType<typeof makeNowEstimate>;
   nav: Nav;
 }) {
-  const { validation, cost, costGeometryInvalid, verification } = result;
+  const { validation, validationError, cost, costError, costGeometryInvalid, verification } = result;
 
   if (costGeometryInvalid) {
     return (
@@ -680,11 +1138,70 @@ function VerdictBanner({
     );
   }
 
-  // No makeability block (no inventory + no declared world) → the honest DFM +
-  // should-cost banner; the makeability gate is stated as not-evaluated, never assumed.
+  // No makeability block (no inventory + no declared world). The banner now branches
+  // on what the engine ACTUALLY returned — it never claims a computation that did not
+  // happen. Three honest states:
+  //   1. NOTHING computed (parse/tessellation failed) → "COULD NOT ANALYZE".
+  //   2. routing + DFM computed but NO should-cost      → "SHOULD-COST UNAVAILABLE".
+  //   3. a real should-cost record                      → "SHOULD-COST COMPUTED".
   const dfm = validation?.overall_verdict ?? "unknown";
-  const color = statusColor(dfm);
 
+  // 1 · The engine returned nothing — no routing, no DFM, no cost. This is the part
+  //     that failed to tessellate. Say EXACTLY that; never a fabricated "computed".
+  if (!validation && !cost) {
+    const reason = costError || validationError || null;
+    // Lead with the REAL reason. Only frame it as a tessellation/surface failure
+    // when that's actually what happened — an unsupported file type (e.g. a .txt)
+    // is not a mesher problem and must not be told to "re-export as a clean solid".
+    const unsupported = !!reason && /unsupported file type|use \.stl|not a (?:cad|supported)/i.test(reason);
+    return (
+      <BannerFrame borderColor={C.fail} bg="rgba(194,69,58,0.03)">
+        <Kicker color={C.fail}>VERDICT · COULD NOT ANALYZE</Kicker>
+        <p style={{ margin: "10px 0 0", fontSize: 24, fontWeight: 400, letterSpacing: "-0.015em", lineHeight: 1.25 }}>
+          {unsupported ? <>We couldn&apos;t read this file.</> : <>This part couldn&apos;t be tessellated.</>}
+        </p>
+        <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 560 }}>
+          {reason ? (
+            <span style={{ fontFamily: MONO, fontSize: 12, color: C.ink55 }}>{reason}</span>
+          ) : unsupported ? (
+            <>Unsupported file type.</>
+          ) : (
+            <>The geometry contains a surface our mesher couldn&apos;t triangulate.</>
+          )}{" "}
+          No routing, DFM, or should-cost was computed, and nothing here is estimated.{" "}
+          {unsupported ? (
+            <>Upload a CAD part (.stl, .step, .stp, .iges, or .igs) to run the walk.</>
+          ) : (
+            <>Re-export the part as a clean solid (no unsupported surface) and re-upload to run the walk.</>
+          )}
+        </p>
+      </BannerFrame>
+    );
+  }
+
+  // 2 · Routing + DFM ran, but the should-cost record is unavailable. The kicker does
+  //     NOT claim SHOULD-COST COMPUTED, and the body names only what actually ran.
+  if (!cost) {
+    const color = statusColor(dfm);
+    return (
+      <BannerFrame borderColor={color} bg="rgba(23,24,26,0.015)">
+        <Kicker color={color}>VERDICT · DFM {dfm.toUpperCase()} · SHOULD-COST UNAVAILABLE</Kicker>
+        <p style={{ margin: "10px 0 0", fontSize: 24, fontWeight: 400, letterSpacing: "-0.015em", lineHeight: 1.25 }}>
+          Routing &amp; DFM computed — should-cost unavailable
+        </p>
+        <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 560 }}>
+          The engine returned routing and DFM, but no glass-box should-cost was produced
+          {costError ? <> (<span style={{ fontFamily: MONO, fontSize: 12, color: C.ink55 }}>{costError}</span>)</> : null}. Whether
+          it&apos;s makeable <span style={{ fontWeight: 500 }}>on your machines</span> is the makeability verification — not
+          evaluated here because no machines and no service conditions are declared.
+        </p>
+        {savedCta}
+      </BannerFrame>
+    );
+  }
+
+  // 3 · A real should-cost record — the original honest banner, unchanged.
+  const color = statusColor(dfm);
   return (
     <BannerFrame borderColor={color} bg="rgba(23,24,26,0.015)">
       <Kicker color={color}>VERDICT · DFM {dfm.toUpperCase()} · SHOULD-COST COMPUTED</Kicker>
@@ -694,16 +1211,14 @@ function VerdictBanner({
             Should-cost {USD(unit)}/unit on {procLabel(proc)}
             {makeNow ? <span style={{ fontSize: 14, color: C.ink45 }}> at qty {NUM(makeNow.quantity)}</span> : null}
           </>
-        ) : cost ? (
-          <>Should-cost computed</>
         ) : (
-          <>Routing &amp; DFM computed — should-cost unavailable</>
+          <>Should-cost computed</>
         )}
       </p>
       <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 560 }}>
         The engine returned routing, DFM, and a glass-box should-cost. Whether it&apos;s makeable{" "}
         <span style={{ fontWeight: 500 }}>on your machines</span> is the makeability verification — not evaluated here
-        because no machines and no world are declared. Declare your floor or a world to resolve it, never assumed.
+        because no machines and no service conditions are declared. Declare your floor or the service conditions to resolve it, never assumed.
       </p>
       {savedCta}
     </BannerFrame>
@@ -793,8 +1308,8 @@ function EnvStrikesBlock({ verification, envDeclared }: { verification: Verifica
     return (
       <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40, lineHeight: 1.6 }}>
         {worldDeclared
-          ? "the declared world was applied — no candidate material on the shortlisted routes is excluded by it."
-          : "no world declared — materials are verified in ambient conditions. Declare a world above to gate them by NACE MR0175 / HDT."}
+          ? "the declared service conditions were applied — no candidate material on the shortlisted routes is excluded by them."
+          : "no service conditions declared — materials are verified at ambient. Declare service conditions above to gate them by NACE MR0175 / HDT."}
       </p>
     );
   }
@@ -822,11 +1337,29 @@ function ProcessPhysics({ result }: { result: VerifyResult }) {
       </p>
     );
   }
-  const rows = [...v.process_scores].sort((a, b) => b.score - a.score).slice(0, 6);
+  // Reconcile the pick with the MATERIAL-AWARE route. `v.best_process` is a pure
+  // geometry-manufacturability ranking (resins float to the top for having the fewest
+  // DFM constraints) and must never masquerade as "the" pick for, say, a steel part —
+  // that contradicts the cost panel on the same screen. When the cost route has run
+  // with a declared material, its make-now / recommended process is the true route
+  // pick; only fall back to the geometry pick when no material-aware route exists.
+  const materialAwarePick =
+    result.cost?.decision?.make_now_process ??
+    result.cost?.routing?.recommended_process ??
+    null;
+  const pick = materialAwarePick ?? v.best_process;
+  const pickIsMaterialAware = materialAwarePick != null;
+  const sorted = [...v.process_scores].sort((a, b) => b.score - a.score);
+  const rows = sorted.slice(0, 6);
+  // Guarantee the actual route pick is visible even if geometry ranks it outside top-6.
+  if (pick && !rows.some((p) => p.process === pick)) {
+    const pickRow = sorted.find((p) => p.process === pick);
+    if (pickRow) rows.push(pickRow);
+  }
   return (
     <div style={{ marginTop: 12, display: "flex", flexDirection: "column" }}>
       {rows.map((ps) => {
-        const isPick = ps.process === v.best_process;
+        const isPick = ps.process === pick;
         const errCount = ps.issues.filter((i) => i.severity === "error").length;
         return (
           <div
@@ -837,7 +1370,7 @@ function ProcessPhysics({ result }: { result: VerifyResult }) {
               {procLabel(ps.process)}
               {isPick && (
                 <span style={{ marginLeft: 8, fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.08em", color: C.measured }}>
-                  ROUTE PICK
+                  {pickIsMaterialAware ? "ROUTE PICK" : "GEOMETRY PICK"}
                 </span>
               )}
             </span>
@@ -865,7 +1398,10 @@ function ProcessPhysics({ result }: { result: VerifyResult }) {
       })}
       <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40 }}>
         {v.priority_fixes.length} priority fix{v.priority_fixes.length === 1 ? "" : "es"} across routes ·{" "}
-        overall {v.overall_verdict} · rendered from POST /validate
+        overall {v.overall_verdict} · DFM scores from POST /validate ·{" "}
+        {pickIsMaterialAware
+          ? `pick reconciled to the material-aware route (${procLabel(pick)})`
+          : "pick is geometry-only — declare a material for the material-aware route"}
       </p>
     </div>
   );
@@ -1183,12 +1719,12 @@ function DecideHallmark({
 
       <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <GhostButton onClick={() => nav("records")} disabled={!saved}>
-          {saved ? "Open the record →" : "Not persisted"}
+          {saved ? "Open the record →" : "Saving is off"}
         </GhostButton>
         <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink40, lineHeight: 1.5, flex: 1, minWidth: 180 }}>
           {saved
             ? "the cost-decision is the immutable saved artifact; your choice above is noted in this verification session and the record opens from Records."
-            : "persistence is off for this decision (COST_PERSIST_ENABLED) — it computed, but was not saved server-side."}
+            : "record-keeping is turned off for this run — the numbers above are live, but nothing was written to your records."}
         </span>
       </div>
 
@@ -1197,11 +1733,11 @@ function DecideHallmark({
           <ConfidenceBand validated={validated} pointFraction={0.5} />
           <p style={{ margin: "7px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink45, lineHeight: 1.6 }}>
             {validated
-              ? "this verdict ships solid — validated against your actuals."
-              : "this verdict ships hatched — assumption band, not shop-validated · n=0. It flips solid only when your actuals come back."}
+              ? "this verdict is validated — checked against your actuals."
+              : "this verdict is unvalidated — an assumption band, not yet checked against your actuals · n=0. It firms up once your real costs come back."}
           </p>
         </div>
-        <GhostButton onClick={() => nav("calibration")}>See how truth arrives →</GhostButton>
+        <GhostButton onClick={() => nav("calibration")}>How estimates get validated →</GhostButton>
       </div>
     </Card>
   );
@@ -1379,7 +1915,7 @@ function AskDock({ cost, running, nav }: { cost: CostReport | null; running: boo
                   ? "computing the walk…"
                   : "Load a part above — the engine answers only about a computed part."
             }
-            style={{ flex: 1, minWidth: 0, background: "none", border: "none", outline: "none", fontSize: 13, color: C.ink, fontFamily: "inherit" }}
+            style={{ flex: 1, minWidth: 0, background: "none", border: "none", fontSize: 13, color: C.ink, fontFamily: "inherit" }}
           />
           <button
             type="button"
@@ -1389,8 +1925,8 @@ function AskDock({ cost, running, nav }: { cost: CostReport | null; running: boo
             title="Ask the engine"
             style={{
               flexShrink: 0,
-              width: 30,
-              height: 30,
+              width: 44,
+              height: 44,
               borderRadius: "50%",
               border: "none",
               background: canAsk ? C.ink : C.ink40,

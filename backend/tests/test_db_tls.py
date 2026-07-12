@@ -1,6 +1,8 @@
 """Tests for the production DB TLS default (M4)."""
 from __future__ import annotations
 
+import pytest
+
 from src.db import engine
 
 
@@ -45,9 +47,32 @@ def test_existing_sslmode_not_doubled(monkeypatch):
     url2 = "postgresql://u:p@ep.neon.tech/db?ssl=require"
     assert engine._ensure_prod_tls(url2) == url2
 
+    verify_full = "postgresql://u:p@ep.neon.tech/db?sslmode=verify-full"
+    assert "ssl=verify-full" in engine._async_url(
+        engine._ensure_prod_tls(verify_full)
+    )
+
 
 def test_off_switch(monkeypatch):
     monkeypatch.setenv("RELEASE", "v1.2.3")
     monkeypatch.setenv("DB_REQUIRE_TLS", "0")
     url = "postgresql://u:p@ep.neon.tech/db"
-    assert engine._ensure_prod_tls(url) == url
+    with pytest.raises(RuntimeError, match="cannot be disabled"):
+        engine._ensure_prod_tls(url)
+
+
+def test_insecure_explicit_mode_is_rejected(monkeypatch):
+    monkeypatch.setenv("RELEASE", "v1.2.3")
+    monkeypatch.delenv("DB_REQUIRE_TLS", raising=False)
+    with pytest.raises(RuntimeError, match="insecure TLS mode"):
+        engine._ensure_prod_tls(
+            "postgresql://u:p@ep.neon.tech/db?sslmode=disable"
+        )
+
+
+def test_strict_production_rejects_plaintext_local_database(monkeypatch):
+    monkeypatch.setenv("RELEASE", "v1.2.3")
+    monkeypatch.setenv("PRODUCTION_TLS_REQUIRED", "1")
+    monkeypatch.delenv("DB_REQUIRE_TLS", raising=False)
+    with pytest.raises(RuntimeError, match="explicitly enable TLS"):
+        engine._ensure_prod_tls("postgresql://u:p@postgres:5432/db")

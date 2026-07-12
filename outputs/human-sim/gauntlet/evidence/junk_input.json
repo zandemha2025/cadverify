@@ -1,0 +1,69 @@
+{
+  "validate": [
+    {
+      "case": "txt",
+      "status": 400,
+      "is_5xx": false,
+      "leaks_trace_or_path": false,
+      "snippet": "{\"code\":\"BAD_REQUEST\",\"message\":\"Unsupported file type: .txt. Use .stl, .step, .stp, .iges, or .igs\",\"doc_url\":\"https://docs.cadverify.com/errors/BAD_REQUEST\"}"
+    },
+    {
+      "case": "zero_byte",
+      "status": 400,
+      "is_5xx": false,
+      "leaks_trace_or_path": false,
+      "snippet": "{\"code\":\"BAD_REQUEST\",\"message\":\"Empty file uploaded\",\"doc_url\":\"https://docs.cadverify.com/errors/BAD_REQUEST\"}"
+    },
+    {
+      "case": "truncated_step",
+      "status": 400,
+      "is_5xx": false,
+      "leaks_trace_or_path": false,
+      "snippet": "{\"code\":\"BAD_REQUEST\",\"message\":\"Could not read STEP geometry (not a valid/supported STEP file).\",\"doc_url\":\"https://docs.cadverify.com/errors/BAD_REQUEST\"}"
+    },
+    {
+      "case": "garbage_bytes_valid_ext",
+      "status": 400,
+      "is_5xx": false,
+      "leaks_trace_or_path": false,
+      "snippet": "{\"code\":\"BAD_REQUEST\",\"message\":\"Empty mesh from: garbage.stl\",\"doc_url\":\"https://docs.cadverify.com/errors/BAD_REQUEST\"}"
+    },
+    {
+      "case": "oversize",
+      "status": 413,
+      "is_5xx": false,
+      "leaks_trace_or_path": false,
+      "snippet": "{\"code\":\"FILE_TOO_LARGE\",\"message\":\"File exceeds 100MB limit\",\"doc_url\":\"https://docs.cadverify.com/errors/FILE_TOO_LARGE\"}"
+    },
+    {
+      "case": "hostile_name",
+      "status": 400,
+      "is_5xx": false,
+      "leaks_trace_or_path": false,
+      "snippet": "{\"code\":\"BAD_REQUEST\",\"message\":\"Empty mesh from: ../../etc/passwd%00.stl\",\"doc_url\":\"https://docs.cadverify.com/errors/BAD_REQUEST\"}"
+    }
+  ],
+  "cost": [
+    {
+      "case": "txt",
+      "status": 400,
+      "is_5xx": false,
+      "leaks": false,
+      "snippet": "{\"code\":\"BAD_REQUEST\",\"message\":\"Unsupported file type: .txt. Use .stl, .step, .stp, .iges, or .igs\",\"doc_url\":\"https://docs.cadverify.com/errors/BAD_REQUEST\"}"
+    },
+    {
+      "case": "zero_byte",
+      "status": 400,
+      "is_5xx": false,
+      "leaks": false,
+      "snippet": "{\"code\":\"BAD_REQUEST\",\"message\":\"Empty file uploaded\",\"doc_url\":\"https://docs.cadverify.com/errors/BAD_REQUEST\"}"
+    },
+    {
+      "case": "garbage",
+      "status": 400,
+      "is_5xx": false,
+      "leaks": false,
+      "snippet": "{\"code\":\"BAD_REQUEST\",\"message\":\"Empty mesh from: garbage.stl\",\"doc_url\":\"https://docs.cadverify.com/errors/BAD_REQUEST\"}"
+    }
+  ]
+}

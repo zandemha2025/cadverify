@@ -17,18 +17,34 @@ dependency is declared in backend/requirements.txt for production.
 
 from __future__ import annotations
 
+from typing import Any
+
 # Classic Prometheus text exposition content type. Pinned explicitly (rather than
 # using prometheus_client.CONTENT_TYPE_LATEST, which newer client releases bumped
 # to version=1.0.0) so the endpoint advertises the widely-scraped 0.0.4 format.
 CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
 
-try:  # pragma: no cover - import guard exercised only when the lib is absent
-    from prometheus_client import Counter, Gauge, Histogram, generate_latest
+Counter: Any
+Gauge: Any
+Histogram: Any
+generate_latest: Any
 
+try:  # pragma: no cover - import guard exercised only when the lib is absent
+    from prometheus_client import (
+        Counter as _Counter,
+        Gauge as _Gauge,
+        Histogram as _Histogram,
+        generate_latest as _generate_latest,
+    )
+
+    Counter = _Counter
+    Gauge = _Gauge
+    Histogram = _Histogram
+    generate_latest = _generate_latest
     PROMETHEUS_AVAILABLE = True
 except ImportError:  # pragma: no cover
-    Counter = Gauge = Histogram = None  # type: ignore[assignment]
-    generate_latest = None  # type: ignore[assignment]
+    Counter = Gauge = Histogram = None
+    generate_latest = None
     PROMETHEUS_AVAILABLE = False
 
 

@@ -498,12 +498,6 @@ def _extract_geometry_features(gt: GroundTruthRecord,
         # is the ONLY dir a network record's mesh is looked up under (its
         # part_path was already confined to a safe relative name at ingest).
         parts_dir = os.environ.get("CADVERIFY_PARTS_DIR")
-        if parts_dir is None:
-            try:
-                from src.costing.harness import PARTS_DIR_DEFAULT
-                parts_dir = PARTS_DIR_DEFAULT
-            except Exception:  # pragma: no cover - harness import guard
-                parts_dir = None
     path = resolve_part_path(gt, parts_dir)
     if path is None:
         return None
@@ -715,9 +709,6 @@ def recalibrate_from_records(
     if parts_dir is None:
         # Fresh env read (deployed-config honouring), same as ingest extraction.
         parts_dir = os.environ.get("CADVERIFY_PARTS_DIR")
-        if parts_dir is None:
-            from src.costing.harness import PARTS_DIR_DEFAULT
-            parts_dir = PARTS_DIR_DEFAULT
     loop = run_loop(
         records,
         parts_dir=parts_dir,

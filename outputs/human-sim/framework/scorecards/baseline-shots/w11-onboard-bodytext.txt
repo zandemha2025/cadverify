@@ -1,0 +1,58 @@
+C
+Parts
+Default rate card (v0) · none authored
+⌘K
+Verify a part
+Parts
+⭑ Costed parts
+⭑ With findings
+
+Every part your org has verified or drafted, unified into one grid — recommended route, unit cost, and DFM findings, each straight from the engine or honestly absent. Geometry previews are withheld: production does not serve org-scoped part meshes to this grid, so no shape is invented.
+
+PARTS-MASTER · IDENTITY LIBRARY
+
+library: 3 parts
+
+Onboard your existing part library — CAD files plus an identity mapping (CSV or JSON with filename, part_id, name, program, material_class) — so the corpus knows your parts by name on day one. A file with no declared name onboards as bare geometry, never a guess.
+
+Choose CAD files…
+Identity mapping (optional)…
+Onboard library
+
+Onboarded 1 part · library now 3
+
+1 registered in the declared parts master
+
+All · 3
+Costed · 2
+Drafted · 1
+With findings · 2
+No findings · 1
+PREVIEW WITHHELD
+COSTED
+bracket_A.stl
+$40.00
+
+DLP Resin · Standard Resin · qty 1
+
+1 finding on route
+
+PREVIEW WITHHELD
+COSTED
+cube.step
+$134.3
+
+CNC 3-Axis · Mild Steel · qty 1
+
+0 findings on route
+
+PREVIEW WITHHELD
+DRAFTED · DFM
+as1-tu-203.stp
+—
+
+SLS (Powder) · PA12 (Nylon 12)
+
+2 findings on route · 1 critical
+
+every figure here is engine output or withheld — a blocked route shows no price, an un-analyzed part shows no findings, and no card invents a standing it doesn't have

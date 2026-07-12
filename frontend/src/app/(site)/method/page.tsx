@@ -232,7 +232,7 @@ function RecordAssembles() {
 }
 
 const ASSEMBLY_ROWS = [
-  { label: "labor", detail: "0.082 hr × $52/hr", value: "$6.39" },
+  { label: "labor", detail: "0.123 hr × $52/hr", value: "$6.39" },
   { label: "amortized fixed", detail: "setup ÷ 10 units", value: "$3.89" },
   { label: "machine", detail: "15.2 hr build ÷ 223 parts", value: "$3.82" },
   { label: "material", detail: "4.63 cm³ × $7/kg lot", value: "$0.04" },
@@ -312,7 +312,7 @@ function Stages() {
             <p className="st-mono" style={{ margin: 0, fontSize: 10.5, letterSpacing: "0.16em", color: "var(--st-ink-40)" }}>
               GEOMETRIC ROUTING · CONFIDENCE 0.80 · ARCHETYPE ROTATIONAL
             </p>
-            <p style={{ margin: "10px 0 0", fontSize: 21, fontWeight: 400 }}>→ CNC turning</p>
+            <p style={{ margin: "10px 0 0", fontSize: 21, fontWeight: 400 }}>→ MJF</p>
             <p
               style={{
                 margin: "10px 0 0",
@@ -324,13 +324,14 @@ function Stages() {
                 paddingLeft: 14,
               }}
             >
-              &ldquo;Axisymmetric cross-section (round, turnable): axis 21mm × Ø21mm → CNC turning / mill-turn. A round metal
-              part is rarely powder-bed printed at production volume.&rdquo;
+              &ldquo;Polymer part with undercut faces that block machining as drawn: at qty 10, MJF prints it
+              tooling-free. Injection molding is cheaper per unit but needs a draft fix and only pays its tool back
+              past ~1,962 units.&rdquo;
             </p>
           </div>
           <div className="st-mono" style={{ padding: "16px 22px", display: "flex", flexDirection: "column", gap: 8, fontSize: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ color: "var(--st-ink-55)" }}>cnc_turning · mjf · cnc_5axis</span>
+              <span style={{ color: "var(--st-ink-55)" }}>mjf · sla · cnc_5axis</span>
               <span style={{ color: "var(--st-conditional)" }}>issues 0.8–0.9</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
@@ -442,7 +443,7 @@ function Stages() {
         >
           <div>
             <p className="st-mono" style={{ margin: 0, fontSize: 10.5, letterSpacing: "0.16em", color: "var(--st-ink-40)" }}>
-              RESOURCE COST · MAKE NOW · MJF (PP) · QTY 10
+              SHOULD-COST · MAKE NOW · MJF (PP) · QTY 10
             </p>
             <p
               className="st-readout"

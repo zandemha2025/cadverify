@@ -1,0 +1,216 @@
+{
+  "isolation": {
+    "A_decision_id": "01KX7E3X3C10FZBM2HAW9XQM98",
+    "A_analysis_id": "01KX7E3T3GFPW9EGCD2WFS7Q6G",
+    "probes": {
+      "/api/v1/cost-decisions/01KX7E3X3C10FZBM2HAW9XQM98": {
+        "status": 404,
+        "leaks_A_data": false
+      },
+      "/api/v1/cost-decisions/01KX7E3X3C10FZBM2HAW9XQM98/export.json": {
+        "status": 404,
+        "leaks_A_data": false
+      },
+      "/api/v1/cost-decisions/01KX7E3X3C10FZBM2HAW9XQM98/pdf": {
+        "status": 404,
+        "leaks_A_data": false
+      },
+      "/api/v1/analyses/01KX7E3T3GFPW9EGCD2WFS7Q6G": {
+        "status": 404
+      },
+      "B_list_analyses_count": 0,
+      "B_list_cost_decisions": {
+        "cost_decisions": [],
+        "next_cursor": null,
+        "has_more": false
+      },
+      "POST approve 01KX7E3X3C10FZBM2HAW9XQM98": {
+        "status": 404
+      }
+    }
+  },
+  "concurrency": {
+    "n": 12,
+    "dur_s": 14.18,
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "all_200": true,
+    "per_org_decision_counts": [
+      0,
+      0,
+      0
+    ],
+    "detail": [
+      {
+        "idx": 0,
+        "org": 0,
+        "status": 200,
+        "filename": "cube.step",
+        "decision_id": "01KX7E4BDZ9BJ6PR83SDV68C7S"
+      },
+      {
+        "idx": 1,
+        "org": 1,
+        "status": 200,
+        "filename": "plate_with_hole.stl",
+        "decision_id": "01KX7E3YGFRW7QMWP2B431DM0R"
+      },
+      {
+        "idx": 2,
+        "org": 2,
+        "status": 200,
+        "filename": "filleted_box.stl",
+        "decision_id": "01KX7E3ZYBVK6JHSY9RKFHPF0A"
+      },
+      {
+        "idx": 3,
+        "org": 0,
+        "status": 200,
+        "filename": "cube.step",
+        "decision_id": "01KX7E4BDZ9BJ6PR83SDV68C7S"
+      },
+      {
+        "idx": 4,
+        "org": 1,
+        "status": 200,
+        "filename": "plate_with_hole.stl",
+        "decision_id": "01KX7E3YGFRW7QMWP2B431DM0R"
+      },
+      {
+        "idx": 5,
+        "org": 2,
+        "status": 200,
+        "filename": "filleted_box.stl",
+        "decision_id": "01KX7E3ZYBVK6JHSY9RKFHPF0A"
+      },
+      {
+        "idx": 6,
+        "org": 0,
+        "status": 200,
+        "filename": "cube.step",
+        "decision_id": "01KX7E4BDZ9BJ6PR83SDV68C7S"
+      },
+      {
+        "idx": 7,
+        "org": 1,
+        "status": 200,
+        "filename": "plate_with_hole.stl",
+        "decision_id": "01KX7E3YGFRW7QMWP2B431DM0R"
+      },
+      {
+        "idx": 8,
+        "org": 2,
+        "status": 200,
+        "filename": "filleted_box.stl",
+        "decision_id": "01KX7E3ZYBVK6JHSY9RKFHPF0A"
+      },
+      {
+        "idx": 9,
+        "org": 0,
+        "status": 200,
+        "filename": "cube.step",
+        "decision_id": "01KX7E4BDZ9BJ6PR83SDV68C7S"
+      },
+      {
+        "idx": 10,
+        "org": 1,
+        "status": 200,
+        "filename": "plate_with_hole.stl",
+        "decision_id": "01KX7E3YGFRW7QMWP2B431DM0R"
+      },
+      {
+        "idx": 11,
+        "org": 2,
+        "status": 200,
+        "filename": "filleted_box.stl",
+        "decision_id": "01KX7E3ZYBVK6JHSY9RKFHPF0A"
+      }
+    ]
+  },
+  "junk_validate": [
+    {
+      "case": "txt",
+      "status": 400,
+      "is_5xx": false,
+      "leaks_trace_or_path": false,
+      "snippet": "{\"code\":\"BAD_REQUEST\",\"message\":\"Unsupported file type: .txt. Use .stl, .step, .stp, .iges, or .igs\",\"doc_url\":\"https://docs.cadverify.com/errors/BAD_REQUEST\"}"
+    },
+    {
+      "case": "zero_byte",
+      "status": 400,
+      "is_5xx": false,
+      "leaks_trace_or_path": false,
+      "snippet": "{\"code\":\"BAD_REQUEST\",\"message\":\"Empty file uploaded\",\"doc_url\":\"https://docs.cadverify.com/errors/BAD_REQUEST\"}"
+    },
+    {
+      "case": "truncated_step",
+      "status": 400,
+      "is_5xx": false,
+      "leaks_trace_or_path": false,
+      "snippet": "{\"code\":\"BAD_REQUEST\",\"message\":\"Could not read STEP geometry (not a valid/supported STEP file).\",\"doc_url\":\"https://docs.cadverify.com/errors/BAD_REQUEST\"}"
+    },
+    {
+      "case": "garbage_bytes_valid_ext",
+      "status": 400,
+      "is_5xx": false,
+      "leaks_trace_or_path": false,
+      "snippet": "{\"code\":\"BAD_REQUEST\",\"message\":\"Empty mesh from: garbage.stl\",\"doc_url\":\"https://docs.cadverify.com/errors/BAD_REQUEST\"}"
+    },
+    {
+      "case": "oversize",
+      "status": 413,
+      "is_5xx": false,
+      "leaks_trace_or_path": false,
+      "snippet": "{\"code\":\"FILE_TOO_LARGE\",\"message\":\"File exceeds 100MB limit\",\"doc_url\":\"https://docs.cadverify.com/errors/FILE_TOO_LARGE\"}"
+    },
+    {
+      "case": "hostile_name",
+      "status": 400,
+      "is_5xx": false,
+      "leaks_trace_or_path": false,
+      "snippet": "{\"code\":\"BAD_REQUEST\",\"message\":\"Empty mesh from: ../../etc/passwd%00.stl\",\"doc_url\":\"https://docs.cadverify.com/errors/BAD_REQUEST\"}"
+    }
+  ],
+  "junk_cost": [
+    {
+      "case": "txt",
+      "status": 400,
+      "is_5xx": false,
+      "leaks": false,
+      "snippet": "{\"code\":\"BAD_REQUEST\",\"message\":\"Unsupported file type: .txt. Use .stl, .step, .stp, .iges, or .igs\",\"doc_url\":\"https://docs.cadverify.com/errors/BAD_REQUEST\"}"
+    },
+    {
+      "case": "zero_byte",
+      "status": 400,
+      "is_5xx": false,
+      "leaks": false,
+      "snippet": "{\"code\":\"BAD_REQUEST\",\"message\":\"Empty file uploaded\",\"doc_url\":\"https://docs.cadverify.com/errors/BAD_REQUEST\"}"
+    },
+    {
+      "case": "garbage",
+      "status": 400,
+      "is_5xx": false,
+      "leaks": false,
+      "snippet": "{\"code\":\"BAD_REQUEST\",\"message\":\"Empty mesh from: garbage.stl\",\"doc_url\":\"https://docs.cadverify.com/errors/BAD_REQUEST\"}"
+    }
+  ],
+  "auth_edges": {
+    "unauth_analyses": 401,
+    "unauth_validate": 401,
+    "garbage_cookie": 401,
+    "empty_cookie": 401,
+    "tampered_token": 401
+  }
+}

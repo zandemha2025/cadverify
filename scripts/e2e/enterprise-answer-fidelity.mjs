@@ -22,7 +22,11 @@ const expected = {
   cubeSha256: "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a",
   cubeBytes: 19030,
   annualVolume: 12000,
-  capitalBoardUsd: 1000000,
+  procurementThresholdsUsd: {
+    engineerSelfServe: 25000,
+    sourcingManager: 250000,
+    capitalBoard: 1000000,
+  },
   serviceEnvironment: {
     max_temp_c: 120,
     sour_service: true,
@@ -42,6 +46,7 @@ const files = {
   p7: path.join(outputRoot, `p7-role-failure-${runId}.json`),
   coverage: path.join(outputRoot, `human-sim-journey-coverage-${runId}.json`),
   gauntlet: path.join(outputRoot, `synthetic-enterprise-gauntlet-${runId}.json`),
+  assemblyFidelity: path.join(outputRoot, `assembly-visual-fidelity-${runId}.json`),
   cube: path.join(repoRoot, "backend/tests/assets/cube.step"),
   enterpriseRunner: path.join(repoRoot, "scripts/e2e/enterprise-domain-runner.mjs"),
   findings: path.join(repoRoot, "frontend/src/lib/findings.ts"),
@@ -247,6 +252,7 @@ async function main() {
     p7,
     coverage,
     gauntlet,
+    assemblyFidelity,
     cubeBuffer,
     enterpriseRunner,
     findingsSource,
@@ -259,6 +265,7 @@ async function main() {
     readJson(files.p7),
     readJson(files.coverage),
     readJson(files.gauntlet),
+    readJson(files.assemblyFidelity),
     readFile(files.cube),
     readFile(files.enterpriseRunner, "utf8"),
     readFile(files.findings, "utf8"),
@@ -319,11 +326,14 @@ async function main() {
     }),
 
     await runCheck("CALCULATION-FIDELITY-001", "Cost and procurement math", async () => {
-      const unitCost = number(portfolio.unit_cost_usd, "portfolio.unit_cost_usd");
+      const unitCost = number(portfolio.annualized_unit_cost_usd, "portfolio.annualized_unit_cost_usd");
+      const basisQuantity = number(portfolio.annualized_unit_cost_qty, "portfolio.annualized_unit_cost_qty");
       const annualVolume = number(portfolio.annual_volume, "portfolio.annual_volume");
       const annualized = number(portfolio.annualized_cost_usd, "portfolio.annualized_cost_usd");
       const expectedAnnualized = unitCost * annualVolume;
       assert(annualVolume === expected.annualVolume, `annual volume drifted: ${annualVolume}`);
+      assert(basisQuantity === annualVolume, `annualized basis quantity drifted: ${basisQuantity}`);
+      assert(portfolio.annualized_unit_cost_basis === "decision.recommendation", "annualized basis was not the engine recommendation");
       assert(approxEqual(annualized, expectedAnnualized), `annualized cost mismatch: ${annualized} vs ${expectedAnnualized}`);
       assert(
         approxEqual(number(portfolio.expected_annualized_cost_usd, "portfolio.expected_annualized_cost_usd"), expectedAnnualized),
@@ -331,14 +341,26 @@ async function main() {
       );
       assert(portfolio.withheld_before_volume === true, "portfolio did not prove annualized exposure was withheld before volume");
       assert(/no declared annual_volume/i.test(portfolio.withheld_reason || ""), "withheld reason does not explain missing volume");
-      assert(annualized >= expected.capitalBoardUsd, "annualized exposure did not cross capital-board threshold");
+      assert(portfolio.withheld_until_exact_reverification === true, "portfolio did not withhold the unmatched declared quantity");
+      assert(/re-verify this CAD/i.test(portfolio.exact_reverification_reason || ""), "portfolio did not record the exact-quantity recovery step");
+      assert(
+        annualized >= expected.procurementThresholdsUsd.engineerSelfServe,
+        "annualized exposure did not exceed the engineer self-serve threshold"
+      );
+      assert(
+        annualized < expected.procurementThresholdsUsd.sourcingManager,
+        "annualized exposure did not remain in the sourcing-manager approval band"
+      );
       return {
-        unitCostUsd: unitCost,
+        exactUnitCostUsd: unitCost,
+        exactBasisQuantity: basisQuantity,
         annualVolume,
         annualizedCostUsd: annualized,
         expectedAnnualizedCostUsd: expectedAnnualized,
         withheldBeforeVolume: portfolio.withheld_before_volume,
-        capitalBoardThresholdUsd: expected.capitalBoardUsd,
+        requiredApproval: "sourcing_manager",
+        engineerSelfServeThresholdUsd: expected.procurementThresholdsUsd.engineerSelfServe,
+        sourcingManagerThresholdUsd: expected.procurementThresholdsUsd.sourcingManager,
       };
     }),
 
@@ -402,8 +424,15 @@ async function main() {
       screenshots.push(
         await inspectScreenshot(
           enterprise,
-          "portfolio withholds exposure until declared volume, then computes server-side math",
+          "portfolio computes exact server-side exposure after declared-volume re-verification",
           "portfolio math result"
+        )
+      );
+      screenshots.push(
+        await inspectScreenshot(
+          enterprise,
+          "Verify stage renders declared parent context in product UI",
+          "declared parent context product stage"
         )
       );
       screenshots.push(
@@ -424,6 +453,44 @@ async function main() {
         screenshotCount: screenshots.length,
         screenshots,
         limitation: "PNG sanity proves nonblank varied browser render evidence; it is not a third-party geometric certification.",
+      };
+    }),
+
+    await runCheck("ASSEMBLY-CONTEXT-FIDELITY-001", "Populated assembly and environment render fidelity", async () => {
+      assert(assemblyFidelity.status === "PASS", `assembly fidelity status ${assemblyFidelity.status}`);
+      getStep(enterprise, "Verify stage renders declared parent context in product UI");
+      assert(
+        enterprise.evidence?.productStageContext?.parent_assembly === portfolio.parent_assembly,
+        "product Verify stage did not render the same parent assembly as portfolio context"
+      );
+      assert(/service world/i.test(enterprise.evidence?.productStageContext?.strip || ""), "product Verify stage did not expose service world");
+      assert((assemblyFidelity.cases || []).length >= 2, "assembly/context corpus does not cover multiple fixtures");
+      assert(/parent assembly identity/.test(assemblyFidelity.boundary || ""), "assembly boundary lost parent context");
+      assert(/not customer proprietary CAD/.test(assemblyFidelity.boundary || ""), "assembly boundary lost external truth line");
+      const evidence = [];
+      for (const item of assemblyFidelity.cases || []) {
+        assert(item.status === "PASS", `${item.fixtureId} did not pass`);
+        assert(item.parentAssemblyId, `${item.fixtureId} parent assembly id missing`);
+        assert(item.partId, `${item.fixtureId} part id missing`);
+        assert(item.placement?.maxAnchorErrorMm <= item.placement?.toleranceMm, `${item.fixtureId} placement tolerance failed`);
+        assert(item.render?.after?.full?.nonBackgroundRatio >= 0.18, `${item.fixtureId} seated render is mostly blank`);
+        assert(item.render?.visualDelta?.changedSampledPixels > 0, `${item.fixtureId} seat interaction did not change pixels`);
+        assert(item.screenshots?.before && item.screenshots?.after, `${item.fixtureId} screenshots missing`);
+        evidence.push({
+          fixtureId: item.fixtureId,
+          parentAssemblyId: item.parentAssemblyId,
+          partId: item.partId,
+          maxAnchorErrorMm: item.placement.maxAnchorErrorMm,
+          toleranceMm: item.placement.toleranceMm,
+          visualDelta: item.render.visualDelta,
+          screenshots: item.screenshots,
+        });
+      }
+      return {
+        fixtureCases: evidence.length,
+        evidence,
+        productStageContext: enterprise.evidence.productStageContext,
+        limitation: "Synthetic fixture-driven assembly render proof; it does not certify proprietary customer assemblies or native CAD kernels.",
       };
     }),
 

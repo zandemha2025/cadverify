@@ -23,6 +23,34 @@ MODE_DRY_RUN = "dry_run"
 MODE_IMPORT = "import"
 VALID_MODES = {MODE_DRY_RUN, MODE_IMPORT}
 
+CONNECTOR_MODE_OFFLINE_CSV = "offline_csv"
+CONNECTOR_MODE_SANDBOX_API = "sandbox_api"
+CONNECTOR_MODE_LIVE_READONLY = "live_readonly"
+CONNECTOR_MODE_LIVE_WRITE_DRAFT = "live_write_draft"
+CONNECTOR_MODE_LIVE_SEND = "live_send"
+VALID_CONNECTOR_MODES = {
+    CONNECTOR_MODE_OFFLINE_CSV,
+    CONNECTOR_MODE_SANDBOX_API,
+    CONNECTOR_MODE_LIVE_READONLY,
+    CONNECTOR_MODE_LIVE_WRITE_DRAFT,
+    CONNECTOR_MODE_LIVE_SEND,
+}
+
+BOUNDARY_SIMULATION = "simulation"
+BOUNDARY_EXPORTED_FIXTURE = "exported_fixture"
+BOUNDARY_SANDBOX = "sandbox"
+BOUNDARY_LIVE_READONLY = "live_readonly"
+BOUNDARY_DRAFT_WRITE = "draft_write"
+BOUNDARY_LIVE_SEND = "live_send"
+VALID_BOUNDARY_LABELS = {
+    BOUNDARY_SIMULATION,
+    BOUNDARY_EXPORTED_FIXTURE,
+    BOUNDARY_SANDBOX,
+    BOUNDARY_LIVE_READONLY,
+    BOUNDARY_DRAFT_WRITE,
+    BOUNDARY_LIVE_SEND,
+}
+
 STATUS_PASSED = "passed"
 STATUS_PARTIAL = "partial"
 STATUS_FAILED = "failed"
@@ -40,11 +68,14 @@ class Connector:
     source_kind: str
     file_format: str
     mode: str
+    boundary_label: str
     description: str
     template_endpoint: str
     raw_payload_stored: bool = False
     configured: bool = True
     live_credentials_required: bool = False
+    api_name: str | None = None
+    api_version: str | None = None
 
 
 CONNECTORS: tuple[Connector, ...] = (
@@ -54,7 +85,8 @@ CONNECTORS: tuple[Connector, ...] = (
         source_system="SAP ERP",
         source_kind=SOURCE_MANIFEST,
         file_format="csv",
-        mode="offline_csv",
+        mode=CONNECTOR_MODE_OFFLINE_CSV,
+        boundary_label=BOUNDARY_EXPORTED_FIXTURE,
         description="Declared part, demand, program, and material export.",
         template_endpoint="/api/v1/manifest/import/template",
     ),
@@ -64,7 +96,8 @@ CONNECTORS: tuple[Connector, ...] = (
         source_system="PLM",
         source_kind=SOURCE_MANIFEST,
         file_format="csv",
-        mode="offline_csv",
+        mode=CONNECTOR_MODE_OFFLINE_CSV,
+        boundary_label=BOUNDARY_EXPORTED_FIXTURE,
         description="Declared part registry export from a PLM/BOM system.",
         template_endpoint="/api/v1/manifest/import/template",
     ),
@@ -74,9 +107,40 @@ CONNECTORS: tuple[Connector, ...] = (
         source_system="Supplier quotes / ERP actuals",
         source_kind=SOURCE_GROUND_TRUTH,
         file_format="csv",
-        mode="offline_csv",
+        mode=CONNECTOR_MODE_OFFLINE_CSV,
+        boundary_label=BOUNDARY_EXPORTED_FIXTURE,
         description="Historical quote, invoice, or actual-cost export.",
         template_endpoint="/api/v1/ground-truth/import/template",
+    ),
+    Connector(
+        id="sap_s4hana_product_bom_readonly",
+        label="SAP S/4HANA Product/BOM read-only",
+        source_system="SAP S/4HANA",
+        source_kind=SOURCE_MANIFEST,
+        file_format="odata",
+        mode=CONNECTOR_MODE_SANDBOX_API,
+        boundary_label=BOUNDARY_SANDBOX,
+        description="Read-only product/material and BOM adapter for vendor or customer sandbox tenants.",
+        template_endpoint="",
+        configured=False,
+        live_credentials_required=True,
+        api_name="SAP S/4HANA Product/BOM OData",
+        api_version="sandbox-readonly",
+    ),
+    Connector(
+        id="windchill_part_bom_readonly",
+        label="PTC Windchill Part/BOM read-only",
+        source_system="PTC Windchill",
+        source_kind=SOURCE_MANIFEST,
+        file_format="odata",
+        mode=CONNECTOR_MODE_SANDBOX_API,
+        boundary_label=BOUNDARY_SANDBOX,
+        description="Read-only part, revision, and BOM adapter for Windchill sandbox tenants.",
+        template_endpoint="",
+        configured=False,
+        live_credentials_required=True,
+        api_name="PTC Windchill REST Product Management",
+        api_version="sandbox-readonly",
     ),
 )
 
@@ -189,13 +253,19 @@ async def run_connector_csv(
         org_id=org_id,
         user_id=user_id,
         connector_id=connector.id,
+        connector_mode=connector.mode,
+        boundary_label=connector.boundary_label,
         source_system=connector.source_system,
         source_kind=connector.source_kind,
+        api_name=connector.api_name,
+        api_version=connector.api_version,
         mode=mode,
         status=status,
         filename=(filename or None),
         file_sha256=file_hash,
         file_size_bytes=len(raw),
+        source_record_count=rows_total,
+        normalized_record_count=rows_valid,
         rows_total=rows_total,
         rows_valid=rows_valid,
         rows_invalid=rows_invalid,
@@ -209,6 +279,8 @@ async def run_connector_csv(
             "template_endpoint": connector.template_endpoint,
             "file_format": connector.file_format,
             "live_credentials_required": connector.live_credentials_required,
+            "proof_boundary": connector.boundary_label,
+            "promotion_rule": "simulation -> exported_fixture -> sandbox -> live_readonly -> draft_write -> live_send",
         },
         completed_at=_now(),
     )
@@ -264,13 +336,23 @@ def serialize_run(row: IntegrationRun) -> dict[str, Any]:
     return {
         "id": row.ulid,
         "connector_id": row.connector_id,
+        "connector_mode": row.connector_mode,
+        "boundary_label": row.boundary_label,
         "source_system": row.source_system,
         "source_kind": row.source_kind,
+        "api_name": row.api_name,
+        "api_version": row.api_version,
+        "external_tenant_hash": row.external_tenant_hash,
+        "correlation_ids": row.correlation_ids_json or [],
+        "watermark": row.watermark,
+        "idempotency_key": row.idempotency_key,
         "mode": row.mode,
         "status": row.status,
         "filename": row.filename,
         "file_sha256": row.file_sha256,
         "file_size_bytes": row.file_size_bytes,
+        "source_record_count": row.source_record_count,
+        "normalized_record_count": row.normalized_record_count,
         "rows_total": row.rows_total,
         "rows_valid": row.rows_valid,
         "rows_invalid": row.rows_invalid,

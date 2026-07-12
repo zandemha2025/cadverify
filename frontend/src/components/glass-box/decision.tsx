@@ -64,7 +64,7 @@ export function RedesignBanner({
     >
       <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warn" aria-hidden />
       <p className="text-foreground">
-        <span className="font-semibold text-warn">{process} requires design-for-process</span>
+        <span className="font-semibold text-warn">{process} needs a design change first</span>
         {blocker ? ` (${blocker})` : ""} — the cost shown is{" "}
         <span className="font-semibold">“if redesigned,”</span> not a current quote.
         {onSeeRouting && (

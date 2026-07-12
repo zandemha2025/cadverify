@@ -31,6 +31,15 @@ class EstimateOptions:
     rate_overrides: dict = field(default_factory=dict)
     strict_dfm: bool = False                 # True = literal spec §5.3 (drop verdict=='fail')
     material_class_is_user: bool = False     # set True when CLI passes --material-class
+    # ── material read from the CAD file (no-kernel text scan, spec honesty slice) ──
+    # True when the caller left material_class at its DEFAULT and a declared
+    # material annotation was found in the uploaded CAD file (src.parsers.
+    # step_material) and mapped to a material_class — the CAD's own stated claim,
+    # not measured from geometry and not a buyer confirmation for this quote.
+    # Mutually exclusive with material_class_is_user by construction: a real user
+    # declaration always wins upstream and this stays False in that case.
+    # Default False => byte-identical to pre-CAD-material behaviour.
+    material_class_from_cad: bool = False
     region_is_user: bool = False             # set True when the caller explicitly chose a region
     # Per-shop calibration (bucket #1): a ShopProfile, a stored profile name, a
     # path, a dict, or None. When bound, every default it covers flips to SHOP.
@@ -216,9 +225,13 @@ def _global_assumptions(rates: RateCard, options: EstimateOptions, region: str) 
                + ("(buyer-supplied)" if options.complexity_is_user
                   else "(DEFAULT moderate; raise for slides/side-actions)")),
         Driver("material_class", 0.0, options.material_class,
-               Provenance.USER if options.material_class_is_user else Provenance.DEFAULT,
+               Provenance.USER if options.material_class_is_user
+               else (Provenance.CAD if options.material_class_from_cad
+                     else Provenance.DEFAULT),
                f"material class = {options.material_class} "
                + ("(buyer-supplied)" if options.material_class_is_user
+                  else "(read from the CAD file's material annotation)"
+                  if options.material_class_from_cad
                   else "(DEFAULT: these are polymer automotive parts; override for metal)")),
     ]
     # ── owned-equipment assumption (only when a process is declared OWNED and

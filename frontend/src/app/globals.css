@@ -166,6 +166,9 @@
   --color-prov-default:         var(--cv-prov-default);
   --color-prov-default-bg:      var(--cv-prov-default-bg);
   --color-prov-default-border:  var(--cv-prov-default-border);
+  --color-prov-cad:             var(--cv-prov-cad);
+  --color-prov-cad-bg:          var(--cv-prov-cad-bg);
+  --color-prov-cad-border:      var(--cv-prov-cad-border);
 
   /* confidence / data-quality track + measurement tick */
   --color-band-track: var(--cv-band-track);
@@ -208,6 +211,7 @@
   --cv-prov-shop:     #a9682a; --cv-prov-shop-bg:     #f6ece2; --cv-prov-shop-border:     #e3c9b0;
   --cv-prov-user:     #5b4fc0; --cv-prov-user-bg:     #ece9fa; --cv-prov-user-border:     #cbc4f0;
   --cv-prov-default:  #8a93a3; --cv-prov-default-bg:  #eef1f5; --cv-prov-default-border:  #cbd3dd;
+  --cv-prov-cad:      #a12d86; --cv-prov-cad-bg:      #f7e8f2; --cv-prov-cad-border:      #ecc9e2;
 
   --cv-band-track: #e2e7ee;
   --cv-band-fill:  #205aae;
@@ -249,6 +253,7 @@
   --cv-prov-shop:     #c68a4e; --cv-prov-shop-bg:     #241812; --cv-prov-shop-border:     #4c3620;
   --cv-prov-user:     #9a90ee; --cv-prov-user-bg:     #191634; --cv-prov-user-border:     #322b62;
   --cv-prov-default:  #7e8b9a; --cv-prov-default-bg:  #161d26; --cv-prov-default-border:  #303b47;
+  --cv-prov-cad:      #e08ccf; --cv-prov-cad-bg:      #2a1125; --cv-prov-cad-border:      #52254a;
 
   --cv-band-track: #212a34;
   --cv-band-fill:  #4c90f0;
@@ -306,6 +311,7 @@
   --cv-prov-shop:     #d08a4c; --cv-prov-shop-bg:     #241812; --cv-prov-shop-border:     #4c3620;
   --cv-prov-user:     #9d8cff; --cv-prov-user-bg:     #191634; --cv-prov-user-border:     #322b62;
   --cv-prov-default:  #78828a; --cv-prov-default-bg:  #161a1c; --cv-prov-default-border:  #2e353a;
+  --cv-prov-cad:      #e08ccf; --cv-prov-cad-bg:      #2a1125; --cv-prov-cad-border:      #52254a;
 
   /* Confidence / data-quality track — molten fill on a hairline track. */
   --cv-band-track: #20252a;
@@ -345,6 +351,23 @@ body {
   line-height: 1.2rem;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* ── A11Y (F3 · WCAG 2.4.7): the auth email/password inputs render on the
+   self-contained dark auth panel with inline styles, so their focus ring can't
+   live inline (`:focus-visible` is unexpressible there, and an inline
+   `outline:none` would beat any stylesheet rule). Draw a clearly visible cobalt
+   ring on keyboard focus — 2px solid + offset against the near-black field is
+   well above the 3:1 non-text contrast floor. `:focus` clears the UA default so
+   only our ring shows; `:focus-visible` (source-ordered after) adds it back for
+   keyboard users. */
+.auth-input:focus {
+  outline: none;
+}
+.auth-input:focus-visible {
+  outline: 2px solid #6ba6f4;
+  outline-offset: 2px;
+  border-color: #6ba6f4;
 }
 
 /* Numbers are the product: tabular mono everywhere they appear (the EVIDENCE). */
@@ -438,6 +461,7 @@ body {
   --cv-prov-shop: #9a5b2a; --cv-prov-shop-bg: #f6ece2; --cv-prov-shop-border: #e3c9b0;
   --cv-prov-user: #6d5bd0; --cv-prov-user-bg: #eeebfa; --cv-prov-user-border: #cfc6f0;
   --cv-prov-default: #8a93a3; --cv-prov-default-bg: #f1ede6; --cv-prov-default-border: #cfc8bd;
+  --cv-prov-cad: #a12d86; --cv-prov-cad-bg: #f7e8f2; --cv-prov-cad-border: #ecc9e2;
   --cv-band-track: #e4dfd6; --cv-band-fill: #0e66b3; --cv-tick: #a89f92;
   color-scheme: light;
 }
@@ -455,6 +479,7 @@ body {
   --cv-prov-shop: #d08b4c; --cv-prov-shop-bg: #2a1e10; --cv-prov-shop-border: #5e3e1e;
   --cv-prov-user: #a99bf0; --cv-prov-user-bg: #1c1733; --cv-prov-user-border: #3a2f66;
   --cv-prov-default: #8a93a3; --cv-prov-default-bg: #18243a; --cv-prov-default-border: #344461;
+  --cv-prov-cad: #e08ccf; --cv-prov-cad-bg: #2a1125; --cv-prov-cad-border: #52254a;
   --cv-band-track: #233149; --cv-band-fill: #3fa3e8; --cv-tick: #6f8099;
   color-scheme: dark;
 }

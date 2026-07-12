@@ -24,8 +24,9 @@
  */
 
 import * as THREE from "three";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { clamp01, lerp, smooth, documentScrollProgress, measureSection } from "@/lib/site/scroll-acts";
+import { acquireWebGlContext } from "@/lib/site/webgl";
 
 /** Live scene handles handed to a choreography every frame. */
 export type StageObjects = {
@@ -99,8 +100,11 @@ export type PartStageProps = {
  * Build the shared studio scene. Returns the scene handles plus a `dispose`.
  * Kept as a plain function (not a hook) so the lifecycle is atomic and testable.
  */
-function buildScene(canvas: HTMLCanvasElement, maxDpr: number): StageObjects & { dispose: () => void } {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+function buildScene(canvas: HTMLCanvasElement, maxDpr: number): (StageObjects & { dispose: () => void }) | null {
+  const context = acquireWebGlContext(canvas);
+  if (!context) return null;
+
+  const renderer = new THREE.WebGLRenderer({ canvas, context, antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(maxDpr, window.devicePixelRatio || 1));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.15;
@@ -285,17 +289,42 @@ function buildScene(canvas: HTMLCanvasElement, maxDpr: number): StageObjects & {
 
 export function PartStage({ className, style, choreography, maxDpr = 2, paused = false }: PartStageProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [fallback, setFallback] = useState(false);
   const choreoRef = useRef<Choreography | undefined>(choreography);
-  choreoRef.current = choreography;
   const pausedRef = useRef(paused);
-  pausedRef.current = paused;
+
+  useEffect(() => {
+    choreoRef.current = choreography;
+  }, [choreography]);
+
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || typeof window === "undefined") return;
 
-    const built = buildScene(canvas, maxDpr);
+    let built: ReturnType<typeof buildScene>;
+    try {
+      built = buildScene(canvas, maxDpr);
+    } catch {
+      built = null;
+    }
+    if (!built) {
+      setFallback(true);
+      return;
+    }
+    setFallback(false);
     const { renderer, camera, part } = built;
+
+    let raf = 0;
+    const onContextLost = (event: Event) => {
+      event.preventDefault();
+      cancelAnimationFrame(raf);
+      setFallback(true);
+    };
+    canvas.addEventListener("webglcontextlost", onContextLost);
 
     const parent = canvas.parentElement ?? canvas;
     const size = () => ({
@@ -326,7 +355,6 @@ export function PartStage({ className, style, choreography, maxDpr = 2, paused =
       typeof window.matchMedia === "function" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    let raf = 0;
     let last = performance.now();
     const start = last;
     let scrollT = documentScrollProgress();
@@ -379,15 +407,68 @@ export function PartStage({ className, style, choreography, maxDpr = 2, paused =
       ro.disconnect();
       window.removeEventListener("mousemove", onMouse);
       window.removeEventListener("scroll", onScroll);
+      canvas.removeEventListener("webglcontextlost", onContextLost);
       built.dispose();
     };
     // maxDpr is read once at scene build; choreography/paused are ref-tracked.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [maxDpr]);
 
   return (
-    <div className={className} style={{ position: "absolute", inset: 0, ...style }} aria-hidden="true">
-      <canvas ref={canvasRef} style={{ display: "block", width: "100%", height: "100%" }} />
+    <div
+      className={className}
+      data-render-mode={fallback ? "static" : "webgl"}
+      style={{ position: "absolute", inset: 0, ...style }}
+      aria-hidden="true"
+    >
+      {fallback && (
+        <div
+          data-testid="part-stage-static-fallback"
+          style={{
+            position: "absolute",
+            inset: 0,
+            overflow: "hidden",
+            background:
+              "radial-gradient(circle at 68% 46%, rgba(116,130,148,0.18), transparent 30%), radial-gradient(circle at 58% 52%, #11151b 0, #07090c 48%, #030405 100%)",
+          }}
+        >
+          <svg
+            viewBox="0 0 1200 800"
+            preserveAspectRatio="xMidYMid slice"
+            width="100%"
+            height="100%"
+            focusable="false"
+          >
+            <defs>
+              <linearGradient id="cv-static-metal" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stopColor="#e4e8ee" />
+                <stop offset="0.28" stopColor="#8f98a5" />
+                <stop offset="0.55" stopColor="#d5dae1" />
+                <stop offset="1" stopColor="#515a67" />
+              </linearGradient>
+              <radialGradient id="cv-static-shadow">
+                <stop offset="0" stopColor="#000" stopOpacity="0.72" />
+                <stop offset="1" stopColor="#000" stopOpacity="0" />
+              </radialGradient>
+            </defs>
+            <ellipse cx="780" cy="590" rx="300" ry="70" fill="url(#cv-static-shadow)" />
+            <g transform="translate(790 410) rotate(-18)">
+              <path
+                d="M-310-66h95l24-34h95l28-32H68l28 32h95l24 34h95v132h-95l-24 34H96l-28 32H-68l-28-32h-95l-24-34h-95z"
+                fill="url(#cv-static-metal)"
+                stroke="#f4f6f9"
+                strokeOpacity="0.35"
+                strokeWidth="3"
+              />
+              <path d="M-214-66v132M-96-100v200M96-100v200M214-66v132" stroke="#434c58" strokeWidth="9" opacity="0.72" />
+              <path d="M-300-48H300" stroke="#fff" strokeWidth="4" opacity="0.18" />
+            </g>
+          </svg>
+        </div>
+      )}
+      <canvas
+        ref={canvasRef}
+        style={{ display: fallback ? "none" : "block", width: "100%", height: "100%" }}
+      />
     </div>
   );
 }

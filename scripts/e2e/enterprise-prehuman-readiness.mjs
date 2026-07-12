@@ -23,6 +23,10 @@ const reports = {
   coverage: path.join(outputRoot, `human-sim-journey-coverage-${runId}.json`),
   gauntlet: path.join(outputRoot, `synthetic-enterprise-gauntlet-${runId}.json`),
   fidelity: path.join(outputRoot, `enterprise-answer-fidelity-${runId}.json`),
+  assemblyFidelity: path.join(outputRoot, `assembly-visual-fidelity-${runId}.json`),
+  presence: path.join(outputRoot, `enterprise-systems-presence-${runId}.json`),
+  scim: path.join(outputRoot, `scim-idp-lifecycle-${runId}.json`),
+  connector: path.join(outputRoot, `connector-sandbox-fixture-replay-${runId}.json`),
   realCad: path.join(outputRoot, `prehuman-real-cad-corpus-${runId}.json`),
   loadSmoke: path.join(outputRoot, `api-load-smoke-${runId}.json`),
   restoreDrill: path.join(outputRoot, `postgres-restore-drill-${runId}.json`),
@@ -30,6 +34,9 @@ const reports = {
 
 const files = {
   workflow: path.join(repoRoot, ".github/workflows/ci.yml"),
+  saasPromotion: path.join(repoRoot, ".github/workflows/saas-promote.yml"),
+  regulatedDeploy: path.join(repoRoot, ".github/workflows/regulated-deploy.yml"),
+  flyPromotionScript: path.join(repoRoot, "scripts/ops/promote-fly-release.sh"),
   frontendPackage: path.join(repoRoot, "frontend/package.json"),
   routeAuth: path.join(repoRoot, "scripts/ci/check_route_auth.py"),
   rfqService: path.join(repoRoot, "backend/src/services/rfq_package_service.py"),
@@ -94,10 +101,17 @@ async function main() {
     coverage,
     gauntlet,
     fidelity,
+    assemblyFidelity,
+    presence,
+    scim,
+    connector,
     realCad,
     loadSmoke,
     restoreDrill,
     workflow,
+    saasPromotion,
+    regulatedDeploy,
+    flyPromotionScript,
     frontendPackage,
     routeAuth,
     rfqService,
@@ -119,10 +133,17 @@ async function main() {
     readJson(reports.coverage),
     readJson(reports.gauntlet),
     readJson(reports.fidelity),
+    readJson(reports.assemblyFidelity),
+    readJson(reports.presence),
+    readJson(reports.scim),
+    readJson(reports.connector),
     readJson(reports.realCad),
     readJson(reports.loadSmoke),
     readJson(reports.restoreDrill),
     readText(files.workflow),
+    readText(files.saasPromotion),
+    readText(files.regulatedDeploy),
+    readText(files.flyPromotionScript),
     readText(files.frontendPackage),
     readText(files.routeAuth),
     readText(files.rfqService),
@@ -188,21 +209,82 @@ async function main() {
       return { checks: fidelity.checks.length };
     }),
 
+    await check("ASSEMBLY-CONTEXT-FIDELITY-001", "Assembly, environment, and rendered context fidelity", async () => {
+      assert(assemblyFidelity.status === "PASS", `assembly visual fidelity status ${assemblyFidelity.status}`);
+      assert((assemblyFidelity.cases || []).length >= 2, "assembly fidelity corpus needs multiple fixture contexts");
+      assert((assemblyFidelity.cases || []).every((item) => item.status === "PASS"), "assembly fidelity has failed fixture cases");
+      assert(/parent assembly identity/.test(assemblyFidelity.boundary || ""), "assembly fidelity boundary lost parent-assembly claim");
+      assert(/not customer proprietary CAD/.test(assemblyFidelity.boundary || ""), "assembly fidelity external boundary is not explicit");
+      const caseIds = new Set((assemblyFidelity.cases || []).map((item) => item.fixtureId));
+      assert(caseIds.has("DOOR-HANDLE-ASSEMBLY-FIDELITY-001"), "automotive assembly fixture missing");
+      assert(caseIds.has("VALVE-STEM-ASSEMBLY-FIDELITY-001"), "oil-and-gas assembly fixture missing");
+      for (const item of assemblyFidelity.cases || []) {
+        assert(item.placement?.maxAnchorErrorMm <= item.placement?.toleranceMm, `${item.fixtureId} placement tolerance failed`);
+        assert(item.render?.visualDelta?.changedSampledPixels > 0, `${item.fixtureId} visual delta missing`);
+        assert(item.screenshots?.before && item.screenshots?.after, `${item.fixtureId} screenshots missing`);
+      }
+      return {
+        fixtureCases: assemblyFidelity.cases.length,
+        fixtures: [...caseIds],
+        mode: "fixture-driven populated assembly/context render proof, not customer/native CAD certification",
+      };
+    }),
+
     await check("DEPLOY-PIPELINE-001", "Production deploy and release gates", async () => {
       contains(
         workflow,
         "Build frontend production image and push on main",
-        "Deploy frontend (pre-built image)",
-        "Deploy backend (pre-built image)",
+        "Build backend production image and push on main",
+        "Write immutable commercial release manifest",
         "Lint and render Helm chart",
         "Postgres restore drill",
         "Run human and enterprise browser journeys"
       );
-      contains(frontendPackage, "test:e2e:real-cad-corpus", "test:e2e:ops-load", "test:e2e:ops-restore", "test:e2e:readiness");
+      contains(
+        saasPromotion,
+        "Require a successful CI release for this exact SHA",
+        "Download CI-owned immutable release manifest",
+        "Deploy and verify staging",
+        "Deploy and verify production",
+        "environment: saas-staging",
+        "environment: saas-production"
+      );
+      contains(
+        flyPromotionScript,
+        "digest-qualified images",
+        "git merge-base --is-ancestor",
+        'flyctl scale count web=2 worker=2',
+        "fly-live-health-gate.mjs",
+        '--image "$CADVERIFY_BACKEND_IMAGE"',
+        '--image "$CADVERIFY_FRONTEND_IMAGE"'
+      );
+      contains(
+        regulatedDeploy,
+        "Verify and deploy signed digests",
+        "Verify image signatures with the GovCloud KMS key",
+        "Deploy atomically",
+        "Verify rollouts and deep dependency health"
+      );
+      contains(
+        frontendPackage,
+        "test:e2e:scim-idp",
+        "test:e2e:assembly-fidelity",
+        "test:e2e:enterprise-presence",
+        "test:e2e:connector-fixtures",
+        "test:e2e:real-cad-corpus",
+        "test:e2e:ops-load",
+        "test:e2e:ops-restore",
+        "test:e2e:readiness"
+      );
       contains(backendFly, 'app = "cadvrfy-api"', "alembic upgrade head");
       contains(frontendFly, 'app = "cadvrfy-web"', "force_https = true");
       return {
-        deployTargets: ["backend Fly app", "frontend Fly app", "Helm render", "Docker images"],
+        deployTargets: [
+          "immutable commercial images",
+          "isolated Fly staging and production",
+          "signed GovCloud images",
+          "atomic EKS deployment",
+        ],
       };
     }),
 
@@ -211,7 +293,12 @@ async function main() {
       contains(
         workflow,
         "Every /api/v1 route calls require_api_key",
-        "cv_live_ never appears in captured Sentry payload"
+        "Auth material never appears in captured Sentry payload",
+        "cv_live_",
+        "FAKE_SESSION_SENTINEL",
+        "FAKE_MAGIC_TOKEN_SENTINEL",
+        "FAKE_PASSWORD_SENTINEL",
+        "FAKE_TURNSTILE_SENTINEL"
       );
       contains(
         enterpriseOpsTest,
@@ -256,22 +343,76 @@ async function main() {
     await check("HELM-OPS-001", "Kubernetes operational assumptions", async () => {
       contains(helmValues, "accessModes:", "ReadWriteMany");
       contains(helmPvc, ".Values.persistence.blobs.accessModes");
-      contains(helmWorker, "livenessProbe:", "readinessProbe:", "import src.jobs.worker");
+      contains(
+        helmWorker,
+        'command: ["arq", "src.jobs.worker.WorkerSettings"]',
+        "startupProbe:",
+        "livenessProbe:",
+        "readinessProbe:",
+        'command: ["/bin/sh", "-c", "kill -0 1"]'
+      );
       contains(workflow, "helm lint charts/cadverify", "helm template cadverify charts/cadverify");
       return {
         blobPvcMode: "ReadWriteMany configurable",
-        workerProbe: "import probe rendered",
+        workerProbe: "PID 1 command probes rendered",
       };
     }),
 
     await check("CONNECTOR-ORG-SIM-001", "Enterprise connector and org simulation", async () => {
-      contains(integrationService, "sap_manifest_csv", "plm_manifest_csv", "file_sha256", "raw_stored=False");
+      assert(presence.status === "PASS", `enterprise systems presence status ${presence.status}`);
+      assert((presence.steps || []).every((item) => item.status === "PASS"), "enterprise systems presence has failed steps");
+      const presenceIds = new Set((presence.steps || []).map((item) => item.id));
+      for (const id of [
+        "SSO-OIDC-SAML-001",
+        "SCIM-JML-001",
+        "SAP-ERP-SANDBOX-001",
+        "PLM-WINDCHILL-SANDBOX-001",
+        "PROCUREMENT-RFQ-DRAFT-001",
+        "CAD-WORKSTATION-001",
+        "MOBILE-IOS-SURFACE-001",
+      ]) {
+        assert(presenceIds.has(id), `enterprise systems presence missing ${id}`);
+      }
+      assert(/not vendor certification/.test(presence.boundary || ""), "enterprise systems presence boundary is not explicit");
+      contains(
+        integrationService,
+        "sap_manifest_csv",
+        "plm_manifest_csv",
+        "sap_s4hana_product_bom_readonly",
+        "windchill_part_bom_readonly",
+        "file_sha256",
+        "raw_stored=False"
+      );
       contains(samlService, "resolve_saml_group_assignment", "SamlGroupMappingAmbiguousError");
+      assert(["PASS", "SKIPPED"].includes(scim.status), `SCIM lifecycle status ${scim.status}`);
+      if (scim.status === "SKIPPED") {
+        assert(/Requires CADVERIFY/.test(scim.boundary || ""), "SCIM skip boundary is not explicit");
+      }
+      assert(connector.status === "PASS", `connector fixture status ${connector.status}`);
+      assert(
+        ["PASS", "SKIPPED"].includes(connector.apiLifecycle?.status),
+        `connector API lifecycle status ${connector.apiLifecycle?.status}`
+      );
+      if (connector.apiLifecycle?.status === "SKIPPED") {
+        assert(/Requires CADVERIFY/.test(connector.apiLifecycle.boundary || ""), "connector API skip boundary is not explicit");
+      }
+      assert(
+        connector.results?.some((item) => item.connectorId === "sap_s4hana_product_bom_readonly" && item.status === "PASS"),
+        "SAP sandbox fixture replay missing"
+      );
+      assert(
+        connector.results?.some((item) => item.connectorId === "windchill_part_bom_readonly" && item.status === "PASS"),
+        "Windchill sandbox fixture replay missing"
+      );
       assert(gauntlet.scenarios.some((item) => item.id === "SSO-SCIM-001" && item.status === "PASS"), "SSO/SCIM simulation missing");
       assert(gauntlet.scenarios.some((item) => item.id === "SAP-ERP-001" && item.status === "PASS"), "SAP/ERP simulation missing");
       assert(gauntlet.scenarios.some((item) => item.id === "PLM-BOM-001" && item.status === "PASS"), "PLM/BOM simulation missing");
       return {
-        connectorMode: "offline hashed manifests, no live SAP/PLM certification claim",
+        presenceSurfaces: presence.steps.length,
+        scimStatus: scim.status,
+        connectorFixtureStatus: connector.status,
+        connectorApiLifecycle: connector.apiLifecycle?.status,
+        connectorMode: "offline hashed manifests plus sandbox credential profile lifecycle, no live SAP/PLM certification claim",
       };
     }),
   ];

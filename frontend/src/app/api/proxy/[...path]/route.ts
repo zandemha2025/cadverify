@@ -11,9 +11,9 @@
  * client's structured-error handling (e.g. 400 GEOMETRY_INVALID, 429) is
  * preserved.
  *
- * Bodies are buffered (arrayBuffer) and re-sent with the original Content-Type
- * so multipart boundaries survive; fine for local dev. (For very large uploads
- * in production this proxy buffers in the serverless function — see notes.)
+ * Request and response bodies are streamed. This is required for multi-GB batch
+ * uploads: buffering here would bypass the backend's bounded streaming design
+ * and exhaust the frontend process before the backend could reject the upload.
  */
 import { type NextRequest } from "next/server";
 import { backendUrl } from "@/lib/api-base";
@@ -29,6 +29,11 @@ const RELAY_HEADERS = [
   "x-ratelimit-remaining",
   "x-ratelimit-reset",
   "retry-after",
+  // Preview-mesh provenance (honest decimation readout for the Verify stage).
+  "x-mesh-original-faces",
+  "x-mesh-preview-faces",
+  "x-mesh-decimated",
+  "x-mesh-source",
 ];
 
 async function handle(
@@ -36,6 +41,23 @@ async function handle(
   ctx: { params: Promise<{ path: string[] }> }
 ): Promise<Response> {
   const { path } = await ctx.params;
+  if (
+    path.length === 0 ||
+    path.some(
+      (segment) =>
+        !segment ||
+        segment === "." ||
+        segment === ".." ||
+        segment.includes("\0") ||
+        segment.includes("/") ||
+        segment.includes("\\") ||
+        segment.includes("%") ||
+        segment.includes("?") ||
+        segment.includes("#"),
+    )
+  ) {
+    return Response.json({ detail: "Not found" }, { status: 404 });
+  }
   const token = (await getSessionToken()) ?? "";
   const target = backendUrl(`/api/v1/${path.join("/")}${req.nextUrl.search}`);
 
@@ -48,12 +70,16 @@ async function handle(
   const contentType = req.headers.get("content-type");
   if (contentType) headers["content-type"] = contentType;
 
-  const res = await fetch(target, {
+  const init: RequestInit & { duplex?: "half" } = {
     method,
     headers,
-    body: hasBody ? await req.arrayBuffer() : undefined,
+    body: hasBody ? req.body : undefined,
     cache: "no-store",
-  });
+    redirect: "error",
+    signal: req.signal,
+  };
+  if (hasBody) init.duplex = "half";
+  const res = await fetch(target, init);
 
   const relayed = new Headers();
   for (const h of RELAY_HEADERS) {

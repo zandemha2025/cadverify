@@ -28,6 +28,12 @@ export interface PartContext {
   provenance: "user";
   /** the declared service world, only present when actually declared. */
   service_environment?: Record<string, unknown>;
+  /** BOM-rollup linkage (Slice 3), present only when the org tied this part to a
+   *  persisted bom_edges tree — names the tree + this part's ref + vehicles/year so
+   *  its annual volume rolls up from the real hierarchy instead of the flat field. */
+  bom_assembly_key?: string | null;
+  bom_child_ref?: string | null;
+  bom_roots_per_year?: number | null;
 }
 
 export interface PartContextResult {

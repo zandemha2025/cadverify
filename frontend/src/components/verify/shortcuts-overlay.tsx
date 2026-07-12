@@ -75,6 +75,7 @@ export function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close keyboard shortcuts"
             style={{
               marginLeft: "auto",
               background: "none",

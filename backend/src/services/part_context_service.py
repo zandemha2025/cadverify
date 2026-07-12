@@ -37,8 +37,14 @@ DECLARED_FIELDS = (
     "units_per_parent",
     "annual_volume",
     "service_environment",
+    # BOM-rollup linkage (Slice 3): ties this part to a persisted bom_edges tree so
+    # its annual volume rolls up from the real hierarchy instead of the flat
+    # ``annual_volume``. All optional — unset → the flat declared path, byte-identical.
+    "bom_assembly_key",
+    "bom_child_ref",
+    "bom_roots_per_year",
 )
-_POSITIVE_INT_FIELDS = ("units_per_parent", "annual_volume")
+_POSITIVE_INT_FIELDS = ("units_per_parent", "annual_volume", "bom_roots_per_year")
 
 # Declared service-environment schema (machine-inventory §6). Every key is
 # USER-declared, never inferred from the mesh. Numeric temps/pressure, boolean
@@ -169,7 +175,10 @@ async def upsert_context(
 
     Org-scoped: only ever touches the caller-org's row for this mesh. Validates
     the declared quantities first (``ValueError`` on a non-positive count). Only
-    the four declared fields are written; ``created_by`` is stamped on insert.
+    On insert, all declared fields are written from the body. On update, only
+    fields actually present in the request are changed, so a Verify-world refresh
+    cannot erase separately declared lineage/demand context by omission.
+    ``created_by`` is stamped on insert.
     """
     validate_context(fields)
     row = await get_context(session, org_id, mesh_hash)
@@ -184,7 +193,8 @@ async def upsert_context(
         session.add(row)
     else:
         for key in DECLARED_FIELDS:
-            setattr(row, key, fields.get(key))
+            if key in fields:
+                setattr(row, key, fields.get(key))
     await session.flush()
     return row
 
@@ -212,4 +222,10 @@ def serialize_context(row: Any) -> dict:
     env = getattr(row, "service_environment", None)
     if env is not None:
         out["service_environment"] = env
+    # The BOM-rollup linkage (Slice 3) is surfaced ONLY when actually declared — a
+    # context with no linkage stays byte-identical to the pre-Slice-3 shape.
+    for key in ("bom_assembly_key", "bom_child_ref", "bom_roots_per_year"):
+        val = getattr(row, key, None)
+        if val is not None:
+            out[key] = val
     return out

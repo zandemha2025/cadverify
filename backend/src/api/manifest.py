@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.org_context import resolve_org
+from src.auth.org_limits import enforce_org_limits
 from src.auth.rate_limit import limiter
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser
@@ -103,6 +104,7 @@ async def import_manifest(
     file: Optional[UploadFile] = File(None),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
+    _org_limit: None = Depends(enforce_org_limits),
 ):
     """Bulk-import an org's declared parts manifest from a CSV.
 

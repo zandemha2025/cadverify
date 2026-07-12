@@ -162,6 +162,30 @@ async def test_require_dashboard_session_rejects_revoked(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_require_dashboard_session_fails_closed_on_prod_db_error(monkeypatch):
+    from src.auth.dashboard_session import (
+        COOKIE_NAME,
+        require_dashboard_session,
+        sign,
+    )
+
+    import src.auth.models as _models
+
+    monkeypatch.setenv("RELEASE", "prod-sha")
+    monkeypatch.setattr(
+        _models,
+        "lookup_session_user",
+        AsyncMock(side_effect=RuntimeError("database unavailable")),
+    )
+    req = MagicMock()
+    req.cookies = {COOKIE_NAME: sign(7, session_version=3)}
+    with pytest.raises(HTTPException) as exc:
+        await require_dashboard_session(req)
+    assert exc.value.status_code == 503
+    assert exc.value.detail["code"] == "auth_dependency_unavailable"
+
+
+@pytest.mark.asyncio
 async def test_require_dashboard_session_missing_raises_401():
     from src.auth.dashboard_session import require_dashboard_session
 

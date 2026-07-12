@@ -1,0 +1,22 @@
+=== parse concurrency: ThreadPool (GIL+gmsh-lock) vs ProcessPool (spawn) ===
+measured: 2026-07-09 00:18:23 UTC  (time.perf_counter, real runs)
+host: single-container  machine=x86_64  py3.11.15  os.cpu_count()=4
+gmsh available: True   process-pool workers = 3  (min(cpu-1, cap=8); PARSE_POOL_WORKERS overrides)
+first pooled submit incl. spawn+import startup: 5.07s (one-time, amortized over the process lifetime)
+single part, pooled (warm): 4.435s  faces=194454 verts=97231
+pickle round-trip of that mesh (the pool boundary): dumps=2.2ms  loads=0.8ms  blob=8.17MB  => ~0.07% of the 4.4s parse (net win)
+
+--- K=3 DISTINCT heavy parts (deterministic; distinct_sha=3/3) ---
+  threads, 3 parts: 12.507s wall  (~2.82x single — serialized on GIL + gmsh lock)
+  pool,    3 parts:  5.193s wall  (~1.17x single)
+  speedup (threads/pool): 2.41x   [3 parts / 3 workers = 1 wave(s)]
+
+--- K=4 DISTINCT heavy parts (deterministic; distinct_sha=4/4) ---
+  threads, 4 parts: 16.556s wall  (~3.73x single — serialized on GIL + gmsh lock)
+  pool,    4 parts:  8.585s wall  (~1.94x single)
+  speedup (threads/pool): 1.93x   [4 parts / 3 workers = 2 wave(s)]
+
+=> Process pool parallelizes concurrent DISTINCT parts past the GIL AND the
+   process-global gmsh lock. With K <= workers, K parts finish in ~one single-
+   part time; with K > workers, in ceil(K/workers) waves. Pickle boundary is
+   sub-percent of the parse. STL stays in-thread; warm cache hits skip the pool.

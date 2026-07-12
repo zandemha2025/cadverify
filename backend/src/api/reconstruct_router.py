@@ -9,7 +9,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.errors import DOC_BASE
@@ -65,6 +65,18 @@ async def reconstruct(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except reconstruction_service.ReconstructionQueueUnavailableError:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "RECONSTRUCTION_ENQUEUE_FAILED",
+                "message": (
+                    "Reconstruction could not be scheduled. The job was marked "
+                    "failed and its uploaded images were removed; please retry."
+                ),
+                "doc_url": f"{DOC_BASE}/RECONSTRUCTION_ENQUEUE_FAILED",
+            },
+        )
 
     return JSONResponse(
         status_code=202,
@@ -84,14 +96,23 @@ async def download_reconstruction_mesh(
     session: AsyncSession = Depends(get_db_session),
 ):
     """Download the reconstructed mesh STL file. Requires authentication and job ownership."""
-    mesh_path = await reconstruction_service.get_reconstruction_mesh_path(
+    mesh_stream = await reconstruction_service.open_reconstruction_mesh(
         session, job_id, user.user_id
     )
-    if mesh_path is None:
+    if mesh_stream is None:
         raise HTTPException(status_code=404, detail="Mesh not found or job not complete")
 
-    return FileResponse(
-        mesh_path,
+    def body():
+        try:
+            while chunk := mesh_stream.read(256 * 1024):
+                yield chunk
+        finally:
+            mesh_stream.close()
+
+    return StreamingResponse(
+        body(),
         media_type="application/sla",
-        filename=f"reconstructed_{job_id}.stl",
+        headers={
+            "Content-Disposition": f'attachment; filename="reconstructed_{job_id}.stl"'
+        },
     )

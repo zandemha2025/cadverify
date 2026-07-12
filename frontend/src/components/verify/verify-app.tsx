@@ -7,12 +7,15 @@
  * hex, theme-independent (the rest of the app is dark-first); flag-off this whole
  * tree is unreachable, so the existing app is byte-identical.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { C, MONO, SANS } from "@/lib/verify/tokens";
 import { runVerification, type VerifyResult } from "@/lib/verify/run";
 import { listMachines } from "@/lib/verify/machine-api";
 import { CAD_ACCEPT } from "@/lib/cad-file";
-import { Stage } from "./stage";
+import { VERIFY_PART_CAD_INPUT } from "@/lib/verify/file-inputs";
+import { Stage, type StageAssembly } from "./stage";
+import { AssemblyPanel } from "./assembly-panel";
+import { fetchAssembly, fetchAssemblyAnalysis, defaultPartOfInterest, type AssemblyRender, type AssemblyAnalysis } from "@/lib/verify/assembly";
 import { VerifyScreen } from "./verify-screen";
 import { MachinesScreen } from "./machines-screen";
 import { RecordsScreen } from "./records-screen";
@@ -28,6 +31,8 @@ import { PartScreen } from "./part-screen";
 import { ToastProvider } from "./toast";
 import { ShortcutsOverlay } from "./shortcuts-overlay";
 import { CalibrationSwitcher } from "./calibration-switcher";
+import { VerifyAccountMenu } from "./account-menu";
+import { sampleCubeFile } from "@/lib/verify/sample-cad";
 
 // The shared hotkey nav map — matches the design 1:1 (support.js keydown handler):
 // H/V/P/R/G/M/T/C jump between the surfaces, `?` opens the shortcuts sheet. `c`
@@ -79,6 +84,16 @@ export function VerifyApp() {
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [running, setRunning] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  // Multi-part assembly render (>= 2 solids): the combined GLB + product tree.
+  // null for single parts, which keep the existing single-shell path untouched.
+  const [assembly, setAssembly] = useState<AssemblyRender | null>(null);
+  const [assemblySelectedId, setAssemblySelectedId] = useState<string | null>(null);
+  // The REAL P3 per-part analysis (verdict + should-cost + interference), fetched
+  // separately from the fast render because it runs the cost engine on every solid
+  // (~15s on AS1). null until it lands; `assemblyAnalyzing` drives the honest
+  // "analysing per-part…" state while it is in flight.
+  const [assemblyAnalysis, setAssemblyAnalysis] = useState<AssemblyAnalysis | null>(null);
+  const [assemblyAnalyzing, setAssemblyAnalyzing] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   // A REAL signal for the rail footer: are any of the org's machines declaring an
@@ -89,6 +104,12 @@ export function VerifyApp() {
   // The last part the user verified — so a change to the declared world can re-run
   // the verification (re-persist the env + re-cost against it) for the same part.
   const latestFile = useRef<File | null>(null);
+  // Monotonic run token. Selecting a material class (or toggling the world) while a
+  // prior verification is still in flight dispatches a NEW run; without this guard the
+  // two async runs can resolve OUT OF ORDER and a stale result clobbers the fresh one
+  // — the material-chip race where the walk still reads "Polymer" after clicking Steel.
+  // Only the latest-dispatched run is allowed to write result/running state.
+  const runSeq = useRef(0);
 
   const nav = useCallback((s: string) => {
     if (s === "acquisition") return setScreen("acquisition");
@@ -100,16 +121,59 @@ export function VerifyApp() {
 
   const runVerify = useCallback(
     async (f: File) => {
+      const seq = ++runSeq.current;
       setFile(f);
       latestFile.current = f;
       setScreen("verify");
       setRunning(true);
       setResult(null);
+      // Reset any prior assembly render (revoke its GLB object URL).
+      setAssembly((prev) => {
+        prev?.revoke();
+        return null;
+      });
+      setAssemblySelectedId(null);
+      setAssemblyAnalysis(null);
+      setAssemblyAnalyzing(false);
+
+      // Assembly detection runs IN PARALLEL and is best-effort — it only fires the
+      // extra request for STEP/IGES, returns null for a single part or STL, and
+      // never blocks or alters the single-part path. When it resolves to a real
+      // multi-part assembly, the stage + right panel switch to the in-context view.
+      void fetchAssembly(f)
+        .then((asm) => {
+          if (runSeq.current !== seq) {
+            asm?.revoke();
+            return;
+          }
+          if (asm) {
+            setAssembly(asm);
+            setAssemblySelectedId(defaultPartOfInterest(asm.model.parts));
+            // The heavier per-part analysis (real DFM + should-cost + interference
+            // on every solid, ~15s) now runs; the render is already up. Guarded by
+            // the same run token so a superseded upload never merges stale analysis.
+            setAssemblyAnalyzing(true);
+            void fetchAssemblyAnalysis(f)
+              .then((analysis) => {
+                if (runSeq.current !== seq) return;
+                setAssemblyAnalysis(analysis);
+                setAssemblyAnalyzing(false);
+              })
+              .catch(() => {
+                if (runSeq.current !== seq) return;
+                setAssemblyAnalyzing(false);
+              });
+          }
+        })
+        .catch(() => {});
+
       try {
         const r = await runVerification({ file: f, env, materialClass });
-        setResult(r);
+        // Drop a result that a newer run has superseded — last dispatch wins, so the
+        // displayed verdict/material always matches the most recent selection.
+        if (runSeq.current === seq) setResult(r);
       } finally {
-        setRunning(false);
+        if (runSeq.current === seq) setRunning(false);
       }
     },
     [env, materialClass]
@@ -119,6 +183,10 @@ export function VerifyApp() {
     if (file) void runVerify(file);
     else pickFile();
   }, [file, runVerify, pickFile]);
+
+  const runSample = useCallback(() => {
+    void runVerify(sampleCubeFile());
+  }, [runVerify]);
 
   // The rail footer's bound-rate signal.
   useEffect(() => {
@@ -186,12 +254,31 @@ export function VerifyApp() {
 
   const onVerify = screen === "verify";
 
+  // The stage's assembly overlay: the highlighted part's name + tree path for the
+  // in-canvas label. null when the upload is a single part (unchanged path).
+  const stageAssembly = useMemo<StageAssembly | null>(() => {
+    if (!assembly) return null;
+    const sel = assembly.model.parts.find((p) => p.id === assemblySelectedId) ?? null;
+    return {
+      glbUrl: assembly.glbUrl,
+      selectedId: assemblySelectedId,
+      partCount: assembly.model.part_count,
+      selectedName: sel ? sel.name || sel.occurrence || sel.id : null,
+      selectedTreePath: sel?.tree_path ?? null,
+      analysisReady: !!assemblyAnalysis,
+    };
+  }, [assembly, assemblySelectedId, assemblyAnalysis]);
+
   return (
     <ToastProvider>
-    <div style={{ height: "100vh", display: "flex", background: C.bg, color: C.ink, fontFamily: SANS, WebkitFontSmoothing: "antialiased", fontSize: 14 }}>
+    <div className="cv-verify-shell" style={{ height: "100vh", display: "flex", background: C.bg, color: C.ink, fontFamily: SANS, WebkitFontSmoothing: "antialiased", fontSize: 14 }}>
       <style>{KEYFRAMES}</style>
       <input
         ref={fileRef}
+        id={VERIFY_PART_CAD_INPUT.id}
+        name={VERIFY_PART_CAD_INPUT.name}
+        data-testid={VERIFY_PART_CAD_INPUT.testId}
+        aria-label={VERIFY_PART_CAD_INPUT.ariaLabel}
         type="file"
         accept={`${CAD_ACCEPT},model/stl,application/step`}
         style={{ display: "none" }}
@@ -203,7 +290,7 @@ export function VerifyApp() {
       />
 
       {/* rail */}
-      <nav style={{ width: 64, flexShrink: 0, borderRight: `1px solid ${C.hair2}`, background: C.panel, display: "flex", flexDirection: "column", alignItems: "center", padding: "14px 0", gap: 6 }}>
+      <nav className="cv-verify-rail" style={{ width: 64, flexShrink: 0, borderRight: `1px solid ${C.hair2}`, background: C.panel, display: "flex", flexDirection: "column", alignItems: "center", padding: "14px 0", gap: 6 }}>
         <div style={{ width: 30, height: 30, borderRadius: 8, background: C.ink, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: 13, marginBottom: 14 }}>C</div>
         {RAIL.map((r) => {
           const active = screen === r.key || (r.key === "catalog" && screen === "compare");
@@ -211,8 +298,10 @@ export function VerifyApp() {
             <button
               key={r.key}
               type="button"
+              aria-label={r.label}
               onClick={() => setScreen(r.key)}
               title={r.label}
+              className="cv-verify-rail-button"
               style={{ width: 40, height: 40, borderRadius: 10, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", background: active ? "#eceef1" : "transparent", color: active ? C.ink : C.ink40, transition: "all 150ms" }}
             >
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -248,8 +337,8 @@ export function VerifyApp() {
       </nav>
 
       {/* main */}
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <header style={{ height: 52, flexShrink: 0, borderBottom: `1px solid ${C.hair2}`, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px", background: C.panel }}>
+      <div className="cv-verify-main" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+        <header className="cv-verify-header" style={{ height: 52, flexShrink: 0, borderBottom: `1px solid ${C.hair2}`, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px", background: C.panel }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: C.ink50 }}>
             <span>{CRUMB[screen] ?? "CadVerify"}</span>
             {onVerify && result?.file && (
@@ -259,22 +348,25 @@ export function VerifyApp() {
               </>
             )}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <CalibrationSwitcher onOpenCalibration={() => setScreen("calibration")} />
-            <button type="button" onClick={() => setScreen("palette")} title="Command palette (⌘K)" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${C.hair}`, background: "#fff", borderRadius: 999, padding: "7px 13px", fontFamily: MONO, fontSize: 11, color: C.ink55, cursor: "pointer" }}>⌘K</button>
-            <button type="button" onClick={() => setNotifOpen((v) => !v)} title="Notifications" style={{ width: 32, height: 32, borderRadius: "50%", border: `1px solid ${C.hair}`, background: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", color: C.ink55 }}>
+          <div className="cv-verify-header-actions" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span className="cv-verify-rate-switcher"><CalibrationSwitcher onOpenCalibration={() => setScreen("calibration")} /></span>
+            <button className="cv-verify-command-button" type="button" onClick={() => setScreen("palette")} title="Command palette (⌘K)" aria-label="Open command palette" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${C.hair}`, background: "#fff", borderRadius: 999, padding: "7px 13px", fontFamily: MONO, fontSize: 11, color: C.ink55, cursor: "pointer" }}>⌘K</button>
+            <button className="cv-verify-notification-button" type="button" onClick={() => setNotifOpen((v) => !v)} title="Notifications" aria-label="Notifications" style={{ width: 32, height: 32, borderRadius: "50%", border: `1px solid ${C.hair}`, background: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", color: C.ink55 }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>
             </button>
+            <VerifyAccountMenu />
             <input
+              className="cv-verify-search"
               readOnly
               value=""
-              placeholder="Search or jump…"
-              title="Search or jump to any surface — opens the command palette (⌘K)"
+              placeholder="Jump…"
+              title="Jump to any surface or action — opens the command palette (⌘K)"
               onMouseDown={(e) => { e.preventDefault(); setScreen("palette"); }}
               onFocus={() => setScreen("palette")}
-              style={{ width: 160, background: C.sunken, border: `1px solid ${C.hair}`, borderRadius: 999, padding: "7px 14px", fontSize: 12.5, color: C.ink, fontFamily: "inherit", outline: "none", cursor: "text" }}
+              aria-label="Search — jump to any surface or action"
+              style={{ width: 160, background: C.sunken, border: `1px solid ${C.hair}`, borderRadius: 999, padding: "7px 14px", fontSize: 12.5, color: C.ink, fontFamily: "inherit", cursor: "text" }}
             />
-            <button type="button" onClick={pickFile} style={{ background: C.ink, color: "#fff", border: "none", borderRadius: 999, padding: "8px 18px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>Verify a part</button>
+            <button className="cv-verify-primary-action" type="button" onClick={pickFile} style={{ background: C.ink, color: "#fff", border: "none", borderRadius: 999, padding: "8px 18px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>Verify a part</button>
           </div>
         </header>
 
@@ -282,34 +374,56 @@ export function VerifyApp() {
 
         {screen === "home" && <HomeScreen onPickFile={pickFile} nav={nav} />}
         {screen === "verify" && (
-          <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+          <div className="cv-verify-screen-split" style={{ flex: 1, minHeight: 0, display: "flex" }}>
             <Stage
               file={file}
               partName={result?.file?.name ?? file?.name ?? "No part yet"}
               meta1={
-                result?.cost?.geometry
+                stageAssembly
+                  ? `assembly · ${stageAssembly.partCount} parts in world position`
+                  : result?.cost?.geometry
                   ? `Ø/bbox ${result.cost.geometry.bbox_mm.map((n) => n.toFixed(1)).join(" × ")} mm · ${result.cost.geometry.volume_cm3.toFixed(2)} cm³`
                   : running
                     ? "measuring geometry…"
                     : "drop STL, STEP or IGES to measure"
               }
-              meta2={result?.cost?.geometry ? `watertight ${String(result.cost.geometry.watertight)} · ● MEASURED` : undefined}
+              meta2={
+                stageAssembly
+                  ? undefined
+                  : result?.cost?.geometry
+                  ? `watertight ${String(result.cost.geometry.watertight)} · ● MEASURED`
+                  : undefined
+              }
               bbox={result?.cost?.geometry?.bbox_mm ?? null}
               hostile={env.temp || env.sour || env.pressure}
-              autoOrbit={running}
+              autoOrbit={running && !stageAssembly}
+              context={result?.partContext ?? null}
+              contextError={result?.partContextError ?? null}
+              assembly={stageAssembly}
             />
-            <VerifyScreen
-              result={result}
-              running={running}
-              fileName={result?.file?.name ?? file?.name ?? null}
-              env={env}
-              setEnv={setEnv}
-              materialClass={materialClass}
-              setMaterialClass={setMaterialClass}
-              onPickFile={pickFile}
-              onReverify={onReverify}
-              nav={nav}
-            />
+            {stageAssembly && assembly ? (
+              <AssemblyPanel
+                model={assembly.model}
+                fileName={file?.name ?? null}
+                selectedId={assemblySelectedId}
+                onSelect={setAssemblySelectedId}
+                analysis={assemblyAnalysis}
+                analyzing={assemblyAnalyzing}
+              />
+            ) : (
+              <VerifyScreen
+                result={result}
+                running={running}
+                fileName={result?.file?.name ?? file?.name ?? null}
+                env={env}
+                setEnv={setEnv}
+                materialClass={materialClass}
+                setMaterialClass={setMaterialClass}
+                onPickFile={pickFile}
+                onReverify={onReverify}
+                nav={nav}
+              />
+            )}
           </div>
         )}
         {screen === "machines" && <MachinesScreen nav={nav} />}
@@ -328,6 +442,7 @@ export function VerifyApp() {
           onClose={() => setScreen("home")}
           nav={nav}
           onVerify={pickFile}
+          onSample={runSample}
           onShortcuts={() => { setScreen("home"); setShortcutsOpen(true); }}
         />
       )}
@@ -343,4 +458,107 @@ const KEYFRAMES = `
 @keyframes vstepIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes vtraceIn { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes vtoastIn { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* One shared keyboard-focus indicator for every interactive element inside the
+   Verify shell. #17181a on the light instrument surface is 16.4:1 vs #f6f6f7 —
+   far above the WCAG 2.4.7 / non-text-contrast 3:1 floor. Covers native controls
+   plus custom rows/cards that opt in via role="button" or a tabindex, and never
+   fires for tabindex="-1" (programmatic-only) targets. Individual components must
+   NOT set inline outline:none — an inline rule would beat this stylesheet one. */
+.cv-verify-shell button:focus-visible,
+.cv-verify-shell input:focus-visible,
+.cv-verify-shell select:focus-visible,
+.cv-verify-shell textarea:focus-visible,
+.cv-verify-shell a:focus-visible,
+.cv-verify-shell [role="button"]:focus-visible,
+.cv-verify-shell [role="option"]:focus-visible,
+.cv-verify-shell [role="checkbox"]:focus-visible,
+.cv-verify-shell [tabindex]:not([tabindex="-1"]):focus-visible {
+  outline: 2px solid #17181a;
+  outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  .cv-verify-shell {
+    overflow: hidden;
+  }
+  .cv-verify-rail {
+    width: 56px !important;
+    padding-block: 12px !important;
+  }
+  .cv-verify-rail-button {
+    width: 44px !important;
+    height: 44px !important;
+  }
+  .cv-verify-main {
+    max-width: calc(100vw - 56px);
+    overflow-x: hidden;
+  }
+  .cv-verify-header {
+    height: 50px !important;
+    padding-inline: 10px !important;
+    gap: 8px;
+  }
+  .cv-verify-header-actions {
+    gap: 6px !important;
+    min-width: 0;
+  }
+  .cv-verify-rate-switcher,
+  .cv-verify-search,
+  .cv-verify-notification-button {
+    display: none !important;
+  }
+  .cv-verify-command-button {
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+    padding-inline: 11px !important;
+  }
+  .cv-verify-primary-action {
+    min-height: 44px;
+    padding-inline: 14px !important;
+  }
+  .cv-verify-home {
+    padding: 24px 14px !important;
+    overflow-x: hidden;
+  }
+  .cv-verify-home button,
+  .cv-verify-walk button {
+    min-height: 44px;
+  }
+  .cv-verify-shell input:not([type="file"]) {
+    min-height: 44px;
+  }
+  .cv-verify-home-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .cv-verify-setup {
+    padding: 15px 14px !important;
+  }
+  .cv-verify-setup > div:last-child {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .cv-verify-home-kpis > :last-child {
+    grid-column: 1 / -1;
+  }
+  .cv-verify-home-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .cv-verify-screen-split {
+    display: block !important;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  .cv-verify-stage {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 420px;
+    min-height: 420px;
+    border-right: none !important;
+    border-bottom: 1px solid #dedee2;
+  }
+  .cv-verify-walk-scroll {
+    padding: 22px 14px 18px !important;
+  }
+}
 `;

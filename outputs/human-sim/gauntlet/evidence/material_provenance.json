@@ -1,0 +1,118 @@
+{
+  "status": 200,
+  "material_class": "aluminum",
+  "hits": [
+    [
+      "/material_class",
+      "aluminum"
+    ],
+    [
+      "/estimates[0]/material",
+      "AlSi10Mg"
+    ],
+    [
+      "/estimates[0]/line_items/material",
+      "1.1013"
+    ],
+    [
+      "/estimates[0]/drivers[0]/provenance",
+      "DEFAULT"
+    ],
+    [
+      "/estimates[0]/drivers[1]/provenance",
+      "DEFAULT"
+    ],
+    [
+      "/estimates[0]/drivers[2]/provenance",
+      "DEFAULT"
+    ],
+    [
+      "/estimates[0]/lead_time/capacity/provenance",
+      "DEFAULT"
+    ],
+    [
+      "/estimates[1]/material",
+      "AlSi10Mg"
+    ],
+    [
+      "/estimates[1]/line_items/material",
+      "1.1013"
+    ],
+    [
+      "/estimates[1]/drivers[0]/provenance",
+      "DEFAULT"
+    ],
+    [
+      "/estimates[1]/drivers[1]/provenance",
+      "DEFAULT"
+    ],
+    [
+      "/estimates[1]/drivers[2]/provenance",
+      "DEFAULT"
+    ],
+    [
+      "/estimates[1]/lead_time/capacity/provenance",
+      "DEFAULT"
+    ],
+    [
+      "/estimates[2]/material",
+      "A356 Aluminum"
+    ],
+    [
+      "/estimates[2]/line_items/material",
+      "0.0463"
+    ],
+    [
+      "/estimates[2]/drivers[0]/provenance",
+      "DEFAULT"
+    ],
+    [
+      "/estimates[2]/drivers[1]/provenance",
+      "DEFAULT"
+    ],
+    [
+      "/estimates[2]/drivers[2]/provenance",
+      "DEFAULT"
+    ],
+    [
+      "/estimates[2]/lead_time/capacity/provenance",
+      "DEFAULT"
+    ],
+    [
+      "/routing/material_hint",
+      "aluminum"
+    ],
+    [
+      "/assumptions[0]/provenance",
+      "DEFAULT"
+    ],
+    [
+      "/assumptions[1]/provenance",
+      "DEFAULT"
+    ],
+    [
+      "/assumptions[2]/provenance",
+      "DEFAULT"
+    ],
+    [
+      "/decision/make_now_material",
+      "6061-T6 Aluminum"
+    ],
+    [
+      "/decision/recommendation/50/material",
+      "6061-T6 Aluminum"
+    ],
+    [
+      "/decision/recommendation/5000/material",
+      "6061-T6 Aluminum"
+    ],
+    [
+      "/decision/if_redesigned/5000/material",
+      "A356 Aluminum"
+    ],
+    [
+      "/identity/provenance",
+      "RETRIEVED (org corpus: geometry k-NN + name match)"
+    ]
+  ]
+}

@@ -1,56 +1,73 @@
-"""Scrub cv_live_* tokens and Authorization headers from logs + Sentry."""
+"""Scrub credentials, one-time tokens, and sessions from logs + Sentry."""
 from __future__ import annotations
 
-import json
 import re
 
 _KEY_RE = re.compile(r"cv_live_[A-Za-z0-9_]+")
 _REDACTED = "cv_live_***REDACTED***"
-_AUTH_KEY_LC = {"authorization", "x-api-key", "x-authorization"}
+_VALUE_REDACTED = "***REDACTED***"
+_BEARER_RE = re.compile(r"\bBearer\s+[^\s\"']+", re.IGNORECASE)
+_QUERY_SECRET_RE = re.compile(
+    r"([?&#](?:token|session|code|api_key)=)[^&#\s\"']+",
+    re.IGNORECASE,
+)
+_SENSITIVE_KEY_LC = {
+    "authorization",
+    "x-api-key",
+    "x-authorization",
+    "cookie",
+    "set-cookie",
+    "password",
+    "token",
+    "access_token",
+    "refresh_token",
+    "id_token",
+    "session",
+    "dash_session",
+    "mint_once",
+    "cv_mint_once",
+    "cf_turnstile_response",
+    "turnstiletoken",
+    "secret",
+}
 
 
-def _scrub_str(s: str) -> str:
-    return _KEY_RE.sub(_REDACTED, s)
+def _scrub_str(value: str) -> str:
+    scrubbed = _KEY_RE.sub(_REDACTED, value)
+    scrubbed = _BEARER_RE.sub("Bearer ***REDACTED***", scrubbed)
+    return _QUERY_SECRET_RE.sub(r"\1***REDACTED***", scrubbed)
 
 
-def _scrub_mapping(m: dict) -> dict:
+def _scrub_value(value):
+    if isinstance(value, str):
+        return _scrub_str(value)
+    if isinstance(value, dict):
+        return _scrub_mapping(value)
+    if isinstance(value, (list, tuple)):
+        return [_scrub_value(item) for item in value]
+    return value
+
+
+def _scrub_mapping(mapping: dict) -> dict:
     out = {}
-    for k, v in m.items():
-        if str(k).lower() in _AUTH_KEY_LC:
-            out[k] = "***REDACTED***"
-        elif isinstance(v, str):
-            out[k] = _scrub_str(v)
-        elif isinstance(v, dict):
-            out[k] = _scrub_mapping(v)
-        elif isinstance(v, (list, tuple)):
-            out[k] = [_scrub_str(x) if isinstance(x, str) else x for x in v]
+    for key, value in mapping.items():
+        if str(key).lower() in _SENSITIVE_KEY_LC:
+            out[key] = _VALUE_REDACTED
         else:
-            out[k] = v
+            out[key] = _scrub_value(value)
     return out
 
 
 def scrub_processor(_logger, _method, event_dict):
-    for k in list(event_dict.keys()):
-        v = event_dict[k]
-        if k.lower() in _AUTH_KEY_LC:
-            event_dict[k] = "***REDACTED***"
-        elif isinstance(v, str):
-            event_dict[k] = _scrub_str(v)
-        elif isinstance(v, dict):
-            event_dict[k] = _scrub_mapping(v)
-        elif isinstance(v, (list, tuple)):
-            event_dict[k] = [_scrub_str(x) if isinstance(x, str) else x for x in v]
+    for key in list(event_dict.keys()):
+        value = event_dict[key]
+        if key.lower() in _SENSITIVE_KEY_LC:
+            event_dict[key] = _VALUE_REDACTED
+        else:
+            event_dict[key] = _scrub_value(value)
     return event_dict
 
 
 def sentry_before_send(event, _hint):
-    s = json.dumps(event, default=str)
-    if "cv_live_" not in s and "Bearer " not in s:
-        return event
-    # scrub via JSON roundtrip — catches deeply nested structures
-    s = _KEY_RE.sub(_REDACTED, s)
-    s = re.sub(r'"Bearer\s+[^"]+"', '"Bearer ***REDACTED***"', s)
-    try:
-        return json.loads(s)
-    except Exception:
-        return event  # best-effort; structlog processor is the primary layer
+    scrubbed = _scrub_mapping(event)
+    return event if scrubbed == event else scrubbed

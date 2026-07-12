@@ -1,0 +1,81 @@
+{
+  "id": "DOOR-HANDLE-ASSEMBLY-FIDELITY-001",
+  "name": "Toyota-style Camry front-door handle lab fixture",
+  "boundary": "Synthetic automotive door-handle assembly fixture for CadVerify QA. It is not Toyota proprietary CAD, native CAD vendor certification, or customer signoff.",
+  "coordinateSystem": {
+    "units": "mm",
+    "x": "door width, hinge side negative and latch side positive",
+    "y": "door height, sill negative and beltline positive",
+    "z": "outward normal from exterior door skin"
+  },
+  "parentAssembly": {
+    "id": "front-left-door-shell",
+    "kind": "automotive-door-outer-panel",
+    "dimensionsMm": {
+      "width": 980,
+      "height": 1160,
+      "thickness": 45
+    },
+    "frontSkinZMm": 22.5,
+    "environment": {
+      "name": "exterior automotive door service",
+      "temperatureMinC": -35,
+      "temperatureMaxC": 85,
+      "uvExposure": true,
+      "saltSpray": true,
+      "slamCycles": 150000,
+      "waterIngressTest": "rain-wash spray"
+    },
+    "recess": {
+      "id": "handle-pocket",
+      "centerMm": [260, -120, 25.6],
+      "dimensionsMm": [230, 70, 8]
+    },
+    "mountAnchors": [
+      {
+        "id": "front-mount-left",
+        "positionMm": [188, -120, 25.5]
+      },
+      {
+        "id": "front-mount-right",
+        "positionMm": [332, -120, 25.5]
+      }
+    ]
+  },
+  "part": {
+    "id": "exterior-door-handle",
+    "kind": "pull-handle",
+    "geometryRepresentation": "deterministic browser mesh generated from this fixture",
+    "material": "painted PC-ABS over die-cast carrier",
+    "finish": "gloss black",
+    "dimensionsMm": {
+      "length": 185,
+      "height": 36,
+      "depth": 42
+    },
+    "localAnchors": [
+      {
+        "id": "front-mount-left",
+        "positionMm": [-72, 0, -21]
+      },
+      {
+        "id": "front-mount-right",
+        "positionMm": [72, 0, -21]
+      }
+    ]
+  },
+  "partToParentTransform": {
+    "translationMm": [260, -120, 46.5],
+    "rotationDeg": [0, 0, 0],
+    "placementToleranceMm": 0.5,
+    "requiredStandOffMm": 3,
+    "expectedNormal": "+Z/outward"
+  },
+  "cinematicExpectations": {
+    "initialState": "exploded preview with part separated from door",
+    "finalState": "handle seated in door pocket with mount anchors aligned",
+    "explodedOffsetMm": [0, 180, 130],
+    "requiredRenderedSurfaces": ["door outer panel", "handle pocket", "door handle", "mount anchors"],
+    "minimumVisualDeltaPixels": 1000
+  }
+}

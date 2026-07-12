@@ -13,7 +13,7 @@ from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
-from src.auth.dashboard_session import set_session_cookie
+from src.auth.dashboard_session import session_cookie_domain, set_session_cookie
 from src.auth.disposable import normalize_email
 from src.auth.hashing import hmac_index, mint_token
 from src.auth.models import (
@@ -22,7 +22,7 @@ from src.auth.models import (
     upsert_user,
     user_has_active_api_key,
 )
-from src.auth.signup_limits import per_ip_signup_limit
+from src.auth.signup_limits import ip_signup_limit_enabled, per_ip_signup_limit
 
 oauth = OAuth()
 oauth.register(
@@ -54,7 +54,7 @@ async def google_start(request: Request):
     # limiting in local/dev without Redis configured. Previously this call
     # was unconditional, so it raised KeyError (os.environ["REDIS_URL"]) on
     # any environment without Redis instead of degrading gracefully.
-    if os.getenv("REDIS_URL"):
+    if ip_signup_limit_enabled():
         await per_ip_signup_limit(request)
     redirect_uri = f"{_api_origin()}/auth/google/callback"
     return await oauth.google.authorize_redirect(request, redirect_uri)
@@ -120,7 +120,7 @@ async def google_callback(request: Request):
         secure=True,
         httponly=False,
         samesite="lax",
-        domain=".cadverify.com",
+        domain=session_cookie_domain(),
         path="/settings/developer",
     )
     return resp

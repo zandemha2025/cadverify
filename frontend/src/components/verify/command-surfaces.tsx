@@ -4,6 +4,7 @@
 import * as React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { C, MONO } from "@/lib/verify/tokens";
+import { useToast } from "./toast";
 
 function CommandPill({ label }: { label: string }) {
   return (
@@ -35,16 +36,19 @@ export function CommandPalette({
   onClose,
   nav,
   onVerify,
+  onSample,
   onShortcuts,
 }: {
   onClose: () => void;
   nav: (s: string) => void;
   onVerify?: () => void;
+  onSample?: () => void;
   onShortcuts?: () => void;
 }) {
   const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -56,6 +60,8 @@ export function CommandPalette({
     };
     const list: PaletteCmd[] = [
       { id: "verify-part", label: "Verify a part", hint: "open STL, STEP or IGES", terms: "verify part upload drop stl step stp iges igs file measure cost", run: () => { onVerify?.(); onClose(); } },
+      { id: "run-sample-cube", label: "Run sample · 20 mm cube", hint: "real engine output", terms: "run play use case real fixture sample cube walkthrough", run: () => { onClose(); onSample?.(); } },
+      { id: "guide-day-zero", label: "Guide · organization setup", hint: "open Day Zero checklist", terms: "guide play use case first run org day zero setup", run: () => { nav("home"); toast("Day Zero guide opened — each step reflects your organization’s real state."); } },
       { id: "home", label: "Go to Home", keys: "H", terms: "home desk start", run: go("home") },
       { id: "verify", label: "Go to Verify", keys: "V", terms: "verify verdict result", run: go("verify") },
       { id: "catalog", label: "Go to Parts", hint: "catalog", keys: "P", terms: "parts catalog grid", run: go("catalog") },
@@ -65,12 +71,18 @@ export function CommandPalette({
       { id: "machines", label: "Go to Your machines", keys: "M", terms: "machines inventory shop floor", run: go("machines") },
       { id: "triage", label: "Go to Triage", keys: "T", terms: "triage bom batch scale", run: go("triage") },
       { id: "calibration", label: "Go to Calibration & truth", keys: "C", terms: "calibration truth rates rate library governance", run: go("calibration") },
+      { id: "add-machine", label: "Add or import machines", hint: "declare your floor", terms: "add machine import csv declare floor capability rate", run: go("machines") },
+      { id: "switch-calibration", label: "Switch calibration context", hint: "rates + actuals", terms: "switch calibration context rates truth actuals", run: go("calibration") },
+      { id: "create-program", label: "Create or assign a program", hint: "assembly lineage", terms: "create assign program assembly lineage platform", run: go("programs") },
+      { id: "compare-decisions", label: "Compare saved decisions", hint: "record diff", terms: "compare saved decisions diff record", run: go("compare") },
+      { id: "preview-record", label: "Preview records", hint: "audit memory", terms: "record preview audit memory persisted", run: go("records") },
+      { id: "plan-acquisition", label: "Plan capability acquisition", hint: "blocked in-house", terms: "acquisition acquire capability machine gap", run: go("acquisition") },
     ];
     if (onShortcuts) {
       list.push({ id: "shortcuts", label: "Keyboard shortcuts", keys: "?", terms: "shortcuts keys help hotkeys", run: () => { onClose(); onShortcuts(); } });
     }
     return list;
-  }, [nav, onClose, onVerify, onShortcuts]);
+  }, [nav, onClose, onVerify, onSample, onShortcuts, toast]);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -119,8 +131,9 @@ export function CommandPalette({
             ref={inputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search or jump to a surface…"
-            style={{ flex: 1, border: "none", outline: "none", background: "none", fontSize: 14, color: C.ink, fontFamily: "inherit" }}
+            aria-label="Command palette search"
+            placeholder="Jump to a surface or action…"
+            style={{ flex: 1, border: "none", background: "none", fontSize: 14, color: C.ink, fontFamily: "inherit" }}
           />
           <kbd style={{ fontFamily: MONO, fontSize: 10, border: `1px solid ${C.hair}`, borderRadius: 5, padding: "2px 6px", color: C.ink45, background: C.sunken }}>Esc</kbd>
         </div>
@@ -136,7 +149,8 @@ export function CommandPalette({
                 type="button"
                 onClick={c.run}
                 onMouseEnter={() => setActive(i)}
-                style={{ width: "100%", textAlign: "left", background: i === active ? C.sunken : "none", border: "none", borderRadius: 10, padding: "10px 14px", cursor: "pointer", fontFamily: "inherit", fontSize: 13, color: C.ink, display: "flex", alignItems: "center", gap: 10 }}
+                aria-current={i === active ? "true" : undefined}
+                style={{ width: "100%", textAlign: "left", background: i === active ? C.sunken : "none", border: "none", borderRadius: 10, padding: "10px 14px", cursor: "pointer", fontFamily: "inherit", fontSize: 13, color: C.ink, display: "flex", alignItems: "center", gap: 10, boxShadow: i === active ? "inset 3px 0 0 #17181a" : "none" }}
               >
                 <span style={{ flex: 1 }}>
                   {c.label}
@@ -150,8 +164,8 @@ export function CommandPalette({
           )}
         </div>
         <div style={{ borderTop: `1px solid ${C.hair}`, padding: "9px 16px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <CommandPill label="JUMP & ACT" />
-          <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink45 }}>engine asks live in Verify; part standing lives in Parts</span>
+          <CommandPill label="JUMP · ACTION · GUIDE" />
+          <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink45 }}>the sample computes real engine output; guides open real org state</span>
         </div>
       </div>
     </div>

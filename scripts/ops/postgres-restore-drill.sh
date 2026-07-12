@@ -46,8 +46,89 @@ print("ADMIN_URL=%s" % urlunparse(admin))
 print("RESTORE_URL=%s" % urlunparse(restore))
 print("RESTORE_DB=%s" % restore_db)
 print("SOURCE_URL=%s" % urlunparse(source))
+print("DBNAME=%s" % dbname)
 PY
 )"
+
+# ---------------------------------------------------------------------------
+# In-place full-cycle drill (RESTORE_DRILL_MODE=inplace)
+#
+# Unlike the default side-DB verification below (which restores into a scratch
+# "<db>_restore_drill" database and checks table/alembic counts), the in-place
+# mode exercises the REAL disaster-recovery path against the target database:
+#   (a) apply migrations (alembic upgrade head) + seed a KNOWN marker row
+#   (b) pg_dump --format=custom
+#   (c) DROP + CREATE the target DB itself (template0, UTF8)
+#   (d) pg_restore into the recreated DB
+#   (e) verify the known marker row survived the round-trip
+# This DESTROYS and rebuilds the target DB, so it is opt-in and only runs
+# against a dedicated ops database. It is safe on the CADVerify ops DB.
+# ---------------------------------------------------------------------------
+if [ "${RESTORE_DRILL_MODE:-sidedb}" = "inplace" ]; then
+  ROOT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  BACKEND_DIR="${BACKEND_DIR:-$ROOT_DIR/backend}"
+  PYTHON_BIN="${RESTORE_DRILL_PYTHON:-$BACKEND_DIR/.venv/bin/python}"
+  MARKER_ID="drill-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+  DUMP="$(mktemp -d)/cadverify_inplace.dump"
+
+  echo "== CADVerify in-place restore drill =="
+  echo "target_db=$DBNAME  host=$(python3 -c 'import sys,urllib.parse as u;print(u.urlparse(sys.argv[1]).hostname)' "$SOURCE_URL")  marker=$MARKER_ID"
+  echo
+
+  echo "-- (a) apply migrations: alembic upgrade head --"
+  ( cd "$BACKEND_DIR" && DATABASE_URL="$SOURCE_URL" "$PYTHON_BIN" -m alembic upgrade head )
+  ALEMBIC_HEAD="$( ( cd "$BACKEND_DIR" && DATABASE_URL="$SOURCE_URL" "$PYTHON_BIN" -m alembic current 2>/dev/null ) | tail -1 )"
+  echo "alembic current: ${ALEMBIC_HEAD:-<none>}"
+  echo
+
+  echo "-- (a) seed known marker row --"
+  psql "$SOURCE_URL" -v ON_ERROR_STOP=1 -c \
+    "CREATE TABLE IF NOT EXISTS ops_restore_drill_marker (marker_id text PRIMARY KEY, note text, created_at timestamptz NOT NULL DEFAULT now());"
+  psql "$SOURCE_URL" -v ON_ERROR_STOP=1 -c \
+    "INSERT INTO ops_restore_drill_marker (marker_id, note) VALUES ('$MARKER_ID', 'restore-drill known row');"
+  PRE_COUNT="$(psql "$SOURCE_URL" -tAc "SELECT count(*) FROM ops_restore_drill_marker WHERE marker_id = '$MARKER_ID';" | tr -d '[:space:]')"
+  echo "seeded marker rows (pre-dump): $PRE_COUNT"
+  echo
+
+  echo "-- (b) pg_dump --format=custom --"
+  START="$(date +%s)"
+  pg_dump --format=custom --no-owner --file "$DUMP" "$SOURCE_URL"
+  DUMP_BYTES="$(wc -c < "$DUMP" | tr -d ' ')"
+  DUMP_SHA="$(sha256sum "$DUMP" 2>/dev/null | awk '{print $1}')"
+  echo "dump bytes=$DUMP_BYTES sha256=$DUMP_SHA"
+  echo
+
+  echo "-- (c) DROP + CREATE target DB (template0, UTF8) --"
+  psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS \"$DBNAME\" WITH (FORCE);"
+  psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$DBNAME\" TEMPLATE template0 ENCODING 'UTF8';"
+  RECREATED_ENC="$(psql "$SOURCE_URL" -tAc "SHOW server_encoding;" | tr -d '[:space:]')"
+  echo "recreated encoding: $RECREATED_ENC"
+  echo
+
+  echo "-- (d) pg_restore into recreated DB --"
+  pg_restore --no-owner --dbname "$SOURCE_URL" "$DUMP"
+  END="$(date +%s)"
+  echo
+
+  echo "-- (e) verify known marker row survived --"
+  POST_COUNT="$(psql "$SOURCE_URL" -tAc "SELECT count(*) FROM ops_restore_drill_marker WHERE marker_id = '$MARKER_ID';" | tr -d '[:space:]')"
+  TABLE_COUNT="$(psql "$SOURCE_URL" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';" | tr -d '[:space:]')"
+  ALEMBIC_COUNT="$(psql "$SOURCE_URL" -tAc "SELECT count(*) FROM alembic_version;" | tr -d '[:space:]')"
+  echo "marker rows (post-restore): $POST_COUNT"
+  echo "public tables (post-restore): $TABLE_COUNT"
+  echo "alembic_version rows (post-restore): $ALEMBIC_COUNT"
+  echo "duration_sec: $((END - START))"
+  echo
+
+  rm -f "$DUMP"
+  if [ "${POST_COUNT:-0}" = "1" ] && [ "${TABLE_COUNT:-0}" -gt 0 ] && [ "${ALEMBIC_COUNT:-0}" -gt 0 ] && [ "${RECREATED_ENC}" = "UTF8" ]; then
+    echo "RESULT: PASS (known row survived drop+recreate+restore)"
+    exit 0
+  else
+    echo "RESULT: FAIL"
+    exit 1
+  fi
+fi
 
 TMP_DIR="$(mktemp -d)"
 DUMP="$TMP_DIR/cadverify.dump"

@@ -1,132 +1,50 @@
-"use client";
-
-import * as React from "react";
 import Link from "next/link";
-import { PublicHeader } from "@/components/ui/public-chrome";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Field } from "@/components/ui/field";
-import { Card, CardContent } from "@/components/ui/card";
+import { AuthFrame, AuthTextLink } from "@/components/auth/auth-frame";
+import { SignupForm } from "./signup-form";
 
-function errorMessage(data: unknown, fallback: string): string {
-  if (data && typeof data === "object") {
-    const d = data as { detail?: { message?: string }; message?: string };
-    return d.detail?.message ?? d.message ?? fallback;
-  }
-  return fallback;
-}
-
-/** Mirror of the server-side policy (the server is the source of truth). */
-function passwordProblem(pw: string): string | null {
-  if (pw.length < 8) return "Password must be at least 8 characters.";
-  if (!/[a-zA-Z]/.test(pw)) return "Password must contain at least one letter.";
-  if (!/[0-9]/.test(pw)) return "Password must contain at least one digit.";
-  return null;
-}
+export const dynamic = "force-dynamic";
 
 export default function SignupPage() {
-  const [email, setEmail] = React.useState("");
-  const [password, setPassword] = React.useState("");
-  const [error, setError] = React.useState<string | null>(null);
-  const [loading, setLoading] = React.useState(false);
+  const signupOverride = process.env.PUBLIC_PASSWORD_SIGNUP_ENABLED;
+  const release = (process.env.RELEASE || "dev").trim().toLowerCase();
+  const released = !new Set(["", "dev", "development", "local", "test", "ci"]).has(release);
+  const publicPasswordSignup = signupOverride
+    ? signupOverride === "1"
+    : !released;
+  const magicEnabled = process.env.MAGIC_LINK_UI_ENABLED === "1";
+  const ssoLoginPath = (process.env.SSO_LOGIN_PATH || "").trim();
+  if (publicPasswordSignup) return <SignupForm />;
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const policy = passwordProblem(password);
-    if (policy) {
-      setError(policy);
-      return;
-    }
-    setError(null);
-    setLoading(true);
-    try {
-      const res = await fetch("/api/auth/signup", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(errorMessage(data, "Could not create your account."));
-        return;
-      }
-      // Signed up + auto-logged-in; land on the platform.
-      window.location.href = "/onboarding";
-    } catch {
-      setError("Could not reach the server. Is the backend running?");
-    } finally {
-      setLoading(false);
-    }
+  if (!magicEnabled) {
+    return (
+      <AuthFrame
+        eyebrow="Managed access"
+        title="Contact your organization administrator"
+        body="Accounts in this environment are provisioned through the approved identity provider."
+        footer={<AuthTextLink href="/login">Back to login</AuthTextLink>}
+      >
+        {ssoLoginPath && (
+          <a href={ssoLoginPath} style={{ display: "block", width: "100%", borderRadius: 999, background: "#f5f5f7", color: "#050506", padding: "13px 18px", textAlign: "center", textDecoration: "none", fontSize: 14, fontWeight: 500 }}>
+            Continue with enterprise SSO
+          </a>
+        )}
+      </AuthFrame>
+    );
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-canvas">
-      <PublicHeader showCta={false} />
-      <main className="flex flex-1 items-center justify-center px-4 py-16">
-        <Card className="w-full max-w-sm">
-          <CardContent className="space-y-6">
-            <div className="space-y-1">
-              <h1 className="text-xl font-semibold text-foreground">
-                Create your account
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Email + password — works immediately, no external setup.
-              </p>
-            </div>
-
-            <form onSubmit={onSubmit} className="space-y-4">
-              <Field label="Email" htmlFor="email">
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  placeholder="you@company.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </Field>
-              <Field
-                label="Password"
-                htmlFor="password"
-                error={error}
-                hint="At least 8 characters, with a letter and a digit."
-              >
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  autoComplete="new-password"
-                  required
-                  placeholder="Create a password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </Field>
-              <Button
-                type="submit"
-                variant="primary"
-                className="w-full"
-                loading={loading}
-              >
-                Create account
-              </Button>
-            </form>
-
-            <p className="text-center text-sm text-muted-foreground">
-              Already have an account?{" "}
-              <Link href="/login" className="font-medium text-primary hover:underline">
-                Log in
-              </Link>
-            </p>
-
-            <p className="text-center text-xs text-muted-foreground">
-              SSO can be enabled when provider credentials are configured.
-            </p>
-          </CardContent>
-        </Card>
-      </main>
-    </div>
+    <AuthFrame
+      eyebrow="Verified access"
+      title="Create your account securely"
+      body="Production accounts begin with a single-use email link. After signing in, you can add a password in Settings → Security."
+      footer={<>Already registered? <AuthTextLink href="/login">Log in</AuthTextLink></>}
+    >
+      <Link
+        href="/login#magic-link"
+        style={{ display: "block", width: "100%", borderRadius: 999, background: "#f5f5f7", color: "#050506", padding: "13px 18px", textAlign: "center", textDecoration: "none", fontSize: 14, fontWeight: 500 }}
+      >
+        Verify email and continue
+      </Link>
+    </AuthFrame>
   );
 }

@@ -15,6 +15,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { Spinner } from "@/components/ui/spinner";
+import { DEV_TOOLS_ENV } from "@/lib/dev-flag";
 
 interface Part {
   part_id: string;
@@ -53,6 +54,26 @@ type Confidence = "low" | "medium" | "high";
 const DEFAULT_LABELER = "nazeem@anodeadvisory.com";
 
 export default function LabelPage() {
+  if (!DEV_TOOLS_ENV) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Parts (Label)"
+          subtitle="Human ground-truth labeling · local corpus tool"
+        />
+        <EmptyState
+          icon={Tags}
+          title="Labeling backend disabled"
+          description="The corpus labeling queue is available only in local operator environments."
+        />
+      </div>
+    );
+  }
+
+  return <LabelTool />;
+}
+
+function LabelTool() {
   const [parts, setParts] = useState<Part[]>([]);
   const [index, setIndex] = useState(0);
   const [progress, setProgress] = useState<Progress | null>(null);

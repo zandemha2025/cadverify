@@ -1,0 +1,34 @@
+{
+  "A_validate": 200,
+  "A_cost": 200,
+  "isolation": {
+    "A_decision_id": "01KX7E3X3C10FZBM2HAW9XQM98",
+    "A_analysis_id": "01KX7E3T3GFPW9EGCD2WFS7Q6G",
+    "probes": {
+      "/api/v1/cost-decisions/01KX7E3X3C10FZBM2HAW9XQM98": {
+        "status": 404,
+        "leaks_A_data": false
+      },
+      "/api/v1/cost-decisions/01KX7E3X3C10FZBM2HAW9XQM98/export.json": {
+        "status": 404,
+        "leaks_A_data": false
+      },
+      "/api/v1/cost-decisions/01KX7E3X3C10FZBM2HAW9XQM98/pdf": {
+        "status": 404,
+        "leaks_A_data": false
+      },
+      "/api/v1/analyses/01KX7E3T3GFPW9EGCD2WFS7Q6G": {
+        "status": 404
+      },
+      "B_list_analyses_count": 0,
+      "B_list_cost_decisions": {
+        "cost_decisions": [],
+        "next_cursor": null,
+        "has_more": false
+      },
+      "POST approve 01KX7E3X3C10FZBM2HAW9XQM98": {
+        "status": 404
+      }
+    }
+  }
+}

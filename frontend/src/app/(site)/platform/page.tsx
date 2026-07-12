@@ -126,7 +126,7 @@ export default function PlatformPage() {
             </DisplayHeading>
             <p style={moatBody}>
               {
-                "Verdicts are computed against your declared floor — envelope, materials, rate, throughput per machine. Owned means marginal cost; missing means an acquisition consideration, stated as one."
+                "Verdicts are computed against your declared shop floor — envelope, materials, rate, throughput per machine. Owned means marginal cost; missing means an acquisition consideration, stated as one."
               }
             </p>
             <p style={monoEvidence}>

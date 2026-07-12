@@ -1,0 +1,129 @@
+C
+Verify
+/
+as1-tu-203.stp
+Default rate card (v0) · none authored
+⌘K
+Verify a part
+as1-tu-203.stp
+
+assembly · 18 parts in world position
+
+● real assembly shell · 18 parts
+
+◆ selected plate
+as1/PLATE/plate
+
+ASSEMBLY
+
+● real shell
+
+18 parts in world position
+
+part in context
+analysing per-part…
+X-ray
+drag to orbit
+
+ASSEMBLY CONTEXT
+
+as1-tu-203.stp
+● 18 parts
+
+Real STEP assembly — 18 solids, 5 unique designs, in their baked world positions. Pick the part of interest to highlight it in context.
+
+ANALYSING PER-PART — running DFM + should-cost on every solid
+
+The same single-part engine runs on each solid in its assembly context (real quantity from the tree, real geometric interference). ~15s on an 18-part assembly.
+
+PRODUCT TREE · PART OF INTEREST
+
+● MEASURED
+plate
+as1/PLATE/plate
+…
+l-bracket
+as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/L-BRACKET/l-bracket
+…
+l-bracket
+as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/L-BRACKET/l-bracket
+…
+rod
+as1/ROD-ASSEMBLY/rod-assembly/ROD/rod
+…
+bolt
+as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/BOLT/bolt
+…
+bolt
+as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/BOLT/bolt
+…
+bolt
+as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/BOLT/bolt
+…
+bolt
+as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/BOLT/bolt
+…
+bolt
+as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/BOLT/bolt
+…
+bolt
+as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/BOLT/bolt
+…
+nut ·3
+as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/NUT::3/nut
+…
+nut ·3
+as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/NUT::3/nut
+…
+nut
+as1/ROD-ASSEMBLY/rod-assembly/NUT::1/nut
+…
+nut ·2
+as1/ROD-ASSEMBLY/rod-assembly/NUT::2/nut
+…
+nut ·3
+as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/NUT::3/nut
+…
+nut ·3
+as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/NUT::3/nut
+…
+nut ·3
+as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/NUT::3/nut
+…
+nut ·3
+as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/NUT::3/nut
+…
+
+SELECTED PART
+
+● MEASURED
+plate
+
+as1/PLATE/plate
+
+BBOX (MM)
+
+180.0 × 150.0 × 20.0
+
+VOLUME (CM³)
+
+530.57
+
+B-REP FACES
+
+18
+
+TRIANGLES
+
+95674
+
+CENTROID (MM)
+
+90, 75, 10
+
+INSTANCE
+
+#1
+
+costing this part…
+Verification complete — deterministic: same input, same verdict, every time

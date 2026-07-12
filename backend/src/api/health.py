@@ -14,9 +14,11 @@ degraded when Redis is reachable and the async tier is expected.
 
 from __future__ import annotations
 
+import asyncio
 import os
+import secrets
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
@@ -143,3 +145,166 @@ async def health_check():
         },
         status_code=200 if healthy else 503,
     )
+
+
+@router.get("/health/deep")
+async def health_deep(request: Request):
+    """Strict dependency-level health with REAL probes and honest degradation.
+
+    Unlike the fast ``/health`` liveness check, this reports each dependency's
+    concrete state -- Postgres reachability, Redis reachability, arq worker
+    liveness (via a real last-heartbeat age), and queue depth -- and returns
+    503 when a *required* dependency is down. It NEVER reports a dependency as
+    healthy when it is absent or unknown: a missing worker heartbeat is
+    ``unknown``/``stale`` (never ``ok``), and an unreachable Redis is ``false``.
+
+    Response shape::
+
+        {
+          "status": "ok" | "degraded",
+          "version": "...",
+          "checks": {
+            "postgres": {"ok": bool, "error": str|None},
+            "redis":    {"ok": bool, "expected": bool, "configured": bool,
+                          "error": str|None},
+            "worker":   {"state": "ok"|"stale"|"unknown"|"unavailable",
+                          "heartbeat_age_seconds": int|None,
+                          "stale_threshold_seconds": int, "strict": bool},
+            "queue":    {"depth": int|None, "name": str}
+          }
+        }
+    """
+    expected_token = os.getenv("DEEP_HEALTH_TOKEN", "").strip()
+    auth_required = _flag("PRODUCTION_DEEP_HEALTH_AUTH_REQUIRED", "0") or bool(
+        expected_token
+    )
+    if auth_required:
+        supplied_token = request.headers.get("X-CadVerify-Health-Token", "")
+        if not expected_token or not secrets.compare_digest(
+            supplied_token, expected_token
+        ):
+            # Hide the dependency surface instead of advertising an auth gate.
+            return JSONResponse(content={"detail": "Not found"}, status_code=404)
+
+    from datetime import datetime, timezone
+
+    from src.jobs.heartbeat import (
+        HEARTBEAT_STALE_SECONDS,
+        classify_worker,
+        read_heartbeat_age,
+    )
+
+    version = os.getenv("RELEASE", "dev")
+    strict = _flag("ASYNC_STRICT_HEALTH", "1")
+    worker_strict = _flag("WORKER_STRICT_HEALTH", "0")
+
+    # -- Postgres --
+    pg_ok = False
+    pg_err: str | None = None
+    try:
+        from src.db.engine import get_engine
+
+        engine = get_engine()
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        pg_ok = True
+    except Exception as exc:  # noqa: BLE001
+        pg_err = type(exc).__name__
+
+    # -- Redis / worker / queue --
+    redis_url = os.getenv("REDIS_URL")
+    redis_configured = bool(redis_url) and redis_url != "memory://"
+    async_expected = redis_configured or bool(os.getenv("RELEASE"))
+    queue_name = os.getenv("ARQ_QUEUE_NAME", "arq:queue")
+    arq_health_key = os.getenv("ARQ_HEALTH_KEY", "arq:queue:health-check")
+
+    redis_ok = False
+    redis_err: str | None = None
+    heartbeat_age: int | None = None
+    arq_key_present = False
+    queue_depth: int | None = None
+
+    if redis_configured:
+        try:
+            import redis.asyncio as aioredis
+
+            r = aioredis.from_url(redis_url, socket_connect_timeout=2)
+            try:
+                await r.ping()
+                redis_ok = True
+                now = datetime.now(timezone.utc)
+                heartbeat_age = await read_heartbeat_age(r, now=now)
+                try:
+                    arq_key_present = bool(await r.exists(arq_health_key))
+                except Exception:  # noqa: BLE001
+                    arq_key_present = False
+                try:
+                    queue_depth = int(await r.zcard(queue_name))
+                except Exception:  # noqa: BLE001
+                    queue_depth = None
+            finally:
+                await r.aclose()
+        except Exception as exc:  # noqa: BLE001
+            redis_ok = False
+            redis_err = type(exc).__name__
+    else:
+        redis_err = "not_configured"
+
+    worker_state = classify_worker(
+        redis_ok=redis_ok,
+        heartbeat_age=heartbeat_age,
+        arq_key_present=arq_key_present,
+    )
+
+    # -- Durable object storage --
+    object_backend = os.getenv("OBJECT_STORE_BACKEND", "local").strip().lower()
+    object_expected = (
+        _flag("PRODUCTION_STORAGE_REQUIRED", "0") or object_backend == "s3"
+    )
+    object_ok = False
+    object_err: str | None = None
+    if object_expected:
+        try:
+            from src.storage import get_object_store
+
+            store = get_object_store("health", default_root="/data/blobs/health")
+            await asyncio.to_thread(store.healthcheck)
+            object_ok = True
+        except Exception as exc:  # noqa: BLE001
+            object_err = type(exc).__name__
+
+    # -- degradation (honest) --
+    async_degraded = strict and async_expected and not redis_ok
+    worker_degraded = (
+        worker_strict and async_expected and redis_ok and worker_state != "ok"
+    )
+    healthy = pg_ok and not async_degraded and not worker_degraded
+    healthy = healthy and (not object_expected or object_ok)
+
+    body = {
+        "status": "ok" if healthy else "degraded",
+        "version": version,
+        "checks": {
+            "postgres": {"ok": pg_ok, "error": pg_err},
+            "redis": {
+                "ok": redis_ok,
+                "expected": async_expected,
+                "configured": redis_configured,
+                "error": redis_err,
+            },
+            "worker": {
+                "state": worker_state,
+                "heartbeat_age_seconds": heartbeat_age,
+                "stale_threshold_seconds": HEARTBEAT_STALE_SECONDS,
+                "strict": worker_strict,
+            },
+            "queue": {"depth": queue_depth, "name": queue_name},
+            "object_store": {
+                "ok": object_ok,
+                "expected": object_expected,
+                "backend": object_backend,
+                "error": object_err,
+            },
+        },
+    }
+    return JSONResponse(content=body, status_code=200 if healthy else 503)

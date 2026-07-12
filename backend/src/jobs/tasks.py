@@ -22,6 +22,7 @@ async def run_sam3d_job(ctx: dict, job_ulid: str) -> dict:
     4. On failure: run segment_heuristic() fallback
     5. Write result to jobs row
     """
+    import asyncio
     import io
     import os
 
@@ -49,12 +50,16 @@ async def run_sam3d_job(ctx: dict, job_ulid: str) -> dict:
 
         # 2. Load mesh from blob storage
         mesh_hash = job.params_json.get("mesh_hash", "") if job.params_json else ""
-        blob_dir = os.getenv("MESH_BLOB_DIR", "/data/blobs/meshes")
-        blob_path = os.path.join(blob_dir, f"{mesh_hash}.bin")
 
         try:
-            with open(blob_path, "rb") as f:
-                mesh_bytes = f.read()
+            from src.services.job_service import MESH_BLOB_DIR
+            from src.storage import get_object_store
+
+            store = get_object_store(
+                "meshes",
+                default_root=os.getenv("MESH_BLOB_DIR", MESH_BLOB_DIR),
+            )
+            mesh_bytes = await asyncio.to_thread(store.get, f"{mesh_hash}.bin")
             mesh = trimesh.load(io.BytesIO(mesh_bytes), file_type="stl")
         except Exception:
             logger.exception("Failed to load mesh for job %s", job_ulid)

@@ -32,6 +32,7 @@ import {
   Spinner,
   ConfidenceBand,
 } from "./primitives";
+import { LibraryOnboard } from "./library-onboard";
 
 // The endpoint caps page_size at 100; 48 keeps the "one grid" feel of the design
 // while real pagination stays honest for a large org (Load more appends pages).
@@ -207,6 +208,11 @@ export function CatalogScreen({ nav }: { nav: (s: string) => void }) {
         serve org-scoped part meshes to this grid, so no shape is invented.
       </p>
 
+      {/* Parts-master feeder (identity Slice 2): bulk-onboard the org's existing
+          part library so the identity corpus knows their parts by name on day one —
+          the flywheel's cold start. Refreshes the grid after a successful onboard. */}
+      <LibraryOnboard onChanged={() => void load(facet)} />
+
       {error && (
         <p style={{ margin: "14px 0 0", fontFamily: MONO, fontSize: 11, color: C.fail }}>
           couldn&apos;t load the catalog — {error}
@@ -267,7 +273,6 @@ export function CatalogScreen({ nav }: { nav: (s: string) => void }) {
                   fontFamily: MONO,
                   color: C.ink,
                   minWidth: 180,
-                  outline: "none",
                 }}
               />
             </div>

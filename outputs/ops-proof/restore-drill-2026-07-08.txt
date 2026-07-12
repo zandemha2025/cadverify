@@ -1,0 +1,30 @@
+== CADVerify in-place restore drill ==
+target_db=cadverify_ops  host=127.0.0.1  marker=drill-20260708T210250Z-1943
+
+-- (a) apply migrations: alembic upgrade head --
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+alembic current: 0032_rfq_packages (head)
+
+-- (a) seed known marker row --
+CREATE TABLE
+INSERT 0 1
+seeded marker rows (pre-dump): 1
+
+-- (b) pg_dump --format=custom --
+dump bytes=132224 sha256=eb35c873afeacf456e80948af2b6e9eb84afb93000f54953f638fd6d99a3920c
+
+-- (c) DROP + CREATE target DB (template0, UTF8) --
+DROP DATABASE
+CREATE DATABASE
+recreated encoding: UTF8
+
+-- (d) pg_restore into recreated DB --
+
+-- (e) verify known marker row survived --
+marker rows (post-restore): 1
+public tables (post-restore): 31
+alembic_version rows (post-restore): 1
+duration_sec: 1
+
+RESULT: PASS (known row survived drop+recreate+restore)

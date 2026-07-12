@@ -5,37 +5,108 @@ Provides SSO login, ACS callback, SLO, and SP metadata endpoints.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
+import re
+import secrets
+from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 
+import redis.asyncio as aioredis
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response
 
 from src.auth.dashboard_session import clear_session_cookie, set_session_cookie
-from src.auth.disposable import normalize_email
-from src.auth.hashing import hmac_index, mint_token
-from src.auth.models import (
-    create_api_key,
-    get_user_session_version,
-    upsert_user,
-    user_has_active_api_key,
+from src.auth.provisioning import (
+    ProvisionedLogin,
+    provision_authenticated_login,
 )
-from src.db.engine import get_session_factory
+from src.auth.redis_util import require_redis_url
+from src.config.production import is_production
 from src.services.org_saml_service import (
-    SamlGroupAssignment,
     SamlGroupMappingAmbiguousError,
-    apply_saml_group_assignment,
     normalize_saml_attributes,
 )
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/saml")
+_SAML_REQUEST_TTL_SECONDS = 10 * 60
+_RELAY_STATE_RE = re.compile(r"^[A-Za-z0-9_-]{40,128}$")
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_RSA_SHA256 = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"
+_DIGEST_SHA256 = "http://www.w3.org/2001/04/xmlenc#sha256"
 
 # Lazy import to avoid hard failure when python3-saml is not installed
 _OneLogin_Saml2_Auth = None
+
+
+@lru_cache(maxsize=1)
+def _saml_redis() -> aioredis.Redis:
+    return aioredis.from_url(require_redis_url(), decode_responses=True)
+
+
+def _saml_request_key(relay_state: str) -> str:
+    digest = hashlib.sha256(relay_state.encode()).hexdigest()
+    return f"saml:request:{digest}"
+
+
+def _state_error(status: int, code: str, message: str) -> HTTPException:
+    return HTTPException(
+        status,
+        detail={
+            "code": code,
+            "message": message,
+            "doc_url": f"https://docs.cadverify.com/errors#{code}",
+        },
+    )
+
+
+async def _store_saml_request(relay_state: str, request_id: str) -> None:
+    """Persist one short-lived SP request correlation without exposing its ID."""
+    if not request_id:
+        raise _state_error(
+            503,
+            "saml_state_unavailable",
+            "Enterprise sign-in is temporarily unavailable.",
+        )
+    try:
+        stored = await _saml_redis().set(
+            _saml_request_key(relay_state),
+            request_id,
+            ex=_SAML_REQUEST_TTL_SECONDS,
+            nx=True,
+        )
+    except Exception as exc:
+        raise _state_error(
+            503,
+            "saml_state_unavailable",
+            "Enterprise sign-in is temporarily unavailable.",
+        ) from exc
+    if not stored:
+        raise _state_error(
+            503,
+            "saml_state_unavailable",
+            "Enterprise sign-in is temporarily unavailable.",
+        )
+
+
+async def _consume_saml_request(relay_state: object) -> str | None:
+    """Atomically consume the request ID bound to an IdP-echoed RelayState."""
+    if not isinstance(relay_state, str) or not _RELAY_STATE_RE.fullmatch(relay_state):
+        return None
+    try:
+        request_id = await _saml_redis().getdel(_saml_request_key(relay_state))
+    except Exception as exc:
+        raise _state_error(
+            503,
+            "saml_state_unavailable",
+            "Enterprise sign-in is temporarily unavailable.",
+        ) from exc
+    return str(request_id) if request_id else None
 
 
 def _get_saml2_auth_class():
@@ -123,6 +194,94 @@ def _load_saml_settings() -> dict:
     return _expand_env(settings)
 
 
+def _https_origin(value: object, field: str) -> tuple[str, str, int]:
+    if not isinstance(value, str) or not value or "${" in value:
+        raise RuntimeError(f"{field} must be a resolved HTTPS URL")
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port or 443
+    except ValueError as exc:
+        raise RuntimeError(f"{field} must be a valid HTTPS URL") from exc
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.fragment
+    ):
+        raise RuntimeError(f"{field} must be a credential-free HTTPS URL")
+    return parsed.scheme, parsed.hostname.lower(), port
+
+
+def assert_production_saml_settings() -> None:
+    """Fail startup on a weak or incomplete released SAML security profile."""
+    if not is_production() or os.getenv("AUTH_MODE", "").strip().lower() not in {
+        "saml",
+        "hybrid",
+    }:
+        return
+
+    settings = _load_saml_settings()
+    if settings.get("strict") is not True or settings.get("debug") is True:
+        raise RuntimeError("production SAML requires strict mode with debug disabled")
+
+    security = settings.get("security") or {}
+    if (
+        security.get("wantAssertionsSigned") is not True
+        or security.get("wantMessagesSigned") is not True
+        or security.get("wantNameId", True) is not True
+        or security.get("allowSingleLabelDomains", False) is not False
+        or security.get("allowRepeatAttributeName", False) is not False
+        or security.get("rejectDeprecatedAlgorithm") is not True
+        or security.get("signatureAlgorithm") != _RSA_SHA256
+        or security.get("digestAlgorithm") != _DIGEST_SHA256
+    ):
+        raise RuntimeError(
+            "production SAML requires signed messages and assertions, strict "
+            "attribute/domain handling, deprecated-algorithm rejection, and "
+            "SHA-256 algorithms"
+        )
+
+    sp = settings.get("sp") or {}
+    sp_origins = {
+        _https_origin(sp.get("entityId"), "SAML SP entityId"),
+        _https_origin(
+            (sp.get("assertionConsumerService") or {}).get("url"),
+            "SAML SP ACS URL",
+        ),
+        _https_origin(
+            (sp.get("singleLogoutService") or {}).get("url"),
+            "SAML SP SLO URL",
+        ),
+    }
+    if len(sp_origins) != 1:
+        raise RuntimeError("production SAML SP URLs must share one HTTPS origin")
+
+    idp = settings.get("idp") or {}
+    entity_id = idp.get("entityId")
+    if not isinstance(entity_id, str) or not entity_id.strip() or "${" in entity_id:
+        raise RuntimeError("production SAML requires a resolved IdP entityId")
+    _https_origin(
+        (idp.get("singleSignOnService") or {}).get("url"),
+        "SAML IdP SSO URL",
+    )
+    signing_certs: list[object] = [idp.get("x509cert")]
+    signing_certs.extend((idp.get("x509certMulti") or {}).get("signing") or [])
+    if not any(
+        isinstance(cert, str)
+        and "${" not in cert
+        and len(re.sub(r"\s", "", cert)) >= 256
+        for cert in signing_certs
+    ):
+        raise RuntimeError("production SAML requires a real IdP signing certificate")
+
+    # Run the toolkit's own schema/URL/certificate-presence validation now, not
+    # on the first customer's login request.
+    from onelogin.saml2.settings import OneLogin_Saml2_Settings
+
+    OneLogin_Saml2_Settings(settings=settings)
+
+
 def _build_auth(request: Request, request_data: dict):
     """Construct a OneLogin_Saml2_Auth instance."""
     AuthClass = _get_saml2_auth_class()
@@ -130,49 +289,28 @@ def _build_auth(request: Request, request_data: dict):
     return AuthClass(request_data, old_settings=settings)
 
 
-async def _saml_provision_user(email: str) -> int:
-    """Provision or update a SAML-authenticated user.
-
-    Creates user row if not exists, mints an API key if none present.
-    SAML users default to 'viewer' role.
-    """
-    # Derive email_lower with the SAME canonicalisation as every other auth path
-    # (password/oauth/magic all use normalize_email). SAML previously used a bare
-    # ``strip().lower()`` that RETAINED gmail dots/+tags, so a SAML-provisioned
-    # row could be a DISTINCT account that still normalise-collides with another
-    # user — the exact inconsistency that let an invite's recipient-binding guard
-    # be bypassed for a cross-tenant admin grant. Normalising here makes
-    # ``email_lower`` (the unique key) agree with that guard.
-    email_lower = normalize_email(email)
-    user_id = await upsert_user(
-        email=email,
-        google_sub=None,
-        email_lower=email_lower,
-        disposable_flag=False,
-        auth_provider="saml",
-    )
-
-    # Mint a default API key only if the user has none active. Re-minting on
-    # every SSO login would orphan keys and churn the user's integrations (S3).
-    if not await user_has_active_api_key(user_id):
-        full_token, prefix, secret_hash = mint_token()
-        await create_api_key(
-            user_id, "SAML Default", prefix, hmac_index(full_token), secret_hash
+async def _saml_provision_login(
+    email: str, attributes: dict[str, list[str]] | None = None
+) -> ProvisionedLogin:
+    """Provision, group-map, key, and audit a SAML login atomically."""
+    email = email.strip()
+    if len(email) > 320 or not _EMAIL_RE.fullmatch(email):
+        raise _state_error(
+            400,
+            "saml_email_invalid",
+            "The identity provider did not supply a valid email NameID.",
         )
 
-    logger.info("SAML user provisioned: email=%s user_id=%d", email_lower, user_id)
-
-    # Audit: user.provisioned
-    import asyncio
-    from src.services.audit_service import fire_and_forget_audit
-    asyncio.create_task(fire_and_forget_audit(
-        user_id=user_id, user_email=email,
-        action="user.provisioned", resource_type="user",
-        resource_id=str(user_id),
-        detail={"auth_provider": "saml", "role": "viewer"},
-    ))
-
-    return user_id
+    login = await provision_authenticated_login(
+        email=email,
+        provider="saml",
+        key_name="SAML Default",
+        default_role="viewer",
+        group_attributes=attributes,
+        group_detail_key="saml_group_assignment",
+    )
+    logger.info("SAML user provisioned: user_id=%d", login.user_id)
+    return login
 
 
 def _extract_saml_attributes(auth) -> dict[str, list[str]]:
@@ -186,40 +324,17 @@ def _extract_saml_attributes(auth) -> dict[str, list[str]]:
         return {}
 
 
-async def _apply_saml_group_assignment_for_login(
-    user_id: int, attributes: dict[str, list[str]]
-) -> SamlGroupAssignment:
-    async with get_session_factory()() as session:
-        try:
-            assignment = await apply_saml_group_assignment(session, user_id, attributes)
-            await session.commit()
-            return assignment
-        except SamlGroupMappingAmbiguousError as exc:
-            await session.rollback()
-            logger.warning(
-                "SAML group mapping matched multiple orgs for user_id=%s org_count=%d",
-                user_id,
-                len(exc.org_ids),
-            )
-            raise HTTPException(
-                403,
-                detail={
-                    "code": "saml_group_mapping_ambiguous",
-                    "message": (
-                        "SAML assertion matched group mappings in multiple "
-                        "organizations. Ask an administrator to correct the mapping."
-                    ),
-                    "doc_url": "https://docs.cadverify.com/errors#saml_group_mapping_ambiguous",
-                },
-            ) from exc
-
-
 @router.get("/login")
 async def saml_login(request: Request):
     """Initiate SAML SSO login -- redirect user to IdP."""
     request_data = _build_request_data(request)
     auth = _build_auth(request, request_data)
-    sso_url = auth.login()
+    if is_production():
+        relay_state = secrets.token_urlsafe(32)
+        sso_url = auth.login(return_to=relay_state)
+        await _store_saml_request(relay_state, str(auth.get_last_request_id() or ""))
+    else:
+        sso_url = auth.login()
     return RedirectResponse(url=sso_url, status_code=302)
 
 
@@ -228,11 +343,23 @@ async def saml_acs(request: Request):
     """Assertion Consumer Service -- process IdP response after login."""
     request_data = await _build_request_data_with_post(request)
     auth = _build_auth(request, request_data)
-    auth.process_response()
+    if is_production():
+        request_id = await _consume_saml_request(
+            request_data.get("post_data", {}).get("RelayState")
+        )
+        if request_id is None:
+            raise _state_error(
+                400,
+                "saml_state_invalid",
+                "Enterprise sign-in request is missing, expired, or already used.",
+            )
+        auth.process_response(request_id=request_id)
+    else:
+        auth.process_response()
 
     errors = auth.get_errors()
     if errors:
-        logger.error("SAML ACS errors: %s reason=%s", errors, auth.get_last_error_reason())
+        logger.error("SAML ACS validation failed: errors=%s", errors)
         raise HTTPException(
             400,
             detail={
@@ -263,32 +390,31 @@ async def saml_acs(request: Request):
             },
         )
 
-    user_id = await _saml_provision_user(email)
     saml_attributes = _extract_saml_attributes(auth)
-    group_assignment = SamlGroupAssignment(matched=False)
-    if saml_attributes:
-        group_assignment = await _apply_saml_group_assignment_for_login(
-            user_id, saml_attributes
+    try:
+        login = await _saml_provision_login(email, saml_attributes or None)
+    except SamlGroupMappingAmbiguousError as exc:
+        logger.warning(
+            "SAML group mapping matched multiple orgs org_count=%d", len(exc.org_ids)
         )
-
-    # Audit: auth.login
-    import asyncio
-    from src.services.audit_service import fire_and_forget_audit
-    asyncio.create_task(fire_and_forget_audit(
-        user_id=user_id, user_email=email,
-        action="auth.login", resource_type="session",
-        detail={
-            "auth_provider": "saml",
-            "saml_group_assignment": group_assignment.to_audit_detail(),
-        },
-    ))
+        raise HTTPException(
+            403,
+            detail={
+                "code": "saml_group_mapping_ambiguous",
+                "message": (
+                    "SAML assertion matched group mappings in multiple organizations. "
+                    "Ask an administrator to correct the mapping."
+                ),
+                "doc_url": "https://docs.cadverify.com/errors#saml_group_mapping_ambiguous",
+            },
+        ) from exc
 
     dashboard_url = os.getenv("DASHBOARD_ORIGIN", "https://cadverify.com")
     resp = RedirectResponse(url=f"{dashboard_url}/dashboard", status_code=303)
     set_session_cookie(
         resp,
-        user_id,
-        session_version=await get_user_session_version(user_id),
+        login.user_id,
+        session_version=login.session_version,
     )
     return resp
 
@@ -298,23 +424,51 @@ async def saml_logout(request: Request):
     """Initiate SAML SLO -- redirect user to IdP for logout."""
     request_data = _build_request_data(request)
     auth = _build_auth(request, request_data)
-    slo_url = auth.logout()
+    if is_production():
+        relay_state = secrets.token_urlsafe(32)
+        slo_url = auth.logout(return_to=relay_state)
+        await _store_saml_request(relay_state, str(auth.get_last_request_id() or ""))
+    else:
+        slo_url = auth.logout()
     return RedirectResponse(url=slo_url, status_code=302)
 
 
-@router.post("/sls")
+@router.api_route("/sls", methods=["GET", "POST"])
 async def saml_sls(request: Request):
-    """Single Logout Service -- process IdP logout response."""
+    """Single Logout Service for Redirect or POST-bound IdP messages."""
     request_data = await _build_request_data_with_post(request)
     auth = _build_auth(request, request_data)
-    auth.process_slo()
+    message_data = (
+        request_data.get("post_data", {})
+        if request.method.upper() == "POST"
+        else request_data.get("get_data", {})
+    )
+    if is_production() and "SAMLResponse" in message_data:
+        request_id = await _consume_saml_request(message_data.get("RelayState"))
+        if request_id is None:
+            raise _state_error(
+                400,
+                "saml_logout_state_invalid",
+                "Enterprise logout request is missing, expired, or already used.",
+            )
+        redirect_url = auth.process_slo(request_id=request_id)
+    else:
+        # IdP-initiated, signed LogoutRequest. The production security profile
+        # requires signed SAML messages, while SP-initiated responses are also
+        # correlated above to the one-time request ID.
+        redirect_url = auth.process_slo()
 
     errors = auth.get_errors()
     if errors:
         logger.error("SAML SLS errors: %s", errors)
+        raise _state_error(
+            400,
+            "saml_logout_failed",
+            "SAML logout response validation failed.",
+        )
 
     login_url = os.getenv("DASHBOARD_ORIGIN", "https://cadverify.com") + "/login"
-    resp = RedirectResponse(url=login_url, status_code=302)
+    resp = RedirectResponse(url=redirect_url or login_url, status_code=302)
     clear_session_cookie(resp)
     return resp
 

@@ -1,0 +1,145 @@
+# Reference overlay for a regulated/CUI/ITAR-capable deployment. It is not a
+# complete environment: replace the example image repositories, hostnames,
+# bucket, CIDRs, and secret names with values from the approved GovCloud/on-prem
+# landing zone. Rendering requires the explicit operator acknowledgement shown
+# in docs/REGULATED_PRODUCTION_RUNBOOK.md.
+
+production:
+  enabled: true
+  regulated: true
+
+release: sha-0000000000000000000000000000000000000000
+deploymentEnvironment: regulated-documentation
+
+image:
+  backend:
+    repository: 111111111111.dkr.ecr.us-gov-west-1.amazonaws.com/cadverify-backend
+    tag: sha-0000000000000000000000000000000000000000
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    pullPolicy: IfNotPresent
+  frontend:
+    repository: 111111111111.dkr.ecr.us-gov-west-1.amazonaws.com/cadverify-frontend
+    tag: sha-0000000000000000000000000000000000000000
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    pullPolicy: IfNotPresent
+
+runtimeSecret:
+  existingSecret: cadverify-runtime
+
+serviceAccount:
+  # Associate this ServiceAccount with the GovCloud role through EKS Pod
+  # Identity outside Helm. IRSA needs a projected token and is intentionally
+  # not the default because service-account token automounting is disabled.
+  annotations: {}
+
+auth:
+  mode: saml
+  publicPasswordSignup: false
+
+reconstruction:
+  backend: local
+  allowRemoteEgress: false
+
+saml:
+  enabled: true
+  existingSecret: cadverify-saml
+  spEntityId: https://cadverify.example.mil
+  spAcsUrl: https://cadverify.example.mil/auth/saml/acs
+  spSloUrl: https://cadverify.example.mil/auth/saml/sls
+
+objectStore:
+  backend: s3
+  s3:
+    bucket: cadverify-regulated-replace-me
+    region: us-gov-west-1
+    prefix: cadverify
+    kmsKeyId: arn:aws-us-gov:kms:us-gov-west-1:111111111111:key/replace-me
+
+persistence:
+  blobs:
+    enabled: false
+
+observability:
+  otel:
+    enabled: true
+    endpoint: https://otel-collector.observability.svc.cluster.local:4318
+    serviceName: cadverify-api
+    caSecret: cadverify-otel-ca
+
+regulatedControls:
+  # The private overlay may set this true only after the landing zone supplies
+  # evidence for the configured in-cluster encryption control.
+  inClusterEncryption: false
+
+ingress:
+  enabled: true
+  className: nginx
+  host: cadverify.example.mil
+  tls:
+    - secretName: cadverify-ingress-tls
+      hosts:
+        - cadverify.example.mil
+
+autoscaling:
+  backend:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 65
+  frontend:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true
+
+topologySpreadConstraints:
+  enabled: true
+
+networkPolicy:
+  enabled: true
+  # Documentation-only TEST-NET destination. Replace it with exact private VPC
+  # endpoint/NAT CIDRs and only the ports each destination requires.
+  backendEgressRules:
+    # EKS Pod Identity Agent credential endpoint (IPv4). If the approved cluster
+    # uses another identity mechanism, replace this exact rule.
+    - cidr: 169.254.170.23/32
+      ports:
+        - protocol: TCP
+          port: 80
+    - cidr: 192.0.2.10/32
+      ports:
+        - protocol: TCP
+          port: 443
+    - cidr: 192.0.2.11/32
+      ports:
+        - protocol: TCP
+          port: 5432
+    - cidr: 192.0.2.12/32
+      ports:
+        - protocol: TCP
+          port: 6379
+  workerEgressRules:
+    - cidr: 169.254.170.23/32
+      ports:
+        - protocol: TCP
+          port: 80
+    - cidr: 192.0.2.10/32
+      ports:
+        - protocol: TCP
+          port: 443
+    - cidr: 192.0.2.11/32
+      ports:
+        - protocol: TCP
+          port: 5432
+    - cidr: 192.0.2.12/32
+      ports:
+        - protocol: TCP
+          port: 6379
+  migrationEgressRules:
+    - cidr: 192.0.2.11/32
+      ports:
+        - protocol: TCP
+          port: 5432

@@ -1,0 +1,82 @@
+[
+  {
+    "tag": "A",
+    "type": null,
+    "name": "CadVerify",
+    "outline": "rgb(16, 16, 16) auto 1px",
+    "outlineWidth": "1px",
+    "outlineColor": "rgb(16, 16, 16)",
+    "boxShadow": "none",
+    "borderColor": "rgb(245, 245, 247)"
+  },
+  {
+    "tag": "A",
+    "type": null,
+    "name": "PILOT ACCESS",
+    "outline": "rgb(16, 16, 16) auto 1px",
+    "outlineWidth": "1px",
+    "outlineColor": "rgb(16, 16, 16)",
+    "boxShadow": "none",
+    "borderColor": "rgba(245, 245, 247, 0.56)"
+  },
+  {
+    "tag": "INPUT",
+    "type": "email",
+    "name": "email",
+    "outline": "rgb(107, 166, 244) solid 2px",
+    "outlineWidth": "2px",
+    "outlineColor": "rgb(107, 166, 244)",
+    "boxShadow": "none",
+    "borderColor": "rgba(245, 245, 247, 0.16)"
+  },
+  {
+    "tag": "INPUT",
+    "type": "password",
+    "name": "password",
+    "outline": "rgb(107, 166, 244) solid 2px",
+    "outlineWidth": "2px",
+    "outlineColor": "rgb(107, 166, 244)",
+    "boxShadow": "none",
+    "borderColor": "rgba(245, 245, 247, 0.16)"
+  },
+  {
+    "tag": "BUTTON",
+    "type": "submit",
+    "name": "Create account",
+    "outline": "rgb(16, 16, 16) auto 1px",
+    "outlineWidth": "1px",
+    "outlineColor": "rgb(16, 16, 16)",
+    "boxShadow": "none",
+    "borderColor": "rgb(5, 5, 6)"
+  },
+  {
+    "tag": "A",
+    "type": null,
+    "name": "Log in",
+    "outline": "rgb(16, 16, 16) auto 1px",
+    "outlineWidth": "1px",
+    "outlineColor": "rgb(16, 16, 16)",
+    "boxShadow": "none",
+    "borderColor": "rgb(245, 245, 247) rgb(245, 245, 247) rgba(245, 245, 247, 0.28)"
+  },
+  {
+    "tag": "NEXTJS-PORTAL",
+    "type": null,
+    "name": "",
+    "outline": "rgb(117, 117, 117) none 0px",
+    "outlineWidth": "0px",
+    "outlineColor": "rgb(117, 117, 117)",
+    "boxShadow": "none",
+    "borderColor": "rgb(117, 117, 117)"
+  },
+  {
+    "tag": "BODY",
+    "type": null,
+    "name": "CadVerifyPILOT ACCESSPilot acc",
+    "outline": "rgb(230, 235, 242) none 0px",
+    "outlineWidth": "0px",
+    "outlineColor": "rgb(230, 235, 242)",
+    "boxShadow": "none",
+    "borderColor": "rgb(230, 235, 242)"
+  }
+]

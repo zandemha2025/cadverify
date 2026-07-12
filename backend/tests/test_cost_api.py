@@ -20,7 +20,11 @@ def client(monkeypatch):
     import main
 
     importlib.reload(main)  # conftest re-applies the auth/DB bypass on reload
-    return TestClient(main.app)
+    # Keep the client's portal and ASGI lifespan bounded to the test. Returning
+    # an unclosed client can leave dependency cleanup to garbage collection,
+    # which hides real coroutine/session lifecycle regressions behind warnings.
+    with TestClient(main.app) as test_client:
+        yield test_client
 
 
 def _post(client, name, data, **form):
@@ -276,6 +280,7 @@ def test_cost_decision_on_step_box(client, box_step_bytes):
         assert a["provenance"] in ("MEASURED", "USER", "DEFAULT")
 
 
+@pytest.mark.filterwarnings("ignore:invalid value encountered in divide:RuntimeWarning")
 def test_cost_step_non_watertight_is_clean_400(client):
     """An open-shell STEP (non-watertight) -> G1 structured 400 GEOMETRY_INVALID."""
     step = _open_shell_step_bytes()
@@ -389,8 +394,16 @@ def test_cost_parse_timeout_is_clean_504(client, cube_10mm, stl_bytes_of, monkey
     import time as _time
 
     from src.api import routes
+    from src.parsers import mesh_cache
 
     monkeypatch.setenv("ANALYSIS_TIMEOUT_SEC", "0.1")
+    # This test proves a real PARSE that overruns the budget 504s — so it must
+    # start from a COLD cache. Otherwise the parsed-mesh cache (a process-wide
+    # singleton another test may have warmed with this same cube) short-circuits
+    # before the parse and legitimately returns 200. The single-flight warm-hit
+    # shortcut makes that cache hit effective; clearing here restores the
+    # cold-cache precondition the timeout assertion depends on.
+    mesh_cache.get_cache().clear()
 
     real_parse = routes._parse_mesh
 
@@ -420,18 +433,38 @@ def test_cost_step_unavailable_is_structured_501(client, cube_10mm, stl_bytes_of
     assert r.json()["code"] == "NOT_IMPLEMENTED"
 
 
-def test_cost_concurrent_step_requests_both_ok(client, box_step_bytes):
+@pytest.mark.asyncio
+async def test_cost_concurrent_step_requests_both_ok(client, box_step_bytes):
     """Two simultaneous STEP costs both return 200 — _GMSH_LOCK serializes the
     process-global gmsh context across the executor threads (no segfault / no
     're-initialized' error). Skips cleanly when gmsh is unavailable."""
-    from concurrent.futures import ThreadPoolExecutor
+    import asyncio
 
-    def _do():
-        return _post(client, "box.step", box_step_bytes, qty="50", material_class="aluminum")
+    import httpx
 
-    with ThreadPoolExecutor(max_workers=2) as ex:
-        futures = [ex.submit(_do) for _ in range(2)]
-        results = [f.result() for f in futures]
+    # Starlette's synchronous TestClient owns a blocking portal and is not a
+    # supported cross-thread concurrency harness. HTTPX's async ASGI transport
+    # exercises two real overlapping requests against the same FastAPI app while
+    # leaving the endpoint's executor threads and process-global gmsh lock intact.
+    transport = httpx.ASGITransport(app=client.app)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+    ) as async_client:
+        async def _do():
+            return await async_client.post(
+                "/api/v1/validate/cost",
+                files={
+                    "file": (
+                        "box.step",
+                        box_step_bytes,
+                        "application/octet-stream",
+                    )
+                },
+                data={"qty": "50", "material_class": "aluminum"},
+            )
+
+        results = await asyncio.gather(_do(), _do())
 
     for r in results:
         assert r.status_code == 200, r.text

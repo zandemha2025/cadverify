@@ -10,6 +10,7 @@ import asyncio
 import gc
 import hashlib
 import logging
+import math
 import os
 import time
 from typing import Optional
@@ -91,6 +92,31 @@ def _nullable_api_key_id(user: AuthedUser) -> int | None:
     return user.api_key_id or None
 
 
+def _sanitize_nonfinite(value):
+    """Recursively replace non-finite floats (NaN / ±Inf) with ``None``.
+
+    A degenerate / zero-volume mesh makes trimesh emit NaN for stats like
+    center_of_mass; NaN and Inf are *not* valid JSON, so an unsanitized
+    result_json makes the asyncpg JSONB INSERT raise
+    ``InvalidTextRepresentationError`` and the endpoint returns HTTP 500.
+
+    This is the persist-boundary guard: non-finite → ``null`` (honest
+    "uncomputable", never a fabricated ``0``). The verdict itself is untouched
+    — the user still gets the honest "geometry invalid" answer, just without a
+    crash. Applied to the whole result dict as defense-in-depth on top of the
+    per-stat guard in ``analyze_geometry``.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {k: _sanitize_nonfinite(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_nonfinite(v) for v in value]
+    return value
+
+
 async def _persist_analysis(
     session: AsyncSession,
     user: AuthedUser,
@@ -104,9 +130,14 @@ async def _persist_analysis(
     verdict: str,
     face_count: int,
     duration_ms: float,
+    signature_vec: Optional[list] = None,
 ) -> Analysis:
     """Insert a new Analysis row and flush to get the assigned id."""
     from src.auth.org_context import resolve_org
+
+    # Persist-boundary guard: strip non-finite floats (NaN/±Inf) so the JSONB
+    # INSERT cannot throw InvalidTextRepresentationError (degenerate meshes).
+    result_json = _sanitize_nonfinite(result_json)
 
     analysis = Analysis(
         ulid=str(ULID()),
@@ -134,6 +165,22 @@ async def _persist_analysis(
 
     await part_summary_service.refresh_part_summary_safe(
         session, analysis.org_id, analysis.mesh_hash
+    )
+
+    # Customer-context Slice 1: enter this part into the org's identity-retrieval
+    # corpus (org-scoped shape signature). The name-hint is the uploaded filename
+    # (the name from the file); declared_part_id/program stay NULL until the
+    # customer declares them. Best-effort + graceful-degrade in a SAVEPOINT — a
+    # corpus write can NEVER break this live analysis persist.
+    from src.services import part_signature_service
+
+    await part_signature_service.upsert_signature_safe(
+        session,
+        analysis.org_id,
+        analysis.mesh_hash,
+        signature_vec,
+        declared_name=filename,
+        source="upload",
     )
     return analysis
 
@@ -180,6 +227,7 @@ def _get_route_helpers():
         _analysis_timeout_sec,
         _issue_to_dict,
         _parse_mesh,
+        _parse_mesh_async,
         _resolve_target_processes,
         _to_response,
     )
@@ -189,6 +237,7 @@ def _get_route_helpers():
         _parse_mesh,
         _resolve_target_processes,
         _to_response,
+        _parse_mesh_async,
     )
 
 
@@ -215,9 +264,10 @@ async def run_analysis(
     (
         analysis_timeout_sec_fn,
         _issue_to_dict,
-        parse_mesh_fn,
+        _parse_mesh_fn,
         resolve_target_processes_fn,
         to_response_fn,
+        parse_mesh_async_fn,
     ) = _get_route_helpers()
 
     start = time.time()
@@ -266,8 +316,14 @@ async def run_analysis(
         )
         return cached.result_json
 
-    # 7. Cache MISS — run full pipeline
-    mesh, suffix = parse_mesh_fn(file_bytes, filename)
+    # 7. Cache MISS — run full pipeline.
+    # Parse via the ASYNC pooled front door (spawn ProcessPool + per-rung hard
+    # wall-clock caps that SIGKILL a runaway worker), NOT the synchronous
+    # parse_mesh_fn — a sync gmsh call here runs on the event-loop thread and a
+    # pathological periodic-surface part (e.g. nist_ctc_05) grinds 2-3 min,
+    # freezing /health, signup, and EVERY other tenant (gauntlet F1). The pooled
+    # path keeps the loop free and surfaces an honest error to just this request.
+    mesh, suffix = await parse_mesh_async_fn(file_bytes, filename)
 
     # Resolve rule pack
     pack = None
@@ -314,12 +370,32 @@ async def run_analysis(
                 proc_issues = pack.apply(proc_issues, proc)
             ps = score_process(proc_issues, geometry, proc)
             process_scores.append(ps)
-        return geometry, ctx, features, universal_issues, process_scores
+
+        # Customer-context Slice 1: compute the 18-dim shape signature while the
+        # mesh + geometry + ctx are still alive (they are freed before persist).
+        # Best-effort / NON-FATAL — a signature failure must never affect analysis.
+        signature_vec = None
+        try:
+            from src.eval.similarity import feature_vector
+
+            signature_vec = feature_vector(ctx.mesh, geometry, ctx).tolist()
+        except Exception:
+            logger.warning(
+                "shape-signature computation failed — corpus write-back skipped",
+                exc_info=True,
+            )
+        return (
+            geometry, ctx, features, universal_issues, process_scores,
+            signature_vec,
+        )
 
     timeout_sec = analysis_timeout_sec_fn()
     loop = asyncio.get_event_loop()
     try:
-        geometry, ctx, features, universal_issues, process_scores = (
+        (
+            geometry, ctx, features, universal_issues, process_scores,
+            signature_vec,
+        ) = (
             await asyncio.wait_for(
                 loop.run_in_executor(None, _run_analysis_sync),
                 timeout=timeout_sec,
@@ -414,6 +490,7 @@ async def run_analysis(
             verdict=_verdict,
             face_count=_face_count,
             duration_ms=duration_ms,
+            signature_vec=signature_vec,
         )
         await _write_usage_event(
             session,
@@ -426,15 +503,17 @@ async def run_analysis(
         )
 
         # Audit: analysis.created
-        from src.services.audit_service import fire_and_forget_audit, _lookup_email
-        _audit_email = await _lookup_email(user.user_id)
-        asyncio.create_task(fire_and_forget_audit(
-            user_id=user.user_id, user_email=_audit_email,
-            action="analysis.created", resource_type="analysis",
+        from src.services.audit_service import emit_event
+        await emit_event(
+            session,
+            actor_id=user.user_id,
+            action="analysis.created",
+            resource_type="analysis",
             resource_id=analysis.ulid, file_hash=mesh_hash,
             result_summary=_verdict,
             detail={"process_set_hash": process_set_hash, "file_name": filename},
-        ))
+            org_id=analysis.org_id,
+        )
     except IntegrityError:
         # T-03B-01: Race condition — concurrent duplicate insert.
         # Roll back the failed flush and re-query the winning row.
@@ -508,9 +587,10 @@ async def run_quick_analysis(
     (
         _analysis_timeout_sec_fn,
         _issue_to_dict,
-        parse_mesh_fn,
+        _parse_mesh_fn,
         _resolve_target_processes_fn,
         _to_response_fn,
+        parse_mesh_async_fn,
     ) = _get_route_helpers()
 
     start = time.time()
@@ -541,8 +621,10 @@ async def run_quick_analysis(
         )
         return cached.result_json
 
-    # Cache miss — run quick analysis
-    mesh, suffix = parse_mesh_fn(file_bytes, filename)
+    # Cache miss — run quick analysis. Async pooled parse (off the event loop,
+    # hard-capped) — same reason as run_analysis: a sync gmsh call here freezes
+    # every tenant on a pathological part (gauntlet F1).
+    mesh, suffix = await parse_mesh_async_fn(file_bytes, filename)
     geometry = analyze_geometry(mesh)
     issues = run_universal_checks(mesh)
     has_errors = any(i.severity == Severity.ERROR for i in issues)

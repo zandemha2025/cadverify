@@ -481,6 +481,50 @@ def test_cost_pdf_template_is_honest(real_result_json):
     assert "VALIDATED" not in html
 
 
+def test_cost_pdf_bbox_renders_multiply_sign(real_result_json):
+    """W8-F1: the bounding box must render a literal × (U+00D7), never the raw
+    HTML entity '&times;' (Jinja autoescape double-escapes entities in {{ }})."""
+    from src.services.cost_pdf_service import render_cost_html
+
+    html = render_cost_html(_make_decision("01BBOX000000000000000000A", real_result_json))
+    assert "×" in html  # literal multiplication sign
+    assert "&times;" not in html  # the double-escape bug is gone
+
+
+@pytest.mark.asyncio
+async def test_cost_pdf_content_addressed_cache(real_result_json, tmp_path, monkeypatch):
+    """W9-F1: cached_cost_pdf renders ONCE then streams the stored bytes, and a
+    change to the decision's honest content re-renders (content-addressed key),
+    so a package download never re-renders and never serves a stale PDF."""
+    import copy
+
+    import src.services.cost_pdf_service as cps
+
+    monkeypatch.setattr(cps, "PDF_CACHE_DIR", str(tmp_path))
+
+    calls = {"n": 0}
+
+    async def _fake_generate(decision, html_str=None):
+        calls["n"] += 1
+        return f"%PDF-render-{calls['n']}".encode()
+
+    monkeypatch.setattr(cps, "generate_cost_pdf", _fake_generate)
+
+    dec = _make_decision("01CACHE00000000000000000A", real_result_json)
+    b1 = await cps.cached_cost_pdf(dec)
+    b2 = await cps.cached_cost_pdf(dec)  # cache HIT — must not re-render
+    assert calls["n"] == 1, "second call re-rendered instead of streaming cache"
+    assert b1 == b2  # streamed the exact stored bytes
+
+    # Mutate the decision's honest content → new fingerprint → fresh render
+    rj2 = copy.deepcopy(real_result_json)
+    rj2["estimates"][0]["unit_cost_usd"] = rj2["estimates"][0]["unit_cost_usd"] + 1.0
+    dec2 = _make_decision("01CACHE00000000000000000A", rj2)
+    b3 = await cps.cached_cost_pdf(dec2)
+    assert calls["n"] == 2, "changed content must invalidate the cache"
+    assert b3 != b1
+
+
 # ---------------------------------------------------------------------------
 # Share round-trip + sanitization
 # ---------------------------------------------------------------------------

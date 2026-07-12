@@ -1,0 +1,210 @@
+name: Commercial SaaS Promotion
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Reviewed 40-character commit SHA already released by CI
+        required: true
+        type: string
+      promotion_scope:
+        description: Stop after technical staging, or continue through protected production
+        required: true
+        default: staging-only
+        type: choice
+        options:
+          - staging-only
+          - staging-and-production
+
+concurrency:
+  group: commercial-saas-promotion
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  deploy-staging:
+    name: Promote immutable release to staging
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: saas-staging
+    outputs:
+      api_app: ${{ steps.contract.outputs.api_app }}
+      frontend_app: ${{ steps.contract.outputs.frontend_app }}
+      api_origin: ${{ steps.contract.outputs.api_origin }}
+      dashboard_origin: ${{ steps.contract.outputs.dashboard_origin }}
+      backend_image: ${{ steps.release.outputs.backend_image }}
+      frontend_image: ${{ steps.release.outputs.frontend_image }}
+      holdout_evidence_sha256: ${{ steps.holdout.outputs.evidence_sha256 }}
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      FLY_API_APP: ${{ vars.FLY_API_APP }}
+      FLY_WEB_APP: ${{ vars.FLY_WEB_APP }}
+      CADVERIFY_PUBLIC_API_BASE: ${{ vars.CADVERIFY_PUBLIC_API_BASE }}
+      CADVERIFY_DASHBOARD_ORIGIN: ${{ vars.CADVERIFY_DASHBOARD_ORIGIN }}
+      CADVERIFY_DEEP_HEALTH_TOKEN: ${{ secrets.CADVERIFY_DEEP_HEALTH_TOKEN }}
+      CADVERIFY_RELEASE_SHA: ${{ inputs.release_sha }}
+      FLY_TARGET_ENVIRONMENT: saas-staging
+      CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED: ${{ inputs.promotion_scope == 'staging-and-production' && '1' || '0' }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Require a successful CI release for this exact SHA
+        id: ci
+        run: |
+          run_id=$(gh run list \
+            --workflow ci.yml \
+            --commit "$CADVERIFY_RELEASE_SHA" \
+            --event push \
+            --status success \
+            --limit 1 \
+            --json databaseId,headSha \
+            --jq 'map(select(.headSha == env.CADVERIFY_RELEASE_SHA))[0].databaseId // empty')
+          test -n "$run_id" || {
+            echo "No successful CI release-image run exists for this SHA"
+            exit 1
+          }
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Download CI-owned immutable release manifest
+        run: |
+          mkdir -p "$RUNNER_TEMP/commercial-release"
+          gh run download "${{ steps.ci.outputs.run_id }}" \
+            --name "commercial-release-$CADVERIFY_RELEASE_SHA" \
+            --dir "$RUNNER_TEMP/commercial-release"
+
+      - name: Validate release manifest
+        id: release
+        run: |
+          manifest=$(find "$RUNNER_TEMP/commercial-release" -name release-manifest.json -type f -print -quit)
+          test -n "$manifest" || { echo "release-manifest.json is missing"; exit 1; }
+          jq -e --arg release "$CADVERIFY_RELEASE_SHA" '
+            .release_sha == $release
+            and (.backend_image | test("^registry\\.fly\\.io/cadvrfy-api@sha256:[0-9a-f]{64}$"))
+            and (.frontend_image | test("^registry\\.fly\\.io/cadvrfy-web@sha256:[0-9a-f]{64}$"))
+          ' "$manifest" >/dev/null
+          backend_image=$(jq -r .backend_image "$manifest")
+          frontend_image=$(jq -r .frontend_image "$manifest")
+          {
+            echo "CADVERIFY_BACKEND_IMAGE=$backend_image"
+            echo "CADVERIFY_FRONTEND_IMAGE=$frontend_image"
+          } >> "$GITHUB_ENV"
+          {
+            echo "backend_image=$backend_image"
+            echo "frontend_image=$frontend_image"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Require protected supplier-quote holdout evidence
+        id: holdout
+        if: inputs.promotion_scope == 'staging-and-production'
+        working-directory: backend
+        env:
+          CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64: ${{ secrets.CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64 }}
+        run: python scripts/ci/validate_supplier_holdout.py
+
+      - name: Validate staging environment contract
+        run: |
+          test -n "$FLY_API_TOKEN" || { echo "FLY_API_TOKEN environment secret is required"; exit 1; }
+          test -n "$FLY_API_APP" || { echo "FLY_API_APP environment variable is required"; exit 1; }
+          test -n "$FLY_WEB_APP" || { echo "FLY_WEB_APP environment variable is required"; exit 1; }
+          test -n "$CADVERIFY_PUBLIC_API_BASE" || { echo "CADVERIFY_PUBLIC_API_BASE environment variable is required"; exit 1; }
+          test -n "$CADVERIFY_DASHBOARD_ORIGIN" || { echo "CADVERIFY_DASHBOARD_ORIGIN environment variable is required"; exit 1; }
+          test -n "$CADVERIFY_DEEP_HEALTH_TOKEN" || { echo "CADVERIFY_DEEP_HEALTH_TOKEN environment secret is required"; exit 1; }
+
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # v1.6
+
+      - name: Deploy and verify staging
+        run: bash scripts/ops/promote-fly-release.sh
+
+      - name: Publish validated staging contract
+        id: contract
+        run: |
+          {
+            echo "api_app=$FLY_API_APP"
+            echo "frontend_app=$FLY_WEB_APP"
+            echo "api_origin=$CADVERIFY_PUBLIC_API_BASE"
+            echo "dashboard_origin=$CADVERIFY_DASHBOARD_ORIGIN"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload staging deployment evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: saas-staging-${{ inputs.release_sha }}
+          path: outputs/saas-promotion/saas-staging-${{ inputs.release_sha }}.txt
+          if-no-files-found: error
+
+  deploy-production:
+    name: Promote the staged digests to production
+    needs: deploy-staging
+    if: inputs.promotion_scope == 'staging-and-production'
+    runs-on: ubuntu-latest
+    environment: saas-production
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      FLY_API_APP: ${{ vars.FLY_API_APP }}
+      FLY_WEB_APP: ${{ vars.FLY_WEB_APP }}
+      CADVERIFY_PUBLIC_API_BASE: ${{ vars.CADVERIFY_PUBLIC_API_BASE }}
+      CADVERIFY_DASHBOARD_ORIGIN: ${{ vars.CADVERIFY_DASHBOARD_ORIGIN }}
+      CADVERIFY_DEEP_HEALTH_TOKEN: ${{ secrets.CADVERIFY_DEEP_HEALTH_TOKEN }}
+      CADVERIFY_RELEASE_SHA: ${{ inputs.release_sha }}
+      CADVERIFY_BACKEND_IMAGE: ${{ needs.deploy-staging.outputs.backend_image }}
+      CADVERIFY_FRONTEND_IMAGE: ${{ needs.deploy-staging.outputs.frontend_image }}
+      FLY_TARGET_ENVIRONMENT: saas-production
+      CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED: "1"
+      STAGING_API_APP: ${{ needs.deploy-staging.outputs.api_app }}
+      STAGING_FRONTEND_APP: ${{ needs.deploy-staging.outputs.frontend_app }}
+      STAGING_API_ORIGIN: ${{ needs.deploy-staging.outputs.api_origin }}
+      STAGING_DASHBOARD_ORIGIN: ${{ needs.deploy-staging.outputs.dashboard_origin }}
+      STAGING_HOLDOUT_EVIDENCE_SHA256: ${{ needs.deploy-staging.outputs.holdout_evidence_sha256 }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Revalidate protected supplier-quote holdout evidence
+        id: holdout
+        working-directory: backend
+        env:
+          CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64: ${{ secrets.CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64 }}
+        run: python scripts/ci/validate_supplier_holdout.py
+
+      - name: Require production evidence to match staged evidence
+        env:
+          PRODUCTION_HOLDOUT_EVIDENCE_SHA256: ${{ steps.holdout.outputs.evidence_sha256 }}
+        run: |
+          test "$PRODUCTION_HOLDOUT_EVIDENCE_SHA256" = "$STAGING_HOLDOUT_EVIDENCE_SHA256" || {
+            echo "Production supplier evidence differs from staged evidence"
+            exit 1
+          }
+
+      - name: Validate isolated production environment contract
+        run: |
+          test -n "$FLY_API_TOKEN" || { echo "FLY_API_TOKEN environment secret is required"; exit 1; }
+          test -n "$FLY_API_APP" || { echo "FLY_API_APP environment variable is required"; exit 1; }
+          test -n "$FLY_WEB_APP" || { echo "FLY_WEB_APP environment variable is required"; exit 1; }
+          test -n "$CADVERIFY_PUBLIC_API_BASE" || { echo "CADVERIFY_PUBLIC_API_BASE environment variable is required"; exit 1; }
+          test -n "$CADVERIFY_DASHBOARD_ORIGIN" || { echo "CADVERIFY_DASHBOARD_ORIGIN environment variable is required"; exit 1; }
+          test -n "$CADVERIFY_DEEP_HEALTH_TOKEN" || { echo "CADVERIFY_DEEP_HEALTH_TOKEN environment secret is required"; exit 1; }
+          test "$FLY_API_APP" != "$STAGING_API_APP" || { echo "production API app equals staging"; exit 1; }
+          test "$FLY_WEB_APP" != "$STAGING_FRONTEND_APP" || { echo "production frontend app equals staging"; exit 1; }
+          test "$CADVERIFY_PUBLIC_API_BASE" != "$STAGING_API_ORIGIN" || { echo "production API origin equals staging"; exit 1; }
+          test "$CADVERIFY_DASHBOARD_ORIGIN" != "$STAGING_DASHBOARD_ORIGIN" || { echo "production dashboard origin equals staging"; exit 1; }
+
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # v1.6
+
+      - name: Deploy and verify production
+        run: bash scripts/ops/promote-fly-release.sh
+
+      - name: Upload production deployment evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: saas-production-${{ inputs.release_sha }}
+          path: outputs/saas-promotion/saas-production-${{ inputs.release_sha }}.txt
+          if-no-files-found: error

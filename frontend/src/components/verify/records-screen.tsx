@@ -28,6 +28,7 @@ import {
 } from "@/lib/api";
 import { C, MONO, USD, NUM, procLabel, normProv } from "@/lib/verify/tokens";
 import { makeNowEstimate, driverViews } from "@/lib/verify/derive";
+import { recordVerdictModel, type Tone } from "@/lib/verify/verification";
 import {
   Kicker,
   ProvDot,
@@ -162,16 +163,12 @@ function fmtDriverValue(value: number, unit: string): string {
   return unit && unit !== "$" ? `${NUM(value)} ${unit}` : NUM(value);
 }
 
-/** verdict phrase + colour from real engine fields (never fabricated). */
-function verdict(
-  detail: CostDecisionDetail,
-  est: ReturnType<typeof makeNowEstimate>
-): { text: string; color: string } {
-  if (!detail.make_now_process || !est) return { text: "withheld", color: C.ink35 };
-  if (est.dfm_verdict === "fail") return { text: "blocked · geometry", color: C.fail };
-  if (est.dfm_verdict === "issues") return { text: "makeable — needs redesign", color: C.cond };
-  return { text: "makeable in-house", color: C.pass };
-}
+const VERDICT_COLOR: Record<Tone, string> = {
+  pass: C.pass,
+  cond: C.cond,
+  fail: C.fail,
+  neutral: C.ink45,
+};
 
 function RecordDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const toast = useToast();
@@ -198,7 +195,16 @@ function RecordDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const est = detail?.result ? makeNowEstimate(detail.result) : null;
   const drivers = driverViews(est);
   const conf = est?.confidence ?? null;
-  const v = detail ? verdict(detail, est) : { text: "", color: C.ink };
+  const verdictModel = detail
+    ? recordVerdictModel(detail.result, {
+        hasCostedRoute: Boolean(detail.make_now_process && est),
+        dfmReady: est?.dfm_ready,
+        dfmVerdict: est?.dfm_verdict,
+      })
+    : null;
+  const v = verdictModel
+    ? { ...verdictModel, color: VERDICT_COLOR[verdictModel.tone] }
+    : { text: "", kicker: "", tone: "neutral" as Tone, color: C.ink };
   const material = detail?.result?.decision?.make_now_material ?? null;
 
   const pf =
@@ -313,7 +319,7 @@ function RecordDetail({ id, onClose }: { id: string; onClose: () => void }) {
               <>
                 <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", fontFamily: MONO, fontSize: 12.5 }}>
                   <span style={{ color: C.ink55 }}>Σ line items = unit resource cost</span>
-                  <span style={{ color: v.color }}>{USD(est.unit_cost_usd)}{v.color === C.pass ? " ✓" : ""}</span>
+                  <span style={{ color: v.color }}>{USD(est.unit_cost_usd)}{v.tone === "pass" ? " ✓" : ""}</span>
                 </div>
                 <div style={{ marginTop: 12 }}>
                   <ConfidenceBand validated={conf?.validated ?? false} pointFraction={pf} />

@@ -28,18 +28,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.analysis.models import AnalysisResult, Issue, ProcessType
 from src.analysis.rules import available_rule_packs, get_rule_pack
 from src.api.metrics_registry import observe_analysis_duration, record_cost_decision
+from src.api.errors import DOC_BASE
+from src.obs import tracing
 from src.api.upload_validation import (
     demo_max_triangles,
     enforce_stl_triangle_count_cap,
     enforce_triangle_cap,
     validate_magic,
 )
+from src.api.admission import admit_analysis
 from src.auth.kill_switch import require_kill_switch_open
+from src.auth.org_limits import enforce_org_limits
 from src.auth.rate_limit import limiter
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.fixes.fix_suggester import get_priority_fixes
+from src.parsers import mesh_cache, parse_pool
 from src.parsers.step_mesher import is_step_supported, step_to_trimesh_from_bytes
 from src.parsers.stl_parser import parse_stl_from_bytes
 from src.profiles.database import MACHINES, MATERIALS, get_all_processes
@@ -100,7 +105,15 @@ async def _read_capped(file: UploadFile) -> bytes:
     return bytes(buf)
 
 
-def _parse_mesh(data: bytes, filename: str):
+def _parse_setup(data: bytes, filename: str):
+    """MAIN-process prelude: suffix gate, magic validation, cache handles.
+
+    Runs in EVERY path (in-thread and pooled). ``validate_magic`` is the
+    untrusted-bytes security gate — it MUST precede any dispatch of the bytes to
+    a parser lib or a pool worker (cadquery/trimesh/gmsh can crash on adversarial
+    input). Kept BEFORE the cache lookup so unsupported/corrupt uploads still 400
+    exactly as before (same bytes => same magic result on a hit).
+    """
     suffix = Path(filename).suffix.lower()
     if suffix not in (".stl", ".step", ".stp", ".iges", ".igs"):
         raise HTTPException(
@@ -110,25 +123,54 @@ def _parse_mesh(data: bytes, filename: str):
                 "Use .stl, .step, .stp, .iges, or .igs"
             ),
         )
-    # CORE-07: defense-in-depth — verify magic bytes before dispatching
-    # to parser libs (cadquery/trimesh can crash on adversarial input).
     validate_magic(data, suffix)
+
+    # PERF: mutation-safe parsed-mesh cache. The SAME part is re-parsed by the
+    # validate + cost + preview burst; gmsh/OCC tessellation is ~seconds. See
+    # parsers/mesh_cache.py for the correctness argument, bounds, and opt-out
+    # (MESH_PARSE_CACHE_DISABLED). A warm hit never touches the process pool.
+    cache = None
+    cache_key = None
+    if not mesh_cache.is_disabled():
+        cache = mesh_cache.get_cache()
+        cache_key = mesh_cache.key_for(data, suffix)
+    return suffix, cache, cache_key
+
+
+def _cache_hit(cache, cache_key):
+    """Return a deep copy of the cached mesh on a HIT (cap re-enforced), else None.
+
+    The cache stores only the PARSE. The triangle cap is a per-REQUEST policy
+    (MAX_TRIANGLES is read from env each call), so re-enforce it on the copy — a
+    cap lowered since the entry was populated must still 400, exactly as a fresh
+    parse would. ``enforce_triangle_cap`` only ever raises HTTPException(400),
+    which propagates unchanged.
+    """
+    if cache is None:
+        return None
+    cached = cache.get(cache_key)
+    if cached is None:
+        return None
+    enforce_triangle_cap(cached)
+    return cached
+
+
+def _raw_tessellate_in_thread(data: bytes, suffix: str, filename: str):
+    """In-thread raw parse of already-validated bytes -> mesh, with the exact
+    HTTPException mapping the route has always used. NO cache, NO post-parse cap
+    (the caller applies ``enforce_triangle_cap``). This is (a) the kill-switch /
+    STL path and (b) the BrokenProcessPool fallback body for STEP/IGES."""
     try:
         if suffix == ".stl":
             enforce_stl_triangle_count_cap(data)
-            mesh = parse_stl_from_bytes(data, filename)
-            enforce_triangle_cap(mesh)
-            return mesh, suffix
+            return parse_stl_from_bytes(data, filename)
         if not is_step_supported():
             raise HTTPException(
                 status_code=501,
                 detail="STEP parsing is unavailable on this server (gmsh not installed).",
             )
-        # gmsh -> triangulated shell (DFM + cost path). The post-mesh triangle
-        # cap below is the hard stop for runaway tessellation (assemblies).
-        mesh = step_to_trimesh_from_bytes(data, filename)
-        enforce_triangle_cap(mesh)   # 400 if tessellation exceeded MAX_TRIANGLES
-        return mesh, suffix
+        # gmsh -> triangulated shell (DFM + cost path).
+        return step_to_trimesh_from_bytes(data, filename)
     except HTTPException:
         raise
     except ValueError as e:
@@ -139,14 +181,191 @@ def _parse_mesh(data: bytes, filename: str):
         raise HTTPException(status_code=400, detail="Failed to parse mesh file")
 
 
-async def _parse_mesh_async(data: bytes, filename: str):
-    """Run _parse_mesh off the event loop, bounded by ANALYSIS_TIMEOUT_SEC.
+def _parse_mesh(data: bytes, filename: str):
+    """Fully synchronous parse (today's behavior, in-thread tessellation).
 
-    gmsh STEP meshing is CPU-bound and can be slow on complex parts; this keeps
-    the worker responsive and turns a runaway tessellation into a clean 504
-    instead of blocking the event loop. STL parsing is sub-second; it simply
-    runs in a thread now with no behavioural change.
+    Used directly by tests, by the process-pool kill switch, and as the pool's
+    in-thread fallback. Byte-identical to the pre-pool implementation.
     """
+    suffix, cache, cache_key = _parse_setup(data, filename)
+    cached = _cache_hit(cache, cache_key)
+    if cached is not None:
+        return cached, suffix
+    mesh = _raw_tessellate_in_thread(data, suffix, filename)
+    enforce_triangle_cap(mesh)  # 400 if tessellation exceeded MAX_TRIANGLES
+    if cache is not None:
+        cache.put(cache_key, mesh)
+    return mesh, suffix
+
+
+def _inflight_parses():
+    """Loop-local single-flight registry: ``cache_key -> shared parse Task``.
+
+    Concurrent parses of byte-IDENTICAL content (the validate + cost + preview
+    burst the Verify stage fires on ONE upload) must not each pay a full parse on
+    a cold cache. We coordinate them so exactly ONE tessellation runs and every
+    caller AWAITS that shared result. The registry is attached to the RUNNING
+    loop (never a module global) so a Task can never cross event loops — pytest
+    spins a fresh loop per test, and a Future bound to a dead loop would break
+    (mirrors parse_pool._ladder_semaphore).
+
+    Concurrency primitive: the single-threaded event loop itself. The
+    check-then-register in ``_parse_mesh_async`` never ``await``s between reading
+    and writing the registry, so it is atomic and elects exactly one leader. A
+    race at worst re-parses; it can never deadlock or hand out a half-built mesh.
+    """
+    import asyncio
+
+    loop = asyncio.get_event_loop()
+    reg = getattr(loop, "_cadverify_parse_inflight", None)
+    if reg is None:
+        reg = {}
+        setattr(loop, "_cadverify_parse_inflight", reg)
+    return reg
+
+
+async def _parse_mesh_async(data: bytes, filename: str):
+    """SINGLE-FLIGHT front door: dedupe concurrent parses of the SAME upload.
+
+    All async callers (``/validate``, ``/validate/cost``, ``/validate/preview-
+    mesh``) route through here. On a cold cache the three fire at once; without
+    coordination each starts its OWN ~30s tessellation on a 3-worker pool, so
+    ``/validate/preview-mesh`` blows ANALYSIS_TIMEOUT_SEC and 504s while
+    ``/validate`` already returned 200. Here they instead SHARE one parse: the
+    first request runs it as a detached Task, the rest AWAIT that Task, and every
+    caller gets an INDEPENDENT copy — so preview-mesh no longer times out.
+
+    Invariants preserved verbatim by delegating the real work to
+    ``_parse_mesh_async_uncoordinated``: the process pool, the per-rung caps, the
+    504-on-timeout, and single-part byte-identity.
+      * WARM HIT shortcuts BEFORE any single-flight bookkeeping (one copy, exactly
+        as the cache alone would serve it).
+      * MESH_PARSE_CACHE_DISABLED restores today's independent-parse behavior
+        (N concurrent = N parses) — a full escape hatch.
+      * COPY-ON-HIT: the shared parse is PRISTINE (never mutated) and every caller
+        receives ``mesh.copy()``; waiters never share a mutable object.
+      * SHARED FAILURE: a raised parse error (400/501/504) propagates identically
+        to every awaiter — a waiter sees the same exception, it never hangs.
+    """
+    import asyncio
+
+    # Disabled cache => no coordination: today's exact behavior (N concurrent =
+    # N independent parses). Keeps the switch a full escape hatch.
+    if mesh_cache.is_disabled():
+        return await _parse_mesh_async_uncoordinated(data, filename)
+
+    loop = asyncio.get_event_loop()
+
+    # Warm-cache probe FIRST (magic-validated, sha256 off the loop), so a warm hit
+    # shortcuts before any single-flight bookkeeping. _pooled_prelude raises the
+    # same 400 for an unsupported/corrupt upload, before we register anything.
+    suffix, cache, cache_key, cached = await loop.run_in_executor(
+        None, _pooled_prelude, data, filename
+    )
+    if cached is not None:
+        return cached, suffix
+    if cache is None or cache_key is None:  # defensive; disabled handled above
+        return await _parse_mesh_async_uncoordinated(data, filename)
+
+    # SINGLE-FLIGHT: elect one leader to run the real parse as a SHARED Task; all
+    # others await it. The Task is detached from any single request, so a caller
+    # disconnecting (its await cancelled) never kills the parse the others need.
+    reg = _inflight_parses()
+    task = reg.get(cache_key)
+    if task is None:
+        task = loop.create_task(_parse_mesh_async_uncoordinated(data, filename))
+        reg[cache_key] = task
+
+        def _clear(t: "asyncio.Task", k=cache_key, r=reg) -> None:
+            if r.get(k) is t:
+                r.pop(k, None)
+            # Retrieve any exception so a leaderless failure doesn't log
+            # "Task exception was never retrieved"; awaiters still re-raise it.
+            if not t.cancelled():
+                t.exception()
+
+        task.add_done_callback(_clear)
+
+    # Track waiter ownership. Cancelling one request must not kill work still
+    # needed by siblings, but once the final waiter disappears the shared task
+    # is abandoned and must cancel/kill its parser child immediately.
+    waiters = getattr(loop, "_cadverify_parse_waiters", None)
+    if waiters is None:
+        waiters = {}
+        setattr(loop, "_cadverify_parse_waiters", waiters)
+    waiters[cache_key] = waiters.get(cache_key, 0) + 1
+    cancelled = False
+    try:
+        mesh, suffix = await asyncio.shield(task)
+        return mesh.copy(), suffix
+    except asyncio.CancelledError:
+        cancelled = True
+        raise
+    finally:
+        remaining = waiters.get(cache_key, 1) - 1
+        if remaining > 0:
+            waiters[cache_key] = remaining
+        else:
+            waiters.pop(cache_key, None)
+            if cancelled and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+
+async def _parse_mesh_async_uncoordinated(data: bytes, filename: str):
+    """Parse off the event loop, bounded by ANALYSIS_TIMEOUT_SEC -> 504.
+
+    Default: STEP/IGES raw tessellation is dispatched to a spawn ProcessPool so
+    concurrent DISTINCT parts parse in PARALLEL (past the GIL + the process-global
+    gmsh lock). The MAIN process keeps the security gate (magic), the mesh cache,
+    and the triangle-cap policy. STL stays in-thread (sub-second; pickle would
+    cost more than the parse). Kill switch PARSE_PROCESS_POOL_DISABLED=1 restores
+    today's exact in-thread behavior.
+
+    This is the REAL work; concurrent same-content callers are deduped one layer
+    up in ``_parse_mesh_async`` (single-flight). Call this directly only to BYPASS
+    that dedup (e.g. the disabled-cache escape hatch, or a perf BEFORE baseline).
+    """
+    import asyncio
+
+    # ONLY STEP/IGES benefit from the pool (gmsh tessellation is the CPU-bound,
+    # GIL-/gmsh-lock-serialized cost). STL is sub-second — the pickle round-trip
+    # would exceed the parse — so STL AND unsupported suffixes stay on today's
+    # exact in-thread path (which runs the full synchronous _parse_mesh).
+    suffix = Path(filename).suffix.lower()
+    if parse_pool.is_disabled() or suffix not in (".step", ".stp", ".iges", ".igs"):
+        return await _parse_mesh_in_thread_async(data, filename)
+
+    loop = asyncio.get_event_loop()
+    timeout = _analysis_timeout_sec()
+    try:
+        return await asyncio.wait_for(
+            _parse_mesh_pooled(data, filename, loop),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        # future.cancel() cannot stop a running gmsh C call. Hard-kill the shared
+        # pool so adversarial CAD cannot keep consuming CPU after the request has
+        # returned 504; sibling requests recover through the existing broken-pool
+        # fallback and the next dispatch gets a fresh pool.
+        parse_pool.recycle_pool(kill=True)
+        raise HTTPException(
+            status_code=504,
+            detail=f"File parsing exceeded {timeout:.0f}s timeout.",
+        )
+    except asyncio.CancelledError:
+        # Client disconnect / server cancellation has the same ownership rule as
+        # a timeout: no untrusted parser child may outlive its abandoned request.
+        parse_pool.recycle_pool(kill=True)
+        raise
+
+
+async def _parse_mesh_in_thread_async(data: bytes, filename: str):
+    """Today's exact path: run the fully-synchronous _parse_mesh in the default
+    thread executor under the timeout. The process-pool kill-switch target."""
     import asyncio
 
     loop = asyncio.get_event_loop()
@@ -161,6 +380,57 @@ async def _parse_mesh_async(data: bytes, filename: str):
             status_code=504,
             detail=f"File parsing exceeded {timeout:.0f}s timeout.",
         )
+
+
+async def _parse_mesh_pooled(data: bytes, filename: str, loop):
+    """Process-pool path for STEP/IGES only (STL is filtered out upstream).
+
+    MAIN process: magic + cache + cap. WORKER: raw tessellation only. Composes
+    with the cache: check FIRST, dispatch on miss, cache the returned mesh here.
+    """
+    # MAIN-process prelude off the event loop (sha256 of a large upload is not
+    # free). A warm cache hit short-circuits before the pool.
+    suffix, cache, cache_key, cached = await loop.run_in_executor(
+        None, _pooled_prelude, data, filename
+    )
+    if cached is not None:
+        return cached, suffix
+
+    if not is_step_supported():
+        raise HTTPException(
+            status_code=501,
+            detail="STEP parsing is unavailable on this server (gmsh not installed).",
+        )
+    mesh = await _tessellate_step_via_pool(data, suffix, filename)
+
+    enforce_triangle_cap(mesh)  # per-request policy, MAIN process
+    if cache is not None:
+        # cache.put deep-copies (a few ms for a 185k-face mesh) — off the loop.
+        await loop.run_in_executor(None, cache.put, cache_key, mesh)
+    return mesh, suffix
+
+
+def _pooled_prelude(data: bytes, filename: str):
+    """_parse_setup + cache lookup, packaged for a single executor hop."""
+    suffix, cache, cache_key = _parse_setup(data, filename)
+    cached = _cache_hit(cache, cache_key)
+    return suffix, cache, cache_key, cached
+
+
+async def _tessellate_step_via_pool(data: bytes, suffix: str, filename: str):
+    """Dispatch STEP/IGES raw tessellation to the process pool, mapping worker
+    exceptions to the route's usual codes. parse_pool.submit_async already
+    handles BrokenProcessPool internally (recycle + in-thread fallback), so a
+    dead worker yields a correct mesh here, never a 500."""
+    try:
+        return await parse_pool.submit_async(data, suffix)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception("Mesh parsing failed for %s", filename)
+        raise HTTPException(status_code=400, detail="Failed to parse mesh file")
 
 
 def _resolve_target_processes(processes: Optional[str]) -> list[ProcessType]:
@@ -181,10 +451,17 @@ def _resolve_target_processes(processes: Optional[str]) -> list[ProcessType]:
 # ──────────────────────────────────────────────────────────────
 # Cost decision engine + options parsing (POST /validate/cost)
 # ──────────────────────────────────────────────────────────────
-def _run_cost_engine(mesh, filename: str):
+def _run_cost_engine_ctx(mesh, filename: str):
     """Score every registered process for the cost decision layer (mirrors
     cli._run_engine but from an already-parsed in-memory mesh; no narrowing,
-    no persistence, no network)."""
+    no persistence, no network).
+
+    Returns ``(result, mesh, ctx)`` — the FULL ``GeometryContext`` (not just
+    ``ctx.features``) so a caller can reuse the analysed geometry it already
+    built. The identity feature vector (``similarity.feature_vector``) is derived
+    from ``result.geometry`` + ``ctx`` here rather than re-running a SECOND full
+    geometry pass (``vector_for_mesh`` -> ``geometry_pass``) at request time (F2:
+    that redundant pass cost ~2.0s on a 185k-face part)."""
     import src.analysis.processes  # noqa: F401  populate registry
     from src.analysis.base_analyzer import (
         analyze_geometry,
@@ -223,6 +500,14 @@ def _run_cost_engine(mesh, filename: str):
         process_scores=scores,
     )
     rank_processes(result)
+    return result, mesh, ctx
+
+
+def _run_cost_engine(mesh, filename: str):
+    """Back-compat 3-tuple wrapper: ``(result, mesh, ctx.features)``. Callers that
+    also need the analysed geometry (to reuse it) should call
+    ``_run_cost_engine_ctx`` and read ``ctx.features`` off the returned context."""
+    result, mesh, ctx = _run_cost_engine_ctx(mesh, filename)
     return result, mesh, ctx.features
 
 
@@ -473,6 +758,8 @@ async def validate_file(
     ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
+    _org_limit: None = Depends(enforce_org_limits),
+    _admission: None = Depends(admit_analysis),
 ):
     """Upload an STL, STEP/STP, or IGES/IGS file and get manufacturing validation results."""
     # Validate rule pack early (before reading file bytes)
@@ -525,8 +812,28 @@ async def validate_file(
         await session.commit()
 
         # Enqueue arq job
-        queue = await get_job_queue()
-        await queue.enqueue("sam3d", {"mesh_hash": mesh_hash}, job.ulid)
+        try:
+            queue = await get_job_queue()
+            await queue.enqueue("sam3d", {"mesh_hash": mesh_hash}, job.ulid)
+        except Exception:
+            logger.exception("Failed to enqueue SAM-3D job %s", job.ulid)
+            job.status = "failed"
+            job.result_json = {"code": "SAM3D_ENQUEUE_FAILED"}
+            from datetime import datetime, timezone
+
+            job.completed_at = datetime.now(timezone.utc)
+            await session.commit()
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "SAM3D_ENQUEUE_FAILED",
+                    "message": (
+                        "Segmentation could not be scheduled. The job was marked "
+                        "failed; retry after the queue recovers."
+                    ),
+                    "doc_url": f"{DOC_BASE}/SAM3D_ENQUEUE_FAILED",
+                },
+            )
 
         return JSONResponse(
             status_code=202,
@@ -541,6 +848,333 @@ async def validate_file(
     return result
 
 
+# ──────────────────────────────────────────────────────────────
+# Browser preview mesh (POST /validate/preview-mesh)
+# ──────────────────────────────────────────────────────────────
+# The Verify stage renders a dropped STL from its real geometry, but a STEP/IGES
+# part cannot be parsed in the browser, so the stage historically fell back to a
+# bounding-BOX envelope — a real trust hit ("my part became a box"). The backend
+# already tessellates STEP/IGES to a real triangle shell (gmsh/OCC) for the DFM +
+# cost engine; this endpoint streams that SAME shell back, decimated to a budget a
+# WebGL canvas can render at 60fps, so the part looks like itself.
+#
+# Zero-egress: the CAD is parsed + tessellated in-process and the GLB is returned
+# straight through the authed same-origin proxy. Nothing is written to disk, put
+# in an external cache, or sent to any third party — the mesh is served from OUR
+# backend only. This is a MESH-LEVEL (triangulated shell) preview, NOT B-rep /
+# GD&T / PMI: it makes the part LOOK right, it does not assert analytic-surface
+# semantics.
+def _preview_faces_target() -> int:
+    """Target triangle count for the browser shell (default 50k)."""
+    try:
+        return max(1000, int(os.getenv("PREVIEW_MESH_TARGET_FACES", "50000")))
+    except ValueError:
+        return 50000
+
+
+def _preview_faces_max() -> int:
+    """Hard ceiling for the browser shell (default 150k)."""
+    try:
+        return max(1000, int(os.getenv("PREVIEW_MESH_MAX_FACES", "150000")))
+    except ValueError:
+        return 150000
+
+
+def _build_preview_glb(mesh, filename: str) -> tuple[bytes, int, int, bool]:
+    """Decimate the tessellated shell to the browser budget and export GLB bytes.
+
+    Reuses the engine's quadric/vertex-cluster decimation (``_decimate_to``, the
+    same path ``MAX_ANALYSIS_FACES`` uses) so the preview shares the analysis
+    mesh's fidelity story. Returns ``(glb_bytes, original_faces, preview_faces,
+    decimated)``. Pure in-process trimesh — no disk, no network (zero-egress).
+    """
+    from src.analysis.context import _decimate_to
+
+    original = int(len(mesh.faces))
+    out = mesh
+    decimated = False
+    target = _preview_faces_target()
+    if original > target:
+        reduced, _strategy = _decimate_to(mesh, target)
+        if reduced is not None and 0 < len(reduced.faces) < original:
+            out = reduced
+            decimated = True
+    glb = out.export(file_type="glb")
+    return bytes(glb), original, int(len(out.faces)), decimated
+
+
+@router.post("/validate/preview-mesh", dependencies=[Depends(require_kill_switch_open)])
+@limiter.limit("120/hour;1000/day")
+async def validate_preview_mesh(
+    request: Request,
+    file: UploadFile = File(...),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
+    _org_limit: None = Depends(enforce_org_limits),
+    _admission: None = Depends(admit_analysis),
+):
+    """Return a decimated, browser-renderable GLB of the part's REAL tessellated
+    shell so the Verify stage renders STEP/IGES/STL parts as themselves, not a box.
+
+    Keyed by the upload the stage already holds (the same File it sends to
+    ``/validate`` + ``/validate/cost``); org-scoped + session-authed like every
+    other data call. Zero-egress + mesh-level caveat: see the section header.
+    """
+    data = await _read_capped(file)
+    mesh, suffix = await _parse_mesh_async(data, file.filename or "upload")
+    try:
+        glb, original_faces, preview_faces, decimated = _build_preview_glb(
+            mesh, file.filename or "upload"
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Preview mesh export failed for %s", file.filename)
+        raise HTTPException(
+            status_code=400, detail="Could not build a preview mesh for this file."
+        )
+
+    headers = {
+        "X-Mesh-Original-Faces": str(original_faces),
+        "X-Mesh-Preview-Faces": str(preview_faces),
+        "X-Mesh-Decimated": "true" if decimated else "false",
+        "X-Mesh-Source": suffix.lstrip("."),
+        "Cache-Control": "no-store",
+    }
+    return Response(content=glb, media_type="model/gltf-binary", headers=headers)
+
+
+# ──────────────────────────────────────────────────────────────
+# Real STEP/IGES assembly ingestion (POST /validate/assembly)
+# ──────────────────────────────────────────────────────────────
+# CadVerify analyzes each part in ISOLATION; the single-part STEP path flattens a
+# file to one shell and refuses assemblies. This endpoint is the assembly-aware
+# sibling: on a multi-solid STEP/IGES it extracts EACH sub-part's own mesh, baked
+# world position (bbox / centroid / volume), name + nested product tree, and a
+# geometry summary — the structured input P2 (part-in-context render) and P3
+# (context-fed analysis) consume. It reuses the SAME OCC import + mesh-size policy
+# + retry ladder + process pool as the single-part path (src/parsers/assembly_
+# mesher.py) and is org-scoped, authed, kill-switched, and rate-limited like every
+# other validate route. Zero-egress: parsed in-process, nothing persisted.
+#
+# Detection: 1 solid -> classified single_part (the caller should use /validate for
+# canonical single-part analysis); >=2 solids -> the assembly model. Honest limits
+# (AP203 drops mates/GD&T; native .SLDASM/.prt need a licensed reader) ride in the
+# response's ``limits`` and are enforced (native formats return a specific 400).
+def _assembly_glb_target_faces() -> int:
+    """Total-face budget for the combined assembly GLB (default 300k for WebGL)."""
+    try:
+        return max(1000, int(os.getenv("ASSEMBLY_GLB_TARGET_FACES", "300000")))
+    except ValueError:
+        return 300000
+
+
+async def _extract_assembly_async(data: bytes, filename: str):
+    """Extract an AssemblyModel off the loop, bounded by ANALYSIS_TIMEOUT_SEC ->
+    504. MAIN process keeps the untrusted-bytes gate (magic) + suffix policy; the
+    CPU-bound multi-solid gmsh extraction runs in the shared spawn pool."""
+    import asyncio
+
+    from src.parsers.assembly_mesher import (
+        ASSEMBLY_SUFFIXES,
+        is_native_cad_suffix,
+        native_cad_error,
+    )
+
+    suffix = Path(filename).suffix.lower()
+    # Native/proprietary CAD -> a SPECIFIC 400 (not a generic unsupported-type), so
+    # the caller learns exactly why (needs a licensed reader) and what to do.
+    if is_native_cad_suffix(suffix):
+        raise HTTPException(status_code=400, detail=str(native_cad_error(suffix)))
+    if suffix not in ASSEMBLY_SUFFIXES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Assembly ingestion needs a STEP/IGES file (got "
+                f"{suffix or 'no suffix'}). Use .step, .stp, .iges, or .igs."
+            ),
+        )
+    # Untrusted-bytes security gate BEFORE any parser touches the bytes (same
+    # discipline as _parse_setup); STEP magic / IGES structure check.
+    validate_magic(data, suffix)
+    if not is_step_supported():
+        raise HTTPException(
+            status_code=501,
+            detail="STEP/IGES parsing is unavailable on this server (gmsh not installed).",
+        )
+
+    loop = asyncio.get_event_loop()
+    timeout = _analysis_timeout_sec()
+    try:
+        return await asyncio.wait_for(
+            parse_pool.submit_assembly_async(data, suffix), timeout=timeout
+        )
+    except asyncio.TimeoutError:
+        parse_pool.recycle_pool(kill=True)
+        raise HTTPException(
+            status_code=504,
+            detail=f"Assembly parsing exceeded {timeout:.0f}s timeout.",
+        )
+    except asyncio.CancelledError:
+        parse_pool.recycle_pool(kill=True)
+        raise
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception("Assembly extraction failed for %s", filename)
+        raise HTTPException(status_code=400, detail="Failed to parse assembly file")
+
+
+async def _run_assembly_analysis(
+    model,
+    *,
+    material_class: str,
+    region: str,
+    assemblies_per_year: Optional[int],
+) -> dict:
+    """Run the P3 per-part DFM + should-cost + interference off the event loop,
+    bounded by ``ANALYSIS_TIMEOUT_SEC``.
+
+    The whole assembly analysis is ONE off-loop executor call (the per-part cost
+    engine is CPU-bound and must not block the loop). It carries its OWN internal
+    wall-clock deadline (a hair under the route budget) so it degrades HONESTLY
+    ("N of M analyzed") BEFORE the outer ``wait_for`` would 504. On the rare event
+    the internal budget is out-run, the outer guard still bounds the request.
+    Returns the base assembly model (``limits``, tree, positions) PLUS the analysis
+    so the P2 frontend renders position + verdict + cost + quantity + interference
+    from one call.
+    """
+    import asyncio
+
+    from src.services.assembly_analysis_service import analyze_assembly_sync
+
+    timeout = _analysis_timeout_sec()
+    # Internal budget slightly under the route budget so the honest degrade wins.
+    internal_budget = max(1.0, timeout - 2.0)
+    loop = asyncio.get_event_loop()
+    try:
+        analysis = await asyncio.wait_for(
+            loop.run_in_executor(
+                None,
+                lambda: analyze_assembly_sync(
+                    model,
+                    material_class=material_class,
+                    region=region,
+                    assemblies_per_year=assemblies_per_year,
+                    time_budget_sec=internal_budget,
+                ),
+            ),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=504,
+            detail=f"Assembly analysis exceeded {timeout:.0f}s timeout.",
+        )
+    out = model.to_dict()
+    out["analysis"] = analysis
+    return out
+
+
+@router.post("/validate/assembly", dependencies=[Depends(require_kill_switch_open)])
+@limiter.limit("60/hour;500/day")
+async def validate_assembly(
+    request: Request,
+    response: Response,
+    file: UploadFile = File(...),
+    format: str = Query(
+        "json",
+        description="'json' (default) for the structured assembly model, 'glb' "
+        "for one browser-renderable GLB with a named node per part (world "
+        "transforms preserved) for the part-in-context render, or 'analysis' for "
+        "the P3 context-fed per-part DFM + should-cost + real interference.",
+    ),
+    material_class: Optional[str] = Query(
+        None,
+        description="format=analysis only. DEFAULT ASSUMPTION for should-cost "
+        "(AP203 carries no material): polymer|aluminum|steel|stainless|titanium. "
+        "Unset => aluminum (the common mechanical-assembly default), labelled.",
+    ),
+    region: Optional[str] = Query(
+        None, description="format=analysis only. US|EU|MX|CN|IN|SA (unset => US)."
+    ),
+    assemblies_per_year: Optional[int] = Query(
+        None,
+        description="format=analysis only. USER-DECLARED assemblies/year. When set, "
+        "each part is costed at annual = per-assembly-count × this (labelled "
+        "user-declared); unset => costed at the per-assembly FACT count only.",
+    ),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
+    _org_limit: None = Depends(enforce_org_limits),
+    _admission: None = Depends(admit_analysis),
+):
+    """Ingest a real STEP/IGES ASSEMBLY -> per-part meshes + world positions +
+    nested product tree, and (``format=analysis``) run real per-part analysis.
+
+    Returns the structured ``AssemblyModel`` (``format=json``), a combined GLB
+    (``format=glb``), or the P3 analysis (``format=analysis``): per-part DFM +
+    should-cost from the SAME single-part engine, real per-part quantity from the
+    product tree, and real geometric interference/contact. A single-solid file is
+    classified ``single_part`` (use ``/validate`` for canonical analysis). Native
+    CAD (.SLDASM/.prt/.SAT/...) is refused with a specific 400. Org-scoped +
+    session-authed + zero-egress; the ``limits``/``boundaries`` fields surface what
+    AP203 geometry cannot carry (mates, GD&T) and what is FACT vs assumption vs gate.
+    """
+    fmt = format.lower()
+    # Validate analysis knobs BEFORE the (expensive) extraction, so a bad param is
+    # a fast 400 (mirrors the cost route's fail-fast option validation).
+    if fmt == "analysis":
+        if material_class is not None and material_class not in _MATERIAL_CLASSES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown material_class '{material_class}'. Use one of "
+                       f"{sorted(_MATERIAL_CLASSES)}",
+            )
+        if region is not None and region not in _REGIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown region '{region}'. Use one of {sorted(_REGIONS)}",
+            )
+        if assemblies_per_year is not None and not (1 <= assemblies_per_year <= _MAX_QTY):
+            raise HTTPException(
+                status_code=400,
+                detail=f"assemblies_per_year out of range [1, {_MAX_QTY}]",
+            )
+
+    data = await _read_capped(file)
+    model = await _extract_assembly_async(data, file.filename or "upload.step")
+
+    if fmt == "analysis":
+        return await _run_assembly_analysis(
+            model,
+            material_class=material_class or "aluminum",
+            region=region or "US",
+            assemblies_per_year=assemblies_per_year,
+        )
+
+    if format.lower() == "glb":
+        from src.parsers.assembly_mesher import assembly_to_glb
+
+        try:
+            glb = assembly_to_glb(model, target_faces=_assembly_glb_target_faces())
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception:
+            logger.exception("Assembly GLB export failed for %s", file.filename)
+            raise HTTPException(
+                status_code=400, detail="Could not build an assembly GLB for this file."
+            )
+        headers = {
+            "X-Assembly-Kind": model.kind,
+            "X-Assembly-Parts": str(model.part_count),
+            "Cache-Control": "no-store",
+        }
+        return Response(content=glb, media_type="model/gltf-binary", headers=headers)
+
+    return model.to_dict()
+
+
 @router.post("/validate/quick", dependencies=[Depends(require_kill_switch_open)])
 @limiter.limit("60/hour;500/day")
 async def validate_quick(
@@ -549,6 +1183,8 @@ async def validate_quick(
     file: UploadFile = File(...),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
+    _org_limit: None = Depends(enforce_org_limits),
+    _admission: None = Depends(admit_analysis),
 ):
     """Quick pass/fail check — universal checks only, no process-specific analysis."""
     data = await _read_capped(file)
@@ -578,6 +1214,8 @@ async def validate_demo(
             "responses lean."
         ),
     ),
+    _org_limit: None = Depends(enforce_org_limits),
+    _admission: None = Depends(admit_analysis),
 ):
     """Public demo — full analysis, no auth, no persistence, tight rate limit."""
     import asyncio
@@ -724,6 +1362,14 @@ async def _run_cost_decision(
 
     t0 = time.perf_counter()
 
+    # Tracing (opt-in, no-op when off): stamp the already-bound request id onto
+    # the active server span so a trace correlates with the structured logs. No
+    # new PII — request_id is the same opaque correlation id RequestIDMiddleware
+    # already bound to structlog.
+    if tracing.is_active():
+        _rid = structlog.contextvars.get_contextvars().get("request_id")
+        tracing.set_current_attributes(**{"cadverify.request_id": _rid})
+
     # ---- validate options (fail fast, before reading bytes) --------------
     quantities = _parse_qty_list(qty)
     if complexity not in _COMPLEXITY:
@@ -785,27 +1431,65 @@ async def _run_cost_decision(
     _validate_overrides(rate_overrides)           # 400 on unknown key (fail fast)
     owned = _parse_owned_processes(owned_processes)  # 400 on unknown process id
 
-    data = await _read_capped(file)  # 413 on size, 400 on empty
-    mesh, suffix = await _parse_mesh_async(  # 400/413/501, 504 on parse timeout
-        data, file.filename or "unknown"
-    )
-    # ── B5 units landmine: rescale the mesh into mm EXACTLY ONCE, here at the parse
-    # seam, BEFORE any geometry/DFM/cost extraction. mm (default/unset) => the SAME
-    # mesh object untouched => byte-identical; inch => a ×25.4 copy so volume
-    # (×25.4³ ≈ 16,387×), area, bbox and wall thickness all stay coherent and every
-    # downstream consumer (DFM, machine-fit, cost, analogy) reads the ONE real part.
-    # This is the SINGLE geometry-scaling site: nothing downstream rescales
-    # (EstimateOptions.units is declarative only), so there is exactly one
-    # conversion, never a double.
-    from src.costing.units import scale_mesh_to_mm
-    mesh = scale_mesh_to_mm(mesh, effective_units)
+    # material_class: capture the caller's ORIGINAL declaration BEFORE any CAD
+    # fill below. The existing material_class_is_user heuristic (!= "polymer")
+    # must be computed off this original value — filling a non-polymer class
+    # FROM the CAD file must never get flagged USER (that would misrepresent an
+    # unconfirmed CAD annotation as a buyer declaration).
+    material_class_is_user = material_class != "polymer"
+    material_class_from_cad = False
+
+    # Span 1/4 — mesh parse: read the upload, tessellate/parse to a trimesh,
+    # and rescale into mm. No-op context when tracing is off.
+    with tracing.span("cost.parse_mesh") as _sp_parse:
+        data = await _read_capped(file)  # 413 on size, 400 on empty
+
+        # ── honest "material read from CAD" slice (no-kernel text scan) ──────
+        # Only fill from the CAD file when the caller left material_class at its
+        # DEFAULT ("polymer"). A real user declaration always wins — this never
+        # runs when material_class_is_user is True. Best-effort, never raises;
+        # a STEP with no declared material (or an STL, which never carries one)
+        # simply finds nothing and this is a no-op => byte-identical.
+        if not material_class_is_user:
+            from src.parsers.step_material import material_class_from_step
+
+            cad_class = material_class_from_step(data)
+            # Restrict the fill to the route's already-validated/costed material
+            # classes (_MATERIAL_CLASSES) — MATERIAL_FAMILY carries a few extra
+            # families (nickel/cobalt/zinc/copper, an oil & gas alloy pack) that
+            # this public route does not accept even as an explicit USER value
+            # (see the material_class Query/Form validation above); silently
+            # routing an unvalidated class in through the CAD side door would be
+            # inconsistent with that gate, so those are left unfilled (falls
+            # through to DEFAULT "polymer", unchanged behaviour).
+            if cad_class and cad_class in _MATERIAL_CLASSES:
+                material_class = cad_class
+                material_class_from_cad = True
+
+        mesh, suffix = await _parse_mesh_async(  # 400/413/501, 504 on parse timeout
+            data, file.filename or "unknown"
+        )
+        # ── B5 units landmine: rescale the mesh into mm EXACTLY ONCE, here at the parse
+        # seam, BEFORE any geometry/DFM/cost extraction. mm (default/unset) => the SAME
+        # mesh object untouched => byte-identical; inch => a ×25.4 copy so volume
+        # (×25.4³ ≈ 16,387×), area, bbox and wall thickness all stay coherent and every
+        # downstream consumer (DFM, machine-fit, cost, analogy) reads the ONE real part.
+        # This is the SINGLE geometry-scaling site: nothing downstream rescales
+        # (EstimateOptions.units is declarative only), so there is exactly one
+        # conversion, never a double.
+        from src.costing.units import scale_mesh_to_mm
+        mesh = scale_mesh_to_mm(mesh, effective_units)
+        tracing.set_attr(_sp_parse, "cadverify.file.suffix", suffix)
+        tracing.set_attr(_sp_parse, "cadverify.file.bytes", len(data))
+        tracing.set_attr(_sp_parse, "cadverify.units", effective_units)
 
     from src.costing import estimate_decision, EstimateOptions, report_to_dict
 
     options = EstimateOptions(
         quantities=quantities,
         material_class=material_class,
-        material_class_is_user=material_class != "polymer",
+        material_class_is_user=material_class_is_user,
+        material_class_from_cad=material_class_from_cad,
         region=effective_region,
         region_is_user=region_is_user,
         shop=shop_binding,
@@ -845,6 +1529,9 @@ async def _run_cost_decision(
         # a mocked/unprovisioned session (no real org_id) is treated as "no
         # calibration" — leaving behaviour byte-identical to pre-W5.
         if isinstance(cal_org_id, str) and cal_org_id:
+            # Tracing: stamp the resolved org id onto the server span (opaque
+            # identifier already in scope, not new PII). No-op when off.
+            tracing.set_current_attributes(**{"cadverify.org_id": cal_org_id})
             # ── Phase C: machine-inventory verification feed ─────────────────
             # Resolve the caller org's DECLARED owned machines + shop-level
             # secondary ops + THIS part's DECLARED service environment, and thread
@@ -975,76 +1662,122 @@ async def _run_cost_decision(
     # IP-local + ephemeral by contract and stays byte-identical regardless of
     # the flag — the band is an authed-product feature.
     run_ensemble = ensemble_enabled() and user is not None
+    # F2: only a real authenticated org caller can ground a retrieval-based
+    # identity (the demo/anon path serves identity=null). Gate the reuse of the
+    # cost engine's geometry for the identity signature on that same condition so
+    # the demo path pays exactly zero extra work.
+    identity_wanted = user is not None and session is not None
+
+    # Snapshot the OTel context on the event loop so the DFM / should-cost spans
+    # created inside the executor thread nest under the compute span (contextvars
+    # do not cross the thread boundary on their own). No-op / None when tracing
+    # is off. _otel_ctx is captured below, inside the cost.compute span.
+    _otel_ctx = None
 
     def _run():
-        result, m, features = _run_cost_engine(mesh, file.filename or "unknown")
-        rep = estimate_decision(result, m, features, options)
-        unc = None
-        if run_ensemble and rep.status != "GEOMETRY_INVALID":
-            # ── P1 analogy query geometry ────────────────────────────────────
-            # THIS part's MEASURED cost-drivers (analogy_estimator.FEATURE_KEYS),
-            # extracted by the SAME engine extraction the records were populated
-            # with. Only computed when the org actually has records to match
-            # against — otherwise geometry stays None and the analogy is never
-            # engaged (band byte-identical). Best-effort: an extraction failure
-            # leaves geometry None (analogy abstains), never fails the estimate.
-            geom_features = None
-            if analogy_records:
-                try:
-                    from src.costing.drivers import extract_drivers
+        _otel_tok = tracing.attach_context(_otel_ctx)
+        try:
+            # Span 2/4 — DFM / geometry analysis (the cost engine's mesh pass).
+            with tracing.span("cost.dfm_analysis") as _sp_dfm:
+                result, m, ctx = _run_cost_engine_ctx(
+                    mesh, file.filename or "unknown"
+                )
+                features = ctx.features
+                geo = result.geometry if isinstance(result.geometry, dict) else {}
+                tracing.set_attr(_sp_dfm, "cadverify.face_count", geo.get("face_count"))
+            # Span 3/4 — should-cost decision (make-vs-buy costing).
+            with tracing.span("cost.should_cost") as _sp_cost:
+                rep = estimate_decision(result, m, features, options)
+                tracing.set_attr(_sp_cost, "cadverify.status", rep.status)
+            unc = None
+            if run_ensemble and rep.status != "GEOMETRY_INVALID":
+                with tracing.span("cost.ensemble"):
+                    unc = _run_ensemble_band(
+                        result, m, features, options, analogy_records
+                    )
+            # F2: compute the identity query signature by REUSING the geometry the
+            # cost engine already analysed (result.geometry + ctx) rather than
+            # re-running a SECOND full geometry pass (vector_for_mesh -> geometry_
+            # pass) in the request-blocking retrieval below. Byte-identical to
+            # vector_for_mesh(mesh) — same geometry/ctx, same math — for a ~2.0s
+            # win on a 185k-face part. Only computed when a real org caller could
+            # actually ground an identity (the demo/anon path stays identity=null).
+            id_vec = None
+            if identity_wanted:
+                from src.eval import similarity
+                id_vec = similarity.feature_vector(m, result.geometry, ctx)
+            return rep, unc, id_vec
+        finally:
+            tracing.detach_context(_otel_tok)
 
-                    dr = extract_drivers(result.geometry, m, features)
-                    if (dr.volume_cm3 > 0 and dr.surface_area_cm2 > 0
-                            and dr.max_bbox_mm > 0 and dr.face_count > 0):
-                        geom_features = {
-                            "volume_cm3": float(dr.volume_cm3),
-                            "surface_area_cm2": float(dr.surface_area_cm2),
-                            "max_bbox_mm": float(dr.max_bbox_mm),
-                            "face_count": int(dr.face_count),
-                        }
-                except Exception:
-                    geom_features = None
-            # Reuse the org's W5 residual_model when one was bound above; else
-            # None -> the honest pre-data assumption spread (validated=False).
-            # records + geometry activate the analogy-to-quote k-NN member: it
-            # contributes to the POINT via BLUE ONLY when it finds >= min_real
-            # REAL same-process neighbours WITH geometry; otherwise it ABSTAINS
-            # and the band is byte-identical to the assumption spread. The
-            # measured residual path (validated) is unchanged and still wins.
-            ens = ensemble_estimate(
-                result, m, features, options,
-                residual_model=getattr(options, "residual_model", None),
-                records=analogy_records,
-                geometry=geom_features,
-            )
-            unc = ens.to_dict()
-        return rep, unc
+    def _run_ensemble_band(result, m, features, options, analogy_records):
+        # ── P1 analogy query geometry ────────────────────────────────────
+        # THIS part's MEASURED cost-drivers (analogy_estimator.FEATURE_KEYS),
+        # extracted by the SAME engine extraction the records were populated
+        # with. Only computed when the org actually has records to match
+        # against — otherwise geometry stays None and the analogy is never
+        # engaged (band byte-identical). Best-effort: an extraction failure
+        # leaves geometry None (analogy abstains), never fails the estimate.
+        geom_features = None
+        if analogy_records:
+            try:
+                from src.costing.drivers import extract_drivers
+
+                dr = extract_drivers(result.geometry, m, features)
+                if (dr.volume_cm3 > 0 and dr.surface_area_cm2 > 0
+                        and dr.max_bbox_mm > 0 and dr.face_count > 0):
+                    geom_features = {
+                        "volume_cm3": float(dr.volume_cm3),
+                        "surface_area_cm2": float(dr.surface_area_cm2),
+                        "max_bbox_mm": float(dr.max_bbox_mm),
+                        "face_count": int(dr.face_count),
+                    }
+            except Exception:
+                geom_features = None
+        # Reuse the org's W5 residual_model when one was bound above; else
+        # None -> the honest pre-data assumption spread (validated=False).
+        # records + geometry activate the analogy-to-quote k-NN member: it
+        # contributes to the POINT via BLUE ONLY when it finds >= min_real
+        # REAL same-process neighbours WITH geometry; otherwise it ABSTAINS
+        # and the band is byte-identical to the assumption spread. The
+        # measured residual path (validated) is unchanged and still wins.
+        ens = ensemble_estimate(
+            result, m, features, options,
+            residual_model=getattr(options, "residual_model", None),
+            records=analogy_records,
+            geometry=geom_features,
+        )
+        return ens.to_dict()
 
     timeout = _analysis_timeout_sec()
     loop = asyncio.get_event_loop()
-    try:
-        report, uncertainty = await asyncio.wait_for(
-            loop.run_in_executor(None, _run), timeout=timeout
-        )
-    except asyncio.TimeoutError:
-        # Bounded compute that ran over budget — structured warning, then 504.
-        slog.warning(
-            "cost_timeout",
-            file_sha8=hashlib.sha256(data).hexdigest()[:8],
-            suffix=suffix,
-            n_qty=len(quantities),
-            region=effective_region,
-            material_class=material_class,
-            shop=shop_slug,
-            timeout_sec=round(timeout, 1),
-            duration_ms=round((time.perf_counter() - t0) * 1000, 1),
-        )
-        # Observability: bounded compute that ran over budget is an error outcome.
-        record_cost_decision("error")
-        raise HTTPException(
-            status_code=504,
-            detail=f"Cost analysis exceeded {timeout:.0f}s timeout.",
-        )
+    # Parent span for the off-loop compute; capture the OTel context INSIDE it so
+    # the executor-thread DFM / should-cost child spans nest here. No-op when off.
+    with tracing.span("cost.compute"):
+        _otel_ctx = tracing.capture_context()
+        try:
+            report, uncertainty, identity_vec = await asyncio.wait_for(
+                loop.run_in_executor(None, _run), timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            # Bounded compute that ran over budget — structured warning, then 504.
+            slog.warning(
+                "cost_timeout",
+                file_sha8=hashlib.sha256(data).hexdigest()[:8],
+                suffix=suffix,
+                n_qty=len(quantities),
+                region=effective_region,
+                material_class=material_class,
+                shop=shop_slug,
+                timeout_sec=round(timeout, 1),
+                duration_ms=round((time.perf_counter() - t0) * 1000, 1),
+            )
+            # Observability: bounded compute over budget is an error outcome.
+            record_cost_decision("error")
+            raise HTTPException(
+                status_code=504,
+                detail=f"Cost analysis exceeded {timeout:.0f}s timeout.",
+            )
 
     # One structured outcome event per costed request. status carries OK vs
     # GEOMETRY_INVALID, so this single emit covers both the success and the
@@ -1087,7 +1820,9 @@ async def _run_cost_decision(
         )
 
     record_cost_decision("ok")
-    result_dict = report_to_dict(report)
+    # Span 4/4 — serialize the glass-box decision to the response dict.
+    with tracing.span("cost.serialize"):
+        result_dict = report_to_dict(report)
 
     # ---- persist for authenticated callers (Phase 2 gap #3) --------------
     # Turns the flagship decision into a durable artifact (list/export/share/
@@ -1151,6 +1886,52 @@ async def _run_cost_decision(
         result_dict = dict(result_dict)
         result_dict["uncertainty"] = uncertainty
 
+    # ── retrieval-grounded IDENTITY (identity Slice 1, RESPONSE-ONLY) ────────
+    # Attach the org's closest PRIOR parts as a provenance-tagged, confidence-
+    # scored SUGGESTION the user confirms — never an asserted identity. Only for
+    # a real org: the demo route (no user/session) and any anonymous/mock caller
+    # get ``identity: null`` (we never fabricate an identity with no library to
+    # ground it). Best-effort: a retrieval failure logs + degrades to null and
+    # NEVER breaks the live cost response.
+    identity_payload = None
+    if user is not None and session is not None:
+        from src.auth.org_context import resolve_org
+
+        _identity_org = await resolve_org(session, user.user_id)
+        if isinstance(_identity_org, str) and _identity_org:
+            try:
+                from src.services import identity_retrieval_service
+                from src.services.analysis_service import (
+                    compute_mesh_hash as _identity_mesh_hash,
+                )
+
+                # Self-exclusion: pass THIS part's mesh_hash so it is filtered from
+                # the corpus — a part must never match itself, even after the
+                # analysis funnel wrote its own signature back this same request.
+                _self_hash = _identity_mesh_hash(data)
+                _id_result = await identity_retrieval_service.retrieve_identity(
+                    session,
+                    _identity_org,
+                    mesh,
+                    name_hint=file.filename,
+                    exclude_mesh_hash=_self_hash,
+                    # F2: reuse the signature computed off the cost engine's already-
+                    # analysed geometry (byte-identical to vector_for_mesh(mesh)) so
+                    # retrieval does NOT re-run a second full geometry pass here.
+                    query_vec=identity_vec,
+                )
+                identity_payload = _id_result.to_dict()
+            except Exception:
+                logger.warning(
+                    "identity retrieval failed for org %s; cost response served "
+                    "with identity=null (live decision preserved)",
+                    _identity_org,
+                    exc_info=True,
+                )
+                identity_payload = None
+    result_dict = dict(result_dict)
+    result_dict["identity"] = identity_payload
+
     return result_dict
 
 
@@ -1208,6 +1989,8 @@ async def validate_cost(
     ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
+    _org_limit: None = Depends(enforce_org_limits),
+    _admission: None = Depends(admit_analysis),
 ):
     """Explainable make-vs-buy should-cost decision for an uploaded STL/STEP part.
 
@@ -1278,6 +2061,8 @@ async def validate_cost_demo(
                     "Inch-authored meshes are scaled ×25.4 into mm ONCE before costing; "
                     "otherwise an inch part read as mm mis-costs by ~16,000×.",
     ),
+    _org_limit: None = Depends(enforce_org_limits),
+    _admission: None = Depends(admit_analysis),
 ):
     """Public demo of the should-cost / make-vs-buy decision — NO auth.
 
@@ -1457,6 +2242,15 @@ def _to_response(
         "file_type": result.file_type,
         "overall_verdict": result.overall_verdict,
         "best_process": result.best_process.value if result.best_process else None,
+        # HONEST label: /validate declares no material, so best_process is a pure
+        # geometry-manufacturability ranking (the process with the fewest DFM
+        # constraints), NOT a material-aware recommendation. Declare a material
+        # class via /validate/cost (or the assembly per-part path) to get the
+        # material-aware best process that agrees with the cost route.
+        "best_process_basis": (
+            "geometry-manufacturability; material not declared"
+            if result.best_process else None
+        ),
         "analysis_time_ms": result.analysis_time_ms,
         "geometry": {
             "vertices": result.geometry.vertex_count,
@@ -1466,7 +2260,10 @@ def _to_response(
             "bounding_box_mm": [round(d, 1) for d in result.geometry.bounding_box.dimensions],
             "is_watertight": result.geometry.is_watertight,
             "is_manifold": result.geometry.is_manifold,
-            "center_of_mass": [round(c, 2) for c in result.geometry.center_of_mass],
+            "center_of_mass": [
+                round(c, 2) if c is not None else None
+                for c in result.geometry.center_of_mass
+            ],
             "units": result.geometry.units,
         },
         "segments": [

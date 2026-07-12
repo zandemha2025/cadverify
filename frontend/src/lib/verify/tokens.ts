@@ -18,25 +18,34 @@ export const C = {
   hair: "#e2e2e6",
   hair2: "#e7e7ea",
   ink: "#17181a",
-  ink70: "rgba(23,24,26,0.7)",
-  ink60: "rgba(23,24,26,0.6)",
-  ink55: "rgba(23,24,26,0.55)",
-  ink50: "rgba(23,24,26,0.5)",
-  ink45: "rgba(23,24,26,0.45)",
-  ink40: "rgba(23,24,26,0.4)",
-  ink35: "rgba(23,24,26,0.35)",
+  // Muted-ink ramp — re-based into the WCAG-AA zone. Every rung is real body/
+  // caption text on the #f6f6f7 / #ffffff instrument surfaces, so the lightest
+  // rung sits at the 4.5:1 AA floor and the scale climbs from there while
+  // staying a visibly ordered light→dark ramp. (Old alphas 0.35–0.60 were
+  // 2.2–4.5:1 — sub-AA for <18px text.) Contrast (min over both surfaces):
+  //   ink35 4.53  ink40 4.84  ink45 5.17  ink50 5.52  ink55 5.91  ink60 6.33  ink70 6.78
+  ink70: "rgba(23,24,26,0.72)",
+  ink60: "rgba(23,24,26,0.7)",
+  ink55: "rgba(23,24,26,0.68)",
+  ink50: "rgba(23,24,26,0.66)",
+  ink45: "rgba(23,24,26,0.64)",
+  ink40: "rgba(23,24,26,0.62)",
+  ink35: "rgba(23,24,26,0.6)",
   sunken: "#f6f6f7",
 
-  // provenance (light)
-  measured: "#3b7bb8",
-  shop: "#b06a35",
-  user: "#7a63c9",
-  def: "#6b7280", // DEFAULT + MODEL share slate; MODEL renders "○ MODEL"
+  // provenance (light) — re-based into the WCAG-AA zone for small (<18px) mono
+  // labels. Each hue is preserved but darkened until it clears 4.5:1 on BOTH the
+  // #f6f6f7 and #ffffff surfaces (worst case #f6f6f7). Old values were 3.5–4.4:1.
+  measured: "#3772ab", // 4.68:1
+  shop: "#a06030", // 4.62:1
+  user: "#745cc7", // 4.74:1
+  cad: "#a12d86", // 6.01:1 · read from the CAD file's own material annotation (magenta — distinct from every other provenance + status hue)
+  def: "#69707d", // 4.61:1 · DEFAULT + MODEL share slate; MODEL renders "○ MODEL"
 
   // status
-  pass: "#1f8a5b",
-  cond: "#b07818",
-  fail: "#c2453a",
+  pass: "#1d7f54", // 4.61:1
+  cond: "#966614", // 4.62:1 (amber "issues" label — was 3.79:1, sub-AA)
+  fail: "#c2453a", // 4.62:1 (already AA)
 } as const;
 
 export const MONO =
@@ -44,7 +53,7 @@ export const MONO =
 export const SANS =
   "'Helvetica Neue', -apple-system, BlinkMacSystemFont, system-ui, sans-serif";
 
-export type Prov = "MEASURED" | "SHOP" | "USER" | "DEFAULT" | "MODEL";
+export type Prov = "MEASURED" | "SHOP" | "USER" | "CAD" | "DEFAULT" | "MODEL";
 
 export interface ProvMeta {
   label: string;
@@ -79,6 +88,13 @@ export const PROV: Record<Prov, ProvMeta> = {
     glyph: "●",
     description: "Declared by your team.",
   },
+  CAD: {
+    label: "CAD",
+    color: C.cad,
+    filled: true,
+    glyph: "●",
+    description: "Read from the CAD file's own material annotation — not measured, not confirmed by your team.",
+  },
   DEFAULT: {
     label: "DEFAULT",
     color: C.def,
@@ -98,7 +114,7 @@ export const PROV: Record<Prov, ProvMeta> = {
 /** Normalise the engine's provenance strings (upper/lowercase) to a Prov key. */
 export function normProv(p: string | null | undefined): Prov {
   const u = String(p ?? "").toUpperCase();
-  if (u === "MEASURED" || u === "SHOP" || u === "USER" || u === "MODEL")
+  if (u === "MEASURED" || u === "SHOP" || u === "USER" || u === "CAD" || u === "MODEL")
     return u as Prov;
   return "DEFAULT";
 }

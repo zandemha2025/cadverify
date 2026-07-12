@@ -310,6 +310,45 @@ class User(Base):
     )
 
 
+class AuthIdentity(Base):
+    """Immutable federated identity binding (migration 0039)."""
+
+    __tablename__ = "auth_identities"
+    __table_args__ = (
+        CheckConstraint(
+            "provider IN ('oidc', 'saml')", name="ck_auth_identities_provider"
+        ),
+        UniqueConstraint(
+            "provider",
+            "issuer",
+            "subject",
+            name="uq_auth_identity_provider_issuer_subject",
+        ),
+        UniqueConstraint(
+            "user_id",
+            "provider",
+            "issuer",
+            name="uq_auth_identity_user_provider_issuer",
+        ),
+        Index("ix_auth_identities_user_id", "user_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    issuer: Mapped[str] = mapped_column(Text, nullable=False)
+    subject: Mapped[str] = mapped_column(Text, nullable=False)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    email_at_link: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_login_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class ApiKey(Base):
     __tablename__ = "api_keys"
     __table_args__ = (Index("ix_api_keys_org_id", "org_id"),)
@@ -337,6 +376,115 @@ class ApiKey(Base):
 
     # relationships
     user: Mapped[User] = relationship(back_populates="api_keys")
+
+
+# ---------------------------------------------------------------------------
+# P8 (migration 0034): SCIM org-scoped identity lifecycle ledger
+# ---------------------------------------------------------------------------
+
+
+class ScimIdentity(Base):
+    """Org-scoped SCIM resource state for IdP-managed users.
+
+    Membership is the access-control truth. This row is the identity-lifecycle
+    truth: it persists the SCIM resource after ``active=false`` removes the user's
+    org membership, so Okta/Entra-style providers can still read/update the
+    inactive resource without granting app access.
+    """
+
+    __tablename__ = "scim_identities"
+    __table_args__ = (
+        UniqueConstraint("org_id", "user_id", name="uq_scim_identities_org_user"),
+        UniqueConstraint(
+            "org_id", "external_id", name="uq_scim_identities_org_external"
+        ),
+        CheckConstraint(
+            "org_role IN ('viewer','member','admin')",
+            name="ck_scim_identities_org_role",
+        ),
+        Index("ix_scim_identities_org_active", "org_id", "active"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    external_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    org_role: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="viewer"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+# ---------------------------------------------------------------------------
+# P8 (migration 0035): encrypted connector credential profiles
+# ---------------------------------------------------------------------------
+
+
+class ConnectorCredentialProfile(Base):
+    """Org-scoped encrypted credentials for sandbox/live connector probes.
+
+    API responses expose only the profile ULID, connector id, label, base URL,
+    auth type, fingerprint, and revocation status. The encrypted secret blob is
+    used only server-side and must never be serialized.
+    """
+
+    __tablename__ = "connector_credential_profiles"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id",
+            "connector_id",
+            "label",
+            name="uq_connector_credentials_org_connector_label",
+        ),
+        Index(
+            "ix_connector_credentials_org_connector",
+            "org_id",
+            "connector_id",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    connector_id: Mapped[str] = mapped_column(Text, nullable=False)
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    base_url: Mapped[str] = mapped_column(Text, nullable=False)
+    auth_type: Mapped[str] = mapped_column(Text, nullable=False)
+    encrypted_secret_json: Mapped[str] = mapped_column(Text, nullable=False)
+    secret_fingerprint: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    metadata_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -827,6 +975,17 @@ class AuditLog(Base):
         Index("ix_audit_log_user_timestamp", "user_id", "timestamp"),
         Index("ix_audit_log_action_timestamp", "action", "timestamp"),
         Index("ix_audit_log_org_id", "org_id"),
+        Index(
+            "uq_audit_log_pilot_request_receipt",
+            "resource_id",
+            unique=True,
+            postgresql_where=text(
+                "action = 'pilot.requested' AND resource_id IS NOT NULL"
+            ),
+            sqlite_where=text(
+                "action = 'pilot.requested' AND resource_id IS NOT NULL"
+            ),
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -837,7 +996,7 @@ class AuditLog(Base):
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     # W1: NULLABLE — system/unauthenticated audit events have no user, hence no
-    # org. User-attributed rows are stamped (backfill + log_action). ondelete
+    # org. User-attributed rows are stamped (backfill + transactional append). ondelete
     # SET NULL: audit history survives org deletion (mirrors user_id).
     org_id: Mapped[Optional[str]] = mapped_column(
         Text, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True
@@ -1052,6 +1211,18 @@ class PartContext(Base):
     service_environment: Mapped[Optional[Dict[str, Any]]] = mapped_column(
         JSONB, nullable=True
     )
+    # BOM-rollup linkage (customer-context Slice 3, migration 0037): the OPTIONAL
+    # reference that ties this part to a persisted BOM/assembly tree so its annual
+    # volume can be ROLLED UP from the real hierarchy instead of the flat declared
+    # ``annual_volume``. When ``bom_assembly_key`` + ``bom_child_ref`` name a real
+    # tree (``bom_edges``) AND ``bom_roots_per_year`` is declared, the analysis
+    # prefers ``rolled_up_multiplier x bom_roots_per_year`` (basis 'bom_rollup');
+    # any of them absent (or no tree) → the flat declared path, byte-identical.
+    # HONESTY: these only SELECT which real volume input feeds the (unchanged) cost
+    # math — they never fabricate a hierarchy or a quantity.
+    bom_assembly_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    bom_child_ref: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    bom_roots_per_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_by: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -1599,16 +1770,166 @@ class ManifestPart(Base):
 
 
 # ---------------------------------------------------------------------------
-# P6 (migration 0030): offline connector-run ledger
+# Customer-context layer Slice 1 (migration 0036): org-scoped shape-signature
+# store — the retrieval corpus for part IDENTITY.
+# ---------------------------------------------------------------------------
+
+
+class PartSignature(Base):
+    """One org-scoped geometry SIGNATURE + its (optional) DECLARED identity.
+
+    The corpus behind the customer-context identity-retrieval engine (Slice 1).
+    Geometry alone can never say "this is a Camry LE door handle" — that identity
+    lives in the CUSTOMER's world. So as an org uses CadVerify, each part it sees
+    lands here as an 18-dim shape signature (``src.eval.similarity.feature_vector``)
+    keyed by ``mesh_hash``, together with whatever declared identity the customer
+    gave (their own part number / name / program). On a NEW part we RETRIEVE the
+    closest prior signatures IN THE SAME ORG and surface a provenance-tagged,
+    user-confirmable identity — retrieval GROUNDS identity in their data; we never
+    hallucinate it, and never let a near-miss masquerade as a confident match.
+
+    HONESTY (non-negotiable): the ``signature`` is a MEASURED geometry vector; the
+    declared_* fields are USER/file-declared identity, never inferred from the
+    mesh. A row is a *suggestion source*, never a verified-identity assertion — the
+    retrieval engine always returns a confidence + provenance, and abstains
+    (``grounded=False``) below its stated bar rather than fabricate an identity.
+
+    Mirrors the ``part_contexts`` / ``manifest_parts`` column style: BigInt PK,
+    org_id FK (CASCADE — a corpus is deleted with its org, so cross-tenant
+    isolation holds by construction), ``(org_id, mesh_hash)`` unique. The idempotent
+    upsert (last write wins on the latest declared identity) lives in the service.
+    """
+
+    __tablename__ = "part_signatures"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "mesh_hash", name="uq_part_signatures_org_mesh"
+        ),
+        # Retrieval loads the whole org matrix; the org index scopes that scan.
+        Index("ix_part_signatures_org", "org_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    # sha256 of the normalized mesh — the SAME geometry-part key the catalog /
+    # part_context / part_summary stores use (``analysis_service.compute_mesh_hash``).
+    mesh_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    # The 18-dim MEASURED shape signature (similarity.feature_vector order). Stored
+    # as a JSONB float array — pure numpy, zero-egress to compute and to compare.
+    signature: Mapped[List[float]] = mapped_column(JSONB, nullable=False)
+    # DECLARED identity (nullable — the customer may not have given one yet).
+    declared_part_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    declared_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    program: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Where the signature entered the corpus: 'upload' | 'catalog' | 'manifest'.
+    source: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+# ---------------------------------------------------------------------------
+# Customer-context layer Slice 3 (migration 0037): org-scoped BOM/assembly
+# hierarchy — the real multi-level parent->child tree a part's environment and
+# total roll up (handle -> door assembly -> vehicle).
+# ---------------------------------------------------------------------------
+
+
+class BomEdge(Base):
+    """One org-scoped parent->child edge of a real BOM / assembly hierarchy.
+
+    The persisted, multi-level product tree that lets a part's annual volume be
+    ROLLED UP from the customer's own structure instead of a single flat declared
+    field: ``annual_volume = qty_per_parent x ... x parents_per_vehicle x
+    vehicles_per_year``, resolved edge-by-edge to the root. A door handle (child)
+    sits under a door assembly (parent) sits under a vehicle (root); each edge
+    carries how many of the child go into ONE occurrence of the parent
+    (``qty_per_parent``), so the product along the path to the root is the units
+    of that part per one finished vehicle.
+
+    Two honest sources, tagged in ``source``:
+      * ``'assembly_step'`` — DERIVED from a real extracted STEP/IGES assembly's
+        product tree (``assembly_mesher.AssemblyModel``). ``qty_per_parent`` is the
+        MEASURED instance count of a child design under one parent occurrence — a
+        fact recovered from the geometry, never invented.
+      * ``'bom_csv'`` — a customer-declared ``parent_ref,child_ref,qty_per_parent``
+        BOM (CSV/JSON). USER-declared structure, per-row validated; a bad row is
+        reported and skipped, never coerced.
+
+    HONESTY (non-negotiable): an edge is only ever a REAL relationship — derived
+    from a parsed assembly or explicitly declared by the customer. We NEVER
+    fabricate a parent/child link or a quantity. A part with NO edges has no tree
+    and the rollup is not attempted — the analysis falls back to the flat declared
+    ``annual_volume`` (labelled ``'declared'``) exactly as before this table
+    existed. A shared component (a nut used under two sub-assemblies) is a real
+    DAG: ``rolled_up_multiplier`` honestly SUMS the part's count over every path to
+    the root, never double-counts and never drops a path.
+
+    Mirrors the ``manifest_parts`` / ``part_signatures`` column style: BigInt PK,
+    org_id FK (CASCADE — a hierarchy dies with its org, so cross-tenant isolation
+    holds by construction), unique on ``(org_id, assembly_key, parent_ref,
+    child_ref)`` (one edge per parent->child within a tree). The idempotent
+    per-``(org_id, assembly_key)`` replace + the pure ancestry/rollup helpers live
+    in ``bom_service``.
+    """
+
+    __tablename__ = "bom_edges"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id",
+            "assembly_key",
+            "parent_ref",
+            "child_ref",
+            name="uq_bom_edges_org_key_parent_child",
+        ),
+        # Every ancestry/rollup query loads one org's tree by assembly_key.
+        Index("ix_bom_edges_org_key", "org_id", "assembly_key"),
+        # Ancestry walks child->parent; this indexes the "find my parents" step.
+        Index("ix_bom_edges_org_key_child", "org_id", "assembly_key", "child_ref"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    # Which BOM/tree this edge belongs to (an uploaded assembly's key or a
+    # customer BOM name). Scopes a hierarchy so two BOMs in one org never mix.
+    assembly_key: Mapped[str] = mapped_column(Text, nullable=False)
+    # The parent node's ref. NULL only for a synthetic root marker (unused by the
+    # derived sources — every real edge has a concrete parent).
+    parent_ref: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    child_ref: Mapped[str] = mapped_column(Text, nullable=False)
+    # Human-readable child label (product/design name), when distinct from the ref.
+    child_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # How many of the child go into ONE occurrence of the parent. Default 1.
+    qty_per_parent: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("1")
+    )
+    # Depth of the CHILD below the root (root's direct children are depth 1).
+    depth: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    # Provenance: 'assembly_step' (measured from geometry) | 'bom_csv' (declared).
+    source: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+# ---------------------------------------------------------------------------
+# P6/P8 (migrations 0030, 0033): connector-run evidence ledger
 # ---------------------------------------------------------------------------
 
 
 class IntegrationRun(Base):
-    """One offline connector/dry-run/import attempt for an org feed.
+    """One connector/dry-run/import attempt for an org feed.
 
-    This is the enterprise integration apparatus before live SAP/PLM credentials
-    exist: record the exact connector, source system, file hash, row counts,
-    errors, and outcome while deliberately not storing raw CSV by default.
+    The first version was offline CSV only. The expanded ledger preserves that
+    boundary and adds promotion-level evidence for sandbox/live connectors so
+    simulated SAP/PLM/RFQ proof cannot be mislabeled as a live integration.
     """
 
     __tablename__ = "integration_runs"
@@ -1616,6 +1937,7 @@ class IntegrationRun(Base):
         Index("ix_integration_runs_org_created", "org_id", "created_at"),
         Index("ix_integration_runs_org_connector", "org_id", "connector_id"),
         Index("ix_integration_runs_org_status", "org_id", "status"),
+        Index("ix_integration_runs_org_boundary", "org_id", "boundary_label"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -1629,13 +1951,33 @@ class IntegrationRun(Base):
         BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     connector_id: Mapped[str] = mapped_column(Text, nullable=False)
+    connector_mode: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="offline_csv"
+    )
+    boundary_label: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="exported_fixture"
+    )
     source_system: Mapped[str] = mapped_column(Text, nullable=False)
     source_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    api_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    api_version: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    external_tenant_hash: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    correlation_ids_json: Mapped[Optional[List[str]]] = mapped_column(
+        JSONB, nullable=True
+    )
+    watermark: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    idempotency_key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     mode: Mapped[str] = mapped_column(Text, nullable=False, server_default="dry_run")
     status: Mapped[str] = mapped_column(Text, nullable=False)
     filename: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     file_sha256: Mapped[str] = mapped_column(Text, nullable=False)
     file_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    source_record_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    normalized_record_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
     rows_total: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     rows_valid: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     rows_invalid: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")

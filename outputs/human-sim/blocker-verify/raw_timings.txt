@@ -1,0 +1,45 @@
+===== BASELINE /health (before heavy upload) =====
+[03:09:28.321] baseline health #1: 0.006383s http=200
+[03:09:28.336] baseline health #2: 0.005070s http=200
+[03:09:28.351] baseline health #3: 0.005413s http=200
+===== FIRING nist heavy upload in BACKGROUND =====
+[03:09:28.357] nist /validate started
+===== CONCURRENT PROBES while nist processing =====
+[03:09:28.393] round 1 health: 0.022691s http=200
+[03:09:28.523] round 1 signup(OrgB): 0.118453s http=200
+[03:09:31.806] round 1 validate(cube): 3.270802s http=200
+[03:09:34.825] round 2 health: 0.005964s http=200
+[03:09:34.977] round 2 signup(OrgB): 0.141773s http=200
+[03:09:35.044] round 2 validate(cube): 0.054443s http=200
+[03:09:38.062] round 3 health: 0.006293s http=200
+[03:09:38.217] round 3 signup(OrgB): 0.143640s http=200
+[03:09:38.284] round 3 validate(cube): 0.055796s http=200
+[03:09:41.303] round 4 health: 0.005996s http=200
+[03:09:41.459] round 4 signup(OrgB): 0.144979s http=200
+[03:09:41.530] round 4 validate(cube): 0.059501s http=200
+[03:09:44.549] round 5 health: 0.006366s http=200
+[03:09:44.711] round 5 signup(OrgB): 0.151308s http=200
+[03:09:44.777] round 5 validate(cube): 0.053932s http=200
+[03:09:47.796] round 6 health: 0.006015s http=200
+[03:09:47.952] round 6 signup(OrgB): 0.145458s http=200
+[03:09:48.016] round 6 validate(cube): 0.052010s http=200
+[03:09:51.035] round 7 health: 0.006258s http=200
+[03:09:51.186] round 7 signup(OrgB): 0.140556s http=200
+[03:09:51.250] round 7 validate(cube): 0.052292s http=200
+[03:09:54.269] round 8 health: 0.005884s http=200
+[03:09:54.431] round 8 signup(OrgB): 0.151708s http=200
+[03:09:54.495] round 8 validate(cube): 0.051433s http=200
+[03:09:57.514] round 9 health: 0.006186s http=200
+[03:09:57.672] round 9 signup(OrgB): 0.145044s http=200
+[03:09:57.737] round 9 validate(cube): 0.053591s http=200
+[03:10:00.756] round 10 health: 0.006223s http=200
+[03:10:00.904] round 10 signup(OrgB): 0.137424s http=200
+[03:10:00.974] round 10 validate(cube): 0.057751s http=200
+[03:10:03.994] round 11 health: 0.006091s http=200
+[03:10:04.108] round 11 signup(OrgB): 0.103724s http=200
+[03:10:04.174] round 11 validate(cube): 0.053668s http=200
+[03:10:04.177] nist finished during round 11
+===== waiting for nist to complete (if still running) =====
+[03:10:04.186] nist total duration: 32.709s
+nist meta:
+HTTP 200 time=32.694530s

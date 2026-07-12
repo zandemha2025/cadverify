@@ -22,8 +22,14 @@
  * as fresh. Empty org → a zeroed rollup; a cold projection says so plainly.
  */
 import { API_BASE } from "@/lib/api-base";
+import {
+  readManifestCoverage,
+  type ManifestCoverage,
+  type ManifestListPage,
+} from "./manifest";
 
 const BASE = `${API_BASE}/catalog`;
+const MANIFEST_BASE = `${API_BASE}/manifest`;
 
 /** The six mutually-exclusive makeability buckets (they sum to `total`). */
 export type MakeabilityBucketKey =
@@ -191,6 +197,26 @@ export async function importManifestCsv(file: File): Promise<ManifestImportSumma
   const res = await fetch(`${API_BASE}/manifest/import`, {
     method: "POST",
     body: form,
+    cache: "no-store",
+  });
+  if (!res.ok) throw await toError(res);
+  return res.json();
+}
+
+/** The declared manifest coverage headline (GET /manifest/coverage) — org-scoped. */
+export async function fetchManifestCoverage(): Promise<ManifestCoverage> {
+  const res = await fetch(`${MANIFEST_BASE}/coverage`, { cache: "no-store" });
+  if (!res.ok) throw await toError(res);
+  const cov = readManifestCoverage(await res.json());
+  if (!cov) throw new Error("malformed coverage response");
+  return cov;
+}
+
+/** One keyset page of the org's declared manifest (GET /manifest). */
+export async function fetchManifest(cursor?: string | null): Promise<ManifestListPage> {
+  const u = new URL(MANIFEST_BASE, window.location.origin);
+  if (cursor) u.searchParams.set("cursor", cursor);
+  const res = await fetch(u.toString().replace(window.location.origin, ""), {
     cache: "no-store",
   });
   if (!res.ok) throw await toError(res);

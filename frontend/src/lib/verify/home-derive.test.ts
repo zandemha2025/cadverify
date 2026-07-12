@@ -20,6 +20,7 @@ import {
   proposedCount,
   assetLabel,
   shortDate,
+  buildDayZeroSetup,
 } from "./home-derive.ts";
 import type { ChangeRequest } from "./governance-api.ts";
 import type { CostDecisionSummary } from "@/lib/api";
@@ -221,4 +222,50 @@ test("assetLabel + shortDate helpers are honest/deterministic", () => {
   assert.equal(shortDate("2026-07-04T10:00:00Z"), "Jul 4");
   assert.equal(shortDate(null), "");
   assert.equal(shortDate("not-a-date"), "");
+});
+
+test("day-zero setup follows achievable dependencies and labels enrichment optional", () => {
+  const steps = buildDayZeroSetup({
+    machineCount: 0,
+    recordCount: 0,
+    programCount: 0,
+    realActualCount: 0,
+  });
+
+  assert.deepEqual(steps.map((step) => step.key), ["machines", "verify", "program", "truth"]);
+  assert.equal(steps[0].state, "needed");
+  assert.equal(steps[1].state, "needed");
+  assert.equal(steps[2].state, "locked");
+  assert.match(steps[2].meta, /after your first verified part/i);
+  assert.equal(steps[3].state, "locked");
+  assert.doesNotMatch(steps[3].title, /rates/i);
+});
+
+test("day-zero completion is derived from persisted records, programs, and actuals", () => {
+  const steps = buildDayZeroSetup({
+    machineCount: 2,
+    recordCount: 3,
+    programCount: 1,
+    realActualCount: 8,
+  });
+
+  assert.deepEqual(steps.map((step) => step.state), ["done", "done", "done", "done"]);
+  assert.equal(steps[0].meta, "2 machines declared");
+  assert.equal(steps[1].meta, "3 records");
+  assert.equal(steps[2].meta, "1 program declared");
+  assert.equal(steps[3].meta, "8 actuals received");
+});
+
+test("post-verification program and ground-truth steps are available but optional", () => {
+  const steps = buildDayZeroSetup({
+    machineCount: 1,
+    recordCount: 1,
+    programCount: 0,
+    realActualCount: 0,
+  });
+
+  assert.equal(steps[2].state, "optional");
+  assert.match(steps[2].meta, /^optional/i);
+  assert.equal(steps[3].state, "optional");
+  assert.match(steps[3].meta, /^optional/i);
 });

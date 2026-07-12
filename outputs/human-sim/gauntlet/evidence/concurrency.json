@@ -1,0 +1,110 @@
+{
+  "n": 12,
+  "dur_s": 14.18,
+  "statuses": [
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200
+  ],
+  "all_200": true,
+  "per_org_decision_counts": [
+    0,
+    0,
+    0
+  ],
+  "detail": [
+    {
+      "idx": 0,
+      "org": 0,
+      "status": 200,
+      "filename": "cube.step",
+      "decision_id": "01KX7E4BDZ9BJ6PR83SDV68C7S"
+    },
+    {
+      "idx": 1,
+      "org": 1,
+      "status": 200,
+      "filename": "plate_with_hole.stl",
+      "decision_id": "01KX7E3YGFRW7QMWP2B431DM0R"
+    },
+    {
+      "idx": 2,
+      "org": 2,
+      "status": 200,
+      "filename": "filleted_box.stl",
+      "decision_id": "01KX7E3ZYBVK6JHSY9RKFHPF0A"
+    },
+    {
+      "idx": 3,
+      "org": 0,
+      "status": 200,
+      "filename": "cube.step",
+      "decision_id": "01KX7E4BDZ9BJ6PR83SDV68C7S"
+    },
+    {
+      "idx": 4,
+      "org": 1,
+      "status": 200,
+      "filename": "plate_with_hole.stl",
+      "decision_id": "01KX7E3YGFRW7QMWP2B431DM0R"
+    },
+    {
+      "idx": 5,
+      "org": 2,
+      "status": 200,
+      "filename": "filleted_box.stl",
+      "decision_id": "01KX7E3ZYBVK6JHSY9RKFHPF0A"
+    },
+    {
+      "idx": 6,
+      "org": 0,
+      "status": 200,
+      "filename": "cube.step",
+      "decision_id": "01KX7E4BDZ9BJ6PR83SDV68C7S"
+    },
+    {
+      "idx": 7,
+      "org": 1,
+      "status": 200,
+      "filename": "plate_with_hole.stl",
+      "decision_id": "01KX7E3YGFRW7QMWP2B431DM0R"
+    },
+    {
+      "idx": 8,
+      "org": 2,
+      "status": 200,
+      "filename": "filleted_box.stl",
+      "decision_id": "01KX7E3ZYBVK6JHSY9RKFHPF0A"
+    },
+    {
+      "idx": 9,
+      "org": 0,
+      "status": 200,
+      "filename": "cube.step",
+      "decision_id": "01KX7E4BDZ9BJ6PR83SDV68C7S"
+    },
+    {
+      "idx": 10,
+      "org": 1,
+      "status": 200,
+      "filename": "plate_with_hole.stl",
+      "decision_id": "01KX7E3YGFRW7QMWP2B431DM0R"
+    },
+    {
+      "idx": 11,
+      "org": 2,
+      "status": 200,
+      "filename": "filleted_box.stl",
+      "decision_id": "01KX7E3ZYBVK6JHSY9RKFHPF0A"
+    }
+  ]
+}

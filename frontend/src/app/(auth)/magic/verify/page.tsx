@@ -1,18 +1,11 @@
-import { redirect } from "next/navigation";
-import { backendUrl } from "@/lib/api-base";
+import type { Metadata } from "next";
+import { MagicVerifyClient } from "./magic-verify-client";
 
-export default async function MagicVerify({
-  searchParams,
-}: {
-  searchParams: Promise<{ token?: string }>;
-}) {
-  const { token } = await searchParams;
-  if (!token) redirect("/signup?err=missing");
-  const res = await fetch(
-    backendUrl(`/auth/magic/verify?token=${encodeURIComponent(token)}`),
-    { redirect: "manual" },
-  );
-  if (res.status !== 303) redirect("/signup?err=invalid");
-  const loc = res.headers.get("location") || "/settings/developer";
-  redirect(loc);
+export const metadata: Metadata = {
+  title: "Finish signing in - CadVerify",
+  robots: { index: false, follow: false },
+};
+
+export default function MagicVerifyPage() {
+  return <MagicVerifyClient />;
 }

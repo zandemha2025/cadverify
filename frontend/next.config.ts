@@ -1,8 +1,7 @@
 import type { NextConfig } from "next";
 
 // S6: hardening headers applied to every route. Kept in sync with the backend
-// SecurityHeadersMiddleware. No CSP here — the app inlines styles/scripts and a
-// tight policy needs its own rollout; that is deliberately out of scope.
+// SecurityHeadersMiddleware. The per-request nonce CSP lives in src/proxy.ts.
 const SECURITY_HEADERS = [
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
   { key: "X-Content-Type-Options", value: "nosniff" },

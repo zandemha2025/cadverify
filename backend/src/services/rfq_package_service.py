@@ -7,10 +7,10 @@ recoverable from same-org batch storage.
 """
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import json
-import os
 import re
 import zipfile
 from dataclasses import dataclass
@@ -27,9 +27,12 @@ from src.auth.org_context import caller_org_subquery, resolve_org
 from src.auth.require_api_key import AuthedUser
 from src.db.models import Batch, BatchItem, CostDecision, ManifestPart, PartContext, RfqPackage
 from src.services import cost_decision_service
-from src.services.cost_pdf_service import generate_cost_pdf
+from src.services.cost_pdf_service import cached_cost_pdf, precompute_cost_pdf
 
 MAX_ITEMS = 25
+
+# Strong refs to in-flight cache-warm tasks so they are not GC'd mid-render.
+_WARM_TASKS: set = set()
 
 
 @dataclass(frozen=True)
@@ -156,10 +159,11 @@ async def _raw_cad_payload(
             "reason": "no_same_org_completed_batch_blob",
         }
     item, batch = row
-    path = Path(os.getenv("BATCH_BLOB_DIR", "/data/blobs/batch")) / batch.ulid / item.filename
     try:
-        data = path.read_bytes()
-    except OSError:
+        from src.services.batch_service import read_batch_blob
+
+        data = await asyncio.to_thread(read_batch_blob, batch.ulid, item.filename)
+    except (OSError, KeyError):
         return None, None, {
             "included": False,
             "reason": "same_org_batch_blob_missing",
@@ -381,6 +385,35 @@ async def create_package(
         "raw_payload_count": len(raw_payloads),
     }
     await session.flush()
+
+    # Precompute + cache each item's cost-report PDF ONCE, off the request path.
+    # The package is immutable (its items never change), so a create-time
+    # snapshot never goes stale; every later download.zip then STREAMS the stored
+    # bytes instead of re-rendering all items on every request (the W9-F1
+    # gateway-timeout risk — 25 items × ~4s WeasyPrint = ~90s per download).
+    #
+    # Warming runs as a background cache task so create itself stays ~tens of ms
+    # — pushing ~90s of
+    # rendering into create would only relocate the timeout. The decision ORM
+    # rows are already fully loaded, so rendering never touches the (closing)
+    # session. build_zip still renders-on-miss, so a download that races the warm
+    # is correct (just slower for that one item), and steady state is all-cache.
+    import asyncio as _asyncio
+
+    decisions_to_warm = [by_id[did] for did in ids]
+
+    async def _warm() -> None:
+        await _asyncio.gather(
+            *(precompute_cost_pdf(d) for d in decisions_to_warm)
+        )
+
+    try:
+        _asyncio.get_running_loop()
+        _WARM_TASKS.add(task := _asyncio.create_task(_warm()))
+        task.add_done_callback(_WARM_TASKS.discard)
+    except RuntimeError:  # pragma: no cover - no running loop (sync callers)
+        await _warm()
+
     return package
 
 
@@ -492,9 +525,12 @@ async def build_zip(
             ).scalars().first()
             if decision is not None:
                 try:
+                    # Stream the cached PDF bytes (rendered once at package
+                    # create time). No per-request WeasyPrint render — a 25-item
+                    # download stays well under the gateway timeout.
                     zf.writestr(
                         f"decisions/{index:02d}-{stem}/should-cost-report.pdf",
-                        await generate_cost_pdf(decision),
+                        await cached_cost_pdf(decision),
                     )
                 except Exception:
                     zf.writestr(

@@ -39,6 +39,92 @@ export interface ActivityItem {
   at: number;
 }
 
+export type DayZeroStepState = "pending" | "needed" | "optional" | "locked" | "done";
+export type DayZeroStepKey = "machines" | "verify" | "program" | "truth";
+
+export interface DayZeroStep {
+  key: DayZeroStepKey;
+  title: string;
+  meta: string;
+  state: DayZeroStepState;
+}
+
+/**
+ * Build the first-run checklist in achievable dependency order. Programs and
+ * actuals both require a verified record, so they stay visibly locked until one
+ * exists. Optional enrichment is never presented as a prerequisite, and every
+ * completion marker comes from persisted organization state.
+ */
+export function buildDayZeroSetup(input: {
+  machineCount: number | null;
+  recordCount: number | null;
+  programCount: number | null;
+  realActualCount: number | null;
+}): DayZeroStep[] {
+  const hasRecord = (input.recordCount ?? 0) > 0;
+
+  return [
+    {
+      key: "machines",
+      title: "Declare machines + rates",
+      meta:
+        input.machineCount == null
+          ? "checking inventory..."
+          : input.machineCount > 0
+            ? `${input.machineCount} machine${input.machineCount === 1 ? "" : "s"} declared`
+            : "add owned machines and their hourly rates",
+      state: input.machineCount == null ? "pending" : input.machineCount > 0 ? "done" : "needed",
+    },
+    {
+      key: "verify",
+      title: "Verify first part",
+      meta:
+        input.recordCount == null
+          ? "checking records..."
+          : input.recordCount > 0
+            ? `${input.recordCount} record${input.recordCount === 1 ? "" : "s"}`
+            : "drop STL, STEP or IGES",
+      state: input.recordCount == null ? "pending" : input.recordCount > 0 ? "done" : "needed",
+    },
+    {
+      key: "program",
+      title: "Add program context",
+      meta: !hasRecord
+        ? "available after your first verified part"
+        : input.programCount == null
+          ? "checking programs..."
+          : input.programCount > 0
+            ? `${input.programCount} program${input.programCount === 1 ? "" : "s"} declared`
+            : "optional · assign a part and annual volume",
+      state: !hasRecord
+        ? "locked"
+        : input.programCount == null
+          ? "pending"
+          : input.programCount > 0
+            ? "done"
+            : "optional",
+    },
+    {
+      key: "truth",
+      title: "Send actuals for validation",
+      meta: !hasRecord
+        ? "available after your first verification"
+        : input.realActualCount == null
+          ? "checking ground truth..."
+          : input.realActualCount > 0
+            ? `${input.realActualCount} actual${input.realActualCount === 1 ? "" : "s"} received`
+            : "optional · upload actual hours and invoiced costs",
+      state: !hasRecord
+        ? "locked"
+        : input.realActualCount == null
+          ? "pending"
+          : input.realActualCount > 0
+            ? "done"
+            : "optional",
+    },
+  ];
+}
+
 const MONTHS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",

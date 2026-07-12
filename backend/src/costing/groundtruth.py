@@ -708,12 +708,13 @@ def _row(L: list, name: str, ev: Evaluation, untuned: bool = False) -> None:
 def _demo(parts_dir: Optional[str] = None, out_path: Optional[str] = None,
           quantities=(100,), shop: Optional[str] = None,
           processes=("sls", "mjf", "fdm", "cnc_3axis")) -> LoopResult:
-    """Build STAND-IN records over real parts, run the loop, write the report."""
-    from src.costing.harness import SAMPLE_PARTS, PARTS_DIR_DEFAULT
-    parts_dir = parts_dir or PARTS_DIR_DEFAULT
+    """Build STAND-IN records over calibration parts, run, and write the report."""
+    from src.costing.harness import SAMPLE_PARTS, ensure_fixture_parts_dir
+
+    parts_dir = parts_dir or ensure_fixture_parts_dir()
     cache = EngineCostCache(parts_dir)
 
-    # Generate stand-in records: for each real sample part, for each process the
+    # Generate stand-in records: for each calibration part, for each process the
     # engine actually costs, synthesize one record per quantity.
     records: list = []
     for fname, _meta in SAMPLE_PARTS:

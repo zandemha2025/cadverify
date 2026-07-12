@@ -180,6 +180,17 @@ async def bump_session_version(user_id: int) -> int | None:
                 {"u": user_id},
             )
         ).first()
+        if r is not None:
+            from src.services.audit_service import append_audit_entry
+
+            await append_audit_entry(
+                s,
+                user_id,
+                "user.sessions_revoked",
+                "user",
+                str(user_id),
+                {"revoked_by": user_id, "scope": "self"},
+            )
         await s.commit()
     return None if r is None else int(r[0])
 
@@ -217,6 +228,16 @@ async def create_password_user(
 
         uid = int(row[0])
         await ensure_personal_org(s, uid, email)
+        from src.services.audit_service import append_audit_entry
+
+        await append_audit_entry(
+            s,
+            uid,
+            "auth.signup",
+            "user",
+            str(uid),
+            user_email=email,
+        )
         await s.commit()
         return uid
 
@@ -264,6 +285,41 @@ async def update_password_hash(user_id: int, password_hash: str) -> None:
         await s.commit()
 
 
+async def set_initial_password_hash(user_id: int, password_hash: str) -> int | None:
+    """Atomically add a password and rotate every existing dashboard session.
+
+    Magic-link registration proves control of the email first. This compare-
+    and-set prevents concurrent requests from replacing a credential and keeps
+    ordinary password changes out of a session-only endpoint. Updating the
+    password and session version in one statement prevents a committed password
+    from being paired with an unrotated session if a second DB call fails.
+    """
+    async with _session()() as s:
+        row = (
+            await s.execute(
+                text(
+                    "UPDATE users SET password_hash = :ph, "
+                    "session_version = session_version + 1 "
+                    "WHERE id = :u AND password_hash IS NULL "
+                    "RETURNING session_version"
+                ),
+                {"ph": password_hash, "u": user_id},
+            )
+        ).first()
+        if row is not None:
+            from src.services.audit_service import append_audit_entry
+
+            await append_audit_entry(
+                s,
+                user_id,
+                "auth.password_initialized",
+                "user",
+                str(user_id),
+            )
+        await s.commit()
+    return None if row is None else int(row[0])
+
+
 async def create_api_key(
     user_id: int, name: str, prefix: str, hmac_idx: str, secret_hash: str
 ) -> int:
@@ -283,17 +339,18 @@ async def create_api_key(
                 {"u": user_id, "o": org_id, "n": name, "p": prefix, "h": hmac_idx, "s": secret_hash},
             )
         ).first()
-        await s.commit()
+        from src.services.audit_service import append_audit_entry
 
-        # Audit: api_key.created
-        import asyncio
-        from src.services.audit_service import fire_and_forget_audit, _lookup_email
-        _email = await _lookup_email(user_id)
-        asyncio.create_task(fire_and_forget_audit(
-            user_id=user_id, user_email=_email,
-            action="api_key.created", resource_type="api_key",
-            detail={"key_prefix": prefix},
-        ))
+        await append_audit_entry(
+            s,
+            user_id,
+            "api_key.created",
+            "api_key",
+            str(row[0]),
+            {"key_prefix": prefix},
+            org_id=org_id,
+        )
+        await s.commit()
 
         return int(row[0])
 

@@ -57,6 +57,10 @@ export type SiteNavProps = {
 export function SiteNav({ variant = "document", activeHref }: SiteNavProps) {
   const pathname = usePathname();
   const active = activeHref ?? pathname;
+  const closeMobileNav = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    const details = event.currentTarget.closest("details");
+    if (details instanceof HTMLDetailsElement) details.open = false;
+  };
   return (
     <header className={`st-nav ${variant === "cinematic" ? "st-nav-cinematic" : "st-nav-document"}`}>
       <Link href="/" className="st-wordmark">
@@ -73,10 +77,47 @@ export function SiteNav({ variant = "document", activeHref }: SiteNavProps) {
             {item.label}
           </Link>
         ))}
+        <Link href="/login" className="st-navlink st-navlogin">
+          Log in
+        </Link>
         <Link href={PILOT_HREF} className="st-navcta">
           Request a pilot
         </Link>
       </nav>
+      <details
+        className="st-mobile-nav"
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") return;
+          event.currentTarget.open = false;
+          event.currentTarget.querySelector("summary")?.focus();
+        }}
+      >
+        <summary className="st-nav-toggle" aria-label="Open site navigation">
+          <span>Menu</span>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+            <path d="M5 8h14M5 16h14" />
+          </svg>
+        </summary>
+        <nav className="st-mobile-panel" aria-label="Mobile primary">
+          {SITE_NAV.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="st-mobile-link"
+              data-active={isActive(active, item.href)}
+              onClick={closeMobileNav}
+            >
+              {item.label}
+            </Link>
+          ))}
+          <Link href="/login" className="st-mobile-link" onClick={closeMobileNav}>
+            Log in
+          </Link>
+          <Link href={PILOT_HREF} className="st-mobile-cta" onClick={closeMobileNav}>
+            Request a pilot
+          </Link>
+        </nav>
+      </details>
     </header>
   );
 }
@@ -94,6 +135,7 @@ export function SiteFooter() {
               {item.label}
             </Link>
           ))}
+          <Link href="/login">Log in</Link>
         </span>
       </div>
       <div className="st-footer-legal">

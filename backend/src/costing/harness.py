@@ -1,10 +1,12 @@
-"""CadVerify V1 — Accuracy harness (local, independent references; zero network).
+"""CadVerify V1 — costing calibration/accuracy harness (zero network).
 
 Implements the fix-spec §13 accuracy characterization. It runs the V1 cost model
-across a frozen, reproducible sample of real automotive STL parts and, for every
-(part, process, qty), compares V1's unit cost against an INDEPENDENT local
-reference band computed with *different math* than V1's rate card — so agreement
-is a real cross-check, not a tautology.
+across a frozen, reproducible sample and, for every (part, process, qty), compares
+V1's unit cost against an INDEPENDENT local reference band computed with
+*different math* than V1's rate card — so agreement is a real cross-check, not a
+tautology. Protected CI uses internally authored regression coupons. An explicit
+``--real-parts-dir`` runs a geometry benchmark only; neither suite is supplier-
+quote ground truth or sufficient production-accuracy evidence.
 
 Independence (non-circularity) is the whole point:
   - R1 (additive): pure $/cm³-of-part service-bureau price + per-part handling
@@ -22,35 +24,64 @@ All reference constants are public price/throughput BANDS encoded below with a
 stated basis. Nothing here opens a socket; the only imports are stdlib + the V1
 costing package + the engine driver.
 
-Run:  python -m src.costing.harness            (writes outputs/accuracy-report.md)
+Run:  python -m src.costing.harness            (writes outputs/calibration-report.md)
 Test: tests/test_costing_accuracy.py            (asserts the pass criteria)
 """
 
 from __future__ import annotations
 
+import argparse
 import math
 import os
 import statistics
-import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from src.costing.calibration_fixtures import (
+    CALIBRATION_RECIPES,
+    ensure_calibration_fixtures,
+)
+from src.costing.supplier_holdout import (
+    REQUIRED_PROCESS_FAMILIES,
+    SupplierHoldoutError,
+    SupplierQuoteEvidence,
+    load_protected_evidence,
+)
+
 # ──────────────────────────────────────────────────────────────────────────
-# 0. Frozen, reproducible sample (fix-spec §13.2)
+# 0. Frozen, reproducible samples (fix-spec §13.2)
 # ──────────────────────────────────────────────────────────────────────────
-# Selected once by a deterministic bucketing pass over the 105-file batch
+# The default suite is internally authored and generated from reviewed primitive
+# recipes. Its volume/envelope buckets retain the original model-regression
+# coverage without redistributing third-party geometry of unknown license.
+MEDIUM_FLAT_MOUNT = "cv_cal_medium_flat_mount.stl"
+SMALL_ROTATIONAL_ADAPTER = "cv_cal_tiny_rotational_adapter.stl"
+REAL_MEDIUM_FLAT_MOUNT = (
+    "1090523_b8dd5bfe-0a71-405c-906b-aa8dc51a6c30_EK_0BD1_ECU_Firewall_mount.stl"
+)
+REAL_SMALL_ROTATIONAL_ADAPTER = "printables_122552_ThrottleBodyAdapter.stl"
+
+SAMPLE_PARTS = [
+    (recipe.filename, (recipe.tier, recipe.shape))
+    for recipe in CALIBRATION_RECIPES
+]
+
+# External benchmark selected once by a deterministic bucketing pass over the
+# 105-file automotive batch
 # (run engine + extract_drivers, skip GEOMETRY_INVALID, bucket by
 # size_tier {tiny <5, small 5–30, medium 30–150, large >150 cm³} × shape
 # {rotational, flat (min_bbox/max_bbox < 0.30), boxy/other}; pick the
 # smallest-volume valid part in each non-empty bucket, the 3 named anchors
 # first). The measured geometry below is recorded for audit; the harness
-# RE-EXTRACTS drivers at runtime, so the numbers are verified, not trusted.
-SAMPLE_PARTS = [
+# RE-EXTRACTS drivers at runtime, so the numbers are verified, not trusted. This
+# list is opt-in because the recovered archive lacks per-model license records and
+# therefore cannot be committed or fetched by protected CI.
+REAL_WORLD_SAMPLE_PARTS = [
     # file, (V_cm3, max_bbox_mm, rotational, tier, shape)  — measured, audit-only
-    ("1090523_b8dd5bfe-0a71-405c-906b-aa8dc51a6c30_EK_0BD1_ECU_Firewall_mount.stl",
+    (REAL_MEDIUM_FLAT_MOUNT,
      (66.79, 160.0, False, "medium", "flat")),          # anchor: B-2 powder-bed nesting
-    ("printables_122552_ThrottleBodyAdapter.stl",
+    (REAL_SMALL_ROTATIONAL_ADAPTER,
      (2.81, 39.9, True, "tiny", "rotational")),          # anchor: B-1 small-part AM
     ("printables_122552_ThrottleBodyRingOuter.stl",
      (1.19, 25.7, True, "tiny", "rotational")),          # anchor
@@ -76,13 +107,6 @@ SAMPLE_PARTS = [
 
 REF_QUANTITIES = (100, 1000)   # fix-spec §13.3 reference quantities
 
-PARTS_DIR_DEFAULT = os.environ.get(
-    "CADVERIFY_PARTS_DIR",
-    "/private/tmp/claude-501/-Users-nazeem-Desktop-developer-cadverify/"
-    "3182c9c6-e59b-4394-a584-d9c4cd4ce0dc/scratchpad/parts",
-)
-
-
 def has_sample_parts(parts_dir: str, sample=SAMPLE_PARTS) -> bool:
     """True only when every frozen fixture file is present on disk."""
     return bool(parts_dir) and os.path.isdir(parts_dir) and all(
@@ -90,39 +114,19 @@ def has_sample_parts(parts_dir: str, sample=SAMPLE_PARTS) -> bool:
     )
 
 
+def _display_part_name(filename: str) -> str:
+    """Stable, human-readable report label without collapsing unique stems."""
+    stem = Path(filename).stem
+    return stem.removeprefix("cv_cal_")
+
+
 def ensure_fixture_parts_dir(parts_dir: Optional[str] = None) -> str:
-    """Resolve the real-parts fixture directory, extracting the local archive.
-
-    The old default points at an agent scratchpad that may exist but be empty.
-    When the repo-local automotive batch zip is available, extract it into the
-    ignored pytest cache so real validation tests run against real geometry.
-    An explicit CADVERIFY_PARTS_DIR is respected even if incomplete.
-    """
-    explicit = parts_dir is not None or bool(os.environ.get("CADVERIFY_PARTS_DIR"))
-    candidate = parts_dir or PARTS_DIR_DEFAULT
-    if has_sample_parts(candidate):
-        return candidate
-    if explicit:
-        return candidate
-
+    """Resolve or generate the internal, license-safe calibration fixture suite."""
+    candidate = parts_dir or os.environ.get("CADVERIFY_CALIBRATION_FIXTURES_DIR")
+    if candidate:
+        return str(Path(candidate).expanduser().resolve())
     repo_root = Path(__file__).resolve().parents[3]
-    archive = repo_root / "ecu_automotive_batch2.zip"
-    if not archive.exists():
-        return candidate
-
-    extracted = repo_root / ".pytest_cache" / "parts" / archive.stem
-    extracted_str = str(extracted)
-    if has_sample_parts(extracted_str):
-        return extracted_str
-
-    extracted.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(archive) as zf:
-        for member in zf.infolist():
-            target = Path(member.filename)
-            if member.is_dir() or target.is_absolute() or ".." in target.parts:
-                continue
-            zf.extract(member, extracted)
-    return extracted_str if has_sample_parts(extracted_str) else candidate
+    return str(ensure_calibration_fixtures(repo_root / ".pytest_cache"))
 
 # ──────────────────────────────────────────────────────────────────────────
 # 1. Independent reference constants (public price/throughput BANDS)
@@ -301,11 +305,17 @@ class HarnessResult:
     regression: dict = field(default_factory=dict)
     n_parts: int = 0
     errors: list = field(default_factory=list)
+    suite: str = "internal regression"
+    supplier_quote_evidence: SupplierQuoteEvidence | None = None
 
 
-def run_harness(parts_dir: str = PARTS_DIR_DEFAULT,
-                quantities=REF_QUANTITIES, sample=None,
-                do_floor_checks: bool = True) -> HarnessResult:
+def run_harness(
+    parts_dir: Optional[str] = None,
+    quantities=REF_QUANTITIES,
+    sample=None,
+    do_floor_checks: bool = True,
+    suite: str = "internal regression",
+) -> HarnessResult:
     """Run V1 across the frozen sample and compare to independent references.
 
     Imports the engine + V1 model lazily so that importing this module is cheap
@@ -318,8 +328,9 @@ def run_harness(parts_dir: str = PARTS_DIR_DEFAULT,
     from src.costing.drivers import extract_drivers
     from src.costing.routing import material_family
 
+    parts_dir = parts_dir or ensure_fixture_parts_dir()
     sample = sample if sample is not None else SAMPLE_PARTS
-    res = HarnessResult()
+    res = HarnessResult(suite=suite)
     res.n_parts = 0
 
     for fname, _meta in sample:
@@ -335,7 +346,9 @@ def run_harness(parts_dir: str = PARTS_DIR_DEFAULT,
             continue
         res.n_parts += 1
         d = extract_drivers(result.geometry, mesh, feats)
-        meta = dict(zip(("v", "maxbb", "rot", "tier", "shape"), _meta))
+        # Internal recipes carry only the classifications the report consumes.
+        # The opt-in external benchmark retains its five recorded audit values.
+        tier, shape = (_meta if len(_meta) == 2 else _meta[-2:])
 
         # main per-(process,qty) comparisons
         for e in rep.estimates:
@@ -346,7 +359,7 @@ def run_harness(parts_dir: str = PARTS_DIR_DEFAULT,
                 continue
             lo, hi = band
             res.comparisons.append(Comparison(
-                part=fname, v_cm3=d.volume_cm3, shape=meta["shape"], tier=meta["tier"],
+                part=fname, v_cm3=d.volume_cm3, shape=shape, tier=tier,
                 process=proc, qty=e["quantity"], v1_unit=e["unit_cost_usd"],
                 ref_lo=round(lo, 2), ref_hi=round(hi, 2), dfm_ready=e["dfm_ready"]))
 
@@ -377,9 +390,14 @@ def _run_floor_checks(res: HarnessResult, parts_dir: str) -> None:
     from src.costing import estimate_decision, EstimateOptions
 
     cnc_min_lo = R4_ORDER_MIN["cnc"][0]
-    # use the two named CNC-relevant anchors (turning + a CNC bracket)
-    for fname in ("printables_122552_ThrottleBodyAdapter.stl",
-                  "1090523_b8dd5bfe-0a71-405c-906b-aa8dc51a6c30_EK_0BD1_ECU_Firewall_mount.stl"):
+    # Use the two named CNC-relevant anchors (turning + a CNC bracket) from the
+    # active suite. The external archive is never selected implicitly.
+    internal = (SMALL_ROTATIONAL_ADAPTER, MEDIUM_FLAT_MOUNT)
+    external = (REAL_SMALL_ROTATIONAL_ADAPTER, REAL_MEDIUM_FLAT_MOUNT)
+    anchors = internal if all(
+        os.path.exists(os.path.join(parts_dir, name)) for name in internal
+    ) else external
+    for fname in anchors:
         path = os.path.join(parts_dir, fname)
         if not os.path.exists(path):
             continue
@@ -399,7 +417,12 @@ def _compute_regression(res: HarnessResult) -> None:
     reg = {}
     # B-1/B-2: throttle adapter SLS/MJF must land near (<= 2x ref-hi) the
     # independent AM band, and powder-bed machine must NOT dominate (<=70% unit).
-    tba = "printables_122552_ThrottleBodyAdapter.stl"
+    parts = {comparison.part for comparison in res.comparisons}
+    tba = (
+        SMALL_ROTATIONAL_ADAPTER
+        if SMALL_ROTATIONAL_ADAPTER in parts
+        else REAL_SMALL_ROTATIONAL_ADAPTER
+    )
     for c in res.comparisons:
         if c.part == tba and c.process in ("sls", "mjf") and c.qty == 100:
             reg.setdefault("B1_small_am", []).append(
@@ -432,8 +455,8 @@ def aggregate_by_process(comparisons) -> dict:
     return out
 
 
-def pass_criteria(res: HarnessResult) -> dict:
-    """fix-spec §13.4 acceptance criteria, measured (returns {name: (ok, detail)})."""
+def regression_criteria(res: HarnessResult) -> dict:
+    """Model-regression guardrails; never a production-accuracy certification."""
     comps = res.comparisons
     per_proc = aggregate_by_process(comps)
     n_in = sum(1 for c in comps if c.in_band)
@@ -465,23 +488,105 @@ def pass_criteria(res: HarnessResult) -> dict:
     return crit
 
 
+def production_readiness_criteria(res: HarnessResult) -> dict:
+    """Supplier-quote holdout gates required before claiming production accuracy.
+
+    Synthetic coupons and geometry-only archives cannot populate this evidence,
+    so they fail closed regardless of how well the regression bands perform.
+    """
+    evidence = res.supplier_quote_evidence
+    if evidence is None:
+        missing = "no provenance-locked supplier-quote holdout is attached"
+        return {
+            "P0_supplier_quote_holdout": (False, missing),
+            "P1_license_reviewed": (False, missing),
+            "P2_holdout_excluded_from_tuning": (False, missing),
+            "P3_holdout_parts>=20": (False, missing),
+            "P4_suppliers>=3": (False, missing),
+            "P5_mean_abs_error<=30pct": (False, missing),
+            "P6_p90_abs_error<=50pct": (False, missing),
+            "P7_launch_process_coverage": (False, missing),
+            "P8_process_sample_depth": (False, missing),
+            "P9_process_bias<=25pct": (False, missing),
+        }
+    return {
+        "P0_supplier_quote_holdout": (
+            evidence.provenance_locked,
+            "license/source/quote provenance locked"
+            if evidence.provenance_locked
+            else "holdout provenance is not locked",
+        ),
+        "P1_license_reviewed": (
+            evidence.license_reviewed,
+            "per-part redistribution/license review retained",
+        ),
+        "P2_holdout_excluded_from_tuning": (
+            evidence.holdout_excluded_from_tuning,
+            "holdout was not used for model tuning",
+        ),
+        "P3_holdout_parts>=20": (
+            evidence.n_parts >= 20,
+            f"{evidence.n_parts} independent quoted parts",
+        ),
+        "P4_suppliers>=3": (
+            evidence.n_suppliers >= 3,
+            f"{evidence.n_suppliers} independent suppliers",
+        ),
+        "P5_mean_abs_error<=30pct": (
+            evidence.mean_abs_pct_error <= 0.30,
+            f"MAPE {evidence.mean_abs_pct_error:.0%}",
+        ),
+        "P6_p90_abs_error<=50pct": (
+            evidence.p90_abs_pct_error <= 0.50,
+            f"P90 absolute error {evidence.p90_abs_pct_error:.0%}",
+        ),
+        "P7_launch_process_coverage": (
+            REQUIRED_PROCESS_FAMILIES.issubset(evidence.process_median_bias),
+            "processes: " + ", ".join(sorted(evidence.process_median_bias)),
+        ),
+        "P8_process_sample_depth": (
+            all(count >= 5 for count in evidence.process_part_counts.values())
+            and all(
+                count >= 3 for count in evidence.process_supplier_counts.values()
+            ),
+            "; ".join(
+                f"{family}: {evidence.process_part_counts[family]} parts / "
+                f"{evidence.process_supplier_counts[family]} suppliers"
+                for family in sorted(evidence.process_part_counts)
+            ),
+        ),
+        "P9_process_bias<=25pct": (
+            abs(evidence.max_process_median_bias) <= 0.25,
+            f"worst process median bias {evidence.max_process_median_bias:+.0%}",
+        ),
+    }
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # 5. Report generation
 # ──────────────────────────────────────────────────────────────────────────
 def build_report(res: HarnessResult) -> str:
     per_proc = aggregate_by_process(res.comparisons)
-    crit = pass_criteria(res)
+    crit = regression_criteria(res)
     comps = res.comparisons
     n_in = sum(1 for c in comps if c.in_band)
     pct_in = 100.0 * n_in / len(comps) if comps else 0.0
+    external_suite = res.suite.startswith("external geometry")
 
     L = []
-    L.append("# CadVerify V1 — Accuracy Characterization (local, independent references)")
+    title = "Geometry Benchmark" if external_suite else "Cost Model Regression"
+    L.append(f"# CadVerify V1 — {title} (local, independent references)")
     L.append("")
     L.append("**Author:** Accuracy-Harness agent (Cycle 2) · "
-             "**Status:** MEASURED from real runs · **Network egress:** zero")
+             f"**Suite:** {res.suite} · **Status:** MEASURED engine runs · "
+             "**Network egress:** zero")
     L.append("")
-    L.append(f"Sample: **{res.n_parts} real automotive STL parts** spanning size × shape "
+    sample_description = (
+        "real automotive STL parts from an operator-supplied, license-reviewed archive"
+        if external_suite
+        else "internally authored deterministic STL calibration coupons (not ground truth)"
+    )
+    L.append(f"Sample: **{res.n_parts} {sample_description}** spanning size × shape "
              f"(tiny→large × rotational/flat/boxy). References: **R1** AM volumetric "
              f"($/cm³ + per-part handling), **R2** CNC MRR-machining math, **R3** IM "
              f"tooling size×cavity bands, **R4** shop/bureau minimums — all computed "
@@ -585,7 +690,7 @@ def build_report(res: HarnessResult) -> str:
     L.append("| part | V cm³ | shape/tier | process | qty | V1 $/unit | ref band | in-band | signed err | DFM |")
     L.append("|------|-------|-----------|---------|-----|-----------|----------|---------|-----------|-----|")
     for c in sorted(res.comparisons, key=lambda x: (x.v_cm3, x.process, x.qty)):
-        short = c.part.split("_")[-1][:22] if "_" in c.part else c.part[:22]
+        short = _display_part_name(c.part)
         L.append(f"| {short} | {c.v_cm3:.2f} | {c.shape}/{c.tier} | {c.process} | "
                  f"{c.qty} | ${c.v1_unit:.2f} | ${c.ref_lo:.2f}–${c.ref_hi:.2f} | "
                  f"{'✓' if c.in_band else '✗'} | {c.signed_err:+.0%} | "
@@ -597,24 +702,24 @@ def build_report(res: HarnessResult) -> str:
     L.append("")
     b1 = res.regression.get("B1_small_am", [])
     for (p, v, h, ok) in b1:
-        L.append(f"- **B-1/B-2 small-part AM** — throttle adapter (2.81 cm³) {p} = "
+        L.append(f"- **B-1/B-2 small-part AM** — tiny rotational adapter (2.81 cm³) {p} = "
                  f"${v:.2f}/unit @ q100; independent AM band hi ${h:.2f}; "
                  f"{'✓ within 2× band (over-cost gone)' if ok else '✗ still high'}.")
     # powder-bed machine share
     L.append("- **B-2 powder-bed machine share** — see per-part table; nested SLS/MJF "
              "unit costs now track the volumetric band rather than a single isolated build.")
     for (fname, proc, v1q1, mn, ok) in res.floor_checks:
-        short = fname.split("_")[-1][:22]
+        short = _display_part_name(fname)
         L.append(f"- **B-3 floor** — {short} {proc} @ qty 1 = ${v1q1:.2f} "
                  f"{'≥' if ok else '<'} R4 CNC min ${mn:.0f} {'✓' if ok else '✗'}.")
     for (fname, v1t, lo, hi, ok) in res.tooling_checks:
-        short = fname.split("_")[-1][:22]
+        short = _display_part_name(fname)
         L.append(f"- **B-5 tooling** — {short} IM tool ${v1t:,.0f} "
                  f"{'∈' if ok else '∉'} R3 band [${lo:,.0f}, ${hi:,.0f}] {'✓' if ok else '✗'}.")
     L.append("")
 
     # ---- pass criteria ----
-    L.append("## Acceptance criteria (fix-spec §13.4)")
+    L.append("## Model-regression guardrails (not production accuracy evidence)")
     L.append("")
     L.append("| criterion | result | detail |")
     L.append("|-----------|--------|--------|")
@@ -645,7 +750,7 @@ def build_report(res: HarnessResult) -> str:
              f"plate and the height-driven build term grows faster than the part's "
              f"volume). A single linear reference cannot bracket both ends, so the AM "
              f"in-band rate (≈{100*sum(1 for c in am if c.in_band)/len(am):.0f}%) is "
-             f"capped by this real curvature, not by a fabricated number.")
+             f"capped by this measured curvature, not by a fabricated number.")
     L.append(f"- **Serial AM (FDM/SLA) is now XY-nested** (median {_med(am_serial):+.0%}): "
              f"per-part deposition (single nozzle/laser) is kept per-part, but the shared "
              f"Z-axis plate sweep is amortized over the X-Y nest (parts laid flat in one "
@@ -680,8 +785,9 @@ def build_report(res: HarnessResult) -> str:
              "utilization — V1's volumetric `packing_density` (0.10) is a proxy for a "
              "real 3D nesting/packing solver. Replacing it with a true bin-packer on the "
              "actual part mesh (orientation-aware) would cut the per-part machine spread. "
-             "Ground truth = a handful of real bureau quotes (SLS/MJF) at qty 100 on "
-             "3–5 of these exact parts; one calibration run collapses the ±band.")
+             "Ground truth requires the production holdout: independently sourced "
+             "bureau quotes on enough matching parts to contribute to the 20+ part "
+             "cross-process acceptance set.")
     L.append("2. **CNC:** the spread is driven by MRR and shop-rate uncertainty (±30% / "
              "2× rate). Tightening needs material-specific MRR tables (tool/feed/speed by "
              "alloy) and a measured shop-rate for the target supplier — i.e. one real "
@@ -691,8 +797,8 @@ def build_report(res: HarnessResult) -> str:
              "needs the cavity count, tolerance class, and side-action count from the "
              "buyer (already USER-overridable via `--cavities`/`--complexity`) plus one "
              "real tool quote to anchor the tier.")
-    L.append("4. **Across the board:** the single highest-leverage move is a small "
-             "ground-truth set — 10–20 real supplier quotes on these parts — to convert "
+    L.append("4. **Across the board:** the single highest-leverage move is a "
+             "ground-truth set — at least 20 independently quoted parts — to convert "
              "these INDEPENDENT-band checks into RESIDUAL-vs-actual error. The harness is "
              "built to ingest that the moment it exists (swap the reference bands for the "
              "quoted dollars; the aggregation/criteria code is unchanged).")
@@ -702,15 +808,28 @@ def build_report(res: HarnessResult) -> str:
     L.append("## Stated honesty line")
     L.append("")
     overall = "PASS" if all(ok for ok, _ in crit.values()) else "MIXED"
-    L.append(f"Overall: **{overall}** against the independent local references. "
+    reproduce = (
+        "`python -m src.costing.harness --real-parts-dir <licensed-corpus>`"
+        if external_suite
+        else "`python -m src.costing.harness`"
+    )
+    L.append(f"Regression result: **{overall}** against the independent local references. "
              "V1 stands behind the **DECISION** (make-vs-buy direction + crossover "
              "quantity, which depend on the fixed-vs-variable split, not absolute $). "
              "Absolute should-cost is characterized HERE — measured, per process, against "
              "independent local bands — not asserted. These bands are an independent "
              "cross-check, **not** a claim of absolute should-cost truth: that requires "
              "real supplier quotes (the path above). Every figure in this report is "
-             "reproducible by `python -m src.costing.harness` (zero network, runs in seconds).")
+             f"reproducible by {reproduce} (zero network, runs in seconds).")
     L.append("")
+    production = production_readiness_criteria(res)
+    if not all(ok for ok, _detail in production.values()):
+        L.append("**Production accuracy status: BLOCKED.** Internally authored coupons "
+                 "and geometry-only archives cannot satisfy the supplier-quote holdout "
+                 "gates (20+ provenance-locked parts from 3+ suppliers, holdout/tuning "
+                 "separation, at least 5 parts and 3 suppliers per launch family, "
+                 "MAPE ≤30%, P90 ≤50%, and every process median bias ≤25%).")
+        L.append("")
     if res.errors:
         L.append("## Run notes")
         L.append("")
@@ -720,26 +839,85 @@ def build_report(res: HarnessResult) -> str:
     return "\n".join(L)
 
 
-REPORT_PATH = "/Users/nazeem/Desktop/developer/cadverify/outputs/accuracy-report.md"
+REPO_ROOT = Path(__file__).resolve().parents[3]
+CALIBRATION_REPORT_PATH = REPO_ROOT / "outputs" / "calibration-report.md"
+REAL_PART_REPORT_PATH = REPO_ROOT / "outputs" / "accuracy-report.md"
 
 
 def main(argv=None) -> int:
-    import warnings
-    warnings.simplefilter("ignore")
-    parts_dir = ensure_fixture_parts_dir()
-    res = run_harness(parts_dir)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--real-parts-dir",
+        default=os.environ.get("CADVERIFY_REAL_PARTS_DIR"),
+        help=(
+            "run the opt-in external benchmark from a license-reviewed directory; "
+            "never downloaded or selected implicitly"
+        ),
+    )
+    parser.add_argument(
+        "--output",
+        default=os.environ.get("CADVERIFY_ACCURACY_REPORT"),
+        help="report path (defaults to the suite-specific file under outputs/)",
+    )
+    parser.add_argument(
+        "--require-production-evidence",
+        action="store_true",
+        help=(
+            "fail unless a provenance-locked supplier-quote holdout satisfies "
+            "the production accuracy thresholds"
+        ),
+    )
+    args = parser.parse_args(argv)
+
+    protected_evidence = None
+    if args.require_production_evidence:
+        try:
+            protected_evidence, _evidence_sha256 = load_protected_evidence()
+        except SupplierHoldoutError as exc:
+            print(f"[harness] production supplier-quote holdout BLOCKED: {exc}")
+            return 3
+
+    if args.real_parts_dir:
+        parts_dir = str(Path(args.real_parts_dir).expanduser().resolve())
+        if not has_sample_parts(parts_dir, REAL_WORLD_SAMPLE_PARTS):
+            print(
+                "[harness] external corpus is incomplete; all 12 frozen geometry "
+                f"fixtures are required: {parts_dir}"
+            )
+            return 2
+        sample = REAL_WORLD_SAMPLE_PARTS
+        suite = "external geometry benchmark (no supplier quotes)"
+        default_output = REAL_PART_REPORT_PATH
+    else:
+        parts_dir = ensure_fixture_parts_dir()
+        sample = SAMPLE_PARTS
+        suite = "internal regression"
+        default_output = CALIBRATION_REPORT_PATH
+
+    res = run_harness(parts_dir, sample=sample, suite=suite)
+    res.supplier_quote_evidence = protected_evidence
     report = build_report(res)
-    out = os.environ.get("CADVERIFY_ACCURACY_REPORT", REPORT_PATH)
-    with open(out, "w") as f:
-        f.write(report)
-    crit = pass_criteria(res)
+    out = Path(args.output).expanduser().resolve() if args.output else default_output
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(report)
+    crit = regression_criteria(res)
     print(f"[harness] {res.n_parts} parts · {len(res.comparisons)} comparisons · "
           f"report → {out}")
     for name, (ok, detail) in crit.items():
         print(f"  {'PASS' if ok else 'FAIL'}  {name}: {detail}")
+    production = production_readiness_criteria(res)
+    production_ok = all(ok for ok, _detail in production.values())
+    print(
+        "  "
+        + ("PASS" if production_ok else "BLOCKED")
+        + "  production supplier-quote holdout"
+    )
+    if args.require_production_evidence and not production_ok:
+        return 3
     return 0
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(main())

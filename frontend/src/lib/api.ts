@@ -743,12 +743,24 @@ export interface CostReport {
   notes: string[];
   assumptions: CostAssumption[];
   decision: CostDecision | null;
+  /** Persisted machine-fit verdict lattice. Present when the organization has
+   *  declared inventory and/or a service environment. This is independent of
+   *  the route's DFM status and must remain the authority for makeability copy. */
+  verification?: import("@/lib/verify/verification").VerificationBlock | null;
   /**
    * Present when the authed cost route persisted this decision (Phase 2 gap #3).
    * `id` is the durable cost-decision ulid; `url` is its backend detail path.
    * Absent on the demo route or when COST_PERSIST_ENABLED is off.
    */
   saved?: { id: string; url: string };
+  /**
+   * Retrieval-grounded PART IDENTITY (identity Slice 1): the org's closest PRIOR
+   * parts as a provenance-tagged, confidence-scored SUGGESTION to confirm — never
+   * an asserted identity. `null` for anonymous / demo / empty-corpus callers (the
+   * engine never fabricates an identity with no library to ground it). See
+   * `@/lib/verify/identity` for the render-model / IdentityResult shape.
+   */
+  identity?: import("@/lib/verify/identity").IdentityResult | null;
 }
 
 export interface CostOptions {

@@ -19,7 +19,16 @@ import numpy as np
 import pytest
 import trimesh
 
+# Migration tests temporarily patch ``sys.modules["alembic.op"]``. Import the
+# package before those patch contexts take their module snapshots so cleanup
+# cannot unload and re-import Alembic/SQLAlchemy dialect modules. Re-importing
+# them mutates SQLAlchemy's global function registry and emits SAWarning (a
+# RuntimeWarning subclass), which is correctly fatal under the release policy.
+import alembic  # noqa: F401
+
 from src.auth.require_api_key import AuthedUser
+
+pytest_plugins = ("tests.ci_skip_policy", "pytester")
 
 
 # ──────────────────────────────────────────────────────────────

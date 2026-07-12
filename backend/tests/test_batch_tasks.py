@@ -394,12 +394,9 @@ async def test_item_task_calls_run_analysis(mock_gsf):
     with patch.object(_as_mod, "run_analysis", new_callable=AsyncMock, return_value={"verdict": "pass"}) as mock_run, \
          patch.object(_as_mod, "get_latest_analysis_id", new_callable=AsyncMock, return_value=42), \
          patch.object(_as_mod, "compute_mesh_hash", return_value="abc123"), \
+         patch.object(_bs_mod, "read_batch_blob", return_value=b"stl data"), \
          patch.object(_bs_mod, "update_batch_counters", new_callable=AsyncMock) as mock_counters, \
-         patch.object(_ws_mod, "create_webhook_delivery", new_callable=AsyncMock), \
-         patch("builtins.open", MagicMock(return_value=MagicMock(
-             __enter__=MagicMock(return_value=MagicMock(read=MagicMock(return_value=b"stl data"))),
-             __exit__=MagicMock(return_value=False),
-         ))):
+         patch.object(_ws_mod, "create_webhook_delivery", new_callable=AsyncMock):
 
         await run_batch_item(ctx, "01ITEM000000000000001")
 
@@ -446,12 +443,9 @@ async def test_item_task_updates_counters(mock_gsf):
     with patch.object(_as_mod, "run_analysis", new_callable=AsyncMock, return_value={"verdict": "pass"}), \
          patch.object(_as_mod, "get_latest_analysis_id", new_callable=AsyncMock, return_value=42), \
          patch.object(_as_mod, "compute_mesh_hash", return_value="abc123"), \
+         patch.object(_bs_mod, "read_batch_blob", return_value=b"data"), \
          patch.object(_bs_mod, "update_batch_counters", new_callable=AsyncMock) as mock_counters, \
-         patch.object(_ws_mod, "create_webhook_delivery", new_callable=AsyncMock), \
-         patch("builtins.open", MagicMock(return_value=MagicMock(
-             __enter__=MagicMock(return_value=MagicMock(read=MagicMock(return_value=b"data"))),
-             __exit__=MagicMock(return_value=False),
-         ))):
+         patch.object(_ws_mod, "create_webhook_delivery", new_callable=AsyncMock):
 
         await run_batch_item(ctx, "01ITEM000000000000001")
 
@@ -511,12 +505,9 @@ async def test_item_completion_refreshes_batch_heartbeat(mock_gsf):
     with patch.object(_as_mod, "run_analysis", new_callable=AsyncMock, return_value={"verdict": "pass"}), \
          patch.object(_as_mod, "get_latest_analysis_id", new_callable=AsyncMock, return_value=42), \
          patch.object(_as_mod, "compute_mesh_hash", return_value="abc123"), \
+         patch.object(_bs_mod, "read_batch_blob", return_value=b"data"), \
          patch.object(_bs_mod, "update_batch_counters", new_callable=AsyncMock), \
-         patch.object(_ws_mod, "create_webhook_delivery", new_callable=AsyncMock), \
-         patch("builtins.open", MagicMock(return_value=MagicMock(
-             __enter__=MagicMock(return_value=MagicMock(read=MagicMock(return_value=b"data"))),
-             __exit__=MagicMock(return_value=False),
-         ))):
+         patch.object(_ws_mod, "create_webhook_delivery", new_callable=AsyncMock):
 
         await run_batch_item(ctx, "01ITEM000000000000001")
 
@@ -565,6 +556,8 @@ async def test_item_failure_also_refreshes_batch_heartbeat(mock_gsf):
 
     with patch.object(
         _as_mod, "run_analysis", new_callable=AsyncMock, side_effect=RuntimeError("boom")
+    ), patch.object(
+        _bs_mod, "read_batch_blob", return_value=b"data"
     ), patch.object(_bs_mod, "update_batch_counters", new_callable=AsyncMock):
         await run_batch_item(ctx, "01ITEM000000000000001")
 

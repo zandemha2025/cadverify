@@ -34,8 +34,16 @@ _FAKE_ULID = "01JZZZZZZZZZZZZZZZZZZZZZZZZ"
 
 async def _get(path: str):
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        return await client.get(path)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.get(path)
+    finally:
+        # pytest-asyncio gives each test its own event loop while SQLAlchemy's
+        # engine is process-global. Dispose the pool on the loop that used it so
+        # asyncpg connections never leak into the next test's loop.
+        from src.db.engine import dispose_engine
+
+        await dispose_engine()
 
 
 def _sample(name: str, labels: dict) -> float | None:

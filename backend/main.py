@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 import os
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -39,15 +41,19 @@ from src.api.material_library import router as material_library_router
 from src.api.governance import router as governance_router
 from src.api.notifications import router as notifications_router
 from src.api.integrations import router as integrations_router
+from src.api.scim import router as scim_router
 from src.api.part_context import router as part_context_router
+from src.api.identity import router as identity_router
 from src.api.groundtruth import router as groundtruth_router
 from src.api.manifest import router as manifest_router
+from src.api.bom import router as bom_router
 from src.api.machine_inventory import router as machine_inventory_router
 from src.api.org_routes import router as org_router
 from src.api.share import public_share_router, share_router
 from src.auth.keys_api import router as keys_router
 from src.auth.magic_link import router as magic_router
 from src.auth.oauth import router as oauth_router
+from src.auth.oidc import oidc_provider_enabled, router as oidc_router
 from src.auth.password import router as password_router
 from src.auth.saml import router as saml_router
 from src.auth.rate_limit import limiter, rate_limit_handler
@@ -87,16 +93,62 @@ def _is_production() -> bool:
     }
 
 
+def _magic_link_configured() -> bool:
+    """True when the magic-link trio (Resend send + HMAC signing + redirect
+    target) is present, independent of AUTH_MODE. This is what lets a
+    password-only launch (AUTH_MODE=password, no Google) still offer
+    magic-link: the router mounts on config, not on provider mode."""
+    return bool(
+        os.getenv("RESEND_API_KEY", "").strip()
+        and os.getenv("MAGIC_LINK_SECRET", "").strip()
+        and os.getenv("DASHBOARD_ORIGIN", "").strip()
+    )
+
+
+def _magic_link_enabled() -> bool:
+    """Single source of truth for whether /auth/magic/* should mount.
+
+    True when:
+      - MAGIC_LINK_ENABLED explicitly overrides it (either direction), or
+      - AUTH_MODE already implies it (google/hybrid — unchanged legacy
+        behavior), or
+      - the magic-link config trio is present (see _magic_link_configured),
+        so AUTH_MODE=password + Resend/HMAC/DASHBOARD_ORIGIN creds gets
+        magic-link WITHOUT needing Google credentials at all.
+    """
+    override = os.getenv("MAGIC_LINK_ENABLED")
+    if override is not None:
+        return override.strip().lower() in ("1", "true", "yes", "on")
+    auth_mode = os.getenv("AUTH_MODE", "google")
+    return auth_mode in ("google", "hybrid") or _magic_link_configured()
+
+
+def _magic_link_requires_valid_secrets() -> bool:
+    """Whether boot must fail closed unless magic-link secrets are complete.
+
+    Every enabled production provider must be complete at startup. A Google or
+    hybrid deployment that does not want email links must explicitly set
+    ``MAGIC_LINK_ENABLED=0``; leaving an enabled router half-configured would
+    turn the first customer request into a 500.
+    """
+    return _is_production() and _magic_link_enabled()
+
+
 def _assert_production_secrets() -> None:
     """Fail closed in production if auth secrets are still at dev defaults (S5).
 
     Mirrors the DASHBOARD_SESSION_SECRET fail-closed pattern (refuse to run
     without a real secret), but as a startup guard so a misconfigured deploy
     crashes loudly instead of silently signing sessions with a well-known key.
-    Off-switch: SECRET_ENFORCEMENT_ENABLED=0 (default on).
+    Secret enforcement cannot be disabled in a released process. Local/test
+    builds remain unaffected.
     """
-    if os.getenv("SECRET_ENFORCEMENT_ENABLED", "1") == "0" or not _is_production():
+    if not _is_production():
         return
+    if os.getenv("SECRET_ENFORCEMENT_ENABLED", "1") == "0":
+        raise RuntimeError(
+            "SECRET_ENFORCEMENT_ENABLED cannot be disabled in a production build"
+        )
     session_secret = os.getenv("SESSION_SECRET", "").strip()
     if not session_secret or session_secret == "dev-only":
         raise RuntimeError(
@@ -120,7 +172,7 @@ def _assert_production_secrets() -> None:
             f"production build (RELEASE={os.getenv('RELEASE')!r}); refusing to start."
         )
     auth_mode = os.getenv("AUTH_MODE", "google")
-    allowed_auth_modes = {"password", "google", "saml", "hybrid"}
+    allowed_auth_modes = {"password", "google", "saml", "oidc", "hybrid"}
     if auth_mode not in allowed_auth_modes:
         raise RuntimeError(
             f"AUTH_MODE={auth_mode!r} is not supported in production; "
@@ -133,9 +185,58 @@ def _assert_production_secrets() -> None:
                     f"{var} is unset or the 'dummy' default in a production "
                     f"build with AUTH_MODE={auth_mode}; refusing to start."
                 )
+    # Magic-link is decoupled from Google (a password+magic-link launch must
+    # boot without any Google creds). Whenever magic-link is actually being
+    # used (see _magic_link_requires_valid_secrets), the trio must be
+    # present and MAGIC_LINK_SECRET valid, or a missing value that would
+    # otherwise 500 the first /auth/magic/start call instead fails the
+    # boot, same fail-closed pattern as DASHBOARD_SESSION_SECRET.
+    if _magic_link_requires_valid_secrets():
+        magic_link_secret = os.getenv("MAGIC_LINK_SECRET", "").strip()
+        try:
+            decoded_magic_link_secret = base64.b64decode(
+                magic_link_secret, validate=True
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                "MAGIC_LINK_SECRET must be base64 and decode to >=32 bytes "
+                f"in a production build (RELEASE={os.getenv('RELEASE')!r}) "
+                "with magic-link enabled; refusing to start."
+            ) from exc
+        if len(decoded_magic_link_secret) < 32:
+            raise RuntimeError(
+                "MAGIC_LINK_SECRET must decode to >=32 bytes in a production "
+                f"build (RELEASE={os.getenv('RELEASE')!r}) with magic-link "
+                "enabled; refusing to start."
+            )
+        for var in ("RESEND_API_KEY", "RESEND_FROM", "DASHBOARD_ORIGIN"):
+            if not os.getenv(var, "").strip():
+                raise RuntimeError(
+                    f"{var} is unset in a production build "
+                    f"(RELEASE={os.getenv('RELEASE')!r}) with magic-link "
+                    "enabled; refusing to start."
+                )
+
+
+def _assert_production_operations() -> None:
+    """Compatibility wrapper used by startup tests and the API entrypoint."""
+    from src.config.production import assert_production_operations
+
+    assert_production_operations()
+
+
+def _assert_production_identity_config() -> None:
+    """Validate provider-specific production configuration before serving."""
+    from src.auth.oidc import assert_production_oidc_settings
+    from src.auth.saml import assert_production_saml_settings
+
+    assert_production_saml_settings()
+    assert_production_oidc_settings()
 
 
 _assert_production_secrets()
+_assert_production_operations()
+_assert_production_identity_config()
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
@@ -168,14 +269,79 @@ if os.getenv("SENTRY_DSN"):
         before_send=sentry_before_send,
         send_default_pii=False,
         release=os.getenv("RELEASE", "dev"),
+        environment=os.getenv("DEPLOYMENT_ENVIRONMENT", "development"),
     )
+
+
+def _prewarm_enabled() -> bool:
+    """Pre-warm the parse pool at startup so the FIRST costed request doesn't pay
+    the ~0.7s/worker cold-start tax (spawn + trimesh/gmsh import + gmsh runtime
+    init). Default ON for a real server; auto-OFF under pytest so test app boots
+    don't spawn a process pool. ``PARSE_POOL_PREWARM`` env overrides either way."""
+    import sys
+
+    raw = os.getenv("PARSE_POOL_PREWARM")
+    if raw is not None:
+        return raw.strip().lower() in ("1", "true", "yes", "on")
+    return "pytest" not in sys.modules
+
+
+def _spawn_parse_pool_prewarm() -> threading.Thread:
+    """Kick off parse-pool pre-warm on a daemon thread so it NEVER delays
+    readiness or blocks the event loop, and so a warmup failure can't crash boot
+    (``prewarm`` is itself best-effort). Fire-and-forget."""
+    from src.parsers import parse_pool
+
+    def _run() -> None:
+        try:
+            parse_pool.prewarm(block=True)
+        except Exception:  # belt-and-suspenders: startup must never crash on warmup
+            logger.warning("parse pool pre-warm thread errored", exc_info=True)
+
+    thread = threading.Thread(target=_run, name="parse-pool-prewarm", daemon=True)
+    thread.start()
+    return thread
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("CADVerify starting | cors_regex=%s", CORS_ORIGIN_REGEX)
-    yield
-    logger.info("CADVerify stopping")
+    from src.parsers import parse_pool
+
+    parse_pool.startup()
+    prewarm_thread = None
+    if _prewarm_enabled():
+        logger.info("parse pool pre-warm: enabled (backgrounded, non-blocking)")
+        prewarm_thread = _spawn_parse_pool_prewarm()
+    try:
+        yield
+    finally:
+        logger.info("CADVerify stopping")
+
+        # Audit rows commit with their protected mutations, so there is no
+        # detached compliance queue to drain. Stop CAD workers, release pooled
+        # DB connections, then flush tracing. Every cleanup is isolated so one
+        # failing subsystem cannot prevent the remaining shutdown contract.
+        try:
+            parse_pool.shutdown(kill=True, final=True)
+            if prewarm_thread is not None:
+                await asyncio.to_thread(prewarm_thread.join, 1.0)
+                if prewarm_thread.is_alive():
+                    logger.warning("parse pool pre-warm did not stop within 1s")
+        except Exception:
+            logger.exception("failed to stop parse pool")
+        try:
+            from src.db.engine import dispose_engine
+
+            await dispose_engine()
+        except Exception:
+            logger.exception("failed to dispose database engine")
+        try:
+            from src.obs.tracing import shutdown_tracing
+
+            await asyncio.to_thread(shutdown_tracing)
+        except Exception:
+            logger.exception("failed to flush tracing")
 
 
 app = FastAPI(
@@ -184,6 +350,18 @@ app = FastAPI(
     version="0.2.0",
     lifespan=lifespan,
 )
+
+# OpenTelemetry tracing — OPT-IN and OFF by default. setup_tracing() returns
+# immediately (importing nothing, changing nothing) unless OTEL_TRACING_ENABLED
+# is truthy or OTEL_EXPORTER_OTLP_ENDPOINT is set, so an unconfigured deploy is
+# byte-identical and pays zero cost. When enabled it auto-instruments incoming
+# requests and exports via OTLP (endpoint set) or a console exporter. The manual
+# stage spans on the costed path live in src/api/routes.py; the tracer no-ops
+# them when this did not activate. See src/obs/tracing.py.
+from src.obs.tracing import setup_tracing
+
+if setup_tracing(app):
+    logger.info("OpenTelemetry tracing ENABLED")
 
 # Request-ID middleware — outermost so every request gets a correlation ID
 # before CORS, rate-limiting, or any router sees it.
@@ -222,6 +400,10 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.environ.get("SESSION_SECRET", "dev-only"),
+    session_cookie="cv_oauth_state",
+    max_age=15 * 60,
+    same_site="lax",
+    https_only=_is_production(),
 )
 
 # Security response headers (S6) — added LAST so it is the outermost user
@@ -280,6 +462,11 @@ app.include_router(
 app.include_router(
     part_context_router, prefix="/api/v1/part-context", tags=["part-context"]
 )
+# Confirmed part identity (identity Slice 1): the human-in-the-loop seam that turns
+# a retrieved SUGGESTION into a USER-asserted identity on the org's corpus row.
+app.include_router(
+    identity_router, prefix="/api/v1/identity", tags=["identity"]
+)
 app.include_router(
     groundtruth_router, prefix="/api/v1/ground-truth", tags=["ground-truth"]
 )
@@ -289,6 +476,12 @@ app.include_router(
 app.include_router(
     manifest_router, prefix="/api/v1/manifest", tags=["manifest"]
 )
+# BOM/assembly hierarchy (customer-context Slice 3): the persisted multi-level
+# parent->child tree a part's total rolls up (handle -> door assembly -> vehicle).
+# Two honest sources (a parsed STEP assembly's real edges; a declared BOM CSV/JSON)
+# feed the rolled-up annual volume as an INPUT to the analysis; NO tree → the flat
+# declared volume, byte-identical. Org-scoped; never fabricates a hierarchy.
+app.include_router(bom_router, prefix="/api/v1/bom", tags=["bom"])
 # Machine-inventory (verification-thesis crux): org-owned machine capability
 # registry + shop-level secondary ops. USER-declared; absent inventory is
 # byte-identical (purely additive). The pure matcher (Phase B) consumes the
@@ -307,6 +500,9 @@ app.include_router(
 # multi-user seam on top of 0009's tenancy isolation. Org-scoped; single-org
 # callers are byte-identical (the whole isolation matrix is unchanged).
 app.include_router(org_router, prefix="/api/v1/orgs", tags=["orgs"])
+# SCIM 2.0 enterprise provisioning. Mounted at the IdP-standard path rather
+# than under /api/v1 so Okta/Entra can target it directly.
+app.include_router(scim_router)
 # Email + password auth (signup/login/logout/me). Mounted UNCONDITIONALLY — it
 # is the primary login method that works end-to-end locally with zero external
 # infra, independent of AUTH_MODE.
@@ -317,10 +513,25 @@ AUTH_MODE = os.getenv("AUTH_MODE", "google")
 
 if AUTH_MODE in ("google", "hybrid"):
     app.include_router(oauth_router, prefix="/auth")
+
+# Magic-link mounts whenever it is ENABLED (see _magic_link_enabled), not
+# merely when AUTH_MODE is google/hybrid. This is what lets AUTH_MODE=password
+# offer magic-link (RESEND_API_KEY + MAGIC_LINK_SECRET + DASHBOARD_ORIGIN all
+# set, or MAGIC_LINK_ENABLED=1 forces it) without needing Google OAuth at all
+# — the production launch config. google/hybrid keep mounting it exactly as
+# before (unconditionally), so that behavior is unchanged.
+if _magic_link_enabled():
     app.include_router(magic_router, prefix="/auth")
 
 if AUTH_MODE in ("saml", "hybrid"):
     app.include_router(saml_router, prefix="/auth")
+# OIDC RP (Okta/Entra/Ping) — Authorization Code + PKCE landing in the SAME
+# session/org/group model as SAML. Dedicated oidc mode always mounts it; legacy
+# hybrid mode mounts it only when the operator intentionally supplies OIDC
+# coordinates, so existing Google+SAML hybrid deployments do not gain a broken
+# optional login path or a new startup requirement.
+if oidc_provider_enabled(AUTH_MODE):
+    app.include_router(oidc_router, prefix="/auth")
 app.include_router(admin_router)
 app.include_router(keys_router)
 app.include_router(health_router)

@@ -1,4 +1,4 @@
-{{- if .Values.saml.enabled }}
+{{- if and .Values.saml.enabled (not .Values.saml.existingSecret) }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -34,7 +34,9 @@ data:
   advanced_settings.json: |
     {
       "security": {
+        "wantMessagesSigned": true,
         "wantAssertionsSigned": true,
+        "rejectDeprecatedAlgorithm": true,
         "signatureAlgorithm": "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
         "digestAlgorithm": "http://www.w3.org/2001/04/xmlenc#sha256"
       }

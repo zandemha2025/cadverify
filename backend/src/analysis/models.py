@@ -138,7 +138,9 @@ class GeometryInfo:
     is_watertight: bool
     is_manifold: bool
     euler_number: int
-    center_of_mass: tuple[float, float, float]
+    # Per-component None marks an honest "uncomputable" coordinate for a
+    # degenerate mesh (trimesh yields NaN there); never a fabricated value.
+    center_of_mass: tuple[float | None, float | None, float | None]
     units: str = "mm"                   # Detected or assumed
 
 

@@ -1,0 +1,15 @@
+{
+  "cookies": [
+    {
+      "name": "dash_session",
+      "value": "Ny4xNzgzNjM1NjcxLjA.Kzh2itgxMq1HQvh2Au2AuQ",
+      "domain": "localhost",
+      "path": "/",
+      "expires": 1786227671.665708,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": []
+}

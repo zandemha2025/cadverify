@@ -25,6 +25,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { C, MONO } from "@/lib/verify/tokens";
+import { GROUND_TRUTH_CSV_INPUT } from "@/lib/verify/file-inputs";
 import {
   Card,
   Kicker,
@@ -338,7 +339,13 @@ function HallmarkPanel() {
           drop actual hours &amp; invoiced costs (CSV) — the engine validates on parts it never saw
         </p>
         <div style={{ marginTop: 12, display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
-          <GhostButton primary disabled={busy} onClick={() => csvRef.current?.click()}>
+          <GhostButton
+            primary
+            disabled={busy}
+            aria-label="Import ground-truth actuals CSV"
+            aria-controls={GROUND_TRUTH_CSV_INPUT.id}
+            onClick={() => csvRef.current?.click()}
+          >
             {busy ? "Working…" : "Send actuals (CSV)"}
           </GhostButton>
           <GhostButton disabled={busy} onClick={onRecalibrate}>
@@ -346,6 +353,10 @@ function HallmarkPanel() {
           </GhostButton>
           <input
             ref={csvRef}
+            id={GROUND_TRUTH_CSV_INPUT.id}
+            name={GROUND_TRUTH_CSV_INPUT.name}
+            data-testid={GROUND_TRUTH_CSV_INPUT.testId}
+            aria-label={GROUND_TRUTH_CSV_INPUT.ariaLabel}
             type="file"
             accept=".csv,text/csv"
             style={{ display: "none" }}

@@ -17,10 +17,12 @@ from __future__ import annotations
 
 import os
 import uuid
-from unittest.mock import AsyncMock
+from inspect import unwrap
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.testclient import TestClient
 
 from src.auth.dashboard_session import sign
 from src.auth.hashing import (
@@ -28,7 +30,7 @@ from src.auth.hashing import (
     password_needs_rehash,
     verify_password,
 )
-from src.auth.password import _clean_email, _validate_password
+from src.auth.password import _clean_email, _run_abuse_controls, _validate_password
 
 _PG = os.environ.get("DATABASE_URL", "").startswith("postgresql")
 _requires_pg = pytest.mark.skipif(
@@ -97,6 +99,272 @@ def test_clean_email_trims_and_validates():
         with pytest.raises(HTTPException) as exc:
             _clean_email(bad)
         assert exc.value.detail["code"] == "invalid_email"
+
+
+def test_released_auth_modes_close_unapproved_password_surfaces(monkeypatch):
+    from src.auth.password import (
+        _password_login_enabled,
+        _public_password_signup_enabled,
+        router,
+    )
+
+    monkeypatch.setenv("RELEASE", "sha-123")
+    monkeypatch.delenv("PASSWORD_LOGIN_ENABLED", raising=False)
+    monkeypatch.delenv("PUBLIC_PASSWORD_SIGNUP_ENABLED", raising=False)
+    monkeypatch.setenv("AUTH_MODE", "saml")
+    assert _password_login_enabled() is False
+    assert _public_password_signup_enabled() is False
+
+    app = FastAPI()
+    app.include_router(router, prefix="/auth")
+    response = TestClient(app).post(
+        "/auth/signup",
+        json={"email": "user@example.com", "password": "Password1"},
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "password_signup_disabled"
+
+    monkeypatch.setenv("AUTH_MODE", "password")
+    assert _password_login_enabled() is True
+    # Released password mode still requires email-first account creation.
+    assert _public_password_signup_enabled() is False
+
+
+def test_production_password_login_rejects_unsigned_direct_callers(monkeypatch):
+    from src.auth.password import router
+
+    monkeypatch.setenv("RELEASE", "sha-123")
+    monkeypatch.setenv("AUTH_MODE", "password")
+    monkeypatch.setenv("PASSWORD_LOGIN_ENABLED", "1")
+    monkeypatch.setenv("PRODUCTION_AUTH_PROXY_REQUIRED", "1")
+    monkeypatch.delenv("AUTH_PROXY_SECRET", raising=False)
+    app = FastAPI()
+    app.include_router(router, prefix="/auth")
+
+    with patch(
+        "src.auth.password.get_login_credentials", new_callable=AsyncMock
+    ) as credentials:
+        response = TestClient(app).post(
+            "/auth/login",
+            json={"email": "user@example.com", "password": "Password1"},
+        )
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "auth_proxy_unavailable"
+    credentials.assert_not_awaited()
+
+
+# ──────────────────────────────────────────────────────────────
+# Public pilot intake — durable, bounded, and retry-idempotent
+# ──────────────────────────────────────────────────────────────
+
+
+def _pilot_http_request() -> Request:
+    return Request(
+        {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "https",
+            "path": "/auth/pilot-request",
+            "raw_path": b"/auth/pilot-request",
+            "query_string": b"",
+            "headers": [(b"user-agent", b"pilot-intake-test")],
+            "client": ("203.0.113.8", 44321),
+            "server": ("api.cadverify.com", 443),
+        }
+    )
+
+
+def _pilot_body(**overrides):
+    from src.auth.password import PilotRequestIn
+
+    values = {
+        "request_id": uuid.uuid4(),
+        "email": "buyer@example.com",
+        "company": "Example Manufacturing",
+        "what": "Precision valve bodies",
+        "deployment": "cloud",
+        "website": "",
+    }
+    values.update(overrides)
+    return PilotRequestIn(**values)
+
+
+def _pilot_session(*, scalar=None) -> AsyncMock:
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.scalar = AsyncMock(return_value=scalar)
+    return session
+
+
+async def _call_pilot(body, session):
+    from src.auth.password import create_pilot_request
+
+    endpoint = unwrap(create_pilot_request)
+    return await endpoint(body, _pilot_http_request(), Response(), session)
+
+
+@pytest.mark.asyncio
+async def test_pilot_request_commits_before_optional_notification(monkeypatch):
+    monkeypatch.delenv("RELEASE", raising=False)
+    monkeypatch.delenv("TURNSTILE_SECRET", raising=False)
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    monkeypatch.delenv("RESEND_FROM", raising=False)
+    session = _pilot_session()
+    body = _pilot_body()
+
+    result = await _call_pilot(body, session)
+
+    assert result == {
+        "status": "received",
+        "receipt": str(body.request_id),
+        "notification": "recorded",
+    }
+    session.commit.assert_awaited_once()
+    entry = session.add.call_args.args[0]
+    assert entry.action == "pilot.requested"
+    assert entry.resource_id == str(body.request_id)
+    assert entry.user_email == "buyer@example.com"
+
+
+@pytest.mark.asyncio
+async def test_pilot_request_replay_returns_same_receipt_without_write(monkeypatch):
+    monkeypatch.delenv("RELEASE", raising=False)
+    monkeypatch.delenv("TURNSTILE_SECRET", raising=False)
+    session = _pilot_session(scalar=91)
+    body = _pilot_body()
+
+    result = await _call_pilot(body, session)
+
+    assert result == {"status": "received", "receipt": str(body.request_id)}
+    session.add.assert_not_called()
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_pilot_request_honeypot_is_success_without_db_or_provider(monkeypatch):
+    monkeypatch.setenv("RELEASE", "release-sha")
+    monkeypatch.delenv("TURNSTILE_SECRET", raising=False)
+    session = _pilot_session()
+    body = _pilot_body(website="https://bot.example")
+
+    result = await _call_pilot(body, session)
+
+    assert result == {"status": "received", "receipt": str(body.request_id)}
+    session.scalar.assert_not_awaited()
+    session.add.assert_not_called()
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_pilot_request_concurrent_unique_collision_is_idempotent(monkeypatch):
+    from sqlalchemy.exc import IntegrityError
+
+    monkeypatch.delenv("RELEASE", raising=False)
+    monkeypatch.delenv("TURNSTILE_SECRET", raising=False)
+    session = _pilot_session()
+    session.scalar = AsyncMock(side_effect=[None, 92])
+    session.commit = AsyncMock(
+        side_effect=IntegrityError("duplicate receipt", params=None, orig=Exception())
+    )
+    body = _pilot_body()
+
+    result = await _call_pilot(body, session)
+
+    assert result == {"status": "received", "receipt": str(body.request_id)}
+    session.rollback.assert_awaited_once()
+    assert session.scalar.await_count == 2
+    session.add.assert_called_once()
+
+
+def test_initial_password_rotates_session_after_verified_login(monkeypatch):
+    from src.auth.dashboard_session import require_dashboard_session, unsign_payload
+    from src.auth.password import router
+
+    monkeypatch.delenv("RELEASE", raising=False)
+    app = FastAPI()
+    app.include_router(router, prefix="/auth")
+    app.dependency_overrides[require_dashboard_session] = lambda: 7
+
+    with patch(
+        "src.auth.password.set_initial_password_hash",
+        new_callable=AsyncMock,
+        return_value=4,
+    ) as set_hash:
+        response = TestClient(app).post(
+            "/auth/password/initialize", json={"password": "NewPassword1"}
+        )
+
+    assert response.status_code == 200
+    payload = unsign_payload(response.json()["session"])
+    assert payload is not None
+    assert payload.user_id == 7
+    assert payload.session_version == 4
+    set_hash.assert_awaited_once()
+
+
+def test_password_login_audit_failure_blocks_session(monkeypatch):
+    from src.auth.password import router
+    from src.services import audit_service
+
+    monkeypatch.delenv("RELEASE", raising=False)
+    app = FastAPI()
+    app.include_router(router, prefix="/auth")
+
+    with patch(
+        "src.auth.password.get_login_credentials",
+        new_callable=AsyncMock,
+        return_value=(7, hash_password("Password1"), "analyst"),
+    ), patch(
+        "src.auth.models.user_is_active",
+        new_callable=AsyncMock,
+        return_value=True,
+    ), patch(
+        "src.auth.password.get_user_session_version",
+        new_callable=AsyncMock,
+        return_value=0,
+    ), patch.object(
+        audit_service,
+        "log_action",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("audit ledger unavailable"),
+    ):
+        response = TestClient(app, raise_server_exceptions=False).post(
+            "/auth/login",
+            json={"email": "user@example.com", "password": "Password1"},
+        )
+
+    assert response.status_code == 500
+    assert "session" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_signup_rate_limit_can_be_disabled_for_local_e2e(monkeypatch):
+    monkeypatch.setenv("REDIS_URL", "redis://cache:6379")
+    monkeypatch.setenv("SIGNUP_RATE_LIMIT_DISABLED", "1")
+    monkeypatch.delenv("RELEASE", raising=False)
+
+    assert await _run_abuse_controls(_Req(), "local-e2e@example.com") == "ok"
+
+
+@pytest.mark.asyncio
+async def test_signup_rate_limit_disable_is_ignored_in_release(monkeypatch):
+    import src.auth.signup_limits as signup_limits
+
+    called = False
+
+    async def record_call(request):  # noqa: ANN001
+        nonlocal called
+        called = True
+
+    monkeypatch.setenv("REDIS_URL", "redis://cache:6379")
+    monkeypatch.setenv("SIGNUP_RATE_LIMIT_DISABLED", "1")
+    monkeypatch.setenv("RELEASE", "2026.07.08")
+    monkeypatch.setattr(signup_limits, "per_ip_signup_limit", record_call)
+
+    assert await _run_abuse_controls(_Req(), "prod@example.com") == "ok"
+    assert called is True
 
 
 # ──────────────────────────────────────────────────────────────
@@ -210,7 +478,7 @@ def _build_app() -> FastAPI:
 
 @_requires_pg
 @pytest.mark.asyncio
-async def test_full_signup_login_me_protected_flow():
+async def test_full_signup_login_me_protected_flow(monkeypatch):
     from httpx import ASGITransport, AsyncClient
     from sqlalchemy import text
 
@@ -220,6 +488,8 @@ async def test_full_signup_login_me_protected_flow():
     email = f"pwtest-{uuid.uuid4().hex[:12]}@example.com"
     email_norm = normalize_email(email)
     password = "Passw0rd123"
+    monkeypatch.setenv("SIGNUP_RATE_LIMIT_DISABLED", "1")
+    monkeypatch.delenv("RELEASE", raising=False)
     app = _build_app()
     transport = ASGITransport(app=app)
 

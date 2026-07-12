@@ -37,9 +37,11 @@ def assert_contains_all(text: str, expected: list[str]) -> None:
     assert missing == []
 
 
-def test_ci_runs_on_dev_and_prs_with_container_proof():
+def test_ci_releases_images_and_protected_workflow_promotes_staging_first():
     workflow = load_yaml(".github/workflows/ci.yml")
+    promotion = load_yaml(".github/workflows/saas-promote.yml")
     triggers = workflow_triggers(workflow)
+    promotion_inputs = workflow_triggers(promotion)["workflow_dispatch"]["inputs"]
 
     for event in ("push", "pull_request"):
         branches = triggers[event]["branches"]
@@ -55,11 +57,69 @@ def test_ci_runs_on_dev_and_prs_with_container_proof():
     assert "Build frontend production image and push on main" in step_names
     assert "Build backend production image and push on main" in step_names
 
-    deploy_job = workflow["jobs"]["deploy"]
-    assert deploy_job["if"] == "github.ref == 'refs/heads/main' && github.event_name == 'push'"
-    deploy_steps = {step.get("name") for step in deploy_job["steps"]}
-    assert "Deploy backend (pre-built image)" in deploy_steps
-    assert "Deploy frontend (pre-built image)" in deploy_steps
+    assert "deploy" not in workflow["jobs"]
+    staging = promotion["jobs"]["deploy-staging"]
+    production = promotion["jobs"]["deploy-production"]
+    assert staging["environment"] == "saas-staging"
+    assert production["environment"] == "saas-production"
+    assert production["needs"] == "deploy-staging"
+    assert production["if"] == "inputs.promotion_scope == 'staging-and-production'"
+    assert staging["if"] == "github.ref == 'refs/heads/main'"
+    assert promotion_inputs["promotion_scope"]["default"] == "staging-only"
+    assert promotion_inputs["promotion_scope"]["options"] == [
+        "staging-only",
+        "staging-and-production",
+    ]
+    assert staging["env"]["CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED"] == (
+        "${{ inputs.promotion_scope == 'staging-and-production' && '1' || '0' }}"
+    )
+    assert production["env"]["CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED"] == "1"
+    staging_steps = {step.get("name") for step in staging["steps"]}
+    production_steps = {step.get("name") for step in production["steps"]}
+    assert "Require a successful CI release for this exact SHA" in staging_steps
+    assert "Download CI-owned immutable release manifest" in staging_steps
+    assert "Require protected supplier-quote holdout evidence" in staging_steps
+    assert "Deploy and verify staging" in staging_steps
+    assert "Validate isolated production environment contract" in production_steps
+    assert "Revalidate protected supplier-quote holdout evidence" in production_steps
+    assert "Require production evidence to match staged evidence" in production_steps
+    assert "Deploy and verify production" in production_steps
+    staging_step_order = [step.get("name") for step in staging["steps"]]
+    assert staging_step_order.index(
+        "Require protected supplier-quote holdout evidence"
+    ) < staging_step_order.index("Deploy and verify staging")
+    staging_holdout = next(
+        step
+        for step in staging["steps"]
+        if step.get("name") == "Require protected supplier-quote holdout evidence"
+    )
+    assert staging_holdout["if"] == (
+        "inputs.promotion_scope == 'staging-and-production'"
+    )
+    assert staging_holdout["env"]["CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64"] == (
+        "${{ secrets.CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64 }}"
+    )
+    assert staging["outputs"]["holdout_evidence_sha256"] == (
+        "${{ steps.holdout.outputs.evidence_sha256 }}"
+    )
+    production_holdout = next(
+        step
+        for step in production["steps"]
+        if step.get("name") == "Revalidate protected supplier-quote holdout evidence"
+    )
+    assert production_holdout["env"]["CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64"] == (
+        "${{ secrets.CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64 }}"
+    )
+    assert production["env"]["STAGING_HOLDOUT_EVIDENCE_SHA256"] == (
+        "${{ needs.deploy-staging.outputs.holdout_evidence_sha256 }}"
+    )
+    production_step_order = [step.get("name") for step in production["steps"]]
+    assert production_step_order.index(
+        "Revalidate protected supplier-quote holdout evidence"
+    ) < production_step_order.index("Deploy and verify production")
+    assert production_step_order.index(
+        "Require production evidence to match staged evidence"
+    ) < production_step_order.index("Deploy and verify production")
 
     backend_steps = {step.get("name") for step in workflow["jobs"]["backend"]["steps"]}
     assert "Postgres restore drill" in backend_steps
@@ -79,8 +139,9 @@ def test_frontend_dockerfile_matches_current_next_runtime_mode():
     assert enabled_standalone_lines == []
     assert ".next/standalone" not in dockerfile
     assert "RUN npm prune --omit=dev" in dockerfile
-    assert "COPY --from=builder /app/node_modules ./node_modules" in dockerfile
-    assert "COPY --from=builder /app/.next ./.next" in dockerfile
+    assert "COPY --from=builder --chown=node:node /app/node_modules ./node_modules" in dockerfile
+    assert "USER node" in dockerfile
+    assert "COPY --from=builder --chown=node:node /app/.next ./.next" in dockerfile
     assert 'CMD ["npm", "run", "start"]' in dockerfile
 
 
@@ -101,14 +162,17 @@ def test_compose_configs_have_smokeable_frontend_and_backend():
         assert "python -c" in healthcheck_command(backend)
         assert "127.0.0.1:3000" in healthcheck_command(frontend)
         assert "node -e" in healthcheck_command(frontend)
-        assert "NEXT_PUBLIC_API_BASE=http://localhost:8000" in service_env(frontend)
+        assert "API_BASE=http://backend:8000" in service_env(frontend)
+        assert not any(item.startswith("NEXT_PUBLIC_API_BASE=") for item in service_env(frontend))
         assert "postgres" in compose["services"]
         assert "redis" in compose["services"]
         assert "pgdata" in compose["volumes"]
+        assert "RATE_LIBRARY_ENABLED=1" in service_env(backend)
 
     assert "blobs" in enterprise["volumes"]
     assert "redis-data" in enterprise["volumes"]
     assert "./saml:/app/saml:ro" in enterprise["services"]["backend"]["volumes"]
+    assert "RATE_LIBRARY_ENABLED=1" in service_env(enterprise["services"]["worker"])
 
 
 def test_fly_configs_describe_deploy_surface_without_external_proof_claims():
@@ -121,14 +185,21 @@ def test_fly_configs_describe_deploy_surface_without_external_proof_claims():
         [
             'app = "cadvrfy-api"',
             '[processes]',
-            'web = "uvicorn main:app',
+            'web = "uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1 --no-server-header"',
             'worker = "arq src.jobs.worker.WorkerSettings"',
             '[http_service]',
             "internal_port = 8000",
             "force_https = true",
-            "destination = \"/data\"",
+            'OBJECT_STORE_BACKEND = "s3"',
+            'METRICS_ENABLED = "0"',
+            'PDF_CACHE_DIR = "/tmp/cadverify/pdf-cache"',
+            "ARQ_HEALTH_KEY = \"arq:queue:health-check\"",
+            "WORKER_STRICT_HEALTH = \"1\"",
+            "RATE_LIBRARY_ENABLED = \"1\"",
+            "ANALYSIS_TIMEOUT_SEC = \"60\"",
             "[deploy]",
             "alembic upgrade head",
+            'memory = "2gb"',
         ],
     )
 
@@ -137,15 +208,48 @@ def test_fly_configs_describe_deploy_surface_without_external_proof_claims():
         [
             'app = "cadvrfy-web"',
             "[env]",
-            'API_BASE = "https://cadvrfy-api.fly.dev"',
-            'NEXT_PUBLIC_API_BASE = "https://cadvrfy-api.fly.dev"',
+            'PRODUCTION_PUBLIC_API_TLS_REQUIRED = "1"',
             "[http_service]",
             "internal_port = 3000",
             "force_https = true",
         ],
     )
     assert "registry.fly.io/cadvrfy-web:${{ github.sha }}" in workflow
-    assert "--config frontend/fly.toml" in workflow
+    promotion = read("scripts/ops/promote-fly-release.sh")
+    assert "--config frontend/fly.toml" in promotion
+    assert 'flyctl scale count web=2 worker=2 --app "$FLY_API_APP" --yes' in promotion
+    assert "node scripts/ops/fly-required-secrets-gate.mjs" in promotion
+    assert "node scripts/ops/fly-live-health-gate.mjs" in promotion
+    assert 'docker manifest inspect "$CADVERIFY_BACKEND_IMAGE"' in promotion
+    assert "CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_SHA256" in promotion
+    assert 'CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED=${CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED:-1}' in promotion
+    assert 'CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_SHA256="not-required-for-staging-only"' in promotion
+    assert "Production requires protected supplier holdout evidence" in promotion
+    assert "supplier_holdout_required=" in promotion
+    assert "supplier_holdout_evidence_sha256=" in promotion
+    assert "PARSE_PROCESS_POOL_DISABLED" in promotion
+
+
+def test_worker_and_deploy_health_gate_require_arq_worker_heartbeat():
+    worker = read("backend/src/jobs/worker.py")
+    health = read("backend/src/api/health.py")
+    ops = read("backend/src/services/ops_health_service.py")
+    gate = read("scripts/ops/fly-live-health-gate.mjs")
+    secrets_gate = read("scripts/ops/fly-required-secrets-gate.mjs")
+
+    assert 'health_check_key = os.getenv("ARQ_HEALTH_KEY", "arq:queue:health-check")' in worker
+    assert 'worker_strict = _flag("WORKER_STRICT_HEALTH", "0")' in health
+    assert 'worker_degraded = worker_strict and async_expected and redis_ok and worker_state != "ok"' in health
+    assert 'health_key = os.getenv("ARQ_HEALTH_KEY", "arq:queue:health-check")' in ops
+    assert 'body?.async?.worker === "ok"' in gate
+    assert 'body?.async?.worker_strict === true' in gate
+    assert 'CADVERIFY_REQUIRE_WORKER_STRICT' in gate
+    assert "AbortSignal.timeout(requestTimeoutMs)" in gate
+    assert "API_KEY_PEPPER" in secrets_gate
+    assert "CONNECTOR_SECRET_KEY" in secrets_gate
+    assert "CONNECTOR_FINGERPRINT_KEY" in secrets_gate
+    assert "DEEP_HEALTH_TOKEN" in secrets_gate
+    assert "CADVERIFY_DEEP_HEALTH_TOKEN" in gate
 
 
 def test_helm_chart_gates_multi_replica_blob_and_worker_ops():
@@ -160,9 +264,43 @@ def test_helm_chart_gates_multi_replica_blob_and_worker_ops():
     assert ".Values.persistence.blobs.accessModes" in pvc
     assert "livenessProbe:" in worker
     assert "readinessProbe:" in worker
-    assert "import src.jobs.worker" in worker
+    assert "kill -0 1" in worker
+    assert "readOnlyRootFilesystem" in read("charts/cadverify/values.yaml")
+    assert "networkPolicy.enabled=true" in read("charts/cadverify/templates/_helpers.tpl")
+    assert "runtimeSecret.existingSecret" in read("charts/cadverify/templates/_helpers.tpl")
     assert "helm lint charts/cadverify" in workflow
     assert "helm template cadverify charts/cadverify" in workflow
+
+
+def test_regulated_secret_gate_validates_saml_security_profile_not_only_files():
+    gate = read("scripts/ops/k8s-required-secrets-gate.sh")
+
+    assert ".strict == true" in gate
+    assert ".security.wantMessagesSigned == true" in gate
+    assert ".security.wantAssertionsSigned == true" in gate
+    assert 'keys - ["contactPerson", "organization", "security"]' in gate
+    assert "rsa-sha256" in gate
+    assert "xmlenc#sha256" in gate
+    assert ".security.rejectDeprecatedAlgorithm == true" in gate
+    assert ".idp.x509cert" in gate
+    assert "base64 --decode | jq -e" in gate
+
+
+def test_production_lock_gate_is_platform_neutral():
+    workflow = read(".github/workflows/ci.yml")
+
+    assert "--no-header --no-annotate" in workflow
+    assert "diff -u requirements-prod.lock /tmp/requirements-prod.lock" in workflow
+
+
+def test_protected_browser_gate_fails_required_journey_skips():
+    workflow = read(".github/workflows/ci.yml")
+    p7 = read("scripts/e2e/p7-role-failure-journey-runner.mjs")
+
+    assert 'E2E_FAIL_ON_UNAVAILABLE: "1"' in workflow
+    assert '!process.argv.includes("--allow-unavailable")' in p7
+    assert "failOnUnavailable && skippedSteps > 0" in p7
+    assert 'status === "SKIPPED_UNAVAILABLE" && failOnUnavailable' in p7
 
 
 def test_pre_human_real_cad_and_ops_gates_are_in_full_e2e_chain():
@@ -171,14 +309,25 @@ def test_pre_human_real_cad_and_ops_gates_are_in_full_e2e_chain():
     restore = read("scripts/ops/postgres-restore-drill.sh")
     load = read("scripts/ops/api-load-smoke.mjs")
     readiness = read("scripts/e2e/enterprise-prehuman-readiness.mjs")
+    scim_idp = read("scripts/e2e/scim-idp-lifecycle.mjs")
+    connector_replay = read("scripts/e2e/connector-sandbox-fixture-replay.mjs")
 
+    assert "test:e2e:scim-idp" in package
+    assert "test:e2e:connector-fixtures" in package
     assert "test:e2e:real-cad-corpus" in package
     assert "test:e2e:ops-restore" in package
     assert "test:e2e:ops-load" in package
     assert "test:e2e:readiness" in package
+    assert "npm run test:e2e:scim-idp" in package
+    assert "npm run test:e2e:connector-fixtures" in package
     assert "NIST-PMI-STEP-Files.zip" in real_cad
     assert "NIST-MTC-Assembly.zip" in real_cad
     assert "block_network_sockets" in real_cad
+    assert "SCIM protocol lifecycle simulation" in scim_idp
+    assert "CADVERIFY_SCIM_TOKEN" in scim_idp
+    assert "sap_s4hana_product_bom_readonly" in connector_replay
+    assert "windchill_part_bom_readonly" in connector_replay
+    assert "offline sandbox fixture replay, not live vendor certification" in connector_replay
     assert "pg_dump" in restore
     assert "pg_restore" in restore
     assert "/api/v1/validate/cost/demo" in load

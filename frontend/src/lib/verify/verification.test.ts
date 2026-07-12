@@ -23,6 +23,8 @@ import {
   envStrikes,
   marginalRate,
   acquisitionGap,
+  readVerification,
+  recordVerdictModel,
   type VerificationBlock,
   type MakeabilityLattice,
 } from "./verification.ts";
@@ -49,6 +51,36 @@ test("every verdict lattice value maps to a banner with a non-empty title", () =
   assert.equal(verdictBannerModel("not_makeable").tone, "fail");
   assert.equal(verdictBannerModel("environment_excluded").tone, "fail");
   assert.equal(verdictBannerModel("unknown").tone, "neutral");
+});
+
+test("persisted record verdict uses machine fit instead of reinterpreting DFM advisories", () => {
+  const report = { verification: { verdict: "makeable_outsource_only" } };
+  const model = recordVerdictModel(report, {
+    hasCostedRoute: true,
+    dfmReady: true,
+    dfmVerdict: "issues",
+  });
+  assert.equal(model.text, "Makeable — outsource only.");
+  assert.equal(model.tone, "cond");
+  assert.equal(readVerification(report)?.verdict, "makeable_outsource_only");
+});
+
+test("record fallback never fabricates in-house status from route DFM", () => {
+  const advisory = recordVerdictModel({}, {
+    hasCostedRoute: true,
+    dfmReady: true,
+    dfmVerdict: "issues",
+  });
+  assert.match(advisory.text, /DFM advisories/i);
+  assert.doesNotMatch(advisory.text, /in-house|needs redesign/i);
+
+  const noFit = recordVerdictModel({}, {
+    hasCostedRoute: true,
+    dfmReady: true,
+    dfmVerdict: "pass",
+  });
+  assert.match(noFit.text, /machine fit not evaluated/i);
+  assert.equal(readVerification({ verification: { verdict: "invented_pass" } }), null);
 });
 
 test("fitMark: ✓ for a pass, ✗ for a real fail, ? for an undeclared/unknown gate", () => {

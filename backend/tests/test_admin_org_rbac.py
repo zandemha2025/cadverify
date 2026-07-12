@@ -225,19 +225,39 @@ async def test_admin_org_rbac_matrix():
             assert b_admin_role == "analyst"   # never mutated cross-org
 
             # === audit-log =================================================
-            audit_params = {"start": start, "end": end, "limit": 200}
+            audit_params_a = {
+                "start": start,
+                "end": end,
+                "limit": 10,
+                "action": "test.a.event",
+            }
+            audit_params_b = {
+                "start": start,
+                "end": end,
+                "limit": 10,
+                "action": "test.b.event",
+            }
             _act_as(app, a_admin, "analyst")
-            r = await ac.get("/api/v1/admin/audit-log", params=audit_params)
+            r = await ac.get("/api/v1/admin/audit-log", params=audit_params_a)
             assert r.status_code == 200, r.text
             actions = {e["action"] for e in r.json()["entries"]}
             assert "test.a.event" in actions
+
+            r = await ac.get("/api/v1/admin/audit-log", params=audit_params_b)
+            assert r.status_code == 200, r.text
+            actions = {e["action"] for e in r.json()["entries"]}
             assert "test.b.event" not in actions   # org-scoped
 
             _act_as(app, superadmin, "superadmin")
-            r = await ac.get("/api/v1/admin/audit-log", params=audit_params)
+            r = await ac.get("/api/v1/admin/audit-log", params=audit_params_a)
             assert r.status_code == 200, r.text
             actions = {e["action"] for e in r.json()["entries"]}
-            assert {"test.a.event", "test.b.event"} <= actions
+            assert "test.a.event" in actions
+
+            r = await ac.get("/api/v1/admin/audit-log", params=audit_params_b)
+            assert r.status_code == 200, r.text
+            actions = {e["action"] for e in r.json()["entries"]}
+            assert "test.b.event" in actions
     finally:
         # ---- teardown (FK-safe, no leaks) ----------------------------------
         async with eng.get_session_factory()() as s:

@@ -16,5 +16,8 @@ export async function POST() {
   } catch {
     // best-effort; the first-party cookie is already cleared
   }
-  return NextResponse.json({ ok: true });
+  return NextResponse.json(
+    { ok: true },
+    { headers: { "cache-control": "no-store" } },
+  );
 }

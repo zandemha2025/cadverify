@@ -1,9 +1,9 @@
 """arq task for image-to-mesh reconstruction with auto-feed to analysis."""
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
-import os
 import time
 import traceback
 from datetime import datetime, timezone
@@ -58,20 +58,13 @@ async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
 
         try:
             # 2. Read images from blob storage
-            from src.services.reconstruction_service import RECON_BLOB_DIR
-            input_dir = os.path.join(RECON_BLOB_DIR, job_ulid, "input")
-
-            images_with_types: list[tuple[bytes, str]] = []
-            if os.path.isdir(input_dir):
-                ext_to_ct = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
-                for fname in sorted(os.listdir(input_dir)):
-                    ext = fname.rsplit(".", 1)[-1].lower()
-                    content_type = ext_to_ct.get(ext, "image/jpeg")
-                    with open(os.path.join(input_dir, fname), "rb") as f:
-                        images_with_types.append((f.read(), content_type))
+            images_with_types = await asyncio.to_thread(
+                reconstruction_service.load_reconstruction_images,
+                job_ulid,
+            )
 
             if not images_with_types:
-                raise RuntimeError(f"No images found in {input_dir}")
+                raise RuntimeError(f"No reconstruction images found for job {job_ulid}")
 
             # 3. Select best image and preprocess
             best_idx = preprocessing.select_best_image(images_with_types)

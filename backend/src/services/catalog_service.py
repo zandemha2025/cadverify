@@ -598,6 +598,139 @@ _NO_VOLUME_REASON = (
 )
 
 
+def recommendation_basis_at_quantity(
+    cost_result_json: dict, quantity: Optional[int]
+) -> Optional[dict]:
+    """The engine's exact recommended unit cost at ``quantity``.
+
+    Annual exposure must never reuse the catalog's quantity-one headline price.
+    This selector accepts only an exact persisted recommendation point and carries
+    its process, material, and confidence through as the traceable pricing basis.
+    Missing/blocked points return ``None`` so callers withhold instead of
+    interpolating or silently substituting another quantity.
+    """
+    if quantity is None:
+        return None
+    decision = cost_result_json.get("decision") or {}
+    at_qty = _lookup_by_qty(decision.get("recommendation") or {}, quantity)
+    if not isinstance(at_qty, dict):
+        return None
+    usd = at_qty.get("unit_cost_usd")
+    raw_process = at_qty.get("process")
+    process = raw_process.strip() if isinstance(raw_process, str) else ""
+    if (
+        isinstance(usd, bool)
+        or not isinstance(usd, (int, float))
+        or usd <= 0
+        or not process
+        or at_qty.get("dfm_ready") is False
+        or at_qty.get("environment_excluded") is True
+    ):
+        return None
+
+    estimate = next(
+        (
+            e
+            for e in cost_result_json.get("estimates") or []
+            if e.get("process") == process
+            and str(e.get("quantity")) == str(quantity)
+        ),
+        None,
+    )
+    if estimate and (
+        estimate.get("dfm_ready") is False
+        or estimate.get("environment_excluded") is True
+    ):
+        return None
+    confidence = (estimate or {}).get("confidence") or {}
+    return {
+        "usd": round(float(usd), 2),
+        "qty": int(quantity),
+        "currency": "USD",
+        "process": process,
+        "material": at_qty.get("material") or (estimate or {}).get("material"),
+        "validated": bool(confidence.get("validated", False)),
+        "basis": "decision.recommendation",
+    }
+
+
+def savings_at_quantity(
+    cost_result_json: dict, quantity: Optional[int]
+) -> Optional[dict]:
+    """Exact engine redesign saving at ``quantity``; never borrowed from another point."""
+    basis = recommendation_basis_at_quantity(cost_result_json, quantity)
+    if basis is None or quantity is None:
+        return None
+    decision = cost_result_json.get("decision") or {}
+    alternative = _lookup_by_qty(decision.get("if_redesigned") or {}, quantity)
+    if not isinstance(alternative, dict):
+        return None
+    redesigned = alternative.get("unit_cost_usd")
+    if (
+        isinstance(redesigned, bool)
+        or not isinstance(redesigned, (int, float))
+        or redesigned <= 0
+    ):
+        return None
+    save_unit = round(basis["usd"] - float(redesigned), 2)
+    if save_unit <= 0:
+        return None
+    return {
+        "qty": int(quantity),
+        "make_now_unit_usd": basis["usd"],
+        "redesigned_unit_usd": round(float(redesigned), 2),
+        "save_unit_usd": save_unit,
+        "redesigned_process": alternative.get("process"),
+        "basis": "decision.if_redesigned",
+    }
+
+
+def annualization_at_quantity(
+    cost_result_json: dict, annual_volume: Optional[int]
+) -> dict:
+    """Exact quantity-matched annualization, or an explicit withheld reason."""
+    if annual_volume is None:
+        return {
+            "annualized_unit_cost": None,
+            "annualized_cost_usd": None,
+            "annualized_savings_usd": None,
+            "annualized_reason": _NO_VOLUME_REASON,
+        }
+    basis = recommendation_basis_at_quantity(cost_result_json, annual_volume)
+    if basis is None:
+        available = sorted(
+            (
+                int(q)
+                for q in ((cost_result_json.get("decision") or {}).get("recommendation") or {})
+                if str(q).isdigit()
+            )
+        )
+        available_text = ", ".join(str(q) for q in available) or "none"
+        return {
+            "annualized_unit_cost": None,
+            "annualized_cost_usd": None,
+            "annualized_savings_usd": None,
+            "annualized_reason": (
+                f"no engine-computed recommendation at annual_volume {annual_volume}; "
+                f"available quantities: {available_text}. Re-verify this CAD after "
+                "declaring the volume to compute that exact point"
+            ),
+        }
+    saving = savings_at_quantity(cost_result_json, annual_volume)
+    annual_cost = pcsvc.annualized_cost(basis["usd"], annual_volume)
+    annual_saving = pcsvc.annualized_cost(
+        (saving or {}).get("save_unit_usd"), annual_volume
+    )
+    return {
+        "annualized_unit_cost": basis,
+        "annualized_cost_usd": round(annual_cost, 2) if annual_cost is not None else None,
+        "annualized_savings_usd": (
+            round(annual_saving, 2) if annual_saving is not None else None
+        ),
+        "annualized_reason": None,
+    }
+
+
 def _group_by_program(rows: list[dict]) -> list[dict]:
     """Per-program roll-up over enriched portfolio rows (pure).
 
@@ -620,9 +753,15 @@ def _group_by_program(rows: list[dict]) -> list[dict]:
                 "parts": 0,
                 "annualized_cost_usd": None,
                 "annualized_savings_usd": None,
+                "declared_volume_parts": 0,
+                "exposed_parts": 0,
             },
         )
         g["parts"] += 1
+        if (r.get("context") or {}).get("annual_volume") is not None:
+            g["declared_volume_parts"] += 1
+        if r.get("annualized_cost_usd") is not None:
+            g["exposed_parts"] += 1
         for key in ("annualized_cost_usd", "annualized_savings_usd"):
             val = r.get(key)
             if val is not None:
@@ -683,6 +822,17 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
     ctx_by_mesh = {c.mesh_hash: c for c in contexts}
     has_any_context = bool(ctx_by_mesh)
 
+    # Slice 3: the org's persisted BOM/assembly trees, loaded ONCE. This too is
+    # PURELY ADDITIVE — an org with NO edges leaves ``has_any_bom`` False and the
+    # annual-volume input below is exactly the flat declared value (byte-identical
+    # to the pre-Slice-3 path). When a tree DOES exist, a part whose context names
+    # it (bom_assembly_key + bom_child_ref + bom_roots_per_year) gets its annual
+    # volume ROLLED UP from the real hierarchy, labelled ``annual_volume_basis``.
+    from src.services import bom_service as bomsvc
+
+    org_trees = await bomsvc.load_org_trees(session, org_id) if has_any_context else {}
+    has_any_bom = bool(org_trees)
+
     rows: list[dict] = []
     drafted_count = 0
     agg = _empty_posture_agg()
@@ -731,18 +881,43 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
         # at least one context — otherwise the row is byte-identical to today).
         if has_any_context:
             ctx_row = ctx_by_mesh.get(mesh)
-            annual_volume = getattr(ctx_row, "annual_volume", None) if ctx_row else None
-            unit_usd = (unit_cost or {}).get("usd") if unit_cost else None
-            save_unit = (savings or {}).get("save_unit_usd") if savings else None
             row["context"] = _context_block(ctx_row)
-            # $/year appears ONLY with a user-declared annual_volume; otherwise
-            # null + an honest reason. Never a fabricated demand quantity.
-            row["annualized_cost_usd"] = pcsvc.annualized_cost(unit_usd, annual_volume)
-            row["annualized_savings_usd"] = pcsvc.annualized_cost(
-                save_unit, annual_volume
-            )
-            if annual_volume is None:
-                row["annualized_reason"] = _NO_VOLUME_REASON
+            # Slice 3: WHICH volume feeds the annualization. When the org has a BOM
+            # tree AND this part's context names it, prefer the rolled-up multiplier
+            # x vehicles/year (basis 'bom_rollup'); else the flat declared
+            # annual_volume ('declared'); else none ('default'). NEVER a fabricated
+            # rollup. When the org has NO tree at all, this branch is skipped and the
+            # value is the flat declared volume — byte-identical to before Slice 3.
+            if has_any_bom:
+                _ak = getattr(ctx_row, "bom_assembly_key", None) if ctx_row else None
+                _cr = getattr(ctx_row, "bom_child_ref", None) if ctx_row else None
+                _rpy = getattr(ctx_row, "bom_roots_per_year", None) if ctx_row else None
+                _mult = (
+                    bomsvc.rolled_up_multiplier(org_trees[_ak], _cr)
+                    if _ak and _cr and _ak in org_trees
+                    else None
+                )
+                _resolved = bomsvc.resolve_annual_volume(
+                    getattr(ctx_row, "annual_volume", None) if ctx_row else None,
+                    _mult,
+                    _rpy,
+                )
+                annual_volume = _resolved["annual_volume"]
+                row["annual_volume_basis"] = _resolved["annual_volume_basis"]
+            else:
+                annual_volume = (
+                    getattr(ctx_row, "annual_volume", None) if ctx_row else None
+                )
+            # $/year uses the engine recommendation at the EXACT resolved annual
+            # volume. Never reuse qty-one, interpolate, or silently substitute a
+            # different quote point. A missing point is explicitly withheld; the
+            # next verification automatically includes the declared volume.
+            annualized = annualization_at_quantity(cost_json, annual_volume)
+            row["annualized_unit_cost"] = annualized["annualized_unit_cost"]
+            row["annualized_cost_usd"] = annualized["annualized_cost_usd"]
+            row["annualized_savings_usd"] = annualized["annualized_savings_usd"]
+            if annualized["annualized_reason"]:
+                row["annualized_reason"] = annualized["annualized_reason"]
 
         rows.append(row)
 
@@ -783,6 +958,34 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
             summary["programs"] = programs
 
     return {"summary": summary, "rows": rows}
+
+
+async def portfolio_delta(
+    session: AsyncSession, org_id: Optional[str], mesh_hash: str
+) -> dict:
+    """The minimal portfolio slice a client needs to PATCH its in-memory
+    portfolio after a single part-context write, instead of refetching the whole
+    (rate-limited) ``GET /portfolio`` on every mutation (Wave-B W6-1).
+
+    Deliberately computed via the SAME ``build_portfolio`` path the read endpoint
+    uses, then narrowed — so the returned figures are byte-identical to what a full
+    refetch would show (the honesty invariant: the displayed rollup NEVER drifts
+    from the engine's). Returns:
+
+    * ``row`` — the recomputed portfolio row for ``mesh_hash`` (its context +
+      annualized ``$/year``), or ``None`` when the part is not a costed portfolio
+      row (e.g. drafted-only, or never costed).
+    * ``programs`` — the full recomputed per-program rollup (``summary.programs``,
+      or ``[]`` when no declared program remains). The client replaces its rollup
+      with this verbatim, so a program that emptied out disappears exactly as a
+      refetch would show.
+    """
+    built = await build_portfolio(session, org_id)
+    row = next(
+        (r for r in built["rows"] if r.get("part_key") == mesh_hash), None
+    )
+    programs = built["summary"].get("programs", [])
+    return {"row": row, "programs": programs}
 
 
 # ---------------------------------------------------------------------------

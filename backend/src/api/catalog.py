@@ -184,7 +184,13 @@ async def get_catalog(
 
 
 @router.get("/portfolio")
-@limiter.limit("60/hour;500/day")
+# W6-1 (Wave-B): the portfolio is a normal interactive read a triage user hits
+# repeatedly (mount + a manual refresh), so 60/hour was far too low — it would
+# rate-limit the view into an hour-long lockout during ordinary heavy triage.
+# Raised to a sane interactive ceiling (the client no longer refetches the whole
+# portfolio on every mutation — see part_context PUT's portfolio_delta), while
+# keeping a real cap so a pathological loop can't hammer the org fold unbounded.
+@limiter.limit("600/hour;5000/day")
 async def get_portfolio(
     request: Request,
     response: Response,

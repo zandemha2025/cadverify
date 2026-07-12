@@ -8,7 +8,7 @@ credentials exist.
 from __future__ import annotations
 
 import os
-from typing import AsyncIterator, Optional
+from typing import Any, AsyncIterator, Optional
 
 from fastapi import (
     APIRouter,
@@ -21,17 +21,20 @@ from fastapi import (
     Response,
     UploadFile,
 )
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.org_context import resolve_org
 from src.auth.rate_limit import limiter
-from src.auth.rbac import Role, require_role
+from src.auth.rbac import OrgAuthContext, OrgRole, Role, require_org_role, require_role
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
+from src.services import connector_credentials_service as creds
 from src.services import integration_service as svc
 
 router = APIRouter(tags=["integrations"])
+require_integration_admin = require_org_role(OrgRole.admin)
 
 _CHUNK = 1024 * 1024
 
@@ -75,6 +78,21 @@ async def _require_org(session: AsyncSession, user: AuthedUser) -> str:
     return org_id
 
 
+def _ctx_org(ctx: OrgAuthContext) -> str:
+    if not ctx.org_id:
+        raise HTTPException(status_code=403, detail="No organization for caller.")
+    return ctx.org_id
+
+
+class CredentialProfileCreate(BaseModel):
+    connector_id: str = Field(..., min_length=1, max_length=120)
+    label: str = Field(..., min_length=1, max_length=120)
+    base_url: str = Field(..., min_length=1, max_length=500)
+    auth_type: str = Field(..., min_length=1, max_length=80)
+    secret: dict[str, Any]
+    metadata: dict[str, Any] | None = None
+
+
 @router.get("/connectors")
 @limiter.limit("120/hour;1000/day")
 async def list_connectors(
@@ -83,6 +101,87 @@ async def list_connectors(
     user: AuthedUser = Depends(require_role(Role.viewer)),
 ):
     return {"connectors": svc.list_connectors()}
+
+
+@router.get("/credential-profiles")
+@limiter.limit("120/hour;1000/day")
+async def list_credential_profiles(
+    request: Request,
+    response: Response,
+    connector_id: Optional[str] = Query(None),
+    ctx: OrgAuthContext = Depends(require_integration_admin),
+    session: AsyncSession = Depends(get_db_session),
+):
+    rows = await creds.list_profiles(
+        session,
+        org_id=_ctx_org(ctx),
+        connector_id=connector_id,
+    )
+    return {"profiles": [creds.serialize_profile(row) for row in rows]}
+
+
+@router.post("/credential-profiles", status_code=201)
+@limiter.limit("30/hour;100/day")
+async def create_credential_profile(
+    request: Request,
+    response: Response,
+    body: CredentialProfileCreate,
+    ctx: OrgAuthContext = Depends(require_integration_admin),
+    session: AsyncSession = Depends(get_db_session),
+):
+    row = await creds.create_profile(
+        session,
+        org_id=_ctx_org(ctx),
+        user_id=ctx.user_id,
+        connector_id=body.connector_id,
+        label=body.label,
+        base_url=body.base_url,
+        auth_type=body.auth_type,
+        secret=body.secret,
+        metadata=body.metadata,
+    )
+    await session.commit()
+    return {"profile": creds.serialize_profile(row)}
+
+
+@router.get("/credential-profiles/{profile_id}")
+@limiter.limit("120/hour;1000/day")
+async def get_credential_profile(
+    profile_id: str,
+    request: Request,
+    response: Response,
+    ctx: OrgAuthContext = Depends(require_integration_admin),
+    session: AsyncSession = Depends(get_db_session),
+):
+    row = await creds.get_profile(session, org_id=_ctx_org(ctx), profile_id=profile_id)
+    return {"profile": creds.serialize_profile(row)}
+
+
+@router.post("/credential-profiles/{profile_id}/probe")
+@limiter.limit("30/hour;100/day")
+async def probe_credential_profile(
+    profile_id: str,
+    request: Request,
+    response: Response,
+    ctx: OrgAuthContext = Depends(require_integration_admin),
+    session: AsyncSession = Depends(get_db_session),
+):
+    row = await creds.get_profile(session, org_id=_ctx_org(ctx), profile_id=profile_id)
+    return {"probe": creds.probe_profile(row)}
+
+
+@router.delete("/credential-profiles/{profile_id}", status_code=200)
+@limiter.limit("30/hour;100/day")
+async def revoke_credential_profile(
+    profile_id: str,
+    request: Request,
+    response: Response,
+    ctx: OrgAuthContext = Depends(require_integration_admin),
+    session: AsyncSession = Depends(get_db_session),
+):
+    row = await creds.revoke_profile(session, org_id=_ctx_org(ctx), profile_id=profile_id)
+    await session.commit()
+    return {"profile": creds.serialize_profile(row)}
 
 
 @router.post("/runs")

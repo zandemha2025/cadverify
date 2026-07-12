@@ -51,9 +51,12 @@ export default function ShopOwnersClient() {
   const cap5 = React.useRef<HTMLDivElement | null>(null);
 
   const choreography = React.useMemo(
-    () => makeShopChoreography({ sec1, sec2, sec3, sec4 }),
+    () => {
+      // The factory stores these refs; it reads `.current` only in animation frames.
+      // eslint-disable-next-line react-hooks/refs
+      return makeShopChoreography({ sec1, sec2, sec3, sec4 });
+    },
     // refs are stable — the choreography is built once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 

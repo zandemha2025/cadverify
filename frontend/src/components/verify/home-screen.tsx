@@ -25,7 +25,8 @@ import { fetchCostDecisions, type CostDecisionSummary } from "@/lib/api";
 import { listMachines } from "@/lib/verify/machine-api";
 import { listChangeRequests, type ChangeRequest } from "@/lib/verify/governance-api";
 import { listGroundTruth, realActualCount } from "@/lib/verify/ground-truth-api";
-import { buildQueue, buildActivity, proposedCount, type QueueRow } from "@/lib/verify/home-derive";
+import { getPortfolio, declaredPrograms } from "@/lib/verify/program-api";
+import { buildQueue, buildActivity, buildDayZeroSetup, proposedCount, type QueueRow } from "@/lib/verify/home-derive";
 import { C, MONO, NUM, procLabel } from "@/lib/verify/tokens";
 import { Kicker } from "./primitives";
 
@@ -33,6 +34,8 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
   const [records, setRecords] = useState<CostDecisionSummary[] | null>(null);
   const [recordsMore, setRecordsMore] = useState(false);
   const [machineCount, setMachineCount] = useState<number | null>(null);
+  const [ratedMachineCount, setRatedMachineCount] = useState<number | null>(null);
+  const [programCount, setProgramCount] = useState<number | null>(null);
   const [changeRequests, setChangeRequests] = useState<ChangeRequest[] | null>(null);
   const [actuals, setActuals] = useState<number | null>(null);
 
@@ -41,17 +44,37 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
       (p) => { setRecords(p.cost_decisions); setRecordsMore(p.has_more); },
       () => setRecords([])
     );
-    listMachines().then((p) => setMachineCount(p.machines.length), () => setMachineCount(null));
+    listMachines().then(
+      (p) => {
+        setMachineCount(p.machines.length);
+        setRatedMachineCount(
+          p.machines.filter(
+            (machine) =>
+              typeof machine.hourly_rate_usd === "number" &&
+              Number.isFinite(machine.hourly_rate_usd)
+          ).length
+        );
+      },
+      () => {
+        setMachineCount(null);
+        setRatedMachineCount(null);
+      }
+    );
     // Governance + ground-truth are viewer-scoped; a null result means we don't
     // know yet and never produce a nudge. Failures degrade to "no signal", never
     // to a fabricated one.
     listChangeRequests().then((p) => setChangeRequests(p.change_requests), () => setChangeRequests([]));
     listGroundTruth().then((p) => setActuals(realActualCount(p.records)), () => setActuals(null));
+    getPortfolio().then((p) => setProgramCount(declaredPrograms(p).length), () => setProgramCount(null));
   }, []);
 
   const today = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
   const recordCount = records == null ? null : records.length;
   const proposed = changeRequests == null ? null : proposedCount(changeRequests);
+  const missingRateCount =
+    machineCount == null || ratedMachineCount == null
+      ? null
+      : Math.max(0, machineCount - ratedMachineCount);
 
   const queue: QueueRow[] | null =
     changeRequests == null && machineCount == null && actuals == null
@@ -64,6 +87,22 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
         });
 
   const activity = buildActivity({ records: records ?? [], changeRequests: changeRequests ?? [] });
+  const setup = buildDayZeroSetup({
+    machineCount,
+    recordCount,
+    programCount,
+    realActualCount: actuals,
+  });
+
+  const runSetupStep = (key: (typeof setup)[number]["key"]) => {
+    if (key === "machines") nav("machines");
+    else if (key === "verify") {
+      if (recordCount) nav("records");
+      else onPickFile();
+    }
+    else if (key === "program") nav("programs");
+    else nav("calibration");
+  };
 
   // KPI strip — five honest slots. A count we don't have is "—" (loading) or a
   // real value; the validated-band count is not derivable from any list summary,
@@ -79,7 +118,7 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
   const sevColor = (s: "cond" | "fail") => (s === "fail" ? C.fail : C.cond);
 
   return (
-    <main style={{ animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both", flex: 1, overflowY: "auto", padding: "28px 38px", background: C.bg }}>
+    <main className="cv-verify-home" style={{ animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both", flex: 1, overflowY: "auto", padding: "28px 38px", background: C.bg }}>
       <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: C.ink40 }}>{today.toUpperCase()}</p>
       <h1 style={{ margin: "8px 0 0", fontSize: 28, fontWeight: 300, letterSpacing: "-0.018em", lineHeight: 1.25 }}>Good morning.</h1>
 
@@ -89,12 +128,54 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
         style={{ marginTop: 18, width: "100%", maxWidth: 1160, display: "flex", alignItems: "center", gap: 12, border: `1px solid ${C.hair}`, borderRadius: 14, background: C.panel, padding: "15px 18px", cursor: "pointer", fontFamily: "inherit", textAlign: "left", boxShadow: "0 1px 2px rgba(23,24,26,0.03)" }}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.ink40} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v3" /><path d="M18.4 5.6 16 8" /><path d="M21 12h-3" /><path d="M12 21a9 9 0 1 1 9-9" /><circle cx="12" cy="12" r="1" /></svg>
-        <span style={{ flex: 1, fontSize: 14.5, color: C.ink45, fontWeight: 300 }}>Ask the engine, search, or jump anywhere…</span>
+        <span style={{ flex: 1, fontSize: 14.5, color: C.ink45, fontWeight: 300 }}>Jump to a surface, action, or sample walkthrough…</span>
         <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink45, border: `1px solid ${C.hair}`, borderRadius: 6, padding: "3px 8px" }}>⌘K</span>
       </button>
 
+      <section className="cv-verify-setup" style={{ marginTop: 16, maxWidth: 1160, border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "16px 18px" }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <Kicker>DAY ZERO SETUP</Kicker>
+          <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink45 }}>
+            real org state only · no seeded tenant facts
+          </span>
+        </div>
+        <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+          {setup.map((s, i) => {
+            const done = s.state === "done";
+            const locked = s.state === "locked" || s.state === "pending";
+            return (
+              <button
+                key={s.key}
+                type="button"
+                onClick={() => runSetupStep(s.key)}
+                disabled={locked}
+                aria-label={`${s.title}: ${s.meta}`}
+                style={{
+                  minHeight: 104,
+                  textAlign: "left",
+                  border: `1px solid ${done ? "rgba(85,184,128,0.34)" : C.hair}`,
+                  borderRadius: 12,
+                  background: done ? "rgba(85,184,128,0.06)" : C.sunken,
+                  padding: "13px 14px",
+                  fontFamily: "inherit",
+                  cursor: locked ? "not-allowed" : "pointer",
+                  color: "inherit",
+                  opacity: locked ? 0.64 : 1,
+                }}
+              >
+                <span style={{ display: "inline-flex", width: 23, height: 23, alignItems: "center", justifyContent: "center", borderRadius: "50%", background: done ? C.pass : "#e6e7ea", color: done ? "#fff" : C.ink45, fontFamily: MONO, fontSize: 10 }}>
+                  {done ? "✓" : i + 1}
+                </span>
+                <p style={{ margin: "11px 0 0", fontSize: 13, fontWeight: 500 }}>{s.title}</p>
+                <p style={{ margin: "5px 0 0", fontFamily: MONO, fontSize: 10.5, lineHeight: 1.5, color: s.state === "needed" ? C.cond : C.ink45 }}>{s.meta}</p>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
       {/* KPI strip */}
-      <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, maxWidth: 1160 }}>
+      <div className="cv-verify-home-kpis" style={{ marginTop: 20, display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, maxWidth: 1160 }}>
         {kpis.map((kp) => (
           <button key={kp.l} type="button" onClick={() => nav(kp.go)} style={{ textAlign: "left", border: `1px solid ${C.hair}`, borderRadius: 14, background: C.panel, padding: "14px 16px", cursor: "pointer", fontFamily: "inherit", color: "inherit" }}>
             <p style={{ margin: 0, fontFamily: MONO, fontSize: 22, fontWeight: 500, letterSpacing: "-0.01em", color: kp.c }}>{kp.n}</p>
@@ -103,7 +184,7 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
         ))}
       </div>
 
-      <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 16, maxWidth: 1160, alignItems: "start" }}>
+      <div className="cv-verify-home-grid" style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 16, maxWidth: 1160, alignItems: "start" }}>
         {/* left: work */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {/* NEEDS YOUR ACTION */}
@@ -175,10 +256,22 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
           <button type="button" onClick={() => nav("machines")} style={{ border: `1px solid ${C.hair}`, borderRadius: 14, background: C.panel, padding: "16px 18px", cursor: "pointer", fontFamily: "inherit", color: "inherit", textAlign: "left" }}>
             <Kicker>YOUR FLOOR</Kicker>
             <p style={{ margin: "8px 0 0", fontSize: 14 }}>
-              {machineCount == null ? "—" : machineCount === 0 ? "No machines declared" : `${machineCount} machine${machineCount === 1 ? "" : "s"} owned · marginal costing active`}
+              {machineCount == null || missingRateCount == null
+                ? "—"
+                : machineCount === 0
+                  ? "No machines declared"
+                  : missingRateCount === 0
+                    ? `${machineCount} machine${machineCount === 1 ? "" : "s"} owned · all rates declared`
+                    : `${machineCount} machine${machineCount === 1 ? "" : "s"} owned · ${missingRateCount} rate${missingRateCount === 1 ? "" : "s"} missing`}
             </p>
-            <p style={{ margin: "5px 0 0", fontSize: 12, color: machineCount ? C.ink45 : C.cond }}>
-              {machineCount ? "the denominator of every verdict" : "declare your floor — everything starts from the denominator"}
+            <p style={{ margin: "5px 0 0", fontSize: 12, color: machineCount && missingRateCount === 0 ? C.ink45 : C.cond }}>
+              {machineCount == null || missingRateCount == null
+                ? "checking machine rates..."
+                : machineCount === 0
+                ? "declare your floor — everything starts from the denominator"
+                : missingRateCount === 0
+                  ? "marginal costing uses your declared hourly rates"
+                  : "set hourly rates before relying on marginal cost"}
             </p>
           </button>
 

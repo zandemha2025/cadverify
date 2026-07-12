@@ -13,10 +13,16 @@ from src.jobs.batch_tasks import (
     run_batch_item,
     sweep_orphaned_batches,
 )
+from src.jobs.heartbeat import worker_heartbeat, write_heartbeat
 from src.jobs.reconstruction_tasks import run_reconstruction_job
 from src.jobs.tasks import run_sam3d_job
+from src.config.production import assert_production_operations
 
 logger = logging.getLogger("cadverify.worker")
+
+# Fail before RedisSettings is constructed so a released worker never connects
+# with incomplete storage, observability, or transport-security configuration.
+assert_production_operations()
 
 
 async def startup(ctx: dict) -> None:
@@ -54,6 +60,16 @@ async def startup(ctx: dict) -> None:
     await init_engine()
     ctx["db_engine"] = True
 
+    # Write an initial worker heartbeat so /health/deep can see liveness the
+    # moment the worker is up (before the first cron tick fires).
+    redis = ctx.get("redis")
+    if redis is not None:
+        try:
+            await write_heartbeat(redis)
+            logger.info("worker heartbeat written at startup")
+        except Exception:  # pragma: no cover - heartbeat must never block boot
+            logger.exception("failed to write startup worker heartbeat")
+
 
 async def shutdown(ctx: dict) -> None:
     """Worker shutdown: dispose DB engine."""
@@ -71,7 +87,15 @@ class WorkerSettings:
             sweep_orphaned_batches,
             minute=set(range(0, 60, 5)),
             run_at_startup=True,
-        )
+        ),
+        # Lightweight worker liveness heartbeat (every minute) so /health/deep
+        # can report a real last-heartbeat age and degrade honestly when the
+        # worker is late or absent.
+        cron(
+            worker_heartbeat,
+            second={0},
+            run_at_startup=True,
+        ),
     ]
     on_startup = startup
     on_shutdown = shutdown
@@ -86,5 +110,6 @@ class WorkerSettings:
     # heartbeat-based orphan sweeper.
     job_timeout = 600
     health_check_interval = 30
+    health_check_key = os.getenv("ARQ_HEALTH_KEY", "arq:queue:health-check")
     retry_jobs = True
     max_tries = 2

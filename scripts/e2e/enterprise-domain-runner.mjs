@@ -11,6 +11,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../..");
 const baseUrl = process.env.APP_URL || "http://localhost:3000";
+const loginEmail = process.env.E2E_LOGIN_EMAIL || "";
+const loginPassword = process.env.E2E_LOGIN_PASSWORD || "";
+const cadUploadTimeoutMs = Number.parseInt(process.env.E2E_CAD_UPLOAD_TIMEOUT_MS || "150000", 10);
 const cubePath = path.join(repoRoot, "backend/tests/assets/cube.step");
 const outputRoot = process.env.E2E_ARTIFACT_DIR
   ? path.resolve(process.env.E2E_ARTIFACT_DIR)
@@ -81,6 +84,13 @@ function isIgnorableRequestFailure(url, method, failure) {
   if (/favicon\.ico|\/_next\/webpack-hmr|vercel\/speed-insights/i.test(url)) return true;
   if (failure !== "net::ERR_ABORTED") return false;
   if (/[?&]_rsc=/.test(url)) return true;
+  if (method === "GET" && /\/api\/proxy\/cost-decisions\?limit=8(?:&|$)/.test(url)) return true;
+  if (
+    method === "GET" &&
+    /\/api\/proxy\/(?:governance\/change-requests|ground-truth|machine-inventory|rate-library(?:\/effective)?)(?:[/?#]|$)/.test(url)
+  ) {
+    return true;
+  }
   if (method === "POST" && /\/settings\/developer(?:$|\?)/.test(url)) return true;
   return method === "GET" && /\/_next\/static\/chunks\/[^/?]+\.js(?:\?|$)/.test(url);
 }
@@ -172,7 +182,7 @@ class EnterpriseDomainQA {
       screenshotDir,
       `${String(this.steps.length + 1).padStart(2, "0")}-${slug(name)}.png`
     );
-    await this.page.screenshot({ path: file, fullPage, animations: "disabled" });
+    await this.page.screenshot({ path: file, fullPage, animations: "disabled", caret: "initial" });
     return file;
   }
 
@@ -302,6 +312,26 @@ class EnterpriseDomainQA {
   }
 
   async signup() {
+    if (loginEmail && loginPassword) {
+      this.account = { email: loginEmail, password: loginPassword };
+      await this.step("enterprise engineer logs in and receives an org", async () => {
+        await this.goto("/login?next=/verify", "login", 500);
+        await this.page.getByLabel("Email").fill(loginEmail);
+        await this.page.getByLabel("Password").fill(loginPassword);
+        await this.page.getByRole("button", { name: /^Log in$/ }).click();
+        await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
+        await this.expectText(/CadVerify|Home|Verify/i, "verify shell after login");
+        const members = await this.expectApiOk("/admin/users");
+        assert(Array.isArray(members.users), "members response missing users");
+        const self = members.users.find((u) => u.email === loginEmail);
+        assert(self, "logged-in user was not visible in org members");
+        assert(self.org_role === "admin", `expected org admin membership, got ${self.org_role}`);
+        this.evidence.member = { email: self.email, role: self.role, org_role: self.org_role };
+        return { screenshot: await this.shot("login-enterprise-org") };
+      });
+      return;
+    }
+
     const email = uniqueEmail("petrovector-cad");
     const password = "Passw0rd123";
     this.account = { email, password };
@@ -310,15 +340,15 @@ class EnterpriseDomainQA {
       await this.page.getByLabel("Email").fill(email);
       await this.page.getByLabel("Password").fill(password);
       await this.page.getByRole("button", { name: /^Create account$/ }).click();
-      await this.page.waitForURL(/\/onboarding(?:\?|$)/, { timeout: 20_000 });
-      await this.expectText(/Declare your world before the engine prices it/i, "onboarding");
+      await this.page.waitForURL(/\/verify(?:\?|$)/, { timeout: 20_000 });
+      await this.expectText(/DAY ZERO SETUP/i, "first-run Verify setup");
       const members = await this.expectApiOk("/admin/users");
       assert(Array.isArray(members.users), "members response missing users");
       const self = members.users.find((u) => u.email === email);
       assert(self, "new user was not visible in org members");
       assert(self.org_role === "admin", `expected org admin membership, got ${self.org_role}`);
       this.evidence.member = { email: self.email, role: self.role, org_role: self.org_role };
-      return { screenshot: await this.shot("onboarding-enterprise-org") };
+      return { screenshot: await this.shot("first-run-verify-enterprise-org") };
     });
   }
 
@@ -574,7 +604,7 @@ class EnterpriseDomainQA {
             /What it really takes|computed from POST \/validate\/cost|unit cost|bbox|Geometry invalid|Cost request failed|Validation failed/i.test(text) &&
             !/measuring geometry/i.test(text)
           );
-        }, null, { timeout: 90_000 })
+        }, null, { timeout: cadUploadTimeoutMs })
         .catch(async () => {
           const text = await this.visibleText();
           throw new Error(`STEP upload did not reach a terminal result: ${text.slice(0, 700).replace(/\s+/g, " ")}`);
@@ -591,8 +621,8 @@ class EnterpriseDomainQA {
     });
   }
 
-  async assertPortfolioCorrectness() {
-    await this.step("portfolio withholds exposure until declared volume, then computes server-side math", async () => {
+  async declarePortfolioContext() {
+    await this.step("portfolio withholds exposure until declared volume is re-verified at its exact quantity", async () => {
       const contextBefore = await this.expectApiOk(`/part-context/${this.evidence.meshHash}`);
       assert(contextBefore.provenance === "user", "part context provenance was not user");
       assert(contextBefore.service_environment?.max_temp_c === serviceEnvironment.max_temp_c, "max_temp_c did not persist");
@@ -627,38 +657,123 @@ class EnterpriseDomainQA {
       const after = await this.expectApiOk("/catalog/portfolio");
       const rowAfter = after.rows.find((r) => r.part_key === this.evidence.meshHash);
       assert(rowAfter, "programmed row disappeared from portfolio");
-      const expectedAnnualized = rowAfter.unit_cost.usd * annualVolume;
-      assert(
-        approxEqual(rowAfter.annualized_cost_usd, expectedAnnualized),
-        `annualized cost mismatch: got ${rowAfter.annualized_cost_usd}, expected ${expectedAnnualized}`
-      );
       assert(rowAfter.context.program === programName, "portfolio context program mismatch");
       assert(rowAfter.context.parent_assembly === parentAssembly, "portfolio parent assembly mismatch");
       assert(rowAfter.context.provenance === "user", "portfolio context provenance mismatch");
+      assert(rowAfter.annualized_unit_cost == null, "portfolio reused a non-matching quantity basis");
+      assert(rowAfter.annualized_cost_usd == null, "portfolio fabricated exposure before exact-quantity verification");
+      assert(
+        new RegExp(`no engine-computed recommendation at annual_volume ${annualVolume}`, "i").test(rowAfter.annualized_reason || ""),
+        "portfolio did not explain the missing exact-quantity recommendation"
+      );
+      assert(/re-verify this CAD/i.test(rowAfter.annualized_reason || ""), "portfolio did not give a re-verification recovery step");
       const rollup = after.summary.programs?.find((p) => p.program === programName);
       assert(rollup, "program rollup missing");
       assert(rollup.parts === 1, `program rollup parts expected 1, got ${rollup.parts}`);
-      assert(
-        approxEqual(rollup.annualized_cost_usd, rowAfter.annualized_cost_usd),
-        "program rollup annualized cost does not match member row"
-      );
+      assert(rollup.declared_volume_parts === 1, "program rollup lost the declared-volume count");
+      assert(rollup.exposed_parts === 0, "program rollup exposed a part without an exact cost point");
+      assert(rollup.annualized_cost_usd == null, "program rollup fabricated exposure before re-verification");
 
       this.evidence.portfolio = {
         filename: rowAfter.filename,
         mesh_hash: this.evidence.meshHash,
-        unit_cost_usd: rowAfter.unit_cost.usd,
+        headline_unit_cost_usd: rowAfter.unit_cost.usd,
         annual_volume: annualVolume,
-        annualized_cost_usd: rowAfter.annualized_cost_usd,
-        expected_annualized_cost_usd: expectedAnnualized,
         withheld_before_volume: rowBefore.annualized_cost_usd == null,
         withheld_reason: rowBefore.annualized_reason,
+        withheld_until_exact_reverification: rowAfter.annualized_cost_usd == null,
+        exact_reverification_reason: rowAfter.annualized_reason,
         program: programName,
         parent_assembly: rowAfter.context.parent_assembly,
         units_per_parent: rowAfter.context.units_per_parent,
         service_environment: rowAfter.context.service_environment,
         context_provenance: contextBefore.provenance,
       };
-      return { screenshot: await this.shot("portfolio-math-api-verified") };
+      return { screenshot: await this.shot("portfolio-awaiting-exact-reverify") };
+    });
+  }
+
+  async verifyDeclaredContextInProductStage() {
+    await this.step("Verify stage renders declared parent context in product UI", async () => {
+      await this.goto("/verify", "verify-stage-context", 1000);
+      await this.clickRail("Verify");
+      await this.page.getByRole("button", { name: /^Stainless$/i }).click();
+      await this.page.getByRole("button", { name: /120.*service/i }).click();
+      await this.page.getByRole("button", { name: /sour service/i }).click();
+      await this.page.getByRole("button", { name: /35 MPa pressure/i }).click();
+      const input = this.page.locator('input[type="file"][accept*=".stl"]').first();
+      await input.setInputFiles(cubePath);
+      await this.page
+        .waitForFunction(() => {
+          const text = document.body.innerText;
+          return (
+            /What it really takes|computed from POST \/validate\/cost|unit cost/i.test(text) &&
+            !/measuring geometry/i.test(text)
+          );
+        }, null, { timeout: cadUploadTimeoutMs })
+        .catch(async () => {
+          const text = await this.visibleText();
+          throw new Error(`STEP upload did not reach a terminal result for context UI: ${text.slice(0, 700).replace(/\s+/g, " ")}`);
+        });
+
+      const strip = this.page.locator('[data-testid="verify-stage-context"][data-context-state="declared-parent"]').first();
+      await strip.waitFor({ timeout: 15_000 });
+      const stripText = await strip.innerText();
+      assert(stripText.includes(programName), "stage context strip did not show the declared program");
+      assert(stripText.includes(parentAssembly), "stage context strip did not show the declared parent assembly");
+      assert(/USER/i.test(stripText), "stage context strip did not show USER provenance");
+      assert(/service world/i.test(stripText), "stage context strip did not show declared service world");
+      await this.page.getByRole("button", { name: /^Seat in assembly$/i }).click();
+      await this.page.waitForTimeout(1200);
+      const text = await this.scanVisibleText("verify-stage-context-product-ui");
+      assert(new RegExp(escapeRegExp(parentAssembly)).test(text), "declared parent assembly missing from product UI text");
+      this.evidence.productStageContext = {
+        program: programName,
+        parent_assembly: parentAssembly,
+        strip: stripText.replace(/\s+/g, " ").trim(),
+        seated: true,
+      };
+      return { screenshot: await this.shot("verify-stage-declared-context-seated", true) };
+    });
+  }
+
+  async assertExactQuantityPortfolioCorrectness() {
+    await this.step("portfolio computes exact server-side exposure after declared-volume re-verification", async () => {
+      const after = await this.expectApiOk("/catalog/portfolio");
+      const rowAfter = after.rows.find((r) => r.part_key === this.evidence.meshHash);
+      assert(rowAfter, "re-verified programmed row disappeared from portfolio");
+      const basis = rowAfter.annualized_unit_cost;
+      assert(basis && isFiniteNumber(basis.usd), "exact annualized unit-cost basis missing");
+      assert(basis.qty === annualVolume, `annualized basis quantity drifted: ${basis.qty}`);
+      assert(basis.basis === "decision.recommendation", `annualized basis source drifted: ${basis.basis}`);
+      const expectedAnnualized = basis.usd * annualVolume;
+      assert(
+        approxEqual(rowAfter.annualized_cost_usd, expectedAnnualized),
+        `annualized cost mismatch: got ${rowAfter.annualized_cost_usd}, expected ${expectedAnnualized}`
+      );
+      assert(rowAfter.context.program === programName, "portfolio context program mismatch after re-verification");
+      assert(rowAfter.context.parent_assembly === parentAssembly, "portfolio parent assembly mismatch after re-verification");
+      assert(rowAfter.context.provenance === "user", "portfolio context provenance mismatch after re-verification");
+
+      const rollup = after.summary.programs?.find((p) => p.program === programName);
+      assert(rollup, "program rollup missing after re-verification");
+      assert(rollup.parts === 1, `program rollup parts expected 1, got ${rollup.parts}`);
+      assert(rollup.declared_volume_parts === 1, "program rollup lost the declared-volume count");
+      assert(rollup.exposed_parts === 1, "program rollup did not expose the exact-cost part");
+      assert(
+        approxEqual(rollup.annualized_cost_usd, rowAfter.annualized_cost_usd),
+        "program rollup annualized cost does not match member row"
+      );
+
+      this.evidence.portfolio = {
+        ...this.evidence.portfolio,
+        annualized_unit_cost_usd: basis.usd,
+        annualized_unit_cost_qty: basis.qty,
+        annualized_unit_cost_basis: basis.basis,
+        annualized_cost_usd: rowAfter.annualized_cost_usd,
+        expected_annualized_cost_usd: expectedAnnualized,
+      };
+      return { screenshot: await this.shot("portfolio-exact-quantity-api-verified") };
     });
   }
 
@@ -763,13 +878,13 @@ class EnterpriseDomainQA {
 - Status: ${data.status}
 - Health score: ${data.health}/100
 - Screenshots: ${data.screenshotDir}
-- Test account: ${data.account?.email || "not created"}
+- Test account: ${data.account?.email || "not created/logged in"}
 
 ## Enterprise Scenario
 
 Persona: CAD/cost engineer in an ExxonMobil-like manufacturing organization.
 
-The test signs up a real org admin, proves unauthenticated org data is rejected, publishes a governed rate card, declares owned machines, ingests historical actuals, proves calibration refuses under the real-data floor, creates a developer API key through the UI, uploads a real STEP file, declares a sour/high-pressure/high-temperature service world, and verifies portfolio exposure is withheld until annual volume is user-declared.
+The test signs up or logs in as a real org admin, proves unauthenticated org data is rejected, publishes a governed rate card, declares owned machines, ingests historical actuals, proves calibration refuses under the real-data floor, creates a developer API key through the UI, uploads a real STEP file, declares a sour/high-pressure/high-temperature service world, and verifies portfolio exposure remains withheld until the declared annual volume has an exact re-verified engine point.
 
 ## Correctness Assertions
 
@@ -778,7 +893,7 @@ The test signs up a real org admin, proves unauthenticated org data is rejected,
 - Ground-truth recalibration refuses with 4 real records because the floor is 8.
 - API key creation reveals the one-time secret on /settings/developer.
 - The Verify UI persists the declared service world to part-context before costing.
-- Portfolio annualized exposure is null before annual_volume and equals unit cost × declared volume after declaration.
+- Portfolio annualized exposure is null before annual_volume and after declaration until re-verification; it then equals the engine recommendation at that exact quantity × declared volume.
 - Program roll-up equals the member row exposure and keeps context provenance=user.
 
 ## Evidence
@@ -811,7 +926,9 @@ try {
   await runner.verifyGovernedUiSurfaces();
   await runner.createDeveloperKey();
   await runner.runCadVerification();
-  await runner.assertPortfolioCorrectness();
+  await runner.declarePortfolioContext();
+  await runner.verifyDeclaredContextInProductStage();
+  await runner.assertExactQuantityPortfolioCorrectness();
   await runner.verifyProgramUiAndHistory();
 } finally {
   await runner.finish().catch((error) => {

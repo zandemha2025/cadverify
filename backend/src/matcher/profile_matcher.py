@@ -11,7 +11,13 @@ from src.analysis.models import (
     ProcessType,
     Severity,
 )
-from src.profiles.database import get_materials_for_process, get_machines_for_process
+from typing import Optional
+
+from src.profiles.database import (
+    get_materials_for_process,
+    get_machines_for_process,
+    processes_for_material_class,
+)
 
 
 def score_process(
@@ -136,7 +142,60 @@ def _estimate_cost_factor(
 
 def rank_processes(
     analysis: AnalysisResult,
+    material_class: Optional[str] = None,
 ) -> list[ProcessScore]:
-    """Rank all scored processes by suitability."""
+    """Rank scored processes by suitability (highest DFM score first).
+
+    When ``material_class`` is given AND at least one scored process is
+    compatible with that class, the ranking is RESTRICTED to material-compatible
+    processes — so a metal part can never surface a resin/SLS/binder-jet process
+    as "best" (that is material-blind noise: those processes win purely because
+    they have the fewest geometric DFM constraints). Compatibility is the
+    authoritative ``processes_for_material_class`` set, the same source costing's
+    ``select_material`` uses, so the DFM headline and the cost route agree by
+    construction.
+
+    ``material_class=None`` (or an unknown class, or a class no scored process
+    can be made in) => unfiltered geometry ranking, byte-identical to before —
+    the honest behaviour when material is not declared.
+    """
     scores = sorted(analysis.process_scores, key=lambda s: s.score, reverse=True)
-    return scores
+    if not material_class:
+        return scores
+    compatible = processes_for_material_class(material_class)
+    if not compatible:
+        return scores
+    filtered = [s for s in scores if s.process in compatible]
+    # Only apply the filter when it leaves SOMETHING to rank; if no scored process
+    # is makeable in this class (e.g. a narrowed ?processes= run), fall back to the
+    # unfiltered ranking rather than claiming "no best process".
+    return filtered if filtered else scores
+
+
+def best_process_for_material(
+    analysis: AnalysisResult,
+    material_class: Optional[str] = None,
+    prefer: Optional[list[str]] = None,
+) -> Optional[ProcessType]:
+    """The single "best process" to surface, material-aware and cost-coherent.
+
+    1. Rank processes, restricted to those makeable in ``material_class`` (Fix 1
+       — never a resin process for a metal part).
+    2. Among the processes tied at the TOP score, prefer one named in ``prefer``
+       (Fix 2 — pass the cost make-now process and/or the geometric routing pick
+       so the DFM "best" AGREES with the dollar make-now whenever that route is
+       itself among the most-manufacturable; otherwise they read as sane siblings
+       of the same material family, never a contradiction).
+
+    Returns None when no ranked process clears score > 0 (mirrors the historical
+    ``ranked[0].score > 0`` rule — a hard-failed part has no positive best).
+    """
+    ranked = rank_processes(analysis, material_class)
+    if not ranked or ranked[0].score <= 0:
+        return None
+    top_score = ranked[0].score
+    top = [s for s in ranked if s.score == top_score]
+    if prefer:
+        prefer_order = {v: i for i, v in enumerate(prefer)}
+        top.sort(key=lambda s: prefer_order.get(s.process.value, len(prefer_order)))
+    return top[0].process

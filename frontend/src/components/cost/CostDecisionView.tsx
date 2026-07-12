@@ -282,14 +282,14 @@ export function CostDecisionView({
               <ConfidenceInterval confidence={recConfidence} />
             ) : (
               <p className="text-xs text-muted-foreground">
-                Confidence band lives in the engine — surfacing it through the API
-                is a build gap.
+                A calibrated confidence band exists but isn&apos;t shown here yet.
+                Until it is, treat this cost as an estimate, not a validated quote.
               </p>
             )}
             <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
               <Lock className="mt-px size-3.5 shrink-0 text-prov-shop" aria-hidden />
-              IP-local: the CAD is parsed and discarded in-process — zero network
-              egress (CAD-as-IP).
+              Your CAD is read and discarded on this machine — it never leaves,
+              nothing is uploaded.
             </p>
           </div>
         )}
@@ -354,7 +354,7 @@ function crossoverSentence(report: CostReport): string {
         dec.tooling_process
       )} above it.`;
     }
-    return `${make} wins below ~${n} units; tooling amortises above it.`;
+    return `${make} wins below ~${n} units; tooling amortizes above it.`;
   }
   return `${procLabel(dec.make_now_process)} stays cheapest at every quantity tested.`;
 }

@@ -1,8 +1,7 @@
 """Regression: corrupted/malformed STEP rejection + temp-file cleanup.
 
 Covers CORE-01 (temp-file cleanup) and CORE-07 (magic-byte defense) from
-the Phase-1 hardening plan. Magic-byte tests run regardless of cadquery;
-the parse-failure test skips gracefully if cadquery is unavailable.
+the Phase-1 hardening plan. All checks run without the optional cadquery parser.
 """
 from __future__ import annotations
 
@@ -64,12 +63,19 @@ def test_truncated_step_returns_400(client):
     assert r.status_code in (400, 501)
 
 
-def test_step_parse_leaves_no_temp_files():
-    """CORE-01: parse_step_from_bytes cleans up even on parse failure."""
-    from src.parsers.step_parser import is_step_supported, parse_step_from_bytes
+def test_step_parse_leaves_no_temp_files(monkeypatch):
+    """CORE-01: parse_step_from_bytes cleans up even when its parser fails."""
+    import src.parsers.step_parser as step_parser
 
-    if not is_step_supported():
-        pytest.skip("cadquery not installed — skipping in-situ parser test")
+    opened: list[str] = []
+
+    def fail_after_open(path, linear_deflection=0.1):
+        assert os.path.isfile(path)
+        assert os.stat(path).st_mode & 0o777 == 0o600
+        opened.append(str(path))
+        raise ValueError("forced parse failure")
+
+    monkeypatch.setattr(step_parser, "parse_step", fail_after_open)
 
     tmp_dir = tempfile.gettempdir()
     before = set(
@@ -77,7 +83,9 @@ def test_step_parse_leaves_no_temp_files():
         + glob.glob(os.path.join(tmp_dir, "tmp*.stp"))
     )
     try:
-        parse_step_from_bytes(b"ISO-10303-21;\nnot a real step", "test.step")
+        step_parser.parse_step_from_bytes(
+            b"ISO-10303-21;\nnot a real step", "test.step"
+        )
     except Exception:
         # Expected — we want to confirm the failure path cleans up.
         pass
@@ -86,6 +94,7 @@ def test_step_parse_leaves_no_temp_files():
         + glob.glob(os.path.join(tmp_dir, "tmp*.stp"))
     )
     leaked = after - before
+    assert opened, "test must reach the parser with a real owner-only temp file"
     assert not leaked, f"Leaked temp files: {leaked}"
 
 

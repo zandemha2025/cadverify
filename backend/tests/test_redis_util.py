@@ -33,21 +33,33 @@ def test_signup_limits_r_raises_clear_error(monkeypatch):
     monkeypatch.delenv("REDIS_URL", raising=False)
     from src.auth.signup_limits import _r
 
-    with pytest.raises(RedisRequiredError):
-        _r()
+    _r.cache_clear()
+    try:
+        with pytest.raises(RedisRequiredError):
+            _r()
+    finally:
+        _r.cache_clear()
 
 
 def test_magic_link_r_raises_clear_error(monkeypatch):
     monkeypatch.delenv("REDIS_URL", raising=False)
     from src.auth.magic_link import _r
 
-    with pytest.raises(RedisRequiredError):
-        _r()
+    _r.cache_clear()
+    try:
+        with pytest.raises(RedisRequiredError):
+            _r()
+    finally:
+        _r.cache_clear()
 
 
 def test_disposable_list_r_raises_clear_error(monkeypatch):
     monkeypatch.delenv("REDIS_URL", raising=False)
     from src.auth.disposable_list import _r
 
-    with pytest.raises(RedisRequiredError):
-        _r()
+    _r.cache_clear()
+    try:
+        with pytest.raises(RedisRequiredError):
+            _r()
+    finally:
+        _r.cache_clear()

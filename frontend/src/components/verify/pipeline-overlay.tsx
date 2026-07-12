@@ -86,6 +86,11 @@ export function PipelineOverlay({
     // pre-existing result from navigation must NOT pop the overlay.
     if (!open || !result || phase === "revealing" || phase === "settled") return;
     const model = pipelineModelFrom(result, false, fileName);
+    // Did the engine actually compute anything? A part that fails to parse/tessellate
+    // returns no routing, no DFM, no geometry, no cost — the completion toast would be
+    // a lie. (A GEOMETRY_INVALID refusal still MEASURED the geometry, so it counts as
+    // analyzed and stops honestly at a real gate.)
+    const analyzed = !!(result.cost || result.validation || result.costGeometryInvalid);
     // reveal through the blocking gate (inclusive), else through every stage.
     const target = model.stopIndex >= 0 ? model.stopIndex + 1 : model.stages.length;
     setPhase("revealing");
@@ -99,7 +104,11 @@ export function PipelineOverlay({
       setTimeout(() => {
         setOpen(false);
         setPhase("idle");
-        toast("Verification complete — deterministic: same input, same verdict, every time");
+        toast(
+          analyzed
+            ? "Verification complete — deterministic: same input, same verdict, every time"
+            : "Could not analyze — this part couldn't be tessellated; no routing, DFM, or cost was computed"
+        );
         onDone?.();
       }, landedAt + SETTLE_MS + 720)
     );

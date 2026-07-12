@@ -1,15 +1,16 @@
-"""Accuracy-harness tests (fix-spec §13.4) — measured, reproducible, local.
+"""Cost-model calibration tests (fix-spec §13.4) — reproducible and local.
 
-These assert the V1 accuracy CHARACTERIZATION, not a rubber stamp:
-  - the harness runs on the frozen real-part sample and is DETERMINISTIC;
+These assert deterministic model-regression characterization, not a production
+accuracy claim:
+  - the harness runs on frozen, internally authored coupons and is DETERMINISTIC;
   - it opens ZERO sockets (CAD-as-IP);
   - the CORE accuracy wins hold (small-part-AM B-1/B-2, CNC floor B-3, tooling
     B-5, >=80% overall in the independent bands, and CNC/IM/powder-bed centered);
   - the KNOWN residual (serial AM: FDM/SLA run high — no build-plate nesting) is
     MEASURED and flagged in the documented direction, not hidden.
 
-Skips cleanly when the real parts dir is absent (CI without the STL batch still
-passes the procedural model tests).
+The separate external real-part benchmark remains opt-in because its corpus must
+be license-reviewed and may not be silently downloaded into protected CI.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ PARTS_DIR = harness.ensure_fixture_parts_dir()
 
 pytestmark = pytest.mark.skipif(
     not harness.has_sample_parts(PARTS_DIR),
-    reason=f"real parts fixture batch not present: {PARTS_DIR}",
+    reason=f"internal calibration fixtures not present: {PARTS_DIR}",
 )
 
 
@@ -32,7 +33,7 @@ def res():
 
 
 # ── sample + run integrity ──────────────────────────────────────────────────
-def test_sample_is_at_least_10_real_parts(res):
+def test_sample_has_at_least_10_regression_coupons(res):
     assert res.n_parts >= 10, f"sample collapsed to {res.n_parts} parts"
     assert len(res.comparisons) >= 100, "too few (part,process,qty) comparisons"
 
@@ -65,17 +66,17 @@ def test_zero_network_egress_during_harness():
     assert r.comparisons
 
 
-# ── §13.4 acceptance criteria (the ones V1 meets) ───────────────────────────
+# ── §13.4 model-regression guardrails (not supplier-quote evidence) ─────────
 def test_c1_at_least_80pct_in_independent_band(res):
-    crit = harness.pass_criteria(res)
+    crit = harness.regression_criteria(res)
     ok, detail = crit["C1_in_band>=80pct"]
     assert ok, detail
 
 
 def test_c3_small_part_am_regression_b1_b2(res):
-    """Throttle adapter (2.81 cm³) SLS/MJF land within 2x the independent AM band
+    """Tiny adapter coupon (2.81 cm³) SLS/MJF lands within 2x the AM band
     — the flat-$17.50 over-cost is gone (validation-packet B-1/B-2)."""
-    crit = harness.pass_criteria(res)
+    crit = harness.regression_criteria(res)
     ok, detail = crit["C3_smallpart_AM_in_band"]
     assert ok, detail
 
@@ -83,7 +84,7 @@ def test_c3_small_part_am_regression_b1_b2(res):
 def test_c4_cnc_floor_clears_shop_minimum(res):
     """Every CNC estimate at qty=1 clears the independent R4 CNC order minimum
     (validation-packet B-3 min-charge floor)."""
-    crit = harness.pass_criteria(res)
+    crit = harness.regression_criteria(res)
     ok, detail = crit["C4_cnc_floor>=R4min"]
     assert ok, detail
     assert len(res.floor_checks) >= 2
@@ -92,10 +93,28 @@ def test_c4_cnc_floor_clears_shop_minimum(res):
 def test_c5_tooling_within_independent_band(res):
     """Every IM tooling figure sits inside the independent R3 size×cavity band
     (validation-packet B-5)."""
-    crit = harness.pass_criteria(res)
+    crit = harness.regression_criteria(res)
     ok, detail = crit["C5_tooling_in_R3"]
     assert ok, detail
     assert len(res.tooling_checks) >= 5
+
+
+def test_internal_coupons_cannot_satisfy_production_accuracy_evidence(res):
+    criteria = harness.production_readiness_criteria(res)
+    assert criteria
+    assert all(ok is False for ok, _detail in criteria.values())
+    assert "supplier-quote" in criteria["P0_supplier_quote_holdout"][1]
+
+
+def test_release_accuracy_flag_fails_closed_without_supplier_holdout(tmp_path):
+    exit_code = harness.main(
+        [
+            "--output",
+            str(tmp_path / "regression.md"),
+            "--require-production-evidence",
+        ]
+    )
+    assert exit_code == 3
 
 
 # ── well-characterized processes stay centered ──────────────────────────────

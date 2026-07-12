@@ -36,6 +36,7 @@ import {
   PanelLeftOpen,
   ChevronRight,
   User,
+  Building2,
   LogOut,
   Lock,
   type LucideIcon,
@@ -62,7 +63,8 @@ type RailItem = {
   href: string;
 };
 const RAIL: RailItem[] = [
-  { id: "home", label: "Workbench", icon: Boxes, href: "/cost" },
+  { id: "verify", label: "Verify workspace", icon: FileCheck2, href: "/verify" },
+  { id: "home", label: "Legacy workbench", icon: Boxes, href: "/cost" },
   { id: "analyze", label: "Analyze DFM", icon: ScanLine, href: "/analyze" },
   { id: "batch", label: "Batch runs", icon: Layers, href: "/batch" },
   { id: "decisions", label: "Cost decisions", icon: PiggyBank, href: "/cost-decisions" },
@@ -83,7 +85,7 @@ function IconRail() {
       >
         {/* brand mark — the datum crosshair, cobalt */}
         <Link
-          href="/cost"
+          href="/verify"
           aria-label="CadVerify"
           className="mb-2 flex size-9 items-center justify-center rounded-[var(--radius-sm)] text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
@@ -142,7 +144,8 @@ function IconRail() {
 /* ── L1 sidebar — object lists + saved views within a domain. ───────── */
 type NavLink = { label: string; href: string; icon: LucideIcon; hint?: string };
 const WORKSPACE_NAV: NavLink[] = [
-  { label: "New analysis", href: "/cost", icon: Calculator, hint: "should-cost · make-vs-buy" },
+  { label: "Verify workspace", href: "/verify", icon: FileCheck2, hint: "canonical product surface" },
+  { label: "Legacy analysis", href: "/cost", icon: Calculator, hint: "should-cost · make-vs-buy" },
   { label: "Analyze DFM", href: "/analyze", icon: ScanLine, hint: "geometry · flags" },
   { label: "Batch run", href: "/batch", icon: Layers, hint: "many parts" },
 ];
@@ -153,6 +156,8 @@ const LEDGER_NAV: NavLink[] = [
   { label: "Recent analyses", href: "/history", icon: History },
   { label: "Integrations", href: "/integrations", icon: Database },
   { label: "API & docs", href: "/settings/developer", icon: Code2 },
+  { label: "Security", href: "/settings/security", icon: Lock, hint: "access · password" },
+  { label: "Organization", href: "/settings/organization", icon: Building2, hint: "members · SSO" },
 ];
 
 function SidebarLink({ link }: { link: NavLink }) {
@@ -310,11 +315,29 @@ function AccountMenu() {
           <DropdownMenu.Separator className="my-1 h-px bg-border" />
           <DropdownMenu.Item asChild>
             <Link
+              href="/settings/security"
+              className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 outline-none hover:bg-muted"
+            >
+              <Lock className="size-4" />
+              Settings · Security
+            </Link>
+          </DropdownMenu.Item>
+          <DropdownMenu.Item asChild>
+            <Link
               href="/settings/developer"
               className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 outline-none hover:bg-muted"
             >
               <Code2 className="size-4" />
               Settings · Developer
+            </Link>
+          </DropdownMenu.Item>
+          <DropdownMenu.Item asChild>
+            <Link
+              href="/settings/organization"
+              className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 outline-none hover:bg-muted"
+            >
+              <Building2 className="size-4" />
+              Settings · Organization
             </Link>
           </DropdownMenu.Item>
           <DropdownMenu.Separator className="my-1 h-px bg-border" />

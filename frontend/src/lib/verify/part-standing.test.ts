@@ -128,7 +128,8 @@ test("standingKind: costed / blocked / drafted / invalid from real fields", () =
   );
   // Costed artifact with no price and NOT blocked → honestly invalid, never a $0.
   assert.equal(standingKind(row({ unit_cost: null, route_blocker_count: 0 })), "invalid");
-  assert.equal(standingTag(row()).tone, "pass");
+  assert.equal(standingTag(row()).tone, "neutral");
+  assert.equal(standingTag(row()).label, "COSTED · RECORD");
   assert.equal(standingTag(row({ route_blocker_count: 1 })).tone, "fail");
 });
 
@@ -167,6 +168,13 @@ test("deriveStanding: validated defaults false (assumption band, n=0) → hatche
   assert.equal(s.crossoverQty, null); // no record loaded → withheld, not faked
   const withRecord = deriveStanding(row(), detailWith({}));
   assert.equal(withRecord.crossoverQty, 1962); // real record field
+});
+
+test("deriveStanding carries the persisted makeability lattice independently of DFM", () => {
+  const detail = detailWith({ dfm_ready: true, dfm_verdict: "issues" });
+  detail.result.verification = { verdict: "makeable_outsource_only" };
+  const s = deriveStanding(row(), detail);
+  assert.equal(s.makeabilityVerdict, "makeable_outsource_only");
 });
 
 test("extractBlockers: prefers the record's FULL blocker Issues (measured/faces/citation)", () => {

@@ -5,15 +5,25 @@ primary_region = "iad"
   dockerfile = "Dockerfile"
 
 [env]
-  API_BASE = "https://cadvrfy-api.fly.dev"
-  NEXT_PUBLIC_API_BASE = "https://cadvrfy-api.fly.dev"
+  # API_BASE is intentionally injected by the protected promotion workflow so
+  # the same digest can move from staging to production.
+  PRODUCTION_PUBLIC_API_TLS_REQUIRED = "1"
+  PRODUCTION_AUTH_PROXY_REQUIRED = "1"
+  MAGIC_LINK_UI_ENABLED = "1"
+  AUTH_MODE = "password"
+  PUBLIC_PASSWORD_SIGNUP_ENABLED = "0"
+  PRODUCTION_VERIFIED_SIGNUP_REQUIRED = "1"
+  NEXT_PUBLIC_VERIFY_UI = "1"
+  NEXT_PUBLIC_SHOW_DEV_TOOLS = "0"
 
 [http_service]
   internal_port = 3000
   force_https = true
   auto_stop_machines = "stop"
   auto_start_machines = true
-  min_machines_running = 0
+  # Production availability: keep two Machines warm so a restart or host
+  # failure does not take the dashboard offline.
+  min_machines_running = 2
 
 [[vm]]
   memory = "512mb"
