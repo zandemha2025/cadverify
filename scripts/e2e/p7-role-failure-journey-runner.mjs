@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { captureBuildIdentity, makeReleaseEvidence } from "./human-sim-release-evidence.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const pw = require("playwright-core");
@@ -1243,6 +1244,20 @@ asyncio.run(main())
               this.issues.filter((i) => i.severity === "low").length * 3
           );
 
+    const criticalPaths = {
+      "WORK-05": {
+        initialStatus: this.evidence.governanceInitial?.approval_status,
+        approvedAt: this.evidence.governanceApproval?.approved_at,
+        reopenedStatus: this.evidence.governanceApproval?.reopened_status,
+        staleReason: this.evidence.governanceStale?.stale_reason,
+      },
+      "ROLE-01": {
+        sessionSource: this.evidence.lowRoleAuth?.source,
+        orgRole: this.evidence.lowRoleAuth?.org_role,
+        adminMutationStatus: this.evidence.lowRoleAdminUsers?.status,
+      },
+    };
+
     const data = {
       status,
       health,
@@ -1267,6 +1282,8 @@ asyncio.run(main())
       requestFailures: this.requestFailures,
       visited: this.visited,
       evidence: this.evidence,
+      buildIdentity: captureBuildIdentity(repoRoot),
+      releaseEvidence: makeReleaseEvidence(criticalPaths),
       screenshotDir,
     };
 

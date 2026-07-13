@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { captureBuildIdentity, makeReleaseEvidence } from "./human-sim-release-evidence.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const { chromium } = require("playwright-core");
@@ -56,6 +57,7 @@ class DesignStudioE2E {
     this.requestFailures = [];
     this.successfulResponses = new Set();
     this.startedAt = Date.now();
+    this.criticalPaths = {};
   }
 
   async start() {
@@ -201,6 +203,8 @@ class DesignStudioE2E {
     const link = this.page.getByRole("link", {
       name: new RegExp(`^Download R${revision} STEP$`),
     });
+    const href = await link.getAttribute("href");
+    assert(href, `R${revision} STEP download link omitted href`);
     const [download] = await Promise.all([
       this.page.waitForEvent("download", { timeout: 20_000 }),
       link.click(),
@@ -209,7 +213,21 @@ class DesignStudioE2E {
     assert(filename, `R${revision} STEP download did not produce a local file`);
     const bytes = await readFile(filename);
     assert(bytes.length > 128, `R${revision} STEP download is unexpectedly empty`);
-    return { hash: sha256(bytes), bytes: bytes.length };
+    const hash = sha256(bytes);
+    const evidenceResponse = await this.context.request.get(new URL(href, baseUrl).toString());
+    assert(evidenceResponse.ok(), `R${revision} evidence download returned ${evidenceResponse.status()}`);
+    const responseBytes = await evidenceResponse.body();
+    const responseHash = sha256(responseBytes);
+    const responseHeaderSha256 = evidenceResponse.headers()["x-geometry-sha256"]?.toLowerCase() || "";
+    assert(responseHash === hash, `R${revision} browser download differs from evidence response bytes`);
+    assert(responseHeaderSha256 === hash, `R${revision} response SHA header differs from downloaded STEP`);
+    return {
+      hash,
+      bytes: bytes.length,
+      responseHash,
+      responseHeaderSha256,
+      hashesMatch: responseHash === hash && responseHeaderSha256 === hash,
+    };
   }
 
   async generateCurrentForm(name, expectedEnvelope, expectedVolume) {
@@ -233,6 +251,10 @@ class DesignStudioE2E {
     filenamePattern,
     envelope,
     volume,
+    envelopeMm = null,
+    uiVolumeCm3 = null,
+    artifactSha256 = null,
+    criticalPathId = null,
     turningMustFail = false,
     expectedRouteHint = null,
   }) {
@@ -260,7 +282,20 @@ class DesignStudioE2E {
         `Expected ${expectedRouteHint} route hint`,
       );
     }
-    return { screenshot: await this.shot(`verify-r${revision}`, true) };
+    const screenshot = await this.shot(`verify-r${revision}`, true);
+    const evidence = {
+      revision,
+      queryRevision: new URL(this.page.url()).searchParams.get("revision"),
+      artifactSha256,
+      envelopeMm,
+      uiVolumeCm3,
+      watertight: /watertight true/i.test(text),
+      shouldCostComputed: /SHOULD-COST COMPUTED/i.test(text),
+      expectedRouteHint,
+      screenshot,
+    };
+    if (criticalPathId) this.criticalPaths[criticalPathId] = evidence;
+    return { screenshot, evidence };
   }
 
   async run() {
@@ -331,7 +366,19 @@ class DesignStudioE2E {
         "120.0 × 70.0 × 8.0 mm",
         "64.69 cm³",
       );
-      return { screenshot: await this.shot("plate-r1-ready", true), evidence: plateR1 };
+      const screenshot = await this.shot("plate-r1-ready", true);
+      const evidence = {
+        artifactSha256: plateR1.hash,
+        responseHeaderSha256: plateR1.responseHeaderSha256,
+        hashesMatch: plateR1.hashesMatch,
+        downloadedBytes: plateR1.bytes,
+        envelopeMm: [120, 70, 8],
+        uiVolumeCm3: 64.69,
+        previewMode: plateR1.visual.mode,
+        screenshot,
+      };
+      this.criticalPaths["DES-05"] = evidence;
+      return { screenshot, evidence };
     });
 
     let plateR2;
@@ -352,7 +399,18 @@ class DesignStudioE2E {
       await this.expectText(/120\.0 × 70\.0 × 8\.0 mm.*64\.69 cm³/i, "historical R1 geometry");
       const plateR1Again = await this.downloadHash(1);
       assert(plateR1Again.hash === plateR1.hash, "Historical R1 bytes changed after R2 generation");
-      return { screenshot: await this.shot("plate-revision-history", true), evidence: { plateR1, plateR2 } };
+      const screenshot = await this.shot("plate-revision-history", true);
+      const evidence = {
+        r1Sha256: plateR1.hash,
+        r2Sha256: plateR2.hash,
+        hashesDiffer: plateR2.hash !== plateR1.hash,
+        r1RoundTripExact: plateR1Again.hash === plateR1.hash,
+        r2EnvelopeMm: [130, 70, 8],
+        r2UiVolumeCm3: 70.29,
+        screenshot,
+      };
+      this.criticalPaths["DES-10"] = evidence;
+      return { screenshot, evidence };
     });
 
     await this.step("Historical plate revision enters Verify with the exact measured result", async () =>
@@ -361,6 +419,10 @@ class DesignStudioE2E {
         filenamePattern: /Golden_mounting_plate-r1\.step/i,
         envelope: "120.0 × 70.0 × 8.0 mm",
         volume: "64.69 cm³",
+        envelopeMm: [120, 70, 8],
+        uiVolumeCm3: 64.69,
+        artifactSha256: plateR1.hash,
+        criticalPathId: "DES-11",
         expectedRouteHint: "polymer",
       }),
     );
@@ -464,6 +526,8 @@ class DesignStudioE2E {
       consoleErrors: this.consoleErrors,
       requestFailures,
       error: runError instanceof Error ? runError.message : runError ? String(runError) : null,
+      buildIdentity: captureBuildIdentity(repoRoot),
+      releaseEvidence: makeReleaseEvidence(this.criticalPaths),
     };
     await mkdir(outputRoot, { recursive: true });
     await writeFile(artifacts.json, `${JSON.stringify(data, null, 2)}\n`);

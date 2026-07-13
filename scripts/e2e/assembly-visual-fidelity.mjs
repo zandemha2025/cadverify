@@ -5,6 +5,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { captureBuildIdentity, makeReleaseEvidence } from "./human-sim-release-evidence.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const pw = require("playwright-core");
@@ -903,6 +904,22 @@ async function main() {
   }
 
   const failed = cases.filter((item) => item.status !== "PASS");
+  const criticalPaths = Object.fromEntries(
+    cases.map((item) => [
+      item.fixtureId,
+      {
+        fixtureSha256: item.fixtureHash,
+        withinTransformTolerance:
+          typeof item.placement?.maxAnchorErrorMm === "number" &&
+          typeof item.placement?.toleranceMm === "number" &&
+          item.placement.maxAnchorErrorMm <= item.placement.toleranceMm,
+        maxAnchorErrorMm: item.placement?.maxAnchorErrorMm,
+        toleranceMm: item.placement?.toleranceMm,
+        changedSampledPixels: item.render?.visualDelta?.changedSampledPixels,
+        seatedScreenshotBytes: item.screenshotBytes?.after,
+      },
+    ])
+  );
   const data = {
     status: failed.length === 0 ? "PASS" : "NEEDS_FIXES",
     generatedAt: new Date().toISOString(),
@@ -920,6 +937,8 @@ async function main() {
       }))
     ),
     failed,
+    buildIdentity: captureBuildIdentity(repoRoot),
+    releaseEvidence: makeReleaseEvidence(criticalPaths),
   };
 
   await mkdir(outputRoot, { recursive: true });

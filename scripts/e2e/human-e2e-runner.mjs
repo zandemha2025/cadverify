@@ -1,8 +1,9 @@
 import { createRequire } from "node:module";
-import { randomBytes } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { createHash, randomBytes } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { captureBuildIdentity, makeReleaseEvidence } from "./human-sim-release-evidence.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const pw = require("playwright-core");
@@ -119,6 +120,14 @@ function firstMatch(text, regex) {
   return text.slice(start, end).replace(/\s+/g, " ").trim();
 }
 
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+function isPostResponse(response, pathname) {
+  return response.request().method() === "POST" && new URL(response.url()).pathname === pathname;
+}
+
 function isIgnorableRequestFailure(url, method, failure) {
   if (/favicon\.ico|vercel\/speed-insights|\/_next\/webpack-hmr/i.test(url)) return true;
   if (failure !== "net::ERR_ABORTED") return false;
@@ -144,6 +153,7 @@ class HumanE2E {
     this.consoleErrors = [];
     this.requestFailures = [];
     this.visited = [];
+    this.criticalPaths = {};
   }
 
   async init() {
@@ -208,7 +218,14 @@ class HumanE2E {
     try {
       const out = await fn();
       const screenshot = out?.screenshot || (await this.shot(name));
-      this.steps.push({ name, status: "pass", ms: Date.now() - started, screenshot, url: this.page.url() });
+      this.steps.push({
+        name,
+        status: "pass",
+        ms: Date.now() - started,
+        screenshot,
+        url: this.page.url(),
+        evidence: out?.evidence || null,
+      });
       return out;
     } catch (error) {
       let screenshot = null;
@@ -292,13 +309,31 @@ class HumanE2E {
         );
         return button instanceof HTMLButtonElement && !button.disabled;
       });
+      const receiptResponsePromise = this.page.waitForResponse(
+        (response) => isPostResponse(response, "/api/pilot/request"),
+        { timeout: 12_000 },
+      );
       await send.click();
+      const receiptResponse = await receiptResponsePromise;
+      const receiptBody = await receiptResponse.json().catch(() => ({}));
       await this.page.getByText("Request received and recorded.").waitFor({ timeout: 12_000 });
       const text = await this.scanVisibleText("pilot-request-success");
-      if (!/CV-[A-Za-z0-9-]{12,}/.test(text)) {
+      const receiptId = text.match(/CV-[A-Za-z0-9-]{12,}/)?.[0];
+      if (!receiptId) {
         throw new Error("pilot request did not expose a durable receipt");
       }
-      return { screenshot: await this.shot("public-pilot-request") };
+      assert(receiptResponse.ok(), `pilot request returned ${receiptResponse.status()}`);
+      assert(receiptBody.receipt === receiptId, "pilot response receipt did not match visible receipt");
+      const screenshot = await this.shot("public-pilot-request");
+      const evidence = {
+        receiptId,
+        acknowledged: true,
+        responseStatus: receiptResponse.status(),
+        responseReceiptMatches: receiptBody.receipt === receiptId,
+        screenshot,
+      };
+      this.criticalPaths["PUB-03"] = evidence;
+      return { screenshot, evidence };
     });
   }
 
@@ -447,7 +482,16 @@ class HumanE2E {
       await this.goto("/verify", "verify-upload", { settleMs: 700 });
       await this.page.locator('button[title="Verify"]').click();
       const input = this.page.locator('input[type="file"][accept*=".stl"]').first();
-      await input.setInputFiles(path.join(repoRoot, "backend/tests/assets/cube.step"));
+      const fixturePath = path.join(repoRoot, "backend/tests/assets/cube.step");
+      const validationResponsePromise = this.page.waitForResponse(
+        (response) => isPostResponse(response, "/api/proxy/validate"),
+        { timeout: cadUploadTimeoutMs },
+      );
+      const costResponsePromise = this.page.waitForResponse(
+        (response) => isPostResponse(response, "/api/proxy/validate/cost"),
+        { timeout: cadUploadTimeoutMs },
+      );
+      await input.setInputFiles(fixturePath);
       await this.page.waitForTimeout(3000);
       await this.shot("verify-upload-after-3s");
       await this.page
@@ -466,7 +510,37 @@ class HumanE2E {
       if (/Cost request failed|Validation failed|Network error|Geometry invalid|repair required/i.test(text)) {
         this.issue("high", "Verify STEP upload surfaced an engine failure", firstMatch(text, /Cost request failed|Validation failed|Network error|Geometry invalid|repair required/i) || "Upload failed");
       }
-      return { screenshot: await this.shot("verify-step-upload-result") };
+      const [validationResponse, costResponse] = await Promise.all([
+        validationResponsePromise,
+        costResponsePromise,
+      ]);
+      assert(validationResponse.ok(), `POST /validate returned ${validationResponse.status()}`);
+      assert(costResponse.ok(), `POST /validate/cost returned ${costResponse.status()}`);
+      const validation = await validationResponse.json();
+      const cost = await costResponse.json();
+      const fixtureSha256 = createHash("sha256").update(await readFile(fixturePath)).digest("hex");
+      const geometry = validation?.geometry || {};
+      assert(Array.isArray(geometry.bounding_box_mm), "Verify validation omitted bounding_box_mm");
+      assert(typeof geometry.volume_mm3 === "number", "Verify validation omitted volume_mm3");
+      assert(typeof geometry.surface_area_mm2 === "number", "Verify validation omitted surface_area_mm2");
+      assert(geometry.is_watertight === true, "Verify validation did not prove watertight geometry");
+      assert(cost?.saved?.id, "Verify cost response omitted the durable saved decision id");
+      const screenshot = await this.shot("verify-step-upload-result");
+      const evidence = {
+        filename: validation.filename,
+        fixtureSha256,
+        boundingBoxMm: geometry.bounding_box_mm,
+        volumeMm3: geometry.volume_mm3,
+        surfaceAreaMm2: geometry.surface_area_mm2,
+        watertight: geometry.is_watertight,
+        overallVerdict: validation.overall_verdict,
+        decisionId: cost.saved.id,
+        validationStatus: validationResponse.status(),
+        costStatus: costResponse.status(),
+        screenshot,
+      };
+      this.criticalPaths["VER-05"] = evidence;
+      return { screenshot, evidence };
     });
   }
 
@@ -521,6 +595,8 @@ class HumanE2E {
       consoleErrors: this.consoleErrors,
       requestFailures: this.requestFailures,
       visited: this.visited,
+      buildIdentity: captureBuildIdentity(repoRoot),
+      releaseEvidence: makeReleaseEvidence(this.criticalPaths),
       screenshotDir,
     };
     await writeFile(artifacts.json, `${JSON.stringify(data, null, 2)}\n`);

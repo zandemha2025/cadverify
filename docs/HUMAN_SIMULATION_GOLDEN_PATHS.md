@@ -26,6 +26,20 @@ Each browser result records:
 - numerical exactness or tolerance;
 - screenshot, console result, network result, and recovery behavior.
 
+The release gate binds every input report to the current Git HEAD and build ID.
+`E2E_BUILD_ID` is the preferred explicit build identity; recognized CI/deploy
+commit variables are accepted, and a local run falls back to the current Git
+HEAD. A report from another commit/build, or a report without this identity,
+cannot contribute to `LOCAL_100`. A dirty working tree also blocks the claim
+because its executed source cannot be reproduced from the recorded HEAD.
+
+Passing step names are branch-discovery evidence only. Critical paths also emit
+versioned `releaseEvidence.criticalPaths` records, and the gate validates every
+required field and invariant. Missing fields are reported by exact JSON path.
+The hardened set covers PUB-03, VER-05, DES-05/10/11, ENT-01/02/04, WORK-05,
+ROLE-01, and both populated-assembly visual fixtures. This set can grow without
+weakening the remaining browser-row requirements.
+
 ## Personas and surfaces
 
 | Persona | Primary goal | Surfaces |
@@ -160,5 +174,7 @@ provenance—not a stale dollar snapshot.
 | Full local gate | `npm run test:e2e:full` | All browser, corpus, load, restore, and readiness gates in sequence |
 
 The local report may say `LOCAL_100` only when every local browser row required
-for the release has a current-head artifact and zero skips. External rows remain
-explicit launch prerequisites until the real accounts and environments exist.
+for the release has a current-head/build-matched artifact and zero skips, every
+critical structured-evidence contract passes, and no report health gate fails.
+External rows remain explicit launch prerequisites until the real accounts and
+environments exist.

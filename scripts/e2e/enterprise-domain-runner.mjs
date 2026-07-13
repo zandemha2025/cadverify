@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { captureBuildIdentity, makeReleaseEvidence } from "./human-sim-release-evidence.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const pw = require("playwright-core");
@@ -830,6 +831,29 @@ class EnterpriseDomainQA {
         this.issues.filter((i) => i.severity === "low").length * 3
     );
     const status = blocking.length === 0 && failedSteps === 0 ? "PASS" : "NEEDS_FIXES";
+    const criticalPaths = {
+      "ENT-01": {
+        rateCardSource: this.evidence.rateCard?.source,
+        validated: this.evidence.rateCard?.validated,
+        machineRates: this.evidence.machineFloor || [],
+      },
+      "ENT-02": {
+        total: this.evidence.groundTruth?.total,
+        nReal: this.evidence.groundTruth?.n_real,
+        minimumReal: this.evidence.groundTruth?.min_real,
+        recalibrationRefused:
+          this.evidence.groundTruth?.n_real === 4 && this.evidence.groundTruth?.min_real === 8,
+      },
+      "ENT-04": {
+        quantity: this.evidence.portfolio?.annualized_unit_cost_qty,
+        unitCostUsd: this.evidence.portfolio?.annualized_unit_cost_usd,
+        annualExposureUsd: this.evidence.portfolio?.annualized_cost_usd,
+        basis: this.evidence.portfolio?.annualized_unit_cost_basis,
+        withheldBeforeExactQuantity:
+          this.evidence.portfolio?.withheld_before_volume === true &&
+          this.evidence.portfolio?.withheld_until_exact_reverification === true,
+      },
+    };
     const data = {
       status,
       health,
@@ -841,6 +865,8 @@ class EnterpriseDomainQA {
       consoleErrors: this.consoleErrors,
       requestFailures: this.requestFailures,
       evidence: this.evidence,
+      buildIdentity: captureBuildIdentity(repoRoot),
+      releaseEvidence: makeReleaseEvidence(criticalPaths),
       screenshotDir,
     };
     await writeFile(artifacts.json, `${JSON.stringify(data, null, 2)}\n`);

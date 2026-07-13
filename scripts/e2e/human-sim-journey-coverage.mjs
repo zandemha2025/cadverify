@@ -1,6 +1,11 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  captureBuildIdentity,
+  validateBuildIdentities,
+  validateCriticalEvidence,
+} from "./human-sim-release-evidence.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -182,10 +187,11 @@ function req(id, report, step, persona, surface, branch, options = {}) {
     surface,
     branch,
     alternatives: options.alternatives || [],
+    criticalEvidenceId: options.criticalEvidenceId || null,
   };
 }
 
-const requirements = [
+export const requirements = [
   ...publicRoutes.map((route) =>
     req(
       `public${route === "/" ? ".home" : route.replaceAll("/", ".")}`,
@@ -202,7 +208,8 @@ const requirements = [
     "public pilot request records a durable receipt",
     "Public evaluator",
     "Pilot intake",
-    "Submit the actual public form and receive a durable server-side receipt."
+    "Submit the actual public form and receive a durable server-side receipt.",
+    { criticalEvidenceId: "PUB-03" }
   ),
   req(
     "auth.verify-redirect",
@@ -302,7 +309,8 @@ const requirements = [
     "Verify processes a real STEP file upload",
     "CAD engineer",
     "CAD analysis",
-    "Upload and process a real STEP fixture through the browser."
+    "Upload and process a real STEP fixture through the browser.",
+    { criticalEvidenceId: "VER-05" }
   ),
   req(
     "auth.logout-login",
@@ -319,7 +327,10 @@ const requirements = [
       step,
       "CAD design engineer",
       "Design Studio",
-      "Complete the current ProofShape Design Studio journey with exact CAD, revision, DFM, cost, archive, and responsive evidence."
+      "Complete the current ProofShape Design Studio journey with exact CAD, revision, DFM, cost, archive, and responsive evidence.",
+      {
+        criticalEvidenceId: ({ 6: "DES-05", 7: "DES-10", 8: "DES-11" })[index] || null,
+      }
     )
   ),
   req(
@@ -328,7 +339,8 @@ const requirements = [
     "DOOR-HANDLE-ASSEMBLY-FIDELITY-001: part seats into parent assembly within transform tolerance",
     "CAD engineer",
     "Populated assembly context",
-    "Render a part inside its parent assembly with declared automotive service environment, then seat it and verify transform/pixel evidence."
+    "Render a part inside its parent assembly with declared automotive service environment, then seat it and verify transform/pixel evidence.",
+    { criticalEvidenceId: "DOOR-HANDLE-ASSEMBLY-FIDELITY-001" }
   ),
   req(
     "assembly-context.oil-gas",
@@ -336,7 +348,8 @@ const requirements = [
     "VALVE-STEM-ASSEMBLY-FIDELITY-001: part seats into parent assembly within transform tolerance",
     "CAD engineer",
     "Populated assembly context",
-    "Render a part inside its parent assembly with declared severe-service environment, then seat it and verify transform/pixel evidence."
+    "Render a part inside its parent assembly with declared severe-service environment, then seat it and verify transform/pixel evidence.",
+    { criticalEvidenceId: "VALVE-STEM-ASSEMBLY-FIDELITY-001" }
   ),
   ...enterpriseSteps.map((step, index) =>
     req(
@@ -345,7 +358,10 @@ const requirements = [
       step,
       "Enterprise CAD organization",
       "Enterprise operating model",
-      "Run the enterprise CAD/procurement branch with governed data and organization context."
+      "Run the enterprise CAD/procurement branch with governed data and organization context.",
+      {
+        criticalEvidenceId: ({ 2: "ENT-01", 4: "ENT-02", 10: "ENT-04" })[index] || null,
+      }
     )
   ),
   ...protectedRoutes.map((route) =>
@@ -375,7 +391,10 @@ const requirements = [
       step,
       "Failure-path user",
       "Failure and recovery",
-      "Drive a non-happy-path branch and verify bounded, production-grade behavior."
+      "Drive a non-happy-path branch and verify bounded, production-grade behavior.",
+      {
+        criticalEvidenceId: ({ 7: "WORK-05", 9: "ROLE-01" })[index] || null,
+      }
     )
   ),
   ...visibleCopyRoutes.map((route) =>
@@ -446,7 +465,7 @@ function reportProblems(reports) {
   return problems;
 }
 
-function coverageFor(requirement, reports) {
+export function coverageFor(requirement, reports, criticalEvidence) {
   const candidates = [
     { report: requirement.report, stepPattern: requirement.stepPattern },
     ...(requirement.alternatives || []),
@@ -463,13 +482,26 @@ function coverageFor(requirement, reports) {
           name: step.name,
           url: step.url || "",
           screenshot: step.screenshot || null,
+          evidence: step.evidence || null,
         });
       }
     }
   }
+  const stepMatched = matches.length > 0;
+  const critical = requirement.criticalEvidenceId
+    ? criticalEvidence.byRequirement[requirement.criticalEvidenceId]
+    : null;
   return {
     ...requirement,
-    covered: matches.length > 0,
+    stepMatched,
+    criticalEvidence: critical
+      ? {
+          id: requirement.criticalEvidenceId,
+          valid: critical.valid,
+          missingFields: critical.failures.map((item) => item.field),
+        }
+      : null,
+    covered: stepMatched && (!critical || critical.valid),
     matches,
   };
 }
@@ -526,15 +558,28 @@ function markdown(data) {
     .join("\n");
   const missingRows = data.missing.length
     ? data.missing
-        .map((item) => `| ${item.id} | ${item.report} | ${item.surface} | ${item.branch} |`)
+        .map(
+          (item) =>
+            `| ${item.id} | ${item.report} | ${item.surface} | ${item.stepMatched ? `critical evidence ${item.criticalEvidence?.id || "missing"}` : "step not passed"} | ${item.branch} |`
+        )
         .join("\n")
-    : "| none |  |  |  |";
+    : "| none |  |  |  |  |";
+  const criticalRows = Object.entries(data.criticalEvidence.byRequirement)
+    .map(
+      ([id, item]) =>
+        `| ${id} | ${item.report} | ${item.valid ? "PASS" : "FAIL"} | ${item.failures.map((failure) => failure.field).join(", ") || "none"} |`
+    )
+    .join("\n");
 
   return `# Human-Simulated E2E Journey Coverage
 
 - Date: ${runId}
 - Status: ${data.status}
+- Local release claim: ${data.localReleaseClaim || "not qualified"}
+- Git HEAD: ${data.buildIdentity.gitHead}
+- Build ID: ${data.buildIdentity.buildId} (${data.buildIdentity.buildIdSource})
 - Required branches: ${data.coveredBranches}/${data.requiredBranches}
+- Critical evidence: ${data.criticalEvidence.valid}/${data.criticalEvidence.total}
 - Output root: ${outputRoot}
 
 ## Report Gates
@@ -549,10 +594,16 @@ ${reportRows}
 | --- | ---: |
 ${surfaceRows}
 
+## Critical Golden Evidence
+
+| Golden ID | Report | Status | Missing/invalid fields |
+| --- | --- | --- | --- |
+${criticalRows}
+
 ## Missing Branches
 
-| ID | Report | Surface | Branch |
-| --- | --- | --- | --- |
+| ID | Report | Surface | Reason | Branch |
+| --- | --- | --- | --- | --- |
 ${missingRows}
 
 ## Problems
@@ -562,10 +613,18 @@ ${data.problems.length ? data.problems.map((problem) => `- ${problem}`).join("\n
 }
 
 async function main() {
+  const buildIdentity = captureBuildIdentity(repoRoot);
   const reports = await loadReports();
-  const coverage = requirements.map((requirement) => coverageFor(requirement, reports));
+  const identityProblems = validateBuildIdentities(reports, buildIdentity);
+  const criticalEvidence = validateCriticalEvidence(reports);
+  const coverage = requirements.map((requirement) => coverageFor(requirement, reports, criticalEvidence));
   const missing = coverage.filter((item) => !item.covered);
-  const problems = [...reportProblems(reports), ...evidenceProblems(reports)];
+  const problems = [
+    ...reportProblems(reports),
+    ...identityProblems.map((item) => item.message),
+    ...criticalEvidence.problems.map((item) => item.message),
+    ...evidenceProblems(reports),
+  ];
 
   const reportSummaries = Object.fromEntries(
     Object.entries(reports).map(([key, report]) => [
@@ -580,21 +639,27 @@ async function main() {
         issues: report.issues,
         consoleErrors: report.consoleErrors,
         requestFailures: report.requestFailures,
+        buildIdentity: report.data.buildIdentity || null,
       },
     ])
   );
 
+  const status = missing.length === 0 && problems.length === 0 ? "PASS" : "NEEDS_FIXES";
   const data = {
-    status: missing.length === 0 && problems.length === 0 ? "PASS" : "NEEDS_FIXES",
+    status,
+    localReleaseClaim: status === "PASS" ? "LOCAL_100" : null,
     generatedAt: new Date().toISOString(),
     runId,
     outputRoot,
+    buildIdentity,
     requiredBranches: requirements.length,
     coveredBranches: coverage.filter((item) => item.covered).length,
     reports: reportSummaries,
     bySurface: bySurface(coverage),
     coverage,
     missing,
+    identityProblems,
+    criticalEvidence,
     problems,
   };
 
@@ -608,6 +673,18 @@ async function main() {
         status: data.status,
         requiredBranches: data.requiredBranches,
         coveredBranches: data.coveredBranches,
+        localReleaseClaim: data.localReleaseClaim,
+        buildIdentity,
+        criticalEvidence: {
+          total: criticalEvidence.total,
+          valid: criticalEvidence.valid,
+          missingFields: criticalEvidence.problems.map((item) => ({
+            requirementId: item.requirementId,
+            report: item.report,
+            field: item.field,
+            expected: item.expected,
+          })),
+        },
         reports: reportSummaries,
         missing: missing.map((item) => item.id),
         problems,
@@ -623,7 +700,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
