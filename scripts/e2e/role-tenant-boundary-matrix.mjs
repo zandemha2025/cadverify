@@ -871,6 +871,8 @@ asyncio.run(main())
         await owner.page.getByRole("button", { name: "Create key" }).first().click();
         const createActionResponse = await createActionPromise;
         this.equal("ROLE-02", "browser key server action HTTP", createActionResponse.status(), 200);
+        const createActionError = await createActionResponse.finished();
+        this.equal("ROLE-02", "browser key server action stream completed", createActionError?.message ?? "<none>", "<none>");
         await owner.page.getByRole("heading", { name: "Save your API key" }).waitFor({ timeout: 15_000 });
         const token = cleanText(await owner.page.locator("pre").innerText());
         this.ok("ROLE-02", "browser reveals a cv_live key", /^cv_live_/.test(token));
