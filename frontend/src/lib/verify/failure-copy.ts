@@ -22,7 +22,11 @@ export function analysisFailureCopy(reason: string | null | undefined): Analysis
     };
   }
 
-  if (/unsupported file type|use \.stl|not a (?:cad|supported)/i.test(value)) {
+  if (
+    /unsupported file type|use \.stl|not a (?:cad|supported)|does not appear to be a valid (?:step|stl|iges)|missing iso-10303-21 header|too small to be a valid stl|proprietary\/native cad|requires a licensed reader/i.test(
+      value,
+    )
+  ) {
     return {
       kind: "unsupported",
       title: "We couldn’t read this file.",

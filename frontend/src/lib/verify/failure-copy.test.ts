@@ -16,9 +16,30 @@ test("capacity failures never blame customer geometry", () => {
 test("unsupported files and actual mesher failures get distinct recovery copy", () => {
   assert.equal(analysisFailureCopy("Unsupported file type; use .stl").kind, "unsupported");
   assert.equal(
+    analysisFailureCopy(
+      "File does not appear to be a valid STEP file (missing ISO-10303-21 header).",
+    ).kind,
+    "unsupported",
+  );
+  assert.equal(
+    analysisFailureCopy(
+      "Cannot ingest .sldprt (SolidWorks part): it is a proprietary/native CAD format that requires a licensed reader.",
+    ).kind,
+    "unsupported",
+  );
+  assert.equal(
     analysisFailureCopy("geometry contains an unsupported surface the mesher cannot triangulate").kind,
     "geometry",
   );
+});
+
+test("invalid STEP magic gets actionable format recovery without a tessellation diagnosis", () => {
+  const copy = analysisFailureCopy(
+    "File does not appear to be a valid STEP file (missing ISO-10303-21 header).",
+  );
+  assert.equal(copy.title, "We couldn’t read this file.");
+  assert.match(copy.action, /STL, STEP, STP, IGES, or IGS/i);
+  assert.doesNotMatch(copy.title + copy.explanation + copy.action, /tessellat/i);
 });
 
 test("unknown failures do not invent a geometry diagnosis", () => {
