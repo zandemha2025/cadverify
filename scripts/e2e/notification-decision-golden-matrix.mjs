@@ -385,12 +385,12 @@ class Matrix {
     const logoutResponsePromise = page.waitForResponse(
       (response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/auth/logout",
       { timeout: 20_000 },
-    );
+    ).then(async (response) => ({ status: response.status(), body: await response.json() }));
     await page.getByRole("button", { name: "Account" }).click();
     await page.getByText("Sign out", { exact: true }).click();
     const logoutResponse = await logoutResponsePromise;
-    this.check("FAIL-09", "logout HTTP status", 200, logoutResponse.status());
-    const logoutBody = await logoutResponse.json();
+    this.check("FAIL-09", "logout HTTP status", 200, logoutResponse.status);
+    const logoutBody = logoutResponse.body;
     this.check("FAIL-09", "logout revoked sessions", true, logoutBody.sessionsRevoked);
     await page.waitForURL((url) => url.pathname === "/login", { timeout: 20_000 });
 
@@ -419,7 +419,7 @@ class Matrix {
     this.check("FAIL-09", "second read status survives logout/login", true, secondAfter.is_read);
     const screenshot = await this.shot("FAIL-09", page, "reauthenticated-read-state");
     this.observations.session = {
-      logoutStatus: logoutResponse.status(),
+      logoutStatus: logoutResponse.status,
       sessionsRevoked: logoutBody.sessionsRevoked,
       replayApiStatus: replayApi.status,
       finalUrl: page.url(),
