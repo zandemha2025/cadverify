@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  apiProblemDetail,
   apiRecoveryMessage,
   networkRecoveryMessage,
 } from "./api-recovery.ts";
@@ -43,4 +44,27 @@ test("network recovery copy does not imply that data was deleted", () => {
   assert.match(message, /check your network/i);
   assert.match(message, /refresh the saved list/i);
   assert.doesNotMatch(message, /lost|deleted/i);
+});
+
+test("structured backend detail is extracted without object coercion", () => {
+  assert.equal(
+    apiProblemDetail({ detail: { code: "server_busy", message: "server is at capacity, retry shortly" } }),
+    "server is at capacity, retry shortly",
+  );
+});
+
+test("specific 503 recovery copy is preserved for queue failures", () => {
+  assert.equal(
+    apiRecoveryMessage({
+      status: 503,
+      payload: {
+        detail: {
+          code: "DESIGN_ENQUEUE_FAILED",
+          message: "Design generation is temporarily unavailable. Retry shortly.",
+        },
+      },
+      resource: "design",
+    }),
+    "Design generation is temporarily unavailable. Retry shortly.",
+  );
 });

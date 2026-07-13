@@ -23,7 +23,7 @@ function firstProblemText(value: unknown): string | null {
   return null;
 }
 
-function cleanDetail(payload: unknown): string | null {
+export function apiProblemDetail(payload: unknown): string | null {
   if (!payload || typeof payload !== "object") return firstProblemText(payload);
   const problem = payload as ApiProblem;
   return firstProblemText(problem.detail) ?? firstProblemText(problem.message);
@@ -40,7 +40,7 @@ export function apiRecoveryMessage({
   resource: string;
   retryAfter?: string | null;
 }): string {
-  const detail = cleanDetail(payload);
+  const detail = apiProblemDetail(payload);
 
   if (status === 401) {
     return `Your session expired. Sign in again, then retry the ${resource} action.`;
@@ -66,6 +66,11 @@ export function apiRecoveryMessage({
     return `Too many ${resource} requests were sent. Try again${wait}; your saved data is unchanged.`;
   }
   if (status >= 500) {
+    if (detail) {
+      return /retry|temporar|unavailable|could not|failed/i.test(detail)
+        ? detail
+        : `${detail.replace(/[.!?]+$/, "")}. Try again; existing saved data is unchanged.`;
+    }
     return `The ${resource} service could not finish this request. Try again; existing saved data is unchanged.`;
   }
   return detail ?? `The ${resource} request failed (${status}). Review the page and try again.`;

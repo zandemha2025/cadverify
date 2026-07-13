@@ -20,6 +20,7 @@
  */
 import { validateFile, type ValidationResult, type CostReport, type CostGeometry } from "@/lib/api";
 import { API_BASE } from "@/lib/api-base";
+import { apiProblemDetail, apiRecoveryMessage } from "@/lib/api-recovery";
 import { listMachines, ownedProcessesFrom, type OwnedMachine } from "./machine-api";
 import { readVerification, type VerificationBlock } from "./verification";
 import {
@@ -161,7 +162,13 @@ async function postCost(
     };
   }
   const detail =
-    (body.message as string) || (body.detail as string) || `Cost request failed (${res.status})`;
+    apiProblemDetail(body) ||
+    apiRecoveryMessage({
+      status: res.status,
+      payload: body,
+      resource: "verification",
+      retryAfter: res.headers.get("retry-after"),
+    });
   return { cost: null, invalid: null, error: detail };
 }
 

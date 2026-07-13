@@ -1167,6 +1167,9 @@ function VerdictBanner({
           No routing, DFM, or should-cost was computed, and nothing here is estimated.{" "}
           {failure.action}
         </p>
+        <div style={{ marginTop: 14 }}>
+          <GhostButton onClick={onReverify}>Retry verification →</GhostButton>
+        </div>
       </BannerFrame>
     );
   }

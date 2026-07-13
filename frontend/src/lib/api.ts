@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import * as Sentry from "@sentry/nextjs";
+import { apiProblemDetail, apiRecoveryMessage } from "@/lib/api-recovery";
 import { API_BASE, browserOrBackendUrl } from "./api-base";
 import type { AnalysisListRow } from "./recent-parts";
 
@@ -317,12 +318,27 @@ const apiClient = {
         const retryAfter = parseInt(res.headers.get("Retry-After") || "60", 10);
         toast.error(`Rate limit exceeded. Try again in ${retryAfter}s.`);
         const err = await res.json().catch(() => ({ detail: "Rate limit exceeded" }));
-        throw new Error(err.detail || "Rate limit exceeded");
+        throw new Error(
+          apiRecoveryMessage({
+            status: 429,
+            payload: err,
+            resource: "verification",
+            retryAfter: String(retryAfter),
+          }),
+        );
       }
 
       // 5xx — retry with backoff
       if (res.status >= 500) {
-        lastError = new Error(`Server error ${res.status}`);
+        const problem = await res.clone().json().catch(() => null);
+        lastError = new Error(
+          apiRecoveryMessage({
+            status: res.status,
+            payload: problem,
+            resource: "verification",
+            retryAfter: res.headers.get("retry-after"),
+          }),
+        );
         if (attempt === retries) {
           toast.error("Server error. We've been notified.");
           Sentry.captureException(lastError, { extra: { url, status: res.status } });
@@ -334,7 +350,10 @@ const apiClient = {
       // 4xx (non-429) — no retry
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(err.detail || err.message || `Request failed: ${res.status}`);
+        throw new Error(
+          apiProblemDetail(err) ||
+            apiRecoveryMessage({ status: res.status, payload: err, resource: "verification" }),
+        );
       }
 
       return res;
