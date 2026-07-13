@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { makeGoldenPathEvidence } from "./golden-path-evidence.mjs";
 import {
@@ -64,6 +67,18 @@ test("inventory contains 54 browser and 10 recovery paths", () => {
   assert.equal(LOCAL_FAILURE_IDS.length, 10);
   assert.equal(LOCAL_100_IDS.length, 64);
   assert.equal(new Set(LOCAL_100_IDS).size, 64);
+});
+
+test("gate inventory exactly matches the documented local contract", () => {
+  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+  const contract = readFileSync(path.join(repoRoot, "docs/HUMAN_SIMULATION_GOLDEN_PATHS.md"), "utf8");
+  const documentedBrowserIds = [...contract.matchAll(/^\| ([A-Z]+-\d+) \|.*\| browser \|$/gm)]
+    .map((match) => match[1]);
+  const documentedFailureIds = [...contract.matchAll(/^\| (FAIL-\d+) \|/gm)]
+    .map((match) => match[1]);
+
+  assert.deepEqual([...LOCAL_BROWSER_IDS].sort(), documentedBrowserIds.sort());
+  assert.deepEqual([...LOCAL_FAILURE_IDS].sort(), documentedFailureIds.sort());
 });
 
 test("complete clean current-build evidence earns LOCAL_100", () => {
@@ -132,4 +147,3 @@ test("missing screenshot bytes and dirty HEAD both block the claim", () => {
   assert.ok(result.problems.some((problem) => problem.type === "dirty_worktree"));
   assert.ok(result.problems.some((problem) => problem.type === "missing_screenshot_file" && problem.id === "FAIL-10"));
 });
-
