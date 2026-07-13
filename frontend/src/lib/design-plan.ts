@@ -144,6 +144,14 @@ export function resolveViewedRevisionNo(
     : currentRevision;
 }
 
+export function designRevisionRefreshKey(
+  design: Pick<Design, "id" | "current_revision" | "status"> | null,
+): string | null {
+  return design
+    ? `${design.id}:${design.current_revision}:${design.status}`
+    : null;
+}
+
 export function validateDesignForm(form: DesignForm): string | null {
   if (!form.name.trim()) return "Give the design a name.";
   const positive = [form.width, form.depth, form.thickness];

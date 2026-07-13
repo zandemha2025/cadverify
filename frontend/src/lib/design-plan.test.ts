@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   DEFAULT_DESIGN_FORM,
   buildDesignPlan,
+  designRevisionRefreshKey,
   formFromPlan,
   resolveViewedRevisionNo,
   validateDesignForm,
@@ -51,6 +52,27 @@ test("switching designs resets a shared revision number to the new current revis
 
   assert.equal(resolveViewedRevisionNo(1, revisions, 2, true), 2);
   assert.equal(resolveViewedRevisionNo(1, revisions, 2, false), 1);
+});
+
+test("revision history refreshes only for a real selected-design state change", () => {
+  const generating = {
+    id: "01DESIGN",
+    current_revision: 2,
+    status: "generating" as const,
+  };
+
+  assert.equal(
+    designRevisionRefreshKey({ ...generating }),
+    designRevisionRefreshKey({ ...generating }),
+  );
+  assert.notEqual(
+    designRevisionRefreshKey(generating),
+    designRevisionRefreshKey({ ...generating, status: "ready" }),
+  );
+  assert.notEqual(
+    designRevisionRefreshKey(generating),
+    designRevisionRefreshKey({ ...generating, current_revision: 3 }),
+  );
 });
 
 test("bracket form emits no executable or free-form operation", () => {

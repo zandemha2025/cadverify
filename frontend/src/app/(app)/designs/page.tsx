@@ -36,6 +36,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   DEFAULT_DESIGN_FORM,
   buildDesignPlan,
+  designRevisionRefreshKey,
   formFromDesign,
   formFromPlan,
   resolveViewedRevisionNo,
@@ -178,6 +179,9 @@ export default function DesignsPage() {
     () => designs.find((design) => design.id === selectedId) ?? designs[0] ?? null,
     [designs, selectedId],
   );
+  const revisionRefreshKey = designRevisionRefreshKey(selected);
+  const revisionSelectedId = selected?.id ?? null;
+  const revisionCurrentRevision = selected?.current_revision ?? null;
 
   const refresh = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -213,47 +217,51 @@ export default function DesignsPage() {
   }, [hasActiveGeneration, refresh]);
 
   useEffect(() => {
-    if (!selected) {
+    if (
+      !revisionRefreshKey ||
+      !revisionSelectedId ||
+      revisionCurrentRevision === null
+    ) {
       setRevisionHistory([]);
       setRevisionHistoryOwnerId(null);
       setViewedRevisionNo(null);
       revisionDesignIdRef.current = null;
       return;
     }
-    const designChanged = revisionDesignIdRef.current !== selected.id;
-    revisionDesignIdRef.current = selected.id;
+    const designChanged = revisionDesignIdRef.current !== revisionSelectedId;
+    revisionDesignIdRef.current = revisionSelectedId;
     if (designChanged) {
-      setRevisionHistory(selected.revision ? [selected.revision] : []);
-      setRevisionHistoryOwnerId(selected.id);
-      setViewedRevisionNo(selected.current_revision);
+      setRevisionHistory([]);
+      setRevisionHistoryOwnerId(revisionSelectedId);
+      setViewedRevisionNo(revisionCurrentRevision);
     }
     let cancelled = false;
-    void listDesignRevisions(selected.id).then(
+    void listDesignRevisions(revisionSelectedId).then(
       (revisions) => {
         if (cancelled) return;
         setRevisionHistory(revisions);
-        setRevisionHistoryOwnerId(selected.id);
+        setRevisionHistoryOwnerId(revisionSelectedId);
         setViewedRevisionNo((current) =>
           resolveViewedRevisionNo(
             current,
             revisions,
-            selected.current_revision,
+            revisionCurrentRevision,
             designChanged,
           ),
         );
       },
       () => {
         if (!cancelled) {
-          setRevisionHistory(selected.revision ? [selected.revision] : []);
-          setRevisionHistoryOwnerId(selected.id);
-          setViewedRevisionNo(selected.current_revision);
+          setRevisionHistory([]);
+          setRevisionHistoryOwnerId(revisionSelectedId);
+          setViewedRevisionNo(revisionCurrentRevision);
         }
       },
     );
     return () => {
       cancelled = true;
     };
-  }, [selected]);
+  }, [revisionCurrentRevision, revisionRefreshKey, revisionSelectedId]);
 
   const update = <K extends keyof DesignForm,>(key: K, value: DesignForm[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
