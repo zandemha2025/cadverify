@@ -1263,7 +1263,9 @@ asyncio.run(main())
         });
         this.equal("ROLE-03", "owner invitation create status", invite.status, 201);
         this.equal("ROLE-03", "owner invitation exact role", invite.json?.role, "viewer");
-        this.ok("ROLE-03", "owner invitation returns one-time accept link", /\/invite\/accept\?token=/.test(invite.json?.accept_link || ""));
+        const acceptLink = new URL(invite.json?.accept_link || "", appUrl);
+        this.equal("ROLE-03", "owner invitation accept path", acceptLink.pathname, "/orgs/accept");
+        this.ok("ROLE-03", "owner invitation returns one-time accept token", Boolean(acceptLink.searchParams.get("token")));
         const pending = await this.request(owner, "/api/v1/orgs/invites");
         this.ok("ROLE-03", "pending invitation is durable", (pending.json?.invites || []).some((item) => item.id === invite.json?.id && item.status === "pending"));
         const revoked = await this.request(owner, `/api/v1/orgs/invites/${invite.json?.id}`, { method: "DELETE" });
@@ -1637,6 +1639,7 @@ asyncio.run(main())
       suite: "role-tenant-boundary-matrix",
       runId,
       startedAt: new Date(this.startedAt).toISOString(),
+      generatedAt: new Date(finishedAt).toISOString(),
       finishedAt: new Date(finishedAt).toISOString(),
       durationMs: finishedAt - this.startedAt,
       appUrl,

@@ -486,7 +486,7 @@ asyncio.run(main())
     const revokedLink = await this.createInvite(owner, this.seedData.people.revoked.email);
     let revokedRow = owner.page.getByRole("row").filter({ hasText: this.seedData.people.revoked.email });
     await revokedRow.getByRole("button", { name: "Revoke", exact: true }).click();
-    const dialog = owner.page.getByRole("dialog");
+    const dialog = owner.page.getByRole("alertdialog");
     await dialog.getByRole("button", { name: "Revoke invite" }).click();
     await owner.page.waitForTimeout(500);
     revokedRow = owner.page.getByRole("row").filter({ hasText: this.seedData.people.revoked.email });

@@ -464,6 +464,25 @@ function allDfmIssues(validation) {
   ];
 }
 
+function hasStructuredCitation(citation) {
+  if (!citation) return true;
+  return ["text", "standard", "clause", "rule_id"].some(
+    (field) => typeof citation[field] === "string" && citation[field].trim().length > 0,
+  );
+}
+
+function isStructuredDfmIssue(issue) {
+  return (
+    typeof issue.code === "string" && issue.code.length > 0 &&
+    typeof issue.severity === "string" && issue.severity.length > 0 &&
+    typeof issue.message === "string" && issue.message.length > 0 &&
+    typeof (issue.fix ?? issue.fix_suggestion) === "string" && (issue.fix ?? issue.fix_suggestion).length > 0 &&
+    typeof issue.scope === "string" && issue.scope.length > 0 &&
+    (typeof issue.process === "string" || issue.scope === "universal") &&
+    hasStructuredCitation(issue.citation)
+  );
+}
+
 async function runSuite(page, account) {
   const boundaryMill = "QA Boundary Mill";
   const microMill = "QA Micro Mill";
@@ -859,7 +878,7 @@ async function runSuite(page, account) {
     const saved = decisionId ? await browserApi(page, `/api/proxy/cost-decisions/${decisionId}`) : { status: 0, body: null };
     const savedEstimate = saved.body?.result?.estimates?.[0];
     const confidence = estimate?.confidence;
-    const processControl = page.getByText("Process", { exact: true }).locator("..");
+    const processControl = page.getByRole("group", { name: "Process", exact: true });
     const processButtons = processControl.getByRole("button");
     const processCount = await processButtons.count();
     const initiallyPressed = await processControl.getByRole("button", { pressed: true }).textContent();
@@ -907,21 +926,13 @@ async function runSuite(page, account) {
     await prepareAnalyze(page);
     const run = await uploadAnalyze(page, goldenStep, 150_000);
     const issues = allDfmIssues(run.dfm.body);
-    const structured = issues.every((issue) =>
-      typeof issue.code === "string" && issue.code.length > 0 &&
-      typeof issue.severity === "string" && issue.severity.length > 0 &&
-      typeof issue.message === "string" && issue.message.length > 0 &&
-      typeof (issue.fix ?? issue.fix_suggestion) === "string" && (issue.fix ?? issue.fix_suggestion).length > 0 &&
-      typeof issue.scope === "string" && issue.scope.length > 0 &&
-      (typeof issue.process === "string" || issue.scope === "universal") &&
-      (!issue.citation || typeof issue.citation?.text === "string")
-    );
+    const structured = issues.every(isStructuredDfmIssue);
     const localized = issues.filter((issue) => issue.scope === "localized");
     const geometryLinked = localized.every((issue) =>
       (Array.isArray(issue.region_center) && issue.region_center.length === 3) ||
       (Array.isArray(issue.affected_faces_sample) && issue.affected_faces_sample.length > 0)
     );
-    const cited = issues.filter((issue) => typeof issue.citation?.text === "string" && issue.citation.text.length > 0);
+    const cited = issues.filter((issue) => issue.citation && hasStructuredCitation(issue.citation));
     const ranked = run.dfm.body?.process_scores ?? [];
     const routingButton = page.getByRole("button", { name: /Routing|Inspection|DFM/ }).first();
     if (await routingButton.count()) await routingButton.click().catch(() => {});
