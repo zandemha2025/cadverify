@@ -130,36 +130,37 @@ export function VerifyApp() {
       setAssemblyAnalysis(null);
       setAssemblyAnalyzing(false);
 
-      // Assembly detection runs IN PARALLEL and is best-effort — it only fires the
-      // extra request for STEP/IGES, returns null for a single part or STL, and
-      // never blocks or alters the single-part path. When it resolves to a real
-      // multi-part assembly, the stage + right panel switch to the in-context view.
-      void fetchAssembly(f)
-        .then((asm) => {
-          if (runSeq.current !== seq) {
-            asm?.revoke();
-            return;
-          }
-          if (asm) {
-            setAssembly(asm);
-            setAssemblySelectedId(defaultPartOfInterest(asm.model.parts));
-            // The heavier per-part analysis (real DFM + should-cost + interference
-            // on every solid, ~15s) now runs; the render is already up. Guarded by
-            // the same run token so a superseded upload never merges stale analysis.
-            setAssemblyAnalyzing(true);
-            void fetchAssemblyAnalysis(f)
-              .then((analysis) => {
-                if (runSeq.current !== seq) return;
-                setAssemblyAnalysis(analysis);
-                setAssemblyAnalyzing(false);
-              })
-              .catch(() => {
-                if (runSeq.current !== seq) return;
-                setAssemblyAnalyzing(false);
-              });
-          }
-        })
-        .catch(() => {});
+      // Resolve STEP/IGES assembly structure before dispatching the single-part
+      // pipeline. The old parallel path knowingly sent real assemblies through
+      // /validate/cost too, producing a browser-visible 400 before the successful
+      // assembly result replaced it. A successful assembly now makes only its
+      // three truthful requests: structured model, renderable GLB, and per-part
+      // analysis. Single solids and non-assembly formats continue below.
+      const asm = await fetchAssembly(f).catch(() => null);
+      if (runSeq.current !== seq) {
+        asm?.revoke();
+        return;
+      }
+      if (asm) {
+        setAssembly(asm);
+        setAssemblySelectedId(defaultPartOfInterest(asm.model.parts));
+        setRunning(false);
+        // The heavier per-part analysis (real DFM + should-cost + interference
+        // on every solid, ~15s) now runs; the render is already up. Guarded by
+        // the same run token so a superseded upload never merges stale analysis.
+        setAssemblyAnalyzing(true);
+        void fetchAssemblyAnalysis(f)
+          .then((analysis) => {
+            if (runSeq.current !== seq) return;
+            setAssemblyAnalysis(analysis);
+            setAssemblyAnalyzing(false);
+          })
+          .catch(() => {
+            if (runSeq.current !== seq) return;
+            setAssemblyAnalyzing(false);
+          });
+        return;
+      }
 
       try {
         const r = await runVerification({ file: f, env, materialClass });

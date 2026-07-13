@@ -13,13 +13,13 @@ test("capacity failures never blame customer geometry", () => {
   assert.doesNotMatch(copy.title + copy.explanation + copy.action, /tessellat/i);
 });
 
-test("unsupported files and actual mesher failures get distinct recovery copy", () => {
+test("unsupported, unreadable, and actual mesher failures get distinct recovery copy", () => {
   assert.equal(analysisFailureCopy("Unsupported file type; use .stl").kind, "unsupported");
   assert.equal(
     analysisFailureCopy(
       "File does not appear to be a valid STEP file (missing ISO-10303-21 header).",
     ).kind,
-    "unsupported",
+    "unreadable",
   );
   assert.equal(
     analysisFailureCopy(
@@ -37,8 +37,20 @@ test("invalid STEP magic gets actionable format recovery without a tessellation 
   const copy = analysisFailureCopy(
     "File does not appear to be a valid STEP file (missing ISO-10303-21 header).",
   );
+  assert.equal(copy.kind, "unreadable");
   assert.equal(copy.title, "We couldn’t read this file.");
   assert.match(copy.action, /STL, STEP, STP, IGES, or IGS/i);
+  assert.doesNotMatch(copy.title + copy.explanation + copy.action, /tessellat/i);
+});
+
+test("supported STEP with corrupt exchange contents gets re-export guidance", () => {
+  const copy = analysisFailureCopy(
+    "Could not read STEP geometry (not a valid/supported STEP file).",
+  );
+  assert.equal(copy.kind, "unreadable");
+  assert.equal(copy.title, "We couldn’t read this file.");
+  assert.match(copy.explanation, /supported CAD format.*could not be parsed/i);
+  assert.match(copy.action, /Re-export.*clean STL, STEP, STP, IGES, or IGS/i);
   assert.doesNotMatch(copy.title + copy.explanation + copy.action, /tessellat/i);
 });
 

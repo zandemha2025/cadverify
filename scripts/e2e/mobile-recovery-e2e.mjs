@@ -854,10 +854,10 @@ class MobileRecoveryRun {
       const recoveryScreenshot = await this.screenshot("FAIL-01", "valid-step-recovered");
       this.artifacts.fail01Recovery = recoveryScreenshot;
       return {
-        persona: "mobile manufacturing engineer correcting an invalid native CAD upload",
+        persona: "mobile manufacturing engineer correcting an unreadable STEP exchange export",
         preconditions: ["authenticated Verify workspace", "375x812 viewport", "a .step file with invalid magic bytes", "tracked backend/tests/assets/cube.step"],
         actions: ["selected the invalid .step file", "read the exact file-format guidance", "selected the tracked valid cube.step in the same session", "waited for measured geometry and saved outcome"],
-        visible: ["We couldn’t read this file.", "Upload an STL, STEP, STP, IGES, or IGS part", "20.0 × 15.0 × 10.0 mm"],
+        visible: ["We couldn’t read this file.", "Re-export the original part as a clean STL, STEP, STP, IGES, or IGS file", "20.0 × 15.0 × 10.0 mm"],
         persisted: { decisionsBefore: decisionsBefore.length, decisionsAfter: decisionsAfter.length, recoveredCubeDecisionIds: cubeDecisions.map((decision) => decision.id) },
         numeric: { invalidRowsCreated: decisionsAfter.length - decisionsBefore.length - cubeDecisions.length, recoveredCubeDecisions: cubeDecisions.length, envelopeMm: [20, 15, 10] },
         authorization: "the same authenticated organization session handled rejection and recovery",
@@ -865,7 +865,7 @@ class MobileRecoveryRun {
         screenshot: failureScreenshot,
         assertions: [
           assertion("invalid file title", true, /We couldn’t read this file\./.test(failureText)),
-          assertion("supported format guidance", true, /STL, STEP, STP, IGES, or IGS/i.test(failureText)),
+          assertion("clean export guidance", true, /re-export.*STL, STEP, STP, IGES, or IGS/i.test(failureText)),
           assertion("invalid magic not mislabeled tessellation", false, /This part couldn’t be tessellated/i.test(failureText)),
           assertion("valid cube envelope", true, /20\.0 × 15\.0 × 10\.0 mm/.test(recoveryText)),
           assertion("recovered cube decision exists", true, cubeDecisions.length >= 1),

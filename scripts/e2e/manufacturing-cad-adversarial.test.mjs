@@ -63,11 +63,13 @@ test("every owned browser path emits the common evidence envelope", () => {
   assert.match(source, /requestFailures: pathRequestFailures/);
 });
 
-test("CAD evidence detects remote lighting and reads assembly payload bytes and summary", () => {
+test("CAD evidence detects remote lighting and proves rendered assembly bytes and summary", () => {
   assert.match(source, /raw\\\.githack\\\.com\|drei-assets/);
   assert.match(source, /forbiddenCadAssetRequests\.push/);
   assert.match(source, /"remote CAD lighting requests"/);
-  assert.match(source, /const glbBody = await glbResponse\.body\(\)/);
+  assert.match(source, /glbResponse\.headers\(\)\["x-assembly-glb-bytes"\]/);
+  assert.match(source, /data-render-state/);
+  assert.match(source, /PER-PART ANALYSIS — REAL/);
   assert.match(source, /analysisBody\?\.analysis\?\.analysis_summary/);
   assert.match(source, /"combined assembly GLB is non-empty"/);
 });

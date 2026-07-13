@@ -1183,6 +1183,7 @@ async def validate_assembly(
         headers = {
             "X-Assembly-Kind": model.kind,
             "X-Assembly-Parts": str(model.part_count),
+            "X-Assembly-GLB-Bytes": str(len(glb)),
             "Cache-Control": "no-store",
         }
         return Response(content=glb, media_type="model/gltf-binary", headers=headers)

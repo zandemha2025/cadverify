@@ -9,7 +9,7 @@
  * measurement); a rate only re-tags ● SHOP once a governed accounting card is bound.
  * Absent inventory → the honest "declare your floor" empty state.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Children, cloneElement, isValidElement, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { C, MONO, NUM, USD, procLabel, PROCESS_LABELS } from "@/lib/verify/tokens";
 import {
@@ -525,10 +525,25 @@ const inputStyle: React.CSSProperties = {
 };
 
 function Field({ label, children, span, error }: { label: string; children: React.ReactNode; span?: boolean; error?: string }) {
+  // A wrapping <label> around a <select> inherits every <option>'s text in
+  // Chromium's accessible-name computation (for example, "PROCESS FDM …").
+  // Give each actual form control the concise visible label explicitly so
+  // keyboard/assistive-technology users can address it deterministically.
+  const labelledChildren = Children.map(children, (child) => {
+    if (!isValidElement<{ "aria-label"?: string }>(child)) return child;
+    const isControl =
+      typeof child.type === "string" &&
+      ["input", "select", "textarea"].includes(child.type);
+    if (!isControl) return child;
+    return cloneElement(child, {
+      "aria-label": child.props["aria-label"] ?? label,
+    });
+  });
+
   return (
     <label style={{ display: "block", gridColumn: span ? "span 2" : undefined }}>
       <span style={{ display: "block", fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: C.ink45, marginBottom: 5 }}>{label}</span>
-      {children}
+      {labelledChildren}
       {error && <span role="alert" style={{ display: "block", marginTop: 5, fontFamily: MONO, fontSize: 10, lineHeight: 1.4, color: C.fail }}>{error}</span>}
     </label>
   );

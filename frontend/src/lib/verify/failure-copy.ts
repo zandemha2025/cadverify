@@ -1,4 +1,4 @@
-export type AnalysisFailureKind = "capacity" | "unsupported" | "geometry" | "unknown";
+export type AnalysisFailureKind = "capacity" | "unreadable" | "unsupported" | "geometry" | "unknown";
 
 export interface AnalysisFailureCopy {
   kind: AnalysisFailureKind;
@@ -23,15 +23,25 @@ export function analysisFailureCopy(reason: string | null | undefined): Analysis
   }
 
   if (
-    /unsupported file type|use \.stl|not a (?:cad|supported)|does not appear to be a valid (?:step|stl|iges)|missing iso-10303-21 header|too small to be a valid stl|proprietary\/native cad|requires a licensed reader/i.test(
-      value,
-    )
+    /does not appear to be a valid (?:step|stl|iges)|missing iso-10303-21 header|too small to be a valid stl|could not read (?:step(?:\/iges)?|iges) geometry|not a valid\/supported (?:step|iges|file)/i.test(value)
+  ) {
+    return {
+      kind: "unreadable",
+      title: "We couldn’t read this file.",
+      explanation: "The file name uses a supported CAD format, but its contents could not be parsed as a valid model.",
+      action: "Re-export the original part as a clean STL, STEP, STP, IGES, or IGS file, then upload that export.",
+      toast: "Could not analyze — the CAD export is unreadable",
+    };
+  }
+
+  if (
+    /unsupported file type|use \.stl|not a (?:cad|supported)|proprietary\/native cad|requires a licensed reader/i.test(value)
   ) {
     return {
       kind: "unsupported",
       title: "We couldn’t read this file.",
-      explanation: "The selected file type is not supported for verification.",
-      action: "Upload an STL, STEP, STP, IGES, or IGS part to run the walk.",
+      explanation: "This file type cannot be read directly for verification.",
+      action: "Export the original part as STL, STEP, STP, IGES, or IGS, then upload that exchange file.",
       toast: "Could not analyze — unsupported CAD file type",
     };
   }

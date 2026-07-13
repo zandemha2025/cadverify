@@ -923,16 +923,16 @@ async function runSuite(page, account) {
     return {
       observed: {
         url: page.url(),
-        visible: ["We couldn’t read this file.", "Upload an STL, STEP, STP, IGES, or IGS part to run the walk.", "cube.step"],
+        visible: ["We couldn’t read this file.", "Re-export the original part as a clean STL, STEP, STP, IGES, or IGS file, then upload that export.", "cube.step"],
         persisted: { invalidDecision: rejected.cost.body?.saved?.id ?? null, recoveryDecision: recovered.cost.body?.saved?.id ?? null },
         numeric: { rejection: [rejected.cost.status, rejected.dfm.status], recovery: [recovered.cost.status, recovered.dfm.status] },
         authorization: "same authenticated session used for rejection and recovery",
         recovery: "Correct cube.step completed in the same account/session without reauthentication.",
       },
-      expectedHttpErrorCount: 2,
+      expectedHttpErrorCount: 4,
       assertions: [
         assertRecord("unreadable-file exact title", "We couldn’t read this file.", failureText.includes("We couldn’t read this file."), failureText.includes("We couldn’t read this file.")),
-        assertRecord("supported-format guidance", "STL, STEP, STP, IGES, or IGS", failureText, failureText.includes("STL, STEP, STP, IGES, or IGS")),
+        assertRecord("clean-export guidance", "STL, STEP, STP, IGES, or IGS", failureText, failureText.includes("STL, STEP, STP, IGES, or IGS") && /re-export/i.test(failureText)),
         assertRecord("unreadable file rejected without decision", "no decision id", rejected.cost.body?.saved?.id ?? "no decision id", !rejected.cost.body?.saved?.id),
         assertRecord("correct-file recovery", [200, 200], [recovered.cost.status, recovered.dfm.status], recovered.cost.status === 200 && recovered.dfm.status === 200 && recoveryText.includes("cube.step")),
       ],
@@ -941,30 +941,31 @@ async function runSuite(page, account) {
 
   await recordPath(page, {
     id: "FAIL-02",
-    persona: "manufacturing engineer recovering from a real STEP mesher/parse failure",
+    persona: "manufacturing engineer recovering from a corrupt supported STEP export",
     preconditions: ["STEP magic is valid but the body is structurally corrupt.", "Authenticated Verify session and healthy CAD kernel."],
-    actions: ["Upload corrupt-valid-magic STEP.", "Read the exact tessellation/re-export guidance.", "Upload the clean golden STEP and confirm ordinary verification succeeds."],
+    actions: ["Upload corrupt-valid-magic STEP.", "Read the exact unreadable-export guidance without a fabricated tessellation diagnosis.", "Upload the clean golden STEP and confirm ordinary verification succeeds."],
   }, async () => {
     await prepareVerify(page);
     const badStep = uploadPayload("corrupt-surface.step", Buffer.from("ISO-10303-21;\nHEADER;\nTHIS IS NOT VALID STEP AT ALL\u0000\u0001"));
     const rejected = await uploadAnalyze(page, badStep, 120_000);
-    await page.getByText("This part couldn’t be tessellated.", { exact: true }).waitFor({ timeout: 30_000 });
+    await page.getByText("We couldn’t read this file.", { exact: true }).waitFor({ timeout: 30_000 });
     const failureText = await bodyText(page);
     const recovered = await uploadAnalyze(page, goldenStep, 150_000);
     const recoveryText = await bodyText(page);
     return {
       observed: {
         url: page.url(),
-        visible: ["This part couldn’t be tessellated.", "Re-export the part as a clean solid and upload it again.", "cube.step"],
+        visible: ["We couldn’t read this file.", "Re-export the original part as a clean STL, STEP, STP, IGES, or IGS file, then upload that export.", "cube.step"],
         persisted: { corruptDecision: rejected.cost.body?.saved?.id ?? null, recoveryDecision: recovered.cost.body?.saved?.id ?? null },
         numeric: { rejection: [rejected.cost.status, rejected.dfm.status], recovery: [recovered.cost.status, recovered.dfm.status], rejectionElapsedMs: rejected.elapsedMs },
-        authorization: "same authenticated session used for tessellation failure and clean-solid recovery",
+        authorization: "same authenticated session used for parse rejection and clean-export recovery",
         recovery: "Clean golden STEP completed without a new session and produced a durable decision.",
       },
-      expectedHttpErrorCount: 2,
+      expectedHttpErrorCount: 4,
       assertions: [
-        assertRecord("tessellation exact title", "This part couldn’t be tessellated.", failureText.includes("This part couldn’t be tessellated."), failureText.includes("This part couldn’t be tessellated.")),
-        assertRecord("clean-solid action", "Re-export the part as a clean solid and upload it again.", failureText, failureText.includes("Re-export the part as a clean solid and upload it again.")),
+        assertRecord("unreadable-export exact title", "We couldn’t read this file.", failureText.includes("We couldn’t read this file."), failureText.includes("We couldn’t read this file.")),
+        assertRecord("clean-export action", "Re-export the original part as a clean STL, STEP, STP, IGES, or IGS file, then upload that export.", failureText, failureText.includes("Re-export the original part as a clean STL, STEP, STP, IGES, or IGS file, then upload that export.")),
+        assertRecord("parse failure is not mislabeled tessellation", false, /tessellat/i.test(failureText), !/tessellat/i.test(failureText)),
         assertRecord("corrupt input bounded 4xx", "both 4xx and <120s", { status: [rejected.cost.status, rejected.dfm.status], elapsedMs: rejected.elapsedMs }, rejected.cost.status >= 400 && rejected.cost.status < 500 && rejected.dfm.status >= 400 && rejected.dfm.status < 500 && rejected.elapsedMs < 120_000),
         assertRecord("clean-solid recovery", [200, 200], [recovered.cost.status, recovered.dfm.status], recovered.cost.status === 200 && recovered.dfm.status === 200 && recoveryText.includes("cube.step")),
       ],
@@ -1244,8 +1245,19 @@ async function runSuite(page, account) {
     await page.getByText(/Real STEP assembly — 18 solids/).waitFor({ timeout: 120_000 });
     const analysisResponse = await analysisPromise;
     const analysisBody = await analysisResponse.json();
-    const glbBody = await glbResponse.body();
-    await page.getByTestId("assembly-analysis-status").filter({ hasText: /analyzed|analysis complete|parts/i }).last().waitFor({ timeout: 180_000 }).catch(() => {});
+    const glbBytes = Number(glbResponse.headers()["x-assembly-glb-bytes"] ?? "0");
+    const analysisStatus = page
+      .getByTestId("assembly-analysis-status")
+      .filter({ hasText: /PER-PART ANALYSIS — REAL/i })
+      .last();
+    await analysisStatus.waitFor({ timeout: 90_000 });
+    const analysisStatusText = await analysisStatus.innerText();
+    const renderMode = page.getByTestId("verify-stage-render-mode");
+    await renderMode.waitFor({ timeout: 30_000 });
+    const renderState = await renderMode.getAttribute("data-render-state");
+    const renderedPartCount = Number(
+      (await page.getByTestId("verify-stage-assembly").getAttribute("data-assembly-parts")) ?? "0",
+    );
     const elapsedMs = Date.now() - started;
     const text = await bodyText(page);
     const summary = analysisBody?.analysis?.analysis_summary;
@@ -1254,18 +1266,20 @@ async function runSuite(page, account) {
         url: page.url(),
         visible: ["Real STEP assembly — 18 solids", "18 parts in world position", text.match(/\d+ of 18|18 of 18|analy[sz]ed/i)?.[0] || "per-part analysis status rendered"],
         persisted: "assembly upload is zero-egress/read-only by contract; no raw CAD blob persisted",
-        numeric: { partCount: model.part_count, uniqueDesigns: Object.keys(model.unique_designs ?? {}).length, glbBytes: glbBody.length, summary, elapsedMs },
+        numeric: { partCount: model.part_count, uniqueDesigns: Object.keys(model.unique_designs ?? {}).length, glbBytes, summary, elapsedMs, renderState, renderedPartCount },
         authorization: `assembly JSON/GLB/analysis HTTP ${jsonResponse.status()}/${glbResponse.status()}/${analysisResponse.status()}`,
         recovery: "Assembly tree remained interactive after the bounded per-part analysis completed.",
       },
-      expectedHttpErrorCount: 1,
+      expectedHttpErrorCount: 0,
       assertions: [
         assertRecord("assembly endpoint statuses", [200, 200, 200], [jsonResponse.status(), glbResponse.status(), analysisResponse.status()], jsonResponse.status() === 200 && glbResponse.status() === 200 && analysisResponse.status() === 200),
         assertRecord("assembly classification", { kind: "assembly", part_count: 18 }, { kind: model.kind, part_count: model.part_count }, model.kind === "assembly" && model.part_count === 18),
         assertRecord("all part instances serialized", 18, model.parts?.length, model.parts?.length === 18),
-        assertRecord("combined assembly GLB is non-empty", "> 0 bytes", glbBody.length, glbBody.length > 0),
+        assertRecord("combined assembly GLB is non-empty", "> 0 bytes", glbBytes, Number.isFinite(glbBytes) && glbBytes > 0),
         assertRecord("per-part analysis produced outcomes", "> 0 analyzed and total 18", summary, summary?.parts_total === 18 && summary?.parts_analyzed > 0),
-        assertRecord("assembly analysis bounded", "< 180 seconds", elapsedMs, elapsedMs < 180_000),
+        assertRecord("assembly analysis status exact", "PER-PART ANALYSIS — REAL and 18/18 costed", analysisStatusText, /PER-PART ANALYSIS — REAL/i.test(analysisStatusText) && /18\/18 costed/i.test(analysisStatusText)),
+        assertRecord("assembly analysis bounded", "< 90 seconds", elapsedMs, elapsedMs < 90_000),
+        assertRecord("assembly real shell rendered", { state: "real-assembly", parts: 18 }, { state: renderState, parts: renderedPartCount }, renderState === "real-assembly" && renderedPartCount === 18),
         assertRecord("assembly visible state", true, text.includes("Real STEP assembly — 18 solids"), text.includes("Real STEP assembly — 18 solids")),
       ],
     };

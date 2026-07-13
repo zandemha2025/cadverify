@@ -580,6 +580,12 @@ def check_rotational_symmetry(
     tolerance: float = 0.10,
 ) -> list[Issue]:
     """Part must be roughly rotationally symmetric for turning."""
+    # Trimesh's inertia calculation derives mass properties and divides by
+    # signed volume. Open or zero-volume meshes have already failed the
+    # universal solid-geometry gate; asking for inertia here adds no truthful
+    # signal and can emit divide-by-zero RuntimeWarnings plus a noisy traceback.
+    if not ctx.info.is_watertight or not np.isfinite(ctx.info.volume) or ctx.info.volume <= 0:
+        return []
     try:
         inertia = ctx.mesh.moment_inertia
         eig = np.linalg.eigvalsh(inertia)

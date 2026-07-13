@@ -36,6 +36,11 @@ const RELAY_HEADERS = [
   "x-mesh-preview-faces",
   "x-mesh-decimated",
   "x-mesh-source",
+  // Assembly provenance lets the browser prove that a successful rendered
+  // response contains the complete binary payload even after WebGL consumes it.
+  "x-assembly-kind",
+  "x-assembly-parts",
+  "x-assembly-glb-bytes",
   // Immutable Design Studio STEP evidence used by the Verify handoff.
   "x-geometry-sha256",
 ];
