@@ -31,19 +31,20 @@ test("release build probes do not reuse stale sockets after synchronous suites",
   assert.match(releaseRunner, /after \$\{BUILD_PROBE_ATTEMPTS\} attempts/);
 });
 
-test("API-key mutations finish their server-action streams before reload", () => {
-  assert.match(compareRunner, /async beginDeveloperAction\(actor, button, label\)/);
-  assert.match(compareRunner, /async finishDeveloperAction\(actor, response, label\)/);
+test("API-key mutations finish finite proxy responses before reload", () => {
+  assert.match(compareRunner, /async beginDeveloperMutation\(actor, button, label/);
+  assert.match(compareRunner, /async finishDeveloperMutation\(actor, response, label\)/);
   assert.match(compareRunner, /response\.finished\(\)/);
-  assert.match(compareRunner, /server action stream did not finish within 30 seconds/);
-  assert.equal(compareRunner.match(/await this\.beginDeveloperAction\(/g)?.length, 3);
-  assert.equal(compareRunner.match(/await this\.finishDeveloperAction\(/g)?.length, 3);
-  assert.doesNotMatch(compareRunner, /failure === "net::ERR_ABORTED".*settings\/developer/);
+  assert.match(compareRunner, /mutation response did not finish within 30 seconds/);
+  assert.equal(compareRunner.match(/await this\.beginDeveloperMutation\(/g)?.length, 3);
+  assert.equal(compareRunner.match(/await this\.finishDeveloperMutation\(/g)?.length, 3);
+  assert.match(compareRunner, /\/api\\\/proxy\\\/keys/);
+  assert.doesNotMatch(compareRunner, /failure === "net::ERR_ABORTED".*api\/proxy\/keys/);
 
-  assert.match(roleRunner, /async finishDeveloperAction\(actor, response, label\)/);
+  assert.match(roleRunner, /async finishDeveloperMutation\(actor, response, label\)/);
   assert.match(roleRunner, /response\.finished\(\)/);
-  assert.match(roleRunner, /server action stream did not finish within 30 seconds/);
-  assert.match(roleRunner, /state: "detached"[\s\S]*await this\.finishDeveloperAction\(owner, createActionResponse/);
+  assert.match(roleRunner, /mutation response did not finish within 30 seconds/);
+  assert.match(roleRunner, /state: "detached"[\s\S]*await this\.finishDeveloperMutation\(owner, createActionResponse/);
   assert.doesNotMatch(roleRunner, /const createActionError = await createActionResponse\.finished\(\)/);
 });
 

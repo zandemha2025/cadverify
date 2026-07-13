@@ -115,6 +115,17 @@ async function handle(
     const v = res.headers.get(h);
     if (v) relayed.set(h, v);
   }
+  // API-key create/rotate returns a short-lived, path-scoped reveal cookie.
+  // Relay only that named cookie on the key-management route; never forward
+  // arbitrary backend cookies through the general-purpose data proxy.
+  const revealCookie = res.headers.get("set-cookie");
+  if (
+    path[0] === "keys" &&
+    method === "POST" &&
+    revealCookie?.startsWith("cv_mint_once=")
+  ) {
+    relayed.append("set-cookie", revealCookie);
+  }
   // Fetch forbids response bodies on 204/205/304 and HEAD. Passing the backend's
   // empty ReadableStream through anyway makes Chromium report ERR_ABORTED even
   // though the mutation succeeded (observed on Design Studio archive).

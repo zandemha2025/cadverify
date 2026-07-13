@@ -1142,29 +1142,29 @@ class CompareRfqKeyMatrix {
       .waitFor({ state: "detached", timeout: 15_000 });
   }
 
-  async beginDeveloperAction(actor, button, label) {
+  async beginDeveloperMutation(actor, button, label, { method, pathname }) {
     const pending = actor.page.waitForResponse(
       (response) =>
-        response.request().method() === "POST" &&
-        new URL(response.url()).pathname === "/settings/developer",
+        response.request().method() === method &&
+        pathname.test(new URL(response.url()).pathname),
       { timeout: 30_000 },
     );
     await button.click();
     const response = await pending;
-    this.equal("WORK-12", `${label} server action HTTP`, response.status(), 200);
+    this.equal("WORK-12", `${label} mutation HTTP`, response.status(), 200);
     return response;
   }
 
-  async finishDeveloperAction(actor, response, label) {
+  async finishDeveloperMutation(actor, response, label) {
     const streamError = await Promise.race([
       response.finished(),
       actor.page.waitForTimeout(30_000).then(() => {
-        throw new Error(`${label} server action stream did not finish within 30 seconds`);
+        throw new Error(`${label} mutation response did not finish within 30 seconds`);
       }),
     ]);
     this.equal(
       "WORK-12",
-      `${label} server action stream completed`,
+      `${label} mutation response completed`,
       streamError?.message ?? "<none>",
       "<none>",
     );
@@ -1193,10 +1193,11 @@ class CompareRfqKeyMatrix {
     await actor.page
       .getByRole("heading", { name: "Developer", exact: true })
       .waitFor({ timeout: 15_000 });
-    const createActionResponse = await this.beginDeveloperAction(
+    const createActionResponse = await this.beginDeveloperMutation(
       actor,
       actor.page.getByRole("button", { name: "Create key" }).first(),
       "create key",
+      { method: "POST", pathname: /^\/api\/proxy\/keys$/ },
     );
     const reveal = actor.page.getByRole("dialog");
     await reveal
@@ -1221,7 +1222,7 @@ class CompareRfqKeyMatrix {
       ),
     );
     await this.dismissReveal(actor);
-    await this.finishDeveloperAction(actor, createActionResponse, "create key");
+    await this.finishDeveloperMutation(actor, createActionResponse, "create key");
     await actor.page.reload({ waitUntil: "domcontentloaded", timeout: 30_000 });
     const afterCreateText = cleanText(await actor.page.locator("body").innerText());
     this.equal(id, "created plaintext absent after reload", afterCreateText.includes(oldToken), false);
@@ -1241,10 +1242,11 @@ class CompareRfqKeyMatrix {
       .getByRole("row")
       .filter({ hasText: "cv_live_" + oldPrefix + "_…" });
     this.ok(id, "created row is active", cleanText(await oldRow.innerText()).includes("Active"));
-    const rotateActionResponse = await this.beginDeveloperAction(
+    const rotateActionResponse = await this.beginDeveloperMutation(
       actor,
       oldRow.getByRole("button", { name: "Rotate" }),
       "rotate key",
+      { method: "POST", pathname: /^\/api\/proxy\/keys\/\d+\/rotate$/ },
     );
     await reveal
       .getByRole("heading", { name: "Save your API key" })
@@ -1259,7 +1261,7 @@ class CompareRfqKeyMatrix {
     this.equal(id, "rotation changed prefix", newPrefix === oldPrefix, false);
     const rotateScreenshot = await this.shot("work-12-rotate-one-time-reveal", actor, false);
     await this.dismissReveal(actor);
-    await this.finishDeveloperAction(actor, rotateActionResponse, "rotate key");
+    await this.finishDeveloperMutation(actor, rotateActionResponse, "rotate key");
     await actor.page.reload({ waitUntil: "domcontentloaded", timeout: 30_000 });
     const afterRotateText = cleanText(await actor.page.locator("body").innerText());
     this.equal(id, "rotated plaintext absent after reload", afterRotateText.includes(newToken), false);
@@ -1281,10 +1283,11 @@ class CompareRfqKeyMatrix {
     const replacementAuthorized = await this.bearer(actor, newToken);
     this.equal(id, "rotation replacement authorization", replacementAuthorized.status, 200);
 
-    const revokeActionResponse = await this.beginDeveloperAction(
+    const revokeActionResponse = await this.beginDeveloperMutation(
       actor,
       newActiveRow.getByRole("button", { name: "Revoke" }),
       "revoke key",
+      { method: "DELETE", pathname: /^\/api\/proxy\/keys\/\d+$/ },
     );
     const newRevokedRow = actor.page
       .getByRole("row")
@@ -1292,7 +1295,7 @@ class CompareRfqKeyMatrix {
     await newRevokedRow.getByText("Revoked", { exact: true }).waitFor({
       timeout: 30_000,
     });
-    await this.finishDeveloperAction(actor, revokeActionResponse, "revoke key");
+    await this.finishDeveloperMutation(actor, revokeActionResponse, "revoke key");
     const replacementRejected = await this.bearer(actor, newToken);
     this.equal(id, "revoked replacement rejection status", replacementRejected.status, 401);
     this.equal(
