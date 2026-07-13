@@ -62,14 +62,17 @@ async def mark_notification_read(
     org_id = await _org(session, user)
     if not org_id:
         return {"ok": True}
-    row = await svc.mark_read(
+    row, read_at = await svc.mark_read(
         session,
         org_id=org_id,
         user_id=user.user_id,
         notification_id=notification_id,
     )
     await session.commit()
-    return {"ok": True, "notification": svc.serialize_notification(row)}
+    return {
+        "ok": True,
+        "notification": svc.serialize_notification(row, read_at=read_at),
+    }
 
 
 @router.post("/read-all")

@@ -67,7 +67,7 @@ async def test_notifications_routes_list_and_mark(monkeypatch):
     async def _fake_mark_read(session_arg, **kwargs):
         assert session_arg is session
         assert kwargs["notification_id"] == "01NOTIFY"
-        return row
+        return row, datetime(2026, 7, 8, tzinfo=timezone.utc)
 
     async def _fake_mark_all(session_arg, **kwargs):
         assert session_arg is session
@@ -90,7 +90,10 @@ async def test_notifications_routes_list_and_mark(monkeypatch):
 
         marked = await client.post("/api/v1/notifications/01NOTIFY/read")
         assert marked.status_code == 200
-        assert marked.json()["notification"]["id"] == "01NOTIFY"
+        marked_body = marked.json()["notification"]
+        assert marked_body["id"] == "01NOTIFY"
+        assert marked_body["is_read"] is True
+        assert marked_body["read_at"] == "2026-07-08T00:00:00+00:00"
 
         read_all = await client.post("/api/v1/notifications/read-all")
         assert read_all.status_code == 200

@@ -168,7 +168,7 @@ async def mark_read(
     org_id: str,
     user_id: int,
     notification_id: str,
-) -> Notification:
+) -> tuple[Notification, datetime]:
     row = (
         await session.execute(
             select(Notification).where(
@@ -188,9 +188,14 @@ async def mark_read(
         )
     ).scalars().first()
     if existing is None:
-        session.add(NotificationRead(notification_id=row.id, user_id=user_id))
+        existing = NotificationRead(
+            notification_id=row.id,
+            user_id=user_id,
+            read_at=_now(),
+        )
+        session.add(existing)
         await session.flush()
-    return row
+    return row, existing.read_at
 
 
 async def mark_all_read(

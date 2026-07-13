@@ -141,7 +141,7 @@ async def test_mark_read_adds_per_user_marker_once():
     session.flush = AsyncMock()
     session.execute.side_effect = [_result(first=row), _result(first=None)]
 
-    got = await svc.mark_read(
+    got, read_at = await svc.mark_read(
         session,
         org_id="org_1",
         user_id=11,
@@ -153,7 +153,44 @@ async def test_mark_read_adds_per_user_marker_once():
     assert isinstance(marker, NotificationRead)
     assert marker.notification_id == 7
     assert marker.user_id == 11
+    assert marker.read_at == read_at
+    assert read_at.tzinfo is not None
     session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_mark_read_returns_existing_persisted_timestamp():
+    row = Notification(
+        ulid="01N",
+        org_id="org_1",
+        kind="decision.created",
+        severity="pass",
+        status="open",
+        title="recorded",
+        body="make-now",
+        dest="records",
+        source_type="cost_decision",
+        source_id="dec_1",
+    )
+    row.id = 7
+    persisted_at = datetime(2026, 7, 8, tzinfo=timezone.utc)
+    marker = NotificationRead(notification_id=7, user_id=11, read_at=persisted_at)
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+    session.execute.side_effect = [_result(first=row), _result(first=marker)]
+
+    got, read_at = await svc.mark_read(
+        session,
+        org_id="org_1",
+        user_id=11,
+        notification_id="01N",
+    )
+
+    assert got is row
+    assert read_at == persisted_at
+    session.add.assert_not_called()
+    session.flush.assert_not_awaited()
 
 
 def test_serialize_notification_maps_read_state():
