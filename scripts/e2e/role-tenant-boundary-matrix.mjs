@@ -1067,6 +1067,12 @@ asyncio.run(main())
         this.equal("VER-04", "notification mark-read response ID", markBody?.notification?.id, A.notification_id);
         this.ok("VER-04", "notification mark-read response timestamp", markBody?.notification?.read_at);
         await viewer.page.waitForURL((url) => url.pathname === "/verify", { timeout: 15_000 });
+        // Let the destination finish its real dashboard data requests before the
+        // journey moves on. A human who opens a notification sees this page
+        // settle; navigating away immediately makes Chromium abort otherwise
+        // healthy portfolio/machine requests and hides that part of the path.
+        await viewer.page.waitForLoadState("networkidle", { timeout: 15_000 });
+        await viewer.page.waitForTimeout(500);
         const all = await this.request(viewer, "/api/v1/notifications?status=open&unread=false&limit=100");
         const unread = await this.request(viewer, "/api/v1/notifications?status=open&unread=true&limit=100");
         const persisted = (all.json?.notifications || []).find((item) => item.id === A.notification_id);
