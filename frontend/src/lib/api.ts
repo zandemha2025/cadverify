@@ -179,7 +179,7 @@ export interface Machine {
 /* ------------------------------------------------------------------ */
 
 export interface AnalysisSummary {
-  id: number;
+  id: string;
   ulid: string;
   filename: string;
   file_type: string;
@@ -190,7 +190,7 @@ export interface AnalysisSummary {
 }
 
 export interface AnalysisDetail {
-  id: number;
+  id: string;
   ulid: string;
   filename: string;
   file_type: string;
@@ -201,6 +201,14 @@ export interface AnalysisDetail {
   result_json: ValidationResult;
   is_public: boolean;
   share_url: string | null;
+  decision_links: Array<{
+    id: string;
+    url: string;
+    filename: string;
+    make_now_process: string | null;
+    approval_status: string;
+    created_at: string;
+  }>;
 }
 
 export interface RateLimits {

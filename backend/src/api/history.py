@@ -16,13 +16,69 @@ from src.auth.rate_limit import limiter
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
-from src.db.models import Analysis
+from src.db.models import Analysis, CostDecision
 
 logger = logging.getLogger("cadverify.history")
 
 router = APIRouter(tags=["history"])
 
 _VALID_VERDICTS = frozenset({"pass", "issues", "fail"})
+
+
+def _serialize_analysis_summary(analysis: Analysis) -> dict:
+    """Return the browser contract plus legacy aliases used by API clients."""
+    return {
+        "id": analysis.ulid,
+        "ulid": analysis.ulid,
+        "filename": analysis.filename,
+        "file_type": analysis.file_type,
+        "verdict": analysis.verdict,
+        "overall_verdict": analysis.verdict,
+        "face_count": analysis.face_count,
+        "duration_ms": analysis.duration_ms,
+        "analysis_time_ms": analysis.duration_ms,
+        "created_at": analysis.created_at.isoformat(),
+        "process_count": len(
+            (analysis.result_json or {}).get("process_scores", [])
+        ),
+        "best_process": (analysis.result_json or {}).get("best_process"),
+    }
+
+
+def _serialize_decision_link(decision: CostDecision) -> dict:
+    return {
+        "id": decision.ulid,
+        "url": f"/cost-decisions/{decision.ulid}",
+        "filename": decision.filename,
+        "make_now_process": decision.make_now_process,
+        "approval_status": decision.approval_status,
+        "created_at": decision.created_at.isoformat(),
+    }
+
+
+def _serialize_analysis_detail(
+    analysis: Analysis,
+    decisions: list[CostDecision],
+) -> dict:
+    return {
+        "id": analysis.ulid,
+        "ulid": analysis.ulid,
+        "filename": analysis.filename,
+        "file_type": analysis.file_type,
+        "verdict": analysis.verdict,
+        "overall_verdict": analysis.verdict,
+        "face_count": analysis.face_count,
+        "duration_ms": analysis.duration_ms,
+        "analysis_time_ms": analysis.duration_ms,
+        "created_at": analysis.created_at.isoformat(),
+        "is_public": analysis.is_public,
+        "share_url": (
+            f"/s/{analysis.share_short_id}" if analysis.share_short_id else None
+        ),
+        "result": analysis.result_json,
+        "result_json": analysis.result_json,
+        "decision_links": [_serialize_decision_link(row) for row in decisions],
+    }
 
 
 @router.get("")
@@ -63,22 +119,7 @@ async def list_analyses(
     items = rows[:limit]
 
     return {
-        "analyses": [
-            {
-                "id": a.ulid,
-                "filename": a.filename,
-                "file_type": a.file_type,
-                "verdict": a.verdict,
-                "face_count": a.face_count,
-                "duration_ms": a.duration_ms,
-                "created_at": a.created_at.isoformat(),
-                "process_count": len(
-                    (a.result_json or {}).get("process_scores", [])
-                ),
-                "best_process": (a.result_json or {}).get("best_process"),
-            }
-            for a in items
-        ],
+        "analyses": [_serialize_analysis_summary(a) for a in items],
         "next_cursor": items[-1].ulid if has_more and items else None,
         "has_more": has_more,
     }
@@ -104,12 +145,15 @@ async def get_analysis(
     if analysis is None:
         raise HTTPException(status_code=404, detail="Analysis not found")
 
-    return {
-        "id": analysis.ulid,
-        "filename": analysis.filename,
-        "file_type": analysis.file_type,
-        "created_at": analysis.created_at.isoformat(),
-        "is_public": analysis.is_public,
-        "share_url": f"/s/{analysis.share_short_id}" if analysis.share_short_id else None,
-        "result": analysis.result_json,
-    }
+    decision_result = await session.execute(
+        select(CostDecision)
+        .where(
+            CostDecision.org_id == analysis.org_id,
+            CostDecision.mesh_hash == analysis.mesh_hash,
+        )
+        .order_by(CostDecision.created_at.desc())
+        .limit(20)
+    )
+    decisions = list(decision_result.scalars().all())
+
+    return _serialize_analysis_detail(analysis, decisions)
