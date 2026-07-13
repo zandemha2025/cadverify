@@ -10,7 +10,6 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from src.db.engine import get_session_factory
 from src.db.models import Job
 
 logger = logging.getLogger("cadverify.jobs.reconstruction_tasks")
@@ -31,6 +30,7 @@ async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
     """
     import trimesh
 
+    from src.db.engine import get_session_factory
     from src.reconstruction import preprocessing
     from src.reconstruction.engine import ReconstructParams
     from src.reconstruction.scoring import (
@@ -109,13 +109,14 @@ async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
                     key_prefix="system",
                 )
 
-                analysis_result = await analysis_service.run_analysis(
+                await analysis_service.run_analysis(
                     file_bytes=result.mesh_bytes,
                     filename=f"reconstructed_{job_ulid}.stl",
                     processes=process_types,
                     rule_pack=rule_pack_name,
                     user=mock_user,
                     session=session,
+                    org_id=job.org_id,
                 )
 
                 # Extract analysis ULID from persisted row
@@ -123,12 +124,16 @@ async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
                     session,
                     job.user_id,
                     analysis_service.compute_mesh_hash(result.mesh_bytes),
+                    org_id=job.org_id,
                 )
                 if analysis_id is not None:
                     from src.db.models import Analysis
                     analysis_row = (
                         await session.execute(
-                            select(Analysis).where(Analysis.id == analysis_id)
+                            select(Analysis).where(
+                                Analysis.id == analysis_id,
+                                Analysis.org_id == job.org_id,
+                            )
                         )
                     ).scalars().first()
                     if analysis_row:

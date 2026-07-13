@@ -265,7 +265,6 @@ async def _run_cost_item(session, batch, item) -> dict:
     import time
 
     from src import __version__ as _cv_version
-    from src.auth.org_context import resolve_org
     from src.auth.require_api_key import AuthedUser
     from src.costing import EstimateOptions, report_to_dict
     from src.services import batch_service, cost_decision_service
@@ -313,15 +312,15 @@ async def _run_cost_item(session, batch, item) -> dict:
     )
 
     # ---- bind org calibration EXACTLY like _run_cost_decision ---------------
-    # user = the batch owner; resolve_org gives the same org persist_cost_decision
-    # will stamp, so calibration-org and decision-org stay coherent. No bundle =>
-    # residual_model stays None => byte-identical to an uncalibrated run.
+    # The batch's persisted org is the immutable tenant boundary. Never resolve
+    # the owner's current_org_id here: the user may switch organizations after
+    # enqueue but before this delayed worker runs.
     user = AuthedUser(
         user_id=batch.user_id,
         api_key_id=batch.api_key_id or 0,
         key_prefix="batch",
     )
-    cal_org_id = await resolve_org(session, user.user_id)
+    cal_org_id = batch.org_id
     if isinstance(cal_org_id, str) and cal_org_id:
         from src.services.groundtruth_service import load_served_calibration
 
@@ -365,11 +364,11 @@ async def _run_cost_item(session, batch, item) -> dict:
     result_dict = report_to_dict(report)
 
     # ---- persist (dedup-safe: reuse the existing row on conflict) -----------
-    # persist_cost_decision keys on (user_id, mesh_hash, params_hash) and RETURNS
-    # the existing row on a duplicate (pre-check or IntegrityError race) — so a
-    # ZIP with duplicate parts still completes each item, all pointing at the one
-    # decision row. params_hash matches the route's for the same params (dedup +
-    # parity coherence).
+    # persist_cost_decision keys on (org_id, user_id, mesh_hash, params_hash) and
+    # RETURNS the existing row on a duplicate (pre-check or IntegrityError race)
+    # — so a ZIP with duplicate parts still completes each item, all pointing at
+    # the one decision row inside this batch's immutable organization. params_hash
+    # matches the route's for the same params (dedup + parity coherence).
     params_hash = cost_decision_service.compute_params_hash(
         quantities=quantities,
         region=region,
@@ -389,6 +388,7 @@ async def _run_cost_item(session, batch, item) -> dict:
         filename=filename,
         file_type=suffix.lstrip("."),
         result_json=result_dict,
+        org_id=batch.org_id,
     )
 
     # ---- success: link + counters + heartbeat (same shape as the DFM path) --
@@ -505,13 +505,17 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
                     rule_pack=item.rule_pack,
                     user=user,
                     session=session,
+                    org_id=batch.org_id,
                 )
 
                 duration_ms = round((time.time() - start) * 1000, 1)
 
                 # Get analysis ID for linking
                 analysis_id = await analysis_service.get_latest_analysis_id(
-                    session, batch.user_id, analysis_service.compute_mesh_hash(file_bytes)
+                    session,
+                    batch.user_id,
+                    analysis_service.compute_mesh_hash(file_bytes),
+                    org_id=batch.org_id,
                 )
 
                 # Success

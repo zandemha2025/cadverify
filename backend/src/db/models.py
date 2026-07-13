@@ -500,6 +500,7 @@ class Analysis(Base):
         # serves org_id-only lookups (no separate single-column index needed).
         Index("ix_analyses_org_user", "org_id", "user_id"),
         UniqueConstraint(
+            "org_id",
             "user_id",
             "mesh_hash",
             "process_set_hash",
@@ -571,6 +572,7 @@ class CostDecision(Base):
         # W1 hot-table composite (org_id leading; see Analysis note).
         Index("ix_cost_decisions_org_user", "org_id", "user_id"),
         UniqueConstraint(
+            "org_id",
             "user_id",
             "mesh_hash",
             "params_hash",

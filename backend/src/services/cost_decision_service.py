@@ -100,9 +100,16 @@ def _denormalize(result_json: dict) -> tuple[Optional[str], Optional[float], lis
 
 
 async def _lookup_dedup(
-    session: AsyncSession, user_id: int, mesh_hash: str, params_hash: str
+    session: AsyncSession,
+    user_id: int,
+    mesh_hash: str,
+    params_hash: str,
+    *,
+    org_id: str | None = None,
 ) -> Optional[CostDecision]:
+    org_scope = org_id if org_id is not None else caller_org_subquery(user_id)
     stmt = select(CostDecision).where(
+        CostDecision.org_id == org_scope,
         CostDecision.user_id == user_id,
         CostDecision.mesh_hash == mesh_hash,
         CostDecision.params_hash == params_hash,
@@ -121,14 +128,23 @@ async def persist_cost_decision(
     file_type: str,
     result_json: dict,
     label: Optional[str] = None,
+    org_id: str | None = None,
 ) -> CostDecision:
     """Insert (or return the deduped) CostDecision row and flush to get its ulid.
 
-    Dedup key is (user_id, mesh_hash, params_hash): a repeat cost of the same
-    file with the same params returns the existing row instead of duplicating.
+    Dedup key is (org_id, user_id, mesh_hash, params_hash): a repeat cost of the
+    same file with the same params returns the existing row inside one tenant,
+    while the same user may persist an independent decision in another tenant.
+    Delayed workers pass their parent row's immutable ``org_id`` explicitly.
     Race-safe via IntegrityError re-query (mirrors analysis_service).
     """
-    existing = await _lookup_dedup(session, user.user_id, mesh_hash, params_hash)
+    existing = await _lookup_dedup(
+        session,
+        user.user_id,
+        mesh_hash,
+        params_hash,
+        org_id=org_id,
+    )
     if existing is not None:
         logger.info(
             "Cost-decision dedup hit for user=%s mesh=%.12s…", user.user_id, mesh_hash
@@ -143,10 +159,13 @@ async def persist_cost_decision(
 
     from src.auth.org_context import resolve_org
 
+    persisted_org_id = (
+        org_id if org_id is not None else await resolve_org(session, user.user_id)
+    )
     decision = CostDecision(
         ulid=str(ULID()),
         user_id=user.user_id,
-        org_id=await resolve_org(session, user.user_id),
+        org_id=persisted_org_id,
         api_key_id=user.api_key_id or None,
         mesh_hash=mesh_hash,
         params_hash=params_hash,
@@ -169,7 +188,11 @@ async def persist_cost_decision(
             user.user_id,
         )
         existing = await _lookup_dedup(
-            session, user.user_id, mesh_hash, params_hash
+            session,
+            user.user_id,
+            mesh_hash,
+            params_hash,
+            org_id=org_id,
         )
         if existing is not None:
             await _refresh_summary_for(session, existing)

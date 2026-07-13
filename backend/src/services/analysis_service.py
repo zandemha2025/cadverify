@@ -71,9 +71,20 @@ async def _check_cache(
     mesh_hash: str,
     process_set_hash: str,
     analysis_version: str,
+    *,
+    org_id: str | None = None,
 ) -> Analysis | None:
-    """Return existing Analysis row if dedup key matches, else None."""
+    """Return an existing Analysis row from the caller's organization.
+
+    Request paths may omit ``org_id`` and use the caller's validated active-org
+    subquery. Delayed workers pass the immutable organization persisted on their
+    parent batch/job so a later user organization switch cannot change ownership.
+    """
+    from src.auth.org_context import caller_org_subquery
+
+    org_scope = org_id if org_id is not None else caller_org_subquery(user_id)
     stmt = select(Analysis).where(
+        Analysis.org_id == org_scope,
         Analysis.user_id == user_id,
         Analysis.mesh_hash == mesh_hash,
         Analysis.process_set_hash == process_set_hash,
@@ -131,6 +142,7 @@ async def _persist_analysis(
     face_count: int,
     duration_ms: float,
     signature_vec: Optional[list] = None,
+    org_id: str | None = None,
 ) -> Analysis:
     """Insert a new Analysis row and flush to get the assigned id."""
     from src.auth.org_context import resolve_org
@@ -142,7 +154,7 @@ async def _persist_analysis(
     analysis = Analysis(
         ulid=str(ULID()),
         user_id=user.user_id,
-        org_id=await resolve_org(session, user.user_id),
+        org_id=(org_id if org_id is not None else await resolve_org(session, user.user_id)),
         api_key_id=_nullable_api_key_id(user),
         mesh_hash=mesh_hash,
         process_set_hash=process_set_hash,
@@ -198,13 +210,14 @@ async def _write_usage_event(
     mesh_hash: str | None,
     duration_ms: float | None,
     face_count: int | None,
+    org_id: str | None = None,
 ) -> None:
     """Append a usage_events row (same transaction as analysis persist)."""
     from src.auth.org_context import resolve_org
 
     event = UsageEvent(
         user_id=user.user_id,
-        org_id=await resolve_org(session, user.user_id),
+        org_id=(org_id if org_id is not None else await resolve_org(session, user.user_id)),
         api_key_id=_nullable_api_key_id(user),
         event_type=event_type,
         analysis_id=analysis_id,
@@ -254,6 +267,7 @@ async def run_analysis(
     user: AuthedUser,
     session: AsyncSession,
     include_thickness: bool = False,
+    org_id: str | None = None,
 ) -> dict:
     """Full analysis pipeline: hash -> dedup check -> analyze -> persist -> track.
 
@@ -294,7 +308,12 @@ async def run_analysis(
     cached = None
     if not include_thickness:
         cached = await _check_cache(
-            session, user.user_id, mesh_hash, process_set_hash, analysis_version
+            session,
+            user.user_id,
+            mesh_hash,
+            process_set_hash,
+            analysis_version,
+            org_id=org_id,
         )
 
     if cached is not None:
@@ -313,6 +332,7 @@ async def run_analysis(
             mesh_hash,
             cached.duration_ms,
             cached.face_count,
+            org_id=org_id,
         )
         return cached.result_json
 
@@ -491,6 +511,7 @@ async def run_analysis(
             face_count=_face_count,
             duration_ms=duration_ms,
             signature_vec=signature_vec,
+            org_id=org_id,
         )
         await _write_usage_event(
             session,
@@ -500,6 +521,7 @@ async def run_analysis(
             mesh_hash,
             duration_ms,
             _face_count,
+            org_id=org_id,
         )
 
         # Audit: analysis.created
@@ -524,7 +546,12 @@ async def run_analysis(
             mesh_hash,
         )
         cached = await _check_cache(
-            session, user.user_id, mesh_hash, process_set_hash, analysis_version
+            session,
+            user.user_id,
+            mesh_hash,
+            process_set_hash,
+            analysis_version,
+            org_id=org_id,
         )
         if cached is not None:
             await _write_usage_event(
@@ -535,6 +562,7 @@ async def run_analysis(
                 mesh_hash,
                 cached.duration_ms,
                 cached.face_count,
+                org_id=org_id,
             )
             return _with_thickness(cached.result_json, _thickness_map)
         # If re-query also fails, just return the computed result
@@ -560,17 +588,27 @@ async def get_latest_analysis_id(
     session: AsyncSession,
     user_id: int,
     mesh_hash: str,
+    *,
+    org_id: str | None = None,
 ) -> int | None:
-    """Return the most-recent analysis.id for a given user + mesh_hash.
+    """Return the latest analysis for an organization + user + mesh hash.
 
     Used by the async SAM-3D submit path to link the job to the just-persisted
-    analysis row without changing run_analysis's return signature.
+    analysis row without changing run_analysis's return signature. Request
+    paths resolve the caller's validated active organization in SQL; delayed
+    workers pass their parent row's persisted ``org_id`` explicitly.
     """
+    from src.auth.org_context import caller_org_subquery
     from sqlalchemy import desc
 
+    org_scope = org_id if org_id is not None else caller_org_subquery(user_id)
     stmt = (
         select(Analysis.id)
-        .where(Analysis.user_id == user_id, Analysis.mesh_hash == mesh_hash)
+        .where(
+            Analysis.org_id == org_scope,
+            Analysis.user_id == user_id,
+            Analysis.mesh_hash == mesh_hash,
+        )
         .order_by(desc(Analysis.created_at))
         .limit(1)
     )
@@ -582,6 +620,7 @@ async def run_quick_analysis(
     filename: str,
     user: AuthedUser,
     session: AsyncSession,
+    org_id: str | None = None,
 ) -> dict:
     """Quick pass/fail — universal checks only, with dedup + usage tracking."""
     (
@@ -601,7 +640,12 @@ async def run_quick_analysis(
 
     # Cache check
     cached = await _check_cache(
-        session, user.user_id, mesh_hash, process_set_hash, analysis_version
+        session,
+        user.user_id,
+        mesh_hash,
+        process_set_hash,
+        analysis_version,
+        org_id=org_id,
     )
 
     if cached is not None:
@@ -618,6 +662,7 @@ async def run_quick_analysis(
             mesh_hash,
             cached.duration_ms,
             cached.face_count,
+            org_id=org_id,
         )
         return cached.result_json
 
@@ -669,6 +714,7 @@ async def run_quick_analysis(
             verdict=verdict,
             face_count=geometry.face_count,
             duration_ms=duration_ms,
+            org_id=org_id,
         )
         await _write_usage_event(
             session,
@@ -678,6 +724,7 @@ async def run_quick_analysis(
             mesh_hash,
             duration_ms,
             geometry.face_count,
+            org_id=org_id,
         )
     except IntegrityError:
         await session.rollback()
@@ -686,7 +733,12 @@ async def run_quick_analysis(
             user.user_id,
         )
         cached = await _check_cache(
-            session, user.user_id, mesh_hash, process_set_hash, analysis_version
+            session,
+            user.user_id,
+            mesh_hash,
+            process_set_hash,
+            analysis_version,
+            org_id=org_id,
         )
         if cached is not None:
             await _write_usage_event(
@@ -697,6 +749,7 @@ async def run_quick_analysis(
                 mesh_hash,
                 cached.duration_ms,
                 cached.face_count,
+                org_id=org_id,
             )
             return cached.result_json
         logger.warning("Re-query after IntegrityError returned None — returning computed result")
