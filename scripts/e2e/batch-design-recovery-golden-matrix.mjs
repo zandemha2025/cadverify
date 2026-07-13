@@ -454,6 +454,25 @@ class BatchDesignRecoveryMatrix {
     await card.click();
   }
 
+  async waitForRevisionHistorySettled(revisions) {
+    await this.page.getByText("Revision history", { exact: true }).waitFor({
+      state: "visible",
+      timeout: 30_000,
+    });
+    for (const revision of revisions) {
+      await this.page
+        .getByRole("button", {
+          name: new RegExp(
+            `^R${revision.number}\\s+${escapeRegExp(revision.status)}(?:\\s+current)?$`,
+            "i",
+          ),
+        })
+        .waitFor({ state: "visible", timeout: 30_000 });
+    }
+    await this.page.waitForLoadState("networkidle", { timeout: 15_000 });
+    await this.page.waitForTimeout(250);
+  }
+
   async assertRevisionHasNoArtifacts(designId, revisionNo) {
     const paths = [
       `/api/proxy/designs/${designId}/revisions/${revisionNo}/preview.stl`,
@@ -685,9 +704,11 @@ class BatchDesignRecoveryMatrix {
       await this.page.waitForTimeout(500);
       const revisions = await this.getRevisions(failed.id);
       const after = await this.designList();
+      await this.waitForRevisionHistorySettled(revisions);
       await this.page.reload({ waitUntil: "domcontentloaded" });
       await this.selectDesign(name);
       await this.page.getByRole("link", { name: /^Download R2 STEP$/ }).waitFor({ timeout: 20_000 });
+      await this.waitForRevisionHistorySettled(revisions);
       await this.page.waitForLoadState("networkidle", { timeout: 15_000 });
       await this.page.waitForTimeout(500);
       const recoveryScreenshot = await this.screenshot("FAIL-04", "retry-ready-r2");
@@ -756,10 +777,12 @@ class BatchDesignRecoveryMatrix {
       const ready = await this.waitForDesign(designId, (design) => design.status === "ready" && design.current_revision === 2, `${id} restored retry`);
       const revisions = await this.getRevisions(designId);
       const after = await this.designList();
+      await this.waitForRevisionHistorySettled(revisions);
       await this.page.reload({ waitUntil: "domcontentloaded" });
       await this.selectDesign(name);
       await this.page.getByRole("link", { name: /^Download R2 STEP$/ }).waitFor({ timeout: 20_000 });
       await this.page.locator('[data-preview-state="ready"]').waitFor({ timeout: 30_000 });
+      await this.waitForRevisionHistorySettled(revisions);
       const [download] = await Promise.all([
         this.page.waitForEvent("download", { timeout: 30_000 }),
         this.page.getByRole("link", { name: /^Download R2 STEP$/ }).click(),
