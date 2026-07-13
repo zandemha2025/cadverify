@@ -755,6 +755,7 @@ class BatchDesignRecoveryMatrix {
       await this.page.reload({ waitUntil: "domcontentloaded" });
       await this.selectDesign(name);
       await this.page.getByRole("link", { name: /^Download R2 STEP$/ }).waitFor({ timeout: 20_000 });
+      await this.page.locator('[data-preview-state="ready"]').waitFor({ timeout: 30_000 });
       const [download] = await Promise.all([
         this.page.waitForEvent("download", { timeout: 30_000 }),
         this.page.getByRole("link", { name: /^Download R2 STEP$/ }).click(),
@@ -788,7 +789,7 @@ class BatchDesignRecoveryMatrix {
           "filled a complete plate plan and clicked Generate design",
           `waited for the real worker to persist the ${fault} failure and exact copy`,
           "refreshed the project, inspected the failed immutable revision, and clicked Revise and retry",
-          "submitted a new immutable revision after removing the fault and downloaded its STEP artifact",
+          "submitted a new immutable revision, waited for its real STL preview to mount, and downloaded its STEP artifact",
         ],
         observed: {
           url: this.page.url(),
@@ -811,6 +812,7 @@ class BatchDesignRecoveryMatrix {
           assertion("failed revision artifact endpoints", "409,409", artifactStatuses.join(",")),
           assertion("R2 plan thickness", String(revisedThickness ?? 6), String(revision2.plan.thickness_mm)),
           assertion("R2 STEP download nonempty", true, stepBytes > 128),
+          assertion("R2 interactive preview mounted", "ready", await this.page.locator('[data-preview-state]').getAttribute("data-preview-state")),
           assertion("design POST count", 2, this.postCounts.design - postsBefore),
           assertion("restored artifact hash", true, storedEvidence.hashMatches),
         ],

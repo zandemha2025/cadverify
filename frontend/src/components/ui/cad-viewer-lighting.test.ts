@@ -13,3 +13,12 @@ test("CAD viewer lighting is self-contained in every rendering mode", async () =
   assert.doesNotMatch(source, /raw\.githack\.com|https?:\/\//);
   assert.equal(source.match(/<StudioRig\s*\/>/g)?.length, 1);
 });
+
+test("CAD viewer distinguishes requested bytes from a mounted real preview", async () => {
+  const source = await readFile(new URL("./cad-viewer.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /data-preview-state=\{previewReady \? "ready" : "loading"\}/);
+  assert.match(source, /Loading real 3D preview…/);
+  assert.match(source, /onReady\?\.\(\)/);
+  assert.match(source, /onReady=\{onPreviewReady\}/);
+});

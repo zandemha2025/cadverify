@@ -1142,6 +1142,26 @@ class CompareRfqKeyMatrix {
       .waitFor({ state: "detached", timeout: 15_000 });
   }
 
+  async completeDeveloperAction(actor, button, label) {
+    const pending = actor.page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === "/settings/developer",
+      { timeout: 30_000 },
+    );
+    await button.click();
+    const response = await pending;
+    this.equal("WORK-12", `${label} server action HTTP`, response.status(), 200);
+    const streamError = await response.finished();
+    this.equal(
+      "WORK-12",
+      `${label} server action stream completed`,
+      streamError?.message ?? "<none>",
+      "<none>",
+    );
+    return response;
+  }
+
   async bearer(actor, token) {
     return responseJson(
       await actor.context.request.get(
@@ -1165,7 +1185,11 @@ class CompareRfqKeyMatrix {
     await actor.page
       .getByRole("heading", { name: "Developer", exact: true })
       .waitFor({ timeout: 15_000 });
-    await actor.page.getByRole("button", { name: "Create key" }).first().click();
+    await this.completeDeveloperAction(
+      actor,
+      actor.page.getByRole("button", { name: "Create key" }).first(),
+      "create key",
+    );
     const reveal = actor.page.getByRole("dialog");
     await reveal
       .getByRole("heading", { name: "Save your API key" })
@@ -1208,7 +1232,11 @@ class CompareRfqKeyMatrix {
       .getByRole("row")
       .filter({ hasText: "cv_live_" + oldPrefix + "_…" });
     this.ok(id, "created row is active", cleanText(await oldRow.innerText()).includes("Active"));
-    await oldRow.getByRole("button", { name: "Rotate" }).click();
+    await this.completeDeveloperAction(
+      actor,
+      oldRow.getByRole("button", { name: "Rotate" }),
+      "rotate key",
+    );
     await reveal
       .getByRole("heading", { name: "Save your API key" })
       .waitFor({ timeout: 30_000 });
@@ -1243,7 +1271,11 @@ class CompareRfqKeyMatrix {
     const replacementAuthorized = await this.bearer(actor, newToken);
     this.equal(id, "rotation replacement authorization", replacementAuthorized.status, 200);
 
-    await newActiveRow.getByRole("button", { name: "Revoke" }).click();
+    await this.completeDeveloperAction(
+      actor,
+      newActiveRow.getByRole("button", { name: "Revoke" }),
+      "revoke key",
+    );
     const newRevokedRow = actor.page
       .getByRole("row")
       .filter({ hasText: "cv_live_" + newPrefix + "_…" });

@@ -37,6 +37,7 @@ function STLModel({
   onFaceClick,
   distanceScale = 1.6,
   onHalfHeight,
+  onReady,
 }: {
   url: string;
   highlightFaces?: number[];
@@ -48,6 +49,8 @@ function STLModel({
   distanceScale?: number;
   /** reports the normalised half-height so the contact shadow seats at the base. */
   onHalfHeight?: (h: number) => void;
+  /** reports that the real STL bytes were parsed and mounted, not merely requested. */
+  onReady?: () => void;
 }) {
   const geometry = useLoader(STLLoader, url);
   const meshRef = useRef<THREE.Mesh>(null);
@@ -71,6 +74,10 @@ function STLModel({
   useEffect(() => {
     onHalfHeight?.(norm.half);
   }, [norm.half, onHalfHeight]);
+
+  useEffect(() => {
+    onReady?.();
+  }, [geometry, onReady]);
 
   // Per-face highlight via vertex colors (STL geometry is non-indexed:
   // face i -> vertices 3i, 3i+1, 3i+2).
@@ -260,7 +267,9 @@ export default function CadViewer({
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [halfH, setHalfH] = useState(1);
   const [webGlAvailable, setWebGlAvailable] = useState<boolean | null>(null);
+  const [previewReady, setPreviewReady] = useState(false);
   const onHalfHeight = useCallback((h: number) => setHalfH(h), []);
+  const onPreviewReady = useCallback(() => setPreviewReady(true), []);
 
   // Probe before react-three-fiber mounts. When GPU/WebGL is unavailable,
   // mounting Canvas causes repeated renderer retries and leaves a blank panel.
@@ -278,6 +287,10 @@ export default function CadViewer({
   }, [file]);
 
   const url = useMemo(() => src ?? objectUrl, [src, objectUrl]);
+
+  useEffect(() => {
+    setPreviewReady(false);
+  }, [url]);
 
   const instrument = surface === "instrument";
 
@@ -328,8 +341,10 @@ export default function CadViewer({
 
   return (
     <div
+      aria-label={previewReady ? "Interactive 3D preview ready" : "Loading real 3D preview"}
+      data-preview-state={previewReady ? "ready" : "loading"}
       className={cn(
-        "h-full overflow-hidden rounded-[var(--radius)] border",
+        "relative h-full overflow-hidden rounded-[var(--radius)] border",
         instrument
           ? STAGE_UI
             ? "border-[#252a2f]"
@@ -359,6 +374,15 @@ export default function CadViewer({
           : undefined
       }
     >
+      {!previewReady && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-background/20 text-xs font-medium text-muted-foreground"
+        >
+          Loading real 3D preview…
+        </div>
+      )}
       <Canvas
         dpr={[1, 2]}
         gl={{ antialias: true, powerPreference: "high-performance" }}
@@ -402,6 +426,7 @@ export default function CadViewer({
             onFaceClick={onFaceClick}
             distanceScale={instrument ? 1.55 : 1.9}
             onHalfHeight={onHalfHeight}
+            onReady={onPreviewReady}
           />
           {/* Keep every viewer mode self-contained. Drei's named presets resolve
               to remote HDR assets; production CSP correctly blocks those
