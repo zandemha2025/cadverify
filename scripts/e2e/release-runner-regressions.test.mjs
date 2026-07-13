@@ -23,9 +23,12 @@ test("role evidence supplies the canonical generation timestamp", () => {
 });
 
 test("API-key mutations finish their server-action streams before reload", () => {
-  assert.match(compareRunner, /async completeDeveloperAction\(actor, button, label\)/);
-  assert.match(compareRunner, /const streamError = await response\.finished\(\)/);
-  assert.equal(compareRunner.match(/await this\.completeDeveloperAction\(/g)?.length, 3);
+  assert.match(compareRunner, /async beginDeveloperAction\(actor, button, label\)/);
+  assert.match(compareRunner, /async finishDeveloperAction\(actor, response, label\)/);
+  assert.match(compareRunner, /response\.finished\(\)/);
+  assert.match(compareRunner, /server action stream did not finish within 30 seconds/);
+  assert.equal(compareRunner.match(/await this\.beginDeveloperAction\(/g)?.length, 3);
+  assert.equal(compareRunner.match(/await this\.finishDeveloperAction\(/g)?.length, 3);
   assert.doesNotMatch(compareRunner, /failure === "net::ERR_ABORTED".*settings\/developer/);
 });
 

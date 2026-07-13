@@ -1142,7 +1142,7 @@ class CompareRfqKeyMatrix {
       .waitFor({ state: "detached", timeout: 15_000 });
   }
 
-  async completeDeveloperAction(actor, button, label) {
+  async beginDeveloperAction(actor, button, label) {
     const pending = actor.page.waitForResponse(
       (response) =>
         response.request().method() === "POST" &&
@@ -1152,14 +1152,22 @@ class CompareRfqKeyMatrix {
     await button.click();
     const response = await pending;
     this.equal("WORK-12", `${label} server action HTTP`, response.status(), 200);
-    const streamError = await response.finished();
+    return response;
+  }
+
+  async finishDeveloperAction(actor, response, label) {
+    const streamError = await Promise.race([
+      response.finished(),
+      actor.page.waitForTimeout(30_000).then(() => {
+        throw new Error(`${label} server action stream did not finish within 30 seconds`);
+      }),
+    ]);
     this.equal(
       "WORK-12",
       `${label} server action stream completed`,
       streamError?.message ?? "<none>",
       "<none>",
     );
-    return response;
   }
 
   async bearer(actor, token) {
@@ -1185,7 +1193,7 @@ class CompareRfqKeyMatrix {
     await actor.page
       .getByRole("heading", { name: "Developer", exact: true })
       .waitFor({ timeout: 15_000 });
-    await this.completeDeveloperAction(
+    const createActionResponse = await this.beginDeveloperAction(
       actor,
       actor.page.getByRole("button", { name: "Create key" }).first(),
       "create key",
@@ -1213,6 +1221,7 @@ class CompareRfqKeyMatrix {
       ),
     );
     await this.dismissReveal(actor);
+    await this.finishDeveloperAction(actor, createActionResponse, "create key");
     await actor.page.reload({ waitUntil: "domcontentloaded", timeout: 30_000 });
     const afterCreateText = cleanText(await actor.page.locator("body").innerText());
     this.equal(id, "created plaintext absent after reload", afterCreateText.includes(oldToken), false);
@@ -1232,7 +1241,7 @@ class CompareRfqKeyMatrix {
       .getByRole("row")
       .filter({ hasText: "cv_live_" + oldPrefix + "_…" });
     this.ok(id, "created row is active", cleanText(await oldRow.innerText()).includes("Active"));
-    await this.completeDeveloperAction(
+    const rotateActionResponse = await this.beginDeveloperAction(
       actor,
       oldRow.getByRole("button", { name: "Rotate" }),
       "rotate key",
@@ -1250,6 +1259,7 @@ class CompareRfqKeyMatrix {
     this.equal(id, "rotation changed prefix", newPrefix === oldPrefix, false);
     const rotateScreenshot = await this.shot("work-12-rotate-one-time-reveal", actor, false);
     await this.dismissReveal(actor);
+    await this.finishDeveloperAction(actor, rotateActionResponse, "rotate key");
     await actor.page.reload({ waitUntil: "domcontentloaded", timeout: 30_000 });
     const afterRotateText = cleanText(await actor.page.locator("body").innerText());
     this.equal(id, "rotated plaintext absent after reload", afterRotateText.includes(newToken), false);
@@ -1271,7 +1281,7 @@ class CompareRfqKeyMatrix {
     const replacementAuthorized = await this.bearer(actor, newToken);
     this.equal(id, "rotation replacement authorization", replacementAuthorized.status, 200);
 
-    await this.completeDeveloperAction(
+    const revokeActionResponse = await this.beginDeveloperAction(
       actor,
       newActiveRow.getByRole("button", { name: "Revoke" }),
       "revoke key",
@@ -1282,6 +1292,7 @@ class CompareRfqKeyMatrix {
     await newRevokedRow.getByText("Revoked", { exact: true }).waitFor({
       timeout: 30_000,
     });
+    await this.finishDeveloperAction(actor, revokeActionResponse, "revoke key");
     const replacementRejected = await this.bearer(actor, newToken);
     this.equal(id, "revoked replacement rejection status", replacementRejected.status, 401);
     this.equal(
