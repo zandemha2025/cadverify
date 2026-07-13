@@ -20,6 +20,10 @@ export interface DerivedNotif {
   /** mono sub-line — every value is emitted by the backend row. */
   meta: string;
   dest: NotifDest;
+  isRead: boolean;
+  readAt: string | null;
+  isDismissed: boolean;
+  dismissedAt: string | null;
   /** true → render the HATCHED assumption band (n=0 encoding). */
   hatched?: boolean;
 }
@@ -31,12 +35,16 @@ export interface NotifState {
   error: string | null;
 }
 
-interface NotificationRow {
+export interface NotificationRow {
   id: string;
   severity: string;
   title: string;
   body: string;
   dest: string;
+  is_read: boolean;
+  read_at: string | null;
+  is_dismissed: boolean;
+  dismissed_at: string | null;
   metadata?: Record<string, unknown>;
 }
 
@@ -74,37 +82,75 @@ function dest(value: string): NotifDest {
     : "verify";
 }
 
-function mapRow(row: NotificationRow): DerivedNotif {
+export function mapNotificationRow(row: NotificationRow): DerivedNotif {
   return {
     id: row.id,
     tone: tone(row.severity),
     title: row.title,
     meta: row.body || "workflow state",
     dest: dest(row.dest),
+    isRead: row.is_read,
+    readAt: row.read_at,
+    isDismissed: row.is_dismissed,
+    dismissedAt: row.dismissed_at,
     hatched: row.metadata?.hatched === true,
   };
 }
 
-export async function loadNotifications(): Promise<NotifState> {
+export async function loadNotifications({
+  unread = true,
+  dismissed = false,
+}: {
+  unread?: boolean;
+  dismissed?: boolean;
+} = {}): Promise<NotifState> {
+  const query = new URLSearchParams({
+    status: "open",
+    unread: String(unread),
+    dismissed: String(dismissed),
+    limit: "100",
+  });
   const page = await json<NotificationsPage>(
-    "/notifications?status=open&unread=true&limit=25"
+    `/notifications?${query.toString()}`
   );
   return {
     loading: false,
-    notifs: page.notifications.map(mapRow),
+    notifs: page.notifications.map(mapNotificationRow),
     deliveryCount: null,
     error: null,
   };
 }
 
-export async function markNotificationRead(id: string): Promise<void> {
-  await json(`/notifications/${encodeURIComponent(id)}/read`, { method: "POST" });
+async function mutateNotification(
+  id: string,
+  action: "read" | "dismiss" | "restore"
+): Promise<DerivedNotif> {
+  const result = await json<{ ok: boolean; notification: NotificationRow }>(
+    `/notifications/${encodeURIComponent(id)}/${action}`,
+    { method: "POST" }
+  );
+  return mapNotificationRow(result.notification);
 }
 
-export async function markAllNotificationsRead(): Promise<number> {
-  const res = await json<{ ok: boolean; count: number }>(
+export function markNotificationRead(id: string): Promise<DerivedNotif> {
+  return mutateNotification(id, "read");
+}
+
+export function dismissNotification(id: string): Promise<DerivedNotif> {
+  return mutateNotification(id, "dismiss");
+}
+
+export function restoreNotification(id: string): Promise<DerivedNotif> {
+  return mutateNotification(id, "restore");
+}
+
+export async function markAllNotificationsRead(): Promise<{
+  count: number;
+  readAt: string | null;
+}> {
+  const res = await json<{ ok: boolean; count: number; read_at: string | null }>(
     "/notifications/read-all",
     { method: "POST" }
   );
-  return res.count;
+  return { count: res.count, readAt: res.read_at };
 }

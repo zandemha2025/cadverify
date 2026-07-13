@@ -957,7 +957,7 @@ class Notification(Base):
 
 
 class NotificationRead(Base):
-    """Per-user read marker for a durable org notification."""
+    """Per-user read and dismissal state for a durable org notification."""
 
     __tablename__ = "notification_reads"
     __table_args__ = (
@@ -967,6 +967,7 @@ class NotificationRead(Base):
             name="uq_notification_reads_notification_user",
         ),
         Index("ix_notification_reads_user_read", "user_id", "read_at"),
+        Index("ix_notification_reads_user_dismissed", "user_id", "dismissed_at"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -978,6 +979,9 @@ class NotificationRead(Base):
     )
     read_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    dismissed_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
     )
 
 

@@ -134,12 +134,20 @@ async def list_notifications(
     user_id: int,
     status: str = "open",
     unread: bool = True,
+    dismissed: bool = False,
     limit: int = 50,
     cursor: Optional[int] = None,
-) -> tuple[list[tuple[Notification, Optional[datetime]]], bool]:
-    """Return newest notifications plus per-user read state."""
+) -> tuple[
+    list[tuple[Notification, Optional[datetime], Optional[datetime]]],
+    bool,
+]:
+    """Return active or dismissed notifications plus per-user state."""
     stmt = (
-        select(Notification, NotificationRead.read_at)
+        select(
+            Notification,
+            NotificationRead.read_at,
+            NotificationRead.dismissed_at,
+        )
         .outerjoin(
             NotificationRead,
             and_(
@@ -154,7 +162,11 @@ async def list_notifications(
             raise HTTPException(status_code=400, detail="invalid notification status")
         stmt = stmt.where(Notification.status == status)
     if unread:
-        stmt = stmt.where(NotificationRead.id.is_(None))
+        stmt = stmt.where(NotificationRead.read_at.is_(None))
+    if dismissed:
+        stmt = stmt.where(NotificationRead.dismissed_at.is_not(None))
+    else:
+        stmt = stmt.where(NotificationRead.dismissed_at.is_(None))
     if cursor is not None:
         stmt = stmt.where(Notification.id < cursor)
     stmt = stmt.order_by(Notification.id.desc()).limit(limit + 1)
@@ -168,7 +180,7 @@ async def mark_read(
     org_id: str,
     user_id: int,
     notification_id: str,
-) -> tuple[Notification, datetime]:
+) -> tuple[Notification, datetime, Optional[datetime]]:
     row = (
         await session.execute(
             select(Notification).where(
@@ -195,7 +207,84 @@ async def mark_read(
         )
         session.add(existing)
         await session.flush()
-    return row, existing.read_at
+    return row, existing.read_at, existing.dismissed_at
+
+
+async def dismiss_notification(
+    session: AsyncSession,
+    *,
+    org_id: str,
+    user_id: int,
+    notification_id: str,
+) -> tuple[Notification, datetime, datetime]:
+    """Dismiss one notification for one user without changing org state."""
+    row = (
+        await session.execute(
+            select(Notification).where(
+                Notification.org_id == org_id,
+                Notification.ulid == notification_id,
+            )
+        )
+    ).scalars().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="notification not found")
+    marker = (
+        await session.execute(
+            select(NotificationRead).where(
+                NotificationRead.notification_id == row.id,
+                NotificationRead.user_id == user_id,
+            )
+        )
+    ).scalars().first()
+    if marker is None:
+        when = _now()
+        marker = NotificationRead(
+            notification_id=row.id,
+            user_id=user_id,
+            read_at=when,
+            dismissed_at=when,
+        )
+        session.add(marker)
+        await session.flush()
+    elif marker.dismissed_at is None:
+        marker.dismissed_at = _now()
+        await session.flush()
+    assert marker.dismissed_at is not None
+    return row, marker.read_at, marker.dismissed_at
+
+
+async def restore_notification(
+    session: AsyncSession,
+    *,
+    org_id: str,
+    user_id: int,
+    notification_id: str,
+) -> tuple[Notification, Optional[datetime], None]:
+    """Restore one user's dismissed notification, preserving its read state."""
+    row = (
+        await session.execute(
+            select(Notification).where(
+                Notification.org_id == org_id,
+                Notification.ulid == notification_id,
+            )
+        )
+    ).scalars().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="notification not found")
+    marker = (
+        await session.execute(
+            select(NotificationRead).where(
+                NotificationRead.notification_id == row.id,
+                NotificationRead.user_id == user_id,
+            )
+        )
+    ).scalars().first()
+    if marker is None:
+        return row, None, None
+    if marker.dismissed_at is not None:
+        marker.dismissed_at = None
+        await session.flush()
+    return row, marker.read_at, None
 
 
 async def mark_all_read(
@@ -203,7 +292,7 @@ async def mark_all_read(
     *,
     org_id: str,
     user_id: int,
-) -> int:
+) -> tuple[int, Optional[datetime]]:
     rows = (
         await session.execute(
             select(Notification)
@@ -221,17 +310,25 @@ async def mark_all_read(
             )
         )
     ).scalars().all()
+    when = _now() if rows else None
     for row in rows:
-        session.add(NotificationRead(notification_id=row.id, user_id=user_id))
+        session.add(
+            NotificationRead(
+                notification_id=row.id,
+                user_id=user_id,
+                read_at=when,
+            )
+        )
     if rows:
         await session.flush()
-    return len(rows)
+    return len(rows), when
 
 
 def serialize_notification(
     row: Notification,
     *,
     read_at: Optional[datetime] = None,
+    dismissed_at: Optional[datetime] = None,
 ) -> dict:
     return {
         "id": row.ulid,
@@ -249,4 +346,6 @@ def serialize_notification(
         "resolved_at": row.resolved_at.isoformat() if row.resolved_at else None,
         "read_at": read_at.isoformat() if read_at else None,
         "is_read": read_at is not None,
+        "dismissed_at": dismissed_at.isoformat() if dismissed_at else None,
+        "is_dismissed": dismissed_at is not None,
     }
