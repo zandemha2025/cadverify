@@ -341,7 +341,7 @@ async function signup(page) {
   if (response.status() !== 200) {
     throw new Error(`signup failed HTTP ${response.status()}`);
   }
-  const organizations = await browserApi(page, "/api/proxy/organizations");
+  const organizations = await browserApi(page, "/api/proxy/orgs");
   const active = organizations.body?.organizations?.find((org) => org.is_active) ?? null;
   if (organizations.status !== 200 || active?.org_role !== "admin") {
     throw new Error(`signup organization context missing (HTTP ${organizations.status}, role ${active?.org_role ?? "none"})`);
