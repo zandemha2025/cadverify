@@ -127,7 +127,13 @@ class Matrix {
   }
 
   check(id, name, expected, actual, pass = same(expected, actual)) {
-    const assertion = { name, expected, actual, pass };
+    const evidenceValue = (value) => value === null ? "<null>" : value;
+    const assertion = {
+      name,
+      expected: evidenceValue(expected),
+      actual: evidenceValue(actual),
+      pass,
+    };
     this.assertions[id].push(assertion);
     if (!pass) fail(`[${id}] ${name}: expected ${stableJson(expected)}, got ${stableJson(actual)}`);
     return actual;
