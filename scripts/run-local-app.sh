@@ -28,6 +28,13 @@ BACKEND_DIR="$REPO_ROOT/backend"
 FRONTEND_DIR="$REPO_ROOT/frontend"
 VENV_PY="$BACKEND_DIR/.venv/bin/python"
 VENV_ARQ="$BACKEND_DIR/.venv/bin/arq"
+# Put long-running child services in their own sessions. A terminal Ctrl-C then
+# reaches this launcher only; cleanup can send each service an orderly SIGTERM
+# instead of Python CAD-pool children all receiving SIGINT simultaneously.
+ISOLATED_EXEC=(
+  "$VENV_PY" -c
+  'import os, sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])'
+)
 
 BACKEND_PORT=8000
 FRONTEND_PORT=3000
@@ -158,7 +165,7 @@ log "Starting backend (uvicorn) on http://127.0.0.1:${BACKEND_PORT} …"
   trap '' INT
   cd "$BACKEND_DIR" || exit 1
   # multiple workers so the part's cost + DFM analyses run in parallel (faster resolve)
-  exec "$VENV_PY" -m uvicorn main:app --host 127.0.0.1 --port "$BACKEND_PORT" --workers 4
+  exec "${ISOLATED_EXEC[@]}" "$VENV_PY" -m uvicorn main:app --host 127.0.0.1 --port "$BACKEND_PORT" --workers 4
 ) &
 BACK_PID=$!
 
@@ -172,7 +179,7 @@ if [ -x "$VENV_ARQ" ] && REDIS_PROBE_URL="$REDIS_URL_EFFECTIVE" "$VENV_PY" -c \
   (
     trap '' INT
     cd "$BACKEND_DIR" || exit 1
-    exec "$VENV_ARQ" src.jobs.worker.WorkerSettings
+    exec "${ISOLATED_EXEC[@]}" "$VENV_ARQ" src.jobs.worker.WorkerSettings
   ) &
   WORKER_PID=$!
 else
@@ -195,7 +202,7 @@ log "Starting frontend (Next.js production) on http://localhost:${FRONTEND_PORT}
 (
   trap '' INT
   cd "$FRONTEND_DIR" || exit 1
-  exec npm start -- -p "$FRONTEND_PORT"
+  exec "${ISOLATED_EXEC[@]}" npm start -- -p "$FRONTEND_PORT"
 ) &
 FRONT_PID=$!
 
