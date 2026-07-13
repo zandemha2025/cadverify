@@ -64,6 +64,17 @@ test("mobile history recovery finishes cost persistence before the next journey"
   assert.doesNotMatch(mobileRunner, /ERR_ABORTED[^\n]*validate\/cost/);
 });
 
+test("mobile stale-cookie replay scopes its expected 401 through redirect settlement", () => {
+  assert.match(
+    mobileRunner,
+    /expiredSessionRecovery\(\)[\s\S]*withExpectedHttpStatuses\(\[401\][\s\S]*goto\("\/designs"[\s\S]*waitForURL[\s\S]*pathname === "\/login"[\s\S]*waitForLoadState\("networkidle"/,
+  );
+  assert.equal(
+    mobileRunner.match(/withExpectedHttpStatuses\(\[401\]/g)?.length,
+    1,
+  );
+});
+
 test("cost process controls expose and use one semantic accessible group", () => {
   assert.match(glassBox, /role="group" aria-label=\{label\}/);
   assert.match(manufacturingRunner, /getByRole\("tab", \{ name: "Glass Box", exact: true \}\)\.click\(\)/);

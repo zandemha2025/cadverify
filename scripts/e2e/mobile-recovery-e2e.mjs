@@ -1214,8 +1214,12 @@ class MobileRecoveryRun {
       await this.page.getByRole("menuitem", { name: "Sign out" }).click();
       await this.page.waitForURL((url) => url.pathname === "/login", { timeout: 20_000 });
       await this.context.addCookies([sessionCookie]);
-      await this.page.goto("/designs", { waitUntil: "domcontentloaded" });
-      await this.page.waitForURL((url) => url.pathname === "/login", { timeout: 20_000 });
+      await this.withExpectedHttpStatuses([401], async () => {
+        await this.page.goto("/designs", { waitUntil: "domcontentloaded" });
+        await this.page.waitForURL((url) => url.pathname === "/login", { timeout: 20_000 });
+        await this.page.waitForLoadState("networkidle", { timeout: 15_000 });
+        await this.page.waitForTimeout(250);
+      });
       const expiredUrl = this.page.url();
       this.artifacts.expiredSession = await this.screenshot("FAIL-09", "revoked-cookie-replay-denied");
       await this.context.clearCookies();
