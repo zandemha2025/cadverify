@@ -234,6 +234,15 @@ class MobileRecoveryRun {
     return (await this.page.locator("body").innerText()).replace(/\s+/g, " ").trim();
   }
 
+  async waitForSavedVerification() {
+    await this.page
+      .getByRole("button", { name: /^Open the record/ })
+      .first()
+      .waitFor({ state: "visible", timeout: 150_000 });
+    await this.page.waitForLoadState("networkidle", { timeout: 15_000 });
+    await this.page.waitForTimeout(250);
+  }
+
   async noHorizontalObstruction() {
     return this.page.evaluate(() => {
       const root = document.documentElement;
@@ -577,6 +586,7 @@ class MobileRecoveryRun {
       }
       await this.page.getByText("80.0 × 50.0 × 6.0 mm", { exact: false }).first().waitFor({ timeout: 120_000 });
       await this.page.getByText("23.32 cm³", { exact: false }).first().waitFor();
+      await this.waitForSavedVerification();
       const body = await this.bodyText();
       const layout = await this.noHorizontalObstruction();
       const screenshot = await this.screenshot("MOB-04", "verified-decision");
@@ -1173,12 +1183,14 @@ class MobileRecoveryRun {
       await this.page.goForward({ waitUntil: "domcontentloaded" });
       await this.page.waitForURL((url) => url.pathname === "/verify");
       await this.page.getByText("23.32 cm³", { exact: false }).first().waitFor({ timeout: 120_000 });
+      await this.waitForSavedVerification();
+      const restoredBody = await this.bodyText();
       const screenshot = await this.screenshot("REC-06", "history-forward-restored");
       return {
         persona: "mobile operator using browser Back and Forward during review",
         preconditions: ["ready design", "completed verification", "390x844 viewport"],
         actions: ["opened Verify revision 1", "pressed Back", "confirmed the ready design", "pressed Forward", "confirmed the verification outcome"],
-        visible: [this.primaryDesignName, "Ready", "23.32 cm³"],
+        visible: [this.primaryDesignName, "Ready", "23.32 cm³", "Open the record"],
         persisted: "both the project and verification result remained available across browser history navigation",
         numeric: "revision 1; measured volume 23.32 cm³",
         recovery: "Back/Forward restored exact routes without replaying create or losing data",
@@ -1186,7 +1198,8 @@ class MobileRecoveryRun {
         assertions: [
           assertion("forward URL restored", forwardUrl, this.page.url()),
           assertion("design still exists", 1, (await this.designList()).filter((design) => design.name === this.primaryDesignName).length),
-          assertion("volume restored", true, /23\.32 cm³/.test(await this.bodyText())),
+          assertion("volume restored", true, /23\.32 cm³/.test(restoredBody)),
+          assertion("saved verification restored", true, /Open the record/.test(restoredBody)),
         ],
       };
     });

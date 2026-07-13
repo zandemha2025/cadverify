@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const [authRunner, manufacturingRunner, roleRunner, compareRunner, releaseRunner, glassBox] = await Promise.all([
+const [authRunner, manufacturingRunner, roleRunner, compareRunner, releaseRunner, mobileRunner, glassBox] = await Promise.all([
   readFile(new URL("./auth-role-lifecycle-golden-matrix.mjs", import.meta.url), "utf8"),
   readFile(new URL("./manufacturing-cad-adversarial.mjs", import.meta.url), "utf8"),
   readFile(new URL("./role-tenant-boundary-matrix.mjs", import.meta.url), "utf8"),
   readFile(new URL("./compare-rfq-key-golden-matrix.mjs", import.meta.url), "utf8"),
   readFile(new URL("./local-100-release.mjs", import.meta.url), "utf8"),
+  readFile(new URL("./mobile-recovery-e2e.mjs", import.meta.url), "utf8"),
   readFile(new URL("../../frontend/src/components/workspace/GlassBoxView.tsx", import.meta.url), "utf8"),
 ]);
 
@@ -50,6 +51,17 @@ test("API-key mutations finish finite proxy responses before reload", () => {
   assert.match(roleRunner, /mutation response did not finish within 30 seconds/);
   assert.match(roleRunner, /state: "detached"[\s\S]*await this\.finishDeveloperMutation\(owner, createActionResponse/);
   assert.doesNotMatch(roleRunner, /const createActionError = await createActionResponse\.finished\(\)/);
+});
+
+test("mobile history recovery finishes cost persistence before the next journey", () => {
+  assert.match(mobileRunner, /async waitForSavedVerification\(\)/);
+  assert.match(mobileRunner, /getByRole\("button", \{ name: \/\^Open the record\/ \}\)/);
+  assert.equal(mobileRunner.match(/await this\.waitForSavedVerification\(\)/g)?.length, 2);
+  assert.match(
+    mobileRunner,
+    /historyRecovery\(\)[\s\S]*goForward[\s\S]*await this\.waitForSavedVerification\(\)[\s\S]*expiredSessionRecovery\(\)/,
+  );
+  assert.doesNotMatch(mobileRunner, /ERR_ABORTED[^\n]*validate\/cost/);
 });
 
 test("cost process controls expose and use one semantic accessible group", () => {
