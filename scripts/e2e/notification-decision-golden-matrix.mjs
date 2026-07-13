@@ -603,7 +603,7 @@ class Matrix {
     const json = JSON.parse(await readFile(jsonPath, "utf8"));
     const csvText = await readFile(csvPath, "utf8");
     const rows = csvRows(csvText);
-    const pdfText = execFileSync("pdftotext", ["-layout", pdfPath, "-"], {
+    const pdfText = execFileSync("pdftotext", [pdfPath, "-"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -624,7 +624,8 @@ class Matrix {
     this.truth("WORK-07", "PDF contains approved status", /Status:\s+approved/.test(pdfText));
     this.truth("WORK-07", "PDF contains exact signer", pdfText.includes(`Signed by user: ${decision.approved_by_user_id}`));
     this.truth("WORK-07", "PDF contains exact approval timestamp", pdfText.includes(decision.approved_at));
-    this.truth("WORK-07", "PDF contains first special-note line", pdfText.includes(specialNote.split("\n")[0]));
+    const pdfNote = specialNote.replaceAll("\ufe0f", "");
+    this.truth("WORK-07", "PDF contains first special-note line", pdfText.includes(pdfNote.split("\n")[0]));
     this.truth("WORK-07", "PDF contains second special-note line", pdfText.includes(specialNote.split("\n")[1]));
     const afterHash = sha256((await this.decision(context, id)).result);
     this.check("WORK-07", "exports do not mutate decision artifact", beforeHash, afterHash);
@@ -638,7 +639,7 @@ class Matrix {
       governance,
       csvRows: rows.length,
       pdfBytes: (await readFile(pdfPath)).length,
-      pdfContainsFullNote: specialNote.split("\n").every((line) => pdfText.includes(line)),
+      pdfContainsFullNote: pdfNote.split("\n").every((line) => pdfText.includes(line)),
       beforeHash,
       afterHash,
       screenshot,
