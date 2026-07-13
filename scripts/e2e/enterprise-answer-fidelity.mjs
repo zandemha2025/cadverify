@@ -497,7 +497,7 @@ async function main() {
     await runCheck("INTERACTION-FIDELITY-001", "Human-flow and enterprise-control interactions", async () => {
       const requiredSteps = [
         [human, "command palette jumps to Triage"],
-        [human, "notifications panel opens and derives state"],
+        [human, "notifications inbox opens and derives state"],
         [enterprise, "Developer settings creates and reveals an API key exactly once"],
         [p7, "cost-decision detail approves and reopens from UI"],
         [p7, "cost-decision detail shows stale warning after governed rate publish"],
