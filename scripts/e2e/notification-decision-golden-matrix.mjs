@@ -1042,6 +1042,7 @@ class Matrix {
         diagnostics: { consoleErrors: this.consoleErrors, requestFailures: this.requestFailures },
         coverageGaps: [
           "Notifications expose read-one and read-all only; dismiss and restore have no browser control or API endpoint, so those branches are reported unsupported rather than passed.",
+          "The four-way disposition API persists and exports an optional disposition note, but current browser controls expose no create/edit field and submit null; VER-07 proves the four choices, not disposition-note authoring.",
         ],
       };
       await mkdir(outputRoot, { recursive: true });
