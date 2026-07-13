@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.auth.disposable import normalize_email
+from src.auth.org_context import revoke_org_api_keys
 from src.db.models import Membership, ScimIdentity, User
 from src.services.org_service import VALID_ORG_ROLES
 
@@ -365,6 +366,7 @@ async def _deprovision_membership(
         return
     if membership.org_role == "admin" and await _admin_count(session, org_id) <= 1:
         raise _scim_error(409, "Cannot remove the last admin via SCIM.", "mutability")
+    await revoke_org_api_keys(session, int(user.id), org_id)
     await session.delete(membership)
     if user.current_org_id == org_id:
         user.current_org_id = None

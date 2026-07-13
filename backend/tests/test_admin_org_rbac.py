@@ -156,7 +156,10 @@ async def test_admin_org_rbac_matrix():
 
             # superadmin sees across BOTH orgs.
             _act_as(app, superadmin, "superadmin")
-            r = await ac.get("/api/v1/admin/users?limit=100")
+            r = await ac.get(
+                "/api/v1/admin/users",
+                params={"cursor": min(a_admin, b_admin) - 1, "limit": 100},
+            )
             assert r.status_code == 200
             got = {u["id"] for u in r.json()["users"]}
             assert {a_admin, b_admin} <= got
@@ -187,27 +190,33 @@ async def test_admin_org_rbac_matrix():
 
             # === PATCH /users/{id}/role ====================================
             _act_as(app, a_admin, "analyst")
-            # cross-org write is blocked (404) and does NOT mutate B's user.
+            # Organization admins cannot mutate the global users.role column,
+            # regardless of whether the target is inside or outside their org.
             r = await ac.patch(
                 f"/api/v1/admin/users/{b_admin}/role", json={"role": "viewer"}
             )
-            assert r.status_code == 404
-            # in-org role change succeeds and persists.
+            assert r.status_code == 403
+            assert r.json()["detail"]["code"] == "platform_superadmin_required"
+            r = await ac.patch(
+                f"/api/v1/admin/users/{a_member}/role", json={"role": "viewer"}
+            )
+            assert r.status_code == 403
+            r = await ac.patch(
+                f"/api/v1/admin/users/{a_viewer}/role", json={"role": "superadmin"}
+            )
+            assert r.status_code == 403
+            r = await ac.patch(
+                f"/api/v1/admin/users/{a_admin}/role", json={"role": "viewer"}
+            )
+            assert r.status_code == 403
+
+            # Only platform superadmin can change the global role.
+            _act_as(app, superadmin, "superadmin")
             r = await ac.patch(
                 f"/api/v1/admin/users/{a_member}/role", json={"role": "viewer"}
             )
             assert r.status_code == 200
             assert r.json()["role"] == "viewer"
-            # cannot grant superadmin through the self-service endpoint.
-            r = await ac.patch(
-                f"/api/v1/admin/users/{a_viewer}/role", json={"role": "superadmin"}
-            )
-            assert r.status_code == 400
-            # cannot change own role.
-            r = await ac.patch(
-                f"/api/v1/admin/users/{a_admin}/role", json={"role": "viewer"}
-            )
-            assert r.status_code == 400
 
             # Verify persistence + that B was untouched.
             async with eng.get_session_factory()() as s2:

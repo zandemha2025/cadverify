@@ -183,7 +183,24 @@ async def switch_org(
     user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Set the caller's active org (validated against a live membership)."""
+    """Set the caller's active org using a dashboard session only.
+
+    Bearer API keys are permanently bound to their issuing organization. Letting
+    a key mutate ``users.current_org_id`` would move that credential, and every
+    user-scoped route behind it, across the tenant boundary.
+    """
+    if user.org_id is not None:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "api_key_org_bound",
+                "message": (
+                    "API keys cannot switch organizations. "
+                    "Use a dashboard session to switch organizations."
+                ),
+                "doc_url": error_doc_url("api_key_org_bound"),
+            },
+        )
     result = await svc.switch_org(session, user.user_id, body.org_id)
     await _emit(
         session,

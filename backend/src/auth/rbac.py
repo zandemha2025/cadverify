@@ -135,6 +135,13 @@ def require_org_role(min_role: OrgRole):
     async def _check(user: AuthedUser = Depends(require_api_key)) -> OrgAuthContext:
         is_superadmin = user.role == Role.superadmin.value
         membership = await lookup_org_membership(user.user_id)
+        # Bearer keys retain their issuing org. If the user's active membership
+        # changed after authentication, fail this authorization check instead of
+        # silently moving the key to the new organization.
+        if user.org_id is not None and (
+            membership is None or membership[0] != user.org_id
+        ):
+            membership = None
         org_id = membership[0] if membership else None
         org_role = membership[1] if membership else None
 

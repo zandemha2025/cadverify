@@ -23,6 +23,9 @@ class AuthedUser(BaseModel):
     api_key_id: int
     key_prefix: str
     role: str = "analyst"
+    # Present only for bearer API-key auth. Dashboard sessions intentionally
+    # resolve their mutable active org at the route/service boundary.
+    org_id: str | None = None
 
 
 def _401(code: str, message: str) -> HTTPException:
@@ -87,6 +90,7 @@ async def require_api_key(
                 api_key_id=0,
                 key_prefix="session",
                 role=role,
+                org_id=None,
             )
             request.state.authed_user = user
             return user
@@ -117,12 +121,36 @@ async def require_api_key(
     # (getattr defaults keep hand-built row doubles in unit tests active.)
     if getattr(row, "is_active", True) is False:
         raise _403_deactivated()
+    key_org_id = getattr(row, "org_id", None)
+    active_org_id = getattr(row, "active_org_id", None)
+    if not key_org_id:
+        # Every released api_keys row has a non-null org_id. Missing tenant
+        # identity is an invalid credential, never permission to fall back to
+        # the user's mutable current organization.
+        raise _401("auth_invalid", "Invalid or revoked API key")
+    if active_org_id != key_org_id:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "api_key_org_mismatch",
+                "message": (
+                    "This API key is bound to a different organization. "
+                    "Use a dashboard session to select its issuing organization "
+                    "or use a key issued for the active organization."
+                ),
+                "doc_url": error_doc_url("api_key_org_mismatch"),
+            },
+        )
     role = getattr(row, "role", None)
     if role is None:
         role = await lookup_user_role(row.user_id)
     role = role or "analyst"
     user = AuthedUser(
-        user_id=row.user_id, api_key_id=row.id, key_prefix=row.prefix, role=role
+        user_id=row.user_id,
+        api_key_id=row.id,
+        key_prefix=row.prefix,
+        role=role,
+        org_id=key_org_id,
     )
     request.state.authed_user = user
     asyncio.create_task(touch_last_used(row.id))

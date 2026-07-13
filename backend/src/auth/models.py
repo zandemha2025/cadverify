@@ -33,6 +33,12 @@ class ApiKeyRow:
     # Defaulted so any legacy positional constructor still works.
     role: str = "analyst"
     is_active: bool = True
+    # API keys are tenant-bound credentials.  ``org_id`` is the organization
+    # that issued the key; ``active_org_id`` is the owner's currently selected
+    # live membership at authentication time.  The auth dependency requires
+    # these to match before admitting the request.
+    org_id: str | None = None
+    active_org_id: str | None = None
 
 
 @dataclass
@@ -383,8 +389,18 @@ async def lookup_api_key(hmac_idx: str) -> ApiKeyRow | None:
             await s.execute(
                 text(
                     "SELECT k.id, k.user_id, k.prefix, k.hmac_index, k.secret_hash, "
-                    "k.revoked_at, u.role, u.is_active "
+                    "k.revoked_at, u.role, u.is_active, k.org_id, "
+                    "COALESCE("
+                    "(SELECT current_m.org_id FROM memberships current_m "
+                    " WHERE current_m.user_id = k.user_id "
+                    " AND current_m.org_id = u.current_org_id LIMIT 1), "
+                    "(SELECT oldest_m.org_id FROM memberships oldest_m "
+                    " WHERE oldest_m.user_id = k.user_id "
+                    " ORDER BY oldest_m.created_at ASC, oldest_m.id ASC LIMIT 1)"
+                    ") AS active_org_id "
                     "FROM api_keys k JOIN users u ON u.id = k.user_id "
+                    "JOIN memberships key_m ON key_m.user_id = k.user_id "
+                    "AND key_m.org_id = k.org_id "
                     "WHERE k.hmac_index = :h"
                 ),
                 {"h": hmac_idx},
