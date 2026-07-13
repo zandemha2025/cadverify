@@ -26,7 +26,7 @@ from src.auth.provisioning import (
     ProvisionedLogin,
     provision_authenticated_login,
 )
-from src.auth.redis_util import require_redis_url
+from src.auth.redis_util import register_redis_client, require_redis_url
 from src.config.production import is_production
 from src.services.org_saml_service import (
     SamlGroupMappingAmbiguousError,
@@ -48,7 +48,8 @@ _OneLogin_Saml2_Auth = None
 
 @lru_cache(maxsize=1)
 def _saml_redis() -> aioredis.Redis:
-    return aioredis.from_url(require_redis_url(), decode_responses=True)
+    client = aioredis.from_url(require_redis_url(), decode_responses=True)
+    return register_redis_client(client, _saml_redis.cache_clear)
 
 
 def _saml_request_key(relay_state: str) -> str:

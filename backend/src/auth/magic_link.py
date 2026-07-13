@@ -44,7 +44,7 @@ from src.auth.magic_keys import (
     magic_token_key,
 )
 from src.auth.provisioning import provision_authenticated_login
-from src.auth.redis_util import require_redis_url
+from src.auth.redis_util import register_redis_client, require_redis_url
 from src.auth.signup_limits import (
     ip_signup_limit_enabled,
     per_email_magic_link_limit,
@@ -89,7 +89,8 @@ def _secret() -> bytes:
 @lru_cache(maxsize=1)
 def _r() -> aioredis.Redis:
     """One Redis pool per process; auth requests must not create pool leaks."""
-    return aioredis.from_url(require_redis_url(), decode_responses=True)
+    client = aioredis.from_url(require_redis_url(), decode_responses=True)
+    return register_redis_client(client, _r.cache_clear)
 
 
 def _mint(email_norm: str) -> str:

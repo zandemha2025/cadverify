@@ -358,6 +358,12 @@ async def lifespan(app: FastAPI):
         except Exception:
             logger.exception("failed to close ARQ enqueue pool")
         try:
+            from src.auth.redis_util import close_registered_redis_clients
+
+            await close_registered_redis_clients()
+        except Exception:
+            logger.exception("failed to close auth Redis pools")
+        try:
             from src.db.engine import dispose_engine
 
             await dispose_engine()

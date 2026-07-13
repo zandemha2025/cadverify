@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
+import pytest_asyncio
 import trimesh
 
 # Migration tests temporarily patch ``sys.modules["alembic.op"]``. Import the
@@ -27,8 +28,18 @@ import trimesh
 import alembic  # noqa: F401
 
 from src.auth.require_api_key import AuthedUser
+from src.auth.redis_util import (
+    close_registered_redis_clients as _close_registered_redis_clients_impl,
+)
 
 pytest_plugins = ("tests.ci_skip_policy", "pytester")
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _close_auth_redis_clients():
+    """Do not carry loop-bound Redis pools between function-scoped test loops."""
+    yield
+    await _close_registered_redis_clients_impl()
 
 
 # ──────────────────────────────────────────────────────────────
