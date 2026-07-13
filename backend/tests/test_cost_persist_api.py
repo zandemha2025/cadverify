@@ -657,7 +657,11 @@ def test_exports_preserve_exact_approval_governance(client, real_result_json):
     assert "Status:</strong> approved" in html
     assert "Signed by user:</strong> 42" in html
     assert approved_at.isoformat() in html
-    assert "QA edit α/β — “quoted” &lt;tag&gt; &amp; gears ⚙️" in html
+    # JSON/CSV above preserve the exact emoji presentation selector. The PDF
+    # intentionally uses the inline text glyph so WeasyPrint cannot float the
+    # selector outside the governance note.
+    assert "QA edit α/β — “quoted” &lt;tag&gt; &amp; gears ⚙" in html
+    assert "gears ⚙️" not in html
     assert "\nLine 2: $3.80/unit" in html
     assert "Recorded outcome:</strong> Make outside" in html
     assert "Outcome note:</strong>\nSupplier route selected" in html
