@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const [authRunner, manufacturingRunner, roleRunner, compareRunner, glassBox] = await Promise.all([
+const [authRunner, manufacturingRunner, roleRunner, compareRunner, releaseRunner, glassBox] = await Promise.all([
   readFile(new URL("./auth-role-lifecycle-golden-matrix.mjs", import.meta.url), "utf8"),
   readFile(new URL("./manufacturing-cad-adversarial.mjs", import.meta.url), "utf8"),
   readFile(new URL("./role-tenant-boundary-matrix.mjs", import.meta.url), "utf8"),
   readFile(new URL("./compare-rfq-key-golden-matrix.mjs", import.meta.url), "utf8"),
+  readFile(new URL("./local-100-release.mjs", import.meta.url), "utf8"),
   readFile(new URL("../../frontend/src/components/workspace/GlassBoxView.tsx", import.meta.url), "utf8"),
 ]);
 
@@ -20,6 +21,14 @@ test("invitation runners follow the live accessible dialog and accept route", ()
 
 test("role evidence supplies the canonical generation timestamp", () => {
   assert.match(roleRunner, /generatedAt: new Date\(finishedAt\)\.toISOString\(\)/);
+});
+
+test("release build probes do not reuse stale sockets after synchronous suites", () => {
+  assert.match(releaseRunner, /const BUILD_PROBE_ATTEMPTS = 4/);
+  assert.match(releaseRunner, /"connection": "close"/);
+  assert.match(releaseRunner, /AbortSignal\.timeout\(BUILD_PROBE_TIMEOUT_MS\)/);
+  assert.match(releaseRunner, /attempt <= BUILD_PROBE_ATTEMPTS/);
+  assert.match(releaseRunner, /after \$\{BUILD_PROBE_ATTEMPTS\} attempts/);
 });
 
 test("API-key mutations finish their server-action streams before reload", () => {

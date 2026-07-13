@@ -16,6 +16,9 @@ const appUrl = (process.env.APP_URL || "http://localhost:3000").replace(/\/+$/, 
 const apiUrl = (process.env.API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 const gitHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" }).trim();
 const startedAt = new Date().toISOString();
+const BUILD_PROBE_ATTEMPTS = 4;
+const BUILD_PROBE_TIMEOUT_MS = 2_000;
+const BUILD_PROBE_RETRY_MS = 500;
 
 const runners = [
   "public-auth-verify-golden-matrix.mjs",
@@ -105,25 +108,51 @@ function canonicalReports() {
   return found;
 }
 
+function probeErrorMessage(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  const cause = error && typeof error === "object" ? error.cause : null;
+  if (!cause) return message;
+  const causeCode = cause && typeof cause === "object" && "code" in cause ? cause.code : null;
+  const causeMessage = cause instanceof Error ? cause.message : String(cause);
+  return `${message}${causeCode ? ` [${causeCode}]` : ""}: ${causeMessage}`;
+}
+
 async function fetchServedBuilds() {
   const builds = {};
   const errors = [];
   for (const [label, url] of [["frontend", `${appUrl}/status`], ["backend", `${apiUrl}/health`]]) {
-    try {
-      const response = await fetch(url, { headers: { "x-real-ip": "198.51.100.199" } });
-      if (!response.ok) {
-        errors.push(`${label} returned HTTP ${response.status} from ${url}`);
-        continue;
+    let lastError = null;
+    for (let attempt = 1; attempt <= BUILD_PROBE_ATTEMPTS; attempt += 1) {
+      try {
+        const response = await fetch(url, {
+          headers: {
+            "connection": "close",
+            "x-real-ip": "198.51.100.199",
+          },
+          signal: AbortSignal.timeout(BUILD_PROBE_TIMEOUT_MS),
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (label === "frontend") {
+          const build = response.headers.get("x-proofshape-build");
+          if (!build) throw new Error("missing x-proofshape-build response header");
+          builds.frontend = build;
+        } else {
+          const body = await response.json();
+          if (body?.status !== "ok") throw new Error(`health was not ok: ${JSON.stringify(body)}`);
+          if (!body?.build_id) throw new Error("health response omitted build_id");
+          builds.backend = body.build_id;
+        }
+        lastError = null;
+        break;
+      } catch (error) {
+        lastError = probeErrorMessage(error);
+        if (attempt < BUILD_PROBE_ATTEMPTS) {
+          await new Promise((resolve) => setTimeout(resolve, BUILD_PROBE_RETRY_MS));
+        }
       }
-      if (label === "frontend") {
-        builds.frontend = response.headers.get("x-proofshape-build");
-      } else {
-        const body = await response.json();
-        if (body?.status !== "ok") errors.push(`backend health was not ok: ${JSON.stringify(body)}`);
-        builds.backend = body?.build_id;
-      }
-    } catch (error) {
-      errors.push(`${label} could not reach ${url}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (lastError) {
+      errors.push(`${label} could not verify ${url} after ${BUILD_PROBE_ATTEMPTS} attempts: ${lastError}`);
     }
   }
   return { builds, errors };
