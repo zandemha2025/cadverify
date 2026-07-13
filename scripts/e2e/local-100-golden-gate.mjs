@@ -65,6 +65,14 @@ export function evaluateLocal100({
       }));
     }
 
+    if (report.data?.releaseEvidence?.schemaVersion !== 1) {
+      problems.push(issue("invalid_release_evidence_schema", {
+        report: name,
+        expected: 1,
+        actual: report.data?.releaseEvidence?.schemaVersion ?? null,
+      }));
+    }
+
     const goldenPaths = report.data?.releaseEvidence?.goldenPaths;
     if (!goldenPaths || typeof goldenPaths !== "object" || Array.isArray(goldenPaths)) {
       problems.push(issue("missing_golden_paths", {
@@ -74,9 +82,14 @@ export function evaluateLocal100({
       return;
     }
 
+    let contributed = 0;
     for (const [id, evidence] of Object.entries(goldenPaths)) {
       if (!candidates.has(id)) continue;
       candidates.get(id).push({ name, evidence });
+      contributed += 1;
+    }
+    if (contributed === 0) {
+      problems.push(issue("report_has_no_required_paths", { report: name }));
     }
   });
 
@@ -195,4 +208,3 @@ function main() {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main();
 }
-

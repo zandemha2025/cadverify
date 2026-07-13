@@ -147,3 +147,24 @@ test("missing screenshot bytes and dirty HEAD both block the claim", () => {
   assert.ok(result.problems.some((problem) => problem.type === "dirty_worktree"));
   assert.ok(result.problems.some((problem) => problem.type === "missing_screenshot_file" && problem.id === "FAIL-10"));
 });
+
+test("an unrelated or unversioned report cannot enter the release set", () => {
+  const report = completeReport();
+  report.data.releaseEvidence.schemaVersion = 2;
+  const unrelated = {
+    name: "unrelated",
+    data: {
+      status: "PASS",
+      buildIdentity: identity(),
+      releaseEvidence: { schemaVersion: 1, goldenPaths: { "EXTERNAL-01": evidence("EXTERNAL-01") } },
+    },
+  };
+  const result = evaluateLocal100({
+    reports: [report, unrelated],
+    expectedIdentity: identity(),
+    screenshotExists: () => true,
+  });
+  assert.equal(result.status, "FAIL");
+  assert.ok(result.problems.some((problem) => problem.type === "invalid_release_evidence_schema"));
+  assert.ok(result.problems.some((problem) => problem.type === "report_has_no_required_paths"));
+});
