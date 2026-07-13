@@ -568,6 +568,12 @@ class BatchDesignRecoveryMatrix {
       );
       await this.page.reload({ waitUntil: "domcontentloaded" });
       const items = await this.getBatchItems(batchId);
+      await this.page
+        .locator('[data-batch-items-state="ready"]')
+        .waitFor({ timeout: 15_000 });
+      for (const entry of fixture.entries) {
+        await this.page.getByText(entry, { exact: true }).waitFor({ timeout: 15_000 });
+      }
       await this.page.getByRole("button", { name: /^Download CSV$/ }).waitFor({ timeout: 15_000 });
       const [download] = await Promise.all([
         this.page.waitForEvent("download", { timeout: 30_000 }),
@@ -605,8 +611,6 @@ class BatchDesignRecoveryMatrix {
           }
         }
       }
-      const body = await this.page.locator("body").innerText();
-      for (const entry of fixture.entries) assert(body.includes(entry), `WORK-04 detail omitted ${entry}`);
       const screenshot = await this.screenshot("WORK-04", "detail-csv-exact");
       this.artifacts.downloads["WORK-04"] = csvPath;
       return {

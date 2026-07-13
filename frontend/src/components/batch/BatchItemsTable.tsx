@@ -34,9 +34,15 @@ interface Props {
   batchId: string;
   /** Trigger a refresh by changing this key. */
   refreshKey?: number;
+  /** Keeps parent actions synchronized with the visible item results. */
+  onLoadStateChange?: (state: "loading" | "ready" | "error") => void;
 }
 
-export default function BatchItemsTable({ batchId, refreshKey }: Props) {
+export default function BatchItemsTable({
+  batchId,
+  refreshKey,
+  onLoadStateChange,
+}: Props) {
   const [items, setItems] = useState<BatchItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,37 +51,63 @@ export default function BatchItemsTable({ batchId, refreshKey }: Props) {
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [expandedErrors, setExpandedErrors] = useState<Set<string>>(new Set());
+  const [retryKey, setRetryKey] = useState(0);
 
-  const fetchItems = useCallback(
-    async (cursor?: string) => {
-      try {
-        const resp = await getBatchItems(batchId, {
-          status: statusFilter === "all" ? undefined : statusFilter,
-          cursor,
-          limit: 50,
-        });
-        setItems((prev) => (cursor ? [...prev, ...resp.items] : resp.items));
-        setNextCursor(resp.next_cursor);
-        setHasMore(resp.has_more);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load items");
-      }
-    },
+  const fetchPage = useCallback(
+    (cursor?: string) =>
+      getBatchItems(batchId, {
+        status: statusFilter === "all" ? undefined : statusFilter,
+        cursor,
+        limit: 50,
+      }),
     [batchId, statusFilter],
   );
 
   // Initial load + filter change
   useEffect(() => {
+    let active = true;
     setLoading(true);
     setError(null);
-    fetchItems().finally(() => setLoading(false));
-  }, [fetchItems, refreshKey]);
+    setItems([]);
+    setNextCursor(null);
+    setHasMore(false);
+    onLoadStateChange?.("loading");
+
+    void fetchPage()
+      .then((resp) => {
+        if (!active) return;
+        setItems(resp.items);
+        setNextCursor(resp.next_cursor);
+        setHasMore(resp.has_more);
+        setLoading(false);
+        onLoadStateChange?.("ready");
+      })
+      .catch((caught) => {
+        if (!active) return;
+        setError(caught instanceof Error ? caught.message : "Failed to load items");
+        setLoading(false);
+        onLoadStateChange?.("error");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [fetchPage, onLoadStateChange, refreshKey, retryKey]);
 
   const loadMore = async () => {
     if (!nextCursor) return;
     setLoadingMore(true);
-    await fetchItems(nextCursor);
-    setLoadingMore(false);
+    try {
+      const resp = await fetchPage(nextCursor);
+      setItems((prev) => [...prev, ...resp.items]);
+      setNextCursor(resp.next_cursor);
+      setHasMore(resp.has_more);
+      setError(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to load items");
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   const toggleError = useCallback((itemId: string) => {
@@ -183,8 +215,14 @@ export default function BatchItemsTable({ batchId, refreshKey }: Props) {
     [expandedErrors, toggleError],
   );
 
+  const loadState = loading ? "loading" : error ? "error" : "ready";
+
   return (
-    <div className="space-y-3">
+    <div
+      className="space-y-3"
+      data-batch-items-state={loadState}
+      aria-busy={loading || undefined}
+    >
       {/* Status filter */}
       <div className="flex items-center gap-2">
         <span className="text-sm text-muted-foreground">Filter</span>
@@ -207,8 +245,7 @@ export default function BatchItemsTable({ batchId, refreshKey }: Props) {
           message={error}
           onRetry={() => {
             setError(null);
-            setLoading(true);
-            fetchItems().finally(() => setLoading(false));
+            setRetryKey((key) => key + 1);
           }}
         />
       )}

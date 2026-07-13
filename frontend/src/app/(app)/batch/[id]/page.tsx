@@ -26,8 +26,12 @@ export default function BatchDetailPage({
   const router = useRouter();
   const [progress, setProgress] = useState<BatchProgress | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [downloadingCsv, setDownloadingCsv] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [itemsLoadState, setItemsLoadState] = useState<
+    "loading" | "ready" | "error"
+  >("loading");
   const progressSnapshotRef = useRef("");
 
   const isTerminal = progress ? TERMINAL_STATUSES.has(progress.status) : false;
@@ -49,6 +53,7 @@ export default function BatchDetailPage({
   };
 
   const handleCsvDownload = async () => {
+    setDownloadingCsv(true);
     try {
       const blob = await downloadBatchCsv(batchId);
       const url = URL.createObjectURL(blob);
@@ -61,6 +66,8 @@ export default function BatchDetailPage({
       URL.revokeObjectURL(url);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "CSV download failed");
+    } finally {
+      setDownloadingCsv(false);
     }
   };
 
@@ -115,7 +122,12 @@ export default function BatchDetailPage({
               </Button>
             )}
             {isCompleted && (
-              <Button variant="secondary" size="sm" onClick={handleCsvDownload}>
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={itemsLoadState === "loading" || downloadingCsv}
+                onClick={handleCsvDownload}
+              >
                 Download CSV
               </Button>
             )}
@@ -130,9 +142,9 @@ export default function BatchDetailPage({
           Items
         </h2>
         <BatchItemsTable
-          key={`${batchId}:${refreshKey}`}
           batchId={batchId}
           refreshKey={refreshKey}
+          onLoadStateChange={setItemsLoadState}
         />
       </section>
 

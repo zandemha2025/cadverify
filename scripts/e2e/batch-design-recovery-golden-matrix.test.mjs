@@ -104,6 +104,8 @@ test("runner binds real faults, durable assertions, common evidence, and build i
   }
   assert.ok(source.includes("filename,status,verdict,best_process,issue_count,duration_ms,analysis_url,error"));
   assert.match(source, /completed \+ failed \+ skipped/);
+  assert.match(source, /data-batch-items-state=["']ready["']/);
+  assert.match(source, /getByText\(entry, \{ exact: true \}\)\.waitFor/);
   assert.match(source, /assertRevisionHasNoArtifacts/);
   assert.match(source, /x-proofshape-e2e-token/);
   assert.match(source, /route\.continue/);
