@@ -112,6 +112,16 @@ _COST_MAX_QTYS = 6
 _COST_MAX_QTY = 10_000_000
 
 
+def _nullable_api_key_id(api_key_id: Optional[int]) -> Optional[int]:
+    """Return a real API-key FK, or NULL for dashboard-session auth.
+
+    Dashboard sessions intentionally use ``0`` as an in-memory sentinel. It is
+    never a row in ``api_keys`` and therefore must not cross the persistence
+    boundary into nullable foreign-key columns.
+    """
+    return api_key_id or None
+
+
 # ---------------------------------------------------------------------------
 # Batch CRUD
 # ---------------------------------------------------------------------------
@@ -139,7 +149,7 @@ async def create_batch(
         webhook_url=webhook_url,
         webhook_secret=webhook_secret,
         concurrency_limit=concurrency_limit or DEFAULT_BATCH_CONCURRENCY,
-        api_key_id=api_key_id,
+        api_key_id=_nullable_api_key_id(api_key_id),
     )
     session.add(batch)
     await session.flush()
