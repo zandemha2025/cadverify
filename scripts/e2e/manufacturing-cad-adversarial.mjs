@@ -505,7 +505,7 @@ async function runSuite(page, account) {
         recovery: "Full page reload returned to the same persisted machine detail.",
       },
       assertions: [
-        assertRecord("machine create status", 200, created.status(), created.status() === 200),
+        assertRecord("machine create status", 201, created.status(), created.status() === 201),
         assertRecord("persisted count", 2, persisted?.count, persisted?.count === 2),
         assertRecord("persisted rate", 75, persisted?.hourly_rate_usd, persisted?.hourly_rate_usd === 75),
         assertRecord("persisted envelope", { x: 5, y: 5, z: 5 }, persisted?.capabilities, persisted?.capabilities?.x === 5 && persisted?.capabilities?.y === 5 && persisted?.capabilities?.z === 5),
@@ -766,6 +766,9 @@ async function runSuite(page, account) {
     const calibrationText = await bodyText(page);
     await page.getByRole("button", { name: "Your machines", exact: true }).click();
     await page.getByRole("heading", { name: "Your machines" }).waitFor();
+    for (const name of ["MJF 5200 - Bay 4", boundaryMill, "Mazak Integrex i-200", "EOS M290 - Nickel/SS Cell"]) {
+      await page.getByText(name, { exact: true }).waitFor({ timeout: 20_000 });
+    }
     const machineText = await bodyText(page);
     const subpathsPassed = MANUFACTURING_SUBPATH_IDS.every((id) => evidence[id]?.status === "PASS");
     return {
