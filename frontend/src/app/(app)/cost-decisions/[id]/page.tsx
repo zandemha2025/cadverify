@@ -25,6 +25,7 @@ import {
 } from "@/lib/api";
 import type { CostDecisionDetail } from "@/lib/api";
 import {
+  COST_DISPOSITION_NOTE_MAX_LENGTH,
   COST_DISPOSITIONS,
   type CostDisposition,
 } from "@/lib/cost-disposition";
@@ -59,20 +60,46 @@ function GovernancePanel({
   onUpdate: (patch: Partial<CostDecisionDetail>) => void;
 }) {
   const [note, setNote] = useState("");
+  const [dispositionNote, setDispositionNote] = useState(
+    decision.disposition_note ?? ""
+  );
+  const [dispositionError, setDispositionError] = useState<string | null>(null);
   const [saving, setSaving] = useState<"approve" | "reopen" | null>(null);
   const [savingDisposition, setSavingDisposition] = useState<
-    CostDisposition | "withdraw" | null
+    CostDisposition | "withdraw" | "note" | null
   >(null);
   const approved = decision.approval_status === "approved";
+  const persistedDispositionNote = decision.disposition_note ?? "";
+  const dispositionNoteDirty =
+    dispositionNote.trim() !== persistedDispositionNote;
 
-  async function saveDisposition(next: CostDisposition | null) {
+  useEffect(() => {
+    setDispositionNote(decision.disposition_note ?? "");
+  }, [decision.disposition_note]);
+
+  async function saveDisposition(
+    next: CostDisposition | null,
+    action: "choice" | "note" | "withdraw" = "choice"
+  ) {
     const wasApproved = approved;
-    setSavingDisposition(next ?? "withdraw");
+    setSavingDisposition(
+      action === "note" ? "note" : next ?? "withdraw"
+    );
+    setDispositionError(null);
     try {
-      const patch = await setCostDecisionDisposition(decision.id, next);
+      const patch = await setCostDecisionDisposition(
+        decision.id,
+        next,
+        next ? dispositionNote : undefined
+      );
       onUpdate(patch);
+      setDispositionNote(patch.disposition_note ?? "");
       toast.success(
-        next
+        action === "note"
+          ? wasApproved
+            ? "Outcome note saved; prior approval reopened"
+            : "Outcome note saved"
+          : next
           ? wasApproved
             ? "Outcome saved; prior approval reopened"
             : "Outcome saved"
@@ -81,7 +108,9 @@ function GovernancePanel({
             : "Outcome withdrawn"
       );
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Outcome was not saved");
+      const message = e instanceof Error ? e.message : "Outcome was not saved";
+      setDispositionError(message);
+      toast.error(message);
     } finally {
       setSavingDisposition(null);
     }
@@ -149,12 +178,18 @@ function GovernancePanel({
               variant="secondary"
               size="sm"
               loading={saving === "reopen"}
+              disabled={Boolean(savingDisposition)}
               onClick={reopen}
             >
               {saving !== "reopen" && <RotateCcw />} Reopen
             </Button>
           ) : (
-            <Button size="sm" loading={saving === "approve"} onClick={approve}>
+            <Button
+              size="sm"
+              loading={saving === "approve"}
+              disabled={Boolean(savingDisposition)}
+              onClick={approve}
+            >
               {saving !== "approve" && <ShieldCheck />} Approve
             </Button>
           )}
@@ -182,7 +217,6 @@ function GovernancePanel({
           <div className="flex flex-wrap gap-2">
             {COST_DISPOSITIONS.map((option) => {
               const selected = decision.user_disposition === option.key;
-              const next = selected ? null : option.key;
               return (
                 <Button
                   key={option.key}
@@ -191,27 +225,102 @@ function GovernancePanel({
                   variant={selected ? "primary" : "secondary"}
                   aria-pressed={selected}
                   data-testid={`record-disposition-${option.key}`}
-                  disabled={Boolean(savingDisposition)}
+                  disabled={Boolean(savingDisposition || saving)}
                   loading={
-                    savingDisposition === option.key ||
-                    (selected && savingDisposition === "withdraw")
+                    savingDisposition === option.key
                   }
-                  onClick={() => void saveDisposition(next)}
+                  onClick={() => void saveDisposition(option.key)}
                 >
                   {option.label}
                 </Button>
               );
             })}
+            {decision.user_disposition && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                data-testid="record-disposition-withdraw"
+                disabled={Boolean(savingDisposition || saving)}
+                loading={savingDisposition === "withdraw"}
+                onClick={() => void saveDisposition(null, "withdraw")}
+              >
+                Withdraw outcome
+              </Button>
+            )}
           </div>
           <p className="text-xs text-muted-foreground">
-            Select the active choice again to withdraw it. Changing an outcome
-            reopens any prior approval so the new decision must be signed off.
+            Choose the accountable sourcing action, then add the reason or
+            constraint that reviewers need. Changing either the outcome or its
+            note reopens any prior approval for a fresh signoff.
           </p>
-          {decision.disposition_note && (
-            <p className="whitespace-pre-wrap break-words text-sm text-foreground">
-              {decision.disposition_note}
-            </p>
-          )}
+          <div className="space-y-2">
+            <label
+              htmlFor="cost-disposition-note"
+              className="text-xs font-medium text-foreground"
+            >
+              Outcome note (optional)
+            </label>
+            <Textarea
+              id="cost-disposition-note"
+              data-testid="record-disposition-note"
+              value={dispositionNote}
+              onChange={(event) => setDispositionNote(event.target.value)}
+              disabled={Boolean(savingDisposition || saving)}
+              maxLength={COST_DISPOSITION_NOTE_MAX_LENGTH}
+              placeholder="Why this action was chosen, constraints, owner, or next review point"
+              className="min-h-24"
+              aria-describedby="cost-disposition-note-help cost-disposition-note-count"
+            />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p
+                id="cost-disposition-note-help"
+                className="text-xs text-muted-foreground"
+              >
+                The note persists beside the immutable cost record and appears
+                in JSON, CSV, and PDF exports.
+              </p>
+              <p
+                id="cost-disposition-note-count"
+                className="font-mono text-xs text-muted-foreground"
+              >
+                {dispositionNote.length}/{COST_DISPOSITION_NOTE_MAX_LENGTH}
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              data-testid="record-disposition-note-save"
+              disabled={
+                !decision.user_disposition ||
+                !dispositionNoteDirty ||
+                Boolean(savingDisposition || saving)
+              }
+              loading={savingDisposition === "note"}
+              onClick={() =>
+                decision.user_disposition &&
+                void saveDisposition(decision.user_disposition, "note")
+              }
+            >
+              Save outcome note
+            </Button>
+            {!decision.user_disposition && dispositionNote.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Choose an outcome to save this note.
+              </p>
+            )}
+            {dispositionError && (
+              <p
+                role="alert"
+                data-testid="record-disposition-error"
+                className="text-sm text-destructive"
+              >
+                Nothing changed — {dispositionError}. Retry the same action when
+                the service is available.
+              </p>
+            )}
+          </div>
         </div>
 
         {decision.is_stale && (
@@ -245,6 +354,7 @@ function GovernancePanel({
           <Textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
+            disabled={Boolean(savingDisposition)}
             maxLength={1000}
             placeholder="Optional approval note"
             className="min-h-20"

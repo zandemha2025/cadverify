@@ -79,7 +79,7 @@
     {% endif %}
     {% if governance.get('disposition_note') %}
       <div class="governance-note"><strong>Outcome note:</strong>
-{{ governance.get('disposition_note') }}</div>
+{{ governance.get('disposition_note') | pdf_text }}</div>
     {% endif %}
   </div>
 

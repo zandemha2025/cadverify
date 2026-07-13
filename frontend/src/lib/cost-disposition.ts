@@ -7,6 +7,8 @@ export const COST_DISPOSITIONS = [
 
 export type CostDisposition = (typeof COST_DISPOSITIONS)[number]["key"];
 
+export const COST_DISPOSITION_NOTE_MAX_LENGTH = 1000;
+
 export function costDispositionLabel(
   disposition: CostDisposition | null | undefined
 ): string | null {

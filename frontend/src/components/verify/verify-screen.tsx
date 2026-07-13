@@ -16,6 +16,7 @@ import type { VerifyResult } from "@/lib/verify/run";
 import { fetchCostDecision, setCostDecisionDisposition } from "@/lib/api";
 import type { CostReport, CostComparison } from "@/lib/api";
 import {
+  COST_DISPOSITION_NOTE_MAX_LENGTH,
   COST_DISPOSITIONS,
   costDispositionLabel,
   isCostDisposition,
@@ -1647,10 +1648,14 @@ function DecideHallmark({
   const validated = est?.confidence?.validated ?? false;
   const decidedLabel = costDispositionLabel(decision);
   const [loadingSaved, setLoadingSaved] = useState(Boolean(saved?.id));
-  const [saving, setSaving] = useState<CostDisposition | "withdraw" | null>(null);
+  const [saving, setSaving] = useState<
+    CostDisposition | "withdraw" | "note" | null
+  >(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loadVersion, setLoadVersion] = useState(0);
   const [persistedAt, setPersistedAt] = useState<string | null>(null);
+  const [dispositionNote, setDispositionNote] = useState("");
+  const [persistedDispositionNote, setPersistedDispositionNote] = useState("");
   // Real, verbatim id of the persisted cost-decision artifact (never the design's
   // fixture "V-0117"). A short handle for the line; the full record opens in Records.
   const shortId = saved?.id ? `#${saved.id.slice(0, 8)}` : null;
@@ -1664,6 +1669,8 @@ function DecideHallmark({
       setLoadingSaved(false);
       setSaveError(null);
       setPersistedAt(null);
+      setDispositionNote("");
+      setPersistedDispositionNote("");
       return;
     }
 
@@ -1679,6 +1686,8 @@ function DecideHallmark({
         }
         setDecision(persisted ?? null);
         setPersistedAt(record.disposition_updated_at ?? null);
+        setDispositionNote(record.disposition_note ?? "");
+        setPersistedDispositionNote(record.disposition_note ?? "");
       })
       .catch((error) => {
         if (!alive) return;
@@ -1694,28 +1703,48 @@ function DecideHallmark({
     };
   }, [loadVersion, saved?.id, setDecision]);
 
-  const choose = async (key: CostDisposition, label: string) => {
+  const choose = async (
+    key: CostDisposition,
+    label: string,
+    action: "select" | "note" | "withdraw" = "select"
+  ) => {
     if (loadingSaved || saving) return;
-    const withdrawing = decision === key;
+    const noteOnly = action === "note";
+    const withdrawing = action === "withdraw";
     const next = withdrawing ? null : key;
 
     // Honest fallback for an explicitly non-persisted engine run.
     if (!saved?.id) {
       setDecision(next);
+      if (withdrawing) {
+        setDispositionNote("");
+        setPersistedDispositionNote("");
+      } else {
+        setPersistedDispositionNote(dispositionNote.trim());
+      }
       if (withdrawing) toast(`Decision withdrawn — ${label}`);
+      else if (noteOnly) toast("Outcome note updated for this verification");
       else toast(`${label} — noted on this verification`);
-      if (key === "acquire" && !withdrawing) nav("acquisition");
+      if (key === "acquire" && !withdrawing && !noteOnly) nav("acquisition");
       return;
     }
 
-    setSaving(withdrawing ? "withdraw" : key);
+    setSaving(withdrawing ? "withdraw" : noteOnly ? "note" : key);
     setSaveError(null);
     try {
-      const updated = await setCostDecisionDisposition(saved.id, next);
+      const updated = await setCostDecisionDisposition(
+        saved.id,
+        next,
+        next ? dispositionNote : undefined
+      );
       setDecision(updated.user_disposition);
       setPersistedAt(updated.disposition_updated_at ?? new Date().toISOString());
+      setDispositionNote(updated.disposition_note ?? "");
+      setPersistedDispositionNote(updated.disposition_note ?? "");
       if (withdrawing) {
         toast(`Decision withdrawn — saved to cost-decision ${shortId}`);
+      } else if (noteOnly) {
+        toast(`Outcome note saved to cost-decision ${shortId}`);
       } else {
         toast(`${label} — saved to cost-decision ${shortId}`);
         if (key === "acquire") nav("acquisition");
@@ -1764,6 +1793,25 @@ function DecideHallmark({
             </button>
           );
         })}
+        {decision && (
+          <button
+            type="button"
+            data-testid="verify-disposition-withdraw"
+            aria-label={`Withdraw ${decidedLabel ?? "recorded outcome"}`}
+            aria-busy={saving === "withdraw"}
+            disabled={loadingSaved || Boolean(saving) || Boolean(saveError)}
+            onClick={() =>
+              void choose(
+                decision,
+                decidedLabel ?? "recorded outcome",
+                "withdraw"
+              )
+            }
+            style={{ background: "none", border: "none", color: C.ink45, padding: "9px 8px", fontSize: 11, cursor: loadingSaved || saving || saveError ? "not-allowed" : "pointer", opacity: loadingSaved || saving || saveError ? 0.55 : 1, fontFamily: MONO, textDecoration: "underline", textUnderlineOffset: 3 }}
+          >
+            Withdraw
+          </button>
+        )}
       </div>
 
       {loadingSaved ? (
@@ -1781,7 +1829,11 @@ function DecideHallmark({
         </div>
       ) : saving ? (
         <p data-testid="verify-disposition-status" style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink45, lineHeight: 1.6 }}>
-          {saving === "withdraw" ? "Withdrawing" : "Saving"} the outcome…
+          {saving === "withdraw"
+            ? "Withdrawing the outcome…"
+            : saving === "note"
+              ? "Saving the outcome note…"
+              : "Saving the outcome…"}
         </p>
       ) : decidedLabel ? (
         <p data-testid="verify-disposition-status" style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.pass, lineHeight: 1.6, animation: "vtraceIn 300ms cubic-bezier(0.2,0,0,1) both" }}>
@@ -1800,6 +1852,67 @@ function DecideHallmark({
           {saved ? " will be saved to this cost-decision record" : " is session-only because record persistence is off"}.
         </p>
       )}
+
+      <div
+        data-testid="verify-disposition-note-editor"
+        style={{ marginTop: 14, borderTop: `1px solid ${C.hair}`, paddingTop: 12 }}
+      >
+        <label
+          htmlFor="verify-disposition-note"
+          style={{ display: "block", fontFamily: MONO, fontSize: 10, color: C.ink45, letterSpacing: "0.08em" }}
+        >
+          OUTCOME NOTE — OPTIONAL
+        </label>
+        <textarea
+          id="verify-disposition-note"
+          data-testid="verify-disposition-note"
+          value={dispositionNote}
+          maxLength={COST_DISPOSITION_NOTE_MAX_LENGTH}
+          disabled={loadingSaved || Boolean(saving) || Boolean(saveError)}
+          onChange={(event) => setDispositionNote(event.target.value)}
+          placeholder="Why this action was chosen, constraints, owner, or next review point"
+          aria-describedby="verify-disposition-note-help verify-disposition-note-count"
+          style={{ width: "100%", minHeight: 78, marginTop: 7, resize: "vertical", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "10px 12px", background: "#ffffff", color: C.ink, fontFamily: "inherit", fontSize: 12.5, lineHeight: 1.5 }}
+        />
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 7 }}>
+          <p id="verify-disposition-note-help" style={{ margin: 0, flex: 1, minWidth: 220, fontFamily: MONO, fontSize: 9.5, color: C.ink40, lineHeight: 1.5 }}>
+            {saved
+              ? "saved beside the immutable cost record and included in governance exports"
+              : "session-only because record persistence is off"}
+          </p>
+          <span id="verify-disposition-note-count" style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink40 }}>
+            {dispositionNote.length}/{COST_DISPOSITION_NOTE_MAX_LENGTH}
+          </span>
+          <button
+            type="button"
+            data-testid="verify-disposition-note-save"
+            aria-busy={saving === "note"}
+            disabled={
+              !decision ||
+              loadingSaved ||
+              Boolean(saving) ||
+              Boolean(saveError) ||
+              dispositionNote.trim() === persistedDispositionNote
+            }
+            onClick={() =>
+              decision &&
+              void choose(
+                decision,
+                costDispositionLabel(decision) ?? "Outcome",
+                "note"
+              )
+            }
+            style={{ border: `1px solid ${C.hair}`, borderRadius: 999, padding: "7px 13px", background: "transparent", color: C.ink, fontFamily: "inherit", fontSize: 11.5, cursor: !decision || loadingSaved || saving || saveError || dispositionNote.trim() === persistedDispositionNote ? "not-allowed" : "pointer", opacity: !decision || loadingSaved || saving || saveError || dispositionNote.trim() === persistedDispositionNote ? 0.5 : 1 }}
+          >
+            Save note
+          </button>
+        </div>
+        {!decision && dispositionNote.length > 0 && (
+          <p style={{ margin: "7px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink45 }}>
+            choose an outcome above to save this note
+          </p>
+        )}
+      </div>
 
       <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <GhostButton onClick={() => nav("records")} disabled={!saved}>

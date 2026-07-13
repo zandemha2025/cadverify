@@ -466,6 +466,46 @@ def test_disposition_change_reopens_prior_approval(client, real_result_json):
     assert body["approval_note"] is None
 
 
+def test_disposition_note_edit_reopens_signoff_and_empty_edit_clears_note(
+    client, real_result_json
+):
+    cl, app = client
+    dec = _make_decision("01DISPNOTEEDIT000000000000A", real_result_json, user_id=42)
+    dec.user_disposition = "outside"
+    dec.disposition_note = "Original supplier rationale"
+    dec.disposition_updated_at = datetime(2026, 7, 13, 11, 0, tzinfo=timezone.utc)
+    dec.disposition_updated_by_user_id = 42
+    dec.approval_status = "approved"
+    dec.approved_by_user_id = 42
+    dec.approved_at = datetime(2026, 7, 13, 12, 0, tzinfo=timezone.utc)
+    dec.approval_note = "Signed supplier route"
+    _override(app, _session_returning(scalar_one=dec), user_id=42)
+    path = "/api/v1/cost-decisions/01DISPNOTEEDIT000000000000A/disposition"
+    special = 'Supplier α/β — “quoted” <tag> & gears ⚙️\nLine 2: $3.80/unit'
+
+    edited = cl.put(
+        path,
+        json={"disposition": "outside", "note": special},
+    )
+
+    assert edited.status_code == 200, edited.text
+    body = edited.json()
+    assert body["user_disposition"] == "outside"
+    assert body["disposition_note"] == special
+    assert body["approval_status"] == "unreviewed"
+    assert body["approved_by_user_id"] is None
+    assert body["approved_at"] is None
+    assert body["approval_note"] is None
+
+    cleared = cl.put(
+        path,
+        json={"disposition": "outside", "note": "  \n  "},
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["user_disposition"] == "outside"
+    assert cleared.json()["disposition_note"] is None
+
+
 def test_disposition_identical_put_is_idempotent(client, real_result_json):
     cl, app = client
     dec = _make_decision("01DISPIDEMPOTENT00000000000A", real_result_json, user_id=42)

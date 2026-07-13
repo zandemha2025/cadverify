@@ -31,6 +31,10 @@ def _decision():
         approved_by_user_id=42,
         approved_at=datetime(2026, 7, 13, tzinfo=timezone.utc),
         approval_note=SPECIAL_NOTE,
+        user_disposition="outside",
+        disposition_note=f"Disposition: {SPECIAL_NOTE}",
+        disposition_updated_at=datetime(2026, 7, 13, tzinfo=timezone.utc),
+        disposition_updated_by_user_id=42,
         stale_at=None,
         stale_reason=None,
     )
@@ -45,6 +49,7 @@ def test_cost_pdf_keeps_special_note_symbols_inline(tmp_path):
     html = render_cost_html(decision)
     assert "QA edit α/β — “quoted” &lt;tag&gt; &amp; gears ⚙" in html
     assert "⚙️" not in html
+    assert "Disposition: QA edit α/β — “quoted” &lt;tag&gt; &amp; gears ⚙" in html
 
     pdf_path = tmp_path / "unicode-governance.pdf"
     pdf_path.write_bytes(_render_cost_pdf_sync(decision, html))
@@ -58,4 +63,5 @@ def test_cost_pdf_keeps_special_note_symbols_inline(tmp_path):
 
     assert "QA edit α/β — “quoted” <tag> & gears ⚙" in lines
     assert "Line 2: $3.80/unit; path C:\\fixtures\\cube.step" in lines
+    assert "Disposition: QA edit α/β — “quoted” <tag> & gears ⚙" in lines
     assert "⚙" not in lines, "the symbol must not float onto its own PDF line"
