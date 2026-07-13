@@ -25,7 +25,7 @@ const reportPath = path.join(outputRoot, `notification-decision-golden-${runId}.
 const markdownPath = path.join(outputRoot, `notification-decision-golden-${runId}.md`);
 const fixturePath = path.join(repoRoot, "backend", "tests", "assets", "cube.step");
 const secondFixturePath = path.join(repoRoot, "outputs", "human-sim", "framework", "demo-assets", "bracket_A.stl");
-const requiredIds = ["VER-04", "WORK-05", "WORK-07", "ROLE-04", "FAIL-09"];
+const requiredIds = ["VER-04", "VER-07", "WORK-05", "WORK-07", "ROLE-04", "FAIL-09"];
 const password = "QaNotificationMatrix2026";
 const normalNote = "QA approval note v1: approve make-vs-buy at qty 50.";
 const specialNote = "QA edit α/β — “quoted” <tag> & gears ⚙️\nLine 2: $3.80/unit; path C:\\fixtures\\cube.step";
@@ -121,6 +121,7 @@ class Matrix {
     this.consoleErrors = [];
     this.requestFailures = [];
     this.expected404Pages = new Set();
+    this.expectedFailurePages = new Set();
     this.shotIndex = 0;
     this.observations = {};
   }
@@ -141,7 +142,8 @@ class Matrix {
       if (message.type() !== "error") return;
       const text = message.text();
       const expected404 = this.expected404Pages.has(page) && /status of 404 \(Not Found\)/i.test(text);
-      if (expected404 || /favicon\.ico|ResizeObserver loop limit exceeded/i.test(text)) return;
+      const expectedFailure = this.expectedFailurePages.has(page) && /status of 503 \(Service Unavailable\)/i.test(text);
+      if (expected404 || expectedFailure || /favicon\.ico|ResizeObserver loop limit exceeded/i.test(text)) return;
       this.consoleErrors.push({ url: page.url(), text });
     });
     page.on("pageerror", (error) => this.consoleErrors.push({ url: page.url(), text: error.message }));
@@ -576,6 +578,180 @@ class Matrix {
     };
   }
 
+  async chooseDispositionViaBrowser(identity, id, clickedKey, expectedDisposition, expectedLabel, branch) {
+    const { page, context } = identity;
+    const before = Date.now();
+    const responsePromise = page.waitForResponse(
+      (response) => response.request().method() === "PUT" && response.url().includes(`/cost-decisions/${id}/disposition`),
+      { timeout: 20_000 },
+    );
+    await page.getByTestId(`record-disposition-${clickedKey}`).click();
+    const response = await responsePromise;
+    const after = Date.now();
+    this.check("VER-07", `${branch} HTTP status`, 200, response.status());
+    const payload = await response.json();
+    const detail = await this.decision(context, id);
+    this.check("VER-07", `${branch} response disposition`, expectedDisposition, payload.user_disposition);
+    this.check("VER-07", `${branch} persisted disposition`, expectedDisposition, detail.user_disposition);
+    this.check("VER-07", `${branch} response label`, expectedLabel, payload.user_disposition_label);
+    this.check("VER-07", `${branch} persisted label`, expectedLabel, detail.user_disposition_label);
+    this.check("VER-07", `${branch} response/persisted timestamp`, payload.disposition_updated_at, detail.disposition_updated_at);
+    this.check("VER-07", `${branch} response/persisted actor`, payload.disposition_updated_by_user_id, detail.disposition_updated_by_user_id);
+    this.truth(
+      "VER-07",
+      `${branch} timestamp bounded by browser action`,
+      isoMs(detail.disposition_updated_at) >= before - 1_000 && isoMs(detail.disposition_updated_at) <= after + 1_000,
+    );
+    this.check("VER-07", `${branch} selected browser state`, expectedDisposition === clickedKey ? "true" : "false", await page.getByTestId(`record-disposition-${clickedKey}`).getAttribute("aria-pressed"));
+    const panelText = await page.getByTestId("cost-decision-disposition").innerText();
+    this.truth(
+      "VER-07",
+      `${branch} visible governance state`,
+      expectedLabel ? panelText.includes(expectedLabel) : panelText.includes("Choose what the organization will do with this part."),
+    );
+    return detail;
+  }
+
+  async approveDispositionSignoff(identity, id, note, branch) {
+    const { page, context } = identity;
+    await page.getByPlaceholder("Optional approval note").fill(note);
+    const before = Date.now();
+    const responsePromise = page.waitForResponse(
+      (response) => response.request().method() === "POST" && response.url().includes(`/cost-decisions/${id}/approve`),
+      { timeout: 20_000 },
+    );
+    await page.getByRole("button", { name: /^Approve$/ }).click();
+    const response = await responsePromise;
+    const after = Date.now();
+    this.check("VER-07", `${branch} approval HTTP status`, 200, response.status());
+    const payload = await response.json();
+    const detail = await this.decision(context, id);
+    this.check("VER-07", `${branch} approved status`, "approved", detail.approval_status);
+    this.check("VER-07", `${branch} approval note`, note, detail.approval_note);
+    this.check("VER-07", `${branch} approval timestamp`, payload.approved_at, detail.approved_at);
+    this.truth(
+      "VER-07",
+      `${branch} approval timestamp bounded by browser action`,
+      isoMs(detail.approved_at) >= before - 1_000 && isoMs(detail.approved_at) <= after + 1_000,
+    );
+    return detail;
+  }
+
+  async fourWayDisposition(identity) {
+    const { page, context } = identity;
+    const id = this.observations.decision.final.id;
+    const filename = this.observations.decision.final.filename;
+    const artifactHash = this.observations.decision.artifactHash;
+    await page.goto(`/cost-decisions/${id}`, { waitUntil: "domcontentloaded" });
+    await page.getByTestId("cost-decision-disposition").waitFor({ timeout: 20_000 });
+    const initial = await this.decision(context, id);
+    this.check("VER-07", "initial choice is undecided", null, initial.user_disposition);
+    this.check("VER-07", "initial choice flow starts approved", "approved", initial.approval_status);
+    this.check("VER-07", "initial choice flow preserves WORK-05 note", specialNote, initial.approval_note);
+    this.check("VER-07", "initial disposition artifact hash", artifactHash, sha256(initial.result));
+
+    const routePattern = `**/api/proxy/cost-decisions/${id}/disposition`;
+    const injectedFailure = async (route) => {
+      if (route.request().method() === "PUT") {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Injected disposition outage" }),
+        });
+      } else {
+        await route.continue();
+      }
+    };
+    await page.route(routePattern, injectedFailure);
+    this.expectedFailurePages.add(page);
+    const failedResponsePromise = page.waitForResponse(
+      (response) => response.request().method() === "PUT" && response.url().includes(`/cost-decisions/${id}/disposition`),
+      { timeout: 20_000 },
+    );
+    await page.getByTestId("record-disposition-inhouse").click();
+    const failedResponse = await failedResponsePromise;
+    this.check("VER-07", "injected choice failure HTTP status", 503, failedResponse.status());
+    await page.getByText("Injected disposition outage", { exact: false }).first().waitFor({ timeout: 15_000 });
+    const afterFailure = await this.decision(context, id);
+    this.check("VER-07", "failed choice leaves persisted outcome", null, afterFailure.user_disposition);
+    this.check("VER-07", "failed choice leaves approved status", "approved", afterFailure.approval_status);
+    this.check("VER-07", "failed choice leaves immutable artifact", artifactHash, sha256(afterFailure.result));
+    this.check("VER-07", "failed choice remains retryable", false, await page.getByTestId("record-disposition-inhouse").isDisabled());
+    const errorScreenshot = await this.shot("VER-07", page, "injected-error-retryable");
+    await page.waitForTimeout(500);
+    this.expectedFailurePages.delete(page);
+    await page.unroute(routePattern, injectedFailure);
+
+    const choices = [];
+    const inhouse = await this.chooseDispositionViaBrowser(identity, id, "inhouse", "inhouse", "Make in-house", "make-in-house");
+    this.check("VER-07", "make-in-house reopens prior approval", "unreviewed", inhouse.approval_status);
+    this.check("VER-07", "make-in-house clears prior approval note", null, inhouse.approval_note);
+    this.check("VER-07", "make-in-house preserves immutable artifact", artifactHash, sha256(inhouse.result));
+    choices.push({ key: "inhouse", label: "Make in-house", updatedAt: inhouse.disposition_updated_at });
+
+    const signedInhouse = await this.approveDispositionSignoff(identity, id, "Approved in-house outcome.", "in-house signoff");
+    this.check("VER-07", "approval keeps in-house choice", "inhouse", signedInhouse.user_disposition);
+    const outside = await this.chooseDispositionViaBrowser(identity, id, "outside", "outside", "Make outside", "make-outside");
+    this.check("VER-07", "changed approved choice reopens signoff", "unreviewed", outside.approval_status);
+    this.check("VER-07", "changed approved choice clears signer", null, outside.approved_by_user_id);
+    this.check("VER-07", "changed approved choice clears timestamp", null, outside.approved_at);
+    this.check("VER-07", "changed approved choice clears note", null, outside.approval_note);
+    this.check("VER-07", "make-outside preserves immutable artifact", artifactHash, sha256(outside.result));
+    choices.push({ key: "outside", label: "Make outside", updatedAt: outside.disposition_updated_at });
+
+    const acquire = await this.chooseDispositionViaBrowser(identity, id, "acquire", "acquire", "Acquire capability", "acquire-capability");
+    this.check("VER-07", "acquire preserves immutable artifact", artifactHash, sha256(acquire.result));
+    choices.push({ key: "acquire", label: "Acquire capability", updatedAt: acquire.disposition_updated_at });
+    const redesign = await this.chooseDispositionViaBrowser(identity, id, "redesign", "redesign", "Redesign", "redesign");
+    this.check("VER-07", "redesign preserves immutable artifact", artifactHash, sha256(redesign.result));
+    choices.push({ key: "redesign", label: "Redesign", updatedAt: redesign.disposition_updated_at });
+    this.truth("VER-07", "all four choice timestamps are distinct", new Set(choices.map((choice) => choice.updatedAt)).size === 4);
+
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.getByTestId("cost-decision-disposition").waitFor({ timeout: 20_000 });
+    this.check("VER-07", "redesign survives detail reload", "true", await page.getByTestId("record-disposition-redesign").getAttribute("aria-pressed"));
+    this.truth("VER-07", "full governance shows Redesign", (await page.getByTestId("cost-decision-disposition").innerText()).includes("Redesign"));
+    const governanceScreenshot = await this.shot("VER-07", page, "full-governance-reload");
+
+    await page.goto("/verify?screen=records", { waitUntil: "domcontentloaded" });
+    await page.getByRole("heading", { name: "Records", exact: true }).waitFor({ timeout: 20_000 });
+    const recordRow = page.locator("button").filter({ hasText: filename }).first();
+    await recordRow.waitFor({ timeout: 20_000 });
+    await recordRow.click();
+    const recordsSummary = page.getByTestId("record-disposition-summary");
+    await recordsSummary.waitFor({ timeout: 20_000 });
+    this.truth("VER-07", "Records modal shows Redesign", (await recordsSummary.innerText()).includes("Redesign"));
+    this.truth("VER-07", "Records modal exposes full governance link", (await recordsSummary.innerText()).includes("Open governance"));
+    const recordsScreenshot = await this.shot("VER-07", page, "records-redesign-visible");
+
+    await page.goto(`/cost-decisions/${id}`, { waitUntil: "domcontentloaded" });
+    await page.getByTestId("cost-decision-disposition").waitFor({ timeout: 20_000 });
+    const withdrawn = await this.chooseDispositionViaBrowser(identity, id, "redesign", null, null, "withdraw-redesign");
+    this.check("VER-07", "withdraw clears disposition note", null, withdrawn.disposition_note);
+    this.check("VER-07", "withdraw preserves immutable artifact", artifactHash, sha256(withdrawn.result));
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.getByTestId("cost-decision-disposition").waitFor({ timeout: 20_000 });
+    this.truth("VER-07", "withdraw survives detail reload", (await page.getByTestId("cost-decision-disposition").innerText()).includes("Choose what the organization will do with this part."));
+    const persistedWithdrawn = await this.decision(context, id);
+    this.check("VER-07", "withdraw survives API reopen", null, persistedWithdrawn.user_disposition);
+    this.check("VER-07", "withdraw timestamp survives reload", withdrawn.disposition_updated_at, persistedWithdrawn.disposition_updated_at);
+
+    const restored = await this.approveDispositionSignoff(identity, id, specialNote, "post-disposition export signoff");
+    this.check("VER-07", "post-disposition signoff remains withdrawn", null, restored.user_disposition);
+    this.check("VER-07", "post-disposition signoff preserves immutable artifact", artifactHash, sha256(restored.result));
+    this.observations.decision.final = restored;
+    this.observations.disposition = {
+      id,
+      choices,
+      errorRecovered: true,
+      selectedBeforeWithdraw: "redesign",
+      finalDisposition: restored.user_disposition,
+      finalDispositionUpdatedAt: restored.disposition_updated_at,
+      artifactHash,
+      screenshots: { errorScreenshot, governanceScreenshot, recordsScreenshot },
+    };
+  }
+
   async download(page, buttonName, destination) {
     const downloadPromise = page.waitForEvent("download", { timeout: 90_000 });
     await page.getByRole("button", { name: buttonName }).click();
@@ -612,6 +788,7 @@ class Matrix {
     this.check("WORK-07", "JSON approved signer", decision.approved_by_user_id, governance.approved_by_user_id);
     this.check("WORK-07", "JSON approval timestamp", decision.approved_at, governance.approved_at);
     this.check("WORK-07", "JSON exact multiline/special note", specialNote, governance.approval_note);
+    this.check("WORK-07", "JSON carries withdrawn disposition", null, governance.user_disposition);
     const jsonResult = { ...json };
     delete jsonResult.governance;
     this.check("WORK-07", "JSON retains exact immutable cost artifact", beforeHash, sha256(jsonResult));
@@ -620,8 +797,10 @@ class Matrix {
     this.truth("WORK-07", "CSV every row has exact signer", rows.every((row) => row.approved_by_user_id === String(decision.approved_by_user_id)));
     this.truth("WORK-07", "CSV every row has exact timestamp", rows.every((row) => row.approved_at === decision.approved_at));
     this.truth("WORK-07", "CSV every row has exact multiline/special note", rows.every((row) => row.approval_note === specialNote));
+    this.truth("WORK-07", "CSV every row carries withdrawn disposition", rows.every((row) => row.user_disposition === ""));
     this.truth("WORK-07", "PDF contains Decision Governance heading", pdfText.includes("Decision Governance"));
     this.truth("WORK-07", "PDF contains approved status", /Status:\s+approved/.test(pdfText));
+    this.truth("WORK-07", "PDF carries Not decided disposition", /Recorded outcome:\s+Not decided/.test(pdfText));
     this.truth("WORK-07", "PDF contains exact signer", pdfText.includes(`Signed by user: ${decision.approved_by_user_id}`));
     this.truth("WORK-07", "PDF contains exact approval timestamp", pdfText.includes(decision.approved_at));
     const pdfNote = specialNote.replaceAll("\ufe0f", "");
@@ -658,6 +837,7 @@ class Matrix {
 
     const probes = [
       ["decision detail", "GET", `/api/proxy/cost-decisions/${aDecision.id}`, undefined],
+      ["decision disposition", "PUT", `/api/proxy/cost-decisions/${aDecision.id}/disposition`, { disposition: "outside", note: null }],
       ["decision approve", "POST", `/api/proxy/cost-decisions/${aDecision.id}/approve`, { note: "foreign mutation" }],
       ["decision reopen", "DELETE", `/api/proxy/cost-decisions/${aDecision.id}/approve`, undefined],
       ["decision JSON", "GET", `/api/proxy/cost-decisions/${aDecision.id}/export.json`, undefined],
@@ -674,13 +854,15 @@ class Matrix {
       this.check("ROLE-04", `${name} does not leak note`, false, bodyText.includes(specialNote));
       this.check("ROLE-04", `${name} does not leak filename`, false, bodyText.includes(aDecision.filename));
     }
+    this.check("VER-07", "cross-org disposition mutation is denied", 404, statuses["decision disposition"]);
 
     this.expected404Pages.add(page);
     await page.goto(`/cost-decisions/${aDecision.id}`, { waitUntil: "domcontentloaded" });
-    await page.getByText("Cost decision not found", { exact: true }).waitFor({ timeout: 20_000 });
+    const notFound = page.getByText("Cost decision not found", { exact: true }).first();
+    await notFound.waitFor({ timeout: 20_000 });
     await page.waitForTimeout(500);
     this.expected404Pages.delete(page);
-    this.check("ROLE-04", "foreign browser visible state", "Cost decision not found", await page.getByText("Cost decision not found", { exact: true }).innerText());
+    this.check("ROLE-04", "foreign browser visible state", "Cost decision not found", await notFound.innerText());
     this.check("ROLE-04", "foreign browser does not show note", 0, await page.getByText(specialNote, { exact: true }).count());
     this.check("ROLE-04", "foreign browser does not show filename", 0, await page.getByText(aDecision.filename, { exact: true }).count());
     const ownerStillSeesDecision = await this.decision(primary.context, aDecision.id);
@@ -702,6 +884,7 @@ class Matrix {
     const exports = this.observations.exports;
     const crossOrg = this.observations.crossOrg;
     const session = this.observations.session;
+    const disposition = this.observations.disposition;
     return {
       "VER-04": makeGoldenPathEvidence({
         id: "VER-04",
@@ -721,6 +904,25 @@ class Matrix {
         consoleErrors: [],
         requestFailures: [],
         assertions: this.assertions["VER-04"],
+      }),
+      "VER-07": makeGoldenPathEvidence({
+        id: "VER-07",
+        status: "PASS",
+        persona: "Accountable sourcing analyst recording the organization's human outcome beside computed evidence",
+        preconditions: ["A real saved cost decision exists with an immutable result hash.", "The record starts approved and has no recorded four-way outcome."],
+        actions: ["Inject one failed outcome save and retry through the browser.", "Select Make in-house, approve it, then change the approved choice to Make outside.", "Select Acquire capability and Redesign, reload, and inspect Records plus full governance.", "Withdraw Redesign and verify reload/API persistence.", "Attempt the same disposition mutation from Org B."],
+        observed: {
+          url: `${appUrl}/cost-decisions/${disposition.id}`,
+          visible: ["Make in-house", "Make outside", "Acquire capability", "Redesign", "RECORDED OUTCOME", "Not decided"],
+          persisted: { choices: disposition.choices, selectedBeforeWithdraw: disposition.selectedBeforeWithdraw, finalDisposition: disposition.finalDisposition, finalDispositionUpdatedAt: disposition.finalDispositionUpdatedAt, artifactHash: disposition.artifactHash },
+          numeric: { browserChoices: disposition.choices.length, injectedFailureStatus: 503, foreignMutationStatus: crossOrg.statuses["decision disposition"], consoleErrorCount: 0, requestFailureCount: 0 },
+          authorization: { ownerMutationsAllowed: true, foreignMutationStatus: crossOrg.statuses["decision disposition"], existenceHidden: true },
+          recovery: "The failed save changed nothing and the same enabled control succeeded on retry; changing an approved choice reopened signoff; withdrawal survived reload.",
+        },
+        screenshot: disposition.screenshots.recordsScreenshot,
+        consoleErrors: [],
+        requestFailures: [],
+        assertions: this.assertions["VER-07"],
       }),
       "WORK-05": makeGoldenPathEvidence({
         id: "WORK-05",
@@ -765,7 +967,7 @@ class Matrix {
         status: "PASS",
         persona: "Analyst in an unrelated organization attempting foreign record access",
         preconditions: ["Org A owns notification and decision IDs.", "Org B is a separately signed-up organization with empty collections."],
-        actions: ["List Org B's own collections.", "Probe Org A detail, approve, reopen, JSON, CSV, PDF, and notification-read endpoints.", "Open Org A's decision URL in Org B's browser."],
+        actions: ["List Org B's own collections.", "Probe Org A detail, disposition, approve, reopen, JSON, CSV, PDF, and notification-read endpoints.", "Open Org A's decision URL in Org B's browser."],
         observed: {
           url: crossOrg.finalUrl,
           visible: [crossOrg.visible],
@@ -808,6 +1010,7 @@ class Matrix {
       await this.notificationLifecycle(primary);
       await this.sessionRecovery(primary);
       await this.decisionNotes(primary);
+      await this.fourWayDisposition(primary);
       await this.exports(primary);
       const secondary = await this.newIdentity("notification-decision-b", 72);
       await this.crossOrg(primary, secondary);
@@ -827,12 +1030,12 @@ class Matrix {
         releaseEvidence: { schemaVersion: 1, goldenPaths, validation },
         branchMatrix: {
           notifications: ["unread", "reload-unread", "open/read", "destination", "reload-read", "logout-login", "mark-all", "dismiss-unsupported", "restore-unsupported", "cross-org"],
+          dispositions: ["error-no-mutation", "retry", "make-in-house", "make-outside", "acquire-capability", "redesign", "reload", "Records", "full-governance", "approved-choice-reopens", "withdraw", "cross-org"],
           decisionNotes: ["empty", "ordinary-create", "edit-via-reopen", "multiline", "special-characters", "1000-character", "1001-rejected", "page-reopen", "JSON-export", "CSV-export", "PDF-export", "cross-org"],
         },
         diagnostics: { consoleErrors: this.consoleErrors, requestFailures: this.requestFailures },
         coverageGaps: [
           "Notifications expose read-one and read-all only; dismiss and restore have no browser control or API endpoint, so those branches are reported unsupported rather than passed.",
-          "Canonical VER-07 asks for a structured make-in-house/outsource/acquire/redesign choice. Approval notes do not implement that four-way decision, so this matrix does not claim VER-07.",
         ],
       };
       await mkdir(outputRoot, { recursive: true });
