@@ -143,6 +143,23 @@ def step_to_trimesh_from_bytes(data: bytes, filename: str = "upload.step") -> tr
     failure (the route maps ``ValueError`` -> 400). Never leaks gmsh internals
     to the caller.
     """
+    # AP242 may already carry standardized triangle strips/fans instead of a
+    # B-rep. Native OCC import cannot read that branch, so consume the supplied
+    # tessellation directly before asking gmsh to generate another one.
+    from src.parsers.ap242_tessellated_parser import (
+        AP242TessellationError,
+        is_ap242_tessellated,
+        parse_ap242_tessellated,
+    )
+
+    if is_ap242_tessellated(data):
+        try:
+            return parse_ap242_tessellated(data)
+        except AP242TessellationError as exc:
+            raise ValueError(
+                "Could not read the embedded AP242 tessellated geometry."
+            ) from exc
+
     if not _HAS_GMSH:
         raise RuntimeError("gmsh not installed")  # route maps to 501 (see A.5)
 
@@ -261,6 +278,21 @@ def mesh_single_rung_from_bytes(data: bytes, filename: str, idx: int) -> trimesh
     exceptions as ``_run_rung`` (``_StepReadError`` -> abort; ``_EmptyMeshError`` /
     other -> advance), which the orchestrator maps exactly as the in-thread ladder.
     """
+    if idx == 0:
+        from src.parsers.ap242_tessellated_parser import (
+            AP242TessellationError,
+            is_ap242_tessellated,
+            parse_ap242_tessellated,
+        )
+
+        if is_ap242_tessellated(data):
+            try:
+                return parse_ap242_tessellated(data)
+            except AP242TessellationError as exc:
+                raise _StepReadError(
+                    "Could not read the embedded AP242 tessellated geometry."
+                ) from exc
+
     if not _HAS_GMSH:
         raise RuntimeError("gmsh not installed")
 

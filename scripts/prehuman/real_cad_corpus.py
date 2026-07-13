@@ -10,6 +10,7 @@ with AF_INET/AF_INET6 sockets blocked.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import contextlib
 import datetime as dt
 import hashlib
@@ -32,9 +33,13 @@ from typing import Any, Dict, Iterable, List, Optional
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BACKEND_ROOT = REPO_ROOT / "backend"
 OUTPUT_ROOT = Path(os.getenv("E2E_ARTIFACT_DIR", REPO_ROOT / ".gstack" / "qa-reports"))
-RUN_ID = os.getenv("E2E_RUN_ID") or dt.datetime.utcnow().strftime("%Y-%m-%d")
+RUN_ID = os.getenv("E2E_RUN_ID") or dt.datetime.now(dt.UTC).strftime("%Y-%m-%d")
 MAX_ZIP_BYTES = int(os.getenv("PREHUMAN_MAX_ZIP_BYTES", str(80 * 1024 * 1024)))
-PER_CASE_TIMEOUT_SEC = float(os.getenv("PREHUMAN_CASE_TIMEOUT_SEC", "35"))
+# The production route owns a 60-second parse budget. The outer corpus worker
+# needs enough time to observe that bounded result and shut its parser children
+# down cleanly instead of pre-empting the very crash/timeout containment it is
+# supposed to verify.
+PER_CASE_TIMEOUT_SEC = float(os.getenv("PREHUMAN_CASE_TIMEOUT_SEC", "90"))
 
 NIST_LANDING_PAGE = (
     "https://www.nist.gov/ctl/smart-connected-systems-division/"
@@ -66,88 +71,108 @@ SOURCES = {
     },
 }
 
+def nist_step_case(
+    case_id: str,
+    inner_path: str,
+    family: str,
+    schema: str,
+    cad_category: str,
+) -> Dict[str, str]:
+    return {
+        "id": case_id,
+        "source": "nist_pmi_step",
+        "inner_path": "NIST-PMI-STEP-Files/" + inner_path,
+        "family": family,
+        "schema": schema,
+        "cad_category": cad_category,
+        "expected_outcome": "OK",
+    }
+
+
+# Every STEP file in the pinned NIST archive is an explicit product gate. This
+# prevents a hand-picked happy subset from hiding a broken schema/family branch.
 CASES = [
-    {
-        "id": "NIST-AP203-GEOM-FTC-11",
-        "source": "nist_pmi_step",
-        "inner_path": "NIST-PMI-STEP-Files/AP203 geometry only/nist_ftc_11_asme1_rb.stp",
-        "family": "FTC",
-        "schema": "AP203",
-        "cad_category": "geometry_only",
-        "expected_outcome": "OK",
-    },
-    {
-        "id": "NIST-AP203-GEOM-CTC-03",
-        "source": "nist_pmi_step",
-        "inner_path": "NIST-PMI-STEP-Files/AP203 geometry only/nist_ctc_03_asme1_rc.stp",
-        "family": "CTC",
-        "schema": "AP203",
-        "cad_category": "geometry_only",
-        "expected_outcome": "OK",
-    },
-    {
-        "id": "NIST-AP203-GEOM-FTC-09",
-        "source": "nist_pmi_step",
-        "inner_path": "NIST-PMI-STEP-Files/AP203 geometry only/nist_ftc_09_asme1_rd.stp",
-        "family": "FTC",
-        "schema": "AP203",
-        "cad_category": "geometry_only",
-        "expected_outcome": "OK",
-    },
-    {
-        "id": "NIST-AP203-PMI-CTC-01",
-        "source": "nist_pmi_step",
-        "inner_path": "NIST-PMI-STEP-Files/AP203 with PMI/nist_ctc_01_asme1_ap203.stp",
-        "family": "CTC",
-        "schema": "AP203",
-        "cad_category": "pmi_present_step",
-        "expected_outcome": "OK",
-    },
-    {
-        "id": "NIST-AP242-CTC-03",
-        "source": "nist_pmi_step",
-        "inner_path": "NIST-PMI-STEP-Files/nist_ctc_03_asme1_ap242-e2.stp",
-        "family": "CTC",
-        "schema": "AP242",
-        "cad_category": "pmi_present_step",
-        "expected_outcome": "OK",
-    },
-    {
-        "id": "NIST-AP242-STC-06",
-        "source": "nist_pmi_step",
-        "inner_path": "NIST-PMI-STEP-Files/nist_stc_06_asme1_ap242-e3.stp",
-        "family": "STC",
-        "schema": "AP242",
-        "cad_category": "pmi_present_step",
-        "expected_outcome": "OK",
-    },
-    {
-        "id": "NIST-AP242-STC-08",
-        "source": "nist_pmi_step",
-        "inner_path": "NIST-PMI-STEP-Files/nist_stc_08_asme1_ap242-e3.stp",
-        "family": "STC",
-        "schema": "AP242",
-        "cad_category": "pmi_present_step",
-        "expected_outcome": "OK",
-    },
-    {
-        "id": "NIST-AP242-STC-09",
-        "source": "nist_pmi_step",
-        "inner_path": "NIST-PMI-STEP-Files/nist_stc_09_asme1_ap242-e3.stp",
-        "family": "STC",
-        "schema": "AP242",
-        "cad_category": "pmi_present_step",
-        "expected_outcome": "OK",
-    },
-    {
-        "id": "NIST-AP242-CTC-05-INVALID",
-        "source": "nist_pmi_step",
-        "inner_path": "NIST-PMI-STEP-Files/nist_ctc_05_asme1_ap242-e1.stp",
-        "family": "CTC",
-        "schema": "AP242",
-        "cad_category": "problem_geometry_control",
-        "expected_outcome": "GEOMETRY_INVALID",
-    },
+    *[
+        nist_step_case(
+            f"NIST-AP203-GEOM-CTC-{number:02d}",
+            f"AP203 geometry only/nist_ctc_{number:02d}_asme1_{revision}.stp",
+            "CTC",
+            "AP203",
+            "geometry_only",
+        )
+        for number, revision in [(1, "rd"), (2, "rc"), (3, "rc"), (4, "rd"), (5, "rd")]
+    ],
+    *[
+        nist_step_case(
+            f"NIST-AP203-GEOM-FTC-{number:02d}",
+            f"AP203 geometry only/nist_ftc_{number:02d}_asme1_{revision}.stp",
+            "FTC",
+            "AP203",
+            "geometry_only",
+        )
+        for number, revision in [
+            (6, "rd"),
+            (7, "rd"),
+            (8, "rc"),
+            (9, "rd"),
+            (10, "rb"),
+            (11, "rb"),
+        ]
+    ],
+    *[
+        nist_step_case(
+            f"NIST-AP203-PMI-CTC-{number:02d}",
+            f"AP203 with PMI/nist_ctc_{number:02d}_asme1_ap203.stp",
+            "CTC",
+            "AP203",
+            "pmi_present_step",
+        )
+        for number in range(1, 6)
+    ],
+    *[
+        nist_step_case(
+            f"NIST-AP242-CTC-{number:02d}",
+            f"nist_ctc_{number:02d}_asme1_ap242-{edition}.stp",
+            "CTC",
+            "AP242",
+            "pmi_present_step",
+        )
+        for number, edition in [(1, "e1"), (2, "e2"), (3, "e2"), (4, "e1"), (5, "e1")]
+    ],
+    *[
+        nist_step_case(
+            f"NIST-AP242-FTC-{number:02d}",
+            f"nist_ftc_{number:02d}_asme1_ap242-{edition}.stp",
+            "FTC",
+            "AP242",
+            "pmi_present_step",
+        )
+        for number, edition in [
+            (6, "e2"),
+            (7, "e2"),
+            (8, "e2"),
+            (9, "e1"),
+            (10, "e2"),
+            (11, "e2"),
+        ]
+    ],
+    nist_step_case(
+        "NIST-AP242-FTC-08-TESSELLATED",
+        "nist_ftc_08_asme1_ap242-e1-tg.stp",
+        "FTC",
+        "AP242",
+        "embedded_tessellation_step",
+    ),
+    *[
+        nist_step_case(
+            f"NIST-AP242-STC-{number:02d}",
+            f"nist_stc_{number:02d}_asme1_ap242-{edition}.stp",
+            "STC",
+            "AP242",
+            "pmi_present_step",
+        )
+        for number, edition in [(6, "e3"), (7, "e3"), (8, "e3"), (9, "e3"), (10, "e2")]
+    ],
     {
         "id": "NIST-MTC-SOLIDWORKS-ASSEMBLY-UNSUPPORTED",
         "source": "nist_mtc_assembly",
@@ -157,6 +182,12 @@ CASES = [
         "cad_category": "native_assembly_control",
         "expected_outcome": "UNSUPPORTED_SUFFIX",
     },
+]
+
+FTC08_EQUIVALENCE_IDS = [
+    "NIST-AP203-GEOM-FTC-08",
+    "NIST-AP242-FTC-08",
+    "NIST-AP242-FTC-08-TESSELLATED",
 ]
 
 ALLOWED_PROVENANCE = {"MEASURED", "SHOP", "USER", "DEFAULT"}
@@ -378,13 +409,6 @@ def validate_case(case: Dict[str, Any], result: Dict[str, Any]) -> List[str]:
         if not result.get("finite_report"):
             failures.append("report contains non-finite values")
 
-    if expected == "GEOMETRY_INVALID":
-        geometry = result.get("geometry") or {}
-        if not finite(geometry):
-            failures.append("invalid-geometry report contains non-finite values")
-        if geometry.get("face_count", 0) <= 0:
-            failures.append("invalid-geometry control did not produce measured face count")
-
     if expected == "UNSUPPORTED_SUFFIX":
         message = result.get("error") or ""
         if "Unsupported file type" not in message:
@@ -398,6 +422,106 @@ def validate_case(case: Dict[str, Any], result: Dict[str, Any]) -> List[str]:
     return failures
 
 
+def finalize_case_result(
+    case: Dict[str, Any],
+    source: Dict[str, Any],
+    inner_bytes: bytes,
+    result: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Attach provenance and a validator-owned verdict to one worker result."""
+    failures = validate_case(case, result)
+    return {
+        **case,
+        "source_document_url": SOURCES[case["source"]]["document_url"],
+        "source_zip_sha256": source["zip_sha256"],
+        "inner_sha256": sha256_bytes(inner_bytes),
+        "inner_bytes": len(inner_bytes),
+        **result,
+        # Never allow a worker's self-reported status to overwrite the outer
+        # oracle. That previously let an expectation mismatch appear as PASS.
+        "worker_status": result.get("status"),
+        "status": "PASS" if not failures else "FAIL",
+        "failures": failures,
+    }
+
+
+def geometry_equivalence(
+    case_results: List[Dict[str, Any]],
+    member_ids: List[str],
+    *,
+    max_bbox_delta_mm: float = 0.2,
+    max_relative_volume_delta: float = 0.002,
+) -> Dict[str, Any]:
+    """Compare one physical part encoded as B-rep and embedded tessellation."""
+    indexed = {item["id"]: item for item in case_results}
+    failures: List[str] = []
+    members = []
+    for member_id in member_ids:
+        item = indexed.get(member_id)
+        if item is None:
+            failures.append("missing member %s" % member_id)
+            continue
+        if item.get("status") != "PASS":
+            failures.append("member %s did not pass its case oracle" % member_id)
+            continue
+        geometry = item.get("geometry") or {}
+        bbox = geometry.get("bbox_mm")
+        volume = geometry.get("volume_cm3")
+        if (
+            not isinstance(bbox, list)
+            or len(bbox) != 3
+            or not all(isinstance(value, (int, float)) for value in bbox)
+            or not isinstance(volume, (int, float))
+            or float(volume) <= 0
+        ):
+            failures.append("member %s has incomplete geometry evidence" % member_id)
+            continue
+        members.append(
+            {
+                "id": member_id,
+                "bbox_mm": [float(value) for value in bbox],
+                "volume_cm3": float(volume),
+            }
+        )
+
+    observed_bbox_delta = 0.0
+    observed_volume_delta = 0.0
+    if len(members) == len(member_ids):
+        baseline = members[0]
+        for member in members[1:]:
+            observed_bbox_delta = max(
+                observed_bbox_delta,
+                *(abs(a - b) for a, b in zip(baseline["bbox_mm"], member["bbox_mm"])),
+            )
+            observed_volume_delta = max(
+                observed_volume_delta,
+                abs(member["volume_cm3"] - baseline["volume_cm3"])
+                / baseline["volume_cm3"],
+            )
+        if observed_bbox_delta > max_bbox_delta_mm:
+            failures.append(
+                "bounding-box delta %.6gmm exceeds %.6gmm"
+                % (observed_bbox_delta, max_bbox_delta_mm)
+            )
+        if observed_volume_delta > max_relative_volume_delta:
+            failures.append(
+                "relative volume delta %.6g exceeds %.6g"
+                % (observed_volume_delta, max_relative_volume_delta)
+            )
+
+    return {
+        "id": "NIST-FTC-08-CROSS-REPRESENTATION",
+        "status": "PASS" if not failures else "FAIL",
+        "member_ids": member_ids,
+        "members": members,
+        "max_bbox_delta_mm_allowed": max_bbox_delta_mm,
+        "max_relative_volume_delta_allowed": max_relative_volume_delta,
+        "observed_max_bbox_delta_mm": round(observed_bbox_delta, 6),
+        "observed_max_relative_volume_delta": round(observed_volume_delta, 8),
+        "failures": failures,
+    }
+
+
 def run_main() -> int:
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
     sources = {sid: download_source(sid, source) for sid, source in SOURCES.items()}
@@ -407,46 +531,37 @@ def run_main() -> int:
         source = sources[case["source"]]
         inner_bytes = read_inner(Path(source["zip_path"]), case["inner_path"])
         result = run_worker(source, case)
-        failures = validate_case(case, result)
-        case_results.append(
-            {
-                **case,
-                "source_document_url": SOURCES[case["source"]]["document_url"],
-                "source_zip_sha256": source["zip_sha256"],
-                "inner_sha256": sha256_bytes(inner_bytes),
-                "inner_bytes": len(inner_bytes),
-                "status": "PASS" if not failures else "FAIL",
-                "failures": failures,
-                **result,
-            }
-        )
+        case_results.append(finalize_case_result(case, source, inner_bytes, result))
 
     failed = [item for item in case_results if item["status"] != "PASS"]
-    ap242_ok = [
-        item for item in case_results
-        if item["schema"] == "AP242" and item["expected_outcome"] == "OK" and item["status"] == "PASS"
-    ]
-    stc_ok = [
-        item for item in case_results
-        if item["family"] == "STC" and item["expected_outcome"] == "OK" and item["status"] == "PASS"
-    ]
-    ap203_geom_ok = [
-        item for item in case_results
-        if item["schema"] == "AP203"
-        and item["cad_category"] == "geometry_only"
-        and item["expected_outcome"] == "OK"
-        and item["status"] == "PASS"
-    ]
+    nist_step_results = [item for item in case_results if item["source"] == "nist_pmi_step"]
+    with zipfile.ZipFile(sources["nist_pmi_step"]["zip_path"]) as archive:
+        pinned_step_paths = {
+            path for path in archive.namelist() if path.lower().endswith((".step", ".stp"))
+        }
+    selected_step_paths = {item["inner_path"] for item in nist_step_results}
+    step_coverage = {
+        "pinned_count": len(pinned_step_paths),
+        "selected_count": len(selected_step_paths),
+        "missing": sorted(pinned_step_paths - selected_step_paths),
+        "unexpected": sorted(selected_step_paths - pinned_step_paths),
+    }
+    equivalence = geometry_equivalence(case_results, FTC08_EQUIVALENCE_IDS)
     acceptance = {
-        "min_ap242_pmi_step_ok": len(ap242_ok) >= 3,
-        "min_stc_step_ok": len(stc_ok) >= 2,
-        "min_ap203_geometry_step_ok": len(ap203_geom_ok) >= 2,
-        "native_cad_unsupported_control": any(
-            item["expected_outcome"] == "UNSUPPORTED_SUFFIX" and item["status"] == "PASS"
+        "all_pinned_nist_step_files_exercised": (
+            selected_step_paths == pinned_step_paths and len(pinned_step_paths) == 33
+        ),
+        "all_33_nist_step_files_passed": (
+            len(nist_step_results) == 33
+            and all(item["status"] == "PASS" for item in nist_step_results)
+        ),
+        "ap242_embedded_tessellation_passed": any(
+            item["id"] == "NIST-AP242-FTC-08-TESSELLATED" and item["status"] == "PASS"
             for item in case_results
         ),
-        "geometry_invalid_control": any(
-            item["expected_outcome"] == "GEOMETRY_INVALID" and item["status"] == "PASS"
+        "ftc08_cross_representation_equivalent": equivalence["status"] == "PASS",
+        "native_cad_unsupported_control": any(
+            item["expected_outcome"] == "UNSUPPORTED_SUFFIX" and item["status"] == "PASS"
             for item in case_results
         ),
         "all_cases_passed": not failed,
@@ -454,7 +569,7 @@ def run_main() -> int:
     status = "PASS" if all(acceptance.values()) else "NEEDS_FIXES"
     data = {
         "status": status,
-        "generated_at": dt.datetime.utcnow().isoformat() + "Z",
+        "generated_at": dt.datetime.now(dt.UTC).isoformat().replace("+00:00", "Z"),
         "run_id": RUN_ID,
         "source_boundary": (
             "Public NIST CAD/STEP test files exercise pre-human parser, geometry, "
@@ -462,12 +577,15 @@ def run_main() -> int:
             "pilot evidence and do not imply NIST endorsement."
         ),
         "truth_boundary": (
-            "STEP is triangulated through gmsh/OCC for DFM and cost. Semantic PMI/GD&T "
-            "is recorded as skipped unless OCP XDE is available."
+            "B-rep STEP is triangulated through isolated gmsh/OCC; standardized AP242 "
+            "embedded tessellation is consumed directly with declared unit conversion. "
+            "Semantic PMI/GD&T is recorded as skipped unless OCP XDE is available."
         ),
         "cache_dir": str(cache_root()),
         "sources": list(sources.values()),
         "acceptance": acceptance,
+        "step_coverage": step_coverage,
+        "equivalence": equivalence,
         "cases": case_results,
         "failed": failed,
     }
@@ -549,8 +667,9 @@ def run_worker_mode(args: argparse.Namespace) -> int:
     sys.path.insert(0, str(BACKEND_ROOT))
     from fastapi import HTTPException
 
-    from src.api.routes import _parse_mesh, _run_cost_engine
+    from src.api.routes import _parse_mesh_async, _run_cost_engine
     from src.costing import EstimateOptions, estimate_decision, report_to_dict
+    from src.parsers import parse_pool
 
     data = read_inner(Path(args.zip), args.inner)
     filename = Path(args.inner).name
@@ -563,7 +682,12 @@ def run_worker_mode(args: argparse.Namespace) -> int:
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 with block_network_sockets():
                     pmi = pmi_check(data, filename)
-                    mesh, suffix = _parse_mesh(data, filename)
+                    # Exercise the actual production parser boundary, including
+                    # spawn-process isolation, crash recovery, per-rung caps,
+                    # route timeout, and cache behavior. The former synchronous
+                    # helper let a native gmsh segfault kill this corpus worker
+                    # even though the deployed API contains that crash.
+                    mesh, suffix = asyncio.run(_parse_mesh_async(data, filename))
                     result, mesh, features = _run_cost_engine(mesh, filename)
                     report = estimate_decision(
                         result,
@@ -625,6 +749,14 @@ def run_worker_mode(args: argparse.Namespace) -> int:
             "error": "%s: %s" % (type(exc).__name__, str(exc)[:300]),
         }
 
+    finally:
+        # Each case is its own outer subprocess. Do not leave gmsh children
+        # behind after success, rejection, timeout, or a crashed native rung.
+        try:
+            parse_pool.shutdown(kill=True, final=True)
+        except Exception:
+            pass
+
     print(json.dumps(output, sort_keys=True))
     return 0 if output.get("status") == "PASS" else 1
 
@@ -671,6 +803,18 @@ def markdown(data: Dict[str, Any]) -> str:
 {acceptance}
 ```
 
+## Archive Coverage
+
+```json
+{step_coverage}
+```
+
+## Cross-Representation Geometry Oracle
+
+```json
+{equivalence}
+```
+
 ## Cases
 
 | Result | Case | Schema | Family | Expected | Outcome | Seconds | Evidence |
@@ -684,6 +828,8 @@ def markdown(data: Dict[str, Any]) -> str:
         cache_dir=data["cache_dir"],
         sources=sources,
         acceptance=json.dumps(data["acceptance"], indent=2, sort_keys=True),
+        step_coverage=json.dumps(data["step_coverage"], indent=2, sort_keys=True),
+        equivalence=json.dumps(data["equivalence"], indent=2, sort_keys=True),
         rows=rows,
     )
 
