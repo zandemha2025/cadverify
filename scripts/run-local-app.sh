@@ -151,6 +151,11 @@ free_port "$FRONTEND_PORT"
 # ── start backend ───────────────────────────────────────────────────────────
 log "Starting backend (uvicorn) on http://127.0.0.1:${BACKEND_PORT} …"
 (
+  # The terminal sends Ctrl-C to the whole foreground process group. Child
+  # services must leave SIGINT to this launcher; otherwise every CAD pool child
+  # prints a KeyboardInterrupt before the parent can perform its orderly TERM
+  # shutdown. SIG_IGN survives exec, while cleanup below still sends SIGTERM.
+  trap '' INT
   cd "$BACKEND_DIR" || exit 1
   # multiple workers so the part's cost + DFM analyses run in parallel (faster resolve)
   exec "$VENV_PY" -m uvicorn main:app --host 127.0.0.1 --port "$BACKEND_PORT" --workers 4
@@ -165,6 +170,7 @@ if [ -x "$VENV_ARQ" ] && REDIS_PROBE_URL="$REDIS_URL_EFFECTIVE" "$VENV_PY" -c \
      >/dev/null 2>&1; then
   log "Starting arq worker (background jobs) — Redis at ${REDIS_URL_EFFECTIVE} …"
   (
+    trap '' INT
     cd "$BACKEND_DIR" || exit 1
     exec "$VENV_ARQ" src.jobs.worker.WorkerSettings
   ) &
@@ -187,6 +193,7 @@ if ! ( cd "$FRONTEND_DIR" && npm run build ); then
 fi
 log "Starting frontend (Next.js production) on http://localhost:${FRONTEND_PORT} …"
 (
+  trap '' INT
   cd "$FRONTEND_DIR" || exit 1
   exec npm start -- -p "$FRONTEND_PORT"
 ) &
