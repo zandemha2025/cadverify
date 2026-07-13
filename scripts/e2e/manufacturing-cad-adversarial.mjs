@@ -878,6 +878,7 @@ async function runSuite(page, account) {
     const saved = decisionId ? await browserApi(page, `/api/proxy/cost-decisions/${decisionId}`) : { status: 0, body: null };
     const savedEstimate = saved.body?.result?.estimates?.[0];
     const confidence = estimate?.confidence;
+    await page.getByRole("tab", { name: "Glass Box", exact: true }).click();
     const processControl = page.getByRole("group", { name: "Process", exact: true });
     const processButtons = processControl.getByRole("button");
     const processCount = await processButtons.count();

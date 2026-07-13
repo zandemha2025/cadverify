@@ -177,3 +177,23 @@ def require_org_role(min_role: OrgRole):
         )
 
     return _check
+
+
+def require_role_and_org_role(min_role: Role, min_org_role: OrgRole):
+    """Require both product capability and active-tenant mutation authority.
+
+    Tenant-scoped mutation routes need both axes: a platform analyst who was
+    demoted to org viewer must lose write access immediately, while a platform
+    viewer who happens to administer an org still cannot use analyst features.
+    Platform superadmins retain the explicit ``require_org_role`` bypass.
+    """
+    platform_gate = require_role(min_role)
+    org_gate = require_org_role(min_org_role)
+
+    async def _check(
+        user: AuthedUser = Depends(platform_gate),
+        _org: OrgAuthContext = Depends(org_gate),
+    ) -> AuthedUser:
+        return user
+
+    return _check

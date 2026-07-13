@@ -16,7 +16,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.rate_limit import limiter
-from src.auth.rbac import Role, require_role
+from src.auth.rbac import (
+    OrgRole,
+    Role,
+    require_role,
+    require_role_and_org_role,
+)
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 from src.designs.schema import DesignPlan
@@ -27,6 +32,7 @@ from src.services.release_fault_injection import (
 )
 
 router = APIRouter(tags=["designs"])
+require_design_mutation = require_role_and_org_role(Role.analyst, OrgRole.member)
 
 
 class CreateDesignBody(BaseModel):
@@ -82,7 +88,7 @@ async def create_design(
     request: Request,
     response: Response,
     body: CreateDesignBody,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_design_mutation),
     session: AsyncSession = Depends(get_db_session),
 ):
     try:
@@ -122,7 +128,7 @@ async def interpret_design(
     request: Request,
     response: Response,
     body: InterpretDesignBody,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_design_mutation),
 ):
     del user
     from src.designs.interpreter import interpret_design_prompt
@@ -154,7 +160,7 @@ async def create_revision(
     request: Request,
     response: Response,
     body: CreateRevisionBody,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_design_mutation),
     session: AsyncSession = Depends(get_db_session),
 ):
     try:
@@ -237,7 +243,7 @@ async def archive_design(
     design_id: str,
     request: Request,
     response: Response,
-    user: AuthedUser = Depends(require_role(Role.analyst)),
+    user: AuthedUser = Depends(require_design_mutation),
     session: AsyncSession = Depends(get_db_session),
 ):
     await svc.archive_design(session, design_id, user)

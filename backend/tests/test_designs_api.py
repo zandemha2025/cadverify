@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.api.designs import router
+from src.api.designs import require_design_mutation, router
 from src.auth.rate_limit import limiter
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
@@ -66,6 +66,13 @@ def _app(role: str = "analyst") -> FastAPI:
         key_prefix="session",
         role=role,
     )
+    if role != "viewer":
+        app.dependency_overrides[require_design_mutation] = lambda: AuthedUser(
+            user_id=7,
+            api_key_id=0,
+            key_prefix="session",
+            role=role,
+        )
 
     async def session():
         yield AsyncMock()

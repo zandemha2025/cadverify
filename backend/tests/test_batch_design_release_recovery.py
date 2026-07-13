@@ -182,6 +182,12 @@ def test_design_queue_api_returns_failed_design_and_exact_copy(monkeypatch):
         key_prefix="session",
         role="analyst",
     )
+    app.dependency_overrides[designs.require_design_mutation] = lambda: AuthedUser(
+        user_id=7,
+        api_key_id=0,
+        key_prefix="session",
+        role="analyst",
+    )
     app.dependency_overrides[get_db_session] = lambda: AsyncMock()
     response = TestClient(app).post(
         "/api/v1/designs",

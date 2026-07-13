@@ -23,6 +23,7 @@ test("role evidence supplies the canonical generation timestamp", () => {
 
 test("cost process controls expose and use one semantic accessible group", () => {
   assert.match(glassBox, /role="group" aria-label=\{label\}/);
+  assert.match(manufacturingRunner, /getByRole\("tab", \{ name: "Glass Box", exact: true \}\)\.click\(\)/);
   assert.match(manufacturingRunner, /getByRole\("group", \{ name: "Process", exact: true \}\)/);
 });
 
