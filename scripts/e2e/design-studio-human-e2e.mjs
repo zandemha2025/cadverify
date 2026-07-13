@@ -14,6 +14,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../..");
 const baseUrl = process.env.APP_URL || "http://localhost:3000";
+const clientIp = process.env.E2E_CLIENT_IP || "198.51.100.85";
 const runId = process.env.E2E_RUN_ID || new Date().toISOString().slice(0, 10);
 const outputRoot = process.env.E2E_ARTIFACT_DIR
   ? path.resolve(process.env.E2E_ARTIFACT_DIR)
@@ -123,6 +124,7 @@ class DesignStudioE2E {
     });
     this.context = await this.browser.newContext({
       baseURL: baseUrl,
+      extraHTTPHeaders: { "x-real-ip": clientIp },
       viewport: { width: 1440, height: 960 },
       acceptDownloads: true,
     });

@@ -17,6 +17,7 @@ const { chromium } = require("playwright-core");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
 const baseUrl = process.env.APP_URL || "http://localhost:3000";
+const clientIp = process.env.E2E_CLIENT_IP || "198.51.100.89";
 const outputRoot = process.env.E2E_ARTIFACT_DIR
   ? path.resolve(process.env.E2E_ARTIFACT_DIR)
   : path.join(repoRoot, "outputs", "human-sim", "manufacturing-cad-adversarial");
@@ -1295,6 +1296,7 @@ async function main() {
   const browser = await launchBrowser();
   const context = await browser.newContext({
     baseURL: baseUrl,
+    extraHTTPHeaders: { "x-real-ip": clientIp },
     acceptDownloads: true,
     viewport: { width: 1440, height: 1000 },
     deviceScaleFactor: 1,

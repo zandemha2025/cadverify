@@ -16,9 +16,12 @@ const { chromium } = require("playwright-core");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
 const baseUrl = process.env.APP_URL || "http://localhost:3000";
+const clientIp = process.env.E2E_CLIENT_IP || "198.51.100.87";
 const runId = process.env.E2E_RUN_ID || new Date().toISOString().replace(/[:.]/g, "-");
 const faultToken = process.env.E2E_FAULT_INJECTION_TOKEN || "";
-const outputRoot = path.join(repoRoot, ".gstack", "qa-reports");
+const outputRoot = process.env.E2E_ARTIFACT_DIR
+  ? path.resolve(process.env.E2E_ARTIFACT_DIR)
+  : path.join(repoRoot, ".gstack", "qa-reports");
 const screenshotDir = path.join(outputRoot, "screenshots", `batch-design-recovery-${runId}`);
 const reportPath = path.join(outputRoot, `batch-design-recovery-${runId}.json`);
 const trackedCubeFixture = path.join(repoRoot, "backend", "tests", "assets", "cube.step");
@@ -191,6 +194,7 @@ class BatchDesignRecoveryMatrix {
     });
     this.context = await this.browser.newContext({
       baseURL: baseUrl,
+      extraHTTPHeaders: { "x-real-ip": clientIp },
       viewport: { width: 1440, height: 1000 },
       acceptDownloads: true,
     });

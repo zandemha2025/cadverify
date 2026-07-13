@@ -128,7 +128,11 @@ class Matrix {
   }
 
   check(id, name, expected, actual, pass = same(expected, actual)) {
-    const evidenceValue = (value) => value === null ? "<null>" : value;
+    const evidenceValue = (value) => {
+      if (value === null) return "<null>";
+      if (value === "") return "<empty-string>";
+      return value;
+    };
     const assertion = {
       name,
       expected: evidenceValue(expected),

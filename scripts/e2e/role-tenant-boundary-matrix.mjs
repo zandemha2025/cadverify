@@ -22,6 +22,7 @@ const repoRoot = path.resolve(__dirname, "../..");
 const backendRoot = path.join(repoRoot, "backend");
 const appUrl = (process.env.APP_URL || "http://localhost:3000").replace(/\/+$/, "");
 const apiUrl = (process.env.API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
+const clientIp = process.env.E2E_CLIENT_IP || "198.51.100.83";
 const databaseUrl =
   process.env.DATABASE_URL ||
   "postgresql://cadverify:localdev@127.0.0.1:5432/cadverify";
@@ -334,6 +335,7 @@ asyncio.run(main())
     const identity = this.seedData.people[name];
     const context = await this.browser.newContext({
       baseURL: appUrl,
+      extraHTTPHeaders: { "x-real-ip": clientIp },
       viewport: { width: 1440, height: 960 },
       acceptDownloads: true,
       reducedMotion: "reduce",

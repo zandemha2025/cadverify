@@ -17,8 +17,11 @@ const sharp = require("sharp");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
 const baseUrl = process.env.APP_URL || "http://localhost:3000";
+const clientIp = process.env.E2E_CLIENT_IP || "198.51.100.84";
 const runId = process.env.E2E_RUN_ID || new Date().toISOString().slice(0, 10);
-const outputRoot = path.join(repoRoot, ".gstack", "qa-reports");
+const outputRoot = process.env.E2E_ARTIFACT_DIR
+  ? path.resolve(process.env.E2E_ARTIFACT_DIR)
+  : path.join(repoRoot, ".gstack", "qa-reports");
 const screenshotDir = path.join(outputRoot, "screenshots", `mobile-recovery-${runId}`);
 const reportPath = path.join(outputRoot, `mobile-recovery-${runId}.json`);
 const trackedCubeFixture = path.join(repoRoot, "backend", "tests", "assets", "cube.step");
@@ -147,6 +150,7 @@ class MobileRecoveryRun {
   async newContext(viewport) {
     this.context = await this.browser.newContext({
       baseURL: baseUrl,
+      extraHTTPHeaders: { "x-real-ip": clientIp },
       viewport,
       hasTouch: true,
       isMobile: true,

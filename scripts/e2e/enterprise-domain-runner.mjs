@@ -16,6 +16,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../..");
 const baseUrl = process.env.APP_URL || "http://localhost:3000";
+const clientIp = process.env.E2E_CLIENT_IP || "198.51.100.86";
 const apiBaseUrl = process.env.API_URL || "http://localhost:8000";
 const loginEmail = process.env.E2E_LOGIN_EMAIL || "";
 const loginPassword = process.env.E2E_LOGIN_PASSWORD || "";
@@ -233,6 +234,7 @@ class EnterpriseDomainQA {
     }
     this.context = await this.browser.newContext({
       baseURL: baseUrl,
+      extraHTTPHeaders: { "x-real-ip": clientIp },
       viewport: { width: 1440, height: 960 },
       reducedMotion: "reduce",
     });
@@ -462,7 +464,10 @@ class EnterpriseDomainQA {
 
   async verifyUnauthenticatedIsolation() {
     await this.step("machine inventory rejects an unauthenticated organization", async () => {
-      const context = await this.browser.newContext({ baseURL: baseUrl });
+      const context = await this.browser.newContext({
+        baseURL: baseUrl,
+        extraHTTPHeaders: { "x-real-ip": clientIp },
+      });
       const res = await context.request.get("/api/proxy/machine-inventory");
       await context.close();
       assert(
