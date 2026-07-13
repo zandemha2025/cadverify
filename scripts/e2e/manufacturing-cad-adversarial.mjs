@@ -635,7 +635,12 @@ async function runSuite(page, account) {
         assertRecord("download filename", "machines-template.csv", download.suggestedFilename(), download.suggestedFilename() === "machines-template.csv"),
         assertRecord("exact canonical header", MACHINE_HEADER, header, header === MACHINE_HEADER),
         assertRecord("one non-empty example row", true, Boolean(example) && example.split(",").length >= 10, Boolean(example) && example.split(",").length >= 10),
-        assertRecord("single trailing newline", "empty string after final newline", trailing ?? "missing", trailing === ""),
+        assertRecord(
+          "single trailing newline",
+          "<empty-string>",
+          trailing === "" ? "<empty-string>" : (trailing ?? "missing"),
+          trailing === "",
+        ),
         assertRecord("success state visible", true, visible.includes("Downloaded the exact machine import template"), visible.includes("Downloaded the exact machine import template")),
       ],
     };
