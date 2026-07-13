@@ -148,7 +148,12 @@ function GovernancePanel({
             <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <CheckCircle2 className="size-3.5" aria-hidden /> Approval note
             </div>
-            <p className="text-sm text-foreground">{decision.approval_note}</p>
+            <p
+              data-testid="approval-note"
+              className="whitespace-pre-wrap break-words text-sm text-foreground"
+            >
+              {decision.approval_note}
+            </p>
           </div>
         )}
 
