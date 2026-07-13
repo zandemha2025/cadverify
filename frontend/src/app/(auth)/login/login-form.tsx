@@ -40,6 +40,7 @@ export function LoginForm({
 }) {
   const params = useSearchParams();
   const next = safeLocalPath(params.get("next"));
+  const [hydrated, setHydrated] = React.useState(false);
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
@@ -49,6 +50,8 @@ export function LoginForm({
   const [magicLoading, setMagicLoading] = React.useState(false);
   const [turnstileToken, setTurnstileToken] = React.useState<string | null>(null);
   const [turnstileReset, setTurnstileReset] = React.useState(0);
+
+  React.useEffect(() => setHydrated(true), []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -162,7 +165,7 @@ export function LoginForm({
           error={error}
           onChange={(e) => setPassword(e.target.value)}
         />
-        <AuthSubmit loading={loading}>Log in</AuthSubmit>
+        <AuthSubmit loading={loading} disabled={!hydrated}>Log in</AuthSubmit>
       </form>}
 
       {turnstileSiteKey && (
@@ -191,7 +194,7 @@ export function LoginForm({
               resetSignal={turnstileReset}
               onToken={setTurnstileToken}
             />
-            <AuthSubmit loading={magicLoading} disabled={!turnstileToken}>
+            <AuthSubmit loading={magicLoading} disabled={!hydrated || !turnstileToken}>
               Email me a sign-in link
             </AuthSubmit>
           </form>

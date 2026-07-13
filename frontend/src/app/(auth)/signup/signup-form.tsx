@@ -19,10 +19,13 @@ function passwordProblem(pw: string): string | null {
 }
 
 export function SignupForm() {
+  const [hydrated, setHydrated] = React.useState(false);
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
+
+  React.useEffect(() => setHydrated(true), []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -62,7 +65,7 @@ export function SignupForm() {
       <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <AuthField id="email" name="email" label="Email" type="email" autoComplete="email" required placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
         <AuthField id="password" name="password" label="Password" type="password" autoComplete="new-password" required placeholder="Create a password" value={password} error={error} hint="At least 8 characters, with a letter and a digit." onChange={(e) => setPassword(e.target.value)} />
-        <AuthSubmit loading={loading}>Create account</AuthSubmit>
+        <AuthSubmit loading={loading} disabled={!hydrated}>Create account</AuthSubmit>
       </form>
     </AuthFrame>
   );
