@@ -1072,19 +1072,15 @@ asyncio.run(main())
         this.ok("VER-04", "durable notification has read timestamp", persisted?.read_at);
         this.equal("VER-04", "read notification absent from unread list", (unread.json?.notifications || []).some((item) => item.id === A.notification_id), false);
         await viewer.page.goto("/notifications", { waitUntil: "domcontentloaded" });
-        await viewer.page.waitForFunction(
-          (title) => !document.body.innerText.includes("Reading current states...") && !document.body.innerText.includes(title),
-          A.notification_title,
-          { timeout: 15_000 },
-        );
-        this.equal("VER-04", "notification absent after browser reopen", await viewer.page.getByText(A.notification_title, { exact: true }).count(), 0);
+        const persistedRow = viewer.page.locator(`[data-notification-id="${A.notification_id}"]`);
+        await persistedRow.waitFor({ state: "visible", timeout: 15_000 });
+        this.equal("VER-04", "read notification remains visible in full inbox", await viewer.page.getByText(A.notification_title, { exact: true }).count(), 1);
+        this.equal("VER-04", "browser reopen preserves exact read timestamp", await persistedRow.getAttribute("data-read-at"), persisted.read_at);
+        this.ok("VER-04", "browser reopen labels notification read", (await persistedRow.innerText()).includes("Read "));
         await viewer.page.reload({ waitUntil: "domcontentloaded" });
-        await viewer.page.waitForFunction(
-          (title) => !document.body.innerText.includes("Reading current states...") && !document.body.innerText.includes(title),
-          A.notification_title,
-          { timeout: 15_000 },
-        );
-        this.equal("VER-04", "notification stays absent after browser refresh", await viewer.page.getByText(A.notification_title, { exact: true }).count(), 0);
+        await persistedRow.waitFor({ state: "visible", timeout: 15_000 });
+        this.equal("VER-04", "notification stays visible after browser refresh", await viewer.page.getByText(A.notification_title, { exact: true }).count(), 1);
+        this.equal("VER-04", "browser refresh preserves exact read timestamp", await persistedRow.getAttribute("data-read-at"), persisted.read_at);
         const screenshot = await this.shot(viewer, "notification-read-state-durable");
         this.notificationPersisted = { id: persisted.id, readAt: persisted.read_at, unreadAfter: 0 };
         return { url: viewer.page.url(), initialUrl: page.url, screenshot, readAt: persisted.read_at };
