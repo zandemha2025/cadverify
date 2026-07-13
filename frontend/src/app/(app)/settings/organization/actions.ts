@@ -45,6 +45,18 @@ export type OrgContext = {
   role: OrgRole;
 };
 
+export type OrganizationSummary = {
+  orgId: string;
+  orgName: string;
+  role: OrgRole;
+  isActive: boolean;
+};
+
+export type OrganizationAccess = {
+  activeOrgId: string | null;
+  organizations: OrganizationSummary[];
+};
+
 export type Member = {
   user_id: number;
   email: string;
@@ -120,8 +132,18 @@ export type ActionResult<T = unknown> =
 
 // ── reads ──────────────────────────────────────────────────────────────────────
 export async function getOrgContext(): Promise<OrgContext | null> {
+  const access = await getOrganizationAccess();
+  const active =
+    access.organizations.find((org) => org.orgId === access.activeOrgId) ??
+    access.organizations[0];
+  return active
+    ? { orgId: active.orgId, orgName: active.orgName, role: active.role }
+    : null;
+}
+
+export async function getOrganizationAccess(): Promise<OrganizationAccess> {
   const r = await authed("/api/v1/orgs");
-  if (!r.ok) return null;
+  if (!r.ok) return { activeOrgId: null, organizations: [] };
   const body = await r.json().catch(() => null);
   const orgs: Array<{
     org_id: string;
@@ -129,12 +151,18 @@ export async function getOrgContext(): Promise<OrgContext | null> {
     org_role: OrgRole;
     is_active: boolean;
   }> = body?.organizations ?? [];
-  if (orgs.length === 0) return null;
-  const active =
-    orgs.find((o) => o.org_id === body?.active_org_id) ??
-    orgs.find((o) => o.is_active) ??
-    orgs[0];
-  return { orgId: active.org_id, orgName: active.name, role: active.org_role };
+  return {
+    activeOrgId:
+      (typeof body?.active_org_id === "string" && body.active_org_id) ||
+      orgs.find((org) => org.is_active)?.org_id ||
+      null,
+    organizations: orgs.map((org) => ({
+      orgId: org.org_id,
+      orgName: org.name,
+      role: org.org_role,
+      isActive: org.org_id === body?.active_org_id || org.is_active,
+    })),
+  };
 }
 
 export async function listMembers(): Promise<Member[]> {
@@ -230,6 +258,22 @@ export async function getSsoStatus(): Promise<SsoStatus> {
 }
 
 // ── mutations ────────────────────────────────────────────────────────────────
+export async function switchOrganization(orgId: string): Promise<ActionResult<{ orgId: string }>> {
+  const r = await authed("/api/v1/orgs/switch", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ org_id: orgId }),
+  });
+  if (!r.ok) return { ok: false, error: await errorFrom(r, "Could not switch organization") };
+  const body = await r.json().catch(() => ({}));
+  if (body?.org_id !== orgId) {
+    return { ok: false, error: "The server did not confirm the selected organization." };
+  }
+  revalidatePath("/", "layout");
+  revalidatePath(ORG_SETTINGS_PATH);
+  return { ok: true, data: { orgId } };
+}
+
 export async function createInvite(
   email: string,
   role: OrgRole

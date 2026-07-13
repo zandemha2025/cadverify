@@ -7,7 +7,7 @@
  */
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Trash2, UserMinus, Copy, Check } from "lucide-react";
+import { Trash2, UserMinus, Copy, Check, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
@@ -25,10 +25,68 @@ import {
   removeMember,
   createSamlMapping,
   deleteSamlMapping,
+  switchOrganization,
+  type OrganizationSummary,
   type OrgRole,
 } from "./actions";
 
 const ROLE_OPTIONS: OrgRole[] = ["viewer", "member", "admin"];
+
+export function OrganizationSwitcher({
+  organizations,
+  activeOrgId,
+}: {
+  organizations: OrganizationSummary[];
+  activeOrgId: string | null;
+}) {
+  const router = useRouter();
+  const [error, setError] = React.useState<string | null>(null);
+  const [pending, start] = React.useTransition();
+
+  function change(orgId: string) {
+    if (orgId === activeOrgId) return;
+    setError(null);
+    start(async () => {
+      const result = await switchOrganization(orgId);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="rounded-[var(--radius)] border border-border bg-card p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex items-start gap-3">
+          <Building2 className="mt-0.5 size-4 text-primary" />
+          <div>
+            <p className="text-sm font-semibold text-foreground">Active organization</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Lists, records, downloads, jobs, and API-key management use this organization.
+            </p>
+          </div>
+        </div>
+        <div className="w-full sm:w-80">
+          <Select value={activeOrgId ?? undefined} onValueChange={change} disabled={pending || organizations.length < 2}>
+            <SelectTrigger aria-label="Active organization" className="w-full">
+              <SelectValue placeholder="Select an organization" />
+            </SelectTrigger>
+            <SelectContent>
+              {organizations.map((org) => (
+                <SelectItem key={org.orgId} value={org.orgId}>
+                  {org.orgName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {error && <p className="mt-2 text-xs text-fail">{error}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── Invites ────────────────────────────────────────────────────────────────
 export function InviteForm() {
