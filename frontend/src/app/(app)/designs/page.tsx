@@ -56,6 +56,10 @@ import {
   type DesignRevision,
 } from "@/lib/designs-api";
 import { cn } from "@/lib/utils";
+import {
+  releaseSingleFlight,
+  tryAcquireSingleFlight,
+} from "@/lib/single-flight";
 
 const TEMPLATES: Array<{
   kind: TemplateKind;
@@ -166,6 +170,7 @@ export default function DesignsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const revisionDesignIdRef = useRef<string | null>(null);
+  const submissionLockRef = useRef(false);
 
   const selected = useMemo(
     () => designs.find((design) => design.id === selectedId) ?? designs[0] ?? null,
@@ -309,6 +314,7 @@ export default function DesignsPage() {
       setError(problem);
       return;
     }
+    if (!tryAcquireSingleFlight(submissionLockRef)) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -336,6 +342,7 @@ export default function DesignsPage() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not start generation.");
     } finally {
+      releaseSingleFlight(submissionLockRef);
       setSubmitting(false);
     }
   };

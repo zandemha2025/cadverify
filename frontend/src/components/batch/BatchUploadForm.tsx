@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { createBatch } from "@/lib/api/batch";
@@ -8,6 +8,10 @@ import { Dropzone } from "@/components/ui/dropzone";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  releaseSingleFlight,
+  tryAcquireSingleFlight,
+} from "@/lib/single-flight";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024; // 5 GB
 
@@ -18,6 +22,7 @@ export default function BatchUploadForm() {
   const [webhookUrl, setWebhookUrl] = useState("");
   const [concurrencyLimit, setConcurrencyLimit] = useState(10);
   const [uploading, setUploading] = useState(false);
+  const submissionLockRef = useRef(false);
 
   const handleFiles = useCallback((files: File[]) => {
     const dropped = files[0];
@@ -35,14 +40,14 @@ export default function BatchUploadForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!file) {
+      toast.error("Please select a ZIP file");
+      return;
+    }
+    if (!tryAcquireSingleFlight(submissionLockRef)) return;
     setUploading(true);
 
     try {
-      if (!file) {
-        toast.error("Please select a ZIP file");
-        setUploading(false);
-        return;
-      }
       const result = await createBatch(file, {
         webhookUrl: webhookUrl || undefined,
         manifest: manifest || undefined,
@@ -56,6 +61,7 @@ export default function BatchUploadForm() {
         err instanceof Error ? err.message : "Failed to create batch",
       );
     } finally {
+      releaseSingleFlight(submissionLockRef);
       setUploading(false);
     }
   };
