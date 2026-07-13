@@ -323,13 +323,16 @@ class HumanE2E {
         throw new Error("pilot request did not expose a durable receipt");
       }
       assert(receiptResponse.ok(), `pilot request returned ${receiptResponse.status()}`);
-      assert(receiptBody.receipt === receiptId, "pilot response receipt did not match visible receipt");
+      const responseReceipt = typeof receiptBody.receipt === "string"
+        ? `CV-${receiptBody.receipt}`
+        : null;
+      assert(responseReceipt === receiptId, "pilot response receipt did not match visible receipt");
       const screenshot = await this.shot("public-pilot-request");
       const evidence = {
         receiptId,
         acknowledged: true,
         responseStatus: receiptResponse.status(),
-        responseReceiptMatches: receiptBody.receipt === receiptId,
+        responseReceiptMatches: responseReceipt === receiptId,
         screenshot,
       };
       this.criticalPaths["PUB-03"] = evidence;
