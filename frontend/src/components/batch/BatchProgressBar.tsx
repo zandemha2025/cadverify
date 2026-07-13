@@ -22,6 +22,7 @@ interface Props {
 export default function BatchProgressBar({ batchId, onProgressUpdate }: Props) {
   const [progress, setProgress] = useState<BatchProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number | null>(null);
 
@@ -33,6 +34,7 @@ export default function BatchProgressBar({ batchId, onProgressUpdate }: Props) {
         const p = await getBatchProgress(batchId);
         if (cancelled) return;
         setProgress(p);
+        setError(null);
         onProgressUpdate?.(p);
 
         if (startTimeRef.current === null && p.started_at) {
@@ -60,10 +62,19 @@ export default function BatchProgressBar({ batchId, onProgressUpdate }: Props) {
         intervalRef.current = null;
       }
     };
-  }, [batchId, onProgressUpdate]);
+  }, [batchId, onProgressUpdate, retryKey]);
 
   if (error) {
-    return <ErrorState title="Could not load progress" message={error} />;
+    return (
+      <ErrorState
+        title="Could not load progress"
+        message={error}
+        onRetry={() => {
+          setError(null);
+          setRetryKey((key) => key + 1);
+        }}
+      />
+    );
   }
 
   if (!progress) {

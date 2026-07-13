@@ -12,6 +12,7 @@ import { DataTable } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import {
   downloadBatchCsv,
   listBatches,
@@ -24,6 +25,7 @@ export default function BatchListPage() {
   const [loading, setLoading] = useState(true);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchBatches = useCallback(async (cursor?: string) => {
     try {
@@ -31,8 +33,9 @@ export default function BatchListPage() {
       setBatches((prev) => (cursor ? [...prev, ...resp.batches] : resp.batches));
       setNextCursor(resp.next_cursor);
       setHasMore(resp.has_more);
-    } catch {
-      // silent -- table will show its empty state
+      setError(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not load batches.");
     }
   }, []);
 
@@ -148,19 +151,32 @@ export default function BatchListPage() {
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Recent batches
         </h2>
-        <DataTable
-          columns={columns}
-          data={batches}
-          loading={loading}
-          onRowClick={(row) => router.push(`/batch/${row.batch_ulid}`)}
-          emptyState={
-            <EmptyState
-              icon={Layers}
-              title="No batches yet"
-              description="Upload a ZIP file above to analyze many parts at once."
-            />
-          }
-        />
+        {error && (
+          <ErrorState
+            title="Could not load recent batches"
+            message={error}
+            onRetry={() => {
+              setError(null);
+              setLoading(true);
+              fetchBatches().finally(() => setLoading(false));
+            }}
+          />
+        )}
+        {(!error || batches.length > 0) && (
+          <DataTable
+            columns={columns}
+            data={batches}
+            loading={loading}
+            onRowClick={(row) => router.push(`/batch/${row.batch_ulid}`)}
+            emptyState={
+              <EmptyState
+                icon={Layers}
+                title="No batches yet"
+                description="Upload a ZIP file above to analyze many parts at once."
+              />
+            }
+          />
+        )}
         {hasMore && (
           <div className="text-center">
             <Button

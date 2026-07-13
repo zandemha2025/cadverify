@@ -6,6 +6,10 @@
  */
 
 import { API_BASE } from "../api-base";
+import {
+  apiRecoveryMessage,
+  networkRecoveryMessage,
+} from "../api-recovery";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -78,11 +82,23 @@ async function apiFetch(
   url: string,
   options: RequestInit = {},
 ): Promise<Response> {
-  const res = await fetch(url, options);
+  let res: Response;
+  try {
+    res = await fetch(url, options);
+  } catch {
+    throw new Error(networkRecoveryMessage("batch"));
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(body.detail || body.message || `Request failed: ${res.status}`);
+    throw new Error(
+      apiRecoveryMessage({
+        status: res.status,
+        payload: body,
+        resource: "batch",
+        retryAfter: res.headers.get("retry-after"),
+      }),
+    );
   }
 
   return res;

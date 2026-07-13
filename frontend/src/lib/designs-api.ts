@@ -1,4 +1,8 @@
 import { API_BASE } from "@/lib/api-base";
+import {
+  apiRecoveryMessage,
+  networkRecoveryMessage,
+} from "@/lib/api-recovery";
 
 export type Hole = {
   x_mm: number;
@@ -122,7 +126,14 @@ async function apiError(response: Response): Promise<DesignApiError> {
   try {
     payload = await response.json();
   } catch {
-    return new DesignApiError(`Request failed (${response.status})`, response.status);
+    return new DesignApiError(
+      apiRecoveryMessage({
+        status: response.status,
+        resource: "design",
+        retryAfter: response.headers.get("retry-after"),
+      }),
+      response.status,
+    );
   }
   const body = payload as {
     detail?: string | { message?: string; code?: string } | Array<{ msg?: string }>;
@@ -130,11 +141,12 @@ async function apiError(response: Response): Promise<DesignApiError> {
     code?: string;
   };
   const detail = body.detail;
-  const message = Array.isArray(detail)
-    ? detail[0]?.msg ?? `Request failed (${response.status})`
-    : typeof detail === "string"
-      ? detail
-      : detail?.message ?? body.message ?? `Request failed (${response.status})`;
+  const message = apiRecoveryMessage({
+    status: response.status,
+    payload,
+    resource: "design",
+    retryAfter: response.headers.get("retry-after"),
+  });
   const code = detail && !Array.isArray(detail) && typeof detail === "object"
     ? detail.code
     : body.code;
@@ -142,13 +154,18 @@ async function apiError(response: Response): Promise<DesignApiError> {
 }
 
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    cache: "no-store",
-    ...init,
-    headers: init?.body
-      ? { "content-type": "application/json", ...init.headers }
-      : init?.headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      cache: "no-store",
+      ...init,
+      headers: init?.body
+        ? { "content-type": "application/json", ...init.headers }
+        : init?.headers,
+    });
+  } catch {
+    throw new DesignApiError(networkRecoveryMessage("design"), 0, "network");
+  }
   if (!response.ok) throw await apiError(response);
   return (await response.json()) as T;
 }
