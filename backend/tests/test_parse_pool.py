@@ -100,6 +100,33 @@ def test_final_shutdown_blocks_late_prewarm_recreation():
     parse_pool.startup()
 
 
+def test_killed_shutdown_reaps_executor_resources_before_returning():
+    """Killed workers cannot leave queue/semaphore cleanup to resource_tracker."""
+    calls: list[tuple[str, object]] = []
+
+    class _Process:
+        def kill(self):
+            calls.append(("kill", None))
+
+    class _Executor:
+        _processes = {1: _Process(), 2: _Process()}
+
+        def shutdown(self, *, wait, cancel_futures):
+            calls.append(("shutdown", (wait, cancel_futures)))
+
+    parse_pool.startup()
+    parse_pool._POOL = _Executor()
+    parse_pool.shutdown(kill=True, final=True)
+
+    assert calls == [
+        ("kill", None),
+        ("kill", None),
+        ("shutdown", (True, True)),
+    ]
+    assert parse_pool._POOL is None
+    parse_pool.startup()
+
+
 # ──────────────────────────────────────────────────────────────
 # Correctness: pooled parse is byte-identical to in-thread (the crux)
 # ──────────────────────────────────────────────────────────────

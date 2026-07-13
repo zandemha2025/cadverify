@@ -304,8 +304,10 @@ def shutdown(*, kill: bool = True, final: bool = False) -> None:
     With ``final=True``, ``_STOPPING`` is set while holding the same lock used by
     ``_get_pool`` so a detached pre-warm thread cannot recreate the singleton
     after shutdown took ownership. Production shutdown hard-kills active CAD
-    workers because gmsh C calls are not interruptible. Ordinary test cleanup
-    keeps ``final=False`` so a later test can lazily create a fresh pool.
+    workers because gmsh C calls are not interruptible, then joins the executor
+    manager so its queues and multiprocessing semaphores are actually released.
+    The join remains bounded because every worker is killed first. Ordinary test
+    cleanup keeps ``final=False`` so a later test can lazily create a fresh pool.
     """
     global _POOL, _STOPPING
     with _POOL_LOCK:
@@ -319,7 +321,12 @@ def shutdown(*, kill: bool = True, final: bool = False) -> None:
                 except Exception:
                     pass
         try:
-            pool.shutdown(wait=False, cancel_futures=True)
+            # wait=False abandons the executor's queue/semaphore handles to
+            # multiprocessing.resource_tracker at interpreter exit. Once every
+            # worker has been killed there is no uninterruptible CAD call left to
+            # wait on, so a full join is both bounded and required for a clean
+            # production shutdown.
+            pool.shutdown(wait=kill, cancel_futures=True)
         except Exception:
             logger.exception("parse pool shutdown failed")
 
