@@ -3,6 +3,7 @@ import * as Sentry from "@sentry/nextjs";
 import { apiProblemDetail, apiRecoveryMessage } from "@/lib/api-recovery";
 import { API_BASE, browserOrBackendUrl } from "./api-base";
 import type { AnalysisListRow } from "./recent-parts";
+import type { CostDisposition } from "./cost-disposition";
 
 export interface GeometryInfo {
   vertices: number;
@@ -953,6 +954,11 @@ export interface CostDecisionGovernance {
   is_stale?: boolean;
   stale_at?: string | null;
   stale_reason?: string | null;
+  user_disposition?: CostDisposition | null;
+  user_disposition_label?: string | null;
+  disposition_note?: string | null;
+  disposition_updated_at?: string | null;
+  disposition_updated_by_user_id?: number | null;
 }
 
 export interface CostDecisionSummary extends CostDecisionGovernance {
@@ -1058,6 +1064,11 @@ export interface CostShareResult {
 
 export interface CostApprovalResult extends CostDecisionGovernance {
   id: string;
+}
+
+export interface CostDispositionResult extends CostDecisionGovernance {
+  id: string;
+  user_disposition: CostDisposition | null;
 }
 
 export interface RfqPackageWarning {
@@ -1189,6 +1200,25 @@ export async function reopenCostDecisionApproval(
   return apiClient.fetchJson<CostApprovalResult>(
     `${API_BASE}/cost-decisions/${id}/approve`,
     { method: "DELETE" }
+  );
+}
+
+/** Persist or withdraw the human four-way outcome on a saved decision. */
+export async function setCostDecisionDisposition(
+  id: string,
+  disposition: CostDisposition | null,
+  note?: string
+): Promise<CostDispositionResult> {
+  return apiClient.fetchJson<CostDispositionResult>(
+    `${API_BASE}/cost-decisions/${id}/disposition`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        disposition,
+        note: disposition ? note?.trim() || null : null,
+      }),
+    }
   );
 }
 

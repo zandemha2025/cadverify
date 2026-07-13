@@ -13,7 +13,14 @@ import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from
 import { analysisFailureCopy } from "@/lib/verify/failure-copy";
 import { C, MONO, USD, NUM, procLabel, statusColor, normProv } from "@/lib/verify/tokens";
 import type { VerifyResult } from "@/lib/verify/run";
+import { fetchCostDecision, setCostDecisionDisposition } from "@/lib/api";
 import type { CostReport, CostComparison } from "@/lib/api";
+import {
+  COST_DISPOSITIONS,
+  costDispositionLabel,
+  isCostDisposition,
+  type CostDisposition,
+} from "@/lib/cost-disposition";
 import {
   parseAsk,
   computeCostAtQty,
@@ -126,10 +133,9 @@ export function VerifyScreen(props: Props) {
   } = props;
   const [scrubFrac, setScrubFrac] = useState(0.5);
   const [disclose, setDisclose] = useState<string | null>(null);
-  // The user's recorded make/route/acquire/redesign decision for THIS verification.
-  // Session state (there is no engine endpoint to append the outcome yet — the
-  // Decide card is honest about that). Reset whenever a new run lands.
-  const [decision, setDecision] = useState<string | null>(null);
+  // The human outcome is loaded from and written to the saved cost-decision.
+  // Reset while a new run lands; DecideHallmark then hydrates the new record.
+  const [decision, setDecision] = useState<CostDisposition | null>(null);
   useEffect(() => {
     setDecision(null);
   }, [result]);
@@ -421,8 +427,8 @@ function Walk({
   setScrubFrac: (f: number) => void;
   disclose: string | null;
   setDisclose: (s: string | null) => void;
-  decision: string | null;
-  setDecision: (d: string | null) => void;
+  decision: CostDisposition | null;
+  setDecision: (d: CostDisposition | null) => void;
   onReverify: () => void;
   nav: Nav;
 }) {
@@ -1624,13 +1630,6 @@ function ResourceCost({
   );
 }
 
-const DECIDE_OPTS: { key: string; label: string }[] = [
-  { key: "inhouse", label: "Make in-house" },
-  { key: "outside", label: "Make outside" },
-  { key: "acquire", label: "Acquire capability" },
-  { key: "redesign", label: "Redesign" },
-];
-
 function DecideHallmark({
   result,
   decision,
@@ -1638,45 +1637,114 @@ function DecideHallmark({
   nav,
 }: {
   result: VerifyResult;
-  decision: string | null;
-  setDecision: (d: string | null) => void;
+  decision: CostDisposition | null;
+  setDecision: (d: CostDisposition | null) => void;
   nav: Nav;
 }) {
   const toast = useToast();
   const saved = result.cost?.saved;
   const est = result.cost ? makeNowEstimate(result.cost) : null;
   const validated = est?.confidence?.validated ?? false;
-  const decidedLabel = DECIDE_OPTS.find((o) => o.key === decision)?.label ?? null;
+  const decidedLabel = costDispositionLabel(decision);
+  const [loadingSaved, setLoadingSaved] = useState(Boolean(saved?.id));
+  const [saving, setSaving] = useState<CostDisposition | "withdraw" | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [loadVersion, setLoadVersion] = useState(0);
+  const [persistedAt, setPersistedAt] = useState<string | null>(null);
   // Real, verbatim id of the persisted cost-decision artifact (never the design's
   // fixture "V-0117"). A short handle for the line; the full record opens in Records.
   const shortId = saved?.id ? `#${saved.id.slice(0, 8)}` : null;
-  const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const recordedDate = new Date(persistedAt ?? Date.now()).toLocaleDateString(
+    "en-US",
+    { month: "short", day: "numeric", year: "numeric" }
+  );
 
-  const choose = (key: string, label: string) => {
-    const withdrawing = decision === key;
-    setDecision(withdrawing ? null : key);
-    if (withdrawing) {
-      toast(`Decision withdrawn — ${label}`);
+  useEffect(() => {
+    if (!saved?.id) {
+      setLoadingSaved(false);
+      setSaveError(null);
+      setPersistedAt(null);
       return;
     }
-    // Honest: the user's outcome is noted on THIS verification (session). The
-    // cost-decision artifact itself is what's persisted (POST /validate/cost); the
-    // toast asserts only what actually happened.
-    toast(saved ? `${label} — noted · cost-decision ${shortId} is saved` : `${label} — noted on this verification`);
-    if (key === "acquire") nav("acquisition");
+
+    let alive = true;
+    setLoadingSaved(true);
+    setSaveError(null);
+    fetchCostDecision(saved.id)
+      .then((record) => {
+        if (!alive) return;
+        const persisted = record.user_disposition;
+        if (persisted != null && !isCostDisposition(persisted)) {
+          throw new Error("The saved record contains an unsupported outcome");
+        }
+        setDecision(persisted ?? null);
+        setPersistedAt(record.disposition_updated_at ?? null);
+      })
+      .catch((error) => {
+        if (!alive) return;
+        setSaveError(
+          error instanceof Error ? error.message : "Could not load the saved outcome"
+        );
+      })
+      .finally(() => {
+        if (alive) setLoadingSaved(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [loadVersion, saved?.id, setDecision]);
+
+  const choose = async (key: CostDisposition, label: string) => {
+    if (loadingSaved || saving) return;
+    const withdrawing = decision === key;
+    const next = withdrawing ? null : key;
+
+    // Honest fallback for an explicitly non-persisted engine run.
+    if (!saved?.id) {
+      setDecision(next);
+      if (withdrawing) toast(`Decision withdrawn — ${label}`);
+      else toast(`${label} — noted on this verification`);
+      if (key === "acquire" && !withdrawing) nav("acquisition");
+      return;
+    }
+
+    setSaving(withdrawing ? "withdraw" : key);
+    setSaveError(null);
+    try {
+      const updated = await setCostDecisionDisposition(saved.id, next);
+      setDecision(updated.user_disposition);
+      setPersistedAt(updated.disposition_updated_at ?? new Date().toISOString());
+      if (withdrawing) {
+        toast(`Decision withdrawn — saved to cost-decision ${shortId}`);
+      } else {
+        toast(`${label} — saved to cost-decision ${shortId}`);
+        if (key === "acquire") nav("acquisition");
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Could not save this decision";
+      setSaveError(message);
+      toast(`Decision not saved — ${message}`);
+    } finally {
+      setSaving(null);
+    }
   };
 
   return (
     <Card>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <p style={{ margin: 0, fontSize: 15, fontWeight: 500, marginRight: "auto" }}>Decide</p>
-        {DECIDE_OPTS.map((o) => {
+        {COST_DISPOSITIONS.map((o) => {
           const on = decision === o.key;
           return (
             <button
               key={o.key}
               type="button"
-              onClick={() => choose(o.key, o.label)}
+              data-testid={`verify-disposition-${o.key}`}
+              aria-pressed={on}
+              aria-busy={saving === o.key || (on && saving === "withdraw")}
+              disabled={loadingSaved || Boolean(saving) || Boolean(saveError)}
+              onClick={() => void choose(o.key, o.label)}
               style={{
                 background: on ? C.ink : "none",
                 border: `1px solid ${on ? C.ink : "#d8d8dc"}`,
@@ -1685,7 +1753,9 @@ function DecideHallmark({
                 padding: "9px 16px",
                 fontSize: 12.5,
                 fontWeight: 500,
-                cursor: "pointer",
+                cursor:
+                  loadingSaved || saving || saveError ? "not-allowed" : "pointer",
+                opacity: loadingSaved || saving || saveError ? 0.55 : 1,
                 fontFamily: "inherit",
                 transition: "all 150ms",
               }}
@@ -1696,21 +1766,38 @@ function DecideHallmark({
         })}
       </div>
 
-      {decidedLabel ? (
-        <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.pass, lineHeight: 1.6, animation: "vtraceIn 300ms cubic-bezier(0.2,0,0,1) both" }}>
-          ✓ {decidedLabel} — noted on this verification · {today}
+      {loadingSaved ? (
+        <p data-testid="verify-disposition-status" style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink45, lineHeight: 1.6 }}>
+          loading the saved outcome for cost-decision {shortId}…
+        </p>
+      ) : saveError ? (
+        <div data-testid="verify-disposition-error" style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <p style={{ margin: 0, fontFamily: MONO, fontSize: 10.5, color: C.fail, lineHeight: 1.6 }}>
+            Decision controls paused — {saveError}. Nothing was changed.
+          </p>
+          <GhostButton onClick={() => setLoadVersion((version) => version + 1)}>
+            Retry
+          </GhostButton>
+        </div>
+      ) : saving ? (
+        <p data-testid="verify-disposition-status" style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink45, lineHeight: 1.6 }}>
+          {saving === "withdraw" ? "Withdrawing" : "Saving"} the outcome…
+        </p>
+      ) : decidedLabel ? (
+        <p data-testid="verify-disposition-status" style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.pass, lineHeight: 1.6, animation: "vtraceIn 300ms cubic-bezier(0.2,0,0,1) both" }}>
+          ✓ {decidedLabel} — recorded {recordedDate}
           {saved ? (
             <>
-              {" "}· cost-decision <span style={{ color: C.ink }}>{shortId}</span> is the persisted artifact
+              {" "}· saved and auditable on cost-decision <span style={{ color: C.ink }}>{shortId}</span>
             </>
           ) : (
             " · this session only (persistence off)"
           )}
         </p>
       ) : (
-        <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40, lineHeight: 1.6 }}>
-          next → pick one above · your choice is noted on this verification
-          {saved ? " beside the saved cost-decision record" : ""}.
+        <p data-testid="verify-disposition-status" style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40, lineHeight: 1.6 }}>
+          next → pick one above · your choice
+          {saved ? " will be saved to this cost-decision record" : " is session-only because record persistence is off"}.
         </p>
       )}
 
@@ -1720,7 +1807,7 @@ function DecideHallmark({
         </GhostButton>
         <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink40, lineHeight: 1.5, flex: 1, minWidth: 180 }}>
           {saved
-            ? "the cost-decision is the immutable saved artifact; your choice above is noted in this verification session and the record opens from Records."
+            ? "the computed evidence stays immutable; the recorded outcome persists across refresh, login, exports, and the Records view."
             : "record-keeping is turned off for this run — the numbers above are live, but nothing was written to your records."}
         </span>
       </div>

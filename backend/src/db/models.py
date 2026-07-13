@@ -584,6 +584,11 @@ class CostDecision(Base):
             unique=True,
             postgresql_where=text("share_short_id IS NOT NULL"),
         ),
+        CheckConstraint(
+            "user_disposition IS NULL OR user_disposition IN "
+            "('inhouse', 'outside', 'acquire', 'redesign')",
+            name="ck_cost_decisions_disposition",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -626,6 +631,17 @@ class CostDecision(Base):
         TIMESTAMP(timezone=True), nullable=True
     )
     stale_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # The human's durable outcome for the four-way Decide step. This is separate
+    # from immutable engine output in result_json: the engine recommends; the
+    # accountable user records what the organization will actually do.
+    user_disposition: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    disposition_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    disposition_updated_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    disposition_updated_by_user_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     is_public: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )

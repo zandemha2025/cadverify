@@ -21,8 +21,13 @@ import {
   exportCostJson,
   exportCostCsv,
   reopenCostDecisionApproval,
+  setCostDecisionDisposition,
 } from "@/lib/api";
 import type { CostDecisionDetail } from "@/lib/api";
+import {
+  COST_DISPOSITIONS,
+  type CostDisposition,
+} from "@/lib/cost-disposition";
 import { SavedCostDecisionView } from "@/components/cost/SavedCostDecisionView";
 import PdfDownloadButton from "@/components/PdfDownloadButton";
 import ShareButton from "@/components/ShareButton";
@@ -55,7 +60,32 @@ function GovernancePanel({
 }) {
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState<"approve" | "reopen" | null>(null);
+  const [savingDisposition, setSavingDisposition] = useState<
+    CostDisposition | "withdraw" | null
+  >(null);
   const approved = decision.approval_status === "approved";
+
+  async function saveDisposition(next: CostDisposition | null) {
+    const wasApproved = approved;
+    setSavingDisposition(next ?? "withdraw");
+    try {
+      const patch = await setCostDecisionDisposition(decision.id, next);
+      onUpdate(patch);
+      toast.success(
+        next
+          ? wasApproved
+            ? "Outcome saved; prior approval reopened"
+            : "Outcome saved"
+          : wasApproved
+            ? "Outcome withdrawn; prior approval reopened"
+            : "Outcome withdrawn"
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Outcome was not saved");
+    } finally {
+      setSavingDisposition(null);
+    }
+  }
 
   async function approve() {
     setSaving("approve");
@@ -127,6 +157,60 @@ function GovernancePanel({
             <Button size="sm" loading={saving === "approve"} onClick={approve}>
               {saving !== "approve" && <ShieldCheck />} Approve
             </Button>
+          )}
+        </div>
+
+        <div
+          data-testid="cost-decision-disposition"
+          className="space-y-3 rounded-[var(--radius-sm)] border border-border bg-muted p-3"
+        >
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Recorded outcome
+            </p>
+            <p className="mt-1 text-sm text-foreground">
+              {decision.user_disposition_label ??
+                "Choose what the organization will do with this part."}
+            </p>
+            {decision.disposition_updated_at && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Updated {formatDate(decision.disposition_updated_at)} by user {" "}
+                {decision.disposition_updated_by_user_id ?? "—"}.
+              </p>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {COST_DISPOSITIONS.map((option) => {
+              const selected = decision.user_disposition === option.key;
+              const next = selected ? null : option.key;
+              return (
+                <Button
+                  key={option.key}
+                  type="button"
+                  size="sm"
+                  variant={selected ? "primary" : "secondary"}
+                  aria-pressed={selected}
+                  data-testid={`record-disposition-${option.key}`}
+                  disabled={Boolean(savingDisposition)}
+                  loading={
+                    savingDisposition === option.key ||
+                    (selected && savingDisposition === "withdraw")
+                  }
+                  onClick={() => void saveDisposition(next)}
+                >
+                  {option.label}
+                </Button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Select the active choice again to withdraw it. Changing an outcome
+            reopens any prior approval so the new decision must be signed off.
+          </p>
+          {decision.disposition_note && (
+            <p className="whitespace-pre-wrap break-words text-sm text-foreground">
+              {decision.disposition_note}
+            </p>
           )}
         </div>
 

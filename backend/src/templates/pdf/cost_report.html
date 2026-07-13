@@ -59,6 +59,14 @@
   <h2>Decision Governance</h2>
   <div class="governance">
     <strong>Status:</strong> {{ governance.get('approval_status', 'unreviewed') }}
+    {% if governance.get('user_disposition_label') %}
+      &middot; <strong>Recorded outcome:</strong> {{ governance.get('user_disposition_label') }}
+    {% else %}
+      &middot; <strong>Recorded outcome:</strong> Not decided
+    {% endif %}
+    {% if governance.get('disposition_updated_at') %}
+      &middot; <strong>Outcome updated:</strong> {{ governance.get('disposition_updated_at') }}
+    {% endif %}
     {% if governance.get('approved_by_user_id') %}
       &middot; <strong>Signed by user:</strong> {{ governance.get('approved_by_user_id') }}
     {% endif %}
@@ -68,6 +76,10 @@
     {% if governance.get('approval_note') %}
       <div class="governance-note"><strong>Approval note:</strong>
 {{ governance.get('approval_note') | pdf_text }}</div>
+    {% endif %}
+    {% if governance.get('disposition_note') %}
+      <div class="governance-note"><strong>Outcome note:</strong>
+{{ governance.get('disposition_note') }}</div>
     {% endif %}
   </div>
 

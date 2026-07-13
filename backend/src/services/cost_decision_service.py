@@ -37,6 +37,12 @@ logger = logging.getLogger("cadverify.cost_decision_service")
 
 APPROVAL_UNREVIEWED = "unreviewed"
 APPROVAL_APPROVED = "approved"
+DISPOSITION_LABELS = {
+    "inhouse": "Make in-house",
+    "outside": "Make outside",
+    "acquire": "Acquire capability",
+    "redesign": "Redesign",
+}
 
 
 def cost_persist_enabled() -> bool:
@@ -361,6 +367,7 @@ def governance_fields(d: CostDecision) -> dict:
     ``stale_at`` now, but does not claim the saved decision is stale until that
     effective instant arrives.
     """
+    disposition = getattr(d, "user_disposition", None)
     return {
         "approval_status": getattr(d, "approval_status", None) or APPROVAL_UNREVIEWED,
         "approved_by_user_id": getattr(d, "approved_by_user_id", None),
@@ -369,6 +376,15 @@ def governance_fields(d: CostDecision) -> dict:
         "is_stale": _is_stale(d),
         "stale_at": _iso(getattr(d, "stale_at", None)),
         "stale_reason": getattr(d, "stale_reason", None),
+        "user_disposition": disposition,
+        "user_disposition_label": DISPOSITION_LABELS.get(disposition),
+        "disposition_note": getattr(d, "disposition_note", None),
+        "disposition_updated_at": _iso(
+            getattr(d, "disposition_updated_at", None)
+        ),
+        "disposition_updated_by_user_id": getattr(
+            d, "disposition_updated_by_user_id", None
+        ),
     }
 
 
@@ -434,6 +450,83 @@ async def reopen_owned(
     return d
 
 
+async def set_disposition_owned(
+    session: AsyncSession,
+    ulid: str,
+    user_id: int,
+    *,
+    disposition: Optional[str],
+    note: Optional[str] = None,
+) -> CostDecision:
+    """Persist or withdraw the human outcome on an owned cost decision.
+
+    ``result_json`` remains immutable engine evidence. The disposition records
+    the accountable user's follow-through. Any real change reopens an existing
+    approval, because a prior signoff must never silently govern a new outcome.
+    Repeating an identical PUT is idempotent and does not rewrite timestamps or
+    append duplicate audit entries.
+    """
+    if disposition is not None and disposition not in DISPOSITION_LABELS:
+        raise HTTPException(status_code=400, detail="Invalid decision disposition")
+    if note is not None and len(note) > 1000:
+        raise HTTPException(
+            status_code=400,
+            detail="Disposition note must be 1000 characters or fewer",
+        )
+
+    d = await get_owned(session, ulid, user_id)
+    clean_note = _clean_note(note) if disposition is not None else None
+    previous = getattr(d, "user_disposition", None)
+    previous_note = getattr(d, "disposition_note", None)
+
+    if previous == disposition and previous_note == clean_note:
+        return d
+
+    approval_reopened = (
+        getattr(d, "approval_status", APPROVAL_UNREVIEWED) == APPROVAL_APPROVED
+    )
+    d.user_disposition = disposition
+    d.disposition_note = clean_note
+    d.disposition_updated_at = datetime.now(timezone.utc)
+    d.disposition_updated_by_user_id = user_id
+
+    if approval_reopened:
+        d.approval_status = APPROVAL_UNREVIEWED
+        d.approved_by_user_id = None
+        d.approved_at = None
+        d.approval_note = None
+
+    from src.services.audit_service import emit_event
+
+    await emit_event(
+        session,
+        actor_id=user_id,
+        action=(
+            "decision.disposition_withdrawn"
+            if disposition is None
+            else "decision.disposition_recorded"
+        ),
+        resource_type="cost_decision",
+        resource_id=d.ulid,
+        detail={
+            "org_id": d.org_id,
+            "previous_disposition": previous,
+            "disposition": disposition,
+            "approval_reopened": approval_reopened,
+        },
+        org_id=d.org_id,
+    )
+    await session.commit()
+    logger.info(
+        "Cost decision %s disposition changed from %s to %s by user %d",
+        ulid,
+        previous,
+        disposition,
+        user_id,
+    )
+    return d
+
+
 async def mark_org_decisions_stale(
     session: AsyncSession,
     org_id: str,
@@ -496,6 +589,11 @@ def build_estimates_csv(
             "approved_by_user_id",
             "approved_at",
             "approval_note",
+            "user_disposition",
+            "user_disposition_label",
+            "disposition_note",
+            "disposition_updated_at",
+            "disposition_updated_by_user_id",
             "line_items",
         ]
     )
@@ -523,6 +621,11 @@ def build_estimates_csv(
                 governance.get("approved_by_user_id", ""),
                 governance.get("approved_at", ""),
                 governance.get("approval_note", ""),
+                governance.get("user_disposition", ""),
+                governance.get("user_disposition_label", ""),
+                governance.get("disposition_note", ""),
+                governance.get("disposition_updated_at", ""),
+                governance.get("disposition_updated_by_user_id", ""),
                 li_str,
             ]
         )

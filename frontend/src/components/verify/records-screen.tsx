@@ -290,6 +290,24 @@ function RecordDetail({ id, onClose }: { id: string; onClose: () => void }) {
               pinned to the rate version it was computed under — a calibration switch never rewrites it
             </p>
 
+            <div
+              data-testid="record-disposition-summary"
+              style={{ marginTop: 14, border: `1px solid ${C.hair}`, borderRadius: 10, padding: "11px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
+            >
+              <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink45, letterSpacing: "0.08em" }}>
+                RECORDED OUTCOME
+              </span>
+              <strong style={{ fontSize: 12.5, color: detail.user_disposition ? C.pass : C.cond }}>
+                {detail.user_disposition_label ?? "Not decided"}
+              </strong>
+              <a
+                href={`/cost-decisions/${id}`}
+                style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10.5, color: C.ink, textDecoration: "underline", textUnderlineOffset: 3 }}
+              >
+                Open governance →
+              </a>
+            </div>
+
             {drivers.length > 0 ? (
               <div style={{ marginTop: 18, borderTop: `1px solid #efeff2`, paddingTop: 6 }}>
                 {drivers.map((d) => (
@@ -349,7 +367,7 @@ function RecordDetail({ id, onClose }: { id: string; onClose: () => void }) {
               ) : (
                 <ExportButton label={busy === "create share link" ? "Creating…" : "Create share link"} disabled={!!busy} onClick={() => void createShare()} />
               )}
-              <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 9.5, color: C.ink35 }}>records are immutable</span>
+              <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 9.5, color: C.ink35 }}>computed evidence is immutable</span>
             </div>
 
             {shareUrl && (

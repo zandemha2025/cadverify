@@ -299,6 +299,8 @@ def test_list_cost_decisions(client, real_result_json):
     assert item["approved_at"] is None
     assert item["is_stale"] is False
     assert item["stale_reason"] is None
+    assert item["user_disposition"] is None
+    assert item["user_disposition_label"] is None
     assert body["has_more"] is False
 
 
@@ -334,6 +336,7 @@ def test_detail_owner_ok(client, real_result_json):
     assert body["make_now_process"]
     assert body["approval_status"] == "unreviewed"
     assert body["is_stale"] is False
+    assert body["user_disposition"] is None
 
 
 def test_approve_and_reopen_cost_decision(client, real_result_json):
@@ -400,6 +403,127 @@ def test_approval_note_limit_is_documented_in_openapi(client):
     assert note_schema["maxLength"] == 1000
 
 
+def test_four_way_disposition_persists_withdraws_and_preserves_engine_artifact(
+    client, real_result_json
+):
+    cl, app = client
+    dec = _make_decision("01DISPOSITION0000000000000A", real_result_json, user_id=42)
+    original_artifact = copy.deepcopy(dec.result_json)
+    session = _session_returning(scalar_one=dec)
+    _override(app, session, user_id=42)
+
+    labels = {
+        "inhouse": "Make in-house",
+        "outside": "Make outside",
+        "acquire": "Acquire capability",
+        "redesign": "Redesign",
+    }
+    for disposition, label in labels.items():
+        r = cl.put(
+            "/api/v1/cost-decisions/01DISPOSITION0000000000000A/disposition",
+            json={"disposition": disposition, "note": "Use this route"},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["user_disposition"] == disposition
+        assert body["user_disposition_label"] == label
+        assert body["disposition_note"] == "Use this route"
+        assert body["disposition_updated_by_user_id"] == 42
+        assert body["disposition_updated_at"] is not None
+        assert dec.result_json == original_artifact
+
+    withdrawn = cl.put(
+        "/api/v1/cost-decisions/01DISPOSITION0000000000000A/disposition",
+        json={"disposition": None, "note": "ignored while withdrawn"},
+    )
+    assert withdrawn.status_code == 200, withdrawn.text
+    assert withdrawn.json()["user_disposition"] is None
+    assert withdrawn.json()["user_disposition_label"] is None
+    assert withdrawn.json()["disposition_note"] is None
+    assert dec.result_json == original_artifact
+
+
+def test_disposition_change_reopens_prior_approval(client, real_result_json):
+    cl, app = client
+    dec = _make_decision("01DISPREOPEN00000000000000A", real_result_json, user_id=42)
+    dec.approval_status = "approved"
+    dec.approved_by_user_id = 42
+    dec.approved_at = datetime(2026, 7, 13, 12, 0, tzinfo=timezone.utc)
+    dec.approval_note = "Approved old path"
+    _override(app, _session_returning(scalar_one=dec), user_id=42)
+
+    r = cl.put(
+        "/api/v1/cost-decisions/01DISPREOPEN00000000000000A/disposition",
+        json={"disposition": "outside"},
+    )
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["user_disposition"] == "outside"
+    assert body["approval_status"] == "unreviewed"
+    assert body["approved_by_user_id"] is None
+    assert body["approved_at"] is None
+    assert body["approval_note"] is None
+
+
+def test_disposition_identical_put_is_idempotent(client, real_result_json):
+    cl, app = client
+    dec = _make_decision("01DISPIDEMPOTENT00000000000A", real_result_json, user_id=42)
+    session = _session_returning(scalar_one=dec)
+    _override(app, session, user_id=42)
+    path = "/api/v1/cost-decisions/01DISPIDEMPOTENT00000000000A/disposition"
+
+    first = cl.put(path, json={"disposition": "redesign", "note": "Rev B"})
+    first_timestamp = first.json()["disposition_updated_at"]
+    second = cl.put(path, json={"disposition": "redesign", "note": "Rev B"})
+
+    assert first.status_code == second.status_code == 200
+    assert second.json()["disposition_updated_at"] == first_timestamp
+    assert session.commit.await_count == 1
+
+
+def test_disposition_validation_and_note_limit_are_enforced(client, real_result_json):
+    cl, app = client
+    dec = _make_decision("01DISPVALIDATION0000000000A", real_result_json, user_id=42)
+    _override(app, _session_returning(scalar_one=dec), user_id=42)
+    path = "/api/v1/cost-decisions/01DISPVALIDATION0000000000A/disposition"
+
+    invalid = cl.put(path, json={"disposition": "maybe"})
+    overflow = cl.put(
+        path,
+        json={"disposition": "inhouse", "note": "X" * 1001},
+    )
+    exact = cl.put(
+        path,
+        json={"disposition": "inhouse", "note": "X" * 1000},
+    )
+
+    assert invalid.status_code == 422
+    assert overflow.status_code == 422
+    assert exact.status_code == 200
+    assert exact.json()["disposition_note"] == "X" * 1000
+
+
+def test_disposition_contract_is_documented_in_openapi(client):
+    cl, _ = client
+    schema = cl.get("/openapi.json").json()["components"]["schemas"]["DispositionBody"]
+    disposition_schema = next(
+        item
+        for item in schema["properties"]["disposition"]["anyOf"]
+        if "enum" in item
+    )
+    assert disposition_schema["enum"] == [
+        "inhouse",
+        "outside",
+        "acquire",
+        "redesign",
+    ]
+    note_schema = next(
+        item for item in schema["properties"]["note"]["anyOf"] if item.get("type") == "string"
+    )
+    assert note_schema["maxLength"] == 1000
+
+
 @pytest.mark.asyncio
 async def test_mark_org_decisions_stale_dispatches_update():
     from src.services import cost_decision_service as svc
@@ -459,6 +583,11 @@ def test_export_json(client, real_result_json):
         "is_stale": False,
         "stale_at": None,
         "stale_reason": None,
+        "user_disposition": None,
+        "user_disposition_label": None,
+        "disposition_note": None,
+        "disposition_updated_at": None,
+        "disposition_updated_by_user_id": None,
     }
 
 
@@ -488,6 +617,10 @@ def test_exports_preserve_exact_approval_governance(client, real_result_json):
     dec.approved_by_user_id = 42
     dec.approved_at = approved_at
     dec.approval_note = note
+    dec.user_disposition = "outside"
+    dec.disposition_note = "Supplier route selected"
+    dec.disposition_updated_at = approved_at
+    dec.disposition_updated_by_user_id = 42
     _override(app, _session_returning(scalar_one=dec))
 
     json_response = cl.get(
@@ -499,6 +632,9 @@ def test_exports_preserve_exact_approval_governance(client, real_result_json):
     assert governance["approved_by_user_id"] == 42
     assert governance["approved_at"] == approved_at.isoformat()
     assert governance["approval_note"] == note
+    assert governance["user_disposition"] == "outside"
+    assert governance["user_disposition_label"] == "Make outside"
+    assert governance["disposition_note"] == "Supplier route selected"
 
     csv_response = cl.get(
         "/api/v1/cost-decisions/01GOVEXPORT00000000000000A/export.csv"
@@ -510,6 +646,9 @@ def test_exports_preserve_exact_approval_governance(client, real_result_json):
     assert all(row["approved_by_user_id"] == "42" for row in rows)
     assert all(row["approved_at"] == approved_at.isoformat() for row in rows)
     assert all(row["approval_note"] == note for row in rows)
+    assert all(row["user_disposition"] == "outside" for row in rows)
+    assert all(row["user_disposition_label"] == "Make outside" for row in rows)
+    assert all(row["disposition_note"] == "Supplier route selected" for row in rows)
 
     from src.services.cost_pdf_service import render_cost_html
 
@@ -520,6 +659,8 @@ def test_exports_preserve_exact_approval_governance(client, real_result_json):
     assert approved_at.isoformat() in html
     assert "QA edit α/β — “quoted” &lt;tag&gt; &amp; gears ⚙️" in html
     assert "\nLine 2: $3.80/unit" in html
+    assert "Recorded outcome:</strong> Make outside" in html
+    assert "Outcome note:</strong>\nSupplier route selected" in html
 
 
 # ---------------------------------------------------------------------------
