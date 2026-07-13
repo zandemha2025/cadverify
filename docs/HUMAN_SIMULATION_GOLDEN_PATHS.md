@@ -12,6 +12,12 @@ the current production build with real PostgreSQL, Redis, worker, CAD kernel,
 and object storage; no row is skipped; and there are no unresolved defects,
 unexpected console errors, or request failures.
 
+The current automated gate may emit `LOCAL_GATE_PASS`, which is deliberately
+not `LOCAL_100`: it means the current-build branch inventory and the structured
+critical contracts below passed. `LOCAL_100` remains unavailable until every
+browser row in this matrix has a validated outcome schema rather than only a
+matching passing step name.
+
 `STAGING_100` additionally requires the rows marked **external** against the
 deployed staging boundary with managed storage, email, Turnstile, Sentry,
 identity providers, DNS/TLS, and provider failure/recovery. A simulator never
@@ -173,8 +179,9 @@ provenance—not a stale dollar snapshot.
 | Roles/failures | `npm run test:e2e:p7` | Signed-out boundaries, invalid/network failures, governance, viewer denial |
 | Full local gate | `npm run test:e2e:full` | All browser, corpus, load, restore, and readiness gates in sequence |
 
-The local report may say `LOCAL_100` only when every local browser row required
-for the release has a current-head/build-matched artifact and zero skips, every
-critical structured-evidence contract passes, and no report health gate fails.
-External rows remain explicit launch prerequisites until the real accounts and
-environments exist.
+The automated report may say `LOCAL_GATE_PASS` when every mapped branch has a
+current-head/build-matched artifact and zero skips, all current structured
+critical-evidence contracts pass, and no report health gate fails. It must not
+say `LOCAL_100` until every local browser row has equivalent structured outcome
+evidence. External rows remain explicit launch prerequisites until the real
+accounts and environments exist.

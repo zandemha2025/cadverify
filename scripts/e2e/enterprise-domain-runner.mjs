@@ -12,6 +12,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../..");
 const baseUrl = process.env.APP_URL || "http://localhost:3000";
+const apiBaseUrl = process.env.API_URL || "http://localhost:8000";
 const loginEmail = process.env.E2E_LOGIN_EMAIL || "";
 const loginPassword = process.env.E2E_LOGIN_PASSWORD || "";
 const cadUploadTimeoutMs = Number.parseInt(process.env.E2E_CAD_UPLOAD_TIMEOUT_MS || "150000", 10);
@@ -568,22 +569,64 @@ class EnterpriseDomainQA {
   }
 
   async createDeveloperKey() {
-    await this.step("Developer settings creates and reveals an API key exactly once", async () => {
+    await this.step("Developer settings creates, rotates, and revokes an API key exactly once", async () => {
       await this.goto("/settings/developer", "developer-settings", 1000);
       await this.expectText(/Developer|API keys|Create key/i, "developer settings");
       await this.page.getByRole("button", { name: /^Create key$/ }).first().click();
       await this.page.getByText("Save your API key").waitFor({ timeout: 20_000 });
-      const revealText = await this.visibleText();
-      assert(/cv_live_[A-Za-z0-9_-]+/.test(revealText), "one-time API key secret was not revealed");
+      const initialKey = (await this.page.locator('[role="dialog"] pre').innerText()).trim();
+      assert(/^cv_live_[A-Za-z0-9_-]+$/.test(initialKey), "one-time API key secret was not revealed");
+      const probe = async (token) => {
+        const client = await pw.request.newContext({
+          baseURL: apiBaseUrl,
+          extraHTTPHeaders: { Authorization: `Bearer ${token}` },
+        });
+        try {
+          const response = await client.get("/api/v1/analyses?limit=1");
+          return response.status();
+        } finally {
+          await client.dispose();
+        }
+      };
+      assert((await probe(initialKey)) === 200, "new API key was not accepted by the real API");
       await this.page.getByLabel(/saved it somewhere safe/i).check();
       await this.page.getByRole("button", { name: /^Done$/ }).click();
       await this.page.getByText("Save your API key").waitFor({ state: "hidden", timeout: 10_000 });
-      await this.page.waitForTimeout(1000);
-      const text = await this.scanVisibleText("developer-key-created");
+      await this.page.reload({ waitUntil: "networkidle" });
+      let text = await this.scanVisibleText("developer-key-created");
+      assert(!text.includes(initialKey), "full API key secret reappeared after reload");
       assert(/Default/i.test(text), "created API key row did not appear");
       assert(/Active/i.test(text), "created API key is not active in UI");
       assert(/cv_live_[A-Za-z0-9]{8}_/.test(text), "API key prefix row missing");
-      return { screenshot: await this.shot("developer-key-created", true) };
+
+      await this.page.getByRole("button", { name: /^Rotate$/ }).first().click();
+      await this.page.getByText("Save your API key").waitFor({ timeout: 20_000 });
+      const rotatedKey = (await this.page.locator('[role="dialog"] pre').innerText()).trim();
+      assert(
+        /^cv_live_[A-Za-z0-9_-]+$/.test(rotatedKey) && rotatedKey !== initialKey,
+        "rotation did not reveal a distinct replacement key",
+      );
+      assert((await probe(initialKey)) === 401, "rotated API key remained valid");
+      assert((await probe(rotatedKey)) === 200, "replacement API key was not accepted");
+      await this.page.getByLabel(/saved it somewhere safe/i).check();
+      await this.page.getByRole("button", { name: /^Done$/ }).click();
+      await this.page.getByText("Save your API key").waitFor({ state: "hidden", timeout: 10_000 });
+
+      await this.page.getByRole("button", { name: /^Revoke$/ }).first().click();
+      await this.page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
+      await this.page.waitForTimeout(500);
+      assert((await probe(rotatedKey)) === 401, "revoked API key remained valid");
+      text = await this.scanVisibleText("developer-key-revoked");
+      assert(!text.includes(rotatedKey), "rotated secret reappeared after revocation");
+      assert(/Revoked/i.test(text), "revoked API key status did not persist in UI");
+      this.evidence.apiKeyLifecycle = {
+        createdAccepted: true,
+        secretHiddenAfterReload: true,
+        oldKeyRejectedAfterRotation: true,
+        replacementAccepted: true,
+        replacementRejectedAfterRevocation: true,
+      };
+      return { screenshot: await this.shot("developer-key-lifecycle-complete", true) };
     });
   }
 
@@ -746,12 +789,21 @@ class EnterpriseDomainQA {
       assert(rowAfter, "re-verified programmed row disappeared from portfolio");
       const basis = rowAfter.annualized_unit_cost;
       assert(basis && isFiniteNumber(basis.usd), "exact annualized unit-cost basis missing");
+      assert(approxEqual(basis.usd, 10.08), `exact annualized unit-cost oracle drifted: ${basis.usd}`);
       assert(basis.qty === annualVolume, `annualized basis quantity drifted: ${basis.qty}`);
       assert(basis.basis === "decision.recommendation", `annualized basis source drifted: ${basis.basis}`);
       const expectedAnnualized = basis.usd * annualVolume;
       assert(
         approxEqual(rowAfter.annualized_cost_usd, expectedAnnualized),
         `annualized cost mismatch: got ${rowAfter.annualized_cost_usd}, expected ${expectedAnnualized}`
+      );
+      assert(
+        approxEqual(rowAfter.annualized_cost_usd, 120_960),
+        `annualized cost oracle drifted: ${rowAfter.annualized_cost_usd}`,
+      );
+      assert(
+        !approxEqual(rowAfter.annualized_cost_usd, 133.58 * annualVolume),
+        "single-part $133.58 headline was incorrectly annualized",
       );
       assert(rowAfter.context.program === programName, "portfolio context program mismatch after re-verification");
       assert(rowAfter.context.parent_assembly === parentAssembly, "portfolio parent assembly mismatch after re-verification");

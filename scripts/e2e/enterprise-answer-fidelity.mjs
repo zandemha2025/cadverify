@@ -22,6 +22,9 @@ const expected = {
   cubeSha256: "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a",
   cubeBytes: 19030,
   annualVolume: 12000,
+  annualizedUnitCostUsd: 10.08,
+  annualizedCostUsd: 120960,
+  singlePartHeadlineUsd: 133.58,
   procurementThresholdsUsd: {
     engineerSelfServe: 25000,
     sourcingManager: 250000,
@@ -332,6 +335,16 @@ async function main() {
       const annualized = number(portfolio.annualized_cost_usd, "portfolio.annualized_cost_usd");
       const expectedAnnualized = unitCost * annualVolume;
       assert(annualVolume === expected.annualVolume, `annual volume drifted: ${annualVolume}`);
+      assert(approxEqual(unitCost, expected.annualizedUnitCostUsd), `exact-volume unit cost drifted: ${unitCost}`);
+      assert(approxEqual(annualized, expected.annualizedCostUsd), `annualized cost oracle drifted: ${annualized}`);
+      assert(
+        approxEqual(number(portfolio.headline_unit_cost_usd, "portfolio.headline_unit_cost_usd"), expected.singlePartHeadlineUsd),
+        `single-part headline drifted: ${portfolio.headline_unit_cost_usd}`,
+      );
+      assert(
+        !approxEqual(annualized, expected.singlePartHeadlineUsd * annualVolume),
+        "single-part $133.58 headline was incorrectly annualized",
+      );
       assert(basisQuantity === annualVolume, `annualized basis quantity drifted: ${basisQuantity}`);
       assert(portfolio.annualized_unit_cost_basis === "decision.recommendation", "annualized basis was not the engine recommendation");
       assert(approxEqual(annualized, expectedAnnualized), `annualized cost mismatch: ${annualized} vs ${expectedAnnualized}`);

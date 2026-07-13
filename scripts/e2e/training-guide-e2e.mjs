@@ -514,6 +514,9 @@ async function main() {
         }, null, { timeout: 30_000 });
         const row = page.getByRole("row").filter({ hasText: "cube.step" }).first();
         await row.waitFor({ timeout: 12_000 });
+        if (requireCompleted) {
+          await row.getByText(/^Completed$/i).waitFor({ timeout: 12_000 });
+        }
         const cells = row.getByRole("cell");
         assert((await cells.count()) >= 5, "batch item row did not expose the expected UI columns");
         const values = await cells.allInnerTexts();
@@ -532,7 +535,11 @@ async function main() {
         };
       }
 
-      const preRefreshUiRow = await readBatchUiRow({ requireCompleted: false });
+      const preRefreshUiRow = await readBatchUiRow();
+      assert(
+        preRefreshUiRow.status === "completed",
+        `terminal batch summary left the mounted item row at ${preRefreshUiRow.status}`,
+      );
       await page.reload({ waitUntil: "domcontentloaded", timeout: 30_000 });
       const firstUiRow = await readBatchUiRow();
       assert(firstUiRow.filename === "cube.step", `batch UI filename was ${firstUiRow.filename}`);

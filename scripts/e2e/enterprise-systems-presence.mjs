@@ -360,6 +360,7 @@ function createSimulator(cadBuffer, cadHash) {
           status: "draft_created",
           supplierSend: false,
           noLiveSupplierSend: true,
+          annualizedValueUsd: Number(parsed.annualizedValueUsd || 0),
           approvalRequired: Number(parsed.annualizedValueUsd || 0) >= enterprise.org.policy.procurementApprovalUsd,
           cxml: {
             messageType: "RequestForQuotation",
@@ -588,16 +589,22 @@ async function main() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           partNumber: "VALVE-100",
-          annualizedValueUsd: 1_602_960,
+          annualizedValueUsd: 120_960,
           supplier: "sandbox-supplier",
         }),
       });
       const approvals = await getJson(baseUrl, "/procurement/approvals");
       assert(draft.status === 201, `RFQ draft returned ${draft.status}`);
       assert(draft.body.noLiveSupplierSend === true, "RFQ draft live-send boundary missing");
-      assert(draft.body.approvalRequired === true, "RFQ did not require capital-board approval");
+      assert(draft.body.approvalRequired === false, "RFQ incorrectly required capital-board approval below the $1M policy threshold");
       assert(draft.body.cxml.deploymentMode === "test", "cXML draft is not in test mode");
-      assert(approvals.body.chain.some((item) => item.step === "capital_board"), "capital-board approval missing");
+      assert(draft.body.annualizedValueUsd === 120_960, "RFQ draft annualized value must use the exact-volume $120,960 oracle");
+      assert(
+        approvals.body.chain.some(
+          (item) => item.step === "capital_board" && item.requiredAboveUsd === 1_000_000,
+        ),
+        "capital-board threshold policy missing",
+      );
       return {
         rfqStatus: draft.body.status,
         noLiveSupplierSend: draft.body.noLiveSupplierSend,

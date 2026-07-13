@@ -101,7 +101,7 @@ const enterpriseSteps = [
   "CAD organization declares owned machines with rates and envelopes",
   "historical actuals ingest but recalibration refuses below floor",
   "Verify UI shows declared machines and governed truth honestly",
-  "Developer settings creates and reveals an API key exactly once",
+  "Developer settings creates, rotates, and revokes an API key exactly once",
   "CAD engineer verifies a real STEP file in a declared service world",
   "portfolio withholds exposure until declared volume is re-verified at its exact quantity",
   "Verify stage renders declared parent context in product UI",
@@ -647,7 +647,10 @@ async function main() {
   const status = missing.length === 0 && problems.length === 0 ? "PASS" : "NEEDS_FIXES";
   const data = {
     status,
-    localReleaseClaim: status === "PASS" ? "LOCAL_100" : null,
+    // The hardened gate proves current-build branch coverage plus the
+    // structured critical contracts. LOCAL_100 remains reserved until every
+    // browser row in the golden matrix has its own outcome schema.
+    localReleaseClaim: status === "PASS" ? "LOCAL_GATE_PASS" : null,
     generatedAt: new Date().toISOString(),
     runId,
     outputRoot,

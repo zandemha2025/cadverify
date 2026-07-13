@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useState } from "react";
+import { use, useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
@@ -28,6 +28,7 @@ export default function BatchDetailPage({
   const [cancelling, setCancelling] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const progressSnapshotRef = useRef("");
 
   const isTerminal = progress ? TERMINAL_STATUSES.has(progress.status) : false;
   const isCompleted =
@@ -65,6 +66,19 @@ export default function BatchDetailPage({
 
   const handleProgressUpdate = useCallback((p: BatchProgress) => {
     setProgress(p);
+    const snapshot = [
+      p.status,
+      p.completed_items,
+      p.failed_items,
+      p.pending_items,
+    ].join(":");
+    if (
+      TERMINAL_STATUSES.has(p.status) ||
+      (progressSnapshotRef.current && progressSnapshotRef.current !== snapshot)
+    ) {
+      setRefreshKey((key) => key + 1);
+    }
+    progressSnapshotRef.current = snapshot;
   }, []);
 
   return (
@@ -114,7 +128,11 @@ export default function BatchDetailPage({
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Items
         </h2>
-        <BatchItemsTable batchId={batchId} refreshKey={refreshKey} />
+        <BatchItemsTable
+          key={`${batchId}:${refreshKey}`}
+          batchId={batchId}
+          refreshKey={refreshKey}
+        />
       </section>
 
       <AlertDialog

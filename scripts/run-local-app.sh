@@ -45,6 +45,17 @@ export DATABASE_URL="${DATABASE_URL:-postgresql://cadverify:localdev@localhost:5
 # directory unless the operator explicitly supplies another local root.
 export OBJECT_STORE_LOCAL_ROOT="${OBJECT_STORE_LOCAL_ROOT:-$REPO_ROOT/data/local-blobs}"
 
+# WeasyPrint's macOS wheels load Pango/GLib through cffi. Homebrew installs the
+# correct dylibs, but they are outside the default loader path used by the
+# bundled Python runtime. Make local RFQ/PDF exports use the same real renderer
+# as the Linux container instead of silently falling back to pdf-unavailable.
+if [ "$(uname -s)" = "Darwin" ] && command -v brew >/dev/null 2>&1; then
+  HOMEBREW_LIB="$(brew --prefix)/lib"
+  if [ -d "$HOMEBREW_LIB" ]; then
+    export DYLD_FALLBACK_LIBRARY_PATH="$HOMEBREW_LIB${DYLD_FALLBACK_LIBRARY_PATH:+:$DYLD_FALLBACK_LIBRARY_PATH}"
+  fi
+fi
+
 # Persistent local auth secrets so sessions survive restarts (gitignored file).
 AUTH_ENV_FILE="$REPO_ROOT/.env.local-auth"
 if [ -f "$AUTH_ENV_FILE" ]; then
@@ -111,6 +122,10 @@ trap cleanup INT TERM EXIT
 [ -x "$VENV_PY" ] || { err "Python venv not found at $VENV_PY"; exit 1; }
 "$VENV_PY" -c "import uvicorn" 2>/dev/null || {
   err "uvicorn not installed in the venv. Run:  $VENV_PY -m pip install 'uvicorn[standard]'"; exit 1; }
+if ! "$VENV_PY" -c "from weasyprint import HTML" >/dev/null 2>&1; then
+  warn "WeasyPrint native libraries are unavailable — RFQ PDF export will fail."
+  warn "On macOS install them with: brew install pango"
+fi
 command -v npm >/dev/null 2>&1 || { err "npm not found on PATH."; exit 1; }
 [ -d "$FRONTEND_DIR/node_modules" ] || {
   err "frontend/node_modules missing. Run:  (cd '$FRONTEND_DIR' && npm install)"; exit 1; }
