@@ -5,9 +5,10 @@
  * mutations. Audit remains the compliance record; this inbox is workflow state.
  */
 import { API_BASE } from "@/lib/api-base";
+import type { NotificationDestination } from "./notification-dest";
 
 /** Where a row navigates in the Verify shell (screen keys). */
-export type NotifDest = "records" | "calibration" | "verify";
+export type NotifDest = NotificationDestination;
 
 /** Visual tone → status colour (pass/cond) or neutral info. */
 export type NotifTone = "pass" | "cond" | "info";

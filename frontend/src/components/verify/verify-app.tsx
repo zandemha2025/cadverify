@@ -33,6 +33,7 @@ import { ShortcutsOverlay } from "./shortcuts-overlay";
 import { CalibrationSwitcher } from "./calibration-switcher";
 import { sampleCubeFile } from "@/lib/verify/sample-cad";
 import { designIdFromSearch, designRevisionFromSearch, importDesignStep } from "@/lib/verify/design-import";
+import { notificationScreenFromSearch } from "@/lib/verify/notification-dest";
 
 // The shared hotkey nav map — matches the design 1:1 (support.js keydown handler):
 // H/V/P/R/G/M/T/C jump between the surfaces, `?` opens the shortcuts sheet. `c`
@@ -92,6 +93,7 @@ export function VerifyApp() {
     | null
   >(null);
   const designImportStarted = useRef(false);
+  const notificationDestinationApplied = useRef(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   // The last part the user verified — so a change to the declared world can re-run
   // the verification (re-persist the env + re-cost against it) for the same part.
@@ -179,6 +181,13 @@ export function VerifyApp() {
   const runSample = useCallback(() => {
     void runVerify(sampleCubeFile());
   }, [runVerify]);
+
+  useEffect(() => {
+    if (notificationDestinationApplied.current) return;
+    notificationDestinationApplied.current = true;
+    const destination = notificationScreenFromSearch(window.location.search);
+    if (destination) setScreen(destination);
+  }, []);
 
   // Design Studio handoff: load the exact authenticated STEP revision and feed
   // it through the same File-based verification path as a manual upload. The

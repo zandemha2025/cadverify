@@ -12,6 +12,7 @@ import {
   type DerivedNotif,
   type NotifState,
 } from "@/lib/verify/notifications-api";
+import { notificationHref } from "@/lib/verify/notification-dest";
 
 const TONE: Record<DerivedNotif["tone"], string> = {
   pass: "text-emerald-700",
@@ -99,7 +100,7 @@ export function NotificationsClient() {
               state.notifs.map((n) => (
                 <Link
                   key={n.id}
-                  href="/verify"
+                  href={notificationHref(n.dest)}
                   onClick={() => markOne(n.id)}
                   className="block rounded-md border border-border p-3 transition-colors hover:bg-muted"
                 >
