@@ -382,17 +382,33 @@ class Matrix {
     await page.goto("/notifications", { waitUntil: "domcontentloaded" });
     await page.getByText("You're all caught up.", { exact: true }).waitFor({ timeout: 15_000 });
     const oldCookies = await context.cookies();
+    await page.evaluate(() => {
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = async (...args) => {
+        const response = await originalFetch(...args);
+        const target = typeof args[0] === "string" ? args[0] : args[0] instanceof Request ? args[0].url : "";
+        if (new URL(target, window.location.href).pathname === "/api/auth/logout") {
+          const body = await response.clone().json();
+          window.sessionStorage.setItem(
+            "qa.logout.evidence",
+            JSON.stringify({ status: response.status, body }),
+          );
+        }
+        return response;
+      };
+    });
     const logoutResponsePromise = page.waitForResponse(
       (response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/auth/logout",
       { timeout: 20_000 },
-    ).then(async (response) => ({ status: response.status(), body: await response.json() }));
+    );
     await page.getByRole("button", { name: "Account" }).click();
     await page.getByText("Sign out", { exact: true }).click();
     const logoutResponse = await logoutResponsePromise;
-    this.check("FAIL-09", "logout HTTP status", 200, logoutResponse.status);
-    const logoutBody = logoutResponse.body;
-    this.check("FAIL-09", "logout revoked sessions", true, logoutBody.sessionsRevoked);
+    this.check("FAIL-09", "logout HTTP status", 200, logoutResponse.status());
     await page.waitForURL((url) => url.pathname === "/login", { timeout: 20_000 });
+    const logoutEvidence = await page.evaluate(() => JSON.parse(window.sessionStorage.getItem("qa.logout.evidence") || "null"));
+    this.check("FAIL-09", "browser-captured logout status", 200, logoutEvidence.status);
+    this.check("FAIL-09", "logout revoked sessions", true, logoutEvidence.body.sessionsRevoked);
 
     const replayContext = await this.browser.newContext({ baseURL: appUrl });
     await replayContext.addCookies(oldCookies);
@@ -419,8 +435,8 @@ class Matrix {
     this.check("FAIL-09", "second read status survives logout/login", true, secondAfter.is_read);
     const screenshot = await this.shot("FAIL-09", page, "reauthenticated-read-state");
     this.observations.session = {
-      logoutStatus: logoutResponse.status,
-      sessionsRevoked: logoutBody.sessionsRevoked,
+      logoutStatus: logoutEvidence.status,
+      sessionsRevoked: logoutEvidence.body.sessionsRevoked,
       replayApiStatus: replayApi.status,
       finalUrl: page.url(),
       firstReadAt: firstAfter.read_at,
