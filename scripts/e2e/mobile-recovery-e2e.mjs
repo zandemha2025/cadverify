@@ -1208,6 +1208,9 @@ class MobileRecoveryRun {
   async expiredSessionRecovery() {
     await this.runPath("FAIL-09", async () => {
       await this.page.goto("/designs", { waitUntil: "domcontentloaded" });
+      await this.waitForDesignReady(this.primaryDesignName);
+      await this.page.locator('[data-preview-state="ready"]').waitFor({ timeout: 30_000 });
+      await this.page.waitForLoadState("networkidle", { timeout: 15_000 });
       const sessionCookie = (await this.context.cookies()).find((cookie) => cookie.name === "dash_session");
       assert(sessionCookie, "authenticated dashboard cookie was not present before logout");
       await this.page.getByRole("button", { name: "Account" }).click();

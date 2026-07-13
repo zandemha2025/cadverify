@@ -67,6 +67,10 @@ test("mobile history recovery finishes cost persistence before the next journey"
 test("mobile stale-cookie replay scopes its expected 401 through redirect settlement", () => {
   assert.match(
     mobileRunner,
+    /expiredSessionRecovery\(\)[\s\S]*waitForDesignReady\(this\.primaryDesignName\)[\s\S]*data-preview-state=[\\"']ready[\\"'][\s\S]*getByRole\("menuitem", \{ name: "Sign out" \}\)/,
+  );
+  assert.match(
+    mobileRunner,
     /expiredSessionRecovery\(\)[\s\S]*withExpectedHttpStatuses\(\[401\][\s\S]*goto\("\/designs"[\s\S]*waitForURL[\s\S]*pathname === "\/login"[\s\S]*waitForLoadState\("networkidle"/,
   );
   assert.equal(
