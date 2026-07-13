@@ -31,7 +31,7 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,7 +51,7 @@ public_cost_share_router = APIRouter(tags=["cost-decisions"])
 
 
 class ApprovalBody(BaseModel):
-    note: str | None = None
+    note: str | None = Field(default=None, max_length=1000)
 
 
 def _parse_dt(value: str, field: str) -> datetime:

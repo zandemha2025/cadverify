@@ -360,6 +360,44 @@ def test_approve_and_reopen_cost_decision(client, real_result_json):
     assert body["approval_note"] is None
 
 
+def test_approval_note_boundary_is_exact_and_overflow_is_rejected(
+    client, real_result_json
+):
+    cl, app = client
+    dec = _make_decision("01APPROVELIMIT000000000000A", real_result_json, user_id=42)
+    _override(app, _session_returning(scalar_one=dec), user_id=42)
+    exact_note = "L" * 1000
+
+    accepted = cl.post(
+        "/api/v1/cost-decisions/01APPROVELIMIT000000000000A/approve",
+        json={"note": exact_note},
+    )
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["approval_note"] == exact_note
+    assert dec.approval_note == exact_note
+
+    rejected = cl.post(
+        "/api/v1/cost-decisions/01APPROVELIMIT000000000000A/approve",
+        json={"note": "X" * 1001},
+    )
+    assert rejected.status_code == 422, rejected.text
+    error = rejected.json()
+    assert error["code"] == "VALIDATION_ERROR"
+    assert "string_too_long" in error["message"]
+    assert "('body', 'note')" in error["message"]
+    assert "'max_length': 1000" in error["message"]
+    assert dec.approval_note == exact_note
+
+
+def test_approval_note_limit_is_documented_in_openapi(client):
+    cl, _ = client
+    schema = cl.get("/openapi.json").json()["components"]["schemas"]["ApprovalBody"]
+    note_schema = next(
+        item for item in schema["properties"]["note"]["anyOf"] if item.get("type") == "string"
+    )
+    assert note_schema["maxLength"] == 1000
+
+
 @pytest.mark.asyncio
 async def test_mark_org_decisions_stale_dispatches_update():
     from src.services import cost_decision_service as svc
