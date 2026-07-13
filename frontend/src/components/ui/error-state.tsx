@@ -1,5 +1,6 @@
 import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { distinctErrorDetail } from "@/lib/error-copy";
 import { Button } from "@/components/ui/button";
 
 /** Inline fail-tinted card + retry. Replaces the ad-hoc red banners. */
@@ -14,6 +15,7 @@ export function ErrorState({
   onRetry?: () => void;
   className?: string;
 }) {
+  const detail = distinctErrorDetail(title, message);
   return (
     <div
       role="alert"
@@ -26,8 +28,8 @@ export function ErrorState({
         <AlertTriangle className="mt-0.5 size-5 shrink-0 text-fail" />
         <div className="flex-1">
           <p className="text-sm font-semibold text-fail">{title}</p>
-          {message && (
-            <p className="mt-1 text-sm text-muted-foreground">{message}</p>
+          {detail && (
+            <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
           )}
           {onRetry && (
             <Button
