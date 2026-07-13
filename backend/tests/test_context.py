@@ -39,6 +39,35 @@ def test_zero_volume_watertight_shell_has_bounded_volume_without_warning():
         assert _finite_body_volume(mesh) == 0.0
 
 
+def test_zero_volume_open_shell_has_no_fabricated_center_or_warning():
+    # Exact winding used by the browser's open-cube recovery fixture. Its open
+    # surface has zero signed volume, so asking Trimesh for center_mass emits
+    # four RuntimeWarnings even though the engine intentionally rejects it.
+    vertices = np.asarray(
+        [
+            [0, 0, 0], [10, 0, 0], [10, 10, 0], [0, 10, 0],
+            [0, 0, 10], [10, 0, 10], [10, 10, 10], [0, 10, 10],
+        ],
+        dtype=float,
+    )
+    faces = np.asarray(
+        [
+            [0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7], [0, 1, 5],
+            [0, 5, 4], [3, 7, 6], [3, 6, 2], [0, 4, 7], [0, 7, 3],
+        ],
+        dtype=int,
+    )
+    mesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
+    assert not mesh.is_watertight
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        info = analyze_geometry(mesh)
+
+    assert info.volume == 0.0
+    assert info.center_of_mass == (None, None, None)
+
+
 def test_cube_wall_thickness_is_10mm(cube_10mm):
     """A 10mm cube — every outward face should see 10mm to the opposite wall."""
     ctx = GeometryContext.build(cube_10mm, analyze_geometry(cube_10mm))
