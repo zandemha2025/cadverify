@@ -306,6 +306,14 @@ function RecordDetail({ id, onClose }: { id: string; onClose: () => void }) {
               >
                 Open governance →
               </a>
+              {detail.disposition_note && (
+                <p
+                  data-testid="record-disposition-note-summary"
+                  style={{ width: "100%", margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: MONO, fontSize: 10.5, color: C.ink50, lineHeight: 1.6 }}
+                >
+                  {detail.disposition_note}
+                </p>
+              )}
             </div>
 
             {drivers.length > 0 ? (
