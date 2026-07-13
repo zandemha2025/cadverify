@@ -511,7 +511,7 @@ async function main() {
       const requiredSteps = [
         [human, "command palette jumps to Triage"],
         [human, "notifications inbox opens and derives state"],
-        [enterprise, "Developer settings creates and reveals an API key exactly once"],
+        [enterprise, "Developer settings creates, rotates, and revokes an API key exactly once"],
         [p7, "cost-decision detail approves and reopens from UI"],
         [p7, "cost-decision detail shows stale warning after governed rate publish"],
         [p7, "low-role admin API is denied"],
