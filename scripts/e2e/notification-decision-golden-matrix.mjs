@@ -231,7 +231,7 @@ class Matrix {
     await page.goto("/verify", { waitUntil: "domcontentloaded", timeout: 30_000 });
     await page.locator('button[title="Verify"]').first().click();
     const input = page.locator('input[type="file"][accept*=".stl"]').first();
-    await input.waitFor({ timeout: 15_000 });
+    await input.waitFor({ state: "attached", timeout: 15_000 });
     const validationPromise = page.waitForResponse(
       (response) => response.request().method() === "POST" && /\/api\/proxy\/validate$/.test(new URL(response.url()).pathname),
       { timeout: 120_000 },
