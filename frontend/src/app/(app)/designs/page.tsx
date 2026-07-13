@@ -47,6 +47,7 @@ import {
   archiveDesign,
   createDesign,
   createDesignRevision,
+  DesignApiError,
   designRevisionPreviewUrl,
   designRevisionStepUrl,
   interpretDesignPrompt,
@@ -340,6 +341,17 @@ export default function DesignsPage() {
       setDescription("");
       setInterpretation(null);
     } catch (caught) {
+      if (caught instanceof DesignApiError && caught.design) {
+        const failedDesign = caught.design;
+        setDesigns((current) => [
+          failedDesign,
+          ...current.filter((item) => item.id !== failedDesign.id),
+        ]);
+        setSelectedId(failedDesign.id);
+        setViewedRevisionNo(failedDesign.current_revision);
+        setEditingId(failedDesign.id);
+        setForm(formFromDesign(failedDesign));
+      }
       setError(caught instanceof Error ? caught.message : "Could not start generation.");
     } finally {
       releaseSingleFlight(submissionLockRef);

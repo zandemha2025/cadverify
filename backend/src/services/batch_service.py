@@ -14,7 +14,7 @@ import zipfile
 from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
 
-from sqlalchemy import select, text
+from sqlalchemy import and_, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
@@ -548,7 +548,7 @@ async def get_batch_progress(
     batch_ulid: str,
     user_id: int,
 ) -> dict | None:
-    """Return batch progress dict. O(1) via denormalized counters.
+    """Return batch progress with exact counts derived from durable item state.
 
     Returns None if the batch does not exist or belongs to another org
     (W1 step 3: org-scoped — ``user_id`` resolves the caller's org boundary).
@@ -561,19 +561,51 @@ async def get_batch_progress(
     if batch is None:
         return None
 
+    counts_by_batch = await get_batch_item_status_counts(session, [batch.id])
+    counts = counts_by_batch.get(batch.id, {})
+    completed_items = counts.get("completed", 0)
+    failed_items = counts.get("failed", 0)
+    skipped_items = counts.get("skipped", 0)
+    pending_items = max(
+        0,
+        batch.total_items - completed_items - failed_items - skipped_items,
+    )
+
     return {
         "batch_ulid": batch.ulid,
         "status": batch.status,
         "input_mode": batch.input_mode,
         "total_items": batch.total_items,
-        "completed_items": batch.completed_items,
-        "failed_items": batch.failed_items,
-        "pending_items": batch.total_items - batch.completed_items - batch.failed_items,
+        "completed_items": completed_items,
+        "failed_items": failed_items,
+        "skipped_items": skipped_items,
+        "pending_items": pending_items,
         "concurrency_limit": batch.concurrency_limit,
         "created_at": batch.created_at.isoformat() if batch.created_at else None,
         "started_at": batch.started_at.isoformat() if batch.started_at else None,
         "completed_at": batch.completed_at.isoformat() if batch.completed_at else None,
     }
+
+
+async def get_batch_item_status_counts(
+    session: AsyncSession,
+    batch_ids: list[int],
+) -> dict[int, dict[str, int]]:
+    """Return exact item-status counts for each requested batch in one query."""
+
+    if not batch_ids:
+        return {}
+    rows = (
+        await session.execute(
+            select(BatchItem.batch_id, BatchItem.status, func.count(BatchItem.id))
+            .where(BatchItem.batch_id.in_(batch_ids))
+            .group_by(BatchItem.batch_id, BatchItem.status)
+        )
+    ).all()
+    result: dict[int, dict[str, int]] = {}
+    for batch_id, status, count in rows:
+        result.setdefault(int(batch_id), {})[str(status)] = int(count)
+    return result
 
 
 async def get_batch_items_page(
@@ -582,12 +614,22 @@ async def get_batch_items_page(
     status_filter: Optional[str] = None,
     cursor: Optional[int] = None,
     limit: int = 50,
-) -> tuple[list[BatchItem], bool]:
+) -> tuple[list[tuple[BatchItem, Analysis | None]], bool]:
     """Cursor-paginated batch items query.
 
     Returns (items, has_more).
     """
-    stmt = select(BatchItem).where(BatchItem.batch_id == batch_id)
+    stmt = (
+        select(BatchItem, Analysis)
+        .outerjoin(
+            Analysis,
+            and_(
+                BatchItem.analysis_id == Analysis.id,
+                BatchItem.org_id == Analysis.org_id,
+            ),
+        )
+        .where(BatchItem.batch_id == batch_id)
+    )
 
     if status_filter:
         stmt = stmt.where(BatchItem.status == status_filter)
@@ -597,10 +639,30 @@ async def get_batch_items_page(
 
     stmt = stmt.order_by(BatchItem.id).limit(limit + 1)
 
-    rows = (await session.execute(stmt)).scalars().all()
+    rows = (await session.execute(stmt)).all()
     has_more = len(rows) > limit
-    items = list(rows[:limit])
+    items = [(row[0], row[1]) for row in rows[:limit]]
     return items, has_more
+
+
+def dfm_analysis_result_fields(analysis: Analysis | None) -> dict:
+    """Derive the exact DFM result fields shared by item cards and CSV rows."""
+
+    if analysis is None:
+        return {
+            "analysis_url": None,
+            "verdict": None,
+            "best_process": None,
+            "issue_count": None,
+        }
+    result = analysis.result_json or {}
+    issues = result.get("issues", [])
+    return {
+        "analysis_url": f"/api/v1/analyses/{analysis.ulid}",
+        "verdict": analysis.verdict or None,
+        "best_process": result.get("best_process") or None,
+        "issue_count": len(issues) if isinstance(issues, list) else None,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -646,18 +708,13 @@ async def generate_results_csv(
             break
 
         for bi, analysis in rows:
-            verdict = ""
-            best_process = ""
-            issue_count = ""
-            analysis_url = ""
-
-            if analysis is not None:
-                result = analysis.result_json or {}
-                verdict = analysis.verdict or ""
-                best_process = result.get("best_process", "") or ""
-                issues = result.get("issues", [])
-                issue_count = str(len(issues)) if isinstance(issues, list) else ""
-                analysis_url = f"/api/v1/analyses/{analysis.ulid}"
+            result_fields = dfm_analysis_result_fields(analysis)
+            verdict = result_fields["verdict"] or ""
+            best_process = result_fields["best_process"] or ""
+            issue_count_value = result_fields["issue_count"]
+            issue_count = "" if issue_count_value is None else str(issue_count_value)
+            analysis_url = result_fields["analysis_url"] or ""
+            duration_ms = "" if bi.duration_ms is None else str(bi.duration_ms)
 
             row_str = (
                 f"{_csv_escape(bi.filename)},"
@@ -665,7 +722,7 @@ async def generate_results_csv(
                 f"{_csv_escape(verdict)},"
                 f"{_csv_escape(best_process)},"
                 f"{issue_count},"
-                f"{bi.duration_ms or ''},"
+                f"{duration_ms},"
                 f"{_csv_escape(analysis_url)},"
                 f"{_csv_escape(bi.error_message or '')}\n"
             )

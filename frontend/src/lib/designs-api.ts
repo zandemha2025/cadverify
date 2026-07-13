@@ -1,8 +1,9 @@
-import { API_BASE } from "@/lib/api-base";
+import { API_BASE } from "./api-base";
 import {
   apiRecoveryMessage,
   networkRecoveryMessage,
-} from "@/lib/api-recovery";
+} from "./api-recovery";
+import { durableDesignFromErrorPayload } from "./recovery-records";
 
 export type Hole = {
   x_mm: number;
@@ -111,13 +112,21 @@ export type DesignInterpretation =
     };
 
 export class DesignApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly design?: Design;
+
   constructor(
     message: string,
-    readonly status: number,
-    readonly code?: string,
+    status: number,
+    code?: string,
+    design?: Design,
   ) {
     super(message);
     this.name = "DesignApiError";
+    this.status = status;
+    this.code = code;
+    this.design = design;
   }
 }
 
@@ -139,6 +148,7 @@ async function apiError(response: Response): Promise<DesignApiError> {
     detail?: string | { message?: string; code?: string } | Array<{ msg?: string }>;
     message?: string;
     code?: string;
+    design?: Design;
   };
   const detail = body.detail;
   const message = apiRecoveryMessage({
@@ -150,7 +160,8 @@ async function apiError(response: Response): Promise<DesignApiError> {
   const code = detail && !Array.isArray(detail) && typeof detail === "object"
     ? detail.code
     : body.code;
-  return new DesignApiError(message, response.status, code);
+  const design = durableDesignFromErrorPayload<Design>(payload);
+  return new DesignApiError(message, response.status, code, design);
 }
 
 async function json<T>(url: string, init?: RequestInit): Promise<T> {

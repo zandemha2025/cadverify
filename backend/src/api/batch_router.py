@@ -13,6 +13,7 @@ from src.config.public_urls import error_doc_url
 import asyncio
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import (
@@ -40,6 +41,10 @@ from src.services.batch_service import (
     BATCH_MAX_ZIP_BYTES,
     VALID_JOB_TYPES,
     ZipTooLargeError,
+)
+from src.services.release_fault_injection import (
+    BATCH_FAULT_MODES,
+    requested_release_fault,
 )
 from src.services.url_guard import UnsafeURLError, validate_outbound_url
 
@@ -82,6 +87,8 @@ async def create_batch(
     front with 501 on this server rather than creating orphaned per-item work.
     Returns 202 with batch_id and status URL.
     """
+    release_test_fault = requested_release_fault(request, BATCH_FAULT_MODES)
+
     # W3: validate the job type. Invalid -> 422 structured (mirrors FastAPI's
     # own validation status for an out-of-domain field value).
     job_type = (job_type or "dfm").strip().lower()
@@ -268,6 +275,10 @@ async def create_batch(
                 for item in items_data
                 if item.get("status") in {"failed", "skipped"}
             )
+        if release_test_fault:
+            manifest_json = dict(batch.manifest_json or {})
+            manifest_json["release_test_fault"] = release_test_fault
+            batch.manifest_json = manifest_json
         await session.commit()
     except BaseException:
         if batch is not None and input_mode == "zip":
@@ -289,6 +300,8 @@ async def create_batch(
     from src.jobs.arq_backend import get_arq_pool
 
     try:
+        if release_test_fault == "batch_queue":
+            raise RuntimeError("record-scoped release fault: batch queue")
         pool = await get_arq_pool()
         await pool.enqueue_job("run_batch_coordinator", batch.ulid)
     except Exception:
@@ -314,6 +327,11 @@ async def create_batch(
                     "unavailable). It has been marked failed; please retry."
                 ),
                 "doc_url": error_doc_url("BATCH_ENQUEUE_FAILED"),
+                "accepted_batch": {
+                    "batch_id": batch.ulid,
+                    "status": batch.status,
+                    "status_url": f"/api/v1/batch/{batch.ulid}",
+                },
             },
         )
 
@@ -353,6 +371,9 @@ async def list_batches(
     rows = (await session.execute(stmt)).scalars().all()
     has_more = len(rows) > limit
     batches = rows[:limit]
+    status_counts = await batch_service.get_batch_item_status_counts(
+        session, [batch.id for batch in batches]
+    )
 
     return {
         "batches": [
@@ -360,8 +381,9 @@ async def list_batches(
                 "batch_ulid": b.ulid,
                 "status": b.status,
                 "total_items": b.total_items,
-                "completed_items": b.completed_items,
-                "failed_items": b.failed_items,
+                "completed_items": status_counts.get(b.id, {}).get("completed", 0),
+                "failed_items": status_counts.get(b.id, {}).get("failed", 0),
+                "skipped_items": status_counts.get(b.id, {}).get("skipped", 0),
                 "created_at": b.created_at.isoformat() if b.created_at else None,
             }
             for b in batches
@@ -382,7 +404,7 @@ async def get_batch_progress(
     user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Get batch progress with denormalized counters (D-18)."""
+    """Get batch progress with exact durable item-state counters (D-18)."""
     progress = await batch_service.get_batch_progress(session, batch_id, user.user_id)
     if progress is None:
         raise HTTPException(status_code=404, detail="Batch not found")
@@ -421,21 +443,33 @@ async def get_batch_items(
         session, batch.id, status_filter=status, cursor=cursor_int, limit=limit
     )
 
-    items_list = [
-        {
-            "item_ulid": item.ulid,
-            "filename": item.filename,
-            "status": item.status,
-            "priority": item.priority,
-            "analysis_id": item.analysis_id,
-            "error_message": item.error_message,
-            "duration_ms": item.duration_ms,
-            "created_at": item.created_at.isoformat() if item.created_at else None,
-        }
-        for item in items
-    ]
+    normalized_items: list[tuple[BatchItem, object | None]] = []
+    for record in items:
+        if isinstance(record, BatchItem):
+            normalized_items.append((record, None))
+        else:
+            normalized_items.append((record[0], record[1]))
 
-    next_cursor = str(items[-1].id) if items and has_more else None
+    items_list = []
+    for item, analysis in normalized_items:
+        result_fields = batch_service.dfm_analysis_result_fields(analysis)
+        items_list.append(
+            {
+                "item_ulid": item.ulid,
+                "filename": item.filename,
+                "status": item.status,
+                "priority": item.priority,
+                "analysis_id": item.analysis_id,
+                **result_fields,
+                "error_message": item.error_message,
+                "duration_ms": item.duration_ms,
+                "created_at": item.created_at.isoformat() if item.created_at else None,
+            }
+        )
+
+    next_cursor = (
+        str(normalized_items[-1][0].id) if normalized_items and has_more else None
+    )
 
     return {
         "batch_id": batch_id,
@@ -518,6 +552,7 @@ async def cancel_batch(
 
     # Cancel batch
     batch.status = "cancelled"
+    batch.completed_at = datetime.now(timezone.utc)
 
     # Skip all pending/queued items
     pending_items = (

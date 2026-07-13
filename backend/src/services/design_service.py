@@ -18,10 +18,24 @@ from src.designs.schema import DesignPlan, validate_design_plan
 from src.services.audit_service import emit_event
 
 DESIGN_BLOB_DIR = "/data/blobs/designs"
+DESIGN_QUEUE_FAILURE_COPY = "Design generation is temporarily unavailable. Retry shortly."
+DESIGN_KERNEL_FAILURE_COPY = (
+    "The CAD kernel could not generate this revision. Check the dimensions and retry."
+)
+DESIGN_STORE_FAILURE_COPY = "The generated files could not be stored. Retry this revision."
 
 
 class DesignQueueUnavailableError(RuntimeError):
     """Raised after accepted rows are durably marked failed."""
+
+    def __init__(
+        self,
+        project: DesignProject,
+        revision: DesignRevision,
+    ) -> None:
+        super().__init__("design generation queue unavailable")
+        self.project = project
+        self.revision = revision
 
 
 def _now() -> datetime:
@@ -254,10 +268,13 @@ async def _mark_enqueue_failed(
     project.updated_at = now
     revision.status = "failed"
     revision.error_code = "DESIGN_ENQUEUE_FAILED"
-    revision.error_detail = "Generation could not be scheduled. Retry this revision."
+    revision.error_detail = DESIGN_QUEUE_FAILURE_COPY
     revision.completed_at = now
     job.status = "failed"
-    job.result_json = {"code": "DESIGN_ENQUEUE_FAILED"}
+    job.result_json = {
+        "code": "DESIGN_ENQUEUE_FAILED",
+        "message": DESIGN_QUEUE_FAILURE_COPY,
+    }
     job.completed_at = now
     await emit_event(
         session,
@@ -278,6 +295,7 @@ async def create_design(
     name: str,
     plan: DesignPlan,
     design_note: str | None,
+    release_test_fault: str | None = None,
 ) -> tuple[DesignProject, DesignRevision, Job]:
     org_id = await resolve_org(session, user.user_id)
     if not org_id:
@@ -311,7 +329,14 @@ async def create_design(
         org_id=org_id,
         job_type="design_generation",
         status="queued",
-        params_json={"revision_ulid": revision.ulid},
+        params_json={
+            "revision_ulid": revision.ulid,
+            **(
+                {"release_test_fault": release_test_fault}
+                if release_test_fault in {"cad_kernel", "object_store"}
+                else {}
+            ),
+        },
     )
     session.add(revision)
     session.add(job)
@@ -336,10 +361,12 @@ async def create_design(
     # The worker must never race an uncommitted job/revision row.
     await session.commit()
     try:
+        if release_test_fault == "design_queue":
+            raise RuntimeError("record-scoped release fault: design queue")
         await _enqueue(job)
     except Exception as exc:
         await _mark_enqueue_failed(session, project, revision, job, user.user_id)
-        raise DesignQueueUnavailableError("design generation queue unavailable") from exc
+        raise DesignQueueUnavailableError(project, revision) from exc
     return project, revision, job
 
 
@@ -350,6 +377,7 @@ async def create_revision(
     project_ulid: str,
     plan: DesignPlan,
     design_note: str | None,
+    release_test_fault: str | None = None,
 ) -> tuple[DesignProject, DesignRevision, Job]:
     project = (
         await session.execute(
@@ -396,7 +424,14 @@ async def create_revision(
         org_id=project.org_id,
         job_type="design_generation",
         status="queued",
-        params_json={"revision_ulid": revision.ulid},
+        params_json={
+            "revision_ulid": revision.ulid,
+            **(
+                {"release_test_fault": release_test_fault}
+                if release_test_fault in {"cad_kernel", "object_store"}
+                else {}
+            ),
+        },
     )
     session.add(revision)
     session.add(job)
@@ -411,10 +446,12 @@ async def create_revision(
     )
     await session.commit()
     try:
+        if release_test_fault == "design_queue":
+            raise RuntimeError("record-scoped release fault: design queue")
         await _enqueue(job)
     except Exception as exc:
         await _mark_enqueue_failed(session, project, revision, job, user.user_id)
-        raise DesignQueueUnavailableError("design generation queue unavailable") from exc
+        raise DesignQueueUnavailableError(project, revision) from exc
     return project, revision, job
 
 

@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
-import { getBatchItems, type BatchItem } from "@/lib/api/batch";
+import {
+  analysisPageHref,
+  getBatchItems,
+  type BatchItem,
+} from "@/lib/api/batch";
 import { DataTable } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -131,15 +135,32 @@ export default function BatchItemsTable({ batchId, refreshKey }: Props) {
         ),
       },
       {
+        id: "result",
+        header: "Result",
+        cell: ({ row }) => {
+          const item = row.original;
+          if (!item.analysis_url) return <span className="text-muted-foreground">—</span>;
+          return (
+            <div className="text-xs leading-5">
+              <p className="font-medium text-foreground">{item.verdict ?? "—"}</p>
+              <p className="text-muted-foreground">
+                {item.best_process ?? "No best process"} · {item.issue_count ?? "—"} issues
+              </p>
+            </div>
+          );
+        },
+      },
+      {
         id: "actions",
         header: "",
         cell: ({ row }) => {
           const item = row.original;
+          const analysisHref = analysisPageHref(item.analysis_url);
           return (
             <div className="flex items-center justify-end gap-1">
-              {item.analysis_id != null && (
+              {analysisHref && (
                 <Button asChild variant="ghost" size="sm">
-                  <Link href={`/analyses/${item.analysis_id}`}>View</Link>
+                  <Link href={analysisHref}>View</Link>
                 </Button>
               )}
               {item.error_message && (

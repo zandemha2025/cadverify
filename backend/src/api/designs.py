@@ -21,6 +21,10 @@ from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 from src.designs.schema import DesignPlan
 from src.services import design_service as svc
+from src.services.release_fault_injection import (
+    DESIGN_FAULT_MODES,
+    requested_release_fault,
+)
 
 router = APIRouter(tags=["designs"])
 
@@ -82,21 +86,24 @@ async def create_design(
     session: AsyncSession = Depends(get_db_session),
 ):
     try:
+        release_test_fault = requested_release_fault(request, DESIGN_FAULT_MODES)
         project, revision, job = await svc.create_design(
             session,
             user,
             name=body.name,
             plan=body.plan,
             design_note=body.design_note,
+            release_test_fault=release_test_fault,
         )
-    except svc.DesignQueueUnavailableError:
+    except svc.DesignQueueUnavailableError as exc:
         return JSONResponse(
             status_code=503,
             content={
                 "detail": {
                     "code": "DESIGN_ENQUEUE_FAILED",
-                    "message": "Design generation is temporarily unavailable. Retry shortly.",
-                }
+                    "message": svc.DESIGN_QUEUE_FAILURE_COPY,
+                },
+                "design": svc.serialize_design(exc.project, exc.revision),
             },
         )
     return JSONResponse(
@@ -151,21 +158,24 @@ async def create_revision(
     session: AsyncSession = Depends(get_db_session),
 ):
     try:
+        release_test_fault = requested_release_fault(request, DESIGN_FAULT_MODES)
         project, revision, job = await svc.create_revision(
             session,
             user,
             project_ulid=design_id,
             plan=body.plan,
             design_note=body.design_note,
+            release_test_fault=release_test_fault,
         )
-    except svc.DesignQueueUnavailableError:
+    except svc.DesignQueueUnavailableError as exc:
         return JSONResponse(
             status_code=503,
             content={
                 "detail": {
                     "code": "DESIGN_ENQUEUE_FAILED",
-                    "message": "Design generation is temporarily unavailable. Retry shortly.",
-                }
+                    "message": svc.DESIGN_QUEUE_FAILURE_COPY,
+                },
+                "design": svc.serialize_design(exc.project, exc.revision),
             },
         )
     return JSONResponse(

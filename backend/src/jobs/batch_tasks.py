@@ -6,6 +6,7 @@ dispatch_webhook: Delivers webhook with retry scheduling.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from datetime import datetime, timezone
@@ -441,7 +442,9 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
         # Load item and batch
         item = (
             await session.execute(
-                select(BatchItem).where(BatchItem.ulid == item_ulid)
+                select(BatchItem)
+                .where(BatchItem.ulid == item_ulid)
+                .with_for_update()
             )
         ).scalars().first()
         if item is None:
@@ -457,10 +460,45 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
             logger.error("Batch not found for item %s", item_ulid)
             return
 
+        # ARQ delivery is at-least-once.  The row lock plus this durable-state
+        # check makes duplicate deliveries no-ops and prevents a queued task from
+        # resurrecting an item that cancellation already marked skipped.
+        if item.status != "queued":
+            logger.info(
+                "BatchItem %s already %s; duplicate task ignored",
+                item_ulid,
+                item.status,
+            )
+            return
+        if batch.status in {"cancelled", "failed"}:
+            item.status = "skipped"
+            item.completed_at = datetime.now(timezone.utc)
+            await session.commit()
+            logger.info(
+                "BatchItem %s skipped because batch %s is %s",
+                item_ulid,
+                batch.ulid,
+                batch.status,
+            )
+            return
+        if batch.status == "completed":
+            logger.warning(
+                "BatchItem %s ignored because batch %s is already completed",
+                item_ulid,
+                batch.ulid,
+            )
+            return
+
         # Set processing status
         item.status = "processing"
         item.started_at = datetime.now(timezone.utc)
         await session.commit()
+
+        if (batch.manifest_json or {}).get("release_test_fault") == "batch_delay":
+            # Bounded, record-scoped delay for proving refresh/cancellation
+            # behavior against a real worker. The API can persist this marker
+            # only after a secret-authorized release-evidence request.
+            await asyncio.sleep(1.5)
 
         # Cost items carry engine-number webhook extras; DFM items carry none.
         webhook_extra: dict | None = None
@@ -471,7 +509,6 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
                 # coordinator/DFM paths are untouched.
                 webhook_extra = await _run_cost_item(session, batch, item)
             else:
-                import asyncio
                 import time
 
                 start = time.time()

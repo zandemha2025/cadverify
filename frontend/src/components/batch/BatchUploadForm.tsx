@@ -1,9 +1,15 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
-import { createBatch } from "@/lib/api/batch";
+import {
+  BatchApiError,
+  createBatch,
+  type BatchCreateResponse,
+} from "@/lib/api/batch";
 import { Dropzone } from "@/components/ui/dropzone";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -22,6 +28,10 @@ export default function BatchUploadForm() {
   const [webhookUrl, setWebhookUrl] = useState("");
   const [concurrencyLimit, setConcurrencyLimit] = useState(10);
   const [uploading, setUploading] = useState(false);
+  const [acceptedFailure, setAcceptedFailure] = useState<{
+    batch: BatchCreateResponse;
+    message: string;
+  } | null>(null);
   const submissionLockRef = useRef(false);
 
   const handleFiles = useCallback((files: File[]) => {
@@ -36,6 +46,7 @@ export default function BatchUploadForm() {
       return;
     }
     setFile(dropped);
+    setAcceptedFailure(null);
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -55,11 +66,14 @@ export default function BatchUploadForm() {
       });
 
       toast.success("Batch created");
+      setAcceptedFailure(null);
       router.push(`/batch/${result.batch_id}`);
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to create batch",
-      );
+      const message = err instanceof Error ? err.message : "Failed to create batch";
+      if (err instanceof BatchApiError && err.acceptedBatch) {
+        setAcceptedFailure({ batch: err.acceptedBatch, message });
+      }
+      toast.error(message);
     } finally {
       releaseSingleFlight(submissionLockRef);
       setUploading(false);
@@ -79,6 +93,29 @@ export default function BatchUploadForm() {
               : "ZIP archive up to 5 GB"
           }
         />
+        {acceptedFailure && (
+          <div
+            role="alert"
+            className="space-y-3 rounded-[var(--radius)] border border-fail-border bg-fail-bg p-4 text-sm"
+          >
+            <div className="flex items-start gap-3">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0 text-fail" />
+              <div className="min-w-0 space-y-1">
+                <p className="font-semibold text-foreground">Accepted batch is durably failed</p>
+                <p className="text-fail">{acceptedFailure.message}</p>
+                <p className="text-muted-foreground">
+                  The selected ZIP is still here. Inspect the failed record or retry it explicitly;
+                  the failed batch will not process in the background.
+                </p>
+              </div>
+            </div>
+            <Button asChild type="button" variant="secondary" size="sm">
+              <Link href={`/batch/${acceptedFailure.batch.batch_id}`}>
+                Inspect failed batch
+              </Link>
+            </Button>
+          </div>
+        )}
         <Field label="CSV manifest (optional)">
           <Input
             type="file"
@@ -124,7 +161,11 @@ export default function BatchUploadForm() {
         disabled={uploading || !file}
         className="w-full"
       >
-        {uploading ? "Uploading…" : "Start batch"}
+        {uploading
+          ? "Uploading…"
+          : acceptedFailure
+            ? "Retry this ZIP"
+            : "Start batch"}
       </Button>
     </form>
   );

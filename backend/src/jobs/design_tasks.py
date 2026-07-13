@@ -12,6 +12,12 @@ from src.db.engine import get_session_factory
 from src.db.models import DesignProject, DesignRevision, Job
 from src.designs.generator import DesignGenerationError, generate_design_artifacts
 from src.services.audit_service import emit_event
+from src.services.design_service import (
+    DESIGN_KERNEL_FAILURE_COPY,
+    DESIGN_STORE_FAILURE_COPY,
+    _design_store,
+    artifact_prefix,
+)
 
 logger = logging.getLogger("cadverify.jobs.design_tasks")
 
@@ -89,7 +95,9 @@ async def _run_design_generation_job(job_ulid: str) -> dict:
             return {"code": "DESIGN_JOB_NOT_FOUND"}
         if job.status == "done":
             return job.result_json or {"status": "done"}
-        revision_ulid = (job.params_json or {}).get("revision_ulid")
+        job_params = job.params_json or {}
+        revision_ulid = job_params.get("revision_ulid")
+        release_test_fault = job_params.get("release_test_fault")
         revision = (
             await session.execute(
                 select(DesignRevision).where(
@@ -133,8 +141,9 @@ async def _run_design_generation_job(job_ulid: str) -> dict:
         await session.commit()
 
     try:
+        if release_test_fault == "cad_kernel":
+            raise DesignGenerationError("record-scoped release fault: CAD kernel")
         artifacts = await asyncio.to_thread(generate_design_artifacts, plan)
-        from src.services.design_service import _design_store, artifact_prefix
 
         store = _design_store()
         prefix = artifact_prefix(org_id, project_ulid, revision_no)
@@ -147,6 +156,8 @@ async def _run_design_generation_job(job_ulid: str) -> dict:
                 artifacts.step_bytes,
                 content_type="model/step",
             )
+            if release_test_fault == "object_store":
+                raise RuntimeError("record-scoped release fault: object store")
             await asyncio.to_thread(
                 store.put,
                 stl_key,
@@ -161,14 +172,14 @@ async def _run_design_generation_job(job_ulid: str) -> dict:
         return await _mark_failed(
             job_ulid,
             getattr(exc, "code", "DESIGN_GENERATION_FAILED"),
-            "The CAD kernel could not generate this revision. Check the dimensions and retry.",
+            DESIGN_KERNEL_FAILURE_COPY,
         )
     except Exception:
         logger.exception("Design artifact persistence failed for %s", job_ulid)
         return await _mark_failed(
             job_ulid,
             "DESIGN_ARTIFACT_STORE_FAILED",
-            "The generated files could not be stored. Retry this revision.",
+            DESIGN_STORE_FAILURE_COPY,
         )
 
     geometry_hash = hashlib.sha256(artifacts.step_bytes).hexdigest()

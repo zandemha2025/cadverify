@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { batchStatusTone } from "@/lib/status";
+import { batchProgressSettled } from "@/lib/recovery-records";
 
 const POLL_INTERVAL_MS = 5_000;
 
@@ -41,7 +42,7 @@ export default function BatchProgressBar({ batchId, onProgressUpdate }: Props) {
           startTimeRef.current = new Date(p.started_at).getTime();
         }
 
-        if (TERMINAL_STATUSES.has(p.status) && intervalRef.current) {
+        if (batchProgressSettled(p.status, p.pending_items) && intervalRef.current) {
           clearInterval(intervalRef.current);
           intervalRef.current = null;
         }
@@ -89,11 +90,12 @@ export default function BatchProgressBar({ batchId, onProgressUpdate }: Props) {
     total_items,
     completed_items,
     failed_items,
+    skipped_items,
     pending_items,
     status,
     concurrency_limit,
   } = progress;
-  const processed = completed_items + failed_items;
+  const processed = completed_items + failed_items + skipped_items;
   const pct = total_items > 0 ? Math.round((processed / total_items) * 100) : 0;
 
   // Estimated time remaining
@@ -116,7 +118,11 @@ export default function BatchProgressBar({ batchId, onProgressUpdate }: Props) {
         <div className="flex items-center gap-2">
           <StatusBadge status={status} size="sm" />
           <span className="text-sm text-muted-foreground">
-            Processing {concurrency_limit} items in parallel
+            {batchProgressSettled(status, pending_items)
+              ? `${processed} terminal items`
+              : status === "cancelled"
+                ? `${pending_items} in-flight item${pending_items === 1 ? "" : "s"} finishing`
+              : `Processing ${concurrency_limit} items in parallel`}
           </span>
         </div>
         {etaLabel && (
@@ -136,6 +142,7 @@ export default function BatchProgressBar({ batchId, onProgressUpdate }: Props) {
           {failed_items > 0 && (
             <span className="text-fail">{failed_items} failed</span>
           )}
+          {skipped_items > 0 && <span>{skipped_items} skipped</span>}
           {pending_items > 0 && !TERMINAL_STATUSES.has(status) && (
             <span>{pending_items} pending</span>
           )}

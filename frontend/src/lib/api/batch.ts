@@ -10,6 +10,12 @@ import {
   apiRecoveryMessage,
   networkRecoveryMessage,
 } from "../api-recovery";
+import {
+  acceptedBatchFromErrorPayload,
+  analysisPageHref,
+} from "../recovery-records";
+
+export { analysisPageHref };
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -19,6 +25,25 @@ export interface BatchCreateResponse {
   batch_id: string;
   status: string;
   status_url: string;
+}
+
+export class BatchApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly acceptedBatch?: BatchCreateResponse;
+
+  constructor(
+    message: string,
+    status: number,
+    code?: string,
+    acceptedBatch?: BatchCreateResponse,
+  ) {
+    super(message);
+    this.name = "BatchApiError";
+    this.status = status;
+    this.code = code;
+    this.acceptedBatch = acceptedBatch;
+  }
 }
 
 export interface BatchProgress {
@@ -34,6 +59,7 @@ export interface BatchProgress {
   total_items: number;
   completed_items: number;
   failed_items: number;
+  skipped_items: number;
   pending_items: number;
   concurrency_limit: number;
   created_at: string | null;
@@ -47,6 +73,10 @@ export interface BatchItem {
   status: string;
   priority: string;
   analysis_id: number | null;
+  analysis_url: string | null;
+  verdict: string | null;
+  best_process: string | null;
+  issue_count: number | null;
   error_message: string | null;
   duration_ms: number | null;
   created_at: string | null;
@@ -65,6 +95,7 @@ export interface BatchSummaryRow {
   total_items: number;
   completed_items: number;
   failed_items: number;
+  skipped_items: number;
   created_at: string | null;
 }
 
@@ -90,14 +121,26 @@ async function apiFetch(
   }
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(
+    const payload = await res.json().catch(() => ({ detail: res.statusText }));
+    const body = payload as {
+      detail?: {
+        code?: string;
+      } | string;
+      code?: string;
+    };
+    const detail = body.detail;
+    const code = detail && typeof detail === "object" ? detail.code : body.code;
+    const acceptedBatch = acceptedBatchFromErrorPayload(payload);
+    throw new BatchApiError(
       apiRecoveryMessage({
         status: res.status,
-        payload: body,
+        payload,
         resource: "batch",
         retryAfter: res.headers.get("retry-after"),
       }),
+      res.status,
+      code,
+      acceptedBatch,
     );
   }
 
@@ -148,7 +191,7 @@ export async function createBatch(
 }
 
 /**
- * Get batch progress (denormalized counters).
+ * Get batch progress with exact durable item-state counters.
  */
 export async function getBatchProgress(
   batchId: string,

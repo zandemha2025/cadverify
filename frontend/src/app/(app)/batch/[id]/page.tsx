@@ -70,6 +70,7 @@ export default function BatchDetailPage({
       p.status,
       p.completed_items,
       p.failed_items,
+      p.skipped_items,
       p.pending_items,
     ].join(":");
     if (

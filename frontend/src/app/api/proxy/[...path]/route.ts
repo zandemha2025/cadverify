@@ -72,6 +72,13 @@ async function handle(
   };
   const contentType = req.headers.get("content-type");
   if (contentType) headers["content-type"] = contentType;
+  // Secret-gated, record-scoped release-evidence faults. The backend ignores
+  // both headers unless its non-public E2E token is explicitly configured and
+  // matches; forwarding them here keeps browser QA on the real same-origin path.
+  for (const name of ["x-proofshape-e2e-token", "x-proofshape-e2e-fault"]) {
+    const value = req.headers.get(name);
+    if (value) headers[name] = value;
+  }
 
   const init: RequestInit & { duplex?: "half" } = {
     method,

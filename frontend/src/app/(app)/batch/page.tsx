@@ -89,6 +89,11 @@ export default function BatchListPage() {
                   ({b.failed_items} failed)
                 </span>
               )}
+              {b.skipped_items > 0 && (
+                <span className="ml-1 text-muted-foreground">
+                  ({b.skipped_items} skipped)
+                </span>
+              )}
             </span>
           );
         },
