@@ -594,6 +594,21 @@ asyncio.run(main())
     return filename;
   }
 
+  async finishDeveloperAction(actor, response, label) {
+    const streamError = await Promise.race([
+      response.finished(),
+      actor.page.waitForTimeout(30_000).then(() => {
+        throw new Error(`${label} server action stream did not finish within 30 seconds`);
+      }),
+    ]);
+    this.equal(
+      "ROLE-02",
+      `${label} server action stream completed`,
+      streamError?.message ?? "<none>",
+      "<none>",
+    );
+  }
+
   async browserPage(actor, pathname, { include = [], exclude = [], screenshot = null } = {}) {
     const response = await actor.page.goto(pathname, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await actor.page.waitForLoadState("networkidle", { timeout: 7000 }).catch(() => {});
@@ -899,8 +914,6 @@ asyncio.run(main())
         await owner.page.getByRole("button", { name: "Create key" }).first().click();
         const createActionResponse = await createActionPromise;
         this.equal("ROLE-02", "browser key server action HTTP", createActionResponse.status(), 200);
-        const createActionError = await createActionResponse.finished();
-        this.equal("ROLE-02", "browser key server action stream completed", createActionError?.message ?? "<none>", "<none>");
         await owner.page.getByRole("heading", { name: "Save your API key" }).waitFor({ timeout: 15_000 });
         const token = cleanText(await owner.page.locator("pre").innerText());
         this.ok("ROLE-02", "browser reveals a cv_live key", /^cv_live_/.test(token));
@@ -908,6 +921,10 @@ asyncio.run(main())
         const screenshot = await this.shot(owner, "owner-api-key-one-time-reveal");
         await owner.page.getByLabel("I've saved it somewhere safe").check();
         await owner.page.getByRole("button", { name: "Done" }).click();
+        await owner.page
+          .getByRole("heading", { name: "Save your API key" })
+          .waitFor({ state: "detached", timeout: 15_000 });
+        await this.finishDeveloperAction(owner, createActionResponse, "browser key create");
         await owner.page.reload({ waitUntil: "domcontentloaded" });
         this.equal("ROLE-02", "one-time key is not revealed after reload", await owner.page.getByRole("heading", { name: "Save your API key" }).count(), 0);
         return { url: owner.page.url(), tokenPrefix: token.slice(0, 18), screenshot };

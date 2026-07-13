@@ -30,6 +30,12 @@ test("API-key mutations finish their server-action streams before reload", () =>
   assert.equal(compareRunner.match(/await this\.beginDeveloperAction\(/g)?.length, 3);
   assert.equal(compareRunner.match(/await this\.finishDeveloperAction\(/g)?.length, 3);
   assert.doesNotMatch(compareRunner, /failure === "net::ERR_ABORTED".*settings\/developer/);
+
+  assert.match(roleRunner, /async finishDeveloperAction\(actor, response, label\)/);
+  assert.match(roleRunner, /response\.finished\(\)/);
+  assert.match(roleRunner, /server action stream did not finish within 30 seconds/);
+  assert.match(roleRunner, /state: "detached"[\s\S]*await this\.finishDeveloperAction\(owner, createActionResponse/);
+  assert.doesNotMatch(roleRunner, /const createActionError = await createActionResponse\.finished\(\)/);
 });
 
 test("cost process controls expose and use one semantic accessible group", () => {
