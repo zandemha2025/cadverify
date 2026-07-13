@@ -25,6 +25,7 @@
     "test:e2e:ops-restore": "DATABASE_URL=${DATABASE_URL:-postgresql://cadverify:localdev@127.0.0.1:5432/cadverify} bash ../scripts/ops/postgres-restore-drill.sh",
     "test:e2e:ops-load": "node ../scripts/ops/api-load-smoke.mjs",
     "test:e2e:readiness": "node ../scripts/e2e/enterprise-prehuman-readiness.mjs",
+    "test:e2e:training-guide": "node ../scripts/e2e/training-guide-e2e.mjs",
     "test:e2e:full": "npm run test:e2e:human && npm run test:e2e:design-studio && npm run test:e2e:site-design && npm run test:e2e:enterprise && npm run test:e2e:p7 && npm run test:e2e:assembly-fidelity && npm run test:e2e:journey-coverage && npm run test:e2e:enterprise-gauntlet && npm run test:e2e:answer-fidelity && npm run test:e2e:enterprise-presence && npm run test:e2e:scim-idp && npm run test:e2e:connector-fixtures && npm run test:e2e:real-cad-corpus && npm run test:e2e:ops-restore && npm run test:e2e:ops-load && npm run test:e2e:readiness"
   },
   "dependencies": {
