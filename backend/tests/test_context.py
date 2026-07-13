@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
+import trimesh
 
 from src.analysis.base_analyzer import analyze_geometry
-from src.analysis.context import GeometryContext
+from src.analysis.context import GeometryContext, _finite_body_volume
 
 
 def test_cube_context_shapes(cube_10mm):
@@ -18,6 +21,22 @@ def test_cube_context_shapes(cube_10mm):
     assert ctx.wall_thickness.shape == (n,)
     assert ctx.bbox_diag > 0
     assert ctx.scale_eps > 0
+    assert ctx.body_volumes == [1000.0]
+
+
+def test_zero_volume_watertight_shell_has_bounded_volume_without_warning():
+    # Tetrahedral topology collapsed onto one plane: topologically watertight,
+    # but its signed volume is exactly zero. Trimesh.mass_properties divides by
+    # zero for this shape; the context helper must classify it without warning.
+    mesh = trimesh.Trimesh(
+        vertices=[[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]],
+        faces=[[0, 2, 1], [0, 1, 3], [1, 2, 3], [2, 0, 3]],
+        process=False,
+    )
+    assert mesh.is_watertight
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        assert _finite_body_volume(mesh) == 0.0
 
 
 def test_cube_wall_thickness_is_10mm(cube_10mm):

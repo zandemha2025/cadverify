@@ -213,9 +213,13 @@ def check_trapped_volumes(
     if len(ctx.bodies) <= 1:
         return issues
     try:
-        main = max(ctx.bodies, key=lambda m: m.volume if m.is_watertight else 0)
-        for sub in ctx.bodies:
-            if sub is main or not sub.is_watertight:
+        main_index = max(range(len(ctx.bodies)), key=ctx.body_volumes.__getitem__)
+        main = ctx.bodies[main_index]
+        if ctx.body_volumes[main_index] <= 0:
+            return issues
+        for index, sub in enumerate(ctx.bodies):
+            sub_volume = ctx.body_volumes[index]
+            if index == main_index or sub_volume <= 0:
                 continue
             center = sub.centroid
             if main.is_watertight and main.contains([center])[0]:
@@ -223,7 +227,7 @@ def check_trapped_volumes(
                     code="TRAPPED_VOLUME",
                     severity=Severity.ERROR,
                     message=(
-                        f"Internal cavity ({sub.volume:.0f}mm³) traps material "
+                        f"Internal cavity ({sub_volume:.0f}mm³) traps material "
                         f"in {process.value}. Needs >= {min_drain_mm}mm drain holes."
                     ),
                     process=process,
@@ -776,9 +780,12 @@ def check_core_feasibility(
     if len(ctx.bodies) <= 1:
         return issues
     try:
-        main = max(ctx.bodies, key=lambda m: m.volume if m.is_watertight else 0)
-        for sub in ctx.bodies:
-            if sub is main or not sub.is_watertight or sub.volume <= 0:
+        main_index = max(range(len(ctx.bodies)), key=ctx.body_volumes.__getitem__)
+        main = ctx.bodies[main_index]
+        if ctx.body_volumes[main_index] <= 0:
+            return issues
+        for index, sub in enumerate(ctx.bodies):
+            if index == main_index or ctx.body_volumes[index] <= 0:
                 continue
             center = sub.centroid
             if main.is_watertight and main.contains([center])[0]:

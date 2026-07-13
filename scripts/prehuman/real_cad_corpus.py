@@ -703,6 +703,15 @@ def run_worker_mode(args: argparse.Namespace) -> int:
                     )
                     report_dict = report_to_dict(report)
         runtime_warnings = unique(str(item.message) for item in caught)
+        runtime_warning_details = [
+            {
+                "message": str(item.message),
+                "category": item.category.__name__,
+                "filename": item.filename,
+                "lineno": item.lineno,
+            }
+            for item in caught
+        ]
 
         outcome = report.status
         output = {
@@ -712,6 +721,7 @@ def run_worker_mode(args: argparse.Namespace) -> int:
             "elapsed_sec": round(time.perf_counter() - start, 3),
             "network_egress_blocked": True,
             "runtime_warnings": runtime_warnings,
+            "runtime_warning_details": runtime_warning_details,
             "pmi_check": pmi,
             "geometry": report_dict.get("geometry"),
             "decision": report_dict.get("decision"),
