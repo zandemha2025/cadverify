@@ -445,7 +445,7 @@ function Walk({
   return (
     <section style={{ marginTop: 18 }}>
       {/* verdict banner */}
-      <VerdictBanner result={result} makeNow={makeNow} nav={nav} />
+      <VerdictBanner result={result} makeNow={makeNow} nav={nav} onReverify={onReverify} />
 
       {/* retrieval-grounded IDENTITY — the org's closest PRIOR part, a SUGGESTION
           to confirm (rendered only when the engine grounded one; empty/anonymous
@@ -1082,10 +1082,12 @@ function VerdictBanner({
   result,
   makeNow,
   nav,
+  onReverify,
 }: {
   result: VerifyResult;
   makeNow: ReturnType<typeof makeNowEstimate>;
   nav: Nav;
+  onReverify: () => void;
 }) {
   const { validation, validationError, cost, costError, costGeometryInvalid, verification } = result;
 
