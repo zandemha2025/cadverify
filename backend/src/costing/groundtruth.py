@@ -216,12 +216,31 @@ def split_records(records: list, test_fraction: float = 0.30,
     seed and part identity only — independent of record order — so the held-out
     set is reproducible and strictly disjoint from tuning at the part level.
     """
+    # A bare hash-threshold split is deterministic, but it can put fewer than
+    # MIN_RESIDUALS parts in the held-out side even when the advertised
+    # eight-part calibration floor has been met.  That used to allow
+    # recalibration to say "validated" while the served confidence interval
+    # still had too few residuals to become empirical.  Rank the same stable
+    # hashes and enforce a bounded held-out cardinality instead: three distinct
+    # parts whenever the corpus is large enough, while always retaining at
+    # least one tuning part.  The split remains deterministic, order-independent
+    # and strictly by part identity.
+    part_ids = sorted({r.part_id for r in records})
+    if not part_ids:
+        return SplitResult(tuning=[], test=[], test_fraction=test_fraction, seed=seed)
+
+    ranked = sorted(part_ids, key=lambda part_id: (_part_bucket(part_id, seed), part_id))
+    if len(ranked) == 1:
+        n_test = 1 if test_fraction >= 1.0 else 0
+    else:
+        proportional = int(math.ceil(len(ranked) * max(0.0, min(1.0, test_fraction))))
+        minimum = MIN_RESIDUALS if len(ranked) >= MIN_RESIDUALS + 1 else 1
+        n_test = min(len(ranked) - 1, max(minimum, proportional))
+    test_ids = set(ranked[:n_test])
+
     tuning, test = [], []
     for r in records:
-        if _part_bucket(r.part_id, seed) < test_fraction:
-            test.append(r)
-        else:
-            tuning.append(r)
+        (test if r.part_id in test_ids else tuning).append(r)
     return SplitResult(tuning=tuning, test=test,
                        test_fraction=test_fraction, seed=seed)
 
@@ -232,7 +251,21 @@ def split_records(records: list, test_fraction: float = 0.30,
 def resolve_part_path(record: GroundTruthRecord, parts_dir: Optional[str]) -> Optional[str]:
     cands = []
     if record.part_path:
-        cands.append(record.part_path)
+        # API/CSV-supplied part paths are deliberately relative and confined to
+        # the trusted corpus root.  Joining here is both the functional contract
+        # and the final traversal boundary; checking a bare relative path would
+        # accidentally resolve against the server process working directory.
+        if os.path.isabs(record.part_path):
+            # Direct dataclass callers (offline eval/tests) may still provide an
+            # operator-trusted absolute path. Network ingress rejects these.
+            cands.append(record.part_path)
+        elif parts_dir:
+            root = os.path.realpath(parts_dir)
+            candidate = os.path.realpath(os.path.join(root, record.part_path))
+            if candidate == root or candidate.startswith(root + os.sep):
+                cands.append(candidate)
+        else:
+            cands.append(record.part_path)
     if parts_dir:
         cands.append(os.path.join(parts_dir, record.part_id))
         if not record.part_id.lower().endswith((".stl", ".step", ".stp")):
@@ -439,11 +472,17 @@ class Evaluation:
     @property
     def claim(self) -> str:
         """The one honest headline sentence for this split."""
-        if self.metrics_real is not None:
+        if self.metrics_real is not None and self.n_real >= MIN_RESIDUALS:
             m = self.metrics_real
             return (f"VALIDATED within ±{m['band_covers_80pct']:g}% across "
                     f"{m['n_parts']} real held-out part(s) "
                     f"(mean abs error {m['mean_abs_pct']:g}%).")
+        if self.metrics_real is not None:
+            return (
+                "PENDING enough costable held-out ground truth. "
+                f"Only {self.n_real} real held-out residual(s) were available "
+                f"(< {MIN_RESIDUALS} required for an empirical band)."
+            )
         if self.metrics_all is not None:
             m = self.metrics_all
             return ("PENDING real ground truth. "
@@ -523,12 +562,21 @@ def run_loop(records: list, parts_dir: Optional[str] = None,
              cache: Optional[EngineCostCache] = None) -> LoopResult:
     """records -> split -> tune(TUNING) -> evaluate(HELD-OUT). The held-out
     numbers are the measured accuracy; tuning never touches the held-out split."""
-    split = split_records(records, test_fraction=test_fraction, seed=seed)
     cache = cache or EngineCostCache(parts_dir)
 
-    tuning_pred = [cache.baseline(r) for r in split.tuning]
-    test_pred = [cache.baseline(r) for r in split.test]
-    skipped = [(p.record, p.note) for p in (tuning_pred + test_pred) if not p.ok]
+    # Establish costability before selecting the held-out set.  Missing source
+    # artifacts are operationally useful import errors, but they are not model
+    # observations and must not consume the scarce held-out slots that make an
+    # empirical interval possible.  Costability depends only on the source and
+    # engine execution—not on the actual-cost label—so filtering here does not
+    # leak target values into tuning.
+    predictions = [cache.baseline(r) for r in records]
+    skipped = [(p.record, p.note) for p in predictions if not p.ok]
+    costable_records = [p.record for p in predictions if p.ok]
+    split = split_records(costable_records, test_fraction=test_fraction, seed=seed)
+    test_ids = split.test_part_ids
+    tuning_pred = [p for p in predictions if p.ok and p.record.part_id not in test_ids]
+    test_pred = [p for p in predictions if p.ok and p.record.part_id in test_ids]
 
     calib = tune(tuning_pred)                       # TUNING ONLY
     tuning_eval = evaluate(tuning_pred, calib, "tuning")

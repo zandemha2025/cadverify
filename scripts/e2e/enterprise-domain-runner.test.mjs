@@ -59,6 +59,7 @@ test("browser orchestration executes all owned journeys before finish", () => {
     "verifyHistoryAnalysisDetail",
     "verifyProgramUiAndHistory",
     "verifyReconstructionRecovery",
+    "verifySourceBoundCalibrationRecovery",
   ];
   let previous = -1;
   for (const method of calls) {
@@ -91,6 +92,8 @@ test("integration, history, reconstruction, and interruption assert persisted ou
   assert.match(source, /terminalJob\?\.status === "failed"/);
   assert.match(source, /mesh\.status === 200 && mesh\.bytes > 0/);
   assert.match(source, /failure displayed a fake preview/);
+  assert.match(source, /source-bound actuals lost their exact CAD hash/);
+  assert.match(source, /every served estimate to carry a measured empirical confidence band/);
 });
 
 test("severe-service and program rollup are checked across visible and persisted state", () => {

@@ -394,6 +394,8 @@ class BatchDesignRecoveryMatrix {
     await this.page.getByLabel("Password").fill(this.password);
     await this.page.getByRole("button", { name: /^Create account$/ }).click();
     await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 30_000 });
+    await this.page.waitForLoadState("networkidle", { timeout: 15_000 });
+    await this.page.waitForTimeout(500);
     assert((await this.context.cookies()).some((cookie) => cookie.name === "dash_session"), "signup did not establish dash_session");
   }
 
@@ -472,6 +474,7 @@ class BatchDesignRecoveryMatrix {
       const before = await this.batchList();
       await this.page.goto("/batch", { waitUntil: "domcontentloaded" });
       await this.page.locator('input[type="file"][accept=".zip"]').first().setInputFiles(fixture.path);
+      await this.page.getByLabel("Concurrency limit").fill("1");
       const { payload } = await this.submitBatch(fixture.path, { fault: "batch_delay" });
       const batchId = payload.batch_id;
       await this.page.waitForURL((url) => url.pathname === `/batch/${batchId}`, { timeout: 30_000 });
@@ -510,7 +513,7 @@ class BatchDesignRecoveryMatrix {
       assert(cancelled.failed_items === failed, "WORK-03 progress/card failed count mismatch");
       assert(cancelled.skipped_items === skipped, "WORK-03 progress/card skipped count mismatch");
       assert(items.filter((item) => item.status === "skipped").every((item) => item.analysis_url === null), "WORK-03 fabricated analysis for skipped work");
-      await this.page.getByText("cancelled", { exact: true }).first().waitFor({ timeout: 10_000 });
+      await this.page.getByText(/^cancelled$/i).first().waitFor({ timeout: 10_000 });
       const screenshot = await this.screenshot("WORK-03", "cancelled-arithmetic");
       const after = await this.batchList();
       return {
@@ -518,6 +521,7 @@ class BatchDesignRecoveryMatrix {
         preconditions: [
           `fresh authenticated analyst account ${this.email}`,
           `deterministic valid ZIP with ${fixture.entries.length} tracked STEP entries`,
+          "concurrency limit 1 so completed, in-flight, and not-started cancellation states are all observable",
           "record-scoped 1.5 second worker delay authorized by the release-evidence secret",
         ],
         actions: [
@@ -589,7 +593,16 @@ class BatchDesignRecoveryMatrix {
           error: item.error_message ?? "",
         };
         for (const [field, value] of Object.entries(expected)) {
-          assert(row[field] === value, `WORK-04 ${item.filename} ${field}: CSV=${row[field]} API/card=${value}`);
+          if (field === "duration_ms" && value !== "") {
+            const csvDuration = Number(row[field]);
+            const apiDuration = Number(value);
+            assert(
+              row[field] !== "" && Number.isFinite(csvDuration) && csvDuration === apiDuration,
+              `WORK-04 ${item.filename} ${field}: CSV=${row[field]} API/card=${value}`,
+            );
+          } else {
+            assert(row[field] === value, `WORK-04 ${item.filename} ${field}: CSV=${row[field]} API/card=${value}`);
+          }
         }
       }
       const body = await this.page.locator("body").innerText();
@@ -600,7 +613,7 @@ class BatchDesignRecoveryMatrix {
         persona: "quality engineer reconciling batch detail cards with an exported CSV",
         preconditions: [
           `completed deterministic valid ZIP batch ${batchId}`,
-          `${fixture.entries.length} tracked STEP inputs with unique filenames`,
+          `${fixture.entries.length} tracked STEP inputs with unique filenames and identical geometry, submitted concurrently against a cold account cache`,
           "browser downloads enabled",
         ],
         actions: [
@@ -656,16 +669,23 @@ class BatchDesignRecoveryMatrix {
       await this.page.reload({ waitUntil: "domcontentloaded" });
       await this.selectDesign(name);
       await this.page.getByText(DESIGN_QUEUE_COPY, { exact: true }).waitFor();
+      await this.page.waitForLoadState("networkidle", { timeout: 15_000 });
+      await this.page.waitForTimeout(500);
       await this.page.getByRole("button", { name: /^Revise and retry$/ }).click();
       assert(await this.page.getByLabel("Width").inputValue() === "80", "FAIL-04 width was not retained");
       assert(await this.page.getByLabel("Design note").inputValue() === note, "FAIL-04 note was not retained");
       await this.submitRevision(failed.id);
       const ready = await this.waitForDesign(failed.id, (design) => design.status === "ready" && design.current_revision === 2, "FAIL-04 explicit retry");
+      await this.page.getByText("Ready", { exact: true }).first().waitFor({ timeout: 20_000 });
+      await this.page.waitForLoadState("networkidle", { timeout: 15_000 });
+      await this.page.waitForTimeout(500);
       const revisions = await this.getRevisions(failed.id);
       const after = await this.designList();
       await this.page.reload({ waitUntil: "domcontentloaded" });
       await this.selectDesign(name);
       await this.page.getByRole("link", { name: /^Download R2 STEP$/ }).waitFor({ timeout: 20_000 });
+      await this.page.waitForLoadState("networkidle", { timeout: 15_000 });
+      await this.page.waitForTimeout(500);
       const recoveryScreenshot = await this.screenshot("FAIL-04", "retry-ready-r2");
       this.artifacts.recoveryScreenshots["FAIL-04"] = recoveryScreenshot;
       return {
@@ -826,8 +846,9 @@ class BatchDesignRecoveryMatrix {
       await this.page.goto("/batch", { waitUntil: "domcontentloaded" });
       await this.page.locator('input[type="file"][accept=".zip"]').first().setInputFiles(fixture.path);
       const { payload } = await this.submitBatch(fixture.path, { fault: "batch_queue", expectedStatus: 503 });
-      assert(payload.detail?.message === BATCH_QUEUE_COPY, `FAIL-07 response copy was ${payload.detail?.message}`);
-      const failedBatch = payload.detail?.accepted_batch;
+      const failure = payload.detail && typeof payload.detail === "object" ? payload.detail : payload;
+      assert(failure?.message === BATCH_QUEUE_COPY, `FAIL-07 response copy was ${failure?.message}: ${JSON.stringify(payload)}`);
+      const failedBatch = failure?.accepted_batch;
       assert(failedBatch?.batch_id, "FAIL-07 503 omitted accepted_batch identity");
       await this.page.getByRole("alert").getByText(BATCH_QUEUE_COPY, { exact: true }).waitFor({ timeout: 15_000 });
       await this.page.getByRole("button", { name: /^Retry this ZIP$/ }).waitFor();
@@ -887,7 +908,7 @@ class BatchDesignRecoveryMatrix {
         },
         screenshot: failureScreenshot,
         assertions: [
-          assertion("exact queue copy", BATCH_QUEUE_COPY, payload.detail.message),
+          assertion("exact queue copy", BATCH_QUEUE_COPY, failure.message),
           assertion("original durable status", "failed", failedProgress.status),
           assertion("original pending count", 0, failedProgress.pending_items),
           assertion("original completed count", 0, failedProgress.completed_items),
@@ -917,6 +938,7 @@ class BatchDesignRecoveryMatrix {
       status,
       health: status === "PASS" ? 100 : Math.round((validation.valid / OWNED_PATH_IDS.length) * 100),
       suite: "batch-design-recovery-golden-matrix",
+      runId,
       generatedAt: new Date().toISOString(),
       baseUrl,
       account: { email: this.email },
@@ -979,8 +1001,10 @@ async function main() {
     );
     await matrix.launch();
     await matrix.signup();
-    await matrix.work03();
+    // Run the duplicate-geometry batch first so concurrent analysis de-duplication
+    // is exercised against a cold per-account cache instead of taking cache hits.
     await matrix.work04();
+    await matrix.work03();
     await matrix.fail04();
     await matrix.fail05();
     await matrix.fail06();

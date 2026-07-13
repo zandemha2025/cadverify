@@ -495,6 +495,10 @@ export default function CostDecisionDetailPage({
         }
       />
 
+      <p className="break-all font-mono text-xs text-muted-foreground" data-testid="cost-decision-mesh-hash">
+        Source SHA-256 · {decision.mesh_hash}
+      </p>
+
       <GovernancePanel
         decision={decision}
         onUpdate={(patch) =>

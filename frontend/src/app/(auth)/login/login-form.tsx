@@ -4,20 +4,9 @@ import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { AuthField, AuthFrame, AuthSubmit, AuthTextLink } from "@/components/auth/auth-frame";
 import { TurnstileWidget } from "@/components/auth/turnstile-widget";
+import { safeLocalPath } from "@/lib/safe-return-path";
 
 const POST_LOGIN_HOME = "/verify";
-
-function safeLocalPath(raw: string | null, fallback = POST_LOGIN_HOME): string {
-  if (!raw) return fallback;
-  try {
-    const base = new URL("https://cadverify.invalid");
-    const parsed = new URL(raw, base);
-    if (parsed.origin !== base.origin || !raw.startsWith("/")) return fallback;
-    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
-  } catch {
-    return fallback;
-  }
-}
 
 function errorMessage(data: unknown, fallback: string): string {
   if (data && typeof data === "object") {
@@ -39,7 +28,7 @@ export function LoginForm({
   ssoLoginPath?: string;
 }) {
   const params = useSearchParams();
-  const next = safeLocalPath(params.get("next"));
+  const next = safeLocalPath(params.get("next"), POST_LOGIN_HOME);
   const [hydrated, setHydrated] = React.useState(false);
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");

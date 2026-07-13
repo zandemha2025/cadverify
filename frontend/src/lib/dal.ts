@@ -10,9 +10,11 @@
  * Imports `next/headers` (via ./session) → server-only by construction.
  */
 import { cache } from "react";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSessionToken } from "./session";
 import { backendUrl } from "./api-base";
+import { loginHrefForReturnPath } from "./safe-return-path";
 
 export type SessionUser = {
   id: number;
@@ -38,6 +40,9 @@ export const getUser = cache(async (): Promise<SessionUser | null> => {
 
 export const verifySession = cache(async (): Promise<SessionUser> => {
   const user = await getUser();
-  if (!user) redirect("/login");
+  if (!user) {
+    const requestedPath = (await headers()).get("x-proofshape-request-path");
+    redirect(loginHrefForReturnPath(requestedPath));
+  }
   return user;
 });

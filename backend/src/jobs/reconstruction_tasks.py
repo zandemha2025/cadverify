@@ -51,6 +51,13 @@ async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
             logger.error("Reconstruction job %s not found", job_ulid)
             return {"error": "job_not_found"}
 
+        # Analysis dedup may roll back its own transaction. Keep it in a separate
+        # session and snapshot ownership now so that rollback can never expire or
+        # poison the reconstruction job we still need to complete.
+        job_user_id = job.user_id
+        job_org_id = job.org_id
+        job_params = dict(job.params_json or {})
+
         # Set running
         job.status = "running"
         job.started_at = datetime.now(timezone.utc)
@@ -98,47 +105,46 @@ async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
                 from src.auth.require_api_key import AuthedUser
                 from src.services import analysis_service
 
-                params = job.params_json or {}
+                params = job_params
                 process_types = params.get("process_types")
                 rule_pack_name = params.get("rule_pack")
 
                 # Create a mock AuthedUser from the job owner
                 mock_user = AuthedUser(
-                    user_id=job.user_id,
+                    user_id=job_user_id,
                     api_key_id=0,  # System-generated; no real API key
                     key_prefix="system",
                 )
 
-                await analysis_service.run_analysis(
-                    file_bytes=result.mesh_bytes,
-                    filename=f"reconstructed_{job_ulid}.stl",
-                    processes=process_types,
-                    rule_pack=rule_pack_name,
-                    user=mock_user,
-                    session=session,
-                    org_id=job.org_id,
-                )
+                async with session_factory() as analysis_session:
+                    analysis_run = await analysis_service.run_analysis(
+                        file_bytes=result.mesh_bytes,
+                        filename=f"reconstructed_{job_ulid}.stl",
+                        processes=process_types,
+                        rule_pack=rule_pack_name,
+                        user=mock_user,
+                        session=analysis_session,
+                        org_id=job_org_id,
+                        return_persisted_id=True,
+                    )
 
-                # Extract analysis ULID from persisted row
-                analysis_id = await analysis_service.get_latest_analysis_id(
-                    session,
-                    job.user_id,
-                    analysis_service.compute_mesh_hash(result.mesh_bytes),
-                    org_id=job.org_id,
-                )
-                if analysis_id is not None:
-                    from src.db.models import Analysis
-                    analysis_row = (
-                        await session.execute(
-                            select(Analysis).where(
-                                Analysis.id == analysis_id,
-                                Analysis.org_id == job.org_id,
+                    # Resolve the exact persisted/cache row selected above.
+                    # Querying "latest by mesh" can race another analysis variant.
+                    analysis_id = analysis_run.analysis_id
+                    if analysis_id is not None:
+                        from src.db.models import Analysis
+                        analysis_row = (
+                            await analysis_session.execute(
+                                select(Analysis).where(
+                                    Analysis.id == analysis_id,
+                                    Analysis.org_id == job_org_id,
+                                )
                             )
-                        )
-                    ).scalars().first()
-                    if analysis_row:
-                        analysis_ulid = analysis_row.ulid
-                        analysis_url = f"/api/v1/analyses/{analysis_ulid}"
+                        ).scalars().first()
+                        if analysis_row:
+                            analysis_ulid = analysis_row.ulid
+                            analysis_url = f"/api/v1/analyses/{analysis_ulid}"
+                    await analysis_session.commit()
 
             except Exception:
                 logger.warning(

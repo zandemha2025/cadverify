@@ -685,6 +685,7 @@ class Matrix {
       : "NEEDS_FIXES";
     const data = {
       status,
+      suite: "public-auth-verify-golden-matrix",
       runId,
       baseUrl,
       generatedAt: new Date().toISOString(),

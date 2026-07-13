@@ -558,6 +558,22 @@ async def mark_org_decisions_stale(
 # ---------------------------------------------------------------------------
 
 
+def spreadsheet_safe_cell(value):
+    """Neutralize formula-capable text while preserving JSON/source records.
+
+    Spreadsheet programs may execute cells beginning with =, +, -, or @ (also
+    after leading whitespace/control characters). Prefixing an apostrophe is the
+    conventional CSV display escape: users see the original text, while the
+    imported cell is data rather than a formula. Numeric values stay numeric.
+    """
+    if not isinstance(value, str) or not value:
+        return value
+    candidate = value.lstrip(" \t\r\n")
+    if value[0] in "\t\r\n" or candidate.startswith(("=", "+", "-", "@")):
+        return "'" + value
+    return value
+
+
 def build_estimates_csv(
     result_json: dict,
     *,
@@ -604,29 +620,32 @@ def build_estimates_csv(
         li_str = "; ".join(f"{k}={v}" for k, v in line_items.items())
         writer.writerow(
             [
-                e.get("process", ""),
-                e.get("material", ""),
-                e.get("quantity", ""),
-                e.get("unit_cost_usd", ""),
-                e.get("fixed_cost_usd", ""),
-                e.get("variable_cost_usd", ""),
-                e.get("est_error_band_pct", ""),
-                ci.get("low_usd", ""),
-                ci.get("high_usd", ""),
-                ci.get("label", ""),
-                # Honesty: this is False for assumption-based bands.
-                ci.get("validated", False),
-                e.get("dfm_ready", ""),
-                governance.get("approval_status", ""),
-                governance.get("approved_by_user_id", ""),
-                governance.get("approved_at", ""),
-                governance.get("approval_note", ""),
-                governance.get("user_disposition", ""),
-                governance.get("user_disposition_label", ""),
-                governance.get("disposition_note", ""),
-                governance.get("disposition_updated_at", ""),
-                governance.get("disposition_updated_by_user_id", ""),
-                li_str,
+                spreadsheet_safe_cell(value)
+                for value in [
+                    e.get("process", ""),
+                    e.get("material", ""),
+                    e.get("quantity", ""),
+                    e.get("unit_cost_usd", ""),
+                    e.get("fixed_cost_usd", ""),
+                    e.get("variable_cost_usd", ""),
+                    e.get("est_error_band_pct", ""),
+                    ci.get("low_usd", ""),
+                    ci.get("high_usd", ""),
+                    ci.get("label", ""),
+                    # Honesty: this is False for assumption-based bands.
+                    ci.get("validated", False),
+                    e.get("dfm_ready", ""),
+                    governance.get("approval_status", ""),
+                    governance.get("approved_by_user_id", ""),
+                    governance.get("approved_at", ""),
+                    governance.get("approval_note", ""),
+                    governance.get("user_disposition", ""),
+                    governance.get("user_disposition_label", ""),
+                    governance.get("disposition_note", ""),
+                    governance.get("disposition_updated_at", ""),
+                    governance.get("disposition_updated_by_user_id", ""),
+                    li_str,
+                ]
             ]
         )
     return buf.getvalue()

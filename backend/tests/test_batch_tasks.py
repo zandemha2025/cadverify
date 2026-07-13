@@ -5,6 +5,7 @@ Uses mocked DB sessions, analysis_service, and webhook_service.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -79,6 +80,12 @@ def _mock_session_factory(session):
     return factory
 
 
+def _row_result_for_task(row):
+    result = MagicMock()
+    result.scalars.return_value.first.return_value = row
+    return result
+
+
 # ---------------------------------------------------------------------------
 # run_batch_coordinator
 # ---------------------------------------------------------------------------
@@ -96,6 +103,10 @@ def _coordinator_execute(state):
         s = str(stmt).lower()
         result = MagicMock()
         scalars = MagicMock()
+        if s.lstrip().startswith("update batch_items"):
+            scalars.all.return_value = state.get("reclaimed", [])
+            result.scalars.return_value = scalars
+            return result
         if "count(" in s:
             # active count has a `status IN (...)` clause; total count does not.
             result.scalar.return_value = state["active"] if "status" in s else state["total"]
@@ -138,7 +149,7 @@ async def test_coordinator_tick_enqueues_items_and_re_enqueues_self(mock_gsf):
     pending_item = _make_item(status="pending")
 
     state = {"batch": batch, "total": 3, "active": 0, "pending": [pending_item]}
-    mock_session.execute = _coordinator_execute(state)
+    mock_session.execute = AsyncMock(side_effect=_coordinator_execute(state))
     mock_session.commit = AsyncMock()
 
     mock_pool = AsyncMock()
@@ -159,6 +170,109 @@ async def test_coordinator_tick_enqueues_items_and_re_enqueues_self(mock_gsf):
     assert self_calls[0].kwargs.get("_defer_by") == 2  # BATCH_POLL_INTERVAL_SECONDS
     # Not finalized -- work still remains.
     assert batch.status == "processing"
+
+
+@pytest.mark.asyncio
+@patch("src.jobs.batch_tasks.get_session_factory")
+async def test_coordinator_commits_queued_state_before_publication(mock_gsf):
+    """A fast worker must never consume a message before `queued` is visible."""
+    from src.jobs.batch_tasks import run_batch_coordinator
+
+    events = []
+    session = AsyncMock()
+    mock_gsf.return_value = _mock_session_factory(session)
+    batch = _make_batch(status="processing", total_items=1)
+    item = _make_item(status="pending")
+    session.execute = AsyncMock(side_effect=_coordinator_execute({
+        "batch": batch, "total": 1, "active": 0, "pending": [item]
+    }))
+
+    async def commit():
+        events.append(("commit", item.status))
+
+    pool = AsyncMock()
+
+    async def enqueue(name, *args, **kwargs):
+        events.append((name, item.status))
+
+    session.commit.side_effect = commit
+    pool.enqueue_job.side_effect = enqueue
+
+    await run_batch_coordinator({"redis": pool}, batch.ulid)
+
+    assert events[0] == ("commit", "queued")
+    assert events[1] == ("run_batch_item", "queued")
+
+
+@pytest.mark.asyncio
+@patch("src.jobs.batch_tasks.get_session_factory")
+async def test_failed_item_publication_restores_only_unclaimed_queue_row(mock_gsf):
+    from src.jobs.batch_tasks import run_batch_coordinator
+
+    session = AsyncMock()
+    mock_gsf.return_value = _mock_session_factory(session)
+    batch = _make_batch(status="processing", total_items=1)
+    item = _make_item(status="pending")
+    state = {"batch": batch, "total": 1, "active": 0, "pending": [item]}
+    session.execute = AsyncMock(side_effect=_coordinator_execute(state))
+    pool = AsyncMock()
+
+    async def enqueue(name, *args, **kwargs):
+        if name == "run_batch_item":
+            raise ConnectionError("redis acknowledgement lost")
+
+    pool.enqueue_job.side_effect = enqueue
+    await run_batch_coordinator({"redis": pool}, batch.ulid)
+
+    reset_statements = [
+        call.args[0] for call in session.execute.await_args_list
+        if str(call.args[0]).lower().lstrip().startswith("update batch_items")
+        and "started_at" not in str(call.args[0]).lower()
+    ]
+    assert len(reset_statements) == 1
+    params = reset_statements[0].compile().params
+    assert "queued" in params.values() and "pending" in params.values()
+    assert session.commit.await_count == 2
+
+
+@pytest.mark.asyncio
+@patch("src.jobs.batch_tasks.get_session_factory")
+async def test_coordinator_reclaims_expired_processing_lease(mock_gsf):
+    """A worker crash after claim cannot strand an item forever.
+
+    The coordinator first turns an expired processing lease back into pending,
+    then enqueues that exact item during the same durable tick.
+    """
+    from src.jobs.batch_tasks import run_batch_coordinator
+
+    mock_session = AsyncMock()
+    mock_gsf.return_value = _mock_session_factory(mock_session)
+    batch = _make_batch(
+        status="processing", total_items=1, completed_items=0, failed_items=0
+    )
+    recovered = _make_item(status="pending")
+    state = {
+        "batch": batch,
+        "total": 1,
+        "active": 0,
+        "pending": [recovered],
+        "reclaimed": [recovered.ulid],
+    }
+    mock_session.execute = AsyncMock(side_effect=_coordinator_execute(state))
+    mock_session.commit = AsyncMock()
+    pool = AsyncMock()
+    pool.enqueue_job = AsyncMock()
+
+    await run_batch_coordinator({"redis": pool}, batch.ulid)
+
+    update_stmt = mock_session.execute.await_args_list[1].args[0]
+    compiled = str(update_stmt).lower()
+    assert "update batch_items" in compiled
+    assert "started_at" in compiled
+    assert "processing" in update_stmt.compile().params.values()
+    assert recovered.status == "queued"
+    assert len(_enqueued(pool, "run_batch_item")) == 1
+    mock_session.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -342,6 +456,42 @@ async def test_sweep_task_commits_when_reaped(mock_gsf):
 
 
 @pytest.mark.asyncio
+@patch("src.jobs.batch_tasks.get_session_factory")
+async def test_sweep_task_commits_before_session_exit(mock_gsf):
+    """Regression: a real AsyncSession cannot commit after its context closed."""
+    from src.jobs.batch_tasks import sweep_orphaned_batches
+
+    exited = False
+    mock_session = AsyncMock()
+
+    async def commit_while_open():
+        assert exited is False
+
+    mock_session.commit.side_effect = commit_while_open
+    context = AsyncMock()
+    context.__aenter__ = AsyncMock(return_value=mock_session)
+
+    async def mark_exited(*_args):
+        nonlocal exited
+        exited = True
+        return False
+
+    context.__aexit__.side_effect = mark_exited
+    factory = MagicMock(return_value=context)
+    mock_gsf.return_value = factory
+
+    import src.services.batch_service as bs
+
+    with patch.object(
+        bs, "sweep_orphaned_batches", new_callable=AsyncMock, return_value=1
+    ):
+        assert await sweep_orphaned_batches({}) == 1
+
+    assert exited is True
+    mock_session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_sweep_task_off_switch(monkeypatch):
     from src.jobs.batch_tasks import sweep_orphaned_batches
 
@@ -391,9 +541,12 @@ async def test_item_task_calls_run_analysis(mock_gsf):
     import src.services.batch_service as _bs_mod
     import src.services.webhook_service as _ws_mod
 
-    with patch.object(_as_mod, "run_analysis", new_callable=AsyncMock, return_value={"verdict": "pass"}) as mock_run, \
-         patch.object(_as_mod, "get_latest_analysis_id", new_callable=AsyncMock, return_value=42), \
-         patch.object(_as_mod, "compute_mesh_hash", return_value="abc123"), \
+    with patch.object(
+         _as_mod,
+         "run_analysis",
+         new_callable=AsyncMock,
+         return_value=SimpleNamespace(result={"verdict": "pass"}, analysis_id=42),
+         ) as mock_run, \
          patch.object(_bs_mod, "read_batch_blob", return_value=b"stl data"), \
          patch.object(_bs_mod, "update_batch_counters", new_callable=AsyncMock) as mock_counters, \
          patch.object(_ws_mod, "create_webhook_delivery", new_callable=AsyncMock):
@@ -401,6 +554,8 @@ async def test_item_task_calls_run_analysis(mock_gsf):
         await run_batch_item(ctx, "01ITEM000000000000001")
 
         mock_run.assert_called_once()
+        assert mock_run.await_args.kwargs["return_persisted_id"] is True
+        assert mock_session.refresh.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -440,9 +595,12 @@ async def test_item_task_updates_counters(mock_gsf):
     import src.services.batch_service as _bs_mod
     import src.services.webhook_service as _ws_mod
 
-    with patch.object(_as_mod, "run_analysis", new_callable=AsyncMock, return_value={"verdict": "pass"}), \
-         patch.object(_as_mod, "get_latest_analysis_id", new_callable=AsyncMock, return_value=42), \
-         patch.object(_as_mod, "compute_mesh_hash", return_value="abc123"), \
+    with patch.object(
+         _as_mod,
+         "run_analysis",
+         new_callable=AsyncMock,
+         return_value=SimpleNamespace(result={"verdict": "pass"}, analysis_id=42),
+         ), \
          patch.object(_bs_mod, "read_batch_blob", return_value=b"data"), \
          patch.object(_bs_mod, "update_batch_counters", new_callable=AsyncMock) as mock_counters, \
          patch.object(_ws_mod, "create_webhook_delivery", new_callable=AsyncMock):
@@ -502,9 +660,12 @@ async def test_item_completion_refreshes_batch_heartbeat(mock_gsf):
     import src.services.batch_service as _bs_mod
     import src.services.webhook_service as _ws_mod
 
-    with patch.object(_as_mod, "run_analysis", new_callable=AsyncMock, return_value={"verdict": "pass"}), \
-         patch.object(_as_mod, "get_latest_analysis_id", new_callable=AsyncMock, return_value=42), \
-         patch.object(_as_mod, "compute_mesh_hash", return_value="abc123"), \
+    with patch.object(
+         _as_mod,
+         "run_analysis",
+         new_callable=AsyncMock,
+         return_value=SimpleNamespace(result={"verdict": "pass"}, analysis_id=42),
+         ), \
          patch.object(_bs_mod, "read_batch_blob", return_value=b"data"), \
          patch.object(_bs_mod, "update_batch_counters", new_callable=AsyncMock), \
          patch.object(_ws_mod, "create_webhook_delivery", new_callable=AsyncMock):
@@ -514,6 +675,72 @@ async def test_item_completion_refreshes_batch_heartbeat(mock_gsf):
     assert batch.manifest_json["heartbeat_at"] != "2020-01-01T00:00:00+00:00"
     refreshed = datetime.fromisoformat(batch.manifest_json["heartbeat_at"])
     assert (datetime.now(timezone.utc) - refreshed).total_seconds() < 5
+
+
+@pytest.mark.asyncio
+@patch("src.jobs.batch_tasks.get_session_factory")
+async def test_item_cancellation_releases_processing_lease_and_reraises(mock_gsf):
+    """Faithfully cancel after the durable claim and prove schedulable recovery."""
+    import asyncio
+
+    from src.jobs.batch_tasks import run_batch_item
+
+    item = _make_item(status="queued")
+    batch = _make_batch()
+    batch.manifest_json = {"release_test_fault": "batch_delay"}
+
+    work_session = AsyncMock()
+    work_session.execute.side_effect = [
+        _row_result_for_task(item),
+        _row_result_for_task(batch),
+    ]
+    work_session.commit = AsyncMock()
+
+    recovery_session = AsyncMock()
+    recovery_session.execute.side_effect = [
+        _row_result_for_task(item),
+        _row_result_for_task(batch),
+    ]
+    recovery_session.commit = AsyncMock()
+
+    mock_gsf.side_effect = [
+        _mock_session_factory(work_session),
+        _mock_session_factory(recovery_session),
+    ]
+
+    task = asyncio.create_task(run_batch_item({}, item.ulid))
+    await asyncio.sleep(0.02)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert item.status == "pending"
+    assert item.started_at is None
+    work_session.commit.assert_awaited_once()  # durable processing claim
+    recovery_session.commit.assert_awaited_once()  # durable lease release
+
+
+@pytest.mark.asyncio
+@patch("src.jobs.batch_tasks.get_session_factory")
+async def test_item_cancellation_terminalizes_lease_when_parent_was_cancelled(mock_gsf):
+    """Cancellation cleanup cannot create pending work under a terminal batch."""
+    from src.jobs.batch_tasks import _release_cancelled_item_lease
+
+    item = _make_item(status="processing")
+    batch = _make_batch(status="cancelled")
+    session = AsyncMock()
+    session.execute.side_effect = [
+        _row_result_for_task(item),
+        _row_result_for_task(batch),
+    ]
+    mock_gsf.return_value = _mock_session_factory(session)
+
+    await _release_cancelled_item_lease(item.ulid)
+
+    assert item.status == "skipped"
+    assert item.started_at is None
+    assert item.completed_at is not None
+    session.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -562,6 +789,8 @@ async def test_item_failure_also_refreshes_batch_heartbeat(mock_gsf):
         await run_batch_item(ctx, "01ITEM000000000000001")
 
     assert item.status == "failed"
+    mock_session.rollback.assert_awaited_once()
+    assert mock_session.refresh.await_count == 2
     assert batch.manifest_json["heartbeat_at"] != "2020-01-01T00:00:00+00:00"
     refreshed = datetime.fromisoformat(batch.manifest_json["heartbeat_at"])
     assert (datetime.now(timezone.utc) - refreshed).total_seconds() < 5

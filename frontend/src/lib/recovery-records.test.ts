@@ -9,8 +9,13 @@ import {
 } from "./recovery-records.ts";
 
 test("accepted batch identity is retained only from a complete structured 503", () => {
-  assert.deepEqual(
-    acceptedBatchFromErrorPayload({
+  const expected = {
+    batch_id: "01BATCHQUEUEFAILED00000001",
+    status: "failed",
+    status_url: "/api/v1/batch/01BATCHQUEUEFAILED00000001",
+  };
+  for (const payload of [
+    {
       detail: {
         accepted_batch: {
           batch_id: "01BATCHQUEUEFAILED00000001",
@@ -18,14 +23,20 @@ test("accepted batch identity is retained only from a complete structured 503", 
           status_url: "/api/v1/batch/01BATCHQUEUEFAILED00000001",
         },
       },
-    }),
-    {
-      batch_id: "01BATCHQUEUEFAILED00000001",
-      status: "failed",
-      status_url: "/api/v1/batch/01BATCHQUEUEFAILED00000001",
     },
-  );
+    {
+      code: "BATCH_ENQUEUE_FAILED",
+      accepted_batch: {
+        batch_id: "01BATCHQUEUEFAILED00000001",
+        status: "failed",
+        status_url: "/api/v1/batch/01BATCHQUEUEFAILED00000001",
+      },
+    },
+  ]) {
+    assert.deepEqual(acceptedBatchFromErrorPayload(payload), expected);
+  }
   assert.equal(acceptedBatchFromErrorPayload({ detail: {} }), undefined);
+  assert.equal(acceptedBatchFromErrorPayload({ accepted_batch: {} }), undefined);
   assert.equal(
     acceptedBatchFromErrorPayload({ detail: { accepted_batch: { batch_id: "partial" } } }),
     undefined,

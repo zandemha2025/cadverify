@@ -334,6 +334,7 @@ def test_detail_owner_ok(client, real_result_json):
     assert body["id"] == "01DETAIL0000000000000000A"
     assert body["result"]["status"] == "OK"
     assert body["make_now_process"]
+    assert body["mesh_hash"] == dec.mesh_hash
     assert body["approval_status"] == "unreviewed"
     assert body["is_stale"] is False
     assert body["user_disposition"] is None
@@ -705,6 +706,35 @@ def test_exports_preserve_exact_approval_governance(client, real_result_json):
     assert "\nLine 2: $3.80/unit" in html
     assert "Recorded outcome:</strong> Make outside" in html
     assert "Outcome note:</strong>\nSupplier route selected" in html
+
+
+def test_csv_export_neutralizes_formula_injection_without_mutating_json(
+    client, real_result_json
+):
+    """Human-authored governance notes remain text when opened in a spreadsheet."""
+    cl, app = client
+    dec = _make_decision("01CSVFORMULA0000000000000A", real_result_json)
+    approval_note = " \t=HYPERLINK(\"https://attacker.invalid\",\"open\")"
+    disposition_note = "+SUM(1,1)"
+    dec.approval_note = approval_note
+    dec.disposition_note = disposition_note
+    _override(app, _session_returning(scalar_one=dec))
+
+    json_response = cl.get(
+        "/api/v1/cost-decisions/01CSVFORMULA0000000000000A/export.json"
+    )
+    assert json_response.status_code == 200
+    assert json_response.json()["governance"]["approval_note"] == approval_note
+    assert json_response.json()["governance"]["disposition_note"] == disposition_note
+
+    csv_response = cl.get(
+        "/api/v1/cost-decisions/01CSVFORMULA0000000000000A/export.csv"
+    )
+    assert csv_response.status_code == 200
+    rows = list(csv.DictReader(io.StringIO(csv_response.text)))
+    assert rows
+    assert all(row["approval_note"] == "'" + approval_note for row in rows)
+    assert all(row["disposition_note"] == "'" + disposition_note for row in rows)
 
 
 # ---------------------------------------------------------------------------

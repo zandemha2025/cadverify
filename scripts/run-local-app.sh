@@ -41,6 +41,13 @@ FRONTEND_PORT=3000
 HEALTH_URL="http://127.0.0.1:${BACKEND_PORT}/health"
 APP_URL="http://localhost:${FRONTEND_PORT}"
 
+# Bind both serving processes to the exact source revision used for the build.
+# Human-simulation release evidence checks these values over HTTP, so a stale
+# frontend/backend process cannot be certified merely because the checkout is clean.
+GIT_HEAD="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)"
+export PROOFSHAPE_BUILD_ID="${PROOFSHAPE_BUILD_ID:-$GIT_HEAD}"
+export NEXT_PUBLIC_BUILD_SHA="${NEXT_PUBLIC_BUILD_SHA:-$PROOFSHAPE_BUILD_ID}"
+
 # ── env: kill-switch open + localhost CORS + local database ─────────────────
 export ACCEPTING_NEW_ANALYSES=true   # kill-switch OPEN -> analyses accepted
 export LABELING_ENABLED=1            # main.py broadens CORS to localhost:3000

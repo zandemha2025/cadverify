@@ -49,6 +49,17 @@ function stableJson(value) {
   return JSON.stringify(value);
 }
 
+function forbiddenKeyPaths(value, forbidden, prefix = "") {
+  if (!value || typeof value !== "object") return [];
+  const paths = [];
+  for (const [key, child] of Object.entries(value)) {
+    const current = prefix ? `${prefix}.${key}` : key;
+    if (forbidden.has(key)) paths.push(current);
+    paths.push(...forbiddenKeyPaths(child, forbidden, current));
+  }
+  return paths;
+}
+
 function same(expected, actual) {
   return stableJson(expected) === stableJson(actual);
 }
@@ -1064,7 +1075,55 @@ class Matrix {
     this.truth("WORK-07", "JSON download filename is explicit", /-cost\.json$/.test(jsonFilename));
     this.truth("WORK-07", "CSV download filename is explicit", /-cost\.csv$/.test(csvFilename));
     this.truth("WORK-07", "PDF download filename is explicit", /-cost-report\.pdf$/.test(pdfFilename));
-    const screenshot = await this.shot("WORK-07", page, "exports-complete");
+
+    await page.getByRole("button", { name: "Share", exact: true }).click();
+    const shareDialog = page.getByRole("dialog", { name: "Share this should-cost decision" });
+    await shareDialog.waitFor();
+    const shareUrl = await shareDialog.locator("input[readonly]").inputValue();
+    const sharePath = new URL(shareUrl).pathname;
+    const shortId = sharePath.split("/").filter(Boolean).at(-1);
+    this.truth("WORK-07", "share URL has public cost route", /^\/s\/cost\/[A-Za-z0-9_-]+$/.test(sharePath));
+
+    const publicContext = await this.browser.newContext({
+      baseURL: appUrl,
+      viewport: { width: 1200, height: 900 },
+      reducedMotion: "reduce",
+      extraHTTPHeaders: { "x-real-ip": "198.51.100.73" },
+    });
+    const publicPage = await publicContext.newPage();
+    this.watch(publicPage);
+    await publicPage.goto(sharePath, { waitUntil: "domcontentloaded" });
+    await publicPage.getByText("Shared should-cost · read-only", { exact: true }).waitFor();
+    const publicText = await publicPage.locator("body").innerText();
+    const publicPayload = await this.request(publicContext, `${apiUrl}/s/cost/${shortId}`);
+    this.check("WORK-07", "public share API status", 200, publicPayload.status);
+    const forbiddenPaths = forbiddenKeyPaths(
+      publicPayload.body,
+      new Set(["id", "ulid", "user_id", "api_key_id", "mesh_hash", "params_hash", "share_short_id", "is_public"]),
+    );
+    this.check("WORK-07", "public share forbidden identity fields", [], forbiddenPaths);
+    this.truth("WORK-07", "public page states read-only", /read-only/i.test(publicText));
+    this.truth("WORK-07", "public page has no mutation controls", !/Approve|Reopen|Revoke|Create share link/i.test(publicText));
+    this.truth("WORK-07", "public page hides private decision id", !publicText.includes(id));
+    this.truth("WORK-07", "public page hides source mesh hash", !publicText.includes(decision.mesh_hash || "__no_mesh_hash__"));
+    const publicScreenshot = await this.shot("WORK-07", publicPage, "public-share-read-only");
+
+    await shareDialog.getByRole("button", { name: "Done" }).click();
+    const revokeResponse = page.waitForResponse((response) =>
+      response.request().method() === "DELETE" && new URL(response.url()).pathname === `/api/proxy/cost-decisions/${id}/share`,
+    );
+    await page.getByRole("button", { name: "Revoke", exact: true }).click();
+    this.check("WORK-07", "share revoke HTTP", 200, (await revokeResponse).status());
+    const revokedPayload = await this.request(publicContext, `${apiUrl}/s/cost/${shortId}`);
+    this.check("WORK-07", "revoked public API status", 404, revokedPayload.status);
+    this.expected404Pages.add(publicPage);
+    await publicPage.reload({ waitUntil: "domcontentloaded" });
+    await publicPage.getByText("Cost decision not available", { exact: true }).waitFor();
+    const ownerAfterRevoke = await this.decision(context, id);
+    this.check("WORK-07", "owner share state revoked", { is_public: false, share_url: null }, { is_public: ownerAfterRevoke.is_public, share_url: ownerAfterRevoke.share_url });
+    await publicContext.close();
+
+    const screenshot = await this.shot("WORK-07", page, "exports-share-revoked");
     this.observations.exports = {
       paths: { json: jsonPath, csv: csvPath, pdf: pdfPath },
       filenames: { json: jsonFilename, csv: csvFilename, pdf: pdfFilename },
@@ -1075,6 +1134,7 @@ class Matrix {
       pdfContainsDispositionNote: pdfText.includes("Outcome note:") && pdfNote.split("\n").every((line) => pdfText.includes(line)),
       beforeHash,
       afterHash,
+      share: { sharePath, shortId, publicScreenshot, forbiddenPaths, revokedStatus: revokedPayload.status },
       screenshot,
     };
   }
@@ -1206,16 +1266,16 @@ class Matrix {
       "WORK-07": makeGoldenPathEvidence({
         id: "WORK-07",
         status: "PASS",
-        persona: "Sourcing reviewer exporting a signed decision package",
-        preconditions: ["The saved cost decision is approved with exact multiline special-character approval and disposition notes.", "The final recorded outcome is Redesign.", "Browser downloads and local PDF text inspection are available."],
-        actions: ["Download JSON, CSV, and PDF from the decision page.", "Parse each downloaded artifact.", "Compare exported approval, disposition, note, timestamp, and cost values with the persisted API record."],
+        persona: "Sourcing reviewer exporting and sharing a signed decision package",
+        preconditions: ["The saved cost decision is approved with exact multiline special-character approval and disposition notes.", "The final recorded outcome is Redesign.", "Browser downloads, an unauthenticated browser, and local PDF text inspection are available."],
+        actions: ["Download and parse JSON, CSV, and PDF from the decision page.", "Create a public share and open it in an unauthenticated browser.", "Verify the page is read-only and strips private IDs/hashes.", "Revoke the share and prove both public HTML and API become unavailable."],
         observed: {
           url: `${appUrl}/cost-decisions/${decision.id}`,
           visible: ["JSON", "CSV", "Download PDF", "Redesign", specialNote],
-          persisted: { governance: exports.governance, artifactHashBefore: exports.beforeHash, artifactHashAfter: exports.afterHash, artifactPaths: exports.paths },
-          numeric: { csvRows: exports.csvRows, pdfBytes: exports.pdfBytes, exportedFormats: 3, consoleErrorCount: 0, requestFailureCount: 0 },
+          persisted: { governance: exports.governance, artifactHashBefore: exports.beforeHash, artifactHashAfter: exports.afterHash, artifactPaths: exports.paths, share: exports.share },
+          numeric: { csvRows: exports.csvRows, pdfBytes: exports.pdfBytes, exportedFormats: 3, forbiddenPublicFields: exports.share.forbiddenPaths.length, revokedStatus: exports.share.revokedStatus, consoleErrorCount: 0, requestFailureCount: 0 },
           authorization: "All three owner-scoped downloads succeeded for Org A and returned 404 for Org B.",
-          recovery: "Generating all three exports left the immutable decision artifact hash unchanged; PDF text retained the filtered inline Unicode disposition note.",
+          recovery: "Exports left the immutable decision hash unchanged; revocation immediately returned the public HTML and API to an unavailable state while the owner record remained intact.",
         },
         screenshot: exports.screenshot,
         consoleErrors: [],

@@ -14,7 +14,7 @@ import zipfile
 from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
 
-from sqlalchemy import and_, func, select, text
+from sqlalchemy import and_, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
@@ -817,9 +817,12 @@ async def _generate_cost_results_csv(
 
 
 def _csv_escape(value: str) -> str:
-    """Escape a CSV field value if it contains commas, quotes, or newlines."""
+    """Neutralize spreadsheet formulas, then apply RFC-style CSV quoting."""
+    from src.services.cost_decision_service import spreadsheet_safe_cell
+
     if not value:
         return ""
+    value = spreadsheet_safe_cell(value)
     if any(c in value for c in (",", '"', "\n")):
         return '"' + value.replace('"', '""') + '"'
     return value
@@ -998,30 +1001,66 @@ async def sweep_orphaned_batches(
     reaped = 0
     for batch in rows:
         heartbeat = _parse_heartbeat(batch.manifest_json)
+        stale = False
         if heartbeat is not None:
             # Primary path: reap only when the heartbeat has gone stale.
             if heartbeat <= hb_cutoff:
-                mark_batch_failed(batch, "orphaned")
-                reaped += 1
-                logger.warning(
-                    "Reaped orphaned batch %s (status was %s, heartbeat=%s stale)",
-                    batch.ulid, batch.status, heartbeat.isoformat(),
-                )
+                stale = True
+        else:
+            # Fallback: no heartbeat ever written -> the coordinator never ran.
+            anchor = batch.started_at or batch.created_at
+            if anchor is not None:
+                # Normalize naive timestamps (defensive) to UTC-aware.
+                if anchor.tzinfo is None:
+                    anchor = anchor.replace(tzinfo=timezone.utc)
+                stale = anchor <= ttl_cutoff
+        if not stale:
             continue
-        # Fallback: no heartbeat ever written -> the coordinator never ran.
-        anchor = batch.started_at or batch.created_at
-        if anchor is None:
-            continue
-        # Normalize naive timestamps (defensive) to UTC-aware for comparison.
-        if anchor.tzinfo is None:
-            anchor = anchor.replace(tzinfo=timezone.utc)
-        if anchor <= ttl_cutoff:
-            mark_batch_failed(batch, "orphaned")
-            reaped += 1
-            logger.warning(
-                "Reaped orphaned batch %s (status was %s, no heartbeat, anchor=%s)",
-                batch.ulid, batch.status, anchor.isoformat(),
+
+        # Compare-and-swap both active status and the exact manifest observed
+        # above. If a coordinator refreshed heartbeat or cancellation committed
+        # after our read, this update affects zero rows and the newer state wins.
+        old_status = batch.status
+        old_manifest = batch.manifest_json
+        new_manifest = dict(old_manifest or {})
+        new_manifest["failure_reason"] = "orphaned"
+        manifest_predicate = (
+            Batch.manifest_json.is_(None)
+            if old_manifest is None
+            else Batch.manifest_json == old_manifest
+        )
+        claimed = await session.execute(
+            update(Batch)
+            .where(
+                Batch.id == batch.id,
+                Batch.status == old_status,
+                manifest_predicate,
             )
+            .values(
+                status="failed",
+                completed_at=now,
+                manifest_json=new_manifest,
+            )
+            .returning(Batch.id)
+        )
+        if claimed.scalar_one_or_none() is None:
+            logger.info(
+                "Skipped orphan reap for batch %s because newer state won",
+                batch.ulid,
+            )
+            continue
+        # Keep the loaded object coherent for callers/tests in this transaction.
+        batch.status = "failed"
+        batch.completed_at = now
+        batch.manifest_json = new_manifest
+        await mark_pending_items_terminal(session, batch.id, "skipped")
+        reaped += 1
+        logger.warning(
+            "Reaped orphaned batch %s (status was %s, heartbeat=%s)",
+            batch.ulid,
+            old_status,
+            heartbeat.isoformat() if heartbeat is not None else "absent",
+        )
     return reaped
 
 

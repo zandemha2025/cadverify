@@ -757,15 +757,15 @@ class EnterpriseDomainQA {
     await this.step("CAD engineer verifies a real STEP file in a declared service world", async () => {
       await this.goto("/verify", "cad-verify", 1000);
       await this.clickRail("Verify");
-      await this.page.getByRole("button", { name: /^Stainless$/i }).click();
+      await this.page.getByRole("button", { name: /^Polymer$/i }).click();
       await this.page.getByRole("button", { name: /120.*service/i }).click();
       await this.page.getByRole("button", { name: /sour service/i }).click();
       await this.page.getByRole("button", { name: /35 MPa pressure/i }).click();
-      const costPromise = this.page.waitForResponse((response) =>
+      const excludedCostPromise = this.page.waitForResponse((response) =>
         response.request().method() === "POST" &&
         new URL(response.url()).pathname === "/api/proxy/validate/cost"
       , { timeout: cadUploadTimeoutMs });
-      const validationPromise = this.page.waitForResponse((response) =>
+      const excludedValidationPromise = this.page.waitForResponse((response) =>
         response.request().method() === "POST" &&
         new URL(response.url()).pathname === "/api/proxy/validate"
       , { timeout: cadUploadTimeoutMs });
@@ -773,6 +773,14 @@ class EnterpriseDomainQA {
       await input.setInputFiles(cubePath);
       await this.page.waitForTimeout(3000);
       await this.shot("cad-upload-after-3s");
+      const [excludedCostResponse, excludedValidationResponse] = await Promise.all([
+        excludedCostPromise,
+        excludedValidationPromise,
+      ]);
+      const [excludedCost, excludedValidation] = await Promise.all([
+        excludedCostResponse.json(),
+        excludedValidationResponse.json(),
+      ]);
       await this.page
         .waitForFunction(() => {
           const text = document.body.innerText;
@@ -785,19 +793,48 @@ class EnterpriseDomainQA {
           const text = await this.visibleText();
           throw new Error(`STEP upload did not reach a terminal result: ${text.slice(0, 700).replace(/\s+/g, " ")}`);
         });
-      const text = await this.scanVisibleText("cad-step-upload-result");
-      if (/Cost request failed|Validation failed|Network error|Geometry invalid|repair required/i.test(text)) {
-        throw new Error(firstMatch(text, /Cost request failed|Validation failed|Network error|Geometry invalid|repair required/i) || "CAD upload failed");
+      const excludedText = await this.scanVisibleText("cad-step-environment-excluded");
+      if (/Cost request failed|Validation failed|Network error|Geometry invalid|repair required/i.test(excludedText)) {
+        throw new Error(firstMatch(excludedText, /Cost request failed|Validation failed|Network error|Geometry invalid|repair required/i) || "CAD upload failed");
       }
-      assert(/world declared.*captured on this part's record|USER.*on the record/i.test(text), "declared service world was not captured on the record");
-      assert(/What it really takes|computed from POST \/validate\/cost/i.test(text), "should-cost evidence missing from Verify result");
-      assert(/material class\s*stainless|declared class\s*stainless/i.test(text), "stainless material class was not reflected in the result");
-      this.evidence.meshHash = await meshHashFor(cubePath);
+      assert(excludedCostResponse.status() === 200, `polymer severe-service cost HTTP ${excludedCostResponse.status()}`);
+      assert(excludedValidationResponse.status() === 200, `polymer severe-service validation HTTP ${excludedValidationResponse.status()}`);
+      assert(excludedCost.material_class === "polymer", `polymer rejection returned material class ${excludedCost.material_class}`);
+      assert(excludedCost.verification?.verdict === "makeable_not_on_owned", `severe-service polymer verdict was ${excludedCost.verification?.verdict}`);
+      const excludedReasons = (excludedCost.verification?.env_exclusions || []).map((item) => item?.human).filter(Boolean);
+      assert(excludedReasons.length > 0, "severe-service polymer produced no environment exclusion reason");
+      assert(excludedReasons.every((reason) => /NACE|HDT|ASME|ASTM|ISO/i.test(reason)), `polymer exclusion was not standards-cited: ${excludedReasons.join(" | ")}`);
+      assert(excludedReasons.every((reason) => excludedText.includes(reason)), "standards-cited polymer exclusion was not visible to the user");
+      assert(excludedCost.verification?.gap?.some((item) => item?.need === "PEEK"), "surviving severe-service polymer route did not expose the PEEK capability gap");
+      const excludedScreenshot = await this.shot("cad-step-environment-excluded", true);
+
+      const costPromise = this.page.waitForResponse((response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === "/api/proxy/validate/cost"
+      , { timeout: cadUploadTimeoutMs });
+      const validationPromise = this.page.waitForResponse((response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === "/api/proxy/validate"
+      , { timeout: cadUploadTimeoutMs });
+      await this.page.getByRole("button", { name: /^Stainless$/i }).click();
       const [costResponse, validationResponse] = await Promise.all([costPromise, validationPromise]);
       const [cost, validation] = await Promise.all([
         costResponse.json(),
         validationResponse.json(),
       ]);
+      await this.page.waitForFunction(() => {
+        const text = document.body.innerText;
+        return /material class\s*stainless|declared class\s*stainless/i.test(text) && !/measuring geometry/i.test(text);
+      }, null, { timeout: cadUploadTimeoutMs });
+      let text = await this.scanVisibleText("cad-step-upload-result");
+      if (/Cost request failed|Validation failed|Network error|Geometry invalid|repair required/i.test(text)) {
+        throw new Error(firstMatch(text, /Cost request failed|Validation failed|Network error|Geometry invalid|repair required/i) || "CAD upload failed");
+      }
+      assert(/world declared.*captured on this part's record|USER.*on the record/i.test(text), "declared service world was not captured on the record");
+      assert(/What it really takes|computed from POST \/validate\/cost/i.test(text), "should-cost evidence missing from Verify result");
+      assert(/material class\s*stainless|declared class\s*stainless/i.test(text), "stainless material class was not reflected in the recovered result");
+      assert(cost.verification?.verdict === "makeable_in_house", `safe stainless recovery verdict was ${cost.verification?.verdict}`);
+      this.evidence.meshHash = await meshHashFor(cubePath);
       const context = await this.expectApiOk(`/part-context/${this.evidence.meshHash}`);
       const slider = this.page.getByRole("slider").first();
       if (await slider.count()) {
@@ -818,6 +855,15 @@ class EnterpriseDomainQA {
           rows.map((row) => (row.parentElement?.innerText || row.textContent || "").replace(/\s+/g, " ").trim())
         );
       const screenshot = await this.shot("cad-step-upload-result", true);
+      this.evidence.excludedVerification = {
+        url: this.page.url(),
+        screenshot: excludedScreenshot,
+        visible_text: excludedText.replace(/\s+/g, " ").trim(),
+        cost_status: excludedCostResponse.status(),
+        validation_status: excludedValidationResponse.status(),
+        cost: excludedCost,
+        validation: excludedValidation,
+      };
       this.evidence.initialVerification = {
         url: this.page.url(),
         screenshot,
@@ -840,8 +886,12 @@ class EnterpriseDomainQA {
       const beforeDecisions = await this.expectApiOk("/cost-decisions?limit=100");
       const beforeAnalysisRows = beforeAnalyses.analyses.filter((row) => row.filename === "cube.step");
       const beforeDecisionRows = beforeDecisions.cost_decisions.filter((row) => row.filename === "cube.step");
+      const rejectedDecisionId = this.evidence.excludedVerification?.cost?.saved?.id;
+      const recoveredDecisionId = this.evidence.initialVerification?.cost?.saved?.id;
+      const expectedDecisionIds = [rejectedDecisionId, recoveredDecisionId].filter(Boolean).sort();
       assert(beforeAnalysisRows.length === 1, `expected one analysis before repeat, got ${beforeAnalysisRows.length}`);
-      assert(beforeDecisionRows.length === 1, `expected one decision before repeat, got ${beforeDecisionRows.length}`);
+      assert(expectedDecisionIds.length === 2, `material recovery did not persist two parameter-distinct decisions: ${expectedDecisionIds}`);
+      assert(sameArray(beforeDecisionRows.map((row) => row.id).sort(), expectedDecisionIds), `unexpected decisions before repeat: ${beforeDecisionRows.map((row) => row.id)}`);
 
       await this.goto("/verify", "interrupted-verification", 500);
       await this.clickRail("Verify");
@@ -877,10 +927,9 @@ class EnterpriseDomainQA {
       const afterAnalysisRows = afterAnalyses.analyses.filter((row) => row.filename === "cube.step");
       const afterDecisionRows = afterDecisions.cost_decisions.filter((row) => row.filename === "cube.step");
       assert(afterAnalysisRows.length === 1, `interrupted repeat created ${afterAnalysisRows.length} analyses`);
-      assert(afterDecisionRows.length === 1, `interrupted repeat created ${afterDecisionRows.length} decisions`);
+      assert(sameArray(afterDecisionRows.map((row) => row.id).sort(), expectedDecisionIds), `interrupted repeat changed the decision set: ${afterDecisionRows.map((row) => row.id)}`);
       assert(afterAnalysisRows[0].id === beforeAnalysisRows[0].id, "analysis identity changed after interrupted repeat");
-      assert(afterDecisionRows[0].id === beforeDecisionRows[0].id, "decision identity changed after interrupted repeat");
-      assert(repeatedCost.saved?.id === beforeDecisionRows[0].id, "deduped response selected a different decision");
+      assert(repeatedCost.saved?.id === recoveredDecisionId, "deduped response selected a different stainless decision");
 
       await this.goto("/history", "interrupted-verification-history", 700);
       await this.page.getByText("cube.step", { exact: true }).first().click();
@@ -953,10 +1002,21 @@ class EnterpriseDomainQA {
       const before = await this.expectApiOk("/manifest?limit=500");
 
       await this.goto("/integrations", "integrations", 1000);
-      await this.page.getByLabel("Connector").selectOption("sap_manifest_csv");
+      const connectorSelect = this.page.locator("#integration-connector");
+      const modeSelect = this.page.locator("#integration-mode");
+      const csvInput = this.page.locator("#integration-csv");
+      if (await connectorSelect.count()) {
+        assert(await this.page.getByLabel("Connector", { exact: true }).count() === 1, "Connector label is not uniquely associated");
+        assert(await this.page.getByLabel("Mode", { exact: true }).count() === 1, "Mode label is not uniquely associated");
+        assert(await this.page.getByLabel("CSV", { exact: true }).count() === 1, "CSV label is not uniquely associated");
+      }
+      const connectorControl = (await connectorSelect.count()) ? connectorSelect : this.page.getByRole("combobox").nth(0);
+      const modeControl = (await modeSelect.count()) ? modeSelect : this.page.getByRole("combobox").nth(1);
+      const csvControl = (await csvInput.count()) ? csvInput : this.page.locator('input[type="file"][accept*="csv"]');
+      await connectorControl.selectOption("sap_manifest_csv");
       const runOnce = async (mode) => {
-        await this.page.getByLabel("Mode").selectOption(mode);
-        await this.page.getByLabel("CSV").setInputFiles(payload);
+        await modeControl.selectOption(mode);
+        await csvControl.setInputFiles(payload);
         const responsePromise = this.page.waitForResponse((response) =>
           response.request().method() === "POST" &&
           new URL(response.url()).pathname === "/api/proxy/integrations/runs"
@@ -1088,8 +1148,9 @@ class EnterpriseDomainQA {
         mimeType: "text/plain",
         buffer: Buffer.from("not an image"),
       });
-      await this.page.getByRole("alert").filter({ hasText: /not a supported image type/i }).waitFor();
-      const invalidText = (await this.page.getByRole("alert").innerText()).replace(/\s+/g, " ").trim();
+      const invalidAlert = this.page.getByRole("alert").filter({ hasText: /not a supported image type/i });
+      await invalidAlert.waitFor();
+      const invalidText = (await invalidAlert.innerText()).replace(/\s+/g, " ").trim();
 
       await input.setInputFiles({ name: "one-pixel.png", mimeType: "image/png", buffer: tinyPng });
       const responsePromise = this.page.waitForResponse((response) =>
@@ -1387,7 +1448,12 @@ class EnterpriseDomainQA {
       assert(/\/yr exposure/i.test(text), "program exposure missing");
       assert(!/exposure withheld/i.test(text), "program exposure still withheld after declared volume");
       const programsSummaryText = text.replace(/\s+/g, " ").trim();
-      await this.page.getByRole("button", { name: /^Open/i }).first().click();
+      const namedOpen = this.page.getByRole("button", { name: `Open ${programName}`, exact: true });
+      if (await namedOpen.count()) {
+        await namedOpen.click();
+      } else {
+        await this.page.locator('main[data-screen-label="Programs"] button:not(:disabled)', { hasText: /^Open/ }).first().click();
+      }
       await this.page.getByText("cube.step", { exact: true }).waitFor({ timeout: 20_000 });
       const annualVolumeInput = await this.page
         .locator('input[title^="annual volume"]')
@@ -1438,6 +1504,161 @@ class EnterpriseDomainQA {
     });
   }
 
+  async verifySourceBoundCalibrationRecovery() {
+    const sourceBoundRows = Array.from({ length: 8 }, (_, index) => ({
+      partId: `calibration-proof-${String(index + 1).padStart(2, "0")}.step`,
+      quantity: [1, 5, 10, 25, 50, 100, 250, 500][index],
+      actualUnitCostUsd: Number((28.5 + index * 1.75).toFixed(2)),
+    }));
+    const csvPath = path.join(screenshotDir, "source-bound-calibration-actuals.csv");
+    const header = [
+      "part_id",
+      "process",
+      "quantity",
+      "actual_unit_cost_usd",
+      "material_class",
+      "source",
+      "source_type",
+      "evidence_sha256",
+      "evidence_uri",
+      "notes",
+    ].join(",");
+    const csv = [
+      header,
+      ...sourceBoundRows.map((row) => [
+        row.partId,
+        "fdm",
+        row.quantity,
+        row.actualUnitCostUsd.toFixed(2),
+        "polymer",
+        `E2E-ACCEPTANCE-${row.partId}`,
+        "actual",
+        this.evidence.meshHash,
+        `qa://release-acceptance/${row.partId}`,
+        "Isolated acceptance record not a customer accuracy claim",
+      ].join(",")),
+    ].join("\n") + "\n";
+    await writeFile(csvPath, csv);
+
+    await this.step("calibration owner recovers from refusal to a served measured band", async () => {
+      assert(/^[0-9a-f]{64}$/.test(this.evidence.meshHash || ""), "source CAD SHA-256 is unavailable");
+      await this.goto("/verify", "calibration-recovery-shell", 900);
+      await this.clickRail("Calibration & truth");
+
+      const [importResponse] = await Promise.all([
+        this.page.waitForResponse((response) =>
+          response.request().method() === "POST" &&
+          new URL(response.url()).pathname === "/api/proxy/ground-truth/import"
+        , { timeout: 30_000 }),
+        this.page.getByTestId("ground-truth-csv-input").setInputFiles(csvPath),
+      ]);
+      const imported = await importResponse.json();
+      assert(importResponse.status() === 200, `ground-truth import HTTP ${importResponse.status()}`);
+      assert(imported.imported === 8, `expected 8 imported actuals, got ${JSON.stringify(imported)}`);
+      assert(imported.skipped === 0, `source-bound import skipped rows: ${JSON.stringify(imported.errors)}`);
+
+      await this.page.getByText(/real records \(held-out pool\)\s*12/i).waitFor({ timeout: 15_000 });
+      const persisted = await this.expectApiOk("/ground-truth");
+      const sourceBoundPersisted = persisted.records.filter((record) =>
+        sourceBoundRows.some((row) => row.partId === record.part_id)
+      );
+      assert(persisted.total === 12, `expected 12 total actuals after recovery, got ${persisted.total}`);
+      assert(sourceBoundPersisted.length === 8, `only ${sourceBoundPersisted.length}/8 source-bound actuals persisted`);
+      assert(
+        sourceBoundPersisted.every((record) => record.evidence_sha256 === this.evidence.meshHash && record.stand_in === false),
+        "source-bound actuals lost their exact CAD hash or real-data marker",
+      );
+
+      const recalibrationResponsePromise = this.page.waitForResponse((response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === "/api/proxy/ground-truth/recalibrate"
+      , { timeout: cadUploadTimeoutMs });
+      await this.page.getByRole("button", { name: /^Recalibrate$/i }).click();
+      const recalibrationResponse = await recalibrationResponsePromise;
+      const recalibration = await recalibrationResponse.json();
+      assert(recalibrationResponse.status() === 200, `recalibration HTTP ${recalibrationResponse.status()}: ${JSON.stringify(recalibration)}`);
+      assert(recalibration.validated === true, `recalibration did not validate: ${JSON.stringify(recalibration)}`);
+      assert(recalibration.from_real === true, "recalibration was not bound to real held-out residuals");
+      assert(recalibration.n_real >= 3, `only ${recalibration.n_real} costable real held-out residuals were measured`);
+      const skippedIds = (recalibration.skipped || []).map((item) => item.part_id).sort();
+      const legacyIds = (this.evidence.groundTruth?.records || []).map((record) => record.part_id).sort();
+      assert(recalibration.n_skipped === 4, `expected four explicitly unavailable legacy sources, got ${recalibration.n_skipped}`);
+      assert(sameArray(skippedIds, legacyIds), `unexpected calibration skips: ${JSON.stringify(skippedIds)}`);
+      assert(
+        skippedIds.every((partId) => !partId.startsWith("calibration-proof-")),
+        "a source-bound acceptance record was skipped by the cost engine",
+      );
+      await this.page.getByText(/validated \(measured\)/i).waitFor({ timeout: 20_000 });
+      await this.page.getByText(/4 records could not be costed/i).waitFor({ timeout: 20_000 });
+      const calibrationText = await this.scanVisibleText("source-bound-calibration-success");
+      const calibrationScreenshot = await this.shot("source-bound-calibration-success", true);
+
+      // Prove the success ripples into the actual product surface.  A green
+      // recalibration toast is not enough: upload the source again and require
+      // every served estimate to carry a measured empirical confidence band.
+      await this.clickRail("Verify");
+      const servedCostPromise = this.page.waitForResponse((response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === "/api/proxy/validate/cost"
+      , { timeout: cadUploadTimeoutMs });
+      await this.page.locator('input[type="file"][accept*=".stl"]').first().setInputFiles(cubePath);
+      const servedCostResponse = await servedCostPromise;
+      const servedCost = await servedCostResponse.json();
+      assert(servedCostResponse.status() === 200, `post-calibration should-cost HTTP ${servedCostResponse.status()}`);
+      const servedEstimates = Array.isArray(servedCost.estimates) ? servedCost.estimates : [];
+      assert(servedEstimates.length > 0, "post-calibration should-cost returned no estimates");
+      assert(
+        servedEstimates.every((estimate) => estimate.confidence?.validated === true),
+        "one or more post-calibration estimates still served an assumption band",
+      );
+      await this.page.waitForFunction(() => {
+        const text = document.body.innerText;
+        return (
+          /What it really takes|computed from POST \/validate\/cost/i.test(text) &&
+          !/THE VERDICT\s*·\s*COMPUTING|measuring geometry/i.test(text)
+        );
+      }, null, { timeout: cadUploadTimeoutMs });
+      await this.page.getByRole("dialog", { name: "Verification pipeline" }).waitFor({
+        state: "hidden",
+        timeout: 20_000,
+      });
+      const validatedVerdict = this.page.getByText(
+        /this verdict is validated — checked against your actuals/i,
+      );
+      await validatedVerdict.waitFor({
+        timeout: 20_000,
+      });
+      await validatedVerdict.scrollIntoViewIfNeeded();
+      await this.page.waitForTimeout(250);
+      const servedText = await this.scanVisibleText("served-measured-band");
+      assert(
+        /this verdict is validated — checked against your actuals/i.test(servedText),
+        "measured confidence provenance was not visible on the completed verdict",
+      );
+      const servedScreenshot = await this.shot("served-measured-band", true);
+
+      this.evidence.calibrationRecovery = {
+        csv_path: csvPath,
+        source_sha256: this.evidence.meshHash,
+        imported,
+        persisted_total: persisted.total,
+        source_bound_count: sourceBoundPersisted.length,
+        source_bound_part_ids: sourceBoundPersisted.map((record) => record.part_id).sort(),
+        recalibration,
+        skipped_part_ids: skippedIds,
+        calibration_visible_text: calibrationText.replace(/\s+/g, " ").trim(),
+        calibration_screenshot: calibrationScreenshot,
+        served_status: servedCostResponse.status(),
+        served_estimate_count: servedEstimates.length,
+        served_validated_count: servedEstimates.filter((estimate) => estimate.confidence?.validated === true).length,
+        served_visible_text: servedText.replace(/\s+/g, " ").trim(),
+        served_screenshot: servedScreenshot,
+        url: this.page.url(),
+      };
+      return { screenshot: servedScreenshot, extra: calibrationScreenshot };
+    });
+  }
+
   structuredPath({ id, persona, preconditions, actions, observed, screenshot, assertions }) {
     const unexpectedHttpErrors = this.unexpectedHttpErrorResponses();
     const exactAssertions = [
@@ -1482,8 +1703,10 @@ class EnterpriseDomainQA {
     );
 
     const initial = this.evidence.initialVerification || {};
+    const rejected = this.evidence.excludedVerification || {};
     const exact = this.evidence.exactVerification || {};
     const initialText = initial.visible_text || "";
+    const rejectedText = rejected.visible_text || "";
     const exactText = exact.visible_text || "";
     const initialRecommendation = initial.cost?.decision?.recommendation?.["10000"] || null;
     const exactRecommendation = exact.cost?.decision?.recommendation?.["10000"] || null;
@@ -1502,10 +1725,12 @@ class EnterpriseDomainQA {
     const history = this.evidence.historyDetail || {};
     const reconstruction = this.evidence.reconstruction || {};
     const groundTruth = this.evidence.groundTruth || {};
+    const calibrationRecovery = this.evidence.calibrationRecovery || {};
     const verification = initial.cost?.verification || {};
-    const exclusions = Array.isArray(verification.env_exclusions) ? verification.env_exclusions : [];
-    const excludedEstimates = Array.isArray(initial.cost?.estimates)
-      ? initial.cost.estimates.filter((estimate) => estimate.environment_excluded === true)
+    const rejectedVerification = rejected.cost?.verification || {};
+    const exclusions = Array.isArray(rejectedVerification.env_exclusions) ? rejectedVerification.env_exclusions : [];
+    const excludedEstimates = Array.isArray(rejected.cost?.estimates)
+      ? rejected.cost.estimates.filter((estimate) => estimate.environment_excluded === true)
       : [];
     const exclusionReasons = exclusions
       .map((item) => item?.human)
@@ -1523,6 +1748,10 @@ class EnterpriseDomainQA {
       "impeller-trial-D.step",
     ].sort();
     const actualPartIds = (groundTruth.records || []).map((record) => record.part_id).sort();
+    const expectedSourceBoundPartIds = Array.from(
+      { length: 8 },
+      (_, index) => `calibration-proof-${String(index + 1).padStart(2, "0")}.step`,
+    );
     const integrationHashes = [
       integration.dry_run?.file_sha256,
       integration.imported?.file_sha256,
@@ -1622,7 +1851,7 @@ class EnterpriseDomainQA {
         id: "VER-08",
         persona: "CAD engineer navigating away while deterministic verification is still in flight",
         preconditions: [
-          "Exactly one cube.step analysis and one matching cost decision already exist for the selected inputs.",
+          "Exactly one cube.step analysis and two intentional, parameter-distinct material decisions already exist.",
           "The repeated upload uses the same bytes, material, service world, and quantity parameters.",
         ],
         actions: [
@@ -1653,7 +1882,7 @@ class EnterpriseDomainQA {
             responseObservedAtMs: interrupted.response_observed_at_ms ?? "missing",
           },
           authorization,
-          recovery: "History reopened the original analysis URL and its linked cost decision; the interrupted repeat did not create a second durable record.",
+          recovery: "History reopened the original analysis URL and its linked decisions; the interrupted stainless repeat reused its durable decision instead of creating a third record.",
         },
         screenshot: interrupted.screenshot,
         assertions: [
@@ -1663,10 +1892,10 @@ class EnterpriseDomainQA {
           assertion("analysis count before repeat", 1, interrupted.before_analysis_ids?.length ?? 0, interrupted.before_analysis_ids?.length === 1),
           assertion("analysis count after repeat", 1, interrupted.after_analysis_ids?.length ?? 0, interrupted.after_analysis_ids?.length === 1),
           assertion("analysis identity survives navigation", interrupted.before_analysis_ids?.[0] || "existing analysis id", interrupted.after_analysis_ids?.[0] || "missing", interrupted.before_analysis_ids?.[0] === interrupted.after_analysis_ids?.[0]),
-          assertion("decision count before repeat", 1, interrupted.before_decision_ids?.length ?? 0, interrupted.before_decision_ids?.length === 1),
-          assertion("decision count after repeat", 1, interrupted.after_decision_ids?.length ?? 0, interrupted.after_decision_ids?.length === 1),
-          assertion("decision identity survives navigation", interrupted.before_decision_ids?.[0] || "existing decision id", interrupted.after_decision_ids?.[0] || "missing", interrupted.before_decision_ids?.[0] === interrupted.after_decision_ids?.[0]),
-          assertion("deduped response selects durable decision", interrupted.before_decision_ids?.[0] || "existing decision id", interrupted.selected_decision_id || "missing", interrupted.before_decision_ids?.[0] === interrupted.selected_decision_id),
+          assertion("decision count before repeat", 2, interrupted.before_decision_ids?.length ?? 0, interrupted.before_decision_ids?.length === 2),
+          assertion("decision count after repeat", 2, interrupted.after_decision_ids?.length ?? 0, interrupted.after_decision_ids?.length === 2),
+          assertion("decision set survives navigation", interrupted.before_decision_ids || [], interrupted.after_decision_ids || [], sameArray([...(interrupted.before_decision_ids || [])].sort(), [...(interrupted.after_decision_ids || [])].sort())),
+          assertion("deduped response selects durable stainless decision", initial.cost?.saved?.id || "existing stainless decision id", interrupted.selected_decision_id || "missing", initial.cost?.saved?.id === interrupted.selected_decision_id),
           assertion("recovery analysis URL", `${baseUrl}/analyses/${interrupted.before_analysis_ids?.[0] || "missing"}`, interrupted.url || "missing", interrupted.url === `${baseUrl}/analyses/${interrupted.before_analysis_ids?.[0]}`),
           assertion("linked decision state visible", "Linked cost decisions", visibleSignal(interrupted.visible_text, /Linked cost decisions/i, "missing"), /Linked cost decisions/i.test(interrupted.visible_text || "")),
         ],
@@ -1850,38 +2079,54 @@ class EnterpriseDomainQA {
 
       "ENT-02": this.structuredPath({
         id: "ENT-02",
-        persona: "Manufacturing calibration owner proving the minimum real-data boundary",
+        persona: "Manufacturing calibration owner recovering from an honest data-floor refusal to a served measured band",
         preconditions: [
           "The organization has a published governed rate card that remains DEFAULT and unvalidated.",
           "Exactly four non-stand-in historical actuals are available, below the required floor of eight.",
+          "A successful cube.step verification has durably bound the exact source SHA-256 to a costable tenant-scoped derivative.",
         ],
         actions: [
           "Create the four actual-cost records and reopen Calibration & truth.",
           "Confirm the visible real-record count and validation floor.",
           "Choose Recalibrate and inspect the exact refusal plus persisted API counts.",
+          "Import eight distinct actuals bound to the exact source SHA through the visible CSV control, then choose Recalibrate again.",
+          "Upload cube.step again and require the served should-cost confidence on every estimate—not just the toast—to be measured and validated.",
         ],
         observed: {
-          url: groundTruth.url || "not observed",
+          url: calibrationRecovery.url || groundTruth.url || "not observed",
           visible: [
             visibleSignal(groundTruth.visible_text, /real records \(held-out pool\)\s*4/i, "missing real-record count"),
             visibleSignal(groundTruth.visible_text, /floor to validate\s*8 real/i, "missing validation floor"),
             visibleSignal(groundTruth.visible_text, /recalibration refused:\s*4 real of 8 needed/i, "missing refusal"),
+            visibleSignal(calibrationRecovery.calibration_visible_text, /validated \(measured\)/i, "missing measured calibration status"),
+            visibleSignal(calibrationRecovery.calibration_visible_text, /4 records could not be costed/i, "missing bounded legacy-source warning"),
+            visibleSignal(calibrationRecovery.served_visible_text, /this verdict is validated — checked against your actuals/i, "missing served measured provenance"),
           ],
           persisted: {
-            records: groundTruth.records || [],
-            partIds: actualPartIds,
+            refusalRecords: groundTruth.records || [],
+            refusalPartIds: actualPartIds,
+            sourceBoundPartIds: calibrationRecovery.source_bound_part_ids || [],
+            sourceSha256: calibrationRecovery.source_sha256 || "missing",
+            skippedPartIds: calibrationRecovery.skipped_part_ids || [],
+            recalibration: calibrationRecovery.recalibration || "missing",
             governedRateCard: this.evidence.rateCard || "missing",
           },
           numeric: {
-            total: groundTruth.total ?? "missing",
-            real: groundTruth.n_real ?? "missing",
+            refusalTotal: groundTruth.total ?? "missing",
+            refusalReal: groundTruth.n_real ?? "missing",
             minimum: groundTruth.min_real ?? "missing",
-            recalibrationStatus: groundTruth.recalibration_status ?? "missing",
+            refusalStatus: groundTruth.recalibration_status ?? "missing",
+            importedSourceBound: calibrationRecovery.imported?.imported ?? "missing",
+            persistedTotal: calibrationRecovery.persisted_total ?? "missing",
+            heldoutReal: calibrationRecovery.recalibration?.n_real ?? "missing",
+            skippedLegacy: calibrationRecovery.recalibration?.n_skipped ?? "missing",
+            servedEstimateCount: calibrationRecovery.served_estimate_count ?? "missing",
+            servedValidatedCount: calibrationRecovery.served_validated_count ?? "missing",
           },
           authorization,
-          recovery: "Recalibration remained refused and unvalidated; the four real rows were retained so four more measured records can be added without data loss.",
+          recovery: "The first attempt stayed refused. Eight source-bound actuals then imported with zero row skips, three or more costable held-out residuals earned validation, four legacy rows remained explicitly excluded, and a fresh should-cost served measured bands on every estimate.",
         },
-        screenshot: groundTruth.screenshot,
+        screenshot: calibrationRecovery.served_screenshot || groundTruth.screenshot,
         assertions: [
           authAssertion(),
           assertion("persisted actual count", 4, groundTruth.total ?? "missing", groundTruth.total === 4),
@@ -1892,33 +2137,47 @@ class EnterpriseDomainQA {
           assertion("all actuals are real", false, (groundTruth.records || []).map((record) => record.stand_in), groundTruth.records?.length === 4 && groundTruth.records.every((record) => record.stand_in === false)),
           assertion("governed card remains unvalidated", false, this.evidence.rateCard?.validated ?? "missing", this.evidence.rateCard?.validated === false),
           assertion("visible refusal", "recalibration refused: 4 real of 8 needed", visibleSignal(groundTruth.visible_text, /recalibration refused:\s*4 real of 8 needed/i, "missing"), /recalibration refused:\s*4 real of 8 needed/i.test(groundTruth.visible_text || "")),
+          assertion("source-bound import rows", { imported: 8, skipped: 0 }, { imported: calibrationRecovery.imported?.imported, skipped: calibrationRecovery.imported?.skipped }, calibrationRecovery.imported?.imported === 8 && calibrationRecovery.imported?.skipped === 0),
+          assertion("source-bound part ids", expectedSourceBoundPartIds, calibrationRecovery.source_bound_part_ids || [], sameArray(calibrationRecovery.source_bound_part_ids || [], expectedSourceBoundPartIds)),
+          assertion("source artifact SHA-256", this.evidence.meshHash || "verified mesh hash", calibrationRecovery.source_sha256 || "missing", Boolean(this.evidence.meshHash) && calibrationRecovery.source_sha256 === this.evidence.meshHash),
+          assertion("persisted actual count after recovery", 12, calibrationRecovery.persisted_total ?? "missing", calibrationRecovery.persisted_total === 12),
+          assertion("recalibration uses real residuals", true, calibrationRecovery.recalibration?.from_real ?? "missing", calibrationRecovery.recalibration?.from_real === true),
+          assertion("recalibration validated", true, calibrationRecovery.recalibration?.validated ?? "missing", calibrationRecovery.recalibration?.validated === true),
+          assertion("minimum costable held-out residuals", ">= 3", calibrationRecovery.recalibration?.n_real ?? "missing", calibrationRecovery.recalibration?.n_real >= 3),
+          assertion("only unavailable legacy sources skipped", expectedActualPartIds, calibrationRecovery.skipped_part_ids || [], sameArray(calibrationRecovery.skipped_part_ids || [], expectedActualPartIds)),
+          assertion("all source-bound rows costed", 0, (calibrationRecovery.skipped_part_ids || []).filter((partId) => partId.startsWith("calibration-proof-")).length, (calibrationRecovery.skipped_part_ids || []).every((partId) => !partId.startsWith("calibration-proof-"))),
+          assertion("served should-cost status", 200, calibrationRecovery.served_status ?? "missing", calibrationRecovery.served_status === 200),
+          assertion("every served estimate is validated", calibrationRecovery.served_estimate_count ?? "estimate count", calibrationRecovery.served_validated_count ?? "missing", calibrationRecovery.served_estimate_count > 0 && calibrationRecovery.served_validated_count === calibrationRecovery.served_estimate_count),
+          assertion("visible measured calibration", "validated (measured)", visibleSignal(calibrationRecovery.calibration_visible_text, /validated \(measured\)/i, "missing"), /validated \(measured\)/i.test(calibrationRecovery.calibration_visible_text || "")),
+          assertion("visible served measured provenance", "this verdict is validated — checked against your actuals", visibleSignal(calibrationRecovery.served_visible_text, /this verdict is validated — checked against your actuals/i, "missing"), /this verdict is validated — checked against your actuals/i.test(calibrationRecovery.served_visible_text || "")),
         ],
       }),
 
       "ENT-03": this.structuredPath({
         id: "ENT-03",
-        persona: "Energy-sector CAD engineer declaring a severe stainless service world",
+        persona: "Energy-sector CAD engineer excluding unsafe material options and recovering to an owned severe-service route",
         preconditions: [
           "The organization has USER-declared machine envelopes and rates.",
           "The cube.step verification begins with no inferred service context.",
         ],
         actions: [
-          "Select Stainless, 120 °C service, sour service, and 35 MPa pressure.",
-          "Upload cube.step and wait for both DFM and cost responses.",
-          "Read the persisted part context, verification lattice, excluded estimates, and visible standards-cited reasons.",
+          "Select Polymer, 120 °C service, sour service, and 35 MPa pressure.",
+          "Upload cube.step; require standards-cited rejection of unsafe polymer options while the surviving PEEK route remains explicit as not available on owned equipment.",
+          "Select Stainless without re-uploading; require a fresh DFM/cost run and a makeable-in-house recovery on declared equipment.",
         ],
         observed: {
           url: initial.url || "not observed",
           visible: [
-            visibleSignal(initialText, /120\s*°C service/i, "missing 120 °C service"),
-            visibleSignal(initialText, /sour service(?: \(H₂S\))?/i, "missing sour service"),
-            visibleSignal(initialText, /35 MPa pressure/i, "missing 35 MPa pressure"),
+            visibleSignal(rejectedText, /120\s*°C service/i, "missing 120 °C service"),
+            visibleSignal(rejectedText, /sour service(?: \(H₂S\))?/i, "missing sour service"),
+            visibleSignal(rejectedText, /35 MPa pressure/i, "missing 35 MPa pressure"),
             exclusionReasons[0] || excludedEstimateReasons[0] || "missing standards-cited exclusion",
           ],
           persisted: {
             meshHash: this.evidence.meshHash || "missing",
             context: initial.context || "missing",
-            verification,
+            rejectedVerification,
+            recoveredVerification: verification,
           },
           numeric: {
             maxTemperatureC: initial.context?.service_environment?.max_temp_c ?? "missing",
@@ -1930,7 +2189,7 @@ class EnterpriseDomainQA {
           authorization,
           recovery: "The severe service world remained on the durable part context and reappeared on re-verification; excluded options stayed explicit instead of silently entering the recommendation.",
         },
-        screenshot: initial.screenshot,
+        screenshot: rejected.screenshot || initial.screenshot,
         assertions: [
           authAssertion(),
           assertion("service context temperature", 120, initial.context?.service_environment?.max_temp_c ?? "missing", initial.context?.service_environment?.max_temp_c === 120),
@@ -1938,15 +2197,19 @@ class EnterpriseDomainQA {
           assertion("service context pressure", 350, initial.context?.service_environment?.pressure_bar ?? "missing", initial.context?.service_environment?.pressure_bar === 350),
           assertion("service context provenance", "user", initial.context?.provenance || "missing", initial.context?.provenance === "user"),
           assertion("selected cost material class", "stainless", initial.cost?.material_class || "missing", initial.cost?.material_class === "stainless"),
-          assertion("environment declared to verification", true, verification.environment_declared ?? "missing", verification.environment_declared === true),
-          assertion("machine inventory declared to verification", true, verification.inventory_declared ?? "missing", verification.inventory_declared === true),
+          assertion("rejected cost material class", "polymer", rejected.cost?.material_class || "missing", rejected.cost?.material_class === "polymer"),
+          assertion("surviving polymer route verdict", "makeable_not_on_owned", rejectedVerification.verdict || "missing", rejectedVerification.verdict === "makeable_not_on_owned"),
+          assertion("surviving polymer capability gap", "PEEK", rejectedVerification.gap?.map((item) => item?.need) || [], rejectedVerification.gap?.some((item) => item?.need === "PEEK") === true),
+          assertion("safe material recovery verdict", "makeable_in_house", verification.verdict || "missing", verification.verdict === "makeable_in_house"),
+          assertion("environment declared to verification", true, rejectedVerification.environment_declared ?? "missing", rejectedVerification.environment_declared === true),
+          assertion("machine inventory declared to verification", true, rejectedVerification.inventory_declared ?? "missing", rejectedVerification.inventory_declared === true),
           assertion("standards-cited environment exclusions", "one or more exclusions, every reason cites NACE/HDT/ASME/ASTM/ISO", exclusionReasons, exclusions.length > 0 && exclusions.every((item) => /NACE|HDT|ASME|ASTM|ISO/i.test(item?.human || ""))),
           assertion("excluded routes or materials in cost estimates", "one or more environment_excluded estimates", excludedEstimates.length, excludedEstimates.length > 0),
           assertion("excluded estimate reasons are cited", "every excluded estimate has a standards citation", excludedEstimateReasons, excludedEstimates.length > 0 && excludedEstimates.every((item) => /NACE|HDT|ASME|ASTM|ISO/i.test(item?.environment_exclusion_reason || ""))),
-          assertion("exclusion reasons visible", exclusionReasons, exclusionReasons.filter((reason) => initialText.includes(reason)), exclusionReasons.length > 0 && exclusionReasons.every((reason) => initialText.includes(reason))),
-          assertion("temperature visible", "120 °C service", visibleSignal(initialText, /120\s*°C service/i, "missing"), /120\s*°C service/i.test(initialText)),
-          assertion("sour service visible", "sour service", visibleSignal(initialText, /sour service/i, "missing"), /sour service/i.test(initialText)),
-          assertion("pressure visible", "35 MPa pressure", visibleSignal(initialText, /35 MPa pressure/i, "missing"), /35 MPa pressure/i.test(initialText)),
+          assertion("exclusion reasons visible", exclusionReasons, exclusionReasons.filter((reason) => rejectedText.includes(reason)), exclusionReasons.length > 0 && exclusionReasons.every((reason) => rejectedText.includes(reason))),
+          assertion("temperature visible", "120 °C service", visibleSignal(rejectedText, /120\s*°C service/i, "missing"), /120\s*°C service/i.test(rejectedText)),
+          assertion("sour service visible", "sour service", visibleSignal(rejectedText, /sour service/i, "missing"), /sour service/i.test(rejectedText)),
+          assertion("pressure visible", "35 MPa pressure", visibleSignal(rejectedText, /35 MPa pressure/i, "missing"), /35 MPa pressure/i.test(rejectedText)),
         ],
       }),
 
@@ -2106,6 +2369,19 @@ class EnterpriseDomainQA {
         minimumReal: this.evidence.groundTruth?.min_real,
         recalibrationRefused:
           this.evidence.groundTruth?.n_real === 4 && this.evidence.groundTruth?.min_real === 8,
+        sourceBoundImported: this.evidence.calibrationRecovery?.imported?.imported,
+        sourceBoundImportSkipped: this.evidence.calibrationRecovery?.imported?.skipped,
+        sourceSha256: this.evidence.calibrationRecovery?.source_sha256,
+        calibrationValidated: this.evidence.calibrationRecovery?.recalibration?.validated,
+        calibrationFromReal: this.evidence.calibrationRecovery?.recalibration?.from_real,
+        heldoutReal: this.evidence.calibrationRecovery?.recalibration?.n_real,
+        sourceBoundSkipped: (this.evidence.calibrationRecovery?.skipped_part_ids || [])
+          .filter((partId) => partId.startsWith("calibration-proof-")).length,
+        servedEstimateCount: this.evidence.calibrationRecovery?.served_estimate_count,
+        servedValidatedAll:
+          this.evidence.calibrationRecovery?.served_estimate_count > 0 &&
+          this.evidence.calibrationRecovery?.served_validated_count ===
+            this.evidence.calibrationRecovery?.served_estimate_count,
       },
       "ENT-04": {
         quantity: this.evidence.portfolio?.annualized_unit_cost_qty,
@@ -2151,6 +2427,8 @@ class EnterpriseDomainQA {
     };
     const data = {
       status,
+      suite: "enterprise-domain-runner",
+      runId,
       health,
       baseUrl,
       generatedAt: new Date().toISOString(),
@@ -2185,7 +2463,6 @@ class EnterpriseDomainQA {
           ),
           report: artifacts.md,
           screenshots: screenshotDir,
-          evidence: this.evidence,
         },
         null,
         2
@@ -2224,13 +2501,14 @@ class EnterpriseDomainQA {
 
 Persona: CAD/cost engineer in an ExxonMobil-like manufacturing organization.
 
-The test signs up or logs in as a real org admin, proves unauthenticated org data is rejected, publishes a governed rate card, declares owned machines, ingests historical actuals, proves calibration refuses under the real-data floor, creates a developer API key through the UI, uploads a real STEP file, declares a sour/high-pressure/high-temperature service world, and verifies portfolio exposure remains withheld until the declared annual volume has an exact re-verified engine point.
+The test signs up or logs in as a real org admin, proves unauthenticated org data is rejected, publishes a governed rate card, declares owned machines, ingests historical actuals, proves calibration refuses under the real-data floor, then recovers through the visible CSV workflow to a source-bound measured band that is re-served on a fresh STEP upload. It also creates a developer API key through the UI, declares a sour/high-pressure/high-temperature service world, and verifies portfolio exposure remains withheld until the declared annual volume has an exact re-verified engine point.
 
 ## Correctness Assertions
 
 - Governed rate cards are in effect only after publish and remain DEFAULT / not validated.
 - Machine envelopes, rates, and materials round-trip with provenance=user.
-- Ground-truth recalibration refuses with 4 real records because the floor is 8.
+- Ground-truth recalibration refuses with 4 real records because the floor is 8, then eight source-bound actuals import without row loss and produce at least three costable held-out residuals.
+- A successful recalibration is not accepted on its toast alone: every estimate from the next real STEP upload must serve a validated empirical confidence band.
 - API key creation reveals the one-time secret on /settings/developer.
 - The Verify UI persists the declared service world to part-context before costing.
 - Portfolio annualized exposure is null before annual_volume and after declaration until re-verification; it then equals the engine recommendation at that exact quantity × declared volume.
@@ -2280,6 +2558,7 @@ try {
   await runner.verifyHistoryAnalysisDetail();
   await runner.verifyProgramUiAndHistory();
   await runner.verifyReconstructionRecovery();
+  await runner.verifySourceBoundCalibrationRecovery();
 } finally {
   await runner.finish().catch((error) => {
     console.error(error);

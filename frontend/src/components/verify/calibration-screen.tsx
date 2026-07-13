@@ -342,7 +342,7 @@ function HallmarkPanel() {
           <GhostButton
             primary
             disabled={busy}
-            aria-label="Import ground-truth actuals CSV"
+            aria-label="Choose ground-truth actuals CSV"
             aria-controls={GROUND_TRUTH_CSV_INPUT.id}
             onClick={() => csvRef.current?.click()}
           >
@@ -407,6 +407,23 @@ function HallmarkPanel() {
           recalibration refused: {shortfall.n_real} real of {shortfall.min_real} needed —{" "}
           {shortfall.reason}
         </p>
+      )}
+
+      {result && result.n_skipped > 0 && (
+        <div
+          role="status"
+          style={{ marginTop: 10, border: `1px solid ${C.cond}`, borderRadius: 8, padding: "9px 10px" }}
+        >
+          <p style={{ margin: 0, fontFamily: MONO, fontSize: 10.5, color: C.cond }}>
+            {result.n_skipped} record{result.n_skipped === 1 ? "" : "s"} could not be costed; the
+            calibration excluded them.
+          </p>
+          {(result.skipped ?? []).slice(0, 3).map((item) => (
+            <p key={`${item.part_id}-${item.process}-${item.quantity}`} style={{ margin: "5px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink45 }}>
+              {item.part_id} · {item.process} × {item.quantity}: {item.reason}
+            </p>
+          ))}
+        </div>
       )}
 
       <div style={{ marginTop: 14, borderTop: `1px solid #efeff2`, paddingTop: 10 }}>

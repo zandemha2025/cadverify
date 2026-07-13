@@ -4,10 +4,10 @@
  * must provide an explicit credential and are never mutated automatically.
  */
 
-function isLoopbackApi(apiBase) {
+export function isLoopbackOrigin(apiBase) {
   try {
     const hostname = new URL(apiBase).hostname;
-    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]";
   } catch {
     return false;
   }
@@ -26,26 +26,38 @@ async function jsonResponse(response) {
   return { response, json };
 }
 
-function revealCookie(response) {
+function revealCookie(response, name) {
   const values = typeof response.headers.getSetCookie === "function"
     ? response.headers.getSetCookie()
     : [response.headers.get("set-cookie") || ""];
   for (const value of values) {
-    const match = /(?:^|,\s*)cv_mint_once=([^;,]+)/.exec(value);
+    const match = new RegExp(`(?:^|,\\s*)${name}=([^;,]+)`).exec(value);
     if (match) return decodeURIComponent(match[1]);
   }
   return "";
+}
+
+function localAppBase(apiBase) {
+  const configured = (process.env.APP_URL || "").trim();
+  if (configured) return configured.replace(/\/+$/, "");
+  const url = new URL(apiBase);
+  url.port = "3000";
+  url.pathname = "";
+  url.search = "";
+  url.hash = "";
+  return url.origin;
 }
 
 export async function resolveAdminApiKey({ apiBase, configuredToken = "", runId, purpose }) {
   if (configuredToken) {
     return { token: configuredToken, source: "configured credential" };
   }
-  if (!isLoopbackApi(apiBase)) {
+  const appBase = localAppBase(apiBase);
+  if (!isLoopbackOrigin(apiBase) || !isLoopbackOrigin(appBase)) {
     return {
       token: "",
       source: "missing external credential",
-      boundary: "Non-local targets require an explicit ProofShape org-admin API key.",
+      boundary: "Both APP_URL and API_URL must be loopback; non-local targets require an explicit ProofShape org-admin API key.",
     };
   }
 
@@ -54,12 +66,20 @@ export async function resolveAdminApiKey({ apiBase, configuredToken = "", runId,
     .toLowerCase()
     .replace(/[^a-z0-9@._+-]/g, "-");
   const password = `ProofShape-${nonce}-9`;
-  const signup = await jsonResponse(await fetch(`${apiBase}/auth/signup`, {
+  // Production auth rejects direct backend signup because only the trusted
+  // first-party ingress may attest the client IP. Exercise that real boundary
+  // through Next, then use its httpOnly dashboard cookie against the backend.
+  const signup = await jsonResponse(await fetch(`${appBase}/api/auth/signup`, {
     method: "POST",
-    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "x-real-ip": process.env.E2E_CLIENT_IP || "198.51.100.246",
+    },
     body: JSON.stringify({ email, password }),
   }));
-  if (signup.response.status !== 200 || !signup.json?.session) {
+  const session = revealCookie(signup.response, "dash_session");
+  if (signup.response.status !== 200 || !signup.json?.user || !session) {
     throw new Error(`local admin signup HTTP ${signup.response.status}: ${JSON.stringify(signup.json)}`);
   }
 
@@ -68,11 +88,11 @@ export async function resolveAdminApiKey({ apiBase, configuredToken = "", runId,
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      Cookie: `dash_session=${signup.json.session}`,
+      Cookie: `dash_session=${session}`,
     },
     body: JSON.stringify({ name: `E2E ${purpose} ${runId}` }),
   }));
-  const token = revealCookie(created.response);
+  const token = revealCookie(created.response, "cv_mint_once");
   if (created.response.status !== 200 || !created.json?.id || !token) {
     throw new Error(`local API key creation HTTP ${created.response.status}: ${JSON.stringify(created.json)}`);
   }

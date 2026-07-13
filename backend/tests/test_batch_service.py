@@ -567,6 +567,38 @@ async def test_sweep_reaps_batch_with_no_activity_beyond_the_floor():
 
 
 @pytest.mark.asyncio
+async def test_sweep_compare_and_swap_preserves_newer_heartbeat_or_cancel():
+    """A newer writer between the stale read and reap update must always win."""
+    from datetime import datetime, timedelta, timezone
+    from unittest.mock import AsyncMock, MagicMock
+
+    from src.db.models import Batch
+    from src.services.batch_service import sweep_orphaned_batches
+
+    now = datetime(2026, 7, 2, 12, 0, 0, tzinfo=timezone.utc)
+    stale = MagicMock(spec=Batch)
+    stale.id = 44
+    stale.ulid = "CAS_LOSER"
+    stale.status = "processing"
+    stale.started_at = now - timedelta(hours=1)
+    stale.created_at = now - timedelta(hours=1)
+    stale.manifest_json = {
+        "heartbeat_at": (now - timedelta(seconds=700)).isoformat()
+    }
+
+    selected = MagicMock()
+    selected.scalars.return_value.all.return_value = [stale]
+    lost_cas = MagicMock()
+    lost_cas.scalar_one_or_none.return_value = None
+    session = AsyncMock()
+    session.execute.side_effect = [selected, lost_cas]
+
+    assert await sweep_orphaned_batches(session, now=now) == 0
+    assert stale.status == "processing"
+    assert session.execute.await_count == 2
+
+
+@pytest.mark.asyncio
 async def test_mark_pending_items_terminal_updates_non_terminal_only():
     """F-ARCH-1/#3: on enqueue failure, non-terminal items are moved to a
     terminal state so progress reads stay consistent."""

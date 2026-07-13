@@ -203,16 +203,19 @@ def _line_items_csv(items: list[dict[str, Any]]) -> str:
         raw = item.get("raw_cad") or {}
         writer.writerow(
             [
-                decision["id"],
-                decision["filename"],
-                decision["approval_status"],
-                decision["is_stale"],
-                decision["unvalidated_confidence"],
-                decision["make_now_process"],
-                decision["crossover_qty"],
-                ((manifest or {}).get("part") or {}).get("part_id"),
-                context.get("program"),
-                raw.get("included") is True,
+                cost_decision_service.spreadsheet_safe_cell(value)
+                for value in [
+                    decision["id"],
+                    decision["filename"],
+                    decision["approval_status"],
+                    decision["is_stale"],
+                    decision["unvalidated_confidence"],
+                    decision["make_now_process"],
+                    decision["crossover_qty"],
+                    ((manifest or {}).get("part") or {}).get("part_id"),
+                    context.get("program"),
+                    raw.get("included") is True,
+                ]
             ]
         )
     return buf.getvalue()
@@ -366,6 +369,14 @@ async def _decision_item(
             "approval_status": status["approval_status"],
             "approved_at": status["approved_at"],
             "approved_by_user_id": status["approved_by_user_id"],
+            "approval_note": status["approval_note"],
+            "user_disposition": status["user_disposition"],
+            "user_disposition_label": status["user_disposition_label"],
+            "disposition_note": status["disposition_note"],
+            "disposition_updated_at": status["disposition_updated_at"],
+            "disposition_updated_by_user_id": status[
+                "disposition_updated_by_user_id"
+            ],
             "is_stale": status["is_stale"],
             "stale_at": status["stale_at"],
             "stale_reason": status["stale_reason"],
@@ -581,7 +592,9 @@ async def build_zip(
             )
             zf.writestr(
                 f"decisions/{index:02d}-{stem}/cost-drivers.csv",
-                cost_decision_service.build_estimates_csv(item["cost_decision"]),
+                cost_decision_service.build_estimates_csv(
+                    item["cost_decision"], governance=item["decision"]
+                ),
             )
             if item.get("declared_part"):
                 zf.writestr(

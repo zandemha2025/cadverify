@@ -170,6 +170,10 @@ class MobileRecoveryRun {
         this.expectedFaults.push(`expected HTTP ${expectedStatus} console diagnostic: ${value}`);
         return;
       }
+      if (this.allowExpectedNetworkFailure && /net::ERR_INTERNET_DISCONNECTED/i.test(value)) {
+        this.expectedFaults.push(`expected offline console diagnostic: ${value}`);
+        return;
+      }
       this.consoleErrors.push(value);
       this.pathConsoleErrors.push(value);
     });
@@ -369,7 +373,7 @@ class MobileRecoveryRun {
     await this.page.goto("/login", { waitUntil: "domcontentloaded" });
     await this.page.getByLabel("Email").fill(this.email);
     await this.page.getByLabel("Password").fill(this.password);
-    await this.page.getByRole("button", { name: /^Sign in$/ }).click();
+    await this.page.getByRole("button", { name: /^Log in$/ }).click();
     await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
   }
 
@@ -888,7 +892,11 @@ class MobileRecoveryRun {
       const decisionsBefore = await this.costDecisionList();
       let injectedResponses = 0;
       const handler = async (route) => {
-        if (route.request().method() === "POST") {
+        const pathname = new URL(route.request().url()).pathname;
+        const isComputeRequest =
+          pathname === "/api/proxy/validate" ||
+          pathname === "/api/proxy/validate/cost";
+        if (route.request().method() === "POST" && isComputeRequest) {
           injectedResponses += 1;
           await route.fulfill({
             status: 429,
@@ -1070,7 +1078,9 @@ class MobileRecoveryRun {
           await route.continue();
         };
         await this.page.route("**/api/proxy/designs", handler);
-        const alert = this.page.getByRole("alert");
+        const alert = this.page
+          .getByRole("alert")
+          .filter({ has: this.page.getByRole("button", { name: "Dismiss" }) });
         await this.withExpectedHttpStatuses([status], async () => {
           await this.page.getByRole("button", { name: /^Generate design$/ }).click();
           await alert.waitFor({ timeout: 20_000 });
@@ -1188,7 +1198,7 @@ class MobileRecoveryRun {
       const sessionCookie = (await this.context.cookies()).find((cookie) => cookie.name === "dash_session");
       assert(sessionCookie, "authenticated dashboard cookie was not present before logout");
       await this.page.getByRole("button", { name: "Account" }).click();
-      await this.page.getByRole("button", { name: "Sign out" }).click();
+      await this.page.getByRole("menuitem", { name: "Sign out" }).click();
       await this.page.waitForURL((url) => url.pathname === "/login", { timeout: 20_000 });
       await this.context.addCookies([sessionCookie]);
       await this.page.goto("/designs", { waitUntil: "domcontentloaded" });
@@ -1198,16 +1208,15 @@ class MobileRecoveryRun {
       await this.context.clearCookies();
       await this.page.getByLabel("Email").fill(this.email);
       await this.page.getByLabel("Password").fill(this.password);
-      await this.page.getByRole("button", { name: /^Sign in$/ }).click();
-      await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
-      await this.page.goto("/designs", { waitUntil: "domcontentloaded" });
+      await this.page.getByRole("button", { name: /^Log in$/ }).click();
+      await this.page.waitForURL((url) => url.pathname === "/designs", { timeout: 20_000 });
       await this.waitForDesignReady(this.primaryDesignName);
       const screenshot = await this.screenshot("FAIL-09", "reauthenticated-data-restored");
       return {
         persona: "returning operator signing out and attempting a stale-cookie replay",
         preconditions: ["durable design exists", "authenticated dashboard cookie captured before logout", "protected /designs requested after replay"],
         actions: ["tapped Account", "tapped Sign out", "reinserted the captured pre-logout cookie", "opened /designs", "signed in with valid credentials", "returned to Design Studio"],
-        visible: ["Sign in", this.primaryDesignName, "Ready"],
+        visible: ["Log in", this.primaryDesignName, "Ready"],
         persisted: "logout revoked the replayed cookie without removing the organization design or revision",
         numeric: "one persisted primary design after reauthentication",
         authorization: "the pre-logout cookie was denied at the protected route; only fresh credentials restored organization access",
@@ -1304,6 +1313,8 @@ class MobileRecoveryRun {
     const status = !error && validation.problems.length === 0 ? "PASS" : "FAIL";
     const report = {
       status,
+      suite: "mobile-recovery-e2e",
+      runId,
       health: status === "PASS" ? 100 : Math.round((validation.valid / OWNED_PATH_IDS.length) * 100),
       baseUrl,
       generatedAt: new Date().toISOString(),

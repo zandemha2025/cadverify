@@ -69,7 +69,7 @@ export default function BatchProgressBar({ batchId, onProgressUpdate }: Props) {
     return (
       <ErrorState
         title="Could not load progress"
-        message={error}
+        message={`${error} Your saved data is unchanged; only this progress refresh failed.`}
         onRetry={() => {
           setError(null);
           setRetryKey((key) => key + 1);

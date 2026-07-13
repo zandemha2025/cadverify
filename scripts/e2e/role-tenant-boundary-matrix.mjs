@@ -783,6 +783,34 @@ asyncio.run(main())
       });
     }
 
+    await this.row({
+      pathId: "ROLE-02",
+      persona: "analyst/member",
+      channel: "api-direct",
+      surface: "governed rate library",
+      operation: "attempt to publish an administrator-authored draft",
+      target: "/api/v1/rate-library/{draft}/publish",
+      fn: async () => {
+        const draft = await this.request(this.identities.owner, "/api/v1/rate-library", {
+          method: "POST",
+          data: { name: `ROLE-02 governed draft ${tag}`, change_note: "Analyst publication denial fixture" },
+        });
+        this.equal("ROLE-02", "owner creates governed-rate draft", draft.status, 200);
+        this.equal("ROLE-02", "governed-rate fixture remains draft", draft.json?.status, "draft");
+        const publish = await this.request(
+          this.identities.analyst,
+          `/api/v1/rate-library/${draft.json?.id}/publish`,
+          { method: "POST", data: {} },
+        );
+        this.equal("ROLE-02", "analyst governed-rate publication denied", publish.status, 403);
+        this.equal("ROLE-02", "analyst publication denial code", errorCode(publish), "insufficient_org_role");
+        const persisted = await this.request(this.identities.owner, `/api/v1/rate-library/${draft.json?.id}`);
+        this.equal("ROLE-02", "denied publication leaves draft unchanged", persisted.json?.status, "draft");
+        this.ratePublicationDenied = { draftId: draft.json?.id, publishStatus: publish.status, persistedStatus: persisted.json?.status };
+        return this.ratePublicationDenied;
+      },
+    });
+
     for (const name of ["owner", "admin"]) {
       const actor = this.identities[name];
       await this.row({
@@ -1222,6 +1250,79 @@ asyncio.run(main())
 
     await this.row({
       pathId: "ROLE-03",
+      persona: "organization owner",
+      channel: "api-direct+browser-state",
+      surface: "invitation, member role, and SAML group mapping administration",
+      operation: "create/revoke invite, demote/restore member, create/delete group mapping",
+      target: "/api/v1/orgs",
+      fn: async () => {
+        const inviteEmail = `role-lifecycle-${tag}@example.test`;
+        const invite = await this.request(owner, "/api/v1/orgs/invites", {
+          method: "POST",
+          data: { email: inviteEmail, role: "viewer" },
+        });
+        this.equal("ROLE-03", "owner invitation create status", invite.status, 201);
+        this.equal("ROLE-03", "owner invitation exact role", invite.json?.role, "viewer");
+        this.ok("ROLE-03", "owner invitation returns one-time accept link", /\/invite\/accept\?token=/.test(invite.json?.accept_link || ""));
+        const pending = await this.request(owner, "/api/v1/orgs/invites");
+        this.ok("ROLE-03", "pending invitation is durable", (pending.json?.invites || []).some((item) => item.id === invite.json?.id && item.status === "pending"));
+        const revoked = await this.request(owner, `/api/v1/orgs/invites/${invite.json?.id}`, { method: "DELETE" });
+        this.equal("ROLE-03", "owner invitation revoke status", revoked.status, 200);
+        this.equal("ROLE-03", "owner invitation durable revoked state", revoked.json?.status, "revoked");
+
+        const demoted = await this.request(owner, `/api/v1/orgs/members/${analyst.id}/role`, {
+          method: "PATCH",
+          data: { role: "viewer" },
+        });
+        this.equal("ROLE-03", "member role changed to viewer", demoted.json?.org_role, "viewer");
+        const deniedCreate = await this.request(analyst, "/api/v1/designs/interpret", {
+          method: "POST",
+          data: { prompt: "plate 60 mm by 40 mm by 4 mm" },
+        });
+        this.equal("ROLE-03", "viewer loses analyst mutation immediately", deniedCreate.status, 403);
+        const restored = await this.request(owner, `/api/v1/orgs/members/${analyst.id}/role`, {
+          method: "PATCH",
+          data: { role: "member" },
+        });
+        this.equal("ROLE-03", "member role restored", restored.json?.org_role, "member");
+        const restoredCreate = await this.request(analyst, "/api/v1/designs/interpret", {
+          method: "POST",
+          data: { prompt: "plate 60 mm by 40 mm by 4 mm" },
+        });
+        this.equal("ROLE-03", "restored member regains analyst mutation", restoredCreate.status, 200);
+
+        const mapping = await this.request(owner, "/api/v1/orgs/saml/group-mappings", {
+          method: "POST",
+          data: { attribute_name: "groups", group_value: `proofshape-qa-${tag}`, org_role: "member" },
+        });
+        this.equal("ROLE-03", "SAML group mapping create status", mapping.status, 201);
+        this.equal("ROLE-03", "SAML group mapping exact role", mapping.json?.org_role, "member");
+        const mappings = await this.request(owner, "/api/v1/orgs/saml/group-mappings");
+        this.ok("ROLE-03", "SAML group mapping is durable", (mappings.json?.mappings || []).some((item) => item.id === mapping.json?.id));
+        const deleted = await this.request(owner, `/api/v1/orgs/saml/group-mappings/${mapping.json?.id}`, { method: "DELETE" });
+        this.equal("ROLE-03", "SAML group mapping delete status", deleted.status, 200);
+        const afterDelete = await this.request(owner, "/api/v1/orgs/saml/group-mappings");
+        this.equal("ROLE-03", "deleted SAML group mapping is absent", (afterDelete.json?.mappings || []).some((item) => item.id === mapping.json?.id), false);
+
+        await owner.page.goto("/settings/organization", { waitUntil: "domcontentloaded" });
+        await owner.page.getByText(inviteEmail, { exact: true }).waitFor({ timeout: 15_000 });
+        const inviteRow = owner.page.getByRole("row").filter({ hasText: inviteEmail });
+        this.ok("ROLE-03", "browser shows revoked invitation", /revoked/i.test(await inviteRow.innerText()));
+        const screenshot = await this.shot(owner, "role-invite-mapping-lifecycle");
+        this.adminLifecyclePersisted = {
+          inviteId: invite.json?.id,
+          inviteStatus: revoked.json?.status,
+          analystRole: restored.json?.org_role,
+          mappingId: mapping.json?.id,
+          mappingDeleted: true,
+          screenshot,
+        };
+        return this.adminLifecyclePersisted;
+      },
+    });
+
+    await this.row({
+      pathId: "ROLE-03",
       persona: "owner",
       channel: "api-direct",
       surface: "API-key tenant binding",
@@ -1429,20 +1530,20 @@ asyncio.run(main())
       "ROLE-02": {
         url: this.identities.owner?.page.url() || `${appUrl}/settings/developer`,
         visible: ["Five role personas exercised in the live browser and API."],
-        persisted: this.roleCapabilityPersisted || "not-observed",
+        persisted: { roles: this.roleCapabilityPersisted || "not-observed", governedRateDenial: this.ratePublicationDenied || "not-observed" },
         numeric: {
           personas: 5,
           passingAssertions: this.assertions.filter((item) => item.pathId === "ROLE-02" && item.pass).length,
         },
-        authorization: { roleLadder: "viewer < analyst < admin < superadmin", crossTenantAdminVisibility: "scoped" },
+        authorization: { roleLadder: "viewer < analyst < admin < superadmin", crossTenantAdminVisibility: "scoped", analystRatePublication: this.ratePublicationDenied?.publishStatus },
         recovery: "One-time API-key plaintext was absent after browser reload.",
         screenshot: this.screenshots["owner-api-key-one-time-reveal"],
       },
       "ROLE-03": {
         url: this.identities.analyst?.page.url() || `${appUrl}/designs`,
-        visible: ["Removed analyst reopened organization B designs without organization A metadata."],
-        persisted: { bearer: this.bearerPersisted, membership: this.membershipPersisted },
-        numeric: { aKeyStatus: this.membershipPersisted?.aKey, bKeyStatus: this.membershipPersisted?.bKey },
+        visible: ["Revoked invite, restored member role, deleted SAML mapping, and removed analyst state were visible in the real administration and browser surfaces."],
+        persisted: { administration: this.adminLifecyclePersisted, bearer: this.bearerPersisted, membership: this.membershipPersisted },
+        numeric: { inviteStatus: this.adminLifecyclePersisted?.inviteStatus, restoredRole: this.adminLifecyclePersisted?.analystRole, mappingDeleted: this.adminLifecyclePersisted?.mappingDeleted, aKeyStatus: this.membershipPersisted?.aKey, bKeyStatus: this.membershipPersisted?.bKey },
         authorization: { removedOrgA: 404, revokedAKey: 401, retainedOrgB: 200 },
         recovery: this.membershipRecovery || "not-observed",
         screenshot: this.screenshots["removed-analyst-browser-falls-back-to-b"],
@@ -1533,6 +1634,7 @@ asyncio.run(main())
     const failedRows = this.rows.filter((row) => row.status === "FAIL").length;
     const report = {
       schemaVersion: 1,
+      suite: "role-tenant-boundary-matrix",
       runId,
       startedAt: new Date(this.startedAt).toISOString(),
       finishedAt: new Date(finishedAt).toISOString(),

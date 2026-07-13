@@ -15,6 +15,7 @@ def test_frontend_uses_runtime_server_origin_and_same_origin_browser_routes():
     signup_page = read("frontend/src/app/(auth)/signup/page.tsx")
     login_page = read("frontend/src/app/(auth)/login/page.tsx")
     login_form = read("frontend/src/app/(auth)/login/login-form.tsx")
+    safe_return_path = read("frontend/src/lib/safe-return-path.ts")
 
     assert "cadvrfy-api.fly.dev" not in api_base
     assert "NEXT_PUBLIC_API_BASE" not in api_base
@@ -40,7 +41,9 @@ def test_frontend_uses_runtime_server_origin_and_same_origin_browser_routes():
     assert "TURNSTILE_SITE_KEY" in login_page
     assert 'fetch("/api/auth/magic/start"' in login_form
     assert "TurnstileWidget" in login_form
-    assert "parsed.origin !== base.origin" in login_form
+    assert "safeLocalPath(params.get(\"next\")" in login_form
+    assert "parsed.origin !== base.origin" in safe_return_path
+    assert 'raw.startsWith("//")' in safe_return_path
     assert "next.startsWith" not in login_form
 
 

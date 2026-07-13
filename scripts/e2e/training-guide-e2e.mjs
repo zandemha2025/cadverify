@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import { createHash, randomBytes } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,6 +32,18 @@ const pinnedCube = {
   // The cost-report/browser contract serializes geometry to two decimal places.
   volumeCm3: 2.72,
   surfaceAreaCm2: 14.32,
+  quantities: [1, 100, 1000, 2000, 5000, 10000],
+  estimates: 48,
+  makeNowProcess: "fdm",
+  crossoverQty: 923,
+  recommendation: {
+    1: ["fdm", 30.0],
+    100: ["mjf", 3.62],
+    1000: ["mjf", 3.48],
+    2000: ["mjf", 3.48],
+    5000: ["mjf", 3.48],
+    10000: ["mjf", 3.48],
+  },
 };
 const batchCsvHeaders = [
   "filename",
@@ -67,6 +80,15 @@ const costDriverHeaders = [
   "confidence_label",
   "confidence_validated",
   "dfm_ready",
+  "approval_status",
+  "approved_by_user_id",
+  "approved_at",
+  "approval_note",
+  "user_disposition",
+  "user_disposition_label",
+  "disposition_note",
+  "disposition_updated_at",
+  "disposition_updated_by_user_id",
   "line_items",
 ];
 const durableCostFields = [
@@ -222,9 +244,10 @@ function assertCostReport(report) {
     `cube area was ${geometry.surface_area_cm2} cm², expected ${pinnedCube.surfaceAreaCm2} ±0.02`
   );
   assert(geometry.watertight === true, "cube geometry was not watertight");
-  assert(report.decision?.make_now_process, "cost response did not contain a make-now process");
-  assert(Array.isArray(report.quantities) && report.quantities.length > 0, "cost quantity ladder was empty");
-  assert(Array.isArray(report.estimates) && report.estimates.length > 0, "cost estimates were empty");
+  assert(report.decision?.make_now_process === pinnedCube.makeNowProcess, `make-now process was ${report.decision?.make_now_process}`);
+  assertJsonEqual(report.quantities, pinnedCube.quantities, "pinned cube quantity ladder");
+  assert(report.estimates?.length === pinnedCube.estimates, `pinned cube had ${report.estimates?.length} estimates, expected ${pinnedCube.estimates}`);
+  assert(approxEqual(report.decision.crossover_qty, pinnedCube.crossoverQty, 0.001), `crossover was ${report.decision.crossover_qty}`);
 
   let maxLineItemDelta = 0;
   for (const estimate of report.estimates) {
@@ -266,6 +289,9 @@ function assertCostReport(report) {
       approxEqual(sourceEstimate.unit_cost_usd, recommendation.unit_cost_usd, 0.001),
       `quantity ${quantity} recommendation price differs from its estimate`
     );
+    const [expectedProcess, expectedUnitCost] = pinnedCube.recommendation[quantity];
+    assert(recommendation.process === expectedProcess, `quantity ${quantity} process was ${recommendation.process}, expected ${expectedProcess}`);
+    assert(approxEqual(recommendation.unit_cost_usd, expectedUnitCost, 0.001), `quantity ${quantity} unit cost was ${recommendation.unit_cost_usd}, expected ${expectedUnitCost}`);
   }
 
   return {
@@ -346,6 +372,13 @@ async function main() {
     viewport: { width: 1440, height: 960 },
     reducedMotion: "reduce",
     acceptDownloads: true,
+    // The hardened production auth boundary accepts client identity only from
+    // the first-party ingress. Fly and the regulated ingress provide one of
+    // these trusted headers in deployment; direct localhost traffic does not,
+    // so the human-sim runner supplies the same ingress contract explicitly.
+    extraHTTPHeaders: {
+      "x-real-ip": process.env.E2E_CLIENT_IP || "198.51.100.241",
+    },
   });
   const page = await context.newPage();
   const steps = [];
@@ -433,6 +466,7 @@ async function main() {
       assert(text.includes(`${bboxLabel} mm`), `live Verify UI did not show the measured bbox ${bboxLabel} mm`);
       assert(text.includes(`${liveCostReport.geometry.volume_cm3.toFixed(2)} cm³`), "live Verify UI did not show the measured volume");
       assert(/watertight true/i.test(text), "live Verify UI did not show watertight true");
+      assert(text.includes(pinnedCube.sha256), "live Verify UI did not show the exact source SHA-256");
       const liveScreenshot = await shot("verified-step-result");
 
       await page.goto("/cost-decisions", { waitUntil: "domcontentloaded", timeout: 30_000 });
@@ -453,6 +487,7 @@ async function main() {
       durableCostDetail = await detailResponse.json();
       assert(durableCostDetail.id === liveCostReport.saved.id, "reopened decision id differs from the live saved id");
       assert(durableCostDetail.filename === "cube.step", "reopened decision filename differs from the upload");
+      assert(durableCostDetail.mesh_hash === pinnedCube.sha256, `reopened decision source hash was ${durableCostDetail.mesh_hash}`);
       assert(durableCostDetail.make_now_process === liveCostReport.decision.make_now_process, "reopened make-now process drifted");
       assertJsonEqual(durableCostDetail.quantities, liveCostReport.quantities, "reopened quantity ladder");
       assertDurableCostEqual(liveCostReport, durableCostDetail.result);
@@ -749,9 +784,7 @@ async function main() {
       const decisionJsonFiles = filenames.filter((name) => /decisions\/[^/]+\/cost-decision\.json$/.test(name));
       assert(decisionJsonFiles.length === 1, `RFQ ZIP contained ${decisionJsonFiles.length} per-decision JSON files`);
       const decisionPrefix = decisionJsonFiles[0].replace(/cost-decision\.json$/, "");
-      const pdfFile = entries[`${decisionPrefix}should-cost-report.pdf`]
-        ? `${decisionPrefix}should-cost-report.pdf`
-        : `${decisionPrefix}pdf-unavailable.txt`;
+      const pdfFile = `${decisionPrefix}should-cost-report.pdf`;
       const requiredDecisionFiles = [
         `${decisionPrefix}cost-decision.json`,
         `${decisionPrefix}cost-drivers.csv`,
@@ -764,9 +797,20 @@ async function main() {
       const drivers = parseCsv(zipText(entries, `${decisionPrefix}cost-drivers.csv`), "RFQ cost-drivers.csv");
       assertHeaders(drivers.headers, costDriverHeaders, "RFQ cost-drivers.csv");
       assert(
-        drivers.records.length === durableCostDetail.result.estimates.length,
-        `RFQ cost-drivers.csv had ${drivers.records.length} rows for ${durableCostDetail.result.estimates.length} estimates`
+        drivers.records.length === pinnedCube.estimates && drivers.records.length === durableCostDetail.result.estimates.length,
+        `RFQ cost-drivers.csv had ${drivers.records.length} rows; expected ${pinnedCube.estimates}`
       );
+      const governanceColumns = [
+        "approval_status",
+        "approved_by_user_id",
+        "approved_at",
+        "approval_note",
+        "user_disposition",
+        "user_disposition_label",
+        "disposition_note",
+        "disposition_updated_at",
+        "disposition_updated_by_user_id",
+      ];
       for (const estimate of durableCostDetail.result.estimates) {
         const row = drivers.records.find(
           (record) => record.process === estimate.process && Number(record.quantity) === estimate.quantity
@@ -776,30 +820,54 @@ async function main() {
         assert(row.confidence_label === estimate.confidence.label, `RFQ driver confidence label drifted for ${estimate.process} qty ${estimate.quantity}`);
         assert(row.confidence_validated.toLowerCase() === String(Boolean(estimate.confidence.validated)), `RFQ driver validation flag drifted for ${estimate.process} qty ${estimate.quantity}`);
         assert(row.dfm_ready.toLowerCase() === String(Boolean(estimate.dfm_ready)), `RFQ driver DFM flag drifted for ${estimate.process} qty ${estimate.quantity}`);
+        for (const field of governanceColumns) {
+          assert(
+            row[field] === String(durableCostDetail[field] ?? ""),
+            `RFQ driver governance ${field} drifted for ${estimate.process} qty ${estimate.quantity}`,
+          );
+        }
         for (const [key, value] of Object.entries(estimate.line_items || {})) {
           assert(row.line_items.includes(`${key}=${value}`), `RFQ driver row omitted line item ${key}=${value}`);
         }
       }
 
-      let pdfEvidence;
-      if (pdfFile.endsWith(".pdf")) {
-        const pdfBytes = entries[pdfFile];
-        assert(pdfBytes.length > 1_000, `RFQ should-cost PDF was only ${pdfBytes.length} bytes`);
-        assert(strFromU8(pdfBytes.slice(0, 5)).startsWith("%PDF-"), "RFQ should-cost report is not a PDF");
-        pdfEvidence = { mode: "pdf", bytes: pdfBytes.length, sha256: sha256(pdfBytes) };
-      } else {
-        const unavailable = zipText(entries, pdfFile);
-        assert(/PDF generation failed/i.test(unavailable), "RFQ PDF fallback did not state why the report was unavailable");
-        pdfEvidence = { mode: "explicit-unavailable", file: pdfFile, message: unavailable.trim() };
+      const pdfBytes = entries[pdfFile];
+      assert(pdfBytes.length > 1_000, `RFQ should-cost PDF was only ${pdfBytes.length} bytes`);
+      assert(strFromU8(pdfBytes.slice(0, 5)).startsWith("%PDF-"), "RFQ should-cost report is not a PDF");
+      const extractedPdf = path.join(outputRoot, `training-guide-should-cost-${runId}.pdf`);
+      await writeFile(extractedPdf, pdfBytes);
+      let pdfText;
+      try {
+        pdfText = execFileSync("pdftotext", [extractedPdf, "-"], { encoding: "utf8" });
+      } catch (error) {
+        throw new Error(`pdftotext is required for semantic RFQ validation: ${error instanceof Error ? error.message : String(error)}`);
       }
+      const normalizedPdf = pdfText.replace(/\s+/g, " ");
+      for (const expected of [
+        "Should-Cost & Make-vs-Buy Report",
+        durableCostDetail.filename,
+        String(durableCostDetail.result.geometry.volume_cm3),
+        String(durableCostDetail.result.geometry.surface_area_cm2),
+        `Make now: ${pinnedCube.makeNowProcess}`,
+        `Crossover quantity: ≈ ${pinnedCube.crossoverQty}.0 units`,
+        "Assumption-based should-cost",
+        "not a quote",
+      ]) {
+        assert(normalizedPdf.includes(expected), `RFQ PDF text omitted ${JSON.stringify(expected)}`);
+      }
+      for (const [quantity, [process, unitCost]] of Object.entries(pinnedCube.recommendation)) {
+        assert(normalizedPdf.includes(String(quantity)), `RFQ PDF omitted quantity ${quantity}`);
+        assert(normalizedPdf.includes(process), `RFQ PDF omitted process ${process}`);
+        assert(normalizedPdf.includes(`$${unitCost.toFixed(2)}/unit`), `RFQ PDF omitted $${unitCost.toFixed(2)}/unit`);
+      }
+      const pdfEvidence = { mode: "pdf-semantic", bytes: pdfBytes.length, sha256: sha256(pdfBytes), textChecks: 8 + Object.keys(pinnedCube.recommendation).length * 3 };
       const rawCadBoundary = zipText(entries, `${decisionPrefix}raw-cad-unavailable.txt`);
       assert(/not included/i.test(rawCadBoundary), "RFQ raw-CAD boundary did not explain that CAD was not included");
 
-      if (packagedItem.part_context) {
-        const contextFile = `${decisionPrefix}part-context.json`;
-        assert(entries[contextFile], "RFQ decision has context but the ZIP omitted part-context.json");
-        assertJsonEqual(zipJson(entries, contextFile), packagedItem.part_context, "RFQ part context");
-      }
+      assert(packagedItem.part_context, "RFQ package omitted the verified part context");
+      const contextFile = `${decisionPrefix}part-context.json`;
+      assert(entries[contextFile], "RFQ decision has context but the ZIP omitted part-context.json");
+      assertJsonEqual(zipJson(entries, contextFile), packagedItem.part_context, "RFQ part context");
 
       rfqArchiveEvidence = {
         id: rfqDetail.id,

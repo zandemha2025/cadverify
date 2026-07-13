@@ -145,9 +145,12 @@ export function IntegrationsClient() {
           </CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 lg:grid-cols-[1fr_220px_180px_auto] lg:items-end">
-          <label className="space-y-2 text-sm">
-            <span className="font-medium text-foreground">Connector</span>
+          <div className="space-y-2 text-sm">
+            <label htmlFor="integration-connector" className="block font-medium text-foreground">
+              Connector
+            </label>
             <select
+              id="integration-connector"
               value={selected?.id || ""}
               onChange={(e) => setConnectorId(e.target.value)}
               className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
@@ -158,11 +161,14 @@ export function IntegrationsClient() {
                 </option>
               ))}
             </select>
-          </label>
+          </div>
 
-          <label className="space-y-2 text-sm">
-            <span className="font-medium text-foreground">Mode</span>
+          <div className="space-y-2 text-sm">
+            <label htmlFor="integration-mode" className="block font-medium text-foreground">
+              Mode
+            </label>
             <select
+              id="integration-mode"
               value={mode}
               onChange={(e) => setMode(e.target.value as "dry_run" | "import")}
               className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
@@ -170,17 +176,20 @@ export function IntegrationsClient() {
               <option value="dry_run">Dry-run</option>
               <option value="import">Import</option>
             </select>
-          </label>
+          </div>
 
-          <label className="space-y-2 text-sm">
-            <span className="font-medium text-foreground">CSV</span>
+          <div className="space-y-2 text-sm">
+            <label htmlFor="integration-csv" className="block font-medium text-foreground">
+              CSV
+            </label>
             <input
+              id="integration-csv"
               type="file"
               accept=".csv,text/csv"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               className="block h-10 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
             />
-          </label>
+          </div>
 
           <Button onClick={() => void submit()} disabled={!file || !selected || running}>
             <FileCheck2 className="mr-2 size-4" />

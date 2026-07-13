@@ -459,6 +459,19 @@ function Walk({
           corpus renders nothing). */}
       <IdentitySuggestion cost={cost} meshHash={result.meshHash} />
 
+      <p
+        data-testid="verify-evidence-hash"
+        style={{
+          margin: "12px 0 0",
+          fontFamily: MONO,
+          fontSize: 10.5,
+          color: C.ink45,
+          overflowWrap: "anywhere",
+        }}
+      >
+        Evidence hash · {result.meshHash ?? "unavailable"}
+      </p>
+
       <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
         {/* 1 · envelope — from the real machine inventory (no faked fit) */}
         <StepShell

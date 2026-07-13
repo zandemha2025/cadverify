@@ -467,6 +467,7 @@ function allDfmIssues(validation) {
 async function runSuite(page, account) {
   const boundaryMill = "QA Boundary Mill";
   const microMill = "QA Micro Mill";
+  const wireOnlyStep = path.join(repoRoot, "backend", "tests", "assets", "wire_only_unmeshable.step");
 
   await recordPath(page, {
     id: "MFG-01",
@@ -858,13 +859,29 @@ async function runSuite(page, account) {
     const saved = decisionId ? await browserApi(page, `/api/proxy/cost-decisions/${decisionId}`) : { status: 0, body: null };
     const savedEstimate = saved.body?.result?.estimates?.[0];
     const confidence = estimate?.confidence;
+    const processControl = page.getByText("Process", { exact: true }).locator("..");
+    const processButtons = processControl.getByRole("button");
+    const processCount = await processButtons.count();
+    const initiallyPressed = await processControl.getByRole("button", { pressed: true }).textContent();
+    let changedProcess = initiallyPressed;
+    if (processCount > 1) {
+      let alternativeIndex = -1;
+      for (let index = 0; index < processCount; index += 1) {
+        if ((await processButtons.nth(index).getAttribute("aria-pressed")) !== "true") {
+          alternativeIndex = index;
+          break;
+        }
+      }
+      if (alternativeIndex >= 0) await processButtons.nth(alternativeIndex).click();
+      changedProcess = await processControl.getByRole("button", { pressed: true }).textContent();
+    }
     const text = await bodyText(page);
     return {
       observed: {
         url: page.url(),
         visible: ["cube.step", "aluminum", text.match(/25|2,500/)?.[0] || "25 and 2,500 quantities", text.match(/confidence|assumption-based|measured/i)?.[0] || "confidence state rendered"],
         persisted: { decisionId, detailStatus: saved.status, savedEstimate },
-        numeric: { quantity: estimate?.quantity, unitCostUsd: estimate?.unit_cost_usd, roundedLineSum: Math.round(lineSum * 100) / 100, confidence },
+        numeric: { quantity: estimate?.quantity, unitCostUsd: estimate?.unit_cost_usd, roundedLineSum: Math.round(lineSum * 100) / 100, confidence, processOptions: processCount, initiallyPressed, changedProcess },
         authorization: `cost HTTP ${run.cost.status}; saved decision GET HTTP ${saved.status}`,
         recovery: "Saved detail returned the exact same first estimate and remained available after the live run completed.",
       },
@@ -873,6 +890,8 @@ async function runSuite(page, account) {
         assertRecord("declared quantity set", [25, 2500], run.cost.body?.quantities, JSON.stringify(run.cost.body?.quantities) === JSON.stringify([25, 2500])),
         assertRecord("line items reconcile", "abs(unit - round(sum(lines),2)) < 0.02", { unit: estimate?.unit_cost_usd, lineSum }, Number.isFinite(lineSum) && Math.abs(estimate.unit_cost_usd - Math.round(lineSum * 100) / 100) < 0.02),
         assertRecord("confidence bounds contain point", "low <= point <= high", confidence, confidence && confidence.low_usd <= confidence.point_usd && confidence.point_usd <= confidence.high_usd),
+        assertRecord("human process selector offers alternatives", "> 1", processCount, processCount > 1),
+        assertRecord("human process selection changes", "different active process", { initiallyPressed, changedProcess }, Boolean(initiallyPressed && changedProcess && initiallyPressed.trim() !== changedProcess.trim())),
         assertRecord("saved record available", 200, saved.status, saved.status === 200),
         assertRecord("saved and live estimate agree", estimate ?? null, savedEstimate ?? null, isDeepStrictEqual(savedEstimate, estimate)),
       ],
@@ -892,8 +911,17 @@ async function runSuite(page, account) {
       typeof issue.code === "string" && issue.code.length > 0 &&
       typeof issue.severity === "string" && issue.severity.length > 0 &&
       typeof issue.message === "string" && issue.message.length > 0 &&
-      typeof (issue.fix ?? issue.fix_suggestion) === "string" && (issue.fix ?? issue.fix_suggestion).length > 0
+      typeof (issue.fix ?? issue.fix_suggestion) === "string" && (issue.fix ?? issue.fix_suggestion).length > 0 &&
+      typeof issue.scope === "string" && issue.scope.length > 0 &&
+      (typeof issue.process === "string" || issue.scope === "universal") &&
+      (!issue.citation || typeof issue.citation?.text === "string")
     );
+    const localized = issues.filter((issue) => issue.scope === "localized");
+    const geometryLinked = localized.every((issue) =>
+      (Array.isArray(issue.region_center) && issue.region_center.length === 3) ||
+      (Array.isArray(issue.affected_faces_sample) && issue.affected_faces_sample.length > 0)
+    );
+    const cited = issues.filter((issue) => typeof issue.citation?.text === "string" && issue.citation.text.length > 0);
     const ranked = run.dfm.body?.process_scores ?? [];
     const routingButton = page.getByRole("button", { name: /Routing|Inspection|DFM/ }).first();
     if (await routingButton.count()) await routingButton.click().catch(() => {});
@@ -903,7 +931,7 @@ async function runSuite(page, account) {
         url: page.url(),
         visible: ["cube.step", text.match(/Routing|DFM|Inspection/)?.[0] || "Routing & DFM", issues[0]?.message ?? "structured DFM result with no issue"],
         persisted: run.cost.body?.saved ?? "DFM response linked to current live decision",
-        numeric: { geometry: run.dfm.body?.geometry, rankedRouteCount: ranked.length, issueCount: issues.length, firstIssue: issues[0] ?? null },
+        numeric: { geometry: run.dfm.body?.geometry, rankedRouteCount: ranked.length, issueCount: issues.length, localizedCount: localized.length, citedCount: cited.length, geometryLinked, firstIssue: issues[0] ?? null },
         authorization: `DFM HTTP ${run.dfm.status} under authenticated analyst session`,
         recovery: "Finding inspection did not mutate geometry or the persisted cost artifact.",
       },
@@ -912,6 +940,8 @@ async function runSuite(page, account) {
         assertRecord("measured geometry present", [20, 15, 10], run.dfm.body?.geometry?.bounding_box_mm, Array.isArray(run.dfm.body?.geometry?.bounding_box_mm) && run.dfm.body.geometry.bounding_box_mm.every((value, index) => near(value, [20, 15, 10][index], 0.1))),
         assertRecord("ranked manufacturing routes", "> 0", ranked.length, ranked.length > 0),
         assertRecord("structured finding evidence", true, { issueCount: issues.length, structured }, issues.length > 0 && structured),
+        assertRecord("localized findings link to geometry", true, { localizedCount: localized.length, geometryLinked }, localized.length > 0 && geometryLinked),
+        assertRecord("applicable findings carry citations", "> 0 cited findings", cited.length, cited.length > 0),
         assertRecord("DFM state visible", true, /Routing|DFM|Inspection/i.test(text), /Routing|DFM|Inspection/i.test(text)),
       ],
     };
@@ -950,32 +980,31 @@ async function runSuite(page, account) {
 
   await recordPath(page, {
     id: "FAIL-02",
-    persona: "manufacturing engineer recovering from a corrupt supported STEP export",
-    preconditions: ["STEP magic is valid but the body is structurally corrupt.", "Authenticated Verify session and healthy CAD kernel."],
-    actions: ["Upload corrupt-valid-magic STEP.", "Read the exact unreadable-export guidance without a fabricated tessellation diagnosis.", "Upload the clean golden STEP and confirm ordinary verification succeeds."],
+    persona: "manufacturing engineer recovering from readable CAD with no tessellatable solid",
+    preconditions: ["wire_only_unmeshable.step is a syntactically valid STEP exchange containing a real 10 mm wire but no surface body.", "Authenticated Verify session and healthy CAD kernel."],
+    actions: ["Upload the readable wire-only STEP through Verify.", "Let the real gmsh/OCC retry ladder exhaust all mesh strategies and read the exact tessellation guidance.", "Upload the clean golden solid and confirm ordinary verification succeeds."],
   }, async () => {
     await prepareVerify(page);
-    const badStep = uploadPayload("corrupt-surface.step", Buffer.from("ISO-10303-21;\nHEADER;\nTHIS IS NOT VALID STEP AT ALL\u0000\u0001"));
-    const rejected = await uploadAnalyze(page, badStep, 120_000);
-    await page.getByText("We couldn’t read this file.", { exact: true }).waitFor({ timeout: 30_000 });
+    const rejected = await uploadAnalyze(page, wireOnlyStep, 120_000);
+    await page.getByText("This part couldn’t be tessellated.", { exact: true }).waitFor({ timeout: 30_000 });
     const failureText = await bodyText(page);
     const recovered = await uploadAnalyze(page, goldenStep, 150_000);
     const recoveryText = await bodyText(page);
     return {
       observed: {
         url: page.url(),
-        visible: ["We couldn’t read this file.", "Re-export the original part as a clean STL, STEP, STP, IGES, or IGS file, then upload that export.", "cube.step"],
-        persisted: { corruptDecision: rejected.cost.body?.saved?.id ?? null, recoveryDecision: recovered.cost.body?.saved?.id ?? null },
+        visible: ["This part couldn’t be tessellated.", "Re-export the part as a clean solid and upload it again.", "cube.step"],
+        persisted: { wireOnlyDecision: rejected.cost.body?.saved?.id ?? null, recoveryDecision: recovered.cost.body?.saved?.id ?? null },
         numeric: { rejection: [rejected.cost.status, rejected.dfm.status], recovery: [recovered.cost.status, recovered.dfm.status], rejectionElapsedMs: rejected.elapsedMs },
-        authorization: "same authenticated session used for parse rejection and clean-export recovery",
+        authorization: "same authenticated session used for real tessellation failure and clean-solid recovery",
         recovery: "Clean golden STEP completed without a new session and produced a durable decision.",
       },
       expectedHttpErrorCount: 4,
       assertions: [
-        assertRecord("unreadable-export exact title", "We couldn’t read this file.", failureText.includes("We couldn’t read this file."), failureText.includes("We couldn’t read this file.")),
-        assertRecord("clean-export action", "Re-export the original part as a clean STL, STEP, STP, IGES, or IGS file, then upload that export.", failureText, failureText.includes("Re-export the original part as a clean STL, STEP, STP, IGES, or IGS file, then upload that export.")),
-        assertRecord("parse failure is not mislabeled tessellation", false, /tessellat/i.test(failureText), !/tessellat/i.test(failureText)),
-        assertRecord("corrupt input bounded 4xx", "both 4xx and <120s", { status: [rejected.cost.status, rejected.dfm.status], elapsedMs: rejected.elapsedMs }, rejected.cost.status >= 400 && rejected.cost.status < 500 && rejected.dfm.status >= 400 && rejected.dfm.status < 500 && rejected.elapsedMs < 120_000),
+        assertRecord("tessellation exact title", "This part couldn’t be tessellated.", failureText.includes("This part couldn’t be tessellated."), failureText.includes("This part couldn’t be tessellated.")),
+        assertRecord("clean-solid action", "Re-export the part as a clean solid and upload it again.", failureText, failureText.includes("Re-export the part as a clean solid and upload it again.")),
+        assertRecord("readable STEP reached real tessellation failure", true, [rejected.cost.body, rejected.dfm.body], JSON.stringify([rejected.cost.body, rejected.dfm.body]).toLowerCase().includes("tessellat")),
+        assertRecord("wire-only input bounded 4xx", "both 4xx and <120s", { status: [rejected.cost.status, rejected.dfm.status], elapsedMs: rejected.elapsedMs }, rejected.cost.status >= 400 && rejected.cost.status < 500 && rejected.dfm.status >= 400 && rejected.dfm.status < 500 && rejected.elapsedMs < 120_000),
         assertRecord("clean-solid recovery", [200, 200], [recovered.cost.status, recovered.dfm.status], recovered.cost.status === 200 && recovered.dfm.status === 200 && recoveryText.includes("cube.step")),
       ],
     };
@@ -1376,6 +1405,15 @@ async function main() {
     const passed = PATH_IDS.filter((id) => evidence[id].status === "PASS");
     const failed = PATH_IDS.filter((id) => evidence[id].status !== "PASS");
     const report = {
+      status:
+        failed.length === 0 &&
+        !fatal &&
+        validation.problems.length === 0 &&
+        manufacturingValidation.problems.length === 0 &&
+        supplementalCadValidation.problems.length === 0
+          ? "PASS"
+          : "FAIL",
+      suite: "manufacturing-cad-adversarial",
       generatedAt: new Date().toISOString(),
       runId,
       target: baseUrl,
@@ -1402,6 +1440,7 @@ async function main() {
       },
       timingsMs: timings,
       releaseEvidence: {
+        schemaVersion: 1,
         goldenPaths,
         validation,
         manufacturingSubpaths,

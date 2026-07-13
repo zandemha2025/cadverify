@@ -156,6 +156,10 @@ async def get_cost_decision(
         "label": d.label,
         "created_at": d.created_at.isoformat(),
         "engine_version": d.engine_version,
+        # Private immutable source identity. Public shares intentionally omit
+        # this value, but authenticated reviewers need it to prove the reopened
+        # evidence belongs to the exact uploaded bytes rather than a same-name file.
+        "mesh_hash": d.mesh_hash,
         "make_now_process": d.make_now_process,
         "crossover_qty": d.crossover_qty,
         "quantities": d.quantities or [],

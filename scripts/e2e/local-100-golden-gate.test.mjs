@@ -6,11 +6,14 @@ import { fileURLToPath } from "node:url";
 
 import { makeGoldenPathEvidence } from "./golden-path-evidence.mjs";
 import {
+  CANONICAL_REPORT_CONTRACTS,
   evaluateLocal100,
   LOCAL_100_IDS,
   LOCAL_BROWSER_IDS,
   LOCAL_FAILURE_IDS,
 } from "./local-100-golden-gate.mjs";
+
+const RUN_ID = "release-2026-07-13T12-00-00Z";
 
 function identity(overrides = {}) {
   return {
@@ -47,19 +50,21 @@ function evidence(id, overrides = {}) {
   });
 }
 
-function completeReport(overrides = {}) {
-  return {
-    name: "complete",
+function completeReports() {
+  return CANONICAL_REPORT_CONTRACTS.map((contract) => ({
+    name: contract.suite,
     data: {
       status: "PASS",
+      suite: contract.suite,
+      runId: RUN_ID,
+      generatedAt: "2026-07-13T12:00:00.000Z",
       buildIdentity: identity(),
       releaseEvidence: {
         schemaVersion: 1,
-        goldenPaths: Object.fromEntries(LOCAL_100_IDS.map((id) => [id, evidence(id)])),
+        goldenPaths: Object.fromEntries(contract.ids.map((id) => [id, evidence(id)])),
       },
-      ...overrides,
     },
-  };
+  }));
 }
 
 test("inventory contains 54 browser and 10 recovery paths", () => {
@@ -83,8 +88,9 @@ test("gate inventory exactly matches the documented local contract", () => {
 
 test("complete clean current-build evidence earns LOCAL_100", () => {
   const result = evaluateLocal100({
-    reports: [completeReport()],
+    reports: completeReports(),
     expectedIdentity: identity(),
+    expectedRunId: RUN_ID,
     screenshotExists: () => true,
   });
   assert.equal(result.status, "PASS");
@@ -99,11 +105,14 @@ test("complete clean current-build evidence earns LOCAL_100", () => {
 });
 
 test("a passing step name cannot replace a missing structured path", () => {
-  const report = completeReport({ steps: [{ name: "AUTH-07", status: "PASS" }] });
+  const reports = completeReports();
+  const report = reports.find((item) => item.data.suite === "auth-role-lifecycle-golden-matrix");
+  report.data.steps = [{ name: "AUTH-07", status: "PASS" }];
   delete report.data.releaseEvidence.goldenPaths["AUTH-07"];
   const result = evaluateLocal100({
-    reports: [report],
+    reports,
     expectedIdentity: identity(),
+    expectedRunId: RUN_ID,
     screenshotExists: () => true,
   });
   assert.equal(result.status, "FAIL");
@@ -112,23 +121,13 @@ test("a passing step name cannot replace a missing structured path", () => {
 });
 
 test("failing duplicate evidence cannot be hidden behind a passing report", () => {
-  const passing = completeReport();
-  const failing = {
-    name: "duplicate",
-    data: {
-      status: "PASS",
-      buildIdentity: identity(),
-      releaseEvidence: {
-        schemaVersion: 1,
-        goldenPaths: {
-          "ROLE-04": evidence("ROLE-04", { status: "FAIL" }),
-        },
-      },
-    },
-  };
+  const reports = completeReports();
+  const roleReport = reports.find((item) => item.data.suite === "role-tenant-boundary-matrix");
+  roleReport.data.releaseEvidence.goldenPaths["ROLE-04"] = evidence("ROLE-04", { status: "FAIL" });
   const result = evaluateLocal100({
-    reports: [passing, failing],
+    reports,
     expectedIdentity: identity(),
+    expectedRunId: RUN_ID,
     screenshotExists: () => true,
   });
   assert.equal(result.status, "FAIL");
@@ -136,11 +135,12 @@ test("failing duplicate evidence cannot be hidden behind a passing report", () =
 });
 
 test("missing screenshot bytes and dirty HEAD both block the claim", () => {
-  const report = completeReport();
-  report.data.buildIdentity.gitDirty = true;
+  const reports = completeReports();
+  for (const report of reports) report.data.buildIdentity.gitDirty = true;
   const result = evaluateLocal100({
-    reports: [report],
+    reports,
     expectedIdentity: identity({ gitDirty: true }),
+    expectedRunId: RUN_ID,
     screenshotExists: (screenshot) => !screenshot.endsWith("FAIL-10.png"),
   });
   assert.equal(result.status, "FAIL");
@@ -149,22 +149,68 @@ test("missing screenshot bytes and dirty HEAD both block the claim", () => {
 });
 
 test("an unrelated or unversioned report cannot enter the release set", () => {
-  const report = completeReport();
-  report.data.releaseEvidence.schemaVersion = 2;
+  const reports = completeReports();
+  reports[0].data.releaseEvidence.schemaVersion = 2;
   const unrelated = {
     name: "unrelated",
     data: {
       status: "PASS",
+      suite: "synthetic-all-paths",
+      runId: RUN_ID,
+      generatedAt: "2026-07-13T12:00:00.000Z",
       buildIdentity: identity(),
       releaseEvidence: { schemaVersion: 1, goldenPaths: { "EXTERNAL-01": evidence("EXTERNAL-01") } },
     },
   };
   const result = evaluateLocal100({
-    reports: [report, unrelated],
+    reports: [...reports, unrelated],
     expectedIdentity: identity(),
+    expectedRunId: RUN_ID,
     screenshotExists: () => true,
   });
   assert.equal(result.status, "FAIL");
   assert.ok(result.problems.some((problem) => problem.type === "invalid_release_evidence_schema"));
-  assert.ok(result.problems.some((problem) => problem.type === "report_has_no_required_paths"));
+  assert.ok(result.problems.some((problem) => problem.type === "unexpected_report_suite"));
+});
+
+test("one generic report containing all 64 IDs cannot impersonate the canonical suites", () => {
+  const synthetic = {
+    name: "synthetic-complete",
+    data: {
+      status: "PASS",
+      suite: "public-auth-verify-golden-matrix",
+      runId: RUN_ID,
+      generatedAt: "2026-07-13T12:00:00.000Z",
+      buildIdentity: identity(),
+      releaseEvidence: {
+        schemaVersion: 1,
+        goldenPaths: Object.fromEntries(LOCAL_100_IDS.map((id) => [id, evidence(id)])),
+      },
+    },
+  };
+  const result = evaluateLocal100({
+    reports: [synthetic],
+    expectedIdentity: identity(),
+    expectedRunId: RUN_ID,
+    screenshotExists: () => true,
+  });
+  assert.equal(result.status, "FAIL");
+  assert.ok(result.problems.some((problem) => problem.type === "invalid_report_count"));
+  assert.ok(result.problems.some((problem) => problem.type === "suite_path_ownership_mismatch"));
+  assert.ok(result.problems.some((problem) => problem.type === "missing_report_suite"));
+});
+
+test("foreign path ownership and mismatched run IDs block certification", () => {
+  const reports = completeReports();
+  reports[0].data.releaseEvidence.goldenPaths["AUTH-07"] = evidence("AUTH-07");
+  reports[1].data.runId = "different-run";
+  const result = evaluateLocal100({
+    reports,
+    expectedIdentity: identity(),
+    expectedRunId: RUN_ID,
+    screenshotExists: () => true,
+  });
+  assert.equal(result.status, "FAIL");
+  assert.ok(result.problems.some((problem) => problem.type === "suite_path_ownership_mismatch"));
+  assert.ok(result.problems.some((problem) => problem.type === "run_id_mismatch"));
 });

@@ -19,7 +19,11 @@ export function acceptedBatchFromErrorPayload(
 ): AcceptedBatchIdentity | undefined {
   const body = record(payload);
   const detail = record(body?.detail);
-  const batch = record(detail?.accepted_batch);
+  // The full backend's structured HTTP handler emits code-bearing errors at
+  // the top level, while isolated FastAPI routers retain the conventional
+  // {detail: {...}} envelope. Accept both wire shapes so an already-created
+  // failed batch is never hidden from the recovery UI.
+  const batch = record(detail?.accepted_batch ?? body?.accepted_batch);
   if (
     typeof batch?.batch_id !== "string" ||
     typeof batch.status !== "string" ||

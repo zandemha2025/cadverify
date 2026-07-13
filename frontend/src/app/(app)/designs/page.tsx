@@ -159,6 +159,7 @@ export default function DesignsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [revisionHistory, setRevisionHistory] = useState<DesignRevision[]>([]);
+  const [revisionHistoryOwnerId, setRevisionHistoryOwnerId] = useState<string | null>(null);
   const [viewedRevisionNo, setViewedRevisionNo] = useState<number | null>(null);
   const [form, setForm] = useState<DesignForm>({ ...DEFAULT_DESIGN_FORM });
   const [description, setDescription] = useState("");
@@ -214,17 +215,24 @@ export default function DesignsPage() {
   useEffect(() => {
     if (!selected) {
       setRevisionHistory([]);
+      setRevisionHistoryOwnerId(null);
       setViewedRevisionNo(null);
       revisionDesignIdRef.current = null;
       return;
     }
     const designChanged = revisionDesignIdRef.current !== selected.id;
     revisionDesignIdRef.current = selected.id;
+    if (designChanged) {
+      setRevisionHistory(selected.revision ? [selected.revision] : []);
+      setRevisionHistoryOwnerId(selected.id);
+      setViewedRevisionNo(selected.current_revision);
+    }
     let cancelled = false;
     void listDesignRevisions(selected.id).then(
       (revisions) => {
         if (cancelled) return;
         setRevisionHistory(revisions);
+        setRevisionHistoryOwnerId(selected.id);
         setViewedRevisionNo((current) =>
           resolveViewedRevisionNo(
             current,
@@ -237,6 +245,7 @@ export default function DesignsPage() {
       () => {
         if (!cancelled) {
           setRevisionHistory(selected.revision ? [selected.revision] : []);
+          setRevisionHistoryOwnerId(selected.id);
           setViewedRevisionNo(selected.current_revision);
         }
       },
@@ -373,8 +382,14 @@ export default function DesignsPage() {
     }
   };
 
+  const visibleRevisionHistory =
+    selected && revisionHistoryOwnerId === selected.id
+      ? revisionHistory
+      : selected?.revision
+        ? [selected.revision]
+        : [];
   const viewedRevision = selected
-    ? revisionHistory.find((revision) => revision.number === viewedRevisionNo) ?? selected.revision
+    ? visibleRevisionHistory.find((revision) => revision.number === viewedRevisionNo) ?? selected.revision
     : null;
   const previewUrl = selected && viewedRevision
     ? designRevisionPreviewUrl(selected.id, viewedRevision)
@@ -677,7 +692,7 @@ export default function DesignsPage() {
                   </div>
                 )}
 
-                {revisionHistory.length > 0 && (
+                {visibleRevisionHistory.length > 0 && (
                   <div className="space-y-2 border-t border-border pt-4">
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -688,7 +703,7 @@ export default function DesignsPage() {
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {revisionHistory.map((revision) => (
+                      {visibleRevisionHistory.map((revision) => (
                         <button
                           key={revision.id}
                           type="button"

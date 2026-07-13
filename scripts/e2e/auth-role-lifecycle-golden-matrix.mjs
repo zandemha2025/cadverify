@@ -882,6 +882,7 @@ ${rows}
         : "FAIL";
     const data = {
       status,
+      suite: "auth-role-lifecycle-golden-matrix",
       runId,
       generatedAt: new Date().toISOString(),
       durationMs: Date.now() - this.startedAt,

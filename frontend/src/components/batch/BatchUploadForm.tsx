@@ -116,8 +116,9 @@ export default function BatchUploadForm() {
             </Button>
           </div>
         )}
-        <Field label="CSV manifest (optional)">
+        <Field label="CSV manifest (optional)" htmlFor="batch-csv-manifest">
           <Input
+            id="batch-csv-manifest"
             type="file"
             accept=".csv"
             onChange={(e) => setManifest(e.target.files?.[0] ?? null)}
@@ -129,8 +130,9 @@ export default function BatchUploadForm() {
 
       {/* Shared options */}
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Webhook URL (optional)">
+        <Field label="Webhook URL (optional)" htmlFor="batch-webhook-url">
           <Input
+            id="batch-webhook-url"
             type="url"
             value={webhookUrl}
             onChange={(e) => setWebhookUrl(e.target.value)}
@@ -138,8 +140,9 @@ export default function BatchUploadForm() {
             disabled={uploading}
           />
         </Field>
-        <Field label="Concurrency limit">
+        <Field label="Concurrency limit" htmlFor="batch-concurrency-limit">
           <Input
+            id="batch-concurrency-limit"
             type="number"
             min={1}
             max={100}

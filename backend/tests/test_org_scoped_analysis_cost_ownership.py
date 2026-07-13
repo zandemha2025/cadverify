@@ -257,15 +257,12 @@ async def test_dfm_batch_keeps_enqueued_org_after_user_switch():
         ) as resolve_org,
         patch(
             "src.services.analysis_service.run_analysis",
-            new=AsyncMock(return_value={"verdict": "pass"}),
+            new=AsyncMock(
+                return_value=SimpleNamespace(
+                    result={"verdict": "pass"}, analysis_id=101
+                )
+            ),
         ) as run_analysis,
-        patch(
-            "src.services.analysis_service.get_latest_analysis_id",
-            new=AsyncMock(return_value=101),
-        ) as latest,
-        patch(
-            "src.services.analysis_service.compute_mesh_hash", return_value="mesh"
-        ),
         patch("src.services.batch_service.read_batch_blob", return_value=b"mesh"),
         patch(
             "src.services.batch_service.update_batch_counters",
@@ -275,7 +272,7 @@ async def test_dfm_batch_keeps_enqueued_org_after_user_switch():
         await run_batch_item({}, item.ulid)
 
     assert run_analysis.await_args.kwargs["org_id"] == ORG_AT_ENQUEUE
-    assert latest.await_args.kwargs["org_id"] == ORG_AT_ENQUEUE
+    assert run_analysis.await_args.kwargs["return_persisted_id"] is True
     assert item.analysis_id == 101
     resolve_org.assert_not_awaited()
 
@@ -286,6 +283,9 @@ async def test_cost_batch_keeps_enqueued_org_after_user_switch():
     from src.jobs.batch_tasks import _run_cost_item
 
     batch, item = _batch_and_item(job_type="cost")
+    # _run_cost_item is entered only after run_batch_item atomically claims the
+    # row; keep this focused tenant-ownership test on that real worker contract.
+    item.status = "processing"
     report = SimpleNamespace(status="OK", reason=None)
     saved = SimpleNamespace(id=401, ulid="01COST000000000000000001")
     session = AsyncMock()
@@ -390,21 +390,18 @@ async def test_reconstruction_keeps_job_org_after_user_switch():
         patch("src.reconstruction.scoring.confidence_message", return_value="high"),
         patch(
             "src.services.analysis_service.run_analysis",
-            new=AsyncMock(return_value={"verdict": "pass"}),
+            new=AsyncMock(
+                return_value=SimpleNamespace(
+                    result={"verdict": "pass"}, analysis_id=501
+                )
+            ),
         ) as run_analysis,
-        patch(
-            "src.services.analysis_service.get_latest_analysis_id",
-            new=AsyncMock(return_value=501),
-        ) as latest,
-        patch(
-            "src.services.analysis_service.compute_mesh_hash", return_value="mesh"
-        ),
     ):
         result = await run_reconstruction_job({}, job.ulid)
 
     assert result["analysis_id"] == analysis.ulid
     assert run_analysis.await_args.kwargs["org_id"] == ORG_AT_ENQUEUE
-    assert latest.await_args.kwargs["org_id"] == ORG_AT_ENQUEUE
+    assert run_analysis.await_args.kwargs["return_persisted_id"] is True
     analysis_lookup = session.execute.await_args_list[1].args[0]
     assert ORG_AT_ENQUEUE in _query_params(analysis_lookup)
     resolve_org.assert_not_awaited()

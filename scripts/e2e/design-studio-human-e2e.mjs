@@ -411,11 +411,23 @@ class DesignStudioE2E {
     assert(artifactResponse.ok(), `Verify R${revision} artifact import returned ${artifactResponse.status()}`);
     assert(validationResponse.ok(), `Verify R${revision} validation returned ${validationResponse.status()}`);
     assert(costResponse.ok(), `Verify R${revision} cost returned ${costResponse.status()}`);
-    const importedBytes = await artifactResponse.body();
+    // Chrome's DevTools protocol may expose an empty body after page JavaScript
+    // consumes a streamed fetch. The application itself verifies those exact
+    // bytes before it renders "Imported …"; independently re-read the same
+    // immutable revision URL through the authenticated browser context so the
+    // release evidence still hashes concrete response bytes.
+    const artifactEvidenceResponse = await this.context.request.get(artifactResponse.url());
+    assert(artifactEvidenceResponse.ok(), `Verify R${revision} evidence re-read returned ${artifactEvidenceResponse.status()}`);
+    const importedBytes = await artifactEvidenceResponse.body();
     const importedArtifactSha256 = sha256(importedBytes);
-    const importedHeaderSha256 = (artifactResponse.headers()["x-geometry-sha256"] || "").toLowerCase();
+    const browserHeaderSha256 = (artifactResponse.headers()["x-geometry-sha256"] || "").toLowerCase();
+    const importedHeaderSha256 = (artifactEvidenceResponse.headers()["x-geometry-sha256"] || "").toLowerCase();
     const importedFilename = artifactResponse.headers()["content-disposition"]?.match(/filename="?([^";]+)"?/i)?.[1] || null;
-    assert(importedArtifactSha256 === importedHeaderSha256, `Verify R${revision} imported bytes differ from their integrity header`);
+    assert(
+      importedArtifactSha256 === importedHeaderSha256,
+      `Verify R${revision} evidence bytes differ from their integrity header: body=${importedArtifactSha256} header=${importedHeaderSha256} bytes=${importedBytes.length}`,
+    );
+    assert(browserHeaderSha256 === importedHeaderSha256, `Verify R${revision} browser and evidence responses declared different hashes`);
     if (artifactSha256) {
       assert(importedArtifactSha256 === artifactSha256, `Verify R${revision} imported a different artifact than Design Studio exposed`);
     }
@@ -433,6 +445,7 @@ class DesignStudioE2E {
       ? Number(measuredVolumeCm3.toFixed(2))
       : null;
     const text = await this.expectCleanSuccess(`Verify R${revision}`);
+    assert(importedFilename && text.includes(`Imported ${importedFilename}.`), `Verify R${revision} did not render the post-integrity import state`);
     assert(filenamePattern.test(text), `Verify did not retain the selected revision filename`);
     assert(text.includes(envelope), `Verify measured envelope does not equal ${envelope}`);
     assert(text.includes(volume), `Verify measured volume does not equal ${volume}`);
@@ -448,7 +461,7 @@ class DesignStudioE2E {
       assert(!/CNC Turning\s+pass/i.test(text), `Non-rotational template incorrectly passes CNC turning`);
       assert(!/route hint aluminum/i.test(text), `Non-rotational polymer template still exposes the old aluminum turning hint`);
       assert(rotational === false, `Non-rotational template reported rotational=${rotational}`);
-      assert(turning?.verdict === "issues", `CNC turning verdict was ${turning?.verdict || "missing"}, expected issues`);
+      assert(turning?.verdict === "fail", `CNC turning verdict was ${turning?.verdict || "missing"}, expected fail`);
       assert(!shortlist.has("cnc_turning"), "CNC turning appeared in the cost shortlist for a non-rotational design");
     }
     if (expectedArchetype) {
@@ -702,7 +715,7 @@ class DesignStudioE2E {
       this.check("DES-05", "persisted exact volume", 64.686726, revision.geometry.volume_cm3, Math.abs(revision.geometry.volume_cm3 - 64.686726) <= 0.001);
       this.truth("DES-05", "exact UI envelope visible", plateR1.visibleText.includes("120.0 × 70.0 × 8.0 mm"));
       this.truth("DES-05", "exact UI rounded volume visible", plateR1.visibleText.includes("64.69 cm³"));
-      this.truth("DES-05", "UI evidence hash prefix matches artifact", plateR1.visibleText.includes(`Evidence hash ${plateR1.hashPrefix}`));
+      this.truth("DES-05", "UI evidence hash prefix matches artifact", plateR1.visibleText.toLowerCase().includes(`evidence hash ${plateR1.hashPrefix}`));
       this.check("DES-05", "artifact hash equals persisted geometry hash", revision.geometry_hash, plateR1.hash);
       this.check("DES-05", "artifact response header equals bytes", plateR1.hash, plateR1.responseHeaderSha256);
       this.truth("DES-05", "nonblank preview or explicit fallback", ["interactive", "explicit-fallback"].includes(plateR1.visual.mode));
@@ -868,7 +881,7 @@ class DesignStudioE2E {
       this.check("DES-06", "persisted exact L volume", 40.2, revision.geometry.volume_cm3, Math.abs(revision.geometry.volume_cm3 - 40.2) <= 0.001);
       this.truth("DES-06", "exact UI envelope visible", bracketR1.visibleText.includes("80.0 × 50.0 × 60.0 mm"));
       this.truth("DES-06", "exact UI rounded volume visible", bracketR1.visibleText.includes("40.20 cm³"));
-      this.truth("DES-06", "UI evidence hash prefix matches artifact", bracketR1.visibleText.includes(`Evidence hash ${bracketR1.hashPrefix}`));
+      this.truth("DES-06", "UI evidence hash prefix matches artifact", bracketR1.visibleText.toLowerCase().includes(`evidence hash ${bracketR1.hashPrefix}`));
       this.check("DES-06", "artifact hash equals persisted geometry hash", revision.geometry_hash, bracketR1.hash);
       this.check("DES-06", "artifact response header equals bytes", bracketR1.hash, bracketR1.responseHeaderSha256);
       this.truth("DES-06", "L geometry is not a solid bounding box", solidity < 0.2);
@@ -914,7 +927,7 @@ class DesignStudioE2E {
       this.check("DES-07", "validation HTTP status", 200, evidence.validationStatus);
       this.check("DES-07", "cost HTTP status", 200, evidence.costStatus);
       this.check("DES-07", "routing rotational driver", false, evidence.rotational);
-      this.check("DES-07", "CNC turning verdict", "issues", evidence.turningVerdict);
+      this.check("DES-07", "CNC turning verdict", "fail", evidence.turningVerdict);
       this.check("DES-07", "CNC turning excluded from shortlist", false, evidence.turningShortlisted);
       this.check("DES-07", "watertight result", true, evidence.watertight);
       this.check("DES-07", "should-cost computed", true, evidence.shouldCostComputed);
@@ -963,7 +976,7 @@ class DesignStudioE2E {
       this.check("DES-08", "persisted exact shell volume", 54.408, revision.geometry.volume_cm3, Math.abs(revision.geometry.volume_cm3 - 54.408) <= 0.001);
       this.truth("DES-08", "exact UI envelope visible", enclosureR1.visibleText.includes("80.0 × 50.0 × 60.0 mm"));
       this.truth("DES-08", "exact UI rounded volume visible", enclosureR1.visibleText.includes("54.41 cm³"));
-      this.truth("DES-08", "UI evidence hash prefix matches artifact", enclosureR1.visibleText.includes(`Evidence hash ${enclosureR1.hashPrefix}`));
+      this.truth("DES-08", "UI evidence hash prefix matches artifact", enclosureR1.visibleText.toLowerCase().includes(`evidence hash ${enclosureR1.hashPrefix}`));
       this.check("DES-08", "artifact hash equals persisted geometry hash", revision.geometry_hash, enclosureR1.hash);
       this.check("DES-08", "artifact response header equals bytes", enclosureR1.hash, enclosureR1.responseHeaderSha256);
       this.truth("DES-08", "nonblank cavity preview or explicit fallback", ["interactive", "explicit-fallback"].includes(enclosureR1.visual.mode));
@@ -1008,7 +1021,7 @@ class DesignStudioE2E {
       this.check("DES-09", "UI measured volume", 54.41, evidence.uiVolumeCm3);
       this.check("DES-09", "routing archetype", "thin_wall_enclosure", evidence.routingArchetype);
       this.check("DES-09", "routing rotational driver", false, evidence.rotational);
-      this.check("DES-09", "CNC turning verdict", "issues", evidence.turningVerdict);
+      this.check("DES-09", "CNC turning verdict", "fail", evidence.turningVerdict);
       this.check("DES-09", "CNC turning excluded from shortlist", false, evidence.turningShortlisted);
       this.check("DES-09", "validation HTTP status", 200, evidence.validationStatus);
       this.check("DES-09", "cost HTTP status", 200, evidence.costStatus);
@@ -1139,6 +1152,7 @@ class DesignStudioE2E {
     const health = status === "PASS" ? 100 : Math.max(0, 100 - failed * 15 - unexpected * 5 - structuredMissing * 5);
     const data = {
       status,
+      suite: "design-studio-human-e2e",
       health,
       generatedAt: new Date().toISOString(),
       runId,

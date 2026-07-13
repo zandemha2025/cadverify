@@ -1017,6 +1017,7 @@ export interface CostDecisionDetail extends CostDecisionGovernance {
   label: string | null;
   created_at: string;
   engine_version: string | null;
+  mesh_hash: string;
   make_now_process: string | null;
   crossover_qty: number | null;
   quantities: number[];

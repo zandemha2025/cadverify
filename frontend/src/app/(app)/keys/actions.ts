@@ -1,5 +1,6 @@
 "use server";
 import { cookies } from "next/headers";
+import { revalidatePath } from "next/cache";
 import { backendUrl } from "@/lib/api-base";
 
 const REVEAL_COOKIE = "cv_mint_once";
@@ -44,6 +45,7 @@ export async function createKey(name: string) {
   });
   await preserveRevealCookie(r);
   if (!r.ok) throw new Error("create failed");
+  revalidatePath(REVEAL_PATH);
   return r.json();
 }
 
@@ -51,17 +53,22 @@ export async function rotateKey(id: number) {
   const r = await authed(`/api/v1/keys/${id}/rotate`, { method: "POST" });
   await preserveRevealCookie(r);
   if (!r.ok) throw new Error("rotate failed");
+  revalidatePath(REVEAL_PATH);
   return r.json();
 }
 
 export async function revokeKey(id: number) {
-  await authed(`/api/v1/keys/${id}`, { method: "DELETE" });
+  const r = await authed(`/api/v1/keys/${id}`, { method: "DELETE" });
+  if (!r.ok) throw new Error("revoke failed");
+  revalidatePath(REVEAL_PATH);
 }
 
 export async function renameKey(id: number, name: string) {
-  await authed(`/api/v1/keys/${id}`, {
+  const r = await authed(`/api/v1/keys/${id}`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ name }),
   });
+  if (!r.ok) throw new Error("rename failed");
+  revalidatePath(REVEAL_PATH);
 }

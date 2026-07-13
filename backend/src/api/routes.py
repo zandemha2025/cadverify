@@ -1536,6 +1536,7 @@ async def _run_cost_decision(
     # part. None => the analogy is never engaged and the band is byte-identical
     # (demo route, flag off, or an unprovisioned session).
     analogy_records = None
+    cal_org_id = None
     if user is not None and session is not None:
         from src.auth.org_context import resolve_org
         from src.services.groundtruth_service import load_served_calibration
@@ -1836,6 +1837,36 @@ async def _run_cost_decision(
         )
 
     record_cost_decision("ok")
+    # Preserve the exact successful source bytes before creating any governed
+    # derivative. Calibration, RFQ assembly, and later audits can now reconcile
+    # a decision's mesh hash to a tenant-scoped object instead of relying on a
+    # filename or an operator-side corpus. A storage failure is not silently
+    # downgraded: strict production health requires this evidence plane.
+    if isinstance(cal_org_id, str) and cal_org_id:
+        from src.services.analysis_service import compute_mesh_hash
+        from src.services.source_artifact_service import (
+            save_costable_mesh_artifact,
+            save_source_artifact,
+        )
+
+        source_hash = compute_mesh_hash(data)
+        await save_source_artifact(
+            cal_org_id,
+            source_hash,
+            suffix,
+            data,
+        )
+        costable_stl = await asyncio.to_thread(mesh.export, file_type="stl")
+        if not isinstance(costable_stl, (bytes, bytearray, memoryview)) or not costable_stl:
+            raise HTTPException(
+                status_code=500,
+                detail="Costable source derivative could not be persisted.",
+            )
+        await save_costable_mesh_artifact(
+            cal_org_id,
+            source_hash,
+            bytes(costable_stl),
+        )
     # Span 4/4 — serialize the glass-box decision to the response dict.
     with tracing.span("cost.serialize"):
         result_dict = report_to_dict(report)

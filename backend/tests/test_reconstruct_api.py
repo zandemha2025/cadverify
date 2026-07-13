@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import io
 import os
+from types import SimpleNamespace
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -452,6 +453,7 @@ class TestAutoFeed:
         mock_job = MagicMock(spec=Job)
         mock_job.ulid = job_ulid
         mock_job.user_id = 42
+        mock_job.org_id = "01ORGRECONSTRUCTIONTEST001"
         mock_job.status = "queued"
         mock_job.params_json = {
             "image_count": 1,
@@ -491,9 +493,13 @@ class TestAutoFeed:
             patch("src.services.reconstruction_service.get_reconstruction_engine", return_value=mock_engine),
             patch("src.services.reconstruction_service.save_reconstruction_mesh", new_callable=AsyncMock, return_value=str(tmp_path / "mesh.stl")),
             patch("src.reconstruction.preprocessing.remove_background", side_effect=lambda img: img),
-            patch("src.services.analysis_service.run_analysis", new_callable=AsyncMock, return_value={"verdict": "pass"}),
-            patch("src.services.analysis_service.get_latest_analysis_id", new_callable=AsyncMock, return_value=10),
-            patch("src.services.analysis_service.compute_mesh_hash", return_value="fakehash"),
+            patch(
+                "src.services.analysis_service.run_analysis",
+                new_callable=AsyncMock,
+                return_value=SimpleNamespace(
+                    result={"verdict": "pass"}, analysis_id=10
+                ),
+            ),
         ):
             from src.jobs.reconstruction_tasks import run_reconstruction_job
 

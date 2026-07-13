@@ -16,6 +16,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 const SESSION_COOKIE = "dash_session";
+const SERVED_BUILD_ID =
+  process.env.PROOFSHAPE_BUILD_ID ||
+  process.env.VERCEL_GIT_COMMIT_SHA ||
+  process.env.GITHUB_SHA ||
+  process.env.NEXT_PUBLIC_BUILD_SHA ||
+  "unknown";
 
 function applySecurityHeaders(response: NextResponse, csp: string): NextResponse {
   response.headers.set("Content-Security-Policy", csp);
@@ -30,6 +36,9 @@ function applySecurityHeaders(response: NextResponse, csp: string): NextResponse
     "Permissions-Policy",
     "camera=(), microphone=(), geolocation=()",
   );
+  // Release evidence reads this from the actual HTTP process. This prevents a
+  // clean checkout from certifying a stale Next build still serving on :3000.
+  response.headers.set("X-ProofShape-Build", SERVED_BUILD_ID);
   return response;
 }
 
@@ -71,6 +80,9 @@ const GATED = [
   "/keys",
   "/settings",
   "/design-system",
+  "/designs",
+  "/onboarding",
+  "/verify",
 ];
 export default function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -80,13 +92,15 @@ export default function proxy(req: NextRequest) {
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", csp);
+  const requestedPath = `${pathname}${req.nextUrl.search}`;
+  requestHeaders.set("x-proofshape-request-path", requestedPath);
 
   const gated = GATED.some(
     (p) => pathname === p || pathname.startsWith(p + "/")
   );
   if (gated && !hasSession) {
     const url = new URL("/login", req.nextUrl);
-    url.searchParams.set("next", pathname);
+    url.searchParams.set("next", requestedPath);
     return applySecurityHeaders(NextResponse.redirect(url), csp);
   }
 

@@ -944,8 +944,44 @@ class CompareRfqKeyMatrix {
     );
 
     const expectedPdfCost = { A: "$10.00", B: "$12.35", C: "$30.00" };
+    const expectedDriverHeaders = [
+      "process",
+      "material",
+      "quantity",
+      "unit_cost_usd",
+      "fixed_cost_usd",
+      "variable_cost_usd",
+      "est_error_band_pct",
+      "confidence_low_usd",
+      "confidence_high_usd",
+      "confidence_label",
+      "confidence_validated",
+      "dfm_ready",
+      "approval_status",
+      "approved_by_user_id",
+      "approved_at",
+      "approval_note",
+      "user_disposition",
+      "user_disposition_label",
+      "disposition_note",
+      "disposition_updated_at",
+      "disposition_updated_by_user_id",
+      "line_items",
+    ];
+    const driverGovernanceColumns = [
+      "approval_status",
+      "approved_by_user_id",
+      "approved_at",
+      "approval_note",
+      "user_disposition",
+      "user_disposition_label",
+      "disposition_note",
+      "disposition_updated_at",
+      "disposition_updated_by_user_id",
+    ];
     for (let index = 0; index < decisions.length; index += 1) {
       const decision = decisions[index];
+      const packagedDecision = pkg.items[index].decision;
       const stem = path.parse(decision.filename).name;
       const prefix =
         "decisions/" + String(index + 1).padStart(2, "0") + "-" + stem + "/";
@@ -955,6 +991,36 @@ class CompareRfqKeyMatrix {
       this.ok(id, decision.filename + " packaged JSON", Boolean(entries[decisionJsonName]));
       this.ok(id, decision.filename + " packaged drivers", Boolean(entries[driverName]));
       this.ok(id, decision.filename + " packaged PDF", Boolean(entries[pdfName]));
+      const packagedCost = zipJson(entries, decisionJsonName);
+      this.equal(
+        id,
+        decision.filename + " packaged cost snapshot",
+        packagedCost,
+        pkg.items[index].cost_decision,
+      );
+      const driverCsv = parseCsv(zipText(entries, driverName), driverName);
+      this.equal(
+        id,
+        decision.filename + " driver CSV exact headers",
+        driverCsv.headers,
+        expectedDriverHeaders,
+      );
+      this.equal(
+        id,
+        decision.filename + " driver CSV one row per estimate",
+        driverCsv.records.length,
+        packagedCost.estimates.length,
+      );
+      for (const row of driverCsv.records) {
+        for (const field of driverGovernanceColumns) {
+          this.equal(
+            id,
+            decision.filename + " driver governance " + field,
+            row[field],
+            String(packagedDecision[field] ?? ""),
+          );
+        }
+      }
       this.equal(
         id,
         decision.filename + " no PDF fallback",
@@ -1097,7 +1163,7 @@ class CompareRfqKeyMatrix {
       timeout: 30_000,
     });
     await actor.page
-      .getByRole("heading", { name: "Developer" })
+      .getByRole("heading", { name: "Developer", exact: true })
       .waitFor({ timeout: 15_000 });
     await actor.page.getByRole("button", { name: "Create key" }).first().click();
     const reveal = actor.page.getByRole("dialog");
@@ -1483,6 +1549,7 @@ class CompareRfqKeyMatrix {
         : "FAIL";
     const data = {
       status,
+      suite: "compare-rfq-key-golden-matrix",
       runId,
       generatedAt: new Date().toISOString(),
       durationMs: Date.now() - this.startedAt,
