@@ -32,12 +32,16 @@ test("release build probes do not reuse stale sockets after synchronous suites",
 });
 
 test("API-key mutations finish finite proxy responses before reload", () => {
-  assert.match(compareRunner, /async beginDeveloperMutation\(actor, button, label/);
+  assert.match(
+    compareRunner,
+    /async beginDeveloperMutation\(\s*actor,\s*button,\s*label,/,
+  );
   assert.match(compareRunner, /async finishDeveloperMutation\(actor, response, label\)/);
   assert.match(compareRunner, /response\.finished\(\)/);
   assert.match(compareRunner, /mutation response did not finish within 30 seconds/);
   assert.equal(compareRunner.match(/await this\.beginDeveloperMutation\(/g)?.length, 3);
   assert.equal(compareRunner.match(/await this\.finishDeveloperMutation\(/g)?.length, 3);
+  assert.match(compareRunner, /expectedStatus: 204/);
   assert.match(compareRunner, /\/api\\\/proxy\\\/keys/);
   assert.doesNotMatch(compareRunner, /failure === "net::ERR_ABORTED".*api\/proxy\/keys/);
 

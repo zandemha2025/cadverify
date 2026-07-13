@@ -1142,7 +1142,12 @@ class CompareRfqKeyMatrix {
       .waitFor({ state: "detached", timeout: 15_000 });
   }
 
-  async beginDeveloperMutation(actor, button, label, { method, pathname }) {
+  async beginDeveloperMutation(
+    actor,
+    button,
+    label,
+    { method, pathname, expectedStatus = 200 },
+  ) {
     const pending = actor.page.waitForResponse(
       (response) =>
         response.request().method() === method &&
@@ -1151,7 +1156,12 @@ class CompareRfqKeyMatrix {
     );
     await button.click();
     const response = await pending;
-    this.equal("WORK-12", `${label} mutation HTTP`, response.status(), 200);
+    this.equal(
+      "WORK-12",
+      `${label} mutation HTTP`,
+      response.status(),
+      expectedStatus,
+    );
     return response;
   }
 
@@ -1287,7 +1297,11 @@ class CompareRfqKeyMatrix {
       actor,
       newActiveRow.getByRole("button", { name: "Revoke" }),
       "revoke key",
-      { method: "DELETE", pathname: /^\/api\/proxy\/keys\/\d+$/ },
+      {
+        method: "DELETE",
+        pathname: /^\/api\/proxy\/keys\/\d+$/,
+        expectedStatus: 204,
+      },
     );
     const newRevokedRow = actor.page
       .getByRole("row")
