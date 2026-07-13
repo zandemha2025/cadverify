@@ -268,6 +268,7 @@ async def run_analysis(
     session: AsyncSession,
     include_thickness: bool = False,
     org_id: str | None = None,
+    source_units: str | None = None,
 ) -> dict:
     """Full analysis pipeline: hash -> dedup check -> analyze -> persist -> track.
 
@@ -292,9 +293,19 @@ async def run_analysis(
     # 2. Resolve target processes
     target_processes = resolve_target_processes_fn(processes)
 
-    # 3. Process set hash
+    # 3. Process set hash. An inch-authored STL is a different interpreted
+    # geometry even when its raw bytes and requested processes are identical.
+    # Keep that interpretation in the cache key or an earlier mm result can be
+    # returned as a plausible-looking but 25.4×-too-small analysis. Explicit mm
+    # remains byte/cache-identical to the historical unset default.
+    effective_units = source_units or "mm"
+    if effective_units not in {"mm", "inch"}:
+        raise ValueError("source_units must be 'mm', 'inch', or None")
+    process_fingerprint = [p.value for p in target_processes]
+    if effective_units != "mm":
+        process_fingerprint.append(f"source_units={effective_units}")
     process_set_hash = compute_process_set_hash(
-        [p.value for p in target_processes]
+        process_fingerprint
     )
 
     # 4. Analysis version from package
@@ -344,6 +355,13 @@ async def run_analysis(
     # freezing /health, signup, and EVERY other tenant (gauntlet F1). The pooled
     # path keeps the loop free and surfaces an honest error to just this request.
     mesh, suffix = await parse_mesh_async_fn(file_bytes, filename)
+    if effective_units != "mm":
+        # STL has no units. Convert the parsed mesh at the single geometry seam,
+        # before geometry, features, universal checks, process DFM, and persisted
+        # output. `scale_mesh_to_mm` returns a copy for inch and never double-scales.
+        from src.costing.units import scale_mesh_to_mm
+
+        mesh = scale_mesh_to_mm(mesh, effective_units)
 
     # Resolve rule pack
     pack = None
@@ -451,6 +469,13 @@ async def run_analysis(
     result = enhance_suggestions(result)
 
     result_dict = to_response_fn(result, features, pack)
+    if effective_units != "mm":
+        result_dict["source_units"] = {
+            "declared": effective_units,
+            "scale_to_mm": 25.4,
+            "provenance": "USER",
+            "note": "Source coordinates scaled once before geometry and DFM analysis.",
+        }
 
     # Tolerance analysis for STEP files with AP242 support
     if suffix.lstrip(".") in ("step", "stp"):

@@ -322,13 +322,13 @@ export default function PartWorkspace({
     }
   }, []);
 
-  const runDfm = useCallback(async (theFile: File) => {
+  const runDfm = useCallback(async (theFile: File, sourceUnits: CostOptions["units"]) => {
     setDfmLoading(true);
     setDfmError(null);
     setValidation(null);
     setSelectedIssueKey(null);
     try {
-      const data = await validateFile(theFile);
+      const data = await validateFile(theFile, undefined, undefined, undefined, sourceUnits);
       setValidation(data);
     } catch (err) {
       setDfmError(err instanceof Error ? err.message : "Analysis failed");
@@ -351,7 +351,7 @@ export default function PartWorkspace({
       setFile(selected);
       setTab(landingTab(role));
       void runCost(selected, opts);
-      void runDfm(selected);
+      void runDfm(selected, opts.units);
     },
     [opts, role, runCost, runDfm]
   );
@@ -372,7 +372,10 @@ export default function PartWorkspace({
   const handleRecost = useCallback(() => {
     if (!file || validateQty(opts.qty)) return;
     void runCost(file, opts);
-  }, [file, opts, runCost]);
+    // Source units change geometry, not just price. Re-run DFM from the same
+    // declaration so Routing and Decision can never describe different parts.
+    void runDfm(file, opts.units);
+  }, [file, opts, runCost, runDfm]);
 
   const reset = useCallback(() => {
     setFile(null);
@@ -520,7 +523,7 @@ export default function PartWorkspace({
         onSaveScenario={onSaveScenario}
         onRecallScenario={onRecallScenario}
         handleRecost={handleRecost}
-        runDfm={runDfm}
+        runDfm={(candidate) => void runDfm(candidate, opts.units)}
         reset={reset}
       />
     );
@@ -683,7 +686,7 @@ export default function PartWorkspace({
                     <ErrorState
                       title="Analysis unavailable"
                       message={dfmError}
-                      onRetry={() => file && runDfm(file)}
+                      onRetry={() => file && runDfm(file, opts.units)}
                     />
                   ) : (
                     <RoutingDfmView

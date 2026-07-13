@@ -140,6 +140,13 @@ export interface ValidationResult {
   rule_pack?: { name: string; version: string };
   /** present only when the analysis was requested with include_thickness. */
   wall_thickness_map?: WallThicknessMap;
+  /** Present when an inch-authored unitless mesh was explicitly declared. */
+  source_units?: {
+    declared: "inch";
+    scale_to_mm: number;
+    provenance: "USER";
+    note: string;
+  };
 }
 
 export interface Material {
@@ -357,7 +364,8 @@ export async function validateFile(
   rulePack?: string,
   /** opt-in: request the per-face wall-thickness map for a thin-wall heatmap.
    *  Off by default → no query param → response is byte-identical to before. */
-  includeThickness?: boolean
+  includeThickness?: boolean,
+  sourceUnits?: "mm" | "inch"
 ): Promise<ValidationResult> {
   const formData = new FormData();
   formData.append("file", file);
@@ -371,6 +379,9 @@ export async function validateFile(
   }
   if (includeThickness) {
     params.set("include_thickness", "true");
+  }
+  if (sourceUnits) {
+    params.set("units", sourceUnits);
   }
 
   let url = `${API_BASE}/validate`;
@@ -769,6 +780,8 @@ export interface CostOptions {
   cavities: number; // >= 1
   complexity: string; // simple|moderate|complex|very_complex
   material_class: string; // polymer|aluminum|steel|stainless|titanium
+  /** Explicit interpretation for unitless STL/mesh coordinates. */
+  units: "mm" | "inch";
   /** per-shop calibration profile id (see getShops). null/undefined => generic defaults. */
   shop?: string | null;
   /**
@@ -831,6 +844,7 @@ async function _costEstimate(
   form.append("cavities", String(opts.cavities));
   form.append("complexity", opts.complexity);
   form.append("material_class", opts.material_class);
+  form.append("units", opts.units);
   // Per-shop calibration (F1): bind the shop's real rates → SHOP-tagged number.
   if (opts.shop) form.append("shop", opts.shop);
   // Ad-hoc overrides (F3): real server re-cost on an edited assumption/driver.

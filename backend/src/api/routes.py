@@ -757,6 +757,14 @@ async def validate_file(
             "responses lean; the map is never persisted/cached."
         ),
     ),
+    units: Optional[str] = Query(
+        None,
+        description=(
+            "Declared STL source units: mm|inch (unset => mm). STL stores no "
+            "unit metadata; inch scales the mesh ×25.4 into mm exactly once "
+            "before geometry and DFM analysis."
+        ),
+    ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
     _org_limit: None = Depends(enforce_org_limits),
@@ -771,6 +779,11 @@ async def validate_file(
                 status_code=400,
                 detail=f"Unknown rule pack '{rule_pack}'. Available: {available_rule_packs()}",
             )
+    if units is not None and units not in _SOURCE_UNITS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown units '{units}'. Use one of {sorted(_SOURCE_UNITS)}",
+        )
 
     data = await _read_capped(file)
     result = await analysis_service.run_analysis(
@@ -781,6 +794,7 @@ async def validate_file(
         user=user,
         session=session,
         include_thickness=include_thickness,
+        source_units=units,
     )
 
     if segmentation == "sam3d":
