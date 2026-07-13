@@ -29,6 +29,8 @@
     .pick { background: #eaf5ea; }
     .src { font-size: 8px; color: #555; }
     .avoid-break { page-break-inside: avoid; }
+    .governance { background: #f4f8f4; border-left: 3px solid #3d7a4a; padding: 6px 8px; margin: 8px 0; }
+    .governance-note { margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
   </style>
 </head>
 <body>
@@ -51,6 +53,22 @@
     against measured shop outcomes &mdash; they are propagated from the stated
     assumptions, not a guarantee. Use as a negotiation and design baseline,
     not a quote.
+  </div>
+
+  <!-- Persisted signoff travels with every exported decision record. -->
+  <h2>Decision Governance</h2>
+  <div class="governance">
+    <strong>Status:</strong> {{ governance.get('approval_status', 'unreviewed') }}
+    {% if governance.get('approved_by_user_id') %}
+      &middot; <strong>Signed by user:</strong> {{ governance.get('approved_by_user_id') }}
+    {% endif %}
+    {% if governance.get('approved_at') %}
+      &middot; <strong>Signed at:</strong> {{ governance.get('approved_at') }}
+    {% endif %}
+    {% if governance.get('approval_note') %}
+      <div class="governance-note"><strong>Approval note:</strong>
+{{ governance.get('approval_note') }}</div>
+    {% endif %}
   </div>
 
   <!-- Geometry -->

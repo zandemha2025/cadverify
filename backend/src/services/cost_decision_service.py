@@ -465,11 +465,16 @@ async def mark_org_decisions_stale(
 # ---------------------------------------------------------------------------
 
 
-def build_estimates_csv(result_json: dict) -> str:
+def build_estimates_csv(
+    result_json: dict,
+    *,
+    governance: Optional[dict] = None,
+) -> str:
     """Flatten per-(process, qty) estimates into an auditable CSV table.
 
     Includes the honest confidence band columns (band label + validated flag)
-    so the exported artifact never presents an unvalidated number as measured.
+    and the persisted approval fields, so the exported artifact never presents
+    an unvalidated or unsigned number as governed evidence.
     """
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -487,9 +492,14 @@ def build_estimates_csv(result_json: dict) -> str:
             "confidence_label",
             "confidence_validated",
             "dfm_ready",
+            "approval_status",
+            "approved_by_user_id",
+            "approved_at",
+            "approval_note",
             "line_items",
         ]
     )
+    governance = governance or {}
     for e in result_json.get("estimates", []) or []:
         ci = e.get("confidence") or {}
         line_items = e.get("line_items") or {}
@@ -509,6 +519,10 @@ def build_estimates_csv(result_json: dict) -> str:
                 # Honesty: this is False for assumption-based bands.
                 ci.get("validated", False),
                 e.get("dfm_ready", ""),
+                governance.get("approval_status", ""),
+                governance.get("approved_by_user_id", ""),
+                governance.get("approved_at", ""),
+                governance.get("approval_note", ""),
                 li_str,
             ]
         )

@@ -223,10 +223,14 @@ async def export_cost_json(
     user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Export the raw glass-box decision JSON (result_json)."""
+    """Export the glass-box decision JSON plus its governance state."""
     d = await svc.get_owned(session, decision_id, user.user_id)
+    payload = {
+        **(d.result_json or {}),
+        "governance": svc.governance_fields(d),
+    }
     return Response(
-        content=json.dumps(d.result_json, separators=(",", ":")),
+        content=json.dumps(payload, separators=(",", ":")),
         media_type="application/json",
         headers={
             "Content-Disposition": (
@@ -245,9 +249,12 @@ async def export_cost_csv(
     user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    """Export the estimates / line-items table as CSV (honest CI columns)."""
+    """Export estimates, line items, confidence, and governance as CSV."""
     d = await svc.get_owned(session, decision_id, user.user_id)
-    csv_text = svc.build_estimates_csv(d.result_json or {})
+    csv_text = svc.build_estimates_csv(
+        d.result_json or {},
+        governance=svc.governance_fields(d),
+    )
     stem = cost_pdf_service.safe_cost_filename(d.filename)[:-4]
     return Response(
         content=csv_text,

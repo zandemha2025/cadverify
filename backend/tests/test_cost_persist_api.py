@@ -15,7 +15,9 @@ existing analysis-report PDF tests.
 from __future__ import annotations
 
 import copy
+import csv
 import importlib
+import io
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -447,7 +449,17 @@ def test_export_json(client, real_result_json):
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("application/json")
     assert "attachment" in r.headers["content-disposition"]
-    assert r.json()["status"] == "OK"
+    body = r.json()
+    assert body["status"] == "OK"
+    assert body["governance"] == {
+        "approval_status": "unreviewed",
+        "approved_by_user_id": None,
+        "approved_at": None,
+        "approval_note": None,
+        "is_stale": False,
+        "stale_at": None,
+        "stale_reason": None,
+    }
 
 
 def test_export_csv_has_honest_columns(client, real_result_json):
@@ -465,6 +477,49 @@ def test_export_csv_has_honest_columns(client, real_result_json):
     # Assumption-based band value carried through, never "validated"
     assert "assumption-based, not yet validated" in text
     assert "False" in text  # confidence_validated column value
+
+
+def test_exports_preserve_exact_approval_governance(client, real_result_json):
+    cl, app = client
+    dec = _make_decision("01GOVEXPORT00000000000000A", real_result_json)
+    note = 'QA edit α/β — “quoted” <tag> & gears ⚙️\nLine 2: $3.80/unit'
+    approved_at = datetime(2026, 7, 13, 4, 10, 5, tzinfo=timezone.utc)
+    dec.approval_status = "approved"
+    dec.approved_by_user_id = 42
+    dec.approved_at = approved_at
+    dec.approval_note = note
+    _override(app, _session_returning(scalar_one=dec))
+
+    json_response = cl.get(
+        "/api/v1/cost-decisions/01GOVEXPORT00000000000000A/export.json"
+    )
+    assert json_response.status_code == 200
+    governance = json_response.json()["governance"]
+    assert governance["approval_status"] == "approved"
+    assert governance["approved_by_user_id"] == 42
+    assert governance["approved_at"] == approved_at.isoformat()
+    assert governance["approval_note"] == note
+
+    csv_response = cl.get(
+        "/api/v1/cost-decisions/01GOVEXPORT00000000000000A/export.csv"
+    )
+    assert csv_response.status_code == 200
+    rows = list(csv.DictReader(io.StringIO(csv_response.text)))
+    assert rows
+    assert all(row["approval_status"] == "approved" for row in rows)
+    assert all(row["approved_by_user_id"] == "42" for row in rows)
+    assert all(row["approved_at"] == approved_at.isoformat() for row in rows)
+    assert all(row["approval_note"] == note for row in rows)
+
+    from src.services.cost_pdf_service import render_cost_html
+
+    html = render_cost_html(dec)
+    assert "Decision Governance" in html
+    assert "Status:</strong> approved" in html
+    assert "Signed by user:</strong> 42" in html
+    assert approved_at.isoformat() in html
+    assert "QA edit α/β — “quoted” &lt;tag&gt; &amp; gears ⚙️" in html
+    assert "\nLine 2: $3.80/unit" in html
 
 
 # ---------------------------------------------------------------------------

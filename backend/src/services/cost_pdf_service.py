@@ -85,6 +85,8 @@ _jinja_env.filters["format_money"] = _format_money
 
 def build_cost_pdf_context(decision: CostDecision) -> dict:
     """Assemble the Jinja render context from a persisted CostDecision."""
+    from src.services.cost_decision_service import governance_fields
+
     return {
         "filename": decision.filename,
         "file_type": decision.file_type,
@@ -94,6 +96,7 @@ def build_cost_pdf_context(decision: CostDecision) -> dict:
         "result": decision.result_json or {},
         "engine_version": decision.engine_version or _app_version,
         "mesh_hash": (decision.mesh_hash or "")[:12],
+        "governance": governance_fields(decision),
     }
 
 
