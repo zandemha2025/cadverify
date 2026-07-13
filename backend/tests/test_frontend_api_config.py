@@ -46,13 +46,20 @@ def test_frontend_uses_runtime_server_origin_and_same_origin_browser_routes():
 
 def test_next_api_proxy_streams_large_uploads_and_blocks_redirects():
     proxy_route = read("frontend/src/app/api/proxy/[...path]/route.ts")
+    body_helper = read("frontend/src/lib/proxy-request-body.ts")
 
     assert "req.arrayBuffer()" not in proxy_route
-    assert "body: hasBody ? req.body : undefined" in proxy_route
+    assert "prepareProxyRequestBody(method, contentType, req.body)" in proxy_route
+    assert "body: hasBody ? prepared.body : undefined" in proxy_route
     assert 'duplex?: "half"' in proxy_route
-    assert 'init.duplex = "half"' in proxy_route
+    assert 'if (prepared.streaming) init.duplex = "half"' in proxy_route
     assert 'redirect: "error"' in proxy_route
     assert "signal: req.signal" in proxy_route
+    assert "MAX_BUFFERED_PROXY_JSON_BYTES = 1024 * 1024" in body_helper
+    assert 'mime.endsWith("+json")' in body_helper
+    assert "return { body: stream, streaming: true" in body_helper
+    assert "reader.cancel" in body_helper
+    assert 'code: "proxy_json_too_large"' in proxy_route
     for unsafe in ('segment.includes("/")', 'segment.includes("\\\\")', 'segment.includes("%")'):
         assert unsafe in proxy_route
 

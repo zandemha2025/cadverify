@@ -18,6 +18,7 @@
 import { type NextRequest } from "next/server";
 import { backendUrl } from "@/lib/api-base";
 import { getSessionToken } from "@/lib/session";
+import { prepareProxyRequestBody } from "@/lib/proxy-request-body";
 
 export const dynamic = "force-dynamic";
 
@@ -80,15 +81,28 @@ async function handle(
     if (value) headers[name] = value;
   }
 
+  const prepared = await prepareProxyRequestBody(method, contentType, req.body);
+  if (prepared.tooLarge) {
+    return Response.json(
+      {
+        detail: {
+          code: "proxy_json_too_large",
+          message: "This JSON request is too large.",
+        },
+      },
+      { status: 413 },
+    );
+  }
+
   const init: RequestInit & { duplex?: "half" } = {
     method,
     headers,
-    body: hasBody ? req.body : undefined,
+    body: hasBody ? prepared.body : undefined,
     cache: "no-store",
     redirect: "error",
     signal: req.signal,
   };
-  if (hasBody) init.duplex = "half";
+  if (prepared.streaming) init.duplex = "half";
   const res = await fetch(target, init);
 
   const relayed = new Headers();

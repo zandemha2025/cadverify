@@ -145,6 +145,7 @@ class AuthRoleLifecycleMatrix {
     this.consoleErrors = [];
     this.requestFailures = [];
     this.expectedBrowserDenials = [];
+    this.expectedNavigationAborts = [];
     this.contexts = [];
     this.screenshots = {};
     this.identities = {};
@@ -194,6 +195,22 @@ class AuthRoleLifecycleMatrix {
     page.on("requestfailed", (request) => {
       const error = request.failure()?.errorText || "request failed";
       const url = request.url();
+      // Chromium cancels still-running idempotent fetches when a human leaves a
+      // data-heavy page. That is an expected navigation outcome, not an API or
+      // network failure. Keep it in the report instead of hiding it, while all
+      // mutation aborts and non-ERR_ABORTED failures remain release blockers.
+      if (
+        error === "net::ERR_ABORTED" &&
+        ["GET", "HEAD"].includes(request.method())
+      ) {
+        this.expectedNavigationAborts.push({
+          persona,
+          url,
+          method: request.method(),
+          error,
+        });
+        return;
+      }
       if (
         error === "net::ERR_ABORTED" &&
         (/[?&]_rsc=/.test(url) || /\/_next\/static\//.test(url) || /\/icon\.svg(?:\?|$)/.test(url))
@@ -879,6 +896,7 @@ ${rows}
         consoleErrors: this.consoleErrors.length,
         requestFailures: this.requestFailures.length,
         expectedBrowserDenials: this.expectedBrowserDenials.length,
+        expectedNavigationAborts: this.expectedNavigationAborts.length,
       },
       steps: this.steps,
       failures: this.failures,
@@ -887,6 +905,7 @@ ${rows}
       consoleErrors: this.consoleErrors,
       requestFailures: this.requestFailures,
       expectedBrowserDenials: this.expectedBrowserDenials,
+      expectedNavigationAborts: this.expectedNavigationAborts,
       releaseEvidence: {
         schemaVersion: 1,
         goldenPaths: this.goldenPaths,
