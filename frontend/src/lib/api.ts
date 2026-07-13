@@ -1,6 +1,10 @@
 import { toast } from "sonner";
 import * as Sentry from "@sentry/nextjs";
-import { apiProblemDetail, apiRecoveryMessage } from "@/lib/api-recovery";
+import {
+  apiProblemDetail,
+  apiRecoveryMessage,
+  apiResourceFromUrl,
+} from "@/lib/api-recovery";
 import { API_BASE, browserOrBackendUrl } from "./api-base";
 import type { AnalysisListRow } from "./recent-parts";
 import type { CostDisposition } from "./cost-disposition";
@@ -290,6 +294,7 @@ const apiClient = {
     // Same-origin → the httpOnly session cookie is sent automatically and the
     // Next proxy forwards it to the backend. No Authorization header needed.
     const headers = new Headers(options.headers);
+    const resource = apiResourceFromUrl(url);
 
     let lastError: Error | null = null;
     for (let attempt = 0; attempt <= retries; attempt++) {
@@ -323,7 +328,7 @@ const apiClient = {
           apiRecoveryMessage({
             status: 429,
             payload: err,
-            resource: "verification",
+            resource,
             retryAfter: String(retryAfter),
           }),
         );
@@ -336,7 +341,7 @@ const apiClient = {
           apiRecoveryMessage({
             status: res.status,
             payload: problem,
-            resource: "verification",
+            resource,
             retryAfter: res.headers.get("retry-after"),
           }),
         );
@@ -353,7 +358,7 @@ const apiClient = {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
         throw new Error(
           apiProblemDetail(err) ||
-            apiRecoveryMessage({ status: res.status, payload: err, resource: "verification" }),
+            apiRecoveryMessage({ status: res.status, payload: err, resource }),
         );
       }
 

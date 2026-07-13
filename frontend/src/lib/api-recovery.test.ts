@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   apiProblemDetail,
+  apiResourceFromUrl,
   apiRecoveryMessage,
   networkRecoveryMessage,
 } from "./api-recovery.ts";
@@ -68,3 +69,19 @@ test("specific 503 recovery copy is preserved for queue failures", () => {
     "Design generation is temporarily unavailable. Retry shortly.",
   );
 });
+
+for (const [url, resource] of [
+  ["/api/v1/validate/cost", "verification"],
+  ["/api/v1/cost-decisions/01TEST", "decision"],
+  ["http://localhost:3000/api/v1/analyses?limit=8", "analysis"],
+  ["/api/v1/batches/01TEST", "batch"],
+  ["/api/v1/organizations/current", "organization"],
+  ["/api/v1/api-keys", "API key"],
+  ["/api/v1/invitations/accept", "invitation"],
+  ["/api/v1/reconstruct", "reconstruction"],
+  ["/api/v1/unknown-surface", "request"],
+] as const) {
+  test(`API URL ${url} maps recovery copy to ${resource}`, () => {
+    assert.equal(apiResourceFromUrl(url), resource);
+  });
+}

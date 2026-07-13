@@ -79,3 +79,35 @@ export function apiRecoveryMessage({
 export function networkRecoveryMessage(resource: string): string {
   return `Connection interrupted during the ${resource} request. Check your network, refresh the saved list, and retry once.`;
 }
+
+const API_RESOURCE_ROUTES: Array<[RegExp, string]> = [
+  [/\/(?:auth|login|logout|sessions?|password)(?:\/|$)/, "account"],
+  [/\/(?:invitations?|invites?)(?:\/|$)/, "invitation"],
+  [/\/organizations?(?:\/|$)/, "organization"],
+  [/\/(?:api-keys?|developer-keys?)(?:\/|$)/, "API key"],
+  [/\/notifications?(?:\/|$)/, "notification"],
+  [/\/cost-decisions?(?:\/|$)/, "decision"],
+  [/\/(?:batches?|batch-runs?)(?:\/|$)/, "batch"],
+  [/\/(?:designs?|design-jobs?)(?:\/|$)/, "design"],
+  [/\/(?:rfq|rfq-packages?)(?:\/|$)/, "RFQ package"],
+  [/\/integrations?(?:\/|$)/, "integration"],
+  [/\/programs?(?:\/|$)/, "program"],
+  [/\/machines?(?:\/|$)/, "machine"],
+  [/\/(?:rate-cards?|rate-libraries?|calibration)(?:\/|$)/, "rate library"],
+  [/\/(?:reconstruct|reconstructions?)(?:\/|$)/, "reconstruction"],
+  [/\/jobs?(?:\/|$)/, "job"],
+  [/\/analyses?(?:\/|$)/, "analysis"],
+  [/\/validate(?:\/|$)/, "verification"],
+];
+
+/** Name the user's actual surface in fallback recovery copy. */
+export function apiResourceFromUrl(url: string): string {
+  let pathname = url;
+  try {
+    pathname = new URL(url, "http://proofshape.local").pathname;
+  } catch {
+    // A malformed URL will fail in fetch; retaining the original text still
+    // lets the route matchers produce the best available recovery label.
+  }
+  return API_RESOURCE_ROUTES.find(([pattern]) => pattern.test(pathname))?.[1] ?? "request";
+}
