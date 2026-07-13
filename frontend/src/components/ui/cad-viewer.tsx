@@ -403,11 +403,11 @@ export default function CadViewer({
             distanceScale={instrument ? 1.55 : 1.9}
             onHalfHeight={onHalfHeight}
           />
-          {instrument ? (
-            <StudioRig />
-          ) : (
-            <Environment preset="studio" />
-          )}
+          {/* Keep every viewer mode self-contained. Drei's named presets resolve
+              to remote HDR assets; production CSP correctly blocks those
+              requests, leaving a noisy console and a preview at risk. The
+              Lightformer rig above builds the environment map in-process. */}
+          <StudioRig />
           {/* soft contact shadow seats the part on an invisible plane */}
           <ContactShadows
             position={[0, -halfH - 0.02, 0]}
