@@ -19,6 +19,10 @@ const reportSpecs = {
     title: "Human Web App Journey",
     file: `human-e2e-${runId}.json`,
   },
+  design: {
+    title: "Design Studio Golden Journeys",
+    file: `design-studio-e2e-${runId}.json`,
+  },
   enterprise: {
     title: "Enterprise CAD Organization Journey",
     file: `enterprise-domain-${runId}.json`,
@@ -67,6 +71,7 @@ const verifyRailSurfaces = [
 ];
 
 const authenticatedRoutes = [
+  "/designs",
   "/cost",
   "/analyze",
   "/batch",
@@ -79,6 +84,8 @@ const authenticatedRoutes = [
   "/label",
   "/design-system",
   "/settings/developer",
+  "/settings/organization",
+  "/settings/security",
   "/notifications",
 ];
 
@@ -140,6 +147,24 @@ const visibleCopyRoutes = [
   "/rfq-packages",
 ];
 
+const designStudioSteps = [
+  "Design Studio account signs up through the real web form",
+  "Design Studio loads inside the unified ProofShape shell",
+  "Unsupported freeform geometry is rejected without approximation",
+  "Incomplete enclosure description asks for exact missing dimensions",
+  "Plate description prefills exact clean millimetre values",
+  "Unsafe plate hole margin is blocked before generation",
+  "Golden mounting plate generates real CAD with exact geometry and hash",
+  "Plate revision is immutable and historical STEP bytes remain exact",
+  "Historical plate revision enters Verify with the exact measured result",
+  "Golden L bracket generates as a recognizable prismatic template",
+  "L bracket Verify rejects CNC turning and completes DFM plus cost",
+  "Golden open enclosure generates with an open thin-wall cavity",
+  "Open enclosure routes as thin-wall geometry and rejects CNC turning",
+  "Archive confirmation supports cancel and irreversible confirm branches",
+  "Design Studio remains usable on a mobile viewport with WebGL fallback",
+];
+
 function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -170,6 +195,14 @@ const requirements = [
       "Public web",
       `Open ${route} and verify final copy, page signal, console health, and screenshot evidence.`
     )
+  ),
+  req(
+    "public.pilot-request",
+    "human",
+    "public pilot request records a durable receipt",
+    "Public evaluator",
+    "Pilot intake",
+    "Submit the actual public form and receive a durable server-side receipt."
   ),
   req(
     "auth.verify-redirect",
@@ -232,7 +265,7 @@ const requirements = [
   req(
     "notifications.panel-derived-state",
     "human",
-    "notifications panel opens and derives state",
+    "notifications inbox opens and derives state",
     "Authenticated user",
     "Notifications",
     "Open notification UI and verify its derived state."
@@ -270,6 +303,24 @@ const requirements = [
     "CAD engineer",
     "CAD analysis",
     "Upload and process a real STEP fixture through the browser."
+  ),
+  req(
+    "auth.logout-login",
+    "human",
+    "account menu signs out and valid login restores the workspace",
+    "Authenticated user",
+    "Session lifecycle",
+    "Sign out through the visible account menu, prove the protected boundary returns, and log back in."
+  ),
+  ...designStudioSteps.map((step, index) =>
+    req(
+      `design-studio.${String(index + 1).padStart(2, "0")}`,
+      "design",
+      step,
+      "CAD design engineer",
+      "Design Studio",
+      "Complete the current ProofShape Design Studio journey with exact CAD, revision, DFM, cost, archive, and responsive evidence."
+    )
   ),
   req(
     "assembly-context.automotive",

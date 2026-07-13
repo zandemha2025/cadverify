@@ -134,6 +134,7 @@ const desktopNavSignals = [
 ];
 
 const forbiddenVisiblePatterns = [
+  /\bCadVerify\b/i,
   /\bunder construction\b/i,
   /\bcoming soon\b/i,
   /\bnot implemented\b/i,

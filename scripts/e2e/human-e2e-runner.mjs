@@ -30,6 +30,7 @@ const launchOptions = {
 };
 
 const forbiddenPatterns = [
+  /\bCadVerify\b/i,
   /\bin development\b/i,
   /\bunder construction\b/i,
   /\bcoming soon\b/i,
@@ -48,7 +49,7 @@ const forbiddenPatterns = [
 
 const expectedSignals = {
   "/": [/ProofShape/i, /cost/i],
-  "/platform": [/Platform/i, /Verify/i],
+  "/platform": [/Platform/i, /verification|decision layer/i],
   "/developers": [/Developers/i, /api/i],
   "/api-reference": [/API/i, /validate/i],
   "/docs": [/API|Docs|ProofShape/i],
@@ -69,6 +70,7 @@ const expectedSignals = {
 };
 
 const appRoutes = [
+  { path: "/designs", signal: /ProofShape Design Studio|Safe parametric CAD/i },
   { path: "/cost", signal: /cost|should-cost|workbench|analyze/i },
   { path: "/analyze", signal: /Upload|Analyze|CAD|analysis/i },
   { path: "/batch", signal: /Batch|Start batch|ZIP/i },
@@ -80,7 +82,9 @@ const appRoutes = [
   { path: "/reconstruct", signal: /Image to 3D|Reconstruct|photographs/i },
   { path: "/label", signal: /Parts \(Label\)|Labeling|corpus|label/i },
   { path: "/design-system", signal: /Foundations|Glass box|Calibration|Design/i },
-  { path: "/settings/developer", signal: /Developer|API|settings|404|not found/i, allow404: true },
+  { path: "/settings/developer", signal: /Developer|API|settings/i },
+  { path: "/settings/organization", signal: /Organization|members|invites/i },
+  { path: "/settings/security", signal: /Security|password|sessions|SSO/i },
   { path: "/notifications", signal: /Notifications|all caught up|states/i },
 ];
 
@@ -271,6 +275,31 @@ class HumanE2E {
         return { screenshot: await this.shot(`public-${pathname === "/" ? "home" : pathname}`) };
       });
     }
+
+    await this.step("public pilot request records a durable receipt", async () => {
+      await this.goto("/company#pilot", "pilot request", { settleMs: 700 });
+      await this.page.getByLabel("Work email").fill(uniqueEmail("pilot"));
+      await this.page.getByLabel("Company").fill("ProofShape Human Simulation");
+      await this.page.getByLabel("What do you make?").fill(
+        "Precision brackets and sealed housings for production equipment",
+      );
+      await this.page.getByLabel("Deployment preference").selectOption("cloud");
+      const send = this.page.getByRole("button", { name: "Send request" });
+      await send.waitFor({ state: "visible", timeout: 8000 });
+      await this.page.waitForFunction(() => {
+        const button = [...document.querySelectorAll("button")].find(
+          (element) => element.textContent?.trim() === "Send request",
+        );
+        return button instanceof HTMLButtonElement && !button.disabled;
+      });
+      await send.click();
+      await this.page.getByText("Request received and recorded.").waitFor({ timeout: 12_000 });
+      const text = await this.scanVisibleText("pilot-request-success");
+      if (!/CV-[A-Za-z0-9-]{12,}/.test(text)) {
+        throw new Error("pilot request did not expose a durable receipt");
+      }
+      return { screenshot: await this.shot("public-pilot-request") };
+    });
   }
 
   async runAuth() {
@@ -441,6 +470,24 @@ class HumanE2E {
     });
   }
 
+  async runSessionLifecycle() {
+    await this.step("account menu signs out and valid login restores the workspace", async () => {
+      await this.goto("/verify", "session lifecycle", { settleMs: 500 });
+      await this.page.getByRole("button", { name: "Account" }).click();
+      await this.page.getByText(this.account.email).waitFor();
+      await this.page.getByText("Sign out", { exact: true }).click();
+      await this.page.waitForURL((url) => url.pathname === "/login", { timeout: 12_000 });
+      await this.page.goto("/verify", { waitUntil: "domcontentloaded" });
+      await this.page.waitForURL((url) => url.pathname === "/login", { timeout: 12_000 });
+      await this.page.getByLabel("Email").fill(this.account.email);
+      await this.page.getByLabel("Password").fill(this.account.password);
+      await this.page.getByRole("button", { name: /^Log in$/ }).click();
+      await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
+      await this.expectText(/ProofShape|Home|Verify/i, "restored workspace");
+      return { screenshot: await this.shot("session-logout-login") };
+    });
+  }
+
   async finish() {
     if (this.consoleErrors.length > 0) {
       const sample = this.consoleErrors.slice(0, 8).map((e) => `${e.url}: ${e.text}`).join("\n");
@@ -531,6 +578,7 @@ try {
   await runner.runAuthedAppRoutes();
   await runner.runMobileSmoke();
   await runner.runCadUpload();
+  await runner.runSessionLifecycle();
 } finally {
   await runner.finish().catch((error) => {
     console.error(error);

@@ -71,6 +71,7 @@ const visibleCopyRoutes = [
 const governanceApprovalNote = `P7 governance approval ${runId}`;
 
 const forbiddenPatterns = [
+  /\bCadVerify\b/i,
   /\bin development\b/i,
   /\bunder construction\b/i,
   /\bcoming soon\b/i,
