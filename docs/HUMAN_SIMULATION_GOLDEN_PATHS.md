@@ -121,7 +121,7 @@ provenance—not a stale dollar snapshot.
 | ENT-01 | Publish governed rate card and declare floor | MJF $48/hr, CNC 3-axis $95/hr, CNC 5-axis $142/hr, DMLS $185/hr; all `USER`; authored/published state is visible | browser |
 | ENT-02 | Ingest four actuals and recalibrate | Four real rows remain below floor eight; recalibration refuses and never says validated | browser |
 | ENT-03 | Severe-service stainless verification | 120°C, sour service, 35 MPa remain visible; invalid materials/routes are excluded with standards citations | browser |
-| ENT-04 | Assign annual volume before and after exact re-verification | Exposure withheld before exact quantity; after reverify, unit $133.58 × 12,000 = $1,602,960 | browser |
+| ENT-04 | Assign annual volume before and after exact re-verification | Exposure withheld before exact quantity; after reverify, the exact 12,000-unit recommendation is $10.08/unit and $120,960/year. The $133.58 headline for the single-part basis is never multiplied by the annual volume. | browser |
 | ENT-05 | Programs rollup | One assigned verified part, annual volume, exposure, and source decision agree across Programs/Records | browser |
 | ROLE-01 | Viewer opens allowed evidence then attempts admin mutation | Readable permitted evidence; admin controls absent/gated; API is 403; cross-tenant unknown ID is 404 | browser |
 | ROLE-02 | Analyst/member attempts rate publication | Can verify/create decisions; cannot publish governed libraries | browser |
