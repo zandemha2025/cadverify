@@ -24,6 +24,7 @@ const screenshotDir = path.join(artifactDir, "screenshots");
 const reportPath = path.join(outputRoot, `notification-decision-golden-${runId}.json`);
 const markdownPath = path.join(outputRoot, `notification-decision-golden-${runId}.md`);
 const fixturePath = path.join(repoRoot, "backend", "tests", "assets", "cube.step");
+const secondFixturePath = path.join(repoRoot, "outputs", "human-sim", "framework", "demo-assets", "bracket_A.stl");
 const requiredIds = ["VER-04", "WORK-05", "WORK-07", "ROLE-04", "FAIL-09"];
 const password = "QaNotificationMatrix2026";
 const normalNote = "QA approval note v1: approve make-vs-buy at qty 50.";
@@ -226,7 +227,7 @@ class Matrix {
     return response.body.notifications || [];
   }
 
-  async uploadDecision(identity, filename) {
+  async uploadDecision(identity, filename, sourcePath = fixturePath) {
     const { page } = identity;
     await page.goto("/verify", { waitUntil: "domcontentloaded", timeout: 30_000 });
     await page.locator('button[title="Verify"]').first().click();
@@ -242,8 +243,8 @@ class Matrix {
     );
     await input.setInputFiles({
       name: filename,
-      mimeType: "application/step",
-      buffer: await readFile(fixturePath),
+      mimeType: filename.toLowerCase().endsWith(".stl") ? "model/stl" : "application/step",
+      buffer: await readFile(sourcePath),
     });
     const [validationResponse, costResponse] = await Promise.all([validationPromise, costPromise]);
     if (!validationResponse.ok()) fail(`POST /validate returned ${validationResponse.status()}`);
@@ -323,7 +324,11 @@ class Matrix {
     await page.getByText("You're all caught up.", { exact: true }).waitFor({ timeout: 15_000 });
     const readReloadScreenshot = await this.shot("VER-04", page, "read-state-after-return");
 
-    const second = await this.uploadDecision(identity, `notification-secondary-${runId}.step`);
+    const second = await this.uploadDecision(
+      identity,
+      `notification-secondary-${runId}.stl`,
+      secondFixturePath,
+    );
     const secondRow = second.notification;
     await page.goto("/notifications", { waitUntil: "domcontentloaded" });
     await page.getByText(secondRow.title, { exact: true }).waitFor({ timeout: 15_000 });
