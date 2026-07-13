@@ -454,7 +454,10 @@ class BatchDesignRecoveryMatrix {
     await card.click();
   }
 
-  async waitForRevisionHistorySettled(revisions) {
+  async waitForRevisionHistorySettled(designId, revisions) {
+    await this.page.locator(
+      `[data-revision-history-owner="${designId}"][data-revision-history-state="ready"]`,
+    ).waitFor({ state: "visible", timeout: 30_000 });
     await this.page.getByText("Revision history", { exact: true }).waitFor({
       state: "visible",
       timeout: 30_000,
@@ -688,6 +691,8 @@ class BatchDesignRecoveryMatrix {
       assert(durable.status === "failed" && durable.current_revision === 1, "FAIL-04 durable state is not failed revision 1");
       assert(durable.revision.error?.message === DESIGN_QUEUE_COPY, "FAIL-04 revision copy differs from response copy");
       assert(Object.values(durable.revision.links).every((value) => value === null), "FAIL-04 exposed a fake artifact link");
+      const failedRevisions = await this.getRevisions(failed.id);
+      await this.waitForRevisionHistorySettled(failed.id, failedRevisions);
 
       await this.page.reload({ waitUntil: "domcontentloaded" });
       await this.selectDesign(name);
@@ -704,11 +709,11 @@ class BatchDesignRecoveryMatrix {
       await this.page.waitForTimeout(500);
       const revisions = await this.getRevisions(failed.id);
       const after = await this.designList();
-      await this.waitForRevisionHistorySettled(revisions);
+      await this.waitForRevisionHistorySettled(failed.id, revisions);
       await this.page.reload({ waitUntil: "domcontentloaded" });
       await this.selectDesign(name);
       await this.page.getByRole("link", { name: /^Download R2 STEP$/ }).waitFor({ timeout: 20_000 });
-      await this.waitForRevisionHistorySettled(revisions);
+      await this.waitForRevisionHistorySettled(failed.id, revisions);
       await this.page.waitForLoadState("networkidle", { timeout: 15_000 });
       await this.page.waitForTimeout(500);
       const recoveryScreenshot = await this.screenshot("FAIL-04", "retry-ready-r2");
@@ -757,13 +762,15 @@ class BatchDesignRecoveryMatrix {
       const { payload } = await this.submitNewDesign({ fault, expectedStatus: 202 });
       const designId = payload.design.id;
       const failed = await this.waitForDesign(designId, (design) => design.status === "failed", `${id} worker failure`);
+      await this.page.getByText(copy, { exact: true }).waitFor({ timeout: 20_000 });
+      const failedHistory = await this.getRevisions(designId);
+      await this.waitForRevisionHistorySettled(designId, failedHistory);
       await this.page.reload({ waitUntil: "domcontentloaded" });
       await this.selectDesign(name);
       await this.page.getByText(copy, { exact: true }).waitFor({ timeout: 20_000 });
       const failureScreenshot = await this.screenshot(id, `${fault}-failed-exact-copy`);
       this.artifacts.failureScreenshots[id] = failureScreenshot;
       const artifactStatuses = await this.assertRevisionHasNoArtifacts(designId, 1);
-      const failedHistory = await this.getRevisions(designId);
       const failedRevision = failedHistory.find((revision) => revision.number === 1);
       assert(failedRevision, `${id} lost failed revision 1`);
       assert(failedRevision.plan.thickness_mm === 6, `${id} failed input thickness was not retained`);
@@ -777,12 +784,12 @@ class BatchDesignRecoveryMatrix {
       const ready = await this.waitForDesign(designId, (design) => design.status === "ready" && design.current_revision === 2, `${id} restored retry`);
       const revisions = await this.getRevisions(designId);
       const after = await this.designList();
-      await this.waitForRevisionHistorySettled(revisions);
+      await this.waitForRevisionHistorySettled(designId, revisions);
       await this.page.reload({ waitUntil: "domcontentloaded" });
       await this.selectDesign(name);
       await this.page.getByRole("link", { name: /^Download R2 STEP$/ }).waitFor({ timeout: 20_000 });
       await this.page.locator('[data-preview-state="ready"]').waitFor({ timeout: 30_000 });
-      await this.waitForRevisionHistorySettled(revisions);
+      await this.waitForRevisionHistorySettled(designId, revisions);
       const [download] = await Promise.all([
         this.page.waitForEvent("download", { timeout: 30_000 }),
         this.page.getByRole("link", { name: /^Download R2 STEP$/ }).click(),

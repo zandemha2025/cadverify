@@ -161,6 +161,7 @@ export default function DesignsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [revisionHistory, setRevisionHistory] = useState<DesignRevision[]>([]);
   const [revisionHistoryOwnerId, setRevisionHistoryOwnerId] = useState<string | null>(null);
+  const [revisionHistoryState, setRevisionHistoryState] = useState<"idle" | "loading" | "ready">("idle");
   const [viewedRevisionNo, setViewedRevisionNo] = useState<number | null>(null);
   const [form, setForm] = useState<DesignForm>({ ...DEFAULT_DESIGN_FORM });
   const [description, setDescription] = useState("");
@@ -224,12 +225,14 @@ export default function DesignsPage() {
     ) {
       setRevisionHistory([]);
       setRevisionHistoryOwnerId(null);
+      setRevisionHistoryState("idle");
       setViewedRevisionNo(null);
       revisionDesignIdRef.current = null;
       return;
     }
     const designChanged = revisionDesignIdRef.current !== revisionSelectedId;
     revisionDesignIdRef.current = revisionSelectedId;
+    setRevisionHistoryState("loading");
     if (designChanged) {
       setRevisionHistory([]);
       setRevisionHistoryOwnerId(revisionSelectedId);
@@ -241,6 +244,7 @@ export default function DesignsPage() {
         if (cancelled) return;
         setRevisionHistory(revisions);
         setRevisionHistoryOwnerId(revisionSelectedId);
+        setRevisionHistoryState("ready");
         setViewedRevisionNo((current) =>
           resolveViewedRevisionNo(
             current,
@@ -254,6 +258,7 @@ export default function DesignsPage() {
         if (!cancelled) {
           setRevisionHistory([]);
           setRevisionHistoryOwnerId(revisionSelectedId);
+          setRevisionHistoryState("ready");
           setViewedRevisionNo(revisionCurrentRevision);
         }
       },
@@ -633,7 +638,10 @@ export default function DesignsPage() {
           </Card>
 
           {selected && (
-            <Card>
+            <Card
+              data-revision-history-owner={revisionHistoryOwnerId ?? ""}
+              data-revision-history-state={revisionHistoryState}
+            >
               <CardHeader className="flex-row items-start justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">

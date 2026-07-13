@@ -107,8 +107,10 @@ test("runner binds real faults, durable assertions, common evidence, and build i
   assert.match(source, /data-batch-items-state=["']ready["']/);
   assert.match(source, /getByText\(entry, \{ exact: true \}\)\.waitFor/);
   assert.match(source, /assertRevisionHasNoArtifacts/);
-  assert.match(source, /async waitForRevisionHistorySettled\(revisions\)/);
-  assert.equal(source.match(/await this\.waitForRevisionHistorySettled\(revisions\)/g)?.length, 4);
+  assert.match(source, /async waitForRevisionHistorySettled\(designId, revisions\)/);
+  assert.match(source, /data-revision-history-owner/);
+  assert.match(source, /data-revision-history-state=["']ready["']/);
+  assert.equal(source.match(/await this\.waitForRevisionHistorySettled\(/g)?.length, 6);
   assert.match(source, /x-proofshape-e2e-token/);
   assert.match(source, /route\.continue/);
   assert.doesNotMatch(source, /route\.fulfill/);
