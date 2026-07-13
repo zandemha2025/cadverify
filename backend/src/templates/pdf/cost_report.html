@@ -67,7 +67,7 @@
     {% endif %}
     {% if governance.get('approval_note') %}
       <div class="governance-note"><strong>Approval note:</strong>
-{{ governance.get('approval_note') }}</div>
+{{ governance.get('approval_note') | pdf_text }}</div>
     {% endif %}
   </div>
 
