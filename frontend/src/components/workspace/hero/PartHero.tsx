@@ -55,6 +55,7 @@ import { Rise } from "@/components/ui/motion";
 import { RoutingDfmView } from "@/components/workspace/RoutingDfmView";
 import { GlassBoxView, type ScenarioSummary } from "@/components/workspace/GlassBoxView";
 import { CompareView } from "@/components/workspace/CompareView";
+import { UnitWarningBanner } from "@/components/workspace/UnitWarningBanner";
 import { CostGeometryInvalidCard } from "@/components/CostDecisionCard";
 import { CalibrationBar, RoleLens, type RoleId } from "@/components/glass-box";
 import {
@@ -284,6 +285,8 @@ export function PartHero({
             </Button>
           </div>
         </div>
+
+        <UnitWarningBanner warnings={report?.unit_warnings} />
 
         {/* ── the three co-primary columns ─────────────────────────────── */}
         <div className="grid grid-cols-1 gap-5 min-[980px]:grid-cols-[1fr_1.15fr_1fr]">

@@ -760,6 +760,18 @@ export interface CostFeasibility {
   costed: boolean;
 }
 
+export interface CostUnitWarning {
+  code: string;
+  severity: string;
+  message: string;
+  measured?: {
+    volume_cm3?: number;
+    max_bbox_mm?: number;
+  };
+  assumed_units?: string;
+  provenance?: string;
+}
+
 export interface CostReport {
   filename: string;
   status: "OK" | "GEOMETRY_INVALID";
@@ -773,6 +785,9 @@ export interface CostReport {
   routing?: CostRouting;
   notes: string[];
   assumptions: CostAssumption[];
+  /** Measured-geometry safety rail for unitless CAD. These warnings must stay
+   * visible until the user confirms millimetres versus inches and re-costs. */
+  unit_warnings?: CostUnitWarning[];
   decision: CostDecision | null;
   /** Persisted machine-fit verdict lattice. Present when the organization has
    *  declared inventory and/or a service environment. This is independent of

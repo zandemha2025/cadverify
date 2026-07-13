@@ -58,6 +58,7 @@ import { GlassBoxView, type ScenarioSummary } from "@/components/workspace/Glass
 import { RoutingDfmView } from "@/components/workspace/RoutingDfmView";
 import { CompareView } from "@/components/workspace/CompareView";
 import { DecisionInspector } from "@/components/workspace/DecisionInspector";
+import { UnitWarningBanner } from "@/components/workspace/UnitWarningBanner";
 import { CostArtifactBar } from "@/components/instrument/CostArtifactBar";
 import {
   CostOptionsForm,
@@ -582,6 +583,8 @@ export default function PartWorkspace({
               </Button>
             </div>
           </div>
+
+          <UnitWarningBanner warnings={report?.unit_warnings} />
 
           <Tabs value={tab} onValueChange={(v) => setTab(v as WorkTab)}>
             <TabsList className="w-full justify-start overflow-x-auto">
