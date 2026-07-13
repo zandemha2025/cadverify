@@ -862,7 +862,15 @@ asyncio.run(main())
       fn: async () => {
         const owner = this.identities.owner;
         await owner.page.goto("/settings/developer", { waitUntil: "domcontentloaded" });
+        const createActionPromise = owner.page.waitForResponse(
+          (response) =>
+            response.request().method() === "POST" &&
+            new URL(response.url()).pathname === "/settings/developer",
+          { timeout: 20_000 },
+        );
         await owner.page.getByRole("button", { name: "Create key" }).first().click();
+        const createActionResponse = await createActionPromise;
+        this.equal("ROLE-02", "browser key server action HTTP", createActionResponse.status(), 200);
         await owner.page.getByRole("heading", { name: "Save your API key" }).waitFor({ timeout: 15_000 });
         const token = cleanText(await owner.page.locator("pre").innerText());
         this.ok("ROLE-02", "browser reveals a cv_live key", /^cv_live_/.test(token));
@@ -1047,7 +1055,10 @@ asyncio.run(main())
           (response) => response.request().method() === "POST" && response.url().includes(`/notifications/${A.notification_id}/read`),
           { timeout: 20_000 },
         );
-        await viewer.page.getByText(A.notification_title, { exact: true }).click();
+        await viewer.page.getByRole("link", {
+          name: `Open notification: ${A.notification_title}`,
+          exact: true,
+        }).click();
         const markResponse = await markPromise;
         this.equal("VER-04", "notification mark-read response", markResponse.status(), 200);
         const markBody = await markResponse.json();

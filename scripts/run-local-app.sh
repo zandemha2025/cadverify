@@ -51,6 +51,7 @@ export DATABASE_URL="${DATABASE_URL:-postgresql://cadverify:localdev@localhost:5
 # host. Keep every local object-store namespace under the ignored project data
 # directory unless the operator explicitly supplies another local root.
 export OBJECT_STORE_LOCAL_ROOT="${OBJECT_STORE_LOCAL_ROOT:-$REPO_ROOT/data/local-blobs}"
+export PDF_CACHE_DIR="${PDF_CACHE_DIR:-$REPO_ROOT/data/pdf-cache}"
 
 # WeasyPrint's macOS wheels load Pango/GLib through cffi. Homebrew installs the
 # correct dylibs, but they are outside the default loader path used by the
@@ -140,6 +141,10 @@ mkdir -p "$OBJECT_STORE_LOCAL_ROOT" || {
   err "Could not create local object storage at $OBJECT_STORE_LOCAL_ROOT"; exit 1; }
 [ -w "$OBJECT_STORE_LOCAL_ROOT" ] || {
   err "Local object storage is not writable: $OBJECT_STORE_LOCAL_ROOT"; exit 1; }
+mkdir -p "$PDF_CACHE_DIR" || {
+  err "Could not create the local PDF cache at $PDF_CACHE_DIR"; exit 1; }
+[ -w "$PDF_CACHE_DIR" ] || {
+  err "Local PDF cache is not writable: $PDF_CACHE_DIR"; exit 1; }
 
 # ── ensure the database schema (idempotent) ─────────────────────────────────
 log "Ensuring database schema (alembic upgrade head)…"

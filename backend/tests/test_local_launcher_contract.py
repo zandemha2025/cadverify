@@ -14,3 +14,9 @@ def test_local_launcher_overrides_container_only_blob_path() -> None:
     )
     assert 'mkdir -p "$OBJECT_STORE_LOCAL_ROOT"' in launcher
     assert '[ -w "$OBJECT_STORE_LOCAL_ROOT" ]' in launcher
+    assert (
+        'export PDF_CACHE_DIR="${PDF_CACHE_DIR:-$REPO_ROOT/data/pdf-cache}"'
+        in launcher
+    )
+    assert 'mkdir -p "$PDF_CACHE_DIR"' in launcher
+    assert '[ -w "$PDF_CACHE_DIR" ]' in launcher

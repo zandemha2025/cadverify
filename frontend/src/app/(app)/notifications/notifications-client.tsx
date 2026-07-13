@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArchiveRestore, Bell, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,6 +53,7 @@ async function readInbox() {
 }
 
 export function NotificationsClient() {
+  const router = useRouter();
   const [state, setState] = useState<InboxState>(INITIAL_STATE);
 
   useEffect(() => {
@@ -137,20 +139,24 @@ export function NotificationsClient() {
     }
   }
 
-  function markOne(id: string) {
-    markNotificationRead(id).then(
-      (updated) =>
-        setState((current) => ({
-          ...current,
-          active: current.active.map((notification) =>
-            notification.id === id ? updated : notification
-          ),
-        })),
-      () => {
-        // Navigation continues to the source record. The next inbox load will
-        // honestly show whether the server accepted the read transition.
-      }
-    );
+  async function openOne(notification: DerivedNotif) {
+    const busy = `open:${notification.id}`;
+    setState((current) => ({ ...current, busy, actionError: null }));
+    try {
+      const updated = await markNotificationRead(notification.id);
+      setState((current) => ({
+        ...current,
+        busy: null,
+        active: current.active.map((item) =>
+          item.id === notification.id ? updated : item
+        ),
+      }));
+    } catch {
+      // Opening the source remains available during an inbox outage. The next
+      // inbox load truthfully reflects whether the read transition persisted.
+      setState((current) => ({ ...current, busy: null }));
+    }
+    router.push(notificationHref(notification.dest));
   }
 
   async function dismiss(id: string) {
@@ -290,9 +296,24 @@ export function NotificationsClient() {
                       <Link
                         href={notificationHref(notification.dest)}
                         aria-label={`Open notification: ${notification.title}`}
-                        onClick={() => markOne(notification.id)}
+                        aria-busy={state.busy === `open:${notification.id}`}
+                        onClick={(event) => {
+                          if (
+                            event.button !== 0 ||
+                            event.metaKey ||
+                            event.ctrlKey ||
+                            event.shiftKey ||
+                            event.altKey
+                          ) {
+                            void markNotificationRead(notification.id).catch(() => undefined);
+                            return;
+                          }
+                          event.preventDefault();
+                          if (state.busy) return;
+                          void openOne(notification);
+                        }}
                       >
-                        Open
+                        {state.busy === `open:${notification.id}` ? "Opening…" : "Open"}
                       </Link>
                     </Button>
                     <Button
