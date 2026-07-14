@@ -212,6 +212,7 @@ test("runner is import-safe real Playwright orchestration with no mocked network
   assert.match(source, /missing required live operations/);
   assert.doesNotMatch(source, /\.route\s*\(/);
   assert.doesNotMatch(source, /\.fulfill\s*\(/);
+  assert.doesNotMatch(source, /context\.request/);
   assert.doesNotMatch(source, /status:\s*"SKIP"/);
   assert.match(source, /skips: \[\]/);
 });
@@ -228,6 +229,7 @@ test("fixture logins wait for hydration and prove controlled values before submi
     "password.inputValue() === this.password",
     "waitForResponse",
     "submit.click()",
+    'waitForLoadState("networkidle"',
   ]);
 });
 
@@ -244,6 +246,12 @@ test("cost fixtures upload through the authenticated browser surface", () => {
   const create = method("createCost", "createDrafts");
   assert.match(create, /this\.browserMultipart\(/);
   assert.doesNotMatch(create, /this\.api\(/);
+});
+
+test("all authenticated setup reads and JSON mutations use in-page browser fetch", () => {
+  const api = method("api", "browserFetch");
+  assert.match(api, /return this\.browserFetch\(actor, pathname, options\)/);
+  assert.doesNotMatch(api, /context\.request/);
 });
 
 test("VER-04 anchors unread, read, and dismiss persistence to UI actions and full refreshes", () => {
@@ -270,6 +278,10 @@ test("ROLE-01 anchors readable exports, absent mutation controls, exact denials,
   assert.match(body, /cost-decision-read-only/);
   assert.match(body, /mutationControlCount/);
   assert.match(body, /waitForEvent\("download"/);
+  assert.match(body, /await download\.failure\(\)/);
+  assert.match(body, /await readFile\(downloadedPath\)/);
+  assert.match(body, /downloaded JSON contains the exact immutable engine result/);
+  assert.match(body, /downloaded JSON governance/);
   assert.match(body, /visible JSON export HTTP status/);
   assert.match(body, /viewer approval denial[\s\S]*expectedStatus: 403/);
   assert.match(body, /viewer invitation denial code/);
@@ -294,6 +306,9 @@ test("ROLE-03 uses invitation, acceptance, revocation, and removal UI before per
   ordered(body, [
     "admin creates member invitation",
     "created invitation persisted pending",
+    'getByTestId("verify-organization-gate")',
+    'getByText("You haven’t joined an organization yet."',
+    "candidate-no-organization-boundary",
     "invited account accepts exact token",
     "accepted member persisted exactly once",
     "accepted-member-persisted",
@@ -308,6 +323,8 @@ test("ROLE-03 uses invitation, acceptance, revocation, and removal UI before per
   assert.match(body, /\/api\/proxy\/orgs\/invites\/accept/);
   assert.match(body, /\/api\/proxy\/orgs\/members/);
   assert.match(body, /candidateOrgs\.body\.active_org_id, null/);
+  assert.equal((body.match(/bodyRequired: false/g) || []).length, 2);
+  assert.match(method("createInviteThroughUi", "runRole03"), /bodyRequired: false/);
 });
 
 test("ROLE-04 checks read, mutate, and download opacity in both tenant directions", () => {
@@ -324,6 +341,8 @@ test("ROLE-04 checks read, mutate, and download opacity in both tenant direction
   assert.match(body, /owning \$\{library\.key\} unchanged/);
   assert.match(method("opaquePair", "runRole04"), /known\/unknown response body/);
   assert.match(body, /foreign-identifier-not-found/);
+  assert.match(body, /const foreignMarkers = \[this\.tag, otherDraft\.body\?\.name, otherDraft\.body\?\.slug\]/);
+  assert.doesNotMatch(body, /forbidden: \[String\(otherDraft\.id\)/);
 });
 
 test("schema-v2 evidence, diagnostics, build identity, and no-skip oracle are live release anchors", () => {

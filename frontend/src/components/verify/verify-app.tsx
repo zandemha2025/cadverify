@@ -37,6 +37,7 @@ import {
   workspaceScreenFromSearch,
   type WorkspaceScreen,
 } from "@/lib/verify/workspace-screen-route";
+import type { OrganizationAccess } from "@/lib/organization-access";
 
 // The shared hotkey nav map — matches the design 1:1 (support.js keydown handler):
 // H/V/P/R/G/M/T/C jump between the surfaces, `?` opens the shortcuts sheet. `c`
@@ -65,7 +66,15 @@ const RAIL: { key: Screen; label: string; d: string }[] = [
   { key: "calibration", label: "Calibration & truth", d: "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M2 14h4M10 8h4M18 16h4" },
 ];
 
-export function VerifyApp() {
+export function VerifyApp({
+  organizationAccess,
+}: {
+  organizationAccess: OrganizationAccess | null;
+}) {
+  const activeOrganization = organizationAccess?.organizations.find(
+    (org) => org.orgId === organizationAccess.activeOrgId,
+  ) ?? null;
+  const hasActiveOrganization = activeOrganization !== null;
   const [screen, setScreen] = useState<Screen>("home");
   const [env, setEnv] = useState({ temp: false, sour: false, pressure: false });
   const [materialClass, setMaterialClass] = useState("polymer");
@@ -220,6 +229,7 @@ export function VerifyApp() {
   // it through the same File-based verification path as a manual upload. The
   // generated artifact gets no privileged shortcut through DFM or costing.
   useEffect(() => {
+    if (!hasActiveOrganization) return;
     if (designImportStarted.current) return;
     const rawDesignId = new URLSearchParams(window.location.search).get("design");
     if (!rawDesignId) return;
@@ -247,15 +257,19 @@ export function VerifyApp() {
           message: caught instanceof Error ? caught.message : "Could not import this design.",
         });
       });
-  }, [runVerify]);
+  }, [hasActiveOrganization, runVerify]);
 
   // The rail footer's bound-rate signal.
   useEffect(() => {
+    if (!hasActiveOrganization) {
+      setRatesBound(null);
+      return;
+    }
     listMachines().then(
       (p) => setRatesBound(p.machines.some((m) => typeof m.hourly_rate_usd === "number" && Number.isFinite(m.hourly_rate_usd))),
       () => setRatesBound(false)
     );
-  }, []);
+  }, [hasActiveOrganization]);
 
   // The environment door is REAL: when the declared world changes and a part is
   // loaded, re-run the verification so the new world is persisted to the part's
@@ -335,6 +349,10 @@ export function VerifyApp() {
         : RAIL.some((item) => item.key === screen)
           ? screen
           : "home";
+
+  if (!hasActiveOrganization) {
+    return <OrganizationAccessGate access={organizationAccess} />;
+  }
 
   return (
     <ToastProvider>
@@ -569,6 +587,75 @@ export function VerifyApp() {
       {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
     </div>
     </ToastProvider>
+  );
+}
+
+function OrganizationAccessGate({
+  access,
+}: {
+  access: OrganizationAccess | null;
+}) {
+  const unavailable = access === null;
+  const hasMemberships = Boolean(access?.organizations.length);
+  return (
+    <main
+      data-testid="verify-organization-gate"
+      className="cv-verify-shell"
+      style={{
+        minHeight: "100%",
+        display: "grid",
+        placeItems: "center",
+        background: C.bg,
+        color: C.ink,
+        padding: 24,
+        fontFamily: SANS,
+      }}
+    >
+      <section
+        style={{
+          width: "min(100%, 620px)",
+          border: `1px solid ${unavailable ? "rgba(190,61,45,0.34)" : C.hair}`,
+          borderRadius: 18,
+          background: C.panel,
+          padding: "28px 30px",
+          boxShadow: "0 18px 50px rgba(23,24,26,0.08)",
+        }}
+      >
+        <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: unavailable ? C.fail : C.ink45 }}>
+          {unavailable ? "WORKSPACE CHECK UNAVAILABLE" : "ORGANIZATION REQUIRED"}
+        </p>
+        <h1 style={{ margin: "10px 0 0", fontSize: 27, fontWeight: 400, letterSpacing: "-0.02em" }}>
+          {unavailable
+            ? "We couldn’t confirm your active organization."
+            : hasMemberships
+              ? "Choose an active organization."
+              : "You haven’t joined an organization yet."}
+        </h1>
+        <p style={{ margin: "12px 0 0", color: C.ink55, fontSize: 14, lineHeight: 1.65 }}>
+          {unavailable
+            ? "ProofShape stopped before requesting organization CAD, machine, or ground-truth data. Retry the check; if it continues, your administrator can verify the workspace connection."
+            : hasMemberships
+              ? "Your account has an organization membership, but no workspace is active. Select it in Organization settings before opening org-scoped records or CAD tools."
+              : "Open the invitation link sent by your organization administrator. If you do not have one, ask them to invite this exact account email. No organization data has been loaded or treated as empty."}
+        </p>
+        <div style={{ marginTop: 22, display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <Link
+            href="/settings/organization"
+            style={{ minHeight: 42, display: "inline-flex", alignItems: "center", borderRadius: 999, background: C.ink, color: "#fff", padding: "9px 17px", textDecoration: "none", fontSize: 13, fontWeight: 600 }}
+          >
+            Open organization settings
+          </Link>
+          {unavailable ? (
+            <a
+              href="/verify"
+              style={{ minHeight: 42, display: "inline-flex", alignItems: "center", border: `1px solid ${C.hair}`, borderRadius: 999, color: C.ink, padding: "9px 17px", textDecoration: "none", fontSize: 13, fontWeight: 600 }}
+            >
+              Retry organization check
+            </a>
+          ) : null}
+        </div>
+      </section>
+    </main>
   );
 }
 

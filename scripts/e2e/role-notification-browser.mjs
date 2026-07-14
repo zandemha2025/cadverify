@@ -740,6 +740,11 @@ asyncio.run(main())
     });
     invariant(response.status() === 200, `${key} visible login returned ${response.status()}`);
     await actor.page.waitForURL((url) => url.pathname !== "/login", { timeout: 20_000 });
+    // The redirect URL changes before the new document's ancillary resources
+    // (notably the app icon) necessarily settle. Waiting for browser-idle here
+    // prevents the next deliberate journey navigation from aborting a real
+    // same-origin asset request and verifies the post-login surface completed.
+    await actor.page.waitForLoadState("networkidle", { timeout: 20_000 });
     const cookie = (await actor.context.cookies()).find((item) => item.name === "dash_session");
     invariant(cookie?.value, `${key} login did not set dash_session`);
     Object.assign(actor, person, { key, sessionCookie: cookie.value });
@@ -748,48 +753,11 @@ asyncio.run(main())
   }
 
   async api(actor, pathname, options = {}) {
-    const pathId = options.pathId || this.activePathId;
-    const method = String(options.method || "GET").toUpperCase();
-    const expectedStatus = options.expectedStatus ?? 200;
-    const channel = options.channel || "api-request";
-    if (expectedStatus >= 400) {
-      this.diagnostics.expectHttp({ pathId, persona: actor.persona, channel, method, path: pathname, status: expectedStatus });
-    }
-    const requestOptions = {
-      method,
-      failOnStatusCode: false,
-      timeout: options.timeout || 120_000,
-      headers: options.headers,
-    };
-    if (Object.hasOwn(options, "data")) requestOptions.data = options.data;
-    if (options.multipart) requestOptions.multipart = options.multipart;
-    const response = await actor.context.request.fetch(pathname, requestOptions);
-    const payload = await responsePayload(response);
-    if (payload.status >= 400) {
-      this.diagnostics.observedHttpErrors.push(canonicalHttpReceipt({
-        pathId, persona: actor.persona, channel, method, path: pathname, status: payload.status,
-      }));
-    }
-    this.diagnostics.recordTransaction({
-      pathId,
-      persona: actor.persona,
-      channel,
-      label: options.label || pathname,
-      method,
-      path: pathname,
-      status: payload.status,
-      expectedStatus,
-      contentType: payload.contentType,
-      bytes: payload.bytes.length,
-      sha256: sha256(payload.bytes),
-      errorCode: errorCode(payload.body),
-    });
-    if (REQUIRED_IDS.includes(pathId)) {
-      this.equal(pathId, options.label || `${method} ${redactUrl(pathname)} status`, payload.status, expectedStatus);
-    } else {
-      invariant(payload.status === expectedStatus, `${method} ${pathname}: expected ${expectedStatus}, got ${payload.status}: ${payload.text.slice(0, 500)}`);
-    }
-    return payload;
+    // Keep the fixture/setup convenience name, but run the request inside the
+    // actual Chromium page. BrowserContext.request is a separate HTTP client;
+    // on local HTTP it does not apply Chromium's loopback exception for the
+    // production Secure cookie and can therefore manufacture false 401s.
+    return this.browserFetch(actor, pathname, options);
   }
 
   async browserFetch(actor, pathname, options = {}) {
@@ -937,7 +905,16 @@ asyncio.run(main())
     { timeout: spec.timeout || 45_000 });
     await action();
     const response = await responsePromise;
-    const payload = await responsePayload(response);
+    const payload = spec.bodyRequired === false
+      ? {
+          status: response.status(),
+          headers: response.headers(),
+          contentType: String(response.headers()["content-type"] || "").split(";", 1)[0].toLowerCase(),
+          bytes: Buffer.alloc(0),
+          text: "",
+          body: null,
+        }
+      : await responsePayload(response);
     this.diagnostics.recordTransaction({
       pathId: id,
       persona: actor.persona,
@@ -1169,14 +1146,26 @@ asyncio.run(main())
     const downloadPromise = actor.page.waitForEvent("download", { timeout: 45_000 });
     await actor.page.getByRole("button", { name: "JSON", exact: true }).click();
     const [exportResponse, download] = await Promise.all([exportResponsePromise, downloadPromise]);
-    const exportPayload = await responsePayload(exportResponse);
-    this.equal(id, "visible JSON export HTTP status", exportPayload.status, 200);
-    this.truth(id, "visible JSON export returned nonempty evidence", exportPayload.bytes.length > 100);
+    const downloadFailure = await download.failure();
+    this.equal(id, "visible JSON browser download completed", downloadFailure, null);
+    const downloadedPath = await download.path();
+    invariant(downloadedPath, "visible JSON browser download did not expose a completed artifact");
+    const exportBytes = await readFile(downloadedPath);
+    const exportJson = JSON.parse(exportBytes.toString("utf8"));
+    const { governance: exportedGovernance, ...exportedResult } = exportJson;
+    this.equal(id, "visible JSON export HTTP status", exportResponse.status(), 200);
+    this.truth(id, "visible JSON export returned nonempty evidence", exportBytes.length > 100);
     this.truth(id, "visible JSON download retained cost filename", download.suggestedFilename().includes(own.filename.replace(/\.step$/i, "")));
+    this.equal(id, "downloaded JSON contains the exact immutable engine result", exportedResult, detail.body.result);
+    this.truth(id, "downloaded JSON contains governance evidence", exportedGovernance && typeof exportedGovernance === "object" && Object.keys(exportedGovernance).length > 0);
+    for (const [key, value] of Object.entries(exportedGovernance)) {
+      this.equal(id, `downloaded JSON governance ${key}`, value, detail.body[key]);
+    }
+    const exportContentType = String(exportResponse.headers()["content-type"] || "").split(";", 1)[0].toLowerCase();
     this.diagnostics.recordTransaction({
       pathId: id, persona: actor.persona, channel: "browser", label: "visible JSON evidence download", method: "GET",
-      path: `/api/proxy/cost-decisions/${own.id}/export.json`, status: exportPayload.status, expectedStatus: 200,
-      contentType: exportPayload.contentType, bytes: exportPayload.bytes.length, sha256: sha256(exportPayload.bytes),
+      path: `/api/proxy/cost-decisions/${own.id}/export.json`, status: exportResponse.status(), expectedStatus: 200,
+      contentType: exportContentType, bytes: exportBytes.length, sha256: sha256(exportBytes),
     });
 
     await actor.page.getByRole("button", { name: "JSON", exact: true }).waitFor({ state: "visible", timeout: 10_000 });
@@ -1218,8 +1207,8 @@ asyncio.run(main())
       observed: {
         url: actor.page.url(),
         visible: [own.filename, "Read-only access. An analyst can record an outcome or change its note.", "Admins only", "You're a viewer"],
-        persisted: { decisionBefore: before, decisionAfter: after.body, exportSha256: sha256(exportPayload.bytes) },
-        numeric: { readableDetailStatus: detail.status, jsonDownloadStatus: exportPayload.status, mutationControls: mutationControlCount, approvalStatus: deniedApproval.status, inviteStatus: deniedInvite.status },
+        persisted: { decisionBefore: before, decisionAfter: after.body, exportSha256: sha256(exportBytes) },
+        numeric: { readableDetailStatus: detail.status, jsonDownloadStatus: exportResponse.status(), mutationControls: mutationControlCount, approvalStatus: deniedApproval.status, inviteStatus: deniedInvite.status },
         authorization: { platformRole: "viewer", orgRole: "viewer", readableEvidence: 200, approvalMutation: 403, organizationMutation: 403 },
         recovery: "After both exact 403 denials, the persisted decision remained byte-for-byte equal to the pre-denial API document.",
       },
@@ -1286,6 +1275,7 @@ asyncio.run(main())
       method: "POST",
       path: "/settings/organization",
       expectedStatus: 200,
+      bodyRequired: false,
       label,
     }, () => owner.page.getByRole("button", { name: "Send invite", exact: true }).click());
     const message = owner.page.getByText(/One-time accept link \(shown once\):/i);
@@ -1311,6 +1301,16 @@ asyncio.run(main())
     this.equal(id, "created invitation persisted role", pending?.role, "member");
 
     const candidate = await this.login("lifecycle_candidate");
+    const noOrganizationGate = candidate.page.getByTestId("verify-organization-gate");
+    await noOrganizationGate.waitFor({ state: "visible", timeout: 20_000 });
+    await candidate.page.getByText("You haven’t joined an organization yet.", { exact: true }).waitFor();
+    await candidate.page.getByText(/No organization data has been loaded or treated as empty\./).waitFor();
+    const noOrganizationVisual = await this.capture(
+      id,
+      candidate,
+      "candidate-no-organization-boundary",
+      ["ORGANIZATION REQUIRED", "You haven’t joined an organization yet.", "Open organization settings"],
+    );
     const acceptResponse = await this.browserActionResponse(candidate, {
       pathId: id,
       method: "POST",
@@ -1344,6 +1344,7 @@ asyncio.run(main())
       method: "POST",
       path: "/settings/organization",
       expectedStatus: 200,
+      bodyRequired: false,
       label: "admin confirms invitation revocation",
     }, () => owner.page.getByRole("alertdialog").getByRole("button", { name: "Revoke invite", exact: true }).click());
     revokedRow = owner.page.getByRole("row").filter({ hasText: revokedPerson.email });
@@ -1361,6 +1362,7 @@ asyncio.run(main())
       method: "POST",
       path: "/settings/organization",
       expectedStatus: 200,
+      bodyRequired: false,
       label: "admin confirms member removal",
     }, () => owner.page.getByRole("alertdialog").getByRole("button", { name: "Remove member", exact: true }).click());
     removableRow = owner.page.getByRole("row").filter({
@@ -1385,14 +1387,14 @@ asyncio.run(main())
     return {
       observed: {
         url: owner.page.url(),
-        visible: [candidatePerson.email, "member", revokedPerson.email, "revoked"],
+        visible: ["You haven’t joined an organization yet.", candidatePerson.email, "member", revokedPerson.email, "revoked"],
         persisted: { pending, acceptedMember: membersAfterAccept.body.members.find((item) => item.user_id === candidatePerson.id), revokedInvite: invitesAfterRevoke.body.invites.find((item) => item.email === revokedPerson.email), membersAfterRemoval: membersAfterRemoval.body.members, candidateOrganizations: candidateOrgs.body },
         numeric: { inviteUiStatus: acceptedInvite.responseStatus, acceptStatus: acceptResponse.status, revokeUiStatus: revokeResponse.status, removeUiStatus: removeResponse.status, membershipsAfterRemoval: candidateOrgs.body.organizations.length },
         authorization: { adminOrgRole: "admin", acceptedOrgRole: "member", removedActiveOrg: null },
         recovery: "The admin refresh retained the revoked invitation while the removed account's already-open session immediately returned an empty organization collection.",
       },
       screenshot: removedVisual.screenshot,
-      visuals: [acceptedVisual, removedVisual],
+      visuals: [noOrganizationVisual, acceptedVisual, removedVisual],
       sensitiveRuntimeOnly: { revokedLinkWasGenerated: revokedInvite.link.includes("token=") },
     };
   }
@@ -1481,8 +1483,10 @@ asyncio.run(main())
           expectedStatus: 200,
           label: `${key} owning ${library.key} baseline`,
         });
-        const readDraft = await this.opaquePair(id, direction.actor, `${key} ${library.key} read`, `/api/proxy/${library.path}/${otherDraft.id}`, `/api/proxy/${library.path}/2147483647`, { forbidden: [String(otherDraft.id), this.tag] });
-        const publishDraft = await this.opaquePair(id, direction.actor, `${key} ${library.key} publish`, `/api/proxy/${library.path}/${otherDraft.id}/publish`, `/api/proxy/${library.path}/2147483647/publish`, { method: "POST", data: {}, forbidden: [String(otherDraft.id), this.tag] });
+        const foreignMarkers = [this.tag, otherDraft.body?.name, otherDraft.body?.slug]
+          .filter((value) => typeof value === "string" && value.length >= 8);
+        const readDraft = await this.opaquePair(id, direction.actor, `${key} ${library.key} read`, `/api/proxy/${library.path}/${otherDraft.id}`, `/api/proxy/${library.path}/2147483647`, { forbidden: foreignMarkers });
+        const publishDraft = await this.opaquePair(id, direction.actor, `${key} ${library.key} publish`, `/api/proxy/${library.path}/${otherDraft.id}/publish`, `/api/proxy/${library.path}/2147483647/publish`, { method: "POST", data: {}, forbidden: foreignMarkers });
         const ownDraftAfter = await this.browserFetch(direction.actor, `/api/proxy/${library.path}/${ownDraft.id}`, {
           pathId: id,
           expectedStatus: 200,
