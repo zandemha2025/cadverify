@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -50,7 +50,15 @@ export function KeyMutationButton({
   children,
 }: Props) {
   const router = useRouter();
+  const [hydrated, setHydrated] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // A server-rendered button can look actionable before React has attached its
+  // click handler. On a fast click (or a slow device/network) that silently
+  // discards the user's mutation. Keep the control disabled for that brief
+  // interval so both humans and browser automation can only click a live
+  // handler.
+  useEffect(() => setHydrated(true), []);
 
   const mutate = async () => {
     if (operation !== "create" && !keyId) {
@@ -97,6 +105,7 @@ export function KeyMutationButton({
       variant={variant}
       size={size}
       className={className}
+      disabled={!hydrated}
       loading={loading}
       onClick={mutate}
     >

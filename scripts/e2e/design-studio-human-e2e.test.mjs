@@ -34,9 +34,21 @@ test("download and Verify artifact integrity re-reads stay on the browser proxy"
   const verify = method("verifySelectedRevision", "run");
   assert.match(verify, /this\.api\(artifactResponse\.url\(\)\)/);
   assert.match(verify, /artifactEvidenceResponse\.byteLength/);
+  assert.match(verify, /importedBytes,/);
+  assert.doesNotMatch(verify, /importedBytes:\s*importedBytes\.length/);
   assert.match(verify, /browserHeaderSha256 === importedHeaderSha256/);
 
   const artifact = method("revisionArtifact", "expectText");
   assert.match(artifact, /const hash = response\.sha256/);
   assert.match(artifact, /bytes: response\.byteLength/);
+});
+
+test("every structured Design Studio path binds its screenshot to the path ID", () => {
+  for (const id of ["DES-01", "DES-02", "DES-03", "DES-04", "DES-05", "DES-06", "DES-08", "DES-10", "DES-12"]) {
+    assert.match(source, new RegExp(`shot\\(\\s*[\"\\\`]${id}-`), `${id} screenshot is not ID-bound`);
+  }
+  for (const id of ["DES-07", "DES-09", "DES-11"]) {
+    assert.ok(source.includes(`criticalPathId: "${id}"`), `${id} Verify screenshot is not ID-bound`);
+  }
+  assert.match(source, /criticalPathId \? `\$\{criticalPathId\}-` : ""/);
 });

@@ -34,6 +34,19 @@ test("authenticated recovery reads use the signed-in page and live proxy", () =>
   assert.doesNotMatch(source, /context\.request|request\.newContext|pw\.request/);
 });
 
+test("multipart abort diagnostics require an exact matching 2xx response", () => {
+  assert.match(source, /function recoverableSuccessAbortKey\(request\)/);
+  assert.match(source, /url\.pathname\.includes\("\/direct-uploads\/"\)/);
+  assert.ok(
+    source.includes('/^\\/api\\/proxy\\/uploads\\/[A-Z0-9]+\\/complete$/i'),
+    "multipart completion matcher is missing",
+  );
+  assert.match(source, /this\.successfulAbortableResponses\.set\(key, status\)/);
+  assert.match(source, /pending\.recoveredStatus = status/);
+  assert.match(source, /without a matching successful HTTP response/);
+  assert.match(source, /this\.reconcileSuccessfulAborts\(id\)/);
+});
+
 test("saved verification waits for the overlay to detach and all visual blockers to clear", () => {
   const body = method("waitForSavedVerification", "waitForTerminalVisualState");
   assert.match(body, /state: "detached"/);

@@ -96,6 +96,14 @@ test("integration, history, reconstruction, and interruption assert persisted ou
   assert.match(source, /every served estimate to carry a measured empirical confidence band/);
 });
 
+test("developer-key validity is proved on the real bearer-only API surface", () => {
+  assert.match(source, /new URL\("\/api\/v1\/analyses\?limit=1", apiBaseUrl\)/);
+  assert.match(source, /Authorization: `Bearer \$\{token\}`/);
+  assert.match(source, /AbortSignal\.timeout\(30_000\)/);
+  assert.match(source, /await response\.arrayBuffer\(\)/);
+  assert.doesNotMatch(source, /newContext\(\{ baseURL: apiBaseUrl \}\)/);
+});
+
 test("severe-service and program rollup are checked across visible and persisted state", () => {
   assert.match(source, /max_temp_c === 120/);
   assert.match(source, /pressure_bar === 350/);

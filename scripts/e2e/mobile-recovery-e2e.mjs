@@ -51,6 +51,53 @@ function assertion(name, expected, actual, pass = expected === actual) {
   return { name, expected, actual, pass };
 }
 
+function recoverableSuccessAbortKey(request) {
+  const method = request.method();
+  const url = new URL(request.url());
+  const appOrigin = new URL(baseUrl).origin;
+  if (
+    method === "PUT" &&
+    url.origin !== appOrigin &&
+    url.pathname.includes("/direct-uploads/") &&
+    url.searchParams.has("uploadId") &&
+    url.searchParams.has("partNumber")
+  ) {
+    return [
+      "multipart-part",
+      url.origin,
+      url.pathname,
+      url.searchParams.get("uploadId"),
+      url.searchParams.get("partNumber"),
+    ].join("|");
+  }
+  if (
+    method === "POST" &&
+    url.origin === appOrigin &&
+    /^\/api\/proxy\/uploads\/[A-Z0-9]+\/complete$/i.test(url.pathname)
+  ) {
+    return ["multipart-complete", url.origin, url.pathname].join("|");
+  }
+  return null;
+}
+
+function recoverableSuccessAbortEvidence(request, failure) {
+  const url = new URL(request.url());
+  const multipartPart = request.method() === "PUT";
+  return {
+    key: recoverableSuccessAbortKey(request),
+    recoveredStatus: null,
+    pathId: null,
+    evidence: {
+      method: request.method(),
+      operation: multipartPart ? "multipart part upload" : "multipart completion",
+      origin: url.origin,
+      pathname: url.pathname,
+      ...(multipartPart ? { partNumber: url.searchParams.get("partNumber") } : {}),
+      error: failure,
+    },
+  };
+}
+
 function crc32(bytes) {
   let crc = 0xffffffff;
   for (const byte of bytes) {
@@ -124,6 +171,9 @@ class MobileRecoveryRun {
     this.expectedFaults = [];
     this.pathConsoleErrors = [];
     this.pathRequestFailures = [];
+    this.currentPathId = null;
+    this.pendingSuccessAborts = [];
+    this.successfulAbortableResponses = new Map();
     this.allowExpectedNetworkFailure = false;
     this.expectedHttpStatuses = new Set();
     this.skippedPathIds = new Set(
@@ -211,6 +261,14 @@ class MobileRecoveryRun {
         this.expectedFaults.push(value);
         return;
       }
+      const recoverableKey = recoverableSuccessAbortKey(request);
+      if (failure === "net::ERR_ABORTED" && recoverableKey) {
+        const pending = recoverableSuccessAbortEvidence(request, failure);
+        pending.pathId = this.currentPathId;
+        pending.recoveredStatus = this.successfulAbortableResponses.get(recoverableKey) ?? null;
+        this.pendingSuccessAborts.push(pending);
+        return;
+      }
       if (this.allowExpectedNetworkFailure) {
         this.expectedFaults.push(value);
         return;
@@ -218,11 +276,42 @@ class MobileRecoveryRun {
       this.requestFailures.push(value);
       this.pathRequestFailures.push(value);
     });
+    this.page.on("response", (response) => {
+      const key = recoverableSuccessAbortKey(response.request());
+      const status = response.status();
+      if (!key || status < 200 || status >= 300) return;
+      this.successfulAbortableResponses.set(key, status);
+      for (const pending of this.pendingSuccessAborts) {
+        if (pending.key === key && pending.recoveredStatus == null) {
+          pending.recoveredStatus = status;
+        }
+      }
+    });
   }
 
   resetPathSignals() {
     this.pathConsoleErrors = [];
     this.pathRequestFailures = [];
+  }
+
+  reconcileSuccessfulAborts(pathId) {
+    const remaining = [];
+    for (const pending of this.pendingSuccessAborts) {
+      if (pending.pathId !== pathId) {
+        remaining.push(pending);
+        continue;
+      }
+      if (pending.recoveredStatus != null) {
+        this.expectedFaults.push(
+          `${pathId} ${pending.evidence.operation} emitted ${pending.evidence.error} after the exact request returned HTTP ${pending.recoveredStatus}`,
+        );
+        continue;
+      }
+      const failure = `${pending.evidence.method} ${pending.evidence.origin}${pending.evidence.pathname}: ${pending.evidence.error} without a matching successful HTTP response`;
+      this.requestFailures.push(failure);
+      this.pathRequestFailures.push(failure);
+    }
+    this.pendingSuccessAborts = remaining;
   }
 
   async screenshot(id, suffix = "final") {
@@ -338,9 +427,12 @@ class MobileRecoveryRun {
 
   async runPath(id, work) {
     this.resetPathSignals();
+    this.currentPathId = id;
     const startedAt = Date.now();
     try {
       const result = await work();
+      await this.page.waitForTimeout(25);
+      this.reconcileSuccessfulAborts(id);
       assert(result?.persona, `${id} omitted persona`);
       assert(result?.preconditions?.length, `${id} omitted preconditions`);
       assert(result?.actions?.length, `${id} omitted actions`);
@@ -387,11 +479,14 @@ class MobileRecoveryRun {
       else this.supplementalEvidence[id] = evidence;
       this.steps.push({ id, status: "PASS", durationMs: Date.now() - startedAt, screenshot });
     } catch (error) {
+      this.reconcileSuccessfulAborts(id);
       const screenshot = await this.screenshot(id, "failure").catch(() => null);
       const message = error instanceof Error ? error.message : String(error);
       this.steps.push({ id, status: "FAIL", durationMs: Date.now() - startedAt, screenshot, error: message });
       this.issues.push({ id, message, screenshot });
       throw error;
+    } finally {
+      if (this.currentPathId === id) this.currentPathId = null;
     }
   }
 

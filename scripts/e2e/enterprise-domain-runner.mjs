@@ -498,22 +498,19 @@ class EnterpriseDomainQA {
   }
 
   async probeDeveloperApiKey(token) {
-    const context = await this.browser.newContext({ baseURL: apiBaseUrl });
-    try {
-      const page = await context.newPage();
-      const navigation = await page.goto("/health", { waitUntil: "domcontentloaded", timeout: 30_000 });
-      assert(navigation?.ok(), `API-key browser could not open the API origin: ${navigation?.status()}`);
-      return page.evaluate(async (token) => {
-        const response = await fetch("/api/v1/analyses?limit=1", {
-          headers: { Authorization: `Bearer ${token}` },
-          cache: "no-store",
-          credentials: "omit",
-        });
-        return response.status;
-      }, token);
-    } finally {
-      await context.close();
-    }
+    // An API key is consumed by an HTTP client, not by the session-authenticated
+    // dashboard. Probe the real public API origin directly with no cookies so
+    // this proves bearer-only use and avoids conflating the result with a
+    // second browser page's lifecycle.
+    const target = new URL("/api/v1/analyses?limit=1", apiBaseUrl);
+    const response = await fetch(target, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+      redirect: "error",
+      signal: AbortSignal.timeout(30_000),
+    });
+    await response.arrayBuffer();
+    return response.status;
   }
 
   async publishGovernedRateCard() {

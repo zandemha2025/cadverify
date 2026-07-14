@@ -498,7 +498,10 @@ class DesignStudioE2E {
         `Expected ${expectedRouteHint} route hint`,
       );
     }
-    const screenshot = await this.shot(`verify-r${revision}`, true);
+    const screenshot = await this.shot(
+      `${criticalPathId ? `${criticalPathId}-` : ""}verify-r${revision}`,
+      true,
+    );
     const evidence = {
       revision,
       queryRevision: new URL(this.page.url()).searchParams.get("revision"),
@@ -507,7 +510,7 @@ class DesignStudioE2E {
       importedArtifactSha256,
       importedHeaderSha256,
       importedFilename,
-      importedBytes: importedBytes.length,
+      importedBytes,
       envelopeMm: measuredEnvelopeMm,
       volumeCm3: measuredVolumeCm3,
       uiVolumeCm3: measuredUiVolumeCm3,
@@ -567,7 +570,7 @@ class DesignStudioE2E {
       this.check("DES-01", "design count remains zero", before.designs.length, after.designs.length);
       this.check("DES-01", "no generation endpoint called", mutationsBefore, this.designMutationResponses.length);
       this.check("DES-01", "supported recovery control remains enabled", true, plateEnabled);
-      const screenshot = await this.shot("unsupported-freeform");
+      const screenshot = await this.shot("DES-01-unsupported-freeform");
       this.recordGoldenPath("DES-01", {
         persona: "CAD engineer testing the safe boundary with unsupported freeform geometry",
         preconditions: ["Authenticated analyst account with an empty organization Design Studio."],
@@ -614,7 +617,7 @@ class DesignStudioE2E {
       this.check("DES-02", "reviewable default wall retained", "3", values.wall);
       this.check("DES-02", "no persisted design", before.designs.length, after.designs.length);
       this.check("DES-02", "no generation endpoint called", mutationsBefore, this.designMutationResponses.length);
-      const screenshot = await this.shot("missing-dimensions");
+      const screenshot = await this.shot("DES-02-missing-dimensions");
       this.recordGoldenPath("DES-02", {
         persona: "CAD engineer providing a partial enclosure description",
         preconditions: ["Authenticated Design Studio with no generated designs."],
@@ -660,7 +663,7 @@ class DesignStudioE2E {
       this.check("DES-03", "exact plan thickness", 8, interpretation.plan.thickness_mm);
       this.check("DES-03", "exact plan hole count", 4, interpretation.plan.holes.length);
       this.truth("DES-03", "local no-egress review policy visible", /local rules · no AI egress · review required/i.test(await this.text()));
-      const screenshot = await this.shot("plate-prefill");
+      const screenshot = await this.shot("DES-03-plate-prefill");
       this.recordGoldenPath("DES-03", {
         persona: "CAD engineer safely extracting a complete mounting-plate plan",
         preconditions: ["Authenticated Design Studio with deterministic local interpretation enabled."],
@@ -692,7 +695,7 @@ class DesignStudioE2E {
       await this.page.getByRole("button", { name: "Dismiss" }).click();
       await this.page.getByLabel("Edge inset").fill("8.4");
       this.check("DES-04", "corrected safe inset is retained", "8.4", await this.page.getByLabel("Edge inset").inputValue());
-      const screenshot = await this.shot("unsafe-hole-margin");
+      const screenshot = await this.shot("DES-04-unsafe-hole-margin");
       this.recordGoldenPath("DES-04", {
         persona: "CAD engineer prevented from generating an unsafe corner-hole layout",
         preconditions: ["A complete 120 × 70 × 8 mm four-hole plate plan is present but not generated."],
@@ -716,7 +719,7 @@ class DesignStudioE2E {
         "120.0 × 70.0 × 8.0 mm",
         "64.69 cm³",
       );
-      const screenshot = await this.shot("plate-r1-ready", true);
+      const screenshot = await this.shot("DES-05-plate-r1-ready", true);
       const revision = plateR1.design.revision;
       const evidence = {
         artifactSha256: plateR1.hash,
@@ -796,7 +799,7 @@ class DesignStudioE2E {
       const r1 = revisions.find((revision) => revision.number === 1);
       const r2 = revisions.find((revision) => revision.number === 2);
       assert(r1 && r2, "Persisted revision history did not contain both R1 and R2");
-      const screenshot = await this.shot("plate-revision-history", true);
+      const screenshot = await this.shot("DES-10-plate-revision-history", true);
       const evidence = {
         r1Sha256: plateR1.hash,
         r2Sha256: plateR2.hash,
@@ -912,7 +915,7 @@ class DesignStudioE2E {
       this.truth("DES-06", "L geometry is not a solid bounding box", solidity < 0.2);
       this.truth("DES-06", "nonblank preview or explicit fallback", ["interactive", "explicit-fallback"].includes(bracketR1.visual.mode));
       this.truth("DES-06", "downloaded STEP has durable bytes", bracketR1.bytes > 128);
-      const screenshot = await this.shot("bracket-ready", true);
+      const screenshot = await this.shot("DES-06-bracket-ready", true);
       this.recordGoldenPath("DES-06", {
         persona: "CAD engineer generating the default perpendicular-leg L bracket",
         preconditions: ["Authenticated Design Studio with the L bracket template selected at its reviewed defaults."],
@@ -939,6 +942,7 @@ class DesignStudioE2E {
         envelopeMm: [80, 50, 60],
         uiVolumeCm3: 40.2,
         artifactSha256: bracketR1.hash,
+        criticalPathId: "DES-07",
         turningMustFail: true,
         expectedRouteHint: "polymer",
       });
@@ -1006,7 +1010,7 @@ class DesignStudioE2E {
       this.check("DES-08", "artifact response header equals bytes", enclosureR1.hash, enclosureR1.responseHeaderSha256);
       this.truth("DES-08", "nonblank cavity preview or explicit fallback", ["interactive", "explicit-fallback"].includes(enclosureR1.visual.mode));
       this.truth("DES-08", "downloaded STEP has durable bytes", enclosureR1.bytes > 128);
-      const screenshot = await this.shot("enclosure-ready", true);
+      const screenshot = await this.shot("DES-08-enclosure-ready", true);
       this.recordGoldenPath("DES-08", {
         persona: "CAD engineer generating the default open-top thin-wall enclosure",
         preconditions: ["Authenticated Design Studio with Open enclosure selected at the reviewed defaults."],
@@ -1033,6 +1037,7 @@ class DesignStudioE2E {
         envelopeMm: [80, 50, 60],
         uiVolumeCm3: 54.41,
         artifactSha256: enclosureR1.hash,
+        criticalPathId: "DES-09",
         turningMustFail: true,
         expectedRouteHint: "polymer",
         expectedArchetype: "thin_wall_enclosure",
@@ -1126,7 +1131,7 @@ class DesignStudioE2E {
       this.check("DES-12", "retained artifact HTTP status", 200, retainedArtifact.status);
       this.check("DES-12", "retained artifact bytes remain exact", enclosureR1.hash, retainedArtifact.hash);
       this.check("DES-12", "retained artifact response header remains exact", enclosureR1.hash, retainedArtifact.headerHash);
-      const screenshot = await this.shot("archive-confirmed");
+      const screenshot = await this.shot("DES-12-archive-confirmed");
       this.recordGoldenPath("DES-12", {
         persona: "CAD engineer archiving an obsolete project without destroying immutable evidence",
         preconditions: ["Golden open enclosure R1 is Ready in the active organization list with a captured SHA-256."],

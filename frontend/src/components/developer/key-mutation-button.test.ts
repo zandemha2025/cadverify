@@ -17,6 +17,9 @@ test("API-key mutations use finite same-origin responses before refresh", async 
   assert.match(button, /const text = await response\.text\(\)/);
   assert.match(button, /window\.dispatchEvent\(new Event\(KEY_REVEAL_EVENT\)\)/);
   assert.ok(button.indexOf("await response.text()") < button.indexOf("router.refresh()"));
+  assert.match(button, /const \[hydrated, setHydrated\] = useState\(false\)/);
+  assert.match(button, /useEffect\(\(\) => setHydrated\(true\), \[\]\)/);
+  assert.match(button, /disabled=\{!hydrated\}/);
   assert.match(modal, /addEventListener\(KEY_REVEAL_EVENT, readRevealCookie\)/);
   assert.match(modal, /removeEventListener\(KEY_REVEAL_EVENT, readRevealCookie\)/);
   assert.match(proxy, /path\[0\] === "keys"/);
