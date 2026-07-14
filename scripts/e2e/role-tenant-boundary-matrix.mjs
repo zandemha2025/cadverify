@@ -1019,7 +1019,7 @@ asyncio.run(main())
         const token = cleanText(await owner.page.locator("pre").innerText());
         this.ok("ROLE-02", "browser reveals a cv_live key", /^cv_live_/.test(token));
         this.equal("ROLE-02", "browser one-time key is not foreign B key", token === this.resources.B.key.token, false);
-        const screenshot = await this.shot(owner, "owner-api-key-one-time-reveal");
+        const screenshot = await this.shot(owner, "ROLE-02-owner-api-key-one-time-reveal");
         await owner.page.getByLabel("I've saved it somewhere safe").check();
         await owner.page.getByRole("button", { name: "Done" }).click();
         await owner.page
@@ -1266,7 +1266,7 @@ asyncio.run(main())
         const page = await this.browserPage(viewer, "/notifications", {
           include: [B.notification_title],
           exclude: [A.notification_title],
-          screenshot: "notification-org-b-scoped",
+          screenshot: "VER-04-notification-org-b-scoped",
         });
         this.equal("VER-04", "organization B notification browser HTTP", page.status, 200);
         const foreign = await this.opaqueForeign(
@@ -1353,7 +1353,7 @@ asyncio.run(main())
         this.excludes("ROLE-04", "foreign browser page has no A metadata", text, this.foreignMarkers("A"));
         await viewer.page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
         await viewer.page.waitForTimeout(500);
-        const screenshot = await this.shot(viewer, "foreign-cost-direct-url-opaque");
+        const screenshot = await this.shot(viewer, "ROLE-04-foreign-cost-direct-url-opaque");
         this.crossTenantPersisted = { activeOrg: this.seedData.orgs.B, foreignStatus: response.status(), markerLeaks: 0 };
         return { url: viewer.page.url(), screenshot, status: response.status() };
       },
@@ -1562,7 +1562,7 @@ asyncio.run(main())
         const page = await this.browserPage(analyst, "/designs", {
           include: [B.design_name],
           exclude: [A.design_name],
-          screenshot: "removed-analyst-browser-falls-back-to-b",
+          screenshot: "ROLE-03-removed-analyst-browser-falls-back-to-b",
         });
         this.equal("ROLE-03", "removed analyst protected browser HTTP", page.status, 200);
         this.ok("ROLE-03", "removed analyst browser shows B", page.text.includes(B.design_name));
@@ -1633,7 +1633,7 @@ asyncio.run(main())
         const page = await this.browserPage(fresh, "/designs", {
           include: [B.design_name],
           exclude: [this.resources.A.design_name],
-          screenshot: "viewer-relogin-recovers-org-b",
+          screenshot: "FAIL-09-viewer-relogin-recovers-org-b",
         });
         this.ok("FAIL-09", "fresh browser displays authorized B record", page.text.includes(B.design_name));
         this.equal("FAIL-09", "fresh browser hides A record", page.text.includes(this.resources.A.design_name), false);
@@ -1655,7 +1655,7 @@ asyncio.run(main())
         },
         authorization: { roleLadder: "viewer < analyst < admin < superadmin", crossTenantAdminVisibility: "scoped", analystRatePublication: this.ratePublicationDenied?.publishStatus },
         recovery: "One-time API-key plaintext was absent after browser reload.",
-        screenshot: this.screenshots["owner-api-key-one-time-reveal"],
+        screenshot: this.screenshots["ROLE-02-owner-api-key-one-time-reveal"],
       },
       "ROLE-03": {
         url: this.identities.analyst?.page.url() || `${appUrl}/designs`,
@@ -1664,7 +1664,7 @@ asyncio.run(main())
         numeric: { inviteStatus: this.adminLifecyclePersisted?.inviteStatus, restoredRole: this.adminLifecyclePersisted?.analystRole, mappingDeleted: this.adminLifecyclePersisted?.mappingDeleted, aKeyStatus: this.membershipPersisted?.aKey, bKeyStatus: this.membershipPersisted?.bKey },
         authorization: { removedOrgA: 404, revokedAKey: 401, retainedOrgB: 200 },
         recovery: this.membershipRecovery || "not-observed",
-        screenshot: this.screenshots["removed-analyst-browser-falls-back-to-b"],
+        screenshot: this.screenshots["ROLE-03-removed-analyst-browser-falls-back-to-b"],
       },
       "ROLE-04": {
         url: this.identities.viewer?.page.url() || `${appUrl}/cost-decisions/${this.resources.A.cost_id}`,
@@ -1676,7 +1676,7 @@ asyncio.run(main())
         },
         authorization: { sameOrg: 200, foreignOrg: 404, unknownId: 404 },
         recovery: "Switching to organization B exposed B rows while retaining opaque denials for A identifiers.",
-        screenshot: this.screenshots["foreign-cost-direct-url-opaque"],
+        screenshot: this.screenshots["ROLE-04-foreign-cost-direct-url-opaque"],
       },
       "VER-04": {
         url: `${appUrl}/notifications`,
@@ -1685,7 +1685,7 @@ asyncio.run(main())
         numeric: { unreadAfterRefresh: this.notificationPersisted?.unreadAfter },
         authorization: { orgBVisible: true, foreignAStatus: this.notificationRecovery?.foreignStatus },
         recovery: this.notificationRecovery || "not-observed",
-        screenshot: this.screenshots["notification-org-b-scoped"],
+        screenshot: this.screenshots["VER-04-notification-org-b-scoped"],
       },
       "FAIL-09": {
         url: this.identities.viewer?.page.url() || `${appUrl}/designs`,
@@ -1694,7 +1694,7 @@ asyncio.run(main())
         numeric: { staleStatus: this.staleSessionObserved?.status, freshBVisible: this.sessionRecovery?.BVisible },
         authorization: { staleCookie: 401, denialCode: this.staleSessionObserved?.code, freshCookie: 200 },
         recovery: this.sessionRecovery || "not-observed",
-        screenshot: this.screenshots["viewer-relogin-recovers-org-b"],
+        screenshot: this.screenshots["FAIL-09-viewer-relogin-recovers-org-b"],
       },
     };
     const goldenPaths = {};

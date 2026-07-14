@@ -79,6 +79,12 @@ test("visible API-key creation acknowledges a pending one-time reveal first", ()
   assert.match(roles, /const \[createActionResponse\] = await Promise\.all\(\[/);
 });
 
+test("every owned role path binds its outcome screenshot to the path ID", () => {
+  for (const id of ["ROLE-02", "ROLE-03", "ROLE-04", "VER-04", "FAIL-09"]) {
+    assert.match(source, new RegExp(`this\\.screenshots\\[\"${id}-`), `${id} screenshot is not ID-bound`);
+  }
+});
+
 test("role denials and cross-tenant known-vs-unknown opacity remain exact", () => {
   const roles = method("runRoleCapabilityMatrix", "scopedListRow");
   assert.match(roles, /expected\.platformCreate \? 200 : 403/);

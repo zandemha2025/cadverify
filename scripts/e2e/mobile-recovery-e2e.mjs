@@ -261,16 +261,19 @@ class MobileRecoveryRun {
         this.expectedFaults.push(value);
         return;
       }
+      // During an explicitly bounded offline/refresh exercise the failed
+      // transport is the thing under test; no matching 2xx is expected. In all
+      // normal paths, upload/completion aborts still require exact 2xx evidence.
+      if (this.allowExpectedNetworkFailure) {
+        this.expectedFaults.push(value);
+        return;
+      }
       const recoverableKey = recoverableSuccessAbortKey(request);
       if (failure === "net::ERR_ABORTED" && recoverableKey) {
         const pending = recoverableSuccessAbortEvidence(request, failure);
         pending.pathId = this.currentPathId;
         pending.recoveredStatus = this.successfulAbortableResponses.get(recoverableKey) ?? null;
         this.pendingSuccessAborts.push(pending);
-        return;
-      }
-      if (this.allowExpectedNetworkFailure) {
-        this.expectedFaults.push(value);
         return;
       }
       this.requestFailures.push(value);
@@ -1538,19 +1541,38 @@ class MobileRecoveryRun {
       const before = await this.batchList();
       await this.page.locator('input[type="file"][accept=".zip"]').first().setInputFiles(batchFixture);
       let delayed = false;
+      let signalDelayStarted;
+      const delayStarted = new Promise((resolve) => {
+        signalDelayStarted = resolve;
+      });
       const handler = async (route) => {
-        if (!delayed && route.request().method() === "POST") {
+        if (!delayed && route.request().method() === "PUT") {
           delayed = true;
+          signalDelayStarted();
           await new Promise((resolve) => setTimeout(resolve, 1_000));
         }
         await route.continue().catch(() => undefined);
       };
-      await this.page.route("**/api/proxy/batch", handler);
+      await this.page.route("**/direct-uploads/**", handler);
       this.allowExpectedNetworkFailure = true;
-      await this.page.getByRole("button", { name: /^Start batch$/ }).click();
-      await this.page.reload({ waitUntil: "domcontentloaded" });
-      this.allowExpectedNetworkFailure = false;
-      await this.page.unroute("**/api/proxy/batch", handler);
+      try {
+        await this.page.getByRole("button", { name: /^Start batch$/ }).click();
+        let timeoutId;
+        try {
+          await Promise.race([
+            delayStarted,
+            new Promise((_, reject) => {
+              timeoutId = setTimeout(() => reject(new Error("direct upload PUT did not start within 15 seconds")), 15_000);
+            }),
+          ]);
+        } finally {
+          clearTimeout(timeoutId);
+        }
+        await this.page.reload({ waitUntil: "domcontentloaded" });
+      } finally {
+        this.allowExpectedNetworkFailure = false;
+        await this.page.unroute("**/direct-uploads/**", handler);
+      }
       await this.page.waitForTimeout(1_500);
       let after = await this.batchList();
       if (after.length === before.length) {

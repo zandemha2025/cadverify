@@ -110,3 +110,14 @@ test("FAIL-10 captures degradation, then requires terminal counters and enabled 
   assert.match(body, /forbiddenVisible: \["Could not load progress"\]/);
   assert.match(source, /releaseEvidence: \{\s*schemaVersion: 2,/);
 });
+
+test("REC-09 interrupts the real direct-upload PUT before refresh reconciliation", () => {
+  const body = method("uploadRefreshRecovery", "writeReport");
+  assert.match(body, /page\.route\("\*\*\/direct-uploads\/\*\*", handler\)/);
+  assert.match(body, /route\.request\(\)\.method\(\) === "PUT"/);
+  assert.match(body, /await Promise\.race\(\[/);
+  assert.match(body, /direct upload PUT did not start within 15 seconds/);
+  assert.match(body, /page\.reload\(\{ waitUntil: "domcontentloaded" \}\)/);
+  assert.match(body, /page\.unroute\("\*\*\/direct-uploads\/\*\*", handler\)/);
+  assert.doesNotMatch(body, /page\.route\("\*\*\/api\/proxy\/batch"/);
+});
