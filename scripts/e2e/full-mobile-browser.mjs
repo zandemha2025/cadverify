@@ -82,7 +82,7 @@ export const VERIFY_SECTIONS = Object.freeze([
   Object.freeze({ key: "records", label: "Records", requiredVisible: "Records", heading: "Records" }),
   Object.freeze({ key: "programs", label: "Programs", requiredVisible: "Programs", heading: "Programs" }),
   Object.freeze({ key: "machines", label: "Your machines", requiredVisible: "Your machines", heading: "Your machines" }),
-  Object.freeze({ key: "triage", label: "Triage", requiredVisible: "Triage", heading: "Triage" }),
+  Object.freeze({ key: "triage", label: "Triage", requiredVisible: "Triage at scale", heading: "Triage at scale" }),
   Object.freeze({ key: "calibration", label: "Calibration & truth", requiredVisible: "Calibration & truth", heading: "Calibration & truth" }),
 ]);
 
@@ -147,6 +147,24 @@ async function responseJson(response, label) {
     const body = await response.text().catch(() => "");
     throw new Error(`${label} did not return JSON: ${body.slice(0, 500)} (${error.message})`);
   }
+}
+
+async function browserJson(page, method, pathname) {
+  return page.evaluate(async ({ requestMethod, requestPath }) => {
+    const response = await fetch(requestPath, {
+      method: requestMethod,
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    const text = await response.text();
+    let body = null;
+    try {
+      body = text ? JSON.parse(text) : null;
+    } catch {
+      body = { invalid_json: true, text: text.slice(0, 500) };
+    }
+    return { status: response.status, body };
+  }, { requestMethod: method, requestPath: pathname });
 }
 
 function assertion(name, expected, actual, pass = Object.is(expected, actual)) {
@@ -564,6 +582,22 @@ class FullMobileBrowserRun {
     return result;
   }
 
+  async assertNoElementOverlap(first, second, label) {
+    const [firstBox, secondBox] = await Promise.all([
+      first.first().boundingBox(),
+      second.first().boundingBox(),
+    ]);
+    invariant(firstBox && secondBox, `${label} could not measure both visible elements`);
+    const horizontal = Math.min(firstBox.x + firstBox.width, secondBox.x + secondBox.width) -
+      Math.max(firstBox.x, secondBox.x);
+    const vertical = Math.min(firstBox.y + firstBox.height, secondBox.y + secondBox.height) -
+      Math.max(firstBox.y, secondBox.y);
+    invariant(
+      horizontal <= 0 || vertical <= 0,
+      `${label} overlaps by ${Math.round(horizontal)}×${Math.round(vertical)}px`,
+    );
+  }
+
   async assertPrimaryTarget(locator, label) {
     const target = locator.first();
     await target.waitFor({ state: "visible", timeout: this.actionTimeoutMs });
@@ -758,7 +792,6 @@ class FullMobileBrowserRun {
     await this.clickPrimary(this.page.getByRole("button", { name: /^Create account$/ }), "Create account");
     const signupResponse = await signupResponsePromise;
     invariant(signupResponse.status() === 200, `signup returned HTTP ${signupResponse.status()}`);
-    const signupBody = await responseJson(signupResponse, "signup");
     await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: this.actionTimeoutMs });
     await this.page.getByText("DAY ZERO SETUP", { exact: true }).waitFor({ state: "visible", timeout: this.actionTimeoutMs });
     await this.waitForSettled("signup Day Zero home");
@@ -766,23 +799,34 @@ class FullMobileBrowserRun {
     const setupTarget = this.page.locator(".cv-verify-setup button:not([disabled])").first();
     await this.assertPrimaryTarget(setupTarget, "first actionable Day Zero target");
 
-    const orgResponse = await this.context.request.get(new URL("/api/proxy/orgs", this.baseUrl).toString(), {
-      failOnStatusCode: false,
-      timeout: this.actionTimeoutMs,
-    });
-    invariant(orgResponse.status() === 200, `organization context returned HTTP ${orgResponse.status()}`);
-    const orgBody = await orgResponse.json();
+    // The signup route is a navigation-producing Next mutation. Chromium can
+    // complete it and install the HttpOnly cookie even when CDP no longer
+    // exposes that response body. Prove the account from authenticated,
+    // in-page reads instead of treating a DevTools body-retention detail as a
+    // product failure or falling back to Playwright's separate HTTP client.
+    const orgResponse = await browserJson(this.page, "GET", "/api/proxy/orgs");
+    invariant(orgResponse.status === 200, `organization context returned HTTP ${orgResponse.status}`);
+    const orgBody = orgResponse.body;
     const activeOrg = orgBody?.organizations?.find((org) => org.is_active) ||
       orgBody?.organizations?.find((org) => org.org_id === orgBody?.active_org_id) || null;
-    const userId = signupBody?.user?.id;
-    invariant(userId !== undefined && userId !== null, "signup response omitted the stable user id");
+    const memberResponse = await browserJson(this.page, "GET", "/api/proxy/orgs/members");
+    invariant(memberResponse.status === 200, `organization members returned HTTP ${memberResponse.status}`);
+    const ownMember = memberResponse.body?.members?.find((member) => member.email === email) || null;
+    const userId = ownMember?.user_id;
+    invariant(userId !== undefined && userId !== null, "authenticated member record omitted the stable user id");
     invariant(activeOrg?.org_id, "signup did not create an active organization id");
     invariant(activeOrg.org_role === "admin", `fresh signup org role was ${activeOrg?.org_role || "missing"}, expected admin`);
+
+    await this.clickPrimary(this.page.getByRole("button", { name: "Account", exact: true }), "fresh account menu");
+    const accountMenu = this.page.getByRole("menu");
+    await accountMenu.getByText(email, { exact: true }).waitFor({ state: "visible" });
+    const platformRole = (await accountMenu.getByText("analyst", { exact: true }).innerText()).trim();
+    await this.page.keyboard.press("Escape");
     this.account = {
       email,
       password,
       userId,
-      platformRole: signupBody?.user?.role || null,
+      platformRole,
       orgId: activeOrg.org_id,
       orgRole: activeOrg.org_role,
     };
@@ -873,22 +917,22 @@ class FullMobileBrowserRun {
     const search = this.page.getByRole("textbox", { name: "Command palette search" });
     await this.fillPrimary(search, "triage", "Verify command palette search");
     await this.clickPrimary(this.page.getByRole("button", { name: /^Go to Triage/ }), "command palette Triage result");
-    await this.page.getByRole("heading", { name: "Triage", exact: true }).waitFor({ state: "visible" });
-    const visualSteps = [await this.captureStage(definition.id, "390x844-triage-jump", ["Triage"])];
+    await this.page.getByRole("heading", { name: "Triage at scale", exact: true }).waitFor({ state: "visible" });
+    const visualSteps = [await this.captureStage(definition.id, "390x844-triage-jump", ["Triage at scale"])];
     return {
       persona: "keyboard-and-touch power user on a phone",
       preconditions: ["The authenticated Verify Home surface is open."],
       actions: ["Opened the local Jump palette.", "Focused and searched for triage.", "Activated the filtered Go to Triage result."],
       observed: {
         url: this.page.url(),
-        visible: ["Triage"],
+        visible: ["Triage at scale"],
         persisted: "The palette changed the local Verify section without a document reload.",
         numeric: { queryLength: "triage".length, resultCount: 1 },
         authorization: { authenticated: true, orgRole: this.account.orgRole },
         recovery: "The destination remained usable after the palette closed.",
       },
       visualSteps,
-      assertions: [assertion("palette destination", "Triage", await this.page.getByRole("heading", { name: "Triage", exact: true }).innerText())],
+      assertions: [assertion("palette destination", "Triage at scale", await this.page.getByRole("heading", { name: "Triage at scale", exact: true }).innerText())],
     };
   }
 
@@ -1396,8 +1440,16 @@ class FullMobileBrowserRun {
       ["Image to 3D", "Image-to-3D is not enabled", "No image has been uploaded or sent to a third party.", "Verify CAD instead"],
     )];
     await this.clickPrimary(verifyInstead, "Verify CAD instead");
-    await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: this.actionTimeoutMs });
+    await this.page.waitForURL(
+      (url) => url.pathname === "/verify" && url.searchParams.get("screen") === "verify",
+      { timeout: this.actionTimeoutMs },
+    );
     await this.page.getByText("Drop a part to begin the walk.", { exact: true }).waitFor({ state: "visible" });
+    await this.assertNoElementOverlap(
+      this.page.locator(".cv-verify-stage-title"),
+      this.page.getByTestId("verify-stage-context"),
+      "phone Verify stage title and context card",
+    );
     visualSteps.push(await this.captureStage(
       definition.id,
       "390x844-verify-cad-handoff",
@@ -1410,7 +1462,7 @@ class FullMobileBrowserRun {
       observed: {
         url: this.page.url(),
         visible: ["Image-to-3D is not enabled", "No image has been uploaded or sent to a third party.", "Verify CAD instead", "Drop a part to begin the walk."],
-        persisted: "No image was selected, uploaded, stored, or sent; the operator reached the supported Verify CAD path.",
+        persisted: "No image was selected, uploaded, stored, or sent; the operator reached the supported Verify CAD uploader directly.",
         numeric: { capabilityStatus: capabilityResponse.status(), exposedFileInputs: 0, exposedReconstructActions: 0 },
         authorization: { authenticated: true, orgId: this.account.orgId },
         recovery: "The unavailable optional capability provides a one-tap handoff to the supported CAD workflow.",
@@ -1420,6 +1472,7 @@ class FullMobileBrowserRun {
         assertion("capability status", 200, capabilityResponse.status()),
         assertion("capability unavailable", false, capability.available),
         assertion("supported handoff pathname", "/verify", new URL(this.page.url()).pathname),
+        assertion("supported handoff screen", "verify", new URL(this.page.url()).searchParams.get("screen")),
       ],
     };
   }
@@ -1461,12 +1514,9 @@ class FullMobileBrowserRun {
     invariant(loginResponse.status() === 200, `login recovery returned HTTP ${loginResponse.status()}`);
     await this.waitForSettled("restored Verify session");
 
-    const orgResponse = await this.context.request.get(new URL("/api/proxy/orgs", this.baseUrl).toString(), {
-      failOnStatusCode: false,
-      timeout: this.actionTimeoutMs,
-    });
-    invariant(orgResponse.status() === 200, `restored organization context returned HTTP ${orgResponse.status()}`);
-    const orgBody = await orgResponse.json();
+    const orgResponse = await browserJson(this.page, "GET", "/api/proxy/orgs");
+    invariant(orgResponse.status === 200, `restored organization context returned HTTP ${orgResponse.status}`);
+    const orgBody = orgResponse.body;
     invariant(orgBody?.active_org_id === this.account.orgId, `login recovery changed active org from ${this.account.orgId} to ${orgBody?.active_org_id}`);
 
     await this.navigateVerifySection(VERIFY_SECTIONS[3]);

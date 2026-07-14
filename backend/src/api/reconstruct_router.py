@@ -63,7 +63,7 @@ async def reconstruction_capability(
             "dimensionally authoritative CAD. Verify critical dimensions against "
             "measurements before manufacturing or quoting."
         ),
-        "verify_path": "/verify",
+        "verify_path": "/verify?screen=verify",
     }
 
 

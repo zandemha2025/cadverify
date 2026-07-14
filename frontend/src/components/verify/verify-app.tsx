@@ -103,6 +103,7 @@ export function VerifyApp({
   const [ratesBound, setRatesBound] = useState<boolean | null>(null);
   const [designImport, setDesignImport] = useState<
     | { state: "loading"; message: string }
+    | { state: "running"; message: string }
     | { state: "ready"; message: string }
     | { state: "error"; message: string }
     | null
@@ -248,8 +249,9 @@ export function VerifyApp({
     setDesignImport({ state: "loading", message: "Loading the generated STEP revision…" });
     void importDesignStep(designId, fetch, revisionNo)
       .then(async (imported) => {
-        setDesignImport({ state: "ready", message: `Imported ${imported.name}. Verification is running.` });
+        setDesignImport({ state: "running", message: `Imported ${imported.name}. Verification is running.` });
         await runVerify(imported);
+        setDesignImport({ state: "ready", message: `Imported ${imported.name}. Verification finished.` });
       })
       .catch((caught) => {
         setDesignImport({
@@ -495,7 +497,7 @@ export function VerifyApp({
               fontFamily: MONO,
             }}
           >
-            {designImport.state === "loading" && <span aria-hidden style={{ animation: "vspin 1s linear infinite" }}>◌</span>}
+            {(designImport.state === "loading" || designImport.state === "running") && <span aria-hidden style={{ animation: "vspin 1s linear infinite" }}>◌</span>}
             <span>{designImport.message}</span>
             {designImport.state === "error" && (
               <Link href="/designs" style={{ marginLeft: "auto", color: "inherit", fontWeight: 600 }}>
@@ -787,6 +789,17 @@ const KEYFRAMES = `
   }
   .cv-verify-walk-scroll {
     padding: 22px 14px 18px !important;
+  }
+  .cv-verify-stage-title {
+    top: 18px !important;
+    left: 16px !important;
+    right: 16px;
+  }
+  .cv-verify-stage-context-card {
+    top: 116px !important;
+    left: 16px;
+    right: 16px !important;
+    width: auto !important;
   }
 }
 `;

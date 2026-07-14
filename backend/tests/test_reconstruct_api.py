@@ -399,7 +399,7 @@ class TestReconstructionCapability:
         assert body["can_submit"] is True
         assert body["customer_data_egress"] is False
         assert body["requires_egress_acknowledgement"] is False
-        assert body["verify_path"] == "/verify"
+        assert body["verify_path"] == "/verify?screen=verify"
         assert "internal configuration detail" not in body["message"]
         assert "not dimensionally authoritative CAD" in body["accuracy_notice"]
 

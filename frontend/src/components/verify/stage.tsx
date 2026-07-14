@@ -207,7 +207,7 @@ export function Stage({
         )}
       </div>
 
-      <div style={{ position: "absolute", top: 22, left: 24, pointerEvents: "none" }}>
+      <div className="cv-verify-stage-title" style={{ position: "absolute", top: 22, left: 24, pointerEvents: "none" }}>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 400, letterSpacing: "-0.01em" }}>
           {partName}
         </h1>
@@ -403,6 +403,7 @@ function StaticStageFallback({
 function AssemblyStrip({ partCount, analysisReady }: { partCount: number; analysisReady: boolean }) {
   return (
     <div
+      className="cv-verify-stage-context-card"
       data-testid="verify-stage-assembly"
       data-assembly-parts={partCount}
       style={{
@@ -458,6 +459,7 @@ function ContextStrip({
 
   return (
     <div
+      className="cv-verify-stage-context-card"
       data-testid="verify-stage-context"
       data-context-state={hasParent ? "declared-parent" : "no-parent"}
       style={{

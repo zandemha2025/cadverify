@@ -12,7 +12,7 @@ const local: ReconstructionCapability = {
   requires_egress_acknowledgement: false,
   message: "local",
   accuracy_notice: "estimated",
-  verify_path: "/verify",
+  verify_path: "/verify?screen=verify",
 };
 
 test("only a configured, authorized capability can accept an upload", () => {

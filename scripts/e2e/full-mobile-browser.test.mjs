@@ -279,6 +279,10 @@ test("primary-target, overflow, terminal, screenshot, diagnostics, and build gat
   assert.match(build, /x-proofshape-build/);
   assert.match(build, /served && served !== "unknown"/);
   assert.match(build, /served === this\.expectedBuild\.buildId/);
+
+  const overlap = method("assertNoElementOverlap", "assertPrimaryTarget");
+  assert.match(overlap, /first\.first\(\)\.boundingBox\(\)/);
+  assert.match(overlap, /horizontal <= 0 \|\| vertical <= 0/);
 });
 
 test("disposition persists the exact decision through refresh, all viewports, records, and session recovery", () => {
@@ -345,8 +349,13 @@ test("remaining public, Verify, palette, ledger, settings, batch, and reconstruc
     '"POST", "/api/auth/signup"',
     'getByText("DAY ZERO SETUP"',
     '"/api/proxy/orgs"',
+    '"/api/proxy/orgs/members"',
     'activeOrg.org_role === "admin"',
+    'getByText("analyst", { exact: true })',
   ]);
+  assert.doesNotMatch(signup, /responseJson\(signupResponse/);
+  assert.doesNotMatch(signup, /context\.request/);
+  assert.match(source, /credentials: "same-origin"/);
 
   const sections = method("runVerifySections", "runVerifyCommandPalette");
   assert.match(sections, /for \(const viewport of VIEWPORTS\)/);
@@ -354,7 +363,7 @@ test("remaining public, Verify, palette, ledger, settings, batch, and reconstruc
   assert.match(sections, /assertion\("Verify section viewport captures", 24, visualSteps\.length\)/);
 
   const palette = method("runVerifyCommandPalette", "runSupportedCad");
-  ordered(palette, ["Jump to a surface", "Command palette search", 'fillPrimary(search, "triage"', "Go to Triage"]);
+  ordered(palette, ["Jump to a surface", "Command palette search", 'fillPrimary(search, "triage"', "Go to Triage", "Triage at scale"]);
 
   const history = method("runHistory", "runNotifications");
   ordered(history, ["Recent analyses", 'getByRole("heading", { name: "History"', 'getByRole("combobox")']);
@@ -378,8 +387,9 @@ test("remaining public, Verify, palette, ledger, settings, batch, and reconstruc
     "No image has been uploaded or sent to a third party.",
     'locator(\'input[type="file"]\')',
     "Verify CAD instead",
-    'url.pathname === "/verify"',
+    'url.pathname === "/verify" && url.searchParams.get("screen") === "verify"',
     "Drop a part to begin the walk.",
+    "assertNoElementOverlap",
   ]);
   assert.doesNotMatch(reconstruction, /setInputFiles|submitReconstruction|Reconstruct \(1 image\)/);
 });

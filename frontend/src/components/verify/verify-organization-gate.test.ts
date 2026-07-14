@@ -35,3 +35,16 @@ test("the no-organization state gives a concrete invitation and settings path", 
   assert.match(appSource, /href="\/settings\/organization"/);
   assert.match(appSource, /No organization data has been loaded or treated as empty/);
 });
+
+test("Design Studio import copy follows the real verification lifecycle", () => {
+  const running = appSource.indexOf('state: "running", message: `Imported ${imported.name}. Verification is running.`');
+  const verification = appSource.indexOf("await runVerify(imported)", running);
+  const finished = appSource.indexOf('state: "ready", message: `Imported ${imported.name}. Verification finished.`', verification);
+  assert.ok(running >= 0 && verification > running && finished > verification);
+  assert.match(appSource, /designImport\.state === "loading" \|\| designImport\.state === "running"/);
+});
+
+test("phone Verify stage separates the title from the context evidence card", () => {
+  assert.match(appSource, /\.cv-verify-stage-title \{[\s\S]*?top: 18px !important/);
+  assert.match(appSource, /\.cv-verify-stage-context-card \{[\s\S]*?top: 116px !important/);
+});

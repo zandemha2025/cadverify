@@ -610,7 +610,7 @@ export interface ReconstructionCapability {
   requires_egress_acknowledgement: boolean;
   message: string;
   accuracy_notice: string;
-  verify_path: "/verify";
+  verify_path: "/verify?screen=verify";
 }
 
 export type JobStatusValue = "queued" | "running" | "done" | "partial" | "failed";
