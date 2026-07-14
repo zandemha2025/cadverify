@@ -238,6 +238,8 @@ test("cost fixtures upload through the authenticated browser surface", () => {
   assert.match(multipart, /new File\(/);
   assert.match(multipart, /await fetch\(target/);
   assert.doesNotMatch(multipart, /context\.request/);
+  assert.match(multipart, /REQUIRED_IDS\.includes\(id\)/);
+  assert.match(multipart, /result\.status === expectedStatus/);
 
   const create = method("createCost", "createDrafts");
   assert.match(create, /this\.browserMultipart\(/);

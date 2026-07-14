@@ -838,7 +838,14 @@ asyncio.run(main())
       sha256: result.sha256,
       errorCode: errorCode(result.body),
     });
-    this.equal(id, options.label || `${method} ${redactUrl(pathname)} status`, result.status, expectedStatus);
+    if (REQUIRED_IDS.includes(id)) {
+      this.equal(id, options.label || `${method} ${redactUrl(pathname)} status`, result.status, expectedStatus);
+    } else {
+      invariant(
+        result.status === expectedStatus,
+        `${method} ${pathname}: expected ${expectedStatus}, got ${result.status}: ${result.text.slice(0, 500)}`,
+      );
+    }
     return result;
   }
 
@@ -908,7 +915,14 @@ asyncio.run(main())
       sha256: result.sha256,
       errorCode: errorCode(result.body),
     });
-    this.equal(id, options.label || `${method} ${redactUrl(pathname)} status`, result.status, expectedStatus);
+    if (REQUIRED_IDS.includes(id)) {
+      this.equal(id, options.label || `${method} ${redactUrl(pathname)} status`, result.status, expectedStatus);
+    } else {
+      invariant(
+        result.status === expectedStatus,
+        `${method} ${pathname}: expected ${expectedStatus}, got ${result.status}: ${result.text.slice(0, 500)}`,
+      );
+    }
     return result;
   }
 
