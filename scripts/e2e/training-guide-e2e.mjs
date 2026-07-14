@@ -45,6 +45,63 @@ const pinnedCube = {
     10000: ["mjf", 3.48],
   },
 };
+
+export function redactRequestUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return "<invalid-url>";
+  }
+}
+
+export function recoverableUploadAbortKey(method, rawUrl, appUrl = baseUrl) {
+  let url;
+  let appOrigin;
+  try {
+    url = new URL(rawUrl);
+    appOrigin = new URL(appUrl).origin;
+  } catch {
+    return null;
+  }
+  if (
+    method === "PUT" &&
+    url.origin !== appOrigin &&
+    url.pathname.includes("/direct-uploads/") &&
+    url.searchParams.has("uploadId") &&
+    url.searchParams.has("partNumber")
+  ) {
+    return [
+      "multipart-part",
+      url.origin,
+      url.pathname,
+      url.searchParams.get("uploadId"),
+      url.searchParams.get("partNumber"),
+    ].join("|");
+  }
+  if (
+    method === "POST" &&
+    url.origin === appOrigin &&
+    /^\/api\/proxy\/uploads\/[A-Z0-9]+\/complete$/i.test(url.pathname)
+  ) {
+    return ["multipart-complete", url.origin, url.pathname].join("|");
+  }
+  return null;
+}
+
+export function reconcileSuccessfulUploadAborts(pending, successfulResponses) {
+  const expected = [];
+  const failures = [];
+  for (const item of pending) {
+    const recoveredStatus = successfulResponses.get(item.key) ?? null;
+    if (recoveredStatus != null) {
+      expected.push({ ...item.evidence, recoveredStatus });
+    } else {
+      failures.push({ ...item.evidence, reason: "no exact matching successful HTTP response" });
+    }
+  }
+  return { expected, failures };
+}
 const batchCsvHeaders = [
   "filename",
   "status",
@@ -337,6 +394,7 @@ function markdownReport(data) {
 - Steps: ${data.steps.length - data.failed.length}/${data.steps.length}
 - Console errors: ${data.consoleErrors.length}
 - Request failures: ${data.requestFailures.length}
+- Reconciled successful upload aborts: ${data.expectedRequestAborts.length}
 - Fatal error: ${data.fatalError || "none"}
 - Batch CSV: ${data.batchCsv}
 - RFQ ZIP: ${data.rfqZip}
@@ -384,6 +442,9 @@ async function main() {
   const steps = [];
   const consoleErrors = [];
   const requestFailures = [];
+  const pendingSuccessAborts = [];
+  const successfulAbortableResponses = new Map();
+  const expectedRequestAborts = [];
   const screenshots = [];
 
   page.on("console", (message) => {
@@ -392,12 +453,32 @@ async function main() {
     }
   });
   page.on("pageerror", (error) => consoleErrors.push({ url: page.url(), text: error.message }));
+  page.on("response", (response) => {
+    const key = recoverableUploadAbortKey(
+      response.request().method(),
+      response.url(),
+      baseUrl,
+    );
+    if (key && response.status() >= 200 && response.status() < 300) {
+      successfulAbortableResponses.set(key, response.status());
+    }
+  });
   page.on("requestfailed", (request) => {
     const url = request.url();
     const error = request.failure()?.errorText || "request failed";
     if (/favicon\.ico|vercel\/speed-insights|\/_next\/webpack-hmr/i.test(url)) return;
     if (error === "net::ERR_ABORTED" && /[?&]_rsc=/.test(url)) return;
-    requestFailures.push({ method: request.method(), url, error });
+    const evidence = {
+      method: request.method(),
+      url: redactRequestUrl(url),
+      error,
+    };
+    const key = recoverableUploadAbortKey(request.method(), url, baseUrl);
+    if (error === "net::ERR_ABORTED" && key) {
+      pendingSuccessAborts.push({ key, evidence });
+      return;
+    }
+    requestFailures.push(evidence);
   });
 
   async function shot(name) {
@@ -902,6 +983,13 @@ async function main() {
     await browser.close();
   }
 
+  const reconciledAborts = reconcileSuccessfulUploadAborts(
+    pendingSuccessAborts,
+    successfulAbortableResponses,
+  );
+  expectedRequestAborts.push(...reconciledAborts.expected);
+  requestFailures.push(...reconciledAborts.failures);
+
   const failed = steps.filter((item) => item.status !== "PASS");
   const status = !fatalError && failed.length === 0 && consoleErrors.length === 0 && requestFailures.length === 0 ? "PASS" : "NEEDS_FIXES";
   const data = {
@@ -915,6 +1003,7 @@ async function main() {
     fatalError,
     consoleErrors,
     requestFailures,
+    expectedRequestAborts,
     screenshots,
     batchCsv: batchCsvPath,
     rfqZip: zipPath,
@@ -932,6 +1021,7 @@ async function main() {
     failed: failed.length,
     consoleErrors: consoleErrors.length,
     requestFailures: requestFailures.length,
+    expectedRequestAborts: expectedRequestAborts.length,
     fatalError,
     report: reportMd,
     screenshots: screenshotDir,
@@ -942,7 +1032,10 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+const invokedAsScript = process.argv[1] && path.resolve(process.argv[1]) === __filename;
+if (invokedAsScript) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
