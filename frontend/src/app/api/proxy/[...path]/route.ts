@@ -67,7 +67,23 @@ async function handle(
   ) {
     return Response.json({ detail: "Not found" }, { status: 404 });
   }
-  const token = (await getSessionToken()) ?? "";
+  const token = await getSessionToken();
+  // Do not start piping an upload when the first-party session is absent. If
+  // the API rejects a streamed request before consuming it, Node/Undici can
+  // surface a transport-level `expected non-null body source` failure instead
+  // of the API's useful 401. Failing here is also cheaper: an anonymous caller
+  // cannot make the frontend read or forward any CAD bytes.
+  if (!token) {
+    return Response.json(
+      {
+        detail: {
+          code: "dashboard_auth_required",
+          message: "Dashboard session required.",
+        },
+      },
+      { status: 401, headers: { "cache-control": "no-store" } },
+    );
+  }
   const target = backendUrl(`/api/v1/${path.join("/")}${req.nextUrl.search}`);
 
   const method = req.method;

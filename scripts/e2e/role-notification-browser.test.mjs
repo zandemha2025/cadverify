@@ -231,6 +231,19 @@ test("fixture logins wait for hydration and prove controlled values before submi
   ]);
 });
 
+test("cost fixtures upload through the authenticated browser surface", () => {
+  const multipart = method("browserMultipart", "browserActionResponse");
+  assert.match(multipart, /actor\.page\.evaluate/);
+  assert.match(multipart, /new FormData\(\)/);
+  assert.match(multipart, /new File\(/);
+  assert.match(multipart, /await fetch\(target/);
+  assert.doesNotMatch(multipart, /context\.request/);
+
+  const create = method("createCost", "createDrafts");
+  assert.match(create, /this\.browserMultipart\(/);
+  assert.doesNotMatch(create, /this\.api\(/);
+});
+
 test("VER-04 anchors unread, read, and dismiss persistence to UI actions and full refreshes", () => {
   const body = method("runVer04", "runRole01");
   ordered(body, [

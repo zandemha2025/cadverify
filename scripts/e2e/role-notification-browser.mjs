@@ -842,6 +842,76 @@ asyncio.run(main())
     return result;
   }
 
+  async browserMultipart(actor, pathname, fields, options = {}) {
+    const id = options.pathId || this.activePathId;
+    const method = String(options.method || "POST").toUpperCase();
+    const expectedStatus = options.expectedStatus ?? 200;
+    const encodedFields = Object.entries(fields).map(([name, value]) => {
+      if (value && typeof value === "object" && Object.hasOwn(value, "buffer")) {
+        return {
+          name,
+          kind: "file",
+          filename: value.name,
+          mimeType: value.mimeType || "application/octet-stream",
+          base64: Buffer.from(value.buffer).toString("base64"),
+        };
+      }
+      return { name, kind: "text", value: String(value) };
+    });
+    const result = await actor.page.evaluate(async ({ target, requestMethod, formFields }) => {
+      const form = new FormData();
+      for (const field of formFields) {
+        if (field.kind === "file") {
+          const binary = atob(field.base64);
+          const bytes = new Uint8Array(binary.length);
+          for (let index = 0; index < binary.length; index += 1) {
+            bytes[index] = binary.charCodeAt(index);
+          }
+          form.append(field.name, new File([bytes], field.filename, { type: field.mimeType }));
+        } else {
+          form.append(field.name, field.value);
+        }
+      }
+      const response = await fetch(target, {
+        method: requestMethod,
+        body: form,
+        cache: "no-store",
+      });
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const text = new TextDecoder().decode(bytes);
+      const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+      const digestHex = [...digest].map((value) => value.toString(16).padStart(2, "0")).join("");
+      let body = text;
+      if (/json|problem\+json/i.test(response.headers.get("content-type") || "")) {
+        try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+      }
+      return {
+        status: response.status,
+        contentType: response.headers.get("content-type") || "",
+        bytes: bytes.length,
+        sha256: digestHex,
+        text: text.slice(0, 5000),
+        body,
+      };
+    }, { target: pathname, requestMethod: method, formFields: encodedFields });
+    this.diagnostics.recordTransaction({
+      pathId: id,
+      persona: actor.persona,
+      channel: "browser",
+      label: options.label || pathname,
+      method,
+      path: pathname,
+      status: result.status,
+      expectedStatus,
+      contentType: result.contentType,
+      bytes: result.bytes,
+      sha256: result.sha256,
+      errorCode: errorCode(result.body),
+    });
+    this.equal(id, options.label || `${method} ${redactUrl(pathname)} status`, result.status, expectedStatus);
+    return result;
+  }
+
   async browserActionResponse(actor, spec, action) {
     const id = spec.pathId || this.activePathId;
     const method = String(spec.method || "GET").toUpperCase();
@@ -900,15 +970,14 @@ asyncio.run(main())
 
   async createCost(actor, orgKey) {
     const filename = `ROLE-NOTIFICATION-${orgKey}-${this.tag}.step`;
-    const result = await this.api(actor, "/api/proxy/validate/cost", {
+    const result = await this.browserMultipart(actor, "/api/proxy/validate/cost", {
+      file: { name: filename, mimeType: "application/step", buffer: this.cubeBytes },
+      qty: "50",
+      material_class: "polymer",
+    }, {
       method: "POST",
       expectedStatus: 200,
       label: `setup ${orgKey} real STEP cost decision`,
-      multipart: {
-        file: { name: filename, mimeType: "application/step", buffer: this.cubeBytes },
-        qty: "50",
-        material_class: "polymer",
-      },
     });
     invariant(result.body?.saved?.id, `${orgKey} cost response omitted saved.id`);
     return { id: result.body.saved.id, filename, meshHash: result.body?.saved?.mesh_hash || result.body?.mesh_hash || null };
