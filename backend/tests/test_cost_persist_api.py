@@ -444,6 +444,37 @@ def test_four_way_disposition_persists_withdraws_and_preserves_engine_artifact(
     assert dec.result_json == original_artifact
 
 
+def test_blocked_route_cannot_be_recorded_as_unqualified_make_inhouse(
+    client, real_result_json
+):
+    cl, app = client
+    blocked = copy.deepcopy(real_result_json)
+    process = blocked["decision"]["make_now_process"]
+    selected = next(
+        estimate for estimate in blocked["estimates"] if estimate["process"] == process
+    )
+    selected["dfm_ready"] = False
+    selected["dfm_verdict"] = "fail"
+    selected["dfm_blockers"] = ["Part exceeds the selected route envelope"]
+    dec = _make_decision("01BLOCKEDDISPOSITION0000000A", blocked, user_id=42)
+    _override(app, _session_returning(scalar_one=dec), user_id=42)
+
+    rejected = cl.put(
+        f"/api/v1/cost-decisions/{dec.ulid}/disposition",
+        json={"disposition": "inhouse", "note": "Ignore the engine"},
+    )
+    assert rejected.status_code == 409, rejected.text
+    assert "verify revised CAD" in rejected.json()["message"]
+    assert dec.user_disposition is None
+
+    redesign = cl.put(
+        f"/api/v1/cost-decisions/{dec.ulid}/disposition",
+        json={"disposition": "redesign", "note": "Revise the envelope"},
+    )
+    assert redesign.status_code == 200, redesign.text
+    assert redesign.json()["user_disposition"] == "redesign"
+
+
 def test_disposition_change_reopens_prior_approval(client, real_result_json):
     cl, app = client
     dec = _make_decision("01DISPREOPEN00000000000000A", real_result_json, user_id=42)

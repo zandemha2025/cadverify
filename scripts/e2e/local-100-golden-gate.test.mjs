@@ -4,13 +4,20 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { makeGoldenPathEvidence } from "./golden-path-evidence.mjs";
+import {
+  makeGoldenPathEvidence,
+  REQUIRED_VISUAL_STAGE_FORBIDDEN_TEXT,
+  REQUIRED_VISUAL_STAGE_TEXT,
+  REQUIRED_VISUAL_STAGES,
+  TERMINAL_FORBIDDEN_VISIBLE,
+} from "./golden-path-evidence.mjs";
 import {
   CANONICAL_REPORT_CONTRACTS,
   evaluateLocal100,
   LOCAL_100_IDS,
   LOCAL_BROWSER_IDS,
   LOCAL_FAILURE_IDS,
+  REQUIRED_SCREENSHOT_ORACLES,
 } from "./local-100-golden-gate.mjs";
 
 const RUN_ID = "release-2026-07-13T12-00-00Z";
@@ -27,7 +34,30 @@ function identity(overrides = {}) {
   };
 }
 
-function evidence(id, overrides = {}) {
+function evidence(id, overrides = {}, namespace = "fixture") {
+  const requiredStages = REQUIRED_VISUAL_STAGES[id] ?? [];
+  const visualSteps = requiredStages.map((stage) => ({
+    id,
+    stage,
+    terminal: true,
+    screenshot: `/tmp/${namespace}-${id}-${stage}.png`,
+    capturedAt: "2026-07-13T12:00:00.000Z",
+    url: "http://localhost:3000/verify",
+    requiredVisible: REQUIRED_VISUAL_STAGE_TEXT[id]?.[stage] ?? ["Expected state is visible"],
+    forbiddenVisible: [
+      ...TERMINAL_FORBIDDEN_VISIBLE,
+      ...(REQUIRED_VISUAL_STAGE_FORBIDDEN_TEXT[id]?.[stage] ?? []),
+    ],
+    capture: {
+      text: (REQUIRED_VISUAL_STAGE_TEXT[id]?.[stage] ?? ["Expected state is visible"]).join(" "),
+      ariaBusyCount: 0,
+      skeletonCount: 0,
+      loadingIndicatorCount: 0,
+    },
+  }));
+  const screenshot = requiredStages.length > 0
+    ? visualSteps.at(-1).screenshot
+    : `/tmp/${namespace}-${id}.png`;
   return makeGoldenPathEvidence({
     id,
     status: "PASS",
@@ -42,10 +72,16 @@ function evidence(id, overrides = {}) {
       authorization: "Expected role boundary observed",
       recovery: "Returned to a usable state",
     },
-    screenshot: `/tmp/${id}.png`,
+    screenshot,
+    ...(visualSteps.length > 0 ? { visualSteps } : {}),
     consoleErrors: [],
     requestFailures: [],
-    assertions: [{ name: "outcome", expected: true, actual: true, pass: true }],
+    assertions: [
+      { name: "outcome", expected: true, actual: true, pass: true },
+      ...(REQUIRED_SCREENSHOT_ORACLES[id]
+        ? [{ name: REQUIRED_SCREENSHOT_ORACLES[id], expected: "terminal UI", actual: "terminal UI", pass: true }]
+        : []),
+    ],
     ...overrides,
   });
 }
@@ -60,8 +96,8 @@ function completeReports() {
       generatedAt: "2026-07-13T12:00:00.000Z",
       buildIdentity: identity(),
       releaseEvidence: {
-        schemaVersion: 1,
-        goldenPaths: Object.fromEntries(contract.ids.map((id) => [id, evidence(id)])),
+        schemaVersion: 2,
+        goldenPaths: Object.fromEntries(contract.ids.map((id) => [id, evidence(id, {}, contract.suite)])),
       },
     },
   }));
@@ -86,7 +122,7 @@ test("gate inventory exactly matches the documented local contract", () => {
   assert.deepEqual([...LOCAL_FAILURE_IDS].sort(), documentedFailureIds.sort());
 });
 
-test("complete clean current-build evidence earns LOCAL_100", () => {
+test("complete clean current-build evidence earns the bounded local gate claim", () => {
   const result = evaluateLocal100({
     reports: completeReports(),
     expectedIdentity: identity(),
@@ -94,7 +130,7 @@ test("complete clean current-build evidence earns LOCAL_100", () => {
     screenshotExists: () => true,
   });
   assert.equal(result.status, "PASS");
-  assert.equal(result.claim, "LOCAL_100");
+  assert.equal(result.claim, "LOCAL_GATE_PASS");
   assert.deepEqual(result.counts, {
     required: 64,
     browser: 54,
@@ -102,6 +138,117 @@ test("complete clean current-build evidence earns LOCAL_100", () => {
     valid: 64,
     problems: 0,
   });
+});
+
+test("a critical screenshot without its same-moment DOM oracle blocks the gate", () => {
+  const reports = completeReports();
+  const report = reports.find((item) => item.data.suite === "manufacturing-cad-adversarial");
+  report.data.releaseEvidence.goldenPaths["VER-05"].assertions = [
+    { name: "API result", expected: 200, actual: 200, pass: true },
+  ];
+  const result = evaluateLocal100({
+    reports,
+    expectedIdentity: identity(),
+    expectedRunId: RUN_ID,
+    screenshotExists: () => true,
+  });
+  assert.equal(result.status, "FAIL");
+  assert.ok(result.problems.some((problem) =>
+    problem.type === "missing_screenshot_oracle" && problem.id === "VER-05"
+  ));
+});
+
+test("a required v2 path cannot fall back to one legacy screenshot", () => {
+  const reports = completeReports();
+  const report = reports.find((item) => item.data.suite === "public-auth-verify-golden-matrix");
+  const current = report.data.releaseEvidence.goldenPaths["AUTH-03"];
+  report.data.releaseEvidence.goldenPaths["AUTH-03"] = makeGoldenPathEvidence({
+    ...current,
+    screenshot: "/tmp/public-auth-AUTH-03.png",
+    visualSteps: undefined,
+  });
+  const result = evaluateLocal100({
+    reports,
+    expectedIdentity: identity(),
+    expectedRunId: RUN_ID,
+    screenshotExists: () => true,
+  });
+  assert.equal(result.status, "FAIL");
+  assert.ok(result.problems.some((problem) =>
+    problem.type === "invalid_golden_path" && problem.id === "AUTH-03" && problem.field === "visualProof"
+  ));
+  assert.ok(result.problems.some((problem) =>
+    problem.type === "invalid_golden_path" && problem.id === "AUTH-03" && problem.field === "visualSteps"
+  ));
+});
+
+test("missing one required failure/recovery stage blocks the gate", () => {
+  const reports = completeReports();
+  const report = reports.find((item) => item.data.suite === "mobile-recovery-e2e");
+  const entry = report.data.releaseEvidence.goldenPaths["FAIL-03"];
+  entry.visualSteps = entry.visualSteps.filter((step) => step.stage !== "failure");
+  const result = evaluateLocal100({
+    reports,
+    expectedIdentity: identity(),
+    expectedRunId: RUN_ID,
+    screenshotExists: () => true,
+  });
+  assert.equal(result.status, "FAIL");
+  assert.ok(result.problems.some((problem) =>
+    problem.type === "invalid_golden_path" && problem.id === "FAIL-03" && problem.field === "visualSteps.required.failure"
+  ));
+});
+
+test("terminal COMPUTING and visible busy placeholders block the gate", () => {
+  const reports = completeReports();
+  const report = reports.find((item) => item.data.suite === "manufacturing-cad-adversarial");
+  const step = report.data.releaseEvidence.goldenPaths["VER-05"].visualSteps[0];
+  step.capture.text = "Expected state is visible THE VERDICT COMPUTING";
+  step.capture.skeletonCount = 1;
+  const result = evaluateLocal100({
+    reports,
+    expectedIdentity: identity(),
+    expectedRunId: RUN_ID,
+    screenshotExists: () => true,
+  });
+  assert.equal(result.status, "FAIL");
+  assert.ok(result.problems.some((problem) =>
+    problem.type === "invalid_golden_path" && problem.id === "VER-05" && problem.field.includes("terminal")
+  ));
+});
+
+test("every v2 stage screenshot must exist", () => {
+  const reports = completeReports();
+  const result = evaluateLocal100({
+    reports,
+    expectedIdentity: identity(),
+    expectedRunId: RUN_ID,
+    screenshotExists: (screenshot) => !screenshot.endsWith("FAIL-03-failure.png"),
+  });
+  assert.equal(result.status, "FAIL");
+  assert.ok(result.problems.some((problem) =>
+    problem.type === "missing_screenshot_file" && problem.id === "FAIL-03" && problem.stage === "failure"
+  ));
+});
+
+test("screenshot paths must be unique across reports and associated with their path ID", () => {
+  const reports = completeReports();
+  const notification = reports.find((item) => item.data.suite === "notification-decision-golden-matrix");
+  const boundary = reports.find((item) => item.data.suite === "role-tenant-boundary-matrix");
+  notification.data.releaseEvidence.goldenPaths["ROLE-04"].screenshot = "/tmp/shared-ROLE-04.png";
+  boundary.data.releaseEvidence.goldenPaths["ROLE-04"].screenshot = "/tmp/shared-ROLE-04.png";
+  reports[0].data.releaseEvidence.goldenPaths["AUTH-02"].screenshot = "/tmp/wrong-AUTH-05.png";
+  const result = evaluateLocal100({
+    reports,
+    expectedIdentity: identity(),
+    expectedRunId: RUN_ID,
+    screenshotExists: () => true,
+  });
+  assert.equal(result.status, "FAIL");
+  assert.ok(result.problems.some((problem) => problem.type === "duplicate_screenshot_path"));
+  assert.ok(result.problems.some((problem) =>
+    problem.type === "screenshot_id_mismatch" && problem.id === "AUTH-02"
+  ));
 });
 
 test("a passing step name cannot replace a missing structured path", () => {
@@ -141,7 +288,7 @@ test("missing screenshot bytes and dirty HEAD both block the claim", () => {
     reports,
     expectedIdentity: identity({ gitDirty: true }),
     expectedRunId: RUN_ID,
-    screenshotExists: (screenshot) => !screenshot.endsWith("FAIL-10.png"),
+    screenshotExists: (screenshot) => !screenshot.endsWith("FAIL-10-recovery.png"),
   });
   assert.equal(result.status, "FAIL");
   assert.ok(result.problems.some((problem) => problem.type === "dirty_worktree"));
@@ -150,7 +297,7 @@ test("missing screenshot bytes and dirty HEAD both block the claim", () => {
 
 test("an unrelated or unversioned report cannot enter the release set", () => {
   const reports = completeReports();
-  reports[0].data.releaseEvidence.schemaVersion = 2;
+  reports[0].data.releaseEvidence.schemaVersion = 3;
   const unrelated = {
     name: "unrelated",
     data: {
@@ -183,7 +330,7 @@ test("one generic report containing all 64 IDs cannot impersonate the canonical 
       generatedAt: "2026-07-13T12:00:00.000Z",
       buildIdentity: identity(),
       releaseEvidence: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         goldenPaths: Object.fromEntries(LOCAL_100_IDS.map((id) => [id, evidence(id)])),
       },
     },

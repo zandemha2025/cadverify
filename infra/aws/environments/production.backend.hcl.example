@@ -1,0 +1,6 @@
+bucket       = "REPLACE-production-terraform-state-bucket"
+key          = "proofshape-commercial/production/terraform.tfstate"
+region       = "us-east-1"
+encrypt      = true
+kms_key_id   = "arn:aws:kms:us-east-1:222222222222:key/REPLACE"
+use_lockfile = true

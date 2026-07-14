@@ -11,7 +11,8 @@ Tables:
   - jobs               (Phase 3, migration 0002 -- schema only, populated in Phase 7; +org_id in 0009)
   - usage_events       (Phase 3, migration 0002; +org_id in 0009)
   - batches            (Phase 9, migration 0004; +org_id in 0009)
-  - batch_items        (Phase 9, migration 0004; +org_id in 0009)
+  - batch_items        (Phase 9, migration 0004; +org_id in 0009; leases in 0045)
+  - direct_uploads     (migration 0044; org-scoped S3 multipart lifecycle)
   - webhook_deliveries (Phase 9, migration 0004; +org_id in 0009)
   - audit_log          (Phase 12, migration 0006; +org_id in 0009)
 
@@ -739,6 +740,10 @@ class Batch(Base):
         Index("ix_batches_user_created", "user_id", "created_at"),
         # W1 hot-table composite (org_id leading; see Analysis note).
         Index("ix_batches_org_user", "org_id", "user_id"),
+        CheckConstraint(
+            "concurrency_limit >= 1 AND concurrency_limit <= 12",
+            name="ck_batches_concurrency_limit",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -807,6 +812,14 @@ class BatchItem(Base):
         Index("ix_batch_items_batch_created", "batch_id", "created_at"),
         Index("ix_batch_items_org_id", "org_id"),
         Index("ix_batch_items_cost_decision_id", "cost_decision_id"),
+        CheckConstraint(
+            "priority IN ('high', 'normal', 'low')",
+            name="ck_batch_items_priority",
+        ),
+        CheckConstraint(
+            "attempt_count >= 0 AND attempt_count <= 3",
+            name="ck_batch_items_attempt_count",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -829,6 +842,14 @@ class BatchItem(Base):
     rule_pack: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     priority: Mapped[str] = mapped_column(
         Text, nullable=False, server_default="normal"
+    )
+    # Durable delivery budget. It is incremented before publication/retry so a
+    # worker crash and fresh Redis job cannot reset the bounded retry policy.
+    attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    lease_started_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
     )
     analysis_id: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("analyses.id", ondelete="SET NULL"), nullable=True
@@ -866,6 +887,127 @@ class BatchItem(Base):
     # relationships
     batch: Mapped[Batch] = relationship(back_populates="items")
     analysis: Mapped[Optional[Analysis]] = relationship()
+
+
+class DirectUpload(Base):
+    """Org-owned capability for one server-addressed S3 multipart upload.
+
+    Provider coordinates are deliberately private persistence details. Public
+    APIs address this row by ``ulid`` and every read is org-scoped; callers can
+    never choose the bucket or object key consumed by a worker.
+    """
+
+    __tablename__ = "direct_uploads"
+    __table_args__ = (
+        CheckConstraint(
+            "purpose IN ('batch_zip')",
+            name="ck_direct_uploads_purpose",
+        ),
+        CheckConstraint(
+            "status IN ('initiated', 'completing', 'completed', 'attached', 'preparing', "
+            "'prepared', 'consumed', 'aborted', 'expired', 'failed')",
+            name="ck_direct_uploads_status",
+        ),
+        CheckConstraint(
+            "expected_size_bytes > 0",
+            name="ck_direct_uploads_expected_size",
+        ),
+        CheckConstraint(
+            "part_size_bytes >= 5242880",
+            name="ck_direct_uploads_part_size",
+        ),
+        CheckConstraint(
+            "part_count >= 1 AND part_count <= 10000",
+            name="ck_direct_uploads_part_count",
+        ),
+        CheckConstraint(
+            "length(idempotency_key_hash) = 64 AND "
+            "length(request_fingerprint) = 64 AND "
+            "length(expected_checksum_sha256) = 64",
+            name="ck_direct_uploads_hash_lengths",
+        ),
+        UniqueConstraint("batch_id", name="uq_direct_uploads_batch_id"),
+        UniqueConstraint("object_key", name="uq_direct_uploads_object_key"),
+        UniqueConstraint(
+            "org_id",
+            "idempotency_key_hash",
+            name="uq_direct_uploads_org_idempotency",
+        ),
+        Index("ix_direct_uploads_org_status", "org_id", "status"),
+        Index("ix_direct_uploads_user_created", "user_id", "created_at"),
+        Index("ix_direct_uploads_status_expires", "status", "expires_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    ulid: Mapped[str] = mapped_column(
+        Text, unique=True, nullable=False, default=lambda: str(ULID())
+    )
+    org_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    idempotency_key_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(Text, nullable=False)
+    batch_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("batches.id", ondelete="SET NULL"), nullable=True
+    )
+    purpose: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="initiated"
+    )
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    content_type: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    expected_checksum_sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    actual_size_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    part_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    part_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    object_key: Mapped[str] = mapped_column(Text, nullable=False)
+    multipart_upload_id: Mapped[str] = mapped_column(Text, nullable=False)
+    object_etag: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    prepare_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    error_code: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    attached_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    preparation_started_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    prepared_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    consumed_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    checksum_verified_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    storage_cleaned_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    terminal_at: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
 
 
 class WebhookDelivery(Base):

@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import os
 import inspect
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from arq.connections import ArqRedis, RedisSettings, create_pool
@@ -63,7 +64,13 @@ class ArqJobQueue(JobQueue):
         self._pool = pool
 
     async def enqueue(self, job_type: str, params: dict, idempotency_key: str) -> str:
-        """Enqueue a job. Uses idempotency_key as the arq job ID to prevent duplicates."""
+        """Publish one already-persisted job to ARQ.
+
+        The database row is durable *intent*, not evidence that Redis received
+        the task.  Every queued row is therefore offered to ARQ.  ARQ's
+        deterministic ``_job_id`` is the publication idempotency boundary: a
+        repeated offer returns ``None`` and does not create a second task.
+        """
         task_name = _JOB_TYPE_TO_TASK.get(job_type)
         if task_name is None:
             raise ValueError(
@@ -71,9 +78,12 @@ class ArqJobQueue(JobQueue):
                 f"{sorted(_JOB_TYPE_TO_TASK)}"
             )
 
-        # Check for existing job with same idempotency key
+        # The caller must commit the row before publishing so a fast worker can
+        # always resolve it.  Existing queued rows still need publication; the
+        # historical implementation returned here and silently lost every SAM
+        # task created by the validate route.
         async with get_session_factory()() as session:
-            existing = (
+            persisted = (
                 await session.execute(
                     select(Job).where(
                         Job.ulid == idempotency_key,
@@ -81,18 +91,46 @@ class ArqJobQueue(JobQueue):
                 )
             ).scalars().first()
 
-            if existing is not None:
-                logger.info("Duplicate enqueue for key=%s, returning existing job", idempotency_key)
-                return existing.ulid
+        if persisted is None:
+            raise ValueError(
+                f"Job {idempotency_key!r} must be committed before publication"
+            )
+        if persisted.job_type != job_type:
+            raise ValueError(
+                f"Job {idempotency_key!r} is {persisted.job_type!r}, not {job_type!r}"
+            )
+        if persisted.status in {"running", "done", "partial", "failed"}:
+            logger.info(
+                "Skipping publication for job=%s status=%s",
+                idempotency_key,
+                persisted.status,
+            )
+            return persisted.ulid
+        if persisted.status != "queued":
+            raise ValueError(
+                f"Job {idempotency_key!r} has unsupported status {persisted.status!r}"
+            )
 
-        # Enqueue to arq with the idempotency key as job ID. Honor the caller's
-        # job_type via the registry rather than hardcoding a single task.
-        await self._pool.enqueue_job(
+        # Preserve the reconstruction ID used by already-released publishers so
+        # an in-flight job cannot be duplicated during a rolling deploy.
+        arq_job_id = (
+            f"recon_{idempotency_key}"
+            if job_type == "reconstruction"
+            else idempotency_key
+        )
+        published = await self._pool.enqueue_job(
             task_name,
             idempotency_key,
-            _job_id=idempotency_key,
+            _job_id=arq_job_id,
         )
-        logger.info("Enqueued job type=%s task=%s key=%s", job_type, task_name, idempotency_key)
+        logger.info(
+            "%s job type=%s task=%s key=%s arq_id=%s",
+            "Published" if published is not None else "Publication already present for",
+            job_type,
+            task_name,
+            idempotency_key,
+            arq_job_id,
+        )
         return idempotency_key
 
     async def get_status(self, job_id: str) -> JobInfo:
@@ -151,3 +189,48 @@ async def get_job_queue() -> ArqJobQueue:
     """FastAPI dependency returning the ArqJobQueue singleton."""
     pool = await get_arq_pool()
     return ArqJobQueue(pool)
+
+
+async def reconcile_queued_jobs(ctx: dict) -> dict[str, int]:
+    """Re-offer durable SAM/reconstruction intents that missed publication.
+
+    ARQ runs this cron inside every live worker. Deterministic ARQ IDs make each
+    offer safe when the task was already published but its API acknowledgement
+    was lost. A short grace period avoids racing the request that created it.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=30)
+    async with get_session_factory()() as session:
+        rows = (
+            await session.execute(
+                select(Job.ulid, Job.job_type)
+                .where(
+                    Job.status == "queued",
+                    Job.job_type.in_(("sam3d", "reconstruction")),
+                    Job.created_at <= cutoff,
+                )
+                .order_by(Job.created_at.asc())
+                .limit(100)
+            )
+        ).all()
+
+    pool = ctx.get("redis")
+    if pool is None:
+        pool = await get_arq_pool()
+    queue = ArqJobQueue(pool)
+    offered = 0
+    failed = 0
+    for job_ulid, job_type in rows:
+        try:
+            await queue.enqueue(job_type, {}, job_ulid)
+            offered += 1
+        except Exception:
+            failed += 1
+            logger.exception("Queued-job reconciliation failed for %s", job_ulid)
+    if rows:
+        logger.info(
+            "Queued-job reconciliation scanned=%d offered=%d failed=%d",
+            len(rows),
+            offered,
+            failed,
+        )
+    return {"scanned": len(rows), "offered": offered, "failed": failed}

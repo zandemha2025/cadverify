@@ -832,19 +832,19 @@ async def validate_file(
             await queue.enqueue("sam3d", {"mesh_hash": mesh_hash}, job.ulid)
         except Exception:
             logger.exception("Failed to enqueue SAM-3D job %s", job.ulid)
-            job.status = "failed"
-            job.result_json = {"code": "SAM3D_ENQUEUE_FAILED"}
-            from datetime import datetime, timezone
-
-            job.completed_at = datetime.now(timezone.utc)
-            await session.commit()
+            # Publication failures are outcome-ambiguous: Redis may have
+            # accepted the deterministic job ID before the connection failed.
+            # Keep the committed row queued so this request's built-in retry (or
+            # a later retry) reconciles the same row without duplicate work.
             raise HTTPException(
                 status_code=503,
                 detail={
                     "code": "SAM3D_ENQUEUE_FAILED",
+                    "job_id": job.ulid,
+                    "retryable": True,
                     "message": (
-                        "Segmentation could not be scheduled. The job was marked "
-                        "failed; retry after the queue recovers."
+                        "Segmentation publication could not be confirmed. The "
+                        "request is retained and can be retried safely."
                     ),
                     "doc_url": error_doc_url("SAM3D_ENQUEUE_FAILED"),
                 },

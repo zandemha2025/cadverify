@@ -311,8 +311,14 @@ async def create_invite(
     exceed the inviter's). Returns the one-time accept link; emails it when
     configured (graceful no-email fallback otherwise). Rate-limited (no spam)."""
     org_id = await _ctx_org(ctx, session)
+    inviter_role = ctx.org_role
+    if inviter_role is None:
+        raise HTTPException(
+            status_code=403,
+            detail="An active organization role is required to invite members",
+        )
     invite, raw = await svc.create_invite(
-        session, org_id, ctx.org_role, body.email, body.role, ctx.user_id
+        session, org_id, inviter_role, body.email, body.role, ctx.user_id
     )
     await _emit(
         session,

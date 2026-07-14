@@ -453,7 +453,7 @@ function SelectedPartCard({
         <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <Stat label="bbox (mm)" value={dims ? dims.map((n) => fx(n, 1)).join(" × ") : "—"} />
           <Stat label="volume (cm³)" value={w?.volume != null ? fx(w.volume / 1000, 2) : "—"} />
-          <Stat label="B-rep faces" value={gs ? String(gs.num_boundary_faces) : "—"} />
+          <Stat label="B-rep faces" value={gs?.num_boundary_faces != null ? String(gs.num_boundary_faces) : "—"} />
           <Stat label="triangles" value={gs ? String(gs.num_triangles) : "—"} />
           <Stat
             label="centroid (mm)"

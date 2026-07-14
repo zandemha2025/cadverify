@@ -78,6 +78,24 @@ def test_step_mesher_uses_embedded_geometry_when_gmsh_is_absent(monkeypatch):
     assert mesh.volume == pytest.approx(8.0)
 
 
+def test_assembly_probe_classifies_embedded_geometry_without_occ():
+    from src.parsers.parse_pool import _extract_assembly_worker
+
+    model = _extract_assembly_worker(
+        _step(points=CUBE_POINTS, faces=CUBE_FACES),
+        ".stp",
+    )
+
+    assert model.kind == "single_part"
+    assert model.part_count == 1
+    assert len(model.parts) == 1
+    assert model.parts[0].mesh is not None
+    assert model.parts[0].mesh.is_watertight
+    assert model.parts[0].geometry_summary.num_boundary_faces is None
+    assert model.parts[0].world.volume == pytest.approx(8.0)
+    assert any("not B-rep topology" in note for note in model.notes)
+
+
 def test_metres_are_scaled_to_millimetres():
     mesh = parse_ap242_tessellated(
         _step(points=CUBE_POINTS, faces=CUBE_FACES, length_unit="$,.METRE.")

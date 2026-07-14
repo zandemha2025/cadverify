@@ -58,6 +58,8 @@ import {
   type DesignRevision,
 } from "@/lib/designs-api";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/components/ui/auth-provider";
+import { canMutateWorkspace } from "@/lib/role-capabilities";
 import {
   releaseSingleFlight,
   tryAcquireSingleFlight,
@@ -156,6 +158,8 @@ function formatBytes(value: number | null | undefined): string {
 }
 
 export default function DesignsPage() {
+  const { user } = useAuth();
+  const canMutate = canMutateWorkspace(user?.role);
   const [designs, setDesigns] = useState<Design[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -282,6 +286,7 @@ export default function DesignsPage() {
   };
 
   const interpret = async () => {
+    if (!canMutate) return;
     if (!description.trim()) {
       setError("Describe the starting shape and its dimensions first.");
       return;
@@ -324,6 +329,7 @@ export default function DesignsPage() {
   };
 
   const beginRevision = (design: Design) => {
+    if (!canMutate) return;
     setEditingId(design.id);
     setSelectedId(design.id);
     setForm(formFromDesign(design));
@@ -332,6 +338,7 @@ export default function DesignsPage() {
   };
 
   const submit = async () => {
+    if (!canMutate) return;
     const problem = validateDesignForm(form);
     if (problem) {
       setError(problem);
@@ -382,6 +389,7 @@ export default function DesignsPage() {
   };
 
   const remove = async (design: Design) => {
+    if (!canMutate) return;
     if (!window.confirm(`Archive “${design.name}”? Its audit evidence will be retained.`)) {
       return;
     }
@@ -414,7 +422,11 @@ export default function DesignsPage() {
       <PageHeader
         title="ProofShape Design Studio"
         badge={<Badge variant="outline">Safe parametric CAD</Badge>}
-        subtitle="Create real, revisioned CAD and carry it directly into manufacturing verification."
+        subtitle={
+          canMutate
+            ? "Create real, revisioned CAD and carry it directly into manufacturing verification."
+            : "Review organization-owned CAD revisions and their immutable evidence."
+        }
         actions={
           <Button variant="secondary" onClick={() => void refresh()} loading={loading}>
             <RefreshCw /> Refresh
@@ -441,7 +453,8 @@ export default function DesignsPage() {
       )}
 
       <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <Card className="h-fit">
+        {canMutate ? (
+          <Card className="h-fit" data-testid="design-mutation-workspace">
           <CardHeader>
             <CardTitle>{editingId ? `Create revision ${selected?.current_revision ? selected.current_revision + 1 : ""}` : "Start a design"}</CardTitle>
             <CardDescription>
@@ -586,7 +599,23 @@ export default function DesignsPage() {
               upload it to Verify. Unsupported geometry is never approximated here.
             </p>
           </CardContent>
-        </Card>
+          </Card>
+        ) : (
+          <Card className="h-fit" data-testid="designs-read-only">
+            <CardHeader>
+              <CardTitle>Read-only design library</CardTitle>
+              <CardDescription>
+                Review exact revisions and evidence without changing organization-owned CAD.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm leading-6 text-muted-foreground">
+                An analyst can create, revise, or archive designs. You can inspect revision
+                history and download completed STEP artifacts.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="min-w-0 space-y-4">
           <Card>
@@ -606,7 +635,11 @@ export default function DesignsPage() {
                 <EmptyState
                   icon={Box}
                   title="No designs yet"
-                  description="The mounting plate example is ready. Confirm its dimensions and generate your first real CAD revision."
+                  description={
+                    canMutate
+                      ? "The mounting plate example is ready. Confirm its dimensions and generate your first real CAD revision."
+                      : "No organization-owned designs are available to review yet."
+                  }
                   className="py-8"
                 />
               ) : (
@@ -656,14 +689,16 @@ export default function DesignsPage() {
                     {` · ${viewedRevision?.generation_engine ?? "waiting for engine"}`}
                   </CardDescription>
                 </div>
-                <div className="flex shrink-0 gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => beginRevision(selected)} disabled={selected.status === "generating"}>
-                    <PencilLine /> Revise
-                  </Button>
-                  <Button variant="ghost" size="icon" title="Archive design" aria-label="Archive design" onClick={() => void remove(selected)} disabled={selected.status === "generating"}>
-                    <Trash2 />
-                  </Button>
-                </div>
+                {canMutate && (
+                  <div className="flex shrink-0 gap-2" data-testid="design-mutation-actions">
+                    <Button variant="secondary" size="sm" onClick={() => beginRevision(selected)} disabled={selected.status === "generating"}>
+                      <PencilLine /> Revise
+                    </Button>
+                    <Button variant="ghost" size="icon" title="Archive design" aria-label="Archive design" onClick={() => void remove(selected)} disabled={selected.status === "generating"}>
+                      <Trash2 />
+                    </Button>
+                  </div>
+                )}
               </CardHeader>
               <CardContent className="space-y-4">
                 {previewUrl ? (
@@ -673,11 +708,16 @@ export default function DesignsPage() {
                     <TriangleAlert className="mb-3 size-8 text-fail" />
                     <p className="font-semibold text-foreground">This revision was not generated</p>
                     <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                      {viewedRevision.error?.message ?? "Generation failed without an artifact. Revise the dimensions and retry."}
+                      {viewedRevision.error?.message ??
+                        (canMutate
+                          ? "Generation failed without an artifact. Revise the dimensions and retry."
+                          : "Generation failed without an artifact. An analyst can revise the dimensions and retry.")}
                     </p>
-                    <Button className="mt-4" variant="secondary" onClick={() => beginRevision(selected)}>
-                      <PencilLine /> Revise and retry
-                    </Button>
+                    {canMutate && (
+                      <Button className="mt-4" variant="secondary" onClick={() => beginRevision(selected)}>
+                        <PencilLine /> Revise and retry
+                      </Button>
+                    )}
                   </div>
                 ) : (
                   <div className="flex h-[360px] flex-col items-center justify-center rounded-[var(--radius)] border border-border bg-muted text-center">
@@ -749,13 +789,17 @@ export default function DesignsPage() {
                         <Download /> Download R{viewedRevision.number} STEP
                       </a>
                     </Button>
-                    <Button asChild>
-                      <Link href={`/verify?design=${encodeURIComponent(selected.id)}&revision=${viewedRevision.number}`}>
-                        Verify revision {viewedRevision.number} <ArrowRight />
-                      </Link>
-                    </Button>
+                    {canMutate && (
+                      <Button asChild>
+                        <Link href={`/verify?design=${encodeURIComponent(selected.id)}&revision=${viewedRevision.number}`}>
+                          Verify revision {viewedRevision.number} <ArrowRight />
+                        </Link>
+                      </Button>
+                    )}
                     <p className="self-center text-xs text-muted-foreground sm:ml-2">
-                      Opens this exact revision in the existing DFM and should-cost walk.
+                      {canMutate
+                        ? "Opens this exact revision in the existing DFM and should-cost walk."
+                        : "This download is the exact immutable revision shown above."}
                     </p>
                   </div>
                 )}

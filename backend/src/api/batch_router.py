@@ -14,7 +14,7 @@ import asyncio
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, cast
 
 from fastapi import (
     APIRouter,
@@ -35,12 +35,16 @@ from src.auth.org_limits import enforce_org_limits
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
-from src.db.models import Batch, BatchItem
-from src.services import batch_service
+from src.db.models import Analysis, Batch, BatchItem, DirectUpload
+from src.services import batch_service, direct_upload_service
 from src.services.batch_service import (
     BATCH_MAX_ZIP_BYTES,
+    MAX_BATCH_CONCURRENCY,
+    MIN_BATCH_CONCURRENCY,
+    ManifestTooLargeError,
     VALID_JOB_TYPES,
     ZipTooLargeError,
+    validate_batch_concurrency_limit,
 )
 from src.services.release_fault_injection import (
     BATCH_FAULT_MODES,
@@ -70,9 +74,17 @@ async def create_batch(
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
     file: Optional[UploadFile] = File(None),
+    direct_upload_id: Optional[str] = Form(None),
     webhook_url: Optional[str] = Form(None),
     webhook_secret: Optional[str] = Form(None),
-    concurrency_limit: Optional[int] = Form(None),
+    concurrency_limit: Optional[int] = Form(
+        None,
+        description="Concurrent item jobs for this batch (1-12; default 10).",
+        json_schema_extra={
+            "minimum": MIN_BATCH_CONCURRENCY,
+            "maximum": MAX_BATCH_CONCURRENCY,
+        },
+    ),
     job_type: str = Form("dfm"),
     s3_bucket: Optional[str] = Form(None),
     s3_prefix: Optional[str] = Form(None),
@@ -83,8 +95,8 @@ async def create_batch(
     """Create a batch for bulk analysis (job_type=dfm) or should-costing
     (job_type=cost).
 
-    Accepts a ZIP file upload. Remote object-store references are rejected up
-    front with 501 on this server rather than creating orphaned per-item work.
+    Accepts either the existing proxied ZIP file or a completed, org-scoped
+    direct_upload_id. Raw remote object-store references remain unsupported.
     Returns 202 with batch_id and status URL.
     """
     release_test_fault = requested_release_fault(request, BATCH_FAULT_MODES)
@@ -104,6 +116,20 @@ async def create_batch(
                 "doc_url": error_doc_url("INVALID_JOB_TYPE"),
             },
         )
+
+    try:
+        concurrency_limit = validate_batch_concurrency_limit(concurrency_limit)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_BATCH_CONCURRENCY",
+                "message": str(exc),
+                "min": MIN_BATCH_CONCURRENCY,
+                "max": MAX_BATCH_CONCURRENCY,
+                "doc_url": error_doc_url("INVALID_BATCH_CONCURRENCY"),
+            },
+        ) from exc
 
     # W3 (cost honesty): the cost pipeline is flag-gated. When off, a cost batch
     # is rejected up front with a stable 501 (mirrors the S3 pattern) rather than
@@ -139,15 +165,29 @@ async def create_batch(
             },
         )
 
-    # Determine input mode
+    # Determine input mode. A capability ID and a proxied body are mutually
+    # exclusive so request ambiguity can never select the less-restrictive path.
+    if file is not None and direct_upload_id is not None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "BATCH_INPUT_CONFLICT",
+                "message": "Provide either file or direct_upload_id, not both.",
+                "doc_url": error_doc_url("BATCH_INPUT_CONFLICT"),
+            },
+        )
     if file is not None:
         input_mode = "zip"
-    elif s3_bucket is not None:
-        input_mode = "s3"
+    elif direct_upload_id is not None:
+        input_mode = "direct_upload"
     else:
         raise HTTPException(
             status_code=400,
-            detail="Provide either a ZIP file upload or s3_bucket field",
+            detail={
+                "code": "BATCH_INPUT_REQUIRED",
+                "message": "Provide either a ZIP file upload or direct_upload_id.",
+                "doc_url": error_doc_url("BATCH_INPUT_REQUIRED"),
+            },
         )
 
     # SSRF guard (S7): reject webhook targets that resolve to internal ranges
@@ -165,6 +205,25 @@ async def create_batch(
                     "doc_url": error_doc_url("webhook_url_rejected"),
                 },
             )
+
+    # Manifests are intentionally small metadata, not another bulk-upload
+    # channel. Read both input modes through one authoritative cap before the
+    # potentially multi-GiB ZIP is staged; the helper buffers at most cap + 1.
+    manifest_bytes: bytes | None = None
+    if manifest is not None:
+        try:
+            manifest_bytes = await batch_service.read_manifest_upload_bounded(
+                manifest
+            )
+        except ManifestTooLargeError as exc:
+            raise HTTPException(
+                status_code=413,
+                detail={
+                    "code": "BATCH_MANIFEST_TOO_LARGE",
+                    "message": str(exc),
+                    "doc_url": error_doc_url("BATCH_MANIFEST_TOO_LARGE"),
+                },
+            ) from exc
 
     # For a ZIP upload, stream to a temp file with early size rejection BEFORE
     # creating the batch row -- so an oversized/invalid upload never leaves an
@@ -197,19 +256,67 @@ async def create_batch(
         except ZipTooLargeError as exc:
             raise HTTPException(status_code=413, detail=str(exc))
 
+    # Direct uploads are prepared after the request. Parse the optional
+    # manifest now and persist only validated metadata for the worker; request
+    # bodies are not available to an asynchronous task.
+    direct_manifest_items: list[dict] | None = None
+    if input_mode == "direct_upload" and manifest_bytes is not None:
+        try:
+            direct_manifest_items = batch_service.parse_csv_manifest(
+                manifest_bytes.decode("utf-8"),
+                validate_cost=job_type == "cost",
+            )
+        except (UnicodeDecodeError, ValueError) as exc:
+            code = "INVALID_COST_MANIFEST" if job_type == "cost" else "INVALID_BATCH_MANIFEST"
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": code,
+                    "message": str(exc),
+                    "doc_url": error_doc_url(code),
+                },
+            ) from exc
+
     batch: Batch | None = None
+    direct_upload: DirectUpload | None = None
+    recovered_attachment = False
     try:
+        if input_mode == "direct_upload":
+            direct_upload, batch = await direct_upload_service.lock_for_batch_attachment(
+                session,
+                user_id=user.user_id,
+                upload_ulid=direct_upload_id or "",
+            )
+            recovered_attachment = batch is not None
+
         # Create batch row
-        batch = await batch_service.create_batch(
-            session=session,
-            user_id=user.user_id,
-            input_mode=input_mode,
-            webhook_url=webhook_url,
-            webhook_secret=webhook_secret,
-            concurrency_limit=concurrency_limit,
-            api_key_id=user.api_key_id,
-            job_type=job_type,
-        )
+        if not recovered_attachment:
+            batch = await batch_service.create_batch(
+                session=session,
+                user_id=user.user_id,
+                input_mode=input_mode,
+                webhook_url=webhook_url,
+                webhook_secret=webhook_secret,
+                concurrency_limit=concurrency_limit,
+                api_key_id=user.api_key_id,
+                job_type=job_type,
+            )
+        if batch is None:
+            raise RuntimeError("batch was not created or recovered")
+
+        if input_mode == "direct_upload" and not recovered_attachment:
+            if direct_manifest_items is not None:
+                manifest_json = dict(batch.manifest_json or {})
+                manifest_json["direct_upload_manifest"] = direct_manifest_items
+                batch.manifest_json = manifest_json
+            if direct_upload is None:  # defensive: lock branch must set it
+                raise RuntimeError("completed direct upload was not locked")
+            await direct_upload_service.attach_to_batch(
+                session,
+                upload=direct_upload,
+                batch=batch,
+                actor_id=user.user_id,
+            )
 
         if input_mode == "zip":
             if zip_tmp_path is None:  # defensive: upload branch must set it
@@ -226,8 +333,7 @@ async def create_batch(
                 raise HTTPException(status_code=400, detail=str(exc))
 
             # Parse manifest CSV if provided
-            if manifest is not None:
-                manifest_bytes = await manifest.read()
+            if manifest_bytes is not None:
                 if job_type == "cost":
                     # Cost manifests additionally carry quantities/region/
                     # material_class/shop; an invalid value is a per-row 400
@@ -275,12 +381,17 @@ async def create_batch(
                 for item in items_data
                 if item.get("status") in {"failed", "skipped"}
             )
-        if release_test_fault:
+        if release_test_fault and not recovered_attachment:
             manifest_json = dict(batch.manifest_json or {})
             manifest_json["release_test_fault"] = release_test_fault
             batch.manifest_json = manifest_json
         await session.commit()
+    except direct_upload_service.DirectUploadError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     except BaseException:
+        if input_mode == "direct_upload":
+            await session.rollback()
         if batch is not None and input_mode == "zip":
             try:
                 await asyncio.to_thread(batch_service.cleanup_batch_files, batch.ulid)
@@ -294,30 +405,96 @@ async def create_batch(
             except OSError:
                 pass
 
-    # Enqueue coordinator task. If enqueue fails, the batch row is already
-    # committed -- reject-don't-orphan (F-ARCH-1): mark it failed and return an
-    # honest 503 instead of leaving it 'pending' forever with a bare 500.
+    # Enqueue either asynchronous direct-ZIP preparation or the existing
+    # coordinator. If enqueue fails, terminalize the already committed records
+    # rather than leaving pending/preparing work orphaned.
     from src.jobs.arq_backend import get_arq_pool
+
+    # A repeated POST after a lost response returns the original durable batch.
+    # Terminal/consumed work needs no publication; active preparation uses the
+    # same deterministic job id below, so Redis cannot create duplicate work.
+    if (
+        recovered_attachment
+        and direct_upload is not None
+        and (
+            direct_upload.status not in {"attached", "preparing", "prepared"}
+            or batch.status in {"completed", "failed", "cancelled"}
+        )
+    ):
+        return {
+            "batch_id": batch.ulid,
+            "status": batch.status,
+            "status_url": f"/api/v1/batch/{batch.ulid}",
+        }
 
     try:
         if release_test_fault == "batch_queue":
             raise RuntimeError("record-scoped release fault: batch queue")
         pool = await get_arq_pool()
-        await pool.enqueue_job("run_batch_coordinator", batch.ulid)
+        if input_mode == "direct_upload":
+            if direct_upload is None:
+                raise RuntimeError("direct upload attachment was not persisted")
+            await pool.enqueue_job(
+                "prepare_direct_upload_batch",
+                direct_upload.ulid,
+                _job_id=f"direct-upload-prepare:{direct_upload.ulid}",
+            )
+        else:
+            await pool.enqueue_job("run_batch_coordinator", batch.ulid)
     except Exception:
         logger.exception(
-            "Failed to enqueue coordinator for batch %s; marking failed", batch.ulid
+            "Failed to enqueue batch work for %s; marking failed", batch.ulid
         )
-        batch_service.mark_batch_failed(batch, "enqueue_failed")
+        if recovered_attachment:
+            # Do not race a preparation job that may already be running. The
+            # accepted batch reference is actionable and another identical POST
+            # can safely retry deterministic publication.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "BATCH_ENQUEUE_FAILED",
+                    "message": (
+                        "The existing batch could not be rescheduled; retry with "
+                        "the same direct_upload_id."
+                    ),
+                    "doc_url": error_doc_url("BATCH_ENQUEUE_FAILED"),
+                    "accepted_batch": {
+                        "batch_id": batch.ulid,
+                        "status": batch.status,
+                        "status_url": f"/api/v1/batch/{batch.ulid}",
+                    },
+                },
+            )
+        if input_mode == "direct_upload" and direct_upload is not None:
+            await direct_upload_service.mark_attachment_enqueue_failed(
+                session,
+                upload=direct_upload,
+                batch=batch,
+                actor_id=user.user_id,
+            )
+        else:
+            batch_service.mark_batch_failed(batch, "enqueue_failed")
         # F-ARCH-1/#3: the batch is failed but its items are still 'pending', so
         # progress (pending_items = total - completed - failed) would advertise
         # work that can never run. Move them to a terminal state so reads agree.
-        await batch_service.mark_pending_items_terminal(session, batch.id, "skipped")
+        if input_mode != "direct_upload":
+            await batch_service.mark_pending_items_terminal(session, batch.id, "skipped")
         await session.commit()
-        try:
-            await asyncio.to_thread(batch_service.cleanup_batch_files, batch.ulid)
-        except Exception:
-            logger.exception("Failed to clean unscheduled batch blobs for %s", batch.ulid)
+        if input_mode == "direct_upload" and direct_upload is not None:
+            try:
+                await direct_upload_service.delete_incoming_object(direct_upload)
+                await direct_upload_service.mark_storage_cleaned(
+                    session, direct_upload
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to clean unscheduled direct upload %s", direct_upload.ulid
+                )
+        else:
+            try:
+                await asyncio.to_thread(batch_service.cleanup_batch_files, batch.ulid)
+            except Exception:
+                logger.exception("Failed to clean unscheduled batch blobs for %s", batch.ulid)
         raise HTTPException(
             status_code=503,
             detail={
@@ -443,12 +620,14 @@ async def get_batch_items(
         session, batch.id, status_filter=status, cursor=cursor_int, limit=limit
     )
 
-    normalized_items: list[tuple[BatchItem, object | None]] = []
+    normalized_items: list[tuple[BatchItem, Analysis | None]] = []
     for record in items:
         if isinstance(record, BatchItem):
             normalized_items.append((record, None))
         else:
-            normalized_items.append((record[0], record[1]))
+            normalized_items.append(
+                (record[0], cast(Analysis | None, record[1]))
+            )
 
     items_list = []
     for item, analysis in normalized_items:
@@ -531,13 +710,13 @@ async def cancel_batch(
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Cancel a batch -- skips pending items, does not interrupt in-progress."""
+    """Cancel a batch and terminalize every unfinished item atomically."""
     batch = (
         await session.execute(
             select(Batch).where(
                 Batch.ulid == batch_id,
                 Batch.org_id == caller_org_subquery(user.user_id),
-            )
+            ).with_for_update()
         )
     ).scalars().first()
     if batch is None:
@@ -554,18 +733,14 @@ async def cancel_batch(
     batch.status = "cancelled"
     batch.completed_at = datetime.now(timezone.utc)
 
-    # Skip all pending/queued items
-    pending_items = (
-        await session.execute(
-            select(BatchItem).where(
-                BatchItem.batch_id == batch.id,
-                BatchItem.status.in_(["pending", "queued"]),
-            )
-        )
-    ).scalars().all()
-
-    for item in pending_items:
-        item.status = "skipped"
+    # Include processing rows. A worker that finishes after this commit refreshes
+    # the row, sees ``skipped``, and discards its result. This removes the state
+    # where a terminal parent could report pending work forever.
+    await batch_service.mark_pending_items_terminal(
+        session,
+        batch.id,
+        "skipped",
+    )
 
     await session.commit()
 

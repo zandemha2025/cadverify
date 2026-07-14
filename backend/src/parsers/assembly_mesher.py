@@ -167,7 +167,9 @@ class WorldPose:
 
 @dataclass
 class GeometrySummary:
-    num_boundary_faces: int   # B-rep faces bounding this solid
+    # B-rep faces bounding this solid. Embedded AP242 tessellation has no B-rep
+    # topology to count, so that branch returns None instead of inventing zero.
+    num_boundary_faces: Optional[int]
     num_triangles: int        # tessellated triangles (0 if mesh skipped)
     num_vertices: int
     bbox_dims: list[float]
@@ -268,6 +270,88 @@ class AssemblyModel:
             "limits": _HONEST_LIMITS,
             "notes": self.notes,
         }
+
+
+def single_part_model_from_mesh(
+    mesh: trimesh.Trimesh,
+    *,
+    source_suffix: str,
+    name: str = "part",
+) -> AssemblyModel:
+    """Build an honest single-part assembly classification from a real mesh.
+
+    AP242 can carry standardized tessellated geometry that gmsh/OCC cannot
+    import as a B-rep. The canonical single-part parser reads that geometry
+    directly; the assembly probe must classify the same supported file without
+    sending it through the incompatible OCC assembly reader. B-rep-only facts
+    remain null and the boundary is stated in ``notes``.
+    """
+    if len(mesh.vertices) == 0 or len(mesh.faces) == 0:
+        raise ValueError("Embedded tessellated geometry is empty.")
+
+    bounds = np.asarray(mesh.bounds, dtype=np.float64)
+    if bounds.shape != (2, 3) or not np.isfinite(bounds).all():
+        raise ValueError("Embedded tessellated geometry has invalid bounds.")
+    bbox_min = bounds[0]
+    bbox_max = bounds[1]
+    bbox_size = bbox_max - bbox_min
+    if not np.isfinite(bbox_size).all() or np.any(bbox_size <= 0):
+        raise ValueError("Embedded tessellated geometry has a degenerate envelope.")
+
+    center_mass = np.asarray(mesh.center_mass, dtype=np.float64)
+    centroid = center_mass if center_mass.shape == (3,) and np.isfinite(center_mass).all() else np.asarray(mesh.centroid, dtype=np.float64)
+    volume = abs(float(mesh.volume))
+    if not np.isfinite(volume):
+        volume = 0.0
+
+    clean_name = Path(name).stem.strip() or "part"
+    part_id = "part-1"
+    part = PartInstance(
+        id=part_id,
+        name=clean_name,
+        occurrence=clean_name,
+        instance=1,
+        tree_path=clean_name,
+        occ_label="AP242 embedded tessellated representation",
+        world=WorldPose(
+            bbox_min=bbox_min.tolist(),
+            bbox_max=bbox_max.tolist(),
+            bbox_size=bbox_size.tolist(),
+            centroid=centroid.tolist(),
+            volume=volume,
+        ),
+        geometry_summary=GeometrySummary(
+            num_boundary_faces=None,
+            num_triangles=int(len(mesh.faces)),
+            num_vertices=int(len(mesh.vertices)),
+            bbox_dims=bbox_size.tolist(),
+        ),
+        mesh_ref=part_id,
+        mesh=mesh,
+    )
+    diagonal = float(np.linalg.norm(bbox_size))
+    return AssemblyModel(
+        kind="single_part",
+        part_count=1,
+        parts=[part],
+        tree=TreeNode(
+            name=clean_name,
+            occurrence=clean_name,
+            instance=1,
+            part_id=part_id,
+        ),
+        assembly_bbox_min=bbox_min.tolist(),
+        assembly_bbox_max=bbox_max.tolist(),
+        assembly_diag=diagonal,
+        unique_designs={clean_name: 1},
+        source_suffix=source_suffix.lower(),
+        notes=[
+            "Exactly one tessellated solid: this is a single part, not an assembly. "
+            "Use POST /api/v1/validate for canonical single-part DFM + cost.",
+            "The source supplies AP242 embedded tessellation, not B-rep topology; "
+            "B-rep face count, mates, and analytic PMI semantics are unavailable.",
+        ],
+    )
 
 
 # Surfaced verbatim in every response so a hardcore engineer sees the boundary.

@@ -14,11 +14,21 @@
  * sentry.server.config.ts), so this file is a no-op end-to-end whenever
  * NEXT_PUBLIC_SENTRY_DSN is unset — dev/test/local builds are unaffected.
  */
+import { directUploadConnectOrigin } from "./src/lib/direct-upload-csp";
+
 const DEV_RELEASES = new Set(["", "dev", "development", "local", "test", "ci"]);
 
 function assertProductionRuntimeConfig() {
   const release = (process.env.RELEASE || "dev").trim().toLowerCase();
   if (DEV_RELEASES.has(release)) return;
+
+  if (process.env.PRODUCTION_DIRECT_UPLOAD_REQUIRED === "1") {
+    if (!directUploadConnectOrigin(process.env.DIRECT_UPLOAD_ORIGIN, release)) {
+      throw new Error(
+        "DIRECT_UPLOAD_ORIGIN is required when browser direct upload is enabled",
+      );
+    }
+  }
 
   if (process.env.PRODUCTION_AUTH_PROXY_REQUIRED === "1") {
     const raw = (process.env.AUTH_PROXY_SECRET || "").trim();
@@ -31,6 +41,14 @@ function assertProductionRuntimeConfig() {
     ) {
       throw new Error(
         "AUTH_PROXY_SECRET must be canonical base64 for at least 32 bytes",
+      );
+    }
+    const clientIpSource = (
+      process.env.AUTH_PROXY_CLIENT_IP_SOURCE || ""
+    ).trim().toLowerCase();
+    if (!new Set(["fly", "nginx", "cloudfront"]).has(clientIpSource)) {
+      throw new Error(
+        "AUTH_PROXY_CLIENT_IP_SOURCE must identify fly, nginx, or cloudfront",
       );
     }
   }

@@ -30,6 +30,7 @@ from src.api.metrics import MetricsMiddleware, router as metrics_router
 from src.api.security_headers import SecurityHeadersMiddleware
 from src.api.pdf import router as pdf_router
 from src.api.batch_router import router as batch_router
+from src.api.uploads import router as uploads_router
 from src.api.jobs_router import router as jobs_router
 from src.api.reconstruct_router import router as reconstruct_router
 from src.api.admin_routes import router as admin_router
@@ -446,6 +447,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(router, prefix="/api/v1")
 app.include_router(batch_router)
+app.include_router(uploads_router)
 app.include_router(reconstruct_router)
 app.include_router(jobs_router, prefix="/api/v1")
 app.include_router(history_router, prefix="/api/v1/analyses", tags=["history"])

@@ -45,6 +45,7 @@ import {
 import {
   driverViews,
   makeNowEstimate,
+  routeDfmOutcome,
   toolingEstimate,
   nearestQty,
   fractionToQty,
@@ -1167,7 +1168,8 @@ function VerdictBanner({
   //   1. NOTHING computed (parse/tessellation failed) → "COULD NOT ANALYZE".
   //   2. routing + DFM computed but NO should-cost      → "SHOULD-COST UNAVAILABLE".
   //   3. a real should-cost record                      → "SHOULD-COST COMPUTED".
-  const dfm = validation?.overall_verdict ?? "unknown";
+  const routeDfm = routeDfmOutcome(validation?.overall_verdict, makeNow);
+  const dfm = routeDfm.verdict;
 
   // 1 · The engine returned nothing — no routing, no DFM, no cost. This is the part
   //     that failed to tessellate. Say EXACTLY that; never a fabricated "computed".
@@ -1217,7 +1219,35 @@ function VerdictBanner({
     );
   }
 
-  // 3 · A real should-cost record — the original honest banner, unchanged.
+  // 3a · The route has a real cost but fails route-specific DFM. Keep the cost
+  //      for comparison/redesign, while making it impossible to read as an
+  //      as-is manufacturing recommendation.
+  if (routeDfm.blocked) {
+    const blocker = routeDfm.primaryBlocker?.replace(/[.!?]+$/, "") ?? null;
+    return (
+      <BannerFrame borderColor={C.fail} bg="rgba(194,69,58,0.03)">
+        <Kicker color={C.fail}>VERDICT · ROUTE DFM BLOCKED · SHOULD-COST CONDITIONAL</Kicker>
+        <p style={{ margin: "10px 0 0", fontSize: 24, fontWeight: 400, letterSpacing: "-0.015em", lineHeight: 1.25 }}>
+          {proc && unit != null ? (
+            <>
+              Conditional should-cost {USD(unit)}/unit on {procLabel(proc)}
+              {makeNow ? <span style={{ fontSize: 14, color: C.ink45 }}> at qty {NUM(makeNow.quantity)}</span> : null}
+            </>
+          ) : (
+            <>Route blocked as modeled</>
+          )}
+        </p>
+        <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 620 }}>
+          This route has a computed comparison cost, but it is not makeable as modeled.
+          {blocker ? <> <span style={{ fontWeight: 500 }}>{blocker}.</span></> : null}{" "}
+          Keep the cost for route comparison or redesign; do not treat it as an as-is manufacturing recommendation.
+        </p>
+        {savedCta}
+      </BannerFrame>
+    );
+  }
+
+  // 3b · A real should-cost record whose selected route is not blocked.
   const color = statusColor(dfm);
   return (
     <BannerFrame borderColor={color} bg="rgba(23,24,26,0.015)">
@@ -1233,7 +1263,7 @@ function VerdictBanner({
         )}
       </p>
       <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 560 }}>
-        The engine returned routing, DFM, and a glass-box should-cost. Whether it&apos;s makeable{" "}
+        The engine returned routing, route DFM, and a glass-box should-cost.{dfm === "issues" ? " This route carries DFM advisories; review them before release." : ""} Whether it&apos;s makeable{" "}
         <span style={{ fontWeight: 500 }}>on your machines</span> is the makeability verification — not evaluated here
         because no machines and no service conditions are declared. Declare your floor or the service conditions to resolve it, never assumed.
       </p>
@@ -1658,6 +1688,10 @@ function DecideHallmark({
   const toast = useToast();
   const saved = result.cost?.saved;
   const est = result.cost ? makeNowEstimate(result.cost) : null;
+  const inhouseBlocked = routeDfmOutcome(
+    result.validation?.overall_verdict,
+    est,
+  ).blocked;
   const validated = est?.confidence?.validated ?? false;
   const decidedLabel = costDispositionLabel(decision);
   const [loadingSaved, setLoadingSaved] = useState(Boolean(saved?.id));
@@ -1722,6 +1756,10 @@ function DecideHallmark({
     action: "select" | "note" | "withdraw" = "select"
   ) => {
     if (loadingSaved || saving) return;
+    if (key === "inhouse" && inhouseBlocked && action === "select") {
+      toast("Make in-house is unavailable until revised CAD passes route DFM");
+      return;
+    }
     const noteOnly = action === "note";
     const withdrawing = action === "withdraw";
     const next = withdrawing ? null : key;
@@ -1778,6 +1816,7 @@ function DecideHallmark({
         <p style={{ margin: 0, fontSize: 15, fontWeight: 500, marginRight: "auto" }}>Decide</p>
         {COST_DISPOSITIONS.map((o) => {
           const on = decision === o.key;
+          const blockedOption = o.key === "inhouse" && inhouseBlocked;
           return (
             <button
               key={o.key}
@@ -1785,7 +1824,12 @@ function DecideHallmark({
               data-testid={`verify-disposition-${o.key}`}
               aria-pressed={on}
               aria-busy={saving === o.key || (on && saving === "withdraw")}
-              disabled={loadingSaved || Boolean(saving) || Boolean(saveError)}
+              disabled={loadingSaved || Boolean(saving) || Boolean(saveError) || blockedOption}
+              title={
+                blockedOption
+                  ? "Revise the CAD and pass route DFM before recording Make in-house"
+                  : undefined
+              }
               onClick={() => void choose(o.key, o.label)}
               style={{
                 background: on ? C.ink : "none",
@@ -1796,8 +1840,8 @@ function DecideHallmark({
                 fontSize: 12.5,
                 fontWeight: 500,
                 cursor:
-                  loadingSaved || saving || saveError ? "not-allowed" : "pointer",
-                opacity: loadingSaved || saving || saveError ? 0.55 : 1,
+                  loadingSaved || saving || saveError || blockedOption ? "not-allowed" : "pointer",
+                opacity: loadingSaved || saving || saveError || blockedOption ? 0.55 : 1,
                 fontFamily: "inherit",
                 transition: "all 150ms",
               }}
@@ -1826,6 +1870,12 @@ function DecideHallmark({
           </button>
         )}
       </div>
+
+      {inhouseBlocked && (
+        <p data-testid="verify-disposition-route-block" style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.fail, lineHeight: 1.6 }}>
+          Route DFM is blocked · Make in-house is locked until revised CAD passes. Choose Redesign, Make outside, or Acquire capability for this record.
+        </p>
+      )}
 
       {loadingSaved ? (
         <p data-testid="verify-disposition-status" style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink45, lineHeight: 1.6 }}>

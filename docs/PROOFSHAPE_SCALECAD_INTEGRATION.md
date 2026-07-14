@@ -1,9 +1,10 @@
 # ProofShape Design Studio integration
 
-Status: production-safe first slice implemented on `codex/proofshape-scalecad-staging`
+Status: deterministic first slice implemented; fresh exact-build product proof
+and live staging evidence are still pending on `codex/proofshape-scalecad-staging`
 Decision date: 2026-07-12
 Source reference: `zandemha2025/cad-conversational-app` at `7780ed1`
-Deployment boundary: new non-Arcus ProofShape staging resources only
+Deployment boundary: new ProofShape-owned AWS commercial staging resources only
 
 ## Executive decision
 
@@ -181,7 +182,8 @@ kernel command, object-store locator, or another tenant's existence.
 - Successful generation records the STEP SHA-256 in both the revision and audit
   event. The download response carries that digest and the Verify handoff
   rejects tampered or mismatched bytes before analysis.
-- Binary writes are atomic locally and use the existing S3 adapter in staging.
+- Binary writes are atomic locally and use the dedicated ProofShape AWS S3
+  durable-evidence path in staging.
 - Partial object-store failures delete the revision prefix before reporting
   failure.
 - No mock artifact or fallback geometry is permitted. Failure remains failure.
@@ -224,28 +226,29 @@ Automated gates:
 6. Full backend suite, frontend unit tests, lint, type-check, and production build
    must pass.
 7. Browser QA must run create -> preview -> revise -> download -> verify on the
-   deployed non-Arcus staging URL.
+   deployed ProofShape-owned AWS staging CloudFront URL.
 8. Canary monitoring must observe the staging deployment before production
    promotion.
 
-No environment is called production-ready until its migrations, worker,
-Postgres, Redis, private object store, auth, Sentry, email/domain, Turnstile,
-backups, restore drill, and deployment protection are real and verified.
+Use the separate claims in `docs/PRODUCTION_ACCEPTANCE_CONTRACT.md`. Product
+proof does not imply cloud deployment, and neither implies production-live.
+Live status still requires real migrations, worker, Postgres, Redis, private
+object storage, auth, Sentry, email, Turnstile, backups, restore, rollback,
+deployment protection, and human acceptance evidence.
 
 ## Deployment topology
 
-ProofShape staging requires resources owned by a new ProofShape/personal account,
-not the Arcus Vercel or Fly organizations:
+ProofShape staging uses the commercial stack in `infra/aws`, owned by a new
+ProofShape/personal AWS account and never an Arcus scope:
 
-- Next.js web service
-- FastAPI API service
-- ARQ worker service built from the same release
-- managed Postgres with backups
-- TLS Redis
-- private S3-compatible bucket and lifecycle policy
-- Sentry project
+- CloudFront public HTTPS edge and internal VPC-origin ALB
+- digest-pinned ECS Fargate Next.js, FastAPI, ARQ, and migration tasks
+- private encrypted RDS PostgreSQL with backups
+- private TLS/AUTH ElastiCache Redis
+- separate private KMS S3 durable/versioned and transient/unversioned buckets
+- CloudWatch plus ProofShape Sentry/uptime/alert delivery
 - Resend sender/domain and Turnstile site
-- protected GitHub `staging` environment
+- protected GitHub `aws-commercial-staging` environment with exact OIDC trust
 
 The existing Arcus `eager-euler` Vercel project is read-only and out of scope.
 No alias, environment variable, deployment, or source setting on it may be
@@ -273,9 +276,11 @@ represented as complete until real evidence exists.
 1. Land operation-plan schema, migration, generator, service, worker, and API.
 2. Land Design Studio UI and direct Verify import.
 3. Run code, migration, security, and browser journey tests locally.
-4. Provision a new non-Arcus staging account and services.
+4. Provision the new ProofShape commercial AWS staging account and services
+   through the reviewed `infra/aws` bootstrap sequence.
 5. Configure secrets and deployment protection; run migration as a release job.
-6. Deploy web/API/worker from the same immutable commit.
+6. Publish one sealed backend/frontend artifact set and deploy digest-qualified
+   web/API/worker tasks through `AWS Commercial Promotion`.
 7. Run staging UAT and canary; fix every blocker before inviting users.
 8. Add conversational AI only after the deterministic plan path is proven and
    its provider/legal/data-egress boundary is approved.
@@ -285,6 +290,7 @@ Ownership handoffs:
 
 - Product/UX: template coverage, terminology, onboarding, empty/error states.
 - Backend: operation schema, geometry correctness, tenancy, audit, artifacts.
-- DevOps: non-Arcus account, managed data plane, secrets, deploy/rollback.
+- DevOps: ProofShape AWS account, managed data plane, OIDC/secrets, CloudFront,
+  exact-artifact deploy/rollback, restore, and alert evidence.
 - Security/legal: sandbox review, IP provenance, provider agreements, domain.
 - QA: end-to-end journeys, cross-tenant tests, accessibility, restore/canary.

@@ -11,15 +11,46 @@ from src.services.batch_service import (
     BATCH_MAX_FILE_BYTES,
     BATCH_MAX_ITEMS,
     DEFAULT_BATCH_CONCURRENCY,
+    ManifestTooLargeError,
     MAX_COMPRESSION_RATIO,
     extract_zip_to_items,
     parse_csv_manifest,
+    read_manifest_upload_bounded,
 )
 
 
 # ---------------------------------------------------------------------------
 # CSV manifest parsing
 # ---------------------------------------------------------------------------
+
+
+class _ShortReadUpload:
+    def __init__(self, content: bytes, read_size: int = 3):
+        self.content = content
+        self.offset = 0
+        self.read_size = read_size
+
+    async def read(self, size: int = -1) -> bytes:
+        if self.offset >= len(self.content):
+            return b""
+        take = min(size, self.read_size, len(self.content) - self.offset)
+        chunk = self.content[self.offset : self.offset + take]
+        self.offset += take
+        return chunk
+
+
+@pytest.mark.asyncio
+async def test_manifest_bounded_read_accepts_exact_cap_with_short_reads():
+    content = b"filename\na.stl\n"
+    upload = _ShortReadUpload(content)
+    assert await read_manifest_upload_bounded(upload, len(content)) == content
+
+
+@pytest.mark.asyncio
+async def test_manifest_bounded_read_rejects_at_cap_plus_one():
+    upload = _ShortReadUpload(b"123456789", read_size=2)
+    with pytest.raises(ManifestTooLargeError, match="maximum size of 8 bytes"):
+        await read_manifest_upload_bounded(upload, 8)
 
 
 def test_parse_csv_manifest_valid():
@@ -165,6 +196,12 @@ def test_extract_zip_triages_native_and_drawing_files(tmp_path, monkeypatch):
     assert "Unsupported native CAD file type .sldasm" in by_name["gearbox.SLDASM"]["error"]
     assert by_name["plate.DWG"]["status"] == "skipped"
     assert "Unsupported drawing file type .dwg" in by_name["plate.DWG"]["error"]
+    assert (
+        by_name["plate.DWG"]["error"].count(
+            "drawings require conversion before processing."
+        )
+        == 1
+    )
 
 
 def test_extract_zip_oversized_file_skipped(tmp_path, monkeypatch):
@@ -207,6 +244,27 @@ def test_extract_zip_bomb_rejected(tmp_path, monkeypatch):
 
     with pytest.raises(ValueError, match="zip bomb"):
         extract_zip_to_items(zip_bytes, "test-batch-bomb")
+
+
+def test_extract_zip_rejects_total_uncompressed_cad_budget_before_extraction(
+    tmp_path, monkeypatch
+):
+    """Many individually valid files cannot expand past the aggregate budget."""
+    monkeypatch.setattr("src.services.batch_service.BATCH_BLOB_DIR", str(tmp_path))
+    monkeypatch.setattr("src.services.batch_service.BATCH_MAX_FILE_BYTES", 100)
+    monkeypatch.setattr(
+        "src.services.batch_service.BATCH_MAX_UNCOMPRESSED_BYTES", 100
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_STORED) as zf:
+        zf.writestr("one.stl", b"a" * 60)
+        zf.writestr("two.step", b"b" * 60)
+
+    with pytest.raises(ValueError, match="120 total uncompressed CAD bytes") as exc:
+        extract_zip_to_items(buf.getvalue(), "aggregate-budget")
+
+    assert "split the workload into smaller ZIP batches" in str(exc.value)
+    assert not (tmp_path / "aggregate-budget").exists()
 
 
 def test_extract_zip_max_items_exceeded(tmp_path, monkeypatch):
@@ -602,17 +660,69 @@ async def test_sweep_compare_and_swap_preserves_newer_heartbeat_or_cancel():
 async def test_mark_pending_items_terminal_updates_non_terminal_only():
     """F-ARCH-1/#3: on enqueue failure, non-terminal items are moved to a
     terminal state so progress reads stay consistent."""
-    from unittest.mock import AsyncMock
+    from unittest.mock import AsyncMock, MagicMock
 
     from src.services.batch_service import mark_pending_items_terminal
 
     session = AsyncMock()
-    await mark_pending_items_terminal(session, batch_id=7, terminal_status="skipped")
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [1, 2, 3]
+    session.execute.return_value = result
+    changed = await mark_pending_items_terminal(
+        session, batch_id=7, terminal_status="skipped"
+    )
 
     session.execute.assert_awaited_once()
-    args, kwargs = session.execute.await_args
-    sql = str(args[0]).lower()
+    stmt = session.execute.await_args.args[0]
+    sql = str(stmt).lower()
     assert "update batch_items" in sql
     # Only non-terminal rows are touched.
-    assert "'pending'" in sql and "'queued'" in sql and "'processing'" in sql
-    assert args[1] == {"s": "skipped", "b": 7}
+    params = stmt.compile().params.values()
+    flattened = {
+        item
+        for value in params
+        for item in (value if isinstance(value, list) else [value])
+        if isinstance(item, str)
+    }
+    assert {"pending", "queued", "processing", "skipped"} <= flattened
+    assert "lease_started_at" in sql
+    assert changed == 3
+
+
+@pytest.mark.asyncio
+async def test_progress_reports_direct_upload_as_extracting_during_preparation():
+    """A claimed 5 GiB preparation is visible work, not an unexplained queue."""
+    from datetime import datetime, timezone
+    from unittest.mock import AsyncMock, MagicMock
+
+    from src.db.models import Batch
+    from src.services.batch_service import get_batch_progress
+
+    batch = Batch(
+        id=7,
+        ulid="BATCH_EXTRACTING",
+        org_id="org-a",
+        user_id=42,
+        input_mode="direct_upload",
+        job_type="dfm",
+        status="extracting",
+        total_items=0,
+        completed_items=0,
+        failed_items=0,
+        concurrency_limit=10,
+        created_at=datetime.now(timezone.utc),
+        manifest_json={"heartbeat_at": datetime.now(timezone.utc).isoformat()},
+    )
+    batch_result = MagicMock()
+    batch_result.scalars.return_value.first.return_value = batch
+    counts_result = MagicMock()
+    counts_result.all.return_value = []
+    session = AsyncMock()
+    session.execute.side_effect = [batch_result, counts_result]
+
+    progress = await get_batch_progress(session, batch.ulid, user_id=42)
+
+    assert progress["status"] == "extracting"
+    assert progress["input_mode"] == "direct_upload"
+    assert progress["total_items"] == 0
+    assert progress["pending_items"] == 0

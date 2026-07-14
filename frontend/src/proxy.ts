@@ -15,6 +15,8 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 
+import { directUploadConnectOrigin } from "./lib/direct-upload-csp";
+
 const SESSION_COOKIE = "dash_session";
 const SERVED_BUILD_ID =
   process.env.PROOFSHAPE_BUILD_ID ||
@@ -45,13 +47,18 @@ function applySecurityHeaders(response: NextResponse, csp: string): NextResponse
 function contentSecurityPolicy(nonce: string): string {
   const devEval = process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
   const upgrade = process.env.NODE_ENV === "development" ? "" : " upgrade-insecure-requests;";
+  const directUploadOrigin = directUploadConnectOrigin(
+    process.env.DIRECT_UPLOAD_ORIGIN,
+    process.env.RELEASE,
+  );
+  const directUploadSource = directUploadOrigin ? ` ${directUploadOrigin}` : "";
   return `
     default-src 'self';
-    script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${devEval} https://challenges.cloudflare.com;
+    script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval'${devEval} https://challenges.cloudflare.com;
     style-src 'self' 'unsafe-inline';
     img-src 'self' data: blob: https:;
     font-src 'self' data:;
-    connect-src 'self' blob: https://challenges.cloudflare.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io;
+    connect-src 'self' blob:${directUploadSource} https://challenges.cloudflare.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io;
     frame-src https://challenges.cloudflare.com;
     worker-src 'self' blob:;
     media-src 'self' blob:;

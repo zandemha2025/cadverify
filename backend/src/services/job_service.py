@@ -68,6 +68,18 @@ async def create_sam3d_job(
         )
     ).scalars().first()
     if existing is not None:
+        # Releases before the durable-publication fix marked ambiguous queue
+        # failures terminal.  Revive only that exact legacy state so a retry can
+        # safely offer the same deterministic ARQ job ID again.
+        if (
+            existing.status == "failed"
+            and isinstance(existing.result_json, dict)
+            and existing.result_json.get("code") == "SAM3D_ENQUEUE_FAILED"
+        ):
+            existing.status = "queued"
+            existing.result_json = None
+            existing.completed_at = None
+            await session.flush()
         logger.info(
             "Idempotent hit: job %s already exists for analysis %d",
             existing.ulid,

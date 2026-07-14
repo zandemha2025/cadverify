@@ -5,9 +5,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import trimesh
 
 from src.auth.require_api_key import AuthedUser
 from src.db.models import Analysis, Batch, BatchItem, Job
+from src.services.analysis_service import AnalysisRun
 
 ORG_AT_ENQUEUE = "01ORG_AT_ENQUEUE0000000001"
 ORG_AFTER_SWITCH = "01ORG_AFTER_SWITCH00000001"
@@ -258,7 +260,7 @@ async def test_dfm_batch_keeps_enqueued_org_after_user_switch():
         patch(
             "src.services.analysis_service.run_analysis",
             new=AsyncMock(
-                return_value=SimpleNamespace(
+                return_value=AnalysisRun(
                     result={"verdict": "pass"}, analysis_id=101
                 )
             ),
@@ -334,6 +336,7 @@ async def test_reconstruction_keeps_job_org_after_user_switch():
     job.ulid = "01JOB0000000000000000001"
     job.user_id = 42
     job.org_id = ORG_AT_ENQUEUE
+    job.job_type = "reconstruction"
     job.params_json = {"process_types": "fdm", "rule_pack": None}
     job.status = "queued"
     job.result_json = None
@@ -370,6 +373,10 @@ async def test_reconstruction_keeps_job_org_after_user_switch():
             return_value=[(b"image", "image/png")],
         ),
         patch(
+            "src.services.reconstruction_service.require_job_backend_authorization",
+            return_value={"available": True, "egress": False},
+        ),
+        patch(
             "src.reconstruction.preprocessing.select_best_image", return_value=0
         ),
         patch(
@@ -384,14 +391,14 @@ async def test_reconstruction_keeps_job_org_after_user_switch():
             "src.services.reconstruction_service.save_reconstruction_mesh",
             new=AsyncMock(),
         ),
-        patch("trimesh.load", return_value=MagicMock()),
+        patch("trimesh.load", return_value=trimesh.creation.box()),
         patch("src.reconstruction.scoring.compute_reconstruction_confidence", return_value=0.9),
         patch("src.reconstruction.scoring.confidence_level", return_value="high"),
         patch("src.reconstruction.scoring.confidence_message", return_value="high"),
         patch(
             "src.services.analysis_service.run_analysis",
             new=AsyncMock(
-                return_value=SimpleNamespace(
+                return_value=AnalysisRun(
                     result={"verdict": "pass"}, analysis_id=501
                 )
             ),
@@ -399,7 +406,7 @@ async def test_reconstruction_keeps_job_org_after_user_switch():
     ):
         result = await run_reconstruction_job({}, job.ulid)
 
-    assert result["analysis_id"] == analysis.ulid
+    assert result["analysis"]["id"] == analysis.ulid
     assert run_analysis.await_args.kwargs["org_id"] == ORG_AT_ENQUEUE
     assert run_analysis.await_args.kwargs["return_persisted_id"] is True
     analysis_lookup = session.execute.await_args_list[1].args[0]

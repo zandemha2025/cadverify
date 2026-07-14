@@ -101,6 +101,8 @@ spec:
             {{- if .Values.production.enabled }}
             - name: PRODUCTION_AUTH_PROXY_REQUIRED
               value: "1"
+            - name: AUTH_PROXY_CLIENT_IP_SOURCE
+              value: "nginx"
             - name: PRODUCTION_VERIFIED_SIGNUP_REQUIRED
               value: "1"
             {{- end }}

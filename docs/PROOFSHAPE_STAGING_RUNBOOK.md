@@ -1,167 +1,166 @@
-# ProofShape non-Arcus staging runbook
+# ProofShape non-Arcus AWS staging runbook
 
-Status: code-ready; external account provisioning is not complete
+Status: infrastructure code exists; external account provisioning and deployment
+have not occurred
+
 Target branch: `codex/proofshape-scalecad-staging`
-Protected existing deployment: Arcus Vercel `eager-euler` — do not modify
+
+Protected external system: Arcus Vercel `eager-euler` and every Arcus resource
+are out of scope
 
 ## Outcome
 
-This runbook creates one production-shaped ProofShape staging environment where
-a real user can sign in, create and revise CAD, preview/download exact revisions,
-send a generated STEP into DFM/should-cost verification, and use the existing
-portfolio/decision workflows.
+This runbook creates one production-shaped ProofShape commercial staging
+environment where a real user can sign in, complete onboarding, create/revise
+CAD, preview/download exact revisions, send generated or uploaded CAD into
+DFM/should-cost verification, and use the portfolio/decision/batch/RFQ flows.
 
-Staging is not production approval. Supplier-accuracy evidence, the public
-domain/name decision, legal source authorization, production backup/restore,
-on-call, and the applicable commercial or regulated launch gates remain
-separate requirements.
+Staging can earn live technical and product evidence. It cannot by itself earn
+production-live, regulated authorization, name/IP clearance, or customer cost-
+accuracy approval.
 
-## Non-negotiable ownership boundary
+## Ownership boundary
 
-- Create every target in a new personal or ProofShape-owned account/team.
-- Do not use the Arcus Vercel team, Arcus Fly organization, Arcus billing,
-  Arcus domains, or Arcus secrets.
+- Create every account, state store, resource, provider project, domain, secret,
+  and billing relationship in a new ProofShape-owned or owner-controlled scope.
+- Do not use the Arcus Vercel team/project, any Arcus cloud organization,
+  domains, billing, source settings, aliases, or secrets.
 - Do not attach a ProofShape alias to `eager-euler` or redeploy it.
-- ScaleCAD source is an authorized reference/input only. ProofShape deploys this
-  repository's web, API, worker, database migration, and object model.
+- ScaleCAD is an authorized product/capability reference for this branch. Public
+  distribution still requires the source/IP evidence in
+  `docs/PROOFSHAPE_SCALECAD_INTEGRATION.md`.
 
-## Chosen topology
+The checked-in Fly files and scripts are legacy/non-release references. AWS
+commercial is the canonical staging path.
 
-Use the repository's supported container path for staging:
+## Chosen staging topology
 
-| Component | Staging target |
+Use `infra/aws/environments/staging.tfvars.example` as the reviewed starting
+profile:
+
+| Layer | AWS staging target |
 |---|---|
-| Web | isolated ProofShape Fly app (or equivalent container web service) |
-| API | isolated ProofShape Fly app, `web` process group |
-| Worker | same backend image, isolated `worker` process group |
-| Database | managed Postgres with pooled and direct TLS URLs |
-| Queue | managed TLS Redis |
-| Artifacts | private, encrypted, versioned S3-compatible bucket |
-| Email | Resend with a ProofShape-owned verified sender domain |
-| Bot defense | Cloudflare Turnstile site/secret pair |
-| Errors | separate ProofShape staging Sentry projects |
-| Delivery | protected GitHub staging environment and scoped deploy token |
+| Public URL | generated HTTPS CloudFront hostname; no purchased domain required |
+| Origin | internal ALB through account/VPC CloudFront VPC origin; fixed 403 default |
+| Web/API/worker | separate digest-pinned ECS Fargate services |
+| Migration | one-shot digest-pinned Fargate Alembic task |
+| Database | isolated encrypted RDS PostgreSQL with backups |
+| Queue | isolated ElastiCache Redis with TLS and out-of-band AUTH |
+| Durable artifacts | private KMS/versioned S3 evidence bucket |
+| Incoming uploads | private KMS, deliberately unversioned transient S3 bucket |
+| Email/bot/errors | Resend, Turnstile, Sentry, external uptime/alert delivery |
+| Delivery | protected GitHub environment `aws-commercial-staging` and exact OIDC role |
 
-An all-Vercel deployment is intentionally not selected. The app needs a native
-gmsh/OpenCASCADE image, a durable ARQ worker, Redis, and large streaming CAD
-uploads. The Next.js web app can run on Vercel, but that would still require the
-container/data plane elsewhere and would not simplify the first complete test.
+Budget staging may honestly use one task per service, single-AZ RDS, and one
+Redis node. It must be reported as non-HA and never relabeled production.
 
-## Human-owned prerequisites
+An all-Vercel deployment is not selected. The native CAD runtime, long-running
+worker, Redis queue, background batch/reconstruction work, and large direct S3
+uploads require the container/data plane defined here.
 
-The owner must create or approve these in provider dashboards; they cannot be
-simulated by application code:
+## Owner-supplied prerequisites
 
-1. a non-Arcus Fly organization/account (or approved equivalent container host);
-2. a ProofShape-owned domain or temporary approved staging subdomain;
-3. managed Postgres, TLS Redis, and private S3 credentials;
-4. Resend domain verification, Turnstile keys, and Sentry projects;
-5. a protected GitHub environment with scoped deployment credentials; and
-6. written ownership/license evidence for the ScaleCAD source before public or
-   commercial distribution.
+1. ProofShape staging AWS account access, billing, launch region, and budget
+   notification address.
+2. Terraform operator/bootstrap identity and GitHub OIDC bootstrap approval.
+3. Protected GitHub environment `aws-commercial-staging`.
+4. Real application database credentials, Redis AUTH token, cryptographic
+   secrets, Resend sender/inbox, Turnstile pair, and Sentry/alert destination.
+5. Optional staging domain. The generated CloudFront hostname is sufficient
+   before a domain purchase.
+6. Written source/name/IP approval before public or commercial distribution.
 
-Never paste these secrets into chat, source, issue comments, or build logs.
+Never paste a secret into chat, source, issue comments, Terraform variables/
+state, screenshots, or build logs.
 
-## Resource names
+## Ordered bootstrap
 
-Use names that make the boundary visible. Check provider availability before
-creation; suffix with a random non-company identifier if a global name is taken.
+Follow `docs/AWS_ACCOUNT_BOOTSTRAP.md`; this summary is not a substitute.
 
-```text
-proofshape-stg-api
-proofshape-stg-web
-proofshape-stg-postgres
-proofshape-stg-redis
-proofshape-stg-artifacts
-GitHub environment: proofshape-staging
-```
+1. Bootstrap isolated encrypted/versioned remote Terraform state.
+2. Create ignored local staging backend/tfvars files from the examples.
+3. Verify the exact account and plan with workloads/services disabled, image
+   URIs empty, and cache/direct-upload attestations false.
+4. Apply the reviewed foundation: VPC/subnets, internal edge, CloudFront, RDS,
+   Redis metadata, S3/KMS, ECR, Secrets Manager metadata, logs/alarms, OIDC role.
+5. Populate every runtime secret value out of band. Frontend and backend receive
+   the same `AUTH_PROXY_SECRET`.
+6. Run `scripts/ops/aws-enable-cache-auth.sh`; verify TLS/AUTH and set
+   `cache_authentication_confirmed=true` only with retained evidence.
+7. Copy Terraform's promotion outputs into the protected GitHub environment and
+   store the matching deep-health token as an environment secret.
+8. Run `AWS Commercial Promotion` with `publish-staging-only` for the reviewed
+   exact SHA. Retain the image publication artifact.
+9. Verify that backend digest consumes `DIRECT_UPLOAD_S3_*`; set
+   `transient_upload_contract_confirmed=true`, add the digest-qualified images,
+   enable workloads/services, and apply a reviewed plan.
+10. Run the workflow with `staging-only`. Require migration exit zero, service
+    stability, expected release identity, authenticated deep health, object
+    storage, worker, and auth-proxy checks through CloudFront.
 
-The checked-in Fly files contain historical default app names. The approved
-workflow must pass explicit target app names; never rely on those defaults.
+No step may point at an Arcus account or resource.
 
-## Configuration
+## Staging configuration truths
 
-Use `docs/LAUNCH_RUNBOOK.md` for the complete secret list and fail-closed
-production controls. Staging must still set a real release identifier and the
-production-shaped controls below:
+Terraform supplies the production-shaped runtime controls, including:
 
-```text
-RELEASE=<exact-git-sha>
-DEPLOYMENT_ENVIRONMENT=staging
-API_ORIGIN=https://<proofshape-api-host>
-DASHBOARD_ORIGIN=https://<proofshape-web-host>
-AUTH_MODE=password
-PASSWORD_LOGIN_ENABLED=1
-MAGIC_LINK_ENABLED=1
-PUBLIC_PASSWORD_SIGNUP_ENABLED=0
-RESEND_FROM=<verified ProofShape sender>
-PILOT_INBOX=<owned launch inbox>
-OBJECT_STORE_BACKEND=s3
-PRODUCTION_STORAGE_REQUIRED=1
-PRODUCTION_OBSERVABILITY_REQUIRED=1
-PRODUCTION_TLS_REQUIRED=1
-ASYNC_STRICT_HEALTH=1
-WORKER_STRICT_HEALTH=1
-RECONSTRUCTION_BACKEND=local
-RECONSTRUCTION_ALLOW_REMOTE_EGRESS=0
-DESIGN_GENERATION_TIMEOUT_SECONDS=45
-DESIGN_GENERATION_CONCURRENCY=2
-```
+- canonical `API_BASE`, `API_ORIGIN`, and `DASHBOARD_ORIGIN` from CloudFront;
+- `AUTH_PROXY_CLIENT_IP_SOURCE=cloudfront`;
+- password plus verified magic-link UI with public unverified password signup
+  disabled;
+- mandatory S3, deep health, auth proxy, secret quality, SSRF, security header,
+  host-only cookie, and TLS guards;
+- separate durable and transient S3 variables;
+- strict worker health and local, no-egress reconstruction; and
+- exact release/build identifiers.
 
-The API and web must receive the same `AUTH_PROXY_SECRET`. `DASHBOARD_ORIGIN`
-must be the canonical HTTPS web origin. `DATABASE_URL_DIRECT` is used only by
-the release migration; application traffic uses the pooled URL.
-
-## Deployment sequence
-
-1. Create the non-Arcus host organization and the five external data/provider
-   resources above.
-2. Create protected GitHub environment `proofshape-staging`. Set scoped secrets
-   directly there/provider-side and set explicit API/web app variables.
-3. Generate fresh random launch secrets with
-   `scripts/ops/gen-launch-secrets.sh`; replace every external placeholder.
-4. Run the required-secret gate against the explicit ProofShape app names.
-5. Merge the reviewed branch through protected CI. Do not deploy a dirty local
-   tree or mutable branch tag.
-6. Record the exact commit and digest-qualified web/backend images.
-7. Run `alembic upgrade head` as the backend release command. Migration 0040
-   creates `design_projects` and `design_revisions`.
-8. Deploy API and worker from the same backend digest, then deploy the web digest.
-9. Require token-authenticated deep health to show Postgres, Redis, worker, queue,
-   and S3 healthy before inviting a user.
-10. Run the acceptance journey below and retain screenshots/log evidence.
+Do not shadow these reviewed controls with ad hoc runtime secret names. Every
+Secrets Manager value must have `AWSCURRENT` before enabling services.
 
 ## Staging acceptance journey
 
-Every item must use real infrastructure and two real test organizations:
+Every item uses real staging dependencies, a fresh exact-build run, and at least
+two organizations.
 
-- [ ] Magic-link email arrives; initial password can be set; logout/login works.
-- [ ] A user opens Design Studio from onboarding, Home, navigation, and command
-      palette without a dead end.
-- [ ] Plate with four holes generates a real preview and STEP.
-- [ ] Bracket and open enclosure generate without mock/fallback geometry.
-- [ ] Revision 2 leaves revision 1 preview/download/hash available.
-- [ ] `Verify revision 1` and `Verify revision 2` import the exact STEP and return
-      real DFM/should-cost results.
-- [ ] A manually uploaded STEP still completes normally.
-- [ ] Viewer can read/download but cannot create/revise/archive.
-- [ ] A second org receives 404 for project, history, preview, and STEP identifiers
-      from the first org.
-- [ ] Queue outage creates an honest terminal failure; restoring Redis permits a
-      new revision without manual database repair.
-- [ ] Worker loss does not freeze API health; a restarted worker drains queued jobs.
-- [ ] S3 write/read/list/delete canary, Sentry event, uptime alert, and Postgres
-      restore drill all reach their owners.
-- [ ] Browser console has no uncaught errors; keyboard navigation and mobile
-      layout do not block creation, revision, download, or Verify handoff.
+- [ ] CloudFront is the only release URL; the internal ALB is not reachable as
+      a public origin and unrecognized paths hit the reviewed routing/default.
+- [ ] `/health`, authenticated `/health/deep`, worker/object-store checks, and
+      `/api/auth/proxy-health` pass with the exact release ID.
+- [ ] A user completes Turnstile, receives a real magic link, creates the
+      initial password, logs out/in, and exercises logout-all/revocation.
+- [ ] Onboarding, Home, navigation, command palette, and empty states lead into
+      Design Studio and Verify without contradictory or dead routes.
+- [ ] Plate, bracket, and open enclosure produce real geometry, measured
+      metadata, STL preview, and STEP; no mock/fallback geometry is accepted.
+- [ ] Revision 2 leaves revision 1 preview/download/hash/Verify available.
+- [ ] Generated and manually uploaded representative supported CAD return the
+      expected geometry, DFM, numerical cost, persisted decision, and exports.
+- [ ] A production-size ZIP uploads directly to transient S3, refreshes URLs,
+      processes once, downloads the correct result, retries/cancels safely, and
+      leaves no consumed transient object or browser cloud credential.
+- [ ] Batch scheduling, cancellation/retry and reconstruction reach truthful
+      terminal states through real workers.
+- [ ] Viewer/auditor cannot mutate; the full role matrix matches the UI and API.
+- [ ] The second organization receives tenant-obscuring denial for every first-
+      org record, artifact, upload ID, batch, project, and revision identifier.
+- [ ] Queue, worker, CAD kernel, object store, network, timeout, cancellation,
+      stale state, refresh, and restart paths show a useful recovery and a
+      truthful persisted terminal state.
+- [ ] Sentry event, external uptime alert, budget alarm, WAF/access records, and
+      backup status reach their accountable owners.
+- [ ] RDS scratch restore, Redis interruption, durable-version retention,
+      transient physical deletion, kill switch, and prior-digest rollback meet
+      recorded outcomes/RPO/RTO.
+- [ ] Desktop and mobile have no uncaught errors, indefinite spinner, hidden
+      required action, placeholder success, or interaction-blocking layout.
+- [ ] Load/soak has no unexplained 5xx; overload is bounded and retryable.
 
-## Current blocker list
+## Current blockers
 
-No ProofShape staging deployment has been made because the required non-Arcus
-host organization, domain/sender, managed data plane, Sentry/Turnstile, and
-protected GitHub environment are not yet available to this task. Deploying to
-the already-authenticated Arcus scopes would violate the ownership boundary and
-recreate the beta-grade environment that was rejected.
+No ProofShape AWS staging deployment evidence exists yet because account,
+provider, and protected-environment inputs have not been supplied/applied in
+this work. The exact commit also still needs its fresh final product/cloud proof
+record before customer invitation.
 
-Once the owner supplies those accounts through the provider UIs, this runbook
-can proceed without changing `eager-euler`.
+Once the owner supplies those inputs through provider UIs, execute this runbook
+without changing `eager-euler` or any other Arcus resource.

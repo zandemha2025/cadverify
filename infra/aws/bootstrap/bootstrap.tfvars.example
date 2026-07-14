@@ -1,0 +1,6 @@
+aws_region          = "us-east-1"
+aws_account_id      = "111111111111"
+state_bucket_name   = "REPLACE-proofshape-terraform-state-111111111111"
+
+noncurrent_state_retention_days = 365
+kms_deletion_window_days         = 30

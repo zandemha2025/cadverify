@@ -1,224 +1,210 @@
-# CadVerify Dual Production Architecture
+# ProofShape dual production architecture
 
-Status: implementation baseline. This document defines two isolated production
-planes; it does not claim ITAR, CMMC, SOC 2, or customer certification.
+Status: implementation baseline, not live evidence
+
+ProofShape has two isolated deployment planes. The commercial plane is AWS
+commercial ECS/Fargate. The regulated plane is a future approved AWS GovCloud
+or customer-controlled Kubernetes boundary. Neither plane authorizes or shares
+data with the other.
+
+This architecture does not claim ITAR, CMMC, FedRAMP, NIST 800-171, SOC 2, or
+customer authorization.
 
 ## 1. System overview
 
-CadVerify ships as two separately operated products:
-
-1. **Commercial SaaS** for ordinary customer data. Fly.io runs the application;
-   managed Postgres, Redis, S3-compatible storage, email, and observability are
-   mandatory production dependencies.
-2. **Regulated** for CUI and unclassified ITAR-controlled technical data. The
-   preferred hosted target is a dedicated AWS GovCloud (US) account and EKS
-   cluster. A customer-controlled on-prem Kubernetes cluster uses the same Helm
-   contract. No data, identities, keys, logs, backups, images, support tooling,
-   or administrators cross between the two planes.
-
 ```mermaid
 flowchart LR
-  U1["Commercial users"] --> SEDGE["Commercial DNS/TLS"]
-  SEDGE --> SFE["Fly frontend"]
-  SFE --> SAPI["Fly API"]
-  SAPI --> SPG["Managed Postgres + PITR"]
-  SAPI --> SR["Managed Redis"]
-  SAPI --> SS3["Versioned object store"]
-  SAPI --> SOBS["Sentry + uptime"]
+  CU["Commercial users"] --> CF["CloudFront + WAF"]
+  CF -->|"private VPC origin"| ALB["Internal ALB, default 403"]
+  ALB --> CWEB["ECS Fargate frontend"]
+  ALB --> CAPI["ECS Fargate API"]
+  CWEB --> CAPI
+  CAPI --> CPG["Private RDS PostgreSQL"]
+  CAPI --> CR["Private TLS/AUTH Redis"]
+  CAPI --> CS3["KMS S3 durable + transient stores"]
+  CWORK["ECS Fargate worker"] --> CPG
+  CWORK --> CR
+  CWORK --> CS3
 
-  U2["Authorized regulated users"] --> REDGE["GovCloud/customer edge + TLS"]
-  REDGE --> RFE["EKS frontend"]
-  RFE --> RAPI["EKS API"]
-  RAPI --> RPG["Encrypted RDS Multi-AZ"]
-  RAPI --> RR["Encrypted Redis"]
-  RAPI --> RS3["Encrypted/versioned S3"]
-  RAPI --> ROBS["In-boundary telemetry/SIEM"]
+  RU["Authorized regulated users"] --> REDGE["Approved GovCloud/customer edge"]
+  REDGE --> RWEB["EKS/customer frontend"]
+  RWEB --> RAPI["EKS/customer API"]
+  RAPI --> RPG["Encrypted relational store"]
+  RAPI --> RR["Encrypted TLS/auth queue"]
+  RAPI --> RS3["In-boundary object store"]
+  RWORK["EKS/customer worker"] --> RR
   RIDP["Approved IdP + MFA"] --> RAPI
 
-  SAPI -.- X["No trust, replication, or shared secrets"] -.- RAPI
+  CAPI -.- X["No trust, data, keys, logs, images, or operators shared"] -.- RAPI
 ```
 
 ## 2. Technology choices
 
 | Layer | Commercial SaaS | Regulated | Reason |
 |---|---|---|---|
-| Frontend/API/worker | Existing Next.js, FastAPI, arq images on Fly | Same immutable images on EKS/on-prem Kubernetes | One application code line, separate deployment boundaries |
-| Database | Managed Postgres with pooled/direct URLs and PITR | RDS PostgreSQL Multi-AZ encrypted with a customer-managed KMS key | Durable relational state and auditable restore controls |
-| Queue/cache | Managed TLS Redis | ElastiCache/approved Redis with TLS, auth, replication, and encrypted snapshots | Required for rate limits, jobs, magic links, and worker health |
-| CAD/object data | S3-compatible bucket with versioning | GovCloud S3 or approved on-prem S3 with versioning, KMS, lifecycle, and access logging | Shared local volumes are not a production data-safety boundary |
-| Secrets | Fly/GitHub secret stores | AWS Secrets Manager + External Secrets, or customer-approved equivalent | No secrets in Helm values, Git, images, or CI output |
-| Identity | Password + magic link; MFA roadmap or enterprise SSO | Current protected baseline: SAML to an approved IdP with MFA plus SCIM lifecycle; OIDC requires a separate reviewed release overlay | Regulated access must be centrally governed and revocable |
-| Telemetry | Sentry plus external uptime monitoring | In-boundary OpenTelemetry, logs, metrics, SIEM, and paging | Regulated data must not leak through telemetry |
-| Delivery | Reviewed `main` promotion to Fly | Signed immutable images promoted into GovCloud/customer registry, then Helm | No direct developer-to-production deploy |
+| Public edge | CloudFront; WAF and custom TLS required for production/HA | Approved GovCloud/customer ingress and TLS | One reviewed public origin per plane |
+| Origin | Internal ALB through CloudFront VPC origin | Private load balancer/ingress | No raw origin release URL |
+| Frontend/API/worker | Existing immutable Next.js, FastAPI, and ARQ images on ECS Fargate | Same reviewed application images copied into the approved EKS/customer registry | One application code line, separate supply chains and boundaries |
+| Database | Private encrypted RDS PostgreSQL with backups/PITR | Approved encrypted RDS/customer PostgreSQL, normally Multi-AZ | Durable relational state and tested recovery |
+| Queue/cache | Private ElastiCache Redis with TLS, AUTH, and environment isolation | Approved in-boundary Redis with TLS/auth/replication | Jobs, sessions, rate limits, magic links, and health depend on it |
+| Customer objects | Separate KMS S3 durable/versioned and transient/unversioned buckets | Approved KMS/versioned in-boundary object store with contract retention | Durable evidence and deletable incoming uploads have different truth contracts |
+| Secrets | AWS Secrets Manager metadata plus out-of-band values | In-boundary secret manager/external secrets | No secret value in Git, images, Terraform variables, or state |
+| Identity | Email-first magic link, optional initial password, Turnstile; enterprise SSO when approved | Protected baseline is SAML to an approved MFA IdP plus SCIM | Central revocation and environment-specific policy |
+| Telemetry | CloudWatch plus approved Sentry/uptime/alert delivery | In-boundary logs, metrics, traces, SIEM, and paging | Regulated data must not leave its boundary |
+| Delivery | Exact-repository/environment GitHub OIDC to isolated ECR/ECS | Approved signed-image and runner path into GovCloud/customer registry and Helm | No direct developer-to-production deployment |
 
-AWS GovCloud is the opinionated hosted regulated target because AWS documents
-US-only regions, restricted AWS personnel access, and support for ITAR/CUI
-workloads. That infrastructure support does not make CadVerify or its operator
-compliant by itself; the shared-responsibility controls below still apply.
+Fly configuration remains in the repository only as legacy/non-release
+material. It is not the ProofShape commercial architecture and is not called by
+the canonical AWS workflow.
 
-## 3. Data and isolation model
+## 3. Commercial staging and production isolation
+
+Staging and production use distinct:
+
+- Terraform state buckets/keys and AWS account boundaries when available;
+- VPCs, CIDRs, CloudFront distributions, ALBs, certificates, and WAF/logging;
+- ECS clusters, services, task definitions, ECR repositories, and OIDC roles;
+- RDS databases, Redis replication groups/AUTH secrets, S3 buckets/KMS keys;
+- runtime secrets, email/Turnstile/Sentry projects, alarms, and approvals; and
+- retained deployment and acceptance evidence.
+
+The AWS workflow fingerprints the account/cluster and account/region/ECR
+publication boundary. Production refuses the staging boundary and refuses image
+digests that do not match the staged artifact bytes.
+
+## 4. Data and tenant isolation
 
 - Every plane has independent organizations, memberships, sessions, API keys,
-  connector credentials, analyses, cost decisions, audit events, and blobs.
-- No database replication, shared Redis, shared object-store bucket, cross-plane
-  analytics, shared Sentry project, or shared support session is permitted.
-- Organization isolation remains enforced by existing `org_id`/membership
-  authorization. Infrastructure isolation is an additional boundary, not a
-  replacement for application authorization.
-- Regulated object keys and backups are encrypted with customer-managed keys;
-  key administrators and data administrators are separate roles.
-- Retention, legal hold, deletion, and backup policies are configured per data
-  class and contract. CAD content is prohibited from logs, traces, resource
-  names, support tickets, and CI artifacts.
+  connector credentials, analyses, cost decisions, audit events, and objects.
+- No database replication, shared Redis, shared S3 bucket/key, shared Sentry
+  project containing customer context, cross-plane analytics, or shared support
+  session is permitted.
+- Application `org_id` authorization remains mandatory. Infrastructure
+  isolation adds a boundary; it does not replace tenant predicates.
+- CAD bytes, quote details, bearer tokens, and customer identifiers are
+  prohibited from logs, traces, resource names, support tickets, and CI
+  artifacts.
+- Retention, deletion, legal hold, backup, and restore rules are set by data
+  class and contract. Durable evidence and transient uploads must not be
+  configured as one lifecycle class.
 
-## 4. API and ingress contracts
+## 5. Commercial ingress and auth-proxy contract
 
-The application API does not fork between planes:
+CloudFront is the canonical HTTPS origin. Dynamic routes forward the cookies,
+query strings, headers, and methods required by Next.js, auth, API, upload,
+share, SCIM, and health traffic. Only immutable `/_next/static/*` assets use the
+optimized cache policy.
+
+CloudFront adds `CloudFront-Viewer-Address`. The frontend runs with
+`AUTH_PROXY_CLIENT_IP_SOURCE=cloudfront`, validates the single address-and-port
+form, and signs the resulting IP, method, backend path, and timestamp with the
+environment's `AUTH_PROXY_SECRET`. It never treats the ALB
+`X-Forwarded-For` chain as authenticated viewer identity. The API verifies that
+signature before session-returning auth operations.
+
+The ALB is internal, its security group accepts only the account/VPC
+CloudFront-origin service group, and its listeners default to fixed 403. The raw
+ALB hostname is never a release URL.
+
+Staging may use the generated CloudFront HTTPS hostname with a private HTTP
+origin hop. Production/HA requires a custom alias, TLS 1.2 viewer and origin
+certificates, WAF/logging, canonical Host enforcement, and ALB deletion
+protection.
+
+## 6. API exposure contract
 
 | Surface | Route | Authentication | Exposure |
 |---|---|---|---|
-| Browser application | `/` | Session required for app routes | Frontend ingress |
-| Public share pages | `/s/*` | Public, sanitized, noindex | Frontend ingress |
-| Auth | `/auth/*` | Public initiation; signed/validated callback | API ingress |
-| Product API | `/api/v1/*` | Dashboard session or scoped API key; org authorization | API ingress |
-| Liveness | `/health` | Unauthenticated, minimal dependency status | Monitor/ingress |
-| Deep readiness | `/health/deep` | Production monitor token plus network restriction where available | Deploy gate/internal monitor |
-| Metrics | `/metrics` | Restrict to telemetry network/service account | Internal only |
+| Browser application | `/` and app routes | Dashboard session | CloudFront to frontend |
+| Public share | `/s/*` | Sanitized public read | CloudFront to frontend; backend data fetched privately |
+| Auth | same-origin frontend routes plus backend `/auth/*` | Public initiation, signed server proxy/callback | CloudFront; no raw origin bypass |
+| Product API | `/api/v1/*` | Session or scoped API key plus org authorization | Same-origin proxy/direct reviewed API paths |
+| Liveness | `/health` | Minimal unauthenticated status | CloudFront monitor path |
+| Deep health | `/health/deep` | Dedicated monitor token | Protected deploy/monitor use |
+| Metrics | `/metrics` | Disabled publicly or restricted internally | Never an open release endpoint |
 
-The Next.js server uses the runtime backend Service URL. Browser product calls
-remain same-origin through the streaming `/api/proxy/*` route; public share
-reads use a narrow GET-only same-origin proxy. Backend origins are not compiled
-into the frontend image, so the same digest is promoted across environments.
-On the single-host regulated ingress, `/s/*` therefore stays on Next; Next reads
-the backend's sanitized `/s/*` JSON over the private Service URL.
-Public login/signup/magic requests also stay same-origin. The web server signs
-the ingress-observed client IP, request method, API path, and short-lived
-timestamp with a dedicated per-environment `AUTH_PROXY_SECRET`; the API rejects
-spoofed forwarding data and otherwise falls back to its direct socket peer.
+The frontend receives `API_BASE` and `API_ORIGIN` at runtime from Terraform's
+canonical CloudFront origin. No environment hostname is compiled into the
+application source.
 
-## 5. Authentication and authorization
+## 7. Build and promotion contract
 
-### Commercial
+CI and deployment have separate jobs:
 
-- Password plus magic link, Turnstile, generic auth errors, Redis-backed rate
-  limits, secure HTTP-only cookies, and server-side session revocation.
-- Released session validation fails closed when authoritative database-backed
-  activation or revocation state is unavailable.
-- New commercial accounts prove email ownership by magic link before receiving
-  a first-party session. They may then add a password once; public unverified
-  password signup is fail-closed in released environments.
-- Email links carry the one-time bearer in a URL fragment and require an
-  explicit continue action, reducing query-log/referrer leakage and accidental
-  consumption by basic mail scanners. Session exchange is server-to-server.
-- Production magic-link tokens and session keys are unique to production.
-- Admin operations remain organization-scoped; superadmin access is separately
-  logged and limited.
+1. `.github/workflows/ci.yml` runs application, browser, migration, restore,
+   static analysis, dependency, image build/scan, SBOM, Compose, and Helm proof.
+   It neither publishes to a cloud registry nor deploys.
+2. `AWS Commercial Promotion` checks a reviewed exact SHA and requires a
+   successful exact-SHA CI run.
+3. It builds backend/frontend archives once, hashes them, and uploads one
+   inter-job artifact.
+4. Staging publishes those bytes to its ECR boundary.
+5. Production downloads the same artifact, publishes it into its distinct ECR
+   boundary, and verifies both ECR digests match staging.
+6. Promotion runs a one-shot migration, registers digest-qualified revisions,
+   rolls API/worker/frontend, waits stable, executes authenticated CloudFront
+   health, and rolls updated services back on failure.
 
-### Regulated
+Publish-only modes solve first-service bootstrap. Promotion modes require
+already-created services with positive desired counts. No production rebuild or
+caller-supplied digest is allowed.
 
-- The approved release baseline uses SAML; MFA is enforced by the approved IdP.
-- Released SAML environments disable the password login/signup/setup handlers
-  and forms, disable magic link, and render the real same-origin IdP initiation
-  path. OIDC code is present but is not part of this approved deployment packet.
-- Signed SAML messages/assertions, issuer/audience/recipient/time/replay
-  validation, and certificate/JWKS rotation are mandatory. Production SAML
-  login and SP-initiated logout responses are bound to one-time Redis-backed
-  request IDs/RelayState before a session is issued or cleared.
-- SCIM deactivation revokes sessions and organization access. Password login is
-  disabled except for documented, monitored break-glass accounts.
-- Human and machine identities use least privilege. Production administrators
-  must satisfy the applicable U.S.-person/export authorization policy.
+## 8. Security controls
 
-## 6. Security model
+- TLS is required at the public edge and for database/Redis/SaaS connections;
+  production also requires TLS from CloudFront to the ALB.
+- ECR tags are immutable, scanning is enabled, and workload images are selected
+  by digest.
+- Containers are non-root with read-only root filesystems and only explicit
+  writable scratch/cache mounts.
+- Runtime roles are component-specific. Frontend and migration do not inherit
+  customer-object access.
+- RDS, Redis, S3, logs, and backups are encrypted. Regulated keys never enter
+  commercial AWS.
+- Audit/security logs are retained in access-controlled stores. Browser replay
+  is disabled and telemetry is scrubbed.
+- Vulnerability, SBOM, migration, tenant, auth, browser, restore, rollback, and
+  live dependency evidence gate release.
 
-- TLS is required at every network hop. Database and Redis URLs must use TLS.
-- Production images use immutable SHA tags/digests, non-root users, read-only
-  root filesystems, dropped capabilities, RuntimeDefault seccomp, and no service
-  account token unless explicitly needed.
-- Regulated Kubernetes starts deny-all and opens only approved ingress and
-  egress destinations. Public internet egress from CAD-processing pods is not
-  permitted unless explicitly documented and approved.
-- S3, database, cache snapshots, logs, and backups are encrypted. Regulated keys
-  remain in the regulated boundary.
-- Secrets are externally managed and rotated; static cloud keys are avoided in
-  EKS through workload identity/Pod Identity.
-- Audit and security logs are exported to an append-resistant, access-controlled
-  store with retention matching policy.
-- Vulnerability scans, SBOMs, image signatures, dependency review, tenant tests,
-  and a launch security review gate every promotion.
-- ITAR/export-control classification and authorization are legal/compliance
-  decisions. CUI contracts additionally drive NIST SP 800-171/CMMC scope.
-- Regulated startup overrides external Sentry, remote reconstruction, password,
-  and magic-link settings even if a stale runtime Secret contains them. The
-  actual TLS ingress, not only a port-forward, must pass the auth-proxy handshake.
+## 9. Availability and cost profiles
 
-## 7. Caching and queues
+| Control | Budget staging | HA/production |
+|---|---|---|
+| Frontend/API/worker | One task each may be used honestly | At least two tasks each |
+| RDS | Single-AZ allowed | Multi-AZ, PITR, deletion protection, final snapshot |
+| Redis | One node, no failover | At least two nodes with automatic failover |
+| WAF/edge logs | Optional only for budget staging | Required and retained |
+| Origin TLS | Private HTTP allowed | HTTPS/TLS 1.2 required |
+| Autoscaling | May be disabled | Enabled with floor two |
 
-| Item | Location | Lifetime | Invalidation |
-|---|---|---|---|
-| Rate limits and signup controls | Redis | Existing rolling windows | Key expiry/config change |
-| Magic-link token state | Redis | Token expiry | Consume/revoke/expiry |
-| arq queue and worker heartbeat | Redis | Queue lifecycle/short heartbeat TTL | Worker completion/expiry |
-| Application DB connections | SQLAlchemy pool | Recycle defaults to 300 seconds | Process restart/pool recycle |
-| Frontend build assets | Immutable image/CDN edge | Release lifetime | New SHA release |
-| CAD/object content | S3 | Contract retention/lifecycle | Authorized deletion/lifecycle rule |
+Two subnets do not make one task or one database copy highly available. The
+actual profile must be reported, not inferred from the presence of IaC.
 
-No cache is shared between commercial and regulated environments.
+## 10. Test and operations strategy
 
-## 8. Scalability and availability
+1. Unit/type/lint, migration, dependency, and static-security gates.
+2. Real Postgres/Redis integration and tenant/role tests.
+3. Human-simulated browser journeys with exact visual, persisted, numerical,
+   artifact, failure, recovery, and mobile outcomes.
+4. Representative supported CAD and production-size multipart S3 paths.
+5. Staging email, Turnstile, Sentry, alarm, restore, interruption, kill-switch,
+   rollback, load, and soak evidence.
+6. Exact staged-digest production promotion and production smoke.
+7. Independent security/legal/customer authorization appropriate to the plane.
 
-- Commercial baseline: two API machines, two workers, two always-on frontend
-  machines, managed database/cache, and admission control. Add API
-  machines before increasing per-machine analysis concurrency.
-- Regulated baseline: at least two frontend, API, and worker replicas distributed
-  across availability zones, PodDisruptionBudgets, backend/frontend HPAs, and
-  queue-aware worker scaling after a KEDA design review.
-- Keep `MAX_CONCURRENT_ANALYSES` below database pool capacity per replica and
-  total pools below provider connection limits.
-- RPO/RTO are contractual inputs. Initial engineering targets are RPO <= 15
-  minutes and RTO <= 4 hours, validated by restore and failover drills rather
-  than assumed from provider features.
+Engineering targets such as RPO/RTO are not evidence until measured by a drill.
 
-## 9. Testing strategy
+## 11. Human gates
 
-1. Unit/type/lint and migration tests on every change.
-2. Real Postgres/Redis integration tests and tenant isolation tests.
-3. Image build, SBOM, vulnerability, secret, and configuration scans.
-4. Helm lint/render plus policy validation for regulated overlays.
-5. Staging auth, email/IdP, STEP upload, cost, queue, object-store, and rollback
-   tests with production-like dependencies.
-6. Load and soak tests with realistic CAD corpus and organization concurrency.
-7. Backup restore and regional/account recovery drills with measured RPO/RTO.
-8. Independent penetration test and applicable CMMC/contract assessment before
-   regulated customer authorization.
+The owner must supply or approve:
 
-## 10. Build and rollout order
+- ProofShape AWS accounts, billing, region, budget alerts, and GitHub OIDC
+  bootstrap access;
+- email, Turnstile, Sentry/alert, domain, DNS, and certificate resources;
+- customer-relevant CAD/cost acceptance evidence;
+- ProofShape name/IP, privacy/terms, and commercial launch approval; and
+- for regulated work only, the eligible landing zone, classification, contract
+  scope, assessor/counsel decision, and authorized operators.
 
-1. Resolve the canonical Git branch/PR and protect `main`.
-2. Bring commercial staging to the new mandatory gates.
-3. Provision commercial production dependencies and complete its launch audit.
-4. Create the GovCloud/customer regulated landing zone and personnel boundary.
-5. Build/sign/copy immutable images inside the regulated supply chain.
-6. Create external runtime/SAML secrets and private production values.
-7. Deploy regulated staging; complete IdP, SCIM, object-store, DR, load, and
-   security evidence.
-8. Obtain counsel/assessor/customer authorization.
-9. Promote the identical signed digests to regulated production.
-10. Operate the planes with separate on-call, access reviews, and evidence.
-
-## 11. Handoffs and human gates
-
-- **UX:** no regulated data in analytics/session replay; clear environment and
-  classification banners.
-- **Fullstack:** keep auth, org isolation, retention, and audit behavior identical
-  across deployment targets; no cloud-specific bypasses.
-- **QA:** own the two-environment release matrix and negative tenant/auth tests.
-- **Security:** issue an exact `APPROVED`, `APPROVED WITH CONDITIONS`, or
-  `BLOCKED` launch verdict per environment.
-- **DevOps:** own IaC, secret contracts, signing, deployment, health, rollback,
-  backup, and evidence capture.
-
-`HITL REQUIRED`: the owner must obtain/confirm (a) a commercial custom domain,
-email/S3/monitoring accounts, (b) an eligible AWS GovCloud account or named
-customer-managed Kubernetes target, (c) the regulated data classification and
-required CMMC level/contract clauses, and (d) authorized U.S.-person operators.
+Until those inputs and the applicable acceptance evidence exist, the truthful
+state is architecture implemented, not production-live.

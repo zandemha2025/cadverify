@@ -14,8 +14,15 @@ import {
   acceptedBatchFromErrorPayload,
   analysisPageHref,
 } from "../recovery-records";
+import {
+  getUploadCapabilities,
+  finalizeDirectUploadAttempt,
+  uploadBatchZipDirect,
+  type UploadProgress,
+} from "./direct-upload";
 
 export { analysisPageHref };
+export type { UploadProgress } from "./direct-upload";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -55,7 +62,7 @@ export interface BatchProgress {
     | "completed"
     | "failed"
     | "cancelled";
-  input_mode: "zip" | "s3";
+  input_mode: "zip" | "s3" | "direct_upload";
   total_items: number;
   completed_items: number;
   failed_items: number;
@@ -163,16 +170,60 @@ async function apiFetchJson<T>(
  * Create a batch from a ZIP file upload.
  * Uses FormData -- browser sets Content-Type with boundary automatically.
  */
+export interface CreateBatchOptions {
+  webhookUrl?: string;
+  manifest?: File;
+  concurrencyLimit?: number;
+  onUploadProgress?: (progress: UploadProgress) => void;
+}
+
+function reportUploadProgress(
+  options: CreateBatchOptions | undefined,
+  progress: UploadProgress,
+): void {
+  try {
+    options?.onUploadProgress?.(progress);
+  } catch {
+    // Presentation callbacks must not interrupt or orphan an upload.
+  }
+}
+
 export async function createBatch(
   file: File,
-  options?: {
-    webhookUrl?: string;
-    manifest?: File;
-    concurrencyLimit?: number;
-  },
+  options?: CreateBatchOptions,
 ): Promise<BatchCreateResponse> {
+  reportUploadProgress(options, {
+    stage: "checking",
+    percent: null,
+    uploadedBytes: 0,
+    totalBytes: file.size,
+  });
+  // Fail closed when capability discovery itself is unavailable (including
+  // rollout 404/501). Only an explicit direct_upload:false response authorizes
+  // the legacy multi-GB proxied FormData path.
+  const capabilities = await getUploadCapabilities();
+
   const formData = new FormData();
-  formData.append("file", file);
+  if (capabilities.direct_upload) {
+    const directUploadId = await uploadBatchZipDirect(file, {
+      onProgress: options?.onUploadProgress,
+    });
+    formData.append("direct_upload_id", directUploadId);
+    reportUploadProgress(options, {
+      stage: "creating",
+      percent: 100,
+      uploadedBytes: file.size,
+      totalBytes: file.size,
+    });
+  } else {
+    formData.append("file", file);
+    reportUploadProgress(options, {
+      stage: "proxying",
+      percent: null,
+      uploadedBytes: 0,
+      totalBytes: file.size,
+    });
+  }
 
   if (options?.webhookUrl) {
     formData.append("webhook_url", options.webhookUrl);
@@ -184,10 +235,12 @@ export async function createBatch(
     formData.append("concurrency_limit", String(options.concurrencyLimit));
   }
 
-  return apiFetchJson<BatchCreateResponse>(`${API_BASE}/batch`, {
+  const result = await apiFetchJson<BatchCreateResponse>(`${API_BASE}/batch`, {
     method: "POST",
     body: formData,
   });
+  if (capabilities.direct_upload) finalizeDirectUploadAttempt(file);
+  return result;
 }
 
 /**

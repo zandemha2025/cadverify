@@ -1,0 +1,110 @@
+# Replace account/repository/email placeholders before use. This profile is
+# deliberately budget-aware and NOT highly available despite spanning two AZs.
+aws_region             = "us-east-1"
+aws_account_id         = "111111111111"
+project_name           = "proofshape-commercial"
+environment            = "staging"
+application_environment = "saas-staging"
+availability_profile   = "bootstrap"
+
+vpc_cidr            = "10.40.0.0/16"
+public_subnet_cidrs  = ["10.40.0.0/24", "10.40.1.0/24"]
+private_subnet_cidrs = ["10.40.10.0/24", "10.40.11.0/24"]
+
+# The default CloudFront hostname is the working release URL. Add an alias only
+# after a us-east-1 ACM certificate exists.
+cloudfront_alias                    = ""
+cloudfront_acm_certificate_arn      = ""
+cloudfront_origin_protocol_policy   = "http-only"
+alb_origin_acm_certificate_arn      = ""
+route53_zone_id                     = ""
+cloudfront_price_class              = "PriceClass_100"
+cloudfront_wait_for_deployment      = true
+cloudfront_retain_on_delete         = false
+enable_static_asset_caching         = true
+alb_deletion_protection             = false
+alb_access_log_bucket_name           = ""
+cloudfront_access_log_bucket_domain = ""
+
+enable_waf         = false
+enable_waf_logging = false
+waf_rate_limit     = 2000
+
+artifact_bucket_name                  = ""
+transient_upload_bucket_name          = ""
+transient_upload_expiration_days      = 2
+transient_upload_contract_confirmed   = false
+s3_force_destroy                      = false
+s3_abort_incomplete_multipart_days    = 7
+s3_noncurrent_version_expiration_days = 90
+additional_s3_cors_origins             = []
+ecr_force_delete                       = false
+ecr_max_image_count                    = 15
+
+rds_instance_class                = "db.t4g.micro"
+rds_allocated_storage_gib         = 30
+rds_max_allocated_storage_gib     = 100
+rds_multi_az                      = false
+rds_backup_retention_days         = 7
+rds_deletion_protection           = false
+rds_skip_final_snapshot           = true
+rds_delete_automated_backups      = true
+rds_performance_insights_enabled  = false
+
+cache_node_type               = "cache.t4g.micro"
+cache_node_count              = 1
+cache_snapshot_retention_days = 1
+cache_final_snapshot_identifier = ""
+cache_auth_token_secret_arn     = ""
+cache_authentication_confirmed  = false
+
+# First apply creates infrastructure, ECR, secret metadata, task roles, and the
+# private CloudFront VPC-origin edge. Populate every runtime secret, enable
+# ElastiCache AUTH with aws-enable-cache-auth.sh, and push digest-qualified
+# images before setting both flags true, recording auth confirmation, and
+# attesting that the exact image honors the dedicated transient-upload bucket.
+enable_workloads = false
+enable_services  = false
+backend_image    = ""
+frontend_image   = ""
+initial_release_id = "bootstrap" # Replace with the exact 40-character SHA before enable_workloads=true.
+
+fargate_platform_version  = "1.4.0"
+api_capacity_provider     = "FARGATE"
+worker_capacity_provider  = "FARGATE_SPOT"
+frontend_capacity_provider = "FARGATE"
+api_cpu                    = 1024
+api_memory                 = 4096
+worker_cpu                 = 1024
+worker_memory              = 4096
+frontend_cpu               = 256
+frontend_memory            = 512
+migration_cpu              = 256
+migration_memory           = 512
+batch_default_concurrency  = 2
+
+api_desired_count      = 1
+worker_desired_count   = 1
+frontend_desired_count = 1
+enable_autoscaling     = false
+
+enable_vpc_flow_logs      = false
+enable_container_insights = false
+log_retention_days        = 7
+enable_alarms             = true
+create_alarm_topic        = true
+
+enable_budget       = true
+monthly_budget_usd  = 150
+budget_alert_emails = ["replace-with-ops@example.com"]
+
+enable_github_oidc          = true
+create_github_oidc_provider = true
+github_oidc_provider_arn    = ""
+github_repository           = "YOUR_ORG/YOUR_REPO"
+github_environment          = "aws-commercial-staging"
+
+tags = {
+  CostCenter = "proofshape-commercial"
+  Owner      = "platform"
+}

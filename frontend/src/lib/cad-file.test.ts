@@ -6,6 +6,7 @@ import {
   fileExt,
   isSupportedCad,
   supportedCadLabel,
+  unsupportedCadGuidance,
 } from "./cad-file.ts";
 
 test("CAD_ACCEPT lists exactly the engine's CAD extensions", () => {
@@ -38,4 +39,12 @@ test("isSupportedCad accepts engine CAD extensions in any case, rejects the rest
 
 test("supportedCadLabel reads as a human list", () => {
   assert.equal(supportedCadLabel(), "STL, STEP, STP, IGES or IGS");
+});
+
+test("unsupported native CAD receives an actionable export path", () => {
+  assert.deepEqual(unsupportedCadGuidance("pump.SLDASM"), {
+    title: "SolidWorks files need a STEP export",
+    action: "Open the model in SolidWorks, export it as STEP AP242 (.step or .stp), then upload that exported file.",
+  });
+  assert.match(unsupportedCadGuidance("part.x_t").action, /Export the model as STL, STEP, STP, IGES or IGS/);
 });

@@ -25,6 +25,7 @@ def _make_job(ulid: str = "test-job-001", mesh_hash: str = "abc123") -> MagicMoc
     """Create a mock Job ORM object."""
     job = MagicMock()
     job.ulid = ulid
+    job.job_type = "sam3d"
     job.status = "queued"
     job.params_json = {"mesh_hash": mesh_hash}
     job.started_at = None
@@ -150,6 +151,41 @@ class TestRunSam3dJob:
 
         assert job.status == "partial"
         assert result["error"] == "mesh_load_failed"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", ["done", "partial", "failed"])
+    async def test_terminal_job_is_not_started_again(self, status):
+        job = _make_job()
+        job.status = status
+        job.result_json = {"preserved": status}
+        factory = _mock_session_factory(job)
+
+        with (
+            patch("src.jobs.tasks.get_session_factory", return_value=factory),
+            patch(
+                "src.segmentation.sam3d.pipeline.segment_sam3d"
+            ) as segment_mock,
+        ):
+            from src.jobs.tasks import run_sam3d_job
+
+            result = await run_sam3d_job({}, job.ulid)
+
+        assert result == {"preserved": status}
+        assert job.status == status
+        segment_mock.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_duplicate_first_attempt_does_not_restart_running_job(self):
+        job = _make_job()
+        job.status = "running"
+        factory = _mock_session_factory(job)
+
+        with patch("src.jobs.tasks.get_session_factory", return_value=factory):
+            from src.jobs.tasks import run_sam3d_job
+
+            result = await run_sam3d_job({"job_try": 1}, job.ulid)
+
+        assert result == {"status": "running"}
 
 
 class TestSegmentToDict:

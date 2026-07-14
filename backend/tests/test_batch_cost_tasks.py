@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.db.models import Batch, BatchItem
+from src.services.analysis_service import AnalysisRun
 
 
 # ---------------------------------------------------------------------------
@@ -312,7 +313,7 @@ async def test_dfm_batch_never_hits_cost_path(mock_gsf):
 
     with patch.object(bt_mod, "_compute_cost_report") as compute, \
          patch.object(as_mod, "run_analysis", new_callable=AsyncMock,
-                      return_value=SimpleNamespace(
+                      return_value=AnalysisRun(
                           result={"verdict": "pass"}, analysis_id=55
                       )) as run_an, \
          patch.object(bs_mod, "update_batch_counters", new_callable=AsyncMock), \

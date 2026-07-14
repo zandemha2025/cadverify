@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
 import {
+  captureVisualStep,
   makeGoldenPathEvidence,
   validateGoldenPathMap,
 } from "./golden-path-evidence.mjs";
@@ -249,6 +250,29 @@ async function shot(page, id) {
   return target;
 }
 
+async function waitForVerificationPipelineDetached(page, timeout = 150_000) {
+  await page
+    .getByRole("dialog", { name: "Verification pipeline" })
+    .waitFor({ state: "detached", timeout });
+}
+
+async function captureStage(page, id, stage, {
+  requiredVisible,
+  forbiddenVisible = [],
+  terminal = true,
+  suffix = stage,
+} = {}) {
+  return captureVisualStep(page, {
+    id,
+    stage,
+    terminal,
+    requiredVisible,
+    forbiddenVisible,
+    screenshot: path.join(screenshotDir, `${id.toLowerCase()}-${suffix}.png`),
+    fullPage: true,
+  });
+}
+
 async function recordPath(page, spec, run) {
   const started = Date.now();
   const consoleStart = consoleErrors.length;
@@ -277,7 +301,9 @@ async function recordPath(page, spec, run) {
   // Let lazy viewer resources and browser diagnostics settle before freezing the
   // path envelope. This prevents a CSP error from leaking into the next path.
   await page.waitForTimeout(300).catch(() => {});
-  const screenshot = await shot(page, spec.id).catch(() => path.join(screenshotDir, `${spec.id.toLowerCase()}.png`));
+  const visualSteps = Array.isArray(result.visualSteps) ? result.visualSteps : null;
+  const screenshot = result.screenshot || visualSteps?.at(-1)?.screenshot ||
+    await shot(page, spec.id).catch(() => path.join(screenshotDir, `${spec.id.toLowerCase()}.png`));
   const pathConsoleErrors = consoleErrors.slice(consoleStart);
   const pathRequestFailures = requestFailures.slice(requestStart);
   const pathHttpErrors = httpErrorResponses.slice(httpErrorStart);
@@ -320,6 +346,7 @@ async function recordPath(page, spec, run) {
     actions: spec.actions,
     observed: result.observed,
     screenshot,
+    ...(visualSteps ? { visualSteps } : {}),
     consoleErrors: pathConsoleErrors,
     requestFailures: pathRequestFailures,
     assertions,
@@ -838,8 +865,23 @@ async function runSuite(page, account) {
     const bytes = await readFile(goldenStep);
     const fixtureSha256 = createHash("sha256").update(bytes).digest("hex");
     const geometry = run.dfm.body?.geometry ?? {};
-    await page.waitForFunction(() => !/measuring geometry/i.test(document.body.innerText), null, { timeout: 150_000 }).catch(() => {});
+    // The network responses landing is not the user's terminal state: the
+    // pipeline deliberately reveals five real stages on a cadence. Evidence
+    // must wait until that dialog is gone and the result walk is visible, or a
+    // screenshot can misleadingly show COMPUTING while API assertions pass.
+    await waitForVerificationPipelineDetached(page);
+    await page.getByText("What it really takes", { exact: true }).waitFor({ timeout: 30_000 });
+    await page.getByRole("button", { name: /^Open the record/ }).waitFor({ state: "visible", timeout: 30_000 });
     const text = await bodyText(page);
+    const pipelineDialogs = await page
+      .getByRole("dialog", { name: "Verification pipeline" })
+      .count();
+    const terminalWalkVisible = /What it really takes/i.test(text) &&
+      /Resource cost|Decide/i.test(text) &&
+      !/THE VERDICT\s*·\s*COMPUTING/i.test(text);
+    const terminalStep = await captureStage(page, "VER-05", "terminal", {
+      requiredVisible: ["cube.step", "What it really takes", "Open the record"],
+    });
     return {
       observed: {
         url: page.url(),
@@ -857,8 +899,11 @@ async function runSuite(page, account) {
         assertRecord("golden surface area mm2", "1432 ± 2", geometry.surface_area_mm2, near(geometry.surface_area_mm2, 1432, 2)),
         assertRecord("golden watertight", true, geometry.is_watertight, geometry.is_watertight === true),
         assertRecord("durable cost decision", "non-empty id", run.cost.body?.saved?.id ?? null, typeof run.cost.body?.saved?.id === "string" && run.cost.body.saved.id.length > 0),
+        assertRecord("screenshot oracle: terminal Verify walk", "dialog absent and terminal cost/decision UI visible", { pipelineDialogs, terminalWalkVisible }, pipelineDialogs === 0 && terminalWalkVisible),
         assertRecord("no false failure copy", true, !/temporarily busy|couldn.t be tessellated/i.test(text), !/temporarily busy|couldn.t be tessellated/i.test(text)),
       ],
+      screenshot: terminalStep.screenshot,
+      visualSteps: [terminalStep],
     };
   });
 
@@ -968,9 +1013,22 @@ async function runSuite(page, account) {
     await prepareVerify(page);
     const rejected = await uploadAnalyze(page, uploadPayload("invalid-magic.step", Buffer.from("not a STEP exchange file"), "application/step"));
     await page.getByText("We couldn’t read this file.", { exact: true }).waitFor({ timeout: 30_000 });
+    await waitForVerificationPipelineDetached(page);
     const failureText = await bodyText(page);
+    const failureStep = await captureStage(page, "FAIL-01", "failure", {
+      requiredVisible: [
+        "We couldn’t read this file.",
+        "Re-export the original part as a clean STL, STEP, STP, IGES, or IGS file",
+      ],
+    });
     const recovered = await uploadAnalyze(page, goldenStep, 150_000);
+    await waitForVerificationPipelineDetached(page);
+    await page.getByRole("button", { name: /^Open the record/ }).waitFor({ state: "visible", timeout: 30_000 });
     const recoveryText = await bodyText(page);
+    const recoveryStep = await captureStage(page, "FAIL-01", "recovery", {
+      requiredVisible: ["cube.step", "Open the record"],
+      forbiddenVisible: ["We couldn’t read this file."],
+    });
     return {
       observed: {
         url: page.url(),
@@ -987,6 +1045,8 @@ async function runSuite(page, account) {
         assertRecord("unreadable file rejected without decision", "no decision id", rejected.cost.body?.saved?.id ?? "no decision id", !rejected.cost.body?.saved?.id),
         assertRecord("correct-file recovery", [200, 200], [recovered.cost.status, recovered.dfm.status], recovered.cost.status === 200 && recovered.dfm.status === 200 && recoveryText.includes("cube.step")),
       ],
+      screenshot: failureStep.screenshot,
+      visualSteps: [failureStep, recoveryStep],
     };
   });
 
@@ -999,9 +1059,22 @@ async function runSuite(page, account) {
     await prepareVerify(page);
     const rejected = await uploadAnalyze(page, wireOnlyStep, 120_000);
     await page.getByText("This part couldn’t be tessellated.", { exact: true }).waitFor({ timeout: 30_000 });
+    await waitForVerificationPipelineDetached(page);
     const failureText = await bodyText(page);
+    const failureStep = await captureStage(page, "FAIL-02", "failure", {
+      requiredVisible: [
+        "This part couldn’t be tessellated.",
+        "Re-export the part as a clean solid and upload it again.",
+      ],
+    });
     const recovered = await uploadAnalyze(page, goldenStep, 150_000);
+    await waitForVerificationPipelineDetached(page);
+    await page.getByRole("button", { name: /^Open the record/ }).waitFor({ state: "visible", timeout: 30_000 });
     const recoveryText = await bodyText(page);
+    const recoveryStep = await captureStage(page, "FAIL-02", "recovery", {
+      requiredVisible: ["cube.step", "Open the record"],
+      forbiddenVisible: ["This part couldn’t be tessellated."],
+    });
     return {
       observed: {
         url: page.url(),
@@ -1019,6 +1092,8 @@ async function runSuite(page, account) {
         assertRecord("wire-only input bounded 4xx", "both 4xx and <120s", { status: [rejected.cost.status, rejected.dfm.status], elapsedMs: rejected.elapsedMs }, rejected.cost.status >= 400 && rejected.cost.status < 500 && rejected.dfm.status >= 400 && rejected.dfm.status < 500 && rejected.elapsedMs < 120_000),
         assertRecord("clean-solid recovery", [200, 200], [recovered.cost.status, recovered.dfm.status], recovered.cost.status === 200 && recovered.dfm.status === 200 && recoveryText.includes("cube.step")),
       ],
+      screenshot: failureStep.screenshot,
+      visualSteps: [failureStep, recoveryStep],
     };
   });
 
@@ -1452,7 +1527,7 @@ async function main() {
       },
       timingsMs: timings,
       releaseEvidence: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         goldenPaths,
         validation,
         manufacturingSubpaths,

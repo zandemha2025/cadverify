@@ -78,6 +78,17 @@ async function handle(
   };
   const contentType = req.headers.get("content-type");
   if (contentType) headers["content-type"] = contentType;
+  // Browser multipart initiation and reconstruction submission are idempotent
+  // across response loss/reload. Relay the user-supplied identifier only to
+  // those exact endpoints; it never becomes a general-purpose forwarded header.
+  const acceptsIdempotencyKey =
+    method === "POST" &&
+    ((path.length === 2 && path[0] === "uploads" && path[1] === "multipart") ||
+      (path.length === 1 && path[0] === "reconstruct"));
+  if (acceptsIdempotencyKey) {
+    const idempotencyKey = req.headers.get("idempotency-key");
+    if (idempotencyKey) headers["idempotency-key"] = idempotencyKey;
+  }
   // Secret-gated, record-scoped release-evidence faults. The backend ignores
   // both headers unless its non-public E2E token is explicitly configured and
   // matches; forwarding them here keeps browser QA on the real same-origin path.

@@ -42,7 +42,6 @@ export const metadata: Metadata = {
 };
 
 // ── shared inline style helpers (token-colored) ──────────────────────────────
-const wrap: React.CSSProperties = { maxWidth: 1100, margin: "0 auto" };
 const actLabel: React.CSSProperties = {
   margin: 0,
   display: "flex",
@@ -74,7 +73,7 @@ export default function PlatformPage() {
       {/* ── hero ─────────────────────────────────────────────────────────── */}
       <section
         data-screen-label="Platform hero"
-        style={{ ...wrap, padding: "110px 48px 80px" }}
+        className="st-platform-wrap st-platform-hero"
       >
         <Eyebrow>Platform</Eyebrow>
         <DisplayHeading
@@ -103,19 +102,12 @@ export default function PlatformPage() {
       {/* ── the moats (MUST-KEEP) ────────────────────────────────────────── */}
       <section
         data-screen-label="The moats"
-        style={{ ...wrap, padding: "0 48px 60px" }}
+        className="st-platform-wrap st-platform-section"
       >
         <Eyebrow>What nobody else answers</Eyebrow>
-        <div
-          style={{
-            marginTop: 24,
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr 1fr",
-            gap: 18,
-          }}
-        >
+        <div className="st-platform-moat-grid">
           {/* moat 1 — your machines */}
-          <Panel style={{ padding: 28 }}>
+          <Panel className="st-platform-panel-moat">
             <p style={moatLabel}>YOUR MACHINES, BY NAME</p>
             <DisplayHeading
               as="h3"
@@ -139,7 +131,7 @@ export default function PlatformPage() {
           </Panel>
 
           {/* moat 2 — the environment gate */}
-          <Panel style={{ padding: 28 }}>
+          <Panel className="st-platform-panel-moat">
             <p style={moatLabel}>THE ENVIRONMENT GATE</p>
             <DisplayHeading
               as="h3"
@@ -169,7 +161,7 @@ export default function PlatformPage() {
           </Panel>
 
           {/* moat 3 — triage at scale */}
-          <Panel style={{ padding: 28 }}>
+          <Panel className="st-platform-panel-moat">
             <p style={moatLabel}>TRIAGE AT SCALE</p>
             <DisplayHeading
               as="h3"
@@ -208,28 +200,19 @@ export default function PlatformPage() {
 
       {/* ── capabilities ─────────────────────────────────────────────────── */}
       <section
-        style={{
-          ...wrap,
-          padding: "0 48px 60px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 22,
-        }}
+        className="st-platform-wrap st-platform-section st-platform-capabilities"
       >
         {/* 01 — decision workspace scenario */}
         <Panel
           data-screen-label="Copilot"
+          className="st-platform-panel-lg st-platform-split"
           style={{
             borderRadius: 18,
-            padding: 40,
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 40,
             alignItems: "center",
           }}
         >
           <div>
-            <p style={actLabel}>
+            <p className="st-platform-act-label" style={actLabel}>
               {"01 · THE DECISION WORKSPACE"} <ScenarioChip />
             </p>
             <DisplayHeading
@@ -255,7 +238,7 @@ export default function PlatformPage() {
               {"every artifact carries its engine run id, shop binding, and timestamp"}
             </p>
           </div>
-          <Panel well style={{ padding: 20 }}>
+          <Panel well className="st-platform-panel-inset">
             <p
               style={{
                 margin: 0,
@@ -332,9 +315,9 @@ export default function PlatformPage() {
         </Panel>
 
         {/* 02 + 03 — part hero + context */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22 }}>
-          <Panel data-screen-label="Part stage" style={{ borderRadius: 18, padding: 36 }}>
-            <p style={{ ...actLabel, display: "block" }}>{"02 · THE PART, AS HERO OBJECT"}</p>
+        <div className="st-platform-pair-grid">
+          <Panel data-screen-label="Part stage" className="st-platform-panel-md" style={{ borderRadius: 18 }}>
+            <p className="st-platform-act-label" style={{ ...actLabel, display: "block" }}>{"02 · THE PART, AS HERO OBJECT"}</p>
             <DisplayHeading
               as="h2"
               size="26px"
@@ -360,8 +343,8 @@ export default function PlatformPage() {
             </p>
           </Panel>
 
-          <Panel data-screen-label="Context" style={{ borderRadius: 18, padding: 36 }}>
-            <p style={{ ...actLabel, display: "block" }}>{"03 · CONTEXT, EARNED"}</p>
+          <Panel data-screen-label="Context" className="st-platform-panel-md" style={{ borderRadius: 18 }}>
+            <p className="st-platform-act-label" style={{ ...actLabel, display: "block" }}>{"03 · CONTEXT, EARNED"}</p>
             <DisplayHeading
               as="h2"
               size="26px"
@@ -391,17 +374,15 @@ export default function PlatformPage() {
         </div>
 
         {/* 04 — portfolio cost-down board scenario */}
-        <Panel data-screen-label="Portfolio" style={{ borderRadius: 18, padding: 40 }}>
+        <Panel data-screen-label="Portfolio" className="st-platform-panel-lg" style={{ borderRadius: 18 }}>
           <div
+            className="st-platform-split-wide"
             style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1.2fr",
-              gap: 40,
               alignItems: "center",
             }}
           >
             <div>
-              <p style={actLabel}>
+              <p className="st-platform-act-label" style={actLabel}>
                 {"04 · THE PORTFOLIO COST-DOWN BOARD"} <ScenarioChip />
               </p>
               <DisplayHeading
@@ -418,6 +399,7 @@ export default function PlatformPage() {
               </p>
             </div>
             <div
+              className="st-platform-portfolio-table"
               style={{
                 border: "1px solid var(--st-line-09)",
                 borderRadius: 12,
@@ -427,38 +409,38 @@ export default function PlatformPage() {
                 fontSize: 12,
               }}
             >
-              <div style={{ ...portfolioRow, borderBottom: "1px solid var(--st-line-soft)", color: "var(--st-ink-35)", fontSize: 10, letterSpacing: "0.1em" }}>
+              <div className="st-platform-portfolio-row st-platform-portfolio-head" style={{ borderBottom: "1px solid var(--st-line-soft)", color: "var(--st-ink-35)", fontSize: 10, letterSpacing: "0.1em" }}>
                 <span>ILLUSTRATIVE DATA</span>
                 <span>PAYING</span>
                 <span>SHOULD</span>
                 <span style={{ textAlign: "right" }}>SAVINGS</span>
               </div>
-              <div style={{ ...portfolioRow, padding: "13px 18px", borderBottom: "1px solid rgba(245,245,247,0.05)" }}>
+              <div className="st-platform-portfolio-row" style={{ borderBottom: "1px solid rgba(245,245,247,0.05)" }}>
                 <span style={{ color: "var(--st-ink-70)" }}>Bearing flange</span>
-                <span style={{ color: "var(--st-ink-55)" }}>$41.80</span>
-                <span style={{ color: "var(--st-ink-55)" }}>$22.60</span>
-                <span style={{ textAlign: "right", color: "var(--st-ink)" }}>$1.27M</span>
+                <span data-label="Paying" style={{ color: "var(--st-ink-55)" }}>$41.80</span>
+                <span data-label="Should" style={{ color: "var(--st-ink-55)" }}>$22.60</span>
+                <span data-label="Savings" style={{ textAlign: "right", color: "var(--st-ink)" }}>$1.27M</span>
               </div>
-              <div style={{ ...portfolioRow, padding: "13px 18px", borderBottom: "1px solid rgba(245,245,247,0.05)", background: "rgba(85,184,128,0.04)" }}>
+              <div className="st-platform-portfolio-row" style={{ borderBottom: "1px solid rgba(245,245,247,0.05)", background: "rgba(85,184,128,0.04)" }}>
                 <span style={{ color: "var(--st-ink-70)" }}>Guide bushing</span>
-                <span style={{ color: "var(--st-ink-55)" }}>$11.02</span>
-                <span style={{ color: "var(--st-ink-55)" }}>$6.31</span>
-                <span style={{ textAlign: "right", color: "var(--st-pass)" }}>$620K ✓</span>
+                <span data-label="Paying" style={{ color: "var(--st-ink-55)" }}>$11.02</span>
+                <span data-label="Should" style={{ color: "var(--st-ink-55)" }}>$6.31</span>
+                <span data-label="Savings" style={{ textAlign: "right", color: "var(--st-pass)" }}>$620K ✓</span>
               </div>
-              <div style={{ ...portfolioRow, padding: "13px 18px" }}>
+              <div className="st-platform-portfolio-row">
                 <span style={{ color: "var(--st-ink-70)" }}>Output shaft</span>
-                <span style={{ color: "var(--st-ink-30)" }}>— none on file</span>
-                <span style={{ color: "var(--st-ink-55)" }}>$14.14</span>
-                <span style={{ textAlign: "right", color: "var(--st-ink-30)" }}>withheld</span>
+                <span data-label="Paying" style={{ color: "var(--st-ink-30)" }}>— none on file</span>
+                <span data-label="Should" style={{ color: "var(--st-ink-55)" }}>$14.14</span>
+                <span data-label="Savings" style={{ textAlign: "right", color: "var(--st-ink-30)" }}>withheld</span>
               </div>
             </div>
           </div>
         </Panel>
 
         {/* 05 + 06 — flywheel + honest states */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22 }}>
-          <Panel data-screen-label="Flywheel" style={{ borderRadius: 18, padding: 36 }}>
-            <p style={{ ...actLabel, display: "block" }}>{"05 · THE GROUND-TRUTH FLYWHEEL"}</p>
+        <div className="st-platform-pair-grid">
+          <Panel data-screen-label="Flywheel" className="st-platform-panel-md" style={{ borderRadius: 18 }}>
+            <p className="st-platform-act-label" style={{ ...actLabel, display: "block" }}>{"05 · THE GROUND-TRUTH FLYWHEEL"}</p>
             <DisplayHeading
               as="h2"
               size="26px"
@@ -490,8 +472,8 @@ export default function PlatformPage() {
             </div>
           </Panel>
 
-          <Panel data-screen-label="Honest states" style={{ borderRadius: 18, padding: 36 }}>
-            <p style={{ ...actLabel, display: "block" }}>{"06 · HONESTY AS A DESIGN SYSTEM"}</p>
+          <Panel data-screen-label="Honest states" className="st-platform-panel-md" style={{ borderRadius: 18 }}>
+            <p className="st-platform-act-label" style={{ ...actLabel, display: "block" }}>{"06 · HONESTY AS A DESIGN SYSTEM"}</p>
             <DisplayHeading
               as="h2"
               size="26px"
@@ -534,20 +516,17 @@ export default function PlatformPage() {
       {/* ── scale ────────────────────────────────────────────────────────── */}
       <section
         data-screen-label="Scale"
-        style={{ ...wrap, padding: "30px 48px 60px" }}
+        className="st-platform-wrap st-platform-scale"
       >
         <Panel
+          className="st-platform-panel-lg st-platform-split"
           style={{
             borderRadius: 18,
-            padding: 40,
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 40,
             alignItems: "center",
           }}
         >
           <div>
-            <p style={{ ...actLabel, display: "block" }}>{"07 · BUILT FOR PORTFOLIO SCALE"}</p>
+            <p className="st-platform-act-label" style={{ ...actLabel, display: "block" }}>{"07 · BUILT FOR PORTFOLIO SCALE"}</p>
             <DisplayHeading
               as="h2"
               size="clamp(26px, 2.7vw, 36px)"
@@ -565,8 +544,8 @@ export default function PlatformPage() {
           </div>
           <Panel
             well
+            className="st-platform-panel-inset"
             style={{
-              padding: 22,
               fontFamily: "var(--st-font-mono)",
               fontSize: 12,
               lineHeight: 2,
@@ -604,13 +583,13 @@ export default function PlatformPage() {
       {/* ── positioning ──────────────────────────────────────────────────── */}
       <section
         data-screen-label="Positioning"
+        className="st-platform-positioning"
         style={{
           borderTop: "1px solid var(--st-line-soft)",
           background: "var(--st-bg-raised)",
-          padding: "90px 48px",
         }}
       >
-        <div style={wrap}>
+        <div className="st-platform-wrap">
           <Eyebrow style={{ textAlign: "center" }}>The category</Eyebrow>
           <DisplayHeading
             as="h2"
@@ -628,14 +607,9 @@ export default function PlatformPage() {
             {"For opposite reasons."}
           </DisplayHeading>
           <div
-            style={{
-              marginTop: 52,
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr 1.15fr",
-              gap: 18,
-            }}
+            className="st-platform-positioning-grid"
           >
-            <div style={posCard}>
+            <div className="st-platform-position-card" style={posCard}>
               <p style={posLabel}>INSTANT-QUOTE MARKETPLACE</p>
               <p style={posBody}>
                 {
@@ -643,7 +617,7 @@ export default function PlatformPage() {
                 }
               </p>
             </div>
-            <div style={posCard}>
+            <div className="st-platform-position-card" style={posCard}>
               <p style={posLabel}>COST-ENGINEERING SUITE</p>
               <p style={posBody}>
                 {
@@ -652,10 +626,10 @@ export default function PlatformPage() {
               </p>
             </div>
             <div
+              className="st-platform-position-card"
               style={{
                 border: "1px solid var(--st-line-strong)",
                 borderRadius: 16,
-                padding: 30,
                 background: "rgba(245,245,247,0.045)",
               }}
             >
@@ -673,7 +647,8 @@ export default function PlatformPage() {
       {/* ── CTA ──────────────────────────────────────────────────────────── */}
       <section
         data-screen-label="Platform CTA"
-        style={{ padding: "100px 48px 110px", textAlign: "center" }}
+        className="st-platform-cta"
+        style={{ textAlign: "center" }}
       >
         <DisplayHeading
           as="h2"
@@ -717,12 +692,6 @@ const cardBodySm: React.CSSProperties = {
   fontWeight: 300,
   color: "var(--st-ink-55)",
 };
-const portfolioRow: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1.4fr 1fr 1fr 90px",
-  gap: 12,
-  padding: "12px 18px",
-};
 const stateChip: React.CSSProperties = {
   borderRadius: 6,
   padding: "5px 10px",
@@ -730,7 +699,6 @@ const stateChip: React.CSSProperties = {
 const posCard: React.CSSProperties = {
   border: "1px solid var(--st-line-soft)",
   borderRadius: 16,
-  padding: 30,
   background: "rgba(245,245,247,0.02)",
 };
 const posLabel: React.CSSProperties = {

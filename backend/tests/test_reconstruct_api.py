@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import io
 import os
-from types import SimpleNamespace
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -20,6 +19,7 @@ from src.api.reconstruct_router import router
 from src.auth.require_api_key import AuthedUser, require_api_key
 from src.db.engine import get_db_session
 from src.db.models import Job
+from src.services.analysis_service import AnalysisRun
 
 # ---------------------------------------------------------------------------
 # Test app setup
@@ -29,7 +29,15 @@ app = FastAPI()
 app.include_router(router)
 
 _TEST_USER = AuthedUser(user_id=42, api_key_id=1, key_prefix="cv_live_test")
+_VIEWER_USER = AuthedUser(
+    user_id=43,
+    api_key_id=3,
+    key_prefix="cv_live_viewer",
+    role="viewer",
+)
 _OTHER_USER = AuthedUser(user_id=99, api_key_id=2, key_prefix="cv_live_other")
+_SUBMISSION_ID = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+_IDEMPOTENCY_HEADERS = {"Idempotency-Key": _SUBMISSION_ID}
 
 
 def _override_auth():
@@ -38,6 +46,10 @@ def _override_auth():
 
 def _override_auth_other():
     return _OTHER_USER
+
+
+def _override_auth_viewer():
+    return _VIEWER_USER
 
 
 def _override_session():
@@ -71,6 +83,7 @@ def _make_job(
     job.id = 1
     job.ulid = ulid
     job.user_id = user_id
+    job.org_id = "org-1"
     job.job_type = "reconstruction"
     job.status = status
     job.params_json = {"image_count": 1, "process_types": None, "rule_pack": None}
@@ -121,6 +134,7 @@ class TestReconstructEndpoint:
             resp = client.post(
                 "/api/v1/reconstruct",
                 files=[("images", ("test.png", img_bytes, "image/png"))],
+                headers=_IDEMPOTENCY_HEADERS,
             )
 
         assert resp.status_code == 202
@@ -168,6 +182,7 @@ class TestReconstructEndpoint:
             resp = client.post(
                 "/api/v1/reconstruct",
                 files=[("images", ("test.png", img_bytes, "image/png"))],
+                headers=_IDEMPOTENCY_HEADERS,
             )
 
         assert resp.status_code == 501
@@ -180,6 +195,10 @@ class TestReconstructEndpoint:
     def test_reconstruct_remote_opt_in_wired(self, monkeypatch):
         """Explicit remote opt-in => availability gate passes, job path is wired."""
         monkeypatch.setenv("RECONSTRUCTION_BACKEND", "remote")
+        monkeypatch.setenv("REPLICATE_API_TOKEN", "test-token")
+        monkeypatch.setenv(
+            "TRIPOSR_REPLICATE_MODEL", f"approved/triposr:{'a' * 64}"
+        )
 
         test_app = FastAPI()
         test_app.include_router(router)
@@ -191,16 +210,58 @@ class TestReconstructEndpoint:
             "src.services.reconstruction_service.create_reconstruction_job",
             new_callable=AsyncMock,
             return_value=mock_job,
-        ):
+        ) as create_mock:
             client = TestClient(test_app)
             img_bytes = _make_test_image_bytes()
             resp = client.post(
                 "/api/v1/reconstruct",
                 files=[("images", ("test.png", img_bytes, "image/png"))],
+                headers={
+                    **_IDEMPOTENCY_HEADERS,
+                    "X-Reconstruction-Egress-Acknowledged": "true",
+                },
             )
 
         assert resp.status_code == 202
         assert resp.json()["job_id"] == mock_job.ulid
+        assert create_mock.await_args.kwargs["egress_acknowledged"] is True
+
+    def test_reconstruct_remote_refuses_upload_without_egress_acknowledgement(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("RECONSTRUCTION_BACKEND", "remote")
+        monkeypatch.setenv("REPLICATE_API_TOKEN", "test-token")
+        monkeypatch.setenv(
+            "TRIPOSR_REPLICATE_MODEL", f"approved/triposr:{'a' * 64}"
+        )
+
+        test_app = FastAPI()
+        test_app.include_router(router)
+        test_app.dependency_overrides[require_api_key] = _override_auth
+        test_app.dependency_overrides[get_db_session] = _override_session
+        create_mock = AsyncMock()
+
+        with patch(
+            "src.services.reconstruction_service.create_reconstruction_job",
+            new=create_mock,
+        ):
+            response = TestClient(test_app).post(
+                "/api/v1/reconstruct",
+                files=[
+                    (
+                        "images",
+                        ("customer.png", _make_test_image_bytes(), "image/png"),
+                    )
+                ],
+                headers=_IDEMPOTENCY_HEADERS,
+            )
+
+        assert response.status_code == 428
+        assert (
+            response.json()["detail"]["code"]
+            == "RECONSTRUCTION_EGRESS_ACKNOWLEDGEMENT_REQUIRED"
+        )
+        create_mock.assert_not_awaited()
 
     def test_reconstruct_rejects_no_images(self):
         """POST with no images returns 422 (FastAPI validation)."""
@@ -210,7 +271,10 @@ class TestReconstructEndpoint:
         test_app.dependency_overrides[get_db_session] = _override_session
 
         client = TestClient(test_app)
-        resp = client.post("/api/v1/reconstruct")
+        resp = client.post(
+            "/api/v1/reconstruct",
+            headers=_IDEMPOTENCY_HEADERS,
+        )
         assert resp.status_code == 422
 
     def test_reconstruct_rejects_too_many_images(self):
@@ -223,7 +287,11 @@ class TestReconstructEndpoint:
         client = TestClient(test_app)
         img_bytes = _make_test_image_bytes()
         files = [("images", (f"img{i}.png", img_bytes, "image/png")) for i in range(5)]
-        resp = client.post("/api/v1/reconstruct", files=files)
+        resp = client.post(
+            "/api/v1/reconstruct",
+            files=files,
+            headers=_IDEMPOTENCY_HEADERS,
+        )
         assert resp.status_code == 400
         assert "1-4" in resp.json()["detail"]
 
@@ -239,6 +307,7 @@ class TestReconstructEndpoint:
         resp = client.post(
             "/api/v1/reconstruct",
             files=[("images", ("test.png", img_bytes, "image/png"))],
+            headers=_IDEMPOTENCY_HEADERS,
         )
         assert resp.status_code == 401
 
@@ -258,16 +327,121 @@ class TestReconstructEndpoint:
         ), patch(
             "src.services.reconstruction_service.create_reconstruction_job",
             new_callable=AsyncMock,
-            side_effect=ReconstructionQueueUnavailableError("queue unavailable"),
+            side_effect=ReconstructionQueueUnavailableError(
+                "queue unavailable", _SUBMISSION_ID
+            ),
         ):
             client = TestClient(test_app)
             resp = client.post(
                 "/api/v1/reconstruct",
                 files=[("images", ("test.png", _make_test_image_bytes(), "image/png"))],
+                headers=_IDEMPOTENCY_HEADERS,
             )
 
         assert resp.status_code == 503
-        assert resp.json()["detail"]["code"] == "RECONSTRUCTION_ENQUEUE_FAILED"
+        detail = resp.json()["detail"]
+        assert detail["code"] == "RECONSTRUCTION_ENQUEUE_FAILED"
+        assert detail["job_id"] == _SUBMISSION_ID
+        assert detail["retryable"] is True
+
+    def test_reconstruct_rejects_reused_key_with_different_input(self):
+        from src.services import reconstruction_service
+
+        test_app = FastAPI()
+        test_app.include_router(router)
+        test_app.dependency_overrides[require_api_key] = _override_auth
+        test_app.dependency_overrides[get_db_session] = _override_session
+
+        with patch(
+            "src.services.reconstruction_service.check_reconstruction_availability",
+            return_value={"available": True},
+        ), patch(
+            "src.services.reconstruction_service.create_reconstruction_job",
+            new_callable=AsyncMock,
+            side_effect=reconstruction_service.ReconstructionIdempotencyConflictError(
+                "Idempotency-Key was already used for different input"
+            ),
+        ):
+            response = TestClient(test_app).post(
+                "/api/v1/reconstruct",
+                files=[
+                    ("images", ("test.png", _make_test_image_bytes(), "image/png"))
+                ],
+                headers=_IDEMPOTENCY_HEADERS,
+            )
+
+        assert response.status_code == 409
+        assert "different input" in response.json()["detail"]
+
+
+class TestReconstructionCapability:
+    def _client(self) -> TestClient:
+        test_app = FastAPI()
+        test_app.include_router(router)
+        test_app.dependency_overrides[require_api_key] = _override_auth
+        return TestClient(test_app)
+
+    def test_unavailable_capability_prevents_a_dead_upload_surface(self):
+        with patch(
+            "src.services.reconstruction_service.check_reconstruction_availability",
+            return_value={
+                "available": False,
+                "effective_backend": "none",
+                "egress": False,
+                "reason": "internal configuration detail",
+            },
+        ):
+            response = self._client().get("/api/v1/reconstruct/capability")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["available"] is False
+        assert body["can_submit"] is True
+        assert body["customer_data_egress"] is False
+        assert body["requires_egress_acknowledgement"] is False
+        assert body["verify_path"] == "/verify"
+        assert "internal configuration detail" not in body["message"]
+        assert "not dimensionally authoritative CAD" in body["accuracy_notice"]
+
+    def test_remote_capability_requires_explicit_egress_acknowledgement(self):
+        with patch(
+            "src.services.reconstruction_service.check_reconstruction_availability",
+            return_value={
+                "available": True,
+                "effective_backend": "remote",
+                "egress": True,
+                "reason": "remote",
+            },
+        ):
+            response = self._client().get("/api/v1/reconstruct/capability")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["available"] is True
+        assert body["customer_data_egress"] is True
+        assert body["requires_egress_acknowledgement"] is True
+        assert "leaves this ProofShape deployment" in body["message"]
+
+    def test_viewer_capability_never_advertises_a_submit_action(self):
+        test_app = FastAPI()
+        test_app.include_router(router)
+        test_app.dependency_overrides[require_api_key] = _override_auth_viewer
+        with patch(
+            "src.services.reconstruction_service.check_reconstruction_availability",
+            return_value={
+                "available": True,
+                "effective_backend": "local",
+                "egress": False,
+                "reason": "local",
+            },
+        ):
+            response = TestClient(test_app).get(
+                "/api/v1/reconstruct/capability"
+            )
+
+        assert response.status_code == 200
+        assert response.json()["available"] is True
+        assert response.json()["can_submit"] is False
 
 
 @pytest.mark.asyncio
@@ -276,11 +450,14 @@ async def test_reconstruction_job_commits_before_enqueue():
 
     events: list[str] = []
     session = MagicMock()
+    query_result = MagicMock()
+    query_result.scalars.return_value.first.return_value = None
+    session.execute = AsyncMock(return_value=query_result)
     session.add.side_effect = lambda _job: events.append("add")
     session.flush = AsyncMock(side_effect=lambda: events.append("flush"))
     session.commit = AsyncMock(side_effect=lambda: events.append("commit"))
-    pool = AsyncMock()
-    pool.enqueue_job.side_effect = lambda *args, **kwargs: events.append("enqueue")
+    queue = AsyncMock()
+    queue.enqueue.side_effect = lambda *args, **kwargs: events.append("enqueue")
 
     with (
         patch("src.auth.org_context.resolve_org", new=AsyncMock(return_value="org-1")),
@@ -289,7 +466,7 @@ async def test_reconstruction_job_commits_before_enqueue():
             "save_reconstruction_images",
             new=AsyncMock(side_effect=lambda *args: events.append("store")),
         ),
-        patch("src.jobs.arq_backend.get_arq_pool", new=AsyncMock(return_value=pool)),
+        patch("src.jobs.arq_backend.get_job_queue", new=AsyncMock(return_value=queue)),
         patch("src.reconstruction.preprocessing.validate_image"),
     ):
         job = await reconstruction_service.create_reconstruction_job(
@@ -298,6 +475,7 @@ async def test_reconstruction_job_commits_before_enqueue():
             [(b"image", "image/png")],
             None,
             None,
+            _SUBMISSION_ID,
         )
 
     assert job.status == "queued"
@@ -305,16 +483,19 @@ async def test_reconstruction_job_commits_before_enqueue():
 
 
 @pytest.mark.asyncio
-async def test_reconstruction_enqueue_failure_marks_terminal_and_cleans_blobs():
+async def test_reconstruction_enqueue_failure_retains_queued_row_for_reconciliation():
     from src.services import reconstruction_service
 
     captured: list[Job] = []
     session = MagicMock()
+    query_result = MagicMock()
+    query_result.scalars.return_value.first.return_value = None
+    session.execute = AsyncMock(return_value=query_result)
     session.add.side_effect = captured.append
     session.flush = AsyncMock()
     session.commit = AsyncMock()
-    pool = AsyncMock()
-    pool.enqueue_job.side_effect = RuntimeError("redis down")
+    queue = AsyncMock()
+    queue.enqueue.side_effect = RuntimeError("redis down")
     store = MagicMock()
 
     with (
@@ -325,24 +506,101 @@ async def test_reconstruction_enqueue_failure_marks_terminal_and_cleans_blobs():
             new=AsyncMock(),
         ),
         patch.object(reconstruction_service, "_reconstruction_store", return_value=store),
-        patch("src.jobs.arq_backend.get_arq_pool", new=AsyncMock(return_value=pool)),
+        patch("src.jobs.arq_backend.get_job_queue", new=AsyncMock(return_value=queue)),
         patch("src.reconstruction.preprocessing.validate_image"),
     ):
         with pytest.raises(
             reconstruction_service.ReconstructionQueueUnavailableError
-        ):
+        ) as exc_info:
             await reconstruction_service.create_reconstruction_job(
                 session,
                 _TEST_USER,
                 [(b"image", "image/png")],
                 None,
                 None,
+                _SUBMISSION_ID,
             )
 
-    assert captured[0].status == "failed"
-    assert captured[0].result_json["code"] == "RECONSTRUCTION_ENQUEUE_FAILED"
-    assert session.commit.await_count == 2
-    store.delete_prefix.assert_called_once_with(captured[0].ulid)
+    assert exc_info.value.job_id == _SUBMISSION_ID
+    assert captured[0].status == "queued"
+    assert captured[0].result_json is None
+    assert session.commit.await_count == 1
+    store.delete_prefix.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reconstruction_retry_republishes_same_committed_row_without_new_blobs():
+    from src.services import reconstruction_service
+
+    images = [(b"image", "image/png")]
+    existing = _make_job(ulid=_SUBMISSION_ID)
+    existing.params_json = {
+        "image_count": 1,
+        "process_types": None,
+        "rule_pack": None,
+        "request_fingerprint": reconstruction_service._request_fingerprint(
+            images, None, None
+        ),
+    }
+    session = AsyncMock()
+    query_result = MagicMock()
+    query_result.scalars.return_value.first.return_value = existing
+    session.execute.return_value = query_result
+    queue = AsyncMock()
+
+    with (
+        patch("src.auth.org_context.resolve_org", new=AsyncMock(return_value="org-1")),
+        patch("src.reconstruction.preprocessing.validate_image"),
+        patch("src.jobs.arq_backend.get_job_queue", new=AsyncMock(return_value=queue)),
+        patch.object(
+            reconstruction_service,
+            "save_reconstruction_images",
+            new=AsyncMock(),
+        ) as save_images,
+    ):
+        result = await reconstruction_service.create_reconstruction_job(
+            session,
+            _TEST_USER,
+            images,
+            None,
+            None,
+            _SUBMISSION_ID,
+        )
+
+    assert result is existing
+    session.add.assert_not_called()
+    save_images.assert_not_awaited()
+    queue.enqueue.assert_awaited_once_with(
+        "reconstruction",
+        existing.params_json,
+        _SUBMISSION_ID,
+    )
+
+
+@pytest.mark.asyncio
+async def test_reconstruction_idempotency_key_rejects_different_input():
+    from src.services import reconstruction_service
+
+    existing = _make_job(ulid=_SUBMISSION_ID)
+    existing.params_json = {"request_fingerprint": "different"}
+    session = AsyncMock()
+    query_result = MagicMock()
+    query_result.scalars.return_value.first.return_value = existing
+    session.execute.return_value = query_result
+
+    with (
+        patch("src.auth.org_context.resolve_org", new=AsyncMock(return_value="org-1")),
+        patch("src.reconstruction.preprocessing.validate_image"),
+        pytest.raises(reconstruction_service.ReconstructionIdempotencyConflictError),
+    ):
+        await reconstruction_service.create_reconstruction_job(
+            session,
+            _TEST_USER,
+            [(b"new-image", "image/png")],
+            None,
+            None,
+            _SUBMISSION_ID,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -454,6 +712,7 @@ class TestAutoFeed:
         mock_job.ulid = job_ulid
         mock_job.user_id = 42
         mock_job.org_id = "01ORGRECONSTRUCTIONTEST001"
+        mock_job.job_type = "reconstruction"
         mock_job.status = "queued"
         mock_job.params_json = {
             "image_count": 1,
@@ -490,13 +749,17 @@ class TestAutoFeed:
         with (
             patch("src.db.engine.get_session_factory", return_value=mock_session_factory),
             patch("src.services.reconstruction_service.RECON_BLOB_DIR", blob_dir),
+            patch(
+                "src.services.reconstruction_service.require_job_backend_authorization",
+                return_value={"available": True, "egress": False},
+            ),
             patch("src.services.reconstruction_service.get_reconstruction_engine", return_value=mock_engine),
             patch("src.services.reconstruction_service.save_reconstruction_mesh", new_callable=AsyncMock, return_value=str(tmp_path / "mesh.stl")),
             patch("src.reconstruction.preprocessing.remove_background", side_effect=lambda img: img),
             patch(
                 "src.services.analysis_service.run_analysis",
                 new_callable=AsyncMock,
-                return_value=SimpleNamespace(
+                return_value=AnalysisRun(
                     result={"verdict": "pass"}, analysis_id=10
                 ),
             ),
@@ -505,8 +768,100 @@ class TestAutoFeed:
 
             result = await run_reconstruction_job({}, job_ulid)
 
-        assert result.get("analysis_id") == "01ANALYSIS000000000001"
-        assert result.get("analysis_url") == "/api/v1/analyses/01ANALYSIS000000000001"
+        assert result["analysis"] == {
+            "id": "01ANALYSIS000000000001",
+            "url": "/api/v1/analyses/01ANALYSIS000000000001",
+        }
         assert "reconstruction" in result
         assert result["reconstruction"]["method"] == "triposr_remote"
+        assert result["reconstruction"]["confidence"]["scale"] == "unit_interval"
+        assert 0 <= result["reconstruction"]["confidence"]["score"] <= 1
+        assert result["reconstruction"]["mesh"] == {
+            "url": f"/api/v1/reconstructions/{job_ulid}/mesh.stl",
+            "face_count": 12,
+        }
         assert mock_job.status == "done"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["done", "partial", "failed"])
+async def test_reconstruction_worker_preserves_terminal_result(status):
+    from src.jobs.reconstruction_tasks import run_reconstruction_job
+
+    job = _make_job(ulid=_SUBMISSION_ID, status=status)
+    job.result_json = {"preserved": status}
+    session = AsyncMock()
+    query_result = MagicMock()
+    query_result.scalars.return_value.first.return_value = job
+    session.execute.return_value = query_result
+    context = AsyncMock()
+    context.__aenter__.return_value = session
+    context.__aexit__.return_value = False
+    factory = MagicMock(return_value=context)
+
+    with patch("src.db.engine.get_session_factory", return_value=factory):
+        result = await run_reconstruction_job({}, _SUBMISSION_ID)
+
+    assert result == {"preserved": status}
+    assert job.status == status
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reconstruction_worker_does_not_duplicate_running_first_attempt():
+    from src.jobs.reconstruction_tasks import run_reconstruction_job
+
+    job = _make_job(ulid=_SUBMISSION_ID, status="running")
+    session = AsyncMock()
+    query_result = MagicMock()
+    query_result.scalars.return_value.first.return_value = job
+    session.execute.return_value = query_result
+    context = AsyncMock()
+    context.__aenter__.return_value = session
+    context.__aexit__.return_value = False
+    factory = MagicMock(return_value=context)
+
+    with patch("src.db.engine.get_session_factory", return_value=factory):
+        result = await run_reconstruction_job({"job_try": 1}, _SUBMISSION_ID)
+
+    assert result == {"status": "running"}
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_worker_blocks_deferred_remote_egress_before_reading_customer_images():
+    from src.jobs.reconstruction_tasks import run_reconstruction_job
+    from src.services import reconstruction_service
+
+    job = _make_job(ulid=_SUBMISSION_ID, status="queued")
+    job.params_json = {"egress_acknowledged": False}
+    session = AsyncMock()
+    query_result = MagicMock()
+    query_result.scalars.return_value.first.return_value = job
+    session.execute.return_value = query_result
+    context = AsyncMock()
+    context.__aenter__.return_value = session
+    context.__aexit__.return_value = False
+    factory = MagicMock(return_value=context)
+    load_images = MagicMock()
+
+    with (
+        patch("src.db.engine.get_session_factory", return_value=factory),
+        patch(
+            "src.services.reconstruction_service.require_job_backend_authorization",
+            side_effect=(
+                reconstruction_service.ReconstructionEgressAcknowledgementRequiredError(
+                    "Submit a new acknowledged request."
+                )
+            ),
+        ),
+        patch(
+            "src.services.reconstruction_service.load_reconstruction_images",
+            new=load_images,
+        ),
+    ):
+        result = await run_reconstruction_job({}, _SUBMISSION_ID)
+
+    assert result["code"] == "RECONSTRUCTION_EGRESS_ACKNOWLEDGEMENT_REQUIRED"
+    assert job.status == "failed"
+    load_images.assert_not_called()

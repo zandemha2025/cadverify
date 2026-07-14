@@ -21,16 +21,16 @@ instead of silently egressing or throwing a confusing 500.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import importlib.util
 import logging
 import os
 import re
-from datetime import datetime, timezone
 from typing import BinaryIO, Optional
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from ulid import ULID
 
 from src.auth.org_context import caller_org_subquery
 from src.auth.require_api_key import AuthedUser
@@ -45,9 +45,13 @@ RECON_BLOB_DIR = os.getenv("RECON_BLOB_DIR", "/data/blobs/reconstruct")
 DEFAULT_RECONSTRUCTION_BACKEND = "local"
 
 _TRUTHY = {"1", "true", "yes", "on"}
+_PINNED_REPLICATE_MODEL_RE = re.compile(
+    r"^[a-z0-9](?:[a-z0-9-]{0,62})/[a-z0-9](?:[a-z0-9._-]{0,127})"
+    r":[a-f0-9]{64}$"
+)
 
 # ULID validation: 26 alphanumeric characters (Crockford Base32)
-_ULID_RE = re.compile(r"^[0-9A-Za-z]{26}$")
+_ULID_RE = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
 
 
 def _reconstruction_store():
@@ -85,16 +89,67 @@ class ReconstructionUnavailableError(RuntimeError):
     code = "RECONSTRUCTION_UNAVAILABLE"
 
 
+class ReconstructionEgressAcknowledgementRequiredError(
+    ReconstructionUnavailableError
+):
+    """The queued request did not authorize the current remote backend."""
+
+    code = "RECONSTRUCTION_EGRESS_ACKNOWLEDGEMENT_REQUIRED"
+
+
 class ReconstructionQueueUnavailableError(RuntimeError):
     """A persisted reconstruction job could not be scheduled."""
 
     code = "RECONSTRUCTION_ENQUEUE_FAILED"
+
+    def __init__(self, message: str, job_id: str) -> None:
+        super().__init__(message)
+        self.job_id = job_id
+
+
+class ReconstructionIdempotencyConflictError(ValueError):
+    """An idempotency key was reused for different reconstruction input."""
 
 
 def _validate_ulid(ulid: str) -> None:
     """Validate ULID format to prevent path traversal (threat model)."""
     if not _ULID_RE.match(ulid):
         raise ValueError(f"Invalid ULID format: {ulid}")
+
+
+def _request_fingerprint(
+    images: list[tuple[bytes, str]],
+    process_types: str | None,
+    rule_pack: str | None,
+    egress_acknowledged: bool = False,
+) -> str:
+    """Hash the complete reconstruction request without persisting image bytes."""
+    digest = hashlib.sha256()
+    digest.update((process_types or "").encode("utf-8"))
+    digest.update(b"\0")
+    digest.update((rule_pack or "").encode("utf-8"))
+    digest.update(b"\0egress_acknowledged=")
+    digest.update(b"1" if egress_acknowledged else b"0")
+    for image_bytes, content_type in images:
+        digest.update(b"\0")
+        digest.update(content_type.encode("utf-8"))
+        digest.update(len(image_bytes).to_bytes(8, "big"))
+        digest.update(hashlib.sha256(image_bytes).digest())
+    return digest.hexdigest()
+
+
+async def _publish_reconstruction_job(job: Job) -> None:
+    """Offer a committed queued row to ARQ using its deterministic job ID."""
+    from src.jobs.arq_backend import get_job_queue
+
+    try:
+        queue = await get_job_queue()
+        await queue.enqueue("reconstruction", dict(job.params_json or {}), job.ulid)
+    except Exception as exc:
+        raise ReconstructionQueueUnavailableError(
+            "Reconstruction was retained but publication could not be confirmed",
+            job.ulid,
+        ) from exc
 
 
 def configured_backend() -> str:
@@ -111,6 +166,34 @@ def remote_egress_allowed() -> bool:
     cloud.  It must be an explicit, informed choice -- never default-on.
     """
     return os.getenv("RECONSTRUCTION_ALLOW_REMOTE_EGRESS", "").strip().lower() in _TRUTHY
+
+
+def remote_backend_configuration_error() -> str | None:
+    """Return a safe operator-facing reason when remote inference is incomplete.
+
+    Community model APIs are mutable unless a concrete version is selected.
+    Requiring ``owner/model:<64-hex-version>`` makes the inference dependency an
+    explicit release input instead of silently following a provider's latest
+    model. The provider token is checked only for presence and is never returned.
+    """
+    if not os.getenv("REPLICATE_API_TOKEN", "").strip():
+        return "the approved reconstruction provider credential is missing"
+    model = os.getenv("TRIPOSR_REPLICATE_MODEL", "").strip().lower()
+    if not _PINNED_REPLICATE_MODEL_RE.fullmatch(model):
+        return (
+            "the reconstruction provider model is not pinned to an approved "
+            "64-character version"
+        )
+    return None
+
+
+def _require_remote_backend_configuration() -> None:
+    reason = remote_backend_configuration_error()
+    if reason is not None:
+        raise ReconstructionUnavailableError(
+            "Remote image-to-3D is not available in this deployment because "
+            f"{reason}."
+        )
 
 
 def local_backend_available() -> bool:
@@ -140,6 +223,7 @@ def resolve_reconstruction_backend() -> tuple[str, bool]:
 
     # Explicitly choosing remote IS an informed opt-in to third-party egress.
     if backend == "remote":
+        _require_remote_backend_configuration()
         return "remote", True
 
     if backend == "none":
@@ -153,6 +237,7 @@ def resolve_reconstruction_backend() -> tuple[str, bool]:
             return "local", False
         # No local model. Only egress if the operator explicitly opted in.
         if remote_egress_allowed():
+            _require_remote_backend_configuration()
             return "remote", True
         raise ReconstructionUnavailableError(
             "Reconstruction is not available in this deployment: no local model "
@@ -195,6 +280,25 @@ def check_reconstruction_availability() -> dict:
             else "local reconstruction -- no customer data leaves the deployment"
         ),
     }
+
+
+def require_job_backend_authorization(job_params: dict) -> dict:
+    """Resolve the current backend and prevent consent-free deferred egress.
+
+    Deployment configuration can change after a job is accepted but before a
+    worker consumes it. A request accepted for a local backend must never begin
+    using a remote backend merely because operators changed configuration while
+    it was queued.
+    """
+    availability = check_reconstruction_availability()
+    if not availability["available"]:
+        raise ReconstructionUnavailableError(str(availability["reason"]))
+    if availability.get("egress") and job_params.get("egress_acknowledged") is not True:
+        raise ReconstructionEgressAcknowledgementRequiredError(
+            "Remote reconstruction was not authorized for this queued request. "
+            "Submit a new request after acknowledging third-party processing."
+        )
+    return availability
 
 
 def get_reconstruction_engine():
@@ -295,6 +399,8 @@ async def create_reconstruction_job(
     images: list[tuple[bytes, str]],
     process_types: str | None,
     rule_pack: str | None,
+    submission_id: str,
+    egress_acknowledged: bool = False,
 ) -> Job:
     """Create a reconstruction job: validate images, persist Job row, save blobs, enqueue.
 
@@ -308,6 +414,8 @@ async def create_reconstruction_job(
     Returns:
         The created Job ORM instance.
     """
+    _validate_ulid(submission_id)
+
     # Validate image count
     if len(images) < 1 or len(images) > 4:
         raise ValueError("Upload 1-4 images for reconstruction")
@@ -316,23 +424,83 @@ async def create_reconstruction_job(
     for img_bytes, content_type in images:
         validate_image(img_bytes, content_type)
 
-    # Create Job row
+    # A browser-generated ULID is both the public job ID and the database
+    # idempotency key.  The unique jobs.ulid constraint makes retried multipart
+    # POSTs converge on one durable row without a new migration.
     from src.auth.org_context import resolve_org
 
+    org_id = await resolve_org(session, user.user_id)
+    fingerprint = _request_fingerprint(
+        images,
+        process_types,
+        rule_pack,
+        egress_acknowledged,
+    )
+    existing = (
+        await session.execute(
+            select(Job).where(
+                Job.ulid == submission_id,
+                Job.org_id == org_id,
+                Job.job_type == "reconstruction",
+            )
+        )
+    ).scalars().first()
+    if existing is not None:
+        stored_fingerprint = (existing.params_json or {}).get("request_fingerprint")
+        if stored_fingerprint != fingerprint:
+            raise ReconstructionIdempotencyConflictError(
+                "Idempotency-Key was already used for different reconstruction input"
+            )
+        if (
+            existing.status == "failed"
+            and isinstance(existing.result_json, dict)
+            and existing.result_json.get("code") == "RECONSTRUCTION_ENQUEUE_FAILED"
+        ):
+            existing.status = "queued"
+            existing.result_json = None
+            existing.completed_at = None
+            await session.commit()
+        if existing.status == "queued":
+            await _publish_reconstruction_job(existing)
+        return existing
+
     job = Job(
-        ulid=str(ULID()),
+        ulid=submission_id,
         user_id=user.user_id,
-        org_id=await resolve_org(session, user.user_id),
+        org_id=org_id,
         job_type="reconstruction",
         status="queued",
         params_json={
             "image_count": len(images),
             "process_types": process_types,
             "rule_pack": rule_pack,
+            "egress_acknowledged": egress_acknowledged,
+            "request_fingerprint": fingerprint,
         },
     )
     session.add(job)
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        await session.rollback()
+        concurrent = (
+            await session.execute(
+                select(Job).where(
+                    Job.ulid == submission_id,
+                    Job.org_id == org_id,
+                    Job.job_type == "reconstruction",
+                )
+            )
+        ).scalars().first()
+        if concurrent is None or (
+            concurrent.params_json or {}
+        ).get("request_fingerprint") != fingerprint:
+            raise ReconstructionIdempotencyConflictError(
+                "Idempotency-Key was already used for another request"
+            ) from exc
+        if concurrent.status == "queued":
+            await _publish_reconstruction_job(concurrent)
+        return concurrent
 
     # Persist blobs and the DB row before enqueue. This closes the historical
     # race where a fast worker could consume the job before the request-scoped
@@ -344,26 +512,10 @@ async def create_reconstruction_job(
         await _cleanup_reconstruction_prefix(job.ulid)
         raise
 
-    # Enqueue arq task. A queue outage leaves an honest terminal row and no
-    # orphaned customer blobs instead of a forever-queued record.
-    from src.jobs.arq_backend import get_arq_pool
-
-    try:
-        pool = await get_arq_pool()
-        await pool.enqueue_job(
-            "run_reconstruction_job",
-            job.ulid,
-            _job_id=f"recon_{job.ulid}",
-        )
-    except Exception as exc:
-        job.status = "failed"
-        job.result_json = {"code": "RECONSTRUCTION_ENQUEUE_FAILED"}
-        job.completed_at = datetime.now(timezone.utc)
-        await session.commit()
-        await _cleanup_reconstruction_prefix(job.ulid)
-        raise ReconstructionQueueUnavailableError(
-            "Reconstruction was accepted but could not be scheduled"
-        ) from exc
+    # Publication is outcome-ambiguous on network failure.  Keep the committed
+    # row and customer input so the same Idempotency-Key can safely reconcile
+    # publication on the API client's retry.
+    await _publish_reconstruction_job(job)
 
     logger.info(
         "Created reconstruction job %s with %d images for user %s",

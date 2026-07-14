@@ -34,7 +34,7 @@ const runners = [
 ];
 
 // Conservative slide mapping: a slide is build-verified only when every named
-// LOCAL_100 contract passed for this exact clean served build. Slides that also
+// Local gate contracts passed for this exact clean served build. Slides that also
 // require the separate training-guide/deck supplement, customer data, or an
 // external provider are intentionally absent.
 const SLIDE_CONTRACTS = Object.freeze({
@@ -79,7 +79,7 @@ const SLIDE_CONTRACTS = Object.freeze({
 });
 
 function fail(message) {
-  process.stderr.write(`LOCAL_100 precondition failed: ${message}\n`);
+  process.stderr.write(`LOCAL_GATE precondition failed: ${message}\n`);
   process.exit(1);
 }
 
@@ -205,7 +205,7 @@ const childEnv = {
 };
 const runnerFailures = [];
 for (const [index, runner] of runners.entries()) {
-  process.stdout.write(`\n[LOCAL_100 ${index + 1}/${runners.length}] ${runner}\n`);
+  process.stdout.write(`\n[LOCAL_GATE ${index + 1}/${runners.length}] ${runner}\n`);
   const result = spawnSync(process.execPath, [path.join(__dirname, runner)], {
     cwd: repoRoot,
     env: { ...childEnv, E2E_CLIENT_IP: `198.51.100.${100 + index}` },
@@ -255,7 +255,7 @@ const releasePass = (
   runnerFailures.length === 0
   && gate.status === 0
   && gateResult?.status === "PASS"
-  && gateResult?.claim === "LOCAL_100"
+  && gateResult?.claim === "LOCAL_GATE_PASS"
   && suiteSetExact
   && finalDirtyText === ""
   && finalBuildProblems.length === 0
@@ -270,7 +270,7 @@ const slideEvidence = Object.fromEntries(Object.entries(SLIDE_CONTRACTS).map(([s
 const releaseManifest = {
   schemaVersion: 1,
   status: releasePass ? "PASS" : "FAIL",
-  claim: releasePass ? "LOCAL_100" : null,
+  claim: releasePass ? "LOCAL_GATE_PASS" : null,
   runId,
   generatedAt: new Date().toISOString(),
   startedAt,

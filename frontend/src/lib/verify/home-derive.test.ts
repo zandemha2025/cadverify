@@ -269,3 +269,29 @@ test("post-verification program and ground-truth steps are available but optiona
   assert.equal(steps[3].state, "optional");
   assert.match(steps[3].meta, /^optional/i);
 });
+
+test("day-zero setup distinguishes failed sources from loading and gives a retry path", () => {
+  const steps = buildDayZeroSetup({
+    machineCount: null,
+    recordCount: null,
+    programCount: null,
+    realActualCount: null,
+    unavailable: {
+      machines: true,
+      records: true,
+      programs: true,
+      actuals: true,
+    },
+  });
+
+  assert.deepEqual(steps.map((step) => step.state), [
+    "unavailable",
+    "unavailable",
+    "unavailable",
+    "unavailable",
+  ]);
+  for (const step of steps) {
+    assert.match(step.meta, /unavailable.*retry above/i);
+    assert.doesNotMatch(step.meta, /checking/i);
+  }
+});

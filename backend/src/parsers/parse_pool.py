@@ -560,7 +560,23 @@ def _extract_assembly_worker(data: bytes, suffix: str):
     meshes + world positions + product tree) IN THIS PROCESS. Module-level so
     ``ProcessPoolExecutor`` can pickle it by qualified name. Raises plain
     ``ValueError`` (route -> 400) for a bad/native/unmeshable file."""
-    from src.parsers.assembly_mesher import extract_assembly_from_bytes
+    from src.parsers.ap242_tessellated_parser import is_ap242_tessellated
+    from src.parsers.assembly_mesher import (
+        extract_assembly_from_bytes,
+        single_part_model_from_mesh,
+    )
+
+    # The AP242 embedded-tessellation branch is a supported single part but is
+    # not a B-rep that gmsh/OCC's assembly importer can read. Reuse the canonical
+    # mesh parser and return a truthful single-part classification instead of
+    # crashing a parser worker and emitting a misleading assembly 400.
+    if suffix.lower() in {".step", ".stp"} and is_ap242_tessellated(data):
+        mesh = tessellate(data, suffix)
+        return single_part_model_from_mesh(
+            mesh,
+            source_suffix=suffix,
+            name="embedded-tessellated-part",
+        )
 
     return extract_assembly_from_bytes(data, f"upload{suffix}")
 

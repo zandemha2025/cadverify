@@ -7,6 +7,10 @@ import {
   validateBuildIdentities,
 } from "./human-sim-release-evidence.mjs";
 import {
+  evidenceScreenshotReferences,
+  GOLDEN_PATH_EVIDENCE_SCHEMA_VERSION,
+  REQUIRED_VISUAL_STAGES,
+  screenshotPathMatchesId,
   validateGoldenPathEvidence,
   validateGoldenPathMap,
 } from "./golden-path-evidence.mjs";
@@ -27,6 +31,15 @@ export const LOCAL_FAILURE_IDS = [
 ];
 
 export const LOCAL_100_IDS = [...LOCAL_BROWSER_IDS, ...LOCAL_FAILURE_IDS];
+
+// These paths previously produced screenshots from a transitional UI state
+// while their API assertions described a later terminal state. Keep a named
+// same-moment DOM oracle blocking the release gate so that regression cannot
+// be hidden behind a merely existing PNG.
+export const REQUIRED_SCREENSHOT_ORACLES = Object.freeze({
+  "VER-05": "screenshot oracle: terminal Verify walk",
+  "ENT-04": "screenshot oracle: exact Programs economics",
+});
 
 export const CANONICAL_REPORT_CONTRACTS = Object.freeze([
   { suite: "public-auth-verify-golden-matrix", ids: [
@@ -76,6 +89,7 @@ export function evaluateLocal100({
   const candidates = new Map(LOCAL_100_IDS.map((id) => [id, []]));
   const namedReports = {};
   const observedSuites = new Set();
+  const screenshotOwners = new Map();
   const gateTime = Date.parse(expectedIdentity?.capturedAt);
 
   if (reports.length !== CANONICAL_REPORT_CONTRACTS.length) {
@@ -139,11 +153,16 @@ export function evaluateLocal100({
       }));
     }
 
-    if (report.data?.releaseEvidence?.schemaVersion !== 1) {
+    const releaseEvidenceSchema = report.data?.releaseEvidence?.schemaVersion;
+    const requiresVisualSchema = contract.ids.some((id) => REQUIRED_VISUAL_STAGES[id]?.length > 0);
+    if (
+      (requiresVisualSchema && releaseEvidenceSchema !== GOLDEN_PATH_EVIDENCE_SCHEMA_VERSION) ||
+      (!requiresVisualSchema && ![1, GOLDEN_PATH_EVIDENCE_SCHEMA_VERSION].includes(releaseEvidenceSchema))
+    ) {
       problems.push(issue("invalid_release_evidence_schema", {
         report: name,
-        expected: 1,
-        actual: report.data?.releaseEvidence?.schemaVersion ?? null,
+        expected: requiresVisualSchema ? GOLDEN_PATH_EVIDENCE_SCHEMA_VERSION : [1, GOLDEN_PATH_EVIDENCE_SCHEMA_VERSION],
+        actual: releaseEvidenceSchema ?? null,
       }));
     }
 
@@ -171,6 +190,27 @@ export function evaluateLocal100({
     for (const [id, evidence] of Object.entries(goldenPaths)) {
       if (!contract.ids.includes(id) || !candidates.has(id)) continue;
       candidates.get(id).push({ name, evidence });
+      for (const reference of evidenceScreenshotReferences(evidence)) {
+        const owner = { report: name, id, stage: reference.stage };
+        const normalized = path.resolve(reference.screenshot).toLocaleLowerCase();
+        if (!screenshotPathMatchesId(id, reference.screenshot)) {
+          problems.push(issue("screenshot_id_mismatch", {
+            ...owner,
+            screenshot: reference.screenshot,
+            expected: `filename containing ${id}`,
+          }));
+        }
+        const previous = screenshotOwners.get(normalized);
+        if (previous) {
+          problems.push(issue("duplicate_screenshot_path", {
+            screenshot: reference.screenshot,
+            first: previous,
+            duplicate: owner,
+          }));
+        } else {
+          screenshotOwners.set(normalized, owner);
+        }
+      }
     }
   });
 
@@ -207,13 +247,35 @@ export function evaluateLocal100({
         }
         continue;
       }
-      if (!screenshotExists(evidence.screenshot)) {
-        problems.push(issue("missing_screenshot_file", {
-          id,
-          report: name,
-          screenshot: evidence.screenshot,
-        }));
+      const screenshotReferences = evidenceScreenshotReferences(evidence);
+      const missingScreenshots = screenshotReferences.filter(
+        (reference) => !screenshotExists(reference.screenshot),
+      );
+      if (missingScreenshots.length > 0) {
+        for (const reference of missingScreenshots) {
+          problems.push(issue("missing_screenshot_file", {
+            id,
+            report: name,
+            stage: reference.stage,
+            screenshot: reference.screenshot,
+          }));
+        }
         continue;
+      }
+      const requiredScreenshotOracle = REQUIRED_SCREENSHOT_ORACLES[id];
+      if (requiredScreenshotOracle) {
+        const oracle = evidence.assertions?.find(
+          (assertion) => assertion?.name === requiredScreenshotOracle,
+        );
+        if (!oracle || oracle.pass !== true) {
+          problems.push(issue("missing_screenshot_oracle", {
+            id,
+            report: name,
+            expected: requiredScreenshotOracle,
+            actual: oracle?.name ?? null,
+          }));
+          continue;
+        }
       }
       firstValid ||= evidence;
     }
@@ -226,9 +288,12 @@ export function evaluateLocal100({
     : "FAIL";
 
   return {
-    schemaVersion: 1,
+    schemaVersion: GOLDEN_PATH_EVIDENCE_SCHEMA_VERSION,
     status,
-    claim: status === "PASS" ? "LOCAL_100" : null,
+    // The matrix is a strong current-build release gate, but screenshot text
+    // is not independently OCR-verified for every row and external paths are
+    // intentionally absent. Do not overstate it as LOCAL_100.
+    claim: status === "PASS" ? "LOCAL_GATE_PASS" : null,
     buildIdentity: expectedIdentity,
     counts: {
       required: LOCAL_100_IDS.length,

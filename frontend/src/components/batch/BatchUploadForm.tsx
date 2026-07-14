@@ -9,17 +9,59 @@ import {
   BatchApiError,
   createBatch,
   type BatchCreateResponse,
+  type UploadProgress,
 } from "@/lib/api/batch";
+import { DirectUploadError } from "@/lib/api/direct-upload";
 import { Dropzone } from "@/components/ui/dropzone";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import {
   releaseSingleFlight,
   tryAcquireSingleFlight,
 } from "@/lib/single-flight";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024; // 5 GB
+
+function uploadStageCopy(progress: UploadProgress): string {
+  switch (progress.stage) {
+    case "checking":
+      return "Checking available upload path…";
+    case "hashing":
+      return "Checking ZIP integrity before upload…";
+    case "preparing":
+      return "Preparing secure direct upload…";
+    case "uploading":
+      return "Uploading ZIP directly…";
+    case "retrying":
+      return "Upload paused for an automatic retry";
+    case "completing":
+      return "Verifying uploaded parts…";
+    case "complete":
+      return "ZIP upload complete";
+    case "proxying":
+      return "Uploading ZIP through the application…";
+    case "creating":
+      return "Upload complete · Creating batch…";
+  }
+}
+
+function retryCopy(progress: UploadProgress): string | null {
+  if (
+    progress.stage !== "retrying" ||
+    progress.partNumber == null ||
+    progress.nextAttempt == null ||
+    progress.maxAttempts == null ||
+    progress.retryDelayMs == null
+  ) {
+    return null;
+  }
+
+  const seconds = progress.retryDelayMs / 1000;
+  const unit = seconds === 1 ? "second" : "seconds";
+  return `Part ${progress.partNumber} hit a temporary error. Retrying automatically in ${seconds} ${unit} (attempt ${progress.nextAttempt} of ${progress.maxAttempts}).`;
+}
 
 export default function BatchUploadForm() {
   const router = useRouter();
@@ -28,6 +70,11 @@ export default function BatchUploadForm() {
   const [webhookUrl, setWebhookUrl] = useState("");
   const [concurrencyLimit, setConcurrencyLimit] = useState(10);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
+  const [uploadError, setUploadError] = useState<{
+    message: string;
+    beforeBatchCreate: boolean;
+  } | null>(null);
   const [acceptedFailure, setAcceptedFailure] = useState<{
     batch: BatchCreateResponse;
     message: string;
@@ -46,6 +93,8 @@ export default function BatchUploadForm() {
       return;
     }
     setFile(dropped);
+    setUploadProgress(null);
+    setUploadError(null);
     setAcceptedFailure(null);
   }, []);
 
@@ -56,6 +105,8 @@ export default function BatchUploadForm() {
       return;
     }
     if (!tryAcquireSingleFlight(submissionLockRef)) return;
+    setUploadError(null);
+    setUploadProgress(null);
     setUploading(true);
 
     try {
@@ -63,15 +114,23 @@ export default function BatchUploadForm() {
         webhookUrl: webhookUrl || undefined,
         manifest: manifest || undefined,
         concurrencyLimit,
+        onUploadProgress: setUploadProgress,
       });
 
       toast.success("Batch created");
+      setUploadError(null);
       setAcceptedFailure(null);
       router.push(`/batch/${result.batch_id}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to create batch";
       if (err instanceof BatchApiError && err.acceptedBatch) {
         setAcceptedFailure({ batch: err.acceptedBatch, message });
+        setUploadError(null);
+      } else {
+        setUploadError({
+          message,
+          beforeBatchCreate: err instanceof DirectUploadError,
+        });
       }
       toast.error(message);
     } finally {
@@ -79,6 +138,8 @@ export default function BatchUploadForm() {
       setUploading(false);
     }
   };
+
+  const retryMessage = uploadProgress ? retryCopy(uploadProgress) : null;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -93,6 +154,71 @@ export default function BatchUploadForm() {
               : "ZIP archive up to 5 GB"
           }
         />
+        {uploading && uploadProgress && (
+          <div
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            data-upload-stage={uploadProgress.stage}
+            className="space-y-2 rounded-[var(--radius)] border border-border bg-muted/40 p-4"
+          >
+            <div className="flex items-center justify-between gap-4 text-sm">
+              <span className="font-medium text-foreground">
+                {uploadStageCopy(uploadProgress)}
+              </span>
+              {uploadProgress.percent != null && (
+                <span className="num shrink-0 text-muted-foreground">
+                  {uploadProgress.percent}%
+                </span>
+              )}
+            </div>
+            {uploadProgress.percent != null ? (
+              <Progress value={uploadProgress.percent} />
+            ) : (
+              <div
+                role="progressbar"
+                aria-label={uploadStageCopy(uploadProgress)}
+                className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
+              >
+                <div className="h-full w-1/3 animate-pulse rounded-full bg-primary" />
+              </div>
+            )}
+            {retryMessage && (
+              <p className="text-xs text-muted-foreground">
+                {retryMessage}
+              </p>
+            )}
+            {uploadProgress.stage === "proxying" && (
+              <p className="text-xs text-muted-foreground">
+                A byte percentage is unavailable for this compatibility upload.
+              </p>
+            )}
+          </div>
+        )}
+        {uploadError && (
+          <div
+            role="alert"
+            data-upload-error
+            className="rounded-[var(--radius)] border border-fail-border bg-fail-bg p-4 text-sm"
+          >
+            <div className="flex items-start gap-3">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0 text-fail" />
+              <div className="min-w-0 space-y-1">
+                <p className="font-semibold text-foreground">
+                  {uploadError.beforeBatchCreate
+                    ? "Upload did not finish"
+                    : "Batch creation is not confirmed"}
+                </p>
+                <p className="text-fail">{uploadError.message}</p>
+                <p className="text-muted-foreground">
+                  {uploadError.beforeBatchCreate
+                    ? "No batch was created. The ZIP remains selected so you can retry it."
+                    : "Check Recent batches before retrying so an interrupted response does not create a duplicate."}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
         {acceptedFailure && (
           <div
             role="alert"
@@ -168,7 +294,9 @@ export default function BatchUploadForm() {
           ? "Uploading…"
           : acceptedFailure
             ? "Retry this ZIP"
-            : "Start batch"}
+            : uploadError
+              ? "Retry upload"
+              : "Start batch"}
       </Button>
     </form>
   );

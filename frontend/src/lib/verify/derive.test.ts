@@ -16,6 +16,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   makeNowEstimate,
+  routeDfmOutcome,
   toolingEstimate,
   unitCostByQty,
   nearestQty,
@@ -91,6 +92,35 @@ test("makeNowEstimate follows decision.make_now_process and picks the stable hig
   assert.equal(mn?.process, "mjf");
   assert.equal(mn?.quantity, 10000); // largest-qty = fully amortized setup
   assert.equal(makeNowEstimate(r, 10)?.quantity, 10); // exact qty honored
+});
+
+test("route DFM blocks a generally valid part instead of presenting a false pass", () => {
+  const blocked = {
+    ...est("dlp", 100, 142.3),
+    dfm_ready: false,
+    dfm_verdict: "fail" as const,
+    dfm_blockers: ["Part exceeds build envelope for dlp: X 303>218, Y 485>123"],
+  };
+
+  assert.deepEqual(routeDfmOutcome("pass", blocked), {
+    verdict: "fail",
+    blocked: true,
+    primaryBlocker: "Part exceeds build envelope for dlp: X 303>218, Y 485>123",
+  });
+});
+
+test("route DFM reconciliation is fail-closed across pass, advisory, and unknown states", () => {
+  const pass = est("mjf", 100, 12.3);
+  const advisory = { ...pass, dfm_verdict: "issues" as const };
+  const inconsistent = { ...pass, dfm_blockers: ["Route blocker"] };
+
+  assert.equal(routeDfmOutcome("pass", pass).verdict, "pass");
+  assert.equal(routeDfmOutcome("pass", advisory).verdict, "issues");
+  assert.equal(routeDfmOutcome("issues", pass).verdict, "issues");
+  assert.equal(routeDfmOutcome("unknown", pass).verdict, "unknown");
+  assert.equal(routeDfmOutcome("fail", pass).verdict, "fail");
+  assert.equal(routeDfmOutcome("pass", inconsistent).blocked, true);
+  assert.equal(routeDfmOutcome("pass", null).verdict, "unknown");
 });
 
 test("toolingEstimate returns null when the engine declared no tooling route", () => {

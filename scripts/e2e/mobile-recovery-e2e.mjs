@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  captureVisualStep,
   makeGoldenPathEvidence,
   validateGoldenPathMap,
 } from "./golden-path-evidence.mjs";
@@ -230,17 +231,57 @@ class MobileRecoveryRun {
     return file;
   }
 
+  async captureStage(id, stage, {
+    requiredVisible,
+    forbiddenVisible = [],
+    terminal = true,
+    suffix = stage,
+  } = {}) {
+    return captureVisualStep(this.page, {
+      id,
+      stage,
+      terminal,
+      requiredVisible,
+      forbiddenVisible,
+      screenshot: path.join(screenshotDir, `${id.toLowerCase()}-${suffix}.png`),
+      fullPage: false,
+    });
+  }
+
   async bodyText() {
     return (await this.page.locator("body").innerText()).replace(/\s+/g, " ").trim();
   }
 
   async waitForSavedVerification() {
     await this.page
+      .getByRole("dialog", { name: "Verification pipeline" })
+      .waitFor({ state: "detached", timeout: 150_000 });
+    await this.page
       .getByRole("button", { name: /^Open the record/ })
       .first()
       .waitFor({ state: "visible", timeout: 150_000 });
     await this.page.waitForLoadState("networkidle", { timeout: 15_000 });
-    await this.page.waitForTimeout(250);
+    await this.waitForTerminalVisualState();
+  }
+
+  async waitForTerminalVisualState(timeout = 30_000) {
+    await this.page.waitForFunction(() => {
+      const visible = (element) => {
+        if (!(element instanceof HTMLElement) && !(element instanceof SVGElement)) return false;
+        const style = window.getComputedStyle(element);
+        if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) return false;
+        if (element.getAttribute("aria-hidden") === "true" || element.hasAttribute("hidden")) return false;
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      };
+      const blockers = document.querySelectorAll(
+        '[aria-busy="true"], [data-skeleton], [class*="skeleton" i], [class~="animate-pulse"], [data-loading="true"], [data-state="loading"], [aria-label*="loading" i], [class*="loading" i], [class~="animate-spin"]',
+      );
+      return ![...blockers].some(visible) && !/\b(?:COMPUTING|Loading)\b/i.test(document.body?.innerText || "");
+    }, null, { timeout });
+    await this.page.evaluate(() => new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    }));
   }
 
   async noHorizontalObstruction() {
@@ -297,7 +338,8 @@ class MobileRecoveryRun {
       }
       assert(this.pathConsoleErrors.length === 0, `${id} console errors: ${this.pathConsoleErrors.join(" | ")}`);
       assert(this.pathRequestFailures.length === 0, `${id} request failures: ${this.pathRequestFailures.join(" | ")}`);
-      const screenshot = result.screenshot || (await this.screenshot(id));
+      const visualSteps = Array.isArray(result.visualSteps) ? result.visualSteps : null;
+      const screenshot = result.screenshot || visualSteps?.at(-1)?.screenshot || (await this.screenshot(id));
       const observed = {
         url: this.page.url(),
         visible: result.visible,
@@ -314,6 +356,7 @@ class MobileRecoveryRun {
         actions: result.actions,
         observed,
         screenshot,
+        ...(visualSteps ? { visualSteps } : {}),
         consoleErrors: [],
         requestFailures: [],
         assertions: result.assertions,
@@ -781,9 +824,15 @@ class MobileRecoveryRun {
         { width: 1440, height: 900 },
       ];
       const observations = [];
+      const visualSteps = [];
       this.artifacts.ver09Viewports = {};
       const expected = (await this.designList()).find((design) => design.name === this.primaryDesignName);
       assert(expected, "VER-09 primary design was not persisted");
+      const durableRecords = await this.costDecisionList();
+      const expectedFilename = `${this.primaryDesignName.replace(/[^A-Za-z0-9_.-]+/g, "_").replace(/^[._]+|[._]+$/g, "").slice(0, 80)}.step`;
+      const expectedRecord = durableRecords.find((record) => record.filename === expectedFilename);
+      assert(expectedRecord, `VER-09 requires a durable ${expectedFilename} verification record`);
+      const expectedRecordName = expectedRecord.label || expectedRecord.filename;
       for (const viewport of viewports) {
         await this.setViewport(viewport.width, viewport.height);
         await this.page.goto("/designs", { waitUntil: "domcontentloaded" });
@@ -799,6 +848,7 @@ class MobileRecoveryRun {
         await this.page.keyboard.press("Enter");
         await this.page.waitForURL((url) => url.pathname === "/verify" && url.searchParams.get("revision") === "1");
         await this.page.getByText("23.32 cm³", { exact: false }).first().waitFor({ timeout: 120_000 });
+        await this.waitForSavedVerification();
         let recordsControl;
         if (viewport.width <= 760) {
           recordsControl = this.page.getByRole("combobox", { name: "Verify workspace section" });
@@ -810,11 +860,32 @@ class MobileRecoveryRun {
           await this.page.keyboard.press("Enter");
         }
         await this.page.getByRole("heading", { name: "Records", exact: true }).waitFor();
+        const recordButton = this.page
+          .getByRole("button", { name: new RegExp(escapeRegExp(expectedRecordName), "i") })
+          .first();
+        await recordButton.waitFor({ state: "visible", timeout: 30_000 });
+        await recordButton.focus();
+        const recordResponsePromise = this.page.waitForResponse(
+          (response) => response.request().method() === "GET" &&
+            new URL(response.url()).pathname === `/api/proxy/cost-decisions/${expectedRecord.id}`,
+          { timeout: 30_000 },
+        );
+        await this.page.keyboard.press("Enter");
+        const recordResponse = await recordResponsePromise;
+        assert(recordResponse.status() === 200, `VER-09 Records detail returned ${recordResponse.status()}`);
+        await this.page.getByTestId("record-disposition-summary").waitFor({ state: "visible", timeout: 30_000 });
+        await this.page.getByText("Open governance", { exact: false }).waitFor({ state: "visible", timeout: 30_000 });
+        await this.waitForTerminalVisualState();
         const layout = await this.noHorizontalObstruction();
         const url = this.page.url();
         const key = `${viewport.width}x${viewport.height}`;
-        const screenshot = await this.screenshot("VER-09", key);
-        this.artifacts.ver09Viewports[key] = screenshot;
+        const visualStep = await this.captureStage("VER-09", `records-${key}`, {
+          suffix: key,
+          requiredVisible: [expectedRecordName, "Open governance"],
+          forbiddenVisible: ["Verification is running."],
+        });
+        visualSteps.push(visualStep);
+        this.artifacts.ver09Viewports[key] = visualStep.screenshot;
         observations.push({
           key,
           url,
@@ -822,6 +893,9 @@ class MobileRecoveryRun {
           recordsControl: viewport.width <= 760 ? "keyboard-operated section select" : "keyboard-operated Records button",
           design: new URL(url).searchParams.get("design"),
           revision: new URL(url).searchParams.get("revision"),
+          selectedRecord: expectedRecordName,
+          selectedRecordId: expectedRecord.id,
+          recordStatus: recordResponse.status(),
         });
       }
       const after = (await this.designList()).find((design) => design.name === this.primaryDesignName);
@@ -830,22 +904,25 @@ class MobileRecoveryRun {
         persona: "keyboard-only manufacturing reviewer moving from phone to tablet to desktop",
         preconditions: ["completed R1 verification", "same authenticated organization session", "375x812, 768x1024, and 1440x900 viewports"],
         actions: ["focused the ready design card and pressed Enter", "focused Verify revision 1 and pressed Enter", "used the responsive Records control from the keyboard", "repeated at all three viewport classes"],
-        visible: observations.map(({ key }) => `${key}: ready design, Verify result, Records navigation, measured 23.32 cm³`),
+        visible: observations.map(({ key }) => `${key}: selected ${expectedRecordName} in Records with Open governance visible`),
         persisted: { designId: expected.id, revisionId: expected.revision?.id, afterDesignId: after?.id, afterRevisionId: after?.revision?.id },
         numeric: observations.map(({ key, layout }) => ({ viewport: key, horizontalOverflowPx: layout.overflowPx, obstructedControls: layout.visibleControlsOutsideViewport.length })),
         authorization: "the same signed-in organization record and revision remained reachable at every viewport",
         recovery: "viewport changes and keyboard navigation did not reset, duplicate, or lose the selected revision",
         screenshot,
         assertions: [
-          ...observations.flatMap(({ key, layout, design, revision }) => [
+          ...observations.flatMap(({ key, layout, design, revision, selectedRecordId, recordStatus }) => [
             assertion(`${key} horizontal overflow`, 0, layout.overflowPx),
             assertion(`${key} obstructed controls`, 0, layout.visibleControlsOutsideViewport.length),
             assertion(`${key} design query`, expected.id, design),
             assertion(`${key} revision query`, "1", revision),
+            assertion(`${key} selected record id`, expectedRecord.id, selectedRecordId),
+            assertion(`${key} Records detail status`, 200, recordStatus),
           ]),
           assertion("design identity after responsive loop", expected.id, after?.id),
           assertion("revision identity after responsive loop", expected.revision?.id, after?.revision?.id),
         ],
+        visualSteps,
       };
     });
   }
@@ -861,16 +938,31 @@ class MobileRecoveryRun {
         await input.setInputFiles(invalidStepFixture);
         await this.page.getByText("We couldn’t read this file.", { exact: true }).waitFor({ timeout: 120_000 });
       });
+      await this.page
+        .getByRole("dialog", { name: "Verification pipeline" })
+        .waitFor({ state: "detached", timeout: 150_000 });
+      await this.waitForTerminalVisualState();
       const failureText = await this.bodyText();
-      const failureScreenshot = await this.screenshot("FAIL-01", "invalid-native-format");
-      this.artifacts.fail01Invalid = failureScreenshot;
+      const failureStep = await this.captureStage("FAIL-01", "failure", {
+        suffix: "invalid-native-format",
+        requiredVisible: [
+          "We couldn’t read this file.",
+          "Re-export the original part as a clean STL, STEP, STP, IGES, or IGS file",
+        ],
+      });
+      this.artifacts.fail01Invalid = failureStep.screenshot;
       await input.setInputFiles(trackedCubeFixture);
       await this.page.getByText("20.0 × 15.0 × 10.0 mm", { exact: false }).first().waitFor({ timeout: 150_000 });
+      await this.waitForSavedVerification();
       const recoveryText = await this.bodyText();
       const decisionsAfter = await this.costDecisionList();
       const cubeDecisions = decisionsAfter.filter((decision) => decision.filename === "cube.step");
-      const recoveryScreenshot = await this.screenshot("FAIL-01", "valid-step-recovered");
-      this.artifacts.fail01Recovery = recoveryScreenshot;
+      const recoveryStep = await this.captureStage("FAIL-01", "recovery", {
+        suffix: "valid-step-recovered",
+        requiredVisible: ["cube.step", "20.0 × 15.0 × 10.0 mm", "Open the record"],
+        forbiddenVisible: ["We couldn’t read this file."],
+      });
+      this.artifacts.fail01Recovery = recoveryStep.screenshot;
       return {
         persona: "mobile manufacturing engineer correcting an unreadable STEP exchange export",
         preconditions: ["authenticated Verify workspace", "375x812 viewport", "a .step file with invalid magic bytes", "tracked backend/tests/assets/cube.step"],
@@ -880,7 +972,8 @@ class MobileRecoveryRun {
         numeric: { invalidRowsCreated: decisionsAfter.length - decisionsBefore.length - cubeDecisions.length, recoveredCubeDecisions: cubeDecisions.length, envelopeMm: [20, 15, 10] },
         authorization: "the same authenticated organization session handled rejection and recovery",
         recovery: "the correct tracked STEP succeeded without account recreation or session replacement",
-        screenshot: failureScreenshot,
+        screenshot: failureStep.screenshot,
+        visualSteps: [failureStep, recoveryStep],
         assertions: [
           assertion("invalid file title", true, /We couldn’t read this file\./.test(failureText)),
           assertion("clean export guidance", true, /re-export.*STL, STEP, STP, IGES, or IGS/i.test(failureText)),
@@ -928,15 +1021,32 @@ class MobileRecoveryRun {
         await input.setInputFiles(trackedCubeFixture);
         await this.page.getByText("Verification is temporarily busy.", { exact: true }).waitFor({ timeout: 60_000 });
       });
+      await this.page
+        .getByRole("dialog", { name: "Verification pipeline" })
+        .waitFor({ state: "detached", timeout: 150_000 });
+      await this.waitForTerminalVisualState();
       const failureText = await this.bodyText();
-      const failureScreenshot = await this.screenshot("FAIL-03", "capacity-429");
-      this.artifacts.fail03Capacity = failureScreenshot;
+      const failureStep = await this.captureStage("FAIL-03", "failure", {
+        suffix: "capacity-429",
+        requiredVisible: [
+          "Verification is temporarily busy.",
+          "No routing, DFM, or should-cost was computed",
+          "Retry verification",
+        ],
+      });
+      this.artifacts.fail03Capacity = failureStep.screenshot;
       await this.page.unroute("**/api/proxy/validate**", handler);
       await this.page.getByRole("button", { name: "Retry verification →" }).click();
       await this.page.getByText("20.0 × 15.0 × 10.0 mm", { exact: false }).first().waitFor({ timeout: 150_000 });
+      await this.waitForSavedVerification();
+      await this.page.getByText("Verification is temporarily busy.", { exact: true }).waitFor({ state: "hidden", timeout: 30_000 });
       const recoveredText = await this.bodyText();
       const decisionsAfter = await this.costDecisionList();
-      const screenshot = await this.screenshot("FAIL-03", "capacity-retry-complete");
+      const recoveryStep = await this.captureStage("FAIL-03", "recovery", {
+        suffix: "capacity-retry-complete",
+        requiredVisible: ["cube.step", "20.0 × 15.0 × 10.0 mm", "Open the record"],
+        forbiddenVisible: ["Verification is temporarily busy."],
+      });
       return {
         persona: "mobile engineer retrying Verify after organization capacity is released",
         preconditions: ["tracked cube.step already selected in Verify", "390x844 viewport", "both analysis POSTs injected as 429 capacity responses"],
@@ -946,7 +1056,8 @@ class MobileRecoveryRun {
         numeric: { injected429Responses: injectedResponses, decisionDeltaAfterRetry: decisionsAfter.length - decisionsBefore.length },
         authorization: "capacity was bounded to the authenticated organization and did not disclose other work",
         recovery: "one explicit retry reused the selected CAD bytes and completed after capacity returned",
-        screenshot: failureScreenshot,
+        screenshot: failureStep.screenshot,
+        visualSteps: [failureStep, recoveryStep],
         assertions: [
           assertion("both Verify compute requests rejected", 2, injectedResponses),
           assertion("capacity title", true, /Verification is temporarily busy\./.test(failureText)),
@@ -982,15 +1093,28 @@ class MobileRecoveryRun {
         await this.page.goto("/cost-decisions", { waitUntil: "domcontentloaded" });
         await this.page.getByRole("button", { name: "Try again" }).waitFor({ timeout: 30_000 });
       });
+      await this.waitForTerminalVisualState();
       const failureText = await this.bodyText();
-      const failureScreenshot = await this.screenshot("FAIL-08", "cost-history-503");
-      this.artifacts.fail08Outage = failureScreenshot;
+      const failureStep = await this.captureStage("FAIL-08", "failure", {
+        suffix: "cost-history-503",
+        requiredVisible: ["Cost history is temporarily unavailable. Retry shortly.", "Try again"],
+      });
+      this.artifacts.fail08Outage = failureStep.screenshot;
+      const outageAlert = this.page
+        .getByRole("alert")
+        .filter({ hasText: "Cost history is temporarily unavailable. Retry shortly." });
       await this.page.unroute("**/api/proxy/cost-decisions**", handler);
       await this.page.getByRole("button", { name: "Try again" }).click();
       await this.page.getByText(decisionsBefore[0].label || decisionsBefore[0].filename, { exact: true }).waitFor({ timeout: 30_000 });
+      await outageAlert.waitFor({ state: "hidden", timeout: 30_000 });
+      await this.waitForTerminalVisualState();
       const decisionsAfter = await this.costDecisionList();
       const recoveredText = await this.bodyText();
-      const screenshot = await this.screenshot("FAIL-08", "cost-history-restored");
+      const recoveryStep = await this.captureStage("FAIL-08", "recovery", {
+        suffix: "cost-history-restored",
+        requiredVisible: ["Saved decisions", decisionsBefore[0].label || decisionsBefore[0].filename],
+        forbiddenVisible: ["Cost history is temporarily unavailable. Retry shortly."],
+      });
       return {
         persona: "mobile cost reviewer recovering a durable history after API degradation",
         preconditions: [`${decisionsBefore.length} durable cost decisions`, "390x844 viewport", "cost-history GETs injected as 503"],
@@ -1000,7 +1124,8 @@ class MobileRecoveryRun {
         numeric: { injected503Responses: injected, decisionsBefore: decisionsBefore.length, decisionsAfter: decisionsAfter.length },
         authorization: "only the signed-in organization history reappeared after recovery",
         recovery: "Try again restored the same durable decision IDs and never rendered an empty-history success state",
-        screenshot: failureScreenshot,
+        screenshot: failureStep.screenshot,
+        visualSteps: [failureStep, recoveryStep],
         assertions: [
           assertion("503 injected", true, injected >= 1),
           assertion("unavailable copy visible", true, /temporarily unavailable/i.test(failureText)),
@@ -1030,12 +1155,29 @@ class MobileRecoveryRun {
         await this.page.goto(`/batch/${this.batchId}`, { waitUntil: "domcontentloaded" });
         await this.page.getByText("Could not load progress").waitFor({ timeout: 20_000 });
       });
+      await this.waitForTerminalVisualState();
       const failureCopy = await this.bodyText();
+      const failureStep = await this.captureStage("FAIL-10", "failure", {
+        suffix: "worker-status-degraded",
+        requiredVisible: ["Could not load progress", "Try again", "Your saved data is unchanged"],
+      });
       await this.page.unroute(`**${statusPath}`, handler);
       await this.page.getByRole("button", { name: "Try again" }).first().click();
       await this.page.getByText(/1 \/ 1/).first().waitFor({ timeout: 30_000 });
+      await this.page
+        .getByRole("alert")
+        .filter({ hasText: "Could not load progress" })
+        .waitFor({ state: "hidden", timeout: 30_000 });
+      const downloadCsv = this.page.getByRole("button", { name: "Download CSV" });
+      await downloadCsv.waitFor({ state: "visible", timeout: 30_000 });
+      assert(await downloadCsv.isEnabled(), "FAIL-10 recovered CSV action remained disabled");
+      await this.waitForTerminalVisualState();
       const recovered = await this.bodyText();
-      const screenshot = await this.screenshot("FAIL-10", "worker-status-recovered");
+      const recoveryStep = await this.captureStage("FAIL-10", "recovery", {
+        suffix: "worker-status-recovered",
+        requiredVisible: ["1 / 1", "Download CSV"],
+        forbiddenVisible: ["Could not load progress"],
+      });
       return {
         persona: "batch operator recovering from a Redis-backed worker-status degradation",
         preconditions: ["persisted terminal batch", "tablet viewport", "one injected 500 status response representing degraded status infrastructure"],
@@ -1044,7 +1186,8 @@ class MobileRecoveryRun {
         persisted: `batch ${this.batchId} and its one item remained unchanged across the failed poll`,
         numeric: "injected status 500; recovered counter 1/1",
         recovery: "Try again cleared the degraded state and restored live persisted progress without an orphan row",
-        screenshot,
+        screenshot: failureStep.screenshot,
+        visualSteps: [failureStep, recoveryStep],
         assertions: [
           assertion("500 was injected", true, injected),
           assertion("failure copy is actionable", true, /Try again/i.test(failureCopy)),
@@ -1350,7 +1493,7 @@ class MobileRecoveryRun {
       artifacts: this.artifacts,
       supplementalEvidence: this.supplementalEvidence,
       releaseEvidence: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         goldenPaths: this.goldenPaths,
         validation,
       },

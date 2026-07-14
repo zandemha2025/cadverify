@@ -65,6 +65,9 @@ def _make_item(
     item.analysis_id = None
     item.error_message = None
     item.duration_ms = None
+    item.attempt_count = 0
+    item.lease_started_at = None
+    item.created_at = datetime(2026, 7, 1, tzinfo=timezone.utc)
     item.started_at = None
     item.completed_at = None
     return item
@@ -104,7 +107,6 @@ def _coordinator_execute(state):
         result = MagicMock()
         scalars = MagicMock()
         if s.lstrip().startswith("update batch_items"):
-            scalars.all.return_value = state.get("reclaimed", [])
             result.scalars.return_value = scalars
             return result
         if "count(" in s:
@@ -112,7 +114,10 @@ def _coordinator_execute(state):
             result.scalar.return_value = state["active"] if "status" in s else state["total"]
             return result
         if "from batch_items" in s:
-            scalars.all.return_value = state["pending"]
+            is_lease_query = "lease_started_at" in s and "coalesce" in s
+            scalars.all.return_value = (
+                state.get("leased", []) if is_lease_query else state["pending"]
+            )
             result.scalars.return_value = scalars
             cb = state.get("on_pending")
             if cb is not None:
@@ -213,7 +218,13 @@ async def test_failed_item_publication_restores_only_unclaimed_queue_row(mock_gs
     mock_gsf.return_value = _mock_session_factory(session)
     batch = _make_batch(status="processing", total_items=1)
     item = _make_item(status="pending")
-    state = {"batch": batch, "total": 1, "active": 0, "pending": [item]}
+    state = {
+        "batch": batch,
+        "total": 1,
+        "active": 0,
+        "pending": [item],
+        "leased": [],
+    }
     session.execute = AsyncMock(side_effect=_coordinator_execute(state))
     pool = AsyncMock()
 
@@ -227,7 +238,6 @@ async def test_failed_item_publication_restores_only_unclaimed_queue_row(mock_gs
     reset_statements = [
         call.args[0] for call in session.execute.await_args_list
         if str(call.args[0]).lower().lstrip().startswith("update batch_items")
-        and "started_at" not in str(call.args[0]).lower()
     ]
     assert len(reset_statements) == 1
     params = reset_statements[0].compile().params
@@ -250,13 +260,14 @@ async def test_coordinator_reclaims_expired_processing_lease(mock_gsf):
     batch = _make_batch(
         status="processing", total_items=1, completed_items=0, failed_items=0
     )
-    recovered = _make_item(status="pending")
+    recovered = _make_item(status="processing")
+    recovered.attempt_count = 1
     state = {
         "batch": batch,
         "total": 1,
         "active": 0,
         "pending": [recovered],
-        "reclaimed": [recovered.ulid],
+        "leased": [recovered],
     }
     mock_session.execute = AsyncMock(side_effect=_coordinator_execute(state))
     mock_session.commit = AsyncMock()
@@ -265,12 +276,13 @@ async def test_coordinator_reclaims_expired_processing_lease(mock_gsf):
 
     await run_batch_coordinator({"redis": pool}, batch.ulid)
 
-    update_stmt = mock_session.execute.await_args_list[1].args[0]
-    compiled = str(update_stmt).lower()
-    assert "update batch_items" in compiled
-    assert "started_at" in compiled
-    assert "processing" in update_stmt.compile().params.values()
+    lease_stmt = mock_session.execute.await_args_list[1].args[0]
+    compiled = str(lease_stmt).lower()
+    assert "from batch_items" in compiled
+    assert "lease_started_at" in compiled
+    assert "processing" in lease_stmt.compile().params.values()
     assert recovered.status == "queued"
+    assert recovered.attempt_count == 2
     assert len(_enqueued(pool, "run_batch_item")) == 1
     mock_session.commit.assert_awaited_once()
 
@@ -599,7 +611,9 @@ async def test_item_task_updates_counters(mock_gsf):
          _as_mod,
          "run_analysis",
          new_callable=AsyncMock,
-         return_value=SimpleNamespace(result={"verdict": "pass"}, analysis_id=42),
+         return_value=_as_mod.AnalysisRun(
+             result={"verdict": "pass"}, analysis_id=42
+         ),
          ), \
          patch.object(_bs_mod, "read_batch_blob", return_value=b"data"), \
          patch.object(_bs_mod, "update_batch_counters", new_callable=AsyncMock) as mock_counters, \

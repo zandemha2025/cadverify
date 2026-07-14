@@ -5,7 +5,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { captureBuildIdentity } from "./human-sim-release-evidence.mjs";
-import { makeGoldenPathEvidence, validateGoldenPathMap } from "./golden-path-evidence.mjs";
+import {
+  captureVisualStep,
+  makeGoldenPathEvidence,
+  validateGoldenPathMap,
+} from "./golden-path-evidence.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const { chromium } = require("playwright-core");
@@ -133,6 +137,29 @@ class Matrix {
     const filename = path.join(screenshotDir, `${String(this.shotIndex).padStart(2, "0")}-${id.toLowerCase()}.png`);
     await page.screenshot({ path: filename, fullPage, animations: "disabled", caret: "initial" });
     return filename;
+  }
+
+  async captureStage(id, stage, {
+    page = this.page,
+    fullPage = false,
+    requiredVisible,
+    forbiddenVisible = [],
+    terminal = true,
+  } = {}) {
+    this.shotIndex += 1;
+    const filename = path.join(
+      screenshotDir,
+      `${String(this.shotIndex).padStart(2, "0")}-${id.toLowerCase()}-${stage}.png`,
+    );
+    return captureVisualStep(page, {
+      id,
+      stage,
+      terminal,
+      requiredVisible,
+      forbiddenVisible,
+      screenshot: filename,
+      fullPage,
+    });
   }
 
   async api(pathname, options = {}, page = this.page) {
@@ -627,6 +654,12 @@ class Matrix {
       const knownError = await this.page.getByText("Invalid email or password.").innerText();
       assert(knownError === unknownError, `login error enumerated account existence: unknown=${unknownError}, known=${knownError}`);
 
+      // AUTH-03 belongs to this exact rejected-login instant. Capture it before
+      // the valid password changes the route and before AUTH-05 captures /cost.
+      const auth03VisualStep = await this.captureStage("AUTH-03", "invalid-credentials", {
+        requiredVisible: ["Log in to ProofShape", "Invalid email or password."],
+      });
+
       await this.page.getByLabel("Password").fill(password);
       await this.page.getByRole("button", { name: /^Log in$/ }).click();
       await this.page.waitForURL((url) => url.pathname === "/cost", { timeout: 20_000 });
@@ -640,14 +673,15 @@ class Matrix {
         preconditions: ["One unknown email and one existing account email.", "No active session."],
         actions: ["Submit the unknown email with a wrong password.", "Submit the known email with a wrong password."],
         observed: {
-          url: `${baseUrl}/login`,
+          url: auth03VisualStep.url,
           visible: [unknownError, knownError],
           persisted: "no new user or session was created by either failed login",
           numeric: { comparedErrorMessages: 2 },
           authorization: { unknownGranted: false, knownWrongPasswordGranted: false },
           recovery: "Entering the valid password then restored the safe local destination.",
         },
-        screenshot,
+        screenshot: auth03VisualStep.screenshot,
+        visualSteps: [auth03VisualStep],
         consoleErrors: [],
         requestFailures: [],
         assertions: [
@@ -690,7 +724,7 @@ class Matrix {
       baseUrl,
       generatedAt: new Date().toISOString(),
       buildIdentity,
-      releaseEvidence: { schemaVersion: 1, goldenPaths: this.goldenPaths },
+      releaseEvidence: { schemaVersion: 2, goldenPaths: this.goldenPaths },
       goldenPaths: this.goldenPaths,
       validation,
       failures: this.failures,

@@ -12,6 +12,8 @@ from src.db.models import Job
 
 logger = logging.getLogger("cadverify.jobs.tasks")
 
+_TERMINAL_JOB_STATUSES = {"done", "partial", "failed"}
+
 
 async def run_sam3d_job(ctx: dict, job_ulid: str) -> dict:
     """Process a SAM-3D segmentation job.
@@ -42,10 +44,19 @@ async def run_sam3d_job(ctx: dict, job_ulid: str) -> dict:
         if job is None:
             logger.error("Job %s not found", job_ulid)
             return {"error": "job_not_found"}
+        if job.job_type != "sam3d":
+            logger.error("Job %s has unexpected type %s", job_ulid, job.job_type)
+            return {"error": "job_type_mismatch"}
+        if job.status in _TERMINAL_JOB_STATUSES:
+            logger.info("SAM-3D job %s already terminal: %s", job_ulid, job.status)
+            return job.result_json or {"status": job.status}
+        if job.status == "running" and int(ctx.get("job_try", 1)) <= 1:
+            logger.info("SAM-3D job %s is already running", job_ulid)
+            return job.result_json or {"status": "running"}
 
         # Update status to running
         job.status = "running"
-        job.started_at = datetime.now(timezone.utc)
+        job.started_at = job.started_at or datetime.now(timezone.utc)
         await session.commit()
 
         # 2. Load mesh from blob storage

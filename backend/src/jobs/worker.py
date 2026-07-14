@@ -5,16 +5,24 @@ import asyncio
 import logging
 import os
 
-from arq import cron
+from arq import cron, func
 from arq.connections import RedisSettings
 
 from src.jobs.batch_tasks import (
+    BATCH_ITEM_MAX_ATTEMPTS,
+    DIRECT_UPLOAD_PREP_MAX_TRIES,
+    DIRECT_UPLOAD_PREP_TIMEOUT_SECONDS,
+    direct_upload_prep_concurrency,
     dispatch_webhook,
+    prepare_direct_upload_batch,
+    reconcile_terminal_batch_items,
     run_batch_coordinator,
     run_batch_item,
+    sweep_expired_direct_uploads,
     sweep_orphaned_batches,
 )
 from src.jobs.heartbeat import worker_heartbeat, write_heartbeat
+from src.jobs.arq_backend import reconcile_queued_jobs
 from src.jobs.reconstruction_tasks import run_reconstruction_job
 from src.jobs.design_tasks import run_design_generation_job
 from src.jobs.tasks import run_sam3d_job
@@ -68,6 +76,17 @@ async def startup(ctx: dict) -> None:
     design_concurrency = max(1, min(design_concurrency, 8))
     ctx["design_generation_semaphore"] = asyncio.Semaphore(design_concurrency)
     logger.info("Design generation concurrency=%d", design_concurrency)
+    # Separate from batch-item concurrency: each permit may hold one ZIP up to
+    # BATCH_MAX_ZIP_BYTES on ephemeral disk. DIRECT_UPLOAD_PREP_CONCURRENCY
+    # defaults to one so a 20 GiB Fargate task cannot admit twelve 5 GiB files
+    # merely because the general ARQ worker has max_jobs=12.
+    direct_prep_concurrency = direct_upload_prep_concurrency()
+    ctx["direct_upload_preparation_semaphore"] = asyncio.Semaphore(
+        direct_prep_concurrency
+    )
+    logger.info(
+        "Direct-upload preparation concurrency=%d", direct_prep_concurrency
+    )
 
     # Write an initial worker heartbeat so /health/deep can see liveness the
     # moment the worker is up (before the first cron tick fires).
@@ -91,7 +110,12 @@ class WorkerSettings:
     functions = [
         run_sam3d_job,
         run_batch_coordinator,
-        run_batch_item,
+        func(run_batch_item, max_tries=BATCH_ITEM_MAX_ATTEMPTS),
+        func(
+            prepare_direct_upload_batch,
+            timeout=DIRECT_UPLOAD_PREP_TIMEOUT_SECONDS,
+            max_tries=DIRECT_UPLOAD_PREP_MAX_TRIES,
+        ),
         dispatch_webhook,
         run_reconstruction_job,
         run_design_generation_job,
@@ -99,8 +123,29 @@ class WorkerSettings:
     # Periodic orphan sweep (F-ARCH-1): reap batches stuck in pending/processing.
     # Runs every 5 minutes and once at worker startup as a backstop.
     cron_jobs = [
+        # Durable DB job rows are publication intent. Re-offer queued SAM and
+        # reconstruction rows in case Redis accepted a request whose response
+        # was lost, or Redis was unavailable when the API committed the row.
+        cron(
+            reconcile_queued_jobs,
+            minute=set(range(0, 60)),
+            second={20},
+            run_at_startup=True,
+        ),
         cron(
             sweep_orphaned_batches,
+            minute=set(range(0, 60, 5)),
+            run_at_startup=True,
+        ),
+        cron(
+            reconcile_terminal_batch_items,
+            minute=set(range(0, 60, 5)),
+            run_at_startup=True,
+        ),
+        # Completed-but-unattached multipart objects are invisible to S3's
+        # incomplete-upload lifecycle rule, so database expiry owns cleanup.
+        cron(
+            sweep_expired_direct_uploads,
             minute=set(range(0, 60, 5)),
             run_at_startup=True,
         ),

@@ -7,15 +7,25 @@ dispatch_webhook: Delivers webhook with retry scheduling.
 from __future__ import annotations
 
 import asyncio
+import errno
 import logging
 import os
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, or_, select, update
+from arq import Retry
+from sqlalchemy import case, delete, func, select, update
+from sqlalchemy.exc import (
+    DBAPIError,
+    DisconnectionError,
+    OperationalError,
+    TimeoutError as SQLAlchemyTimeoutError,
+)
 
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_session_factory
-from src.db.models import Batch, BatchItem
+from src.db.models import Batch, BatchItem, DirectUpload
+from src.services.batch_service import BATCH_ITEM_MAX_ATTEMPTS
+from src.storage.base import ObjectNotFoundError
 
 logger = logging.getLogger("cadverify.batch_tasks")
 
@@ -33,6 +43,666 @@ def _flag(name: str, default: str) -> bool:
 
 _TERMINAL_BATCH_STATUSES = frozenset({"completed", "failed", "cancelled"})
 _BATCH_ITEM_LEASE_FLOOR_SECONDS = 660
+_BATCH_ITEM_QUEUE_LEASE_FLOOR_SECONDS = 660
+DIRECT_UPLOAD_PREP_MAX_TRIES = 3
+try:
+    _configured_direct_prep_timeout = int(
+        os.getenv("DIRECT_UPLOAD_PREP_TIMEOUT_SECONDS", "1800")
+    )
+except (TypeError, ValueError):
+    _configured_direct_prep_timeout = 1800
+# This task intentionally has a function-specific ceiling longer than the
+# general ARQ 600-second item timeout.
+DIRECT_UPLOAD_PREP_TIMEOUT_SECONDS = max(660, _configured_direct_prep_timeout)
+
+
+class BatchStorageReadError(RuntimeError):
+    """Marks an item failure as originating at the durable-storage boundary."""
+
+
+def _item_attempt_count(item: BatchItem) -> int:
+    value = getattr(item, "attempt_count", 0)
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _exception_chain(exc: BaseException):
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        yield current
+        next_exc = current.__cause__ or current.__context__
+        current = next_exc if isinstance(next_exc, BaseException) else None
+
+
+def _is_retryable_provider_error(exc: BaseException) -> bool:
+    """Recognize retryable S3/network responses without importing boto3."""
+
+    response = getattr(exc, "response", None)
+    if isinstance(response, dict):
+        error = response.get("Error") or {}
+        metadata = response.get("ResponseMetadata") or {}
+        code = str(error.get("Code", ""))
+        status = metadata.get("HTTPStatusCode")
+        if status in {408, 429, 500, 502, 503, 504}:
+            return True
+        if code in {
+            "InternalError",
+            "RequestTimeout",
+            "RequestTimeoutException",
+            "ServiceUnavailable",
+            "SlowDown",
+            "Throttling",
+            "ThrottlingException",
+        }:
+            return True
+
+    # botocore transport exceptions have stable public class names. Matching
+    # them here keeps local-filesystem deployments import-safe without boto3.
+    return type(exc).__name__ in {
+        "ConnectTimeoutError",
+        "ConnectionClosedError",
+        "EndpointConnectionError",
+        "HTTPClientError",
+        "ReadTimeoutError",
+    }
+
+
+def is_transient_batch_item_error(exc: BaseException) -> bool:
+    """Return true only for retryable storage or database infrastructure faults.
+
+    CAD/parser/user errors—including compute timeouts and missing artifacts—are
+    deliberately terminal. The retry allowlist is narrow so malformed customer
+    input is never burned through the worker repeatedly.
+    """
+
+    chain = tuple(_exception_chain(exc))
+    if any(isinstance(item, ObjectNotFoundError) for item in chain):
+        return False
+
+    if any(
+        isinstance(
+            item,
+            (
+                DisconnectionError,
+                OperationalError,
+                SQLAlchemyTimeoutError,
+            ),
+        )
+        for item in chain
+    ):
+        return True
+    if any(
+        isinstance(item, DBAPIError) and item.connection_invalidated
+        for item in chain
+    ):
+        return True
+
+    storage_scoped = any(isinstance(item, BatchStorageReadError) for item in chain)
+    if not storage_scoped:
+        return False
+    for item in chain:
+        if _is_retryable_provider_error(item):
+            return True
+        if isinstance(item, (ConnectionError, TimeoutError)):
+            return True
+        if isinstance(item, OSError) and item.errno in {
+            errno.EAGAIN,
+            errno.EBUSY,
+            errno.ECONNABORTED,
+            errno.ECONNRESET,
+            errno.EHOSTUNREACH,
+            errno.EINTR,
+            errno.ENETDOWN,
+            errno.ENETUNREACH,
+            errno.ETIMEDOUT,
+        }:
+            return True
+    return False
+
+
+def _transient_retry_delay(attempt_count: int) -> int:
+    return min(30, 2 ** max(1, attempt_count))
+
+
+def direct_upload_prep_concurrency() -> int:
+    """Dedicated tempfile/extraction concurrency (default one for 20 GiB disks)."""
+    try:
+        configured = int(os.getenv("DIRECT_UPLOAD_PREP_CONCURRENCY", "1"))
+    except (TypeError, ValueError):
+        configured = 1
+    return max(1, min(configured, 4))
+
+
+async def _download_and_extract_direct_upload(
+    ctx: dict,
+    upload: DirectUpload,
+    batch: Batch,
+) -> list[dict]:
+    """Hold the dedicated permit for the complete ZIP-tempfile lifetime."""
+    from src.services import batch_service, direct_upload_service
+
+    semaphore = ctx.get("direct_upload_preparation_semaphore")
+    if semaphore is None:
+        semaphore = asyncio.Semaphore(direct_upload_prep_concurrency())
+        ctx["direct_upload_preparation_semaphore"] = semaphore
+    temp_path: str | None = None
+    async with semaphore:
+        try:
+            temp_path = await asyncio.to_thread(
+                direct_upload_service.download_to_bounded_tempfile,
+                upload,
+            )
+            return await asyncio.to_thread(
+                batch_service.extract_zip_path_to_items,
+                temp_path,
+                batch.ulid,
+            )
+        finally:
+            # A second 5 GiB download cannot start while this file exists.
+            if temp_path is not None:
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+
+
+async def _clean_direct_upload_blobs(upload: DirectUpload, batch: Batch) -> dict[str, bool]:
+    """Best-effort cleanup used by terminal preparation paths."""
+    from src.services import batch_service, direct_upload_service
+
+    errors = {"incoming": False, "extracted": False}
+    try:
+        await direct_upload_service.delete_incoming_object(upload)
+    except Exception:
+        errors["incoming"] = True
+        logger.exception("Failed to delete incoming direct upload %s", upload.ulid)
+    try:
+        await asyncio.to_thread(batch_service.cleanup_batch_files, batch.ulid)
+    except Exception:
+        errors["extracted"] = True
+        logger.exception("Failed to clean extracted batch %s", batch.ulid)
+    return errors
+
+
+async def _terminalize_direct_upload_preparation(
+    upload_ulid: str,
+    *,
+    code: str,
+    message: str,
+) -> None:
+    """Persist a terminal preparation failure and align parent/item state."""
+    from src.services import batch_service
+    from src.services.audit_service import emit_event
+
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        upload = (
+            await session.execute(
+                select(DirectUpload)
+                .where(DirectUpload.ulid == upload_ulid)
+                .with_for_update()
+            )
+        ).scalars().first()
+        if upload is None or upload.status in {"consumed", "failed", "aborted", "expired"}:
+            return
+        batch = (
+            await session.execute(
+                select(Batch)
+                .where(
+                    Batch.id == upload.batch_id,
+                    Batch.org_id == upload.org_id,
+                )
+                .with_for_update()
+            )
+        ).scalars().first()
+        if batch is None:
+            upload.status = "failed"
+            upload.error_code = code
+            upload.error_message = message[:500]
+            upload.terminal_at = datetime.now(timezone.utc)
+            await emit_event(
+                session,
+                actor_id=upload.user_id,
+                action="direct_upload.failed",
+                resource_type="direct_upload",
+                resource_id=upload.ulid,
+                detail={"code": code, "batch_missing": True},
+                org_id=upload.org_id,
+            )
+            await session.commit()
+            return
+
+        if batch.status == "completed" and upload.status == "prepared":
+            upload.status = "consumed"
+            upload.consumed_at = datetime.now(timezone.utc)
+            upload.terminal_at = upload.consumed_at
+            upload.storage_cleaned_at = upload.consumed_at
+            upload.error_code = None
+            upload.error_message = None
+            await emit_event(
+                session,
+                actor_id=upload.user_id,
+                action="direct_upload.consumed",
+                resource_type="direct_upload",
+                resource_id=upload.ulid,
+                detail={"batch_id": batch.ulid, "recovered_after_enqueue": True},
+                org_id=upload.org_id,
+            )
+            await session.commit()
+            return
+
+        # Snapshot while the row lock proves these provider coordinates belong
+        # to this exact upload. Cleanup happens before terminal commit so every
+        # reachable blob gets an attempt even if the DB mutation later fails.
+        cleanup_errors = await _clean_direct_upload_blobs(upload, batch)
+        now = datetime.now(timezone.utc)
+        upload.status = "failed"
+        upload.error_code = code
+        upload.error_message = message[:500]
+        upload.terminal_at = now
+        upload.storage_cleaned_at = (
+            now if not cleanup_errors["incoming"] and not cleanup_errors["extracted"] else None
+        )
+        if batch.status not in _TERMINAL_BATCH_STATUSES:
+            batch_service.mark_batch_failed(batch, code.lower())
+        await batch_service.mark_pending_items_terminal(session, batch.id, "skipped")
+        await emit_event(
+            session,
+            actor_id=upload.user_id,
+            action="direct_upload.failed",
+            resource_type="direct_upload",
+            resource_id=upload.ulid,
+            detail={
+                "code": code,
+                "batch_id": batch.ulid,
+                "cleanup_errors": cleanup_errors,
+            },
+            org_id=upload.org_id,
+        )
+        await session.commit()
+
+
+async def _release_direct_upload_preparation_for_retry(
+    upload_ulid: str,
+    *,
+    code: str,
+    message: str,
+) -> None:
+    """Make an interrupted pre-extraction claim schedulable by the next ARQ try."""
+    from src.services.audit_service import emit_event
+
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        upload = (
+            await session.execute(
+                select(DirectUpload)
+                .where(DirectUpload.ulid == upload_ulid)
+                .with_for_update()
+            )
+        ).scalars().first()
+        if upload is None or upload.status in {
+            "consumed",
+            "failed",
+            "aborted",
+            "expired",
+        }:
+            return
+        # A prepared upload has durable items and only needs incoming cleanup /
+        # coordinator publication retried. Do not discard or re-extract them.
+        if upload.status == "preparing":
+            upload.status = "attached"
+            upload.preparation_started_at = None
+        elif upload.status != "prepared":
+            return
+        upload.error_code = code
+        upload.error_message = message[:500]
+        await emit_event(
+            session,
+            actor_id=upload.user_id,
+            action="direct_upload.preparation_retry",
+            resource_type="direct_upload",
+            resource_id=upload.ulid,
+            detail={"code": code, "attempt": upload.prepare_attempts},
+            org_id=upload.org_id,
+        )
+        await session.commit()
+
+
+async def _release_cancelled_direct_upload_preparation(upload_ulid: str) -> None:
+    """Cancellation-safe fresh-session lease release for ARQ timeout handling."""
+    await _release_direct_upload_preparation_for_retry(
+        upload_ulid,
+        code="DIRECT_UPLOAD_PREPARATION_CANCELLED",
+        message="Direct-upload preparation was interrupted and will be retried.",
+    )
+
+
+async def prepare_direct_upload_batch(ctx: dict, upload_ulid: str) -> None:
+    """Prepare one completed S3 ZIP, then start the existing batch coordinator.
+
+    The task is safe under ARQ's at-least-once delivery. Extraction commits a
+    durable ``prepared`` checkpoint before provider deletion/queue publication;
+    a retry resumes from that checkpoint without creating duplicate items.
+    """
+    from src.services import batch_service, direct_upload_service
+    from src.services.audit_service import emit_event
+
+    session_factory = get_session_factory()
+    try:
+        job_try = max(1, int(ctx.get("job_try", 1)))
+    except (TypeError, ValueError):
+        job_try = 1
+
+    upload: DirectUpload | None = None
+    batch: Batch | None = None
+    should_extract = False
+    async with session_factory() as session:
+        upload = (
+            await session.execute(
+                select(DirectUpload)
+                .where(DirectUpload.ulid == upload_ulid)
+                .with_for_update()
+            )
+        ).scalars().first()
+        if upload is None:
+            logger.error("DirectUpload %s not found", upload_ulid)
+            return
+        if upload.status in {"consumed", "failed", "aborted", "expired"}:
+            logger.info(
+                "DirectUpload %s already %s; duplicate task ignored",
+                upload_ulid,
+                upload.status,
+            )
+            return
+        batch = (
+            await session.execute(
+                select(Batch)
+                .where(
+                    Batch.id == upload.batch_id,
+                    Batch.org_id == upload.org_id,
+                )
+                .with_for_update()
+            )
+        ).scalars().first()
+        if batch is None:
+            await session.rollback()
+            await _terminalize_direct_upload_preparation(
+                upload_ulid,
+                code="DIRECT_UPLOAD_BATCH_MISSING",
+                message="The batch attached to this direct upload no longer exists.",
+            )
+            return
+        if batch.status == "completed" and upload.status == "prepared":
+            upload.status = "consumed"
+            upload.consumed_at = datetime.now(timezone.utc)
+            upload.terminal_at = upload.consumed_at
+            upload.storage_cleaned_at = upload.consumed_at
+            upload.error_code = None
+            upload.error_message = None
+            await emit_event(
+                session,
+                actor_id=upload.user_id,
+                action="direct_upload.consumed",
+                resource_type="direct_upload",
+                resource_id=upload.ulid,
+                detail={"batch_id": batch.ulid, "recovered_after_enqueue": True},
+                org_id=upload.org_id,
+            )
+            await session.commit()
+            return
+        if batch.status in _TERMINAL_BATCH_STATUSES:
+            prior = batch.status
+            await session.commit()
+            cleanup_errors = await _clean_direct_upload_blobs(upload, batch)
+            async with session_factory() as terminal_session:
+                current = (
+                    await terminal_session.execute(
+                        select(DirectUpload)
+                        .where(DirectUpload.ulid == upload_ulid)
+                        .with_for_update()
+                    )
+                ).scalars().first()
+                if current is not None and current.status not in {"consumed", "failed"}:
+                    current.status = "aborted" if prior == "cancelled" else "failed"
+                    current.terminal_at = datetime.now(timezone.utc)
+                    current.storage_cleaned_at = (
+                        current.terminal_at
+                        if not cleanup_errors["incoming"]
+                        and not cleanup_errors["extracted"]
+                        else None
+                    )
+                    current.error_code = "DIRECT_UPLOAD_BATCH_TERMINAL"
+                    current.error_message = f"Attached batch became {prior}."
+                    await emit_event(
+                        terminal_session,
+                        actor_id=current.user_id,
+                        action="direct_upload.aborted" if prior == "cancelled" else "direct_upload.failed",
+                        resource_type="direct_upload",
+                        resource_id=current.ulid,
+                        detail={"batch_status": prior, "cleanup_errors": cleanup_errors},
+                        org_id=current.org_id,
+                    )
+                    await terminal_session.commit()
+            return
+
+        if upload.status == "prepared":
+            should_extract = False
+        elif upload.status == "attached":
+            should_extract = True
+        elif upload.status == "preparing":
+            started = upload.preparation_started_at
+            if started is not None and started.tzinfo is None:
+                started = started.replace(tzinfo=timezone.utc)
+            lease_seconds = max(60, DIRECT_UPLOAD_PREP_TIMEOUT_SECONDS + 60)
+            lease_stale = started is None or started <= (
+                datetime.now(timezone.utc) - timedelta(seconds=lease_seconds)
+            )
+            # A larger ARQ try number proves the previous attempt ended; a stale
+            # lease recovers hard process death. Otherwise this is concurrent
+            # duplicate delivery and must not perform the external work twice.
+            if job_try <= upload.prepare_attempts and not lease_stale:
+                logger.info("DirectUpload %s preparation already active", upload_ulid)
+                return
+            should_extract = True
+        else:
+            unexpected_status = upload.status
+            await session.rollback()
+            await _terminalize_direct_upload_preparation(
+                upload_ulid,
+                code="DIRECT_UPLOAD_INVALID_PREPARATION_STATE",
+                message=f"Direct upload entered unexpected state {unexpected_status}.",
+            )
+            return
+
+        if should_extract:
+            upload.status = "preparing"
+            upload.prepare_attempts = max(upload.prepare_attempts + 1, job_try)
+            upload.preparation_started_at = datetime.now(timezone.utc)
+            upload.error_code = None
+            upload.error_message = None
+            batch.status = "extracting"
+            # One durable heartbeat explains the visible extracting state and
+            # anchors orphan recovery to this preparation attempt.
+            batch_service.touch_batch_heartbeat(batch)
+            await session.commit()
+
+    temp_path: str | None = None
+    try:
+        if should_extract:
+            if upload is None or batch is None:
+                raise RuntimeError("direct-upload preparation snapshot missing")
+            items_data = await _download_and_extract_direct_upload(
+                ctx, upload, batch
+            )
+            manifest_items = (batch.manifest_json or {}).get("direct_upload_manifest")
+            if manifest_items:
+                batch_service.merge_manifest_metadata(
+                    items_data,
+                    list(manifest_items),
+                    job_type=batch.job_type,
+                )
+
+            async with session_factory() as session:
+                current_upload = (
+                    await session.execute(
+                        select(DirectUpload)
+                        .where(DirectUpload.ulid == upload_ulid)
+                        .with_for_update()
+                    )
+                ).scalars().first()
+                if current_upload is None:
+                    raise RuntimeError("direct upload disappeared during preparation")
+                current_batch = (
+                    await session.execute(
+                        select(Batch)
+                        .where(
+                            Batch.id == current_upload.batch_id,
+                            Batch.org_id == current_upload.org_id,
+                        )
+                        .with_for_update()
+                    )
+                ).scalars().first()
+                if current_batch is None:
+                    raise RuntimeError("attached batch disappeared during preparation")
+                if current_upload.status == "prepared":
+                    # Another legitimate retry won the durable checkpoint.
+                    await session.rollback()
+                elif current_upload.status != "preparing":
+                    raise RuntimeError(
+                        f"direct upload changed to {current_upload.status} during preparation"
+                    )
+                elif current_batch.status in _TERMINAL_BATCH_STATUSES:
+                    raise RuntimeError(
+                        f"batch changed to {current_batch.status} during preparation"
+                    )
+                else:
+                    # Defensive idempotency for a transaction replay: no
+                    # coordinator has run while the batch is `preparing`, so any
+                    # rows here are an incomplete prior preparation checkpoint.
+                    await session.execute(
+                        delete(BatchItem).where(BatchItem.batch_id == current_batch.id)
+                    )
+                    count = await batch_service.create_batch_items(
+                        session,
+                        current_batch.id,
+                        items_data,
+                    )
+                    current_batch.total_items = count
+                    current_batch.completed_items = 0
+                    current_batch.failed_items = sum(
+                        1
+                        for item in items_data
+                        if item.get("status") in {"failed", "skipped"}
+                    )
+                    current_batch.input_mode = "zip"
+                    current_batch.status = "pending"
+                    current_upload.status = "prepared"
+                    current_upload.prepared_at = datetime.now(timezone.utc)
+                    current_upload.checksum_verified_at = current_upload.prepared_at
+                    current_upload.error_code = None
+                    current_upload.error_message = None
+                    await emit_event(
+                        session,
+                        actor_id=current_upload.user_id,
+                        action="direct_upload.prepared",
+                        resource_type="direct_upload",
+                        resource_id=current_upload.ulid,
+                        detail={"batch_id": current_batch.ulid, "item_count": count},
+                        org_id=current_upload.org_id,
+                    )
+                    await session.commit()
+                    upload = current_upload
+                    batch = current_batch
+
+        if upload is None or batch is None:
+            raise RuntimeError("direct-upload preparation state missing")
+
+        # This delete is deliberately before coordinator publication: item jobs
+        # read only extracted batch blobs, so the original customer ZIP is no
+        # longer needed once the durable prepared checkpoint exists.
+        await direct_upload_service.delete_incoming_object(upload)
+
+        pool = ctx.get("redis") or ctx.get("pool")
+        if pool is None:
+            from src.jobs.arq_backend import get_arq_pool
+
+            pool = await get_arq_pool()
+        await pool.enqueue_job(
+            "run_batch_coordinator",
+            batch.ulid,
+            _job_id=f"batch-coordinator:{batch.ulid}",
+        )
+
+        async with session_factory() as session:
+            current_upload = (
+                await session.execute(
+                    select(DirectUpload)
+                    .where(DirectUpload.ulid == upload_ulid)
+                    .with_for_update()
+                )
+            ).scalars().first()
+            if current_upload is None or current_upload.status == "consumed":
+                return
+            if current_upload.status != "prepared":
+                raise RuntimeError(
+                    f"direct upload changed to {current_upload.status} before consumption"
+                )
+            current_upload.status = "consumed"
+            current_upload.consumed_at = datetime.now(timezone.utc)
+            current_upload.terminal_at = current_upload.consumed_at
+            current_upload.storage_cleaned_at = current_upload.consumed_at
+            current_upload.error_code = None
+            current_upload.error_message = None
+            await emit_event(
+                session,
+                actor_id=current_upload.user_id,
+                action="direct_upload.consumed",
+                resource_type="direct_upload",
+                resource_id=current_upload.ulid,
+                detail={"batch_id": batch.ulid},
+                org_id=current_upload.org_id,
+            )
+            await session.commit()
+
+    except asyncio.CancelledError:
+        try:
+            await asyncio.shield(
+                _release_cancelled_direct_upload_preparation(upload_ulid)
+            )
+        except Exception:
+            logger.exception(
+                "Failed to release cancelled DirectUpload %s", upload_ulid
+            )
+        raise
+    except BaseException as exc:
+        code, message, retryable = direct_upload_service.preparation_error(exc)
+        logger.exception(
+            "DirectUpload %s preparation failed (%s, try=%d)",
+            upload_ulid,
+            code,
+            job_try,
+        )
+        final = not retryable or job_try >= DIRECT_UPLOAD_PREP_MAX_TRIES
+        if final:
+            await _terminalize_direct_upload_preparation(
+                upload_ulid,
+                code=code,
+                message=message,
+            )
+            return
+        await _release_direct_upload_preparation_for_retry(
+            upload_ulid,
+            code=code,
+            message=message,
+        )
+        raise
+    finally:
+        if temp_path is not None:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
 
 
 def _batch_item_lease_seconds() -> int:
@@ -48,6 +718,21 @@ def _batch_item_lease_seconds() -> int:
     except (TypeError, ValueError):
         configured = _BATCH_ITEM_LEASE_FLOOR_SECONDS
     return max(_BATCH_ITEM_LEASE_FLOOR_SECONDS, configured)
+
+
+def _batch_item_queue_lease_seconds() -> int:
+    """Return how long a published item may wait before queue recovery.
+
+    Queue wait is intentionally much longer than the processing lease: many
+    healthy batches can share the 12 worker slots, so a delayed Redis message is
+    not equivalent to a worker that exceeded its hard 600-second runtime.
+    """
+
+    try:
+        configured = int(os.getenv("BATCH_ITEM_QUEUE_LEASE_SECONDS", str(6 * 3600)))
+    except (TypeError, ValueError):
+        configured = 6 * 3600
+    return max(_BATCH_ITEM_QUEUE_LEASE_FLOOR_SECONDS, configured)
 
 
 async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
@@ -155,34 +840,29 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
         # pending-item query below will then enqueue the recovered work in this
         # same tick. A NULL started_at on a processing row is invalid durable
         # state and is likewise safe to recover.
-        lease_cutoff = datetime.now(timezone.utc) - timedelta(
-            seconds=_batch_item_lease_seconds()
+        lease_now = datetime.now(timezone.utc)
+        recovery = await batch_service.recover_stale_batch_item_leases(
+            session,
+            batch,
+            processing_cutoff=lease_now
+            - timedelta(seconds=_batch_item_lease_seconds()),
+            queued_cutoff=lease_now
+            - timedelta(seconds=_batch_item_queue_lease_seconds()),
+            now=lease_now,
         )
-        reclaimed = await session.execute(
-            update(BatchItem)
-            .where(
-                BatchItem.batch_id == batch_id,
-                BatchItem.status == "processing",
-                or_(
-                    BatchItem.started_at.is_(None),
-                    BatchItem.started_at <= lease_cutoff,
-                ),
-            )
-            .values(
-                status="pending",
-                started_at=None,
-                completed_at=None,
-                error_message=None,
-            )
-            .returning(BatchItem.ulid)
-        )
-        reclaimed_ulids = list(reclaimed.scalars().all())
-        if reclaimed_ulids:
+        if recovery.requeued_ulids:
             logger.warning(
                 "Reclaimed %d expired batch-item lease(s) for batch %s: %s",
-                len(reclaimed_ulids),
+                len(recovery.requeued_ulids),
                 batch_ulid,
-                ", ".join(reclaimed_ulids),
+                ", ".join(recovery.requeued_ulids),
+            )
+        if recovery.exhausted_ulids:
+            logger.error(
+                "Terminalized %d retry-exhausted batch item(s) for batch %s: %s",
+                len(recovery.exhausted_ulids),
+                batch_ulid,
+                ", ".join(recovery.exhausted_ulids),
             )
 
         active_count = (
@@ -194,7 +874,10 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
             )
         ).scalar() or 0
 
-        slots = batch.concurrency_limit - active_count
+        concurrency_limit = batch_service.validate_batch_concurrency_limit(
+            batch.concurrency_limit
+        )
+        slots = concurrency_limit - active_count
         queued_jobs: list[tuple[str, int]] = []
         if slots > 0 and pool is not None:
             pending_items = (
@@ -205,17 +888,35 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
                         BatchItem.status == "pending",
                     )
                     .order_by(
-                        # High priority first
-                        BatchItem.priority.desc(),
+                        case(
+                            (BatchItem.priority == "high", 0),
+                            (BatchItem.priority == "normal", 1),
+                            (BatchItem.priority == "low", 2),
+                            else_=3,
+                        ).asc(),
                         BatchItem.created_at.asc(),
+                        BatchItem.id.asc(),
                     )
                     .limit(slots)
                 )
             ).scalars().all()
 
             for item in pending_items:
+                attempts = _item_attempt_count(item)
+                if attempts >= BATCH_ITEM_MAX_ATTEMPTS:
+                    item.status = "failed"
+                    item.completed_at = lease_now
+                    item.lease_started_at = None
+                    item.error_message = (
+                        "Temporary storage or database failure persisted after "
+                        f"{BATCH_ITEM_MAX_ATTEMPTS} attempts."
+                    )
+                    batch.failed_items = int(batch.failed_items or 0) + 1
+                    continue
                 item.status = "queued"
-                defer_by = 0 if item.priority == "high" else 1
+                item.attempt_count = attempts + 1
+                item.lease_started_at = lease_now
+                defer_by = {"high": 0, "normal": 1, "low": 2}[item.priority]
                 queued_jobs.append((item.ulid, defer_by))
 
         # Queue state must be visible before a worker can consume the message.
@@ -229,6 +930,10 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
         # next coordinator tick can publish the restored `pending` row again.
         for item_ulid, defer_by in queued_jobs:
             try:
+                if pool is None:
+                    raise RuntimeError(
+                        "Batch item was queued without an available Redis pool"
+                    )
                 await pool.enqueue_job(
                     "run_batch_item", item_ulid, _defer_by=defer_by
                 )
@@ -243,7 +948,11 @@ async def run_batch_coordinator(ctx: dict, batch_ulid: str) -> None:
                         BatchItem.ulid == item_ulid,
                         BatchItem.status == "queued",
                     )
-                    .values(status="pending")
+                    .values(
+                        status="pending",
+                        started_at=None,
+                        lease_started_at=None,
+                    )
                 )
                 await session.commit()
 
@@ -292,6 +1001,48 @@ async def sweep_orphaned_batches(ctx: dict) -> int:
     return reaped
 
 
+async def reconcile_terminal_batch_items(ctx: dict) -> int:
+    """ARQ cron: remove non-terminal children from terminal batches.
+
+    The cancel endpoint performs the same transition synchronously; this is the
+    durable backstop for process death and state written by older releases.
+    """
+
+    if not _flag("BATCH_TERMINAL_RECONCILE_ENABLED", "1"):
+        return 0
+
+    from src.services import batch_service
+
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        reconciled = await batch_service.reconcile_terminal_batch_items(session)
+        if reconciled:
+            await session.commit()
+    if reconciled:
+        logger.warning(
+            "Terminal-batch reconciliation skipped %d unfinished item(s)",
+            reconciled,
+        )
+    return reconciled
+
+
+async def sweep_expired_direct_uploads(ctx: dict) -> int:
+    """ARQ cron: clean expired/completed-orphan and retry terminal blob cleanup."""
+    if not _flag("DIRECT_UPLOAD_CLEANUP_SWEEP_ENABLED", "1"):
+        return 0
+
+    from src.services import direct_upload_service
+
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        cleaned = await direct_upload_service.sweep_expired_and_unclean_uploads(
+            session
+        )
+    if cleaned:
+        logger.info("Direct-upload cleanup sweep cleaned %d upload(s)", cleaned)
+    return cleaned
+
+
 async def _release_cancelled_item_lease(item_ulid: str) -> None:
     """Put a cancelled worker's claimed item back into schedulable state.
 
@@ -328,6 +1079,7 @@ async def _release_cancelled_item_lease(item_ulid: str) -> None:
             item.status = "pending"
             item.completed_at = None
         item.started_at = None
+        item.lease_started_at = None
         item.error_message = None
         await session.commit()
 
@@ -413,9 +1165,14 @@ async def _run_cost_item(session, batch, item) -> dict:
 
     # ---- read bytes (zip only unless a remote object adapter is configured) --
     if batch_input_mode == "zip":
-        file_bytes = await asyncio.to_thread(
-            batch_service.read_batch_blob, batch_ulid, item_filename
-        )
+        try:
+            file_bytes = await asyncio.to_thread(
+                batch_service.read_batch_blob, batch_ulid, item_filename
+            )
+        except Exception as exc:
+            raise BatchStorageReadError(
+                "batch artifact could not be read from durable storage"
+            ) from exc
     elif batch_input_mode == "s3":
         raise RuntimeError(
             "S3 batch item fetch is unsupported on this server; upload a ZIP batch or import a manifest CSV."
@@ -485,6 +1242,7 @@ async def _run_cost_item(session, batch, item) -> dict:
         item.error_message = (report.reason or "GEOMETRY_INVALID")[:500]
         item.duration_ms = duration_ms
         item.completed_at = datetime.now(timezone.utc)
+        item.lease_started_at = None
         await batch_service.update_batch_counters(session, batch.id, "failed_items")
         batch_service.touch_batch_heartbeat(batch)
         await session.commit()
@@ -549,6 +1307,7 @@ async def _run_cost_item(session, batch, item) -> dict:
     item.cost_decision_id = saved.id
     item.duration_ms = duration_ms
     item.completed_at = datetime.now(timezone.utc)
+    item.lease_started_at = None
     await batch_service.update_batch_counters(session, batch_id, "completed_items")
     batch_service.touch_batch_heartbeat(batch)
     await session.commit()
@@ -576,6 +1335,73 @@ async def _run_cost_item(session, batch, item) -> dict:
 # ---------------------------------------------------------------------------
 # Item processor task
 # ---------------------------------------------------------------------------
+
+
+async def _resolve_transient_batch_item_failure(
+    item_ulid: str,
+) -> tuple[str, int]:
+    """Persist retry, exhaustion, or terminal-parent state in a fresh session."""
+
+    from src.services import batch_service
+
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        item = (
+            await session.execute(
+                select(BatchItem)
+                .where(BatchItem.ulid == item_ulid)
+                .with_for_update()
+            )
+        ).scalars().first()
+        if item is None:
+            return "missing", 0
+        batch = (
+            await session.execute(
+                select(Batch)
+                .where(Batch.id == item.batch_id)
+                .with_for_update()
+            )
+        ).scalars().first()
+        if batch is None:
+            return "missing", _item_attempt_count(item)
+        attempts = _item_attempt_count(item)
+
+        if item.status in {"completed", "failed", "skipped", "cancelled"}:
+            return "terminal", attempts
+        now = datetime.now(timezone.utc)
+        if batch.status in _TERMINAL_BATCH_STATUSES:
+            item.status = "skipped"
+            item.completed_at = now
+            item.lease_started_at = None
+            await session.commit()
+            return "terminal", attempts
+
+        if attempts >= BATCH_ITEM_MAX_ATTEMPTS:
+            item.status = "failed"
+            item.error_message = (
+                "Temporary storage or database failure persisted after "
+                f"{BATCH_ITEM_MAX_ATTEMPTS} attempts."
+            )
+            item.completed_at = now
+            item.lease_started_at = None
+            await batch_service.update_batch_counters(
+                session, batch.id, "failed_items"
+            )
+            batch_service.touch_batch_heartbeat(batch)
+            await session.commit()
+            return "failed", attempts
+
+        # ARQ retries the same job directly, bypassing the coordinator. Persist
+        # the next delivery attempt and a queue lease before asking ARQ to retry.
+        attempts += 1
+        item.attempt_count = attempts
+        item.status = "queued"
+        item.started_at = None
+        item.completed_at = None
+        item.lease_started_at = now
+        item.error_message = None
+        await session.commit()
+        return "retry", attempts
 
 
 async def run_batch_item(ctx: dict, item_ulid: str) -> None:
@@ -628,19 +1454,26 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
         item_process_types = item.process_types
         item_rule_pack = item.rule_pack
 
-        # ARQ delivery is at-least-once.  The row lock plus this durable-state
-        # check makes duplicate deliveries no-ops and prevents a queued task from
-        # resurrecting an item that cancellation already marked skipped.
-        if item.status != "queued":
+        # ARQ delivery is at-least-once. The row lock plus durable state makes
+        # duplicates no-ops. A higher ``job_try`` may reclaim the same job's
+        # processing row only when a DB outage prevented its retry-state cleanup.
+        try:
+            job_try = max(1, int(ctx.get("job_try", 1)))
+        except (TypeError, ValueError):
+            job_try = 1
+        attempts = _item_attempt_count(item)
+        retry_reclaim = item.status == "processing" and job_try > attempts
+        if item.status != "queued" and not retry_reclaim:
             logger.info(
                 "BatchItem %s already %s; duplicate task ignored",
                 item_ulid,
                 item.status,
             )
             return
-        if batch.status in {"cancelled", "failed"}:
+        if batch.status in _TERMINAL_BATCH_STATUSES:
             item.status = "skipped"
             item.completed_at = datetime.now(timezone.utc)
+            item.lease_started_at = None
             await session.commit()
             logger.info(
                 "BatchItem %s skipped because batch %s is %s",
@@ -649,23 +1482,22 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
                 batch.status,
             )
             return
-        if batch.status == "completed":
-            logger.warning(
-                "BatchItem %s ignored because batch %s is already completed",
-                item_ulid,
-                batch.ulid,
-            )
-            return
-
-        # Set processing status
+        # Claim one bounded delivery attempt. Coordinator publication normally
+        # sets this first; max(..., 1) supports legacy/test rows already queued.
+        attempts = min(
+            BATCH_ITEM_MAX_ATTEMPTS,
+            max(attempts, job_try, 1),
+        )
         item.status = "processing"
+        item.attempt_count = attempts
         item.started_at = datetime.now(timezone.utc)
-        await session.commit()
+        item.lease_started_at = item.started_at
 
         # Cost items carry engine-number webhook extras; DFM items carry none.
         webhook_extra: dict | None = None
 
         try:
+            await session.commit()
             if batch_release_fault == "batch_delay":
                 # Bounded, record-scoped delay for proving refresh/cancellation
                 # behavior against a real worker. The API can persist this marker
@@ -683,11 +1515,16 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
 
                 # Read file bytes
                 if batch_input_mode == "zip":
-                    file_bytes = await asyncio.to_thread(
-                        batch_service.read_batch_blob,
-                        batch_ulid,
-                        item_filename,
-                    )
+                    try:
+                        file_bytes = await asyncio.to_thread(
+                            batch_service.read_batch_blob,
+                            batch_ulid,
+                            item_filename,
+                        )
+                    except Exception as exc:
+                        raise BatchStorageReadError(
+                            "batch artifact could not be read from durable storage"
+                        ) from exc
                 elif batch_input_mode == "s3":
                     raise RuntimeError(
                         "S3 batch item fetch is unsupported on this server; upload a ZIP batch or import a manifest CSV."
@@ -713,6 +1550,10 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
                     org_id=batch_org_id,
                     return_persisted_id=True,
                 )
+                if not isinstance(analysis_run, analysis_service.AnalysisRun):
+                    raise RuntimeError(
+                        "Analysis did not return its durable persistence receipt"
+                    )
                 analysis_id = analysis_run.analysis_id
                 if analysis_id is None:
                     raise RuntimeError(
@@ -741,6 +1582,7 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
                 item.analysis_id = analysis_id
                 item.duration_ms = duration_ms
                 item.completed_at = datetime.now(timezone.utc)
+                item.lease_started_at = None
                 await batch_service.update_batch_counters(session, batch_id, "completed_items")
                 # Liveness from work, not just the coordinator (F-ARCH-6/#2 follow-up):
                 # a batch under arq pool saturation may go many ticks without the
@@ -771,7 +1613,39 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
                 )
             raise
         except Exception as exc:
-            logger.exception("BatchItem %s failed", item_ulid)
+            if is_transient_batch_item_error(exc):
+                logger.warning(
+                    "BatchItem %s hit retryable infrastructure failure on attempt %d",
+                    item_ulid,
+                    attempts,
+                    exc_info=True,
+                )
+                try:
+                    await session.rollback()
+                except Exception:
+                    logger.exception(
+                        "Could not roll back failed attempt for BatchItem %s",
+                        item_ulid,
+                    )
+                try:
+                    action, next_attempt = await _resolve_transient_batch_item_failure(
+                        item_ulid
+                    )
+                except Exception:
+                    # The database may still be unavailable. Preserve ARQ retry
+                    # semantics; the durable lease sweeper is the final backstop.
+                    logger.exception(
+                        "Could not persist retry state for BatchItem %s",
+                        item_ulid,
+                    )
+                    raise Retry(defer=_transient_retry_delay(attempts)) from exc
+                if action == "retry":
+                    raise Retry(
+                        defer=_transient_retry_delay(next_attempt)
+                    ) from exc
+                return
+
+            logger.exception("BatchItem %s failed with terminal error", item_ulid)
             # A failed flush leaves AsyncSession unusable until rollback, and a
             # rollback expires ORM attributes. Recover the durable rows before
             # recording the terminal item failure so no exception path can
@@ -786,10 +1660,16 @@ async def run_batch_item(ctx: dict, item_ulid: str) -> None:
                     item.status,
                 )
                 return
-            item.status = "failed"
+            if batch.status in _TERMINAL_BATCH_STATUSES:
+                item.status = "skipped"
+            else:
+                item.status = "failed"
+                await batch_service.update_batch_counters(
+                    session, batch_id, "failed_items"
+                )
             item.error_message = str(exc)[:500]
             item.completed_at = datetime.now(timezone.utc)
-            await batch_service.update_batch_counters(session, batch_id, "failed_items")
+            item.lease_started_at = None
             # Same reasoning as the success path: a failed item is still proof
             # of life for the batch.
             batch_service.touch_batch_heartbeat(batch)

@@ -367,7 +367,8 @@ def governance_fields(d: CostDecision) -> dict:
     ``stale_at`` now, but does not claim the saved decision is stale until that
     effective instant arrives.
     """
-    disposition = getattr(d, "user_disposition", None)
+    raw_disposition = getattr(d, "user_disposition", None)
+    disposition = raw_disposition if isinstance(raw_disposition, str) else None
     return {
         "approval_status": getattr(d, "approval_status", None) or APPROVAL_UNREVIEWED,
         "approved_by_user_id": getattr(d, "approved_by_user_id", None),
@@ -377,7 +378,11 @@ def governance_fields(d: CostDecision) -> dict:
         "stale_at": _iso(getattr(d, "stale_at", None)),
         "stale_reason": getattr(d, "stale_reason", None),
         "user_disposition": disposition,
-        "user_disposition_label": DISPOSITION_LABELS.get(disposition),
+        "user_disposition_label": (
+            DISPOSITION_LABELS.get(disposition)
+            if disposition is not None
+            else None
+        ),
         "disposition_note": getattr(d, "disposition_note", None),
         "disposition_updated_at": _iso(
             getattr(d, "disposition_updated_at", None)
@@ -450,6 +455,36 @@ async def reopen_owned(
     return d
 
 
+def _selected_route_dfm_blocked(result_json: object) -> bool:
+    """Fail closed when the persisted make-now route carries a real DFM block.
+
+    The immutable cost report can retain a conditional comparison cost for a
+    blocked route. That is useful evidence, but it is not a route a user may
+    record as an unqualified ``Make in-house`` outcome. A revised CAD artifact
+    must pass route DFM first.
+    """
+    if not isinstance(result_json, dict):
+        return False
+    decision = result_json.get("decision")
+    process = decision.get("make_now_process") if isinstance(decision, dict) else None
+    estimates = result_json.get("estimates")
+    if not isinstance(estimates, list):
+        return False
+    selected = [
+        item
+        for item in estimates
+        if isinstance(item, dict)
+        and (not process or item.get("process") == process)
+    ]
+    return any(
+        item.get("dfm_ready") is False
+        or item.get("dfm_verdict") == "fail"
+        or item.get("environment_excluded") is True
+        or bool(item.get("dfm_blockers"))
+        for item in selected
+    )
+
+
 async def set_disposition_owned(
     session: AsyncSession,
     ulid: str,
@@ -476,6 +511,15 @@ async def set_disposition_owned(
 
     d = await get_owned(session, ulid, user_id)
     clean_note = _clean_note(note) if disposition is not None else None
+    if disposition == "inhouse" and _selected_route_dfm_blocked(d.result_json):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Make in-house is unavailable while the selected route is blocked "
+                "by DFM. Record Redesign, Make outside, or Acquire capability, or "
+                "verify revised CAD that passes route DFM."
+            ),
+        )
     previous = getattr(d, "user_disposition", None)
     previous_note = getattr(d, "disposition_note", None)
 

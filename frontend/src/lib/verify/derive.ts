@@ -35,6 +35,54 @@ export function makeNowEstimate(
   return pool.reduce((a, b) => (b.quantity > a.quantity ? b : a));
 }
 
+export type DfmVerdict = "pass" | "issues" | "fail" | "unknown";
+
+export interface RouteDfmOutcome {
+  /** The fail-closed verdict shown to the user for the selected route. */
+  verdict: DfmVerdict;
+  /** True when the route must not be presented as makeable as modeled. */
+  blocked: boolean;
+  /** The first engine-authored blocker, when the route supplied one. */
+  primaryBlocker: string | null;
+}
+
+/**
+ * Reconcile part-level validation with the selected manufacturing route.
+ *
+ * A part can pass general geometry validation while a specific process still
+ * fails its build envelope or process DFM. The route is the manufacturing
+ * recommendation the user is acting on, so it must be allowed to downgrade the
+ * headline verdict. A computed cost may still be retained for comparison, but
+ * it is conditional and must never turn a blocked route green.
+ */
+export function routeDfmOutcome(
+  validationVerdict: DfmVerdict | null | undefined,
+  route: CostEstimate | null,
+): RouteDfmOutcome {
+  const base = validationVerdict ?? "unknown";
+  const blockers = route?.dfm_blockers?.filter((item) => item.trim().length > 0) ?? [];
+  const routeBlocked = !!route && (
+    route.dfm_ready === false ||
+    route.dfm_verdict === "fail" ||
+    blockers.length > 0
+  );
+
+  if (base === "fail" || routeBlocked) {
+    return {
+      verdict: "fail",
+      blocked: routeBlocked,
+      primaryBlocker: blockers[0] ?? null,
+    };
+  }
+  if (base === "issues" || route?.dfm_verdict === "issues") {
+    return { verdict: "issues", blocked: false, primaryBlocker: null };
+  }
+  if (base === "pass" && route?.dfm_ready === true && route.dfm_verdict === "pass") {
+    return { verdict: "pass", blocked: false, primaryBlocker: null };
+  }
+  return { verdict: "unknown", blocked: false, primaryBlocker: null };
+}
+
 /** The tooling / acquire route's estimate at a given quantity (may be absent). */
 export function toolingEstimate(
   cost: CostReport,

@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
-import time
 import traceback
 from datetime import datetime, timezone
 
@@ -13,6 +12,8 @@ from sqlalchemy import select
 from src.db.models import Job
 
 logger = logging.getLogger("cadverify.jobs.reconstruction_tasks")
+
+_TERMINAL_JOB_STATUSES = {"done", "partial", "failed"}
 
 
 async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
@@ -50,6 +51,23 @@ async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
         if job is None:
             logger.error("Reconstruction job %s not found", job_ulid)
             return {"error": "job_not_found"}
+        if job.job_type != "reconstruction":
+            logger.error(
+                "Reconstruction job %s has unexpected type %s",
+                job_ulid,
+                job.job_type,
+            )
+            return {"error": "job_type_mismatch"}
+        if job.status in _TERMINAL_JOB_STATUSES:
+            logger.info(
+                "Reconstruction job %s already terminal: %s",
+                job_ulid,
+                job.status,
+            )
+            return job.result_json or {"status": job.status}
+        if job.status == "running" and int(ctx.get("job_try", 1)) <= 1:
+            logger.info("Reconstruction job %s is already running", job_ulid)
+            return job.result_json or {"status": "running"}
 
         # Analysis dedup may roll back its own transaction. Keep it in a separate
         # session and snapshot ownership now so that rollback can never expire or
@@ -60,10 +78,15 @@ async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
 
         # Set running
         job.status = "running"
-        job.started_at = datetime.now(timezone.utc)
+        job.started_at = job.started_at or datetime.now(timezone.utc)
         await session.commit()
 
         try:
+            # Re-resolve immediately before touching customer image bytes. If
+            # operators switched this queued job from a local to remote backend,
+            # the original request must carry explicit egress acknowledgement.
+            reconstruction_service.require_job_backend_authorization(job_params)
+
             # 2. Read images from blob storage
             images_with_types = await asyncio.to_thread(
                 reconstruction_service.load_reconstruction_images,
@@ -89,7 +112,16 @@ async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
 
             # 5. Load mesh and compute confidence
             mesh = trimesh.load(io.BytesIO(result.mesh_bytes), file_type="stl")
-            score = compute_reconstruction_confidence(mesh)
+            if isinstance(mesh, trimesh.Scene):
+                mesh = mesh.dump(concatenate=True)
+            if not isinstance(mesh, trimesh.Trimesh):
+                raise RuntimeError(
+                    "Reconstruction engine returned an unsupported mesh payload"
+                )
+            score = max(
+                0.0,
+                min(1.0, float(compute_reconstruction_confidence(mesh))),
+            )
             level = confidence_level(score)
             message = confidence_message(level)
 
@@ -127,6 +159,10 @@ async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
                         org_id=job_org_id,
                         return_persisted_id=True,
                     )
+                    if not isinstance(analysis_run, analysis_service.AnalysisRun):
+                        raise RuntimeError(
+                            "Analysis did not return its durable persistence receipt"
+                        )
 
                     # Resolve the exact persisted/cache row selected above.
                     # Querying "latest by mesh" can race another analysis variant.
@@ -157,16 +193,24 @@ async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
             # 8. Build result
             result_json = {
                 "reconstruction": {
-                    "confidence_score": score,
-                    "confidence_level": level,
-                    "confidence_message": message,
-                    "face_count": result.face_count,
-                    "mesh_url": f"/api/v1/reconstructions/{job_ulid}/mesh.stl",
+                    "confidence": {
+                        "score": score,
+                        "scale": "unit_interval",
+                        "level": level,
+                        "message": message,
+                    },
+                    "mesh": {
+                        "url": f"/api/v1/reconstructions/{job_ulid}/mesh.stl",
+                        "face_count": result.face_count,
+                    },
                     "duration_ms": result.duration_ms,
                     "method": result.method,
                 },
-                "analysis_id": analysis_ulid,
-                "analysis_url": analysis_url,
+                "analysis": (
+                    {"id": analysis_ulid, "url": analysis_url}
+                    if analysis_ulid and analysis_url
+                    else None
+                ),
             }
 
             job.status = "done"
@@ -185,9 +229,22 @@ async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
             # Honest annotation: if reconstruction is unavailable (no local
             # model + remote egress not opted in), record the stable error code
             # rather than a bare message -- never a silent egress.
-            error_json: dict = {"error": str(e)}
-            if getattr(e, "code", None) == "RECONSTRUCTION_UNAVAILABLE":
-                error_json["code"] = "RECONSTRUCTION_UNAVAILABLE"
+            code = getattr(e, "code", "RECONSTRUCTION_FAILED")
+            error_json = {
+                "code": code,
+                "message": (
+                    str(e)
+                    if code
+                    in {
+                        "RECONSTRUCTION_UNAVAILABLE",
+                        "RECONSTRUCTION_EGRESS_ACKNOWLEDGEMENT_REQUIRED",
+                    }
+                    else (
+                        "Reconstruction could not produce a usable mesh from "
+                        "these images. Review the image guidance and try again."
+                    )
+                ),
+            }
             job.status = "failed"
             job.result_json = error_json
             job.completed_at = datetime.now(timezone.utc)

@@ -8,6 +8,7 @@ import {
 import { API_BASE, browserOrBackendUrl } from "./api-base";
 import type { AnalysisListRow } from "./recent-parts";
 import type { CostDisposition } from "./cost-disposition";
+import { createReconstructionSubmissionId } from "./reconstruction-id";
 
 export interface GeometryInfo {
   vertices: number;
@@ -314,6 +315,12 @@ const apiClient = {
       try {
         res = await fetch(url, { ...options, headers });
       } catch (err) {
+        if (
+          options.signal?.aborted ||
+          (err instanceof Error && err.name === "AbortError")
+        ) {
+          throw err;
+        }
         // Network error / timeout
         lastError = err instanceof Error ? err : new Error(String(err));
         if (attempt === retries) {
@@ -590,37 +597,127 @@ export async function fetchAnalysis(id: string): Promise<AnalysisDetail> {
 
 export interface ReconstructionSubmitResult {
   job_id: string;
-  status: string;
+  status: JobStatusValue;
   poll_url: string;
   estimated_seconds: number;
 }
 
+export interface ReconstructionCapability {
+  available: boolean;
+  can_submit: boolean;
+  effective_backend: "local" | "remote" | "none";
+  customer_data_egress: boolean;
+  requires_egress_acknowledgement: boolean;
+  message: string;
+  accuracy_notice: string;
+  verify_path: "/verify";
+}
+
+export type JobStatusValue = "queued" | "running" | "done" | "partial" | "failed";
+
+export interface JobError {
+  code: string;
+  message: string;
+}
+
 export interface JobStatus {
   job_id: string;
-  status: "queued" | "running" | "done" | "failed";
-  progress?: number;
-  result?: Record<string, unknown>;
-  error?: string;
+  status: JobStatusValue;
+  job_type: string;
+  created_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  result_url: string | null;
+  error: JobError | null;
+}
+
+export interface ReconstructionJobResult {
+  reconstruction: {
+    confidence: {
+      score: number;
+      scale: "unit_interval";
+      level: "high" | "medium" | "low";
+      message: string | null;
+    };
+    mesh: {
+      url: string;
+      face_count: number;
+    };
+    duration_ms: number;
+    method: string;
+  };
+  analysis: { id: string; url: string } | null;
+}
+
+export interface JobResult<Result = Record<string, unknown>> {
+  job_id: string;
+  status: "done" | "partial";
+  result: Result;
 }
 
 export async function submitReconstruction(
   images: File[],
   processTypes?: string,
-  rulePack?: string
+  rulePack?: string,
+  submissionId = createReconstructionSubmissionId(),
+  egressAcknowledged = false,
 ): Promise<ReconstructionSubmitResult> {
   const form = new FormData();
   images.forEach((img) => form.append("images", img));
-  if (processTypes) form.append("process_types", processTypes);
-  if (rulePack) form.append("rule_pack", rulePack);
+  const params = new URLSearchParams();
+  if (processTypes) params.set("process_types", processTypes);
+  if (rulePack) params.set("rule_pack", rulePack);
+  const query = params.toString();
 
   return apiClient.fetchJson<ReconstructionSubmitResult>(
-    `${API_BASE}/reconstruct`,
-    { method: "POST", body: form }
+    `${API_BASE}/reconstruct${query ? `?${query}` : ""}`,
+    {
+      method: "POST",
+      body: form,
+      headers: {
+        "Idempotency-Key": submissionId,
+        ...(egressAcknowledged
+          ? { "X-Reconstruction-Egress-Acknowledged": "true" }
+          : {}),
+      },
+    },
   );
 }
 
-export async function getJobStatus(jobId: string): Promise<JobStatus> {
-  return apiClient.fetchJson<JobStatus>(`${API_BASE}/jobs/${jobId}`);
+export async function getReconstructionCapability(
+  signal?: AbortSignal,
+): Promise<ReconstructionCapability> {
+  return apiClient.fetchJson<ReconstructionCapability>(
+    `${API_BASE}/reconstruct/capability`,
+    { signal },
+  );
+}
+
+async function fetchJobJson<Result>(
+  url: string,
+  signal?: AbortSignal,
+): Promise<Result> {
+  const response = await apiClient.fetch(url, { signal }, { retries: 0 });
+  return response.json() as Promise<Result>;
+}
+
+export async function getJobStatus(
+  jobId: string,
+  signal?: AbortSignal,
+): Promise<JobStatus> {
+  return fetchJobJson<JobStatus>(`${API_BASE}/jobs/${jobId}`, signal);
+}
+
+export async function getJobResult(
+  resultUrl: string,
+  signal?: AbortSignal,
+): Promise<JobResult<ReconstructionJobResult>> {
+  const match = /^\/api\/v1\/jobs\/([0-9A-Za-z]{1,64})\/result$/.exec(resultUrl);
+  if (!match) throw new Error("Backend returned an invalid reconstruction result URL");
+  return fetchJobJson<JobResult<ReconstructionJobResult>>(
+    `${API_BASE}/jobs/${match[1]}/result`,
+    signal,
+  );
 }
 
 export function getReconstructionMeshUrl(jobId: string): string {

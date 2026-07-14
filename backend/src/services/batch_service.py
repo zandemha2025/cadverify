@@ -11,10 +11,11 @@ import logging
 import os
 import tempfile
 import zipfile
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import AsyncGenerator, Optional
 
-from sqlalchemy import and_, func, select, text, update
+from sqlalchemy import and_, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
@@ -33,6 +34,11 @@ def _flag(name: str, default: str) -> bool:
 class ZipTooLargeError(ValueError):
     """Uploaded ZIP exceeded the configured size cap (streamed, early-rejected)."""
 
+
+class ManifestTooLargeError(ValueError):
+    """Uploaded CSV manifest exceeded its small authoritative byte cap."""
+
+
 # ---------------------------------------------------------------------------
 # Constants (from env vars)
 # ---------------------------------------------------------------------------
@@ -40,8 +46,34 @@ class ZipTooLargeError(ValueError):
 BATCH_MAX_ITEMS = int(os.getenv("BATCH_MAX_ITEMS", "10000"))
 BATCH_MAX_ZIP_BYTES = int(os.getenv("BATCH_MAX_ZIP_BYTES", str(5 * 1024**3)))
 BATCH_MAX_FILE_BYTES = int(os.getenv("BATCH_MAX_FILE_BYTES", str(100 * 1024**2)))
+# Manifests contain metadata for at most BATCH_MAX_ITEMS rows and never need to
+# scale with the ZIP payload. A 2 MiB default leaves ample room for 10,000 CSV
+# rows while bounding multipart form memory independently of the 5 GiB ZIP cap.
+BATCH_MAX_MANIFEST_BYTES = int(
+    os.getenv("BATCH_MAX_MANIFEST_BYTES", str(2 * 1024**2))
+)
+# A 5 GiB ZIP plus at most 10 GiB of expanded CAD stays within the common
+# 20 GiB Fargate ephemeral-disk budget when direct preparation concurrency is
+# the safe default of one. Operators with a deliberately different workload /
+# disk budget can set BATCH_MAX_UNCOMPRESSED_BYTES explicitly.
+BATCH_MAX_UNCOMPRESSED_BYTES = int(
+    os.getenv(
+        "BATCH_MAX_UNCOMPRESSED_BYTES",
+        str(min(10 * 1024**3, max(BATCH_MAX_ZIP_BYTES, 2 * BATCH_MAX_ZIP_BYTES))),
+    )
+)
 MAX_COMPRESSION_RATIO = 100
+# Keep one batch inside the worker's 12-job execution pool. These are product
+# invariants rather than tuning hints: values outside this range are rejected at
+# the API boundary, rechecked by the service, and constrained in PostgreSQL.
+MIN_BATCH_CONCURRENCY = 1
+MAX_BATCH_CONCURRENCY = 12
 DEFAULT_BATCH_CONCURRENCY = int(os.getenv("DEFAULT_BATCH_CONCURRENCY", "10"))
+if not MIN_BATCH_CONCURRENCY <= DEFAULT_BATCH_CONCURRENCY <= MAX_BATCH_CONCURRENCY:
+    raise RuntimeError(
+        "DEFAULT_BATCH_CONCURRENCY must be between "
+        f"{MIN_BATCH_CONCURRENCY} and {MAX_BATCH_CONCURRENCY}"
+    )
 BATCH_BLOB_DIR = os.getenv("BATCH_BLOB_DIR", "/data/blobs/batch")
 VALID_EXTENSIONS = {".stl", ".step", ".stp", ".iges", ".igs"}
 NATIVE_CAD_EXTENSIONS = {
@@ -66,6 +98,24 @@ CAD_TRIAGE_EXTENSIONS = NATIVE_CAD_EXTENSIONS | DRAWING_EXTENSIONS
 
 _VALID_PRIORITIES = {"low", "normal", "high"}
 _CSV_EXPORT_PAGE_SIZE = 200
+
+
+def validate_batch_concurrency_limit(value: Optional[int]) -> int:
+    """Return the effective per-batch concurrency or reject it.
+
+    This intentionally does not use ``value or default``: zero and negative
+    values are invalid requests, not aliases for the default.
+    """
+
+    effective = DEFAULT_BATCH_CONCURRENCY if value is None else value
+    if isinstance(effective, bool) or not isinstance(effective, int):
+        raise ValueError("concurrency_limit must be an integer")
+    if not MIN_BATCH_CONCURRENCY <= effective <= MAX_BATCH_CONCURRENCY:
+        raise ValueError(
+            "concurrency_limit must be between "
+            f"{MIN_BATCH_CONCURRENCY} and {MAX_BATCH_CONCURRENCY}"
+        )
+    return effective
 
 
 def _batch_store():
@@ -140,6 +190,7 @@ async def create_batch(
     """Create a Batch row with status='pending'. Returns the Batch object."""
     from src.auth.org_context import resolve_org
 
+    effective_concurrency = validate_batch_concurrency_limit(concurrency_limit)
     batch = Batch(
         ulid=str(ULID()),
         user_id=user_id,
@@ -148,7 +199,7 @@ async def create_batch(
         job_type=job_type,
         webhook_url=webhook_url,
         webhook_secret=webhook_secret,
-        concurrency_limit=concurrency_limit or DEFAULT_BATCH_CONCURRENCY,
+        concurrency_limit=effective_concurrency,
         api_key_id=_nullable_api_key_id(api_key_id),
     )
     session.add(batch)
@@ -212,6 +263,33 @@ async def stream_upload_to_tempfile(
     return path
 
 
+async def read_manifest_upload_bounded(
+    upload,
+    max_bytes: int | None = None,
+    chunk_size: int = 64 * 1024,
+) -> bytes:
+    """Read a small manifest without ever buffering more than its cap + 1.
+
+    ``UploadFile.read(n)`` is normally exact for the spooled multipart file,
+    but the loop also handles short reads from test or alternate file objects.
+    The extra byte makes the limit authoritative without an unbounded EOF read.
+    """
+    limit = BATCH_MAX_MANIFEST_BYTES if max_bytes is None else int(max_bytes)
+    if limit <= 0:
+        raise ValueError("manifest byte limit must be positive")
+    read_size = max(1, min(int(chunk_size), limit + 1))
+    content = bytearray()
+    while len(content) <= limit:
+        remaining = limit + 1 - len(content)
+        chunk = await upload.read(min(read_size, remaining))
+        if not chunk:
+            return bytes(content)
+        content.extend(chunk)
+    raise ManifestTooLargeError(
+        f"Manifest exceeds maximum size of {limit} bytes"
+    )
+
+
 def _dedup_name(base: str, seen: set[str]) -> str:
     """Return a name unique within *seen*, suffixing ``_1``, ``_2`` on collision.
 
@@ -234,10 +312,11 @@ def _dedup_name(base: str, seen: set[str]) -> str:
 
 def _unsupported_cad_error(ext: str) -> str:
     kind = "drawing" if ext in DRAWING_EXTENSIONS else "native CAD"
+    conversion_guidance = "drawings require conversion before processing."
     return (
         f"Unsupported {kind} file type {ext or '(none)'}. "
         "Upload STL, STEP/STP, or IGES/IGS for batch analysis; native CAD and "
-        "drawings require conversion before processing."
+        f"{conversion_guidance}"
     )
 
 
@@ -279,6 +358,14 @@ def _extract_zipfile(zf: zipfile.ZipFile, batch_ulid: str) -> list[dict]:
         raise ValueError(
             f"ZIP contains {len(cad_entries)} CAD files, "
             f"exceeding limit of {BATCH_MAX_ITEMS}"
+        )
+
+    total_uncompressed_bytes = sum(info.file_size for info, _name, _ext in cad_entries)
+    if total_uncompressed_bytes > BATCH_MAX_UNCOMPRESSED_BYTES:
+        raise ValueError(
+            f"ZIP expands to {total_uncompressed_bytes} total uncompressed CAD bytes, "
+            f"exceeding limit of {BATCH_MAX_UNCOMPRESSED_BYTES}; split the workload "
+            "into smaller ZIP batches"
         )
 
     try:
@@ -398,6 +485,33 @@ def parse_csv_manifest(csv_content: str, *, validate_cost: bool = False) -> list
         items.append(item)
 
     return items
+
+
+def merge_manifest_metadata(
+    items_data: list[dict],
+    manifest_items: list[dict],
+    *,
+    job_type: str,
+) -> None:
+    """Merge optional manifest columns into extracted ZIP items by filename.
+
+    This is the exact metadata merge used by direct-upload preparation. The
+    proxied route retains its existing inline merge so its request path remains
+    byte-compatible while both paths share the same field semantics.
+    """
+    manifest_map = {item["filename"]: item for item in manifest_items}
+    for item in items_data:
+        if item.get("status") == "skipped":
+            continue
+        metadata = manifest_map.get(item["filename"], {})
+        item["process_types"] = metadata.get("process_types")
+        item["rule_pack"] = metadata.get("rule_pack")
+        item["priority"] = metadata.get("priority", "normal")
+        if job_type == "cost":
+            item["quantities"] = metadata.get("quantities")
+            item["region"] = metadata.get("region")
+            item["material_class"] = metadata.get("material_class")
+            item["shop"] = metadata.get("shop")
 
 
 def _parse_cost_manifest_fields(row: dict, row_num: int) -> dict:
@@ -858,6 +972,90 @@ async def update_batch_counters(
 # Failure / orphan handling (F-ARCH-1)
 # ---------------------------------------------------------------------------
 
+BATCH_ITEM_MAX_ATTEMPTS = 3
+
+
+@dataclass(frozen=True)
+class BatchItemLeaseRecovery:
+    """Durable outcome of reclaiming expired queue/worker leases."""
+
+    requeued_ulids: tuple[str, ...]
+    exhausted_ulids: tuple[str, ...]
+
+
+def _attempt_count(item: BatchItem) -> int:
+    value = getattr(item, "attempt_count", 0)
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+async def recover_stale_batch_item_leases(
+    session: AsyncSession,
+    batch: Batch,
+    *,
+    processing_cutoff: datetime,
+    queued_cutoff: datetime,
+    now: Optional[datetime] = None,
+) -> BatchItemLeaseRecovery:
+    """Requeue expired leases and terminalize work that exhausted its budget.
+
+    ``attempt_count`` is persisted when work is published. That makes the retry
+    ceiling survive Redis redelivery, worker death, and coordinator recovery;
+    a crash cannot reset the budget by creating a fresh queue job.
+    """
+
+    now = now or datetime.now(timezone.utc)
+    rows = (
+        await session.execute(
+            select(BatchItem)
+            .where(
+                BatchItem.batch_id == batch.id,
+                or_(
+                    and_(
+                        BatchItem.status == "processing",
+                        or_(
+                            BatchItem.lease_started_at.is_(None),
+                            BatchItem.lease_started_at <= processing_cutoff,
+                        ),
+                    ),
+                    and_(
+                        BatchItem.status == "queued",
+                        func.coalesce(
+                            BatchItem.lease_started_at,
+                            BatchItem.created_at,
+                        )
+                        <= queued_cutoff,
+                    ),
+                ),
+            )
+            .with_for_update()
+        )
+    ).scalars().all()
+
+    requeued: list[str] = []
+    exhausted: list[str] = []
+    for item in rows:
+        item.lease_started_at = None
+        if _attempt_count(item) >= BATCH_ITEM_MAX_ATTEMPTS:
+            item.status = "failed"
+            item.completed_at = now
+            item.error_message = (
+                "Temporary storage or database failure persisted after "
+                f"{BATCH_ITEM_MAX_ATTEMPTS} attempts."
+            )
+            exhausted.append(item.ulid)
+            continue
+
+        item.status = "pending"
+        item.started_at = None
+        item.completed_at = None
+        item.error_message = None
+        requeued.append(item.ulid)
+
+    if exhausted:
+        batch.failed_items = int(batch.failed_items or 0) + len(exhausted)
+
+    return BatchItemLeaseRecovery(tuple(requeued), tuple(exhausted))
+
 # How long a batch with NO coordinator heartbeat may sit in pending/processing
 # before the sweeper declares it orphaned. This is only the fallback anchor (a
 # batch whose coordinator never wrote a single heartbeat -- e.g. the API crashed
@@ -899,6 +1097,16 @@ BATCH_HEARTBEAT_STALE_SECONDS = int(
             )
         ),
     )
+)
+try:
+    _direct_upload_prep_timeout_seconds = int(
+        os.getenv("DIRECT_UPLOAD_PREP_TIMEOUT_SECONDS", "1800")
+    )
+except (TypeError, ValueError):
+    _direct_upload_prep_timeout_seconds = 1800
+DIRECT_UPLOAD_PREP_STALE_SECONDS = max(
+    BATCH_HEARTBEAT_STALE_SECONDS,
+    max(660, _direct_upload_prep_timeout_seconds) + 60,
 )
 
 
@@ -949,7 +1157,7 @@ async def mark_pending_items_terminal(
     session: AsyncSession,
     batch_id: int,
     terminal_status: str = "skipped",
-) -> None:
+) -> int:
     """Move a batch's non-terminal items to a terminal state (F-ARCH-1/#3).
 
     When a batch is marked failed on the enqueue-failure path, its items would
@@ -957,13 +1165,54 @@ async def mark_pending_items_terminal(
     (pending_items = total - completed - failed) would advertise work that will
     never run. Terminalize them so the read is consistent. Caller commits.
     """
-    await session.execute(
-        text(
-            "UPDATE batch_items SET status = :s "
-            "WHERE batch_id = :b AND status IN ('pending', 'queued', 'processing')"
-        ),
-        {"s": terminal_status, "b": batch_id},
+    now = datetime.now(timezone.utc)
+    result = await session.execute(
+        update(BatchItem)
+        .where(
+            BatchItem.batch_id == batch_id,
+            BatchItem.status.in_(["pending", "queued", "processing"]),
+        )
+        .values(
+            status=terminal_status,
+            completed_at=func.coalesce(BatchItem.completed_at, now),
+            lease_started_at=None,
+        )
+        .returning(BatchItem.id)
     )
+    return len(result.scalars().all())
+
+
+async def reconcile_terminal_batch_items(
+    session: AsyncSession,
+    *,
+    now: Optional[datetime] = None,
+) -> int:
+    """Skip every non-terminal child whose parent is already terminal.
+
+    Cancellation performs this transition synchronously. This sweep is the
+    crash/race backstop for older rows and for a worker that died after claiming
+    an item: terminal parents are never resumed, so their children must also be
+    terminal for progress to reach zero pending items.
+    """
+
+    now = now or datetime.now(timezone.utc)
+    terminal_batch_ids = select(Batch.id).where(
+        Batch.status.in_(["completed", "failed", "cancelled"])
+    )
+    result = await session.execute(
+        update(BatchItem)
+        .where(
+            BatchItem.batch_id.in_(terminal_batch_ids),
+            BatchItem.status.in_(["pending", "queued", "processing"]),
+        )
+        .values(
+            status="skipped",
+            completed_at=func.coalesce(BatchItem.completed_at, now),
+            lease_started_at=None,
+        )
+        .returning(BatchItem.id)
+    )
+    return len(result.scalars().all())
 
 
 async def sweep_orphaned_batches(
@@ -983,8 +1232,6 @@ async def sweep_orphaned_batches(
 
     Returns the number of batches reaped. Caller commits.
     """
-    from datetime import timedelta
-
     ttl = BATCH_ORPHAN_TTL_SECONDS if ttl_seconds is None else ttl_seconds
     hb_stale = (
         BATCH_HEARTBEAT_STALE_SECONDS
@@ -995,7 +1242,9 @@ async def sweep_orphaned_batches(
     ttl_cutoff = now - timedelta(seconds=ttl)
     hb_cutoff = now - timedelta(seconds=hb_stale)
 
-    stmt = select(Batch).where(Batch.status.in_(["pending", "processing"]))
+    stmt = select(Batch).where(
+        Batch.status.in_(["pending", "processing", "extracting"])
+    )
     rows = (await session.execute(stmt)).scalars().all()
 
     reaped = 0
@@ -1004,7 +1253,13 @@ async def sweep_orphaned_batches(
         stale = False
         if heartbeat is not None:
             # Primary path: reap only when the heartbeat has gone stale.
-            if heartbeat <= hb_cutoff:
+            effective_hb_cutoff = (
+                now
+                - timedelta(seconds=DIRECT_UPLOAD_PREP_STALE_SECONDS)
+                if batch.status == "extracting"
+                else hb_cutoff
+            )
+            if heartbeat <= effective_hb_cutoff:
                 stale = True
         else:
             # Fallback: no heartbeat ever written -> the coordinator never ran.

@@ -7,13 +7,19 @@ adapter), and ``factory`` (env-driven selection).
 from __future__ import annotations
 
 from src.storage.base import (
+    ObjectMetadata,
     ObjectNotFoundError,
     ObjectStore,
     ObjectStoreError,
     ObjectStoreProtocol,
     Payload,
 )
-from src.storage.factory import get_object_store, selected_backend
+from src.storage.factory import (
+    DirectUploadStoreConfigurationError,
+    get_direct_upload_store,
+    get_object_store,
+    selected_backend,
+)
 from src.storage.local import LocalObjectStore
 from src.storage.s3 import S3ObjectStore
 
@@ -21,10 +27,13 @@ __all__ = [
     "ObjectStore",
     "ObjectStoreProtocol",
     "ObjectStoreError",
+    "ObjectMetadata",
     "ObjectNotFoundError",
     "Payload",
     "LocalObjectStore",
     "S3ObjectStore",
+    "DirectUploadStoreConfigurationError",
+    "get_direct_upload_store",
     "get_object_store",
     "selected_backend",
 ]

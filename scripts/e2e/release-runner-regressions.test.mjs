@@ -56,7 +56,11 @@ test("API-key mutations finish finite proxy responses before reload", () => {
 test("mobile history recovery finishes cost persistence before the next journey", () => {
   assert.match(mobileRunner, /async waitForSavedVerification\(\)/);
   assert.match(mobileRunner, /getByRole\("button", \{ name: \/\^Open the record\/ \}\)/);
-  assert.equal(mobileRunner.match(/await this\.waitForSavedVerification\(\)/g)?.length, 2);
+  const historyRecovery = mobileRunner.match(
+    /async historyRecovery\(\) \{([\s\S]*?)\n  async expiredSessionRecovery\(\)/,
+  )?.[1];
+  assert.ok(historyRecovery, "historyRecovery must remain directly before expiredSessionRecovery");
+  assert.equal(historyRecovery.match(/await this\.waitForSavedVerification\(\)/g)?.length, 1);
   assert.match(
     mobileRunner,
     /historyRecovery\(\)[\s\S]*goForward[\s\S]*await this\.waitForSavedVerification\(\)[\s\S]*expiredSessionRecovery\(\)/,

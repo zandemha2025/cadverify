@@ -1,16 +1,19 @@
 name: STEP ingestion spike (B4)
 
-# Push-triggered on the spike branch only. This builds the ACTUAL deploy image
+# Push-triggered on the spike branch only. This builds the deployment-
+# representative backend image
 # (backend/Dockerfile, linux/amd64, base python:3.12-slim) and proves whether
 # the LIVE STEP path — src/parsers/step_mesher.py (gmsh + embedded OpenCASCADE,
 # invoked by routes.py::_parse_mesh) — can `import gmsh`, end-to-end parse a
 # real .step file, AND run the full existing DFM+cost engine on the resulting
 # mesh (routes.py::_run_cost_engine -> costing.estimate_decision) INSIDE that
-# image on the deploy target.
+# image in the same Linux architecture used by the commercial release workflow.
 #
 # The build context is `backend`, so this workflow file (.github/, repo root)
 # and the sample under backend/tests/ (dockerignored) do NOT change the image:
-# the image built here is byte-identical to what Fly.io would deploy from dev.
+# the build uses the same backend Dockerfile/context as the current AWS
+# commercial promotion path. This proves runtime compatibility; it does not
+# claim reproducible byte identity with a separately built release artifact.
 on:
   push:
     branches: [feat/step-spike]
@@ -84,8 +87,8 @@ jobs:
       # (b) Real end-to-end run through the LIVE code path: STEP bytes -> mesh
       # (ingestion) THEN the full existing DFM+cost engine on that mesh. The
       # probe script and sample live under backend/tests/ (dockerignored -> not
-      # in image) and are MOUNTED at run time, so the image stays byte-identical
-      # to prod while we feed it real STEP bytes. The probe calls
+      # in image) and are MOUNTED at run time, so the probe does not alter the
+      # deployment-representative image while it feeds real STEP bytes. The probe calls
       # src.parsers.step_mesher.step_to_trimesh_from_bytes (the exact function
       # routes.py::_parse_mesh invokes for .step/.stp) and then
       # routes.py::_run_cost_engine + costing.estimate_decision (the exact

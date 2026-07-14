@@ -2,7 +2,8 @@
 import "server-only";
 
 import { createHmac } from "node:crypto";
-import { isIP } from "node:net";
+
+import { requestClientIp } from "./auth-proxy-ip";
 
 const CLIENT_IP_HEADER = "x-cadverify-client-ip";
 const TIMESTAMP_HEADER = "x-cadverify-proxy-timestamp";
@@ -27,29 +28,15 @@ function proxySecret(): Buffer | null {
   return decoded;
 }
 
-function validIp(raw: string | null): string | null {
-  const candidate = (raw || "").trim();
-  return isIP(candidate) ? candidate : null;
-}
-
-function requestClientIp(req: Request): string | null {
-  // Fly-Client-IP is written by Fly Proxy. The regulated NGINX ingress supplies
-  // X-Real-IP and is the only network-policy-authorized frontend ingress.
-  // Deliberately do not guess from X-Forwarded-For: its trust direction depends
-  // on the exact proxy chain and accepting the wrong element enables spoofing.
-  const fly = validIp(req.headers.get("fly-client-ip"));
-  if (fly) return fly;
-  const real = validIp(req.headers.get("x-real-ip"));
-  if (real) return real;
-  return null;
-}
-
 export function signedAuthProxyHeaders(
   req: Request,
   backendPath: string,
 ): Record<string, string> {
   const secret = proxySecret();
-  const ip = requestClientIp(req);
+  const ip = requestClientIp(
+    req,
+    process.env.AUTH_PROXY_CLIENT_IP_SOURCE || "auto",
+  );
   // Local development intentionally works without the production-only shared
   // secret. Production startup and promotion gates require it and prove the
   // signed handshake end to end.

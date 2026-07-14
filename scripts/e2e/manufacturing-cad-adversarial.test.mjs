@@ -80,3 +80,16 @@ test("expected HTTP rejections are captured separately from JavaScript errors", 
   assert.match(source, /"HTTP error response count"/);
   assert.match(source, /expectedHttpErrorCount: 1,[\s\S]*id: "CAD-08"/);
 });
+
+test("highest-risk Verify evidence captures settled schema-v2 stages", () => {
+  assert.match(source, /captureVisualStep/);
+  assert.match(source, /waitForVerificationPipelineDetached/);
+  assert.match(source, /waitFor\(\{ state: "detached", timeout \}\)/);
+  assert.match(source, /captureStage\(page, "VER-05", "terminal"/);
+  assert.match(source, /captureStage\(page, "FAIL-01", "failure"[\s\S]*uploadAnalyze\(page, goldenStep[\s\S]*captureStage\(page, "FAIL-01", "recovery"/);
+  assert.match(source, /captureStage\(page, "FAIL-02", "failure"[\s\S]*uploadAnalyze\(page, goldenStep[\s\S]*captureStage\(page, "FAIL-02", "recovery"/);
+  assert.match(source, /visualSteps: \[failureStep, recoveryStep\]/);
+  assert.match(source, /forbiddenVisible: \["We couldn’t read this file\."\]/);
+  assert.match(source, /forbiddenVisible: \["This part couldn’t be tessellated\."\]/);
+  assert.match(source, /releaseEvidence: \{\s*schemaVersion: 2,/);
+});

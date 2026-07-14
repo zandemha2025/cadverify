@@ -195,6 +195,44 @@ def test_create_batch_counts_initial_skipped_items_as_failed(mock_bs, mock_pool)
     app.dependency_overrides.clear()
 
 
+@pytest.mark.parametrize("concurrency_limit", [0, -1, 13])
+@patch("src.api.batch_router.batch_service")
+def test_create_batch_rejects_out_of_bounds_concurrency_before_creation(
+    mock_bs, concurrency_limit
+):
+    from src.auth.require_api_key import require_api_key
+    from src.db.engine import get_db_session
+
+    app.dependency_overrides[require_api_key] = _override_auth
+    app.dependency_overrides[get_db_session] = _override_session
+
+    response = TestClient(app).post(
+        "/api/v1/batch",
+        data={"concurrency_limit": str(concurrency_limit)},
+    )
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["code"] == "INVALID_BATCH_CONCURRENCY"
+    assert detail["min"] == 1
+    assert detail["max"] == 12
+    mock_bs.create_batch.assert_not_called()
+    app.dependency_overrides.clear()
+
+
+def test_create_batch_openapi_publishes_concurrency_bounds():
+    operation = app.openapi()["paths"]["/api/v1/batch"]["post"]
+    reference = operation["requestBody"]["content"]["multipart/form-data"][
+        "schema"
+    ]["$ref"]
+    schema_name = reference.rsplit("/", 1)[-1]
+    field = app.openapi()["components"]["schemas"][schema_name]["properties"][
+        "concurrency_limit"
+    ]
+    assert field["minimum"] == 1
+    assert field["maximum"] == 12
+
+
 # ---------------------------------------------------------------------------
 # POST /batch -- S3 input rejected up front (F-ARCH-5)
 # ---------------------------------------------------------------------------
@@ -436,7 +474,7 @@ def test_cancel_batch():
     mock_session = AsyncMock()
     mock_batch = _make_batch(status="processing")
 
-    # First call returns batch, second returns pending items
+    # First call returns the locked batch; second is the terminalizing UPDATE.
     mock_result1 = MagicMock()
     mock_scalars1 = MagicMock()
     mock_scalars1.first.return_value = mock_batch
@@ -458,6 +496,17 @@ def test_cancel_batch():
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "cancelled"
+    terminalize_stmt = mock_session.execute.await_args_list[1].args[0]
+    terminalize_sql = str(terminalize_stmt).lower()
+    assert "update batch_items" in terminalize_sql
+    params = terminalize_stmt.compile().params.values()
+    statuses = {
+        item
+        for value in params
+        for item in (value if isinstance(value, list) else [value])
+        if isinstance(item, str)
+    }
+    assert {"pending", "queued", "processing", "skipped"} <= statuses
 
     app.dependency_overrides.clear()
 

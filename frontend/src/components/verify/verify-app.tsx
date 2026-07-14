@@ -11,7 +11,7 @@ import Link from "next/link";
 import { C, MONO, SANS } from "@/lib/verify/tokens";
 import { runVerification, type VerifyResult } from "@/lib/verify/run";
 import { listMachines } from "@/lib/verify/machine-api";
-import { CAD_ACCEPT } from "@/lib/cad-file";
+import { CAD_ACCEPT, isSupportedCad, unsupportedCadGuidance } from "@/lib/cad-file";
 import { VERIFY_PART_CAD_INPUT } from "@/lib/verify/file-inputs";
 import { Stage, type StageAssembly } from "./stage";
 import { AssemblyPanel } from "./assembly-panel";
@@ -72,6 +72,11 @@ export function VerifyApp() {
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [running, setRunning] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  const [uploadRejection, setUploadRejection] = useState<{
+    fileName: string;
+    title: string;
+    action: string;
+  } | null>(null);
   // Multi-part assembly render (>= 2 solids): the combined GLB + product tree.
   // null for single parts, which keep the existing single-shell path untouched.
   const [assembly, setAssembly] = useState<AssemblyRender | null>(null);
@@ -116,7 +121,27 @@ export function VerifyApp() {
 
   const runVerify = useCallback(
     async (f: File) => {
+      if (!isSupportedCad(f.name)) {
+        const guidance = unsupportedCadGuidance(f.name);
+        ++runSeq.current;
+        latestFile.current = null;
+        setFile(null);
+        setScreen("verify");
+        setRunning(false);
+        setResult(null);
+        setUploadRejection({ fileName: f.name, ...guidance });
+        setAssembly((prev) => {
+          prev?.revoke();
+          return null;
+        });
+        setAssemblySelectedId(null);
+        setAssemblyAnalysis(null);
+        setAssemblyAnalyzing(false);
+        return;
+      }
+
       const seq = ++runSeq.current;
+      setUploadRejection(null);
       setFile(f);
       latestFile.current = f;
       setScreen("verify");
@@ -396,6 +421,45 @@ export function VerifyApp() {
 
       {/* main */}
       <div className="cv-verify-main" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+        {uploadRejection && (
+          <div
+            role="alert"
+            data-testid="verify-upload-rejection"
+            style={{
+              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "12px 20px",
+              borderBottom: "1px solid #e6b8b8",
+              background: "#fff2f2",
+              color: "#7e2929",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 650 }}>{uploadRejection.title}</p>
+              <p style={{ margin: "4px 0 0", fontSize: 12, lineHeight: 1.5 }}>
+                <span style={{ fontFamily: MONO }}>{uploadRejection.fileName}</span> was not uploaded. {uploadRejection.action}{" "}
+                No analysis was started and no record was created.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={pickFile}
+              style={{ marginLeft: "auto", flexShrink: 0, minHeight: 40, border: "1px solid currentColor", borderRadius: 999, background: "#fff", color: "inherit", padding: "8px 14px", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}
+            >
+              Choose a STEP export
+            </button>
+            <button
+              type="button"
+              aria-label="Dismiss unsupported file guidance"
+              onClick={() => setUploadRejection(null)}
+              style={{ flexShrink: 0, width: 40, height: 40, border: 0, background: "transparent", color: "inherit", cursor: "pointer", fontSize: 20 }}
+            >
+              ×
+            </button>
+          </div>
+        )}
         {designImport && (
           <div
             role={designImport.state === "error" ? "alert" : "status"}

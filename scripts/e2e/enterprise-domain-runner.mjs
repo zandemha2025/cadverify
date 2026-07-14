@@ -1422,7 +1422,6 @@ class EnterpriseDomainQA {
         "program rollup annualized cost does not match member row"
       );
 
-      const screenshot = await this.shot("portfolio-exact-quantity-api-verified");
       this.evidence.portfolio = {
         ...this.evidence.portfolio,
         annualized_unit_cost_usd: basis.usd,
@@ -1430,11 +1429,9 @@ class EnterpriseDomainQA {
         annualized_unit_cost_basis: basis.basis,
         annualized_cost_usd: rowAfter.annualized_cost_usd,
         expected_annualized_cost_usd: expectedAnnualized,
-        exact_screenshot: screenshot,
-        exact_url: this.page.url(),
         rollup,
       };
-      return { screenshot };
+      return {};
     });
   }
 
@@ -1465,6 +1462,13 @@ class EnterpriseDomainQA {
       assert(/\$120,960\/yr/i.test(text), "Programs exact annual exposure missing");
       const programsText = text.replace(/\s+/g, " ").trim();
       const programsShot = await this.shot("program-exposure-ui", true);
+      const programsUrl = this.page.url();
+      this.evidence.portfolio = {
+        ...this.evidence.portfolio,
+        exact_screenshot: programsShot,
+        exact_url: programsUrl,
+        exact_visible_text: programsText,
+      };
 
       await this.goto("/cost-decisions", "cost-history", 1000);
       text = await this.scanVisibleText("cost-history");
@@ -1485,7 +1489,7 @@ class EnterpriseDomainQA {
       const recordsDetailShot = await this.shot("program-source-decision-record", true);
       this.evidence.programRollup = {
         url: this.page.url(),
-        programs_url: `${baseUrl}/verify`,
+        programs_url: programsUrl,
         records_list_url: `${baseUrl}/cost-decisions`,
         programs_summary_text: programsSummaryText,
         programs_text: programsText,
@@ -1740,6 +1744,7 @@ class EnterpriseDomainQA {
       .filter((item) => typeof item === "string" && item.length > 0);
     const portfolio = this.evidence.portfolio || {};
     const program = this.evidence.programRollup || {};
+    const programText = program.programs_text || portfolio.exact_visible_text || "";
 
     const expectedActualPartIds = [
       "pump-bracket-A.step",
@@ -2226,11 +2231,11 @@ class EnterpriseDomainQA {
           "Re-verify cube.step and reconcile the exact 12,000-unit recommendation to the annual portfolio exposure.",
         ],
         observed: {
-          url: portfolio.exact_url || "not observed",
+          url: program.programs_url || portfolio.exact_url || "not observed",
           visible: [
-            visibleSignal(exactText, new RegExp(escapeRegExp(programName)), "missing program context"),
-            visibleSignal(exactText, new RegExp(escapeRegExp(parentAssembly)), "missing parent assembly"),
-            visibleSignal(exactText, /USER/i, "missing USER provenance"),
+            visibleSignal(programText, new RegExp(escapeRegExp(programName)), "missing program context"),
+            visibleSignal(programText, /\$10\.08\s*@ qty\s*12,000/i, "missing exact 12,000-unit basis"),
+            visibleSignal(programText, /\$120,960\/yr/i, "missing annual exposure"),
           ],
           persisted: {
             meshHash: portfolio.mesh_hash || "missing",
@@ -2252,7 +2257,7 @@ class EnterpriseDomainQA {
           authorization,
           recovery: "Before exact re-verification the API explained why exposure was withheld; after re-verification the exact 12,000-unit engine point supplied the only annualization basis.",
         },
-        screenshot: portfolio.exact_screenshot || exact.screenshot,
+        screenshot: program.programs_screenshot || portfolio.exact_screenshot || exact.screenshot,
         assertions: [
           authAssertion(),
           assertion("single-part headline", 133.58, portfolio.headline_unit_cost_usd ?? "missing", approxEqual(portfolio.headline_unit_cost_usd, 133.58, 0.01)),
@@ -2269,6 +2274,7 @@ class EnterpriseDomainQA {
           assertion("parent assembly context", parentAssembly, portfolio.parent_assembly || "missing", portfolio.parent_assembly === parentAssembly),
           assertion("context provenance", "user", portfolio.context_provenance || "missing", portfolio.context_provenance === "user"),
           assertion("12,000 recommendation reconciles", 10.08, annualRecommendation?.unit_cost_usd ?? "missing", approxEqual(annualRecommendation?.unit_cost_usd, 10.08, 0.001)),
+          assertion("screenshot oracle: exact Programs economics", "program + $10.08 @ qty 12,000 + $120,960/yr", programText || "missing", new RegExp(escapeRegExp(programName)).test(programText) && /\$10\.08\s*@ qty\s*12,000/i.test(programText) && /\$120,960\/yr/i.test(programText)),
         ],
       }),
 

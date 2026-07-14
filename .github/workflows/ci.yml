@@ -1,4 +1,9 @@
-name: CI / Release Images
+name: CI / Build Proof
+
+# This workflow proves source, migrations, browser journeys, and locally
+# loadable production images. It never publishes to a deployment registry or
+# mutates an environment. AWS ECR publication and ECS rollout belong only to
+# aws-commercial-promote.yml after exact-SHA CI succeeds.
 
 on:
   workflow_dispatch:
@@ -375,7 +380,7 @@ jobs:
           pkill -f "arq src.jobs.worker.WorkerSettings" 2>/dev/null || true
 
   docker-build:
-    name: Container Images & Deploy Config Proof
+    name: Container Images & Deployment Contract Proof
     runs-on: ubuntu-latest
     needs: [backend, frontend]
     permissions:
@@ -387,15 +392,6 @@ jobs:
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
-
-      - name: Require commercial release observability configuration
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        env:
-          NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
-          FLY_REGISTRY_TOKEN: ${{ secrets.FLY_REGISTRY_TOKEN }}
-        run: |
-          test -n "$NEXT_PUBLIC_SENTRY_DSN" || { echo "NEXT_PUBLIC_SENTRY_DSN repository secret is required"; exit 1; }
-          test -n "$FLY_REGISTRY_TOKEN" || { echo "FLY_REGISTRY_TOKEN repository secret is required"; exit 1; }
 
       - name: Validate Compose deploy configs
         run: |
@@ -419,40 +415,38 @@ jobs:
             >/tmp/cadverify-regulated-rendered.yaml
           node scripts/ops/check-regulated-manifest.mjs /tmp/cadverify-regulated-rendered.yaml
 
-      - name: Login to Fly.io Registry
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        env:
-          FLY_REGISTRY_TOKEN: ${{ secrets.FLY_REGISTRY_TOKEN }}
-        run: |
-          printf '%s' "$FLY_REGISTRY_TOKEN" | docker login registry.fly.io -u x --password-stdin
-
-      - name: Build frontend production image and push on main
+      # CI proves locally loadable production images without requiring access to
+      # any deployment account. The protected AWS promotion workflow owns ECR
+      # authentication, immutable pushes, migrations, and ECS rollout.
+      - name: Build frontend production image
         id: frontend-image
         uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
           context: frontend
-          push: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
-          tags: registry.fly.io/cadvrfy-web:${{ github.sha }}
+          push: false
+          load: true
+          tags: proofshape-ci/frontend:${{ github.sha }}
           platforms: linux/amd64
           # NEXT_PUBLIC_SENTRY_DSN must be a build-time value -- Next.js inlines
-          # NEXT_PUBLIC_* into the browser bundle at `next build`, so a Fly
-          # runtime secret alone never reaches client-side Sentry (see
+          # NEXT_PUBLIC_* into the browser bundle at `next build`, so a runtime
+          # container secret alone never reaches client-side Sentry (see
           # frontend/Dockerfile). Empty when the repo secret is unset, which
           # keeps Sentry.init(...).enabled false (no-op), matching every other
           # environment that doesn't set the DSN.
           build-args: |
-            NEXT_PUBLIC_SENTRY_DSN=${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
+            NEXT_PUBLIC_SENTRY_DSN=${{ vars.NEXT_PUBLIC_SENTRY_DSN }}
             NEXT_PUBLIC_SENTRY_RELEASE=${{ github.sha }}
           cache-from: type=gha,scope=frontend-image
           cache-to: type=gha,mode=max,scope=frontend-image
 
-      - name: Build backend production image and push on main
+      - name: Build backend production image
         id: backend-image
         uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
           context: backend
-          push: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
-          tags: registry.fly.io/cadvrfy-api:${{ github.sha }}
+          push: false
+          load: true
+          tags: proofshape-ci/backend:${{ github.sha }}
           platforms: linux/amd64
           cache-from: type=gha,scope=backend-image
           cache-to: type=gha,mode=max,scope=backend-image
@@ -465,7 +459,7 @@ jobs:
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: registry.fly.io/cadvrfy-web@${{ steps.frontend-image.outputs.digest }}
+          image-ref: proofshape-ci/frontend:${{ github.sha }}
           format: table
           exit-code: '1'
           severity: HIGH,CRITICAL
@@ -475,7 +469,7 @@ jobs:
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: registry.fly.io/cadvrfy-api@${{ steps.backend-image.outputs.digest }}
+          image-ref: proofshape-ci/backend:${{ github.sha }}
           format: table
           exit-code: '1'
           severity: HIGH,CRITICAL
@@ -485,7 +479,7 @@ jobs:
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: registry.fly.io/cadvrfy-web@${{ steps.frontend-image.outputs.digest }}
+          image-ref: proofshape-ci/frontend:${{ github.sha }}
           format: cyclonedx
           output: outputs/security-proof/frontend-${{ github.sha }}.cdx.json
 
@@ -493,29 +487,28 @@ jobs:
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: registry.fly.io/cadvrfy-api@${{ steps.backend-image.outputs.digest }}
+          image-ref: proofshape-ci/backend:${{ github.sha }}
           format: cyclonedx
           output: outputs/security-proof/backend-${{ github.sha }}.cdx.json
 
-      - name: Write immutable commercial release manifest
+      - name: Write source-bound container build manifest
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        env:
-          BACKEND_DIGEST: ${{ steps.backend-image.outputs.digest }}
-          FRONTEND_DIGEST: ${{ steps.frontend-image.outputs.digest }}
         run: |
-          case "$BACKEND_DIGEST" in sha256:*) ;; *) echo "backend digest is missing"; exit 1 ;; esac
-          case "$FRONTEND_DIGEST" in sha256:*) ;; *) echo "frontend digest is missing"; exit 1 ;; esac
+          BACKEND_IMAGE_ID=$(docker image inspect "proofshape-ci/backend:${GITHUB_SHA}" --format '{{.Id}}')
+          FRONTEND_IMAGE_ID=$(docker image inspect "proofshape-ci/frontend:${GITHUB_SHA}" --format '{{.Id}}')
+          case "$BACKEND_IMAGE_ID" in sha256:*) ;; *) echo "backend image id is missing"; exit 1 ;; esac
+          case "$FRONTEND_IMAGE_ID" in sha256:*) ;; *) echo "frontend image id is missing"; exit 1 ;; esac
           jq -n \
-            --arg release_sha "$GITHUB_SHA" \
-            --arg backend_image "registry.fly.io/cadvrfy-api@$BACKEND_DIGEST" \
-            --arg frontend_image "registry.fly.io/cadvrfy-web@$FRONTEND_DIGEST" \
-            '{release_sha: $release_sha, backend_image: $backend_image, frontend_image: $frontend_image}' \
-            > outputs/security-proof/release-manifest.json
+            --arg source_sha "$GITHUB_SHA" \
+            --arg backend_local_image_id "$BACKEND_IMAGE_ID" \
+            --arg frontend_local_image_id "$FRONTEND_IMAGE_ID" \
+            '{claim: "CI_BUILD_PROOF", source_sha: $source_sha, backend_local_image_id: $backend_local_image_id, frontend_local_image_id: $frontend_local_image_id}' \
+            > outputs/security-proof/build-manifest.json
 
-      - name: Upload immutable release and security evidence
+      - name: Upload container build and security evidence
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: commercial-release-${{ github.sha }}
+          name: container-build-proof-${{ github.sha }}
           path: outputs/security-proof/*
           if-no-files-found: error
