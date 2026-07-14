@@ -13,7 +13,7 @@ import { captureBuildIdentity } from "./human-sim-release-evidence.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const { chromium } = require("playwright-core");
-const { strFromU8, unzipSync } = require("fflate");
+const { strFromU8, unzipSync, zipSync } = require("fflate");
 const execFileAsync = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -77,7 +77,7 @@ const pathMeta = {
     persona: "sourcing lead assembling governed supplier evidence",
     preconditions: [
       "Three selected decisions span approved, stale, unreviewed, validated, and unvalidated states.",
-      "Exactly one selected decision has a retained same-organization raw CAD blob.",
+      "A real browser-submitted cost batch will create exactly one selected decision with a retained same-organization raw CAD blob.",
     ],
     actions: [
       "Select all three decisions, request retained raw CAD, and generate the package in the browser.",
@@ -152,6 +152,92 @@ async function responseJson(response) {
     text,
     headers: response.headers(),
   };
+}
+
+async function inPageProxyFetch(page, pathname, options = {}) {
+  assert(
+    typeof pathname === "string" &&
+      pathname.startsWith("/api/proxy/") &&
+      !pathname.startsWith("//"),
+    "in-page proxy fetch requires an absolute same-origin /api/proxy path",
+  );
+  const method = String(options.method || "GET").toUpperCase();
+  const headers = { ...(options.headers || {}) };
+  const form = options.form || [];
+  assert(
+    !(Object.prototype.hasOwnProperty.call(options, "json") && form.length > 0),
+    "in-page proxy fetch cannot send JSON and multipart form data together",
+  );
+  return page.evaluate(
+    async ({ pathname, method, headers, json, hasJson, form, responseType }) => {
+      let body;
+      if (form.length > 0) {
+        const multipart = new FormData();
+        for (const field of form) {
+          if (field.fileBase64 != null) {
+            const decoded = atob(field.fileBase64);
+            const bytes = new Uint8Array(decoded.length);
+            for (let index = 0; index < decoded.length; index += 1) {
+              bytes[index] = decoded.charCodeAt(index);
+            }
+            multipart.append(
+              field.name,
+              new File([bytes], field.filename, {
+                type: field.contentType || "application/octet-stream",
+              }),
+              field.filename,
+            );
+          } else {
+            multipart.append(field.name, String(field.value ?? ""));
+          }
+        }
+        body = multipart;
+      } else if (hasJson) {
+        headers["content-type"] = headers["content-type"] || "application/json";
+        body = JSON.stringify(json);
+      }
+
+      const response = await fetch(pathname, {
+        method,
+        headers,
+        body,
+        cache: "no-store",
+        credentials: "same-origin",
+        redirect: "error",
+      });
+      const buffer = await response.arrayBuffer();
+      let text = null;
+      let parsed = null;
+      if (responseType !== "bytes") {
+        text = new TextDecoder().decode(buffer);
+        parsed = text;
+        if (responseType === "json") {
+          try {
+            parsed = text ? JSON.parse(text) : null;
+          } catch {
+            // Preserve the exact non-JSON body for an actionable assertion error.
+          }
+        }
+      }
+      return {
+        ok: response.ok,
+        status: response.status,
+        body: parsed,
+        text,
+        byteLength: buffer.byteLength,
+        headers: Object.fromEntries(response.headers.entries()),
+      };
+    },
+    {
+      pathname,
+      method,
+      headers,
+      json: options.json,
+      hasJson: Object.prototype.hasOwnProperty.call(options, "json"),
+      form,
+      responseType: options.responseType || "json",
+    },
+  );
 }
 
 function parseCsv(source, label) {
@@ -336,6 +422,19 @@ class CompareRfqKeyMatrix {
     );
   }
 
+  fixtureEnvironment() {
+    return {
+      ...process.env,
+      DATABASE_URL: databaseUrl,
+      PYTHONPATH: backendRoot,
+      PYTHONDONTWRITEBYTECODE: "1",
+      OBJECT_STORE_BACKEND: process.env.OBJECT_STORE_BACKEND || "local",
+      OBJECT_STORE_LOCAL_ROOT:
+        process.env.OBJECT_STORE_LOCAL_ROOT ||
+        path.join(repoRoot, "data", "local-blobs"),
+    };
+  }
+
   async fixture(action, args) {
     const python = await this.pythonExecutable();
     const result = await execFileAsync(
@@ -343,16 +442,7 @@ class CompareRfqKeyMatrix {
       [fixturePath, action].concat(args.map(String)),
       {
         cwd: backendRoot,
-        env: {
-          ...process.env,
-          DATABASE_URL: databaseUrl,
-          PYTHONPATH: backendRoot,
-          PYTHONDONTWRITEBYTECODE: "1",
-          OBJECT_STORE_BACKEND: process.env.OBJECT_STORE_BACKEND || "local",
-          OBJECT_STORE_LOCAL_ROOT:
-            process.env.OBJECT_STORE_LOCAL_ROOT ||
-            path.join(repoRoot, "data", "local-blobs"),
-        },
+        env: this.fixtureEnvironment(),
         timeout: 90_000,
         maxBuffer: 8 * 1024 * 1024,
       },
@@ -373,7 +463,7 @@ class CompareRfqKeyMatrix {
       .launch({ channel: "chrome", headless: true })
       .catch(() => chromium.launch({ headless: true }));
     this.cubeBytes = await readFile(cubePath);
-    this.seedData = await this.fixture("seed", [tag, password, cubePath]);
+    this.seedData = await this.fixture("seed", [tag, password]);
   }
 
   async snapshot() {
@@ -381,6 +471,143 @@ class CompareRfqKeyMatrix {
       this.seedData.owner.id,
       rfqTitle,
     ]);
+  }
+
+  async seedRetainedCadThroughBrowserProxy(actor) {
+    const filename = `WORK-08-BATCH-${tag}.step`;
+    const archive = zipSync(
+      { [filename]: new Uint8Array(this.cubeBytes) },
+      { level: 0 },
+    );
+    const created = await inPageProxyFetch(actor.page, "/api/proxy/batch", {
+      method: "POST",
+      form: [
+        {
+          name: "file",
+          filename: `work-08-retained-${tag}.zip`,
+          contentType: "application/zip",
+          fileBase64: Buffer.from(archive).toString("base64"),
+        },
+        { name: "concurrency_limit", value: "1" },
+        { name: "job_type", value: "cost" },
+      ],
+    });
+    assert(
+      created.status === 202,
+      `retained-CAD batch setup returned ${created.status}: ${created.text}`,
+    );
+    const batchId = created.body && created.body.batch_id;
+    assert(batchId, "retained-CAD batch setup omitted batch_id");
+
+    const deadline = Date.now() + 120_000;
+    let progress = null;
+    while (Date.now() < deadline) {
+      const response = await inPageProxyFetch(
+        actor.page,
+        `/api/proxy/batch/${batchId}`,
+      );
+      assert(
+        response.status === 200,
+        `retained-CAD batch status returned ${response.status}: ${response.text}`,
+      );
+      progress = response.body;
+      if (progress.status === "completed" && progress.pending_items === 0) break;
+      assert(
+        !["failed", "cancelled"].includes(progress.status),
+        `retained-CAD batch entered ${progress.status}: ${JSON.stringify(progress)}`,
+      );
+      await actor.page.waitForTimeout(300);
+    }
+    assert(
+      progress && progress.status === "completed" && progress.pending_items === 0,
+      `retained-CAD batch did not complete: ${JSON.stringify(progress)}`,
+    );
+
+    const itemResponse = await inPageProxyFetch(
+      actor.page,
+      `/api/proxy/batch/${batchId}/items?limit=200`,
+    );
+    assert(
+      itemResponse.status === 200,
+      `retained-CAD batch items returned ${itemResponse.status}: ${itemResponse.text}`,
+    );
+    const items = itemResponse.body && itemResponse.body.items;
+    assert(
+      Array.isArray(items) &&
+        items.length === 1 &&
+        items[0].filename === filename &&
+        items[0].status === "completed",
+      `retained-CAD batch item did not complete exactly: ${JSON.stringify(items)}`,
+    );
+    const csvResponse = await inPageProxyFetch(
+      actor.page,
+      `/api/proxy/batch/${batchId}/results/csv`,
+      { responseType: "text" },
+    );
+    assert(
+      csvResponse.status === 200,
+      `retained-CAD results CSV returned ${csvResponse.status}: ${csvResponse.text}`,
+    );
+    const csv = parseCsv(csvResponse.body, "retained-CAD cost batch results CSV");
+    assert(
+      csv.records.length === 1 &&
+        csv.records[0].filename === filename &&
+        csv.records[0].status === "completed",
+      `retained-CAD results CSV did not contain one completed item: ${csvResponse.body}`,
+    );
+    const decisionMatch = String(csv.records[0].cost_decision_url || "").match(
+      /^\/api\/v1\/cost-decisions\/([0-9A-HJKMNP-TV-Z]{26})$/,
+    );
+    assert(decisionMatch, "retained-CAD results CSV omitted a valid cost-decision URL");
+    const decisionId = decisionMatch[1];
+    const detail = await inPageProxyFetch(
+      actor.page,
+      `/api/proxy/cost-decisions/${decisionId}`,
+    );
+    assert(
+      detail.status === 200,
+      `retained-CAD decision returned ${detail.status}: ${detail.text}`,
+    );
+    assert(detail.body?.filename === filename, "retained-CAD decision filename changed");
+    assert(detail.body?.approval_status === "unreviewed", "new batch decision was not unreviewed");
+    assert(detail.body?.is_stale === false, "new batch decision was unexpectedly stale");
+    const estimates = detail.body?.result?.estimates;
+    assert(Array.isArray(estimates) && estimates.length > 0, "new batch decision had no estimates");
+    const unvalidated = estimates.some(
+      (estimate) => estimate?.confidence?.validated !== true,
+    );
+    assert(unvalidated, "new batch decision unexpectedly claimed fully validated confidence");
+    const recommendation = detail.body?.result?.decision?.recommendation || {};
+    const firstRecommendation = Object.entries(recommendation)
+      .sort(([left], [right]) => Number(left) - Number(right))
+      .map(([, value]) => value)
+      .find((value) => Number.isFinite(Number(value?.unit_cost_usd)));
+    assert(firstRecommendation, "new batch decision omitted a numeric recommendation");
+    const retained = {
+      key: "BATCH",
+      id: decisionId,
+      filename,
+      approval_status: detail.body.approval_status,
+      is_stale: detail.body.is_stale,
+      unvalidated,
+      process: detail.body.make_now_process,
+      pdfCost:
+        "$" +
+        Number(firstRecommendation.unit_cost_usd).toLocaleString("en-US", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }),
+    };
+    return {
+      created,
+      progress,
+      items,
+      csv,
+      detail: detail.body,
+      retained,
+      batchId,
+      sha256: sha256(this.cubeBytes),
+    };
   }
 
   async login() {
@@ -583,12 +810,17 @@ class CompareRfqKeyMatrix {
     };
   }
 
-  expectedRfqWarnings() {
+  expectedRfqWarnings(retained) {
+    const a = this.seedData.decisions.A;
     const b = this.seedData.decisions.B;
-    const c = this.seedData.decisions.C;
     const unavailable =
       "Raw CAD was requested but is not available for this saved decision.";
     return [
+      {
+        code: "raw_cad_unavailable",
+        decision_id: a.id,
+        message: unavailable,
+      },
       {
         code: "decision_stale",
         decision_id: b.id,
@@ -606,18 +838,13 @@ class CompareRfqKeyMatrix {
       },
       {
         code: "decision_unapproved",
-        decision_id: c.id,
-        message: c.filename + " is not approved.",
+        decision_id: retained.id,
+        message: retained.filename + " is not approved.",
       },
       {
         code: "confidence_unvalidated",
-        decision_id: c.id,
-        message: c.filename + " includes assumption-based confidence bands.",
-      },
-      {
-        code: "raw_cad_unavailable",
-        decision_id: c.id,
-        message: unavailable,
+        decision_id: retained.id,
+        message: retained.filename + " includes assumption-based confidence bands.",
       },
     ];
   }
@@ -633,11 +860,54 @@ class CompareRfqKeyMatrix {
   async runWork08() {
     const id = "WORK-08";
     const actor = await this.login();
+    const retainedSetup = await this.seedRetainedCadThroughBrowserProxy(actor);
+    this.equal(
+      id,
+      "retained CAD setup authorization status",
+      retainedSetup.created.status,
+      202,
+    );
+    this.equal(
+      id,
+      "retained CAD setup terminal status",
+      retainedSetup.progress.status,
+      "completed",
+    );
+    this.equal(
+      id,
+      "retained CAD setup exact item count",
+      retainedSetup.items.length,
+      1,
+    );
+    this.equal(
+      id,
+      "retained CAD cost results CSV headers",
+      retainedSetup.csv.headers,
+      [
+        "filename",
+        "status",
+        "make_now_process",
+        "crossover_qty",
+        "quantities",
+        "unit_cost_usd",
+        "validated",
+        "cost_decision_url",
+        "error",
+      ],
+    );
+    this.equal(id, "retained CAD cost results row count", retainedSetup.csv.records.length, 1);
+    this.equal(
+      id,
+      "retained CAD decision id matches CSV",
+      retainedSetup.detail.id,
+      retainedSetup.retained.id,
+    );
     const decisions = [
       this.seedData.decisions.A,
       this.seedData.decisions.B,
-      this.seedData.decisions.C,
+      retainedSetup.retained,
     ];
+    const expectedWarnings = this.expectedRfqWarnings(retainedSetup.retained);
     await actor.page.goto("/rfq-packages", {
       waitUntil: "domcontentloaded",
       timeout: 30_000,
@@ -687,7 +957,7 @@ class CompareRfqKeyMatrix {
     this.equal(id, "RFQ raw CAD included", pkg.raw_cad_included, true);
     this.equal(id, "RFQ retained raw payload count", pkg.metadata.raw_payload_count, 1);
     this.equal(id, "RFQ live supplier send boundary", pkg.live_supplier_send, false);
-    this.equal(id, "RFQ exact warnings", pkg.warnings, this.expectedRfqWarnings());
+    this.equal(id, "RFQ exact warnings", pkg.warnings, expectedWarnings);
     this.equal(id, "RFQ item order", pkg.items.map((item) => item.decision.id), decisions.map((d) => d.id));
     await actor.page
       .getByText("RFQ package generated", { exact: true })
@@ -732,7 +1002,7 @@ class CompareRfqKeyMatrix {
       ["Approved 2/3", "Stale 1", "Unvalidated 2", "Raw CAD Yes"],
     );
     const warningFrequency = {};
-    for (const warning of this.expectedRfqWarnings()) {
+    for (const warning of expectedWarnings) {
       warningFrequency[warning.code] = (warningFrequency[warning.code] || 0) + 1;
     }
     for (const [code, expectedCount] of Object.entries(warningFrequency)) {
@@ -757,9 +1027,14 @@ class CompareRfqKeyMatrix {
       "visible RFQ item truth",
       itemRows,
       {
-        [decisions[0].filename]: ["cnc_3axis", "approved", "raw CAD", "--"],
+        [decisions[0].filename]: ["cnc_3axis", "approved", "clear", "--"],
         [decisions[1].filename]: ["mjf", "approved", "stale, unvalidated", "--"],
-        [decisions[2].filename]: ["dmls", "unreviewed", "unvalidated", "--"],
+        [decisions[2].filename]: [
+          decisions[2].process,
+          "unreviewed",
+          "unvalidated, raw CAD",
+          "--",
+        ],
       },
     );
     const screenshot = await this.shot("work-08-rfq-detail", actor, true);
@@ -884,7 +1159,7 @@ class CompareRfqKeyMatrix {
       id,
       "RFQ CSV exact raw CAD flags",
       decisions.map((decision) => csvById[decision.id].raw_cad_included),
-      ["True", "False", "False"],
+      ["False", "False", "True"],
     );
 
     const packagedItems = zipJson(entries, "cost-decisions.json");
@@ -943,7 +1218,11 @@ class CompareRfqKeyMatrix {
       2,
     );
 
-    const expectedPdfCost = { A: "$10.00", B: "$12.35", C: "$30.00" };
+    const expectedPdfCost = {
+      A: "$10.00",
+      B: "$12.35",
+      BATCH: retainedSetup.retained.pdfCost,
+    };
     const expectedDriverHeaders = [
       "process",
       "material",
@@ -1045,21 +1324,22 @@ class CompareRfqKeyMatrix {
       );
     }
 
-    const aStem = path.parse(decisions[0].filename).name;
-    const aRawName =
-      "decisions/01-" +
-      aStem +
+    const retainedIndex = 2;
+    const retainedStem = path.parse(decisions[retainedIndex].filename).name;
+    const retainedRawName =
+      "decisions/03-" +
+      retainedStem +
       "/raw-cad/" +
-      aStem +
-      path.extname(decisions[0].filename);
-    this.ok(id, "retained raw CAD file is packaged", Boolean(entries[aRawName]));
+      retainedStem +
+      path.extname(decisions[retainedIndex].filename);
+    this.ok(id, "retained raw CAD file is packaged", Boolean(entries[retainedRawName]));
     this.equal(
       id,
       "retained raw CAD bytes are exact",
-      sha256(entries[aRawName]),
-      this.seedData.retained_raw_cad.sha256,
+      sha256(entries[retainedRawName]),
+      retainedSetup.sha256,
     );
-    for (let index = 1; index < decisions.length; index += 1) {
+    for (let index = 0; index < retainedIndex; index += 1) {
       const stem = path.parse(decisions[index].filename).name;
       const boundaryName =
         "decisions/" +
@@ -1331,11 +1611,7 @@ class CompareRfqKeyMatrix {
     this.equal(id, "replacement revoked row has no Rotate", await newFinalRow.getByRole("button", { name: "Rotate" }).count(), 0);
     this.equal(id, "replacement revoked row has no Revoke", await newFinalRow.getByRole("button", { name: "Revoke" }).count(), 0);
 
-    const keyList = await responseJson(
-      await actor.context.request.get("/api/proxy/keys", {
-        failOnStatusCode: false,
-      }),
-    );
+    const keyList = await inPageProxyFetch(actor.page, "/api/proxy/keys");
     this.equal(id, "dashboard key list authorization", keyList.status, 200);
     this.equal(id, "dashboard key list count", keyList.body.length, 2);
     this.equal(
@@ -1388,10 +1664,9 @@ class CompareRfqKeyMatrix {
       ),
       false,
     );
-    const dashboardRecovery = await responseJson(
-      await actor.context.request.get("/api/proxy/cost-decisions?limit=1", {
-        failOnStatusCode: false,
-      }),
+    const dashboardRecovery = await inPageProxyFetch(
+      actor.page,
+      "/api/proxy/cost-decisions?limit=1",
     );
     this.equal(id, "dashboard session remains authorized after key rejection", dashboardRecovery.status, 200);
     await actor.page.getByRole("button", { name: "Create key" }).first().waitFor();

@@ -6,6 +6,7 @@ import test from "node:test";
 
 import {
   OWNED_PATH_IDS,
+  inPageProxyFetch,
   parseCsv,
   writeDeterministicStoredZip,
 } from "./batch-design-recovery-golden-matrix.mjs";
@@ -84,6 +85,33 @@ test("CSV parser preserves exact quoted result fields", () => {
   });
 });
 
+test("authenticated proxy reads execute inside the signed-in page origin", async () => {
+  const evaluations = [];
+  const page = {
+    async evaluate(callback, payload) {
+      evaluations.push({ callback: callback.toString(), payload });
+      return {
+        ok: true,
+        status: 200,
+        body: { designs: [] },
+        text: '{"designs":[]}',
+        byteLength: 14,
+        headers: {},
+      };
+    },
+  };
+  const response = await inPageProxyFetch(page, "/api/proxy/designs");
+  assert.equal(response.status, 200);
+  assert.equal(evaluations.length, 1);
+  assert.equal(evaluations[0].payload.pathname, "/api/proxy/designs");
+  assert.match(evaluations[0].callback, /fetch\(pathname/);
+  assert.match(evaluations[0].callback, /credentials:\s*["']same-origin["']/);
+  await assert.rejects(
+    inPageProxyFetch(page, "http://127.0.0.1:8001/api/v1/designs"),
+    /absolute same-origin \/api\/proxy path/,
+  );
+});
+
 test("runner binds real faults, durable assertions, common evidence, and build identity", async () => {
   const source = await readFile(sourcePath, "utf8");
   assert.match(source, /makeGoldenPathEvidence\(\{/);
@@ -114,5 +142,19 @@ test("runner binds real faults, durable assertions, common evidence, and build i
   assert.match(source, /x-proofshape-e2e-token/);
   assert.match(source, /route\.continue/);
   assert.doesNotMatch(source, /route\.fulfill/);
+  assert.doesNotMatch(source, /this\.context\.request/);
+  assert.match(source, /inPageProxyFetch\(this\.page, pathname\)/);
+  assert.match(source, /responseType:\s*["']bytes["']/);
+  assert.match(source, /pendingDirectUploadAborts/);
+  assert.match(source, /url\.pathname\.includes\(["']\/direct-uploads\/["']\)/);
+  assert.match(source, /without a matching successful HTTP response/);
+  assert.match(source, /successfulDirectUploadParts/);
+  assert.match(source, /exact multipart part before or after Chromium aborted/);
+  assert.match(source, /withExpectedStatus\(409/);
+  assert.match(source, /failedProgress\.input_mode === ["']direct_upload["']/);
+  assert.match(source, /original total before worker extraction/);
+  assert.match(source, /original materialized item count/);
+  assert.match(source, /page\.waitForEvent\(["']download["']/);
+  assert.match(source, /getByRole\(["']button["'], \{ name: buttonName \}\)\.click/);
   assert.doesNotMatch(source, /mobile-recovery-e2e/);
 });

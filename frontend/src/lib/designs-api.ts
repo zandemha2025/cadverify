@@ -3,6 +3,10 @@ import {
   apiRecoveryMessage,
   networkRecoveryMessage,
 } from "./api-recovery";
+import {
+  boundedJsonFetch,
+  BoundedJsonHttpError,
+} from "./bounded-json-fetch";
 import { durableDesignFromErrorPayload } from "./recovery-records";
 
 export type Hole = {
@@ -165,20 +169,20 @@ async function apiError(response: Response): Promise<DesignApiError> {
 }
 
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
-  let response: Response;
   try {
-    response = await fetch(url, {
+    return await boundedJsonFetch<T>(url, {
       cache: "no-store",
       ...init,
       headers: init?.body
         ? { "content-type": "application/json", ...init.headers }
         : init?.headers,
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof BoundedJsonHttpError) {
+      throw await apiError(error.response);
+    }
     throw new DesignApiError(networkRecoveryMessage("design"), 0, "network");
   }
-  if (!response.ok) throw await apiError(response);
-  return (await response.json()) as T;
 }
 
 export async function listDesigns(): Promise<Design[]> {

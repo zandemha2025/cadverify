@@ -132,7 +132,9 @@ class Matrix {
     this.assertions = Object.fromEntries(requiredIds.map((id) => [id, []]));
     this.consoleErrors = [];
     this.requestFailures = [];
+    this.expected401Pages = new Set();
     this.expected404Pages = new Set();
+    this.expected422Pages = new Set();
     this.expectedFailurePages = new Set();
     this.shotIndex = 0;
     this.observations = {};
@@ -163,9 +165,11 @@ class Matrix {
     page.on("console", (message) => {
       if (message.type() !== "error") return;
       const text = message.text();
+      const expected401 = this.expected401Pages.has(page) && /status of 401\b/i.test(text);
       const expected404 = this.expected404Pages.has(page) && /status of 404 \(Not Found\)/i.test(text);
+      const expected422 = this.expected422Pages.has(page) && /status of 422\b/i.test(text);
       const expectedFailure = this.expectedFailurePages.has(page) && /status of 503 \(Service Unavailable\)/i.test(text);
-      if (expected404 || expectedFailure || /favicon\.ico|ResizeObserver loop limit exceeded/i.test(text)) return;
+      if (expected401 || expected404 || expected422 || expectedFailure || /favicon\.ico|ResizeObserver loop limit exceeded/i.test(text)) return;
       this.consoleErrors.push({ url: page.url(), text });
     });
     page.on("pageerror", (error) => this.consoleErrors.push({ url: page.url(), text: error.message }));
@@ -202,6 +206,8 @@ class Matrix {
     await page.getByRole("button", { name: /^Create account$/ }).click();
     await page.waitForURL((url) => url.pathname === "/verify", { timeout: 30_000 });
     await page.getByRole("button", { name: "Account" }).waitFor({ timeout: 20_000 });
+    const sessionCookie = (await context.cookies()).find((cookie) => cookie.name === "dash_session");
+    if (!sessionCookie?.value) fail(`${prefix} signup did not set the real dash_session browser cookie`);
     return { context, page, email };
   }
 
@@ -213,16 +219,49 @@ class Matrix {
     return destination;
   }
 
-  async request(context, endpoint, options = {}) {
-    const response = await context.request.fetch(new URL(endpoint, appUrl).href, {
-      method: options.method || "GET",
+  async request(page, endpoint, options = {}) {
+    // Playwright's out-of-page HTTP client does not reproduce Chromium's local
+    // Secure-cookie behavior. Fetch inside the signed-in page so the real
+    // first-party session cookie reaches the same-origin proxy.
+    if (!endpoint.startsWith("/api/proxy/")) {
+      fail(`authenticated browser request must use /api/proxy: ${endpoint}`);
+    }
+    if (options.headers) {
+      fail("authenticated browser requests use only the real session cookie; custom proxy headers are forbidden");
+    }
+    const result = await page.evaluate(async ({ target, method, data, timeout }) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeout);
+      try {
+        const response = await fetch(target, {
+          method,
+          headers: data === undefined ? undefined : { "content-type": "application/json" },
+          body: data === undefined ? undefined : JSON.stringify(data),
+          cache: "no-store",
+          credentials: "same-origin",
+          signal: controller.signal,
+        });
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        let binary = "";
+        for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+          binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+        }
+        return {
+          status: response.status,
+          headers: Object.fromEntries(response.headers.entries()),
+          base64: btoa(binary),
+        };
+      } finally {
+        clearTimeout(timer);
+      }
+    }, {
+      target: endpoint,
+      method: String(options.method || "GET").toUpperCase(),
       data: options.data,
-      headers: options.headers,
       timeout: options.timeout || 60_000,
-      failOnStatusCode: false,
     });
-    const bytes = await response.body();
-    const contentType = response.headers()["content-type"] || "";
+    const bytes = Buffer.from(result.base64, "base64");
+    const contentType = result.headers["content-type"] || "";
     let body = bytes;
     if (/json/i.test(contentType)) {
       try {
@@ -233,18 +272,36 @@ class Matrix {
     } else if (/text|csv|html/i.test(contentType)) {
       body = bytes.toString("utf8");
     }
-    return { status: response.status(), headers: response.headers(), body, bytes };
+    return { status: result.status, headers: result.headers, body, bytes };
   }
 
-  async decision(context, id) {
-    const response = await this.request(context, `/api/proxy/cost-decisions/${id}`);
+  async publicRequest(endpoint) {
+    const response = await fetch(endpoint, { cache: "no-store" });
+    const bytes = Buffer.from(await response.arrayBuffer());
+    const headers = Object.fromEntries(response.headers.entries());
+    const contentType = headers["content-type"] || "";
+    let body = bytes;
+    if (/json/i.test(contentType)) {
+      try {
+        body = JSON.parse(bytes.toString("utf8"));
+      } catch {
+        body = bytes.toString("utf8");
+      }
+    } else if (/text|csv|html/i.test(contentType)) {
+      body = bytes.toString("utf8");
+    }
+    return { status: response.status, headers, body, bytes };
+  }
+
+  async decision(page, id) {
+    const response = await this.request(page, `/api/proxy/cost-decisions/${id}`);
     if (response.status !== 200) fail(`GET decision ${id} returned ${response.status}`);
     return response.body;
   }
 
-  async notifications(context, { unread = false, dismissed = false } = {}) {
+  async notifications(page, { unread = false, dismissed = false } = {}) {
     const response = await this.request(
-      context,
+      page,
       `/api/proxy/notifications?status=all&unread=${unread ? "true" : "false"}&dismissed=${dismissed ? "true" : "false"}&limit=100`,
     );
     if (response.status !== 200) fail(`GET notifications returned ${response.status}`);
@@ -276,10 +333,10 @@ class Matrix {
     const validation = await validationResponse.json();
     const cost = await costResponse.json();
     if (!cost?.saved?.id) fail("cost response omitted saved decision id");
-    const detail = await this.decision(identity.context, cost.saved.id);
+    const detail = await this.decision(identity.page, cost.saved.id);
     let notification = null;
     for (let attempt = 0; attempt < 30; attempt += 1) {
-      notification = (await this.notifications(identity.context)).find(
+      notification = (await this.notifications(identity.page)).find(
         (item) => item.source_id === cost.saved.id,
       );
       if (notification) break;
@@ -310,7 +367,7 @@ class Matrix {
     this.check("VER-04", "notification initial is_dismissed", false, firstRow.is_dismissed);
     this.check("VER-04", "notification and decision creation timestamp", first.detail.created_at, firstRow.created_at);
 
-    const { page, context } = identity;
+    const { page } = identity;
     await page.goto("/notifications", { waitUntil: "domcontentloaded" });
     await page.getByText(firstRow.title, { exact: true }).waitFor({ timeout: 15_000 });
     this.check("VER-04", "visible notification body", firstRow.body, await page.getByText(firstRow.body, { exact: true }).innerText());
@@ -342,7 +399,7 @@ class Matrix {
     this.check("VER-04", "notification opens declared browser destination", `${appUrl}/verify?screen=records`, page.url());
     this.check("VER-04", "destination visible heading", "Records", await page.getByRole("heading", { name: "Records", exact: true }).innerText());
 
-    let persisted = (await this.notifications(context)).find((item) => item.id === firstRow.id);
+    let persisted = (await this.notifications(page)).find((item) => item.id === firstRow.id);
     this.check("VER-04", "persisted mark-one is_read", true, persisted.is_read);
     this.check("VER-04", "persisted mark-one read_at", readNotification.read_at, persisted.read_at);
     this.check("VER-04", "mark-one preserves status", "open", persisted.status);
@@ -373,8 +430,8 @@ class Matrix {
       "dismiss timestamp bounded by browser action",
       isoMs(dismissedPayload.dismissed_at) >= dismissBefore - 1_000 && isoMs(dismissedPayload.dismissed_at) <= dismissAfter + 1_000,
     );
-    const activeAfterDismiss = await this.notifications(context);
-    const dismissedAfterDismiss = await this.notifications(context, { dismissed: true });
+    const activeAfterDismiss = await this.notifications(page);
+    const dismissedAfterDismiss = await this.notifications(page, { dismissed: true });
     this.check("VER-04", "dismiss removes row from active API collection", 0, activeAfterDismiss.filter((item) => item.id === firstRow.id).length);
     this.check("VER-04", "dismissed API collection has exact row", 1, dismissedAfterDismiss.filter((item) => item.id === firstRow.id).length);
     this.check("VER-04", "dismissed API timestamp equals mutation response", dismissedPayload.dismissed_at, dismissedAfterDismiss.find((item) => item.id === firstRow.id).dismissed_at);
@@ -402,7 +459,7 @@ class Matrix {
     const failedRestore = await failedRestorePromise;
     this.check("VER-04", "injected restore failure HTTP status", 503, failedRestore.status());
     await page.getByRole("alert").getByText("Injected notification restore outage", { exact: false }).waitFor({ timeout: 15_000 });
-    const afterFailedRestore = (await this.notifications(context, { dismissed: true })).find((item) => item.id === firstRow.id);
+    const afterFailedRestore = (await this.notifications(page, { dismissed: true })).find((item) => item.id === firstRow.id);
     this.check("VER-04", "failed restore preserves exact dismissed_at", dismissedPayload.dismissed_at, afterFailedRestore.dismissed_at);
     this.check("VER-04", "failed restore leaves visible dismissed row", 1, await page.locator(`[data-notification-id="${firstRow.id}"][data-dismissed-at]`).count());
     await page.waitForTimeout(500);
@@ -425,10 +482,10 @@ class Matrix {
     this.check("VER-04", "restore preserves prior read state", true, restoredPayload.is_read);
     this.check("VER-04", "restore preserves prior read timestamp", readNotification.read_at, restoredPayload.read_at);
     this.truth("VER-04", "restore browser action completed in bounded time", restoreAfter >= restoreBefore && restoreAfter - restoreBefore < 20_000);
-    const activeAfterRestore = (await this.notifications(context)).find((item) => item.id === firstRow.id);
+    const activeAfterRestore = (await this.notifications(page)).find((item) => item.id === firstRow.id);
     this.check("VER-04", "restore persists active state", false, activeAfterRestore.is_dismissed);
     this.check("VER-04", "restore persists exact prior read_at", readNotification.read_at, activeAfterRestore.read_at);
-    this.check("VER-04", "restore removes row from dismissed API collection", 0, (await this.notifications(context, { dismissed: true })).filter((item) => item.id === firstRow.id).length);
+    this.check("VER-04", "restore removes row from dismissed API collection", 0, (await this.notifications(page, { dismissed: true })).filter((item) => item.id === firstRow.id).length);
     await page.reload({ waitUntil: "domcontentloaded" });
     const restoredCard = page.locator(`[data-notification-id="${firstRow.id}"][data-read-at]`);
     await restoredCard.waitFor({ timeout: 15_000 });
@@ -443,7 +500,7 @@ class Matrix {
     const secondRow = second.notification;
     await page.goto("/notifications", { waitUntil: "domcontentloaded" });
     await page.getByText(secondRow.title, { exact: true }).waitFor({ timeout: 15_000 });
-    const unreadBeforeMarkAll = await this.notifications(context, { unread: true });
+    const unreadBeforeMarkAll = await this.notifications(page, { unread: true });
     this.check("VER-04", "exact unread count before mark-all", 1, unreadBeforeMarkAll.length);
     this.check("VER-04", "second unread id", secondRow.id, unreadBeforeMarkAll[0].id);
     const markAllBefore = Date.now();
@@ -468,7 +525,7 @@ class Matrix {
     );
     this.check("VER-04", "mark-all control disappears at zero unread", 0, await page.getByRole("button", { name: "Mark all read" }).count());
     const markAllScreenshot = await this.shot("VER-04", page, "after-mark-all");
-    const allAfter = await this.notifications(context);
+    const allAfter = await this.notifications(page);
     const secondPersisted = allAfter.find((item) => item.id === secondRow.id);
     this.check("VER-04", "mark-all persisted second row", true, secondPersisted.is_read);
     this.check("VER-04", "mark-all response/persisted exact timestamp", markAllPayload.read_at, secondPersisted.read_at);
@@ -546,7 +603,9 @@ class Matrix {
     this.watch(replayPage);
     await replayPage.goto("/notifications", { waitUntil: "domcontentloaded" });
     await replayPage.waitForURL((url) => url.pathname === "/login", { timeout: 20_000 });
-    const replayApi = await this.request(replayContext, "/api/proxy/notifications?status=all&unread=false&limit=100");
+    this.expected401Pages.add(replayPage);
+    const replayApi = await this.request(replayPage, "/api/proxy/notifications?status=all&unread=false&limit=100");
+    this.expected401Pages.delete(replayPage);
     this.check("FAIL-09", "copied pre-logout cookie API status", 401, replayApi.status);
     await replayContext.close();
 
@@ -557,7 +616,7 @@ class Matrix {
     await page.goto("/notifications", { waitUntil: "domcontentloaded" });
     this.check("FAIL-09", "post-login first durable row visible", expectedRows.first.title, await page.getByText(expectedRows.first.title, { exact: true }).innerText());
     this.check("FAIL-09", "post-login second durable row visible", expectedRows.second.title, await page.getByText(expectedRows.second.title, { exact: true }).innerText());
-    const afterLogin = await this.notifications(context);
+    const afterLogin = await this.notifications(page);
     const firstAfter = afterLogin.find((item) => item.id === expectedRows.first.id);
     const secondAfter = afterLogin.find((item) => item.id === expectedRows.second.id);
     this.check("FAIL-09", "first read_at survives logout/login", expectedRows.first.read_at, firstAfter.read_at);
@@ -566,7 +625,7 @@ class Matrix {
     this.check("FAIL-09", "second read status survives logout/login", true, secondAfter.is_read);
     this.check("FAIL-09", "restored first row stays active after logout/login", false, firstAfter.is_dismissed);
     this.check("FAIL-09", "second row stays active after logout/login", false, secondAfter.is_dismissed);
-    const dismissedAfterLogin = await this.notifications(context, { dismissed: true });
+    const dismissedAfterLogin = await this.notifications(page, { dismissed: true });
     this.check("FAIL-09", "dismissed collection remains empty after logout/login", 0, dismissedAfterLogin.length);
     const screenshot = await this.shot("FAIL-09", page, "reauthenticated-read-state");
     this.observations.session = {
@@ -597,7 +656,7 @@ class Matrix {
     this.check("WORK-05", `${branch} approval HTTP status`, 200, response.status());
     const payload = await response.json();
     await page.getByText("Approved", { exact: true }).waitFor({ timeout: 15_000 });
-    const detail = await this.decision(identity.context, id);
+    const detail = await this.decision(identity.page, id);
     const expectedNote = note.trim() || null;
     this.check("WORK-05", `${branch} approval status`, "approved", detail.approval_status);
     this.check("WORK-05", `${branch} persisted note`, expectedNote, detail.approval_note);
@@ -621,7 +680,7 @@ class Matrix {
     const response = await responsePromise;
     this.check("WORK-05", `${branch} reopen HTTP status`, 200, response.status());
     await page.getByText("Unreviewed", { exact: true }).waitFor({ timeout: 15_000 });
-    const detail = await this.decision(identity.context, id);
+    const detail = await this.decision(identity.page, id);
     this.check("WORK-05", `${branch} reopened status`, "unreviewed", detail.approval_status);
     this.check("WORK-05", `${branch} cleared note`, null, detail.approval_note);
     this.check("WORK-05", `${branch} cleared timestamp`, null, detail.approved_at);
@@ -630,11 +689,11 @@ class Matrix {
   }
 
   async decisionNotes(identity) {
-    const { page, context } = identity;
+    const { page } = identity;
     const id = this.observations.notifications.firstDecision.detail.id;
     await page.goto(`/cost-decisions/${id}`, { waitUntil: "domcontentloaded" });
     await page.getByText("Decision governance", { exact: true }).waitFor({ timeout: 20_000 });
-    const initial = await this.decision(context, id);
+    const initial = await this.decision(page, id);
     const artifactHash = sha256(initial.result);
     this.check("WORK-05", "initial governance status", "unreviewed", initial.approval_status);
     this.check("WORK-05", "initial approval note", null, initial.approval_note);
@@ -667,17 +726,19 @@ class Matrix {
     this.check("WORK-05", "1000-character visible value", longNote, await page.getByTestId("approval-note").innerText());
     this.check("WORK-05", "1000-character prefix", longPrefix, long.approval_note.slice(0, longPrefix.length));
     this.check("WORK-05", "1000-character suffix", longSuffix, long.approval_note.slice(-longSuffix.length));
-    const overlong = await this.request(context, `/api/proxy/cost-decisions/${id}/approve`, {
+    this.expected422Pages.add(page);
+    const overlong = await this.request(page, `/api/proxy/cost-decisions/${id}/approve`, {
       method: "POST",
       data: { note: `${longNote}X` },
     });
+    this.expected422Pages.delete(page);
     this.check("WORK-05", "1001-character API status", 422, overlong.status);
     this.truth(
       "WORK-05",
       "1001-character response names 1000-character limit",
       /1000/.test(stableJson(overlong.body)),
     );
-    const afterOverlong = await this.decision(context, id);
+    const afterOverlong = await this.decision(page, id);
     this.check("WORK-05", "rejected 1001-character note leaves exact prior note", longNote, afterOverlong.approval_note);
     this.check("WORK-05", "rejected 1001-character note leaves timestamp", long.approved_at, afterOverlong.approved_at);
     await this.reopenViaBrowser(identity, id, "1000-character-note-final-edit");
@@ -686,7 +747,7 @@ class Matrix {
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByTestId("approval-note").waitFor({ timeout: 15_000 });
     this.check("WORK-05", "special note survives page reopen", specialNote, await page.getByTestId("approval-note").innerText());
-    const reopenedDetail = await this.decision(context, id);
+    const reopenedDetail = await this.decision(page, id);
     this.check("WORK-05", "special note survives API reopen", specialNote, reopenedDetail.approval_note);
     this.check("WORK-05", "final approved_at survives page reopen", final.approved_at, reopenedDetail.approved_at);
     this.check("WORK-05", "all governance mutations preserve immutable result", artifactHash, sha256(reopenedDetail.result));
@@ -713,7 +774,7 @@ class Matrix {
   }
 
   async chooseDispositionViaBrowser(identity, id, clickedKey, expectedLabel, expectedNote, branch) {
-    const { page, context } = identity;
+    const { page } = identity;
     const before = Date.now();
     const responsePromise = page.waitForResponse(
       (response) => response.request().method() === "PUT" && response.url().includes(`/cost-decisions/${id}/disposition`),
@@ -724,7 +785,7 @@ class Matrix {
     const after = Date.now();
     this.check("VER-07", `${branch} HTTP status`, 200, response.status());
     const payload = await response.json();
-    const detail = await this.decision(context, id);
+    const detail = await this.decision(page, id);
     this.check("VER-07", `${branch} response disposition`, clickedKey, payload.user_disposition);
     this.check("VER-07", `${branch} persisted disposition`, clickedKey, detail.user_disposition);
     this.check("VER-07", `${branch} response label`, expectedLabel, payload.user_disposition_label);
@@ -750,7 +811,7 @@ class Matrix {
   }
 
   async saveDispositionNoteViaBrowser(identity, id, note, expectedDisposition, branch) {
-    const { page, context } = identity;
+    const { page } = identity;
     const textarea = page.getByTestId("record-disposition-note");
     await textarea.fill(note);
     const expectedNote = note.trim() || null;
@@ -764,7 +825,7 @@ class Matrix {
     const after = Date.now();
     this.check("VER-07", `${branch} HTTP status`, 200, response.status());
     const payload = await response.json();
-    const detail = await this.decision(context, id);
+    const detail = await this.decision(page, id);
     this.check("VER-07", `${branch} response keeps choice`, expectedDisposition, payload.user_disposition);
     this.check("VER-07", `${branch} persisted choice`, expectedDisposition, detail.user_disposition);
     this.check("VER-07", `${branch} response note`, expectedNote, payload.disposition_note);
@@ -784,7 +845,7 @@ class Matrix {
   }
 
   async withdrawDispositionViaBrowser(identity, id, branch) {
-    const { page, context } = identity;
+    const { page } = identity;
     const before = Date.now();
     const responsePromise = page.waitForResponse(
       (response) => response.request().method() === "PUT" && response.url().includes(`/cost-decisions/${id}/disposition`),
@@ -795,7 +856,7 @@ class Matrix {
     const after = Date.now();
     this.check("VER-07", `${branch} HTTP status`, 200, response.status());
     const payload = await response.json();
-    const detail = await this.decision(context, id);
+    const detail = await this.decision(page, id);
     this.check("VER-07", `${branch} response clears disposition`, null, payload.user_disposition);
     this.check("VER-07", `${branch} persisted disposition`, null, detail.user_disposition);
     this.check("VER-07", `${branch} response clears label`, null, payload.user_disposition_label);
@@ -816,7 +877,7 @@ class Matrix {
   }
 
   async approveDispositionSignoff(identity, id, note, branch) {
-    const { page, context } = identity;
+    const { page } = identity;
     await page.getByPlaceholder("Optional approval note").fill(note);
     const before = Date.now();
     const responsePromise = page.waitForResponse(
@@ -828,7 +889,7 @@ class Matrix {
     const after = Date.now();
     this.check("VER-07", `${branch} approval HTTP status`, 200, response.status());
     const payload = await response.json();
-    const detail = await this.decision(context, id);
+    const detail = await this.decision(page, id);
     this.check("VER-07", `${branch} approved status`, "approved", detail.approval_status);
     this.check("VER-07", `${branch} approval note`, note, detail.approval_note);
     this.check("VER-07", `${branch} approval timestamp`, payload.approved_at, detail.approved_at);
@@ -841,13 +902,13 @@ class Matrix {
   }
 
   async fourWayDisposition(identity) {
-    const { page, context } = identity;
+    const { page } = identity;
     const id = this.observations.decision.final.id;
     const filename = this.observations.decision.final.filename;
     const artifactHash = this.observations.decision.artifactHash;
     await page.goto(`/cost-decisions/${id}`, { waitUntil: "domcontentloaded" });
     await page.getByTestId("cost-decision-disposition").waitFor({ timeout: 20_000 });
-    const initial = await this.decision(context, id);
+    const initial = await this.decision(page, id);
     this.check("VER-07", "initial choice is undecided", null, initial.user_disposition);
     this.check("VER-07", "initial disposition note is empty", null, initial.disposition_note);
     this.check("VER-07", "initial disposition note editor is empty", "", await page.getByTestId("record-disposition-note").inputValue());
@@ -878,7 +939,7 @@ class Matrix {
     const failedResponse = await failedResponsePromise;
     this.check("VER-07", "injected choice failure HTTP status", 503, failedResponse.status());
     await page.getByTestId("record-disposition-error").getByText("Injected disposition outage", { exact: false }).waitFor({ timeout: 15_000 });
-    const afterFailure = await this.decision(context, id);
+    const afterFailure = await this.decision(page, id);
     this.check("VER-07", "failed choice leaves persisted outcome", null, afterFailure.user_disposition);
     this.check("VER-07", "failed choice leaves persisted disposition note", null, afterFailure.disposition_note);
     this.check("VER-07", "failed choice preserves note draft for retry", dispositionCreateNote, await page.getByTestId("record-disposition-note").inputValue());
@@ -911,13 +972,15 @@ class Matrix {
     const longEdit = await this.saveDispositionNoteViaBrowser(identity, id, longNote, "inhouse", "1000-character disposition note");
     this.check("VER-07", "1000-character disposition note length", 1000, longEdit.disposition_note.length);
     this.check("VER-07", "1000-character note counter", "1000/1000", await page.getByText("1000/1000", { exact: true }).innerText());
-    const overlongDisposition = await this.request(context, `/api/proxy/cost-decisions/${id}/disposition`, {
+    this.expected422Pages.add(page);
+    const overlongDisposition = await this.request(page, `/api/proxy/cost-decisions/${id}/disposition`, {
       method: "PUT",
       data: { disposition: "inhouse", note: `${longNote}X` },
     });
+    this.expected422Pages.delete(page);
     this.check("VER-07", "1001-character disposition note API status", 422, overlongDisposition.status);
     this.truth("VER-07", "1001-character disposition note response names limit", /1000/.test(stableJson(overlongDisposition.body)));
-    const afterOverlongDisposition = await this.decision(context, id);
+    const afterOverlongDisposition = await this.decision(page, id);
     this.check("VER-07", "rejected disposition note preserves exact 1000 characters", longNote, afterOverlongDisposition.disposition_note);
     this.check("VER-07", "rejected disposition note preserves timestamp", longEdit.disposition_updated_at, afterOverlongDisposition.disposition_updated_at);
 
@@ -971,7 +1034,7 @@ class Matrix {
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByTestId("cost-decision-disposition").waitFor({ timeout: 20_000 });
     this.truth("VER-07", "withdraw survives detail reload", (await page.getByTestId("cost-decision-disposition").innerText()).includes("Choose what the organization will do with this part."));
-    const persistedWithdrawn = await this.decision(context, id);
+    const persistedWithdrawn = await this.decision(page, id);
     this.check("VER-07", "withdraw survives API reopen", null, persistedWithdrawn.user_disposition);
     this.check("VER-07", "withdraw timestamp survives reload", withdrawn.disposition_updated_at, persistedWithdrawn.disposition_updated_at);
 
@@ -1019,12 +1082,12 @@ class Matrix {
   }
 
   async exports(identity) {
-    const { page, context } = identity;
+    const { page } = identity;
     const decision = this.observations.decision.final;
     const id = decision.id;
     await page.goto(`/cost-decisions/${id}`, { waitUntil: "domcontentloaded" });
     await page.getByTestId("approval-note").waitFor({ timeout: 20_000 });
-    const beforeHash = sha256((await this.decision(context, id)).result);
+    const beforeHash = sha256((await this.decision(page, id)).result);
 
     const jsonPath = path.join(artifactDir, `${id}-cost.json`);
     const csvPath = path.join(artifactDir, `${id}-cost.csv`);
@@ -1070,7 +1133,7 @@ class Matrix {
     this.truth("WORK-07", "PDF contains second special-note line", pdfText.includes(specialNote.split("\n")[1]));
     this.truth("WORK-07", "PDF contains disposition note heading", pdfText.includes("Outcome note:"));
     this.truth("WORK-07", "PDF disposition note keeps inline text glyph", !pdfText.includes("⚙️"));
-    const afterHash = sha256((await this.decision(context, id)).result);
+    const afterHash = sha256((await this.decision(page, id)).result);
     this.check("WORK-07", "exports do not mutate decision artifact", beforeHash, afterHash);
     this.truth("WORK-07", "JSON download filename is explicit", /-cost\.json$/.test(jsonFilename));
     this.truth("WORK-07", "CSV download filename is explicit", /-cost\.csv$/.test(csvFilename));
@@ -1095,7 +1158,7 @@ class Matrix {
     await publicPage.goto(sharePath, { waitUntil: "domcontentloaded" });
     await publicPage.getByText("Shared should-cost · read-only", { exact: true }).waitFor();
     const publicText = await publicPage.locator("body").innerText();
-    const publicPayload = await this.request(publicContext, `${apiUrl}/s/cost/${shortId}`);
+    const publicPayload = await this.publicRequest(`${apiUrl}/s/cost/${shortId}`);
     this.check("WORK-07", "public share API status", 200, publicPayload.status);
     const forbiddenPaths = forbiddenKeyPaths(
       publicPayload.body,
@@ -1114,12 +1177,12 @@ class Matrix {
     );
     await page.getByRole("button", { name: "Revoke", exact: true }).click();
     this.check("WORK-07", "share revoke HTTP", 200, (await revokeResponse).status());
-    const revokedPayload = await this.request(publicContext, `${apiUrl}/s/cost/${shortId}`);
+    const revokedPayload = await this.publicRequest(`${apiUrl}/s/cost/${shortId}`);
     this.check("WORK-07", "revoked public API status", 404, revokedPayload.status);
     this.expected404Pages.add(publicPage);
     await publicPage.reload({ waitUntil: "domcontentloaded" });
     await publicPage.getByText("Cost decision not available", { exact: true }).waitFor();
-    const ownerAfterRevoke = await this.decision(context, id);
+    const ownerAfterRevoke = await this.decision(page, id);
     this.check("WORK-07", "owner share state revoked", { is_public: false, share_url: null }, { is_public: ownerAfterRevoke.is_public, share_url: ownerAfterRevoke.share_url });
     await publicContext.close();
 
@@ -1142,9 +1205,9 @@ class Matrix {
   async crossOrg(primary, secondary) {
     const aDecision = this.observations.decision.final;
     const aNotification = this.observations.notifications.first;
-    const { context, page } = secondary;
-    const ownDecisions = await this.request(context, "/api/proxy/cost-decisions?limit=100");
-    const ownNotifications = await this.notifications(context);
+    const { page } = secondary;
+    const ownDecisions = await this.request(page, "/api/proxy/cost-decisions?limit=100");
+    const ownNotifications = await this.notifications(page);
     this.check("ROLE-04", "Org B decision list HTTP status", 200, ownDecisions.status);
     this.check("ROLE-04", "Org B decision count", 0, ownDecisions.body.cost_decisions.length);
     this.check("ROLE-04", "Org B notification count", 0, ownNotifications.length);
@@ -1162,8 +1225,9 @@ class Matrix {
       ["notification restore", "POST", `/api/proxy/notifications/${aNotification.id}/restore`, undefined],
     ];
     const statuses = {};
+    this.expected404Pages.add(page);
     for (const [name, method, endpoint, data] of probes) {
-      const response = await this.request(context, endpoint, { method, data });
+      const response = await this.request(page, endpoint, { method, data });
       statuses[name] = response.status;
       this.check("ROLE-04", `${name} foreign status`, 404, response.status);
       const bodyText = Buffer.isBuffer(response.body) ? response.body.toString("utf8") : stableJson(response.body);
@@ -1174,7 +1238,6 @@ class Matrix {
     this.check("VER-04", "cross-org notification dismiss is denied", 404, statuses["notification dismiss"]);
     this.check("VER-04", "cross-org notification restore is denied", 404, statuses["notification restore"]);
 
-    this.expected404Pages.add(page);
     await page.goto(`/cost-decisions/${aDecision.id}`, { waitUntil: "domcontentloaded" });
     const notFound = page.getByText("Cost decision not found", { exact: true }).first();
     await notFound.waitFor({ timeout: 20_000 });
@@ -1183,7 +1246,7 @@ class Matrix {
     this.check("ROLE-04", "foreign browser visible state", "Cost decision not found", await notFound.innerText());
     this.check("ROLE-04", "foreign browser does not show note", 0, await page.getByText(specialNote, { exact: true }).count());
     this.check("ROLE-04", "foreign browser does not show filename", 0, await page.getByText(aDecision.filename, { exact: true }).count());
-    const ownerStillSeesDecision = await this.decision(primary.context, aDecision.id);
+    const ownerStillSeesDecision = await this.decision(primary.page, aDecision.id);
     this.check("ROLE-04", "negative probes do not mutate owner note", specialNote, ownerStillSeesDecision.approval_note);
     this.check("ROLE-04", "negative probes do not mutate owner disposition", "redesign", ownerStillSeesDecision.user_disposition);
     this.check("ROLE-04", "negative probes do not mutate owner disposition note", specialNote, ownerStillSeesDecision.disposition_note);

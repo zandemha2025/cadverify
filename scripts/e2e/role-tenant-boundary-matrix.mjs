@@ -50,7 +50,7 @@ const PATH_META = {
     ],
     actions: [
       "Open role-sensitive browser surfaces.",
-      "Exercise read, create, administration, integration, and API-key operations through direct and proxied APIs.",
+      "Exercise dashboard read, create, administration, and integration operations through in-page proxy fetches, plus isolated API-key boundary probes.",
     ],
   },
   "ROLE-03": {
@@ -94,7 +94,7 @@ const PATH_META = {
     ],
     actions: [
       "Revoke all viewer sessions through the admin API.",
-      "Reuse the stale cookie through direct API and a protected browser URL, then log in again.",
+      "Reuse the stale cookie through the same-origin browser proxy and a protected browser URL, then log in again.",
     ],
   },
 };
@@ -343,35 +343,38 @@ asyncio.run(main())
     this.contexts.push(context);
     const page = await context.newPage();
     this.attach(page, name);
-    if (name === "owner") {
-      await page.goto("/login", { waitUntil: "domcontentloaded", timeout: 30_000 });
-      await page.getByLabel("Email").fill(identity.email);
-      await page.getByLabel("Password").fill(password);
-      const loginResponsePromise = page.waitForResponse(
-        (response) => response.request().method() === "POST" && response.url().includes("/api/auth/login"),
-        { timeout: 45_000 },
-      );
-      await page.getByRole("button", { name: /^Log in$/i }).click();
-      const loginResponse = await loginResponsePromise;
-      if (loginResponse.status() !== 200) {
-        throw new Error(`${name} login returned ${loginResponse.status()}: ${(await loginResponse.text()).slice(0, 1000)}`);
-      }
-      await page.waitForURL((url) => url.pathname !== "/login", { timeout: 20_000 });
-    } else {
-      const loginResponse = await context.request.post("/api/auth/login", {
-        data: { email: identity.email, password },
-        failOnStatusCode: false,
-        timeout: 45_000,
-      });
-      if (loginResponse.status() !== 200) {
-        throw new Error(`${name} API login returned ${loginResponse.status()}: ${(await loginResponse.text()).slice(0, 1000)}`);
-      }
-      await page.goto("/verify", { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await page.goto("/login", { waitUntil: "domcontentloaded", timeout: 30_000 });
+    const email = page.getByLabel("Email");
+    const passwordInput = page.getByLabel("Password");
+    const submit = page.getByRole("button", { name: /^Log in$/i });
+    await submit.waitFor({ state: "visible", timeout: 20_000 });
+    await page.waitForFunction(
+      () => {
+        const button = document.querySelector('form button[type="submit"]');
+        return button instanceof HTMLButtonElement && !button.disabled;
+      },
+      undefined,
+      { timeout: 20_000 },
+    );
+    await email.fill(identity.email);
+    await passwordInput.fill(password);
+    assert(await email.inputValue() === identity.email, `${name} email did not remain entered after hydration`);
+    assert(await passwordInput.inputValue() === password, `${name} password did not remain entered after hydration`);
+    const loginResponsePromise = page.waitForResponse(
+      (response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/auth/login",
+      { timeout: 45_000 },
+    );
+    await submit.click();
+    const loginResponse = await loginResponsePromise;
+    if (loginResponse.status() !== 200) {
+      throw new Error(`${name} login returned ${loginResponse.status()}: ${(await loginResponse.text()).slice(0, 1000)}`);
     }
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForURL((url) => url.pathname !== "/login", { timeout: 20_000 });
+    await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => {});
+    await page.getByRole("button", { name: "Account" }).waitFor({ timeout: 20_000 });
     const cookie = (await context.cookies()).find((item) => item.name === "dash_session");
     assert(cookie?.value, `${name} login did not set dash_session`);
-    this.identities[name] = { ...identity, name, context, page, cookie: cookie.value };
+    this.identities[name] = { ...identity, name, context, page };
     return this.identities[name];
   }
 
@@ -381,16 +384,83 @@ asyncio.run(main())
     return this.login(name);
   }
 
-  async response(response) {
-    const bytes = Buffer.from(await response.body());
+  async inPageFetch(page, target, options = {}) {
+    const multipart = options.multipart
+      ? Object.entries(options.multipart).map(([name, value]) => {
+          if (value && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "buffer")) {
+            return {
+              name,
+              kind: "file",
+              filename: value.name,
+              mimeType: value.mimeType || "application/octet-stream",
+              base64: Buffer.from(value.buffer).toString("base64"),
+            };
+          }
+          return { name, kind: "text", value: String(value) };
+        })
+      : null;
+    const result = await page.evaluate(async ({ requestTarget, method, data, formFields, requestHeaders, credentials, timeout }) => {
+      const headers = { ...requestHeaders };
+      let body;
+      if (formFields) {
+        const form = new FormData();
+        for (const field of formFields) {
+          if (field.kind === "file") {
+            const binary = atob(field.base64);
+            const bytes = new Uint8Array(binary.length);
+            for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+            form.append(field.name, new File([bytes], field.filename, { type: field.mimeType }));
+          } else {
+            form.append(field.name, field.value);
+          }
+        }
+        body = form;
+      } else if (data !== undefined) {
+        headers["content-type"] = "application/json";
+        body = JSON.stringify(data);
+      }
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeout);
+      try {
+        const response = await fetch(requestTarget, {
+          method,
+          headers,
+          body,
+          cache: "no-store",
+          credentials,
+          signal: controller.signal,
+        });
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        let binary = "";
+        for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+          binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+        }
+        return {
+          status: response.status,
+          headers: Object.fromEntries(response.headers.entries()),
+          base64: btoa(binary),
+        };
+      } finally {
+        clearTimeout(timer);
+      }
+    }, {
+      requestTarget: target,
+      method: String(options.method || "GET").toUpperCase(),
+      data: options.data,
+      formFields: multipart,
+      requestHeaders: options.headers || {},
+      credentials: options.credentials || "same-origin",
+      timeout: options.timeout || 90_000,
+    });
+    const bytes = Buffer.from(result.base64, "base64");
     const text = bytes.toString("utf8");
     let json = null;
-    if (text && /json/i.test(response.headers()["content-type"] || "")) {
+    if (text && /json/i.test(result.headers["content-type"] || "")) {
       try { json = JSON.parse(text); } catch { json = null; }
     }
     return {
-      status: response.status(),
-      headers: response.headers(),
+      status: result.status,
+      headers: result.headers,
       bytes,
       text,
       json,
@@ -398,26 +468,45 @@ asyncio.run(main())
   }
 
   async request(actor, pathname, options = {}) {
-    const direct = options.channel !== "proxy";
+    assert(/^\/api\/v1(?:\/|$)/.test(pathname), `dashboard request must use an /api/v1 path: ${pathname}`);
+    assert(!options.bearer, "dashboard proxy requests cannot carry bearer credentials");
+    assert(!options.headers, "dashboard proxy requests cannot carry custom headers");
+    assert(!options.credentials, "dashboard proxy requests always use same-origin credentials");
     const proxyPath = pathname.replace(/^\/api\/v1(?=\/|$)/, "");
-    const url = direct ? `${apiUrl}${pathname}` : `/api/proxy${proxyPath}`;
-    const headers = { ...(options.headers || {}) };
-    if (options.bearer) headers.authorization = `Bearer ${options.bearer}`;
-    else if (direct) headers.cookie = `dash_session=${actor.cookie}`;
-    const requestOptions = {
-      method: options.method || "GET",
-      headers,
-      timeout: options.timeout || 90_000,
-      failOnStatusCode: false,
-    };
-    if (Object.prototype.hasOwnProperty.call(options, "data")) requestOptions.data = options.data;
-    if (options.multipart) requestOptions.multipart = options.multipart;
-    return this.response(await actor.context.request.fetch(url, requestOptions));
+    return this.inPageFetch(actor.page, `/api/proxy${proxyPath}`, {
+      ...options,
+      credentials: "same-origin",
+    });
   }
 
-  async switchOrg(actor, orgId, pathId = "ROLE-03", channel = "direct") {
+  async apiKeyRequest(actor, pathname, bearer, options = {}) {
+    // The dashboard proxy intentionally authenticates with the first-party
+    // session cookie and does not forward Authorization. Keep bearer-only
+    // authorization oracles in an isolated, cookie-free browser client and
+    // never use this for setup.
+    assert(/^\/api\/v1(?:\/|$)/.test(pathname), `API-key request must use an /api/v1 path: ${pathname}`);
+    assert(typeof bearer === "string" && bearer.startsWith("cv_live_"), "API-key probe requires a real cv_live_ token");
+    if (!this.apiKeyClient) {
+      const context = await this.browser.newContext({
+        baseURL: apiUrl,
+        extraHTTPHeaders: { "x-real-ip": clientIp },
+      });
+      this.contexts.push(context);
+      const page = await context.newPage();
+      this.attach(page, `${actor.name}-api-key-client`);
+      const openapi = await page.goto("/openapi.json", { waitUntil: "domcontentloaded", timeout: 30_000 });
+      assert(openapi?.status() === 200, `API-key browser client preflight returned ${openapi?.status() ?? 0}`);
+      this.apiKeyClient = { context, page };
+    }
+    return this.inPageFetch(this.apiKeyClient.page, pathname, {
+      ...options,
+      headers: { authorization: `Bearer ${bearer}` },
+      credentials: "omit",
+    });
+  }
+
+  async switchOrg(actor, orgId, pathId = "ROLE-03") {
     const result = await this.request(actor, "/api/v1/orgs/switch", {
-      channel,
       method: "POST",
       data: { org_id: orgId },
     });
@@ -426,23 +515,22 @@ asyncio.run(main())
     return result;
   }
 
-  async createKey(actor, label, channel = "direct") {
+  async createKey(actor, label) {
     const result = await this.request(actor, "/api/v1/keys", {
-      channel,
       method: "POST",
       data: { name: label },
     });
     assert(result.status === 200, `key creation failed ${result.status}: ${result.text}`);
-    const setCookie = result.headers["set-cookie"] || "";
-    const match = setCookie.match(/cv_mint_once=([^;,]+)/);
-    assert(match, "key creation did not return one-time token cookie");
-    return { id: result.json.id, prefix: result.json.prefix, token: decodeURIComponent(match[1]), label };
+    const revealCookie = (await actor.context.cookies()).find((cookie) => cookie.name === "cv_mint_once");
+    assert(revealCookie?.value, "key creation did not set the browser one-time token cookie");
+    const token = decodeURIComponent(revealCookie.value);
+    assert(token.startsWith(`cv_live_${result.json.prefix}_`), "one-time browser token does not match the created key prefix");
+    return { id: result.json.id, prefix: result.json.prefix, token, label };
   }
 
   async createTenantResources(key, actor) {
     const suffix = `TENANT-${key}-${tag}`;
     const design = await this.request(actor, "/api/v1/designs", {
-      channel: "proxy",
       method: "POST",
       data: {
         name: `${suffix}-DESIGN`,
@@ -453,7 +541,6 @@ asyncio.run(main())
     assert(design.status === 202, `${key} design create ${design.status}: ${design.text}`);
 
     const analysis = await this.request(actor, "/api/v1/validate", {
-      channel: "proxy",
       method: "POST",
       multipart: {
         file: { name: `${suffix}.step`, mimeType: "application/step", buffer: this.cubeBytes },
@@ -463,7 +550,7 @@ asyncio.run(main())
     let analyses = null;
     let analysisRow = null;
     for (let attempt = 0; attempt < 20 && !analysisRow; attempt += 1) {
-      analyses = await this.request(actor, "/api/v1/analyses?limit=50", { channel: "proxy" });
+      analyses = await this.request(actor, "/api/v1/analyses?limit=50");
       assert(analyses.status === 200, `${key} analysis list ${analyses.status}: ${analyses.text}`);
       analysisRow = analyses.json?.analyses?.find((item) => item.filename === `${suffix}.step`) || null;
       if (!analysisRow) await new Promise((resolve) => setTimeout(resolve, 250));
@@ -471,7 +558,6 @@ asyncio.run(main())
     assert(analysisRow?.id, `${key} analysis did not persist`);
 
     const cost = await this.request(actor, "/api/v1/validate/cost", {
-      channel: "proxy",
       method: "POST",
       multipart: {
         file: { name: `${suffix}.step`, mimeType: "application/step", buffer: this.cubeBytes },
@@ -483,7 +569,6 @@ asyncio.run(main())
     assert(cost.status === 200 && cost.json?.saved?.id, `${key} cost create ${cost.status}: ${cost.text.slice(0, 500)}`);
 
     const batch = await this.request(actor, "/api/v1/batch", {
-      channel: "proxy",
       method: "POST",
       multipart: {
         file: { name: `${suffix}.zip`, mimeType: "application/zip", buffer: this.batchZip },
@@ -498,7 +583,6 @@ asyncio.run(main())
       `${suffix}-PART,A,${suffix}-PROGRAM,1000,316L`,
     ].join("\n");
     const integration = await this.request(actor, "/api/v1/integrations/runs", {
-      channel: "proxy",
       method: "POST",
       multipart: {
         connector_id: "sap_manifest_csv",
@@ -509,7 +593,6 @@ asyncio.run(main())
     assert(integration.status === 200 && integration.json?.run?.id, `${key} integration create ${integration.status}: ${integration.text}`);
 
     const rfq = await this.request(actor, "/api/v1/rfq-packages", {
-      channel: "proxy",
       method: "POST",
       data: {
         decision_ids: [cost.json.saved.id],
@@ -675,23 +758,27 @@ asyncio.run(main())
       await this.row({
         pathId: "ROLE-02",
         persona: name,
-        channel: "api-direct",
+        channel: "browser-proxy",
         surface: "auth/session",
         operation: "read current identity",
-        target: "/auth/me",
+        target: "/api/proxy/orgs",
         fn: async () => {
-          const result = await this.request(actor, "/auth/me");
+          const result = await this.request(actor, "/api/v1/orgs");
           this.equal("ROLE-02", `${name} auth status`, result.status, 200);
-          this.equal("ROLE-02", `${name} platform role`, result.json?.role, actor.platform_role);
+          await actor.page.getByRole("button", { name: "Account" }).click();
+          const accountMenu = actor.page.getByRole("menu");
+          const visibleRole = cleanText(await accountMenu.getByText(actor.platform_role, { exact: true }).innerText()).toLowerCase();
+          this.equal("ROLE-02", `${name} platform role`, visibleRole, actor.platform_role);
+          await actor.page.keyboard.press("Escape");
           this.excludes("ROLE-02", `${name} auth body excludes other tenant sentinel`, result.json, this.foreignMarkers("B"));
-          return { status: result.status, role: result.json?.role };
+          return { status: result.status, role: visibleRole };
         },
       });
 
       await this.row({
         pathId: "ROLE-02",
         persona: name,
-        channel: "api-direct",
+        channel: "browser-proxy",
         surface: "design",
         operation: "interpret a safe design prompt",
         target: "/api/v1/designs/interpret",
@@ -711,12 +798,12 @@ asyncio.run(main())
       await this.row({
         pathId: "ROLE-02",
         persona: name,
-        channel: "api-proxy",
+        channel: "browser-proxy",
         surface: "organization",
         operation: "list active-org invitations",
         target: "/api/proxy/orgs/invites",
         fn: async () => {
-          const result = await this.request(actor, "/api/v1/orgs/invites", { channel: "proxy" });
+          const result = await this.request(actor, "/api/v1/orgs/invites");
           const expectedStatus = expected.orgAdmin ? 200 : 403;
           this.equal("ROLE-02", `${name} org-admin status`, result.status, expectedStatus);
           if (!expected.orgAdmin) {
@@ -739,7 +826,7 @@ asyncio.run(main())
       await this.row({
         pathId: "ROLE-02",
         persona: name,
-        channel: "api-direct",
+        channel: "browser-proxy",
         surface: "integrations/credentials",
         operation: "list credential profiles",
         target: "/api/v1/integrations/credential-profiles",
@@ -754,7 +841,7 @@ asyncio.run(main())
       await this.row({
         pathId: "ROLE-02",
         persona: name,
-        channel: "api-direct",
+        channel: "browser-proxy",
         surface: "platform administration",
         operation: "list users",
         target: expected.globalAdmin
@@ -785,7 +872,7 @@ asyncio.run(main())
       await this.row({
         pathId: "ROLE-02",
         persona: name,
-        channel: "api-direct",
+        channel: "browser-proxy",
         surface: "API keys",
         operation: "list own active-org keys",
         target: "/api/v1/keys",
@@ -801,7 +888,7 @@ asyncio.run(main())
     await this.row({
       pathId: "ROLE-02",
       persona: "analyst/member",
-      channel: "api-direct",
+      channel: "browser-proxy",
       surface: "governed rate library",
       operation: "attempt to publish an administrator-authored draft",
       target: "/api/v1/rate-library/{draft}/publish",
@@ -831,7 +918,7 @@ asyncio.run(main())
       await this.row({
         pathId: "ROLE-02",
         persona: name,
-        channel: "api-direct",
+        channel: "browser-proxy",
         surface: "platform administration",
         operation: "attempt global role mutation",
         target: `/api/v1/admin/users/${bOnly.id}/role`,
@@ -850,7 +937,7 @@ asyncio.run(main())
     await this.row({
       pathId: "ROLE-02",
       persona: "platform_admin",
-      channel: "api-direct",
+      channel: "browser-proxy",
       surface: "platform administration",
       operation: "idempotently retain a user's global role",
       target: `/api/v1/admin/users/${bOnly.id}/role`,
@@ -945,7 +1032,7 @@ asyncio.run(main())
     return this.row({
       pathId: "ROLE-04",
       persona: actor.name,
-      channel: "api-direct",
+      channel: "browser-proxy",
       surface,
       operation: `list organization ${key} records`,
       target: pathname,
@@ -963,7 +1050,7 @@ asyncio.run(main())
     return this.row({
       pathId: "ROLE-04",
       persona: actor.name,
-      channel: "api-direct",
+      channel: "browser-proxy",
       surface,
       operation: "read same-organization detail or artifact",
       target: pathname,
@@ -1089,7 +1176,7 @@ asyncio.run(main())
     await this.row({
       pathId: "VER-04",
       persona: "viewer",
-      channel: "browser+api",
+      channel: "browser+proxy",
       surface: "notifications",
       operation: "open, mark read, refresh, and reopen durable state",
       target: "/notifications",
@@ -1157,7 +1244,7 @@ asyncio.run(main())
     await this.row({
       pathId: "VER-04",
       persona: "viewer",
-      channel: "browser+api",
+      channel: "browser+proxy",
       surface: "notifications",
       operation: "reopen inbox after organization switch",
       target: "/notifications",
@@ -1205,7 +1292,7 @@ asyncio.run(main())
       await this.row({
         pathId: "ROLE-04",
         persona: "viewer",
-        channel: "api-direct",
+        channel: "browser-proxy",
         surface,
         operation: "compare known foreign ID with unknown ID",
         target: knownPath,
@@ -1216,7 +1303,7 @@ asyncio.run(main())
     await this.row({
       pathId: "ROLE-04",
       persona: "viewer",
-      channel: "api-direct",
+      channel: "browser-proxy",
       surface: "API keys",
       operation: "guess another user's numeric key identifier",
       target: `/api/v1/keys/${A.key.id}`,
@@ -1268,7 +1355,7 @@ asyncio.run(main())
     await this.row({
       pathId: "ROLE-03",
       persona: "organization owner",
-      channel: "api-direct+browser-state",
+      channel: "browser-proxy+browser-state",
       surface: "invitation, member role, and SAML group mapping administration",
       operation: "create/revoke invite, demote/restore member, create/delete group mapping",
       target: "/api/v1/orgs",
@@ -1343,30 +1430,29 @@ asyncio.run(main())
     await this.row({
       pathId: "ROLE-03",
       persona: "owner",
-      channel: "api-direct",
+      channel: "browser-api-key",
       surface: "API-key tenant binding",
       operation: "switch dashboard org without moving bearer credential",
       target: "/api/v1/orgs/switch",
       fn: async () => {
-        const before = await this.request(owner, `/api/v1/cost-decisions/${A.cost_id}`, { bearer: A.key.token });
+        const before = await this.apiKeyRequest(owner, `/api/v1/cost-decisions/${A.cost_id}`, A.key.token);
         this.equal("ROLE-03", "A bearer works before dashboard switch", before.status, 200);
-        const attemptsSwitch = await this.request(owner, "/api/v1/orgs/switch", {
-          bearer: A.key.token,
+        const attemptsSwitch = await this.apiKeyRequest(owner, "/api/v1/orgs/switch", A.key.token, {
           method: "POST",
           data: { org_id: this.seedData.orgs.B },
         });
         this.equal("ROLE-03", "bearer organization switch denied", attemptsSwitch.status, 403);
         this.equal("ROLE-03", "bearer switch denial code", errorCode(attemptsSwitch), "api_key_org_bound");
         await this.switchOrg(owner, this.seedData.orgs.B);
-        const after = await this.request(owner, `/api/v1/cost-decisions/${A.cost_id}`, { bearer: A.key.token });
+        const after = await this.apiKeyRequest(owner, `/api/v1/cost-decisions/${A.cost_id}`, A.key.token);
         this.equal("ROLE-03", "A bearer is rejected after dashboard switches to B", after.status, 403);
         this.equal("ROLE-03", "A bearer mismatch code after dashboard switch", errorCode(after), "api_key_org_mismatch");
-        const foreign = await this.request(owner, `/api/v1/cost-decisions/${B.cost_id}`, { bearer: A.key.token });
+        const foreign = await this.apiKeyRequest(owner, `/api/v1/cost-decisions/${B.cost_id}`, A.key.token);
         this.equal("ROLE-03", "A bearer cannot read B decision", foreign.status, 403);
         this.equal("ROLE-03", "A bearer B denial code", errorCode(foreign), "api_key_org_mismatch");
         this.excludes("ROLE-03", "A bearer denial excludes B metadata", foreign.json, this.foreignMarkers("B"));
         await this.switchOrg(owner, this.seedData.orgs.A);
-        const recovered = await this.request(owner, `/api/v1/cost-decisions/${A.cost_id}`, { bearer: A.key.token });
+        const recovered = await this.apiKeyRequest(owner, `/api/v1/cost-decisions/${A.cost_id}`, A.key.token);
         this.equal("ROLE-03", "A bearer works after dashboard switches back", recovered.status, 200);
         this.bearerPersisted = {
           before: before.status,
@@ -1409,14 +1495,13 @@ asyncio.run(main())
     await this.row({
       pathId: "ROLE-03",
       persona: "removed analyst",
-      channel: "api-direct+bearer",
+      channel: "browser-proxy+api-key",
       surface: "membership and API-key lifecycle",
       operation: "reuse stale session and org-bound keys after removal",
-      target: "/api/v1/orgs",
+      target: "/api/proxy/orgs",
       fn: async () => {
-        const me = await this.request(analyst, "/auth/me");
-        this.equal("ROLE-03", "membership removal does not revoke whole dashboard session", me.status, 200);
         const orgs = await this.request(analyst, "/api/v1/orgs");
+        this.equal("ROLE-03", "membership removal does not revoke whole dashboard session", orgs.status, 200);
         this.equal("ROLE-03", "removed analyst organizations status", orgs.status, 200);
         this.equal("ROLE-03", "removed analyst active org falls back to B", orgs.json?.active_org_id, this.seedData.orgs.B);
         this.equal("ROLE-03", "removed analyst no longer lists A", (orgs.json?.organizations || []).some((item) => item.org_id === this.seedData.orgs.A), false);
@@ -1428,8 +1513,8 @@ asyncio.run(main())
         this.equal("ROLE-03", "removed analyst dashboard retains B", dashboardB.status, 200);
         this.excludes("ROLE-03", "removed analyst A denial has no metadata", dashboardA.json, this.foreignMarkers("A"));
 
-        const aKey = await this.request(analyst, `/api/v1/designs/${A.design_id}`, { bearer: A.analyst_key.token });
-        const bKey = await this.request(analyst, `/api/v1/designs/${B.design_id}`, { bearer: B.analyst_key.token });
+        const aKey = await this.apiKeyRequest(analyst, `/api/v1/designs/${A.design_id}`, A.analyst_key.token);
+        const bKey = await this.apiKeyRequest(analyst, `/api/v1/designs/${B.design_id}`, B.analyst_key.token);
         this.equal("ROLE-03", "removed organization A key is revoked", aKey.status, 401);
         this.equal("ROLE-03", "organization B key remains valid", bKey.status, 200);
         this.equal("ROLE-03", "revoked A key denial code", errorCode(aKey), "auth_invalid");
@@ -1481,7 +1566,7 @@ asyncio.run(main())
     await this.row({
       pathId: "FAIL-09",
       persona: "platform-admin revoking viewer",
-      channel: "api-direct",
+      channel: "browser-proxy",
       surface: "session administration",
       operation: "revoke all dashboard sessions",
       target: `/api/v1/admin/users/${viewer.id}/revoke-sessions`,
@@ -1500,13 +1585,13 @@ asyncio.run(main())
     await this.row({
       pathId: "FAIL-09",
       persona: "viewer with revoked session",
-      channel: "api-direct+browser",
+      channel: "browser-proxy+browser",
       surface: "stale session",
       operation: "reuse revoked cookie",
-      target: "/designs",
+      target: "/api/proxy/orgs and /designs",
       fn: async () => {
-        const stale = await this.request(viewer, "/auth/me");
-        this.equal("FAIL-09", "stale cookie direct status", stale.status, 401);
+        const stale = await this.request(viewer, "/api/v1/orgs");
+        this.equal("FAIL-09", "stale cookie proxy status", stale.status, 401);
         this.equal("FAIL-09", "stale cookie denial code", errorCode(stale), "session_revoked");
         this.excludes("FAIL-09", "stale cookie denial has no tenant metadata", stale.json, [...this.foreignMarkers("A"), ...this.foreignMarkers("B")]);
         await viewer.page.goto("/designs", { waitUntil: "domcontentloaded" });
@@ -1522,7 +1607,7 @@ asyncio.run(main())
     await this.row({
       pathId: "FAIL-09",
       persona: "viewer relogging in",
-      channel: "browser+api",
+      channel: "browser+proxy",
       surface: "session recovery",
       operation: "authenticate again and reopen active organization",
       target: "/login",

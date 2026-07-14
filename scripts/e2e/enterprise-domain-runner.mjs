@@ -10,7 +10,7 @@ import {
 } from "./golden-path-evidence.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
-const pw = require("playwright-core");
+const { chromium } = require("playwright-core");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -225,9 +225,9 @@ class EnterpriseDomainQA {
   async init() {
     await mkdir(screenshotDir, { recursive: true });
     try {
-      this.browser = await pw.chromium.launch(launchOptions);
+      this.browser = await chromium.launch(launchOptions);
     } catch {
-      this.browser = await pw.chromium.launch({
+      this.browser = await chromium.launch({
         headless: true,
         args: launchOptions.args,
       });
@@ -380,6 +380,10 @@ class EnterpriseDomainQA {
   }
 
   async api(pathname, options = {}) {
+    assert(
+      typeof pathname === "string" && pathname.startsWith("/") && !pathname.startsWith("//"),
+      `API evidence requires a relative backend path, got ${pathname}`,
+    );
     return this.page.evaluate(
       async ({ pathname, options }) => {
         const method = options.method || "GET";
@@ -394,6 +398,7 @@ class EnterpriseDomainQA {
           headers,
           body,
           cache: "no-store",
+          credentials: "same-origin",
         });
         const text = await res.text();
         let parsed = text;
@@ -468,15 +473,47 @@ class EnterpriseDomainQA {
         baseURL: baseUrl,
         extraHTTPHeaders: { "x-real-ip": clientIp },
       });
-      const res = await context.request.get("/api/proxy/machine-inventory");
-      await context.close();
+      let status = 0;
+      try {
+        const page = await context.newPage();
+        const navigation = await page.goto("/login", { waitUntil: "domcontentloaded", timeout: 30_000 });
+        assert(navigation?.ok(), `unauthenticated browser could not open the login origin: ${navigation?.status()}`);
+        status = await page.evaluate(async () => {
+          const response = await fetch("/api/proxy/machine-inventory", {
+            cache: "no-store",
+            credentials: "same-origin",
+          });
+          return response.status;
+        });
+      } finally {
+        await context.close();
+      }
       assert(
-        [401, 403].includes(res.status()),
-        `expected unauthenticated machine inventory to reject, got ${res.status()}`
+        [401, 403].includes(status),
+        `expected unauthenticated machine inventory to reject, got ${status}`
       );
-      this.evidence.unauthMachineInventoryStatus = res.status();
+      this.evidence.unauthMachineInventoryStatus = status;
       return { screenshot: await this.shot("tenant-isolation-authenticated-context") };
     });
+  }
+
+  async probeDeveloperApiKey(token) {
+    const context = await this.browser.newContext({ baseURL: apiBaseUrl });
+    try {
+      const page = await context.newPage();
+      const navigation = await page.goto("/health", { waitUntil: "domcontentloaded", timeout: 30_000 });
+      assert(navigation?.ok(), `API-key browser could not open the API origin: ${navigation?.status()}`);
+      return page.evaluate(async (token) => {
+        const response = await fetch("/api/v1/analyses?limit=1", {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+          credentials: "omit",
+        });
+        return response.status;
+      }, token);
+    } finally {
+      await context.close();
+    }
   }
 
   async publishGovernedRateCard() {
@@ -660,7 +697,7 @@ class EnterpriseDomainQA {
   }
 
   async verifyGovernedUiSurfaces() {
-    await this.step("Verify UI shows declared machines and governed truth honestly", async () => {
+    await this.step("Verify UI shows declared machines and effective rate truth honestly", async () => {
       await this.goto("/verify", "verify-shell", 1000);
       await this.clickRail("Your machines");
       let text = await this.visibleText();
@@ -677,7 +714,13 @@ class EnterpriseDomainQA {
       assert(/DEFAULT/i.test(text), "governed card default provenance not visible");
       assert(/real records \(held-out pool\)\s*4/i.test(text), "ground-truth real count missing");
       assert(/floor to validate\s*8 real/i.test(text), "validation floor missing");
+      const refusalResponsePromise = this.page.waitForResponse((response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === "/api/proxy/ground-truth/recalibrate"
+      , { timeout: 20_000 });
       await this.page.getByRole("button", { name: /^Recalibrate$/i }).click();
+      const refusalResponse = await refusalResponsePromise;
+      assert(refusalResponse.status() === 422, `visible recalibration refusal returned ${refusalResponse.status()}`);
       await this.page.getByText(/recalibration refused:\s*4 real of 8 needed/i).waitFor({ timeout: 10_000 });
       text = await this.scanVisibleText("calibration-truth-ui");
       const screenshot = await this.shot("calibration-truth-refusal-ui", true);
@@ -686,6 +729,7 @@ class EnterpriseDomainQA {
         visible_text: text.replace(/\s+/g, " ").trim(),
         url: this.page.url(),
         screenshot,
+        visible_recalibration_status: refusalResponse.status(),
       };
       return { screenshot, extra: machineShot };
     });
@@ -699,18 +743,7 @@ class EnterpriseDomainQA {
       await this.page.getByText("Save your API key").waitFor({ timeout: 20_000 });
       const initialKey = (await this.page.locator('[role="dialog"] pre').innerText()).trim();
       assert(/^cv_live_[A-Za-z0-9_-]+$/.test(initialKey), "one-time API key secret was not revealed");
-      const probe = async (token) => {
-        const client = await pw.request.newContext({
-          baseURL: apiBaseUrl,
-          extraHTTPHeaders: { Authorization: `Bearer ${token}` },
-        });
-        try {
-          const response = await client.get("/api/v1/analyses?limit=1");
-          return response.status();
-        } finally {
-          await client.dispose();
-        }
-      };
+      const probe = (token) => this.probeDeveloperApiKey(token);
       assert((await probe(initialKey)) === 200, "new API key was not accepted by the real API");
       await this.page.getByLabel(/saved it somewhere safe/i).check();
       await this.page.getByRole("button", { name: /^Done$/ }).click();
@@ -806,7 +839,7 @@ class EnterpriseDomainQA {
       assert(excludedReasons.every((reason) => /NACE|HDT|ASME|ASTM|ISO/i.test(reason)), `polymer exclusion was not standards-cited: ${excludedReasons.join(" | ")}`);
       assert(excludedReasons.every((reason) => excludedText.includes(reason)), "standards-cited polymer exclusion was not visible to the user");
       assert(excludedCost.verification?.gap?.some((item) => item?.need === "PEEK"), "surviving severe-service polymer route did not expose the PEEK capability gap");
-      const excludedScreenshot = await this.shot("cad-step-environment-excluded", true);
+      const excludedScreenshot = await this.shot("ENT-03-cad-step-environment-excluded", true);
 
       const costPromise = this.page.waitForResponse((response) =>
         response.request().method() === "POST" &&
@@ -936,7 +969,7 @@ class EnterpriseDomainQA {
       await this.page.waitForURL(new RegExp(`/analyses/${beforeAnalysisRows[0].id}$`), { timeout: 20_000 });
       await this.page.getByText("Linked cost decisions", { exact: true }).waitFor({ timeout: 20_000 });
       const visible = (await this.visibleText()).replace(/\s+/g, " ").trim();
-      const screenshot = await this.shot("interrupted-verification-deduped-result", true);
+      const screenshot = await this.shot("VER-08-interrupted-verification-deduped-result", true);
       this.evidence.interruptedVerification = {
         url: this.page.url(),
         screenshot,
@@ -1060,7 +1093,7 @@ class EnterpriseDomainQA {
 
       await this.page.getByText(`${fileSha256.slice(0, 10)}...`, { exact: true }).first().waitFor();
       const visible = (await this.visibleText()).replace(/\s+/g, " ").trim();
-      const screenshot = await this.shot("integration-dry-run-import-idempotent", true);
+      const screenshot = await this.shot("WORK-09-integration-dry-run-import-idempotent", true);
       this.evidence.integration = {
         url: this.page.url(),
         screenshot,
@@ -1111,7 +1144,7 @@ class EnterpriseDomainQA {
       const visibleDecisionLinkCount = await this.page.getByRole("button", { name: "Open decision" }).count();
       assert(visibleDecisionLinkCount === linkedDecisionIds.length, "visible decision links do not match API");
       const visible = (await this.visibleText()).replace(/\s+/g, " ").trim();
-      const screenshot = await this.shot("history-analysis-detail-equality", true);
+      const screenshot = await this.shot("WORK-10-history-analysis-detail-equality", true);
       this.evidence.historyDetail = {
         url: this.page.url(),
         screenshot,
@@ -1141,80 +1174,133 @@ class EnterpriseDomainQA {
 
   async verifyReconstructionRecovery() {
     await this.step("reconstruction returns a real mesh or an actionable upload recovery", async () => {
-      await this.goto("/reconstruct", "reconstruction", 700);
-      const input = this.page.locator('input[type="file"]').first();
-      await input.setInputFiles({
-        name: "not-an-image.txt",
-        mimeType: "text/plain",
-        buffer: Buffer.from("not an image"),
-      });
-      const invalidAlert = this.page.getByRole("alert").filter({ hasText: /not a supported image type/i });
-      await invalidAlert.waitFor();
-      const invalidText = (await invalidAlert.innerText()).replace(/\s+/g, " ").trim();
-
-      await input.setInputFiles({ name: "one-pixel.png", mimeType: "image/png", buffer: tinyPng });
-      const responsePromise = this.page.waitForResponse((response) =>
-        response.request().method() === "POST" &&
-        new URL(response.url()).pathname === "/api/proxy/reconstruct"
-      , { timeout: 30_000 });
-      await this.page.getByRole("button", { name: /Reconstruct \(1 image\)/ }).click();
-      const submitResponse = await responsePromise;
-      const submitBody = await submitResponse.json().catch(() => null);
-      let outcome = "actionable-unavailable";
-      let meshBytes = 0;
-      let job = null;
-      let terminalJob = null;
-
-      if (submitResponse.status() === 202) {
-        job = submitBody;
-        await this.page.waitForFunction(
-          () => /Reconstruction result|Reconstruction failed/i.test(document.body.innerText),
-          null,
-          { timeout: 180_000 },
-        );
-        const terminal = await this.api(`/jobs/${submitBody.job_id}`);
-        assert(terminal.status === 200, `terminal reconstruction status HTTP ${terminal.status}`);
-        terminalJob = terminal.body;
-        const resultVisible = await this.page.getByText("Reconstruction result", { exact: true }).count();
-        if (resultVisible) {
-          const mesh = await this.page.evaluate(async (jobId) => {
-            const response = await fetch(`/api/proxy/reconstructions/${jobId}/mesh.stl`, { cache: "no-store" });
-            const bytes = await response.arrayBuffer();
-            return { status: response.status, bytes: bytes.byteLength };
-          }, submitBody.job_id);
-          assert(mesh.status === 200 && mesh.bytes > 0, `reconstruction mesh response ${JSON.stringify(mesh)}`);
-          assert(terminalJob?.status === "done", `mesh visible but terminal job was ${terminalJob?.status}`);
-          outcome = "real-mesh";
-          meshBytes = mesh.bytes;
-        } else {
-          await this.page.getByText("Upload images", { exact: true }).waitFor();
-          assert(terminalJob?.status === "failed", `failure UI but terminal job was ${terminalJob?.status}`);
-          outcome = "actionable-job-failure";
-        }
-      } else {
-        assert([501, 503].includes(submitResponse.status()), `unexpected reconstruction HTTP ${submitResponse.status()}`);
-        await this.page.getByText("Reconstruction failed", { exact: true }).waitFor({ timeout: 30_000 });
-        await this.page.getByText("Upload images", { exact: true }).waitFor({ timeout: 30_000 });
-      }
-
-      const visible = (await this.visibleText()).replace(/\s+/g, " ").trim();
-      assert(/Reconstruction failed|Reconstruction result/i.test(visible), "reconstruction ended without an honest terminal state");
-      assert(outcome === "real-mesh" || /Upload images/i.test(visible), "failure did not recover to the upload state");
-      assert(outcome === "real-mesh" || !/Reconstruction result/i.test(visible), "failure displayed a fake preview");
-      const screenshot = await this.shot("reconstruction-real-or-actionable", true);
-      this.evidence.reconstruction = {
-        url: this.page.url(),
-        screenshot,
-        visible_text: visible,
-        invalid_text: invalidText,
-        submit_status: submitResponse.status(),
-        submit_body: submitBody,
-        outcome,
-        mesh_bytes: meshBytes,
-        job,
-        terminal_job: terminalJob,
+      let reconstructionPosts = 0;
+      const countReconstructionPost = (request) => {
+        if (
+          request.method() === "POST" &&
+          new URL(request.url()).pathname === "/api/proxy/reconstruct"
+        ) reconstructionPosts += 1;
       };
-      return { screenshot };
+      this.page.on("request", countReconstructionPost);
+      try {
+        await this.goto("/reconstruct", "reconstruction", 700);
+        const capability = await this.api("/reconstruct/capability");
+        assert(capability.status === 200, `reconstruction capability HTTP ${capability.status}`);
+        assert(typeof capability.body?.available === "boolean", "reconstruction capability omitted available");
+
+        if (!capability.body.available) {
+          await this.page.getByRole("heading", { name: "Image-to-3D is not enabled" }).waitFor({ timeout: 20_000 });
+          await this.page.getByRole("button", { name: "Verify CAD instead" }).waitFor({ timeout: 20_000 });
+          const visible = (await this.visibleText()).replace(/\s+/g, " ").trim();
+          assert(/No image has been uploaded or sent to a third party/i.test(visible), "disabled capability omitted the no-upload guarantee");
+          assert((await this.page.locator('input[type="file"]').count()) === 0, "disabled capability exposed an upload input");
+          assert(reconstructionPosts === 0, `disabled capability submitted ${reconstructionPosts} reconstruction request(s)`);
+          assert(!/Reconstruction result/i.test(visible), "disabled capability displayed a fake reconstruction result");
+          const screenshot = await this.shot("WORK-11-reconstruction-capability-unavailable", true);
+          this.evidence.reconstruction = {
+            url: this.page.url(),
+            screenshot,
+            visible_text: visible,
+            invalid_text: null,
+            capability_status: capability.status,
+            capability: capability.body,
+            submit_status: null,
+            submit_body: null,
+            submit_count: reconstructionPosts,
+            upload_input_count: 0,
+            outcome: "actionable-capability-unavailable",
+            mesh_bytes: 0,
+            job: null,
+            terminal_job: null,
+          };
+          return { screenshot };
+        }
+
+        assert(capability.body.can_submit === true, "reconstruction is available but the admin account cannot submit");
+        const input = this.page.locator('input[type="file"]').first();
+        await input.setInputFiles({
+          name: "not-an-image.txt",
+          mimeType: "text/plain",
+          buffer: Buffer.from("not an image"),
+        });
+        const invalidAlert = this.page.getByRole("alert").filter({ hasText: /not a supported image type/i });
+        await invalidAlert.waitFor();
+        const invalidText = (await invalidAlert.innerText()).replace(/\s+/g, " ").trim();
+
+        await input.setInputFiles({ name: "one-pixel.png", mimeType: "image/png", buffer: tinyPng });
+        const responsePromise = this.page.waitForResponse((response) =>
+          response.request().method() === "POST" &&
+          new URL(response.url()).pathname === "/api/proxy/reconstruct"
+        , { timeout: 30_000 });
+        await this.page.getByRole("button", { name: /Reconstruct \(1 image\)/ }).click();
+        const submitResponse = await responsePromise;
+        const submitBody = await submitResponse.json().catch(() => null);
+        let outcome = "actionable-unavailable";
+        let meshBytes = 0;
+        let job = null;
+        let terminalJob = null;
+
+        if (submitResponse.status() === 202) {
+          job = submitBody;
+          await this.page.waitForFunction(
+            () => /Reconstruction result|Reconstruction failed/i.test(document.body.innerText),
+            null,
+            { timeout: 180_000 },
+          );
+          const terminal = await this.api(`/jobs/${submitBody.job_id}`);
+          assert(terminal.status === 200, `terminal reconstruction status HTTP ${terminal.status}`);
+          terminalJob = terminal.body;
+          const resultVisible = await this.page.getByText("Reconstruction result", { exact: true }).count();
+          if (resultVisible) {
+            const mesh = await this.page.evaluate(async (jobId) => {
+              const response = await fetch(`/api/proxy/reconstructions/${jobId}/mesh.stl`, {
+                cache: "no-store",
+                credentials: "same-origin",
+              });
+              const bytes = await response.arrayBuffer();
+              return { status: response.status, bytes: bytes.byteLength };
+            }, submitBody.job_id);
+            assert(mesh.status === 200 && mesh.bytes > 0, `reconstruction mesh response ${JSON.stringify(mesh)}`);
+            assert(terminalJob?.status === "done", `mesh visible but terminal job was ${terminalJob?.status}`);
+            outcome = "real-mesh";
+            meshBytes = mesh.bytes;
+          } else {
+            await this.page.getByText("Upload images", { exact: true }).waitFor();
+            assert(terminalJob?.status === "failed", `failure UI but terminal job was ${terminalJob?.status}`);
+            outcome = "actionable-job-failure";
+          }
+        } else {
+          assert([501, 503].includes(submitResponse.status()), `unexpected reconstruction HTTP ${submitResponse.status()}`);
+          await this.page.getByText("Reconstruction failed", { exact: true }).waitFor({ timeout: 30_000 });
+          await this.page.getByText("Upload images", { exact: true }).waitFor({ timeout: 30_000 });
+        }
+
+        const visible = (await this.visibleText()).replace(/\s+/g, " ").trim();
+        assert(/Reconstruction failed|Reconstruction result/i.test(visible), "reconstruction ended without an honest terminal state");
+        assert(outcome === "real-mesh" || /Upload images/i.test(visible), "failure did not recover to the upload state");
+        assert(outcome === "real-mesh" || !/Reconstruction result/i.test(visible), "failure displayed a fake preview");
+        assert(reconstructionPosts === 1, `reconstruction submitted ${reconstructionPosts} requests instead of one`);
+        const screenshot = await this.shot("WORK-11-reconstruction-real-or-actionable", true);
+        this.evidence.reconstruction = {
+          url: this.page.url(),
+          screenshot,
+          visible_text: visible,
+          invalid_text: invalidText,
+          capability_status: capability.status,
+          capability: capability.body,
+          submit_status: submitResponse.status(),
+          submit_body: submitBody,
+          submit_count: reconstructionPosts,
+          upload_input_count: 1,
+          outcome,
+          mesh_bytes: meshBytes,
+          job,
+          terminal_job: terminalJob,
+        };
+        return { screenshot };
+      } finally {
+        this.page.off("request", countReconstructionPost);
+      }
     });
   }
 
@@ -1363,7 +1449,7 @@ class EnterpriseDomainQA {
         .evaluateAll((rows) =>
           rows.map((row) => (row.parentElement?.innerText || row.textContent || "").replace(/\s+/g, " ").trim())
         );
-      const screenshot = await this.shot("verify-stage-declared-context-seated", true);
+      const screenshot = await this.shot("VER-06-verify-stage-declared-context-seated", true);
       this.evidence.productStageContext = {
         program: programName,
         parent_assembly: parentAssembly,
@@ -1461,7 +1547,7 @@ class EnterpriseDomainQA {
       assert(/\$10\.08\s*@ qty\s*12,000/i.test(text), "Programs exact annual unit-cost basis missing");
       assert(/\$120,960\/yr/i.test(text), "Programs exact annual exposure missing");
       const programsText = text.replace(/\s+/g, " ").trim();
-      const programsShot = await this.shot("program-exposure-ui", true);
+      const programsShot = await this.shot("ENT-04-program-exposure-ui", true);
       const programsUrl = this.page.url();
       this.evidence.portfolio = {
         ...this.evidence.portfolio,
@@ -1486,7 +1572,7 @@ class EnterpriseDomainQA {
       await this.page.getByText("cube.step", { exact: true }).first().click();
       await this.page.waitForURL(new RegExp(`/cost-decisions/${cubeDecisions[0].id}$`), { timeout: 20_000 });
       const recordsDetailText = (await this.visibleText()).replace(/\s+/g, " ").trim();
-      const recordsDetailShot = await this.shot("program-source-decision-record", true);
+      const recordsDetailShot = await this.shot("ENT-05-program-source-decision-record", true);
       this.evidence.programRollup = {
         url: this.page.url(),
         programs_url: programsUrl,
@@ -1639,7 +1725,7 @@ class EnterpriseDomainQA {
         /this verdict is validated — checked against your actuals/i.test(servedText),
         "measured confidence provenance was not visible on the completed verdict",
       );
-      const servedScreenshot = await this.shot("served-measured-band", true);
+      const servedScreenshot = await this.shot("ENT-02-served-measured-band", true);
 
       this.evidence.calibrationRecovery = {
         csv_path: csvPath,
@@ -1776,19 +1862,32 @@ class EnterpriseDomainQA {
       reconstructionTerminal.status === "failed" &&
       /Upload images/i.test(reconstruction.visible_text || "") &&
       !/Reconstruction result/i.test(reconstruction.visible_text || "");
-    const reconstructionUnavailable =
-      reconstruction.outcome === "actionable-unavailable" &&
-      [501, 503].includes(reconstruction.submit_status) &&
-      /Reconstruction failed/i.test(reconstruction.visible_text || "") &&
-      /Upload images/i.test(reconstruction.visible_text || "") &&
+    const reconstructionBlockedAtCapability =
+      reconstruction.outcome === "actionable-capability-unavailable" &&
+      reconstruction.capability_status === 200 &&
+      reconstruction.capability?.available === false &&
+      reconstruction.submit_status == null &&
+      reconstruction.submit_count === 0 &&
+      reconstruction.upload_input_count === 0 &&
+      /Image-to-3D is not enabled/i.test(reconstruction.visible_text || "") &&
+      /No image has been uploaded or sent to a third party/i.test(reconstruction.visible_text || "") &&
+      /Verify CAD instead/i.test(reconstruction.visible_text || "") &&
       !/Reconstruction result/i.test(reconstruction.visible_text || "");
+    const reconstructionUnavailable =
+      (
+        reconstruction.outcome === "actionable-unavailable" &&
+        [501, 503].includes(reconstruction.submit_status) &&
+        /Reconstruction failed/i.test(reconstruction.visible_text || "") &&
+        /Upload images/i.test(reconstruction.visible_text || "") &&
+        !/Reconstruction result/i.test(reconstruction.visible_text || "")
+      ) || reconstructionBlockedAtCapability;
 
     return {
       "VER-06": this.structuredPath({
         id: "VER-06",
         persona: "CAD engineer changing material, service world, and computed quantity",
         preconditions: [
-          "The deterministic cube.step fixture is available and the organization has a governed rate card and declared machines.",
+          "The deterministic cube.step fixture is available and the organization has a governed rate card plus declared machines.",
           "The first verification has no declared annual volume; the second has annual_volume=12000 persisted before re-verification.",
         ],
         actions: [
@@ -2028,34 +2127,44 @@ class EnterpriseDomainQA {
         id: "WORK-11",
         persona: "Engineer attempting image-to-mesh reconstruction and recovering from invalid or unavailable inputs",
         preconditions: [
-          "The authenticated Reconstruction surface accepts JPEG, PNG, or WebP and exposes bounded job polling.",
+          "The authenticated Reconstruction surface discovers deployment capability before it accepts any image.",
           "A text file and a deterministic one-pixel PNG are available as adversarial browser inputs.",
         ],
         actions: [
-          "Select the unsupported text file and read the inline validation alert.",
-          "Replace it with the valid PNG and submit one reconstruction.",
-          "Wait for a real terminal mesh or an actionable failure, then verify mesh bytes or the restored upload state and persisted job status.",
+          "Read the live capability through the authenticated browser proxy.",
+          "When enabled, select the unsupported text file, read the inline validation alert, replace it with the PNG, and submit exactly once.",
+          "When disabled, require the fail-closed no-upload state and Verify CAD recovery; otherwise wait for a real terminal mesh or restored upload state.",
         ],
         observed: {
           url: reconstruction.url || "not observed",
           visible: [
-            reconstruction.invalid_text || "missing unsupported-image alert",
-            visibleSignal(reconstruction.visible_text, /Reconstruction result|Reconstruction failed/i, "missing terminal reconstruction state"),
-            visibleSignal(reconstruction.visible_text, /Upload images|Reconstruction result/i, "missing recovery or result state"),
+            reconstruction.invalid_text || visibleSignal(reconstruction.visible_text, /Image-to-3D is not enabled/i, "missing validation or capability gate"),
+            visibleSignal(reconstruction.visible_text, /Reconstruction result|Reconstruction failed|Image-to-3D is not enabled/i, "missing terminal reconstruction state"),
+            visibleSignal(reconstruction.visible_text, /Upload images|Reconstruction result|Verify CAD instead/i, "missing recovery or result state"),
           ],
-          persisted: reconstruction.submit_status === 202
+          persisted: reconstructionBlockedAtCapability
             ? {
-                jobId: reconstruction.submit_body?.job_id || "missing",
-                submitted: reconstruction.job || "missing",
-                terminal: reconstruction.terminal_job || "missing",
-              }
-            : {
                 jobId: "not-created",
-                serviceStatus: reconstruction.submit_status ?? "missing",
-                response: reconstruction.submit_body || "missing",
-              },
+                capabilityStatus: reconstruction.capability_status,
+                capability: reconstruction.capability,
+                submitCount: reconstruction.submit_count,
+              }
+            : reconstruction.submit_status === 202
+              ? {
+                  jobId: reconstruction.submit_body?.job_id || "missing",
+                  submitted: reconstruction.job || "missing",
+                  terminal: reconstruction.terminal_job || "missing",
+                }
+              : {
+                  jobId: "not-created",
+                  serviceStatus: reconstruction.submit_status ?? "missing",
+                  response: reconstruction.submit_body || "missing",
+                },
           numeric: {
-            submitStatus: reconstruction.submit_status ?? "missing",
+            submitStatus: reconstruction.submit_status ?? "not-submitted",
+            capabilityStatus: reconstruction.capability_status ?? "missing",
+            submitCount: reconstruction.submit_count ?? "missing",
+            uploadInputCount: reconstruction.upload_input_count ?? "missing",
             outcome: reconstruction.outcome || "missing",
             meshBytes: reconstruction.mesh_bytes ?? "missing",
             terminalStatus: reconstructionTerminal.status || "not-created",
@@ -2063,21 +2172,39 @@ class EnterpriseDomainQA {
           authorization,
           recovery: reconstructionSucceeded
             ? `A real STL response returned ${reconstruction.mesh_bytes} bytes.`
-            : "The failure returned to Upload images with a visible error and no Reconstruction result preview.",
+            : reconstructionBlockedAtCapability
+              ? "Capability discovery prevented image selection and exposed the visible Verify CAD instead recovery without creating a job."
+              : "The failure returned to Upload images with a visible error and no Reconstruction result preview.",
         },
         screenshot: reconstruction.screenshot,
         assertions: [
           authAssertion(),
-          assertion("unsupported image validation", "not a supported image type; use JPEG, PNG, or WebP", reconstruction.invalid_text || "missing", /not a supported image type.*JPEG, PNG, or WebP/i.test(reconstruction.invalid_text || "")),
-          assertion("bounded submit status", "202, 501, or 503", reconstruction.submit_status ?? "missing", [202, 501, 503].includes(reconstruction.submit_status)),
+          assertion("capability discovery status", 200, reconstruction.capability_status ?? "missing", reconstruction.capability_status === 200),
+          assertion(
+            "input validation or fail-closed capability gate",
+            "exact unsupported-image alert when enabled, otherwise no upload input",
+            reconstructionBlockedAtCapability
+              ? { available: reconstruction.capability?.available, uploadInputCount: reconstruction.upload_input_count }
+              : reconstruction.invalid_text || "missing",
+            reconstructionBlockedAtCapability || /not a supported image type.*JPEG, PNG, or WebP/i.test(reconstruction.invalid_text || ""),
+          ),
+          assertion(
+            "bounded submission behavior",
+            "one 202/501/503 submission when enabled, otherwise zero submissions",
+            { status: reconstruction.submit_status ?? "not-submitted", count: reconstruction.submit_count ?? "missing" },
+            reconstructionBlockedAtCapability
+              ? reconstruction.submit_status == null && reconstruction.submit_count === 0
+              : [202, 501, 503].includes(reconstruction.submit_status) && reconstruction.submit_count === 1,
+          ),
           assertion(
             "honest terminal outcome",
-            "real mesh or actionable upload recovery",
+            "real mesh, actionable upload recovery, or pre-upload capability refusal",
             { outcome: reconstruction.outcome || "missing", terminalStatus: reconstructionTerminal.status || "not-created", meshBytes: reconstruction.mesh_bytes ?? "missing" },
             reconstructionSucceeded || reconstructionRecovered || reconstructionUnavailable,
           ),
           assertion("no fake preview on failure", false, reconstruction.outcome === "real-mesh" ? false : /Reconstruction result/i.test(reconstruction.visible_text || ""), reconstruction.outcome === "real-mesh" || !/Reconstruction result/i.test(reconstruction.visible_text || "")),
-          assertion("failure recovery returns upload control", true, reconstruction.outcome === "real-mesh" ? "not-applicable-real-mesh" : /Upload images/i.test(reconstruction.visible_text || ""), reconstruction.outcome === "real-mesh" || /Upload images/i.test(reconstruction.visible_text || "")),
+          assertion("failure recovery remains actionable", true, reconstruction.outcome === "real-mesh" ? "not-applicable-real-mesh" : visibleSignal(reconstruction.visible_text, /Upload images|Verify CAD instead/i, "missing"), reconstruction.outcome === "real-mesh" || /Upload images|Verify CAD instead/i.test(reconstruction.visible_text || "")),
+          assertion("disabled capability accepts no image", 0, reconstructionBlockedAtCapability ? reconstruction.upload_input_count : "not-applicable-enabled", !reconstructionBlockedAtCapability || reconstruction.upload_input_count === 0),
           assertion("real mesh is non-empty when successful", "> 0 bytes or not-applicable failure", reconstruction.mesh_bytes ?? "missing", reconstruction.outcome !== "real-mesh" || reconstruction.mesh_bytes > 0),
         ],
       }),

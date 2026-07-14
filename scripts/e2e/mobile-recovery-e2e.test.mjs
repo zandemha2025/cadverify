@@ -24,6 +24,16 @@ function ordered(text, needles) {
   }
 }
 
+test("authenticated recovery reads use the signed-in page and live proxy", () => {
+  const body = method("json", "designList");
+  assert.match(body, /targetUrl\.pathname\.startsWith\("\/api\/proxy\/"\)/);
+  assert.match(body, /this\.page\.evaluate/);
+  assert.match(body, /await fetch\(target/);
+  assert.match(body, /credentials: "same-origin"/);
+  assert.match(body, /GET \$\{pathname\} returned \$\{result\.status\}/);
+  assert.doesNotMatch(source, /context\.request|request\.newContext|pw\.request/);
+});
+
 test("saved verification waits for the overlay to detach and all visual blockers to clear", () => {
   const body = method("waitForSavedVerification", "waitForTerminalVisualState");
   assert.match(body, /state: "detached"/);

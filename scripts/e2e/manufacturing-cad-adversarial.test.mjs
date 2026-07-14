@@ -13,6 +13,31 @@ function stringArray(name) {
   return [...match[1].matchAll(/"([A-Z]+-\d+)"/g)].map((item) => item[1]);
 }
 
+function functionSource(name, nextName) {
+  const start = source.indexOf(`async function ${name}(`);
+  const end = source.indexOf(`async function ${nextName}(`, start + 1);
+  assert.ok(start >= 0, `${name} declaration is missing`);
+  assert.ok(end > start, `${nextName} must follow ${name}`);
+  return source.slice(start, end);
+}
+
+function recordPathSource(id) {
+  const suiteStart = source.indexOf("async function runSuite(");
+  const start = source.indexOf(`id: "${id}"`, suiteStart);
+  const next = source.indexOf("\n  await recordPath(page, {", start + 1);
+  assert.ok(start >= suiteStart, `${id} recordPath is missing`);
+  return source.slice(start, next === -1 ? source.length : next);
+}
+
+function ordered(text, tokens, label) {
+  let cursor = -1;
+  for (const token of tokens) {
+    const next = text.indexOf(token, cursor + 1);
+    assert.ok(next > cursor, `${label} is missing ordered token: ${token}`);
+    cursor = next;
+  }
+}
+
 test("manufacturing and adversarial CAD paths use disjoint release evidence maps", () => {
   assert.deepEqual(stringArray("EXACT_GOLDEN_IDS"), [
     "ENT-01",
@@ -92,4 +117,70 @@ test("highest-risk Verify evidence captures settled schema-v2 stages", () => {
   assert.match(source, /forbiddenVisible: \["We couldn’t read this file\."\]/);
   assert.match(source, /forbiddenVisible: \["This part couldn’t be tessellated\."\]/);
   assert.match(source, /releaseEvidence: \{\s*schemaVersion: 2,/);
+});
+
+test("authenticated setup and read calls stay inside the credentialed Chromium page", () => {
+  const helper = functionSource("browserApi", "bodyText");
+
+  for (const snippet of [
+    "return page.evaluate(",
+    "new URL(target, window.location.href)",
+    "requestUrl.origin !== window.location.origin",
+    'credentials: "same-origin"',
+    "window.fetch(requestUrl.href, normalized)",
+  ]) {
+    assert.ok(helper.includes(snippet), `browserApi is missing ${snippet}`);
+  }
+  assert.equal(source.split("fetch(").length - 1, 1);
+  for (const forbidden of ["context.request", "page.request"]) {
+    assert.equal(source.includes(forbidden), false, `${forbidden} bypasses the authenticated page`);
+  }
+
+  assert.equal(source.split("await browserApi(page,").length - 1, 6);
+  for (const call of [
+    'await browserApi(page, "/api/proxy/orgs")',
+    'await browserApi(page, "/api/proxy/machine-inventory")',
+    'await browserApi(page, "/api/proxy/rate-library", {',
+    'await browserApi(page, `/api/proxy/rate-library/${draft.body.id}/publish`',
+    'await browserApi(page, "/api/proxy/rate-library/effective")',
+    'await browserApi(page, `/api/proxy/cost-decisions/${decisionId}`',
+  ]) {
+    assert.ok(source.includes(call), `protected call must use browserApi: ${call}`);
+  }
+});
+
+test("terminal visual stages tolerate responsive duplicate actions without weakening CAD or HTTP oracles", () => {
+  const helper = functionSource("waitForTerminalRecordAction", "captureStage");
+  assert.ok(helper.includes('getByRole("button", { name: /^Open the record/ })'));
+  assert.ok(helper.includes(".first()"));
+  assert.ok(helper.includes('waitFor({ state: "visible", timeout })'));
+  assert.equal(source.split("await waitForTerminalRecordAction(page)").length - 1, 3);
+
+  const verify = recordPathSource("VER-05");
+  const fail01 = recordPathSource("FAIL-01");
+  const fail02 = recordPathSource("FAIL-02");
+  ordered(verify, [
+    "waitForVerificationPipelineDetached(page)",
+    "waitForTerminalRecordAction(page)",
+    'captureStage(page, "VER-05", "terminal"',
+  ], "VER-05 terminal capture");
+  ordered(fail01, [
+    'Buffer.from("not a STEP exchange file")',
+    'captureStage(page, "FAIL-01", "failure"',
+    "uploadAnalyze(page, goldenStep",
+    "waitForTerminalRecordAction(page)",
+    'captureStage(page, "FAIL-01", "recovery"',
+  ], "FAIL-01 real rejection and recovery");
+  ordered(fail02, [
+    "uploadAnalyze(page, wireOnlyStep",
+    'captureStage(page, "FAIL-02", "failure"',
+    "uploadAnalyze(page, goldenStep",
+    "waitForTerminalRecordAction(page)",
+    'captureStage(page, "FAIL-02", "recovery"',
+  ], "FAIL-02 real rejection and recovery");
+
+  assert.ok(fail01.includes("expectedHttpErrorCount: 4"));
+  assert.ok(fail02.includes("expectedHttpErrorCount: 4"));
+  assert.equal(source.includes("page.route("), false);
+  assert.equal(source.includes("route.fulfill("), false);
 });

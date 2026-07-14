@@ -204,18 +204,44 @@ class DesignStudioE2E {
   }
 
   async api(endpoint, options = {}) {
-    const response = await this.context.request.fetch(new URL(endpoint, baseUrl).toString(), {
-      method: options.method || "GET",
-      data: options.data,
-      failOnStatusCode: false,
-      timeout: options.timeout || 60_000,
-    });
-    const bytes = await response.body();
-    const contentType = response.headers()["content-type"] || "";
-    let body = bytes;
-    if (/json/i.test(contentType)) body = JSON.parse(bytes.toString("utf8"));
-    else if (/text|csv|html/i.test(contentType)) body = bytes.toString("utf8");
-    return { status: response.status(), headers: response.headers(), body, bytes };
+    const targetUrl = new URL(endpoint, baseUrl);
+    assert(targetUrl.origin === new URL(baseUrl).origin, `API evidence escaped the app origin: ${targetUrl.origin}`);
+    assert(targetUrl.pathname.startsWith("/api/proxy/"), `API evidence bypassed the live proxy: ${targetUrl.pathname}`);
+    const target = `${targetUrl.pathname}${targetUrl.search}`;
+    return this.page.evaluate(async ({ target, options }) => {
+      const headers = { ...(options.headers || {}) };
+      let body;
+      if (Object.prototype.hasOwnProperty.call(options, "data")) {
+        headers["content-type"] = headers["content-type"] || "application/json";
+        body = JSON.stringify(options.data);
+      }
+      const response = await fetch(target, {
+        method: options.method || "GET",
+        headers,
+        body,
+        cache: "no-store",
+        credentials: "same-origin",
+        signal: AbortSignal.timeout(options.timeout || 60_000),
+      });
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const contentType = response.headers.get("content-type") || "";
+      let parsed = null;
+      if (/json|problem\+json|text|csv|html/i.test(contentType)) {
+        const text = new TextDecoder().decode(bytes);
+        parsed = text;
+        if (/json|problem\+json/i.test(contentType)) {
+          try { parsed = text ? JSON.parse(text) : null; } catch {}
+        }
+      }
+      const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+      return {
+        status: response.status,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: parsed,
+        byteLength: bytes.byteLength,
+        sha256: [...digest].map((value) => value.toString(16).padStart(2, "0")).join(""),
+      };
+    }, { target, options });
   }
 
   async listDesigns() {
@@ -234,10 +260,10 @@ class DesignStudioE2E {
   async revisionArtifact(designId, revision) {
     const response = await this.api(`/api/proxy/designs/${designId}/revisions/${revision}/download.step`);
     assert(response.status === 200, `R${revision} artifact returned ${response.status}`);
-    const hash = sha256(response.bytes);
+    const hash = response.sha256;
     const headerHash = (response.headers["x-geometry-sha256"] || "").toLowerCase();
     assert(hash === headerHash, `R${revision} API artifact bytes differ from the response hash`);
-    return { status: response.status, bytes: response.bytes.length, hash, headerHash };
+    return { status: response.status, bytes: response.byteLength, hash, headerHash };
   }
 
   async expectText(pattern, label) {
@@ -320,11 +346,10 @@ class DesignStudioE2E {
     const bytes = await readFile(filename);
     assert(bytes.length > 128, `R${revision} STEP download is unexpectedly empty`);
     const hash = sha256(bytes);
-    const evidenceResponse = await this.context.request.get(new URL(href, baseUrl).toString());
-    assert(evidenceResponse.ok(), `R${revision} evidence download returned ${evidenceResponse.status()}`);
-    const responseBytes = await evidenceResponse.body();
-    const responseHash = sha256(responseBytes);
-    const responseHeaderSha256 = evidenceResponse.headers()["x-geometry-sha256"]?.toLowerCase() || "";
+    const evidenceResponse = await this.api(href);
+    assert(evidenceResponse.status === 200, `R${revision} evidence download returned ${evidenceResponse.status}`);
+    const responseHash = evidenceResponse.sha256;
+    const responseHeaderSha256 = evidenceResponse.headers["x-geometry-sha256"]?.toLowerCase() || "";
     assert(responseHash === hash, `R${revision} browser download differs from evidence response bytes`);
     assert(responseHeaderSha256 === hash, `R${revision} response SHA header differs from downloaded STEP`);
     return {
@@ -414,18 +439,18 @@ class DesignStudioE2E {
     // Chrome's DevTools protocol may expose an empty body after page JavaScript
     // consumes a streamed fetch. The application itself verifies those exact
     // bytes before it renders "Imported …"; independently re-read the same
-    // immutable revision URL through the authenticated browser context so the
-    // release evidence still hashes concrete response bytes.
-    const artifactEvidenceResponse = await this.context.request.get(artifactResponse.url());
-    assert(artifactEvidenceResponse.ok(), `Verify R${revision} evidence re-read returned ${artifactEvidenceResponse.status()}`);
-    const importedBytes = await artifactEvidenceResponse.body();
-    const importedArtifactSha256 = sha256(importedBytes);
+    // immutable revision URL inside the signed-in page so the live proxy and
+    // production Secure cookie remain part of the evidence path.
+    const artifactEvidenceResponse = await this.api(artifactResponse.url());
+    assert(artifactEvidenceResponse.status === 200, `Verify R${revision} evidence re-read returned ${artifactEvidenceResponse.status}`);
+    const importedBytes = artifactEvidenceResponse.byteLength;
+    const importedArtifactSha256 = artifactEvidenceResponse.sha256;
     const browserHeaderSha256 = (artifactResponse.headers()["x-geometry-sha256"] || "").toLowerCase();
-    const importedHeaderSha256 = (artifactEvidenceResponse.headers()["x-geometry-sha256"] || "").toLowerCase();
+    const importedHeaderSha256 = (artifactEvidenceResponse.headers["x-geometry-sha256"] || "").toLowerCase();
     const importedFilename = artifactResponse.headers()["content-disposition"]?.match(/filename="?([^";]+)"?/i)?.[1] || null;
     assert(
       importedArtifactSha256 === importedHeaderSha256,
-      `Verify R${revision} evidence bytes differ from their integrity header: body=${importedArtifactSha256} header=${importedHeaderSha256} bytes=${importedBytes.length}`,
+      `Verify R${revision} evidence bytes differ from their integrity header: body=${importedArtifactSha256} header=${importedHeaderSha256} bytes=${importedBytes}`,
     );
     assert(browserHeaderSha256 === importedHeaderSha256, `Verify R${revision} browser and evidence responses declared different hashes`);
     if (artifactSha256) {

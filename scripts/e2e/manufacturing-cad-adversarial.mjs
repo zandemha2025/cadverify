@@ -225,12 +225,16 @@ async function launchBrowser() {
 async function browserApi(page, url, options = {}) {
   return page.evaluate(
     async ({ target, init }) => {
-      const normalized = { cache: "no-store", ...init };
+      const requestUrl = new URL(target, window.location.href);
+      if (requestUrl.origin !== window.location.origin) {
+        throw new Error(`authenticated browser API request escaped the page origin: ${requestUrl.origin}`);
+      }
+      const normalized = { cache: "no-store", ...init, credentials: "same-origin" };
       if (normalized.body && typeof normalized.body !== "string") {
         normalized.headers = { "content-type": "application/json", ...(normalized.headers || {}) };
         normalized.body = JSON.stringify(normalized.body);
       }
-      const response = await fetch(target, normalized);
+      const response = await window.fetch(requestUrl.href, normalized);
       const text = await response.text();
       let body = null;
       try { body = JSON.parse(text); } catch { body = text; }
@@ -254,6 +258,13 @@ async function waitForVerificationPipelineDetached(page, timeout = 150_000) {
   await page
     .getByRole("dialog", { name: "Verification pipeline" })
     .waitFor({ state: "detached", timeout });
+}
+
+async function waitForTerminalRecordAction(page, timeout = 30_000) {
+  await page
+    .getByRole("button", { name: /^Open the record/ })
+    .first()
+    .waitFor({ state: "visible", timeout });
 }
 
 async function captureStage(page, id, stage, {
@@ -871,7 +882,7 @@ async function runSuite(page, account) {
     // screenshot can misleadingly show COMPUTING while API assertions pass.
     await waitForVerificationPipelineDetached(page);
     await page.getByText("What it really takes", { exact: true }).waitFor({ timeout: 30_000 });
-    await page.getByRole("button", { name: /^Open the record/ }).waitFor({ state: "visible", timeout: 30_000 });
+    await waitForTerminalRecordAction(page);
     const text = await bodyText(page);
     const pipelineDialogs = await page
       .getByRole("dialog", { name: "Verification pipeline" })
@@ -1023,7 +1034,7 @@ async function runSuite(page, account) {
     });
     const recovered = await uploadAnalyze(page, goldenStep, 150_000);
     await waitForVerificationPipelineDetached(page);
-    await page.getByRole("button", { name: /^Open the record/ }).waitFor({ state: "visible", timeout: 30_000 });
+    await waitForTerminalRecordAction(page);
     const recoveryText = await bodyText(page);
     const recoveryStep = await captureStage(page, "FAIL-01", "recovery", {
       requiredVisible: ["cube.step", "Open the record"],
@@ -1069,7 +1080,7 @@ async function runSuite(page, account) {
     });
     const recovered = await uploadAnalyze(page, goldenStep, 150_000);
     await waitForVerificationPipelineDetached(page);
-    await page.getByRole("button", { name: /^Open the record/ }).waitFor({ state: "visible", timeout: 30_000 });
+    await waitForTerminalRecordAction(page);
     const recoveryText = await bodyText(page);
     const recoveryStep = await captureStage(page, "FAIL-02", "recovery", {
       requiredVisible: ["cube.step", "Open the record"],

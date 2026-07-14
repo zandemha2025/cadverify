@@ -2,8 +2,9 @@
 """Deterministic fixture/oracle seam for WORK-06, WORK-08, and WORK-12.
 
 The browser runner owns every user mutation. This helper only establishes the
-pre-existing organization, cost evidence, and one retained same-org batch blob,
-then exposes read-only durable snapshots for browser assertions.
+pre-existing organization and cost evidence, then exposes read-only durable
+snapshots for browser assertions. WORK-08 creates its retained CAD through the
+real browser-to-worker cost-batch workflow.
 """
 from __future__ import annotations
 
@@ -23,7 +24,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
 import src.db.engine as eng
 from src.auth.hashing import hash_password
-from src.services.batch_service import _batch_store
 
 
 def _estimate(
@@ -129,7 +129,7 @@ def _cost_result(
     }
 
 
-async def seed(tag: str, password: str, cube_path: Path) -> dict[str, Any]:
+async def seed(tag: str, password: str) -> dict[str, Any]:
     org_id = str(ULID())
     org_name = f"QA Compare RFQ Key Org {tag}"
     email = f"qa-work-matrix-{tag}@example.com"
@@ -288,51 +288,6 @@ async def seed(tag: str, password: str, cube_path: Path) -> dict[str, Any]:
                 "process": spec["process"],
             }
 
-        retained = output["decisions"]["A"]
-        batch_ulid = str(ULID())
-        batch_row = (
-            await session.execute(
-                text(
-                    "INSERT INTO batches "
-                    "(ulid,user_id,org_id,status,job_type,input_mode,total_items,"
-                    "completed_items,failed_items,concurrency_limit,created_at,"
-                    "started_at,completed_at) "
-                    "VALUES (:ulid,:user,:org,'completed','cost','zip',1,1,0,1,"
-                    "now(),now(),now()) RETURNING id"
-                ),
-                {"ulid": batch_ulid, "user": owner_id, "org": org_id},
-            )
-        ).first()
-        cube_bytes = cube_path.read_bytes()
-        await session.execute(
-            text(
-                "INSERT INTO batch_items "
-                "(ulid,batch_id,org_id,filename,status,priority,cost_decision_id,"
-                "file_size_bytes,duration_ms,created_at,started_at,completed_at) "
-                "VALUES (:ulid,:batch,:org,:filename,'completed','normal',:decision,"
-                ":size,1,now(),now(),now())"
-            ),
-            {
-                "ulid": str(ULID()),
-                "batch": int(batch_row[0]),
-                "org": org_id,
-                "filename": retained["filename"],
-                "decision": retained["db_id"],
-                "size": len(cube_bytes),
-            },
-        )
-        _batch_store().put(
-            f"{batch_ulid}/{retained['filename']}",
-            cube_bytes,
-            content_type="application/step",
-        )
-        output["retained_raw_cad"] = {
-            "decision_id": retained["id"],
-            "batch_id": batch_ulid,
-            "filename": retained["filename"],
-            "bytes": len(cube_bytes),
-            "sha256": hashlib.sha256(cube_bytes).hexdigest(),
-        }
         await session.commit()
 
     output["expected_compare"] = [
@@ -474,14 +429,13 @@ async def main() -> None:
     seed_parser = subparsers.add_parser("seed")
     seed_parser.add_argument("tag")
     seed_parser.add_argument("password")
-    seed_parser.add_argument("cube_path", type=Path)
     snapshot_parser = subparsers.add_parser("snapshot")
     snapshot_parser.add_argument("owner_id", type=int)
     snapshot_parser.add_argument("rfq_title")
     args = parser.parse_args()
     try:
         if args.action == "seed":
-            result = await seed(args.tag, args.password, args.cube_path)
+            result = await seed(args.tag, args.password)
         else:
             result = await snapshot(args.owner_id, args.rfq_title)
         print(json.dumps(result, default=str))

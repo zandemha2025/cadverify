@@ -110,6 +110,19 @@ test("inventory contains 54 browser and 10 recovery paths", () => {
   assert.equal(new Set(LOCAL_100_IDS).size, 64);
 });
 
+test("release orchestration requires the production auth, async, worker, and governed-rate posture", () => {
+  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+  const source = readFileSync(path.join(repoRoot, "scripts/e2e/local-100-release.mjs"), "utf8");
+  for (const required of [
+    '["PRODUCTION_AUTH_PROXY_REQUIRED", "1"]',
+    '["WORKER_STRICT_HEALTH", "1"]',
+    '["ASYNC_STRICT_HEALTH", "1"]',
+    '["RATE_LIBRARY_ENABLED", "1"]',
+  ]) {
+    assert.match(source, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+});
+
 test("gate inventory exactly matches the documented local contract", () => {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
   const contract = readFileSync(path.join(repoRoot, "docs/HUMAN_SIMULATION_GOLDEN_PATHS.md"), "utf8");

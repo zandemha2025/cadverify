@@ -277,7 +277,19 @@ class Matrix {
     let validPayload;
     let validReceipt;
     await this.path("PUB-03", async () => {
+      const readinessPromise = this.page.waitForResponse(
+        (response) =>
+          response.request().method() === "GET" &&
+          new URL(response.url()).pathname === "/api/pilot/request",
+      );
       await this.page.goto("/company#pilot", { waitUntil: "domcontentloaded" });
+      const readinessResponse = await readinessPromise;
+      const readinessBody = await readinessResponse.json().catch(() => ({}));
+      assert(readinessResponse.status() === 200, `pilot readiness returned ${readinessResponse.status()}`);
+      assert(
+        readinessBody.turnstileSiteKey === null,
+        "local production pilot boundary unexpectedly requires an external Turnstile interaction",
+      );
       await this.page.getByLabel("Work email").fill(uniqueEmail("pilot-valid"));
       await this.page.getByLabel("Company").fill("Golden Matrix Manufacturing");
       await this.page.getByLabel("What do you make?").fill("Precision valve brackets and sealed production housings");
@@ -287,7 +299,13 @@ class Matrix {
       await this.page.getByRole("button", { name: "Send request" }).click();
       const [request, response] = await Promise.all([requestPromise, responsePromise]);
       validPayload = request.postDataJSON();
-      const body = await response.json();
+      const body = await response.json().catch(() => ({}));
+      assert(
+        response.status() === 200,
+        `pilot request returned ${response.status()}: ${JSON.stringify(body).slice(0, 500)}`,
+      );
+      assert(body.status === "received", `pilot request returned status ${JSON.stringify(body.status)}`);
+      assert(typeof body.receipt === "string" && body.receipt.length > 0, "pilot request omitted its receipt");
       validReceipt = body.receipt;
       await this.page.getByText("Request received and recorded.").waitFor();
       const visibleReceipt = (await this.page.getByText(/^CV-/).innerText()).replace(/^CV-/, "");
@@ -297,7 +315,6 @@ class Matrix {
         body: JSON.stringify(validPayload),
       });
       const durableCount = sqlCount(`select count(*) from audit_log where action = 'pilot.requested' and resource_id = ${sqlLiteral(validPayload.requestId)}`);
-      assert(response.status() === 200, `pilot request returned ${response.status()}`);
       assert(visibleReceipt === validReceipt, "visible receipt differs from response receipt");
       assert(duplicate.status === 200 && duplicate.body?.receipt === validReceipt, "idempotent retry changed the receipt");
       assert(durableCount === 1, `pilot receipt created ${durableCount} durable rows`);
@@ -316,6 +333,8 @@ class Matrix {
         },
         screenshot,
         assertions: [
+          assertion("initial submission status", 200, response.status()),
+          assertion("initial response state", "received", body.status),
           assertion("visible and response receipts match", validReceipt, visibleReceipt),
           assertion("duplicate receipt is stable", validReceipt, duplicate.body.receipt),
           assertion("durable row count", 1, durableCount),

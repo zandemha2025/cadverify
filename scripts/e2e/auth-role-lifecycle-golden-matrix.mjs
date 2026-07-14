@@ -126,17 +126,6 @@ async function dashboardSessionSecret() {
   return value;
 }
 
-async function responseJson(response) {
-  const text = await response.text();
-  let body = null;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    body = text;
-  }
-  return { status: response.status(), body, text, headers: response.headers() };
-}
-
 class AuthRoleLifecycleMatrix {
   constructor() {
     this.assertions = [];
@@ -236,11 +225,86 @@ class AuthRoleLifecycleMatrix {
     });
     this.contexts.push(context);
     if (sessionToken) {
-      await context.addCookies([{ name: "dash_session", value: sessionToken, url: appUrl }]);
+      const sessionOrigin = new URL(appUrl);
+      await context.addCookies([{
+        name: "dash_session",
+        value: sessionToken,
+        domain: sessionOrigin.hostname,
+        path: "/",
+        httpOnly: true,
+        secure: true,
+        sameSite: "Lax",
+      }]);
     }
     const page = await context.newPage();
     this.watch(page, persona);
     return { persona, context, page };
+  }
+
+  async ensureBrowserOrigin(actor) {
+    let origin = null;
+    try {
+      origin = new URL(actor.page.url()).origin;
+    } catch {
+      // about:blank has no usable same-origin cookie boundary.
+    }
+    if (origin === new URL(appUrl).origin) return;
+    const response = await actor.page.goto("/status", {
+      waitUntil: "domcontentloaded",
+      timeout: 30_000,
+    });
+    assert(response?.status() === 200, `${actor.persona} browser origin returned ${response?.status()}`);
+  }
+
+  async browserJson(actor, pathname, options = {}) {
+    await this.ensureBrowserOrigin(actor);
+    const targetUrl = new URL(pathname, appUrl);
+    assert(
+      targetUrl.origin === new URL(appUrl).origin,
+      `${actor.persona} browser request escaped the app origin`,
+    );
+    assert(
+      targetUrl.pathname.startsWith("/api/auth/") ||
+        targetUrl.pathname.startsWith("/api/proxy/"),
+      `${actor.persona} browser request bypassed an authenticated app boundary`,
+    );
+    const target = `${targetUrl.pathname}${targetUrl.search}`;
+    return actor.page.evaluate(async ({ target, options }) => {
+      const response = await fetch(target, {
+        ...options,
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      const text = await response.text();
+      let body = null;
+      try {
+        body = JSON.parse(text);
+      } catch {
+        body = text;
+      }
+      return {
+        status: response.status,
+        body,
+        text,
+        headers: Object.fromEntries(response.headers.entries()),
+      };
+    }, { target, options });
+  }
+
+  async browserNavigationJson(actor, pathname) {
+    const response = await actor.page.goto(pathname, {
+      waitUntil: "domcontentloaded",
+      timeout: 30_000,
+    });
+    assert(response, `${actor.persona} browser navigation returned no response`);
+    const text = await response.text();
+    let body = null;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = text;
+    }
+    return { status: response.status(), body, text, headers: response.headers() };
   }
 
   async shot(key, actor, fullPage = false) {
@@ -407,11 +471,12 @@ asyncio.run(main())
       assert(response.status() === 200, `${key} login returned ${response.status()}`);
       await actor.page.waitForURL((url) => url.pathname !== "/login", { timeout: 20_000 });
     } else {
-      const response = await actor.context.request.post("/api/auth/login", {
-        data: { email: person.email, password },
-        failOnStatusCode: false,
+      const response = await this.browserJson(actor, "/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: person.email, password }),
       });
-      assert(response.status() === 200, `${key} setup login returned ${response.status()}`);
+      assert(response.status === 200, `${key} setup login returned ${response.status}`);
     }
     const cookie = (await actor.context.cookies()).find((item) => item.name === "dash_session");
     assert(cookie?.value, `${key} login did not set dash_session`);
@@ -469,7 +534,7 @@ asyncio.run(main())
     await accepted.page.getByText("Invitation accepted.", { exact: true }).waitFor({ timeout: 20_000 });
     await accepted.page.getByText("You joined the organization as member.", { exact: true }).waitFor();
     this.equal(id, "accepted invite visible role", cleanText(await accepted.page.locator("body").innerText()).includes("as member"), true);
-    const acceptedOrgs = await responseJson(await accepted.context.request.get("/api/proxy/orgs"));
+    const acceptedOrgs = await this.browserJson(accepted, "/api/proxy/orgs");
     this.equal(id, "accepted account organization status", acceptedOrgs.status, 200);
     this.equal(id, "accepted account active organization", acceptedOrgs.body?.active_org_id, this.seedData.orgs.A.id);
 
@@ -551,8 +616,8 @@ asyncio.run(main())
     this.identities.magicPrimary = primary;
     this.identities.magicStale = stale;
 
-    const beforePrimary = await responseJson(await primary.context.request.get("/api/proxy/orgs"));
-    const beforeStale = await responseJson(await stale.context.request.get("/api/proxy/orgs"));
+    const beforePrimary = await this.browserJson(primary, "/api/proxy/orgs");
+    const beforeStale = await this.browserJson(stale, "/api/proxy/orgs");
     this.equal(id, "primary old session starts authorized", beforePrimary.status, 200);
     this.equal(id, "second old session starts authorized", beforeStale.status, 200);
 
@@ -572,17 +637,12 @@ asyncio.run(main())
     await primary.page.getByText("Password configured. Older dashboard sessions were revoked.", { exact: true }).waitFor({ timeout: 15_000 });
     const screenshot = await this.shot("auth-08-password-sessions-revoked", primary);
 
-    const primaryAfter = await responseJson(await primary.context.request.get("/api/proxy/orgs"));
+    const primaryAfter = await this.browserJson(primary, "/api/proxy/orgs");
     this.equal(id, "rotated caller session remains authorized", primaryAfter.status, 200);
-    const staleApi = await responseJson(await stale.context.request.get("/api/proxy/orgs"));
+    const staleApi = await this.browserJson(stale, "/api/proxy/orgs");
     this.equal(id, "old second session status", staleApi.status, 401);
     this.equal(id, "old second session denial code", errorCode(staleApi.body), "session_revoked");
-    const rawOld = await responseJson(
-      await stale.context.request.get(`${apiUrl}/auth/me`, {
-        headers: { cookie: `dash_session=${person.session}` },
-        failOnStatusCode: false,
-      }),
-    );
+    const rawOld = await this.browserNavigationJson(stale, `${apiUrl}/auth/me`);
     this.equal(id, "raw old cookie status", rawOld.status, 401);
     this.equal(id, "raw old cookie denial code", errorCode(rawOld.body), "session_revoked");
 
@@ -609,7 +669,7 @@ asyncio.run(main())
     await recovered.page.getByRole("button", { name: /^Log in$/i }).click();
     this.equal(id, "new password login status", (await loginPromise).status(), 200);
     await recovered.page.waitForURL((url) => url.pathname === "/settings/security", { timeout: 20_000 });
-    const recoveredApi = await responseJson(await recovered.context.request.get("/api/proxy/orgs"));
+    const recoveredApi = await this.browserJson(recovered, "/api/proxy/orgs");
     this.equal(id, "fresh password session authorized", recoveredApi.status, 200);
 
     return {
@@ -640,18 +700,42 @@ asyncio.run(main())
     };
   }
 
+  async browserCost(actor, filename) {
+    await this.ensureBrowserOrigin(actor);
+    const pathname = "/api/proxy/validate/cost";
+    const base64 = this.cubeBytes.toString("base64");
+    return actor.page.evaluate(async ({ pathname, filename, base64 }) => {
+      const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+      const form = new FormData();
+      form.append("file", new Blob([bytes], { type: "application/step" }), filename);
+      form.append("qty", "1,100");
+      form.append("material_class", "polymer");
+      const response = await fetch(pathname, {
+        method: "POST",
+        body: form,
+        cache: "no-store",
+        credentials: "same-origin",
+        signal: AbortSignal.timeout(120_000),
+      });
+      const text = await response.text();
+      let body = null;
+      try {
+        body = JSON.parse(text);
+      } catch {
+        body = text;
+      }
+      return {
+        status: response.status,
+        body,
+        text,
+        headers: Object.fromEntries(response.headers.entries()),
+      };
+    }, { pathname, filename, base64 });
+  }
+
   async createCost(actor, orgKey) {
     const filename = `ROLE-01-${orgKey}-${tag}.step`;
-    const response = await actor.context.request.post("/api/proxy/validate/cost", {
-      multipart: {
-        file: { name: filename, mimeType: "application/step", buffer: this.cubeBytes },
-        qty: "1,100",
-        material_class: "polymer",
-      },
-      failOnStatusCode: false,
-      timeout: 120_000,
-    });
-    const result = await responseJson(response);
+    const result = await this.browserCost(actor, filename);
     assert(result.status === 200, `${orgKey} cost fixture returned ${result.status}: ${result.text.slice(0, 500)}`);
     assert(result.body?.saved?.id, `${orgKey} cost fixture did not persist an ID`);
     return { id: result.body.saved.id, filename };
@@ -687,12 +771,11 @@ asyncio.run(main())
     this.equal(id, "invite email controls absent", inviteInputs, 0);
     const gatedScreenshot = await this.shot("role-01-viewer-admin-gate", viewer, true);
 
-    const mutation = await responseJson(
-      await viewer.context.request.post("/api/proxy/orgs/invites", {
-        data: { email: `role-01-denied-${tag}@example.com`, role: "viewer" },
-        failOnStatusCode: false,
-      }),
-    );
+    const mutation = await this.browserJson(viewer, "/api/proxy/orgs/invites", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: `role-01-denied-${tag}@example.com`, role: "viewer" }),
+    });
     this.equal(id, "viewer admin mutation status", mutation.status, 403);
     this.equal(id, "viewer admin mutation code", errorCode(mutation.body), "insufficient_org_role");
 

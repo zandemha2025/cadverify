@@ -303,9 +303,22 @@ class MobileRecoveryRun {
   }
 
   async json(pathname) {
-    const response = await this.context.request.get(new URL(pathname, baseUrl).toString());
-    assert(response.ok(), `GET ${pathname} returned ${response.status()}`);
-    return response.json();
+    const targetUrl = new URL(pathname, baseUrl);
+    assert(targetUrl.origin === new URL(baseUrl).origin, `GET ${pathname} escaped the app origin`);
+    assert(targetUrl.pathname.startsWith("/api/proxy/"), `GET ${pathname} bypassed the live proxy`);
+    const target = `${targetUrl.pathname}${targetUrl.search}`;
+    const result = await this.page.evaluate(async (target) => {
+      const response = await fetch(target, {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      const text = await response.text();
+      let body = text;
+      try { body = text ? JSON.parse(text) : null; } catch {}
+      return { ok: response.ok, status: response.status, body };
+    }, target);
+    assert(result.ok, `GET ${pathname} returned ${result.status}`);
+    return result.body;
   }
 
   async designList() {

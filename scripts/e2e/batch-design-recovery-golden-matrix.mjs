@@ -168,6 +168,99 @@ function parseCsv(text) {
   };
 }
 
+async function inPageProxyFetch(page, pathname, options = {}) {
+  assert(
+    typeof pathname === "string" &&
+      pathname.startsWith("/api/proxy/") &&
+      !pathname.startsWith("//"),
+    "in-page proxy fetch requires an absolute same-origin /api/proxy path",
+  );
+  const method = String(options.method || "GET").toUpperCase();
+  const headers = { ...(options.headers || {}) };
+  return page.evaluate(
+    async ({ pathname, method, headers, json, hasJson, responseType }) => {
+      let body;
+      if (hasJson) {
+        headers["content-type"] = headers["content-type"] || "application/json";
+        body = JSON.stringify(json);
+      }
+      const response = await fetch(pathname, {
+        method,
+        headers,
+        body,
+        cache: "no-store",
+        credentials: "same-origin",
+        redirect: "error",
+      });
+      const buffer = await response.arrayBuffer();
+      let text = null;
+      let parsed = null;
+      if (responseType !== "bytes") {
+        text = new TextDecoder().decode(buffer);
+        parsed = text;
+        if (responseType === "json") {
+          try {
+            parsed = text ? JSON.parse(text) : null;
+          } catch {
+            // Keep the exact body so failed setup/assertion calls stay diagnosable.
+          }
+        }
+      }
+      return {
+        ok: response.ok,
+        status: response.status,
+        body: parsed,
+        text,
+        byteLength: buffer.byteLength,
+        headers: Object.fromEntries(response.headers.entries()),
+      };
+    },
+    {
+      pathname,
+      method,
+      headers,
+      json: options.json,
+      hasJson: Object.prototype.hasOwnProperty.call(options, "json"),
+      responseType: options.responseType || "json",
+    },
+  );
+}
+
+function directUploadRequestKey(request) {
+  if (request.method() !== "PUT") return null;
+  const url = new URL(request.url());
+  if (!(
+    url.origin !== new URL(baseUrl).origin &&
+    url.pathname.includes("/direct-uploads/") &&
+    url.searchParams.has("uploadId") &&
+    url.searchParams.has("partNumber")
+  )) return null;
+  return [
+    url.origin,
+    url.pathname,
+    url.searchParams.get("uploadId"),
+    url.searchParams.get("partNumber"),
+  ].join("|");
+}
+
+function isRecoverableDirectUploadAbort(request, failure) {
+  return failure === "net::ERR_ABORTED" && directUploadRequestKey(request) !== null;
+}
+
+function directUploadAbortEvidence(request, failure) {
+  const url = new URL(request.url());
+  return {
+    key: directUploadRequestKey(request),
+    recoveredStatus: null,
+    evidence: {
+      method: request.method(),
+      origin: url.origin,
+      partNumber: url.searchParams.get("partNumber"),
+      error: failure,
+    },
+  };
+}
+
 class BatchDesignRecoveryMatrix {
   constructor() {
     this.email = `batch-design-${Date.now()}-${randomBytes(3).toString("hex")}@example.test`;
@@ -180,6 +273,8 @@ class BatchDesignRecoveryMatrix {
     this.unexpectedHttpResponses = [];
     this.expectedDiagnostics = [];
     this.expectedHttpStatuses = new Set();
+    this.pendingDirectUploadAborts = [];
+    this.successfulDirectUploadParts = new Map();
     this.artifacts = { failureScreenshots: {}, recoveryScreenshots: {}, downloads: {} };
     this.fixtures = {};
     this.postCounts = { design: 0, batch: 0 };
@@ -222,10 +317,25 @@ class BatchDesignRecoveryMatrix {
       if (failure === "net::ERR_ABORTED" && /[?&]_rsc=/.test(url)) return;
       if (failure === "net::ERR_ABORTED" && request.method() === "GET" && /\/api\/proxy\/batches\?limit=20$/.test(url)) return;
       if (failure === "net::ERR_ABORTED" && request.method() === "GET" && /(?:\/results\/csv|\/download\.step)(?:\?|$)/.test(url)) return;
+      if (isRecoverableDirectUploadAbort(request, failure)) {
+        const evidence = directUploadAbortEvidence(request, failure);
+        evidence.recoveredStatus = this.successfulDirectUploadParts.get(evidence.key) ?? null;
+        this.pendingDirectUploadAborts.push(evidence);
+        return;
+      }
       this.requestFailures.push({ method: request.method(), url, error: failure });
     });
     this.page.on("response", (response) => {
       const status = response.status();
+      const directUploadKey = directUploadRequestKey(response.request());
+      if (directUploadKey && status >= 200 && status < 300) {
+        this.successfulDirectUploadParts.set(directUploadKey, status);
+        for (const pending of this.pendingDirectUploadAborts) {
+          if (pending.key === directUploadKey && pending.recoveredStatus == null) {
+            pending.recoveredStatus = status;
+          }
+        }
+      }
       if (status < 400) return;
       const url = response.url();
       if (!url.startsWith(baseUrl) || /favicon\.ico/.test(url)) return;
@@ -242,6 +352,31 @@ class BatchDesignRecoveryMatrix {
     });
   }
 
+  confirmRecoveredDirectUploads(pathId) {
+    const unrecovered = this.pendingDirectUploadAborts.filter(
+      (failure) => failure.recoveredStatus == null,
+    );
+    assert(
+      unrecovered.length === 0,
+      `${pathId} had ${unrecovered.length} aborted direct-upload PUT request(s) without a matching successful HTTP response`,
+    );
+    for (const failure of this.pendingDirectUploadAborts.splice(0)) {
+      this.expectedDiagnostics.push({
+        ...failure.evidence,
+        recovery: `${pathId} observed HTTP ${failure.recoveredStatus} for the exact multipart part before or after Chromium aborted the now-unneeded response body`,
+      });
+    }
+  }
+
+  rejectUnconfirmedDirectUploads() {
+    for (const failure of this.pendingDirectUploadAborts.splice(0)) {
+      this.requestFailures.push({
+        ...failure.evidence,
+        error: `${failure.evidence.error} without a matching successful multipart HTTP response`,
+      });
+    }
+  }
+
   async screenshot(id, suffix) {
     const file = path.join(screenshotDir, `${id.toLowerCase()}-${suffix}.png`);
     await this.page.screenshot({ path: file, fullPage: true });
@@ -249,9 +384,12 @@ class BatchDesignRecoveryMatrix {
   }
 
   async json(pathname) {
-    const response = await this.context.request.get(new URL(pathname, baseUrl).toString());
-    assert(response.ok(), `GET ${pathname} returned ${response.status()}: ${await response.text()}`);
-    return response.json();
+    const response = await inPageProxyFetch(this.page, pathname);
+    assert(
+      response.ok,
+      `GET ${pathname} returned ${response.status}: ${response.text}`,
+    );
+    return response.body;
   }
 
   async designList() {
@@ -346,6 +484,7 @@ class BatchDesignRecoveryMatrix {
     };
     try {
       const result = await work();
+      this.confirmRecoveredDirectUploads(id);
       const consoleErrors = this.consoleErrors.slice(offsets.console);
       const requestFailures = this.requestFailures.slice(offsets.request);
       const httpFailures = this.unexpectedHttpResponses.slice(offsets.http);
@@ -380,6 +519,7 @@ class BatchDesignRecoveryMatrix {
       this.steps.push({ id, status: "PASS", durationMs: Date.now() - startedAt, screenshot: result.screenshot });
       return result;
     } catch (error) {
+      this.rejectUnconfirmedDirectUploads();
       const message = error instanceof Error ? error.message : String(error);
       const screenshot = await this.screenshot(id, "failure-unexpected").catch(() => null);
       this.issues.push({ id, message, screenshot });
@@ -477,17 +617,19 @@ class BatchDesignRecoveryMatrix {
   }
 
   async assertRevisionHasNoArtifacts(designId, revisionNo) {
-    const paths = [
-      `/api/proxy/designs/${designId}/revisions/${revisionNo}/preview.stl`,
-      `/api/proxy/designs/${designId}/revisions/${revisionNo}/download.step`,
-    ];
-    const statuses = [];
-    for (const pathname of paths) {
-      const response = await this.context.request.get(new URL(pathname, baseUrl).toString());
-      statuses.push(response.status());
-      assert(response.status() === 409, `${pathname} exposed a failed artifact with status ${response.status()}`);
-    }
-    return statuses;
+    return this.withExpectedStatus(409, async () => {
+      const paths = [
+        `/api/proxy/designs/${designId}/revisions/${revisionNo}/preview.stl`,
+        `/api/proxy/designs/${designId}/revisions/${revisionNo}/download.step`,
+      ];
+      const statuses = [];
+      for (const pathname of paths) {
+        const response = await inPageProxyFetch(this.page, pathname);
+        statuses.push(response.status);
+        assert(response.status === 409, `${pathname} exposed a failed artifact with status ${response.status}`);
+      }
+      return statuses;
+    });
   }
 
   async work03() {
@@ -800,14 +942,21 @@ class BatchDesignRecoveryMatrix {
       this.artifacts.downloads[id] = downloadPath;
       let storedEvidence = { stepStatus: 200, previewStatus: 200, hashMatches: true, previewBytes: 0 };
       if (verifyStoredArtifacts) {
-        const stepResponse = await this.context.request.get(new URL(`/api/proxy/designs/${designId}/revisions/2/download.step`, baseUrl).toString());
-        const previewResponse = await this.context.request.get(new URL(`/api/proxy/designs/${designId}/revisions/2/preview.stl`, baseUrl).toString());
-        const previewBuffer = await previewResponse.body();
+        const stepResponse = await inPageProxyFetch(
+          this.page,
+          `/api/proxy/designs/${designId}/revisions/2/download.step`,
+          { responseType: "bytes" },
+        );
+        const previewResponse = await inPageProxyFetch(
+          this.page,
+          `/api/proxy/designs/${designId}/revisions/2/preview.stl`,
+          { responseType: "bytes" },
+        );
         storedEvidence = {
-          stepStatus: stepResponse.status(),
-          previewStatus: previewResponse.status(),
-          hashMatches: stepResponse.headers()["x-geometry-sha256"] === ready.revision.geometry_hash,
-          previewBytes: previewBuffer.length,
+          stepStatus: stepResponse.status,
+          previewStatus: previewResponse.status,
+          hashMatches: stepResponse.headers["x-geometry-sha256"] === ready.revision.geometry_hash,
+          previewBytes: previewResponse.byteLength,
         };
         assert(storedEvidence.stepStatus === 200 && storedEvidence.previewStatus === 200, `${id} restored artifacts are incomplete`);
         assert(storedEvidence.hashMatches, `${id} restored STEP hash does not match revision evidence`);
@@ -893,8 +1042,10 @@ class BatchDesignRecoveryMatrix {
       const failedProgress = await this.getBatch(failedBatch.batch_id);
       const failedItems = await this.getBatchItems(failedBatch.batch_id);
       assert(failedProgress.status === "failed", `FAIL-07 accepted batch status ${failedProgress.status}`);
+      assert(failedProgress.input_mode === "direct_upload", `FAIL-07 accepted batch input mode ${failedProgress.input_mode}`);
       assert(failedProgress.pending_items === 0, "FAIL-07 failed batch retained pending work");
-      assert(failedItems.every((item) => item.status === "skipped" && item.analysis_url === null), "FAIL-07 original batch processed or fabricated an item");
+      assert(failedProgress.total_items === 0, "FAIL-07 queue outage materialized direct-upload items before worker extraction");
+      assert(failedItems.length === 0, "FAIL-07 queue outage created item rows before worker extraction");
 
       const responsePromise = this.page.waitForResponse(
         (response) => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/proxy/batch",
@@ -937,8 +1088,8 @@ class BatchDesignRecoveryMatrix {
         observed: {
           url: this.page.url(),
           visible: [BATCH_QUEUE_COPY, "Retry this ZIP", "completed", "Download CSV"],
-          persisted: `failed batch ${failedBatch.batch_id} remains terminal with only skipped items; one retry batch ${retryId} completed`,
-          numeric: `new batch records ${createdIds.length}; POSTs ${this.postCounts.batch - postsBefore}; original skipped ${failedProgress.skipped_items}; retry completed ${retryProgress.completed_items}`,
+          persisted: `failed direct-upload batch ${failedBatch.batch_id} remains terminal with zero pre-worker item rows; one retry batch ${retryId} completed`,
+          numeric: `new batch records ${createdIds.length}; POSTs ${this.postCounts.batch - postsBefore}; original materialized items ${failedItems.length}; retry completed ${retryProgress.completed_items}`,
           authorization: "both accepted failure and retry were scoped to the same authenticated organization",
           recovery: "explicit retry reused the retained browser File once, created one new durable batch, and never processed the original failed items",
         },
@@ -946,9 +1097,12 @@ class BatchDesignRecoveryMatrix {
         assertions: [
           assertion("exact queue copy", BATCH_QUEUE_COPY, failure.message),
           assertion("original durable status", "failed", failedProgress.status),
+          assertion("original input mode", "direct_upload", failedProgress.input_mode),
           assertion("original pending count", 0, failedProgress.pending_items),
+          assertion("original total before worker extraction", 0, failedProgress.total_items),
           assertion("original completed count", 0, failedProgress.completed_items),
-          assertion("original skipped count", fixture.entries.length, failedProgress.skipped_items),
+          assertion("original skipped count", 0, failedProgress.skipped_items),
+          assertion("original materialized item count", 0, failedItems.length),
           assertion("original fake result count", 0, failedItems.filter((item) => item.analysis_url).length),
           assertion("new durable batch records", 2, createdIds.length),
           assertion("batch POST count", 2, this.postCounts.batch - postsBefore),
@@ -962,6 +1116,7 @@ class BatchDesignRecoveryMatrix {
   }
 
   async writeReport(fatalError = null) {
+    this.rejectUnconfirmedDirectUploads();
     const validation = validateGoldenPathMap(OWNED_PATH_IDS, this.goldenPaths);
     const buildIdentityAtEnd = captureBuildIdentity(repoRoot);
     const buildStable = this.buildIdentityAtStart.gitHead === buildIdentityAtEnd.gitHead;
@@ -1069,4 +1224,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   await main();
 }
 
-export { OWNED_PATH_IDS, parseCsv, writeDeterministicStoredZip };
+export {
+  OWNED_PATH_IDS,
+  inPageProxyFetch,
+  parseCsv,
+  writeDeterministicStoredZip,
+};
