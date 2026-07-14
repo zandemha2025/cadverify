@@ -937,7 +937,7 @@ class MobileRecoveryRun {
       const expected = (await this.designList()).find((design) => design.name === this.primaryDesignName);
       assert(expected, "VER-09 primary design was not persisted");
       const durableRecords = await this.costDecisionList();
-      const expectedFilename = `${this.primaryDesignName.replace(/[^A-Za-z0-9_.-]+/g, "_").replace(/^[._]+|[._]+$/g, "").slice(0, 80)}.step`;
+      const expectedFilename = `${this.primaryDesignName.replace(/[^A-Za-z0-9_.-]+/g, "_").replace(/^[._]+|[._]+$/g, "").slice(0, 80)}-r1.step`;
       const expectedRecord = durableRecords.find((record) => record.filename === expectedFilename);
       assert(expectedRecord, `VER-09 requires a durable ${expectedFilename} verification record`);
       const expectedRecordName = expectedRecord.label || expectedRecord.filename;

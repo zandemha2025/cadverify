@@ -992,14 +992,28 @@ asyncio.run(main())
       fn: async () => {
         const owner = this.identities.owner;
         await owner.page.goto("/settings/developer", { waitUntil: "domcontentloaded" });
-        const createActionPromise = owner.page.waitForResponse(
-          (response) =>
-            response.request().method() === "POST" &&
-            new URL(response.url()).pathname === "/api/proxy/keys",
-          { timeout: 20_000 },
-        );
-        await owner.page.getByRole("button", { name: "Create key" }).first().click();
-        const createActionResponse = await createActionPromise;
+        // Fixture setup created a real organization-A key through this same
+        // browser session. Its one-time reveal must be acknowledged before a
+        // human can interact with the page behind the modal. Prove that value
+        // survived the route change, dismiss it safely, and only then create a
+        // second key through the visible control.
+        const priorReveal = owner.page.getByRole("heading", { name: "Save your API key" });
+        await priorReveal.waitFor({ state: "visible", timeout: 15_000 });
+        const priorToken = cleanText(await owner.page.locator("pre").innerText());
+        this.equal("ROLE-02", "pending setup key reveal stayed exact", priorToken, this.resources.A.key.token);
+        await owner.page.getByLabel("I've saved it somewhere safe").check();
+        await owner.page.getByRole("button", { name: "Done" }).click();
+        await priorReveal.waitFor({ state: "detached", timeout: 15_000 });
+
+        const [createActionResponse] = await Promise.all([
+          owner.page.waitForResponse(
+            (response) =>
+              response.request().method() === "POST" &&
+              new URL(response.url()).pathname === "/api/proxy/keys",
+            { timeout: 20_000 },
+          ),
+          owner.page.getByRole("button", { name: "Create key" }).first().click(),
+        ]);
         this.equal("ROLE-02", "browser key mutation HTTP", createActionResponse.status(), 200);
         await owner.page.getByRole("heading", { name: "Save your API key" }).waitFor({ timeout: 15_000 });
         const token = cleanText(await owner.page.locator("pre").innerText());

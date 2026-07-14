@@ -57,6 +57,7 @@ test("saved verification waits for the overlay to detach and all visual blockers
 
 test("VER-09 selects the durable Records artifact at all three settled viewports", () => {
   const body = method("responsiveKeyboardContract", "invalidCadRecovery");
+  assert.match(body, /\}-r1\.step`/);
   assert.match(body, /getByRole\("button", \{ name: new RegExp\(escapeRegExp\(expectedRecordName\)/);
   assert.match(body, /getByTestId\("record-disposition-summary"\)/);
   assert.match(body, /getByText\("Open governance"/);

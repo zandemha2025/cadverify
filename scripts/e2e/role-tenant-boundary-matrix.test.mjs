@@ -70,6 +70,15 @@ test("API-key-only probes are isolated from dashboard fixture setup", () => {
   assert.match(lifecycle, /revoked A key denial code/);
 });
 
+test("visible API-key creation acknowledges a pending one-time reveal first", () => {
+  const roles = method("runRoleCapabilityMatrix", "scopedListRow");
+  assert.match(roles, /pending setup key reveal stayed exact/);
+  assert.match(roles, /this\.resources\.A\.key\.token/);
+  assert.match(roles, /getByLabel\("I've saved it somewhere safe"\)\.check\(\)/);
+  assert.match(roles, /priorReveal\.waitFor\(\{ state: "detached"/);
+  assert.match(roles, /const \[createActionResponse\] = await Promise\.all\(\[/);
+});
+
 test("role denials and cross-tenant known-vs-unknown opacity remain exact", () => {
   const roles = method("runRoleCapabilityMatrix", "scopedListRow");
   assert.match(roles, /expected\.platformCreate \? 200 : 403/);
