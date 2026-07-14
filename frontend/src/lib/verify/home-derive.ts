@@ -72,28 +72,8 @@ export function buildDayZeroSetup(input: {
 
   return [
     {
-      key: "machines",
-      title: "Declare machines + rates",
-      meta:
-        unavailable.machines && input.machineCount == null
-          ? "inventory unavailable — retry above"
-          : input.machineCount == null
-          ? "checking inventory..."
-          : input.machineCount > 0
-            ? `${input.machineCount} machine${input.machineCount === 1 ? "" : "s"} declared`
-            : "add owned machines and their hourly rates",
-      state:
-        unavailable.machines && input.machineCount == null
-          ? "unavailable"
-          : input.machineCount == null
-            ? "pending"
-            : input.machineCount > 0
-              ? "done"
-              : "needed",
-    },
-    {
       key: "verify",
-      title: "Verify first part",
+      title: "Check your first CAD part",
       meta:
         unavailable.records && input.recordCount == null
           ? "records unavailable — retry above"
@@ -101,7 +81,7 @@ export function buildDayZeroSetup(input: {
           ? "checking records..."
           : input.recordCount > 0
             ? `${input.recordCount} record${input.recordCount === 1 ? "" : "s"}`
-            : "drop STL, STEP or IGES",
+            : "try an example or upload STEP, STL, or IGES",
       state:
         unavailable.records && input.recordCount == null
           ? "unavailable"
@@ -112,8 +92,28 @@ export function buildDayZeroSetup(input: {
               : "needed",
     },
     {
+      key: "machines",
+      title: "Add your machines and rates",
+      meta:
+        unavailable.machines && input.machineCount == null
+          ? "inventory unavailable — retry above"
+          : input.machineCount == null
+          ? "checking inventory..."
+          : input.machineCount > 0
+            ? `${input.machineCount} machine${input.machineCount === 1 ? "" : "s"} added`
+            : "makes cost estimates specific to your shop",
+      state:
+        unavailable.machines && input.machineCount == null
+          ? "unavailable"
+          : input.machineCount == null
+            ? "pending"
+            : input.machineCount > 0
+              ? "done"
+              : "needed",
+    },
+    {
       key: "program",
-      title: "Add program context",
+      title: "Add volume and program details",
       meta: unavailable.records && input.recordCount == null
         ? "records unavailable — retry above"
         : !hasRecord
@@ -139,7 +139,7 @@ export function buildDayZeroSetup(input: {
     },
     {
       key: "truth",
-      title: "Send actuals for validation",
+      title: "Add actual time and cost results",
       meta: unavailable.records && input.recordCount == null
         ? "records unavailable — retry above"
         : !hasRecord

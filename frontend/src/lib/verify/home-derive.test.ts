@@ -232,7 +232,7 @@ test("day-zero setup follows achievable dependencies and labels enrichment optio
     realActualCount: 0,
   });
 
-  assert.deepEqual(steps.map((step) => step.key), ["machines", "verify", "program", "truth"]);
+  assert.deepEqual(steps.map((step) => step.key), ["verify", "machines", "program", "truth"]);
   assert.equal(steps[0].state, "needed");
   assert.equal(steps[1].state, "needed");
   assert.equal(steps[2].state, "locked");
@@ -250,8 +250,8 @@ test("day-zero completion is derived from persisted records, programs, and actua
   });
 
   assert.deepEqual(steps.map((step) => step.state), ["done", "done", "done", "done"]);
-  assert.equal(steps[0].meta, "2 machines declared");
-  assert.equal(steps[1].meta, "3 records");
+  assert.equal(steps[0].meta, "3 records");
+  assert.equal(steps[1].meta, "2 machines added");
   assert.equal(steps[2].meta, "1 program declared");
   assert.equal(steps[3].meta, "8 actuals received");
 });

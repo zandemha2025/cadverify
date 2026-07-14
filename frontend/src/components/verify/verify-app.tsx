@@ -6,7 +6,7 @@
  * and tools; platform navigation, theme, search, and account controls live in the
  * common shell.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { C, MONO, SANS } from "@/lib/verify/tokens";
 import { runVerification, type VerifyResult } from "@/lib/verify/run";
@@ -31,6 +31,8 @@ import { PartScreen } from "./part-screen";
 import { ToastProvider } from "./toast";
 import { ShortcutsOverlay } from "./shortcuts-overlay";
 import { CalibrationSwitcher } from "./calibration-switcher";
+import { WelcomeGuide, WELCOME_STORAGE_KEY } from "./welcome-guide";
+import { GuidedResultSummary } from "./guided-result-summary";
 import { sampleCubeFile } from "@/lib/verify/sample-cad";
 import { designIdFromSearch, designRevisionFromSearch, importDesignStep } from "@/lib/verify/design-import";
 import {
@@ -76,6 +78,11 @@ export function VerifyApp({
   ) ?? null;
   const hasActiveOrganization = activeOrganization !== null;
   const [screen, setScreen] = useState<Screen>("home");
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const [guidedSampleState, setGuidedSampleState] = useState<
+    "idle" | "running" | "ready" | "error"
+  >("idle");
+  const [guidedSummaryOpen, setGuidedSummaryOpen] = useState(false);
   const [env, setEnv] = useState({ temp: false, sour: false, pressure: false });
   const [materialClass, setMaterialClass] = useState("polymer");
   const [result, setResult] = useState<VerifyResult | null>(null);
@@ -128,6 +135,11 @@ export function VerifyApp({
   }, []);
 
   const pickFile = useCallback(() => fileRef.current?.click(), []);
+  const pickOwnFile = useCallback(() => {
+    setGuidedSampleState("idle");
+    setGuidedSummaryOpen(false);
+    fileRef.current?.click();
+  }, []);
 
   const runVerify = useCallback(
     async (f: File) => {
@@ -216,8 +228,66 @@ export function VerifyApp({
   }, [file, runVerify, pickFile]);
 
   const runSample = useCallback(() => {
-    void runVerify(sampleCubeFile());
+    setScreen("verify");
+    setGuidedSampleState("running");
+    void runVerify(sampleCubeFile()).then(
+      () => {
+        setGuidedSampleState("ready");
+        setGuidedSummaryOpen(true);
+      },
+      () => setGuidedSampleState("error"),
+    );
   }, [runVerify]);
+
+  const rememberWelcomeSeen = useCallback(() => {
+    try {
+      window.localStorage.setItem(WELCOME_STORAGE_KEY, "1");
+    } catch {
+      // Private browsing can disable storage. The guide still works this visit.
+    }
+  }, []);
+
+  const closeWelcome = useCallback(() => {
+    rememberWelcomeSeen();
+    setWelcomeOpen(false);
+  }, [rememberWelcomeSeen]);
+
+  const startGuidedSample = useCallback(() => {
+    closeWelcome();
+    runSample();
+  }, [closeWelcome, runSample]);
+
+  const startOwnUpload = useCallback(() => {
+    closeWelcome();
+    pickOwnFile();
+  }, [closeWelcome, pickOwnFile]);
+
+  const startDesign = useCallback(() => {
+    rememberWelcomeSeen();
+    window.location.assign("/designs");
+  }, [rememberWelcomeSeen]);
+
+  const startMachines = useCallback(() => {
+    closeWelcome();
+    setScreen("machines");
+  }, [closeWelcome]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const forced = params.get("welcome") === "1";
+    let seen = false;
+    try {
+      seen = window.localStorage.getItem(WELCOME_STORAGE_KEY) === "1";
+    } catch {
+      seen = false;
+    }
+    if (forced || !seen) setWelcomeOpen(true);
+    if (forced) {
+      params.delete("welcome");
+      const next = params.toString();
+      window.history.replaceState(null, "", `${window.location.pathname}${next ? `?${next}` : ""}`);
+    }
+  }, []);
 
   useEffect(() => {
     if (workspaceDestinationApplied.current) return;
@@ -371,8 +441,35 @@ export function VerifyApp({
         style={{ display: "none" }}
         onChange={(e) => {
           const f = e.target.files?.[0];
-          if (f) void runVerify(f);
+          if (f) {
+            setGuidedSampleState("idle");
+            setGuidedSummaryOpen(false);
+            void runVerify(f);
+          }
           e.target.value = "";
+        }}
+      />
+
+      <WelcomeGuide
+        open={welcomeOpen}
+        onOpenChange={(open) => {
+          if (open) setWelcomeOpen(true);
+          else closeWelcome();
+        }}
+        onSample={startGuidedSample}
+        onUpload={startOwnUpload}
+        onDesign={startDesign}
+        onMachines={startMachines}
+      />
+      <GuidedResultSummary
+        open={guidedSummaryOpen}
+        result={result}
+        onOpenChange={setGuidedSummaryOpen}
+        onUpload={pickOwnFile}
+        onBack={() => {
+          setGuidedSummaryOpen(false);
+          setGuidedSampleState("idle");
+          setScreen("home");
         }}
       />
 
@@ -434,8 +531,16 @@ export function VerifyApp({
             />
           </button>
           <span className="cv-verify-rate-switcher"><CalibrationSwitcher onOpenCalibration={() => setScreen("calibration")} /></span>
+          <button
+            className="cv-verify-start-button"
+            type="button"
+            onClick={() => setWelcomeOpen(true)}
+            style={{ minHeight: 36, border: `1px solid ${C.measured}`, background: "rgba(55,114,171,0.06)", color: C.measured, borderRadius: 999, padding: "7px 13px", fontFamily: "inherit", fontSize: 11.5, fontWeight: 650, cursor: "pointer" }}
+          >
+            Start here
+          </button>
           <button className="cv-verify-command-button" type="button" onClick={() => setScreen("palette")} title="Verify commands (⌘K)" aria-label="Open Verify command palette" style={{ display: "inline-flex", alignItems: "center", gap: 6, minHeight: 36, border: `1px solid ${C.hair}`, background: "#fff", borderRadius: 999, padding: "7px 12px", fontFamily: MONO, fontSize: 11, color: C.ink55, cursor: "pointer" }}>Jump <span aria-hidden>⌘K</span></button>
-          <button className="cv-verify-primary-action" type="button" onClick={pickFile} style={{ minHeight: 36, background: C.ink, color: "#fff", border: "none", borderRadius: 999, padding: "8px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>Verify a part</button>
+          <button className="cv-verify-primary-action" type="button" onClick={pickOwnFile} style={{ minHeight: 36, background: C.ink, color: "#fff", border: "none", borderRadius: 999, padding: "8px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>Check my CAD</button>
         </div>
       </nav>
 
@@ -465,7 +570,7 @@ export function VerifyApp({
             </div>
             <button
               type="button"
-              onClick={pickFile}
+              onClick={pickOwnFile}
               style={{ marginLeft: "auto", flexShrink: 0, minHeight: 40, border: "1px solid currentColor", borderRadius: 999, background: "#fff", color: "inherit", padding: "8px 14px", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}
             >
               Choose a STEP export
@@ -512,7 +617,27 @@ export function VerifyApp({
           </div>
         )}
 
-        {screen === "home" && <HomeScreen onPickFile={pickFile} nav={nav} />}
+        {guidedSampleState !== "idle" && screen === "verify" && (
+          <GuidedExampleBar
+            state={guidedSampleState}
+            onUpload={pickOwnFile}
+            onBack={() => {
+              setGuidedSummaryOpen(false);
+              setGuidedSampleState("idle");
+              setScreen("home");
+            }}
+            onRetry={runSample}
+          />
+        )}
+
+        {screen === "home" && (
+          <HomeScreen
+            onPickFile={pickOwnFile}
+            onSample={startGuidedSample}
+            onOpenGuide={() => setWelcomeOpen(true)}
+            nav={nav}
+          />
+        )}
         {screen === "verify" && (
           <div className="cv-verify-screen-split" style={{ flex: 1, minHeight: 0, display: "flex" }}>
             <Stage
@@ -554,12 +679,13 @@ export function VerifyApp({
               <VerifyScreen
                 result={result}
                 running={running}
+                guided={guidedSampleState !== "idle"}
                 fileName={result?.file?.name ?? file?.name ?? null}
                 env={env}
                 setEnv={setEnv}
                 materialClass={materialClass}
                 setMaterialClass={setMaterialClass}
-                onPickFile={pickFile}
+                onPickFile={pickOwnFile}
                 onReverify={onReverify}
                 nav={nav}
               />
@@ -581,8 +707,8 @@ export function VerifyApp({
         <CommandPalette
           onClose={() => setScreen("home")}
           nav={nav}
-          onVerify={pickFile}
-          onSample={runSample}
+          onVerify={pickOwnFile}
+          onSample={startGuidedSample}
           onShortcuts={() => { setScreen("home"); setShortcutsOpen(true); }}
         />
       )}
@@ -590,6 +716,99 @@ export function VerifyApp({
     </div>
     </ToastProvider>
   );
+}
+
+function GuidedExampleBar({
+  state,
+  onUpload,
+  onBack,
+  onRetry,
+}: {
+  state: "running" | "ready" | "error";
+  onUpload: () => void;
+  onBack: () => void;
+  onRetry: () => void;
+}) {
+  const failed = state === "error";
+  return (
+    <section
+      role={failed ? "alert" : "status"}
+      data-testid="guided-example-status"
+      className="cv-verify-guided-bar"
+      style={{
+        flexShrink: 0,
+        display: "flex",
+        alignItems: "center",
+        gap: 14,
+        flexWrap: "wrap",
+        borderBottom: `1px solid ${failed ? "rgba(194,69,58,0.36)" : "rgba(55,114,171,0.3)"}`,
+        background: failed ? "#fff3f1" : "#eef5fb",
+        padding: "11px 18px",
+        color: C.ink,
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          width: 26,
+          height: 26,
+          flexShrink: 0,
+          display: "grid",
+          placeItems: "center",
+          borderRadius: "50%",
+          background: failed ? C.fail : C.measured,
+          color: "#fff",
+          fontFamily: MONO,
+          fontSize: 11,
+        }}
+      >
+        {state === "running" ? "1" : failed ? "!" : "✓"}
+      </span>
+      <div style={{ flex: 1, minWidth: 240 }}>
+        <p style={{ margin: 0, fontSize: 12.5, fontWeight: 650 }}>
+          {state === "running"
+            ? "Guided example: analyzing a real 20 mm sample cube"
+            : failed
+              ? "The guided example could not finish"
+              : "Example complete: this is a manufacturing answer"}
+        </p>
+        <p style={{ margin: "3px 0 0", color: C.ink55, fontSize: 11.5, lineHeight: 1.5 }}>
+          {state === "running"
+            ? "ProofShape is measuring geometry, checking manufacturability, choosing processes, and estimating cost."
+            : failed
+              ? "No completed result was created. Retry the example or check one of your own CAD files."
+              : "Start with the four plain answers: CAD health, manufacturing method, estimated cost, and what is still uncertain."}
+        </p>
+      </div>
+      {failed ? (
+        <button type="button" onClick={onRetry} style={guidedBarButton(C.fail)}>
+          Retry example
+        </button>
+      ) : state === "ready" ? (
+        <button type="button" onClick={onUpload} style={guidedBarButton(C.measured)}>
+          Check my CAD next
+        </button>
+      ) : null}
+      <button type="button" onClick={onBack} style={guidedBarButton(C.ink55, true)}>
+        Back to start
+      </button>
+    </section>
+  );
+}
+
+function guidedBarButton(color: string, quiet = false): CSSProperties {
+  return {
+    minHeight: 36,
+    border: `1px solid ${quiet ? C.hair : color}`,
+    borderRadius: 999,
+    background: quiet ? C.panel : color,
+    color: quiet ? C.ink : "#fff",
+    padding: "7px 13px",
+    fontFamily: "inherit",
+    fontSize: 11.5,
+    fontWeight: 650,
+    cursor: "pointer",
+  };
 }
 
 function OrganizationAccessGate({
@@ -699,6 +918,9 @@ const KEYFRAMES = `
 }
 
 @media (max-width: 900px) {
+  .cv-verify-start-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
   .cv-verify-home-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
@@ -776,6 +998,16 @@ const KEYFRAMES = `
   .cv-verify-home {
     padding: 24px 14px !important;
     overflow-x: hidden;
+  }
+  .cv-verify-start {
+    padding: 15px 14px !important;
+  }
+  .cv-verify-guided-bar {
+    align-items: flex-start !important;
+    padding: 12px 14px !important;
+  }
+  .cv-verify-guided-bar > button {
+    flex: 1 1 140px;
   }
   .cv-verify-home button,
   .cv-verify-walk button {

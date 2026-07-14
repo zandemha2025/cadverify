@@ -36,8 +36,8 @@ ISOLATED_EXEC=(
   'import os, sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])'
 )
 
-BACKEND_PORT=8000
-FRONTEND_PORT=3000
+BACKEND_PORT="${BACKEND_PORT:-8000}"
+FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 HEALTH_URL="http://127.0.0.1:${BACKEND_PORT}/health"
 APP_URL="http://localhost:${FRONTEND_PORT}"
 
@@ -91,6 +91,7 @@ export DASHBOARD_SESSION_SECRET API_KEY_PEPPER
 # Redis is actually reachable (see below), so a missing Redis is a clear warning
 # instead of a crash-looping process.
 REDIS_URL_EFFECTIVE="${REDIS_URL:-redis://localhost:6379}"
+export REDIS_URL="$REDIS_URL_EFFECTIVE"
 
 BACK_PID=""
 FRONT_PID=""

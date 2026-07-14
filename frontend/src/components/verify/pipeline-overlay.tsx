@@ -44,11 +44,13 @@ export function PipelineOverlay({
   running,
   result,
   fileName,
+  guided = false,
   onDone,
 }: {
   running: boolean;
   result: VerifyResult | null;
   fileName: string | null;
+  guided?: boolean;
   onDone?: () => void;
 }) {
   const toast = useToast();
@@ -86,6 +88,16 @@ export function PipelineOverlay({
     // Only reveal if we actually saw the computing phase for this run (open) — a
     // pre-existing result from navigation must NOT pop the overlay.
     if (!open || !result || phase === "revealing" || phase === "settled") return;
+    // The first-run example has its own plain-language result summary. Once the
+    // real response lands, hand off immediately instead of making a new user sit
+    // through the expert evidence cadence before seeing the answer.
+    if (guided) {
+      clearTimers();
+      setOpen(false);
+      setPhase("idle");
+      onDone?.();
+      return;
+    }
     const model = pipelineModelFrom(result, false, fileName);
     // Did the engine actually compute anything? A part that fails to parse/tessellate
     // returns no routing, no DFM, no geometry, no cost — the completion toast would be
@@ -114,7 +126,18 @@ export function PipelineOverlay({
       }, landedAt + SETTLE_MS + 720)
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, result, fileName]);
+  }, [open, result, fileName, guided]);
+
+  // An unexpected request failure can end with no result. Do not strand the user
+  // behind a forever-running modal; the screen-level recovery state remains visible.
+  useEffect(() => {
+    if (!open || running || result || phase !== "computing") return;
+    clearTimers();
+    setOpen(false);
+    setPhase("idle");
+    onDone?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, running, result, phase]);
 
   // Esc dismisses (design: Esc closes all).
   useEffect(() => {
@@ -135,6 +158,70 @@ export function PipelineOverlay({
   if (!open) return null;
 
   const model = pipelineModelFrom(result, running && !result, fileName);
+
+  if (guided) {
+    return (
+      <div
+        role="dialog"
+        aria-label="Checking the sample CAD"
+        aria-live="polite"
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 70,
+          background: "rgba(246,246,247,0.88)",
+          backdropFilter: "blur(6px)",
+          WebkitBackdropFilter: "blur(6px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+        }}
+      >
+        <div
+          style={{
+            width: 500,
+            maxWidth: "92vw",
+            background: C.panel,
+            border: `1px solid ${C.hair}`,
+            borderRadius: 20,
+            padding: "28px 30px",
+            boxShadow: "0 30px 80px -30px rgba(23,24,26,0.3)",
+            animation: "vscreenIn 300ms cubic-bezier(0.2,0,0,1) both",
+          }}
+        >
+          <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, fontWeight: 650, letterSpacing: "0.14em", color: C.measured }}>
+            REAL SAMPLE · RUNNING
+          </p>
+          <h2 style={{ margin: "10px 0 0", color: C.ink, fontSize: 25, fontWeight: 450, lineHeight: 1.2, letterSpacing: "-0.02em" }}>
+            Turning this CAD file into four useful answers.
+          </h2>
+          <p style={{ margin: "10px 0 0", color: C.ink55, fontSize: 13, lineHeight: 1.65 }}>
+            ProofShape is reading the shape, comparing manufacturing methods, and calculating an estimate.
+          </p>
+          <div style={{ marginTop: 20, display: "grid", gap: 10 }}>
+            {[
+              "Read and measure the CAD",
+              "Compare ways to manufacture it",
+              "Explain cost and what is still uncertain",
+            ].map((label, index) => (
+              <div key={label} style={{ display: "flex", alignItems: "center", gap: 11, border: `1px solid ${C.hair2}`, borderRadius: 12, background: C.sunken, padding: "11px 13px" }}>
+                <span aria-hidden style={{ width: 24, height: 24, flexShrink: 0, display: "grid", placeItems: "center", borderRadius: "50%", background: index === 0 ? C.measured : C.panel, border: `1px solid ${index === 0 ? C.measured : C.hair}`, color: index === 0 ? "#fff" : C.ink45, fontFamily: MONO, fontSize: 10 }}>
+                  {index + 1}
+                </span>
+                <span style={{ color: C.ink, fontSize: 12.5, fontWeight: 550 }}>{label}</span>
+                {index === 0 && <Dots />}
+              </div>
+            ))}
+          </div>
+          <p style={{ margin: "18px 0 0", borderTop: `1px solid ${C.hair2}`, paddingTop: 13, color: C.ink45, fontSize: 11.5, lineHeight: 1.55 }}>
+            No setup is required for this example. Your own CAD files use the same engine.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const stopped = model.stopIndex >= 0 && reveal >= model.stopIndex + 1;
   const done = phase === "settled" && !stopped;
 

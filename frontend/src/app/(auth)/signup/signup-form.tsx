@@ -47,7 +47,7 @@ export function SignupForm() {
         setError(errorMessage(data, "Could not create your account."));
         return;
       }
-      window.location.href = "/verify";
+      window.location.href = "/onboarding";
     } catch {
       setError("Could not reach the server. Is the backend running?");
     } finally {

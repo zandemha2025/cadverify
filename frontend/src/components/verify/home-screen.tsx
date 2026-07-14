@@ -31,7 +31,17 @@ import { buildQueue, buildActivity, buildDayZeroSetup, proposedCount, type Queue
 import { C, MONO, NUM, procLabel } from "@/lib/verify/tokens";
 import { Kicker } from "./primitives";
 
-export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (s: string) => void }) {
+export function HomeScreen({
+  onPickFile,
+  onSample,
+  onOpenGuide,
+  nav,
+}: {
+  onPickFile: () => void;
+  onSample: () => void;
+  onOpenGuide: () => void;
+  nav: (s: string) => void;
+}) {
   const [records, setRecords] = useState<CostDecisionSummary[] | null>(null);
   const [recordsMore, setRecordsMore] = useState(false);
   const [machineCount, setMachineCount] = useState<number | null>(null);
@@ -133,7 +143,7 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
     if (key === "machines") nav("machines");
     else if (key === "verify") {
       if (recordCount) nav("records");
-      else onPickFile();
+      else onOpenGuide();
     }
     else if (key === "program") nav("programs");
     else nav("calibration");
@@ -145,9 +155,9 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
   const kpis: { n: string; l: string; c: string; go: string }[] = [
     { n: recordCount == null ? "—" : `${NUM(recordCount)}${recordsMore ? "+" : ""}`, l: unavailable.records ? "RECORDS · RETRY NEEDED" : "RECORDS", c: unavailable.records ? C.fail : recordCount ? C.ink : C.ink45, go: "records" },
     { n: machineCount == null ? "—" : NUM(machineCount), l: unavailable.machines ? "MACHINES · RETRY NEEDED" : "MACHINES DECLARED", c: unavailable.machines ? C.fail : machineCount ? C.ink : C.fail, go: "machines" },
-    { n: proposed == null ? "—" : NUM(proposed), l: unavailable.changes ? "REVIEWS · RETRY NEEDED" : "IN REVIEW · GOVERNED", c: unavailable.changes ? C.fail : proposed ? C.cond : C.ink45, go: "calibration" },
-    { n: actuals == null ? "—" : actuals === 0 ? "n=0" : NUM(actuals), l: unavailable.actuals ? "ACTUALS · RETRY NEEDED" : "ACTUALS · GROUND TRUTH", c: unavailable.actuals ? C.fail : actuals ? C.ink : C.cond, go: "calibration" },
-    { n: "—", l: "VALIDATED BANDS · NO DATA YET", c: C.ink45, go: "calibration" },
+    { n: proposed == null ? "—" : NUM(proposed), l: unavailable.changes ? "REVIEWS · RETRY NEEDED" : "CHANGES TO REVIEW", c: unavailable.changes ? C.fail : proposed ? C.cond : C.ink45, go: "calibration" },
+    { n: actuals == null ? "—" : actuals === 0 ? "0" : NUM(actuals), l: unavailable.actuals ? "ACTUAL RESULTS · RETRY" : "ACTUAL RESULTS ADDED", c: unavailable.actuals ? C.fail : actuals ? C.ink : C.cond, go: "calibration" },
+    { n: "—", l: "CALIBRATED ESTIMATES · NO DATA", c: C.ink45, go: "calibration" },
   ];
 
   const sevColor = (s: "cond" | "fail") => (s === "fail" ? C.fail : C.cond);
@@ -155,15 +165,52 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
   return (
     <main className="cv-verify-home" style={{ animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both", flex: 1, overflowY: "auto", padding: "28px 38px", background: C.bg }}>
       <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: C.ink40 }}>{today.toUpperCase()}</p>
-      <h1 style={{ margin: "8px 0 0", fontSize: 28, fontWeight: 300, letterSpacing: "-0.018em", lineHeight: 1.25 }}>Good morning.</h1>
+      <h1 style={{ margin: "8px 0 0", fontSize: 30, fontWeight: 350, letterSpacing: "-0.022em", lineHeight: 1.2 }}>What would you like to do?</h1>
+      <p style={{ margin: "8px 0 0", maxWidth: 720, color: C.ink55, fontSize: 13.5, lineHeight: 1.6 }}>
+        Turn a CAD file into a clear manufacturing answer: can it be made, how should it be made,
+        what should it cost, and what needs attention.
+      </p>
+
+      <section
+        data-testid="verify-start-here"
+        className="cv-verify-start"
+        style={{ marginTop: 20, maxWidth: 1160, border: `1px solid ${C.hair}`, borderRadius: 18, background: C.panel, padding: "18px" }}
+      >
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <Kicker>START HERE</Kicker>
+            <p style={{ margin: "6px 0 0", fontSize: 13.5, fontWeight: 600 }}>Choose one. Nothing else needs to be set up first.</p>
+          </div>
+          <button type="button" onClick={onOpenGuide} style={{ border: 0, background: "transparent", color: C.measured, padding: "7px 0", fontFamily: "inherit", fontSize: 11.5, fontWeight: 650, cursor: "pointer" }}>
+            Help me choose →
+          </button>
+        </div>
+        <div className="cv-verify-start-grid" style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+          <button type="button" onClick={onSample} style={{ minHeight: 116, border: 0, borderRadius: 14, background: C.ink, color: "#fff", padding: "16px 17px", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
+            <span style={{ display: "block", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.1em", color: "rgba(255,255,255,0.68)" }}>RECOMMENDED · 60 SECONDS</span>
+            <span style={{ display: "block", marginTop: 8, fontSize: 15, fontWeight: 650 }}>Show me a real example</span>
+            <span style={{ display: "block", marginTop: 5, color: "rgba(255,255,255,0.72)", fontSize: 11.5, lineHeight: 1.5 }}>No file needed. We run the engine and explain the answer.</span>
+          </button>
+          <button type="button" onClick={onPickFile} style={{ minHeight: 116, border: `1px solid ${C.hair}`, borderRadius: 14, background: C.sunken, color: C.ink, padding: "16px 17px", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
+            <span style={{ display: "block", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.1em", color: C.measured }}>I HAVE A CAD FILE</span>
+            <span style={{ display: "block", marginTop: 8, fontSize: 15, fontWeight: 650 }}>Check my part</span>
+            <span style={{ display: "block", marginTop: 5, color: C.ink55, fontSize: 11.5, lineHeight: 1.5 }}>Upload STEP, STL, or IGES for DFM, process, and cost.</span>
+          </button>
+          <Link href="/designs" style={{ minHeight: 116, display: "block", border: `1px solid ${C.hair}`, borderRadius: 14, background: C.sunken, color: C.ink, padding: "16px 17px", textAlign: "left", textDecoration: "none" }}>
+            <span style={{ display: "block", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.1em", color: C.user }}>I NEED TO CREATE ONE</span>
+            <span style={{ display: "block", marginTop: 8, fontSize: 15, fontWeight: 650 }}>Make a simple part</span>
+            <span style={{ display: "block", marginTop: 5, color: C.ink55, fontSize: 11.5, lineHeight: 1.5 }}>Create a plate, bracket, or enclosure, then verify it.</span>
+          </Link>
+        </div>
+      </section>
 
       <button
         type="button"
         onClick={() => nav("palette")}
-        style={{ marginTop: 18, width: "100%", maxWidth: 1160, display: "flex", alignItems: "center", gap: 12, border: `1px solid ${C.hair}`, borderRadius: 14, background: C.panel, padding: "15px 18px", cursor: "pointer", fontFamily: "inherit", textAlign: "left", boxShadow: "0 1px 2px rgba(23,24,26,0.03)" }}
+        style={{ marginTop: 12, width: "100%", maxWidth: 1160, display: "flex", alignItems: "center", gap: 12, border: `1px solid ${C.hair}`, borderRadius: 14, background: C.panel, padding: "13px 16px", cursor: "pointer", fontFamily: "inherit", textAlign: "left", boxShadow: "0 1px 2px rgba(23,24,26,0.03)" }}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.ink40} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v3" /><path d="M18.4 5.6 16 8" /><path d="M21 12h-3" /><path d="M12 21a9 9 0 1 1 9-9" /><circle cx="12" cy="12" r="1" /></svg>
-        <span style={{ flex: 1, fontSize: 14.5, color: C.ink45, fontWeight: 300 }}>Jump to a surface, action, or sample walkthrough…</span>
+        <span style={{ flex: 1, fontSize: 13, color: C.ink45, fontWeight: 400 }}>Search every tool and saved record…</span>
         <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink45, border: `1px solid ${C.hair}`, borderRadius: 6, padding: "3px 8px" }}>⌘K</span>
       </button>
 
@@ -180,9 +227,9 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
 
       <section className="cv-verify-setup" style={{ marginTop: 16, maxWidth: 1160, border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "16px 18px" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <Kicker>DAY ZERO SETUP</Kicker>
+          <Kicker>MAKE THE ESTIMATES YOURS</Kicker>
           <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink45 }}>
-            real org state only · no seeded tenant facts
+            optional after your first example
           </span>
         </div>
         <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>

@@ -89,6 +89,7 @@ type Nav = (screen: string) => void;
 interface Props {
   result: VerifyResult | null;
   running: boolean;
+  guided?: boolean;
   fileName: string | null;
   env: { temp: boolean; sour: boolean; pressure: boolean };
   setEnv: (e: { temp: boolean; sour: boolean; pressure: boolean }) => void;
@@ -268,7 +269,12 @@ export function VerifyScreen(props: Props) {
           never generates a number. */}
       <AskDock cost={result?.cost ?? null} running={running} nav={nav} />
     </div>
-    <PipelineOverlay running={running} result={result} fileName={props.fileName} />
+    <PipelineOverlay
+      running={running}
+      result={result}
+      fileName={props.fileName}
+      guided={props.guided}
+    />
     </>
   );
 }
