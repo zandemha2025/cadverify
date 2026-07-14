@@ -64,11 +64,11 @@ CI and release are intentionally separate:
 Do not describe CI's local image IDs as deployed digests. Do not describe a
 publish-only ECR seed as a deployment.
 
-The current split also leaves one blocking supply-chain gap: CI's image scans
-and SBOMs cover a separate CI-local build, not the sealed archives later
-published by the AWS workflow. Before production, either promote a CI-owned
-sealed artifact or scan/SBOM the exact AWS archive hashes and bind that evidence
-to the resulting staging/production ECR digests.
+The AWS workflow closes the build-to-deploy supply-chain boundary: it loads the
+sealed archive images, fails on every fixed or unfixed HIGH/CRITICAL finding,
+generates CycloneDX SBOMs from those same images, and binds archive hashes,
+image IDs, scan evidence, and SBOM hashes into the manifest that publication
+re-verifies before ECR push.
 
 ## Pre-production sequence
 
@@ -88,10 +88,11 @@ to the resulting staging/production ECR digests.
    production reviewer.
 7. Run `staging-and-production` on the same release SHA.
 
-The AWS workflow verifies artifact identity and environment boundaries. It does
-not currently evaluate the confidential supplier holdout. Until that source gap
-is closed, the protected production approval must record the exact-release
-holdout verdict as a visible manual control.
+The AWS workflow verifies artifact identity and environment boundaries and
+validates the confidential supplier holdout before staging mutation. Production
+independently validates the holdout and requires its evidence digest to match
+staging. The accountable protected-environment reviewer still owns the final
+business acceptance decision.
 
 ## Production-live acceptance
 

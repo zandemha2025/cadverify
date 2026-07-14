@@ -55,8 +55,8 @@ CadVerify are implementation history, not proof that the name is owned.
 
 | Claim | Meaning | Current status |
 |---|---|---|
-| Product-proven | The exact clean commit passes the supported browser journeys, numerical/artifact checks, role/tenant matrix, and failure/recovery paths. | Pending the final fresh exact-build evidence run. |
-| Cloud-deploy-ready | The same commit has reproducible images, valid migrations, validated AWS IaC, OIDC delivery, restore/rollback procedures, and an operator contract. | AWS implementation and static validation exist; final clean-checkout/image proof remains required. |
+| Product-proven | The exact clean commit passes the supported browser journeys, numerical/artifact checks, role/tenant matrix, and failure/recovery paths. | Recorded. The current release manifest reports `LOCAL_GATE_PASS` for all 64 canonical contracts; the aligned mobile, S3, representative-CAD, manufacturing, role, guide, and deck supplements also pass. Re-run after any repository change. |
+| Cloud-deploy-ready | The same commit has reproducible images, valid migrations, validated AWS IaC, OIDC delivery, restore/rollback procedures, and an operator contract. | Recorded. IaC, exact-image build/scan/SBOM binding, migrations, OIDC promotion, rollback, AWS kill switch, and runbooks are implemented and statically validated. This does not mean an account has been applied. |
 | Production-live | The exact digests are running in ProofShape-owned AWS and all real-provider/live gates passed. | No. No AWS plan/apply or live deployment evidence has been produced. |
 
 Do not collapse these claims into “production-ready.” A green unit suite is not
@@ -115,21 +115,23 @@ production images but does not publish or deploy them.
 1. It accepts a reviewed 40-character SHA reachable from protected `main` and
    requires successful CI for that exact SHA.
 2. It builds backend and frontend Docker archives once as `linux/amd64`.
-3. It hashes both archives into one manifest and uploads one workflow artifact.
-4. Staging publishes those exact bytes to its immutable ECR repositories.
-5. Production downloads the same artifact and refuses ECR digests that differ
+3. It scans those exact loaded archive images for every fixed or unfixed
+   HIGH/CRITICAL finding, generates CycloneDX SBOMs from the same images, and
+   binds image IDs plus archive, scan, and SBOM hashes into a sealed manifest.
+4. It validates a confidential, exact-release supplier holdout before staging
+   mutation; production independently revalidates it and requires the same
+   evidence digest.
+5. Staging publishes those exact bytes to its immutable ECR repositories.
+6. Production downloads the same artifact and refuses ECR digests that differ
    from staging.
-6. Promotion runs Alembic, registers digest-qualified ECS task revisions,
+7. Promotion runs Alembic, registers digest-qualified ECS task revisions,
    stabilizes all services, and runs authenticated deep health through the
    canonical CloudFront origin.
-7. A failed rollout restores the previous ECS task definitions.
+8. Staging exercises the AWS-native intake kill switch and restores the exact
+   prior task definition before production approval.
+9. A failed rollout restores the previous ECS task definitions.
 
-This proves staging-to-production artifact identity. It does not yet prove that
-CI's separately built image scan/SBOM covered those exact archive bytes. That
-supply-chain binding is a blocking source gap in
-`docs/PRODUCTION_LAUNCH_AUDIT.md`.
-
-The workflow has four explicit scopes:
+The workflow has four exact-artifact scopes:
 
 - `publish-staging-only`: seed staging ECR during bootstrap;
 - `publish-staging-and-production`: seed both isolated ECR boundaries;
@@ -137,10 +139,15 @@ The workflow has four explicit scopes:
 - `staging-and-production`: promote staging, wait for protected production
   approval, then publish/promote the same artifacts to production.
 
+It also has protected AWS-native operations for
+`kill-switch-staging-off`, `kill-switch-staging-on`,
+`kill-switch-staging-test`, `kill-switch-production-off`, and
+`kill-switch-production-on`.
+
 ## Ordered launch sequence
 
-1. Finish the `product-proven` gate on one exact clean commit. Do not use stale
-   screenshots or a dirty-tree build as release evidence.
+1. Preserve the recorded `product-proven` and `cloud-deploy-ready` gates. Re-run
+   them on the final clean commit after any source or documentation change.
 2. Bootstrap remote Terraform state separately in the staging and production
    accounts.
 3. Plan/apply each `infra/aws` stack with workloads and services disabled.
@@ -190,8 +197,8 @@ Do not report production-live until all of these are true:
 
 ## Honest handoff statement
 
-The repository contains the AWS architecture and release machinery. It has not
-been applied to an AWS account, and no ProofShape production environment is
-live. The next external action is account/provider provisioning only after the
-exact commit finishes product and cloud-deploy-ready proof. Arcus remains out of
-scope throughout.
+The repository is product-proven and cloud-deploy-ready under the binding claim
+definitions. It has not been applied to an AWS account, and no ProofShape
+production environment is live. The next action is ProofShape-owned
+account/provider provisioning followed by credentialed staging acceptance.
+Arcus remains out of scope throughout.

@@ -221,10 +221,10 @@ boundary. After promotion, re-run smoke, auth, tenant isolation, representative
 STEP, export, observability, and rollback-readiness checks on the production
 hostname.
 
-The current AWS workflow does not itself validate the confidential supplier
-holdout. Until that gate is automated, the protected production approval must
-record the exact-release holdout decision as a manual control; this limitation
-must remain visible in the launch audit.
+The AWS workflow validates the confidential exact-release supplier holdout
+before staging mutation. Production independently revalidates it and requires
+the evidence digest to equal staging before promotion can proceed. The
+protected reviewer remains accountable for the final go/no-go decision.
 
 ## 11. Rollback and recovery
 
@@ -234,9 +234,10 @@ must remain visible in the launch audit.
   or health fails.
 - Database migrations are not automatically reversed. Every migration needs a
   backward-compatible rollout and explicit compensating plan.
-- The application kill switch may stop new analyses, but the legacy Fly-oriented
-  helper is not the AWS release mechanism. Exercise the actual AWS runtime
-  configuration path in staging and document it before launch.
+- `scripts/ops/aws-kill-switch.sh` is the account-, cluster-, service-, and
+  boundary-scoped AWS release mechanism. The promotion workflow exercises
+  staging off/on/restore and rechecks deep health; protected off/on operations
+  remain available for staging and production. The Fly helper is legacy only.
 - Restore only into an approved scratch target and measure RPO/RTO.
 
 ## 12. Go/no-go

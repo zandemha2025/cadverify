@@ -2,7 +2,9 @@
 
 Date: 2026-07-14
 
-Commercial verdict: **BLOCKED FOR PRODUCTION-LIVE**
+Commercial software verdict: **PRODUCT-PROVEN AND CLOUD-DEPLOY-READY**
+
+Commercial live verdict: **BLOCKED FOR PRODUCTION-LIVE**
 
 Regulated verdict: **BLOCKED; DO NOT INTRODUCE REGULATED DATA**
 
@@ -14,12 +16,12 @@ static infrastructure validation, or an old deployment as live evidence.
 
 | Claim | Status | Evidence still required |
 |---|---|---|
-| Product-proven | Not yet recorded | Fresh exact-clean-build browser evidence under the v2 screenshot/DOM contract, full supported journey matrix, representative CAD, roles/tenants, failure/recovery, and mobile proof. |
-| Cloud-deploy-ready | Candidate, not yet recorded | Final clean-checkout application/image gates and review of the integrated AWS/workflow changes. Terraform format/validate, actionlint, shellcheck, and script syntax have passed; no account plan/apply occurred. |
+| Product-proven | Recorded | The current clean release manifest reports `LOCAL_GATE_PASS`: 64/64 canonical browser and recovery contracts across ten suites, with aligned mobile, direct-S3, manufacturing/import, representative-CAD, role/notification, training-guide, and interactive-deck evidence. This claim must be regenerated after any repository change. |
+| Cloud-deploy-ready | Recorded | Reproducible production builds, migration chain, validated AWS IaC, exact OIDC subjects, exact-image scan/SBOM binding, supplier-holdout gate, AWS kill switch, deep health, restore/rollback procedures, alarms, and operator runbooks are present and statically validated. No account plan/apply is implied. |
 | Production-live | No | ProofShape-owned AWS/provider resources, real secrets, staged deployment, live acceptance, recovery/alert evidence, exact-digest production promotion, and human go/no-go. |
 
-No document may convert “candidate” into a stronger claim without the missing
-evidence.
+No local evidence may convert `production-live` into a stronger claim without
+the external evidence below.
 
 ## Implemented commercial controls
 
@@ -51,9 +53,11 @@ evidence.
   registry publication.
 - `.github/workflows/aws-commercial-promote.yml` requires exact-SHA successful
   CI, builds one backend/frontend archive set, seals archive hashes, publishes
-  the same bytes to staging and production ECR, verifies matching digests, runs
-  migration, stabilizes ECS, performs CloudFront deep health, and restores prior
-  task definitions after rollout failure.
+  the same bytes to staging and production ECR, scans and generates CycloneDX
+  SBOMs from those exact loaded images, verifies matching digests, validates the
+  exact-release supplier holdout in both environments, runs migration,
+  stabilizes ECS, performs CloudFront deep health and a staging AWS kill-switch
+  drill, and restores prior task definitions after rollout failure.
 - The obsolete `.github/workflows/saas-promote.yml` is deleted. Fly files that
   remain are legacy/non-release material and are not called by the canonical
   workflow.
@@ -62,9 +66,9 @@ evidence.
   browser security, and release-health controls. These reduce risk but do not
   replace the exact-build and live gates.
 
-## Evidence that does not exist yet
+## External evidence that does not exist yet
 
-- No Terraform plan or apply against a ProofShape AWS account.
+- No account-bound Terraform plan or apply against a ProofShape AWS account.
 - No AWS ECR push, ECS migration, service rollout, or CloudFront deep-health
   record.
 - No real Resend, Turnstile, Sentry/alert, DNS/certificate, budget alarm, or
@@ -73,7 +77,8 @@ evidence.
   physical-delete, worker interruption, kill-switch, or prior-digest rollback
   drill.
 - No production promotion or production hostname.
-- No accountable legal/name/IP or commercial supplier-holdout approval.
+- No accountable legal/name/IP approval or real customer/supplier holdout
+  evidence has been supplied to the implemented release gate.
 - No approved GovCloud/customer regulated boundary or execution evidence.
 
 ## Blocking findings
@@ -83,19 +88,16 @@ evidence.
 | Critical | Regulated | No approved CUI/ITAR classification, system/data-flow boundary, Technology Control Plan, contract scope, or authorized operator roster exists. | Written counsel/security decision, approved boundary and data flow, personnel authorization, and accountable owner approval. |
 | Critical | Regulated | No GovCloud/customer-controlled landing zone or approved CI/evidence control plane exists. | Approved account/cluster, private data plane, IdP, registry, runners, telemetry/SIEM, backups, private values, and retained execution evidence. |
 | High | Commercial | No ProofShape AWS staging or production stack has been planned/applied. | Reviewed account-bound Terraform plans and applies, distinct state/data boundaries, populated secret versions, verified Redis AUTH, and enabled services. |
-| High | Commercial | The exact commit has not completed the fresh product-proven evidence gate. | Clean-commit code gates plus the full human-simulated browser, representative CAD, role/tenant, failure/recovery, artifact/numerical, and mobile evidence set. |
 | High | Commercial | No real-provider staging acceptance or operational recovery evidence exists. | Staging workflow evidence, email/Turnstile/Sentry delivery, deep health, multipart S3, restore, alarms, load, interruption, kill switch, and rollback records. |
-| High | Commercial | CI scans and generates SBOMs for a CI-local image build, while the AWS promotion workflow creates a separate sealed archive build. Staging and production share exact bytes, but the deployed bytes are not yet cryptographically the same bytes covered by CI's image scan/SBOM. | Either promote a CI-owned sealed image artifact or scan and generate SBOMs for the exact AWS archive hashes before ECR publication, then bind those results to the staged/production ECR digests. |
-| High | Commercial | Customer-relevant supplier/CAD accuracy approval is external and is not currently enforced by the AWS promotion workflow. | Licensed/provenance-locked holdout satisfying `docs/SUPPLIER_HOLDOUT_EVIDENCE.md`, accountable review, exact-release binding, and a protected production approval that cannot be bypassed. Automating this gate remains source work unless the owner accepts a documented manual control. |
-| High | Commercial | The checked-in kill-switch helper is Fly-specific; the AWS stack has rollout rollback but no proved AWS-native command/control for stopping new analyses without an ad hoc task-definition edit. | Implement and stage-test an AWS-scoped, account/boundary-checked kill switch with retained evidence, plus a safe restore procedure. |
+| High | Commercial | No licensed customer-relevant supplier/CAD accuracy evidence or accountable approval has been supplied. The workflow gate exists but cannot fabricate its confidential input. | Provenance-locked holdout satisfying `docs/SUPPLIER_HOLDOUT_EVIDENCE.md`, accountable review, exact-release binding, and protected production approval. |
 | High | Commercial | ProofShape name/domain/IP and launch legal documents are not approved. | Documented name/IP clearance, domain ownership, terms/privacy decisions, and accountable approval. |
 
 ## Commercial go/no-go rule
 
 Commercial production remains blocked until:
 
-1. `product-proven` and `cloud-deploy-ready` are recorded for one exact clean
-   commit;
+1. the recorded `product-proven` and `cloud-deploy-ready` claims are regenerated
+   for the final exact clean commit after any change;
 2. isolated AWS staging passes every live gate in
    `docs/PRODUCTION_ACCEPTANCE_CONTRACT.md`;
 3. the supplier/customer and legal/name approvals are retained;
@@ -115,6 +117,8 @@ runbook, and the protected production promotion is independently approved.
 
 ## Current decision
 
-**Do not claim production-live and do not introduce regulated data.** Continue
-engineering proof locally, then provision only new ProofShape-owned commercial
-AWS resources. Arcus remains prohibited.
+**The software is product-proven and cloud-deploy-ready; do not claim
+production-live and do not introduce regulated data.** Provision only new
+ProofShape-owned commercial AWS/provider resources, run credentialed staging,
+and retain every live acceptance artifact before production promotion. Arcus
+remains prohibited.
