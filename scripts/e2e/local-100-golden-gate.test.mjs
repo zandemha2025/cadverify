@@ -118,6 +118,7 @@ test("release orchestration requires the production auth, async, worker, and gov
     '["WORKER_STRICT_HEALTH", "1"]',
     '["ASYNC_STRICT_HEALTH", "1"]',
     '["RATE_LIBRARY_ENABLED", "1"]',
+    '["AUTH_PROXY_CLIENT_IP_SOURCE", "nginx"]',
   ]) {
     assert.match(source, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }

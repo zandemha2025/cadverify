@@ -176,6 +176,7 @@ for (const [key, expected] of [
   ["WORKER_STRICT_HEALTH", "1"],
   ["ASYNC_STRICT_HEALTH", "1"],
   ["RATE_LIBRARY_ENABLED", "1"],
+  ["AUTH_PROXY_CLIENT_IP_SOURCE", "nginx"],
 ]) {
   if (process.env[key] !== expected) fail(`${key} must equal ${expected}`);
 }

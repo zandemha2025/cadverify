@@ -49,6 +49,13 @@ function stableJson(value) {
   return JSON.stringify(value);
 }
 
+function runScopedClientIp(identityIndex) {
+  const digest = createHash("sha256")
+    .update(`${runId}:${identityIndex}`)
+    .digest("hex");
+  return `2001:db8:${digest.slice(0, 4)}:${digest.slice(4, 8)}:${digest.slice(8, 12)}::${identityIndex.toString(16)}`;
+}
+
 function forbiddenKeyPaths(value, forbidden, prefix = "") {
   if (!value || typeof value !== "object") return [];
   const paths = [];
@@ -190,12 +197,13 @@ class Matrix {
   }
 
   async newIdentity(prefix, ipSuffix) {
+    const clientIp = runScopedClientIp(ipSuffix);
     const context = await this.browser.newContext({
       baseURL: appUrl,
       viewport: { width: 1440, height: 960 },
       reducedMotion: "reduce",
       acceptDownloads: true,
-      extraHTTPHeaders: { "x-real-ip": `198.51.100.${ipSuffix}` },
+      extraHTTPHeaders: { "x-real-ip": clientIp },
     });
     const page = await context.newPage();
     this.watch(page);
@@ -208,7 +216,7 @@ class Matrix {
     await page.getByRole("button", { name: "Account" }).waitFor({ timeout: 20_000 });
     const sessionCookie = (await context.cookies()).find((cookie) => cookie.name === "dash_session");
     if (!sessionCookie?.value) fail(`${prefix} signup did not set the real dash_session browser cookie`);
-    return { context, page, email };
+    return { context, page, email, clientIp };
   }
 
   async shot(id, page, label) {
@@ -1409,7 +1417,13 @@ class Matrix {
         generatedAt: new Date().toISOString(),
         status: "PASS",
         buildIdentity: captureBuildIdentity(repoRoot),
-        runtime: { appUrl, apiUrl, externalSaaSRequired: false },
+        runtime: {
+          appUrl,
+          apiUrl,
+          externalSaaSRequired: false,
+          clientIpMode: "run-scoped-rfc3849",
+          identityIps: [primary.clientIp, secondary.clientIp],
+        },
         releaseEvidence: { schemaVersion: 1, goldenPaths, validation },
         branchMatrix: {
           notifications: ["unread", "reload-unread", "open/read", "destination", "reload-read", "dismiss", "reload-dismissed", "restore-failure-no-mutation", "restore-retry", "reload-restored", "logout-login", "mark-all", "cross-org-dismiss", "cross-org-restore"],

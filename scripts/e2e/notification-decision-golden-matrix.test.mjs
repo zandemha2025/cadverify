@@ -34,9 +34,19 @@ test("signup proves the real browser session cookie before setup", () => {
   const identity = method("newIdentity", "shot");
   assert.match(identity, /page\.goto\("\/signup"/);
   assert.match(identity, /getByRole\("button", \{ name: \/\^Create account\$\//);
+  assert.match(identity, /runScopedClientIp\(ipSuffix\)/);
+  assert.match(identity, /extraHTTPHeaders: \{ "x-real-ip": clientIp \}/);
+  assert.doesNotMatch(identity, /198\.51\.100\.\$\{ipSuffix\}/);
   assert.match(identity, /context\.cookies\(\)/);
   assert.match(identity, /cookie\.name === "dash_session"/);
   assert.match(identity, /sessionCookie\?\.value/);
+});
+
+test("repeatable release runs use a run-scoped documentation IP namespace", () => {
+  assert.match(source, /function runScopedClientIp\(identityIndex\)/);
+  assert.match(source, /\.update\(`\$\{runId\}:\$\{identityIndex\}`\)/);
+  assert.match(source, /2001:db8:/);
+  assert.match(source, /clientIpMode: "run-scoped-rfc3849"/);
 });
 
 test("unauthenticated public-share probes stay separate from the authenticated helper", () => {
