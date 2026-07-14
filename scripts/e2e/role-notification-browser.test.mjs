@@ -216,6 +216,21 @@ test("runner is import-safe real Playwright orchestration with no mocked network
   assert.match(source, /skips: \[\]/);
 });
 
+test("fixture logins wait for hydration and prove controlled values before submit", () => {
+  const body = method("login", "api");
+  ordered(body, [
+    'getByRole("button", { name: /^Log in$/i })',
+    'button[type="submit"]',
+    "!button.disabled",
+    "email.fill(person.email)",
+    "password.fill(this.password)",
+    "email.inputValue() === person.email",
+    "password.inputValue() === this.password",
+    "waitForResponse",
+    "submit.click()",
+  ]);
+});
+
 test("VER-04 anchors unread, read, and dismiss persistence to UI actions and full refreshes", () => {
   const body = method("runVer04", "runRole01");
   ordered(body, [

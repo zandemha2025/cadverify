@@ -703,12 +703,29 @@ asyncio.run(main())
     invariant(person, `unknown fixture identity ${key}`);
     const actor = await this.newContext(key.replaceAll("_", "-"));
     await actor.page.goto("/login", { waitUntil: "domcontentloaded", timeout: 30_000 });
-    await actor.page.getByLabel("Email").fill(person.email);
-    await actor.page.getByLabel("Password").fill(this.password);
+    const email = actor.page.getByLabel("Email");
+    const password = actor.page.getByLabel("Password");
+    const submit = actor.page.getByRole("button", { name: /^Log in$/i });
+    await submit.waitFor({ state: "visible", timeout: 20_000 });
+    await actor.page.waitForFunction(
+      () => {
+        const button = document.querySelector('form button[type="submit"]');
+        return button instanceof HTMLButtonElement && !button.disabled;
+      },
+      undefined,
+      { timeout: 20_000 },
+    );
+    // Filling before hydration can be lost when React takes control of the
+    // server-rendered inputs. Hydration is now proven above; verify the exact
+    // values again so native form validation cannot silently swallow a click.
+    await email.fill(person.email);
+    await password.fill(this.password);
+    invariant(await email.inputValue() === person.email, `${key} email did not remain entered after hydration`);
+    invariant(await password.inputValue() === this.password, `${key} password did not remain entered after hydration`);
     const responsePromise = actor.page.waitForResponse((response) =>
       response.request().method() === "POST" && new URL(response.url()).pathname === "/api/auth/login",
     { timeout: 45_000 });
-    await actor.page.getByRole("button", { name: /^Log in$/i }).click();
+    await submit.click();
     const response = await responsePromise;
     this.diagnostics.recordTransaction({
       pathId: this.activePathId,
