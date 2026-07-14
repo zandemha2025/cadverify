@@ -5,6 +5,8 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { configuredClientIp } from "./run-scoped-client-ip.mjs";
+
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const pw = require("playwright-core");
 const { strFromU8, unzipSync, zipSync } = require("fflate");
@@ -435,7 +437,7 @@ async function main() {
     // these trusted headers in deployment; direct localhost traffic does not,
     // so the human-sim runner supplies the same ingress contract explicitly.
     extraHTTPHeaders: {
-      "x-real-ip": process.env.E2E_CLIENT_IP || "198.51.100.241",
+      "x-real-ip": configuredClientIp(runId, "training-guide"),
     },
   });
   const page = await context.newPage();

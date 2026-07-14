@@ -4,6 +4,8 @@
  * must provide an explicit credential and are never mutated automatically.
  */
 
+import { configuredClientIp } from "./run-scoped-client-ip.mjs";
+
 export function isLoopbackOrigin(apiBase) {
   try {
     const hostname = new URL(apiBase).hostname;
@@ -74,7 +76,7 @@ export async function resolveAdminApiKey({ apiBase, configuredToken = "", runId,
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      "x-real-ip": process.env.E2E_CLIENT_IP || "198.51.100.246",
+      "x-real-ip": configuredClientIp(runId, `local-admin-${purpose}`),
     },
     body: JSON.stringify({ email, password }),
   }));

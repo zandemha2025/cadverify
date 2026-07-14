@@ -9,6 +9,7 @@ import {
   validateGoldenPathMap,
 } from "./golden-path-evidence.mjs";
 import { captureBuildIdentity } from "./human-sim-release-evidence.mjs";
+import { configuredClientIp } from "./run-scoped-client-ip.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const { chromium } = require("playwright-core");
@@ -16,8 +17,8 @@ const { chromium } = require("playwright-core");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
 const baseUrl = process.env.APP_URL || "http://localhost:3000";
-const clientIp = process.env.E2E_CLIENT_IP || "198.51.100.87";
 const runId = process.env.E2E_RUN_ID || new Date().toISOString().replace(/[:.]/g, "-");
+const clientIp = configuredClientIp(runId, "batch-design-recovery");
 const faultToken = process.env.E2E_FAULT_INJECTION_TOKEN || "";
 const outputRoot = process.env.E2E_ARTIFACT_DIR
   ? path.resolve(process.env.E2E_ARTIFACT_DIR)

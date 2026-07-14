@@ -7,6 +7,7 @@ import { createRequire } from "node:module";
 
 import { makeGoldenPathEvidence, validateGoldenPathMap } from "./golden-path-evidence.mjs";
 import { captureBuildIdentity } from "./human-sim-release-evidence.mjs";
+import { configuredClientIp } from "./run-scoped-client-ip.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const { chromium } = require("playwright-core");
@@ -47,13 +48,6 @@ function stableJson(value) {
     return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;
   }
   return JSON.stringify(value);
-}
-
-function runScopedClientIp(identityIndex) {
-  const digest = createHash("sha256")
-    .update(`${runId}:${identityIndex}`)
-    .digest("hex");
-  return `2001:db8:${digest.slice(0, 4)}:${digest.slice(4, 8)}:${digest.slice(8, 12)}::${identityIndex.toString(16)}`;
 }
 
 function forbiddenKeyPaths(value, forbidden, prefix = "") {
@@ -197,7 +191,7 @@ class Matrix {
   }
 
   async newIdentity(prefix, ipSuffix) {
-    const clientIp = runScopedClientIp(ipSuffix);
+    const clientIp = configuredClientIp(runId, `notification-identity-${ipSuffix}`);
     const context = await this.browser.newContext({
       baseURL: appUrl,
       viewport: { width: 1440, height: 960 },
@@ -1159,7 +1153,9 @@ class Matrix {
       baseURL: appUrl,
       viewport: { width: 1200, height: 900 },
       reducedMotion: "reduce",
-      extraHTTPHeaders: { "x-real-ip": "198.51.100.73" },
+      extraHTTPHeaders: {
+        "x-real-ip": configuredClientIp(runId, "notification-public-share"),
+      },
     });
     const publicPage = await publicContext.newPage();
     this.watch(publicPage);

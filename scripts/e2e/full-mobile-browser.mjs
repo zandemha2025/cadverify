@@ -24,6 +24,7 @@ import {
   validateGoldenPathMap,
 } from "./golden-path-evidence.mjs";
 import { captureBuildIdentity } from "./human-sim-release-evidence.mjs";
+import { configuredClientIp } from "./run-scoped-client-ip.mjs";
 import {
   assertTruthfulTerminalCase,
   dispositionForCost,
@@ -373,7 +374,7 @@ class FullMobileBrowserRun {
     this.startedAt = new Date().toISOString();
     this.buildIdentityAtStart = captureBuildIdentity(repoRoot);
     this.expectedBuild = expectedServedBuildId(this.baseUrl, this.buildIdentityAtStart);
-    this.clientIp = process.env.E2E_CLIENT_IP || `198.51.100.${20 + (randomBytes(1)[0] % 200)}`;
+    this.clientIp = configuredClientIp(this.runId, "full-mobile-browser");
     this.account = null;
     this.cadEvidence = null;
     this.dispositionEvidence = null;

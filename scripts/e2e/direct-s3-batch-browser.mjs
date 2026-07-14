@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { captureBuildIdentity } from "./human-sim-release-evidence.mjs";
+import { configuredClientIp } from "./run-scoped-client-ip.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const { chromium } = require("playwright-core");
@@ -30,8 +31,8 @@ function uniqueEmail(prefix) {
   return `${prefix}-${Date.now()}-${randomBytes(5).toString("hex")}@example.test`;
 }
 
-function testClientIp() {
-  return `198.51.100.${20 + (randomBytes(1)[0] % 200)}`;
+function testClientIp(scope) {
+  return configuredClientIp(runId, `direct-s3-${scope}`);
 }
 
 function sha256(bytes) {
@@ -95,7 +96,7 @@ async function probeBuildBinding() {
   const identity = captureBuildIdentity(repoRoot);
   const [frontendResponse, apiResponse] = await Promise.all([
     fetch(`${baseUrl}/login`, {
-      headers: { "x-real-ip": testClientIp() },
+      headers: { "x-real-ip": testClientIp("build-probe") },
       cache: "no-store",
     }),
     fetch(`${apiUrl}/health`, { cache: "no-store" }),
@@ -192,7 +193,7 @@ async function main() {
       baseURL: baseUrl,
       viewport: { width: 1440, height: 960 },
       reducedMotion: "reduce",
-      extraHTTPHeaders: { "x-real-ip": testClientIp() },
+      extraHTTPHeaders: { "x-real-ip": testClientIp("primary-account") },
     });
     const page = await context.newPage();
     page.on("console", (message) => {
@@ -384,7 +385,7 @@ async function main() {
 
     const secondContext = await browser.newContext({
       baseURL: baseUrl,
-      extraHTTPHeaders: { "x-real-ip": testClientIp() },
+      extraHTTPHeaders: { "x-real-ip": testClientIp("isolation-account") },
     });
     const secondPage = await secondContext.newPage();
     await signup(secondPage, uniqueEmail("direct-s3-isolation"));

@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { CANONICAL_REPORT_CONTRACTS } from "./local-100-golden-gate.mjs";
+import { runScopedClientIp } from "./run-scoped-client-ip.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
@@ -127,7 +128,7 @@ async function fetchServedBuilds() {
         const response = await fetch(url, {
           headers: {
             "connection": "close",
-            "x-real-ip": "198.51.100.199",
+            "x-real-ip": runScopedClientIp(runId, `preflight-${label}`),
           },
           signal: AbortSignal.timeout(BUILD_PROBE_TIMEOUT_MS),
         });
@@ -210,7 +211,10 @@ for (const [index, runner] of runners.entries()) {
   process.stdout.write(`\n[LOCAL_GATE ${index + 1}/${runners.length}] ${runner}\n`);
   const result = spawnSync(process.execPath, [path.join(__dirname, runner)], {
     cwd: repoRoot,
-    env: { ...childEnv, E2E_CLIENT_IP: `198.51.100.${100 + index}` },
+    env: {
+      ...childEnv,
+      E2E_CLIENT_IP: runScopedClientIp(runId, `suite-${index}-${runner}`),
+    },
     stdio: "inherit",
   });
   if (result.status !== 0) runnerFailures.push({ runner, status: result.status, signal: result.signal });

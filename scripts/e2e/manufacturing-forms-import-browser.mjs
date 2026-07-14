@@ -11,6 +11,7 @@ import {
   validateGoldenPathEvidence,
 } from "./golden-path-evidence.mjs";
 import { captureBuildIdentity } from "./human-sim-release-evidence.mjs";
+import { configuredClientIp } from "./run-scoped-client-ip.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const { chromium } = require("playwright-core");
@@ -1382,7 +1383,7 @@ async function main() {
       viewport: { width: 1440, height: 1000 },
       reducedMotion: "reduce",
       extraHTTPHeaders: {
-        "x-real-ip": process.env.E2E_CLIENT_IP || `198.51.100.${40 + (randomBytes(1)[0] % 180)}`,
+        "x-real-ip": configuredClientIp(runId, "manufacturing-forms-import"),
       },
     });
     page = await context.newPage();

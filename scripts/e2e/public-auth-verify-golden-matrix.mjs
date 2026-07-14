@@ -10,6 +10,7 @@ import {
   makeGoldenPathEvidence,
   validateGoldenPathMap,
 } from "./golden-path-evidence.mjs";
+import { configuredClientIp } from "./run-scoped-client-ip.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const { chromium } = require("playwright-core");
@@ -101,7 +102,7 @@ class Matrix {
 
   async init() {
     await mkdir(screenshotDir, { recursive: true });
-    this.clientIp = `198.51.100.${(process.pid % 200) + 20}`;
+    this.clientIp = configuredClientIp(runId, "public-auth-verify");
     try {
       this.browser = await chromium.launch({ channel: "chrome", headless: true });
     } catch {

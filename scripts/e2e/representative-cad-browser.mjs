@@ -22,6 +22,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { captureBuildIdentity } from "./human-sim-release-evidence.mjs";
+import { configuredClientIp } from "./run-scoped-client-ip.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -483,12 +484,13 @@ class RepresentativeCadBrowser {
     } catch {
       this.browser = await chromium.launch(launch);
     }
-    const ipOctet = 20 + (randomBytes(1)[0] % 200);
     this.context = await this.browser.newContext({
       baseURL: this.baseUrl,
       viewport: { width: 1440, height: 960 },
       reducedMotion: "reduce",
-      extraHTTPHeaders: { "x-real-ip": `198.51.100.${ipOctet}` },
+      extraHTTPHeaders: {
+        "x-real-ip": configuredClientIp(this.runId, "representative-cad"),
+      },
     });
     this.page = await this.context.newPage();
     this.page.setDefaultTimeout(20_000);

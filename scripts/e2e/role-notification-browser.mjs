@@ -12,6 +12,7 @@ import {
   validateGoldenPathMap,
 } from "./golden-path-evidence.mjs";
 import { captureBuildIdentity } from "./human-sim-release-evidence.mjs";
+import { configuredClientIp } from "./run-scoped-client-ip.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const { chromium } = require("playwright-core");
@@ -684,13 +685,14 @@ asyncio.run(main())
   }
 
   async newContext(persona) {
-    const octet = 30 + (Object.keys(this.identities).length * 17) % 190;
     const context = await this.browser.newContext({
       baseURL: this.config.appUrl,
       viewport: { width: 1440, height: 960 },
       reducedMotion: "reduce",
       acceptDownloads: true,
-      extraHTTPHeaders: { "x-real-ip": `198.51.100.${octet}` },
+      extraHTTPHeaders: {
+        "x-real-ip": configuredClientIp(this.config.runId, `role-notification-${persona}`),
+      },
     });
     this.contexts.push(context);
     const page = await context.newPage();

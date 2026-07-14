@@ -10,6 +10,7 @@ import {
   validateGoldenPathMap,
 } from "./golden-path-evidence.mjs";
 import { captureBuildIdentity } from "./human-sim-release-evidence.mjs";
+import { configuredClientIp } from "./run-scoped-client-ip.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const { chromium } = require("playwright-core");
@@ -18,8 +19,8 @@ const sharp = require("sharp");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
 const baseUrl = process.env.APP_URL || "http://localhost:3000";
-const clientIp = process.env.E2E_CLIENT_IP || "198.51.100.84";
 const runId = process.env.E2E_RUN_ID || new Date().toISOString().slice(0, 10);
+const clientIp = configuredClientIp(runId, "mobile-recovery");
 const outputRoot = process.env.E2E_ARTIFACT_DIR
   ? path.resolve(process.env.E2E_ARTIFACT_DIR)
   : path.join(repoRoot, ".gstack", "qa-reports");

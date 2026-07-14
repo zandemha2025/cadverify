@@ -15,7 +15,9 @@ test("direct S3 browser gate owns success, isolation, and interrupted-upload bra
   assert.match(source, /body\?\.status, "aborted"/);
   assert.match(source, /body\?\.status, "consumed"/);
   assert.match(source, /terminalScreenshot, fullPage: false/);
-  assert.match(source, /extraHTTPHeaders: \{ "x-real-ip": testClientIp\(\) \}/);
+  assert.match(source, /extraHTTPHeaders: \{ "x-real-ip": testClientIp\("primary-account"\) \}/);
+  assert.match(source, /testClientIp\("isolation-account"\)/);
+  assert.match(source, /configuredClientIp\(runId, `direct-s3-\$\{scope\}`\)/);
   assert.match(source, /credentials: "same-origin"/);
   assert.doesNotMatch(source, /context\.request/);
   assert.match(source, /frontendBuildId, binding\.identity\.buildId/);

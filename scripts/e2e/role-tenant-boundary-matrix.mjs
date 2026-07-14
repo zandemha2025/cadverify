@@ -10,6 +10,7 @@ import {
   validateGoldenPathMap,
 } from "./golden-path-evidence.mjs";
 import { captureBuildIdentity } from "./human-sim-release-evidence.mjs";
+import { configuredClientIp } from "./run-scoped-client-ip.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const { chromium } = require("playwright-core");
@@ -22,13 +23,13 @@ const repoRoot = path.resolve(__dirname, "../..");
 const backendRoot = path.join(repoRoot, "backend");
 const appUrl = (process.env.APP_URL || "http://localhost:3000").replace(/\/+$/, "");
 const apiUrl = (process.env.API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
-const clientIp = process.env.E2E_CLIENT_IP || "198.51.100.83";
 const databaseUrl =
   process.env.DATABASE_URL ||
   "postgresql://cadverify:localdev@127.0.0.1:5432/cadverify";
 const runId =
   process.env.E2E_RUN_ID ||
   `role-tenant-${new Date().toISOString().replace(/[-:]/g, "").slice(0, 15)}`;
+const clientIp = configuredClientIp(runId, "role-tenant-boundary");
 const outputRoot = process.env.E2E_ARTIFACT_DIR
   ? path.resolve(process.env.E2E_ARTIFACT_DIR)
   : path.join(repoRoot, ".gstack", "qa-reports");
