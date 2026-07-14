@@ -6,12 +6,15 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { captureBuildIdentity } from "./human-sim-release-evidence.mjs";
+
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const { chromium } = require("playwright-core");
 const { zipSync } = require("fflate");
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const baseUrl = process.env.APP_URL || "http://localhost:3000";
+const apiUrl = process.env.API_URL || "http://127.0.0.1:8000";
 const s3Endpoint = process.env.E2E_S3_ENDPOINT || "http://127.0.0.1:5000";
 const runId = process.env.E2E_RUN_ID || new Date().toISOString().replace(/[:.]/g, "-");
 const outputRoot = process.env.E2E_ARTIFACT_DIR
@@ -54,25 +57,72 @@ async function responseJson(response) {
 }
 
 async function signup(page, email) {
-  await page.goto("/signup", { waitUntil: "domcontentloaded", timeout: 30_000 });
+  const response = await page.goto("/signup", { waitUntil: "domcontentloaded", timeout: 30_000 });
+  assert.equal(response?.status(), 200, `signup page HTTP ${response?.status()}`);
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill("Passw0rd123");
   await page.getByRole("button", { name: /^Create account$/ }).click();
   await page.waitForURL((url) => url.pathname === "/verify", { timeout: 30_000 });
 }
 
-async function apiJson(context, method, pathname) {
-  const response = await context.request.fetch(pathname, { method });
-  return { response, body: await responseJson(response) };
+async function browserFetch(page, method, pathname) {
+  return page.evaluate(async ({ requestMethod, requestPath }) => {
+    const response = await fetch(requestPath, {
+      method: requestMethod,
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    return {
+      status: response.status,
+      contentType: response.headers.get("content-type") || "",
+      text: await response.text(),
+    };
+  }, { requestMethod: method, requestPath: pathname });
 }
 
-async function waitForBatch(context, batchId, timeoutMs = 240_000) {
+async function apiJson(page, method, pathname) {
+  const response = await browserFetch(page, method, pathname);
+  let body = null;
+  try {
+    body = response.text ? JSON.parse(response.text) : null;
+  } catch {
+    body = { invalid_json: true, text: response.text.slice(0, 500) };
+  }
+  return { ...response, body };
+}
+
+async function probeBuildBinding() {
+  const identity = captureBuildIdentity(repoRoot);
+  const [frontendResponse, apiResponse] = await Promise.all([
+    fetch(`${baseUrl}/login`, {
+      headers: { "x-real-ip": testClientIp() },
+      cache: "no-store",
+    }),
+    fetch(`${apiUrl}/health`, { cache: "no-store" }),
+  ]);
+  const apiHealth = await apiResponse.json().catch(() => null);
+  const binding = {
+    identity,
+    frontendStatus: frontendResponse.status,
+    frontendBuildId: frontendResponse.headers.get("x-proofshape-build"),
+    apiStatus: apiResponse.status,
+    apiBuildId: apiHealth?.build_id ?? null,
+  };
+  assert.equal(binding.frontendStatus, 200, `frontend build probe HTTP ${binding.frontendStatus}`);
+  assert.equal(binding.apiStatus, 200, `API build probe HTTP ${binding.apiStatus}`);
+  assert.equal(binding.identity.gitHead, binding.identity.buildId, "runner build ID must equal git HEAD");
+  assert.equal(binding.frontendBuildId, binding.identity.buildId, "frontend build must equal runner build ID");
+  assert.equal(binding.apiBuildId, binding.identity.buildId, "API build must equal runner build ID");
+  return binding;
+}
+
+async function waitForBatch(page, batchId, timeoutMs = 240_000) {
   const startedAt = Date.now();
   const statuses = [];
   let latest = null;
   while (Date.now() - startedAt < timeoutMs) {
-    const result = await apiJson(context, "GET", `/api/proxy/batch/${batchId}`);
-    assert.equal(result.response.status(), 200, `batch status HTTP ${result.response.status()}`);
+    const result = await apiJson(page, "GET", `/api/proxy/batch/${batchId}`);
+    assert.equal(result.status, 200, `batch status HTTP ${result.status}`);
     latest = result.body;
     if (statuses.at(-1) !== latest.status) statuses.push(latest.status);
     if (terminalBatchStatuses.has(latest.status)) return { latest, statuses };
@@ -118,6 +168,7 @@ async function main() {
     args: process.env.CI ? ["--no-sandbox", "--disable-dev-shm-usage"] : [],
   }));
 
+  const buildBindingStart = await probeBuildBinding();
   const report = {
     suite: "direct-s3-batch-browser",
     runId,
@@ -132,6 +183,7 @@ async function main() {
     steps: [],
     consoleErrors: [],
     requestFailures: [],
+    buildBinding: { start: buildBindingStart, end: null },
   };
 
   let context;
@@ -165,8 +217,8 @@ async function main() {
     const email = uniqueEmail("direct-s3");
     await signup(page, email);
 
-    const capability = await apiJson(context, "GET", "/api/proxy/uploads/capabilities");
-    assert.equal(capability.response.status(), 200);
+    const capability = await apiJson(page, "GET", "/api/proxy/uploads/capabilities");
+    assert.equal(capability.status, 200);
     assert.equal(capability.body?.direct_upload, true, JSON.stringify(capability.body));
     report.steps.push({ id: "S3-01", status: "PASS", capability: capability.body });
 
@@ -271,7 +323,7 @@ async function main() {
     const batchId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
     assert.match(batchId || "", /^[A-Z0-9]+$/);
 
-    const terminal = await waitForBatch(context, batchId);
+    const terminal = await waitForBatch(page, batchId);
     assert.equal(terminal.latest.status, "completed", JSON.stringify(terminal.latest));
     assert.equal(terminal.latest.total_items, 1);
     assert.equal(terminal.latest.completed_items, 1);
@@ -283,9 +335,9 @@ async function main() {
     const row = page.getByRole("row").filter({ hasText: "cube.step" }).first();
     await row.getByText(/^Completed$/i).waitFor({ timeout: 20_000 });
 
-    const csvResponse = await context.request.get(`/api/proxy/batch/${batchId}/results/csv`);
-    assert.equal(csvResponse.status(), 200);
-    const csv = await csvResponse.text();
+    const csvResponse = await browserFetch(page, "GET", `/api/proxy/batch/${batchId}/results/csv`);
+    assert.equal(csvResponse.status, 200);
+    const csv = csvResponse.text;
     assert.match(csv, /cube\.step,completed/i);
 
     assert.equal(network.initiate.length, 1, JSON.stringify(network));
@@ -301,8 +353,8 @@ async function main() {
     const directUploadId = initiation?.direct_upload_id;
     assert.match(directUploadId || "", /^[A-Z0-9]+$/);
 
-    const directStatus = await apiJson(context, "GET", `/api/proxy/uploads/${directUploadId}`);
-    assert.equal(directStatus.response.status(), 200);
+    const directStatus = await apiJson(page, "GET", `/api/proxy/uploads/${directUploadId}`);
+    assert.equal(directStatus.status, 200);
     assert.equal(directStatus.body?.status, "consumed", JSON.stringify(directStatus.body));
     assert.equal(directStatus.body?.batch_id, batchId);
 
@@ -336,10 +388,10 @@ async function main() {
     });
     const secondPage = await secondContext.newPage();
     await signup(secondPage, uniqueEmail("direct-s3-isolation"));
-    const foreignUpload = await apiJson(secondContext, "GET", `/api/proxy/uploads/${directUploadId}`);
-    const foreignBatch = await apiJson(secondContext, "GET", `/api/proxy/batch/${batchId}`);
-    assert.equal(foreignUpload.response.status(), 404);
-    assert.equal(foreignBatch.response.status(), 404);
+    const foreignUpload = await apiJson(secondPage, "GET", `/api/proxy/uploads/${directUploadId}`);
+    const foreignBatch = await apiJson(secondPage, "GET", `/api/proxy/batch/${batchId}`);
+    assert.equal(foreignUpload.status, 404);
+    assert.equal(foreignBatch.status, 404);
     await secondContext.close();
     report.steps.push({ id: "S3-03", status: "PASS", uploadStatus: 404, batchStatus: 404 });
 
@@ -379,8 +431,8 @@ async function main() {
     assert.equal(network.batchCreate.length, batchesBeforeFailure);
     assert.equal(network.abort.at(-1)?.status, 200, JSON.stringify(network.abort));
     const abortedId = network.initiate.at(-1)?.body?.direct_upload_id;
-    const abortedStatus = await apiJson(context, "GET", `/api/proxy/uploads/${abortedId}`);
-    assert.equal(abortedStatus.response.status(), 200);
+    const abortedStatus = await apiJson(page, "GET", `/api/proxy/uploads/${abortedId}`);
+    assert.equal(abortedStatus.status, 200);
     assert.equal(abortedStatus.body?.status, "aborted", JSON.stringify(abortedStatus.body));
     const failureScreenshot = path.join(screenshotDir, "s3-04-finite-retry-abort.png");
     await page.screenshot({ path: failureScreenshot, fullPage: true, animations: "disabled", caret: "initial" });
@@ -411,6 +463,9 @@ async function main() {
     report.consoleErrors = unexpectedConsoleErrors;
     assert.deepEqual(unexpectedConsoleErrors, []);
     assert.deepEqual(report.requestFailures, []);
+    report.buildBinding.end = await probeBuildBinding();
+    assert.equal(report.buildBinding.end.identity.gitHead, report.buildBinding.start.identity.gitHead);
+    assert.equal(report.buildBinding.end.identity.buildId, report.buildBinding.start.identity.buildId);
     report.status = "PASS";
   } catch (error) {
     report.status = "FAIL";

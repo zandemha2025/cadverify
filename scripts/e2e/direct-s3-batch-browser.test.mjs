@@ -10,12 +10,16 @@ test("direct S3 browser gate owns success, isolation, and interrupted-upload bra
   }
   assert.match(source, /part_count >= 2/);
   assert.match(source, /network\.refresh\.length >= 1/);
-  assert.match(source, /foreignUpload\.response\.status\(\), 404/);
+  assert.match(source, /foreignUpload\.status, 404/);
   assert.match(source, /rejectedPuts, 4/);
   assert.match(source, /body\?\.status, "aborted"/);
   assert.match(source, /body\?\.status, "consumed"/);
   assert.match(source, /terminalScreenshot, fullPage: false/);
   assert.match(source, /extraHTTPHeaders: \{ "x-real-ip": testClientIp\(\) \}/);
+  assert.match(source, /credentials: "same-origin"/);
+  assert.doesNotMatch(source, /context\.request/);
+  assert.match(source, /frontendBuildId, binding\.identity\.buildId/);
+  assert.match(source, /apiBuildId, binding\.identity\.buildId/);
 });
 
 test("direct S3 evidence rejects provider coordinates and browser-persisted credentials", () => {
