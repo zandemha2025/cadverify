@@ -59,6 +59,10 @@ export DATABASE_URL="${DATABASE_URL:-postgresql://cadverify:localdev@localhost:5
 # directory unless the operator explicitly supplies another local root.
 export OBJECT_STORE_LOCAL_ROOT="${OBJECT_STORE_LOCAL_ROOT:-$REPO_ROOT/data/local-blobs}"
 export PDF_CACHE_DIR="${PDF_CACHE_DIR:-$REPO_ROOT/data/pdf-cache}"
+LOCAL_LOG_DIR="${LOCAL_LOG_DIR:-$REPO_ROOT/data/local-logs}"
+BACKEND_LOG="$LOCAL_LOG_DIR/backend.log"
+WORKER_LOG="$LOCAL_LOG_DIR/worker.log"
+FRONTEND_LOG="$LOCAL_LOG_DIR/frontend.log"
 
 # WeasyPrint's macOS wheels load Pango/GLib through cffi. Homebrew installs the
 # correct dylibs, but they are outside the default loader path used by the
@@ -153,6 +157,16 @@ mkdir -p "$PDF_CACHE_DIR" || {
   err "Could not create the local PDF cache at $PDF_CACHE_DIR"; exit 1; }
 [ -w "$PDF_CACHE_DIR" ] || {
   err "Local PDF cache is not writable: $PDF_CACHE_DIR"; exit 1; }
+mkdir -p "$LOCAL_LOG_DIR" || {
+  err "Could not create the local log directory at $LOCAL_LOG_DIR"; exit 1; }
+[ -w "$LOCAL_LOG_DIR" ] || {
+  err "Local log directory is not writable: $LOCAL_LOG_DIR"; exit 1; }
+# Open regular-file sinks before starting detached sessions. If this launcher
+# or its terminal disappears unexpectedly, the services retain valid output
+# descriptors instead of inheriting a revoked terminal descriptor.
+for service_log in "$BACKEND_LOG" "$WORKER_LOG" "$FRONTEND_LOG"; do
+  : >>"$service_log" || { err "Could not write local log: $service_log"; exit 1; }
+done
 
 # ── ensure the database schema (idempotent) ─────────────────────────────────
 log "Ensuring database schema (alembic upgrade head)…"
@@ -178,9 +192,10 @@ log "Starting backend (uvicorn) on http://127.0.0.1:${BACKEND_PORT} …"
   trap '' INT
   cd "$BACKEND_DIR" || exit 1
   # multiple workers so the part's cost + DFM analyses run in parallel (faster resolve)
-  exec "${ISOLATED_EXEC[@]}" "$VENV_PY" -m uvicorn main:app --host 127.0.0.1 --port "$BACKEND_PORT" --workers 4
+  exec "${ISOLATED_EXEC[@]}" "$VENV_PY" -m uvicorn main:app --host 127.0.0.1 --port "$BACKEND_PORT" --workers 4 >>"$BACKEND_LOG" 2>&1
 ) &
 BACK_PID=$!
+log "Backend logs: $BACKEND_LOG"
 
 # ── start the arq worker (background jobs), only if Redis is reachable ───────
 # fly.toml runs this as its own 'worker' process; locally nothing else does.
@@ -192,9 +207,10 @@ if [ -x "$VENV_ARQ" ] && REDIS_PROBE_URL="$REDIS_URL_EFFECTIVE" "$VENV_PY" -c \
   (
     trap '' INT
     cd "$BACKEND_DIR" || exit 1
-    exec "${ISOLATED_EXEC[@]}" "$VENV_ARQ" src.jobs.worker.WorkerSettings
+    exec "${ISOLATED_EXEC[@]}" "$VENV_ARQ" src.jobs.worker.WorkerSettings >>"$WORKER_LOG" 2>&1
   ) &
   WORKER_PID=$!
+  log "Worker logs: $WORKER_LOG"
 else
   warn "Redis not reachable at ${REDIS_URL_EFFECTIVE} — NOT starting the arq worker."
   warn "Background jobs (SAM-3D reconstruction, batch analyses) will not run."
@@ -215,16 +231,17 @@ log "Starting frontend (Next.js production) on http://localhost:${FRONTEND_PORT}
 (
   trap '' INT
   cd "$FRONTEND_DIR" || exit 1
-  exec "${ISOLATED_EXEC[@]}" npm start -- -p "$FRONTEND_PORT"
+  exec "${ISOLATED_EXEC[@]}" npm start -- -p "$FRONTEND_PORT" >>"$FRONTEND_LOG" 2>&1
 ) &
 FRONT_PID=$!
+log "Frontend logs: $FRONTEND_LOG"
 
 # ── wait for the backend to start serving HTTP ──────────────────────────────
 log "Waiting for backend to be ready…"
 backend_ok=0
 for _ in $(seq 1 60); do
   if ! kill -0 "$BACK_PID" 2>/dev/null; then
-    err "Backend process exited before becoming ready. See output above."; exit 1; fi
+    err "Backend process exited before becoming ready. See $BACKEND_LOG."; exit 1; fi
   if curl -sS -o /dev/null --max-time 2 "$HEALTH_URL" 2>/dev/null; then backend_ok=1; break; fi
   sleep 1
 done
@@ -258,6 +275,7 @@ log "ProofShape is running."
 log "  • App:      $APP_URL   (Sign up / Log in to enter the platform)"
 log "  • Backend:  http://127.0.0.1:${BACKEND_PORT}"
 [ -n "$WORKER_PID" ] && log "  • Worker:   arq (PID $WORKER_PID) — background jobs on ${REDIS_URL_EFFECTIVE}"
+log "  • Logs:     $LOCAL_LOG_DIR"
 log "  • First sign-up: email + password (>=8 chars, a letter and a digit)."
 log "Press Ctrl-C in this window to stop everything."
 echo

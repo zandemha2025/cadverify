@@ -62,6 +62,7 @@ from src.auth.password import router as password_router
 from src.auth.saml import router as saml_router
 from src.auth.rate_limit import limiter, rate_limit_handler
 from src.auth.scrubbing import scrub_processor, sentry_before_send
+from src.obs.safe_logger import SafePrintLoggerFactory
 
 
 def _parse_origins(raw: str) -> list[str]:
@@ -279,7 +280,9 @@ structlog.configure(
     wrapper_class=structlog.make_filtering_bound_logger(
         getattr(logging, LOG_LEVEL, logging.INFO)
     ),
-    logger_factory=structlog.PrintLoggerFactory(),
+    # A service can outlive the terminal that launched it.  Keep a revoked or
+    # closed stdout sink from turning successful application work into a 500.
+    logger_factory=SafePrintLoggerFactory(),
     cache_logger_on_first_use=True,
 )
 

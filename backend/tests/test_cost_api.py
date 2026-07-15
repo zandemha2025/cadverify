@@ -8,7 +8,9 @@ no Redis/Postgres/network.
 """
 from __future__ import annotations
 
+import errno
 import importlib
+import io
 
 import pytest
 from fastapi.testclient import TestClient
@@ -385,6 +387,32 @@ def test_cost_geometry_invalid_still_logs(client, non_watertight_box, stl_bytes_
     events = [e for e in logs if e.get("event") == "cost_estimate"]
     assert len(events) == 1
     assert events[0]["status"] == "GEOMETRY_INVALID"
+
+
+def test_cost_success_survives_revoked_structured_log_sink(
+    client, cube_10mm, stl_bytes_of, monkeypatch
+):
+    """A detached terminal must not turn a completed cost decision into a 500."""
+    import structlog
+
+    from src.api import routes
+    from src.obs.safe_logger import SafePrintLoggerFactory
+
+    class _RevokedStream(io.StringIO):
+        def write(self, value: str) -> int:
+            raise OSError(errno.EBADF, "Bad file descriptor")
+
+    factory = structlog.get_config()["logger_factory"]
+    assert isinstance(factory, SafePrintLoggerFactory)
+    monkeypatch.setattr(factory, "_file", _RevokedStream())
+    # Avoid any BoundLogger cached by earlier tests so this request uses the
+    # configured factory with the simulated revoked descriptor.
+    monkeypatch.setattr(routes, "slog", structlog.get_logger("cadverify.cost.revoked"))
+
+    r = _post(client, "cube.stl", stl_bytes_of(cube_10mm), qty="50")
+
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "OK"
 
 
 def test_cost_parse_timeout_is_clean_504(client, cube_10mm, stl_bytes_of, monkeypatch):
