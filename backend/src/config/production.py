@@ -43,6 +43,24 @@ def assert_production_operations() -> None:
     if not is_production():
         return
 
+    try:
+        design_timeout = float(
+            os.getenv("DESIGN_GENERATION_TIMEOUT_SECONDS", "45")
+        )
+        design_concurrency = int(os.getenv("DESIGN_GENERATION_CONCURRENCY", "2"))
+    except ValueError as exc:
+        raise RuntimeError(
+            "Design generation timeout/concurrency must be numeric"
+        ) from exc
+    if not 1.0 <= design_timeout <= 120.0:
+        raise RuntimeError(
+            "DESIGN_GENERATION_TIMEOUT_SECONDS must be between 1 and 120"
+        )
+    if not 1 <= design_concurrency <= 8:
+        raise RuntimeError(
+            "DESIGN_GENERATION_CONCURRENCY must be between 1 and 8"
+        )
+
     if _enabled("RATE_LIMIT_ALLOW_MEMORY"):
         raise RuntimeError(
             "RATE_LIMIT_ALLOW_MEMORY cannot be enabled in a released process"
@@ -184,23 +202,26 @@ def assert_production_operations() -> None:
             )
 
     if _enabled("PRODUCTION_TLS_REQUIRED"):
-        dashboard_origin = os.getenv("DASHBOARD_ORIGIN", "").strip()
-        try:
-            dashboard = urlsplit(dashboard_origin)
-        except ValueError as exc:
-            raise RuntimeError("DASHBOARD_ORIGIN is not a valid HTTPS origin") from exc
-        if (
-            dashboard.scheme != "https"
-            or not dashboard.hostname
-            or dashboard.username
-            or dashboard.password
-            or dashboard.path not in {"", "/"}
-            or dashboard.query
-            or dashboard.fragment
-        ):
-            raise RuntimeError(
-                "DASHBOARD_ORIGIN must be a canonical HTTPS origin in production"
-            )
+        for origin_var in ("DASHBOARD_ORIGIN", "API_ORIGIN"):
+            origin = os.getenv(origin_var, "").strip()
+            try:
+                parsed_origin = urlsplit(origin)
+            except ValueError as exc:
+                raise RuntimeError(
+                    f"{origin_var} is not a valid HTTPS origin"
+                ) from exc
+            if (
+                parsed_origin.scheme != "https"
+                or not parsed_origin.hostname
+                or parsed_origin.username
+                or parsed_origin.password
+                or parsed_origin.path not in {"", "/"}
+                or parsed_origin.query
+                or parsed_origin.fragment
+            ):
+                raise RuntimeError(
+                    f"{origin_var} must be a canonical HTTPS origin in production"
+                )
 
         redis_url = os.getenv("REDIS_URL", "").strip()
         if not redis_url.lower().startswith("rediss://"):

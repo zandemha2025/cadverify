@@ -1,0 +1,119 @@
+# Replace account/repository/email placeholders before use. This profile opts
+# into redundant service copies, Multi-AZ RDS, cache failover, deletion guards,
+# longer recovery, WAF, alarms, and autoscaling.
+aws_region              = "us-east-1"
+aws_account_id          = "222222222222"
+project_name            = "proofshape-commercial"
+environment             = "production"
+application_environment = "saas-production"
+availability_profile    = "ha"
+
+vpc_cidr            = "10.50.0.0/16"
+public_subnet_cidrs  = ["10.50.0.0/24", "10.50.1.0/24"]
+private_subnet_cidrs = ["10.50.10.0/24", "10.50.11.0/24"]
+
+# Production/HA is intentionally fail-closed: replace all placeholders with a
+# custom alias, its us-east-1 viewer certificate, and a regional ALB certificate
+# for the same hostname. The default CloudFront hostname/HTTP origin is staging-only.
+cloudfront_alias                    = "app.example.com"
+cloudfront_acm_certificate_arn      = "arn:aws:acm:us-east-1:222222222222:certificate/00000000-0000-0000-0000-000000000000"
+cloudfront_origin_protocol_policy   = "https-only"
+alb_origin_acm_certificate_arn      = "arn:aws:acm:us-east-1:222222222222:certificate/00000000-0000-0000-0000-000000000000"
+route53_zone_id                     = ""
+cloudfront_price_class              = "PriceClass_200"
+cloudfront_wait_for_deployment      = true
+cloudfront_retain_on_delete         = true
+enable_static_asset_caching         = true
+alb_deletion_protection             = true
+alb_access_log_bucket_name           = "replace-with-proofshape-prod-edge-logs"
+cloudfront_access_log_bucket_domain = "replace-with-proofshape-prod-edge-logs.s3.amazonaws.com"
+
+enable_waf         = true
+enable_waf_logging = true
+waf_rate_limit     = 5000
+
+artifact_bucket_name                  = ""
+transient_upload_bucket_name          = ""
+transient_upload_expiration_days      = 2
+transient_upload_contract_confirmed   = false
+s3_force_destroy                      = false
+s3_abort_incomplete_multipart_days    = 7
+s3_noncurrent_version_expiration_days = 365
+additional_s3_cors_origins             = []
+ecr_force_delete                       = false
+ecr_max_image_count                    = 100
+
+rds_instance_class                         = "db.t4g.medium"
+rds_allocated_storage_gib                  = 100
+rds_max_allocated_storage_gib              = 1000
+rds_multi_az                               = true
+rds_backup_retention_days                  = 35
+rds_deletion_protection                    = true
+rds_skip_final_snapshot                    = false
+rds_delete_automated_backups               = false
+rds_performance_insights_enabled           = true
+rds_performance_insights_retention_days    = 7
+
+cache_node_type                 = "cache.t4g.small"
+cache_node_count                = 2
+cache_snapshot_retention_days   = 7
+cache_final_snapshot_identifier = "proofshape-commercial-production-final"
+cache_auth_token_secret_arn     = ""
+cache_authentication_confirmed  = false
+
+# Bootstrap with false/empty workload values. Enable only after every runtime
+# secret has an AWSCURRENT version, ElastiCache AUTH is confirmed, and both
+# repository images exist by digest. Set cache_authentication_confirmed=true
+# and transient_upload_contract_confirmed=true in that activation apply only
+# after reviewing the exact release image's storage routing.
+enable_workloads = false
+enable_services  = false
+backend_image    = ""
+frontend_image   = ""
+initial_release_id = "bootstrap" # Replace with the exact 40-character SHA before enable_workloads=true.
+
+fargate_platform_version   = "1.4.0"
+api_capacity_provider      = "FARGATE"
+worker_capacity_provider   = "FARGATE"
+frontend_capacity_provider = "FARGATE"
+api_cpu                     = 2048
+api_memory                  = 4096
+worker_cpu                  = 2048
+worker_memory               = 8192
+frontend_cpu                = 512
+frontend_memory             = 1024
+migration_cpu               = 512
+migration_memory            = 1024
+batch_default_concurrency   = 4
+
+api_desired_count      = 2
+worker_desired_count   = 2
+frontend_desired_count = 2
+enable_autoscaling     = true
+api_autoscaling_min      = 2
+api_autoscaling_max      = 8
+worker_autoscaling_min   = 2
+worker_autoscaling_max   = 8
+frontend_autoscaling_min = 2
+frontend_autoscaling_max = 6
+
+enable_vpc_flow_logs      = true
+enable_container_insights = true
+log_retention_days        = 90
+enable_alarms             = true
+create_alarm_topic        = true
+
+enable_budget       = true
+monthly_budget_usd  = 3000
+budget_alert_emails = ["replace-with-ops@example.com"]
+
+enable_github_oidc          = true
+create_github_oidc_provider = true
+github_oidc_provider_arn    = ""
+github_repository           = "YOUR_ORG/YOUR_REPO"
+github_environment          = "aws-commercial-production"
+
+tags = {
+  CostCenter = "proofshape-commercial"
+  Owner      = "platform"
+}

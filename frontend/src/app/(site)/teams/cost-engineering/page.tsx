@@ -12,7 +12,7 @@ import CostEngineeringCinematic from "./cost-engineering-cinematic";
  */
 
 export const metadata: Metadata = {
-  title: "For Cost Engineering — CadVerify",
+  title: "For Cost Engineering — ProofShape",
   description:
     "You sign the number. You should be able to open it. From a CAD file to a resource-cost record you can defend line-by-line — every driver sourced, the ±40% band honest about being assumption-based, and eventually validated against your own invoices.",
 };

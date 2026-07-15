@@ -123,7 +123,7 @@ const routeSpecs = [
 ];
 
 const desktopNavSignals = [
-  /CadVerify/i,
+  /ProofShape/i,
   /Method/i,
   /Platform/i,
   /Teams/i,
@@ -134,6 +134,7 @@ const desktopNavSignals = [
 ];
 
 const forbiddenVisiblePatterns = [
+  /\bCadVerify\b/i,
   /\bunder construction\b/i,
   /\bcoming soon\b/i,
   /\bnot implemented\b/i,

@@ -153,6 +153,12 @@ export interface RecalibrateResult {
   n_real: number;
   n_standin: number;
   n_skipped: number;
+  skipped?: {
+    part_id: string;
+    process: string;
+    quantity: number;
+    reason: string;
+  }[];
   from_real: boolean;
   validated: boolean;
   claim: string | null;

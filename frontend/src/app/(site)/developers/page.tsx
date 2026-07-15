@@ -37,7 +37,7 @@ import styles from "./developers.module.css";
  */
 
 export const metadata: Metadata = {
-  title: "Developers — CadVerify",
+  title: "Developers — ProofShape",
   description:
     "The engine is an API. Send an STL, STEP/STP or IGES/IGS file, get back the full auditable report — routing, DFM, drivers with provenance, confidence, decision. Or self-host the whole stack with Docker Compose.",
 };
@@ -226,8 +226,8 @@ export default function DevelopersPage() {
             used for air-gapped and export-controlled deployments.
           </p>
           <div style={codeBlock}>
-            <p style={codeLine}>git clone https://github.com/zandemha2025/cadverify.git</p>
-            <p style={codeLine}>cd cadverify</p>
+            <p style={codeLine}>git clone &quot;$PROOFSHAPE_DEPLOYMENT_REPOSITORY&quot; proofshape</p>
+            <p style={codeLine}>cd proofshape</p>
             <p style={codeLine}>
               cp .env.example .env{I1}<span style={{ color: "rgba(245,245,247,0.35)" }}># set secrets, storage, origins</span>
             </p>

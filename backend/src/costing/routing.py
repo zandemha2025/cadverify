@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Optional
 
 from src.analysis.models import ProcessType
+from src.analysis.features.base import has_rotational_surface_evidence
 from src.costing.makeability import environment_gate
 from src.profiles.database import get_materials_for_process
 from src.costing.rates import (
@@ -61,7 +62,7 @@ def _inertia_axisymmetric(mesh, tolerance: float = ROTATIONAL_INERTIA_TOL) -> bo
         return False
 
 
-def is_rotational(geometry, mesh=None):
+def is_rotational(geometry, mesh=None, features=None):
     """Rotational predicate (spec §5.1) — CONSISTENT with the DFM gate by design.
 
     A part is routed to turning only when BOTH signals agree:
@@ -73,7 +74,10 @@ def is_rotational(geometry, mesh=None):
          tolerance), AND
       2. inertia-eigenvalue axisymmetry (`_inertia_axisymmetric`) — the SAME test
          `checks.check_rotational_symmetry` runs for CNC turning, at the SAME 0.15
-         tolerance.
+         tolerance, AND
+      3. a measured outer cylindrical surface covering at least 5% of the part's
+         surface area. This rejects boxy L brackets and open enclosures whose
+         similar extents and inertia moments otherwise mimic a round part.
 
     Requiring (2) makes `rotational ⟹ the engine's rotational-symmetry DFM check
     passes`, so routing can NEVER headline "turnable" on a part the DFM hard-fails
@@ -101,6 +105,9 @@ def is_rotational(geometry, mesh=None):
     rotational = (
         (roundness >= 0.80)
         and _inertia_axisymmetric(mesh)
+        and has_rotational_surface_evidence(
+            features, float(getattr(geometry, "surface_area", 0.0) or 0.0)
+        )
         and (cross_dia >= 5.0)
         and (0.25 <= ld <= 8.0)
     )

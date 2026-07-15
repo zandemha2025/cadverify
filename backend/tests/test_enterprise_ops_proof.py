@@ -32,14 +32,9 @@ def healthcheck_command(service: dict) -> str:
     return "\n".join(service["healthcheck"]["test"])
 
 
-def assert_contains_all(text: str, expected: list[str]) -> None:
-    missing = [needle for needle in expected if needle not in text]
-    assert missing == []
-
-
-def test_ci_releases_images_and_protected_workflow_promotes_staging_first():
+def test_ci_build_proof_and_aws_promotion_use_one_exact_artifact_set():
     workflow = load_yaml(".github/workflows/ci.yml")
-    promotion = load_yaml(".github/workflows/saas-promote.yml")
+    promotion = load_yaml(".github/workflows/aws-commercial-promote.yml")
     triggers = workflow_triggers(workflow)
     promotion_inputs = workflow_triggers(promotion)["workflow_dispatch"]["inputs"]
 
@@ -54,72 +49,183 @@ def test_ci_releases_images_and_protected_workflow_promotes_staging_first():
     step_names = {step.get("name") for step in docker_job["steps"]}
     assert "Validate Compose deploy configs" in step_names
     assert "Lint and render Helm chart" in step_names
-    assert "Build frontend production image and push on main" in step_names
-    assert "Build backend production image and push on main" in step_names
+    assert "Build frontend production image" in step_names
+    assert "Build backend production image" in step_names
+    assert "Write source-bound container build manifest" in step_names
+
+    ci_text = read(".github/workflows/ci.yml")
+    assert "registry.fly.io" not in ci_text
+    assert "flyctl" not in ci_text
+    assert "push: false" in ci_text
+    assert "CI_BUILD_PROOF" in ci_text
 
     assert "deploy" not in workflow["jobs"]
-    staging = promotion["jobs"]["deploy-staging"]
-    production = promotion["jobs"]["deploy-production"]
-    assert staging["environment"] == "saas-staging"
-    assert production["environment"] == "saas-production"
-    assert production["needs"] == "deploy-staging"
-    assert production["if"] == "inputs.promotion_scope == 'staging-and-production'"
-    assert staging["if"] == "github.ref == 'refs/heads/main'"
+    assert not (ROOT / ".github/workflows/saas-promote.yml").exists()
+
     assert promotion_inputs["promotion_scope"]["default"] == "staging-only"
     assert promotion_inputs["promotion_scope"]["options"] == [
+        "publish-staging-only",
+        "publish-staging-and-production",
+        "migrate-staging-only",
+        "migrate-staging-and-production",
         "staging-only",
         "staging-and-production",
+        "kill-switch-staging-off",
+        "kill-switch-staging-on",
+        "kill-switch-staging-test",
+        "kill-switch-production-off",
+        "kill-switch-production-on",
     ]
-    assert staging["env"]["CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED"] == (
-        "${{ inputs.promotion_scope == 'staging-and-production' && '1' || '0' }}"
+    assert promotion["concurrency"] == {
+        "group": "aws-commercial-control-plane",
+        "cancel-in-progress": False,
+    }
+
+    build = promotion["jobs"]["build-release-images"]
+    staging = promotion["jobs"]["deploy-staging"]
+    production = promotion["jobs"]["deploy-production"]
+    staging_kill = promotion["jobs"]["kill-switch-staging"]
+    production_kill = promotion["jobs"]["kill-switch-production"]
+
+    assert build["if"] == (
+        "github.ref == 'refs/heads/main' && "
+        "!startsWith(inputs.promotion_scope, 'kill-switch-')"
     )
-    assert production["env"]["CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED"] == "1"
+    assert staging["environment"] == "aws-commercial-staging"
+    assert production["environment"] == "aws-commercial-production"
+    assert staging["needs"] == "build-release-images"
+    assert set(production["needs"]) == {"build-release-images", "deploy-staging"}
+    for required_scope in (
+        "staging-and-production",
+        "publish-staging-and-production",
+        "migrate-staging-and-production",
+    ):
+        assert required_scope in production["if"]
+    assert staging["permissions"]["id-token"] == "write"
+    assert production["permissions"]["id-token"] == "write"
+    assert staging_kill["environment"] == "aws-commercial-staging"
+    assert production_kill["environment"] == "aws-commercial-production"
+    assert production["env"]["STAGING_AWS_ACCOUNT_ID"] == (
+        "${{ needs.deploy-staging.outputs.account_id }}"
+    )
+
+    build_steps = {step.get("name") for step in build["steps"]}
     staging_steps = {step.get("name") for step in staging["steps"]}
     production_steps = {step.get("name") for step in production["steps"]}
-    assert "Require a successful CI release for this exact SHA" in staging_steps
-    assert "Download CI-owned immutable release manifest" in staging_steps
-    assert "Require protected supplier-quote holdout evidence" in staging_steps
-    assert "Deploy and verify staging" in staging_steps
-    assert "Validate isolated production environment contract" in production_steps
-    assert "Revalidate protected supplier-quote holdout evidence" in production_steps
-    assert "Require production evidence to match staged evidence" in production_steps
-    assert "Deploy and verify production" in production_steps
+    assert "Validate protected release source and exact protected-main CI" in build_steps
+    assert "Validate release-invariant browser observability contract" in build_steps
+    assert "Build backend release image archive" in build_steps
+    assert "Build frontend release image archive" in build_steps
+    assert "Seal archive hashes before any release test or scan" in build_steps
+    assert "Exercise security and storage contracts from the exact archives" in build_steps
+    assert "Scan exact backend archive image (high/critical vulnerabilities)" in build_steps
+    assert "Scan exact frontend archive image (high/critical vulnerabilities)" in build_steps
+    assert "Generate backend CycloneDX SBOM from the exact archive image" in build_steps
+    assert "Generate frontend CycloneDX SBOM from the exact archive image" in build_steps
+    assert "Bind exact image IDs and SBOM hashes into the sealed manifest" in build_steps
+    assert "Upload immutable exact-image release, scan, and SBOM evidence" in build_steps
+    assert "Validate exact-release supplier holdout before any staging mutation" in staging_steps
+    assert "Download exact scanned release image artifacts" in staging_steps
+    assert "Publish exact artifacts to immutable staging ECR" in staging_steps
+    assert "Run release-bound migration and optional service promotion" in staging_steps
+    assert "Drill and restore the AWS-native staging intake kill switch" in staging_steps
+    assert "Recheck deep health after kill-switch restoration" in staging_steps
+    assert "Revalidate isolated production contract" in production_steps
+    assert "Independently validate exact-release production supplier holdout" in production_steps
+    assert "Require production supplier holdout digest to equal staging" in production_steps
+    assert "Download the staged exact scanned release image artifacts" in production_steps
+    assert "Publish the exact staged artifacts to immutable production ECR" in production_steps
+    assert "Run release-bound migration and optional production promotion" in production_steps
+
     staging_step_order = [step.get("name") for step in staging["steps"]]
     assert staging_step_order.index(
-        "Require protected supplier-quote holdout evidence"
-    ) < staging_step_order.index("Deploy and verify staging")
-    staging_holdout = next(
-        step
-        for step in staging["steps"]
-        if step.get("name") == "Require protected supplier-quote holdout evidence"
-    )
-    assert staging_holdout["if"] == (
-        "inputs.promotion_scope == 'staging-and-production'"
-    )
-    assert staging_holdout["env"]["CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64"] == (
-        "${{ secrets.CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64 }}"
-    )
-    assert staging["outputs"]["holdout_evidence_sha256"] == (
-        "${{ steps.holdout.outputs.evidence_sha256 }}"
-    )
-    production_holdout = next(
-        step
-        for step in production["steps"]
-        if step.get("name") == "Revalidate protected supplier-quote holdout evidence"
-    )
-    assert production_holdout["env"]["CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64"] == (
-        "${{ secrets.CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64 }}"
-    )
-    assert production["env"]["STAGING_HOLDOUT_EVIDENCE_SHA256"] == (
-        "${{ needs.deploy-staging.outputs.holdout_evidence_sha256 }}"
-    )
+        "Validate exact-release supplier holdout before any staging mutation"
+    ) < staging_step_order.index("Configure AWS credentials through environment-scoped OIDC")
     production_step_order = [step.get("name") for step in production["steps"]]
     assert production_step_order.index(
-        "Revalidate protected supplier-quote holdout evidence"
-    ) < production_step_order.index("Deploy and verify production")
-    assert production_step_order.index(
-        "Require production evidence to match staged evidence"
-    ) < production_step_order.index("Deploy and verify production")
+        "Independently validate exact-release production supplier holdout"
+    ) < production_step_order.index(
+        "Require production supplier holdout digest to equal staging"
+    ) < production_step_order.index(
+        "Configure AWS credentials through production-scoped OIDC"
+    )
+    production_holdout_match = next(
+        step
+        for step in production["steps"]
+        if step.get("name") == "Require production supplier holdout digest to equal staging"
+    )
+    assert production_holdout_match["env"]["PRODUCTION_HOLDOUT_DIGEST"] == (
+        "${{ steps.holdout.outputs.evidence_sha256 }}"
+    )
+    assert production_holdout_match["env"]["STAGING_HOLDOUT_DIGEST"] == (
+        "${{ needs.deploy-staging.outputs.holdout_digest }}"
+    )
+    assert staging["outputs"]["holdout_digest"] == (
+        "${{ steps.holdout.outputs.evidence_sha256 }}"
+    )
+
+    production_publish = next(
+        step
+        for step in production["steps"]
+        if step.get("name") == "Publish the exact staged artifacts to immutable production ECR"
+    )
+    assert production_publish["env"]["EXPECTED_BACKEND_DIGEST"] == (
+        "${{ needs.deploy-staging.outputs.backend_digest }}"
+    )
+    assert production_publish["env"]["EXPECTED_FRONTEND_DIGEST"] == (
+        "${{ needs.deploy-staging.outputs.frontend_digest }}"
+    )
+    for job in (staging, production):
+        assert not any(
+            (step.get("name") or "").startswith("Build ") for step in job["steps"]
+        )
+
+    workflow_text = read(".github/workflows/aws-commercial-promote.yml")
+    for contract in (
+        "AWS_ECS_API_BASE_TASK_DEFINITION",
+        "AWS_ECS_FRONTEND_BASE_TASK_DEFINITION",
+        "AWS_ECS_MIGRATION_BASE_TASK_DEFINITION",
+        "AWS_ECS_WORKER_BASE_TASK_DEFINITION",
+        "CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64",
+        "scripts/ops/aws-kill-switch.sh test",
+        "EXPECTED_BACKEND_DIGEST",
+        "EXPECTED_FRONTEND_DIGEST",
+    ):
+        assert contract in workflow_text
+    assert "backend.trivy.json" in workflow_text
+    assert "frontend.trivy.json" in workflow_text
+    assert "staging and production must use separate AWS accounts" in workflow_text
+    assert "AWS_COMMERCIAL_NEXT_PUBLIC_SENTRY_DSN is required" in workflow_text
+
+    publisher = read("scripts/ops/aws-publish-images.sh")
+    assert "verify_scan backend" in publisher
+    assert "verify_scan frontend" in publisher
+    assert 'select(.Severity == "HIGH" or .Severity == "CRITICAL")' in publisher
+    assert "exact-image vulnerability report SHA-256 mismatch" in publisher
+
+    kill_switch = read("scripts/ops/aws-kill-switch.sh")
+    assert 'case "$action" in' in kill_switch
+    assert "off | on | test" in kill_switch
+    assert "the disruptive off/on kill-switch drill is restricted to staging" in kill_switch
+    assert "failing closed on the off revision" in kill_switch
+    assert "deploy_revision \"$previous_task_definition\"" in kill_switch
+    assert '[[ "$status" == 503 ]]' in kill_switch
+    assert '[[ "$status" == 422 ]]' in kill_switch
+    assert "Retry-After: 3600" in kill_switch
+    assert "'.code == \"service_paused\"'" in kill_switch
+    assert ".detail.code" not in kill_switch
+    assert "expected_execution_role" in kill_switch
+    assert "expected_task_role" in kill_switch
+    assert "TURNSTILE_SECRET" in kill_switch
+
+    promotion_script = read("scripts/ops/aws-commercial-promote.sh")
+    assert "expected_secret_names" in promotion_script
+    assert "runtime_secret_arns" in promotion_script
+    assert ".executionRoleArn == $expected_execution_role" in promotion_script
+    assert ".taskRoleArn == $expected_task_role" in promotion_script
+    assert "describe-subnets" in promotion_script
+    assert "describe-security-groups" in promotion_script
+    assert "span two physical AZs" in promotion_script
 
     backend_steps = {step.get("name") for step in workflow["jobs"]["backend"]["steps"]}
     assert "Postgres restore drill" in backend_steps
@@ -175,81 +281,52 @@ def test_compose_configs_have_smokeable_frontend_and_backend():
     assert "RATE_LIBRARY_ENABLED=1" in service_env(enterprise["services"]["worker"])
 
 
-def test_fly_configs_describe_deploy_surface_without_external_proof_claims():
-    backend = read("backend/fly.toml")
-    frontend = read("frontend/fly.toml")
-    workflow = read(".github/workflows/ci.yml")
+def test_aws_commercial_release_surface_and_fly_are_separated():
+    ecs = read("infra/aws/ecs.tf")
+    edge = read("infra/aws/edge.tf")
+    networking = read("infra/aws/networking.tf")
+    workflow = read(".github/workflows/aws-commercial-promote.yml")
+    launch = read("docs/LAUNCH_RUNBOOK.md")
 
-    assert_contains_all(
-        backend,
-        [
-            'app = "cadvrfy-api"',
-            '[processes]',
-            'web = "uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1 --no-server-header"',
-            'worker = "arq src.jobs.worker.WorkerSettings"',
-            '[http_service]',
-            "internal_port = 8000",
-            "force_https = true",
-            'OBJECT_STORE_BACKEND = "s3"',
-            'METRICS_ENABLED = "0"',
-            'PDF_CACHE_DIR = "/tmp/cadverify/pdf-cache"',
-            "ARQ_HEALTH_KEY = \"arq:queue:health-check\"",
-            "WORKER_STRICT_HEALTH = \"1\"",
-            "RATE_LIBRARY_ENABLED = \"1\"",
-            "ANALYSIS_TIMEOUT_SEC = \"60\"",
-            "[deploy]",
-            "alembic upgrade head",
-            'memory = "2gb"',
-        ],
-    )
-
-    assert_contains_all(
-        frontend,
-        [
-            'app = "cadvrfy-web"',
-            "[env]",
-            'PRODUCTION_PUBLIC_API_TLS_REQUIRED = "1"',
-            "[http_service]",
-            "internal_port = 3000",
-            "force_https = true",
-        ],
-    )
-    assert "registry.fly.io/cadvrfy-web:${{ github.sha }}" in workflow
-    promotion = read("scripts/ops/promote-fly-release.sh")
-    assert "--config frontend/fly.toml" in promotion
-    assert 'flyctl scale count web=2 worker=2 --app "$FLY_API_APP" --yes' in promotion
-    assert "node scripts/ops/fly-required-secrets-gate.mjs" in promotion
-    assert "node scripts/ops/fly-live-health-gate.mjs" in promotion
-    assert 'docker manifest inspect "$CADVERIFY_BACKEND_IMAGE"' in promotion
-    assert "CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_SHA256" in promotion
-    assert 'CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED=${CADVERIFY_SUPPLIER_HOLDOUT_REQUIRED:-1}' in promotion
-    assert 'CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_SHA256="not-required-for-staging-only"' in promotion
-    assert "Production requires protected supplier holdout evidence" in promotion
-    assert "supplier_holdout_required=" in promotion
-    assert "supplier_holdout_evidence_sha256=" in promotion
-    assert "PARSE_PROCESS_POOL_DISABLED" in promotion
+    assert 'requires_compatibilities = ["FARGATE"]' in ecs
+    assert "readonlyRootFilesystem = true" in ecs
+    assert 'AUTH_PROXY_CLIENT_IP_SOURCE         = "cloudfront"' in ecs
+    assert 'resource "aws_cloudfront_vpc_origin" "alb"' in edge
+    assert "internal           = true" in edge
+    assert 'status_code  = "403"' in edge
+    assert "CloudFront-VPCOrigins-Service-SG" in networking
+    assert "scripts/ops/aws-publish-images.sh" in workflow
+    assert "scripts/ops/aws-commercial-promote.sh" in workflow
+    assert "flyctl" not in workflow.lower()
+    assert "registry.fly.io" not in workflow
+    assert not (ROOT / ".github/workflows/saas-promote.yml").exists()
+    assert "legacy/non-release" in launch.lower()
+    for stale_command in ("fly deploy", "fly apps create", "FLY_API_TOKEN"):
+        assert stale_command not in launch
 
 
 def test_worker_and_deploy_health_gate_require_arq_worker_heartbeat():
     worker = read("backend/src/jobs/worker.py")
     health = read("backend/src/api/health.py")
     ops = read("backend/src/services/ops_health_service.py")
-    gate = read("scripts/ops/fly-live-health-gate.mjs")
-    secrets_gate = read("scripts/ops/fly-required-secrets-gate.mjs")
+    gate = read("scripts/ops/aws-deep-health.mjs")
+    promotion = read("scripts/ops/aws-commercial-promote.sh")
 
     assert 'health_check_key = os.getenv("ARQ_HEALTH_KEY", "arq:queue:health-check")' in worker
     assert 'worker_strict = _flag("WORKER_STRICT_HEALTH", "0")' in health
     assert 'worker_degraded = worker_strict and async_expected and redis_ok and worker_state != "ok"' in health
     assert 'health_key = os.getenv("ARQ_HEALTH_KEY", "arq:queue:health-check")' in ops
-    assert 'body?.async?.worker === "ok"' in gate
-    assert 'body?.async?.worker_strict === true' in gate
-    assert 'CADVERIFY_REQUIRE_WORKER_STRICT' in gate
+    assert 'health.body?.async?.worker === "ok"' in gate
+    assert 'health.body?.async?.worker_strict === true' in gate
+    assert 'deep.body?.checks?.worker?.state === "ok"' in gate
     assert "AbortSignal.timeout(requestTimeoutMs)" in gate
-    assert "API_KEY_PEPPER" in secrets_gate
-    assert "CONNECTOR_SECRET_KEY" in secrets_gate
-    assert "CONNECTOR_FINGERPRINT_KEY" in secrets_gate
-    assert "DEEP_HEALTH_TOKEN" in secrets_gate
     assert "CADVERIFY_DEEP_HEALTH_TOKEN" in gate
+    assert "aws ecs wait services-stable" in promotion
+    assert "trap rollback ERR" in promotion
+    assert "node scripts/ops/aws-deep-health.mjs" in promotion
+    ecs = read("infra/aws/ecs.tf")
+    assert "arq src.jobs.worker.WorkerSettings --check" in ecs
+    assert "r.statusCode >= 200 && r.statusCode < 400" in ecs
 
 
 def test_helm_chart_gates_multi_replica_blob_and_worker_ops():

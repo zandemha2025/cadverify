@@ -9,7 +9,7 @@
  * measurement); a rate only re-tags ● SHOP once a governed accounting card is bound.
  * Absent inventory → the honest "declare your floor" empty state.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Children, cloneElement, isValidElement, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { C, MONO, NUM, USD, procLabel, PROCESS_LABELS } from "@/lib/verify/tokens";
 import {
@@ -18,10 +18,17 @@ import {
   updateMachine,
   deleteMachine,
   importMachinesCsv,
+  machineImportTemplate,
   envelopeSummary,
   type OwnedMachine,
   type MachineInput,
+  type MachineImportSummary,
 } from "@/lib/verify/machine-api";
+import {
+  parseMachineNumbers,
+  type MachineNumberErrors,
+  type MachineNumberField,
+} from "@/lib/verify/machine-form";
 import {
   fetchMachineCatalog,
   type MachineCatalogTemplate,
@@ -59,6 +66,8 @@ export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
   const [error, setError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [form, setForm] = useState<{ mode: "add" } | { mode: "edit"; machine: OwnedMachine } | null>(null);
+  const [csvResult, setCsvResult] = useState<MachineImportSummary | null>(null);
+  const [csvError, setCsvError] = useState<string | null>(null);
   const csvRef = useRef<HTMLInputElement | null>(null);
 
   const refresh = useCallback(async () => {
@@ -94,6 +103,8 @@ export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
     async (file: File) => {
       try {
         const summary = await importMachinesCsv(file);
+        setCsvResult(summary);
+        setCsvError(null);
         toast.success(`Imported ${summary.imported} · skipped ${summary.skipped}`);
         if (summary.errors.length) {
           toast.message(`${summary.errors.length} row error(s)`, {
@@ -102,11 +113,32 @@ export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
         }
         await refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Import failed");
+        const message = e instanceof Error ? e.message : "Import failed";
+        setCsvError(message);
+        setCsvResult(null);
+        toast.error(message);
       }
     },
     [refresh]
   );
+
+  const downloadCsvTemplate = useCallback(async () => {
+    try {
+      const csv = await machineImportTemplate();
+      const href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      const anchor = document.createElement("a");
+      anchor.href = href;
+      anchor.download = "machines-template.csv";
+      anchor.click();
+      URL.revokeObjectURL(href);
+      setCsvError(null);
+      toast.success("Downloaded the exact machine import template");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Template download failed";
+      setCsvError(message);
+      toast.error(message);
+    }
+  }, []);
 
   const detail = detailId ? (machines ?? []).find((m) => m.id === detailId) ?? null : null;
 
@@ -157,6 +189,7 @@ export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
           <GhostButton primary onClick={() => setForm({ mode: "add" })}>Add machine</GhostButton>
           <GhostButton onClick={() => csvRef.current?.click()}>Import CSV</GhostButton>
+          <GhostButton onClick={() => void downloadCsvTemplate()}>Download CSV template</GhostButton>
         </div>
       </div>
       <p style={{ margin: "8px 0 0", maxWidth: 620, fontSize: 14, lineHeight: 1.6, color: C.ink55 }}>
@@ -166,6 +199,21 @@ export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
 
       {error && (
         <p style={{ margin: "14px 0 0", fontFamily: MONO, fontSize: 11, color: C.fail }}>couldn&apos;t load inventory — {error}</p>
+      )}
+      {csvError && (
+        <div role="alert" data-testid="machine-import-error" style={{ marginTop: 14, border: `1px solid ${C.fail}55`, borderRadius: 10, padding: "10px 12px", fontFamily: MONO, fontSize: 11, color: C.fail }}>
+          Import failed — {csvError}. Correct the CSV and choose Import CSV again; existing machines were not removed.
+        </div>
+      )}
+      {csvResult && (
+        <div role="status" data-testid="machine-import-result" style={{ marginTop: 14, border: `1px solid ${csvResult.errors.length ? C.cond : C.pass}55`, borderRadius: 10, padding: "10px 12px", fontFamily: MONO, fontSize: 11, color: C.ink55 }}>
+          <strong style={{ color: C.ink }}>Import complete: {csvResult.imported} imported · {csvResult.skipped} skipped · {csvResult.total} total</strong>
+          {csvResult.errors.length > 0 && (
+            <ul style={{ margin: "7px 0 0", paddingLeft: 18 }}>
+              {csvResult.errors.map((item, i) => <li key={`${item.line}-${i}`}>line {item.line}: {item.reason}</li>)}
+            </ul>
+          )}
+        </div>
       )}
 
       {machines === null ? (
@@ -181,6 +229,7 @@ export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
             <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
               <GhostButton primary onClick={() => setForm({ mode: "add" })}>Add your first machine</GhostButton>
               <GhostButton onClick={() => csvRef.current?.click()}>Import machines.csv</GhostButton>
+              <GhostButton onClick={() => void downloadCsvTemplate()}>Download template</GhostButton>
             </div>
           </EmptyState>
         </div>
@@ -475,19 +524,30 @@ const inputStyle: React.CSSProperties = {
   // leaving these machine-form fields with no visible keyboard focus (WCAG 2.4.7).
 };
 
-function Field({ label, children, span }: { label: string; children: React.ReactNode; span?: boolean }) {
+function Field({ label, children, span, error }: { label: string; children: React.ReactNode; span?: boolean; error?: string }) {
+  // A wrapping <label> around a <select> inherits every <option>'s text in
+  // Chromium's accessible-name computation (for example, "PROCESS FDM …").
+  // Give each actual form control the concise visible label explicitly so
+  // keyboard/assistive-technology users can address it deterministically.
+  const labelledChildren = Children.map(children, (child) => {
+    if (!isValidElement<{ "aria-label"?: string }>(child)) return child;
+    const isControl =
+      typeof child.type === "string" &&
+      ["input", "select", "textarea"].includes(child.type);
+    if (!isControl) return child;
+    return cloneElement(child, {
+      "aria-label": child.props["aria-label"] ?? label,
+    });
+  });
+
   return (
     <label style={{ display: "block", gridColumn: span ? "span 2" : undefined }}>
       <span style={{ display: "block", fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: C.ink45, marginBottom: 5 }}>{label}</span>
-      {children}
+      {labelledChildren}
+      {error && <span role="alert" style={{ display: "block", marginTop: 5, fontFamily: MONO, fontSize: 10, lineHeight: 1.4, color: C.fail }}>{error}</span>}
     </label>
   );
 }
-
-const num = (s: string): number | undefined => {
-  const n = parseFloat(s);
-  return Number.isFinite(n) ? n : undefined;
-};
 
 const capNum = (cap: Record<string, unknown>, k: string): string => {
   const v = cap[k];
@@ -519,6 +579,8 @@ function MachineFormModal({
   const [swing, setSwing] = useState(capNum(baseCap, "swing_dia"));
   const [between, setBetween] = useState(capNum(baseCap, "between_centers"));
   const [busy, setBusy] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<MachineNumberErrors>({});
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Catalog prefill (add-mode only): the REAL GET /catalog editable templates.
   const [catalog, setCatalog] = useState<MachineCatalogTemplate[] | null>(null);
@@ -533,6 +595,15 @@ function MachineFormModal({
   }, [mode]);
 
   const isTurning = process === "cnc_turning";
+  const clearFieldError = (field: MachineNumberField) => {
+    setFieldErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+    setSaveError(null);
+  };
 
   const applyTemplate = (idx: number) => {
     const t = catalog?.[idx];
@@ -553,24 +624,25 @@ function MachineFormModal({
   };
 
   const submit = async () => {
+    const parsed = parseMachineNumbers({ count, rate, maxKg, x, y, z, swing, between, isTurning });
+    if (!parsed.ok) {
+      setFieldErrors(parsed.errors);
+      setSaveError("Correct the highlighted declarations. Nothing was saved.");
+      return;
+    }
+    setFieldErrors({});
+    setSaveError(null);
     setBusy(true);
     // Preserve non-envelope capability keys on edit; overwrite the ones we manage.
     const cap: Record<string, unknown> = { ...baseCap };
     delete cap.x; delete cap.y; delete cap.z; delete cap.swing_dia; delete cap.between_centers;
-    if (isTurning) {
-      if (num(swing) != null) cap.swing_dia = num(swing);
-      if (num(between) != null) cap.between_centers = num(between);
-    } else {
-      if (num(x) != null) cap.x = num(x);
-      if (num(y) != null) cap.y = num(y);
-      if (num(z) != null) cap.z = num(z);
-    }
+    Object.assign(cap, parsed.value.capabilities);
     const body: MachineInput = {
       name: name.trim() || null,
       process,
-      count: num(count) ?? 1,
-      hourly_rate_usd: num(rate) ?? null,
-      max_workpiece_kg: num(maxKg) ?? null,
+      count: parsed.value.count,
+      hourly_rate_usd: parsed.value.rate,
+      max_workpiece_kg: parsed.value.maxKg,
       materials: materials.trim() ? materials.split(",").map((s) => s.trim()).filter(Boolean) : null,
       capabilities: Object.keys(cap).length ? cap : null,
       notes: notes.trim() || null,
@@ -585,7 +657,9 @@ function MachineFormModal({
       }
       await onSaved();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Save failed");
+      const message = e instanceof Error ? e.message : "Save failed";
+      setSaveError(`${message}. Your entries are still here; correct them and retry.`);
+      toast.error(message);
       setBusy(false);
     }
   };
@@ -625,21 +699,21 @@ function MachineFormModal({
             ))}
           </select>
         </Field>
-        <Field label="COUNT"><input style={inputStyle} value={count} onChange={(e) => setCount(e.target.value)} inputMode="numeric" /></Field>
-        <Field label="HOURLY RATE (USD)"><input style={inputStyle} value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="95" /></Field>
+        <Field label="COUNT" error={fieldErrors.count}><input style={inputStyle} value={count} aria-invalid={!!fieldErrors.count} onChange={(e) => { setCount(e.target.value); clearFieldError("count"); }} inputMode="numeric" /></Field>
+        <Field label="HOURLY RATE (USD)" error={fieldErrors.rate}><input style={inputStyle} value={rate} aria-invalid={!!fieldErrors.rate} onChange={(e) => { setRate(e.target.value); clearFieldError("rate"); }} inputMode="decimal" placeholder="95" /></Field>
         {isTurning ? (
           <>
-            <Field label="SWING Ø (mm)"><input style={inputStyle} value={swing} onChange={(e) => setSwing(e.target.value)} inputMode="decimal" /></Field>
-            <Field label="BETWEEN CENTERS (mm)"><input style={inputStyle} value={between} onChange={(e) => setBetween(e.target.value)} inputMode="decimal" /></Field>
+            <Field label="SWING Ø (mm)" error={fieldErrors.swing}><input style={inputStyle} value={swing} aria-invalid={!!fieldErrors.swing} onChange={(e) => { setSwing(e.target.value); clearFieldError("swing"); }} inputMode="decimal" /></Field>
+            <Field label="BETWEEN CENTERS (mm)" error={fieldErrors.between}><input style={inputStyle} value={between} aria-invalid={!!fieldErrors.between} onChange={(e) => { setBetween(e.target.value); clearFieldError("between"); }} inputMode="decimal" /></Field>
           </>
         ) : (
           <div style={{ gridColumn: "span 2", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-            <Field label="ENVELOPE X (mm)"><input style={inputStyle} value={x} onChange={(e) => setX(e.target.value)} inputMode="decimal" /></Field>
-            <Field label="Y (mm)"><input style={inputStyle} value={y} onChange={(e) => setY(e.target.value)} inputMode="decimal" /></Field>
-            <Field label="Z (mm)"><input style={inputStyle} value={z} onChange={(e) => setZ(e.target.value)} inputMode="decimal" /></Field>
+            <Field label="ENVELOPE X (mm)" error={fieldErrors.x}><input style={inputStyle} value={x} aria-invalid={!!fieldErrors.x} onChange={(e) => { setX(e.target.value); clearFieldError("x"); }} inputMode="decimal" /></Field>
+            <Field label="Y (mm)" error={fieldErrors.y}><input style={inputStyle} value={y} aria-invalid={!!fieldErrors.y} onChange={(e) => { setY(e.target.value); clearFieldError("y"); }} inputMode="decimal" /></Field>
+            <Field label="Z (mm)" error={fieldErrors.z}><input style={inputStyle} value={z} aria-invalid={!!fieldErrors.z} onChange={(e) => { setZ(e.target.value); clearFieldError("z"); }} inputMode="decimal" /></Field>
           </div>
         )}
-        <Field label="MAX WORKPIECE (kg)"><input style={inputStyle} value={maxKg} onChange={(e) => setMaxKg(e.target.value)} inputMode="decimal" /></Field>
+        <Field label="MAX WORKPIECE (kg)" error={fieldErrors.maxKg}><input style={inputStyle} value={maxKg} aria-invalid={!!fieldErrors.maxKg} onChange={(e) => { setMaxKg(e.target.value); clearFieldError("maxKg"); }} inputMode="decimal" /></Field>
         <Field label="MATERIALS (comma-separated)">
           <input style={inputStyle} value={materials} onChange={(e) => setMaterials(e.target.value)} placeholder="6061, 316L, PP" />
           <span style={{ display: "block", marginTop: 5, fontFamily: MONO, fontSize: 10, lineHeight: 1.5, color: C.ink40 }}>
@@ -648,6 +722,8 @@ function MachineFormModal({
         </Field>
         <Field label="NOTES (OPTIONAL)" span><input style={inputStyle} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="throughput note, fixturing, secondary ops…" /></Field>
       </div>
+
+      {saveError && <p role="alert" data-testid="machine-save-error" style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, lineHeight: 1.5, color: C.fail }}>{saveError}</p>}
 
       <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 10 }}>
         <GhostButton primary disabled={busy} onClick={submit}>{busy ? "Saving…" : mode === "edit" ? "Save changes" : "Declare machine"}</GhostButton>

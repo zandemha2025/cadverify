@@ -11,6 +11,8 @@ key; hard TTL of 15 minutes (D-03).
 """
 from __future__ import annotations
 
+from src.config.public_urls import error_doc_url
+
 import asyncio
 import base64
 import hashlib
@@ -42,7 +44,7 @@ from src.auth.magic_keys import (
     magic_token_key,
 )
 from src.auth.provisioning import provision_authenticated_login
-from src.auth.redis_util import require_redis_url
+from src.auth.redis_util import register_redis_client, require_redis_url
 from src.auth.signup_limits import (
     ip_signup_limit_enabled,
     per_email_magic_link_limit,
@@ -62,7 +64,7 @@ def _err(status: int, code: str, message: str) -> HTTPException:
         detail={
             "code": code,
             "message": message,
-            "doc_url": f"https://docs.cadverify.com/errors#{code}",
+            "doc_url": error_doc_url(code),
         },
     )
 
@@ -87,7 +89,8 @@ def _secret() -> bytes:
 @lru_cache(maxsize=1)
 def _r() -> aioredis.Redis:
     """One Redis pool per process; auth requests must not create pool leaks."""
-    return aioredis.from_url(require_redis_url(), decode_responses=True)
+    client = aioredis.from_url(require_redis_url(), decode_responses=True)
+    return register_redis_client(client, _r.cache_clear)
 
 
 def _mint(email_norm: str) -> str:
@@ -333,7 +336,7 @@ async def magic_start(
             detail={
                 "code": "email_domain_blocked",
                 "message": "Signups from this email domain are not allowed.",
-                "doc_url": "https://docs.cadverify.com/errors#email_domain_blocked",
+                "doc_url": error_doc_url("email_domain_blocked"),
             },
         )
     await per_email_magic_link_limit(
@@ -351,14 +354,14 @@ async def magic_start(
     # button press, so basic corporate email scanners do not burn the token.
     link = _dashboard_url(f"/magic/verify#token={token}")
     payload: resend.Emails.SendParams = {
-        "from": os.environ.get("RESEND_FROM", "login@cadverify.com"),
+        "from": os.environ["RESEND_FROM"],
         "to": email_clean,
-        "subject": "Your CadVerify login link",
+        "subject": "Your ProofShape login link",
         "html": (
             f'<a href="{html.escape(link, quote=True)}">'
-            "Sign in to CadVerify (expires in 15 minutes)</a>"
+            "Sign in to ProofShape (expires in 15 minutes)</a>"
         ),
-        "text": f"Sign in to CadVerify (expires in 15 minutes): {link}",
+        "text": f"Sign in to ProofShape (expires in 15 minutes): {link}",
     }
     try:
         # The Resend SDK is synchronous; keep network I/O off the event loop.

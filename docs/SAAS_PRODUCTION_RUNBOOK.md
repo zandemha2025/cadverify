@@ -1,161 +1,139 @@
-# Commercial SaaS Production Runbook
+# ProofShape commercial SaaS production runbook
 
-This tightens `LAUNCH_RUNBOOK.md` from beta-ready to production-required. The
-existing Fly deployment is staging until every gate below passes.
+This document is the production acceptance overlay for
+`docs/LAUNCH_RUNBOOK.md`. The canonical platform is AWS commercial
+CloudFront/ECS/RDS/ElastiCache/S3. It is not the regulated/CUI plane.
+
+The Fly-era deployment design and files are legacy/non-release references. No
+current ProofShape release workflow targets Fly, and the obsolete
+`.github/workflows/saas-promote.yml` remains deleted.
 
 ## Required environment split
 
 | Resource | Staging | Production |
 |---|---|---|
-| Fly apps | separate API/web app names | separate production API/web app names |
-| Postgres | separate project/database | production project with PITR |
-| Redis | separate instance | production TLS instance with persistence/HA as supported |
-| Object store | separate bucket/prefix | versioned encrypted production bucket |
-| Email | test sender/domain | verified production domain |
-| Sentry | isolated backend environment | production backend environment; shared browser project tagged by runtime origin |
-| Secrets | unique values | unique production values; never copied from staging |
+| AWS boundary | isolated account when available, state, VPC, CIDR, keys | separate account when available and independent state/network/keys |
+| GitHub environment | `aws-commercial-staging` | `aws-commercial-production`, protected reviewers |
+| Public edge | generated CloudFront HTTPS hostname allowed | custom alias, viewer/origin ACM certificates, TLS 1.2 |
+| Origin | internal ALB through its CloudFront VPC origin | separate internal ALB/VPC origin, deletion protection |
+| ECS | budget profile may run one frontend/API/worker task | HA profile requires at least two of each plus autoscaling floor |
+| Postgres | isolated encrypted RDS; restore still required | Multi-AZ, PITR, retained backups/final snapshot/deletion protection |
+| Redis | isolated TLS/AUTH node; no HA claim for one node | TLS/AUTH multi-node automatic failover |
+| Durable S3 | isolated KMS/versioned evidence bucket | isolated KMS/versioned bucket with production retention |
+| Transient S3 | isolated KMS/unversioned incoming-upload bucket | same physical-delete contract with separate lifecycle |
+| Providers | staging Resend/Turnstile/Sentry/alerts | independently approved production provider configuration |
+| Secrets | unique values | unique values; never copied from staging except release-invariant public browser DSN when approved |
+
+No hostname, account, bucket, repository, key, secret, billing relationship, or
+provider project may come from Arcus.
 
 ## Production prerequisites
 
-1. Custom frontend and API HTTPS domains with DNS ownership.
-   Route the frontend directly through Fly Proxy. If another reverse proxy is
-   introduced, do not launch until its trusted-client-IP parsing and direct-
-   origin bypass controls are explicitly designed and tested; the default
-   auth handoff intentionally trusts only Fly's `Fly-Client-IP` header.
-2. Managed Postgres pooled and direct TLS URLs; PITR and automated backups enabled.
-3. Managed Redis using a `rediss://` URL, sized for queue/rate-limit traffic.
-4. S3-compatible bucket with encryption, versioning, lifecycle rules, access
-   logging, and least-privilege credentials.
-5. Resend verified sender domain and Cloudflare Turnstile widget.
-6. Backend and frontend Sentry DSNs plus external uptime/paging.
-7. Protected GitHub environments `saas-staging` and `saas-production`. In each,
-   set environment variables `FLY_API_APP`, `FLY_WEB_APP`,
-   `CADVERIFY_PUBLIC_API_BASE`, and `CADVERIFY_DASHBOARD_ORIGIN`, plus an
-   environment-scoped `FLY_API_TOKEN` and `CADVERIFY_DEEP_HEALTH_TOKEN`
-   secrets. The latter must match the target API app's `DEEP_HEALTH_TOKEN`.
-   Values must identify isolated
-   resources; the production workflow rejects staging app/origin reuse.
-8. Repository secret `NEXT_PUBLIC_SENTRY_DSN`. It is baked into the single
-   commercial browser image; events carry the immutable release SHA and runtime
-   origin tag. Backend Sentry DSNs remain unique Fly secrets per environment.
-9. Required reviewers and deployment-branch protection on `saas-production`;
-   protect `main` with the complete CI workflow as a required check.
-10. A licensed, provenance-locked supplier holdout and accountable reviewer
-    satisfying `SUPPLIER_HOLDOUT_EVIDENCE.md`. The reviewed summary for each
-    exact release is stored under the same
-    `CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64` secret name in both protected
-    environments so production can revalidate freshness after its approval wait.
+1. `product-proven` and `cloud-deploy-ready` are recorded for one exact clean
+   commit under `docs/PRODUCTION_ACCEPTANCE_CONTRACT.md`.
+2. Production Terraform/HA preconditions pass without overrides: custom alias,
+   viewer and origin certificates, WAF/logging, CloudFront and ALB access logs,
+   and ALB deletion protection.
+3. RDS Multi-AZ/PITR/recovery controls and Redis TLS/AUTH/failover are enabled.
+4. Durable and transient S3 lifecycle contracts are independently reviewed.
+5. Every Secrets Manager reference has an `AWSCURRENT` value supplied out of
+   band; no secret value exists in Terraform state or GitHub variables.
+6. GitHub environment `aws-commercial-production` trusts the exact repository
+   and environment OIDC subject, is restricted to protected `main`, and has
+   required reviewers.
+7. Resend sender/domain, Turnstile pair, backend/browser Sentry, external uptime,
+   incident alerting, and budget notifications are real and tested.
+8. A licensed customer/supplier CAD-cost holdout and accountable reviewer meet
+   `docs/SUPPLIER_HOLDOUT_EVIDENCE.md` for the supported launch scope.
+9. ProofShape name/domain/IP, terms/privacy, and commercial launch approval are
+   documented.
 
-## Pre-deploy
+## Release identity
 
-1. Resolve and review the canonical promotion PR to protected `main`.
-2. Generate production-only random secrets:
+CI and release are intentionally separate:
 
-   ```bash
-   CADVERIFY_FLY_APP=<target-api-app> \
-   CADVERIFY_FLY_WEB_APP=<target-web-app> \
-   bash scripts/ops/gen-launch-secrets.sh
-   ```
+- `.github/workflows/ci.yml` tests, builds, scans, and records local image/SBOM
+  proof. It has no deployment job and publishes no cloud image.
+- `.github/workflows/aws-commercial-promote.yml` requires successful exact-SHA
+  CI, builds the backend/frontend archives once, hashes them into one artifact,
+  and owns ECR publication and ECS promotion.
+- Staging publishes the artifact first. Production downloads the same artifact
+  and sets `EXPECTED_BACKEND_DIGEST` and `EXPECTED_FRONTEND_DIGEST` from staging.
+  A digest mismatch fails before production rollout.
 
-   Fill the external placeholders locally and set them directly in Fly. The
-   generated `AUTH_PROXY_SECRET` must be identical on that API/web pair. Do not
-   paste values into chat, issues, commits, CI logs, or runbooks.
+Do not describe CI's local image IDs as deployed digests. Do not describe a
+publish-only ECR seed as a deployment.
 
-3. Run the mandatory secret gate:
+The AWS workflow closes the build-to-deploy supply-chain boundary: it loads the
+sealed archive images, fails on every fixed or unfixed HIGH/CRITICAL finding,
+generates CycloneDX SBOMs from those same images, and binds archive hashes,
+image IDs, scan evidence, and SBOM hashes into the manifest that publication
+re-verifies before ECR push.
 
-   ```bash
-   CADVERIFY_REQUIRE_PRODUCTION_STORAGE=1 \
-   CADVERIFY_REQUIRE_OBSERVABILITY=1 \
-   CADVERIFY_FORBIDDEN_FLY_SECRETS=DASHBOARD_ORIGIN,AUTH_MODE,MAGIC_LINK_ENABLED,PASSWORD_LOGIN_ENABLED,PUBLIC_PASSWORD_SIGNUP_ENABLED,SESSION_COOKIE_DOMAIN,OBJECT_STORE_BACKEND,RELEASE,DEPLOYMENT_ENVIRONMENT,SECRET_ENFORCEMENT_ENABLED,WEBHOOK_SSRF_GUARD_ENABLED,SECURITY_HEADERS_ENABLED,RECONSTRUCTION_BACKEND,RECONSTRUCTION_ALLOW_REMOTE_EGRESS,PRODUCTION_STORAGE_REQUIRED,PRODUCTION_OBSERVABILITY_REQUIRED,PRODUCTION_TLS_REQUIRED,PRODUCTION_DEEP_HEALTH_AUTH_REQUIRED,PRODUCTION_AUTH_PROXY_REQUIRED,PRODUCTION_VERIFIED_SIGNUP_REQUIRED,PRODUCTION_HOST_ONLY_SESSION_COOKIE_REQUIRED,PRODUCTION_CRYPTO_SECRET_QUALITY_REQUIRED,PRODUCTION_SSRF_GUARD_REQUIRED,PRODUCTION_SECURITY_HEADERS_REQUIRED,ASYNC_STRICT_HEALTH,WORKER_STRICT_HEALTH,RATE_LIMIT_ALLOW_MEMORY,PARSE_PROCESS_POOL_DISABLED,DB_REQUIRE_TLS,NODE_ENV \
-   FLY_APP_NAME=<target-api-app> \
-   node scripts/ops/fly-required-secrets-gate.mjs
+## Pre-production sequence
 
-   FLY_APP_NAME=<target-web-app> \
-   CADVERIFY_REQUIRED_FLY_SECRETS=AUTH_PROXY_SECRET,TURNSTILE_SITE_KEY \
-   CADVERIFY_FORBIDDEN_FLY_SECRETS=AUTH_MODE,MAGIC_LINK_UI_ENABLED,PUBLIC_PASSWORD_SIGNUP_ENABLED,API_BASE,RELEASE,DEPLOYMENT_ENVIRONMENT,SSO_LOGIN_PATH,PRODUCTION_PUBLIC_API_TLS_REQUIRED,PRODUCTION_AUTH_PROXY_REQUIRED,PRODUCTION_VERIFIED_SIGNUP_REQUIRED,NODE_ENV \
-   node scripts/ops/fly-required-secrets-gate.mjs
-   ```
+1. Complete the account/state/secret/Redis AUTH/bootstrap sequence in
+   `docs/AWS_ACCOUNT_BOOTSTRAP.md`.
+2. Seed staging ECR with `publish-staging-only`, activate services through a
+   reviewed Terraform apply, and run `staging-only`.
+3. Retain migration, ECS stability, expected-release, deep-health, object-store,
+   worker, and auth-proxy evidence through the canonical CloudFront hostname.
+4. Complete every staging human/operational journey in
+   `docs/LAUNCH_RUNBOOK.md`, including restore, rollback, alert delivery, load,
+   two organizations, production-size multipart S3, and mobile interaction.
+5. Seed the isolated production ECR boundary when required, activate production
+   services by digest through reviewed Terraform, and verify all HA controls.
+6. Present the exact staging evidence, supplier/customer holdout, legal/name
+   approval, migration compatibility plan, and rollback plan to the protected
+   production reviewer.
+7. Run `staging-and-production` on the same release SHA.
 
-4. Run the full backend suite and frontend type/test/build/lint gates.
-5. Restore the latest production-like backup into a scratch database and record
-   the measured result.
+The AWS workflow verifies artifact identity and environment boundaries and
+validates the confidential supplier holdout before staging mutation. Production
+independently validates the holdout and requires its evidence digest to match
+staging. The accountable protected-environment reviewer still owns the final
+business acceptance decision.
 
-## Deploy and verify
+## Production-live acceptance
 
-Merge the reviewed SHA to protected `main`. CI tests the application, builds and
-scans both images, creates SBOMs, and uploads a CI-owned release manifest with
-their immutable digests. CI does **not** deploy production.
+The release remains blocked until all rows pass on the production hostname and
+the retained evidence names the exact release SHA/digests.
 
-Evaluate that exact 40-character main SHA against the frozen supplier holdout,
-retain the confidential artifacts and human approval, and set the base64
-summary described in `SUPPLIER_HOLDOUT_EVIDENCE.md` on the protected
-`saas-staging` and `saas-production` environments. Then run **Commercial SaaS
-Promotion** on `main` with the same SHA and
-`promotion_scope=staging-and-production`. The workflow:
+| Area | Required production evidence |
+|---|---|
+| Edge | Canonical custom CloudFront hostname, TLS 1.2, WAF, edge/ALB logs, raw ALB not reachable as a release origin |
+| Runtime | Migration exit zero; frontend/API/worker stable on expected digests; read-only root and health controls active |
+| Dependencies | `/health`, token-authenticated `/health/deep`, Postgres, Redis, worker, durable S3, and auth-proxy handshake pass |
+| Identity | Real Turnstile and email-first magic link, one-time initial password, login/logout/logout-all/revocation/expiry pass |
+| Product | Onboarding, Design Studio, representative CAD analysis, cost/DFM, decision, compare, RFQ, export, batch, and reconstruction golden paths pass |
+| Authorization | Full role matrix and two-organization reads/mutations/artifacts/upload identifiers fail closed without existence leakage |
+| Large files | Production-size direct multipart upload, URL refresh, terminal processing, correct result, retry/cancel, and no cloud credentials in browser storage/logs |
+| Data truth | Durable versions satisfy retention; consumed transient objects are physically absent; public/cross-account access fails |
+| Failure/recovery | Worker/queue/kernel/storage/network interruption, timeout, cancellation, refresh/restart, kill switch, prior-digest rollback, and RDS restore meet recorded outcomes |
+| Operations | Sentry event and page, uptime page, budget alarm, WAF/access logs, backup status, capacity/load, certificate and on-call checks reach accountable humans |
+| Customer/legal | Supported-file scope and holdout accuracy are approved; name/domain/IP, terms/privacy, and launch approval are retained |
 
-1. requires a successful push-triggered CI run for the SHA and downloads its
-   immutable release manifest;
-2. fails closed unless the protected holdout is recent, release-bound,
-   provenance-locked, independently approved, sufficiently sampled per launch
-   family, and within every accuracy gate;
-3. validates staging HTTPS origins, API/web Fly secrets, the absence of every
-   forbidden auth/release/storage/guard shadowing secret, and image manifests;
-4. deploys the digest-qualified backend, runs the migration, scales two API and
-   two workers, and requires deep health before deploying two frontend Machines;
-   it then proves the signed client-IP auth proxy end to end;
-5. records staging evidence, including only the holdout summary digest; then
-6. pauses at the protected `saas-production` environment. After reviewer
-   approval, it revalidates evidence freshness, requires an exact match to the
-   staging evidence digest, rejects staging resource reuse, and promotes the
-   exact same image digests through the same gates.
+Overload must be bounded and retryable. An unexplained 5xx, indefinite spinner,
+placeholder success, silent data loss, cross-tenant inference, or result that
+does not match its golden contract blocks launch.
 
-The frontend image contains no API hostname. `API_BASE` and the deployment
-environment are supplied only at runtime. Fly machine files are disposable
-scratch/cache; S3 is the only production object source of truth.
+## Operations after go-live
 
-Re-run the live gate with deep dependency checks:
+- Review failed auth, privileged access, tenant-denial, 5xx/429, queue age,
+  worker health, DB/Redis/S3 health, alarms, backup status, certificate expiry,
+  and spend daily during launch.
+- Scale ECS services before raising compute concurrency. Keep total database
+  pools under the RDS connection budget.
+- Perform recurring scratch restores and prior-digest rollback drills; measure,
+  do not assume, RPO/RTO.
+- Rotate secrets immediately after suspected exposure and on the approved
+  schedule.
+- Preserve exact release, deployment, alert, acceptance, and human-approval
+  evidence.
 
-```bash
-CADVERIFY_API_URL=https://<production-api-domain> \
-CADVERIFY_REQUIRE_WORKER=1 \
-CADVERIFY_REQUIRE_WORKER_STRICT=1 \
-CADVERIFY_REQUIRE_DEEP=1 \
-CADVERIFY_DEEP_HEALTH_TOKEN=<matching-monitor-secret> \
-node scripts/ops/fly-live-health-gate.mjs
-```
+## Go/no-go
 
-The release remains blocked until all of these pass:
-
-- Custom-domain TLS and HTTP security headers.
-- Public `/metrics` returns 404 (`METRICS_ENABLED=0`); SaaS monitoring uses
-  Sentry plus token-protected deep health unless a separately reviewed private
-  scraper path is introduced.
-- `/health` and token-authenticated `/health/deep`: Postgres, Redis, S3, queue,
-  and worker healthy.
-- Real email-first signup, magic-link delivery/click/login, one-time initial
-  password setup under Settings → Security, subsequent password login, and
-  logout-all. Public unverified password signup must remain disabled.
-- `/api/auth/proxy-health` passes and password/magic abuse limits distinguish
-  real client IPs instead of one shared frontend-machine address. Unsigned
-  direct calls to session-returning password/magic API endpoints must fail.
-- Real STEP upload, cost/verdict, persisted decision, export, and deletion path.
-- Protected supplier-quote evidence for the exact release passes the 20+ part,
-  3+ supplier, launch-family coverage, MAPE/P90, process-bias, provenance,
-  tuning-separation, freshness, and approval gates.
-- Two-organization isolation probe returns 404 across tenants.
-- S3 write/read/delete and lifecycle evidence.
-- Sentry receives a scrubbed test event; uptime alert reaches the on-call path.
-- Load profile has no 5xx; overload returns retryable 429.
-- Kill switch and previous-image rollback are exercised in staging.
-- The staging deployment record and CI digest/SBOM artifact name the same SHA
-  and image digests later presented for production approval.
-
-## Production operations
-
-- Weekly access and failed-auth review during launch; monthly thereafter.
-- Daily backup status checks and quarterly restore drills.
-- Dependency/image patch SLA: critical 24 hours, important 7 days, routine 30
-  days, subject to risk review.
-- Monthly secret inventory; rotate immediately after suspected exposure.
-- Capacity review from queue depth, 429s, database connections, CPU, and worker
-  heartbeat. Scale machines before increasing concurrency caps.
+Only an accountable human may change the commercial verdict after every
+applicable blocker in `docs/PRODUCTION_LAUNCH_AUDIT.md` is closed. A successful
+CI run, Terraform validation/apply, ECR publication, ECS stabilization, or one
+happy-path browser test is not sufficient alone.

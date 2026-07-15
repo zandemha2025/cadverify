@@ -51,6 +51,12 @@ async def health_check():
         }
     """
     version = os.getenv("RELEASE", "dev")
+    build_id = (
+        os.getenv("PROOFSHAPE_BUILD_ID")
+        or os.getenv("GITHUB_SHA")
+        or os.getenv("CI_COMMIT_SHA")
+        or "unknown"
+    )
     strict = _flag("ASYNC_STRICT_HEALTH", "1")
     worker_strict = _flag("WORKER_STRICT_HEALTH", "0")
 
@@ -138,6 +144,7 @@ async def health_check():
         content={
             "status": "ok" if healthy else "degraded",
             "version": version,
+            "build_id": build_id,
             "postgres": postgres_ok,
             "redis": redis_ok,
             "async": async_block,

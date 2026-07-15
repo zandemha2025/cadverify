@@ -1,23 +1,31 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { getJobStatus } from "@/lib/api";
+import {
+  getJobResult,
+  getJobStatus,
+  type JobStatusValue,
+  type ReconstructionJobResult,
+} from "@/lib/api";
 import { Spinner } from "@/components/ui/spinner";
 import { Progress } from "@/components/ui/progress";
+import { startReconstructionPolling } from "../reconstruction-poller";
 
 interface ReconstructionProgressProps {
   jobId: string;
   estimatedSeconds: number;
-  onComplete: (result: Record<string, unknown>) => void;
+  onComplete: (
+    result: ReconstructionJobResult,
+    status: "done" | "partial",
+  ) => void;
   onError: (error: string) => void;
 }
-
-const POLL_INTERVAL_MS = 3_000;
 
 const STATUS_LABELS: Record<string, string> = {
   queued: "Preparing images...",
   running: "Building 3D model...",
   done: "Reconstruction complete!",
+  partial: "Reconstruction completed with limited output",
   failed: "Reconstruction failed",
 };
 
@@ -27,10 +35,16 @@ export default function ReconstructionProgress({
   onComplete,
   onError,
 }: ReconstructionProgressProps) {
-  const [status, setStatus] = useState<string>("queued");
+  const [status, setStatus] = useState<JobStatusValue>("queued");
   const [elapsed, setElapsed] = useState(0);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const completeRef = useRef(onComplete);
+  const errorRef = useRef(onError);
+
+  useEffect(() => {
+    completeRef.current = onComplete;
+    errorRef.current = onError;
+  }, [onComplete, onError]);
 
   useEffect(() => {
     // Elapsed seconds timer
@@ -38,39 +52,20 @@ export default function ReconstructionProgress({
       setElapsed((prev) => prev + 1);
     }, 1_000);
 
-    // Poll job status
-    let cancelled = false;
+    const stopPolling = startReconstructionPolling<ReconstructionJobResult>({
+      jobId,
+      fetchStatus: getJobStatus,
+      fetchResult: getJobResult,
+      onStatus: setStatus,
+      onComplete: (result, terminalStatus) =>
+        completeRef.current(result, terminalStatus),
+      onError: (message) => errorRef.current(message),
+    });
 
-    const poll = async () => {
-      try {
-        const data = await getJobStatus(jobId);
-        if (cancelled) return;
-        setStatus(data.status);
-
-        if (data.status === "done") {
-          onComplete(data.result ?? {});
-          cleanup();
-        } else if (data.status === "failed") {
-          onError(data.error ?? "Reconstruction failed");
-          cleanup();
-        }
-      } catch {
-        // Polling error -- retry on next interval
-      }
-    };
-
-    // Initial poll immediately
-    poll();
-    intervalRef.current = setInterval(poll, POLL_INTERVAL_MS);
-
-    function cleanup() {
-      cancelled = true;
-      if (intervalRef.current) clearInterval(intervalRef.current);
+    return () => {
+      stopPolling();
       if (timerRef.current) clearInterval(timerRef.current);
-    }
-
-    return cleanup;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    };
   }, [jobId]);
 
   const label = STATUS_LABELS[status] ?? "Processing...";

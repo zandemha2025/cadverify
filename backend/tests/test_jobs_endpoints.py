@@ -87,6 +87,7 @@ class TestGetJobStatus:
             assert result["status"] == "queued"
             assert result["job_type"] == "sam3d"
             assert result["result_url"] is None
+            assert result["error"] is None
             mock_get.assert_awaited_once_with(mock_session, job.ulid, 42)
 
     @pytest.mark.asyncio
@@ -110,7 +111,53 @@ class TestGetJobStatus:
 
             assert result["status"] == "done"
             assert result["result_url"] == f"/api/v1/jobs/{job.ulid}/result"
+            assert result["error"] is None
             assert result["completed_at"] is not None
+
+    @pytest.mark.asyncio
+    async def test_partial_is_terminal_and_result_bearing(self):
+        job = _make_job(status="partial", result_json={"fallback": True})
+        with patch.object(
+            job_service, "get_job_for_user", new_callable=AsyncMock
+        ) as mock_get:
+            mock_get.return_value = job
+            from src.api.jobs_router import get_job_status
+
+            result = await get_job_status(
+                job_id=job.ulid,
+                user=_fake_user(),
+                session=AsyncMock(),
+            )
+
+        assert result["result_url"] == f"/api/v1/jobs/{job.ulid}/result"
+        assert result["error"] is None
+
+    @pytest.mark.asyncio
+    async def test_failed_status_exposes_stable_structured_error(self):
+        job = _make_job(
+            status="failed",
+            result_json={
+                "code": "RECONSTRUCTION_FAILED",
+                "message": "Review the image guidance and try again.",
+            },
+        )
+        with patch.object(
+            job_service, "get_job_for_user", new_callable=AsyncMock
+        ) as mock_get:
+            mock_get.return_value = job
+            from src.api.jobs_router import get_job_status
+
+            result = await get_job_status(
+                job_id=job.ulid,
+                user=_fake_user(),
+                session=AsyncMock(),
+            )
+
+        assert result["result_url"] is None
+        assert result["error"] == {
+            "code": "RECONSTRUCTION_FAILED",
+            "message": "Review the image guidance and try again.",
+        }
 
     @pytest.mark.asyncio
     async def test_job_404_other_user(self):
@@ -227,6 +274,32 @@ class TestIdempotentJobCreation:
         assert result.ulid == "01EXISTING0000000000001"
         # Should not have called session.add (no new job created)
         assert not hasattr(session, '_added') or len(getattr(session, '_added', [])) == 0
+
+    @pytest.mark.asyncio
+    async def test_legacy_enqueue_failure_is_revived_for_reconciliation(self):
+        existing_job = _make_job(
+            ulid="01EXISTING0000000000001",
+            status="failed",
+            result_json={"code": "SAM3D_ENQUEUE_FAILED"},
+            completed_at=datetime.now(timezone.utc),
+        )
+        session = AsyncMock()
+        exec_result = MagicMock()
+        exec_result.scalars.return_value.first.return_value = existing_job
+        session.execute.return_value = exec_result
+
+        result = await job_service.create_sam3d_job(
+            session=session,
+            analysis_id=1,
+            user_id=42,
+            mesh_hash="abc123",
+        )
+
+        assert result is existing_job
+        assert result.status == "queued"
+        assert result.result_json is None
+        assert result.completed_at is None
+        session.flush.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_creates_new_job_when_none_exists(self):

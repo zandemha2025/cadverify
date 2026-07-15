@@ -21,6 +21,7 @@ Design notes:
 from __future__ import annotations
 
 import abc
+from dataclasses import dataclass
 from typing import BinaryIO, Protocol, Union, runtime_checkable
 
 
@@ -51,6 +52,15 @@ class ObjectNotFoundError(ObjectStoreError, KeyError):
     def __init__(self, key: str):
         self.key = key
         super().__init__(key)
+
+
+@dataclass(frozen=True)
+class ObjectMetadata:
+    """Provider-neutral metadata returned by object-store ``stat`` calls."""
+
+    size_bytes: int
+    content_type: str | None = None
+    etag: str | None = None
 
 
 @runtime_checkable

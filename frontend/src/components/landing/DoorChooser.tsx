@@ -33,7 +33,7 @@ export function DoorChooser({
               Where do you work?
             </h1>
             <p className="mt-1.5 max-w-prose text-sm text-muted-foreground">
-              Pick the door that fits how you&apos;ll use CadVerify. You can switch anytime — it&apos;s
+              Pick the door that fits how you&apos;ll use ProofShape. You can switch anytime — it&apos;s
               one governed object model behind all three, never three apps.
             </p>
           </div>

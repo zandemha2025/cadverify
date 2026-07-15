@@ -29,9 +29,9 @@ import styles from "./security.module.css";
  */
 
 export const metadata: Metadata = {
-  title: "Security — CadVerify",
+  title: "Security — ProofShape",
   description:
-    "Your CAD is the crown jewels. CadVerify was designed from the first commit for CAD-as-IP and export-controlled work: geometry never leaves your environment, run it where your program requires, and every answer is defensible.",
+    "Your CAD is the crown jewels. ProofShape was designed from the first commit for CAD-as-IP and export-controlled work: geometry never leaves your environment, run it where your program requires, and every answer is defensible.",
 };
 
 const INK_62 = "rgba(245,245,247,0.62)";
@@ -105,7 +105,7 @@ export default function SecurityPage() {
           }}
         >
           For an aerospace, automotive or defense program, where the model runs and
-          what leaves your network matter as much as the answer. CadVerify was
+          what leaves your network matter as much as the answer. ProofShape was
           designed from the first commit for CAD-as-IP and export-controlled work.
         </p>
 

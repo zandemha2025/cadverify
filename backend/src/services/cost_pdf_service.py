@@ -79,12 +79,26 @@ def _format_money(value) -> str:
         return str(value)
 
 
+def _pdf_text(value) -> str:
+    """Prefer stable text glyphs when the PDF engine cannot place emoji glyphs.
+
+    WeasyPrint/Pango can position an emoji variation selector as a separate
+    fallback glyph, leaving symbols such as ``⚙️`` floating outside the note.
+    The persisted/exported JSON and CSV values stay untouched; only the PDF
+    presentation drops U+FE0F so the same symbol renders inline as text.
+    """
+    return str(value or "").replace("\ufe0f", "")
+
+
 _jinja_env.filters["format_number"] = _format_number
 _jinja_env.filters["format_money"] = _format_money
+_jinja_env.filters["pdf_text"] = _pdf_text
 
 
 def build_cost_pdf_context(decision: CostDecision) -> dict:
     """Assemble the Jinja render context from a persisted CostDecision."""
+    from src.services.cost_decision_service import governance_fields
+
     return {
         "filename": decision.filename,
         "file_type": decision.file_type,
@@ -94,6 +108,7 @@ def build_cost_pdf_context(decision: CostDecision) -> dict:
         "result": decision.result_json or {},
         "engine_version": decision.engine_version or _app_version,
         "mesh_hash": (decision.mesh_hash or "")[:12],
+        "governance": governance_fields(decision),
     }
 
 

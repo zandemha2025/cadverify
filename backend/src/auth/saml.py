@@ -5,6 +5,8 @@ Provides SSO login, ACS callback, SLO, and SP metadata endpoints.
 """
 from __future__ import annotations
 
+from src.config.public_urls import dashboard_origin, error_doc_url
+
 import hashlib
 import json
 import logging
@@ -24,7 +26,7 @@ from src.auth.provisioning import (
     ProvisionedLogin,
     provision_authenticated_login,
 )
-from src.auth.redis_util import require_redis_url
+from src.auth.redis_util import register_redis_client, require_redis_url
 from src.config.production import is_production
 from src.services.org_saml_service import (
     SamlGroupMappingAmbiguousError,
@@ -46,7 +48,8 @@ _OneLogin_Saml2_Auth = None
 
 @lru_cache(maxsize=1)
 def _saml_redis() -> aioredis.Redis:
-    return aioredis.from_url(require_redis_url(), decode_responses=True)
+    client = aioredis.from_url(require_redis_url(), decode_responses=True)
+    return register_redis_client(client, _saml_redis.cache_clear)
 
 
 def _saml_request_key(relay_state: str) -> str:
@@ -60,7 +63,7 @@ def _state_error(status: int, code: str, message: str) -> HTTPException:
         detail={
             "code": code,
             "message": message,
-            "doc_url": f"https://docs.cadverify.com/errors#{code}",
+            "doc_url": error_doc_url(code),
         },
     )
 
@@ -365,7 +368,7 @@ async def saml_acs(request: Request):
             detail={
                 "code": "saml_auth_failed",
                 "message": f"SAML authentication failed: {', '.join(errors)}",
-                "doc_url": "https://docs.cadverify.com/errors#saml_auth_failed",
+                "doc_url": error_doc_url("saml_auth_failed"),
             },
         )
 
@@ -375,7 +378,7 @@ async def saml_acs(request: Request):
             detail={
                 "code": "saml_not_authenticated",
                 "message": "SAML assertion was not authenticated.",
-                "doc_url": "https://docs.cadverify.com/errors#saml_not_authenticated",
+                "doc_url": error_doc_url("saml_not_authenticated"),
             },
         )
 
@@ -386,7 +389,7 @@ async def saml_acs(request: Request):
             detail={
                 "code": "saml_no_email",
                 "message": "SAML response did not contain a NameID (email).",
-                "doc_url": "https://docs.cadverify.com/errors#saml_no_email",
+                "doc_url": error_doc_url("saml_no_email"),
             },
         )
 
@@ -405,11 +408,11 @@ async def saml_acs(request: Request):
                     "SAML assertion matched group mappings in multiple organizations. "
                     "Ask an administrator to correct the mapping."
                 ),
-                "doc_url": "https://docs.cadverify.com/errors#saml_group_mapping_ambiguous",
+                "doc_url": error_doc_url("saml_group_mapping_ambiguous"),
             },
         ) from exc
 
-    dashboard_url = os.getenv("DASHBOARD_ORIGIN", "https://cadverify.com")
+    dashboard_url = dashboard_origin()
     resp = RedirectResponse(url=f"{dashboard_url}/dashboard", status_code=303)
     set_session_cookie(
         resp,
@@ -467,7 +470,7 @@ async def saml_sls(request: Request):
             "SAML logout response validation failed.",
         )
 
-    login_url = os.getenv("DASHBOARD_ORIGIN", "https://cadverify.com") + "/login"
+    login_url = f"{dashboard_origin()}/login"
     resp = RedirectResponse(url=redirect_url or login_url, status_code=302)
     clear_session_cookie(resp)
     return resp

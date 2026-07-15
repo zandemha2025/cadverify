@@ -108,7 +108,13 @@ def _cost_result(*, make_now="cnc_3axis", dfm_ready=True, unit=40.0, validated=F
 
 
 def _bi(fname, status, err=None):
-    return SimpleNamespace(id=1, filename=fname, status=status, error_message=err)
+    return SimpleNamespace(
+        id=1,
+        filename=fname,
+        status=status,
+        error_message=err,
+        duration_ms=None,
+    )
 
 
 def _cd(ulid, result):
@@ -185,3 +191,23 @@ async def test_cost_csv_shape_and_withholding():
     assert failed[0] == "bad.stl" and failed[1] == "failed"
     assert failed[2] == "" and failed[5] == "" and failed[7] == ""
     assert failed[-1] == "boom"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("job_type", ["dfm", "cost"])
+async def test_batch_csv_neutralizes_formula_capable_filenames(job_type):
+    """A valid CAD filename must remain inert when opened in a spreadsheet."""
+    filename = "=powershell|'calc'!A0.stl"
+    item = _bi(filename, "failed", err="@unsafe spreadsheet error")
+    session = _CsvSession([(item, None)])
+
+    text = "".join([
+        chunk
+        async for chunk in bs.generate_results_csv(
+            session, batch_id=1, job_type=job_type
+        )
+    ])
+
+    row = text.splitlines()[1]
+    assert row.startswith("'=powershell|'calc'!A0.stl,")
+    assert "'@unsafe spreadsheet error" in row

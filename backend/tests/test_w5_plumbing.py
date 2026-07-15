@@ -218,6 +218,23 @@ def test_standin_bundle_serves_no_calibration_and_never_validates(tmp_path):
     assert ci.validated is False
 
 
+def test_underpowered_real_bundle_is_never_served(tmp_path):
+    """Real labels below the empirical residual floor cannot tune live costs."""
+    store = str(tmp_path)
+    bundle = _real_bundle("ORG_UNDERPOWERED")
+    bundle.residuals = bundle.residuals[:2]
+    bundle.n_real = 2
+    bundle.from_real = False
+    bundle.claim = "PENDING enough costable held-out ground truth"
+    cstore.save_bundle(bundle, store_dir=store)
+
+    model, calibration = svc.load_served_calibration(
+        "ORG_UNDERPOWERED", store_dir=store
+    )
+    assert model is None
+    assert calibration is None
+
+
 def test_uncalibrated_org_serves_none_none(tmp_path):
     model, calibration = svc.load_served_calibration("NEVER", store_dir=str(tmp_path))
     assert model is None and calibration is None

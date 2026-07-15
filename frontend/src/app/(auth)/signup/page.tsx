@@ -1,16 +1,15 @@
 import Link from "next/link";
 import { AuthFrame, AuthTextLink } from "@/components/auth/auth-frame";
+import { publicPasswordSignupEnabled } from "@/lib/public-signup";
 import { SignupForm } from "./signup-form";
 
 export const dynamic = "force-dynamic";
 
 export default function SignupPage() {
-  const signupOverride = process.env.PUBLIC_PASSWORD_SIGNUP_ENABLED;
-  const release = (process.env.RELEASE || "dev").trim().toLowerCase();
-  const released = !new Set(["", "dev", "development", "local", "test", "ci"]).has(release);
-  const publicPasswordSignup = signupOverride
-    ? signupOverride === "1"
-    : !released;
+  const publicPasswordSignup = publicPasswordSignupEnabled(
+    process.env.PUBLIC_PASSWORD_SIGNUP_ENABLED,
+    process.env.RELEASE,
+  );
   const magicEnabled = process.env.MAGIC_LINK_UI_ENABLED === "1";
   const ssoLoginPath = (process.env.SSO_LOGIN_PATH || "").trim();
   if (publicPasswordSignup) return <SignupForm />;

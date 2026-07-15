@@ -15,7 +15,15 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 
+import { directUploadConnectOrigin } from "./lib/direct-upload-csp";
+
 const SESSION_COOKIE = "dash_session";
+const SERVED_BUILD_ID =
+  process.env.PROOFSHAPE_BUILD_ID ||
+  process.env.VERCEL_GIT_COMMIT_SHA ||
+  process.env.GITHUB_SHA ||
+  process.env.NEXT_PUBLIC_BUILD_SHA ||
+  "unknown";
 
 function applySecurityHeaders(response: NextResponse, csp: string): NextResponse {
   response.headers.set("Content-Security-Policy", csp);
@@ -30,19 +38,27 @@ function applySecurityHeaders(response: NextResponse, csp: string): NextResponse
     "Permissions-Policy",
     "camera=(), microphone=(), geolocation=()",
   );
+  // Release evidence reads this from the actual HTTP process. This prevents a
+  // clean checkout from certifying a stale Next build still serving on :3000.
+  response.headers.set("X-ProofShape-Build", SERVED_BUILD_ID);
   return response;
 }
 
 function contentSecurityPolicy(nonce: string): string {
   const devEval = process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
   const upgrade = process.env.NODE_ENV === "development" ? "" : " upgrade-insecure-requests;";
+  const directUploadOrigin = directUploadConnectOrigin(
+    process.env.DIRECT_UPLOAD_ORIGIN,
+    process.env.RELEASE,
+  );
+  const directUploadSource = directUploadOrigin ? ` ${directUploadOrigin}` : "";
   return `
     default-src 'self';
-    script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${devEval} https://challenges.cloudflare.com;
+    script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval'${devEval} https://challenges.cloudflare.com;
     style-src 'self' 'unsafe-inline';
     img-src 'self' data: blob: https:;
     font-src 'self' data:;
-    connect-src 'self' blob: https://challenges.cloudflare.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io;
+    connect-src 'self' blob:${directUploadSource} https://challenges.cloudflare.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io;
     frame-src https://challenges.cloudflare.com;
     worker-src 'self' blob:;
     media-src 'self' blob:;
@@ -71,6 +87,9 @@ const GATED = [
   "/keys",
   "/settings",
   "/design-system",
+  "/designs",
+  "/onboarding",
+  "/verify",
 ];
 export default function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -80,13 +99,15 @@ export default function proxy(req: NextRequest) {
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", csp);
+  const requestedPath = `${pathname}${req.nextUrl.search}`;
+  requestHeaders.set("x-proofshape-request-path", requestedPath);
 
   const gated = GATED.some(
     (p) => pathname === p || pathname.startsWith(p + "/")
   );
   if (gated && !hasSession) {
     const url = new URL("/login", req.nextUrl);
-    url.searchParams.set("next", pathname);
+    url.searchParams.set("next", requestedPath);
     return applySecurityHeaders(NextResponse.redirect(url), csp);
   }
 

@@ -128,6 +128,7 @@ class GeometryContext:
 
     # Topology
     bodies: list[trimesh.Trimesh]
+    body_volumes: list[float]
     facet_groups: list[np.ndarray]   # from mesh.facets — coplanar face clusters
 
     # Feature / segmentation outputs (populated by downstream steps)
@@ -196,6 +197,7 @@ class GeometryContext:
                 exc_info=True,
             )
             bodies = [mesh]
+        body_volumes = [_finite_body_volume(body) for body in bodies]
 
         try:
             facet_groups = [np.asarray(f, dtype=int) for f in mesh.facets]
@@ -222,9 +224,40 @@ class GeometryContext:
             face_adjacency=np.asarray(adjacency, dtype=np.int64),
             concave_mask=concave_mask,
             bodies=bodies,
+            body_volumes=body_volumes,
             facet_groups=facet_groups,
             metadata={"decimation": decimation} if decimation else {},
         )
+
+
+def _finite_body_volume(mesh: trimesh.Trimesh) -> float:
+    """Return absolute volume without trimesh's zero-volume center division.
+
+    Some CAD imports split into topologically watertight sub-shells whose
+    signed tetrahedral volume cancels to zero. ``Trimesh.volume`` first derives
+    a center of mass and divides by that zero volume, emitting NaN warnings
+    before a caller can reject the shell. Cavity/core checks only need a finite
+    ordering value, so integrate volume directly and classify zero or non-finite
+    shells as non-volumetric.
+    """
+    if not mesh.is_watertight or len(mesh.faces) == 0:
+        return 0.0
+    try:
+        triangles = np.asarray(mesh.triangles, dtype=np.float64)
+        bounds = np.asarray(mesh.bounds, dtype=np.float64)
+        if triangles.ndim != 3 or triangles.shape[1:] != (3, 3) or bounds.shape != (2, 3):
+            return 0.0
+        shifted = triangles - bounds.mean(axis=0)
+        with np.errstate(all="ignore"):
+            six_volume = np.einsum(
+                "ij,ij->i",
+                shifted[:, 0],
+                np.cross(shifted[:, 1], shifted[:, 2]),
+            ).sum()
+        volume = abs(float(six_volume)) / 6.0
+        return volume if np.isfinite(volume) and volume > 1e-12 else 0.0
+    except Exception:
+        return 0.0
 
 
 # ──────────────────────────────────────────────────────────────

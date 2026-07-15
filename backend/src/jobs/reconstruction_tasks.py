@@ -4,16 +4,16 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
-import time
 import traceback
 from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from src.db.engine import get_session_factory
 from src.db.models import Job
 
 logger = logging.getLogger("cadverify.jobs.reconstruction_tasks")
+
+_TERMINAL_JOB_STATUSES = {"done", "partial", "failed"}
 
 
 async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
@@ -31,6 +31,7 @@ async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
     """
     import trimesh
 
+    from src.db.engine import get_session_factory
     from src.reconstruction import preprocessing
     from src.reconstruction.engine import ReconstructParams
     from src.reconstruction.scoring import (
@@ -50,13 +51,42 @@ async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
         if job is None:
             logger.error("Reconstruction job %s not found", job_ulid)
             return {"error": "job_not_found"}
+        if job.job_type != "reconstruction":
+            logger.error(
+                "Reconstruction job %s has unexpected type %s",
+                job_ulid,
+                job.job_type,
+            )
+            return {"error": "job_type_mismatch"}
+        if job.status in _TERMINAL_JOB_STATUSES:
+            logger.info(
+                "Reconstruction job %s already terminal: %s",
+                job_ulid,
+                job.status,
+            )
+            return job.result_json or {"status": job.status}
+        if job.status == "running" and int(ctx.get("job_try", 1)) <= 1:
+            logger.info("Reconstruction job %s is already running", job_ulid)
+            return job.result_json or {"status": "running"}
+
+        # Analysis dedup may roll back its own transaction. Keep it in a separate
+        # session and snapshot ownership now so that rollback can never expire or
+        # poison the reconstruction job we still need to complete.
+        job_user_id = job.user_id
+        job_org_id = job.org_id
+        job_params = dict(job.params_json or {})
 
         # Set running
         job.status = "running"
-        job.started_at = datetime.now(timezone.utc)
+        job.started_at = job.started_at or datetime.now(timezone.utc)
         await session.commit()
 
         try:
+            # Re-resolve immediately before touching customer image bytes. If
+            # operators switched this queued job from a local to remote backend,
+            # the original request must carry explicit egress acknowledgement.
+            reconstruction_service.require_job_backend_authorization(job_params)
+
             # 2. Read images from blob storage
             images_with_types = await asyncio.to_thread(
                 reconstruction_service.load_reconstruction_images,
@@ -82,7 +112,16 @@ async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
 
             # 5. Load mesh and compute confidence
             mesh = trimesh.load(io.BytesIO(result.mesh_bytes), file_type="stl")
-            score = compute_reconstruction_confidence(mesh)
+            if isinstance(mesh, trimesh.Scene):
+                mesh = mesh.dump(concatenate=True)
+            if not isinstance(mesh, trimesh.Trimesh):
+                raise RuntimeError(
+                    "Reconstruction engine returned an unsupported mesh payload"
+                )
+            score = max(
+                0.0,
+                min(1.0, float(compute_reconstruction_confidence(mesh))),
+            )
             level = confidence_level(score)
             message = confidence_message(level)
 
@@ -98,42 +137,50 @@ async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
                 from src.auth.require_api_key import AuthedUser
                 from src.services import analysis_service
 
-                params = job.params_json or {}
+                params = job_params
                 process_types = params.get("process_types")
                 rule_pack_name = params.get("rule_pack")
 
                 # Create a mock AuthedUser from the job owner
                 mock_user = AuthedUser(
-                    user_id=job.user_id,
+                    user_id=job_user_id,
                     api_key_id=0,  # System-generated; no real API key
                     key_prefix="system",
                 )
 
-                analysis_result = await analysis_service.run_analysis(
-                    file_bytes=result.mesh_bytes,
-                    filename=f"reconstructed_{job_ulid}.stl",
-                    processes=process_types,
-                    rule_pack=rule_pack_name,
-                    user=mock_user,
-                    session=session,
-                )
-
-                # Extract analysis ULID from persisted row
-                analysis_id = await analysis_service.get_latest_analysis_id(
-                    session,
-                    job.user_id,
-                    analysis_service.compute_mesh_hash(result.mesh_bytes),
-                )
-                if analysis_id is not None:
-                    from src.db.models import Analysis
-                    analysis_row = (
-                        await session.execute(
-                            select(Analysis).where(Analysis.id == analysis_id)
+                async with session_factory() as analysis_session:
+                    analysis_run = await analysis_service.run_analysis(
+                        file_bytes=result.mesh_bytes,
+                        filename=f"reconstructed_{job_ulid}.stl",
+                        processes=process_types,
+                        rule_pack=rule_pack_name,
+                        user=mock_user,
+                        session=analysis_session,
+                        org_id=job_org_id,
+                        return_persisted_id=True,
+                    )
+                    if not isinstance(analysis_run, analysis_service.AnalysisRun):
+                        raise RuntimeError(
+                            "Analysis did not return its durable persistence receipt"
                         )
-                    ).scalars().first()
-                    if analysis_row:
-                        analysis_ulid = analysis_row.ulid
-                        analysis_url = f"/api/v1/analyses/{analysis_ulid}"
+
+                    # Resolve the exact persisted/cache row selected above.
+                    # Querying "latest by mesh" can race another analysis variant.
+                    analysis_id = analysis_run.analysis_id
+                    if analysis_id is not None:
+                        from src.db.models import Analysis
+                        analysis_row = (
+                            await analysis_session.execute(
+                                select(Analysis).where(
+                                    Analysis.id == analysis_id,
+                                    Analysis.org_id == job_org_id,
+                                )
+                            )
+                        ).scalars().first()
+                        if analysis_row:
+                            analysis_ulid = analysis_row.ulid
+                            analysis_url = f"/api/v1/analyses/{analysis_ulid}"
+                    await analysis_session.commit()
 
             except Exception:
                 logger.warning(
@@ -146,16 +193,24 @@ async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
             # 8. Build result
             result_json = {
                 "reconstruction": {
-                    "confidence_score": score,
-                    "confidence_level": level,
-                    "confidence_message": message,
-                    "face_count": result.face_count,
-                    "mesh_url": f"/api/v1/reconstructions/{job_ulid}/mesh.stl",
+                    "confidence": {
+                        "score": score,
+                        "scale": "unit_interval",
+                        "level": level,
+                        "message": message,
+                    },
+                    "mesh": {
+                        "url": f"/api/v1/reconstructions/{job_ulid}/mesh.stl",
+                        "face_count": result.face_count,
+                    },
                     "duration_ms": result.duration_ms,
                     "method": result.method,
                 },
-                "analysis_id": analysis_ulid,
-                "analysis_url": analysis_url,
+                "analysis": (
+                    {"id": analysis_ulid, "url": analysis_url}
+                    if analysis_ulid and analysis_url
+                    else None
+                ),
             }
 
             job.status = "done"
@@ -174,9 +229,22 @@ async def run_reconstruction_job(ctx: dict, job_ulid: str) -> dict:
             # Honest annotation: if reconstruction is unavailable (no local
             # model + remote egress not opted in), record the stable error code
             # rather than a bare message -- never a silent egress.
-            error_json: dict = {"error": str(e)}
-            if getattr(e, "code", None) == "RECONSTRUCTION_UNAVAILABLE":
-                error_json["code"] = "RECONSTRUCTION_UNAVAILABLE"
+            code = getattr(e, "code", "RECONSTRUCTION_FAILED")
+            error_json = {
+                "code": code,
+                "message": (
+                    str(e)
+                    if code
+                    in {
+                        "RECONSTRUCTION_UNAVAILABLE",
+                        "RECONSTRUCTION_EGRESS_ACKNOWLEDGEMENT_REQUIRED",
+                    }
+                    else (
+                        "Reconstruction could not produce a usable mesh from "
+                        "these images. Review the image guidance and try again."
+                    )
+                ),
+            }
             job.status = "failed"
             job.result_json = error_json
             job.completed_at = datetime.now(timezone.utc)

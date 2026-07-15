@@ -4,20 +4,9 @@ import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { AuthField, AuthFrame, AuthSubmit, AuthTextLink } from "@/components/auth/auth-frame";
 import { TurnstileWidget } from "@/components/auth/turnstile-widget";
+import { safeLocalPath } from "@/lib/safe-return-path";
 
 const POST_LOGIN_HOME = "/verify";
-
-function safeLocalPath(raw: string | null, fallback = POST_LOGIN_HOME): string {
-  if (!raw) return fallback;
-  try {
-    const base = new URL("https://cadverify.invalid");
-    const parsed = new URL(raw, base);
-    if (parsed.origin !== base.origin || !raw.startsWith("/")) return fallback;
-    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
-  } catch {
-    return fallback;
-  }
-}
 
 function errorMessage(data: unknown, fallback: string): string {
   if (data && typeof data === "object") {
@@ -39,7 +28,8 @@ export function LoginForm({
   ssoLoginPath?: string;
 }) {
   const params = useSearchParams();
-  const next = safeLocalPath(params.get("next"));
+  const next = safeLocalPath(params.get("next"), POST_LOGIN_HOME);
+  const [hydrated, setHydrated] = React.useState(false);
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
@@ -49,6 +39,8 @@ export function LoginForm({
   const [magicLoading, setMagicLoading] = React.useState(false);
   const [turnstileToken, setTurnstileToken] = React.useState<string | null>(null);
   const [turnstileReset, setTurnstileReset] = React.useState(0);
+
+  React.useEffect(() => setHydrated(true), []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -105,7 +97,7 @@ export function LoginForm({
   return (
     <AuthFrame
       eyebrow="Secure workspace"
-      title="Log in to CadVerify"
+      title="Log in to ProofShape"
       body={
         ssoLoginPath && !passwordEnabled
           ? "Continue through your organization's approved identity provider."
@@ -162,7 +154,7 @@ export function LoginForm({
           error={error}
           onChange={(e) => setPassword(e.target.value)}
         />
-        <AuthSubmit loading={loading}>Log in</AuthSubmit>
+        <AuthSubmit loading={loading} disabled={!hydrated}>Log in</AuthSubmit>
       </form>}
 
       {turnstileSiteKey && (
@@ -191,7 +183,7 @@ export function LoginForm({
               resetSignal={turnstileReset}
               onToken={setTurnstileToken}
             />
-            <AuthSubmit loading={magicLoading} disabled={!turnstileToken}>
+            <AuthSubmit loading={magicLoading} disabled={!hydrated || !turnstileToken}>
               Email me a sign-in link
             </AuthSubmit>
           </form>

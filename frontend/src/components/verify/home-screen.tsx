@@ -21,6 +21,7 @@
  * rule — those are ⌘K only).
  */
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { fetchCostDecisions, type CostDecisionSummary } from "@/lib/api";
 import { listMachines } from "@/lib/verify/machine-api";
 import { listChangeRequests, type ChangeRequest } from "@/lib/verify/governance-api";
@@ -30,7 +31,17 @@ import { buildQueue, buildActivity, buildDayZeroSetup, proposedCount, type Queue
 import { C, MONO, NUM, procLabel } from "@/lib/verify/tokens";
 import { Kicker } from "./primitives";
 
-export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (s: string) => void }) {
+export function HomeScreen({
+  onPickFile,
+  onSample,
+  onOpenGuide,
+  nav,
+}: {
+  onPickFile: () => void;
+  onSample: () => void;
+  onOpenGuide: () => void;
+  nav: (s: string) => void;
+}) {
   const [records, setRecords] = useState<CostDecisionSummary[] | null>(null);
   const [recordsMore, setRecordsMore] = useState(false);
   const [machineCount, setMachineCount] = useState<number | null>(null);
@@ -38,14 +49,29 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
   const [programCount, setProgramCount] = useState<number | null>(null);
   const [changeRequests, setChangeRequests] = useState<ChangeRequest[] | null>(null);
   const [actuals, setActuals] = useState<number | null>(null);
+  const [retryToken, setRetryToken] = useState(0);
+  const [unavailable, setUnavailable] = useState({
+    records: false,
+    machines: false,
+    changes: false,
+    actuals: false,
+    programs: false,
+  });
 
   useEffect(() => {
+    let active = true;
+    setUnavailable({ records: false, machines: false, changes: false, actuals: false, programs: false });
     fetchCostDecisions({ limit: 8 }).then(
-      (p) => { setRecords(p.cost_decisions); setRecordsMore(p.has_more); },
-      () => setRecords([])
+      (p) => {
+        if (!active) return;
+        setRecords(p.cost_decisions);
+        setRecordsMore(p.has_more);
+      },
+      () => active && setUnavailable((current) => ({ ...current, records: true }))
     );
     listMachines().then(
       (p) => {
+        if (!active) return;
         setMachineCount(p.machines.length);
         setRatedMachineCount(
           p.machines.filter(
@@ -55,18 +81,26 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
           ).length
         );
       },
-      () => {
-        setMachineCount(null);
-        setRatedMachineCount(null);
-      }
+      () => active && setUnavailable((current) => ({ ...current, machines: true }))
     );
-    // Governance + ground-truth are viewer-scoped; a null result means we don't
-    // know yet and never produce a nudge. Failures degrade to "no signal", never
-    // to a fabricated one.
-    listChangeRequests().then((p) => setChangeRequests(p.change_requests), () => setChangeRequests([]));
-    listGroundTruth().then((p) => setActuals(realActualCount(p.records)), () => setActuals(null));
-    getPortfolio().then((p) => setProgramCount(declaredPrograms(p).length), () => setProgramCount(null));
-  }, []);
+    // Governance + ground-truth are viewer-scoped. Unknown and failed are kept
+    // distinct so a transport failure is never presented as an empty org.
+    listChangeRequests().then(
+      (p) => active && setChangeRequests(p.change_requests),
+      () => active && setUnavailable((current) => ({ ...current, changes: true }))
+    );
+    listGroundTruth().then(
+      (p) => active && setActuals(realActualCount(p.records)),
+      () => active && setUnavailable((current) => ({ ...current, actuals: true }))
+    );
+    getPortfolio().then(
+      (p) => active && setProgramCount(declaredPrograms(p).length),
+      () => active && setUnavailable((current) => ({ ...current, programs: true }))
+    );
+    return () => {
+      active = false;
+    };
+  }, [retryToken]);
 
   const today = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
   const recordCount = records == null ? null : records.length;
@@ -92,13 +126,24 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
     recordCount,
     programCount,
     realActualCount: actuals,
+    unavailable,
   });
+  const unavailableLabels = [
+    unavailable.records ? "records" : null,
+    unavailable.machines ? "machine inventory" : null,
+    unavailable.changes ? "governance reviews" : null,
+    unavailable.actuals ? "ground truth" : null,
+    unavailable.programs ? "programs" : null,
+  ].filter((label): label is string => label != null);
+  const hasUnavailable = unavailableLabels.length > 0;
+  const queueUnavailable =
+    queue == null && (unavailable.changes || unavailable.machines || unavailable.actuals);
 
   const runSetupStep = (key: (typeof setup)[number]["key"]) => {
     if (key === "machines") nav("machines");
     else if (key === "verify") {
       if (recordCount) nav("records");
-      else onPickFile();
+      else onOpenGuide();
     }
     else if (key === "program") nav("programs");
     else nav("calibration");
@@ -108,11 +153,11 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
   // real value; the validated-band count is not derivable from any list summary,
   // so it stays WITHHELD ([no data yet]) rather than invented.
   const kpis: { n: string; l: string; c: string; go: string }[] = [
-    { n: recordCount == null ? "—" : `${NUM(recordCount)}${recordsMore ? "+" : ""}`, l: "RECORDS", c: recordCount ? C.ink : C.ink45, go: "records" },
-    { n: machineCount == null ? "—" : NUM(machineCount), l: "MACHINES DECLARED", c: machineCount ? C.ink : C.fail, go: "machines" },
-    { n: proposed == null ? "—" : NUM(proposed), l: "IN REVIEW · GOVERNED", c: proposed ? C.cond : C.ink45, go: "calibration" },
-    { n: actuals == null ? "—" : actuals === 0 ? "n=0" : NUM(actuals), l: "ACTUALS · GROUND TRUTH", c: actuals ? C.ink : C.cond, go: "calibration" },
-    { n: "—", l: "VALIDATED BANDS · NO DATA YET", c: C.ink45, go: "calibration" },
+    { n: recordCount == null ? "—" : `${NUM(recordCount)}${recordsMore ? "+" : ""}`, l: unavailable.records ? "RECORDS · RETRY NEEDED" : "RECORDS", c: unavailable.records ? C.fail : recordCount ? C.ink : C.ink45, go: "records" },
+    { n: machineCount == null ? "—" : NUM(machineCount), l: unavailable.machines ? "MACHINES · RETRY NEEDED" : "MACHINES DECLARED", c: unavailable.machines ? C.fail : machineCount ? C.ink : C.fail, go: "machines" },
+    { n: proposed == null ? "—" : NUM(proposed), l: unavailable.changes ? "REVIEWS · RETRY NEEDED" : "CHANGES TO REVIEW", c: unavailable.changes ? C.fail : proposed ? C.cond : C.ink45, go: "calibration" },
+    { n: actuals == null ? "—" : actuals === 0 ? "0" : NUM(actuals), l: unavailable.actuals ? "ACTUAL RESULTS · RETRY" : "ACTUAL RESULTS ADDED", c: unavailable.actuals ? C.fail : actuals ? C.ink : C.cond, go: "calibration" },
+    { n: "—", l: "CALIBRATED ESTIMATES · NO DATA", c: C.ink45, go: "calibration" },
   ];
 
   const sevColor = (s: "cond" | "fail") => (s === "fail" ? C.fail : C.cond);
@@ -120,29 +165,78 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
   return (
     <main className="cv-verify-home" style={{ animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both", flex: 1, overflowY: "auto", padding: "28px 38px", background: C.bg }}>
       <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: C.ink40 }}>{today.toUpperCase()}</p>
-      <h1 style={{ margin: "8px 0 0", fontSize: 28, fontWeight: 300, letterSpacing: "-0.018em", lineHeight: 1.25 }}>Good morning.</h1>
+      <h1 style={{ margin: "8px 0 0", fontSize: 30, fontWeight: 350, letterSpacing: "-0.022em", lineHeight: 1.2 }}>What would you like to do?</h1>
+      <p style={{ margin: "8px 0 0", maxWidth: 720, color: C.ink55, fontSize: 13.5, lineHeight: 1.6 }}>
+        Turn a CAD file into a clear manufacturing answer: can it be made, how should it be made,
+        what should it cost, and what needs attention.
+      </p>
+
+      <section
+        data-testid="verify-start-here"
+        className="cv-verify-start"
+        style={{ marginTop: 20, maxWidth: 1160, border: `1px solid ${C.hair}`, borderRadius: 18, background: C.panel, padding: "18px" }}
+      >
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <Kicker>START HERE</Kicker>
+            <p style={{ margin: "6px 0 0", fontSize: 13.5, fontWeight: 600 }}>Choose one. Nothing else needs to be set up first.</p>
+          </div>
+          <button type="button" onClick={onOpenGuide} style={{ border: 0, background: "transparent", color: C.measured, padding: "7px 0", fontFamily: "inherit", fontSize: 11.5, fontWeight: 650, cursor: "pointer" }}>
+            Help me choose →
+          </button>
+        </div>
+        <div className="cv-verify-start-grid" style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+          <button type="button" onClick={onSample} style={{ minHeight: 116, border: 0, borderRadius: 14, background: C.ink, color: "#fff", padding: "16px 17px", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
+            <span style={{ display: "block", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.1em", color: "rgba(255,255,255,0.68)" }}>RECOMMENDED · 60 SECONDS</span>
+            <span style={{ display: "block", marginTop: 8, fontSize: 15, fontWeight: 650 }}>Show me a real example</span>
+            <span style={{ display: "block", marginTop: 5, color: "rgba(255,255,255,0.72)", fontSize: 11.5, lineHeight: 1.5 }}>No file needed. We run the engine and explain the answer.</span>
+          </button>
+          <button type="button" onClick={onPickFile} style={{ minHeight: 116, border: `1px solid ${C.hair}`, borderRadius: 14, background: C.sunken, color: C.ink, padding: "16px 17px", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
+            <span style={{ display: "block", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.1em", color: C.measured }}>I HAVE A CAD FILE</span>
+            <span style={{ display: "block", marginTop: 8, fontSize: 15, fontWeight: 650 }}>Check my part</span>
+            <span style={{ display: "block", marginTop: 5, color: C.ink55, fontSize: 11.5, lineHeight: 1.5 }}>Upload STEP, STL, or IGES for DFM, process, and cost.</span>
+          </button>
+          <Link href="/designs" style={{ minHeight: 116, display: "block", border: `1px solid ${C.hair}`, borderRadius: 14, background: C.sunken, color: C.ink, padding: "16px 17px", textAlign: "left", textDecoration: "none" }}>
+            <span style={{ display: "block", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.1em", color: C.user }}>I NEED TO CREATE ONE</span>
+            <span style={{ display: "block", marginTop: 8, fontSize: 15, fontWeight: 650 }}>Make a simple part</span>
+            <span style={{ display: "block", marginTop: 5, color: C.ink55, fontSize: 11.5, lineHeight: 1.5 }}>Create a plate, bracket, or enclosure, then verify it.</span>
+          </Link>
+        </div>
+      </section>
 
       <button
         type="button"
         onClick={() => nav("palette")}
-        style={{ marginTop: 18, width: "100%", maxWidth: 1160, display: "flex", alignItems: "center", gap: 12, border: `1px solid ${C.hair}`, borderRadius: 14, background: C.panel, padding: "15px 18px", cursor: "pointer", fontFamily: "inherit", textAlign: "left", boxShadow: "0 1px 2px rgba(23,24,26,0.03)" }}
+        style={{ marginTop: 12, width: "100%", maxWidth: 1160, display: "flex", alignItems: "center", gap: 12, border: `1px solid ${C.hair}`, borderRadius: 14, background: C.panel, padding: "13px 16px", cursor: "pointer", fontFamily: "inherit", textAlign: "left", boxShadow: "0 1px 2px rgba(23,24,26,0.03)" }}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.ink40} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v3" /><path d="M18.4 5.6 16 8" /><path d="M21 12h-3" /><path d="M12 21a9 9 0 1 1 9-9" /><circle cx="12" cy="12" r="1" /></svg>
-        <span style={{ flex: 1, fontSize: 14.5, color: C.ink45, fontWeight: 300 }}>Jump to a surface, action, or sample walkthrough…</span>
+        <span style={{ flex: 1, fontSize: 13, color: C.ink45, fontWeight: 400 }}>Search every tool and saved record…</span>
         <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink45, border: `1px solid ${C.hair}`, borderRadius: 6, padding: "3px 8px" }}>⌘K</span>
       </button>
 
+      {hasUnavailable ? (
+        <div role="alert" style={{ marginTop: 14, maxWidth: 1160, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", border: "1px solid rgba(190,61,45,0.34)", borderRadius: 12, background: "rgba(190,61,45,0.06)", padding: "11px 14px" }}>
+          <p style={{ margin: 0, flex: 1, minWidth: 220, fontSize: 12.5, lineHeight: 1.5, color: C.ink }}>
+            Couldn&apos;t load {unavailableLabels.join(", ")}. Related totals and actions are marked unavailable; nothing is being presented as an empty result.
+          </p>
+          <button type="button" onClick={() => setRetryToken((token) => token + 1)} style={{ border: `1px solid ${C.fail}`, borderRadius: 999, background: C.panel, color: C.fail, padding: "7px 14px", fontFamily: "inherit", fontSize: 11.5, fontWeight: 500, cursor: "pointer" }}>
+            Retry organization data
+          </button>
+        </div>
+      ) : null}
+
       <section className="cv-verify-setup" style={{ marginTop: 16, maxWidth: 1160, border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "16px 18px" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <Kicker>DAY ZERO SETUP</Kicker>
+          <Kicker>MAKE THE ESTIMATES YOURS</Kicker>
           <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink45 }}>
-            real org state only · no seeded tenant facts
+            optional after your first example
           </span>
         </div>
         <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
           {setup.map((s, i) => {
             const done = s.state === "done";
             const locked = s.state === "locked" || s.state === "pending";
+            const failed = s.state === "unavailable";
             return (
               <button
                 key={s.key}
@@ -153,7 +247,7 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
                 style={{
                   minHeight: 104,
                   textAlign: "left",
-                  border: `1px solid ${done ? "rgba(85,184,128,0.34)" : C.hair}`,
+                  border: `1px solid ${done ? "rgba(85,184,128,0.34)" : failed ? "rgba(190,61,45,0.34)" : C.hair}`,
                   borderRadius: 12,
                   background: done ? "rgba(85,184,128,0.06)" : C.sunken,
                   padding: "13px 14px",
@@ -167,7 +261,7 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
                   {done ? "✓" : i + 1}
                 </span>
                 <p style={{ margin: "11px 0 0", fontSize: 13, fontWeight: 500 }}>{s.title}</p>
-                <p style={{ margin: "5px 0 0", fontFamily: MONO, fontSize: 10.5, lineHeight: 1.5, color: s.state === "needed" ? C.cond : C.ink45 }}>{s.meta}</p>
+                <p style={{ margin: "5px 0 0", fontFamily: MONO, fontSize: 10.5, lineHeight: 1.5, color: failed ? C.fail : s.state === "needed" ? C.cond : C.ink45 }}>{s.meta}</p>
               </button>
             );
           })}
@@ -191,7 +285,9 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
           <section style={{ border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
             <Kicker>NEEDS YOUR ACTION</Kicker>
             {queue == null ? (
-              <p style={{ margin: "14px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink45 }}>loading…</p>
+              <p style={{ margin: "14px 0 0", fontFamily: MONO, fontSize: 11, color: queueUnavailable ? C.fail : C.ink45 }}>
+                {queueUnavailable ? "action queue unavailable — retry organization data above" : "loading…"}
+              </p>
             ) : queue.length === 0 ? (
               <div style={{ marginTop: 14, border: "1.5px dashed #d3d3d8", borderRadius: 12, padding: "22px 20px", textAlign: "center" }}>
                 <p style={{ margin: 0, fontSize: 13.5, fontWeight: 500 }}>Nothing needs you yet.</p>
@@ -225,11 +321,13 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
           <section style={{ border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
             <Kicker>IN FLIGHT — RECENT VERIFICATIONS</Kicker>
             {records == null ? (
-              <p style={{ margin: "14px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink45 }}>loading…</p>
+              <p style={{ margin: "14px 0 0", fontFamily: MONO, fontSize: 11, color: unavailable.records ? C.fail : C.ink45 }}>
+                {unavailable.records ? "recent verifications unavailable — retry organization data above" : "loading…"}
+              </p>
             ) : records.length === 0 ? (
               <div style={{ marginTop: 14, border: "1.5px dashed #d3d3d8", borderRadius: 12, padding: "26px 20px", textAlign: "center" }}>
                 <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>Nothing in flight.</p>
-                <p style={{ margin: "7px 0 0", fontSize: 12, color: C.ink50 }}>Your first verdict is one drop away — and it will be honest about what it doesn&apos;t know yet.</p>
+                <p style={{ margin: "7px 0 0", fontSize: 12, color: C.ink50 }}>Create a safe parametric design or upload existing CAD — either path reaches the same honest verification.</p>
               </div>
             ) : (
               <div style={{ marginTop: 8, display: "flex", flexDirection: "column" }}>
@@ -247,6 +345,16 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
 
         {/* right stack */}
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <Link href="/designs" style={{ border: `1px solid ${C.hair}`, borderRadius: 14, background: C.panel, padding: 18, cursor: "pointer", fontFamily: "inherit", color: "inherit", textAlign: "left", textDecoration: "none", display: "block" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Kicker>START FROM SCRATCH</Kicker>
+              <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.08em", color: C.measured }}>DESIGN STUDIO</span>
+            </div>
+            <p style={{ margin: "10px 0 0", fontSize: 14, fontWeight: 500 }}>Create a plate, bracket, or enclosure</p>
+            <p style={{ margin: "5px 0 0", fontSize: 11.5, lineHeight: 1.55, color: C.ink45 }}>real STEP + STL · immutable revisions · returns here to verify</p>
+            <span style={{ display: "inline-block", marginTop: 10, border: `1px solid ${C.hair}`, borderRadius: 999, padding: "7px 15px", fontSize: 11.5, fontWeight: 500 }}>Open Design Studio →</span>
+          </Link>
+
           <button type="button" onClick={onPickFile} style={{ border: `1.5px dashed #c9cbd0`, borderRadius: 14, background: C.panel, padding: 18, cursor: "pointer", fontFamily: "inherit", color: "inherit", textAlign: "center" }}>
             <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>Drop a part — STL, STEP or IGES</p>
             <p style={{ margin: "5px 0 0", fontSize: 11, color: C.ink45 }}>parsed in-process · discarded</p>
@@ -257,7 +365,7 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
             <Kicker>YOUR FLOOR</Kicker>
             <p style={{ margin: "8px 0 0", fontSize: 14 }}>
               {machineCount == null || missingRateCount == null
-                ? "—"
+                ? unavailable.machines ? "Machine inventory unavailable" : "—"
                 : machineCount === 0
                   ? "No machines declared"
                   : missingRateCount === 0
@@ -266,7 +374,7 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
             </p>
             <p style={{ margin: "5px 0 0", fontSize: 12, color: machineCount && missingRateCount === 0 ? C.ink45 : C.cond }}>
               {machineCount == null || missingRateCount == null
-                ? "checking machine rates..."
+                ? unavailable.machines ? "retry organization data above" : "checking machine rates..."
                 : machineCount === 0
                 ? "declare your floor — everything starts from the denominator"
                 : missingRateCount === 0
@@ -292,7 +400,7 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
             </div>
             <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10.5, color: actuals ? C.ink45 : C.cond }}>
               {actuals == null
-                ? "loading…"
+                ? unavailable.actuals ? "ground truth unavailable — retry organization data above" : "loading…"
                 : actuals === 0
                   ? "n=0 · every band still hatched — send actuals back to flip them"
                   : `${NUM(actuals)} actual${actuals === 1 ? "" : "s"} received · bands flip solid as each process reaches enough residuals`}
@@ -303,7 +411,9 @@ export function HomeScreen({ onPickFile, nav }: { onPickFile: () => void; nav: (
           <section style={{ border: `1px solid ${C.hair}`, borderRadius: 14, background: C.panel, padding: "16px 18px" }}>
             <Kicker>ACTIVITY</Kicker>
             {records == null && changeRequests == null ? (
-              <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink45 }}>loading…</p>
+              <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: unavailable.records || unavailable.changes ? C.fail : C.ink45 }}>
+                {unavailable.records || unavailable.changes ? "activity unavailable — retry organization data above" : "loading…"}
+              </p>
             ) : activity.length === 0 ? (
               <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink45 }}>nothing yet — your first verification will land here</p>
             ) : (

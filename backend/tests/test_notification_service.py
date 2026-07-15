@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastapi import HTTPException
 
 from src.db.models import Notification, NotificationRead
 from src.services import notification_service as svc
@@ -141,7 +142,7 @@ async def test_mark_read_adds_per_user_marker_once():
     session.flush = AsyncMock()
     session.execute.side_effect = [_result(first=row), _result(first=None)]
 
-    got = await svc.mark_read(
+    got, read_at, dismissed_at = await svc.mark_read(
         session,
         org_id="org_1",
         user_id=11,
@@ -153,10 +154,229 @@ async def test_mark_read_adds_per_user_marker_once():
     assert isinstance(marker, NotificationRead)
     assert marker.notification_id == 7
     assert marker.user_id == 11
+    assert marker.read_at == read_at
+    assert read_at.tzinfo is not None
+    assert dismissed_at is None
     session.flush.assert_awaited_once()
 
 
-def test_serialize_notification_maps_read_state():
+@pytest.mark.asyncio
+async def test_mark_read_returns_existing_persisted_timestamp():
+    row = Notification(
+        ulid="01N",
+        org_id="org_1",
+        kind="decision.created",
+        severity="pass",
+        status="open",
+        title="recorded",
+        body="make-now",
+        dest="records",
+        source_type="cost_decision",
+        source_id="dec_1",
+    )
+    row.id = 7
+    persisted_at = datetime(2026, 7, 8, tzinfo=timezone.utc)
+    marker = NotificationRead(notification_id=7, user_id=11, read_at=persisted_at)
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+    session.execute.side_effect = [_result(first=row), _result(first=marker)]
+
+    got, read_at, dismissed_at = await svc.mark_read(
+        session,
+        org_id="org_1",
+        user_id=11,
+        notification_id="01N",
+    )
+
+    assert got is row
+    assert read_at == persisted_at
+    assert dismissed_at is None
+    session.add.assert_not_called()
+    session.flush.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_dismiss_notification_creates_personal_read_marker():
+    row = Notification(
+        ulid="01N",
+        org_id="org_1",
+        kind="decision.created",
+        severity="pass",
+        status="open",
+        title="recorded",
+        body="make-now",
+        dest="records",
+        source_type="cost_decision",
+        source_id="dec_1",
+    )
+    row.id = 7
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+    session.execute.side_effect = [_result(first=row), _result(first=None)]
+
+    got, read_at, dismissed_at = await svc.dismiss_notification(
+        session,
+        org_id="org_1",
+        user_id=11,
+        notification_id="01N",
+    )
+
+    assert got is row
+    marker = session.add.call_args.args[0]
+    assert isinstance(marker, NotificationRead)
+    assert marker.notification_id == 7
+    assert marker.user_id == 11
+    assert marker.read_at == read_at
+    assert marker.dismissed_at == dismissed_at
+    assert dismissed_at is not None
+    assert dismissed_at.tzinfo is not None
+    session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_dismiss_notification_preserves_existing_read_timestamp():
+    row = Notification(
+        ulid="01N",
+        org_id="org_1",
+        kind="decision.created",
+        severity="pass",
+        status="open",
+        title="recorded",
+        body="make-now",
+        dest="records",
+        source_type="cost_decision",
+        source_id="dec_1",
+    )
+    row.id = 7
+    persisted_at = datetime(2026, 7, 8, tzinfo=timezone.utc)
+    marker = NotificationRead(notification_id=7, user_id=11, read_at=persisted_at)
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+    session.execute.side_effect = [_result(first=row), _result(first=marker)]
+
+    _, read_at, dismissed_at = await svc.dismiss_notification(
+        session,
+        org_id="org_1",
+        user_id=11,
+        notification_id="01N",
+    )
+
+    assert read_at == persisted_at
+    assert dismissed_at is not None
+    assert marker.dismissed_at == dismissed_at
+    session.add.assert_not_called()
+    session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_restore_notification_clears_only_dismissal_state():
+    row = Notification(
+        ulid="01N",
+        org_id="org_1",
+        kind="decision.created",
+        severity="pass",
+        status="open",
+        title="recorded",
+        body="make-now",
+        dest="records",
+        source_type="cost_decision",
+        source_id="dec_1",
+    )
+    row.id = 7
+    read_at = datetime(2026, 7, 8, tzinfo=timezone.utc)
+    marker = NotificationRead(
+        notification_id=7,
+        user_id=11,
+        read_at=read_at,
+        dismissed_at=datetime(2026, 7, 9, tzinfo=timezone.utc),
+    )
+    session = AsyncMock()
+    session.flush = AsyncMock()
+    session.execute.side_effect = [_result(first=row), _result(first=marker)]
+
+    got, restored_read_at, dismissed_at = await svc.restore_notification(
+        session,
+        org_id="org_1",
+        user_id=11,
+        notification_id="01N",
+    )
+
+    assert got is row
+    assert restored_read_at == read_at
+    assert dismissed_at is None
+    assert marker.dismissed_at is None
+    session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_mark_all_read_returns_the_exact_shared_timestamp():
+    first = Notification(
+        ulid="01A",
+        org_id="org_1",
+        kind="decision.created",
+        severity="pass",
+        status="open",
+        title="first",
+        body="",
+        dest="records",
+        source_type="cost_decision",
+        source_id="dec_1",
+    )
+    second = Notification(
+        ulid="01B",
+        org_id="org_1",
+        kind="decision.created",
+        severity="pass",
+        status="open",
+        title="second",
+        body="",
+        dest="records",
+        source_type="cost_decision",
+        source_id="dec_2",
+    )
+    first.id = 7
+    second.id = 8
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+    session.execute.return_value = _result(all_rows=[first, second])
+
+    count, read_at = await svc.mark_all_read(
+        session,
+        org_id="org_1",
+        user_id=11,
+    )
+
+    assert count == 2
+    assert read_at is not None
+    markers = [call.args[0] for call in session.add.call_args_list]
+    assert [marker.notification_id for marker in markers] == [7, 8]
+    assert all(marker.user_id == 11 for marker in markers)
+    assert all(marker.read_at == read_at for marker in markers)
+    session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_dismiss_notification_hides_foreign_org_as_not_found():
+    session = AsyncMock()
+    session.execute.return_value = _result(first=None)
+
+    with pytest.raises(HTTPException) as exc:
+        await svc.dismiss_notification(
+            session,
+            org_id="org_b",
+            user_id=12,
+            notification_id="01ORG_A",
+        )
+
+    assert getattr(exc.value, "status_code", None) == 404
+    assert getattr(exc.value, "detail", None) == "notification not found"
+
+
+def test_serialize_notification_maps_read_and_dismissal_state():
     row = Notification(
         ulid="01N",
         org_id="org_1",
@@ -172,11 +392,18 @@ def test_serialize_notification_maps_read_state():
         created_at=datetime(2026, 7, 7, tzinfo=timezone.utc),
     )
     read_at = datetime(2026, 7, 8, tzinfo=timezone.utc)
+    dismissed_at = datetime(2026, 7, 9, tzinfo=timezone.utc)
 
-    out = svc.serialize_notification(row, read_at=read_at)
+    out = svc.serialize_notification(
+        row,
+        read_at=read_at,
+        dismissed_at=dismissed_at,
+    )
 
     assert out["id"] == "01N"
     assert out["severity"] == "pass"
     assert out["metadata"] == {"filename": "cube.step"}
     assert out["is_read"] is True
     assert out["read_at"] == read_at.isoformat()
+    assert out["is_dismissed"] is True
+    assert out["dismissed_at"] == dismissed_at.isoformat()

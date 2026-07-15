@@ -42,22 +42,29 @@ def analyze_geometry(mesh: trimesh.Trimesh) -> GeometryInfo:
         max_y=float(bounds[1][1]),
         max_z=float(bounds[1][2]),
     )
-    # A degenerate / zero-volume mesh makes trimesh return a non-finite
-    # center_mass (NaN/±Inf). Emit honest absence (None) per-component rather
-    # than propagating NaN — the engine won't guess a coordinate it cannot
-    # compute, and NaN is not valid JSON for the persisted JSONB result.
-    com = mesh.center_mass
-    center_of_mass = tuple(
-        float(c) if np.isfinite(c) else None for c in com
-    )
+    is_watertight = bool(mesh.is_watertight)
+    volume = float(mesh.volume) if is_watertight else 0.0
+    # Trimesh derives center_mass from mass properties by dividing integrated
+    # moments by signed volume. An open or zero-volume shell has no truthful
+    # solid center of mass, and asking for one emits divide-by-zero warnings.
+    # Emit honest absence without invoking that calculation; NaN is also not
+    # valid JSON for the persisted JSONB result.
+    if is_watertight and np.isfinite(volume) and abs(volume) > 1e-12:
+        with np.errstate(all="ignore"):
+            com = mesh.center_mass
+        center_of_mass = tuple(
+            float(c) if np.isfinite(c) else None for c in com
+        )
+    else:
+        center_of_mass = (None, None, None)
     return GeometryInfo(
         vertex_count=len(mesh.vertices),
         face_count=len(mesh.faces),
-        volume=float(mesh.volume) if mesh.is_watertight else 0.0,
+        volume=volume,
         surface_area=float(mesh.area),
         bounding_box=bbox,
-        is_watertight=bool(mesh.is_watertight),
-        is_manifold=bool(mesh.is_watertight),  # trimesh: watertight ≈ manifold
+        is_watertight=is_watertight,
+        is_manifold=is_watertight,  # trimesh: watertight ≈ manifold
         euler_number=int(mesh.euler_number),
         center_of_mass=center_of_mass,
     )

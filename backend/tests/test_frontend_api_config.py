@@ -15,6 +15,7 @@ def test_frontend_uses_runtime_server_origin_and_same_origin_browser_routes():
     signup_page = read("frontend/src/app/(auth)/signup/page.tsx")
     login_page = read("frontend/src/app/(auth)/login/page.tsx")
     login_form = read("frontend/src/app/(auth)/login/login-form.tsx")
+    safe_return_path = read("frontend/src/lib/safe-return-path.ts")
 
     assert "cadvrfy-api.fly.dev" not in api_base
     assert "NEXT_PUBLIC_API_BASE" not in api_base
@@ -40,19 +41,28 @@ def test_frontend_uses_runtime_server_origin_and_same_origin_browser_routes():
     assert "TURNSTILE_SITE_KEY" in login_page
     assert 'fetch("/api/auth/magic/start"' in login_form
     assert "TurnstileWidget" in login_form
-    assert "parsed.origin !== base.origin" in login_form
+    assert "safeLocalPath(params.get(\"next\")" in login_form
+    assert "parsed.origin !== base.origin" in safe_return_path
+    assert 'raw.startsWith("//")' in safe_return_path
     assert "next.startsWith" not in login_form
 
 
 def test_next_api_proxy_streams_large_uploads_and_blocks_redirects():
     proxy_route = read("frontend/src/app/api/proxy/[...path]/route.ts")
+    body_helper = read("frontend/src/lib/proxy-request-body.ts")
 
     assert "req.arrayBuffer()" not in proxy_route
-    assert "body: hasBody ? req.body : undefined" in proxy_route
+    assert "prepareProxyRequestBody(method, contentType, req.body)" in proxy_route
+    assert "body: hasBody ? prepared.body : undefined" in proxy_route
     assert 'duplex?: "half"' in proxy_route
-    assert 'init.duplex = "half"' in proxy_route
+    assert 'if (prepared.streaming) init.duplex = "half"' in proxy_route
     assert 'redirect: "error"' in proxy_route
     assert "signal: req.signal" in proxy_route
+    assert "MAX_BUFFERED_PROXY_JSON_BYTES = 1024 * 1024" in body_helper
+    assert 'mime.endsWith("+json")' in body_helper
+    assert "return { body: stream, streaming: true" in body_helper
+    assert "reader.cancel" in body_helper
+    assert 'code: "proxy_json_too_large"' in proxy_route
     for unsafe in ('segment.includes("/")', 'segment.includes("\\\\")', 'segment.includes("%")'):
         assert unsafe in proxy_route
 
@@ -71,35 +81,38 @@ def test_public_share_proxy_has_a_narrow_get_only_allowlist():
 
 def test_deploy_configs_use_runtime_backend_origins():
     checked_files = [
-        "frontend/fly.toml",
         "docker-compose.yml",
         "cadverify-enterprise/docker-compose.yml",
         "charts/cadverify/templates/deployment-frontend.yaml",
-        "scripts/ops/kill-switch.sh",
+        "infra/aws/ecs.tf",
         ".github/workflows/ci.yml",
+        ".github/workflows/aws-commercial-promote.yml",
     ]
 
     combined = "\n".join(read(path) for path in checked_files)
-    assert "cadverify-api" not in combined
     assert "NEXT_PUBLIC_API_URL" not in combined
     assert "NEXT_PUBLIC_API_BASE" not in combined
     assert "API_BASE" in combined
-    assert "cadvrfy-api" not in read("frontend/fly.toml")
-    assert "FLY_APP_NAME" in read("scripts/ops/kill-switch.sh")
+    aws_ecs = read("infra/aws/ecs.tf")
+    assert "API_BASE                            = local.canonical_public_origin" in aws_ecs
+    assert "API_ORIGIN                          = local.canonical_public_origin" in aws_ecs
+    assert 'AUTH_PROXY_CLIENT_IP_SOURCE         = "cloudfront"' in aws_ecs
+    assert "registry.fly.io" not in read(".github/workflows/ci.yml")
+    assert not (ROOT / ".github/workflows/saas-promote.yml").exists()
 
 
 def test_frontend_fails_closed_on_invalid_commercial_runtime_origin():
     instrumentation = read("frontend/instrumentation.ts")
-    fly_config = read("frontend/fly.toml")
-    promotion = read("scripts/ops/promote-fly-release.sh")
+    aws_ecs = read("infra/aws/ecs.tf")
+    promotion = read("scripts/ops/aws-commercial-promote.sh")
 
     assert "assertProductionRuntimeConfig()" in instrumentation
     assert "PRODUCTION_PUBLIC_API_TLS_REQUIRED" in instrumentation
     assert 'parsed.protocol !== "https:"' in instrumentation
     assert 'parsed.origin !== raw' in instrumentation
-    assert 'PRODUCTION_PUBLIC_API_TLS_REQUIRED = "1"' in fly_config
-    assert 'API_BASE = "https://' not in fly_config
-    assert '--env "API_BASE=$CADVERIFY_PUBLIC_API_BASE"' in promotion
+    assert 'PRODUCTION_PUBLIC_API_TLS_REQUIRED  = "1"' in aws_ecs
+    assert "API_BASE                            = local.canonical_public_origin" in aws_ecs
+    assert '[[ "$AWS_PUBLIC_API_ORIGIN" == "$AWS_DASHBOARD_ORIGIN" ]]' in promotion
 
 
 def test_first_party_auth_proxy_and_magic_exchange_are_production_gated():
@@ -109,13 +122,24 @@ def test_first_party_auth_proxy_and_magic_exchange_are_production_gated():
     magic_exchange = read("frontend/src/app/api/auth/magic/exchange/route.ts")
     proxy_health = read("frontend/src/app/api/auth/proxy-health/route.ts")
     auth_proxy = read("frontend/src/lib/auth-proxy.ts")
+    auth_proxy_ip = read("frontend/src/lib/auth-proxy-ip.ts")
+    instrumentation = read("frontend/instrumentation.ts")
+    aws_ecs = read("infra/aws/ecs.tf")
+    aws_edge = read("infra/aws/edge.tf")
     magic_backend = read("backend/src/auth/magic_link.py")
     password_backend = read("backend/src/auth/password.py")
-    promotion = read("scripts/ops/promote-fly-release.sh")
+    deep_health = read("scripts/ops/aws-deep-health.mjs")
 
     for route in (login_route, signup_route, magic_start, magic_exchange, proxy_health):
         assert "signedAuthProxyHeaders" in route
-    assert "Fly-Client-IP" in auth_proxy
+    assert "requestClientIp" in auth_proxy
+    assert 'req.headers.get("cloudfront-viewer-address")' in auth_proxy_ip
+    assert 'case "cloudfront"' in auth_proxy_ip
+    assert "x-forwarded-for" not in auth_proxy_ip.lower()
+    assert 'AUTH_PROXY_CLIENT_IP_SOURCE         = "cloudfront"' in aws_ecs
+    assert 'items = ["CloudFront-Viewer-Address"]' in aws_edge
+    assert 'header_behavior = "allViewerAndWhitelistCloudFront"' in aws_edge
+    assert 'new Set(["fly", "nginx", "cloudfront"])' in instrumentation
     assert 'digest("base64url")' in auth_proxy
     assert "AUTH_PROXY_SECRET" in auth_proxy
     assert 'decoded.toString("base64") !== raw' in auth_proxy
@@ -127,8 +151,8 @@ def test_first_party_auth_proxy_and_magic_exchange_are_production_gated():
     assert "/magic/verify?token=" not in magic_backend
     assert "require_auth_proxy_if_enabled(request)" in magic_backend
     assert "require_auth_proxy_if_enabled(request)" in password_backend
-    assert "CADVERIFY_REQUIRED_FLY_SECRETS=AUTH_PROXY_SECRET,TURNSTILE_SITE_KEY" in promotion
-    assert '"$CADVERIFY_DASHBOARD_ORIGIN/api/auth/proxy-health"' in promotion
+    assert 'jsonProbe(`${dashboardOrigin}/api/auth/proxy-health`)' in deep_health
+    assert '["auth_proxy", proxy.status === 200 && proxy.body?.ok === true' in deep_health
 
 
 def test_oauth_state_cookie_is_short_lived_and_secure_in_production():
@@ -236,7 +260,8 @@ def test_public_docs_use_live_urls_and_route_shims_exist():
     assert "backendOrigin()" in developers
     assert "{apiOrigin}/api/v1/validate" in developers
     assert "cadvrfy-api.fly.dev" not in developers
-    assert "https://github.com/zandemha2025/cadverify" in developers
+    assert 'git clone &quot;$PROOFSHAPE_DEPLOYMENT_REPOSITORY&quot; proofshape' in developers
+    assert "https://github.com/zandemha2025/cadverify" not in developers
     assert "https://api.cadverify.com" not in developers
     assert "https://github.com/cadverify/cadverify" not in developers
     assert 'backendUrl("/docs")' in scalar_route

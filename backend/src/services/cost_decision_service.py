@@ -37,6 +37,12 @@ logger = logging.getLogger("cadverify.cost_decision_service")
 
 APPROVAL_UNREVIEWED = "unreviewed"
 APPROVAL_APPROVED = "approved"
+DISPOSITION_LABELS = {
+    "inhouse": "Make in-house",
+    "outside": "Make outside",
+    "acquire": "Acquire capability",
+    "redesign": "Redesign",
+}
 
 
 def cost_persist_enabled() -> bool:
@@ -100,9 +106,16 @@ def _denormalize(result_json: dict) -> tuple[Optional[str], Optional[float], lis
 
 
 async def _lookup_dedup(
-    session: AsyncSession, user_id: int, mesh_hash: str, params_hash: str
+    session: AsyncSession,
+    user_id: int,
+    mesh_hash: str,
+    params_hash: str,
+    *,
+    org_id: str | None = None,
 ) -> Optional[CostDecision]:
+    org_scope = org_id if org_id is not None else caller_org_subquery(user_id)
     stmt = select(CostDecision).where(
+        CostDecision.org_id == org_scope,
         CostDecision.user_id == user_id,
         CostDecision.mesh_hash == mesh_hash,
         CostDecision.params_hash == params_hash,
@@ -121,14 +134,23 @@ async def persist_cost_decision(
     file_type: str,
     result_json: dict,
     label: Optional[str] = None,
+    org_id: str | None = None,
 ) -> CostDecision:
     """Insert (or return the deduped) CostDecision row and flush to get its ulid.
 
-    Dedup key is (user_id, mesh_hash, params_hash): a repeat cost of the same
-    file with the same params returns the existing row instead of duplicating.
+    Dedup key is (org_id, user_id, mesh_hash, params_hash): a repeat cost of the
+    same file with the same params returns the existing row inside one tenant,
+    while the same user may persist an independent decision in another tenant.
+    Delayed workers pass their parent row's immutable ``org_id`` explicitly.
     Race-safe via IntegrityError re-query (mirrors analysis_service).
     """
-    existing = await _lookup_dedup(session, user.user_id, mesh_hash, params_hash)
+    existing = await _lookup_dedup(
+        session,
+        user.user_id,
+        mesh_hash,
+        params_hash,
+        org_id=org_id,
+    )
     if existing is not None:
         logger.info(
             "Cost-decision dedup hit for user=%s mesh=%.12s…", user.user_id, mesh_hash
@@ -143,10 +165,13 @@ async def persist_cost_decision(
 
     from src.auth.org_context import resolve_org
 
+    persisted_org_id = (
+        org_id if org_id is not None else await resolve_org(session, user.user_id)
+    )
     decision = CostDecision(
         ulid=str(ULID()),
         user_id=user.user_id,
-        org_id=await resolve_org(session, user.user_id),
+        org_id=persisted_org_id,
         api_key_id=user.api_key_id or None,
         mesh_hash=mesh_hash,
         params_hash=params_hash,
@@ -169,7 +194,11 @@ async def persist_cost_decision(
             user.user_id,
         )
         existing = await _lookup_dedup(
-            session, user.user_id, mesh_hash, params_hash
+            session,
+            user.user_id,
+            mesh_hash,
+            params_hash,
+            org_id=org_id,
         )
         if existing is not None:
             await _refresh_summary_for(session, existing)
@@ -338,6 +367,8 @@ def governance_fields(d: CostDecision) -> dict:
     ``stale_at`` now, but does not claim the saved decision is stale until that
     effective instant arrives.
     """
+    raw_disposition = getattr(d, "user_disposition", None)
+    disposition = raw_disposition if isinstance(raw_disposition, str) else None
     return {
         "approval_status": getattr(d, "approval_status", None) or APPROVAL_UNREVIEWED,
         "approved_by_user_id": getattr(d, "approved_by_user_id", None),
@@ -346,6 +377,19 @@ def governance_fields(d: CostDecision) -> dict:
         "is_stale": _is_stale(d),
         "stale_at": _iso(getattr(d, "stale_at", None)),
         "stale_reason": getattr(d, "stale_reason", None),
+        "user_disposition": disposition,
+        "user_disposition_label": (
+            DISPOSITION_LABELS.get(disposition)
+            if disposition is not None
+            else None
+        ),
+        "disposition_note": getattr(d, "disposition_note", None),
+        "disposition_updated_at": _iso(
+            getattr(d, "disposition_updated_at", None)
+        ),
+        "disposition_updated_by_user_id": getattr(
+            d, "disposition_updated_by_user_id", None
+        ),
     }
 
 
@@ -411,6 +455,122 @@ async def reopen_owned(
     return d
 
 
+def _selected_route_dfm_blocked(result_json: object) -> bool:
+    """Fail closed when the persisted make-now route carries a real DFM block.
+
+    The immutable cost report can retain a conditional comparison cost for a
+    blocked route. That is useful evidence, but it is not a route a user may
+    record as an unqualified ``Make in-house`` outcome. A revised CAD artifact
+    must pass route DFM first.
+    """
+    if not isinstance(result_json, dict):
+        return False
+    decision = result_json.get("decision")
+    process = decision.get("make_now_process") if isinstance(decision, dict) else None
+    estimates = result_json.get("estimates")
+    if not isinstance(estimates, list):
+        return False
+    selected = [
+        item
+        for item in estimates
+        if isinstance(item, dict)
+        and (not process or item.get("process") == process)
+    ]
+    return any(
+        item.get("dfm_ready") is False
+        or item.get("dfm_verdict") == "fail"
+        or item.get("environment_excluded") is True
+        or bool(item.get("dfm_blockers"))
+        for item in selected
+    )
+
+
+async def set_disposition_owned(
+    session: AsyncSession,
+    ulid: str,
+    user_id: int,
+    *,
+    disposition: Optional[str],
+    note: Optional[str] = None,
+) -> CostDecision:
+    """Persist or withdraw the human outcome on an owned cost decision.
+
+    ``result_json`` remains immutable engine evidence. The disposition records
+    the accountable user's follow-through. Any real change reopens an existing
+    approval, because a prior signoff must never silently govern a new outcome.
+    Repeating an identical PUT is idempotent and does not rewrite timestamps or
+    append duplicate audit entries.
+    """
+    if disposition is not None and disposition not in DISPOSITION_LABELS:
+        raise HTTPException(status_code=400, detail="Invalid decision disposition")
+    if note is not None and len(note) > 1000:
+        raise HTTPException(
+            status_code=400,
+            detail="Disposition note must be 1000 characters or fewer",
+        )
+
+    d = await get_owned(session, ulid, user_id)
+    clean_note = _clean_note(note) if disposition is not None else None
+    if disposition == "inhouse" and _selected_route_dfm_blocked(d.result_json):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Make in-house is unavailable while the selected route is blocked "
+                "by DFM. Record Redesign, Make outside, or Acquire capability, or "
+                "verify revised CAD that passes route DFM."
+            ),
+        )
+    previous = getattr(d, "user_disposition", None)
+    previous_note = getattr(d, "disposition_note", None)
+
+    if previous == disposition and previous_note == clean_note:
+        return d
+
+    approval_reopened = (
+        getattr(d, "approval_status", APPROVAL_UNREVIEWED) == APPROVAL_APPROVED
+    )
+    d.user_disposition = disposition
+    d.disposition_note = clean_note
+    d.disposition_updated_at = datetime.now(timezone.utc)
+    d.disposition_updated_by_user_id = user_id
+
+    if approval_reopened:
+        d.approval_status = APPROVAL_UNREVIEWED
+        d.approved_by_user_id = None
+        d.approved_at = None
+        d.approval_note = None
+
+    from src.services.audit_service import emit_event
+
+    await emit_event(
+        session,
+        actor_id=user_id,
+        action=(
+            "decision.disposition_withdrawn"
+            if disposition is None
+            else "decision.disposition_recorded"
+        ),
+        resource_type="cost_decision",
+        resource_id=d.ulid,
+        detail={
+            "org_id": d.org_id,
+            "previous_disposition": previous,
+            "disposition": disposition,
+            "approval_reopened": approval_reopened,
+        },
+        org_id=d.org_id,
+    )
+    await session.commit()
+    logger.info(
+        "Cost decision %s disposition changed from %s to %s by user %d",
+        ulid,
+        previous,
+        disposition,
+        user_id,
+    )
+    return d
+
+
 async def mark_org_decisions_stale(
     session: AsyncSession,
     org_id: str,
@@ -442,11 +602,32 @@ async def mark_org_decisions_stale(
 # ---------------------------------------------------------------------------
 
 
-def build_estimates_csv(result_json: dict) -> str:
+def spreadsheet_safe_cell(value):
+    """Neutralize formula-capable text while preserving JSON/source records.
+
+    Spreadsheet programs may execute cells beginning with =, +, -, or @ (also
+    after leading whitespace/control characters). Prefixing an apostrophe is the
+    conventional CSV display escape: users see the original text, while the
+    imported cell is data rather than a formula. Numeric values stay numeric.
+    """
+    if not isinstance(value, str) or not value:
+        return value
+    candidate = value.lstrip(" \t\r\n")
+    if value[0] in "\t\r\n" or candidate.startswith(("=", "+", "-", "@")):
+        return "'" + value
+    return value
+
+
+def build_estimates_csv(
+    result_json: dict,
+    *,
+    governance: Optional[dict] = None,
+) -> str:
     """Flatten per-(process, qty) estimates into an auditable CSV table.
 
     Includes the honest confidence band columns (band label + validated flag)
-    so the exported artifact never presents an unvalidated number as measured.
+    and the persisted approval fields, so the exported artifact never presents
+    an unvalidated or unsigned number as governed evidence.
     """
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -464,29 +645,51 @@ def build_estimates_csv(result_json: dict) -> str:
             "confidence_label",
             "confidence_validated",
             "dfm_ready",
+            "approval_status",
+            "approved_by_user_id",
+            "approved_at",
+            "approval_note",
+            "user_disposition",
+            "user_disposition_label",
+            "disposition_note",
+            "disposition_updated_at",
+            "disposition_updated_by_user_id",
             "line_items",
         ]
     )
+    governance = governance or {}
     for e in result_json.get("estimates", []) or []:
         ci = e.get("confidence") or {}
         line_items = e.get("line_items") or {}
         li_str = "; ".join(f"{k}={v}" for k, v in line_items.items())
         writer.writerow(
             [
-                e.get("process", ""),
-                e.get("material", ""),
-                e.get("quantity", ""),
-                e.get("unit_cost_usd", ""),
-                e.get("fixed_cost_usd", ""),
-                e.get("variable_cost_usd", ""),
-                e.get("est_error_band_pct", ""),
-                ci.get("low_usd", ""),
-                ci.get("high_usd", ""),
-                ci.get("label", ""),
-                # Honesty: this is False for assumption-based bands.
-                ci.get("validated", False),
-                e.get("dfm_ready", ""),
-                li_str,
+                spreadsheet_safe_cell(value)
+                for value in [
+                    e.get("process", ""),
+                    e.get("material", ""),
+                    e.get("quantity", ""),
+                    e.get("unit_cost_usd", ""),
+                    e.get("fixed_cost_usd", ""),
+                    e.get("variable_cost_usd", ""),
+                    e.get("est_error_band_pct", ""),
+                    ci.get("low_usd", ""),
+                    ci.get("high_usd", ""),
+                    ci.get("label", ""),
+                    # Honesty: this is False for assumption-based bands.
+                    ci.get("validated", False),
+                    e.get("dfm_ready", ""),
+                    governance.get("approval_status", ""),
+                    governance.get("approved_by_user_id", ""),
+                    governance.get("approved_at", ""),
+                    governance.get("approval_note", ""),
+                    governance.get("user_disposition", ""),
+                    governance.get("user_disposition_label", ""),
+                    governance.get("disposition_note", ""),
+                    governance.get("disposition_updated_at", ""),
+                    governance.get("disposition_updated_by_user_id", ""),
+                    li_str,
+                ]
             ]
         )
     return buf.getvalue()

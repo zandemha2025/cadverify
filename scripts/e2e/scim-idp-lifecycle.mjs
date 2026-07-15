@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveAdminApiKey } from "./local-admin-api-key.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -9,8 +10,8 @@ const outputRoot = process.env.E2E_ARTIFACT_DIR
   ? path.resolve(process.env.E2E_ARTIFACT_DIR)
   : path.join(repoRoot, ".gstack", "qa-reports");
 const runId = process.env.E2E_RUN_ID || new Date().toISOString().slice(0, 10);
-const apiBase = (process.env.CADVERIFY_API_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
-const token = process.env.CADVERIFY_SCIM_TOKEN || process.env.CADVERIFY_API_KEY || "";
+const apiBase = (process.env.PROOFSHAPE_API_URL || process.env.CADVERIFY_API_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+let token = process.env.PROOFSHAPE_SCIM_TOKEN || process.env.PROOFSHAPE_API_KEY || process.env.CADVERIFY_SCIM_TOKEN || process.env.CADVERIFY_API_KEY || "";
 
 const artifacts = {
   json: path.join(outputRoot, `scim-idp-lifecycle-${runId}.json`),
@@ -164,13 +165,20 @@ ${rows}
 
 async function main() {
   await mkdir(outputRoot, { recursive: true });
+  const credential = await resolveAdminApiKey({
+    apiBase,
+    configuredToken: token,
+    runId,
+    purpose: "scim",
+  });
+  token = credential.token;
   if (!token) {
     const data = {
       status: "SKIPPED",
       generatedAt: new Date().toISOString(),
       runId,
       apiBase,
-      boundary: "Requires CADVERIFY_SCIM_TOKEN or CADVERIFY_API_KEY for an org-admin user.",
+      boundary: credential.boundary || "Requires PROOFSHAPE_SCIM_TOKEN or PROOFSHAPE_API_KEY for an org-admin user.",
       providers: [],
     };
     await writeFile(artifacts.json, `${JSON.stringify(data, null, 2)}\n`);
@@ -189,7 +197,12 @@ async function main() {
     generatedAt: new Date().toISOString(),
     runId,
     apiBase,
-    boundary: "SCIM protocol lifecycle simulation over the real CadVerify SCIM HTTP surface; not vendor sandbox certification.",
+    boundary: "SCIM protocol lifecycle simulation over the real ProofShape SCIM HTTP surface; not vendor sandbox certification.",
+    credential: {
+      source: credential.source,
+      accountEmail: credential.accountEmail || null,
+      keyPrefix: credential.keyPrefix || null,
+    },
     providers,
     failed,
   };

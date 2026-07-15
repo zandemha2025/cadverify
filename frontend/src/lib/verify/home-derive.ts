@@ -39,7 +39,7 @@ export interface ActivityItem {
   at: number;
 }
 
-export type DayZeroStepState = "pending" | "needed" | "optional" | "locked" | "done";
+export type DayZeroStepState = "pending" | "needed" | "optional" | "locked" | "unavailable" | "done";
 export type DayZeroStepKey = "machines" | "verify" | "program" | "truth";
 
 export interface DayZeroStep {
@@ -60,45 +60,78 @@ export function buildDayZeroSetup(input: {
   recordCount: number | null;
   programCount: number | null;
   realActualCount: number | null;
+  unavailable?: {
+    machines?: boolean;
+    records?: boolean;
+    programs?: boolean;
+    actuals?: boolean;
+  };
 }): DayZeroStep[] {
   const hasRecord = (input.recordCount ?? 0) > 0;
+  const unavailable = input.unavailable ?? {};
 
   return [
     {
-      key: "machines",
-      title: "Declare machines + rates",
-      meta:
-        input.machineCount == null
-          ? "checking inventory..."
-          : input.machineCount > 0
-            ? `${input.machineCount} machine${input.machineCount === 1 ? "" : "s"} declared`
-            : "add owned machines and their hourly rates",
-      state: input.machineCount == null ? "pending" : input.machineCount > 0 ? "done" : "needed",
-    },
-    {
       key: "verify",
-      title: "Verify first part",
+      title: "Check your first CAD part",
       meta:
-        input.recordCount == null
+        unavailable.records && input.recordCount == null
+          ? "records unavailable — retry above"
+          : input.recordCount == null
           ? "checking records..."
           : input.recordCount > 0
             ? `${input.recordCount} record${input.recordCount === 1 ? "" : "s"}`
-            : "drop STL, STEP or IGES",
-      state: input.recordCount == null ? "pending" : input.recordCount > 0 ? "done" : "needed",
+            : "try an example or upload STEP, STL, or IGES",
+      state:
+        unavailable.records && input.recordCount == null
+          ? "unavailable"
+          : input.recordCount == null
+            ? "pending"
+            : input.recordCount > 0
+              ? "done"
+              : "needed",
+    },
+    {
+      key: "machines",
+      title: "Add your machines and rates",
+      meta:
+        unavailable.machines && input.machineCount == null
+          ? "inventory unavailable — retry above"
+          : input.machineCount == null
+          ? "checking inventory..."
+          : input.machineCount > 0
+            ? `${input.machineCount} machine${input.machineCount === 1 ? "" : "s"} added`
+            : "makes cost estimates specific to your shop",
+      state:
+        unavailable.machines && input.machineCount == null
+          ? "unavailable"
+          : input.machineCount == null
+            ? "pending"
+            : input.machineCount > 0
+              ? "done"
+              : "needed",
     },
     {
       key: "program",
-      title: "Add program context",
-      meta: !hasRecord
+      title: "Add volume and program details",
+      meta: unavailable.records && input.recordCount == null
+        ? "records unavailable — retry above"
+        : !hasRecord
         ? "available after your first verified part"
-        : input.programCount == null
+        : unavailable.programs && input.programCount == null
+          ? "programs unavailable — retry above"
+          : input.programCount == null
           ? "checking programs..."
           : input.programCount > 0
             ? `${input.programCount} program${input.programCount === 1 ? "" : "s"} declared`
             : "optional · assign a part and annual volume",
-      state: !hasRecord
+      state: unavailable.records && input.recordCount == null
+        ? "unavailable"
+        : !hasRecord
         ? "locked"
-        : input.programCount == null
+        : unavailable.programs && input.programCount == null
+          ? "unavailable"
+          : input.programCount == null
           ? "pending"
           : input.programCount > 0
             ? "done"
@@ -106,17 +139,25 @@ export function buildDayZeroSetup(input: {
     },
     {
       key: "truth",
-      title: "Send actuals for validation",
-      meta: !hasRecord
+      title: "Add actual time and cost results",
+      meta: unavailable.records && input.recordCount == null
+        ? "records unavailable — retry above"
+        : !hasRecord
         ? "available after your first verification"
-        : input.realActualCount == null
+        : unavailable.actuals && input.realActualCount == null
+          ? "ground truth unavailable — retry above"
+          : input.realActualCount == null
           ? "checking ground truth..."
           : input.realActualCount > 0
             ? `${input.realActualCount} actual${input.realActualCount === 1 ? "" : "s"} received`
             : "optional · upload actual hours and invoiced costs",
-      state: !hasRecord
+      state: unavailable.records && input.recordCount == null
+        ? "unavailable"
+        : !hasRecord
         ? "locked"
-        : input.realActualCount == null
+        : unavailable.actuals && input.realActualCount == null
+          ? "unavailable"
+          : input.realActualCount == null
           ? "pending"
           : input.realActualCount > 0
             ? "done"

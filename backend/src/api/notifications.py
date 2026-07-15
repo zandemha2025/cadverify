@@ -1,7 +1,7 @@
 """Durable notifications API."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.org_context import resolve_org
@@ -24,7 +24,8 @@ async def list_notifications(
     request: Request,
     response: Response,
     status: str = Query("open", pattern="^(open|resolved|all)$"),
-    unread: bool = Query(True),
+    unread: bool | None = Query(None),
+    dismissed: bool = Query(False),
     limit: int = Query(50, ge=1, le=100),
     cursor: int | None = Query(None, ge=1),
     user: AuthedUser = Depends(require_role(Role.viewer)),
@@ -33,18 +34,29 @@ async def list_notifications(
     org_id = await _org(session, user)
     if not org_id:
         return {"notifications": [], "next_cursor": None, "has_more": False}
+    unread_only = not dismissed if unread is None else unread
+    if dismissed and unread_only:
+        raise HTTPException(
+            status_code=400,
+            detail="dismissed notifications cannot be filtered as unread",
+        )
     rows, has_more = await svc.list_notifications(
         session,
         org_id=org_id,
         user_id=user.user_id,
         status=status,
-        unread=unread,
+        unread=unread_only,
+        dismissed=dismissed,
         limit=limit,
         cursor=cursor,
     )
     items = [
-        svc.serialize_notification(row, read_at=read_at)
-        for row, read_at in rows
+        svc.serialize_notification(
+            row,
+            read_at=read_at,
+            dismissed_at=dismissed_at,
+        )
+        for row, read_at, dismissed_at in rows
     ]
     next_cursor = str(rows[-1][0].id) if has_more and rows else None
     return {"notifications": items, "next_cursor": next_cursor, "has_more": has_more}
@@ -62,14 +74,79 @@ async def mark_notification_read(
     org_id = await _org(session, user)
     if not org_id:
         return {"ok": True}
-    row = await svc.mark_read(
+    row, read_at, dismissed_at = await svc.mark_read(
         session,
         org_id=org_id,
         user_id=user.user_id,
         notification_id=notification_id,
     )
     await session.commit()
-    return {"ok": True, "notification": svc.serialize_notification(row)}
+    return {
+        "ok": True,
+        "notification": svc.serialize_notification(
+            row,
+            read_at=read_at,
+            dismissed_at=dismissed_at,
+        ),
+    }
+
+
+@router.post("/{notification_id}/dismiss")
+@limiter.limit("120/hour;1000/day")
+async def dismiss_notification(
+    notification_id: str,
+    request: Request,
+    response: Response,
+    user: AuthedUser = Depends(require_role(Role.viewer)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    org_id = await _org(session, user)
+    if not org_id:
+        raise HTTPException(status_code=404, detail="notification not found")
+    row, read_at, dismissed_at = await svc.dismiss_notification(
+        session,
+        org_id=org_id,
+        user_id=user.user_id,
+        notification_id=notification_id,
+    )
+    await session.commit()
+    return {
+        "ok": True,
+        "notification": svc.serialize_notification(
+            row,
+            read_at=read_at,
+            dismissed_at=dismissed_at,
+        ),
+    }
+
+
+@router.post("/{notification_id}/restore")
+@limiter.limit("120/hour;1000/day")
+async def restore_notification(
+    notification_id: str,
+    request: Request,
+    response: Response,
+    user: AuthedUser = Depends(require_role(Role.viewer)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    org_id = await _org(session, user)
+    if not org_id:
+        raise HTTPException(status_code=404, detail="notification not found")
+    row, read_at, dismissed_at = await svc.restore_notification(
+        session,
+        org_id=org_id,
+        user_id=user.user_id,
+        notification_id=notification_id,
+    )
+    await session.commit()
+    return {
+        "ok": True,
+        "notification": svc.serialize_notification(
+            row,
+            read_at=read_at,
+            dismissed_at=dismissed_at,
+        ),
+    }
 
 
 @router.post("/read-all")
@@ -82,7 +159,16 @@ async def mark_all_notifications_read(
 ):
     org_id = await _org(session, user)
     count = 0
+    read_at = None
     if org_id:
-        count = await svc.mark_all_read(session, org_id=org_id, user_id=user.user_id)
+        count, read_at = await svc.mark_all_read(
+            session,
+            org_id=org_id,
+            user_id=user.user_id,
+        )
         await session.commit()
-    return {"ok": True, "count": count}
+    return {
+        "ok": True,
+        "count": count,
+        "read_at": read_at.isoformat() if read_at else None,
+    }

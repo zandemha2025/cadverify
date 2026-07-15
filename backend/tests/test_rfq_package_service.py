@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import csv
 import io
 import json
+import shutil
+import subprocess
 import zipfile
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -68,7 +71,40 @@ def _decision(**overrides) -> CostDecision:
     d.approved_at = overrides.get("approved_at")
     d.approved_by_user_id = overrides.get("approved_by_user_id")
     d.approval_note = overrides.get("approval_note")
+    d.user_disposition = overrides.get("user_disposition")
+    d.disposition_note = overrides.get("disposition_note")
+    d.disposition_updated_at = overrides.get("disposition_updated_at")
+    d.disposition_updated_by_user_id = overrides.get(
+        "disposition_updated_by_user_id"
+    )
     return d
+
+
+def test_line_items_csv_neutralizes_customer_controlled_formula_cells():
+    from src.services.rfq_package_service import _line_items_csv
+
+    csv_text = _line_items_csv(
+        [
+            {
+                "decision": {
+                    "id": "01SAFE",
+                    "filename": "=HYPERLINK(\"https://attacker.invalid\")",
+                    "approval_status": "approved",
+                    "is_stale": False,
+                    "unvalidated_confidence": False,
+                    "make_now_process": "cnc_milling",
+                    "crossover_qty": 100,
+                },
+                "declared_part": {"part": {"part_id": "+SUM(1,1)"}},
+                "part_context": {"program": " @RUN()"},
+                "raw_cad": {"included": True},
+            }
+        ]
+    )
+    row = next(csv.DictReader(io.StringIO(csv_text)))
+    assert row["filename"].startswith("'=")
+    assert row["manifest_part_id"].startswith("'+")
+    assert row["program"].startswith("' @")
 
 
 @pytest.mark.asyncio
@@ -144,11 +180,20 @@ async def test_raw_cad_payload_only_reads_same_org_completed_batch_blob(tmp_path
 @pytest.mark.asyncio
 async def test_build_zip_contains_honest_package_files(monkeypatch):
     decision = _decision()
+    disposition_at = datetime.now(timezone.utc)
     item = {
         "decision": {
             "id": decision.ulid,
             "filename": decision.filename,
             "approval_status": "approved",
+            "approved_by_user_id": 11,
+            "approved_at": "2026-07-13T05:00:00+00:00",
+            "approval_note": "Reviewed against governed rates",
+            "user_disposition": "make_in_house",
+            "user_disposition_label": "Make in-house",
+            "disposition_note": "Release to cell 4",
+            "disposition_updated_at": disposition_at.isoformat(),
+            "disposition_updated_by_user_id": 12,
             "is_stale": False,
             "unvalidated_confidence": True,
             "make_now_process": "cnc",
@@ -179,12 +224,16 @@ async def test_build_zip_contains_honest_package_files(monkeypatch):
     session = AsyncMock()
     session.execute = AsyncMock(return_value=_Result(first=decision))
     monkeypatch.setattr(svc, "cached_cost_pdf", AsyncMock(return_value=b"%PDF-test"))
+    monkeypatch.setattr(
+        svc, "_supplier_brief_pdf", AsyncMock(return_value=b"%PDF-supplier-brief")
+    )
 
     data = await svc.build_zip(session, package)
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
         names = set(zf.namelist())
         assert "package_manifest.json" in names
         assert "supplier-brief.md" in names
+        assert "supplier-brief.pdf" in names
         assert "line-items.csv" in names
         assert "cost-decisions.json" in names
         assert any(name.endswith("/cost-decision.json") for name in names)
@@ -196,5 +245,113 @@ async def test_build_zip_contains_honest_package_files(monkeypatch):
         manifest = json.loads(zf.read("package_manifest.json"))
         assert manifest["live_supplier_send"] is False
         assert manifest["raw_cad_included"] is False
+        assert "supplier-brief.pdf" in manifest["included_files"]
+        assert zf.read("supplier-brief.pdf") == b"%PDF-supplier-brief"
         brief = zf.read("supplier-brief.md").decode()
         assert "not a supplier quote" in brief
+        drivers_name = next(name for name in names if name.endswith("/cost-drivers.csv"))
+        driver_rows = list(
+            csv.DictReader(io.StringIO(zf.read(drivers_name).decode("utf-8")))
+        )
+        assert len(driver_rows) == 1
+        assert driver_rows[0]["approval_status"] == "approved"
+        assert driver_rows[0]["approved_by_user_id"] == "11"
+        assert driver_rows[0]["approved_at"] == "2026-07-13T05:00:00+00:00"
+        assert driver_rows[0]["approval_note"] == "Reviewed against governed rates"
+        assert driver_rows[0]["user_disposition"] == "make_in_house"
+        assert driver_rows[0]["user_disposition_label"] == "Make in-house"
+        assert driver_rows[0]["disposition_note"] == "Release to cell 4"
+        assert driver_rows[0]["disposition_updated_at"] == disposition_at.isoformat()
+        assert driver_rows[0]["disposition_updated_by_user_id"] == "12"
+
+
+def test_supplier_brief_html_preserves_all_warning_truth_and_escapes_text():
+    package = RfqPackage(
+        ulid="01RFQPACKAGEHTML",
+        org_id="org_1",
+        user_id=11,
+        title="Pump <script>alert(1)</script>",
+        supplier_name="Supplier & Sons",
+        item_count=3,
+        approved_count=2,
+        stale_count=1,
+        unvalidated_count=2,
+        raw_cad_included=True,
+        live_supplier_send=False,
+        items_json=[],
+        warnings_json=[
+            {"code": "decision_stale", "message": "VALVE-A.step is stale."},
+            {
+                "code": "raw_cad_unavailable",
+                "message": "Raw CAD was requested but is not available for VALVE-B <rev 2>.",
+            },
+        ],
+        metadata_json={"note": "Quote against A & B"},
+        created_at=datetime.now(timezone.utc),
+    )
+
+    rendered = svc._supplier_brief_html(package)
+
+    assert "Pump &lt;script&gt;alert(1)&lt;/script&gt;" in rendered
+    assert "Supplier &amp; Sons" in rendered
+    assert "Quote against A &amp; B" in rendered
+    assert "Decisions included</th><td>3" in rendered
+    assert "Approved decisions</th><td>2" in rendered
+    assert "Stale decisions</th><td>1" in rendered
+    assert "Unvalidated confidence</th><td>2" in rendered
+    assert "Raw CAD included</th><td>yes" in rendered
+    assert "Live supplier send</th><td>no" in rendered
+    assert "decision_stale" in rendered
+    assert "raw_cad_unavailable" in rendered
+    assert "VALVE-B &lt;rev 2&gt;" in rendered
+    assert "<script>" not in rendered
+
+
+def test_supplier_brief_pdf_text_preserves_package_counts_and_warnings(tmp_path):
+    pdftotext = shutil.which("pdftotext")
+    if not pdftotext:
+        pytest.skip("pdftotext is required for RFQ supplier-brief PDF coverage")
+    package = RfqPackage(
+        ulid="01RFQPACKAGEPDF",
+        org_id="org_1",
+        user_id=11,
+        title="Pump sourcing evidence",
+        supplier_name="Supplier A",
+        item_count=3,
+        approved_count=2,
+        stale_count=1,
+        unvalidated_count=2,
+        raw_cad_included=True,
+        live_supplier_send=False,
+        items_json=[],
+        warnings_json=[
+            {"code": "decision_stale", "message": "VALVE-A.step is stale."},
+            {
+                "code": "raw_cad_unavailable",
+                "message": "Raw CAD was requested but is not available for VALVE-B.step.",
+            },
+        ],
+        metadata_json={"note": "Budgetary review only"},
+        created_at=datetime.now(timezone.utc),
+    )
+
+    pdf_path = tmp_path / "supplier-brief.pdf"
+    pdf_path.write_bytes(svc._render_supplier_brief_pdf_sync(package))
+    extracted = subprocess.run(
+        [pdftotext, str(pdf_path), "-"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+    assert "Pump sourcing evidence" in extracted
+    assert "Decisions included" in extracted and "3" in extracted
+    assert "Approved decisions" in extracted and "2" in extracted
+    assert "Stale decisions" in extracted and "1" in extracted
+    assert "Unvalidated confidence" in extracted
+    assert "Raw CAD included" in extracted and "yes" in extracted
+    assert "Live supplier send" in extracted and "no" in extracted
+    assert "Budgetary review only" in extracted
+    assert "decision_stale: VALVE-A.step is stale." in extracted
+    assert "raw_cad_unavailable:" in extracted
+    assert "Raw CAD was requested but is not available for VALVE-B.step." in extracted

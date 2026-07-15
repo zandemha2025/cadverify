@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveAdminApiKey } from "./local-admin-api-key.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -9,8 +10,9 @@ const outputRoot = process.env.E2E_ARTIFACT_DIR
   ? path.resolve(process.env.E2E_ARTIFACT_DIR)
   : path.join(repoRoot, ".gstack", "qa-reports");
 const runId = process.env.E2E_RUN_ID || new Date().toISOString().slice(0, 10);
-const apiBase = (process.env.CADVERIFY_API_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
-const token = process.env.CADVERIFY_API_KEY || process.env.CADVERIFY_SCIM_TOKEN || "";
+const apiBase = (process.env.PROOFSHAPE_API_URL || process.env.CADVERIFY_API_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+let token = process.env.PROOFSHAPE_API_KEY || process.env.PROOFSHAPE_SCIM_TOKEN || process.env.CADVERIFY_API_KEY || process.env.CADVERIFY_SCIM_TOKEN || "";
+let credential = { source: token ? "configured credential" : "unresolved" };
 const secretMarker = "fixture-token";
 
 const artifacts = {
@@ -182,7 +184,7 @@ async function runApiCredentialLifecycle() {
   if (!token) {
     return {
       status: "SKIPPED",
-      boundary: "Requires CADVERIFY_API_KEY or CADVERIFY_SCIM_TOKEN for an org-admin user.",
+      boundary: credential.boundary || "Requires PROOFSHAPE_API_KEY or PROOFSHAPE_SCIM_TOKEN for an org-admin user.",
       steps: [],
     };
   }
@@ -251,7 +253,7 @@ async function runApiCredentialLifecycle() {
 
   return {
     status: failures.length === 0 ? "PASS" : "NEEDS_FIXES",
-    boundary: "Credential create/probe/revoke lifecycle over the real CadVerify HTTP API; not live SAP/PTC vendor certification.",
+    boundary: "Credential create/probe/revoke lifecycle over the real ProofShape HTTP API; not live SAP/PTC vendor certification.",
     steps,
     failures,
   };
@@ -284,6 +286,13 @@ ${apiRows || `| ${data.apiLifecycle.status} | ${data.apiLifecycle.boundary} | 0 
 
 async function main() {
   await mkdir(outputRoot, { recursive: true });
+  credential = await resolveAdminApiKey({
+    apiBase,
+    configuredToken: token,
+    runId,
+    purpose: "connectors",
+  });
+  token = credential.token;
   const results = Object.entries(fixtures).map(([connectorId, rows]) => runConnectorFixture(connectorId, rows));
   const apiLifecycle = await runApiCredentialLifecycle();
   const failed = results.filter((item) => item.status !== "PASS");
@@ -292,7 +301,12 @@ async function main() {
     generatedAt: new Date().toISOString(),
     runId,
     apiBase,
-    boundary: "This proves offline sandbox-shaped SAP/Windchill normalization fixtures and, when credentials are present, CadVerify API credential profile lifecycle. It is not live SAP/PTC certification.",
+    boundary: "This proves offline sandbox-shaped SAP/Windchill normalization fixtures and the ProofShape API credential profile lifecycle. It is not live SAP/PTC certification.",
+    credential: {
+      source: credential.source,
+      accountEmail: credential.accountEmail || null,
+      keyPrefix: credential.keyPrefix || null,
+    },
     results,
     apiLifecycle,
     failed,

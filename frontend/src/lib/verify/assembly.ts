@@ -41,7 +41,7 @@ export interface WorldPose {
 }
 
 export interface GeometrySummary {
-  num_boundary_faces: number;
+  num_boundary_faces: number | null;
   num_triangles: number;
   num_vertices: number;
   bbox_dims: [number, number, number];

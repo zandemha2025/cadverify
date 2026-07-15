@@ -39,6 +39,7 @@ from src.auth.rbac import (
     require_role,
 )
 from src.auth.require_api_key import AuthedUser
+from src.config.public_urls import error_doc_url
 from src.db.engine import get_db_session
 from src.db.models import (
     Analysis,
@@ -62,9 +63,8 @@ router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 # tests. Every endpoint below requires org-admin (superadmin bypasses).
 require_admin = require_org_role(OrgRole.admin)
 
-# Platform roles assignable through this self-service endpoint. ``superadmin`` is
-# intentionally excluded: platform staff are provisioned out-of-band, never
-# granted via an org-admin PATCH (that would be privilege escalation).
+# Platform roles assignable by a platform superadmin. ``superadmin`` itself is
+# intentionally excluded because that role is provisioned out-of-band.
 _ASSIGNABLE_ROLES = frozenset({"viewer", "analyst", "admin"})
 
 
@@ -264,8 +264,21 @@ async def update_user_role(
     ctx: OrgAuthContext = Depends(require_admin),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Update a user's platform role. Org-admin cannot change own role, cannot
-    grant ``superadmin``, and cannot touch a user outside their org (404)."""
+    """Update a user's global platform role (platform superadmin only).
+
+    Organization admins manage ``memberships.org_role`` on the org router. They
+    must never mutate ``users.role`` because a user can belong to multiple orgs
+    and this column gates product access everywhere.
+    """
+    if not ctx.is_superadmin:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "platform_superadmin_required",
+                "message": "Only a platform superadmin can change a user's platform role.",
+                "doc_url": error_doc_url("platform_superadmin_required"),
+            },
+        )
     if ctx.user_id == user_id:
         raise HTTPException(status_code=400, detail="Cannot change own role")
 
@@ -283,18 +296,6 @@ async def update_user_role(
     ).scalars().first()
     if target is None:
         raise HTTPException(status_code=404, detail="User not found")
-
-    if not ctx.is_superadmin:
-        row = (
-            await session.execute(
-                select(Membership.id).where(
-                    Membership.user_id == user_id,
-                    Membership.org_id == ctx.org_id,
-                )
-            )
-        ).first()
-        if row is None:
-            raise HTTPException(status_code=404, detail="User not found")
 
     old_role = target.role
     target.role = body.role

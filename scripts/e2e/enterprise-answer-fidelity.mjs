@@ -22,6 +22,9 @@ const expected = {
   cubeSha256: "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a",
   cubeBytes: 19030,
   annualVolume: 12000,
+  annualizedUnitCostUsd: 10.08,
+  annualizedCostUsd: 120960,
+  singlePartHeadlineUsd: 133.58,
   procurementThresholdsUsd: {
     engineerSelfServe: 25000,
     sourcingManager: 250000,
@@ -332,6 +335,16 @@ async function main() {
       const annualized = number(portfolio.annualized_cost_usd, "portfolio.annualized_cost_usd");
       const expectedAnnualized = unitCost * annualVolume;
       assert(annualVolume === expected.annualVolume, `annual volume drifted: ${annualVolume}`);
+      assert(approxEqual(unitCost, expected.annualizedUnitCostUsd), `exact-volume unit cost drifted: ${unitCost}`);
+      assert(approxEqual(annualized, expected.annualizedCostUsd), `annualized cost oracle drifted: ${annualized}`);
+      assert(
+        approxEqual(number(portfolio.headline_unit_cost_usd, "portfolio.headline_unit_cost_usd"), expected.singlePartHeadlineUsd),
+        `single-part headline drifted: ${portfolio.headline_unit_cost_usd}`,
+      );
+      assert(
+        !approxEqual(annualized, expected.singlePartHeadlineUsd * annualVolume),
+        "single-part $133.58 headline was incorrectly annualized",
+      );
       assert(basisQuantity === annualVolume, `annualized basis quantity drifted: ${basisQuantity}`);
       assert(portfolio.annualized_unit_cost_basis === "decision.recommendation", "annualized basis was not the engine recommendation");
       assert(approxEqual(annualized, expectedAnnualized), `annualized cost mismatch: ${annualized} vs ${expectedAnnualized}`);
@@ -497,8 +510,8 @@ async function main() {
     await runCheck("INTERACTION-FIDELITY-001", "Human-flow and enterprise-control interactions", async () => {
       const requiredSteps = [
         [human, "command palette jumps to Triage"],
-        [human, "notifications panel opens and derives state"],
-        [enterprise, "Developer settings creates and reveals an API key exactly once"],
+        [human, "notifications inbox opens and derives state"],
+        [enterprise, "Developer settings creates, rotates, and revokes an API key exactly once"],
         [p7, "cost-decision detail approves and reopens from UI"],
         [p7, "cost-decision detail shows stale warning after governed rate publish"],
         [p7, "low-role admin API is denied"],

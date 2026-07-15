@@ -37,6 +37,8 @@ than blocking a request the per-identity limiter and RBAC already gated.
 """
 from __future__ import annotations
 
+from src.config.public_urls import error_doc_url
+
 import logging
 import os
 import time
@@ -48,7 +50,7 @@ from fastapi import HTTPException, Request
 from sqlalchemy import func, select
 
 from src.auth.models import lookup_org_membership
-from src.auth.redis_util import require_redis_url
+from src.auth.redis_util import register_redis_client, require_redis_url
 from src.db.engine import get_session_factory
 from src.db.models import Analysis
 
@@ -97,7 +99,8 @@ def _org_limits_disabled() -> bool:
 
 @lru_cache(maxsize=1)
 def _r() -> aioredis.Redis:
-    return aioredis.from_url(require_redis_url(), decode_responses=True)
+    client = aioredis.from_url(require_redis_url(), decode_responses=True)
+    return register_redis_client(client, _r.cache_clear)
 
 
 def _org_err(code: str, message: str, retry_after: int) -> HTTPException:
@@ -110,7 +113,7 @@ def _org_err(code: str, message: str, retry_after: int) -> HTTPException:
         detail={
             "code": code,
             "message": message,
-            "doc_url": f"https://docs.cadverify.com/errors#{code}",
+            "doc_url": error_doc_url(code),
         },
     )
 

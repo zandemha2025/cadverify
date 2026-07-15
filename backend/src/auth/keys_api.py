@@ -7,6 +7,8 @@ scrubs the cookie on mount (see RevealOnceModal.tsx).
 """
 from __future__ import annotations
 
+from src.config.public_urls import error_doc_url
+
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -136,7 +138,7 @@ async def rotate_key(
                 detail={
                     "code": "key_not_found",
                     "message": "Key not found or already revoked.",
-                    "doc_url": "https://docs.cadverify.com/errors#key_not_found",
+                    "doc_url": error_doc_url("key_not_found"),
                 },
             )
         name, org_id, old_prefix = r
@@ -206,7 +208,7 @@ async def revoke_key(
                 detail={
                     "code": "key_not_found",
                     "message": "Key not found or already revoked.",
-                    "doc_url": "https://docs.cadverify.com/errors#key_not_found",
+                    "doc_url": error_doc_url("key_not_found"),
                 },
             )
         await append_audit_entry(
@@ -246,7 +248,7 @@ async def rename_key(
                 detail={
                     "code": "key_not_found",
                     "message": "Key not found.",
-                    "doc_url": "https://docs.cadverify.com/errors#key_not_found",
+                    "doc_url": error_doc_url("key_not_found"),
                 },
             )
         await append_audit_entry(

@@ -1,7 +1,14 @@
 import { toast } from "sonner";
 import * as Sentry from "@sentry/nextjs";
+import {
+  apiProblemDetail,
+  apiRecoveryMessage,
+  apiResourceFromUrl,
+} from "@/lib/api-recovery";
 import { API_BASE, browserOrBackendUrl } from "./api-base";
 import type { AnalysisListRow } from "./recent-parts";
+import type { CostDisposition } from "./cost-disposition";
+import { createReconstructionSubmissionId } from "./reconstruction-id";
 
 export interface GeometryInfo {
   vertices: number;
@@ -140,6 +147,13 @@ export interface ValidationResult {
   rule_pack?: { name: string; version: string };
   /** present only when the analysis was requested with include_thickness. */
   wall_thickness_map?: WallThicknessMap;
+  /** Present when an inch-authored unitless mesh was explicitly declared. */
+  source_units?: {
+    declared: "inch";
+    scale_to_mm: number;
+    provenance: "USER";
+    note: string;
+  };
 }
 
 export interface Material {
@@ -166,7 +180,7 @@ export interface Machine {
 /* ------------------------------------------------------------------ */
 
 export interface AnalysisSummary {
-  id: number;
+  id: string;
   ulid: string;
   filename: string;
   file_type: string;
@@ -177,7 +191,7 @@ export interface AnalysisSummary {
 }
 
 export interface AnalysisDetail {
-  id: number;
+  id: string;
   ulid: string;
   filename: string;
   file_type: string;
@@ -188,6 +202,14 @@ export interface AnalysisDetail {
   result_json: ValidationResult;
   is_public: boolean;
   share_url: string | null;
+  decision_links: Array<{
+    id: string;
+    url: string;
+    filename: string;
+    make_now_process: string | null;
+    approval_status: string;
+    created_at: string;
+  }>;
 }
 
 export interface RateLimits {
@@ -281,6 +303,7 @@ const apiClient = {
     // Same-origin → the httpOnly session cookie is sent automatically and the
     // Next proxy forwards it to the backend. No Authorization header needed.
     const headers = new Headers(options.headers);
+    const resource = apiResourceFromUrl(url);
 
     let lastError: Error | null = null;
     for (let attempt = 0; attempt <= retries; attempt++) {
@@ -292,6 +315,12 @@ const apiClient = {
       try {
         res = await fetch(url, { ...options, headers });
       } catch (err) {
+        if (
+          options.signal?.aborted ||
+          (err instanceof Error && err.name === "AbortError")
+        ) {
+          throw err;
+        }
         // Network error / timeout
         lastError = err instanceof Error ? err : new Error(String(err));
         if (attempt === retries) {
@@ -310,12 +339,27 @@ const apiClient = {
         const retryAfter = parseInt(res.headers.get("Retry-After") || "60", 10);
         toast.error(`Rate limit exceeded. Try again in ${retryAfter}s.`);
         const err = await res.json().catch(() => ({ detail: "Rate limit exceeded" }));
-        throw new Error(err.detail || "Rate limit exceeded");
+        throw new Error(
+          apiRecoveryMessage({
+            status: 429,
+            payload: err,
+            resource,
+            retryAfter: String(retryAfter),
+          }),
+        );
       }
 
       // 5xx — retry with backoff
       if (res.status >= 500) {
-        lastError = new Error(`Server error ${res.status}`);
+        const problem = await res.clone().json().catch(() => null);
+        lastError = new Error(
+          apiRecoveryMessage({
+            status: res.status,
+            payload: problem,
+            resource,
+            retryAfter: res.headers.get("retry-after"),
+          }),
+        );
         if (attempt === retries) {
           toast.error("Server error. We've been notified.");
           Sentry.captureException(lastError, { extra: { url, status: res.status } });
@@ -327,7 +371,10 @@ const apiClient = {
       // 4xx (non-429) — no retry
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(err.detail || err.message || `Request failed: ${res.status}`);
+        throw new Error(
+          apiProblemDetail(err) ||
+            apiRecoveryMessage({ status: res.status, payload: err, resource }),
+        );
       }
 
       return res;
@@ -357,7 +404,8 @@ export async function validateFile(
   rulePack?: string,
   /** opt-in: request the per-face wall-thickness map for a thin-wall heatmap.
    *  Off by default → no query param → response is byte-identical to before. */
-  includeThickness?: boolean
+  includeThickness?: boolean,
+  sourceUnits?: "mm" | "inch"
 ): Promise<ValidationResult> {
   const formData = new FormData();
   formData.append("file", file);
@@ -371,6 +419,9 @@ export async function validateFile(
   }
   if (includeThickness) {
     params.set("include_thickness", "true");
+  }
+  if (sourceUnits) {
+    params.set("units", sourceUnits);
   }
 
   let url = `${API_BASE}/validate`;
@@ -546,37 +597,127 @@ export async function fetchAnalysis(id: string): Promise<AnalysisDetail> {
 
 export interface ReconstructionSubmitResult {
   job_id: string;
-  status: string;
+  status: JobStatusValue;
   poll_url: string;
   estimated_seconds: number;
 }
 
+export interface ReconstructionCapability {
+  available: boolean;
+  can_submit: boolean;
+  effective_backend: "local" | "remote" | "none";
+  customer_data_egress: boolean;
+  requires_egress_acknowledgement: boolean;
+  message: string;
+  accuracy_notice: string;
+  verify_path: "/verify?screen=verify";
+}
+
+export type JobStatusValue = "queued" | "running" | "done" | "partial" | "failed";
+
+export interface JobError {
+  code: string;
+  message: string;
+}
+
 export interface JobStatus {
   job_id: string;
-  status: "queued" | "running" | "done" | "failed";
-  progress?: number;
-  result?: Record<string, unknown>;
-  error?: string;
+  status: JobStatusValue;
+  job_type: string;
+  created_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  result_url: string | null;
+  error: JobError | null;
+}
+
+export interface ReconstructionJobResult {
+  reconstruction: {
+    confidence: {
+      score: number;
+      scale: "unit_interval";
+      level: "high" | "medium" | "low";
+      message: string | null;
+    };
+    mesh: {
+      url: string;
+      face_count: number;
+    };
+    duration_ms: number;
+    method: string;
+  };
+  analysis: { id: string; url: string } | null;
+}
+
+export interface JobResult<Result = Record<string, unknown>> {
+  job_id: string;
+  status: "done" | "partial";
+  result: Result;
 }
 
 export async function submitReconstruction(
   images: File[],
   processTypes?: string,
-  rulePack?: string
+  rulePack?: string,
+  submissionId = createReconstructionSubmissionId(),
+  egressAcknowledged = false,
 ): Promise<ReconstructionSubmitResult> {
   const form = new FormData();
   images.forEach((img) => form.append("images", img));
-  if (processTypes) form.append("process_types", processTypes);
-  if (rulePack) form.append("rule_pack", rulePack);
+  const params = new URLSearchParams();
+  if (processTypes) params.set("process_types", processTypes);
+  if (rulePack) params.set("rule_pack", rulePack);
+  const query = params.toString();
 
   return apiClient.fetchJson<ReconstructionSubmitResult>(
-    `${API_BASE}/reconstruct`,
-    { method: "POST", body: form }
+    `${API_BASE}/reconstruct${query ? `?${query}` : ""}`,
+    {
+      method: "POST",
+      body: form,
+      headers: {
+        "Idempotency-Key": submissionId,
+        ...(egressAcknowledged
+          ? { "X-Reconstruction-Egress-Acknowledged": "true" }
+          : {}),
+      },
+    },
   );
 }
 
-export async function getJobStatus(jobId: string): Promise<JobStatus> {
-  return apiClient.fetchJson<JobStatus>(`${API_BASE}/jobs/${jobId}`);
+export async function getReconstructionCapability(
+  signal?: AbortSignal,
+): Promise<ReconstructionCapability> {
+  return apiClient.fetchJson<ReconstructionCapability>(
+    `${API_BASE}/reconstruct/capability`,
+    { signal },
+  );
+}
+
+async function fetchJobJson<Result>(
+  url: string,
+  signal?: AbortSignal,
+): Promise<Result> {
+  const response = await apiClient.fetch(url, { signal }, { retries: 0 });
+  return response.json() as Promise<Result>;
+}
+
+export async function getJobStatus(
+  jobId: string,
+  signal?: AbortSignal,
+): Promise<JobStatus> {
+  return fetchJobJson<JobStatus>(`${API_BASE}/jobs/${jobId}`, signal);
+}
+
+export async function getJobResult(
+  resultUrl: string,
+  signal?: AbortSignal,
+): Promise<JobResult<ReconstructionJobResult>> {
+  const match = /^\/api\/v1\/jobs\/([0-9A-Za-z]{1,64})\/result$/.exec(resultUrl);
+  if (!match) throw new Error("Backend returned an invalid reconstruction result URL");
+  return fetchJobJson<JobResult<ReconstructionJobResult>>(
+    `${API_BASE}/jobs/${match[1]}/result`,
+    signal,
+  );
 }
 
 export function getReconstructionMeshUrl(jobId: string): string {
@@ -729,6 +870,18 @@ export interface CostFeasibility {
   costed: boolean;
 }
 
+export interface CostUnitWarning {
+  code: string;
+  severity: string;
+  message: string;
+  measured?: {
+    volume_cm3?: number;
+    max_bbox_mm?: number;
+  };
+  assumed_units?: string;
+  provenance?: string;
+}
+
 export interface CostReport {
   filename: string;
   status: "OK" | "GEOMETRY_INVALID";
@@ -742,6 +895,9 @@ export interface CostReport {
   routing?: CostRouting;
   notes: string[];
   assumptions: CostAssumption[];
+  /** Measured-geometry safety rail for unitless CAD. These warnings must stay
+   * visible until the user confirms millimetres versus inches and re-costs. */
+  unit_warnings?: CostUnitWarning[];
   decision: CostDecision | null;
   /** Persisted machine-fit verdict lattice. Present when the organization has
    *  declared inventory and/or a service environment. This is independent of
@@ -769,6 +925,8 @@ export interface CostOptions {
   cavities: number; // >= 1
   complexity: string; // simple|moderate|complex|very_complex
   material_class: string; // polymer|aluminum|steel|stainless|titanium
+  /** Explicit interpretation for unitless STL/mesh coordinates. */
+  units: "mm" | "inch";
   /** per-shop calibration profile id (see getShops). null/undefined => generic defaults. */
   shop?: string | null;
   /**
@@ -831,6 +989,7 @@ async function _costEstimate(
   form.append("cavities", String(opts.cavities));
   form.append("complexity", opts.complexity);
   form.append("material_class", opts.material_class);
+  form.append("units", opts.units);
   // Per-shop calibration (F1): bind the shop's real rates → SHOP-tagged number.
   if (opts.shop) form.append("shop", opts.shop);
   // Ad-hoc overrides (F3): real server re-cost on an edited assumption/driver.
@@ -920,6 +1079,11 @@ export interface CostDecisionGovernance {
   is_stale?: boolean;
   stale_at?: string | null;
   stale_reason?: string | null;
+  user_disposition?: CostDisposition | null;
+  user_disposition_label?: string | null;
+  disposition_note?: string | null;
+  disposition_updated_at?: string | null;
+  disposition_updated_by_user_id?: number | null;
 }
 
 export interface CostDecisionSummary extends CostDecisionGovernance {
@@ -950,6 +1114,7 @@ export interface CostDecisionDetail extends CostDecisionGovernance {
   label: string | null;
   created_at: string;
   engine_version: string | null;
+  mesh_hash: string;
   make_now_process: string | null;
   crossover_qty: number | null;
   quantities: number[];
@@ -1025,6 +1190,11 @@ export interface CostShareResult {
 
 export interface CostApprovalResult extends CostDecisionGovernance {
   id: string;
+}
+
+export interface CostDispositionResult extends CostDecisionGovernance {
+  id: string;
+  user_disposition: CostDisposition | null;
 }
 
 export interface RfqPackageWarning {
@@ -1156,6 +1326,25 @@ export async function reopenCostDecisionApproval(
   return apiClient.fetchJson<CostApprovalResult>(
     `${API_BASE}/cost-decisions/${id}/approve`,
     { method: "DELETE" }
+  );
+}
+
+/** Persist or withdraw the human four-way outcome on a saved decision. */
+export async function setCostDecisionDisposition(
+  id: string,
+  disposition: CostDisposition | null,
+  note?: string
+): Promise<CostDispositionResult> {
+  return apiClient.fetchJson<CostDispositionResult>(
+    `${API_BASE}/cost-decisions/${id}/disposition`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        disposition,
+        note: disposition ? note?.trim() || null : null,
+      }),
+    }
   );
 }
 

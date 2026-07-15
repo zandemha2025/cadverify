@@ -28,7 +28,7 @@ import {
 import type { Tone } from "@/lib/status";
 import { getUser } from "@/lib/dal";
 import {
-  getOrgContext,
+  getOrganizationAccess,
   listMembers,
   listInvites,
   listSamlMappings,
@@ -38,6 +38,7 @@ import {
   type HealthDeep,
 } from "./actions";
 import {
+  OrganizationSwitcher,
   InviteForm,
   RevokeInviteButton,
   RemoveMemberButton,
@@ -85,7 +86,19 @@ function workerTone(state: string): { tone: Tone; label: string } {
 }
 
 export default async function OrganizationSettingsPage() {
-  const [ctx, user] = await Promise.all([getOrgContext(), getUser()]);
+  const [access, user] = await Promise.all([getOrganizationAccess(), getUser()]);
+  const active =
+    access.organizations.find((org) => org.orgId === access.activeOrgId) ??
+    access.organizations[0];
+  const ctx = active
+    ? { orgId: active.orgId, orgName: active.orgName, role: active.role }
+    : null;
+  const switcher = access.organizations.length > 0 ? (
+    <OrganizationSwitcher
+      organizations={access.organizations}
+      activeOrgId={ctx?.orgId ?? null}
+    />
+  ) : null;
 
   // Honest RBAC-in-UI gate: only org admins manage the org. Non-admins (and any
   // caller the backend would 403) see a clear "admins only" state, never a
@@ -97,6 +110,7 @@ export default async function OrganizationSettingsPage() {
           title="Organization"
           subtitle="Members, invites, and SSO for your organization."
         />
+        {switcher}
         <EmptyState
           icon={ShieldAlert}
           title="Admins only"
@@ -129,6 +143,8 @@ export default async function OrganizationSettingsPage() {
           </span>
         }
       />
+
+      {switcher}
 
       {/* ── Members ── */}
       <section className="space-y-3">

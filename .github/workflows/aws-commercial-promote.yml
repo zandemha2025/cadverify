@@ -1,0 +1,570 @@
+name: AWS Commercial Promotion
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact 40-character release SHA (or exact live SHA for a kill-switch operation)
+        required: true
+        type: string
+      promotion_scope:
+        description: Exact-artifact release phase or protected AWS-native kill-switch operation
+        required: true
+        default: staging-only
+        type: choice
+        options:
+          - publish-staging-only
+          - publish-staging-and-production
+          - migrate-staging-only
+          - migrate-staging-and-production
+          - staging-only
+          - staging-and-production
+          - kill-switch-staging-off
+          - kill-switch-staging-on
+          - kill-switch-staging-test
+          - kill-switch-production-off
+          - kill-switch-production-on
+
+concurrency:
+  # Release promotion and incident intake controls both mutate ECS task
+  # definitions. One non-cancelling queue prevents off/on/deploy lost updates.
+  group: aws-commercial-control-plane
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  build-release-images:
+    name: Build, test, scan, and seal exact release images once
+    if: github.ref == 'refs/heads/main' && !startsWith(inputs.promotion_scope, 'kill-switch-')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    env:
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      AWS_RELEASE_IMAGE_ARCHIVE_DIR: /tmp/proofshape-release-images
+      NEXT_PUBLIC_SENTRY_DSN: ${{ vars.AWS_COMMERCIAL_NEXT_PUBLIC_SENTRY_DSN }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Validate protected release source and exact protected-main CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "release_sha must be lowercase 40-character hex"; exit 1; }
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA" || { echo "checked-out SHA mismatch"; exit 1; }
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main || { echo "release SHA is not reachable from main"; exit 1; }
+          ci_run_id=$(gh run list \
+            --workflow ci.yml \
+            --commit "$RELEASE_SHA" \
+            --status success \
+            --limit 20 \
+            --json databaseId,event,headBranch,headSha \
+            --jq 'map(select(.headSha == env.RELEASE_SHA and .event == "push" and .headBranch == "main"))[0].databaseId // empty')
+          test -n "$ci_run_id" || { echo "no successful protected-main push CI run exists for the exact release SHA"; exit 1; }
+
+      - name: Prepare release image artifact directory
+        run: mkdir -p "$AWS_RELEASE_IMAGE_ARCHIVE_DIR"
+
+      - name: Validate release-invariant browser observability contract
+        run: |
+          node - <<'NODE'
+          const raw = (process.env.NEXT_PUBLIC_SENTRY_DSN || "").trim();
+          if (!raw) throw new Error("AWS_COMMERCIAL_NEXT_PUBLIC_SENTRY_DSN is required");
+          const dsn = new URL(raw);
+          if (dsn.protocol !== "https:" || !dsn.username || dsn.password || !dsn.hostname || !/^\/[^/]+$/.test(dsn.pathname)) {
+            throw new Error("AWS_COMMERCIAL_NEXT_PUBLIC_SENTRY_DSN must be a public HTTPS Sentry DSN");
+          }
+          NODE
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Build backend release image archive
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: backend
+          platforms: linux/amd64
+          push: false
+          tags: proofshape-release/backend:${{ inputs.release_sha }}
+          outputs: type=docker,dest=/tmp/proofshape-release-images/backend.tar
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=aws-commercial-backend
+          cache-to: type=gha,mode=max,scope=aws-commercial-backend
+
+      - name: Build frontend release image archive
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: frontend
+          platforms: linux/amd64
+          push: false
+          tags: proofshape-release/frontend:${{ inputs.release_sha }}
+          outputs: type=docker,dest=/tmp/proofshape-release-images/frontend.tar
+          provenance: false
+          sbom: false
+          build-args: |
+            NEXT_PUBLIC_SENTRY_DSN=${{ env.NEXT_PUBLIC_SENTRY_DSN }}
+            NEXT_PUBLIC_SENTRY_RELEASE=${{ inputs.release_sha }}
+          cache-from: type=gha,scope=aws-commercial-frontend
+          cache-to: type=gha,mode=max,scope=aws-commercial-frontend
+
+      - name: Seal archive hashes before any release test or scan
+        run: |
+          backend_sha=$(sha256sum "$AWS_RELEASE_IMAGE_ARCHIVE_DIR/backend.tar" | awk '{print $1}')
+          frontend_sha=$(sha256sum "$AWS_RELEASE_IMAGE_ARCHIVE_DIR/frontend.tar" | awk '{print $1}')
+          jq -n \
+            --arg release_sha "$RELEASE_SHA" \
+            --arg backend_sha "$backend_sha" \
+            --arg frontend_sha "$frontend_sha" \
+            '{
+              schema: 2,
+              releaseSha: $release_sha,
+              platform: "linux/amd64",
+              images: {
+                backend: {archive:"backend.tar", sourceTag:("proofshape-release/backend:" + $release_sha), sha256:$backend_sha},
+                frontend: {archive:"frontend.tar", sourceTag:("proofshape-release/frontend:" + $release_sha), sha256:$frontend_sha}
+              }
+            }' >"$AWS_RELEASE_IMAGE_ARCHIVE_DIR/manifest.json"
+
+      - name: Exercise security and storage contracts from the exact archives
+        run: bash scripts/ops/aws-verify-release-images.sh
+
+      - name: Scan exact backend archive image (high/critical vulnerabilities)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: proofshape-release/backend:${{ inputs.release_sha }}
+          format: json
+          output: /tmp/proofshape-release-images/backend.trivy.json
+          exit-code: '1'
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          scanners: vuln
+
+      - name: Scan exact frontend archive image (high/critical vulnerabilities)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: proofshape-release/frontend:${{ inputs.release_sha }}
+          format: json
+          output: /tmp/proofshape-release-images/frontend.trivy.json
+          exit-code: '1'
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          scanners: vuln
+
+      - name: Generate backend CycloneDX SBOM from the exact archive image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: proofshape-release/backend:${{ inputs.release_sha }}
+          format: cyclonedx
+          output: /tmp/proofshape-release-images/backend.cdx.json
+
+      - name: Generate frontend CycloneDX SBOM from the exact archive image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: proofshape-release/frontend:${{ inputs.release_sha }}
+          format: cyclonedx
+          output: /tmp/proofshape-release-images/frontend.cdx.json
+
+      - name: Bind exact image IDs and SBOM hashes into the sealed manifest
+        run: |
+          backend_image_id=$(docker image inspect "proofshape-release/backend:${RELEASE_SHA}" --format '{{.Id}}')
+          frontend_image_id=$(docker image inspect "proofshape-release/frontend:${RELEASE_SHA}" --format '{{.Id}}')
+          backend_scan_sha=$(sha256sum "$AWS_RELEASE_IMAGE_ARCHIVE_DIR/backend.trivy.json" | awk '{print $1}')
+          frontend_scan_sha=$(sha256sum "$AWS_RELEASE_IMAGE_ARCHIVE_DIR/frontend.trivy.json" | awk '{print $1}')
+          backend_sbom_sha=$(sha256sum "$AWS_RELEASE_IMAGE_ARCHIVE_DIR/backend.cdx.json" | awk '{print $1}')
+          frontend_sbom_sha=$(sha256sum "$AWS_RELEASE_IMAGE_ARCHIVE_DIR/frontend.cdx.json" | awk '{print $1}')
+          jq \
+            --arg backend_image_id "$backend_image_id" \
+            --arg frontend_image_id "$frontend_image_id" \
+            --arg backend_scan_sha "$backend_scan_sha" \
+            --arg frontend_scan_sha "$frontend_scan_sha" \
+            --arg backend_sbom_sha "$backend_sbom_sha" \
+            --arg frontend_sbom_sha "$frontend_sbom_sha" \
+            '.images.backend.localImageId = $backend_image_id
+             | .images.frontend.localImageId = $frontend_image_id
+             | .securityEvidence = {
+                 scanner:"trivy",
+                 policy:"HIGH,CRITICAL:fail",
+                 backendScan:{file:"backend.trivy.json", sha256:$backend_scan_sha},
+                 frontendScan:{file:"frontend.trivy.json", sha256:$frontend_scan_sha},
+                 backendSbom:{file:"backend.cdx.json", sha256:$backend_sbom_sha},
+                 frontendSbom:{file:"frontend.cdx.json", sha256:$frontend_sbom_sha}
+               }' \
+            "$AWS_RELEASE_IMAGE_ARCHIVE_DIR/manifest.json" \
+            >"$AWS_RELEASE_IMAGE_ARCHIVE_DIR/manifest.json.tmp"
+          mv "$AWS_RELEASE_IMAGE_ARCHIVE_DIR/manifest.json.tmp" "$AWS_RELEASE_IMAGE_ARCHIVE_DIR/manifest.json"
+          jq -e '.schema == 2 and .securityEvidence.policy == "HIGH,CRITICAL:fail"' "$AWS_RELEASE_IMAGE_ARCHIVE_DIR/manifest.json" >/dev/null
+
+      - name: Upload immutable exact-image release, scan, and SBOM evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: aws-commercial-images-${{ inputs.release_sha }}
+          path: /tmp/proofshape-release-images
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 90
+
+  deploy-staging:
+    name: Publish and release AWS commercial staging
+    needs: build-release-images
+    if: github.ref == 'refs/heads/main' && !startsWith(inputs.promotion_scope, 'kill-switch-')
+    runs-on: ubuntu-latest
+    environment: aws-commercial-staging
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    outputs:
+      account_id: ${{ steps.publish.outputs.account_id }}
+      backend_digest: ${{ steps.publish.outputs.backend_digest }}
+      boundary_fingerprint: ${{ steps.promote.outputs.boundary_fingerprint }}
+      frontend_digest: ${{ steps.publish.outputs.frontend_digest }}
+      holdout_digest: ${{ steps.holdout.outputs.evidence_sha256 }}
+      publication_boundary_fingerprint: ${{ steps.publish.outputs.publication_boundary_fingerprint }}
+    env:
+      TARGET_ENVIRONMENT: aws-commercial-staging
+      EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_COMMERCIAL_BOUNDARY: ${{ vars.AWS_COMMERCIAL_BOUNDARY }}
+      AWS_DASHBOARD_ORIGIN: ${{ vars.AWS_DASHBOARD_ORIGIN }}
+      AWS_DIRECT_UPLOAD_ORIGIN: ${{ vars.AWS_DIRECT_UPLOAD_ORIGIN }}
+      AWS_ECR_BACKEND_REPOSITORY: ${{ vars.AWS_ECR_BACKEND_REPOSITORY }}
+      AWS_ECR_FRONTEND_REPOSITORY: ${{ vars.AWS_ECR_FRONTEND_REPOSITORY }}
+      AWS_ECS_API_BASE_TASK_DEFINITION: ${{ vars.AWS_ECS_API_BASE_TASK_DEFINITION }}
+      AWS_ECS_API_SERVICE: ${{ vars.AWS_ECS_API_SERVICE }}
+      AWS_ECS_CLUSTER: ${{ vars.AWS_ECS_CLUSTER }}
+      AWS_ECS_FRONTEND_BASE_TASK_DEFINITION: ${{ vars.AWS_ECS_FRONTEND_BASE_TASK_DEFINITION }}
+      AWS_ECS_FRONTEND_SERVICE: ${{ vars.AWS_ECS_FRONTEND_SERVICE }}
+      AWS_ECS_MIGRATION_BASE_TASK_DEFINITION: ${{ vars.AWS_ECS_MIGRATION_BASE_TASK_DEFINITION }}
+      AWS_ECS_MIGRATION_SECURITY_GROUP: ${{ vars.AWS_ECS_MIGRATION_SECURITY_GROUP }}
+      AWS_ECS_PLATFORM_VERSION: ${{ vars.AWS_ECS_PLATFORM_VERSION }}
+      AWS_ECS_PUBLIC_SUBNET_IDS: ${{ vars.AWS_ECS_PUBLIC_SUBNET_IDS }}
+      AWS_ECS_WORKER_BASE_TASK_DEFINITION: ${{ vars.AWS_ECS_WORKER_BASE_TASK_DEFINITION }}
+      AWS_ECS_WORKER_SERVICE: ${{ vars.AWS_ECS_WORKER_SERVICE }}
+      AWS_PUBLIC_API_ORIGIN: ${{ vars.AWS_PUBLIC_API_ORIGIN }}
+      AWS_RUNTIME_SECRET_ARNS: ${{ vars.AWS_RUNTIME_SECRET_ARNS }}
+      CADVERIFY_DEEP_HEALTH_TOKEN: ${{ secrets.CADVERIFY_DEEP_HEALTH_TOKEN }}
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      PROMOTION_SCOPE: ${{ inputs.promotion_scope }}
+      FORBIDDEN_BOUNDARY_FINGERPRINT: ''
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Validate protected staging environment contract
+        env:
+          AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          test -n "$AWS_DEPLOY_ROLE_ARN" || { echo "AWS_DEPLOY_ROLE_ARN environment variable is required"; exit 1; }
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA" || { echo "checked-out SHA mismatch"; exit 1; }
+          test "$AWS_COMMERCIAL_BOUNDARY" = proofshape-commercial || { echo "commercial boundary mismatch"; exit 1; }
+          if [[ "$PROMOTION_SCOPE" == staging-only || "$PROMOTION_SCOPE" == staging-and-production ]]; then
+            test -n "$CADVERIFY_DEEP_HEALTH_TOKEN" || { echo "CADVERIFY_DEEP_HEALTH_TOKEN is required for service promotion"; exit 1; }
+          fi
+
+      - name: Validate exact-release supplier holdout before any staging mutation
+        if: inputs.promotion_scope == 'staging-only' || inputs.promotion_scope == 'staging-and-production' || startsWith(inputs.promotion_scope, 'migrate-')
+        id: holdout
+        env:
+          CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64: ${{ secrets.CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64 }}
+        run: python3 backend/scripts/ci/validate_supplier_holdout.py
+
+      - name: Download exact scanned release image artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: aws-commercial-images-${{ inputs.release_sha }}
+          path: ${{ runner.temp }}/proofshape-release-images
+
+      - name: Configure AWS credentials through environment-scoped OIDC
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6.2.2
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: proofshape-staging-${{ github.run_id }}
+          aws-region: ${{ vars.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: Publish exact artifacts to immutable staging ECR
+        id: publish
+        env:
+          AWS_RELEASE_IMAGE_ARCHIVE_DIR: ${{ runner.temp }}/proofshape-release-images
+          AWS_IMAGE_PUBLICATION_EVIDENCE_PATH: ${{ runner.temp }}/aws-promotion/staging-images.json
+        run: bash scripts/ops/aws-publish-images.sh
+
+      - name: Run release-bound migration and optional service promotion
+        if: inputs.promotion_scope == 'staging-only' || inputs.promotion_scope == 'staging-and-production' || startsWith(inputs.promotion_scope, 'migrate-')
+        id: promote
+        env:
+          BACKEND_DIGEST: ${{ steps.publish.outputs.backend_digest }}
+          FRONTEND_DIGEST: ${{ steps.publish.outputs.frontend_digest }}
+          PROMOTION_MODE: ${{ startsWith(inputs.promotion_scope, 'migrate-') && 'migrate-only' || 'promote' }}
+          AWS_PROMOTION_EVIDENCE_PATH: ${{ runner.temp }}/aws-promotion/staging.json
+        run: bash scripts/ops/aws-commercial-promote.sh
+
+      - name: Drill and restore the AWS-native staging intake kill switch
+        if: inputs.promotion_scope == 'staging-only' || inputs.promotion_scope == 'staging-and-production'
+        env:
+          EXPECTED_RELEASE_SHA: ${{ inputs.release_sha }}
+          AWS_KILL_SWITCH_EVIDENCE_PATH: ${{ runner.temp }}/aws-promotion/staging-kill-switch.json
+        run: bash scripts/ops/aws-kill-switch.sh test
+
+      - name: Recheck deep health after kill-switch restoration
+        if: inputs.promotion_scope == 'staging-only' || inputs.promotion_scope == 'staging-and-production'
+        env:
+          AWS_PROMOTION_EVIDENCE_PATH: ${{ runner.temp }}/aws-promotion/staging-post-kill-health.json
+        run: node scripts/ops/aws-deep-health.mjs
+
+      - name: Upload non-secret staging image publication evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: aws-commercial-staging-images-${{ inputs.release_sha }}
+          path: ${{ runner.temp }}/aws-promotion/staging-images.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload non-secret staging deployment evidence
+        if: inputs.promotion_scope == 'staging-only' || inputs.promotion_scope == 'staging-and-production' || startsWith(inputs.promotion_scope, 'migrate-')
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: aws-commercial-staging-deployment-${{ inputs.release_sha }}
+          path: ${{ runner.temp }}/aws-promotion/staging.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload staging kill-switch drill evidence
+        if: inputs.promotion_scope == 'staging-only' || inputs.promotion_scope == 'staging-and-production'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: aws-commercial-staging-kill-switch-${{ inputs.release_sha }}
+          path: |
+            ${{ runner.temp }}/aws-promotion/staging-kill-switch.json
+            ${{ runner.temp }}/aws-promotion/staging-post-kill-health.json
+          if-no-files-found: error
+          retention-days: 90
+
+  deploy-production:
+    name: Publish staged artifacts and release AWS commercial production
+    needs:
+      - build-release-images
+      - deploy-staging
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (inputs.promotion_scope == 'staging-and-production' ||
+       inputs.promotion_scope == 'publish-staging-and-production' ||
+       inputs.promotion_scope == 'migrate-staging-and-production')
+    runs-on: ubuntu-latest
+    environment: aws-commercial-production
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    env:
+      TARGET_ENVIRONMENT: aws-commercial-production
+      EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_COMMERCIAL_BOUNDARY: ${{ vars.AWS_COMMERCIAL_BOUNDARY }}
+      AWS_DASHBOARD_ORIGIN: ${{ vars.AWS_DASHBOARD_ORIGIN }}
+      AWS_DIRECT_UPLOAD_ORIGIN: ${{ vars.AWS_DIRECT_UPLOAD_ORIGIN }}
+      AWS_ECR_BACKEND_REPOSITORY: ${{ vars.AWS_ECR_BACKEND_REPOSITORY }}
+      AWS_ECR_FRONTEND_REPOSITORY: ${{ vars.AWS_ECR_FRONTEND_REPOSITORY }}
+      AWS_ECS_API_BASE_TASK_DEFINITION: ${{ vars.AWS_ECS_API_BASE_TASK_DEFINITION }}
+      AWS_ECS_API_SERVICE: ${{ vars.AWS_ECS_API_SERVICE }}
+      AWS_ECS_CLUSTER: ${{ vars.AWS_ECS_CLUSTER }}
+      AWS_ECS_FRONTEND_BASE_TASK_DEFINITION: ${{ vars.AWS_ECS_FRONTEND_BASE_TASK_DEFINITION }}
+      AWS_ECS_FRONTEND_SERVICE: ${{ vars.AWS_ECS_FRONTEND_SERVICE }}
+      AWS_ECS_MIGRATION_BASE_TASK_DEFINITION: ${{ vars.AWS_ECS_MIGRATION_BASE_TASK_DEFINITION }}
+      AWS_ECS_MIGRATION_SECURITY_GROUP: ${{ vars.AWS_ECS_MIGRATION_SECURITY_GROUP }}
+      AWS_ECS_PLATFORM_VERSION: ${{ vars.AWS_ECS_PLATFORM_VERSION }}
+      AWS_ECS_PUBLIC_SUBNET_IDS: ${{ vars.AWS_ECS_PUBLIC_SUBNET_IDS }}
+      AWS_ECS_WORKER_BASE_TASK_DEFINITION: ${{ vars.AWS_ECS_WORKER_BASE_TASK_DEFINITION }}
+      AWS_ECS_WORKER_SERVICE: ${{ vars.AWS_ECS_WORKER_SERVICE }}
+      AWS_PUBLIC_API_ORIGIN: ${{ vars.AWS_PUBLIC_API_ORIGIN }}
+      AWS_RUNTIME_SECRET_ARNS: ${{ vars.AWS_RUNTIME_SECRET_ARNS }}
+      CADVERIFY_DEEP_HEALTH_TOKEN: ${{ secrets.CADVERIFY_DEEP_HEALTH_TOKEN }}
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      PROMOTION_SCOPE: ${{ inputs.promotion_scope }}
+      STAGING_AWS_ACCOUNT_ID: ${{ needs.deploy-staging.outputs.account_id }}
+      FORBIDDEN_BOUNDARY_FINGERPRINT: ${{ needs.deploy-staging.outputs.boundary_fingerprint }}
+      FORBIDDEN_IMAGE_PUBLICATION_BOUNDARY_FINGERPRINT: ${{ needs.deploy-staging.outputs.publication_boundary_fingerprint }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Revalidate isolated production contract
+        env:
+          AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          test -n "$AWS_DEPLOY_ROLE_ARN" || { echo "AWS_DEPLOY_ROLE_ARN environment variable is required"; exit 1; }
+          test -n "$STAGING_AWS_ACCOUNT_ID" || { echo "production requires the staged AWS account identity"; exit 1; }
+          test "$EXPECTED_AWS_ACCOUNT_ID" != "$STAGING_AWS_ACCOUNT_ID" || { echo "staging and production must use separate AWS accounts"; exit 1; }
+          test -n "$FORBIDDEN_IMAGE_PUBLICATION_BOUNDARY_FINGERPRINT" || { echo "production requires the staging publication boundary"; exit 1; }
+          if [[ "$PROMOTION_SCOPE" != publish-staging-and-production ]]; then
+            test -n "$FORBIDDEN_BOUNDARY_FINGERPRINT" || { echo "production mutation requires the isolated staging boundary fingerprint"; exit 1; }
+          fi
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA" || { echo "checked-out SHA mismatch"; exit 1; }
+          test "$AWS_COMMERCIAL_BOUNDARY" = proofshape-commercial || { echo "commercial boundary mismatch"; exit 1; }
+          if [[ "$PROMOTION_SCOPE" == staging-and-production ]]; then
+            test -n "$CADVERIFY_DEEP_HEALTH_TOKEN" || { echo "CADVERIFY_DEEP_HEALTH_TOKEN is required for production promotion"; exit 1; }
+          fi
+
+      - name: Independently validate exact-release production supplier holdout
+        if: inputs.promotion_scope == 'staging-and-production' || inputs.promotion_scope == 'migrate-staging-and-production'
+        id: holdout
+        env:
+          CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64: ${{ secrets.CADVERIFY_SUPPLIER_HOLDOUT_EVIDENCE_B64 }}
+        run: python3 backend/scripts/ci/validate_supplier_holdout.py
+
+      - name: Require production supplier holdout digest to equal staging
+        if: inputs.promotion_scope == 'staging-and-production' || inputs.promotion_scope == 'migrate-staging-and-production'
+        env:
+          PRODUCTION_HOLDOUT_DIGEST: ${{ steps.holdout.outputs.evidence_sha256 }}
+          STAGING_HOLDOUT_DIGEST: ${{ needs.deploy-staging.outputs.holdout_digest }}
+        run: |
+          test -n "$PRODUCTION_HOLDOUT_DIGEST" || { echo "production supplier holdout digest is empty"; exit 1; }
+          test -n "$STAGING_HOLDOUT_DIGEST" || { echo "staging supplier holdout digest is empty"; exit 1; }
+          test "$PRODUCTION_HOLDOUT_DIGEST" = "$STAGING_HOLDOUT_DIGEST" || {
+            echo "production supplier holdout evidence differs from the exact staging approval"
+            exit 1
+          }
+
+      - name: Download the staged exact scanned release image artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: aws-commercial-images-${{ inputs.release_sha }}
+          path: ${{ runner.temp }}/proofshape-release-images
+
+      - name: Configure AWS credentials through production-scoped OIDC
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6.2.2
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: proofshape-production-${{ github.run_id }}
+          aws-region: ${{ vars.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: Publish the exact staged artifacts to immutable production ECR
+        id: publish
+        env:
+          AWS_RELEASE_IMAGE_ARCHIVE_DIR: ${{ runner.temp }}/proofshape-release-images
+          AWS_IMAGE_PUBLICATION_EVIDENCE_PATH: ${{ runner.temp }}/aws-promotion/production-images.json
+          EXPECTED_BACKEND_DIGEST: ${{ needs.deploy-staging.outputs.backend_digest }}
+          EXPECTED_FRONTEND_DIGEST: ${{ needs.deploy-staging.outputs.frontend_digest }}
+        run: bash scripts/ops/aws-publish-images.sh
+
+      - name: Run release-bound migration and optional production promotion
+        if: inputs.promotion_scope == 'staging-and-production' || inputs.promotion_scope == 'migrate-staging-and-production'
+        id: promote
+        env:
+          BACKEND_DIGEST: ${{ steps.publish.outputs.backend_digest }}
+          FRONTEND_DIGEST: ${{ steps.publish.outputs.frontend_digest }}
+          PROMOTION_MODE: ${{ inputs.promotion_scope == 'migrate-staging-and-production' && 'migrate-only' || 'promote' }}
+          AWS_PROMOTION_EVIDENCE_PATH: ${{ runner.temp }}/aws-promotion/production.json
+        run: bash scripts/ops/aws-commercial-promote.sh
+
+      - name: Upload non-secret production image publication evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: aws-commercial-production-images-${{ inputs.release_sha }}
+          path: ${{ runner.temp }}/aws-promotion/production-images.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload non-secret production deployment evidence
+        if: inputs.promotion_scope == 'staging-and-production' || inputs.promotion_scope == 'migrate-staging-and-production'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: aws-commercial-production-deployment-${{ inputs.release_sha }}
+          path: ${{ runner.temp }}/aws-promotion/production.json
+          if-no-files-found: error
+          retention-days: 90
+
+  kill-switch-staging:
+    name: Operate the protected AWS staging intake kill switch
+    if: github.ref == 'refs/heads/main' && startsWith(inputs.promotion_scope, 'kill-switch-staging-')
+    runs-on: ubuntu-latest
+    environment: aws-commercial-staging
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TARGET_ENVIRONMENT: aws-commercial-staging
+      EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      EXPECTED_RELEASE_SHA: ${{ inputs.release_sha }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_COMMERCIAL_BOUNDARY: ${{ vars.AWS_COMMERCIAL_BOUNDARY }}
+      AWS_ECS_API_SERVICE: ${{ vars.AWS_ECS_API_SERVICE }}
+      AWS_ECS_CLUSTER: ${{ vars.AWS_ECS_CLUSTER }}
+      AWS_PUBLIC_API_ORIGIN: ${{ vars.AWS_PUBLIC_API_ORIGIN }}
+      AWS_KILL_SWITCH_ACTION: ${{ endsWith(inputs.promotion_scope, '-off') && 'off' || endsWith(inputs.promotion_scope, '-on') && 'on' || 'test' }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Configure staging AWS credentials through environment-scoped OIDC
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6.2.2
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: proofshape-staging-kill-${{ github.run_id }}
+          aws-region: ${{ vars.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: Apply and prove the requested staging kill-switch state
+        env:
+          AWS_KILL_SWITCH_EVIDENCE_PATH: ${{ runner.temp }}/aws-kill-switch/staging.json
+        run: bash scripts/ops/aws-kill-switch.sh "$AWS_KILL_SWITCH_ACTION"
+
+      - name: Upload staging kill-switch operation evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: aws-commercial-staging-kill-switch-${{ github.run_id }}
+          path: ${{ runner.temp }}/aws-kill-switch/staging.json
+          if-no-files-found: error
+          retention-days: 90
+
+  kill-switch-production:
+    name: Operate the protected AWS production intake kill switch
+    if: github.ref == 'refs/heads/main' && (inputs.promotion_scope == 'kill-switch-production-off' || inputs.promotion_scope == 'kill-switch-production-on')
+    runs-on: ubuntu-latest
+    environment: aws-commercial-production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TARGET_ENVIRONMENT: aws-commercial-production
+      EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      EXPECTED_RELEASE_SHA: ${{ inputs.release_sha }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_COMMERCIAL_BOUNDARY: ${{ vars.AWS_COMMERCIAL_BOUNDARY }}
+      AWS_ECS_API_SERVICE: ${{ vars.AWS_ECS_API_SERVICE }}
+      AWS_ECS_CLUSTER: ${{ vars.AWS_ECS_CLUSTER }}
+      AWS_PUBLIC_API_ORIGIN: ${{ vars.AWS_PUBLIC_API_ORIGIN }}
+      AWS_KILL_SWITCH_ACTION: ${{ endsWith(inputs.promotion_scope, '-off') && 'off' || 'on' }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Configure production AWS credentials through environment-scoped OIDC
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6.2.2
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: proofshape-production-kill-${{ github.run_id }}
+          aws-region: ${{ vars.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: Apply and prove the requested production kill-switch state
+        env:
+          AWS_KILL_SWITCH_EVIDENCE_PATH: ${{ runner.temp }}/aws-kill-switch/production.json
+        run: bash scripts/ops/aws-kill-switch.sh "$AWS_KILL_SWITCH_ACTION"
+
+      - name: Upload production kill-switch operation evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: aws-commercial-production-kill-switch-${{ github.run_id }}
+          path: ${{ runner.temp }}/aws-kill-switch/production.json
+          if-no-files-found: error
+          retention-days: 90

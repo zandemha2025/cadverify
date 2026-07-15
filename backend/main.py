@@ -1,4 +1,4 @@
-"""CADVerify — Manufacturing Validation API."""
+"""ProofShape — Manufacturing Validation API."""
 
 from __future__ import annotations
 
@@ -6,8 +6,10 @@ import asyncio
 import base64
 import logging
 import os
+import re
 import threading
 from contextlib import asynccontextmanager
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI
 from fastapi.exceptions import HTTPException, RequestValidationError
@@ -28,6 +30,7 @@ from src.api.metrics import MetricsMiddleware, router as metrics_router
 from src.api.security_headers import SecurityHeadersMiddleware
 from src.api.pdf import router as pdf_router
 from src.api.batch_router import router as batch_router
+from src.api.uploads import router as uploads_router
 from src.api.jobs_router import router as jobs_router
 from src.api.reconstruct_router import router as reconstruct_router
 from src.api.admin_routes import router as admin_router
@@ -49,6 +52,7 @@ from src.api.manifest import router as manifest_router
 from src.api.bom import router as bom_router
 from src.api.machine_inventory import router as machine_inventory_router
 from src.api.org_routes import router as org_router
+from src.api.designs import router as designs_router
 from src.api.share import public_share_router, share_router
 from src.auth.keys_api import router as keys_router
 from src.auth.magic_link import router as magic_router
@@ -58,25 +62,44 @@ from src.auth.password import router as password_router
 from src.auth.saml import router as saml_router
 from src.auth.rate_limit import limiter, rate_limit_handler
 from src.auth.scrubbing import scrub_processor, sentry_before_send
+from src.obs.safe_logger import SafePrintLoggerFactory
 
 
 def _parse_origins(raw: str) -> list[str]:
     return [o.strip() for o in raw.split(",") if o.strip()]
 
 
-# Default CORS regex: prod apex/www + Vercel preview subdomains.
-# Override via CORS_ORIGIN_REGEX env for dev/localhost if needed.
+# Default CORS regex: the one deployment-owned dashboard origin only.
+# Override via CORS_ORIGIN_REGEX for an explicit, reviewed set of origins.
 # When the local labeling tool is enabled (LABELING_ENABLED=1) the regex also
 # allows localhost/127.0.0.1 origins so the /label viewer can stream STLs from
 # the local backend (CAD stays on localhost). An explicit CORS_ORIGIN_REGEX env
 # always wins.
 LABELING_ENABLED = os.getenv("LABELING_ENABLED") == "1"
-_DEFAULT_CORS_REGEX = r"^https://(cadverify\.com|www\.cadverify\.com|[a-z0-9-]+\.vercel\.app)$"
-if LABELING_ENABLED:
-    _DEFAULT_CORS_REGEX = (
-        r"^(https://(cadverify\.com|www\.cadverify\.com|[a-z0-9-]+\.vercel\.app)"
-        r"|https?://(localhost|127\.0\.0\.1)(:\d+)?)$"
-    )
+
+
+def _default_cors_regex() -> str:
+    patterns: list[str] = []
+    dashboard_origin = os.getenv("DASHBOARD_ORIGIN", "").strip().rstrip("/")
+    try:
+        parsed = urlsplit(dashboard_origin)
+    except ValueError:
+        parsed = None
+    if (
+        parsed is not None
+        and parsed.scheme in {"http", "https"}
+        and parsed.netloc
+        and not parsed.path
+        and not parsed.query
+        and not parsed.fragment
+    ):
+        patterns.append(re.escape(dashboard_origin))
+    if LABELING_ENABLED:
+        patterns.append(r"https?://(?:localhost|127\.0\.0\.1)(?::\d+)?")
+    return rf"^(?:{'|'.join(patterns)})$" if patterns else r"(?!)"
+
+
+_DEFAULT_CORS_REGEX = _default_cors_regex()
 CORS_ORIGIN_REGEX = os.getenv("CORS_ORIGIN_REGEX", _DEFAULT_CORS_REGEX)
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
@@ -257,7 +280,9 @@ structlog.configure(
     wrapper_class=structlog.make_filtering_bound_logger(
         getattr(logging, LOG_LEVEL, logging.INFO)
     ),
-    logger_factory=structlog.PrintLoggerFactory(),
+    # A service can outlive the terminal that launched it.  Keep a revoked or
+    # closed stdout sink from turning successful application work into a 500.
+    logger_factory=SafePrintLoggerFactory(),
     cache_logger_on_first_use=True,
 )
 
@@ -305,7 +330,7 @@ def _spawn_parse_pool_prewarm() -> threading.Thread:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("CADVerify starting | cors_regex=%s", CORS_ORIGIN_REGEX)
+    logger.info("ProofShape starting | cors_regex=%s", CORS_ORIGIN_REGEX)
     from src.parsers import parse_pool
 
     parse_pool.startup()
@@ -316,7 +341,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        logger.info("CADVerify stopping")
+        logger.info("ProofShape stopping")
 
         # Audit rows commit with their protected mutations, so there is no
         # detached compliance queue to drain. Stop CAD workers, release pooled
@@ -330,6 +355,18 @@ async def lifespan(app: FastAPI):
                     logger.warning("parse pool pre-warm did not stop within 1s")
         except Exception:
             logger.exception("failed to stop parse pool")
+        try:
+            from src.jobs.arq_backend import close_arq_pool
+
+            await close_arq_pool()
+        except Exception:
+            logger.exception("failed to close ARQ enqueue pool")
+        try:
+            from src.auth.redis_util import close_registered_redis_clients
+
+            await close_registered_redis_clients()
+        except Exception:
+            logger.exception("failed to close auth Redis pools")
         try:
             from src.db.engine import dispose_engine
 
@@ -345,7 +382,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="CADVerify",
+    title="ProofShape API",
     description="Manufacturing validation for STEP and STL files",
     version="0.2.0",
     lifespan=lifespan,
@@ -382,7 +419,7 @@ app.add_exception_handler(StarletteHTTPException, structured_http_error_handler)
 app.add_exception_handler(RequestValidationError, structured_validation_error_handler)
 app.add_middleware(SlowAPIMiddleware)
 
-# CORS: regex origin matches prod apex/www + Vercel preview subdomains.
+# CORS: exact deployment-owned origin by default; no wildcard preview domains.
 # Explicit allow_headers (no wildcard); allow_credentials=False (stateless API,
 # dashboard session lives on a different subdomain).
 app.add_middleware(
@@ -413,6 +450,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(router, prefix="/api/v1")
 app.include_router(batch_router)
+app.include_router(uploads_router)
 app.include_router(reconstruct_router)
 app.include_router(jobs_router, prefix="/api/v1")
 app.include_router(history_router, prefix="/api/v1/analyses", tags=["history"])
@@ -500,6 +538,10 @@ app.include_router(
 # multi-user seam on top of 0009's tenancy isolation. Org-scoped; single-org
 # callers are byte-identical (the whole isolation matrix is unchanged).
 app.include_router(org_router, prefix="/api/v1/orgs", tags=["orgs"])
+# ProofShape Design Studio: validated operation plans -> immutable STEP/STL
+# revisions. Generation runs on the existing worker plane; no generated source
+# code is ever executed.
+app.include_router(designs_router, prefix="/api/v1/designs", tags=["designs"])
 # SCIM 2.0 enterprise provisioning. Mounted at the IdP-standard path rather
 # than under /api/v1 so Okta/Entra can target it directly.
 app.include_router(scim_router)

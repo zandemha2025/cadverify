@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -18,6 +19,17 @@ import main
 
 
 VALID_DASHBOARD_SESSION_SECRET = base64.b64encode(b"d" * 32).decode()
+
+
+def test_default_cors_allows_only_the_configured_dashboard(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_ORIGIN", "https://proofshape.example")
+    monkeypatch.setattr(main, "LABELING_ENABLED", False)
+
+    pattern = main._default_cors_regex()
+
+    assert re.fullmatch(pattern, "https://proofshape.example")
+    assert not re.fullmatch(pattern, "https://attacker.vercel.app")
+    assert not re.fullmatch(pattern, "https://proofshape.example.attacker.test")
 
 
 def set_valid_session_secrets(monkeypatch):
@@ -170,6 +182,24 @@ def test_production_operations_are_opt_in(monkeypatch):
     main._assert_production_operations()
 
 
+@pytest.mark.parametrize(
+    ("name", "value", "message"),
+    [
+        ("DESIGN_GENERATION_TIMEOUT_SECONDS", "0", "between 1 and 120"),
+        ("DESIGN_GENERATION_TIMEOUT_SECONDS", "not-a-number", "must be numeric"),
+        ("DESIGN_GENERATION_CONCURRENCY", "0", "between 1 and 8"),
+        ("DESIGN_GENERATION_CONCURRENCY", "20", "between 1 and 8"),
+    ],
+)
+def test_production_rejects_unsafe_design_worker_limits(
+    monkeypatch, name, value, message
+):
+    monkeypatch.setenv("RELEASE", "v1.0.0")
+    monkeypatch.setenv(name, value)
+    with pytest.raises(RuntimeError, match=message):
+        main._assert_production_operations()
+
+
 def test_released_process_rejects_memory_rate_limit_override(monkeypatch):
     monkeypatch.setenv("RELEASE", "v1.0.0")
     monkeypatch.setenv("RATE_LIMIT_ALLOW_MEMORY", "1")
@@ -253,6 +283,7 @@ def test_production_oidc_allows_group_mapping_to_be_disabled(monkeypatch):
     monkeypatch.setenv("AUTH_MODE", "oidc")
     monkeypatch.setenv("OIDC_ISSUER", "https://idp.example.com")
     monkeypatch.setenv("OIDC_CLIENT_ID", "cadverify-production")
+    monkeypatch.setenv("API_ORIGIN", "https://api.example.com")
     monkeypatch.setenv("OIDC_GROUPS_CLAIM", "   ")
 
     main._assert_production_identity_config()
@@ -397,6 +428,7 @@ def set_valid_transport_security(monkeypatch):
     monkeypatch.setenv("RELEASE", "v1.0.0")
     monkeypatch.setenv("PRODUCTION_TLS_REQUIRED", "1")
     monkeypatch.setenv("DASHBOARD_ORIGIN", "https://app.cadverify.com")
+    monkeypatch.setenv("API_ORIGIN", "https://api.cadverify.com")
     monkeypatch.setenv("REDIS_URL", "rediss://cache.example.com:6379/0")
     monkeypatch.setenv(
         "DATABASE_URL",
@@ -428,6 +460,13 @@ def test_production_requires_canonical_https_dashboard_origin(monkeypatch, origi
     set_valid_transport_security(monkeypatch)
     monkeypatch.setenv("DASHBOARD_ORIGIN", origin)
     with pytest.raises(RuntimeError, match="DASHBOARD_ORIGIN"):
+        main._assert_production_operations()
+
+
+def test_production_requires_canonical_https_api_origin(monkeypatch):
+    set_valid_transport_security(monkeypatch)
+    monkeypatch.setenv("API_ORIGIN", "http://api.example.com")
+    with pytest.raises(RuntimeError, match="API_ORIGIN"):
         main._assert_production_operations()
 
 

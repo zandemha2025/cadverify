@@ -18,6 +18,7 @@
 import { type NextRequest } from "next/server";
 import { backendUrl } from "@/lib/api-base";
 import { getSessionToken } from "@/lib/session";
+import { prepareProxyRequestBody } from "@/lib/proxy-request-body";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,7 @@ const RELAY_HEADERS = [
   "content-type",
   "content-disposition",
   "content-length",
+  "cache-control",
   "x-ratelimit-limit",
   "x-ratelimit-remaining",
   "x-ratelimit-reset",
@@ -34,6 +36,13 @@ const RELAY_HEADERS = [
   "x-mesh-preview-faces",
   "x-mesh-decimated",
   "x-mesh-source",
+  // Assembly provenance lets the browser prove that a successful rendered
+  // response contains the complete binary payload even after WebGL consumes it.
+  "x-assembly-kind",
+  "x-assembly-parts",
+  "x-assembly-glb-bytes",
+  // Immutable Design Studio STEP evidence used by the Verify handoff.
+  "x-geometry-sha256",
 ];
 
 async function handle(
@@ -58,7 +67,23 @@ async function handle(
   ) {
     return Response.json({ detail: "Not found" }, { status: 404 });
   }
-  const token = (await getSessionToken()) ?? "";
+  const token = await getSessionToken();
+  // Do not start piping an upload when the first-party session is absent. If
+  // the API rejects a streamed request before consuming it, Node/Undici can
+  // surface a transport-level `expected non-null body source` failure instead
+  // of the API's useful 401. Failing here is also cheaper: an anonymous caller
+  // cannot make the frontend read or forward any CAD bytes.
+  if (!token) {
+    return Response.json(
+      {
+        detail: {
+          code: "dashboard_auth_required",
+          message: "Dashboard session required.",
+        },
+      },
+      { status: 401, headers: { "cache-control": "no-store" } },
+    );
+  }
   const target = backendUrl(`/api/v1/${path.join("/")}${req.nextUrl.search}`);
 
   const method = req.method;
@@ -69,16 +94,47 @@ async function handle(
   };
   const contentType = req.headers.get("content-type");
   if (contentType) headers["content-type"] = contentType;
+  // Browser multipart initiation and reconstruction submission are idempotent
+  // across response loss/reload. Relay the user-supplied identifier only to
+  // those exact endpoints; it never becomes a general-purpose forwarded header.
+  const acceptsIdempotencyKey =
+    method === "POST" &&
+    ((path.length === 2 && path[0] === "uploads" && path[1] === "multipart") ||
+      (path.length === 1 && path[0] === "reconstruct"));
+  if (acceptsIdempotencyKey) {
+    const idempotencyKey = req.headers.get("idempotency-key");
+    if (idempotencyKey) headers["idempotency-key"] = idempotencyKey;
+  }
+  // Secret-gated, record-scoped release-evidence faults. The backend ignores
+  // both headers unless its non-public E2E token is explicitly configured and
+  // matches; forwarding them here keeps browser QA on the real same-origin path.
+  for (const name of ["x-proofshape-e2e-token", "x-proofshape-e2e-fault"]) {
+    const value = req.headers.get(name);
+    if (value) headers[name] = value;
+  }
+
+  const prepared = await prepareProxyRequestBody(method, contentType, req.body);
+  if (prepared.tooLarge) {
+    return Response.json(
+      {
+        detail: {
+          code: "proxy_json_too_large",
+          message: "This JSON request is too large.",
+        },
+      },
+      { status: 413 },
+    );
+  }
 
   const init: RequestInit & { duplex?: "half" } = {
     method,
     headers,
-    body: hasBody ? req.body : undefined,
+    body: hasBody ? prepared.body : undefined,
     cache: "no-store",
     redirect: "error",
     signal: req.signal,
   };
-  if (hasBody) init.duplex = "half";
+  if (prepared.streaming) init.duplex = "half";
   const res = await fetch(target, init);
 
   const relayed = new Headers();
@@ -86,7 +142,25 @@ async function handle(
     const v = res.headers.get(h);
     if (v) relayed.set(h, v);
   }
-  return new Response(res.body, { status: res.status, headers: relayed });
+  // API-key create/rotate returns a short-lived, path-scoped reveal cookie.
+  // Relay only that named cookie on the key-management route; never forward
+  // arbitrary backend cookies through the general-purpose data proxy.
+  const revealCookie = res.headers.get("set-cookie");
+  if (
+    path[0] === "keys" &&
+    method === "POST" &&
+    revealCookie?.startsWith("cv_mint_once=")
+  ) {
+    relayed.append("set-cookie", revealCookie);
+  }
+  // Fetch forbids response bodies on 204/205/304 and HEAD. Passing the backend's
+  // empty ReadableStream through anyway makes Chromium report ERR_ABORTED even
+  // though the mutation succeeded (observed on Design Studio archive).
+  const noBody = method === "HEAD" || [204, 205, 304].includes(res.status);
+  return new Response(noBody ? null : res.body, {
+    status: res.status,
+    headers: relayed,
+  });
 }
 
 export const GET = handle;

@@ -32,9 +32,9 @@ const archivo = Archivo({
 
 export const metadata: Metadata = {
   metadataBase: new URL(
-    process.env.NEXT_PUBLIC_SITE_URL || "https://cadverify.com"
+    process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"
   ),
-  title: "CadVerify — verification, made of glass",
+  title: "ProofShape — verification, made of glass",
   description:
     "Makeability verification: can this part be made — on your machines, in materials that survive its world — and what will it really take? Should-cost is one artifact inside the verdict, never the destination.",
   alternates: { canonical: "/" },
@@ -42,17 +42,17 @@ export const metadata: Metadata = {
     icon: "/icon.svg",
   },
   openGraph: {
-    title: "CadVerify — verification, made of glass",
+    title: "ProofShape — verification, made of glass",
     description:
       "Makeability verification for real manufacturing decisions.",
     url: "/",
-    siteName: "CadVerify",
+    siteName: "ProofShape",
     images: [{ url: "/opengraph-image", width: 1200, height: 630 }],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "CadVerify — verification, made of glass",
+    title: "ProofShape — verification, made of glass",
     description:
       "Makeability verification for real manufacturing decisions.",
     images: ["/opengraph-image"],
@@ -80,9 +80,8 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        {/* No-flash theme: DARK-FIRST. The authed app defaults to dark graphite
-            (the command register); only a user who has pinned light opts out.
-            Applied before paint so the theme never flickers. */}
+        {/* No-flash theme: ProofShape is light-first. Dark remains an explicit
+            user preference, but route changes never imply a theme change. */}
         <script
           nonce={nonce}
           // Browsers deliberately hide a parsed script nonce from DOM attribute
@@ -92,7 +91,7 @@ export default async function RootLayout({
           suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html:
-              "try{if(localStorage.getItem('cv_theme')!=='light'){document.documentElement.classList.add('dark')}}catch(e){document.documentElement.classList.add('dark')}",
+              "try{if(localStorage.getItem('cv_theme')==='dark'){document.documentElement.classList.add('dark')}}catch(e){}",
           }}
         />
       </head>

@@ -1,0 +1,13 @@
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+# Provider lock files are committed for deterministic main/bootstrap plans.
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+environments/*.tfvars
+environments/*.backend.hcl
+!environments/*.example

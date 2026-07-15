@@ -12,6 +12,8 @@ services:
     environment:
       - PORT=8000
       - RATE_LIBRARY_ENABLED=1
+    volumes:
+      - blobdata:/data
     healthcheck:
       test:
         - CMD-SHELL
@@ -32,6 +34,8 @@ services:
         condition: service_started
     environment:
       - RATE_LIBRARY_ENABLED=1
+    volumes:
+      - blobdata:/data
 
   postgres:
     image: postgres:16-alpine
@@ -73,3 +77,4 @@ services:
 
 volumes:
   pgdata:
+  blobdata:

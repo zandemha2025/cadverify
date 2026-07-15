@@ -4,10 +4,11 @@
 Globs EVERY module under ``backend/src/api/`` that defines an ``APIRouter`` (not
 just ``routes.py``) and, for each route function, confirms it declares an auth
 dependency — ``require_api_key`` / ``require_role`` / ``require_org_role`` /
-``require_dashboard_session`` — either directly in the function signature or via
-the route decorator's ``dependencies=[...]``. Module-level aliases of those
-factories (e.g. ``require_admin = require_org_role(OrgRole.admin)``) are resolved
-per module so an aliased gate still counts as auth.
+``require_role_and_org_role`` / ``require_dashboard_session`` — either directly
+in the function signature or via the route decorator's ``dependencies=[...]``.
+Module-level aliases of those factories (e.g.
+``require_admin = require_org_role(OrgRole.admin)``) are resolved per module so
+an aliased gate still counts as auth.
 
 Any route WITHOUT auth must appear in the explicit per-module ``PUBLIC_ALLOWLIST``
 below (the intentional public surface). An un-allowlisted public route in ANY api
@@ -29,6 +30,7 @@ AUTH_DEPENDENCIES = {
     "require_api_key",
     "require_role",
     "require_org_role",
+    "require_role_and_org_role",
     "require_dashboard_session",
 }
 

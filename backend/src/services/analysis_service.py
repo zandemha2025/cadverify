@@ -13,6 +13,7 @@ import logging
 import math
 import os
 import time
+from dataclasses import dataclass
 from typing import Optional
 
 from sqlalchemy import select
@@ -39,6 +40,29 @@ from src.matcher.profile_matcher import rank_processes, score_process
 logger = logging.getLogger("cadverify.analysis_service")
 
 
+@dataclass(frozen=True)
+class AnalysisRun:
+    """Internal result plus the exact Analysis row written or reused.
+
+    Request handlers keep receiving the historical response dictionary. Delayed
+    workers opt into this wrapper so they can link the exact cache variant that
+    ``run_analysis`` selected, rather than racing a later "latest by mesh" query.
+    """
+
+    result: dict
+    analysis_id: int | None
+
+
+def _analysis_return(
+    result: dict,
+    analysis_id: int | None,
+    return_persisted_id: bool,
+) -> dict | AnalysisRun:
+    if return_persisted_id:
+        return AnalysisRun(result=result, analysis_id=analysis_id)
+    return result
+
+
 def _force_gc_after_analysis() -> bool:
     """Return True if FORCE_GC_AFTER_ANALYSIS=true (default false)."""
     return os.getenv("FORCE_GC_AFTER_ANALYSIS", "false").strip().lower() == "true"
@@ -60,6 +84,46 @@ def compute_process_set_hash(process_values: list[str]) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+async def _persist_source_evidence(
+    org_id: str,
+    mesh_hash: str,
+    filename: str,
+    file_bytes: bytes,
+    *,
+    parsed_mesh=None,
+    parse_mesh_async_fn=None,
+    source_units: str = "mm",
+) -> None:
+    """Persist exact source plus a canonical STL derivative.
+
+    The derivative lets the ground-truth engine consume STEP/IGES sources
+    without a second CAD kernel dependency. Cache hits lazily backfill it by
+    parsing only when the object is absent.
+    """
+    from src.services.source_artifact_service import (
+        costable_mesh_exists,
+        save_costable_mesh_artifact,
+        save_source_artifact,
+    )
+
+    await save_source_artifact(org_id, mesh_hash, filename, file_bytes)
+    if await costable_mesh_exists(org_id, mesh_hash):
+        return
+    mesh = parsed_mesh
+    if mesh is None:
+        if parse_mesh_async_fn is None:
+            raise RuntimeError("source evidence requires a parsed mesh")
+        mesh, _suffix = await parse_mesh_async_fn(file_bytes, filename)
+        if source_units != "mm":
+            from src.costing.units import scale_mesh_to_mm
+
+            mesh = scale_mesh_to_mm(mesh, source_units)
+    payload = await asyncio.to_thread(mesh.export, file_type="stl")
+    if not isinstance(payload, (bytes, bytearray, memoryview)) or not payload:
+        raise RuntimeError("CAD parser did not produce a costable STL derivative")
+    await save_costable_mesh_artifact(org_id, mesh_hash, bytes(payload))
+
+
 # ---------------------------------------------------------------------------
 # Cache lookup
 # ---------------------------------------------------------------------------
@@ -71,9 +135,20 @@ async def _check_cache(
     mesh_hash: str,
     process_set_hash: str,
     analysis_version: str,
+    *,
+    org_id: str | None = None,
 ) -> Analysis | None:
-    """Return existing Analysis row if dedup key matches, else None."""
+    """Return an existing Analysis row from the caller's organization.
+
+    Request paths may omit ``org_id`` and use the caller's validated active-org
+    subquery. Delayed workers pass the immutable organization persisted on their
+    parent batch/job so a later user organization switch cannot change ownership.
+    """
+    from src.auth.org_context import caller_org_subquery
+
+    org_scope = org_id if org_id is not None else caller_org_subquery(user_id)
     stmt = select(Analysis).where(
+        Analysis.org_id == org_scope,
         Analysis.user_id == user_id,
         Analysis.mesh_hash == mesh_hash,
         Analysis.process_set_hash == process_set_hash,
@@ -131,6 +206,7 @@ async def _persist_analysis(
     face_count: int,
     duration_ms: float,
     signature_vec: Optional[list] = None,
+    org_id: str | None = None,
 ) -> Analysis:
     """Insert a new Analysis row and flush to get the assigned id."""
     from src.auth.org_context import resolve_org
@@ -142,7 +218,7 @@ async def _persist_analysis(
     analysis = Analysis(
         ulid=str(ULID()),
         user_id=user.user_id,
-        org_id=await resolve_org(session, user.user_id),
+        org_id=(org_id if org_id is not None else await resolve_org(session, user.user_id)),
         api_key_id=_nullable_api_key_id(user),
         mesh_hash=mesh_hash,
         process_set_hash=process_set_hash,
@@ -198,13 +274,14 @@ async def _write_usage_event(
     mesh_hash: str | None,
     duration_ms: float | None,
     face_count: int | None,
+    org_id: str | None = None,
 ) -> None:
     """Append a usage_events row (same transaction as analysis persist)."""
     from src.auth.org_context import resolve_org
 
     event = UsageEvent(
         user_id=user.user_id,
-        org_id=await resolve_org(session, user.user_id),
+        org_id=(org_id if org_id is not None else await resolve_org(session, user.user_id)),
         api_key_id=_nullable_api_key_id(user),
         event_type=event_type,
         analysis_id=analysis_id,
@@ -254,7 +331,10 @@ async def run_analysis(
     user: AuthedUser,
     session: AsyncSession,
     include_thickness: bool = False,
-) -> dict:
+    org_id: str | None = None,
+    source_units: str | None = None,
+    return_persisted_id: bool = False,
+) -> dict | AnalysisRun:
     """Full analysis pipeline: hash -> dedup check -> analyze -> persist -> track.
 
     On cache hit returns stored result_json without running analyzers.
@@ -278,58 +358,14 @@ async def run_analysis(
     # 2. Resolve target processes
     target_processes = resolve_target_processes_fn(processes)
 
-    # 3. Process set hash
-    process_set_hash = compute_process_set_hash(
-        [p.value for p in target_processes]
-    )
-
-    # 4. Analysis version from package
-    analysis_version = _app_version
-
-    # 5. Cache check.
-    # The wall-thickness map is opt-in and deliberately NOT persisted (it would
-    # bloat every cached row). It needs a live GeometryContext, which only the
-    # fresh path builds — so when the caller asks for it we skip the cache short
-    # circuit and run analysis, then attach the map to the RETURNED dict only.
-    cached = None
-    if not include_thickness:
-        cached = await _check_cache(
-            session, user.user_id, mesh_hash, process_set_hash, analysis_version
-        )
-
-    if cached is not None:
-        # 6. Cache HIT
-        logger.info(
-            "Cache hit for user=%s mesh_hash=%.12s… version=%s",
-            user.user_id,
-            mesh_hash,
-            analysis_version,
-        )
-        await _write_usage_event(
-            session,
-            user,
-            "analysis_cached",
-            cached.id,
-            mesh_hash,
-            cached.duration_ms,
-            cached.face_count,
-        )
-        return cached.result_json
-
-    # 7. Cache MISS — run full pipeline.
-    # Parse via the ASYNC pooled front door (spawn ProcessPool + per-rung hard
-    # wall-clock caps that SIGKILL a runaway worker), NOT the synchronous
-    # parse_mesh_fn — a sync gmsh call here runs on the event-loop thread and a
-    # pathological periodic-surface part (e.g. nist_ctc_05) grinds 2-3 min,
-    # freezing /health, signup, and EVERY other tenant (gauntlet F1). The pooled
-    # path keeps the loop free and surfaces an honest error to just this request.
-    mesh, suffix = await parse_mesh_async_fn(file_bytes, filename)
-
-    # Resolve rule pack
+    # 3. Resolve and validate the optional governed rule pack before cache
+    # lookup. A rule pack changes issue severity, requirements, and citations,
+    # so its name AND version are part of the cache identity. Without this, an
+    # aerospace request could incorrectly reuse a prior ungoverned analysis of
+    # the same bytes and processes.
     pack = None
     if rule_pack:
         pack = get_rule_pack(rule_pack)
-        # Invalid rule_pack already caught by routes.py caller; but guard anyway
         if pack is None:
             from fastapi import HTTPException
             from src.analysis.rules import available_rule_packs
@@ -338,6 +374,98 @@ async def run_analysis(
                 status_code=400,
                 detail=f"Unknown rule pack '{rule_pack}'. Available: {available_rule_packs()}",
             )
+
+    # 4. Process set hash. An inch-authored STL is a different interpreted
+    # geometry even when its raw bytes and requested processes are identical.
+    # Keep that interpretation in the cache key or an earlier mm result can be
+    # returned as a plausible-looking but 25.4×-too-small analysis. Explicit mm
+    # remains byte/cache-identical to the historical unset default.
+    effective_units = source_units or "mm"
+    if effective_units not in {"mm", "inch"}:
+        raise ValueError("source_units must be 'mm', 'inch', or None")
+    process_fingerprint = [p.value for p in target_processes]
+    if effective_units != "mm":
+        process_fingerprint.append(f"source_units={effective_units}")
+    if pack is not None:
+        process_fingerprint.append(
+            f"rule_pack={pack.name.lower()}@{pack.version}"
+        )
+    process_set_hash = compute_process_set_hash(
+        process_fingerprint
+    )
+
+    # 5. Analysis version from package
+    analysis_version = _app_version
+
+    # 6. Cache check.
+    # The wall-thickness map is opt-in and deliberately NOT persisted (it would
+    # bloat every cached row). It needs a live GeometryContext, which only the
+    # fresh path builds — so when the caller asks for it we skip the cache short
+    # circuit and run analysis, then attach the map to the RETURNED dict only.
+    cached = None
+    if not include_thickness:
+        cached = await _check_cache(
+            session,
+            user.user_id,
+            mesh_hash,
+            process_set_hash,
+            analysis_version,
+            org_id=org_id,
+        )
+
+    if cached is not None:
+        # 7. Cache HIT
+        logger.info(
+            "Cache hit for user=%s mesh_hash=%.12s… version=%s",
+            user.user_id,
+            mesh_hash,
+            analysis_version,
+        )
+        # A cache hit still carries the caller's exact upload bytes. Persist
+        # them under the winning analysis tenant so downstream calibration and
+        # governed exports can reconcile to real source evidence. Older rows
+        # are therefore backfilled naturally when a user re-opens the file.
+        cached_org_id = getattr(cached, "org_id", None)
+        if isinstance(cached_org_id, str) and cached_org_id:
+            await _persist_source_evidence(
+                cached_org_id,
+                mesh_hash,
+                filename,
+                file_bytes,
+                parse_mesh_async_fn=parse_mesh_async_fn,
+                source_units=effective_units,
+            )
+        await _write_usage_event(
+            session,
+            user,
+            "analysis_cached",
+            cached.id,
+            mesh_hash,
+            cached.duration_ms,
+            cached.face_count,
+            org_id=org_id,
+        )
+        return _analysis_return(
+            cached.result_json,
+            cached.id,
+            return_persisted_id,
+        )
+
+    # 8. Cache MISS — run full pipeline.
+    # Parse via the ASYNC pooled front door (spawn ProcessPool + per-rung hard
+    # wall-clock caps that SIGKILL a runaway worker), NOT the synchronous
+    # parse_mesh_fn — a sync gmsh call here runs on the event-loop thread and a
+    # pathological periodic-surface part (e.g. nist_ctc_05) grinds 2-3 min,
+    # freezing /health, signup, and EVERY other tenant (gauntlet F1). The pooled
+    # path keeps the loop free and surfaces an honest error to just this request.
+    mesh, suffix = await parse_mesh_async_fn(file_bytes, filename)
+    if effective_units != "mm":
+        # STL has no units. Convert the parsed mesh at the single geometry seam,
+        # before geometry, features, universal checks, process DFM, and persisted
+        # output. `scale_mesh_to_mm` returns a copy for inch and never double-scales.
+        from src.costing.units import scale_mesh_to_mm
+
+        mesh = scale_mesh_to_mm(mesh, effective_units)
 
     def _run_analysis_sync():
         geometry = analyze_geometry(mesh)
@@ -431,6 +559,13 @@ async def run_analysis(
     result = enhance_suggestions(result)
 
     result_dict = to_response_fn(result, features, pack)
+    if effective_units != "mm":
+        result_dict["source_units"] = {
+            "declared": effective_units,
+            "scale_to_mm": 25.4,
+            "provenance": "USER",
+            "note": "Source coordinates scaled once before geometry and DFM analysis.",
+        }
 
     # Tolerance analysis for STEP files with AP242 support
     if suffix.lstrip(".") in ("step", "stp"):
@@ -476,6 +611,7 @@ async def run_analysis(
         gc.collect()
 
     # Persist
+    persisted_analysis_id: int | None = None
     try:
         analysis = await _persist_analysis(
             session=session,
@@ -491,7 +627,21 @@ async def run_analysis(
             face_count=_face_count,
             duration_ms=duration_ms,
             signature_vec=signature_vec,
+            org_id=org_id,
         )
+        persisted_analysis_id = analysis.id
+        # Source bytes are part of the durable evidence chain, not an optional
+        # cache. A store failure aborts the request/transaction; strict health
+        # preflight prevents accepting CAD into an unhealthy production store.
+        if isinstance(analysis.org_id, str) and analysis.org_id:
+            await _persist_source_evidence(
+                analysis.org_id,
+                mesh_hash,
+                filename,
+                file_bytes,
+                parsed_mesh=mesh,
+                source_units=effective_units,
+            )
         await _write_usage_event(
             session,
             user,
@@ -500,6 +650,7 @@ async def run_analysis(
             mesh_hash,
             duration_ms,
             _face_count,
+            org_id=org_id,
         )
 
         # Audit: analysis.created
@@ -524,7 +675,12 @@ async def run_analysis(
             mesh_hash,
         )
         cached = await _check_cache(
-            session, user.user_id, mesh_hash, process_set_hash, analysis_version
+            session,
+            user.user_id,
+            mesh_hash,
+            process_set_hash,
+            analysis_version,
+            org_id=org_id,
         )
         if cached is not None:
             await _write_usage_event(
@@ -535,13 +691,22 @@ async def run_analysis(
                 mesh_hash,
                 cached.duration_ms,
                 cached.face_count,
+                org_id=org_id,
             )
-            return _with_thickness(cached.result_json, _thickness_map)
+            return _analysis_return(
+                _with_thickness(cached.result_json, _thickness_map),
+                cached.id,
+                return_persisted_id,
+            )
         # If re-query also fails, just return the computed result
         # (usage event lost but the user still gets their response).
         logger.warning("Re-query after IntegrityError returned None — returning computed result")
 
-    return _with_thickness(result_dict, _thickness_map)
+    return _analysis_return(
+        _with_thickness(result_dict, _thickness_map),
+        persisted_analysis_id,
+        return_persisted_id,
+    )
 
 
 def _with_thickness(result_dict: dict, thickness_map: dict | None) -> dict:
@@ -560,17 +725,27 @@ async def get_latest_analysis_id(
     session: AsyncSession,
     user_id: int,
     mesh_hash: str,
+    *,
+    org_id: str | None = None,
 ) -> int | None:
-    """Return the most-recent analysis.id for a given user + mesh_hash.
+    """Return the latest analysis for an organization + user + mesh hash.
 
     Used by the async SAM-3D submit path to link the job to the just-persisted
-    analysis row without changing run_analysis's return signature.
+    analysis row without changing run_analysis's return signature. Request
+    paths resolve the caller's validated active organization in SQL; delayed
+    workers pass their parent row's persisted ``org_id`` explicitly.
     """
+    from src.auth.org_context import caller_org_subquery
     from sqlalchemy import desc
 
+    org_scope = org_id if org_id is not None else caller_org_subquery(user_id)
     stmt = (
         select(Analysis.id)
-        .where(Analysis.user_id == user_id, Analysis.mesh_hash == mesh_hash)
+        .where(
+            Analysis.org_id == org_scope,
+            Analysis.user_id == user_id,
+            Analysis.mesh_hash == mesh_hash,
+        )
         .order_by(desc(Analysis.created_at))
         .limit(1)
     )
@@ -582,6 +757,7 @@ async def run_quick_analysis(
     filename: str,
     user: AuthedUser,
     session: AsyncSession,
+    org_id: str | None = None,
 ) -> dict:
     """Quick pass/fail — universal checks only, with dedup + usage tracking."""
     (
@@ -601,7 +777,12 @@ async def run_quick_analysis(
 
     # Cache check
     cached = await _check_cache(
-        session, user.user_id, mesh_hash, process_set_hash, analysis_version
+        session,
+        user.user_id,
+        mesh_hash,
+        process_set_hash,
+        analysis_version,
+        org_id=org_id,
     )
 
     if cached is not None:
@@ -610,6 +791,15 @@ async def run_quick_analysis(
             user.user_id,
             mesh_hash,
         )
+        cached_org_id = getattr(cached, "org_id", None)
+        if isinstance(cached_org_id, str) and cached_org_id:
+            await _persist_source_evidence(
+                cached_org_id,
+                mesh_hash,
+                filename,
+                file_bytes,
+                parse_mesh_async_fn=parse_mesh_async_fn,
+            )
         await _write_usage_event(
             session,
             user,
@@ -618,6 +808,7 @@ async def run_quick_analysis(
             mesh_hash,
             cached.duration_ms,
             cached.face_count,
+            org_id=org_id,
         )
         return cached.result_json
 
@@ -669,7 +860,16 @@ async def run_quick_analysis(
             verdict=verdict,
             face_count=geometry.face_count,
             duration_ms=duration_ms,
+            org_id=org_id,
         )
+        if isinstance(analysis.org_id, str) and analysis.org_id:
+            await _persist_source_evidence(
+                analysis.org_id,
+                mesh_hash,
+                filename,
+                file_bytes,
+                parsed_mesh=mesh,
+            )
         await _write_usage_event(
             session,
             user,
@@ -678,6 +878,7 @@ async def run_quick_analysis(
             mesh_hash,
             duration_ms,
             geometry.face_count,
+            org_id=org_id,
         )
     except IntegrityError:
         await session.rollback()
@@ -686,7 +887,12 @@ async def run_quick_analysis(
             user.user_id,
         )
         cached = await _check_cache(
-            session, user.user_id, mesh_hash, process_set_hash, analysis_version
+            session,
+            user.user_id,
+            mesh_hash,
+            process_set_hash,
+            analysis_version,
+            org_id=org_id,
         )
         if cached is not None:
             await _write_usage_event(
@@ -697,6 +903,7 @@ async def run_quick_analysis(
                 mesh_hash,
                 cached.duration_ms,
                 cached.face_count,
+                org_id=org_id,
             )
             return cached.result_json
         logger.warning("Re-query after IntegrityError returned None — returning computed result")

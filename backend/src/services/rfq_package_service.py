@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import html
 import io
 import json
 import re
@@ -33,6 +34,7 @@ MAX_ITEMS = 25
 
 # Strong refs to in-flight cache-warm tasks so they are not GC'd mid-render.
 _WARM_TASKS: set = set()
+_RFQ_PDF_SEMAPHORE = asyncio.Semaphore(2)
 
 
 @dataclass(frozen=True)
@@ -201,16 +203,19 @@ def _line_items_csv(items: list[dict[str, Any]]) -> str:
         raw = item.get("raw_cad") or {}
         writer.writerow(
             [
-                decision["id"],
-                decision["filename"],
-                decision["approval_status"],
-                decision["is_stale"],
-                decision["unvalidated_confidence"],
-                decision["make_now_process"],
-                decision["crossover_qty"],
-                ((manifest or {}).get("part") or {}).get("part_id"),
-                context.get("program"),
-                raw.get("included") is True,
+                cost_decision_service.spreadsheet_safe_cell(value)
+                for value in [
+                    decision["id"],
+                    decision["filename"],
+                    decision["approval_status"],
+                    decision["is_stale"],
+                    decision["unvalidated_confidence"],
+                    decision["make_now_process"],
+                    decision["crossover_qty"],
+                    ((manifest or {}).get("part") or {}).get("part_id"),
+                    context.get("program"),
+                    raw.get("included") is True,
+                ]
             ]
         )
     return buf.getvalue()
@@ -237,6 +242,71 @@ def _supplier_brief(package: RfqPackage) -> str:
         lines += ["", "## Warnings"]
         lines += [f"- {w.get('code')}: {w.get('message')}" for w in package.warnings_json]
     return "\n".join(lines) + "\n"
+
+
+def _supplier_brief_html(package: RfqPackage) -> str:
+    """Render the package-level sourcing truth as a printable HTML document.
+
+    The per-decision PDFs explain each should-cost calculation, while this
+    document carries the RFQ-package boundary and every package warning,
+    including raw-CAD availability. All package text is escaped because titles,
+    supplier names, notes, filenames, and warning messages can be user supplied.
+    """
+    warnings = package.warnings_json or []
+    warning_rows = "".join(
+        "<li><strong>{code}</strong>: {message}</li>".format(
+            code=html.escape(str(warning.get("code") or "warning")),
+            message=html.escape(str(warning.get("message") or "")),
+        )
+        for warning in warnings
+    ) or "<li>None</li>"
+    note = (package.metadata_json or {}).get("note")
+    note_html = (
+        f"<h2>Buyer note</h2><p>{html.escape(str(note))}</p>" if note else ""
+    )
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page {{ size: Letter; margin: 0.65in; }}
+    body {{ color: #172033; font: 10.5pt/1.45 sans-serif; }}
+    h1 {{ font-size: 20pt; margin: 0 0 8pt; }}
+    h2 {{ font-size: 13pt; margin: 18pt 0 6pt; }}
+    .boundary {{ border: 1px solid #98a2b3; padding: 9pt; }}
+    table {{ border-collapse: collapse; width: 100%; }}
+    th, td {{ border-bottom: 1px solid #d0d5dd; padding: 5pt; text-align: left; }}
+    li {{ margin-bottom: 4pt; }}
+  </style>
+</head>
+<body>
+  <h1>{html.escape(str(package.title))}</h1>
+  <p class="boundary">This package is should-cost evidence for an RFQ handoff. It is not a supplier quote, supplier commitment, or live procurement transaction.</p>
+  <p><strong>Supplier target:</strong> {html.escape(str(package.supplier_name or "not specified"))}</p>
+  <table>
+    <tr><th>Decisions included</th><td>{package.item_count}</td></tr>
+    <tr><th>Approved decisions</th><td>{package.approved_count}</td></tr>
+    <tr><th>Stale decisions</th><td>{package.stale_count}</td></tr>
+    <tr><th>Unvalidated confidence</th><td>{package.unvalidated_count}</td></tr>
+    <tr><th>Raw CAD included</th><td>{"yes" if package.raw_cad_included else "no"}</td></tr>
+    <tr><th>Live supplier send</th><td>{"yes" if package.live_supplier_send else "no"}</td></tr>
+  </table>
+  {note_html}
+  <h2>Warnings</h2>
+  <ul>{warning_rows}</ul>
+</body>
+</html>"""
+
+
+def _render_supplier_brief_pdf_sync(package: RfqPackage) -> bytes:
+    from weasyprint import HTML
+
+    return HTML(string=_supplier_brief_html(package)).write_pdf()
+
+
+async def _supplier_brief_pdf(package: RfqPackage) -> bytes:
+    async with _RFQ_PDF_SEMAPHORE:
+        return await asyncio.to_thread(_render_supplier_brief_pdf_sync, package)
 
 
 async def _decision_item(
@@ -299,6 +369,14 @@ async def _decision_item(
             "approval_status": status["approval_status"],
             "approved_at": status["approved_at"],
             "approved_by_user_id": status["approved_by_user_id"],
+            "approval_note": status["approval_note"],
+            "user_disposition": status["user_disposition"],
+            "user_disposition_label": status["user_disposition_label"],
+            "disposition_note": status["disposition_note"],
+            "disposition_updated_at": status["disposition_updated_at"],
+            "disposition_updated_by_user_id": status[
+                "disposition_updated_by_user_id"
+            ],
             "is_stale": status["is_stale"],
             "stale_at": status["stale_at"],
             "stale_reason": status["stale_reason"],
@@ -473,6 +551,15 @@ async def build_zip(
     session: AsyncSession,
     package: RfqPackage,
 ) -> bytes:
+    try:
+        supplier_pdf_name = "supplier-brief.pdf"
+        supplier_pdf = await _supplier_brief_pdf(package)
+    except Exception:
+        supplier_pdf_name = "supplier-brief-pdf-unavailable.txt"
+        supplier_pdf = (
+            b"Supplier brief PDF generation failed; package_manifest.json and "
+            b"supplier-brief.md retain the complete package evidence.\n"
+        )
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         manifest = serialize_package(package, include_items=False)
@@ -480,6 +567,7 @@ async def build_zip(
             "package_manifest.json",
             "line-items.csv",
             "supplier-brief.md",
+            supplier_pdf_name,
             "cost-decisions.json",
         ]
         zf.writestr(
@@ -488,6 +576,7 @@ async def build_zip(
         )
         zf.writestr("line-items.csv", _line_items_csv(package.items_json or []))
         zf.writestr("supplier-brief.md", _supplier_brief(package))
+        zf.writestr(supplier_pdf_name, supplier_pdf)
         zf.writestr(
             "cost-decisions.json",
             json.dumps(package.items_json or [], indent=2, sort_keys=True, default=str),
@@ -503,7 +592,9 @@ async def build_zip(
             )
             zf.writestr(
                 f"decisions/{index:02d}-{stem}/cost-drivers.csv",
-                cost_decision_service.build_estimates_csv(item["cost_decision"]),
+                cost_decision_service.build_estimates_csv(
+                    item["cost_decision"], governance=item["decision"]
+                ),
             )
             if item.get("declared_part"):
                 zf.writestr(

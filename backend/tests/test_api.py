@@ -31,6 +31,7 @@ def test_health(client):
     body = r.json()
     assert body["status"] in ("ok", "degraded")
     assert "version" in body
+    assert "build_id" in body
 
 
 def test_validate_quick_on_clean_cube(client, cube_10mm, stl_bytes_of):

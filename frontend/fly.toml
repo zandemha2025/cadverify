@@ -9,6 +9,7 @@ primary_region = "iad"
   # the same digest can move from staging to production.
   PRODUCTION_PUBLIC_API_TLS_REQUIRED = "1"
   PRODUCTION_AUTH_PROXY_REQUIRED = "1"
+  AUTH_PROXY_CLIENT_IP_SOURCE = "fly"
   MAGIC_LINK_UI_ENABLED = "1"
   AUTH_MODE = "password"
   PUBLIC_PASSWORD_SIGNUP_ENABLED = "0"

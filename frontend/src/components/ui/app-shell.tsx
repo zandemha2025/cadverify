@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * The persistent 4-zone platform shell — the "governed catalog" frame that
- * replaces the single-part instrument's slim top strip (Gen-3) and the orphaned
- * tabbed workspace's ad-hoc chrome (Gen-2). One shell, four zones:
+ * The persistent ProofShape shell shared by every authenticated surface. One
+ * route change never swaps the product frame, theme, account controls, or
+ * navigation model underneath the user.
  *
  *   rail 56 · sidebar 240 (collapsible) · context bar 48 · content · [Inspector]
  *
@@ -39,6 +39,8 @@ import {
   Building2,
   LogOut,
   Lock,
+  Menu,
+  Bell,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -50,7 +52,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 
 /* Routes that render full-fluid (the workspace needs its width); everything
    else gets a comfortable reading container. */
-const FLUID = new Set(["/cost", "/analyze"]);
+const FLUID = new Set(["/verify", "/cost", "/analyze"]);
 /* The genuinely local cost/DFM decision path — the ONLY place we assert
    zero-egress (image→mesh reconstruction is out of scope, handled elsewhere). */
 const LOCAL_PATHS = ["/cost", "/analyze", "/cost-decisions", "/history", "/batch", "/rfq-packages"];
@@ -64,7 +66,8 @@ type RailItem = {
 };
 const RAIL: RailItem[] = [
   { id: "verify", label: "Verify workspace", icon: FileCheck2, href: "/verify" },
-  { id: "home", label: "Legacy workbench", icon: Boxes, href: "/cost" },
+  { id: "designs", label: "Design Studio", icon: Boxes, href: "/designs" },
+  { id: "home", label: "Should-cost", icon: Calculator, href: "/cost" },
   { id: "analyze", label: "Analyze DFM", icon: ScanLine, href: "/analyze" },
   { id: "batch", label: "Batch runs", icon: Layers, href: "/batch" },
   { id: "decisions", label: "Cost decisions", icon: PiggyBank, href: "/cost-decisions" },
@@ -81,12 +84,12 @@ function IconRail() {
     <Tooltip.Provider delayDuration={200}>
       <nav
         aria-label="Domains"
-        className="flex w-[var(--rail-w)] shrink-0 flex-col items-center gap-1 border-r border-border bg-background py-3"
+        className="hidden w-[var(--rail-w)] shrink-0 flex-col items-center gap-1 border-r border-border bg-background py-3 sm:flex"
       >
         {/* brand mark — the datum crosshair, cobalt */}
         <Link
           href="/verify"
-          aria-label="CadVerify"
+          aria-label="ProofShape"
           className="mb-2 flex size-9 items-center justify-center rounded-[var(--radius-sm)] text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <svg viewBox="0 0 20 20" className="size-5" fill="none" stroke="currentColor" strokeWidth={1.6}>
@@ -135,7 +138,6 @@ function IconRail() {
 
         <div className="flex-1" />
         <ThemeToggle className="size-9 border-0 bg-transparent" />
-        <AccountMenu />
       </nav>
     </Tooltip.Provider>
   );
@@ -145,7 +147,8 @@ function IconRail() {
 type NavLink = { label: string; href: string; icon: LucideIcon; hint?: string };
 const WORKSPACE_NAV: NavLink[] = [
   { label: "Verify workspace", href: "/verify", icon: FileCheck2, hint: "canonical product surface" },
-  { label: "Legacy analysis", href: "/cost", icon: Calculator, hint: "should-cost · make-vs-buy" },
+  { label: "Design Studio", href: "/designs", icon: Boxes, hint: "create · revise · verify" },
+  { label: "Should-cost workspace", href: "/cost", icon: Calculator, hint: "cost · make-vs-buy" },
   { label: "Analyze DFM", href: "/analyze", icon: ScanLine, hint: "geometry · flags" },
   { label: "Batch run", href: "/batch", icon: Layers, hint: "many parts" },
 ];
@@ -203,7 +206,7 @@ function SidebarSection({ title, links }: { title: string; links: NavLink[] }) {
 function AppSidebar() {
   const { open } = useCommandPalette();
   return (
-    <aside className="flex w-[var(--sidebar-w)] shrink-0 flex-col overflow-y-auto border-r border-border bg-background">
+    <aside className="hidden w-[var(--sidebar-w)] shrink-0 flex-col overflow-y-auto border-r border-border bg-background lg:flex">
       {/* ⌘K search — the co-primary navigator lives at the top of the sidebar */}
       <div className="p-2">
         <button
@@ -230,6 +233,49 @@ function AppSidebar() {
   );
 }
 
+function MobileNavigation() {
+  const pathname = usePathname();
+  const links = [...WORKSPACE_NAV, ...LEDGER_NAV];
+
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger
+        aria-label="Open navigation"
+        className="inline-flex size-8 items-center justify-center rounded-[var(--radius-sm)] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:hidden"
+      >
+        <Menu className="size-4" />
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          side="bottom"
+          align="start"
+          sideOffset={8}
+          className="z-[90] max-h-[min(70vh,520px)] min-w-64 overflow-y-auto rounded-[var(--radius)] border border-border bg-card p-1 text-sm shadow-pop"
+        >
+          {links.map((link) => {
+            const Icon = link.icon;
+            const active = pathname === link.href;
+            return (
+              <DropdownMenu.Item key={link.href} asChild>
+                <Link
+                  href={link.href}
+                  className={cn(
+                    "flex cursor-pointer items-center gap-2.5 rounded-sm px-2.5 py-2 outline-none hover:bg-muted focus:bg-muted",
+                    active ? "bg-accent-subtle text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  <Icon className={cn("size-4", active && "text-primary")} />
+                  <span className="font-medium">{link.label}</span>
+                </Link>
+              </DropdownMenu.Item>
+            );
+          })}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
+
 /* ── L1 context bar — the lakehouse breadcrumb + data-locality signal. ─────── */
 function ContextBar({
   sidebarOpen,
@@ -240,15 +286,35 @@ function ContextBar({
 }) {
   const pathname = usePathname();
   const { part } = useInstrumentChrome();
+  const { open } = useCommandPalette();
   const isLocal = LOCAL_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
+  const domain = pathname.startsWith("/verify")
+    ? "verify"
+    : pathname.startsWith("/designs")
+      ? "designs"
+      : pathname.startsWith("/settings")
+        ? "settings"
+        : pathname.startsWith("/batch")
+          ? "batch"
+          : pathname.startsWith("/integrations")
+            ? "integrations"
+            : "decisions";
 
   return (
     <header className="flex h-[var(--contextbar-h)] shrink-0 items-center gap-2 border-b border-border bg-background px-3">
+      <Link
+        href="/verify"
+        aria-label="ProofShape home"
+        className="num inline-flex size-8 items-center justify-center rounded-[var(--radius-sm)] bg-primary text-xs font-semibold text-primary-foreground sm:hidden"
+      >
+        P
+      </Link>
+      <MobileNavigation />
       <button
         type="button"
         onClick={onToggleSidebar}
         aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
-        className="inline-flex size-7 items-center justify-center rounded-[var(--radius-sm)] text-subtle-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="hidden size-7 items-center justify-center rounded-[var(--radius-sm)] text-subtle-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:inline-flex"
       >
         {sidebarOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
       </button>
@@ -257,7 +323,7 @@ function ContextBar({
       <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
         <span className="num text-muted-foreground">workspace</span>
         <ChevronRight className="size-3.5 shrink-0 text-subtle-foreground" aria-hidden />
-        <span className="num text-muted-foreground">decisions</span>
+        <span className="num text-muted-foreground">{domain}</span>
         {part && (
           <>
             <ChevronRight className="size-3.5 shrink-0 text-subtle-foreground" aria-hidden />
@@ -283,6 +349,24 @@ function ContextBar({
           LOCAL · zero-egress
         </span>
       )}
+      <button
+        type="button"
+        onClick={open}
+        aria-label="Search and jump to a workspace"
+        className="hidden h-8 min-w-36 items-center gap-2 rounded-[var(--radius)] border border-border bg-card px-3 text-xs text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex"
+      >
+        <Search className="size-3.5" />
+        <span className="flex-1 text-left">Jump…</span>
+        <kbd className="num text-[10px]">⌘K</kbd>
+      </button>
+      <Link
+        href="/notifications"
+        aria-label="Notifications"
+        className="inline-flex size-8 items-center justify-center rounded-[var(--radius-sm)] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Bell className="size-4" />
+      </Link>
+      <AccountMenu />
     </header>
   );
 }
@@ -369,7 +453,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           {fluid ? (
             <div className="h-full">{children}</div>
           ) : (
-            <div className="mx-auto w-full max-w-screen-2xl px-6 py-8 lg:px-8">{children}</div>
+            <div className="mx-auto w-full max-w-screen-2xl px-4 py-5 sm:px-6 sm:py-8 lg:px-8">{children}</div>
           )}
         </main>
       </div>

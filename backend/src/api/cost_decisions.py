@@ -13,6 +13,7 @@ Routes (mounted at /api/v1/cost-decisions):
   GET    ""                      list (cursor paginated; filter process/date)
   GET    /compare?ids=a,b        structured diff of two owned decisions
   GET    /{id}                   full result_json envelope (owner-scoped, 404)
+  PUT    /{id}/disposition       persist/withdraw the four-way human outcome
   POST   /{id}/approve           approve/sign off a decision
   DELETE /{id}/approve           reopen approval
   GET    /{id}/pdf               cost-report PDF
@@ -29,9 +30,10 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,7 +53,12 @@ public_cost_share_router = APIRouter(tags=["cost-decisions"])
 
 
 class ApprovalBody(BaseModel):
-    note: str | None = None
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class DispositionBody(BaseModel):
+    disposition: Literal["inhouse", "outside", "acquire", "redesign"] | None
+    note: str | None = Field(default=None, max_length=1000)
 
 
 def _parse_dt(value: str, field: str) -> datetime:
@@ -149,6 +156,10 @@ async def get_cost_decision(
         "label": d.label,
         "created_at": d.created_at.isoformat(),
         "engine_version": d.engine_version,
+        # Private immutable source identity. Public shares intentionally omit
+        # this value, but authenticated reviewers need it to prove the reopened
+        # evidence belongs to the exact uploaded bytes rather than a same-name file.
+        "mesh_hash": d.mesh_hash,
         "make_now_process": d.make_now_process,
         "crossover_qty": d.crossover_qty,
         "quantities": d.quantities or [],
@@ -157,6 +168,31 @@ async def get_cost_decision(
         **svc.governance_fields(d),
         "result": d.result_json,
     }
+
+
+@router.put("/{decision_id}/disposition")
+@limiter.limit("60/hour;300/day")
+async def set_cost_decision_disposition(
+    decision_id: str,
+    body: DispositionBody,
+    request: Request,
+    response: Response,
+    user: AuthedUser = Depends(require_role(Role.analyst)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Persist a human sourcing outcome, or withdraw it with ``null``.
+
+    This changes governance metadata only; the computed engine artifact remains
+    byte-for-byte intact. A changed outcome automatically reopens prior signoff.
+    """
+    d = await svc.set_disposition_owned(
+        session,
+        decision_id,
+        user.user_id,
+        disposition=body.disposition,
+        note=body.note,
+    )
+    return {"id": d.ulid, **svc.governance_fields(d)}
 
 
 @router.post("/{decision_id}/approve")
@@ -223,10 +259,14 @@ async def export_cost_json(
     user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Export the raw glass-box decision JSON (result_json)."""
+    """Export the glass-box decision JSON plus its governance state."""
     d = await svc.get_owned(session, decision_id, user.user_id)
+    payload = {
+        **(d.result_json or {}),
+        "governance": svc.governance_fields(d),
+    }
     return Response(
-        content=json.dumps(d.result_json, separators=(",", ":")),
+        content=json.dumps(payload, separators=(",", ":")),
         media_type="application/json",
         headers={
             "Content-Disposition": (
@@ -245,9 +285,12 @@ async def export_cost_csv(
     user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    """Export the estimates / line-items table as CSV (honest CI columns)."""
+    """Export estimates, line items, confidence, and governance as CSV."""
     d = await svc.get_owned(session, decision_id, user.user_id)
-    csv_text = svc.build_estimates_csv(d.result_json or {})
+    csv_text = svc.build_estimates_csv(
+        d.result_json or {},
+        governance=svc.governance_fields(d),
+    )
     stem = cost_pdf_service.safe_cost_filename(d.filename)[:-4]
     return Response(
         content=csv_text,

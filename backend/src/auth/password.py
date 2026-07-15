@@ -15,6 +15,8 @@ plaintext password or the Argon2 hash.
 """
 from __future__ import annotations
 
+from src.config.public_urls import error_doc_url
+
 import asyncio
 import html
 import logging
@@ -77,7 +79,7 @@ def _err(status: int, code: str, message: str) -> HTTPException:
         detail={
             "code": code,
             "message": message,
-            "doc_url": f"https://docs.cadverify.com/errors#{code}",
+            "doc_url": error_doc_url(code),
         },
     )
 
@@ -182,7 +184,7 @@ async def create_pilot_request(
         raise _err(
             503,
             "pilot_intake_unavailable",
-            "Online pilot intake is temporarily unavailable. Email pilots@cadverify.com.",
+            "Online pilot intake is temporarily unavailable. Please try again later.",
         )
 
     email = _clean_email(body.email)
@@ -249,26 +251,26 @@ async def create_pilot_request(
     delivery = "recorded"
     resend_key = os.getenv("RESEND_API_KEY", "").strip()
     resend_from = os.getenv("RESEND_FROM", "").strip()
-    if resend_key and resend_from:
+    inbox = os.getenv("PILOT_INBOX", "").strip()
+    if resend_key and resend_from and inbox:
         try:
             import resend
 
             resend.api_key = resend_key
-            inbox = os.getenv("PILOT_INBOX", "pilots@cadverify.com").strip()
             safe_company = re.sub(r"[\r\n]+", " ", company)
             safe_what_html = html.escape(what).replace("\n", "<br>")
             payload: resend.Emails.SendParams = {
                 "from": resend_from,
                 "to": inbox,
                 "reply_to": email,
-                "subject": f"CadVerify pilot request — {safe_company}",
+                "subject": f"ProofShape pilot request — {safe_company}",
                 "text": (
                     f"Pilot request {receipt}\n\nWork email: {email}\n"
                     f"Company: {company}\nDeployment: {body.deployment}\n\n"
                     f"What they make:\n{what}"
                 ),
                 "html": (
-                    f"<h1>New CadVerify pilot request</h1>"
+                    f"<h1>New ProofShape pilot request</h1>"
                     f"<p><strong>Receipt:</strong> {html.escape(receipt)}</p>"
                     f"<p><strong>Work email:</strong> {html.escape(email)}<br>"
                     f"<strong>Company:</strong> {html.escape(company)}<br>"

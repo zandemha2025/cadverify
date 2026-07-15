@@ -1,17 +1,17 @@
 "use client";
 
 /**
- * The product Verify app — the founder-approved "light instrument" recreated in
- * the production stack and wired to the real engine. One client shell (rail + top
- * bar + screen router) holding all state, behind NEXT_PUBLIC_VERIFY_UI. Explicit-
- * hex, theme-independent (the rest of the app is dark-first); flag-off this whole
- * tree is unreachable, so the existing app is byte-identical.
+ * The Verify workspace is wired to the real engine and mounted inside the shared
+ * authenticated ProofShape shell. This component owns only Verify-local screens
+ * and tools; platform navigation, theme, search, and account controls live in the
+ * common shell.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import Link from "next/link";
 import { C, MONO, SANS } from "@/lib/verify/tokens";
 import { runVerification, type VerifyResult } from "@/lib/verify/run";
 import { listMachines } from "@/lib/verify/machine-api";
-import { CAD_ACCEPT } from "@/lib/cad-file";
+import { CAD_ACCEPT, isSupportedCad, unsupportedCadGuidance } from "@/lib/cad-file";
 import { VERIFY_PART_CAD_INPUT } from "@/lib/verify/file-inputs";
 import { Stage, type StageAssembly } from "./stage";
 import { AssemblyPanel } from "./assembly-panel";
@@ -25,14 +25,21 @@ import { TriageScreen } from "./triage-screen";
 import { CalibrationScreen } from "./calibration-screen";
 import { HomeScreen } from "./home-screen";
 import { ProgramScreen } from "./program-screen";
-import { CommandPalette, NotificationsPanel } from "./command-surfaces";
+import { CommandPalette } from "./command-surfaces";
 import { AcquisitionModal } from "./acquisition-modal";
 import { PartScreen } from "./part-screen";
 import { ToastProvider } from "./toast";
 import { ShortcutsOverlay } from "./shortcuts-overlay";
 import { CalibrationSwitcher } from "./calibration-switcher";
-import { VerifyAccountMenu } from "./account-menu";
+import { WelcomeGuide, WELCOME_STORAGE_KEY } from "./welcome-guide";
+import { GuidedResultSummary } from "./guided-result-summary";
 import { sampleCubeFile } from "@/lib/verify/sample-cad";
+import { designIdFromSearch, designRevisionFromSearch, importDesignStep } from "@/lib/verify/design-import";
+import {
+  workspaceScreenFromSearch,
+  type WorkspaceScreen,
+} from "@/lib/verify/workspace-screen-route";
+import type { OrganizationAccess } from "@/lib/organization-access";
 
 // The shared hotkey nav map — matches the design 1:1 (support.js keydown handler):
 // H/V/P/R/G/M/T/C jump between the surfaces, `?` opens the shortcuts sheet. `c`
@@ -48,9 +55,7 @@ const HOTKEY_NAV: Record<string, Screen> = {
   c: "calibration",
 };
 
-type Screen =
-  | "home" | "verify" | "catalog" | "part" | "compare" | "records" | "programs" | "program" | "machines" | "triage" | "calibration"
-  | "acquisition" | "palette";
+type Screen = WorkspaceScreen | "part" | "program" | "acquisition" | "palette";
 
 const RAIL: { key: Screen; label: string; d: string }[] = [
   { key: "home", label: "Home", d: "M3 10.5 12 3l9 7.5M5 9v11h14V9" },
@@ -63,27 +68,31 @@ const RAIL: { key: Screen; label: string; d: string }[] = [
   { key: "calibration", label: "Calibration & truth", d: "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M2 14h4M10 8h4M18 16h4" },
 ];
 
-const CRUMB: Record<string, string> = {
-  home: "Home",
-  verify: "Verify",
-  catalog: "Parts",
-  compare: "Parts / Compare",
-  part: "Parts / Standing",
-  records: "Records",
-  programs: "Programs",
-  program: "Programs",
-  machines: "Your machines",
-  triage: "Triage at scale",
-  calibration: "Calibration & truth",
-};
-
-export function VerifyApp() {
+export function VerifyApp({
+  organizationAccess,
+}: {
+  organizationAccess: OrganizationAccess | null;
+}) {
+  const activeOrganization = organizationAccess?.organizations.find(
+    (org) => org.orgId === organizationAccess.activeOrgId,
+  ) ?? null;
+  const hasActiveOrganization = activeOrganization !== null;
   const [screen, setScreen] = useState<Screen>("home");
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const [guidedSampleState, setGuidedSampleState] = useState<
+    "idle" | "running" | "ready" | "error"
+  >("idle");
+  const [guidedSummaryOpen, setGuidedSummaryOpen] = useState(false);
   const [env, setEnv] = useState({ temp: false, sour: false, pressure: false });
   const [materialClass, setMaterialClass] = useState("polymer");
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [running, setRunning] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  const [uploadRejection, setUploadRejection] = useState<{
+    fileName: string;
+    title: string;
+    action: string;
+  } | null>(null);
   // Multi-part assembly render (>= 2 solids): the combined GLB + product tree.
   // null for single parts, which keep the existing single-shell path untouched.
   const [assembly, setAssembly] = useState<AssemblyRender | null>(null);
@@ -94,12 +103,20 @@ export function VerifyApp() {
   // "analysing per-part…" state while it is in flight.
   const [assemblyAnalysis, setAssemblyAnalysis] = useState<AssemblyAnalysis | null>(null);
   const [assemblyAnalyzing, setAssemblyAnalyzing] = useState(false);
-  const [notifOpen, setNotifOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   // A REAL signal for the rail footer: are any of the org's machines declaring an
   // hourly rate (i.e. a shop rate is actually bound)? null while loading → the dot
   // stays hollow/neutral until a bound rate is detected — never a hardcoded claim.
   const [ratesBound, setRatesBound] = useState<boolean | null>(null);
+  const [designImport, setDesignImport] = useState<
+    | { state: "loading"; message: string }
+    | { state: "running"; message: string }
+    | { state: "ready"; message: string }
+    | { state: "error"; message: string }
+    | null
+  >(null);
+  const designImportStarted = useRef(false);
+  const workspaceDestinationApplied = useRef(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   // The last part the user verified — so a change to the declared world can re-run
   // the verification (re-persist the env + re-cost against it) for the same part.
@@ -118,10 +135,35 @@ export function VerifyApp() {
   }, []);
 
   const pickFile = useCallback(() => fileRef.current?.click(), []);
+  const pickOwnFile = useCallback(() => {
+    setGuidedSampleState("idle");
+    setGuidedSummaryOpen(false);
+    fileRef.current?.click();
+  }, []);
 
   const runVerify = useCallback(
     async (f: File) => {
+      if (!isSupportedCad(f.name)) {
+        const guidance = unsupportedCadGuidance(f.name);
+        ++runSeq.current;
+        latestFile.current = null;
+        setFile(null);
+        setScreen("verify");
+        setRunning(false);
+        setResult(null);
+        setUploadRejection({ fileName: f.name, ...guidance });
+        setAssembly((prev) => {
+          prev?.revoke();
+          return null;
+        });
+        setAssemblySelectedId(null);
+        setAssemblyAnalysis(null);
+        setAssemblyAnalyzing(false);
+        return;
+      }
+
       const seq = ++runSeq.current;
+      setUploadRejection(null);
       setFile(f);
       latestFile.current = f;
       setScreen("verify");
@@ -136,36 +178,37 @@ export function VerifyApp() {
       setAssemblyAnalysis(null);
       setAssemblyAnalyzing(false);
 
-      // Assembly detection runs IN PARALLEL and is best-effort — it only fires the
-      // extra request for STEP/IGES, returns null for a single part or STL, and
-      // never blocks or alters the single-part path. When it resolves to a real
-      // multi-part assembly, the stage + right panel switch to the in-context view.
-      void fetchAssembly(f)
-        .then((asm) => {
-          if (runSeq.current !== seq) {
-            asm?.revoke();
-            return;
-          }
-          if (asm) {
-            setAssembly(asm);
-            setAssemblySelectedId(defaultPartOfInterest(asm.model.parts));
-            // The heavier per-part analysis (real DFM + should-cost + interference
-            // on every solid, ~15s) now runs; the render is already up. Guarded by
-            // the same run token so a superseded upload never merges stale analysis.
-            setAssemblyAnalyzing(true);
-            void fetchAssemblyAnalysis(f)
-              .then((analysis) => {
-                if (runSeq.current !== seq) return;
-                setAssemblyAnalysis(analysis);
-                setAssemblyAnalyzing(false);
-              })
-              .catch(() => {
-                if (runSeq.current !== seq) return;
-                setAssemblyAnalyzing(false);
-              });
-          }
-        })
-        .catch(() => {});
+      // Resolve STEP/IGES assembly structure before dispatching the single-part
+      // pipeline. The old parallel path knowingly sent real assemblies through
+      // /validate/cost too, producing a browser-visible 400 before the successful
+      // assembly result replaced it. A successful assembly now makes only its
+      // three truthful requests: structured model, renderable GLB, and per-part
+      // analysis. Single solids and non-assembly formats continue below.
+      const asm = await fetchAssembly(f).catch(() => null);
+      if (runSeq.current !== seq) {
+        asm?.revoke();
+        return;
+      }
+      if (asm) {
+        setAssembly(asm);
+        setAssemblySelectedId(defaultPartOfInterest(asm.model.parts));
+        setRunning(false);
+        // The heavier per-part analysis (real DFM + should-cost + interference
+        // on every solid, ~15s) now runs; the render is already up. Guarded by
+        // the same run token so a superseded upload never merges stale analysis.
+        setAssemblyAnalyzing(true);
+        void fetchAssemblyAnalysis(f)
+          .then((analysis) => {
+            if (runSeq.current !== seq) return;
+            setAssemblyAnalysis(analysis);
+            setAssemblyAnalyzing(false);
+          })
+          .catch(() => {
+            if (runSeq.current !== seq) return;
+            setAssemblyAnalyzing(false);
+          });
+        return;
+      }
 
       try {
         const r = await runVerification({ file: f, env, materialClass });
@@ -185,16 +228,120 @@ export function VerifyApp() {
   }, [file, runVerify, pickFile]);
 
   const runSample = useCallback(() => {
-    void runVerify(sampleCubeFile());
+    setScreen("verify");
+    setGuidedSampleState("running");
+    void runVerify(sampleCubeFile()).then(
+      () => {
+        setGuidedSampleState("ready");
+        setGuidedSummaryOpen(true);
+      },
+      () => setGuidedSampleState("error"),
+    );
   }, [runVerify]);
+
+  const rememberWelcomeSeen = useCallback(() => {
+    try {
+      window.localStorage.setItem(WELCOME_STORAGE_KEY, "1");
+    } catch {
+      // Private browsing can disable storage. The guide still works this visit.
+    }
+  }, []);
+
+  const closeWelcome = useCallback(() => {
+    rememberWelcomeSeen();
+    setWelcomeOpen(false);
+  }, [rememberWelcomeSeen]);
+
+  const startGuidedSample = useCallback(() => {
+    closeWelcome();
+    runSample();
+  }, [closeWelcome, runSample]);
+
+  const startOwnUpload = useCallback(() => {
+    closeWelcome();
+    pickOwnFile();
+  }, [closeWelcome, pickOwnFile]);
+
+  const startDesign = useCallback(() => {
+    rememberWelcomeSeen();
+    window.location.assign("/designs");
+  }, [rememberWelcomeSeen]);
+
+  const startMachines = useCallback(() => {
+    closeWelcome();
+    setScreen("machines");
+  }, [closeWelcome]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const forced = params.get("welcome") === "1";
+    let seen = false;
+    try {
+      seen = window.localStorage.getItem(WELCOME_STORAGE_KEY) === "1";
+    } catch {
+      seen = false;
+    }
+    if (forced || !seen) setWelcomeOpen(true);
+    if (forced) {
+      params.delete("welcome");
+      const next = params.toString();
+      window.history.replaceState(null, "", `${window.location.pathname}${next ? `?${next}` : ""}`);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (workspaceDestinationApplied.current) return;
+    workspaceDestinationApplied.current = true;
+    const destination = workspaceScreenFromSearch(window.location.search);
+    if (destination) setScreen(destination);
+  }, []);
+
+  // Design Studio handoff: load the exact authenticated STEP revision and feed
+  // it through the same File-based verification path as a manual upload. The
+  // generated artifact gets no privileged shortcut through DFM or costing.
+  useEffect(() => {
+    if (!hasActiveOrganization) return;
+    if (designImportStarted.current) return;
+    const rawDesignId = new URLSearchParams(window.location.search).get("design");
+    if (!rawDesignId) return;
+    designImportStarted.current = true;
+    const designId = designIdFromSearch(window.location.search);
+    if (!designId) {
+      setDesignImport({ state: "error", message: "That Design Studio link is invalid." });
+      return;
+    }
+    const rawRevision = new URLSearchParams(window.location.search).get("revision");
+    const revisionNo = designRevisionFromSearch(window.location.search);
+    if (rawRevision !== null && revisionNo === null) {
+      setDesignImport({ state: "error", message: "That design revision is invalid." });
+      return;
+    }
+    setDesignImport({ state: "loading", message: "Loading the generated STEP revision…" });
+    void importDesignStep(designId, fetch, revisionNo)
+      .then(async (imported) => {
+        setDesignImport({ state: "running", message: `Imported ${imported.name}. Verification is running.` });
+        await runVerify(imported);
+        setDesignImport({ state: "ready", message: `Imported ${imported.name}. Verification finished.` });
+      })
+      .catch((caught) => {
+        setDesignImport({
+          state: "error",
+          message: caught instanceof Error ? caught.message : "Could not import this design.",
+        });
+      });
+  }, [hasActiveOrganization, runVerify]);
 
   // The rail footer's bound-rate signal.
   useEffect(() => {
+    if (!hasActiveOrganization) {
+      setRatesBound(null);
+      return;
+    }
     listMachines().then(
       (p) => setRatesBound(p.machines.some((m) => typeof m.hourly_rate_usd === "number" && Number.isFinite(m.hourly_rate_usd))),
       () => setRatesBound(false)
     );
-  }, []);
+  }, [hasActiveOrganization]);
 
   // The environment door is REAL: when the declared world changes and a part is
   // loaded, re-run the verification so the new world is persisted to the part's
@@ -233,7 +380,6 @@ export function VerifyApp() {
         return;
       }
       if (e.key === "Escape") {
-        setNotifOpen(false);
         setShortcutsOpen(false);
         setScreen((s) => (s === "palette" || s === "acquisition" ? "verify" : s));
         return;
@@ -252,8 +398,6 @@ export function VerifyApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const onVerify = screen === "verify";
-
   // The stage's assembly overlay: the highlighted part's name + tree path for the
   // in-canvas label. null when the upload is a single part (unchanged path).
   const stageAssembly = useMemo<StageAssembly | null>(() => {
@@ -269,9 +413,22 @@ export function VerifyApp() {
     };
   }, [assembly, assemblySelectedId, assemblyAnalysis]);
 
+  const activeWorkspaceSection: Screen =
+    screen === "compare" || screen === "part"
+      ? "catalog"
+      : screen === "program"
+        ? "programs"
+        : RAIL.some((item) => item.key === screen)
+          ? screen
+          : "home";
+
+  if (!hasActiveOrganization) {
+    return <OrganizationAccessGate access={organizationAccess} />;
+  }
+
   return (
     <ToastProvider>
-    <div className="cv-verify-shell" style={{ height: "100vh", display: "flex", background: C.bg, color: C.ink, fontFamily: SANS, WebkitFontSmoothing: "antialiased", fontSize: 14 }}>
+    <div className="cv-verify-shell" style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column", background: C.bg, color: C.ink, fontFamily: SANS, WebkitFontSmoothing: "antialiased", fontSize: 14 }}>
       <style>{KEYFRAMES}</style>
       <input
         ref={fileRef}
@@ -284,14 +441,41 @@ export function VerifyApp() {
         style={{ display: "none" }}
         onChange={(e) => {
           const f = e.target.files?.[0];
-          if (f) void runVerify(f);
+          if (f) {
+            setGuidedSampleState("idle");
+            setGuidedSummaryOpen(false);
+            void runVerify(f);
+          }
           e.target.value = "";
         }}
       />
 
-      {/* rail */}
-      <nav className="cv-verify-rail" style={{ width: 64, flexShrink: 0, borderRight: `1px solid ${C.hair2}`, background: C.panel, display: "flex", flexDirection: "column", alignItems: "center", padding: "14px 0", gap: 6 }}>
-        <div style={{ width: 30, height: 30, borderRadius: 8, background: C.ink, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: 13, marginBottom: 14 }}>C</div>
+      <WelcomeGuide
+        open={welcomeOpen}
+        onOpenChange={(open) => {
+          if (open) setWelcomeOpen(true);
+          else closeWelcome();
+        }}
+        onSample={startGuidedSample}
+        onUpload={startOwnUpload}
+        onDesign={startDesign}
+        onMachines={startMachines}
+      />
+      <GuidedResultSummary
+        open={guidedSummaryOpen}
+        result={result}
+        onOpenChange={setGuidedSummaryOpen}
+        onUpload={pickOwnFile}
+        onBack={() => {
+          setGuidedSummaryOpen(false);
+          setGuidedSampleState("idle");
+          setScreen("home");
+        }}
+      />
+
+      {/* Verify-local navigation. Platform navigation stays in AppShell. */}
+      <nav className="cv-verify-workspace-nav" aria-label="Verify workspace sections" style={{ minHeight: 52, flexShrink: 0, borderBottom: `1px solid ${C.hair2}`, background: C.panel, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "6px 14px" }}>
+        <div className="cv-verify-workspace-tabs" style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, overflowX: "auto" }}>
         {RAIL.map((r) => {
           const active = screen === r.key || (r.key === "catalog" && screen === "compare");
           return (
@@ -302,15 +486,27 @@ export function VerifyApp() {
               onClick={() => setScreen(r.key)}
               title={r.label}
               className="cv-verify-rail-button"
-              style={{ width: 40, height: 40, borderRadius: 10, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", background: active ? "#eceef1" : "transparent", color: active ? C.ink : C.ink40, transition: "all 150ms" }}
+              style={{ minWidth: 44, height: 38, padding: "0 10px", borderRadius: 9, border: active ? `1px solid ${C.hair}` : "1px solid transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: active ? "#eceef1" : "transparent", color: active ? C.ink : C.ink50, transition: "background-color 150ms, color 150ms, border-color 150ms", whiteSpace: "nowrap", fontFamily: "inherit", fontSize: 12 }}
             >
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d={r.d} />
               </svg>
+              <span className="cv-verify-rail-label">{r.label}</span>
             </button>
           );
         })}
-        <div style={{ marginTop: "auto" }}>
+        </div>
+        <select
+          className="cv-verify-mobile-section"
+          aria-label="Verify workspace section"
+          value={activeWorkspaceSection}
+          onChange={(event) => setScreen(event.target.value as Screen)}
+        >
+          {RAIL.map((item) => (
+            <option key={item.key} value={item.key}>{item.label}</option>
+          ))}
+        </select>
+        <div className="cv-verify-workspace-actions" style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           <button
             type="button"
             onClick={() => setScreen("calibration")}
@@ -319,7 +515,8 @@ export function VerifyApp() {
                 ? "Your shop rates are bound · ● SHOP — open Calibration & truth"
                 : "Calibration & truth — no shop rate bound yet"
             }
-            style={{ border: "none", background: "none", padding: 4, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            className="cv-verify-rate-dot"
+            style={{ width: 36, height: 36, border: `1px solid ${C.hair}`, borderRadius: 999, background: "#fff", padding: 4, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
           >
             <span
               aria-hidden
@@ -333,46 +530,114 @@ export function VerifyApp() {
               }}
             />
           </button>
+          <span className="cv-verify-rate-switcher"><CalibrationSwitcher onOpenCalibration={() => setScreen("calibration")} /></span>
+          <button
+            className="cv-verify-start-button"
+            type="button"
+            onClick={() => setWelcomeOpen(true)}
+            style={{ minHeight: 36, border: `1px solid ${C.measured}`, background: "rgba(55,114,171,0.06)", color: C.measured, borderRadius: 999, padding: "7px 13px", fontFamily: "inherit", fontSize: 11.5, fontWeight: 650, cursor: "pointer" }}
+          >
+            Start here
+          </button>
+          <button className="cv-verify-command-button" type="button" onClick={() => setScreen("palette")} title="Verify commands (⌘K)" aria-label="Open Verify command palette" style={{ display: "inline-flex", alignItems: "center", gap: 6, minHeight: 36, border: `1px solid ${C.hair}`, background: "#fff", borderRadius: 999, padding: "7px 12px", fontFamily: MONO, fontSize: 11, color: C.ink55, cursor: "pointer" }}>Jump <span aria-hidden>⌘K</span></button>
+          <button className="cv-verify-primary-action" type="button" onClick={pickOwnFile} style={{ minHeight: 36, background: C.ink, color: "#fff", border: "none", borderRadius: 999, padding: "8px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>Check my CAD</button>
         </div>
       </nav>
 
       {/* main */}
       <div className="cv-verify-main" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <header className="cv-verify-header" style={{ height: 52, flexShrink: 0, borderBottom: `1px solid ${C.hair2}`, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px", background: C.panel }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: C.ink50 }}>
-            <span>{CRUMB[screen] ?? "CadVerify"}</span>
-            {onVerify && result?.file && (
-              <>
-                <span style={{ color: C.ink35 }}>/</span>
-                <span style={{ color: C.ink, fontFamily: MONO, fontSize: 12.5 }}>{result.file.name}</span>
-              </>
+        {uploadRejection && (
+          <div
+            role="alert"
+            data-testid="verify-upload-rejection"
+            style={{
+              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "12px 20px",
+              borderBottom: "1px solid #e6b8b8",
+              background: "#fff2f2",
+              color: "#7e2929",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 650 }}>{uploadRejection.title}</p>
+              <p style={{ margin: "4px 0 0", fontSize: 12, lineHeight: 1.5 }}>
+                <span style={{ fontFamily: MONO }}>{uploadRejection.fileName}</span> was not uploaded. {uploadRejection.action}{" "}
+                No analysis was started and no record was created.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={pickOwnFile}
+              style={{ marginLeft: "auto", flexShrink: 0, minHeight: 40, border: "1px solid currentColor", borderRadius: 999, background: "#fff", color: "inherit", padding: "8px 14px", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}
+            >
+              Choose a STEP export
+            </button>
+            <button
+              type="button"
+              aria-label="Dismiss unsupported file guidance"
+              onClick={() => setUploadRejection(null)}
+              style={{ flexShrink: 0, width: 40, height: 40, border: 0, background: "transparent", color: "inherit", cursor: "pointer", fontSize: 20 }}
+            >
+              ×
+            </button>
+          </div>
+        )}
+        {designImport && (
+          <div
+            role={designImport.state === "error" ? "alert" : "status"}
+            style={{
+              minHeight: 38,
+              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "8px 20px",
+              borderBottom: `1px solid ${designImport.state === "error" ? "#e6b8b8" : C.hair2}`,
+              background: designImport.state === "error" ? "#fff2f2" : C.sunken,
+              color: designImport.state === "error" ? "#9f2f2f" : C.ink55,
+              fontSize: 12,
+              fontFamily: MONO,
+            }}
+          >
+            {(designImport.state === "loading" || designImport.state === "running") && <span aria-hidden style={{ animation: "vspin 1s linear infinite" }}>◌</span>}
+            <span>{designImport.message}</span>
+            {designImport.state === "error" && (
+              <Link href="/designs" style={{ marginLeft: "auto", color: "inherit", fontWeight: 600 }}>
+                Return to Design Studio
+              </Link>
+            )}
+            {designImport.state === "ready" && (
+              <button type="button" onClick={() => setDesignImport(null)} style={{ marginLeft: "auto", border: 0, background: "transparent", color: "inherit", cursor: "pointer", fontFamily: "inherit" }}>
+                Dismiss
+              </button>
             )}
           </div>
-          <div className="cv-verify-header-actions" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span className="cv-verify-rate-switcher"><CalibrationSwitcher onOpenCalibration={() => setScreen("calibration")} /></span>
-            <button className="cv-verify-command-button" type="button" onClick={() => setScreen("palette")} title="Command palette (⌘K)" aria-label="Open command palette" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1px solid ${C.hair}`, background: "#fff", borderRadius: 999, padding: "7px 13px", fontFamily: MONO, fontSize: 11, color: C.ink55, cursor: "pointer" }}>⌘K</button>
-            <button className="cv-verify-notification-button" type="button" onClick={() => setNotifOpen((v) => !v)} title="Notifications" aria-label="Notifications" style={{ width: 32, height: 32, borderRadius: "50%", border: `1px solid ${C.hair}`, background: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", color: C.ink55 }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>
-            </button>
-            <VerifyAccountMenu />
-            <input
-              className="cv-verify-search"
-              readOnly
-              value=""
-              placeholder="Jump…"
-              title="Jump to any surface or action — opens the command palette (⌘K)"
-              onMouseDown={(e) => { e.preventDefault(); setScreen("palette"); }}
-              onFocus={() => setScreen("palette")}
-              aria-label="Search — jump to any surface or action"
-              style={{ width: 160, background: C.sunken, border: `1px solid ${C.hair}`, borderRadius: 999, padding: "7px 14px", fontSize: 12.5, color: C.ink, fontFamily: "inherit", cursor: "text" }}
-            />
-            <button className="cv-verify-primary-action" type="button" onClick={pickFile} style={{ background: C.ink, color: "#fff", border: "none", borderRadius: 999, padding: "8px 18px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>Verify a part</button>
-          </div>
-        </header>
+        )}
 
-        {notifOpen && <NotificationsPanel onClose={() => setNotifOpen(false)} />}
+        {guidedSampleState !== "idle" && screen === "verify" && (
+          <GuidedExampleBar
+            state={guidedSampleState}
+            onUpload={pickOwnFile}
+            onBack={() => {
+              setGuidedSummaryOpen(false);
+              setGuidedSampleState("idle");
+              setScreen("home");
+            }}
+            onRetry={runSample}
+          />
+        )}
 
-        {screen === "home" && <HomeScreen onPickFile={pickFile} nav={nav} />}
+        {screen === "home" && (
+          <HomeScreen
+            onPickFile={pickOwnFile}
+            onSample={startGuidedSample}
+            onOpenGuide={() => setWelcomeOpen(true)}
+            nav={nav}
+          />
+        )}
         {screen === "verify" && (
           <div className="cv-verify-screen-split" style={{ flex: 1, minHeight: 0, display: "flex" }}>
             <Stage
@@ -414,12 +679,13 @@ export function VerifyApp() {
               <VerifyScreen
                 result={result}
                 running={running}
+                guided={guidedSampleState !== "idle"}
                 fileName={result?.file?.name ?? file?.name ?? null}
                 env={env}
                 setEnv={setEnv}
                 materialClass={materialClass}
                 setMaterialClass={setMaterialClass}
-                onPickFile={pickFile}
+                onPickFile={pickOwnFile}
                 onReverify={onReverify}
                 nav={nav}
               />
@@ -441,14 +707,176 @@ export function VerifyApp() {
         <CommandPalette
           onClose={() => setScreen("home")}
           nav={nav}
-          onVerify={pickFile}
-          onSample={runSample}
+          onVerify={pickOwnFile}
+          onSample={startGuidedSample}
           onShortcuts={() => { setScreen("home"); setShortcutsOpen(true); }}
         />
       )}
       {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
     </div>
     </ToastProvider>
+  );
+}
+
+function GuidedExampleBar({
+  state,
+  onUpload,
+  onBack,
+  onRetry,
+}: {
+  state: "running" | "ready" | "error";
+  onUpload: () => void;
+  onBack: () => void;
+  onRetry: () => void;
+}) {
+  const failed = state === "error";
+  return (
+    <section
+      role={failed ? "alert" : "status"}
+      data-testid="guided-example-status"
+      className="cv-verify-guided-bar"
+      style={{
+        flexShrink: 0,
+        display: "flex",
+        alignItems: "center",
+        gap: 14,
+        flexWrap: "wrap",
+        borderBottom: `1px solid ${failed ? "rgba(194,69,58,0.36)" : "rgba(55,114,171,0.3)"}`,
+        background: failed ? "#fff3f1" : "#eef5fb",
+        padding: "11px 18px",
+        color: C.ink,
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          width: 26,
+          height: 26,
+          flexShrink: 0,
+          display: "grid",
+          placeItems: "center",
+          borderRadius: "50%",
+          background: failed ? C.fail : C.measured,
+          color: "#fff",
+          fontFamily: MONO,
+          fontSize: 11,
+        }}
+      >
+        {state === "running" ? "1" : failed ? "!" : "✓"}
+      </span>
+      <div style={{ flex: 1, minWidth: 240 }}>
+        <p style={{ margin: 0, fontSize: 12.5, fontWeight: 650 }}>
+          {state === "running"
+            ? "Guided example: analyzing a real 20 mm sample cube"
+            : failed
+              ? "The guided example could not finish"
+              : "Example complete: this is a manufacturing answer"}
+        </p>
+        <p style={{ margin: "3px 0 0", color: C.ink55, fontSize: 11.5, lineHeight: 1.5 }}>
+          {state === "running"
+            ? "ProofShape is measuring geometry, checking manufacturability, choosing processes, and estimating cost."
+            : failed
+              ? "No completed result was created. Retry the example or check one of your own CAD files."
+              : "Start with the four plain answers: CAD health, manufacturing method, estimated cost, and what is still uncertain."}
+        </p>
+      </div>
+      {failed ? (
+        <button type="button" onClick={onRetry} style={guidedBarButton(C.fail)}>
+          Retry example
+        </button>
+      ) : state === "ready" ? (
+        <button type="button" onClick={onUpload} style={guidedBarButton(C.measured)}>
+          Check my CAD next
+        </button>
+      ) : null}
+      <button type="button" onClick={onBack} style={guidedBarButton(C.ink55, true)}>
+        Back to start
+      </button>
+    </section>
+  );
+}
+
+function guidedBarButton(color: string, quiet = false): CSSProperties {
+  return {
+    minHeight: 36,
+    border: `1px solid ${quiet ? C.hair : color}`,
+    borderRadius: 999,
+    background: quiet ? C.panel : color,
+    color: quiet ? C.ink : "#fff",
+    padding: "7px 13px",
+    fontFamily: "inherit",
+    fontSize: 11.5,
+    fontWeight: 650,
+    cursor: "pointer",
+  };
+}
+
+function OrganizationAccessGate({
+  access,
+}: {
+  access: OrganizationAccess | null;
+}) {
+  const unavailable = access === null;
+  const hasMemberships = Boolean(access?.organizations.length);
+  return (
+    <main
+      data-testid="verify-organization-gate"
+      className="cv-verify-shell"
+      style={{
+        minHeight: "100%",
+        display: "grid",
+        placeItems: "center",
+        background: C.bg,
+        color: C.ink,
+        padding: 24,
+        fontFamily: SANS,
+      }}
+    >
+      <section
+        style={{
+          width: "min(100%, 620px)",
+          border: `1px solid ${unavailable ? "rgba(190,61,45,0.34)" : C.hair}`,
+          borderRadius: 18,
+          background: C.panel,
+          padding: "28px 30px",
+          boxShadow: "0 18px 50px rgba(23,24,26,0.08)",
+        }}
+      >
+        <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: unavailable ? C.fail : C.ink45 }}>
+          {unavailable ? "WORKSPACE CHECK UNAVAILABLE" : "ORGANIZATION REQUIRED"}
+        </p>
+        <h1 style={{ margin: "10px 0 0", fontSize: 27, fontWeight: 400, letterSpacing: "-0.02em" }}>
+          {unavailable
+            ? "We couldn’t confirm your active organization."
+            : hasMemberships
+              ? "Choose an active organization."
+              : "You haven’t joined an organization yet."}
+        </h1>
+        <p style={{ margin: "12px 0 0", color: C.ink55, fontSize: 14, lineHeight: 1.65 }}>
+          {unavailable
+            ? "ProofShape stopped before requesting organization CAD, machine, or ground-truth data. Retry the check; if it continues, your administrator can verify the workspace connection."
+            : hasMemberships
+              ? "Your account has an organization membership, but no workspace is active. Select it in Organization settings before opening org-scoped records or CAD tools."
+              : "Open the invitation link sent by your organization administrator. If you do not have one, ask them to invite this exact account email. No organization data has been loaded or treated as empty."}
+        </p>
+        <div style={{ marginTop: 22, display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <Link
+            href="/settings/organization"
+            style={{ minHeight: 42, display: "inline-flex", alignItems: "center", borderRadius: 999, background: C.ink, color: "#fff", padding: "9px 17px", textDecoration: "none", fontSize: 13, fontWeight: 600 }}
+          >
+            Open organization settings
+          </Link>
+          {unavailable ? (
+            <a
+              href="/verify"
+              style={{ minHeight: 42, display: "inline-flex", alignItems: "center", border: `1px solid ${C.hair}`, borderRadius: 999, color: C.ink, padding: "9px 17px", textDecoration: "none", fontSize: 13, fontWeight: 600 }}
+            >
+              Retry organization check
+            </a>
+          ) : null}
+        </div>
+      </section>
+    </main>
   );
 }
 
@@ -478,71 +906,30 @@ const KEYFRAMES = `
   outline-offset: 2px;
 }
 
-@media (max-width: 760px) {
-  .cv-verify-shell {
-    overflow: hidden;
-  }
-  .cv-verify-rail {
-    width: 56px !important;
-    padding-block: 12px !important;
-  }
-  .cv-verify-rail-button {
-    width: 44px !important;
-    height: 44px !important;
-  }
-  .cv-verify-main {
-    max-width: calc(100vw - 56px);
-    overflow-x: hidden;
-  }
-  .cv-verify-header {
-    height: 50px !important;
-    padding-inline: 10px !important;
-    gap: 8px;
-  }
-  .cv-verify-header-actions {
-    gap: 6px !important;
-    min-width: 0;
-  }
-  .cv-verify-rate-switcher,
-  .cv-verify-search,
-  .cv-verify-notification-button {
+.cv-verify-mobile-section {
+  display: none;
+}
+
+@media (max-width: 1320px) {
+  .cv-verify-rail-label,
+  .cv-verify-rate-switcher {
     display: none !important;
   }
-  .cv-verify-command-button {
-    min-width: 44px;
-    min-height: 44px;
-    justify-content: center;
-    padding-inline: 11px !important;
-  }
-  .cv-verify-primary-action {
-    min-height: 44px;
-    padding-inline: 14px !important;
-  }
-  .cv-verify-home {
-    padding: 24px 14px !important;
-    overflow-x: hidden;
-  }
-  .cv-verify-home button,
-  .cv-verify-walk button {
-    min-height: 44px;
-  }
-  .cv-verify-shell input:not([type="file"]) {
-    min-height: 44px;
+}
+
+@media (max-width: 900px) {
+  .cv-verify-start-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
   }
   .cv-verify-home-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
-  .cv-verify-setup {
-    padding: 15px 14px !important;
-  }
-  .cv-verify-setup > div:last-child {
+  .cv-verify-setup > div:last-child,
+  .cv-verify-home-grid {
     grid-template-columns: minmax(0, 1fr) !important;
   }
   .cv-verify-home-kpis > :last-child {
     grid-column: 1 / -1;
-  }
-  .cv-verify-home-grid {
-    grid-template-columns: minmax(0, 1fr) !important;
   }
   .cv-verify-screen-split {
     display: block !important;
@@ -557,8 +944,94 @@ const KEYFRAMES = `
     border-right: none !important;
     border-bottom: 1px solid #dedee2;
   }
+}
+
+@media (max-width: 760px) {
+  .cv-verify-shell {
+    overflow: hidden;
+  }
+  .cv-verify-workspace-nav {
+    min-height: 52px !important;
+    padding-inline: 8px !important;
+    gap: 6px !important;
+  }
+  .cv-verify-workspace-tabs {
+    display: none !important;
+  }
+  .cv-verify-mobile-section {
+    display: block;
+    min-width: 0;
+    flex: 1;
+    height: 44px;
+    border: 1px solid #dedee2;
+    border-radius: 9px;
+    background: #fff;
+    color: #17181a;
+    padding: 0 34px 0 12px;
+    font: 500 13px ${SANS};
+  }
+  .cv-verify-rail-button {
+    width: 44px !important;
+    min-width: 44px !important;
+    height: 44px !important;
+    padding-inline: 0 !important;
+  }
+  .cv-verify-rail-label {
+    display: none;
+  }
+  .cv-verify-workspace-actions {
+    gap: 5px !important;
+  }
+  .cv-verify-rate-dot,
+  .cv-verify-command-button,
+  .cv-verify-rate-switcher {
+    display: none !important;
+  }
+  .cv-verify-main {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+  .cv-verify-primary-action {
+    min-height: 44px;
+    padding-inline: 12px !important;
+  }
+  .cv-verify-home {
+    padding: 24px 14px !important;
+    overflow-x: hidden;
+  }
+  .cv-verify-start {
+    padding: 15px 14px !important;
+  }
+  .cv-verify-guided-bar {
+    align-items: flex-start !important;
+    padding: 12px 14px !important;
+  }
+  .cv-verify-guided-bar > button {
+    flex: 1 1 140px;
+  }
+  .cv-verify-home button,
+  .cv-verify-walk button {
+    min-height: 44px;
+  }
+  .cv-verify-shell input:not([type="file"]) {
+    min-height: 44px;
+  }
+  .cv-verify-setup {
+    padding: 15px 14px !important;
+  }
   .cv-verify-walk-scroll {
     padding: 22px 14px 18px !important;
+  }
+  .cv-verify-stage-title {
+    top: 18px !important;
+    left: 16px !important;
+    right: 16px;
+  }
+  .cv-verify-stage-context-card {
+    top: 116px !important;
+    left: 16px;
+    right: 16px !important;
+    width: auto !important;
   }
 }
 `;

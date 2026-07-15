@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { captureBuildIdentity, makeReleaseEvidence } from "./human-sim-release-evidence.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const pw = require("playwright-core");
@@ -71,6 +72,7 @@ const visibleCopyRoutes = [
 const governanceApprovalNote = `P7 governance approval ${runId}`;
 
 const forbiddenPatterns = [
+  /\bCadVerify\b/i,
   /\bin development\b/i,
   /\bunder construction\b/i,
   /\bcoming soon\b/i,
@@ -708,7 +710,7 @@ asyncio.run(main())
           throw new SkipStep(`${route.path} returned 404; Verify UI flag appears off in this build`);
         }
         const redirected = isLoginUrl(page.url());
-        const loginCopy = /Log in to CadVerify|Welcome back|Create an account/i.test(text);
+        const loginCopy = /Log in to ProofShape|Welcome back|Create an account/i.test(text);
         assert(
           redirected || loginCopy,
           `${route.path} did not redirect to or render login. URL: ${page.url()}`
@@ -1242,6 +1244,20 @@ asyncio.run(main())
               this.issues.filter((i) => i.severity === "low").length * 3
           );
 
+    const criticalPaths = {
+      "WORK-05": {
+        initialStatus: this.evidence.governanceInitial?.approval_status,
+        approvedAt: this.evidence.governanceApproval?.approved_at,
+        reopenedStatus: this.evidence.governanceApproval?.reopened_status,
+        staleReason: this.evidence.governanceStale?.stale_reason,
+      },
+      "ROLE-01": {
+        sessionSource: this.evidence.lowRoleAuth?.source,
+        orgRole: this.evidence.lowRoleAuth?.org_role,
+        adminMutationStatus: this.evidence.lowRoleAdminUsers?.status,
+      },
+    };
+
     const data = {
       status,
       health,
@@ -1266,6 +1282,8 @@ asyncio.run(main())
       requestFailures: this.requestFailures,
       visited: this.visited,
       evidence: this.evidence,
+      buildIdentity: captureBuildIdentity(repoRoot),
+      releaseEvidence: makeReleaseEvidence(criticalPaths),
       screenshotDir,
     };
 

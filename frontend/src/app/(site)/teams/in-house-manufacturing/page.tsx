@@ -36,7 +36,7 @@ import { IllustrativeTag, ScenarioChip } from "@/components/site/evidence";
  */
 
 export const metadata: Metadata = {
-  title: "CadVerify — For In-house manufacturing & MRO",
+  title: "ProofShape — For In-house manufacturing & MRO",
   description:
     'A captive shop inside an operator: ten thousand legacy parts, vanished suppliers, and a floor full of un-indexed capability. "Can WE make this — on OUR machines?" — a verdict per part, computed against your own machines.',
 };

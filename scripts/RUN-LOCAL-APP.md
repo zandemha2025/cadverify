@@ -1,4 +1,4 @@
-# Run CadVerify as a local web app
+# Run ProofShape as a local web app
 
 One step. No terminal knowledge needed. The full platform is account-gated, so
 create a local email/password account on first launch. Your CAD files stay on

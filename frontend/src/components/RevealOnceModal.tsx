@@ -9,6 +9,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { KEY_REVEAL_EVENT } from "@/lib/key-reveal";
 
 export function RevealOnceModal() {
   const [token, setToken] = useState<string | null>(null);
@@ -36,13 +37,16 @@ export function RevealOnceModal() {
       return true;
     };
 
-    if (readRevealCookie()) return;
-    interval = window.setInterval(readRevealCookie, 250);
-    timeout = window.setTimeout(() => {
-      if (interval != null) window.clearInterval(interval);
-    }, 10_000);
+    window.addEventListener(KEY_REVEAL_EVENT, readRevealCookie);
+    if (!readRevealCookie()) {
+      interval = window.setInterval(readRevealCookie, 250);
+      timeout = window.setTimeout(() => {
+        if (interval != null) window.clearInterval(interval);
+      }, 10_000);
+    }
 
     return () => {
+      window.removeEventListener(KEY_REVEAL_EVENT, readRevealCookie);
       if (interval != null) window.clearInterval(interval);
       if (timeout != null) window.clearTimeout(timeout);
     };

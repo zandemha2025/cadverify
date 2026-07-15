@@ -24,7 +24,10 @@ import io
 import logging
 import os
 import re
+from dataclasses import replace
 from datetime import date
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Optional
 
 from sqlalchemy import delete, func, select
@@ -32,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.analysis.models import ProcessType
 from src.costing import calibration_store as cstore
-from src.costing.groundtruth import GroundTruthRecord, run_loop
+from src.costing.groundtruth import MIN_RESIDUALS, GroundTruthRecord, run_loop
 from src.db.models import GroundTruthRecordRow
 
 logger = logging.getLogger("cadverify.groundtruth")
@@ -717,11 +720,21 @@ def recalibrate_from_records(
         cache=cache,
     )
     he = loop.heldout_eval
+    # A real row is not enough by itself: the served empirical interval needs
+    # MIN_RESIDUALS costable REAL rows on the held-out side.  Bind this same
+    # threshold to both the API's validated flag and the durable bundle so the
+    # UI can never report success while /validate/cost silently falls back to
+    # an assumption band.
+    validated = (
+        he.metrics_real is not None
+        and he.n_real >= MIN_RESIDUALS
+        and loop.residual_model.from_real
+    )
     bundle = cstore.CalibrationBundle(
         org_id=org_id,
         calibration=loop.calibration,
         residuals=he.residuals,
-        from_real=loop.residual_model.from_real,
+        from_real=bool(validated),
         n_records=loop.n_records,
         n_real=he.n_real,
         n_standin=he.n_standin,
@@ -730,15 +743,22 @@ def recalibrate_from_records(
         fitted_on=loop.calibration.fitted_on,
     )
     path = cstore.save_bundle(bundle, store_dir=store_dir)
-    # validated ONLY when there are REAL held-out residuals to measure against.
-    validated = he.metrics_real is not None and loop.residual_model.from_real
     return {
         "org_id": org_id,
         "n_records": loop.n_records,
         "n_real": he.n_real,
         "n_standin": he.n_standin,
         "n_skipped": len(loop.skipped),
-        "from_real": loop.residual_model.from_real,
+        "skipped": [
+            {
+                "part_id": item.part_id,
+                "process": item.process,
+                "quantity": int(item.quantity),
+                "reason": reason,
+            }
+            for item, reason in loop.skipped[:25]
+        ],
+        "from_real": bool(validated),
         "validated": bool(validated),
         "claim": he.claim,
         "calibration": loop.calibration.to_dict(),
@@ -759,12 +779,61 @@ async def recalibrate_org(
     trigger (an async cron wrapper is a separate concern)."""
     records = await load_org_ground_truth(session, org_id)
     ev = asyncio.get_event_loop()
-    return await ev.run_in_executor(
-        None,
-        lambda: recalibrate_from_records(
-            org_id, records, parts_dir=parts_dir, store_dir=store_dir
-        ),
-    )
+
+    # Historical actuals can bind to source CAD by ``evidence_sha256``. The
+    # source bytes were durably captured by a successful Verify/Should-cost run
+    # and remain tenant-scoped in object storage. Materialize only for the
+    # bounded calibration call because the costing engine consumes file paths;
+    # no provider locator or cross-tenant key enters the record/API response.
+    evidence_records = [r for r in records if r.evidence_sha256]
+    if not evidence_records:
+        return await ev.run_in_executor(
+            None,
+            lambda: recalibrate_from_records(
+                org_id, records, parts_dir=parts_dir, store_dir=store_dir
+            ),
+        )
+
+    from src.costing.groundtruth import resolve_part_path
+    from src.services.source_artifact_service import read_costable_mesh_artifact
+    from src.storage import ObjectNotFoundError
+
+    with TemporaryDirectory(prefix="proofshape-calibration-") as temp_root:
+        materialized: dict[str, tuple[str, str] | None] = {}
+        resolved_records: list[GroundTruthRecord] = []
+        for record in records:
+            digest = (record.evidence_sha256 or "").lower()
+            if digest:
+                if digest not in materialized:
+                    try:
+                        payload = await read_costable_mesh_artifact(org_id, digest)
+                    except ObjectNotFoundError:
+                        materialized[digest] = None
+                    else:
+                        name = f"source-{digest}.stl"
+                        Path(temp_root, name).write_bytes(payload)
+                        materialized[digest] = (name, ".stl")
+                source = materialized[digest]
+                if source is not None:
+                    resolved_records.append(replace(record, part_path=source[0]))
+                    continue
+
+            # Preserve an explicitly configured operator corpus for records not
+            # bound to a durable source artifact (or for a missing legacy blob).
+            existing = resolve_part_path(record, parts_dir)
+            resolved_records.append(
+                replace(record, part_path=existing) if existing else record
+            )
+
+        return await ev.run_in_executor(
+            None,
+            lambda: recalibrate_from_records(
+                org_id,
+                resolved_records,
+                parts_dir=temp_root,
+                store_dir=store_dir,
+            ),
+        )
 
 
 # ── serve (item 2/3) ─────────────────────────────────────────────────────────
@@ -788,6 +857,12 @@ def load_served_calibration(org_id: str, store_dir: Optional[str] = None):
     if bundle is None:
         return None, None
     model = bundle.residual_model()
+    # ``bundle.from_real`` is the durable release gate, not merely a redundant
+    # copy of ResidualModel.from_real.  It is false for under-powered real
+    # recalibrations (< 3 held-out residuals), which must not tune the served
+    # point or masquerade as an empirical band after a restart.
+    if not bundle.from_real and model.from_real:
+        return None, None
     # Only a REAL (measured) residual model earns a corrected point; a stand-in
     # spread stays centred on the uncorrected baseline exactly as before.
     calibration = bundle.calibration if model.from_real else None

@@ -20,11 +20,11 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.db.models import Batch, Membership, User
+from src.db.models import ApiKey, Batch, Membership, User
 
 # org_role values allowed by the memberships CHECK constraint (migration 0009).
 ORG_ROLES = ("admin", "member", "viewer")
@@ -135,6 +135,27 @@ async def resolve_org_via_batch(
     """
     stmt = select(Batch.org_id).where(Batch.id == batch_id)
     return (await session.execute(stmt)).scalar_one_or_none()
+
+
+async def revoke_org_api_keys(
+    session: AsyncSession, user_id: int, org_id: str
+) -> int:
+    """Revoke every live key issued to ``user_id`` by ``org_id``.
+
+    Membership removal and credential invalidation share one transaction, so a
+    key cannot survive offboarding and become usable in another organization.
+    The caller owns flush/commit.
+    """
+    result = await session.execute(
+        update(ApiKey)
+        .where(
+            ApiKey.user_id == user_id,
+            ApiKey.org_id == org_id,
+            ApiKey.revoked_at.is_(None),
+        )
+        .values(revoked_at=func.now())
+    )
+    return int(result.rowcount or 0)
 
 
 async def ensure_personal_org(

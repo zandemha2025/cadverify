@@ -32,6 +32,7 @@ export const DEFAULT_COST_OPTIONS: CostOptions = {
   cavities: 1,
   complexity: "moderate",
   material_class: "polymer",
+  units: "mm",
   shop: null,
   overrides: {},
 };
@@ -126,6 +127,25 @@ export function CostOptionsForm({
                 {REGION_LABEL[r] ?? r}
               </SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+      </Field>
+
+      <Field
+        label="CAD source units"
+        hint="STL files do not store units. Choose how their coordinates were authored; all results are normalized to mm."
+      >
+        <Select
+          value={opts.units}
+          disabled={disabled}
+          onValueChange={(v) => setOpt("units", v as CostOptions["units"])}
+        >
+          <SelectTrigger aria-label="CAD source units">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="mm">Millimetres (mm)</SelectItem>
+            <SelectItem value="inch">Inches (in)</SelectItem>
           </SelectContent>
         </Select>
       </Field>

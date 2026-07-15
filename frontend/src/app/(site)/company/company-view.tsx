@@ -106,7 +106,7 @@ export default function CompanyView() {
             That&apos;s the entire point.
           </DisplayHeading>
           <p style={{ margin: "22px 0 0", maxWidth: 620, fontSize: 16.5, lineHeight: 1.65, fontWeight: 300, color: "rgba(245,245,247,0.6)" }}>
-            A CadVerify pilot is a measurement, not a demo. You bring real parts and real paid prices;
+            A ProofShape pilot is a measurement, not a demo. You bring real parts and real paid prices;
             we come back with a validated-on-your-parts report — including the parts we got wrong. Runs
             in your environment if your programs require it.
           </p>
@@ -184,12 +184,10 @@ export default function CompanyView() {
           Talk to a human.
         </DisplayHeading>
         <p style={{ margin: "18px auto 0", maxWidth: 440, fontSize: 16, lineHeight: 1.6, fontWeight: 300, color: "rgba(245,245,247,0.55)" }}>
-          Founders answer the pilot inbox. Procurement, security, and export-control questions welcome.
+          Founders review every pilot request. Procurement, security, and export-control questions welcome.
         </p>
         <p className="st-mono" style={{ margin: "26px 0 0", fontSize: 14, color: "rgba(245,245,247,0.7)" }}>
-          <a href="mailto:pilots@cadverify.com" style={{ color: "inherit", textDecoration: "none" }}>
-            pilots@cadverify.com
-          </a>
+          Use the pilot request form above
         </p>
       </section>
     </SiteShell>

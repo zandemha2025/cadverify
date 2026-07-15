@@ -13,7 +13,7 @@ import CompanyView from "./company-view";
  */
 
 export const metadata: Metadata = {
-  title: "Company — CadVerify",
+  title: "Company — ProofShape",
   description:
     "Manufacturing runs on numbers nobody can check. We built the glass box: a cost-truth engine where every number carries its provenance, every total reconciles on screen, and accuracy is measured on your parts — never asserted.",
 };

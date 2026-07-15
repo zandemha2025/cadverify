@@ -1,116 +1,124 @@
-# Dual Production Launch Audit
+# ProofShape production launch audit
 
-Date: 2026-07-11
-Verdict: **BLOCKED**
+Date: 2026-07-14
 
-This verdict applies to both the commercial SaaS launch and any regulated
-CUI/ITAR deployment. The repository now contains fail-closed production paths,
-but neither external environment has supplied the evidence required to change
-this verdict. No production deployment is authorized by this document.
+Commercial software verdict: **PRODUCT-PROVEN AND CLOUD-DEPLOY-READY**
 
-## What is implemented
+Commercial live verdict: **BLOCKED FOR PRODUCTION-LIVE**
 
-- Commercial images are built from protected `main`, scanned, SBOM-recorded,
-  and captured by immutable digest in a CI-owned release artifact.
-- `.github/workflows/saas-promote.yml` deploys that exact release to isolated
-  staging first. `staging-only` is the default and cannot start production. The
-  explicit `staging-and-production` scope requires protected supplier evidence;
-  its production job depends on staging and reuses the same digests. Direct
-  `main`-to-production deployment was removed.
-- The commercial backend fails closed on missing production S3,
-  observability, canonical HTTPS dashboard origin, TLS Redis, and required auth
-  secrets. Token-protected deep health probes Postgres, Redis, queue/worker
-  state, and an S3 write/read/list/delete/KMS canary; unauthenticated Prometheus
-  exposition is disabled on the public Fly API hostname.
-- Password and magic-link requests use a short-lived HMAC-signed client-IP
-  handoff through the first-party frontend. Magic links keep tokens in URL
-  fragments, require explicit consumption, and exchange sessions server-side;
-  production session-returning password/magic endpoints reject unsigned direct
-  callers, and promotion verifies the shared proxy secret end to end.
-- Released commercial account creation is email-first; an authenticated user
-  may add a password once and the operation rotates prior sessions. Released
-  SAML regulated baseline disables all password login/signup/setup surfaces and
-  renders the actual IdP initiation link. Its private profile gate requires
-  strict signed-message/assertion/SHA-256 settings and HTTPS endpoints, while
-  ACS and SP-initiated SLO bind responses to one-time Redis-backed request
-  IDs/RelayState.
-- Released dashboard-session validation fails closed if the authoritative user
-  and revocation state cannot be read; a database outage cannot silently bypass
-  deactivation or session-version enforcement.
-- Security-sensitive mutations append their audit row in the same database
-  transaction. OIDC/SAML/magic-link provisioning, default-key state, group
-  assignment, and login evidence commit once before a session is issued; API-key
-  rotation also revokes, replaces, and audits in one transaction. Audit failures
-  therefore roll back or block the protected action instead of being lost in a
-  background task.
-- OIDC users are bound to unique immutable issuer+subject identities. First-time
-  creation requires an explicitly verified email, an existing email cannot be
-  silently linked, and a mapped subject cannot switch to a reassigned address.
-  Discovery must return the exact configured issuer; every discovered endpoint
-  is restricted to credential-free HTTPS on the issuer or an explicitly reviewed
-  origin and is rejected when it resolves to a non-public network destination.
-- Timed-out or cancelled untrusted CAD parses hard-kill their process workers,
-  both API and ARQ startup reject in-process parsing in released builds, and
-  protected browser CI fails required 4xx/5xx/unavailable journey skips.
-- Magic-link rotation/failure cleanup is atomic and cluster-slot safe; corpus
-  assets from GitHub are pinned to a commit with the exact license artifact
-  validated and hashed at that commit.
-- Protected CI rejects unapproved runtime and collection-time skips. Costing,
-  AS1 assembly, NIST STEP, lifecycle cleanup, and OIDC issuer/subject/audience/
-  time/nonce boundaries run from reproducible local fixtures.
-- Initial-password creation and session rotation are one database transaction;
-  concurrent parts-master imports use isolated object prefixes, and large
-  reconstruction meshes stream from object storage instead of buffering in API
-  memory.
-- Per-request CSP nonces gate scripts, Sentry session replay is disabled, and
-  backend/frontend Sentry payloads scrub auth material before export.
-- Customer CAD, batch, reconstruction, mesh, RFQ, and cost-PDF paths use the
-  object-store abstraction. Fly local files are disposable scratch/cache only.
-- The regulated Helm path requires immutable digests, external secrets, S3
-  KMS, HTTPS OTLP with an approved CA, TLS ingress, multi-replica workloads,
-  disruption budgets, topology spread, non-root/read-only containers, and
-  deny-by-default networking.
-- Regulated release/deploy workflows require approved self-hosted GovCloud
-  U.S.-person runners, separate OIDC roles, KMS signatures, signed release
-  attestations, a successful push-triggered CI run for the exact source SHA,
-  private values, server-side dry run, atomic deployment, and deployment
-  evidence. The approved manifest is SAML-only, overrides external Sentry and
-  remote reconstruction off, forces HTTPS, and verifies the real TLS ingress
-  auth-proxy handshake. Staging and production must also resolve to distinct
-  verified account/cluster/namespace fingerprints. Public `/s/*` pages remain
-  on Next while their sanitized JSON is fetched over the internal backend
-  service.
+Regulated verdict: **BLOCKED; DO NOT INTRODUCE REGULATED DATA**
 
-These controls reduce launch risk; they do not constitute FedRAMP, CMMC,
-NIST 800-171, export-control, or customer authorization.
+This audit uses the claim definitions in
+`docs/PRODUCTION_ACCEPTANCE_CONTRACT.md`. It does not treat repository code,
+static infrastructure validation, or an old deployment as live evidence.
+
+## Claim status
+
+| Claim | Status | Evidence still required |
+|---|---|---|
+| Product-proven | Recorded | The current clean release manifest reports `LOCAL_GATE_PASS`: 64/64 canonical browser and recovery contracts across ten suites, with aligned mobile, direct-S3, manufacturing/import, representative-CAD, role/notification, training-guide, and interactive-deck evidence. This claim must be regenerated after any repository change. |
+| Cloud-deploy-ready | Recorded | Reproducible production builds, migration chain, validated AWS IaC, exact OIDC subjects, exact-image scan/SBOM binding, supplier-holdout gate, AWS kill switch, deep health, restore/rollback procedures, alarms, and operator runbooks are present and statically validated. No account plan/apply is implied. |
+| Production-live | No | ProofShape-owned AWS/provider resources, real secrets, staged deployment, live acceptance, recovery/alert evidence, exact-digest production promotion, and human go/no-go. |
+
+No local evidence may convert `production-live` into a stronger claim without
+the external evidence below.
+
+## Implemented commercial controls
+
+- `infra/aws` defines isolated staging and production stacks for the
+  `proofshape-commercial` boundary. Arcus names and resources are rejected.
+- CloudFront is the only public release edge. It reaches an internal ALB through
+  an account/VPC CloudFront VPC origin; the ALB defaults to 403 and accepts
+  traffic only from the VPC-origin service security group.
+- Production/HA fails closed without a custom alias, viewer and origin
+  certificates, TLS 1.2, WAF and WAF logs, CloudFront/ALB access logs, and ALB
+  deletion protection.
+- The frontend is configured with `AUTH_PROXY_CLIENT_IP_SOURCE=cloudfront` and
+  accepts the single `CloudFront-Viewer-Address` value. It does not use the ALB
+  `X-Forwarded-For` chain as authenticated viewer identity.
+- ECS uses digest-pinned Fargate frontend, API, worker, and one-shot Alembic
+  task families. Containers are non-root with read-only roots and explicit
+  writable scratch/cache mounts. Services have deployment circuit breakers.
+- Private RDS and ElastiCache provide the data plane. RDS has encrypted backup/
+  PITR controls. Redis requires TLS and out-of-band AUTH before services can be
+  enabled.
+- Durable customer evidence and transient incoming uploads use separate KMS S3
+  buckets. Durable evidence is versioned. Transient uploads are deliberately
+  unversioned so successful application deletion is physically truthful;
+  lifecycle expiration is only a backstop.
+- GitHub deploy roles use exact repository/environment OIDC subjects and
+  environment-specific least privilege. No long-lived AWS key is required in
+  GitHub.
+- `.github/workflows/ci.yml` is build/test proof and has no deploy job or Fly
+  registry publication.
+- `.github/workflows/aws-commercial-promote.yml` requires exact-SHA successful
+  CI, builds one backend/frontend archive set, seals archive hashes, publishes
+  the same bytes to staging and production ECR, scans and generates CycloneDX
+  SBOMs from those exact loaded images, verifies matching digests, validates the
+  exact-release supplier holdout in both environments, runs migration,
+  stabilizes ECS, performs CloudFront deep health and a staging AWS kill-switch
+  drill, and restores prior task definitions after rollout failure.
+- The obsolete `.github/workflows/saas-promote.yml` is deleted. Fly files that
+  remain are legacy/non-release material and are not called by the canonical
+  workflow.
+- The application contains fail-closed production auth, tenant isolation,
+  transactional audit, worker health, object-store, timeout/cancellation,
+  browser security, and release-health controls. These reduce risk but do not
+  replace the exact-build and live gates.
+
+## External evidence that does not exist yet
+
+- No account-bound Terraform plan or apply against a ProofShape AWS account.
+- No AWS ECR push, ECS migration, service rollout, or CloudFront deep-health
+  record.
+- No real Resend, Turnstile, Sentry/alert, DNS/certificate, budget alarm, or
+  external uptime evidence.
+- No AWS RDS restore, Redis AUTH/queue, durable-version retention, transient
+  physical-delete, worker interruption, kill-switch, or prior-digest rollback
+  drill.
+- No production promotion or production hostname.
+- No accountable legal/name/IP approval or real customer/supplier holdout
+  evidence has been supplied to the implemented release gate.
+- No approved GovCloud/customer regulated boundary or execution evidence.
 
 ## Blocking findings
 
-| Severity | Finding | Required closure evidence |
-|---|---|---|
-| Critical | No approved CUI/ITAR boundary, export classification, data-flow determination, Technology Control Plan, or authorized-person/operator roster has been supplied. | Written legal/export-control decision, system boundary/data-flow, personnel authorization, subcontractor/support scope, and accountable owner approval. |
-| Critical | No GovCloud/customer regulated landing zone is provisioned or evidenced. | Approved GovCloud account, private EKS, RDS, Redis, S3/KMS, ECR, IdP, runner, SIEM/OTLP, network controls, backups, and private values with control-owner evidence. |
-| Critical | The regulated CI control plane, action sources, runner image/egress, job logs, and evidence destination have not been approved as part of the boundary. | Written approval for the exact GitHub/GHES control plane and runner design, or move the workflow/evidence path fully in-boundary and retain an approved execution record. |
-| High | The current live Fly applications do not satisfy the new commercial secret/runtime contract; the deployed API predates `/health/deep`, and the frontend was stopped when inspected. | Separate staging/production apps; API/web secrets including one matching `AUTH_PROXY_SECRET`; remove every forbidden config-shadowing Fly secret reported by the gate; custom DNS/TLS; successful protected staging promotion; deep health and proxy handshake; manual auth/STEP/tenant tests. |
-| High | Production hardening remains in draft PR #24 targeting protected `main`; it is not merged or releasable yet. | Review the final diff, require green protected checks for the exact merge SHA, merge to `main`, and retain the resulting digest/SBOM release evidence. |
-| High | No production acceptance evidence exists for real email, Turnstile, Sentry alert delivery, S3 lifecycle/deletion, custom domains, cross-tenant probes, or rollback. | Execute and retain the acceptance records in the applicable runbook. |
-| High | Cost-model CI proves deterministic regression behavior against internally authored coupons; no real protected supplier holdout has been supplied yet. Technical `staging-only` runs are explicitly not approval evidence and cannot reach production. The full `staging-and-production` scope fails closed without fresh, matching evidence bound to the exact release SHA. | Supply the protected record defined in `docs/SUPPLIER_HOLDOUT_EVIDENCE.md`: at least 20 licensed/provenance-locked holdout parts, at least 5 parts and 3 independent suppliers per launch family, retained human approval, MAPE ≤30%, P90 absolute error ≤50%, and every process median bias within ±25%. |
+| Severity | Plane | Finding | Required closure evidence |
+|---|---|---|---|
+| Critical | Regulated | No approved CUI/ITAR classification, system/data-flow boundary, Technology Control Plan, contract scope, or authorized operator roster exists. | Written counsel/security decision, approved boundary and data flow, personnel authorization, and accountable owner approval. |
+| Critical | Regulated | No GovCloud/customer-controlled landing zone or approved CI/evidence control plane exists. | Approved account/cluster, private data plane, IdP, registry, runners, telemetry/SIEM, backups, private values, and retained execution evidence. |
+| High | Commercial | No ProofShape AWS staging or production stack has been planned/applied. | Reviewed account-bound Terraform plans and applies, distinct state/data boundaries, populated secret versions, verified Redis AUTH, and enabled services. |
+| High | Commercial | No real-provider staging acceptance or operational recovery evidence exists. | Staging workflow evidence, email/Turnstile/Sentry delivery, deep health, multipart S3, restore, alarms, load, interruption, kill switch, and rollback records. |
+| High | Commercial | No licensed customer-relevant supplier/CAD accuracy evidence or accountable approval has been supplied. The workflow gate exists but cannot fabricate its confidential input. | Provenance-locked holdout satisfying `docs/SUPPLIER_HOLDOUT_EVIDENCE.md`, accountable review, exact-release binding, and protected production approval. |
+| High | Commercial | ProofShape name/domain/IP and launch legal documents are not approved. | Documented name/IP clearance, domain ownership, terms/privacy decisions, and accountable approval. |
 
 ## Commercial go/no-go rule
 
-Change the commercial verdict only after all blockers not explicitly limited to
-the regulated path are closed, `saas-staging` passes the complete acceptance
-suite, a human reviews the evidence, and the protected `saas-production`
-environment approves promotion. A successful CI build alone is not a go-live.
+Commercial production remains blocked until:
+
+1. the recorded `product-proven` and `cloud-deploy-ready` claims are regenerated
+   for the final exact clean commit after any change;
+2. isolated AWS staging passes every live gate in
+   `docs/PRODUCTION_ACCEPTANCE_CONTRACT.md`;
+3. the supplier/customer and legal/name approvals are retained;
+4. production uses the exact staged artifact digests through the protected
+   `aws-commercial-production` environment; and
+5. a human owner reviews the complete evidence and records go/no-go.
+
+A successful CI run, Terraform validation, publish-only ECR seed, or reachable
+CloudFront page is not a go-live decision.
 
 ## Regulated go/no-go rule
 
-Do not upload, process, log, back up, or support CUI/ITAR data until the
-authorized legal/security owner has approved the boundary and data-flow, every
-in-boundary dependency and operator is approved, the assessment/control gaps
-are closed or formally accepted, regulated staging passes the runbook, and the
-protected production promotion is independently approved.
+Do not upload, process, log, back up, or support CUI/ITAR data until an
+authorized legal/security owner approves the boundary and data flow, every
+dependency and operator is in scope, regulated staging passes the dedicated
+runbook, and the protected production promotion is independently approved.
 
 ## Current decision
 
-**BLOCKED — do not deploy production and do not introduce regulated data.**
+**The software is product-proven and cloud-deploy-ready; do not claim
+production-live and do not introduce regulated data.** Provision only new
+ProofShape-owned commercial AWS/provider resources, run credentialed staging,
+and retain every live acceptance artifact before production promotion. Arcus
+remains prohibited.

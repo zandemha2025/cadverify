@@ -82,7 +82,7 @@ export function MagicVerifyClient() {
               {error}
             </p>
           )}
-          <AuthSubmit loading={loading}>Continue to CadVerify</AuthSubmit>
+          <AuthSubmit loading={loading}>Continue to ProofShape</AuthSubmit>
         </form>
       ) : (
         <p role="alert" style={{ margin: 0, color: "#f08f86", fontSize: 13 }}>

@@ -304,8 +304,10 @@ def shutdown(*, kill: bool = True, final: bool = False) -> None:
     With ``final=True``, ``_STOPPING`` is set while holding the same lock used by
     ``_get_pool`` so a detached pre-warm thread cannot recreate the singleton
     after shutdown took ownership. Production shutdown hard-kills active CAD
-    workers because gmsh C calls are not interruptible. Ordinary test cleanup
-    keeps ``final=False`` so a later test can lazily create a fresh pool.
+    workers because gmsh C calls are not interruptible, then joins the executor
+    manager so its queues and multiprocessing semaphores are actually released.
+    The join remains bounded because every worker is killed first. Ordinary test
+    cleanup keeps ``final=False`` so a later test can lazily create a fresh pool.
     """
     global _POOL, _STOPPING
     with _POOL_LOCK:
@@ -319,7 +321,12 @@ def shutdown(*, kill: bool = True, final: bool = False) -> None:
                 except Exception:
                     pass
         try:
-            pool.shutdown(wait=False, cancel_futures=True)
+            # wait=False abandons the executor's queue/semaphore handles to
+            # multiprocessing.resource_tracker at interpreter exit. Once every
+            # worker has been killed there is no uninterruptible CAD call left to
+            # wait on, so a full join is both bounded and required for a clean
+            # production shutdown.
+            pool.shutdown(wait=kill, cancel_futures=True)
         except Exception:
             logger.exception("parse pool shutdown failed")
 
@@ -553,7 +560,23 @@ def _extract_assembly_worker(data: bytes, suffix: str):
     meshes + world positions + product tree) IN THIS PROCESS. Module-level so
     ``ProcessPoolExecutor`` can pickle it by qualified name. Raises plain
     ``ValueError`` (route -> 400) for a bad/native/unmeshable file."""
-    from src.parsers.assembly_mesher import extract_assembly_from_bytes
+    from src.parsers.ap242_tessellated_parser import is_ap242_tessellated
+    from src.parsers.assembly_mesher import (
+        extract_assembly_from_bytes,
+        single_part_model_from_mesh,
+    )
+
+    # The AP242 embedded-tessellation branch is a supported single part but is
+    # not a B-rep that gmsh/OCC's assembly importer can read. Reuse the canonical
+    # mesh parser and return a truthful single-part classification instead of
+    # crashing a parser worker and emitting a misleading assembly 400.
+    if suffix.lower() in {".step", ".stp"} and is_ap242_tessellated(data):
+        mesh = tessellate(data, suffix)
+        return single_part_model_from_mesh(
+            mesh,
+            source_suffix=suffix,
+            name="embedded-tessellated-part",
+        )
 
     return extract_assembly_from_bytes(data, f"upload{suffix}")
 

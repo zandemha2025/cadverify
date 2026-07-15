@@ -13,7 +13,13 @@ from __future__ import annotations
 import secrets
 from typing import TYPE_CHECKING, Any, BinaryIO
 
-from src.storage.base import ObjectNotFoundError, ObjectStore, ObjectStoreError, Payload
+from src.storage.base import (
+    ObjectMetadata,
+    ObjectNotFoundError,
+    ObjectStore,
+    ObjectStoreError,
+    Payload,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, not imported at runtime
     pass
@@ -215,6 +221,118 @@ class S3ObjectStore(ObjectStore):
                     self.delete(key)
                 except Exception:  # noqa: BLE001 - preserve original probe error
                     pass
+
+    # -- direct multipart upload ---------------------------------------------
+    def create_multipart_upload(
+        self,
+        key: str,
+        *,
+        content_type: str,
+        metadata: dict[str, str] | None = None,
+    ) -> str:
+        """Create a provider multipart upload for one namespaced key.
+
+        Bucket selection and prefix expansion remain adapter-owned. Callers can
+        supply only a validated relative key, so this method never becomes a
+        raw provider-coordinate escape hatch.
+        """
+        if not content_type:
+            raise ValueError("multipart upload requires a content type")
+        params: dict[str, Any] = {
+            "Bucket": self._bucket,
+            "Key": self._full_key(key),
+            "ContentType": content_type,
+        }
+        if metadata:
+            params["Metadata"] = dict(metadata)
+        if self._kms_key_id:
+            params["ServerSideEncryption"] = "aws:kms"
+            params["SSEKMSKeyId"] = self._kms_key_id
+        response = self._client().create_multipart_upload(**params)
+        upload_id = response.get("UploadId")
+        if not isinstance(upload_id, str) or not upload_id:
+            raise ObjectStoreError("S3 did not return a multipart upload id")
+        return upload_id
+
+    def presign_upload_part(
+        self,
+        key: str,
+        upload_id: str,
+        part_number: int,
+        *,
+        expires_in: int,
+    ) -> str:
+        """Return a time-limited PUT URL for exactly one multipart part."""
+        if not upload_id:
+            raise ValueError("multipart upload id is required")
+        if not 1 <= part_number <= 10_000:
+            raise ValueError("multipart part_number must be in [1, 10000]")
+        if not 1 <= expires_in <= 7 * 24 * 3600:
+            raise ValueError("multipart URL expiry must be in [1, 604800]")
+        return self._client().generate_presigned_url(
+            "upload_part",
+            Params={
+                "Bucket": self._bucket,
+                "Key": self._full_key(key),
+                "UploadId": upload_id,
+                "PartNumber": part_number,
+            },
+            ExpiresIn=expires_in,
+            HttpMethod="PUT",
+        )
+
+    def complete_multipart_upload(
+        self,
+        key: str,
+        upload_id: str,
+        parts: list[dict[str, Any]],
+    ) -> ObjectMetadata:
+        """Complete a multipart upload and return authoritative object metadata."""
+        if not upload_id:
+            raise ValueError("multipart upload id is required")
+        if not parts:
+            raise ValueError("multipart completion requires at least one part")
+        self._client().complete_multipart_upload(
+            Bucket=self._bucket,
+            Key=self._full_key(key),
+            UploadId=upload_id,
+            MultipartUpload={"Parts": parts},
+        )
+        return self.stat(key)
+
+    def abort_multipart_upload(self, key: str, upload_id: str) -> None:
+        """Abort an unfinished provider multipart upload idempotently."""
+        if not upload_id:
+            raise ValueError("multipart upload id is required")
+        try:
+            self._client().abort_multipart_upload(
+                Bucket=self._bucket,
+                Key=self._full_key(key),
+                UploadId=upload_id,
+            )
+        except Exception as exc:  # noqa: BLE001 - inspect provider error code
+            response = getattr(exc, "response", None) or {}
+            error = response.get("Error", {}) if isinstance(response, dict) else {}
+            if str(error.get("Code", "")) == "NoSuchUpload":
+                return
+            raise
+
+    def stat(self, key: str) -> ObjectMetadata:
+        """Return authoritative size/type/ETag metadata for ``key``."""
+        try:
+            response = self._client().head_object(
+                Bucket=self._bucket,
+                Key=self._full_key(key),
+            )
+        except Exception as exc:  # noqa: BLE001 - normalise missing objects
+            if self._is_not_found(exc):
+                raise ObjectNotFoundError(key) from exc
+            raise
+        return ObjectMetadata(
+            size_bytes=int(response["ContentLength"]),
+            content_type=response.get("ContentType"),
+            etag=response.get("ETag"),
+        )
 
     def presigned_url(self, key: str, *, expires_in: int = 3600) -> str:
         """Return a time-limited HTTPS URL for ``key`` (S3-specific extra)."""

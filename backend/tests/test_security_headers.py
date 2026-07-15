@@ -41,7 +41,7 @@ def test_all_security_headers_present():
 def test_server_header_replaced():
     client = TestClient(_app(enabled=True))
     resp = client.get("/ok")
-    assert resp.headers.get("server") == "CadVerify"
+    assert resp.headers.get("server") == "ProofShape"
     assert "uvicorn" not in resp.headers.get("server", "").lower()
 
 

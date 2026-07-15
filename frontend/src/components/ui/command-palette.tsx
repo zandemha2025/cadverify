@@ -33,6 +33,7 @@ import {
   LogOut,
   Search,
   CornerDownLeft,
+  Boxes,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/components/ui/auth-provider";
@@ -56,6 +57,7 @@ type CommandCtx = {
 };
 
 const COMMANDS: Command[] = [
+  { id: "designs", label: "Design Studio", hint: "create · revise · verify", keywords: "design cad plate bracket enclosure proofshape", icon: Boxes, section: "Go to", run: (c) => c.push("/designs") },
   { id: "analyze", label: "Analyze a part", hint: "DFM · geometry", keywords: "dfm flags manufacturability geometry inspect", icon: ScanLine, section: "Go to", run: (c) => c.push("/analyze") },
   { id: "cost", label: "Cost & make-vs-buy", hint: "the instrument", keywords: "should cost price quantity crossover breakeven scrubber", icon: Calculator, section: "Go to", run: (c) => c.push("/cost") },
   { id: "batch", label: "Batch analysis", hint: "many parts at once", keywords: "zip upload bulk", icon: Layers, section: "Go to", run: (c) => c.push("/batch") },

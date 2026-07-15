@@ -210,6 +210,8 @@ def test_route_as1_glb(client):
     assert r.status_code == 200, r.text
     assert r.headers["content-type"].startswith("model/gltf-binary")
     assert r.headers["x-assembly-parts"] == "18"
+    assert int(r.headers["x-assembly-glb-bytes"]) == len(r.content)
+    assert int(r.headers["x-assembly-glb-bytes"]) > 100_000
     assert r.content[:4] == b"glTF"
 
 

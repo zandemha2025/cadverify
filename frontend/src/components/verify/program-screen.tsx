@@ -219,7 +219,7 @@ function ProgramIndex({
           placeholder="Name a program — e.g. Hydraulic actuator"
           style={{ flex: "1 1 260px", minWidth: 220, background: C.panel, border: `1px solid #dcdce0`, borderRadius: 10, padding: "10px 14px", fontSize: 13.5, color: C.ink, fontFamily: "inherit" }}
         />
-        <GhostButton primary disabled={!newName.trim()} onClick={create}>Open →</GhostButton>
+        <GhostButton aria-label="Open new program" primary disabled={!newName.trim()} onClick={create}>Open →</GhostButton>
       </div>
       <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
         a program becomes real when its first verified part is assigned — nothing is stored for an empty name
@@ -269,7 +269,7 @@ function ProgramCard({ g, onOpen }: { g: ProgramRollup; onOpen: () => void }) {
         )}
       </div>
       <div style={{ marginTop: "auto", paddingTop: 4 }}>
-        <GhostButton primary onClick={onOpen}>Open →</GhostButton>
+        <GhostButton aria-label={`Open ${g.program}`} primary onClick={onOpen}>Open →</GhostButton>
       </div>
     </div>
   );

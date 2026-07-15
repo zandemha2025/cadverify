@@ -64,7 +64,7 @@ export function SiteNav({ variant = "document", activeHref }: SiteNavProps) {
   return (
     <header className={`st-nav ${variant === "cinematic" ? "st-nav-cinematic" : "st-nav-document"}`}>
       <Link href="/" className="st-wordmark">
-        CadVerify
+        ProofShape
       </Link>
       <nav className="st-navrow" aria-label="Primary">
         {SITE_NAV.map((item) => (
@@ -127,7 +127,7 @@ export function SiteFooter() {
   return (
     <footer className="st-footer">
       <div className="st-footer-row">
-        <span className="st-footer-tagline">CadVerify — {SITE_TAGLINE}</span>
+        <span className="st-footer-tagline">ProofShape — {SITE_TAGLINE}</span>
         <span className="st-footer-links">
           <Link href="/">Home</Link>
           {SITE_NAV.map((item) => (
@@ -139,7 +139,7 @@ export function SiteFooter() {
         </span>
       </div>
       <div className="st-footer-legal">
-        <span>© {new Date().getFullYear()} CadVerify, Inc.</span>
+        <span>© {new Date().getFullYear()} ProofShape</span>
         <span className="st-footer-links">
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
@@ -153,12 +153,12 @@ export function SiteFooter() {
 
 /**
  * The minimal inline tagline line the cinematic pages close with (home + the
- * personas), e.g. "CadVerify — verification, made of glass · Method · …".
+ * personas), e.g. "ProofShape — verification, made of glass · Method · …".
  */
 export function SiteFooterTagline({ className }: { className?: string }) {
   return (
     <p className={`st-footer-tagline ${className ?? ""}`} style={{ margin: 0 }}>
-      CadVerify — {SITE_TAGLINE}
+      ProofShape — {SITE_TAGLINE}
       {SITE_NAV.filter((n) => ["/method", "/platform", "/security", "/developers"].includes(n.href)).map((n) => (
         <React.Fragment key={n.href}>
           {" · "}

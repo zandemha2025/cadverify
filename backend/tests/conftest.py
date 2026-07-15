@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
+import pytest_asyncio
 import trimesh
 
 # Migration tests temporarily patch ``sys.modules["alembic.op"]``. Import the
@@ -27,8 +28,18 @@ import trimesh
 import alembic  # noqa: F401
 
 from src.auth.require_api_key import AuthedUser
+from src.auth.redis_util import (
+    close_registered_redis_clients as _close_registered_redis_clients_impl,
+)
 
 pytest_plugins = ("tests.ci_skip_policy", "pytester")
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _close_auth_redis_clients():
+    """Do not carry loop-bound Redis pools between function-scoped test loops."""
+    yield
+    await _close_registered_redis_clients_impl()
 
 
 # ──────────────────────────────────────────────────────────────
@@ -119,7 +130,7 @@ def authed_user(test_user, test_api_key):
 # Auth env — autouse so every test sees valid pepper/secrets
 # ──────────────────────────────────────────────────────────────
 @pytest.fixture(autouse=True)
-def _auth_env(monkeypatch):
+def _auth_env(monkeypatch, tmp_path):
     monkeypatch.setenv("API_KEY_PEPPER", base64.b64encode(b"a" * 32).decode())
     monkeypatch.setenv("MAGIC_LINK_SECRET", base64.b64encode(b"b" * 32).decode())
     monkeypatch.setenv(
@@ -128,6 +139,12 @@ def _auth_env(monkeypatch):
     monkeypatch.setenv("TURNSTILE_SECRET", "test")
     monkeypatch.setenv("DASHBOARD_ORIGIN", "https://cadverify.com")
     monkeypatch.setenv("SESSION_SECRET", "dev")
+    # Every successful analysis/should-cost now persists its exact source CAD.
+    # Isolate that new namespace without globally overriding legacy batch,
+    # reconstruction, and mesh roots that individual tests deliberately patch.
+    monkeypatch.setenv(
+        "SOURCE_ARTIFACT_BLOB_DIR", str(tmp_path / "source-artifacts")
+    )
     # Reset hashing pepper cache so each test gets fresh config.
     try:
         import src.auth.hashing as _h

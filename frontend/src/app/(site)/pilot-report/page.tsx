@@ -3,8 +3,8 @@ import Link from "next/link";
 import { SiteShell } from "@/components/site/site-shell";
 
 export const metadata: Metadata = {
-  title: "Pilot Report - CadVerify",
-  description: "The CadVerify pilot report artifact shape.",
+  title: "Pilot Report - ProofShape",
+  description: "The ProofShape pilot report artifact shape.",
 };
 
 const SECTIONS = [
@@ -23,7 +23,7 @@ export default function PilotReportPage() {
           The closeout is a report your team can argue with.
         </h1>
         <p style={{ maxWidth: 720, color: "rgba(255,255,255,0.68)", fontSize: 18, lineHeight: 1.6 }}>
-          A pilot report is not a marketing PDF. It is the measured record: where CadVerify matched your actuals, where it missed, and what data would improve the next pass.
+          A pilot report is not a marketing PDF. It is the measured record: where ProofShape matched your actuals, where it missed, and what data would improve the next pass.
         </p>
         <div style={{ marginTop: 46, display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
           {SECTIONS.map(([title, body], i) => (

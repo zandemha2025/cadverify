@@ -6,8 +6,9 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_lifespan_shutdown_cleans_resources_in_dependency_order(monkeypatch):
-    """CAD workers stop before DB disposal and bounded tracing teardown."""
+    """CAD/Redis workers stop before DB disposal and tracing teardown."""
     import main
+    from src.auth import redis_util
     from src.db import engine
     from src.obs import tracing
     from src.parsers import parse_pool
@@ -21,26 +22,31 @@ async def test_lifespan_shutdown_cleans_resources_in_dependency_order(monkeypatc
     async def _dispose():
         calls.append("database")
 
+    async def _close_redis():
+        calls.append("auth_redis")
+
     def _stop_tracing():
         calls.append("tracing")
 
     monkeypatch.setattr(main, "_prewarm_enabled", lambda: False)
     monkeypatch.setattr(parse_pool, "shutdown", _stop_pool)
+    monkeypatch.setattr(redis_util, "close_registered_redis_clients", _close_redis)
     monkeypatch.setattr(engine, "dispose_engine", _dispose)
     monkeypatch.setattr(tracing, "shutdown_tracing", _stop_tracing)
 
     async with main.lifespan(main.app):
         calls.append("serving")
 
-    assert calls == ["serving", "parse_pool", "database", "tracing"]
+    assert calls == ["serving", "parse_pool", "auth_redis", "database", "tracing"]
 
 
-@pytest.mark.parametrize("failing", ["parse_pool", "database", "tracing"])
+@pytest.mark.parametrize("failing", ["parse_pool", "auth_redis", "database", "tracing"])
 @pytest.mark.asyncio
 async def test_lifespan_cleanup_failures_do_not_skip_later_resources(
     monkeypatch, failing
 ):
     import main
+    from src.auth import redis_util
     from src.db import engine
     from src.obs import tracing
     from src.parsers import parse_pool
@@ -58,6 +64,11 @@ async def test_lifespan_cleanup_failures_do_not_skip_later_resources(
         if failing == "database":
             raise RuntimeError("database cleanup failed")
 
+    async def _close_redis():
+        calls.append("auth_redis")
+        if failing == "auth_redis":
+            raise RuntimeError("Redis cleanup failed")
+
     def _stop_tracing():
         calls.append("tracing")
         if failing == "tracing":
@@ -65,10 +76,11 @@ async def test_lifespan_cleanup_failures_do_not_skip_later_resources(
 
     monkeypatch.setattr(main, "_prewarm_enabled", lambda: False)
     monkeypatch.setattr(parse_pool, "shutdown", _stop_pool)
+    monkeypatch.setattr(redis_util, "close_registered_redis_clients", _close_redis)
     monkeypatch.setattr(engine, "dispose_engine", _dispose)
     monkeypatch.setattr(tracing, "shutdown_tracing", _stop_tracing)
 
     async with main.lifespan(main.app):
         calls.append("serving")
 
-    assert calls == ["serving", "parse_pool", "database", "tracing"]
+    assert calls == ["serving", "parse_pool", "auth_redis", "database", "tracing"]

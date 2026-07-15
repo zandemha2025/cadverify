@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* ════════════════════════════════════════════════════════════════════════
-   CadVerify — "Governed Catalog" platform chrome (Phase 0 re-founding).
+   ProofShape — "Governed Catalog" platform chrome (Phase 0 re-founding).
    Source of truth: outputs/design/platform-ia-vision.md §5 + founder decisions.
 
    The one move: stop looking like a glowing gauge in a dark cockpit; start
@@ -177,10 +177,10 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
-   LIGHT — opt-in / user-pinnable base (:root). Databricks catalog register:
+   LIGHT — ProofShape's default base register (:root).
    cool graphite canvas #F5F7FA, graphite ink (#12161C, never pure black), deep
-   cobalt. DARK is the app DEFAULT: the no-flash script in layout.tsx adds
-   `.dark` unless the user has pinned light, so the authed app lands dark-first.
+   cobalt. A user can explicitly pin dark mode; route changes do not change the
+   register, so every authenticated surface stays visually continuous.
    ───────────────────────────────────────────────────────────────────────── */
 :root {
   --cv-canvas:            #f5f7fa;
@@ -221,7 +221,7 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
-   DARK (DEFAULT) — cool graphite command register. Canvas #080B0F, cobalt
+   DARK (USER-PINNED) — cool graphite command register. Canvas #080B0F, cobalt
    accent lifts to #4C90F0, CTA text goes deep ink on the bright fill.
    ───────────────────────────────────────────────────────────────────────── */
 .dark {

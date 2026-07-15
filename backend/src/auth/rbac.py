@@ -23,6 +23,8 @@ at all yet still administer any org).
 """
 from __future__ import annotations
 
+from src.config.public_urls import error_doc_url
+
 from enum import Enum
 from typing import Optional
 
@@ -75,7 +77,7 @@ def require_role(min_role: Role):
                 detail={
                     "code": "insufficient_role",
                     "message": f"Requires {min_role.value} role or higher",
-                    "doc_url": "https://docs.cadverify.com/errors#insufficient_role",
+                    "doc_url": error_doc_url("insufficient_role"),
                 },
             )
         return user
@@ -133,6 +135,13 @@ def require_org_role(min_role: OrgRole):
     async def _check(user: AuthedUser = Depends(require_api_key)) -> OrgAuthContext:
         is_superadmin = user.role == Role.superadmin.value
         membership = await lookup_org_membership(user.user_id)
+        # Bearer keys retain their issuing org. If the user's active membership
+        # changed after authentication, fail this authorization check instead of
+        # silently moving the key to the new organization.
+        if user.org_id is not None and (
+            membership is None or membership[0] != user.org_id
+        ):
+            membership = None
         org_id = membership[0] if membership else None
         org_role = membership[1] if membership else None
 
@@ -152,7 +161,7 @@ def require_org_role(min_role: OrgRole):
                             f"Requires org {min_role.value} role or higher"
                         ),
                         "doc_url": (
-                            "https://docs.cadverify.com/errors#insufficient_org_role"
+                            error_doc_url("insufficient_org_role")
                         ),
                     },
                 )
@@ -166,5 +175,25 @@ def require_org_role(min_role: OrgRole):
             org_id=org_id,
             org_role=org_role,
         )
+
+    return _check
+
+
+def require_role_and_org_role(min_role: Role, min_org_role: OrgRole):
+    """Require both product capability and active-tenant mutation authority.
+
+    Tenant-scoped mutation routes need both axes: a platform analyst who was
+    demoted to org viewer must lose write access immediately, while a platform
+    viewer who happens to administer an org still cannot use analyst features.
+    Platform superadmins retain the explicit ``require_org_role`` bypass.
+    """
+    platform_gate = require_role(min_role)
+    org_gate = require_org_role(min_org_role)
+
+    async def _check(
+        user: AuthedUser = Depends(platform_gate),
+        _org: OrgAuthContext = Depends(org_gate),
+    ) -> AuthedUser:
+        return user
 
     return _check

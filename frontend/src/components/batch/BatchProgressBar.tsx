@@ -8,6 +8,8 @@ import { Progress } from "@/components/ui/progress";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { batchStatusTone } from "@/lib/status";
+import { batchProgressSettled } from "@/lib/recovery-records";
+import { batchActivityCopy } from "@/lib/batch-progress-copy";
 
 const POLL_INTERVAL_MS = 5_000;
 
@@ -22,6 +24,7 @@ interface Props {
 export default function BatchProgressBar({ batchId, onProgressUpdate }: Props) {
   const [progress, setProgress] = useState<BatchProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number | null>(null);
 
@@ -33,13 +36,14 @@ export default function BatchProgressBar({ batchId, onProgressUpdate }: Props) {
         const p = await getBatchProgress(batchId);
         if (cancelled) return;
         setProgress(p);
+        setError(null);
         onProgressUpdate?.(p);
 
         if (startTimeRef.current === null && p.started_at) {
           startTimeRef.current = new Date(p.started_at).getTime();
         }
 
-        if (TERMINAL_STATUSES.has(p.status) && intervalRef.current) {
+        if (batchProgressSettled(p.status, p.pending_items) && intervalRef.current) {
           clearInterval(intervalRef.current);
           intervalRef.current = null;
         }
@@ -60,10 +64,19 @@ export default function BatchProgressBar({ batchId, onProgressUpdate }: Props) {
         intervalRef.current = null;
       }
     };
-  }, [batchId, onProgressUpdate]);
+  }, [batchId, onProgressUpdate, retryKey]);
 
   if (error) {
-    return <ErrorState title="Could not load progress" message={error} />;
+    return (
+      <ErrorState
+        title="Could not load progress"
+        message={`${error} Your saved data is unchanged; only this progress refresh failed.`}
+        onRetry={() => {
+          setError(null);
+          setRetryKey((key) => key + 1);
+        }}
+      />
+    );
   }
 
   if (!progress) {
@@ -78,12 +91,20 @@ export default function BatchProgressBar({ batchId, onProgressUpdate }: Props) {
     total_items,
     completed_items,
     failed_items,
+    skipped_items,
     pending_items,
     status,
     concurrency_limit,
   } = progress;
-  const processed = completed_items + failed_items;
+  const processed = completed_items + failed_items + skipped_items;
   const pct = total_items > 0 ? Math.round((processed / total_items) * 100) : 0;
+  const activityCopy = batchActivityCopy({
+    status,
+    totalItems: total_items,
+    pendingItems: pending_items,
+    processedItems: processed,
+    concurrencyLimit: concurrency_limit,
+  });
 
   // Estimated time remaining
   let etaLabel = "";
@@ -105,7 +126,9 @@ export default function BatchProgressBar({ batchId, onProgressUpdate }: Props) {
         <div className="flex items-center gap-2">
           <StatusBadge status={status} size="sm" />
           <span className="text-sm text-muted-foreground">
-            Processing {concurrency_limit} items in parallel
+            {status === "cancelled" && pending_items > 0
+              ? `${pending_items} in-flight item${pending_items === 1 ? "" : "s"} finishing`
+              : activityCopy}
           </span>
         </div>
         {etaLabel && (
@@ -114,10 +137,14 @@ export default function BatchProgressBar({ batchId, onProgressUpdate }: Props) {
       </div>
 
       {/* Progress bar */}
-      <Progress value={pct} tone={batchStatusTone(status)} className="h-3" />
+      <Progress
+        value={pct}
+        tone={batchStatusTone(status)}
+        className={status === "extracting" ? "h-3 animate-pulse" : "h-3"}
+      />
 
       {/* Counters */}
-      <div className="flex items-center justify-between text-sm">
+      {total_items > 0 && <div className="flex items-center justify-between text-sm">
         <span className="num font-medium text-foreground">
           {processed} / {total_items} ({pct}%)
         </span>
@@ -125,11 +152,12 @@ export default function BatchProgressBar({ batchId, onProgressUpdate }: Props) {
           {failed_items > 0 && (
             <span className="text-fail">{failed_items} failed</span>
           )}
+          {skipped_items > 0 && <span>{skipped_items} skipped</span>}
           {pending_items > 0 && !TERMINAL_STATUSES.has(status) && (
             <span>{pending_items} pending</span>
           )}
         </div>
-      </div>
+      </div>}
     </Card>
   );
 }

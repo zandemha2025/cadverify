@@ -10,9 +10,18 @@
  * walk stops honestly at a failed gate (geometry invalid → no downstream compute).
  */
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { analysisFailureCopy } from "@/lib/verify/failure-copy";
 import { C, MONO, USD, NUM, procLabel, statusColor, normProv } from "@/lib/verify/tokens";
 import type { VerifyResult } from "@/lib/verify/run";
+import { fetchCostDecision, setCostDecisionDisposition } from "@/lib/api";
 import type { CostReport, CostComparison } from "@/lib/api";
+import {
+  COST_DISPOSITION_NOTE_MAX_LENGTH,
+  COST_DISPOSITIONS,
+  costDispositionLabel,
+  isCostDisposition,
+  type CostDisposition,
+} from "@/lib/cost-disposition";
 import {
   parseAsk,
   computeCostAtQty,
@@ -36,6 +45,7 @@ import {
 import {
   driverViews,
   makeNowEstimate,
+  routeDfmOutcome,
   toolingEstimate,
   nearestQty,
   fractionToQty,
@@ -79,6 +89,7 @@ type Nav = (screen: string) => void;
 interface Props {
   result: VerifyResult | null;
   running: boolean;
+  guided?: boolean;
   fileName: string | null;
   env: { temp: boolean; sour: boolean; pressure: boolean };
   setEnv: (e: { temp: boolean; sour: boolean; pressure: boolean }) => void;
@@ -125,10 +136,9 @@ export function VerifyScreen(props: Props) {
   } = props;
   const [scrubFrac, setScrubFrac] = useState(0.5);
   const [disclose, setDisclose] = useState<string | null>(null);
-  // The user's recorded make/route/acquire/redesign decision for THIS verification.
-  // Session state (there is no engine endpoint to append the outcome yet — the
-  // Decide card is honest about that). Reset whenever a new run lands.
-  const [decision, setDecision] = useState<string | null>(null);
+  // The human outcome is loaded from and written to the saved cost-decision.
+  // Reset while a new run lands; DecideHallmark then hydrates the new record.
+  const [decision, setDecision] = useState<CostDisposition | null>(null);
   useEffect(() => {
     setDecision(null);
   }, [result]);
@@ -259,7 +269,12 @@ export function VerifyScreen(props: Props) {
           never generates a number. */}
       <AskDock cost={result?.cost ?? null} running={running} nav={nav} />
     </div>
-    <PipelineOverlay running={running} result={result} fileName={props.fileName} />
+    <PipelineOverlay
+      running={running}
+      result={result}
+      fileName={props.fileName}
+      guided={props.guided}
+    />
     </>
   );
 }
@@ -420,8 +435,8 @@ function Walk({
   setScrubFrac: (f: number) => void;
   disclose: string | null;
   setDisclose: (s: string | null) => void;
-  decision: string | null;
-  setDecision: (d: string | null) => void;
+  decision: CostDisposition | null;
+  setDecision: (d: CostDisposition | null) => void;
   onReverify: () => void;
   nav: Nav;
 }) {
@@ -444,12 +459,25 @@ function Walk({
   return (
     <section style={{ marginTop: 18 }}>
       {/* verdict banner */}
-      <VerdictBanner result={result} makeNow={makeNow} nav={nav} />
+      <VerdictBanner result={result} makeNow={makeNow} nav={nav} onReverify={onReverify} />
 
       {/* retrieval-grounded IDENTITY — the org's closest PRIOR part, a SUGGESTION
           to confirm (rendered only when the engine grounded one; empty/anonymous
           corpus renders nothing). */}
       <IdentitySuggestion cost={cost} meshHash={result.meshHash} />
+
+      <p
+        data-testid="verify-evidence-hash"
+        style={{
+          margin: "12px 0 0",
+          fontFamily: MONO,
+          fontSize: 10.5,
+          color: C.ink45,
+          overflowWrap: "anywhere",
+        }}
+      >
+        Evidence hash · {result.meshHash ?? "unavailable"}
+      </p>
 
       <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
         {/* 1 · envelope — from the real machine inventory (no faked fit) */}
@@ -1081,10 +1109,12 @@ function VerdictBanner({
   result,
   makeNow,
   nav,
+  onReverify,
 }: {
   result: VerifyResult;
   makeNow: ReturnType<typeof makeNowEstimate>;
   nav: Nav;
+  onReverify: () => void;
 }) {
   const { validation, validationError, cost, costError, costGeometryInvalid, verification } = result;
 
@@ -1144,37 +1174,32 @@ function VerdictBanner({
   //   1. NOTHING computed (parse/tessellation failed) → "COULD NOT ANALYZE".
   //   2. routing + DFM computed but NO should-cost      → "SHOULD-COST UNAVAILABLE".
   //   3. a real should-cost record                      → "SHOULD-COST COMPUTED".
-  const dfm = validation?.overall_verdict ?? "unknown";
+  const routeDfm = routeDfmOutcome(validation?.overall_verdict, makeNow);
+  const dfm = routeDfm.verdict;
 
   // 1 · The engine returned nothing — no routing, no DFM, no cost. This is the part
   //     that failed to tessellate. Say EXACTLY that; never a fabricated "computed".
   if (!validation && !cost) {
     const reason = costError || validationError || null;
-    // Lead with the REAL reason. Only frame it as a tessellation/surface failure
-    // when that's actually what happened — an unsupported file type (e.g. a .txt)
-    // is not a mesher problem and must not be told to "re-export as a clean solid".
-    const unsupported = !!reason && /unsupported file type|use \.stl|not a (?:cad|supported)/i.test(reason);
+    const failure = analysisFailureCopy(reason);
     return (
       <BannerFrame borderColor={C.fail} bg="rgba(194,69,58,0.03)">
         <Kicker color={C.fail}>VERDICT · COULD NOT ANALYZE</Kicker>
         <p style={{ margin: "10px 0 0", fontSize: 24, fontWeight: 400, letterSpacing: "-0.015em", lineHeight: 1.25 }}>
-          {unsupported ? <>We couldn&apos;t read this file.</> : <>This part couldn&apos;t be tessellated.</>}
+          {failure.title}
         </p>
         <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 560 }}>
           {reason ? (
-            <span style={{ fontFamily: MONO, fontSize: 12, color: C.ink55 }}>{reason}</span>
-          ) : unsupported ? (
-            <>Unsupported file type.</>
+            <><span style={{ fontFamily: MONO, fontSize: 12, color: C.ink55 }}>{reason}</span>{" "}</>
           ) : (
-            <>The geometry contains a surface our mesher couldn&apos;t triangulate.</>
-          )}{" "}
-          No routing, DFM, or should-cost was computed, and nothing here is estimated.{" "}
-          {unsupported ? (
-            <>Upload a CAD part (.stl, .step, .stp, .iges, or .igs) to run the walk.</>
-          ) : (
-            <>Re-export the part as a clean solid (no unsupported surface) and re-upload to run the walk.</>
+            <>{failure.explanation} </>
           )}
+          No routing, DFM, or should-cost was computed, and nothing here is estimated.{" "}
+          {failure.action}
         </p>
+        <div style={{ marginTop: 14 }}>
+          <GhostButton onClick={onReverify}>Retry verification →</GhostButton>
+        </div>
       </BannerFrame>
     );
   }
@@ -1200,7 +1225,35 @@ function VerdictBanner({
     );
   }
 
-  // 3 · A real should-cost record — the original honest banner, unchanged.
+  // 3a · The route has a real cost but fails route-specific DFM. Keep the cost
+  //      for comparison/redesign, while making it impossible to read as an
+  //      as-is manufacturing recommendation.
+  if (routeDfm.blocked) {
+    const blocker = routeDfm.primaryBlocker?.replace(/[.!?]+$/, "") ?? null;
+    return (
+      <BannerFrame borderColor={C.fail} bg="rgba(194,69,58,0.03)">
+        <Kicker color={C.fail}>VERDICT · ROUTE DFM BLOCKED · SHOULD-COST CONDITIONAL</Kicker>
+        <p style={{ margin: "10px 0 0", fontSize: 24, fontWeight: 400, letterSpacing: "-0.015em", lineHeight: 1.25 }}>
+          {proc && unit != null ? (
+            <>
+              Conditional should-cost {USD(unit)}/unit on {procLabel(proc)}
+              {makeNow ? <span style={{ fontSize: 14, color: C.ink45 }}> at qty {NUM(makeNow.quantity)}</span> : null}
+            </>
+          ) : (
+            <>Route blocked as modeled</>
+          )}
+        </p>
+        <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 620 }}>
+          This route has a computed comparison cost, but it is not makeable as modeled.
+          {blocker ? <> <span style={{ fontWeight: 500 }}>{blocker}.</span></> : null}{" "}
+          Keep the cost for route comparison or redesign; do not treat it as an as-is manufacturing recommendation.
+        </p>
+        {savedCta}
+      </BannerFrame>
+    );
+  }
+
+  // 3b · A real should-cost record whose selected route is not blocked.
   const color = statusColor(dfm);
   return (
     <BannerFrame borderColor={color} bg="rgba(23,24,26,0.015)">
@@ -1216,7 +1269,7 @@ function VerdictBanner({
         )}
       </p>
       <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 560 }}>
-        The engine returned routing, DFM, and a glass-box should-cost. Whether it&apos;s makeable{" "}
+        The engine returned routing, route DFM, and a glass-box should-cost.{dfm === "issues" ? " This route carries DFM advisories; review them before release." : ""} Whether it&apos;s makeable{" "}
         <span style={{ fontWeight: 500 }}>on your machines</span> is the makeability verification — not evaluated here
         because no machines and no service conditions are declared. Declare your floor or the service conditions to resolve it, never assumed.
       </p>
@@ -1627,13 +1680,6 @@ function ResourceCost({
   );
 }
 
-const DECIDE_OPTS: { key: string; label: string }[] = [
-  { key: "inhouse", label: "Make in-house" },
-  { key: "outside", label: "Make outside" },
-  { key: "acquire", label: "Acquire capability" },
-  { key: "redesign", label: "Redesign" },
-];
-
 function DecideHallmark({
   result,
   decision,
@@ -1641,45 +1687,156 @@ function DecideHallmark({
   nav,
 }: {
   result: VerifyResult;
-  decision: string | null;
-  setDecision: (d: string | null) => void;
+  decision: CostDisposition | null;
+  setDecision: (d: CostDisposition | null) => void;
   nav: Nav;
 }) {
   const toast = useToast();
   const saved = result.cost?.saved;
   const est = result.cost ? makeNowEstimate(result.cost) : null;
+  const inhouseBlocked = routeDfmOutcome(
+    result.validation?.overall_verdict,
+    est,
+  ).blocked;
   const validated = est?.confidence?.validated ?? false;
-  const decidedLabel = DECIDE_OPTS.find((o) => o.key === decision)?.label ?? null;
+  const decidedLabel = costDispositionLabel(decision);
+  const [loadingSaved, setLoadingSaved] = useState(Boolean(saved?.id));
+  const [saving, setSaving] = useState<
+    CostDisposition | "withdraw" | "note" | null
+  >(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [loadVersion, setLoadVersion] = useState(0);
+  const [persistedAt, setPersistedAt] = useState<string | null>(null);
+  const [dispositionNote, setDispositionNote] = useState("");
+  const [persistedDispositionNote, setPersistedDispositionNote] = useState("");
   // Real, verbatim id of the persisted cost-decision artifact (never the design's
   // fixture "V-0117"). A short handle for the line; the full record opens in Records.
   const shortId = saved?.id ? `#${saved.id.slice(0, 8)}` : null;
-  const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const recordedDate = new Date(persistedAt ?? Date.now()).toLocaleDateString(
+    "en-US",
+    { month: "short", day: "numeric", year: "numeric" }
+  );
 
-  const choose = (key: string, label: string) => {
-    const withdrawing = decision === key;
-    setDecision(withdrawing ? null : key);
-    if (withdrawing) {
-      toast(`Decision withdrawn — ${label}`);
+  useEffect(() => {
+    if (!saved?.id) {
+      setLoadingSaved(false);
+      setSaveError(null);
+      setPersistedAt(null);
+      setDispositionNote("");
+      setPersistedDispositionNote("");
       return;
     }
-    // Honest: the user's outcome is noted on THIS verification (session). The
-    // cost-decision artifact itself is what's persisted (POST /validate/cost); the
-    // toast asserts only what actually happened.
-    toast(saved ? `${label} — noted · cost-decision ${shortId} is saved` : `${label} — noted on this verification`);
-    if (key === "acquire") nav("acquisition");
+
+    let alive = true;
+    setLoadingSaved(true);
+    setSaveError(null);
+    fetchCostDecision(saved.id)
+      .then((record) => {
+        if (!alive) return;
+        const persisted = record.user_disposition;
+        if (persisted != null && !isCostDisposition(persisted)) {
+          throw new Error("The saved record contains an unsupported outcome");
+        }
+        setDecision(persisted ?? null);
+        setPersistedAt(record.disposition_updated_at ?? null);
+        setDispositionNote(record.disposition_note ?? "");
+        setPersistedDispositionNote(record.disposition_note ?? "");
+      })
+      .catch((error) => {
+        if (!alive) return;
+        setSaveError(
+          error instanceof Error ? error.message : "Could not load the saved outcome"
+        );
+      })
+      .finally(() => {
+        if (alive) setLoadingSaved(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [loadVersion, saved?.id, setDecision]);
+
+  const choose = async (
+    key: CostDisposition,
+    label: string,
+    action: "select" | "note" | "withdraw" = "select"
+  ) => {
+    if (loadingSaved || saving) return;
+    if (key === "inhouse" && inhouseBlocked && action === "select") {
+      toast("Make in-house is unavailable until revised CAD passes route DFM");
+      return;
+    }
+    const noteOnly = action === "note";
+    const withdrawing = action === "withdraw";
+    const next = withdrawing ? null : key;
+
+    // Honest fallback for an explicitly non-persisted engine run.
+    if (!saved?.id) {
+      setDecision(next);
+      if (withdrawing) {
+        setDispositionNote("");
+        setPersistedDispositionNote("");
+      } else {
+        setPersistedDispositionNote(dispositionNote.trim());
+      }
+      if (withdrawing) toast(`Decision withdrawn — ${label}`);
+      else if (noteOnly) toast("Outcome note updated for this verification");
+      else toast(`${label} — noted on this verification`);
+      if (key === "acquire" && !withdrawing && !noteOnly) nav("acquisition");
+      return;
+    }
+
+    setSaving(withdrawing ? "withdraw" : noteOnly ? "note" : key);
+    setSaveError(null);
+    try {
+      const updated = await setCostDecisionDisposition(
+        saved.id,
+        next,
+        next ? dispositionNote : undefined
+      );
+      setDecision(updated.user_disposition);
+      setPersistedAt(updated.disposition_updated_at ?? new Date().toISOString());
+      setDispositionNote(updated.disposition_note ?? "");
+      setPersistedDispositionNote(updated.disposition_note ?? "");
+      if (withdrawing) {
+        toast(`Decision withdrawn — saved to cost-decision ${shortId}`);
+      } else if (noteOnly) {
+        toast(`Outcome note saved to cost-decision ${shortId}`);
+      } else {
+        toast(`${label} — saved to cost-decision ${shortId}`);
+        if (key === "acquire") nav("acquisition");
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Could not save this decision";
+      setSaveError(message);
+      toast(`Decision not saved — ${message}`);
+    } finally {
+      setSaving(null);
+    }
   };
 
   return (
     <Card>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <p style={{ margin: 0, fontSize: 15, fontWeight: 500, marginRight: "auto" }}>Decide</p>
-        {DECIDE_OPTS.map((o) => {
+        {COST_DISPOSITIONS.map((o) => {
           const on = decision === o.key;
+          const blockedOption = o.key === "inhouse" && inhouseBlocked;
           return (
             <button
               key={o.key}
               type="button"
-              onClick={() => choose(o.key, o.label)}
+              data-testid={`verify-disposition-${o.key}`}
+              aria-pressed={on}
+              aria-busy={saving === o.key || (on && saving === "withdraw")}
+              disabled={loadingSaved || Boolean(saving) || Boolean(saveError) || blockedOption}
+              title={
+                blockedOption
+                  ? "Revise the CAD and pass route DFM before recording Make in-house"
+                  : undefined
+              }
+              onClick={() => void choose(o.key, o.label)}
               style={{
                 background: on ? C.ink : "none",
                 border: `1px solid ${on ? C.ink : "#d8d8dc"}`,
@@ -1688,7 +1845,9 @@ function DecideHallmark({
                 padding: "9px 16px",
                 fontSize: 12.5,
                 fontWeight: 500,
-                cursor: "pointer",
+                cursor:
+                  loadingSaved || saving || saveError || blockedOption ? "not-allowed" : "pointer",
+                opacity: loadingSaved || saving || saveError || blockedOption ? 0.55 : 1,
                 fontFamily: "inherit",
                 transition: "all 150ms",
               }}
@@ -1697,25 +1856,132 @@ function DecideHallmark({
             </button>
           );
         })}
+        {decision && (
+          <button
+            type="button"
+            data-testid="verify-disposition-withdraw"
+            aria-label={`Withdraw ${decidedLabel ?? "recorded outcome"}`}
+            aria-busy={saving === "withdraw"}
+            disabled={loadingSaved || Boolean(saving) || Boolean(saveError)}
+            onClick={() =>
+              void choose(
+                decision,
+                decidedLabel ?? "recorded outcome",
+                "withdraw"
+              )
+            }
+            style={{ background: "none", border: "none", color: C.ink45, padding: "9px 8px", fontSize: 11, cursor: loadingSaved || saving || saveError ? "not-allowed" : "pointer", opacity: loadingSaved || saving || saveError ? 0.55 : 1, fontFamily: MONO, textDecoration: "underline", textUnderlineOffset: 3 }}
+          >
+            Withdraw
+          </button>
+        )}
       </div>
 
-      {decidedLabel ? (
-        <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.pass, lineHeight: 1.6, animation: "vtraceIn 300ms cubic-bezier(0.2,0,0,1) both" }}>
-          ✓ {decidedLabel} — noted on this verification · {today}
+      {inhouseBlocked && (
+        <p data-testid="verify-disposition-route-block" style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.fail, lineHeight: 1.6 }}>
+          Route DFM is blocked · Make in-house is locked until revised CAD passes. Choose Redesign, Make outside, or Acquire capability for this record.
+        </p>
+      )}
+
+      {loadingSaved ? (
+        <p data-testid="verify-disposition-status" style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink45, lineHeight: 1.6 }}>
+          loading the saved outcome for cost-decision {shortId}…
+        </p>
+      ) : saveError ? (
+        <div data-testid="verify-disposition-error" style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <p style={{ margin: 0, fontFamily: MONO, fontSize: 10.5, color: C.fail, lineHeight: 1.6 }}>
+            Decision controls paused — {saveError}. Nothing was changed.
+          </p>
+          <GhostButton onClick={() => setLoadVersion((version) => version + 1)}>
+            Retry
+          </GhostButton>
+        </div>
+      ) : saving ? (
+        <p data-testid="verify-disposition-status" style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink45, lineHeight: 1.6 }}>
+          {saving === "withdraw"
+            ? "Withdrawing the outcome…"
+            : saving === "note"
+              ? "Saving the outcome note…"
+              : "Saving the outcome…"}
+        </p>
+      ) : decidedLabel ? (
+        <p data-testid="verify-disposition-status" style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.pass, lineHeight: 1.6, animation: "vtraceIn 300ms cubic-bezier(0.2,0,0,1) both" }}>
+          ✓ {decidedLabel} — recorded {recordedDate}
           {saved ? (
             <>
-              {" "}· cost-decision <span style={{ color: C.ink }}>{shortId}</span> is the persisted artifact
+              {" "}· saved and auditable on cost-decision <span style={{ color: C.ink }}>{shortId}</span>
             </>
           ) : (
             " · this session only (persistence off)"
           )}
         </p>
       ) : (
-        <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40, lineHeight: 1.6 }}>
-          next → pick one above · your choice is noted on this verification
-          {saved ? " beside the saved cost-decision record" : ""}.
+        <p data-testid="verify-disposition-status" style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40, lineHeight: 1.6 }}>
+          next → pick one above · your choice
+          {saved ? " will be saved to this cost-decision record" : " is session-only because record persistence is off"}.
         </p>
       )}
+
+      <div
+        data-testid="verify-disposition-note-editor"
+        style={{ marginTop: 14, borderTop: `1px solid ${C.hair}`, paddingTop: 12 }}
+      >
+        <label
+          htmlFor="verify-disposition-note"
+          style={{ display: "block", fontFamily: MONO, fontSize: 10, color: C.ink45, letterSpacing: "0.08em" }}
+        >
+          OUTCOME NOTE — OPTIONAL
+        </label>
+        <textarea
+          id="verify-disposition-note"
+          data-testid="verify-disposition-note"
+          value={dispositionNote}
+          maxLength={COST_DISPOSITION_NOTE_MAX_LENGTH}
+          disabled={loadingSaved || Boolean(saving) || Boolean(saveError)}
+          onChange={(event) => setDispositionNote(event.target.value)}
+          placeholder="Why this action was chosen, constraints, owner, or next review point"
+          aria-describedby="verify-disposition-note-help verify-disposition-note-count"
+          style={{ width: "100%", minHeight: 78, marginTop: 7, resize: "vertical", border: `1px solid ${C.hair}`, borderRadius: 10, padding: "10px 12px", background: "#ffffff", color: C.ink, fontFamily: "inherit", fontSize: 12.5, lineHeight: 1.5 }}
+        />
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 7 }}>
+          <p id="verify-disposition-note-help" style={{ margin: 0, flex: 1, minWidth: 220, fontFamily: MONO, fontSize: 9.5, color: C.ink40, lineHeight: 1.5 }}>
+            {saved
+              ? "saved beside the immutable cost record and included in governance exports"
+              : "session-only because record persistence is off"}
+          </p>
+          <span id="verify-disposition-note-count" style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink40 }}>
+            {dispositionNote.length}/{COST_DISPOSITION_NOTE_MAX_LENGTH}
+          </span>
+          <button
+            type="button"
+            data-testid="verify-disposition-note-save"
+            aria-busy={saving === "note"}
+            disabled={
+              !decision ||
+              loadingSaved ||
+              Boolean(saving) ||
+              Boolean(saveError) ||
+              dispositionNote.trim() === persistedDispositionNote
+            }
+            onClick={() =>
+              decision &&
+              void choose(
+                decision,
+                costDispositionLabel(decision) ?? "Outcome",
+                "note"
+              )
+            }
+            style={{ border: `1px solid ${C.hair}`, borderRadius: 999, padding: "7px 13px", background: "transparent", color: C.ink, fontFamily: "inherit", fontSize: 11.5, cursor: !decision || loadingSaved || saving || saveError || dispositionNote.trim() === persistedDispositionNote ? "not-allowed" : "pointer", opacity: !decision || loadingSaved || saving || saveError || dispositionNote.trim() === persistedDispositionNote ? 0.5 : 1 }}
+          >
+            Save note
+          </button>
+        </div>
+        {!decision && dispositionNote.length > 0 && (
+          <p style={{ margin: "7px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink45 }}>
+            choose an outcome above to save this note
+          </p>
+        )}
+      </div>
 
       <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <GhostButton onClick={() => nav("records")} disabled={!saved}>
@@ -1723,7 +1989,7 @@ function DecideHallmark({
         </GhostButton>
         <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink40, lineHeight: 1.5, flex: 1, minWidth: 180 }}>
           {saved
-            ? "the cost-decision is the immutable saved artifact; your choice above is noted in this verification session and the record opens from Records."
+            ? "the computed evidence stays immutable; the recorded outcome persists across refresh, login, exports, and the Records view."
             : "record-keeping is turned off for this run — the numbers above are live, but nothing was written to your records."}
         </span>
       </div>

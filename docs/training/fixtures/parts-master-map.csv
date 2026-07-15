@@ -1,0 +1,4 @@
+filename,part_id,name,program,material_class
+cube.step,PV-CUBE-001,Golden cube,Training Guide,aluminum
+missing.step,PV-MISSING-002,Missing CAD row,Training Guide,steel
+,PV-BAD-003,Intentional missing filename,Training Guide,steel

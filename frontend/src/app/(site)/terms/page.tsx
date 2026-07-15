@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { SiteShell } from "@/components/site/site-shell";
 
 export const metadata: Metadata = {
-  title: "Terms - CadVerify",
-  description: "CadVerify public service terms summary.",
+  title: "Terms - ProofShape",
+  description: "ProofShape public service terms summary.",
 };
 
 export default function TermsPage() {
@@ -16,7 +16,7 @@ export default function TermsPage() {
         </h1>
         <div style={{ color: "rgba(255,255,255,0.70)", fontSize: 17, lineHeight: 1.75 }}>
           <p>
-            CadVerify provides computational makeability and cost evidence. It does not replace engineering sign-off, supplier qualification, safety certification, export-control review, or a human decision.
+            ProofShape provides computational makeability and cost evidence. It does not replace engineering sign-off, supplier qualification, safety certification, export-control review, or a human decision.
           </p>
           <h2>Accounts</h2>
           <p>

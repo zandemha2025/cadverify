@@ -101,6 +101,14 @@ def test_split_is_order_independent_and_deterministic():
     assert a.tuning_part_ids == b.tuning_part_ids
 
 
+def test_split_guarantees_three_heldout_parts_at_eight_part_floor():
+    recs = _mock_records(8, processes=("sls",))
+    split = split_records(recs, test_fraction=0.30, seed=1337)
+    assert len(split.test_part_ids) == gt.MIN_RESIDUALS
+    assert len(split.tuning_part_ids) == 8 - gt.MIN_RESIDUALS
+    assert split.tuning_part_ids.isdisjoint(split.test_part_ids)
+
+
 def test_split_all_records_of_a_part_stay_together():
     recs = _mock_records(12, processes=("sls", "mjf", "cnc_3axis"))
     sp = split_records(recs)
@@ -156,6 +164,20 @@ def test_real_metric_counts_only_real_records():
     assert ev.n_real == n_real_records
     assert ev.metrics_real["n_parts"] == len(real_parts)
     assert "VALIDATED" in ev.claim
+
+
+def test_real_metric_below_residual_floor_never_claims_validated():
+    recs = _mock_records(4, processes=("sls",), stand_in=False)
+    split = split_records(recs)
+    # Leave exactly one costable held-out prediction to model a partial corpus.
+    predictions = _mock_preds(split.test)
+    for prediction in predictions[1:]:
+        prediction.ok = False
+        prediction.note = "source unavailable"
+    ev = evaluate(predictions, tune(_mock_preds(split.tuning)), "held-out")
+    assert ev.n_real == 1
+    assert "PENDING" in ev.claim
+    assert "VALIDATED" not in ev.claim
 
 
 # ── tuning actually improves held-out accuracy (and not to zero) ─────────────

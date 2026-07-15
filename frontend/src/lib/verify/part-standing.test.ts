@@ -101,6 +101,7 @@ function detailWith(estimate: Partial<CostReport["estimates"][number]>): CostDec
     label: null,
     created_at: "2026-07-02T10:00:00Z",
     engine_version: "1.2.3",
+    mesh_hash: "a".repeat(64),
     make_now_process: "cnc_turning",
     crossover_qty: 1962,
     quantities: [1, 1000],

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from src.config.public_urls import error_doc_url
+
 import hashlib
 import json
 import logging
@@ -28,7 +30,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.analysis.models import AnalysisResult, Issue, ProcessType
 from src.analysis.rules import available_rule_packs, get_rule_pack
 from src.api.metrics_registry import observe_analysis_duration, record_cost_decision
-from src.api.errors import DOC_BASE
 from src.obs import tracing
 from src.api.upload_validation import (
     demo_max_triangles,
@@ -756,6 +757,14 @@ async def validate_file(
             "responses lean; the map is never persisted/cached."
         ),
     ),
+    units: Optional[str] = Query(
+        None,
+        description=(
+            "Declared STL source units: mm|inch (unset => mm). STL stores no "
+            "unit metadata; inch scales the mesh ×25.4 into mm exactly once "
+            "before geometry and DFM analysis."
+        ),
+    ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
     _org_limit: None = Depends(enforce_org_limits),
@@ -770,6 +779,11 @@ async def validate_file(
                 status_code=400,
                 detail=f"Unknown rule pack '{rule_pack}'. Available: {available_rule_packs()}",
             )
+    if units is not None and units not in _SOURCE_UNITS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown units '{units}'. Use one of {sorted(_SOURCE_UNITS)}",
+        )
 
     data = await _read_capped(file)
     result = await analysis_service.run_analysis(
@@ -780,6 +794,7 @@ async def validate_file(
         user=user,
         session=session,
         include_thickness=include_thickness,
+        source_units=units,
     )
 
     if segmentation == "sam3d":
@@ -817,21 +832,21 @@ async def validate_file(
             await queue.enqueue("sam3d", {"mesh_hash": mesh_hash}, job.ulid)
         except Exception:
             logger.exception("Failed to enqueue SAM-3D job %s", job.ulid)
-            job.status = "failed"
-            job.result_json = {"code": "SAM3D_ENQUEUE_FAILED"}
-            from datetime import datetime, timezone
-
-            job.completed_at = datetime.now(timezone.utc)
-            await session.commit()
+            # Publication failures are outcome-ambiguous: Redis may have
+            # accepted the deterministic job ID before the connection failed.
+            # Keep the committed row queued so this request's built-in retry (or
+            # a later retry) reconciles the same row without duplicate work.
             raise HTTPException(
                 status_code=503,
                 detail={
                     "code": "SAM3D_ENQUEUE_FAILED",
+                    "job_id": job.ulid,
+                    "retryable": True,
                     "message": (
-                        "Segmentation could not be scheduled. The job was marked "
-                        "failed; retry after the queue recovers."
+                        "Segmentation publication could not be confirmed. The "
+                        "request is retained and can be retried safely."
                     ),
-                    "doc_url": f"{DOC_BASE}/SAM3D_ENQUEUE_FAILED",
+                    "doc_url": error_doc_url("SAM3D_ENQUEUE_FAILED"),
                 },
             )
 
@@ -1168,6 +1183,7 @@ async def validate_assembly(
         headers = {
             "X-Assembly-Kind": model.kind,
             "X-Assembly-Parts": str(model.part_count),
+            "X-Assembly-GLB-Bytes": str(len(glb)),
             "Cache-Control": "no-store",
         }
         return Response(content=glb, media_type="model/gltf-binary", headers=headers)
@@ -1520,6 +1536,7 @@ async def _run_cost_decision(
     # part. None => the analogy is never engaged and the band is byte-identical
     # (demo route, flag off, or an unprovisioned session).
     analogy_records = None
+    cal_org_id = None
     if user is not None and session is not None:
         from src.auth.org_context import resolve_org
         from src.services.groundtruth_service import load_served_calibration
@@ -1815,11 +1832,41 @@ async def _run_cost_decision(
                 "code": "GEOMETRY_INVALID",
                 "message": report.reason,
                 "geometry": report.geometry,
-                "doc_url": "https://docs.cadverify.com/errors#GEOMETRY_INVALID",
+                "doc_url": error_doc_url("GEOMETRY_INVALID"),
             },
         )
 
     record_cost_decision("ok")
+    # Preserve the exact successful source bytes before creating any governed
+    # derivative. Calibration, RFQ assembly, and later audits can now reconcile
+    # a decision's mesh hash to a tenant-scoped object instead of relying on a
+    # filename or an operator-side corpus. A storage failure is not silently
+    # downgraded: strict production health requires this evidence plane.
+    if isinstance(cal_org_id, str) and cal_org_id:
+        from src.services.analysis_service import compute_mesh_hash
+        from src.services.source_artifact_service import (
+            save_costable_mesh_artifact,
+            save_source_artifact,
+        )
+
+        source_hash = compute_mesh_hash(data)
+        await save_source_artifact(
+            cal_org_id,
+            source_hash,
+            suffix,
+            data,
+        )
+        costable_stl = await asyncio.to_thread(mesh.export, file_type="stl")
+        if not isinstance(costable_stl, (bytes, bytearray, memoryview)) or not costable_stl:
+            raise HTTPException(
+                status_code=500,
+                detail="Costable source derivative could not be persisted.",
+            )
+        await save_costable_mesh_artifact(
+            cal_org_id,
+            source_hash,
+            bytes(costable_stl),
+        )
     # Span 4/4 — serialize the glass-box decision to the response dict.
     with tracing.span("cost.serialize"):
         result_dict = report_to_dict(report)

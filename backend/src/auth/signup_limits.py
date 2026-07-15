@@ -11,6 +11,8 @@ AUTH-08:
 """
 from __future__ import annotations
 
+from src.config.public_urls import error_doc_url
+
 import os
 from functools import lru_cache
 
@@ -19,7 +21,7 @@ from fastapi import HTTPException, Request
 
 from src.auth.client_ip import client_ip
 from src.auth.magic_keys import magic_send_key
-from src.auth.redis_util import require_redis_url
+from src.auth.redis_util import register_redis_client, require_redis_url
 
 _TRUTHY = {"1", "true", "yes", "on"}
 
@@ -27,7 +29,8 @@ _TRUTHY = {"1", "true", "yes", "on"}
 @lru_cache(maxsize=1)
 def _r() -> aioredis.Redis:
     """Reuse one async Redis pool per process across signup attempts."""
-    return aioredis.from_url(require_redis_url(), decode_responses=True)
+    client = aioredis.from_url(require_redis_url(), decode_responses=True)
+    return register_redis_client(client, _r.cache_clear)
 
 
 def ip_signup_limit_enabled() -> bool:
@@ -47,7 +50,7 @@ def _err(code: str, msg: str, retry: int) -> HTTPException:
         detail={
             "code": code,
             "message": msg,
-            "doc_url": f"https://docs.cadverify.com/errors#{code}",
+            "doc_url": error_doc_url(code),
         },
     )
 

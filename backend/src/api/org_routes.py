@@ -18,6 +18,8 @@ no-email fallback (the one-time link is always in the response).
 """
 from __future__ import annotations
 
+from src.config.public_urls import dashboard_origin, error_doc_url
+
 import logging
 import os
 from typing import Optional
@@ -102,8 +104,7 @@ async def _emit(
 
 
 def _invite_link(raw_token: str) -> str:
-    base = os.getenv("DASHBOARD_ORIGIN", "https://cadverify.com").rstrip("/")
-    return f"{base}/orgs/accept?token={raw_token}"
+    return f"{dashboard_origin()}/orgs/accept?token={raw_token}"
 
 
 def _send_invite_email(email: str, link: str, org_name: Optional[str]) -> bool:
@@ -113,7 +114,7 @@ def _send_invite_email(email: str, link: str, org_name: Optional[str]) -> bool:
     sending and rely on the one-time link returned to the admin in the response —
     the flow never breaks on missing email infra. Mirrors magic_link's sender.
     """
-    if not os.getenv("RESEND_API_KEY"):
+    if not os.getenv("RESEND_API_KEY") or not os.getenv("RESEND_FROM"):
         return False
     try:
         import resend
@@ -122,9 +123,9 @@ def _send_invite_email(email: str, link: str, org_name: Optional[str]) -> bool:
         who = f" to {org_name}" if org_name else ""
         resend.Emails.send(
             {
-                "from": os.getenv("RESEND_FROM", "login@cadverify.com"),
+                "from": os.environ["RESEND_FROM"],
                 "to": email,
-                "subject": "You've been invited to a CadVerify organization",
+                "subject": "You've been invited to a ProofShape organization",
                 "html": (
                     f'<p>You\'ve been invited{who}.</p>'
                     f'<p><a href="{link}">Accept the invitation</a> '
@@ -182,7 +183,24 @@ async def switch_org(
     user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Set the caller's active org (validated against a live membership)."""
+    """Set the caller's active org using a dashboard session only.
+
+    Bearer API keys are permanently bound to their issuing organization. Letting
+    a key mutate ``users.current_org_id`` would move that credential, and every
+    user-scoped route behind it, across the tenant boundary.
+    """
+    if user.org_id is not None:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "api_key_org_bound",
+                "message": (
+                    "API keys cannot switch organizations. "
+                    "Use a dashboard session to switch organizations."
+                ),
+                "doc_url": error_doc_url("api_key_org_bound"),
+            },
+        )
     result = await svc.switch_org(session, user.user_id, body.org_id)
     await _emit(
         session,
@@ -293,8 +311,14 @@ async def create_invite(
     exceed the inviter's). Returns the one-time accept link; emails it when
     configured (graceful no-email fallback otherwise). Rate-limited (no spam)."""
     org_id = await _ctx_org(ctx, session)
+    inviter_role = ctx.org_role
+    if inviter_role is None:
+        raise HTTPException(
+            status_code=403,
+            detail="An active organization role is required to invite members",
+        )
     invite, raw = await svc.create_invite(
-        session, org_id, ctx.org_role, body.email, body.role, ctx.user_id
+        session, org_id, inviter_role, body.email, body.role, ctx.user_id
     )
     await _emit(
         session,
@@ -439,7 +463,7 @@ async def remove_member(
             detail={
                 "code": "insufficient_org_role",
                 "message": "Only an org admin may remove another member.",
-                "doc_url": "https://docs.cadverify.com/errors#insufficient_org_role",
+                "doc_url": error_doc_url("insufficient_org_role"),
             },
         )
     await svc.remove_member(session, org_id, user_id, ctx.user_id)

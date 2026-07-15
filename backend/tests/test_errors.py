@@ -29,7 +29,7 @@ async def test_error_has_doc_url():
         resp = await client.get("/api/v1/nonexistent")
     data = resp.json()
     if "doc_url" in data:
-        assert data["doc_url"].startswith("https://docs.cadverify.com/errors/")
+        assert data["doc_url"].startswith("https://cadverify.com/docs#")
 
 
 @pytest.mark.asyncio
