@@ -34,29 +34,35 @@ test("the first-run guide starts from user goals, not internal platform nouns", 
   assert.match(guideSource, /Check my CAD file/);
   assert.match(guideSource, /Create a simple part/);
   assert.match(guideSource, /Set up my shop/);
+  assert.match(guideSource, /FASTEST TO YOUR ANSWER/);
+  assert.match(guideSource, /Geometry and DFM\s+arrive first/);
 });
 
 test("the guided example explains the result and offers a next action", () => {
   assert.match(appSource, /Example complete: this is a manufacturing answer/);
-  assert.match(appSource, /CAD health, manufacturing method, estimated cost, and what is still uncertain/);
+  assert.match(appSource, /geometry and DFM first; route, first issue, resource cost, and shop fit follow/);
   assert.match(appSource, /Check my CAD next/);
-  assert.match(resultSource, /Here is the manufacturing answer\./);
-  assert.match(resultSource, /Did ProofShape understand the CAD\?/);
-  assert.match(resultSource, /How would it be made\?/);
-  assert.match(resultSource, /What should it cost\?/);
-  assert.match(resultSource, /What is still uncertain\?/);
-  assert.match(resultSource, /Your shop-specific fit and price/);
+  assert.match(resultSource, /The manufacturing answer, in decision order\./);
+  assert.match(resultSource, /GEOMETRY \/ DFM · PRIMARY RESULT/);
+  assert.match(resultSource, /RECOMMENDED ROUTE/);
+  assert.match(resultSource, /FIRST ISSUE/);
+  assert.match(resultSource, /MEASURED EVIDENCE/);
+  assert.match(resultSource, /RESOURCE COST ·/);
+  assert.match(resultSource, /SHOP FIT \/ UNCERTAINTY · NEUTRAL/);
+  assert.match(resultSource, /validationGeometry = result\?\.validation\?\.geometry/);
+  assert.match(resultSource, /Routing and DFM are ready\. Resource cost needs another try\./);
   assert.match(resultSource, /Show full technical result/);
   assert.match(appSource, /guided=\{guidedSampleState !== "idle"\}/);
-  assert.match(pipelineSource, /Turning this CAD file into four useful answers\./);
+  assert.match(pipelineSource, /The first answer appears as soon as DFM lands\./);
   assert.match(pipelineSource, /Your own CAD files use the same engine\./);
 });
 
 test("the empty home leads with plain-language value and executable starts", () => {
-  assert.match(homeSource, /What would you like to do\?/);
+  assert.match(homeSource, /Drop a part\. See the best route and what blocks it\./);
   assert.match(homeSource, /Choose one\. Nothing else needs to be set up first\./);
   assert.match(homeSource, /onClick=\{onSample\}/);
   assert.match(homeSource, /onClick=\{onPickFile\}/);
+  assert.match(homeSource, /onDrop=\{\(event\) =>/);
   assert.match(homeSource, /href="\/designs"/);
 });
 

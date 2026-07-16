@@ -18,6 +18,7 @@ import assert from "node:assert/strict";
 import {
   scopedDfmSummary,
   partitionDfmByRoute,
+  routeScopedDfmVerdict,
   severityCounts,
   flattenIssues,
   dfmScopedFlagsEnabled,
@@ -105,6 +106,13 @@ test("clean recommended route shows 0 critical even when other processes error",
   assert.equal(summary.counts.critical, 0, "MJF is clean => 0 critical in headline");
   assert.equal(summary.counts.advisory, 1, "the universal watertight warning counts");
   assert.equal(summary.recommendedProcess, "mjf");
+});
+
+test("route verdict ignores failures that belong only to other candidate processes", () => {
+  const result = bracketResult();
+  result.overall_verdict = "fail";
+  assert.equal(routeScopedDfmVerdict(result, "mjf"), "issues");
+  assert.notEqual(routeScopedDfmVerdict(result, "mjf"), result.overall_verdict);
 });
 
 /* ---- (c) full matrix count still available ---------------------- */

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Boxes, Sparkles, Upload, Wrench } from "lucide-react";
+import { ArrowRight, Boxes, ScanLine, Upload, Wrench } from "lucide-react";
 import type { ReactNode } from "react";
 import {
   Dialog,
@@ -75,15 +75,14 @@ export function WelcomeGuide({
               lineHeight: 1.65,
             }}
           >
-            ProofShape turns CAD into a manufacturing answer: whether a part can be
-            made, how to make it, what it should cost, and what needs attention.
-            Choose one starting point. You can use every tool later.
+            Drop a part and see the best route and what blocks it. Geometry and DFM
+            arrive first; cost and shop-specific fit follow when they are ready.
           </DialogDescription>
 
           <button
             type="button"
             data-testid="welcome-guided-example"
-            onClick={onSample}
+            onClick={onUpload}
             style={{
               width: "100%",
               marginTop: 24,
@@ -112,7 +111,7 @@ export function WelcomeGuide({
                 background: "rgba(255,255,255,0.12)",
               }}
             >
-              <Sparkles size={19} />
+              <Upload size={19} />
             </span>
             <span style={{ flex: 1, minWidth: 0 }}>
               <span
@@ -124,10 +123,10 @@ export function WelcomeGuide({
                   color: "rgba(255,255,255,0.7)",
                 }}
               >
-                RECOMMENDED · NO FILE NEEDED
+                FASTEST TO YOUR ANSWER · STEP, STL, OR IGES
               </span>
               <span style={{ display: "block", marginTop: 5, fontSize: 16, fontWeight: 650 }}>
-                Show me a real example
+                Check my CAD file
               </span>
               <span
                 style={{
@@ -138,7 +137,7 @@ export function WelcomeGuide({
                   lineHeight: 1.5,
                 }}
               >
-                Analyze a sample part, then explain the result and what to do next.
+                Preview it immediately, then see routing and the first DFM issue as soon as they land.
               </span>
             </span>
             <ArrowRight aria-hidden size={19} style={{ flexShrink: 0 }} />
@@ -146,10 +145,10 @@ export function WelcomeGuide({
 
           <div className="grid gap-3 sm:grid-cols-2" style={{ marginTop: 12 }}>
             <Choice
-              icon={<Upload size={18} />}
-              title="Check my CAD file"
-              body="Upload STEP, STL, or IGES and get a DFM, process, and cost answer."
-              onClick={onUpload}
+              icon={<ScanLine size={18} />}
+              title="Show me a real example"
+              body="No file needed. Run a sample through the same real engine and see how to read the answer."
+              onClick={onSample}
             />
             <Choice
               icon={<Boxes size={18} />}

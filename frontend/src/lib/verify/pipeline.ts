@@ -16,7 +16,7 @@
  * `node --test`. Unit-tested in pipeline.test.ts.
  */
 import type { VerifyResult } from "./run";
-import type { CostReport } from "@/lib/api";
+import type { CostGeometry, CostReport, GeometryInfo } from "@/lib/api";
 import type { MakeabilityLattice, Tone, VerificationBlock } from "./verification";
 
 export type StageKey = "received" | "measured" | "routed" | "gates" | "record";
@@ -96,6 +96,69 @@ function makeNowUnit(cost: CostReport | null): { process: string; unit: number }
 
 function first<T>(arr: T[] | undefined | null): T | null {
   return Array.isArray(arr) && arr.length > 0 ? arr[0] : null;
+}
+
+function finiteTriple(value: unknown): [number, number, number] | null {
+  if (
+    !Array.isArray(value) ||
+    value.length !== 3 ||
+    !value.every((n) => typeof n === "number" && Number.isFinite(n))
+  ) {
+    return null;
+  }
+  return [value[0], value[1], value[2]];
+}
+
+function safeCostGeometry(g: CostGeometry | null | undefined): CostGeometry | null {
+  if (
+    !g ||
+    !Number.isFinite(g.volume_cm3) ||
+    !Number.isFinite(g.surface_area_cm2) ||
+    !Number.isFinite(g.face_count) ||
+    typeof g.watertight !== "boolean"
+  ) {
+    return null;
+  }
+  const bbox = finiteTriple(g.bbox_mm);
+  if (!bbox) return null;
+  return { ...g, bbox_mm: bbox };
+}
+
+/** Convert the DFM endpoint's real `GeometryInfo` into the should-cost geometry
+ * shape used across Verify. Unit conversions are exact: mm³ / 1,000 → cm³ and
+ * mm² / 100 → cm². A malformed response yields null rather than made-up zeros. */
+export function costGeometryFromValidation(
+  g: GeometryInfo | null | undefined
+): CostGeometry | null {
+  if (
+    !g ||
+    !Number.isFinite(g.volume_mm3) ||
+    !Number.isFinite(g.surface_area_mm2) ||
+    !Number.isFinite(g.faces) ||
+    typeof g.is_watertight !== "boolean"
+  ) {
+    return null;
+  }
+  const bbox = finiteTriple(g.bounding_box_mm);
+  if (!bbox) return null;
+  return {
+    volume_cm3: g.volume_mm3 / 1_000,
+    surface_area_cm2: g.surface_area_mm2 / 100,
+    bbox_mm: bbox,
+    watertight: g.is_watertight,
+    face_count: g.faces,
+  };
+}
+
+/** One canonical geometry selector for Stage, summary, and pipeline consumers.
+ * Prefer should-cost geometry, then its structured invalid-geometry payload,
+ * then the independently returned DFM measurement. */
+export function geometryFromResult(result: VerifyResult): CostGeometry | null {
+  return (
+    safeCostGeometry(result.cost?.geometry) ??
+    safeCostGeometry(result.costGeometryInvalid?.geometry) ??
+    costGeometryFromValidation(result.validation?.geometry)
+  );
 }
 
 function gatesFailDetail(verdict: MakeabilityLattice, v: VerificationBlock): string {
@@ -195,12 +258,16 @@ export function pipelineModelFrom(
   let stopIndex = -1;
 
   // ── measured (geometry, ● MEASURED) ──
-  const geom = result.cost?.geometry ?? result.costGeometryInvalid?.geometry ?? null;
+  const costGeom =
+    safeCostGeometry(result.cost?.geometry) ??
+    safeCostGeometry(result.costGeometryInvalid?.geometry);
+  const geom = geometryFromResult(result);
   if (geom) {
     const [x, y, z] = geom.bbox_mm;
+    const source = costGeom ? "" : " · from DFM analysis";
     const measuredDetail = `bbox ${fx(x)} × ${fx(y)} × ${fx(z)} mm · ${fx(
       geom.volume_cm3
-    )} cm³ · watertight ${geom.watertight}`;
+    )} cm³ · watertight ${geom.watertight}${source}`;
     if (result.costGeometryInvalid) {
       stages.push(
         stage("measured", "blocked", `${measuredDetail} — ${result.costGeometryInvalid.message}`, {
@@ -218,17 +285,28 @@ export function pipelineModelFrom(
         })
       );
     }
+  } else if (result.costGeometryInvalid) {
+    // A structured GEOMETRY_INVALID response is the only missing-geometry case
+    // that is a real product gate. It remains blocking even when the backend did
+    // not include a geometry summary in the refusal.
+    stages.push(
+      stage("measured", "blocked", result.costGeometryInvalid.message, {
+        tone: "fail",
+        blocking: true,
+      })
+    );
+    stopIndex = stages.length - 1;
   } else {
     stages.push(
       stage(
         "measured",
         "withheld",
         result.costError ? `geometry not returned — ${result.costError}` : "geometry not returned",
-        { tone: "neutral" }
+        { tone: result.costError ? "cond" : "neutral" }
       )
     );
-    // Nothing downstream is computable without geometry — the walk stops honestly.
-    stopIndex = stages.length - 1;
+    // An absent response is an interruption, not evidence that the part failed a
+    // geometry gate. Keep the partial walk alive; only GEOMETRY_INVALID blocks.
   }
 
   if (stopIndex >= 0) {
@@ -264,6 +342,12 @@ export function pipelineModelFrom(
     } else {
       stages.push(stage("gates", "withheld", "makeability not evaluated — declare your floor"));
     }
+  } else if (result.costError) {
+    stages.push(
+      stage("gates", "withheld", `makeability unavailable — ${result.costError}`, {
+        tone: "cond",
+      })
+    );
   } else {
     stages.push(
       stage("gates", "withheld", "makeability not evaluated — no inventory or environment declared")
@@ -284,7 +368,8 @@ export function pipelineModelFrom(
       stage(
         "record",
         "withheld",
-        result.costError ? `cost not returned — ${result.costError}` : "cost not returned"
+        result.costError ? `cost not returned — ${result.costError}` : "cost not returned",
+        { tone: result.costError ? "cond" : "neutral" }
       )
     );
   }

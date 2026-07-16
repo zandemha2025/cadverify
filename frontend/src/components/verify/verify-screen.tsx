@@ -11,6 +11,7 @@
  */
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { analysisFailureCopy } from "@/lib/verify/failure-copy";
+import { partitionDfmByRoute, routeScopedDfmVerdict } from "@/lib/dfm-scope";
 import { C, MONO, USD, NUM, procLabel, statusColor, normProv } from "@/lib/verify/tokens";
 import type { VerifyResult } from "@/lib/verify/run";
 import { fetchCostDecision, setCostDecisionDisposition } from "@/lib/api";
@@ -78,6 +79,7 @@ import { confirmIdentity } from "@/lib/verify/identity-api";
 import { useToast } from "./toast";
 import { Card, Kicker, ProvChip, ProvDot, ConfidenceBand, GhostButton, EmptyState, Spinner } from "./primitives";
 import { PipelineOverlay } from "./pipeline-overlay";
+import { geometryFromResult } from "@/lib/verify/pipeline";
 
 /** Light status colour for a verdict/fit tone. */
 function toneColor(t: Tone): string {
@@ -94,9 +96,11 @@ interface Props {
   env: { temp: boolean; sour: boolean; pressure: boolean };
   setEnv: (e: { temp: boolean; sour: boolean; pressure: boolean }) => void;
   materialClass: string;
+  materialProvenance: "DEFAULT" | "USER";
   setMaterialClass: (materialClass: string) => void;
   onPickFile: () => void;
   onReverify: () => void;
+  onRetryCost: () => void;
   nav: Nav;
 }
 
@@ -129,9 +133,11 @@ export function VerifyScreen(props: Props) {
     env,
     setEnv,
     materialClass,
+    materialProvenance,
     setMaterialClass,
     onPickFile,
     onReverify,
+    onRetryCost,
     nav,
   } = props;
   const [scrubFrac, setScrubFrac] = useState(0.5);
@@ -157,12 +163,13 @@ export function VerifyScreen(props: Props) {
         animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both",
         flex: 1,
         minWidth: 0,
+        minHeight: 0,
         display: "flex",
         flexDirection: "column",
         background: C.bg,
       }}
     >
-      <div className="cv-verify-walk-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "26px 30px 20px" }}>
+      <div className="cv-verify-walk-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "26px 30px 20px", display: "flex", flexDirection: "column" }}>
         {/* the question */}
         <p
           style={{
@@ -180,9 +187,17 @@ export function VerifyScreen(props: Props) {
         </p>
 
         {/* environment door */}
-        <section style={{ marginTop: 16, border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "18px 20px" }}>
+        <section style={{ order: 2, marginTop: 16, border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "18px 20px" }}>
+          <div style={{ marginBottom: 15 }}>
+            <Kicker>MAKE THIS VERDICT YOURS · OPTIONAL</Kicker>
+            <p style={{ margin: "6px 0 0", color: C.ink55, fontSize: 12.5, lineHeight: 1.55 }}>
+              {result
+                ? "The answer above uses a default material and ambient service until you declare otherwise."
+                : "You can start with the defaults. Declare these only when they matter to your part."}
+            </p>
+          </div>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <Kicker>DECLARE SERVICE CONDITIONS</Kicker>
+            <Kicker>SERVICE CONDITIONS</Kicker>
             <span style={{ fontFamily: MONO, fontSize: 10.5, color: door.chipColor }}>{door.chip}</span>
           </div>
           <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -214,7 +229,12 @@ export function VerifyScreen(props: Props) {
             {door.line}
           </p>
           <div style={{ marginTop: 16, borderTop: `1px solid ${C.hair2}`, paddingTop: 14 }}>
-            <Kicker>DECLARED MATERIAL CLASS · <span style={{ color: C.user }}>● USER</span></Kicker>
+            <Kicker>
+              MATERIAL CLASS ·{" "}
+              <span style={{ color: materialProvenance === "USER" ? C.user : C.def }}>
+                {materialProvenance === "USER" ? "● USER" : "○ DEFAULT"}
+              </span>
+            </Kicker>
             <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
               {MATERIAL_CLASSES.map((m) => {
                 const on = materialClass === m.key;
@@ -244,23 +264,28 @@ export function VerifyScreen(props: Props) {
         </section>
 
         {/* the walk */}
-        {running ? (
-          <ComputingBanner />
-        ) : !result ? (
-          <DropPrompt onPickFile={onPickFile} />
-        ) : (
-          <Walk
-            result={result}
-            scrubFrac={scrubFrac}
-            setScrubFrac={setScrubFrac}
-            disclose={disclose}
-            setDisclose={setDisclose}
-            decision={decision}
-            setDecision={setDecision}
-            onReverify={onReverify}
-            nav={nav}
-          />
-        )}
+        <div style={{ order: 1 }}>
+          {running && result?.validation ? (
+            <FirstInsight result={result} />
+          ) : running ? (
+            <ComputingBanner />
+          ) : !result ? (
+            <DropPrompt onPickFile={onPickFile} />
+          ) : (
+            <Walk
+              result={result}
+              scrubFrac={scrubFrac}
+              setScrubFrac={setScrubFrac}
+              disclose={disclose}
+              setDisclose={setDisclose}
+              decision={decision}
+              setDecision={setDecision}
+              onReverify={onReverify}
+              onRetryCost={onRetryCost}
+              nav={nav}
+            />
+          )}
+        </div>
       </div>
 
       {/* ask the engine — a docked row, separate from the scrolling walk. It is a
@@ -369,6 +394,61 @@ function ComputingBanner() {
   );
 }
 
+/** The first value-bearing state. Validation has landed; costing is deliberately
+ * sequential and remains in flight, so the useful DFM answer is no longer hidden
+ * behind unrelated setup or a modal progress performance. */
+function FirstInsight({ result }: { result: VerifyResult }) {
+  const validation = result.validation;
+  if (!validation) return <ComputingBanner />;
+  const geometry = geometryFromResult(result);
+  const route = validation.best_process;
+  const partition = partitionDfmByRoute(validation, route);
+  const fixes = partition.route;
+  const firstFix = fixes[0]?.issue ?? null;
+  const verdict = routeScopedDfmVerdict(validation, route);
+  const tone = statusColor(verdict);
+  return (
+    <section
+      role="status"
+      data-testid="verify-first-insight"
+      style={{
+        marginTop: 18,
+        border: `1px solid ${C.hair}`,
+        borderTop: `3px solid ${tone}`,
+        borderRadius: 16,
+        background: C.panel,
+        padding: "21px 22px",
+        animation: "vstepIn 180ms cubic-bezier(0.2,0,0,1) both",
+      }}
+    >
+      <Kicker color={tone}>ROUTING + DFM READY · COST CALCULATING</Kicker>
+      <p style={{ margin: "10px 0 0", color: C.ink, fontSize: 23, fontWeight: 450, lineHeight: 1.25, letterSpacing: "-0.018em" }}>
+        {validation.best_process
+          ? `Best preliminary route: ${procLabel(validation.best_process)}`
+          : "Geometry measured. Route still unresolved."}
+      </p>
+      <p style={{ margin: "8px 0 0", color: C.ink60, fontSize: 13, lineHeight: 1.6 }}>
+        {firstFix
+          ? `${fixes.length} route ${fixes.length === 1 ? "issue" : "issues"}. First: ${firstFix.message}`
+          : verdict === "pass"
+            ? "No blocking DFM issue was returned. The resource-cost record is still being assembled."
+            : "The DFM result is ready. The resource-cost record is still being assembled."}
+      </p>
+      {geometry ? (
+        <div style={{ marginTop: 15, display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <StatusChip label={`${geometry.bbox_mm.map((n) => n.toFixed(1)).join(" × ")} mm`} />
+          <StatusChip label={`${geometry.volume_cm3.toFixed(2)} cm³`} />
+          <StatusChip label={`watertight ${String(geometry.watertight)}`} />
+          <span style={{ alignSelf: "center", fontFamily: MONO, fontSize: 9.5, color: C.measured }}>● MEASURED</span>
+        </div>
+      ) : null}
+      <p style={{ margin: "14px 0 0", borderTop: `1px solid ${C.hair2}`, paddingTop: 12, fontFamily: MONO, fontSize: 10.5, color: C.ink45 }}>
+        DFM {verdict.toUpperCase()} · analysis {NUM(validation.analysis_time_ms)} ms · cost continues without rerunning DFM
+      </p>
+    </section>
+  );
+}
+
 function DropPrompt({ onPickFile }: { onPickFile: () => void }) {
   return (
     <div style={{ marginTop: 18 }}>
@@ -428,6 +508,7 @@ function Walk({
   decision,
   setDecision,
   onReverify,
+  onRetryCost,
   nav,
 }: {
   result: VerifyResult;
@@ -438,6 +519,7 @@ function Walk({
   decision: CostDisposition | null;
   setDecision: (d: CostDisposition | null) => void;
   onReverify: () => void;
+  onRetryCost: () => void;
   nav: Nav;
 }) {
   const { cost, costGeometryInvalid, machines, verification } = result;
@@ -459,7 +541,13 @@ function Walk({
   return (
     <section style={{ marginTop: 18 }}>
       {/* verdict banner */}
-      <VerdictBanner result={result} makeNow={makeNow} nav={nav} onReverify={onReverify} />
+      <VerdictBanner
+        result={result}
+        makeNow={makeNow}
+        nav={nav}
+        onReverify={onReverify}
+        onRetryCost={onRetryCost}
+      />
 
       {/* retrieval-grounded IDENTITY — the org's closest PRIOR part, a SUGGESTION
           to confirm (rendered only when the engine grounded one; empty/anonymous
@@ -1110,11 +1198,13 @@ function VerdictBanner({
   makeNow,
   nav,
   onReverify,
+  onRetryCost,
 }: {
   result: VerifyResult;
   makeNow: ReturnType<typeof makeNowEstimate>;
   nav: Nav;
   onReverify: () => void;
+  onRetryCost: () => void;
 }) {
   const { validation, validationError, cost, costError, costGeometryInvalid, verification } = result;
 
@@ -1174,7 +1264,10 @@ function VerdictBanner({
   //   1. NOTHING computed (parse/tessellation failed) → "COULD NOT ANALYZE".
   //   2. routing + DFM computed but NO should-cost      → "SHOULD-COST UNAVAILABLE".
   //   3. a real should-cost record                      → "SHOULD-COST COMPUTED".
-  const routeDfm = routeDfmOutcome(validation?.overall_verdict, makeNow);
+  const routeDfm = routeDfmOutcome(
+    routeScopedDfmVerdict(validation, proc),
+    makeNow,
+  );
   const dfm = routeDfm.verdict;
 
   // 1 · The engine returned nothing — no routing, no DFM, no cost. This is the part
@@ -1183,8 +1276,8 @@ function VerdictBanner({
     const reason = costError || validationError || null;
     const failure = analysisFailureCopy(reason);
     return (
-      <BannerFrame borderColor={C.fail} bg="rgba(194,69,58,0.03)">
-        <Kicker color={C.fail}>VERDICT · COULD NOT ANALYZE</Kicker>
+      <BannerFrame borderColor={C.cond} bg="rgba(150,102,20,0.045)">
+        <Kicker color={C.cond}>ANALYSIS INTERRUPTED · NO VERDICT PRODUCED</Kicker>
         <p style={{ margin: "10px 0 0", fontSize: 24, fontWeight: 400, letterSpacing: "-0.015em", lineHeight: 1.25 }}>
           {failure.title}
         </p>
@@ -1194,7 +1287,7 @@ function VerdictBanner({
           ) : (
             <>{failure.explanation} </>
           )}
-          No routing, DFM, or should-cost was computed, and nothing here is estimated.{" "}
+          No routing, DFM, or should-cost verdict was produced, and nothing here is estimated.{" "}
           {failure.action}
         </p>
         <div style={{ marginTop: 14 }}>
@@ -1207,19 +1300,27 @@ function VerdictBanner({
   // 2 · Routing + DFM ran, but the should-cost record is unavailable. The kicker does
   //     NOT claim SHOULD-COST COMPUTED, and the body names only what actually ran.
   if (!cost) {
-    const color = statusColor(dfm);
+    const color = dfm === "fail" ? C.fail : C.cond;
+    const makeabilityReason = result.machinesError
+      ? `The machine floor could not be loaded (${result.machinesError}).`
+      : result.machines.length === 0 && !result.envDeclared
+        ? "Machine fit was not evaluated because no machines or service conditions are declared."
+        : "Machine fit was not returned with this partial result.";
     return (
       <BannerFrame borderColor={color} bg="rgba(23,24,26,0.015)">
-        <Kicker color={color}>VERDICT · DFM {dfm.toUpperCase()} · SHOULD-COST UNAVAILABLE</Kicker>
+        <Kicker color={color}>DFM {dfm.toUpperCase()} · RESOURCE COST INTERRUPTED</Kicker>
         <p style={{ margin: "10px 0 0", fontSize: 24, fontWeight: 400, letterSpacing: "-0.015em", lineHeight: 1.25 }}>
-          Routing &amp; DFM computed — should-cost unavailable
+          Routing and DFM are ready. Cost needs another try.
         </p>
         <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 560 }}>
-          The engine returned routing and DFM, but no glass-box should-cost was produced
-          {costError ? <> (<span style={{ fontFamily: MONO, fontSize: 12, color: C.ink55 }}>{costError}</span>)</> : null}. Whether
-          it&apos;s makeable <span style={{ fontWeight: 500 }}>on your machines</span> is the makeability verification — not
-          evaluated here because no machines and no service conditions are declared.
+          Your successful geometry and DFM analysis is preserved. The resource-cost service did not return a record
+          {costError ? <> (<span style={{ fontFamily: MONO, fontSize: 12, color: C.ink55 }}>{costError}</span>)</> : null}.{" "}
+          {makeabilityReason} Existing saved data is unchanged.
         </p>
+        <div style={{ marginTop: 14, display: "flex", gap: 9, flexWrap: "wrap" }}>
+          <GhostButton primary onClick={onRetryCost}>Retry cost only →</GhostButton>
+          <GhostButton onClick={onReverify}>Rerun full verification</GhostButton>
+        </div>
         {savedCta}
       </BannerFrame>
     );
@@ -1362,7 +1463,7 @@ function EnvStrikesBlock({ verification, envDeclared }: { verification: Verifica
       <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40, lineHeight: 1.6 }}>
         {worldDeclared
           ? "the declared service conditions were applied — no candidate material on the shortlisted routes is excluded by them."
-          : "no service conditions declared — materials are verified at ambient. Declare service conditions above to gate them by NACE MR0175 / HDT."}
+          : "no service conditions declared — materials are verified at ambient. Use ‘Make this verdict yours’ below to gate them by NACE MR0175 / HDT."}
       </p>
     );
   }

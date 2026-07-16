@@ -15,7 +15,11 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pipelineModelFrom } from "./pipeline.ts";
+import {
+  costGeometryFromValidation,
+  geometryFromResult,
+  pipelineModelFrom,
+} from "./pipeline.ts";
 import type { VerifyResult, CostGeometryInvalid } from "./run";
 import type { CostEstimate, CostReport, CostGeometry, ValidationResult } from "@/lib/api";
 import type { VerificationBlock } from "./verification";
@@ -146,6 +150,53 @@ test("broken geometry: measured is the failed gate; everything past it is not co
     assert.equal(s.state, "pending");
     assert.match(s.detail, /not computed past the failed gate/);
   }
+});
+
+test("DFM success + cost outage keeps measured routing and treats the outage as non-blocking", () => {
+  const validation = {
+    best_process: "cnc_3axis",
+    geometry: {
+      bounding_box_mm: [42, 30, 8],
+      volume_mm3: 12_500,
+      surface_area_mm2: 6_400,
+      faces: 820,
+      is_watertight: true,
+    },
+  } as unknown as ValidationResult;
+  const r = result({
+    validation,
+    cost: null,
+    costError: "Cost analysis exceeded 60s timeout.",
+  });
+
+  const converted = costGeometryFromValidation(validation.geometry);
+  assert.deepEqual(converted, {
+    volume_cm3: 12.5,
+    surface_area_cm2: 64,
+    bbox_mm: [42, 30, 8],
+    watertight: true,
+    face_count: 820,
+  });
+  assert.deepEqual(geometryFromResult(r), converted);
+
+  const m = pipelineModelFrom(r, false, null);
+
+  assert.equal(m.stopIndex, -1); // service interruption is not a failed CAD gate
+  assert.equal(m.stages[1].state, "done");
+  assert.equal(m.stages[1].measured, true);
+  assert.match(m.stages[1].detail, /42\.00 × 30\.00 × 8\.00 mm/);
+  assert.match(m.stages[1].detail, /12\.50 cm³/); // mm³ -> cm³
+  assert.match(m.stages[1].detail, /from DFM analysis/);
+  assert.equal(m.stages[2].state, "done");
+  assert.match(m.stages[2].detail, /cnc_3axis/);
+
+  for (const stage of [m.stages[3], m.stages[4]]) {
+    assert.equal(stage.state, "withheld");
+    assert.equal(stage.tone, "cond");
+    assert.equal(stage.blocking, false);
+  }
+  assert.match(m.stages[3].detail, /makeability unavailable/);
+  assert.match(m.stages[4].detail, /cost not returned/);
 });
 
 test("environment-excluded verdict: gates is the failed gate; the record is not computed", () => {
