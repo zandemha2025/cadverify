@@ -69,6 +69,28 @@ export function severityCounts(issues: readonly IndexedIssue[]): SeverityCounts 
   return c;
 }
 
+/** Highest-action issue for summaries. Stable within a severity bucket so the
+ * engine's own ordering is preserved after critical > advisory > info. */
+export function highestPriorityIssue(
+  issues: readonly IndexedIssue[]
+): IndexedIssue | null {
+  const rank: Record<DfmSeverityBucket, number> = {
+    critical: 0,
+    advisory: 1,
+    info: 2,
+  };
+  let best: IndexedIssue | null = null;
+  let bestRank = Number.POSITIVE_INFINITY;
+  for (const candidate of issues) {
+    const candidateRank = rank[issueSeverityBucket(candidate.issue.severity)];
+    if (candidateRank < bestRank) {
+      best = candidate;
+      bestRank = candidateRank;
+    }
+  }
+  return best;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Flatten helpers                                                    */
 /* ------------------------------------------------------------------ */

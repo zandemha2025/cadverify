@@ -11,7 +11,11 @@
  */
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { analysisFailureCopy } from "@/lib/verify/failure-copy";
-import { partitionDfmByRoute, routeScopedDfmVerdict } from "@/lib/dfm-scope";
+import {
+  highestPriorityIssue,
+  partitionDfmByRoute,
+  routeScopedDfmVerdict,
+} from "@/lib/dfm-scope";
 import { C, MONO, USD, NUM, procLabel, statusColor, normProv } from "@/lib/verify/tokens";
 import type { VerifyResult } from "@/lib/verify/run";
 import { fetchCostDecision, setCostDecisionDisposition } from "@/lib/api";
@@ -458,7 +462,7 @@ function FirstInsight({ result }: { result: VerifyResult }) {
   const route = validation.best_process;
   const partition = partitionDfmByRoute(validation, route);
   const fixes = partition.route;
-  const firstFix = fixes[0]?.issue ?? null;
+  const firstFix = highestPriorityIssue(fixes)?.issue ?? null;
   const verdict = routeScopedDfmVerdict(validation, route);
   const tone = statusColor(verdict);
   return (
@@ -578,7 +582,7 @@ function Walk({
 }) {
   const { cost, costGeometryInvalid, machines, verification } = result;
 
-  const bbox: [number, number, number] | null = cost?.geometry?.bbox_mm ?? null;
+  const bbox = geometryFromResult(result)?.bbox_mm ?? null;
   const makeNow = cost ? makeNowEstimate(cost) : null;
   const crossover = cost?.decision?.crossover_qty ?? null;
 

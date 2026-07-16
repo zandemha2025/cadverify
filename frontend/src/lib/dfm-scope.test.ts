@@ -21,6 +21,7 @@ import {
   routeScopedDfmVerdict,
   severityCounts,
   flattenIssues,
+  highestPriorityIssue,
   dfmScopedFlagsEnabled,
 } from "./dfm-scope.ts";
 import type { Issue, ProcessScore, ValidationResult } from "@/lib/api";
@@ -171,6 +172,14 @@ test("severityCounts buckets error/warning/info and totals consistently", () => 
   const result = bracketResult();
   const counts = severityCounts(flattenIssues(result));
   assert.equal(counts.total, counts.critical + counts.advisory + counts.info);
+});
+
+// Regression: QA ISSUE-006 — “first issue” means the most actionable route issue,
+// not whichever universal/process analyzer happened to serialize first.
+test("highestPriorityIssue prefers critical while preserving stable ties", () => {
+  const ordered = flattenIssues(bracketResult());
+  assert.equal(highestPriorityIssue(ordered)?.issue.severity, "error");
+  assert.equal(highestPriorityIssue([]), null);
 });
 
 /* ---- pre-cost fallback: no recommended process => universal only  */

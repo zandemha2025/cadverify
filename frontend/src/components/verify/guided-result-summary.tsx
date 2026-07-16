@@ -9,7 +9,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { makeNowEstimate, routeDfmOutcome } from "@/lib/verify/derive";
-import { partitionDfmByRoute, routeScopedDfmVerdict } from "@/lib/dfm-scope";
+import {
+  highestPriorityIssue,
+  partitionDfmByRoute,
+  routeScopedDfmVerdict,
+} from "@/lib/dfm-scope";
 import type { VerifyResult } from "@/lib/verify/run";
 import { C, MONO, NUM, procLabel, USD } from "@/lib/verify/tokens";
 
@@ -37,7 +41,7 @@ export function GuidedResultSummary({
   );
   const outcome = routeDfmOutcome(scopedValidationVerdict, estimate);
   const dfmVerdict = outcome.verdict;
-  const firstIssue = dfmPartition?.route[0]?.issue ?? null;
+  const firstIssue = highestPriorityIssue(dfmPartition?.route ?? [])?.issue ?? null;
   const priorityFixes = dfmPartition?.counts.total ?? null;
 
   // Cost geometry is preferred when present, but validation geometry is still a
@@ -298,13 +302,6 @@ function shopFitSummary(result: VerifyResult | null): { title: string; detail: s
       detail: "A machine-fit verdict was not returned.",
     };
   }
-  if (result.machinesError) {
-    return {
-      title: "Machine inventory could not be loaded.",
-      detail: `${result.machinesError} No shop-fit verdict is inferred from missing inventory.`,
-    };
-  }
-
   const verification = result.verification;
   if (verification?.inventory_declared === true) {
     return verification.best_machine
@@ -323,6 +320,12 @@ function shopFitSummary(result: VerifyResult | null): { title: string; detail: s
       detail: verification?.environment_declared
         ? "Service conditions were evaluated separately; machine fit needs a declared floor."
         : "Declare your machine floor to turn this neutral state into an in-house fit verdict.",
+    };
+  }
+  if (result.machinesError) {
+    return {
+      title: "Machine inventory could not be loaded.",
+      detail: `${result.machinesError} No shop-fit verdict is inferred from missing inventory.`,
     };
   }
   return {
