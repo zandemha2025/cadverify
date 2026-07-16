@@ -1,37 +1,53 @@
 type Point = readonly [number, number, number];
 type Triangle = readonly [Point, Point, Point];
 
-const p = (x: number, y: number, z: number): Point => [x, y, z];
-const v000 = p(0, 0, 0);
-const v100 = p(20, 0, 0);
-const v010 = p(0, 20, 0);
-const v110 = p(20, 20, 0);
-const v001 = p(0, 0, 20);
-const v101 = p(20, 0, 20);
-const v011 = p(0, 20, 20);
-const v111 = p(20, 20, 20);
+const point = (x: number, y: number, z: number): Point => [x, y, z];
+
+// A recognizable L-shaped routing bracket: 50 × 40 × 6 mm, watertight, and
+// intentionally simple enough to remain a deterministic real-engine fixture.
+const outline: readonly (readonly [number, number])[] = [
+  [0, 0],
+  [50, 0],
+  [50, 12],
+  [14, 12],
+  [14, 40],
+  [0, 40],
+];
+const bottom = outline.map(([x, y]) => point(x, y, 0));
+const top = outline.map(([x, y]) => point(x, y, 6));
 
 const triangles: Triangle[] = [
-  [v000, v100, v101], [v000, v101, v001],
-  [v010, v011, v111], [v010, v111, v110],
-  [v000, v001, v011], [v000, v011, v010],
-  [v100, v110, v111], [v100, v111, v101],
-  [v000, v010, v110], [v000, v110, v100],
-  [v001, v101, v111], [v001, v111, v011],
+  // Bottom (-Z) and top (+Z), triangulated without filling the L's cutout.
+  [bottom[0], bottom[2], bottom[1]],
+  [bottom[0], bottom[3], bottom[2]],
+  [bottom[0], bottom[5], bottom[3]],
+  [bottom[3], bottom[5], bottom[4]],
+  [top[0], top[1], top[2]],
+  [top[0], top[2], top[3]],
+  [top[0], top[3], top[5]],
+  [top[3], top[4], top[5]],
 ];
 
-function vertex(point: Point): string {
-  return `      vertex ${point.join(" ")}`;
+for (let index = 0; index < outline.length; index += 1) {
+  const next = (index + 1) % outline.length;
+  triangles.push(
+    [bottom[index], bottom[next], top[next]],
+    [bottom[index], top[next], top[index]],
+  );
 }
 
-/** A deterministic, watertight 20 mm cube that still runs through the real engine. */
-export function sampleCubeFile(): File {
+function vertex(value: Point): string {
+  return `      vertex ${value.join(" ")}`;
+}
+
+/** A deterministic, watertight sample that still runs through the real engine. */
+export function sampleBracketFile(): File {
   const facets = triangles
     .map(
       ([a, b, c]) =>
-        `  facet normal 0 0 0\n    outer loop\n${vertex(a)}\n${vertex(b)}\n${vertex(c)}\n    endloop\n  endfacet`
+        `  facet normal 0 0 0\n    outer loop\n${vertex(a)}\n${vertex(b)}\n${vertex(c)}\n    endloop\n  endfacet`,
     )
     .join("\n");
-  const stl = `solid cadverify_sample_cube\n${facets}\nendsolid cadverify_sample_cube\n`;
-  return new File([stl], "sample-20mm-cube.stl", { type: "model/stl" });
+  const stl = `solid proofshape_routing_bracket\n${facets}\nendsolid proofshape_routing_bracket\n`;
+  return new File([stl], "sample-routing-bracket.stl", { type: "model/stl" });
 }

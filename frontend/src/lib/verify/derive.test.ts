@@ -120,7 +120,8 @@ test("route DFM reconciliation is fail-closed across pass, advisory, and unknown
   assert.equal(routeDfmOutcome("unknown", pass).verdict, "unknown");
   assert.equal(routeDfmOutcome("fail", pass).verdict, "fail");
   assert.equal(routeDfmOutcome("pass", inconsistent).blocked, true);
-  assert.equal(routeDfmOutcome("pass", null).verdict, "unknown");
+  // Regression: QA ISSUE-002 — a cost outage must not downgrade a completed DFM pass.
+  assert.equal(routeDfmOutcome("pass", null).verdict, "pass");
 });
 
 test("toolingEstimate returns null when the engine declared no tooling route", () => {

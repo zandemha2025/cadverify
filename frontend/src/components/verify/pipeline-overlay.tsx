@@ -1,31 +1,31 @@
 "use client";
 
 /**
- * THE PIPELINE OVERLAY — the request lifecycle, in motion.
+ * THE PIPELINE RAIL — the request lifecycle without hiding the part.
  *
- * The founder-approved "engine, in motion" modal (Product - Verify · renderVerify
- * pipeline) recreated in the light instrument and wired to the two REAL calls that
- * are the lifecycle: POST /validate + POST /validate/cost. It opens the moment a
- * verification is dispatched (the shell's `running`), narrates the five milestones
- * — received → measured → routed → gates → record — and, when the real result
- * lands, reveals each stage's ACTUAL value on the design's ~430ms gate-by-gate
- * cadence, the verdict reading "COMPUTING — GATES CHECKING IN" until it settles.
+ * This compact, non-modal rail opens when verification starts. It leaves the CAD
+ * preview visible, then yields as soon as validation produces the first useful
+ * routing + DFM answer. Cost continues sequentially to protect worker memory.
  *
  * Honesty: nothing is shown before it is real. While the request is in flight the
  * downstream stages are pending with NO values. When the result lands, every line
  * is read off the response (pipeline.ts) or is the honest absence of one. The walk
  * STOPS at a real failed gate — the stages past it read "not computed", never
- * faked. The user can dismiss (✕ / Esc) at any time to jump straight to the walk.
+ * faked. The user can dismiss (✕ / Esc) at any time to jump straight to the result.
  */
 import { useEffect, useRef, useState } from "react";
 import { analysisFailureCopy } from "@/lib/verify/failure-copy";
 import { C, MONO } from "@/lib/verify/tokens";
 import type { VerifyResult } from "@/lib/verify/run";
-import { pipelineModelFrom, type PipelineStage, type StageState } from "@/lib/verify/pipeline";
+import {
+  pipelineModelFrom,
+  pipelineRunState,
+  type PipelineStage,
+  type StageState,
+} from "@/lib/verify/pipeline";
 import { useToast } from "./toast";
 
-const CADENCE_MS = 430; // the design's gate-by-gate check-in cadence
-const SETTLE_MS = 620; // dwell after the last stage lands before the walk takes over
+const SETTLE_MS = 420;
 
 type Phase = "idle" | "computing" | "revealing" | "settled";
 
@@ -60,6 +60,7 @@ export function PipelineOverlay({
   // received stage is landed; the reveal cascade grows this as real values arrive.
   const [reveal, setReveal] = useState(0);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const runState = pipelineRunState(result, running);
 
   const clearTimers = () => {
     timers.current.forEach(clearTimeout);
@@ -77,10 +78,16 @@ export function PipelineOverlay({
   useEffect(() => {
     if (running && !result) {
       clearTimers();
-      setOpen(true);
       setPhase("computing");
       setReveal(1);
+      // Fast runs should feel instant, not flash a spinner. The rail only appears
+      // once the operation crosses the standard perceptible-wait threshold.
+      timers.current.push(setTimeout(() => setOpen(true), 260));
+    } else if (!open) {
+      clearTimers();
     }
+    // `open` is intentionally excluded: opening after the delay must not restart it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running, result]);
 
   // ── result landed while the overlay is up: reveal the real stages on cadence ──
@@ -103,30 +110,47 @@ export function PipelineOverlay({
     // returns no routing, no DFM, no geometry, no cost — the completion toast would be
     // a lie. (A GEOMETRY_INVALID refusal still MEASURED the geometry, so it counts as
     // analyzed and stops honestly at a real gate.)
-    const analyzed = !!(result.cost || result.validation || result.costGeometryInvalid);
-    // reveal through the blocking gate (inclusive), else through every stage.
-    const target = model.stopIndex >= 0 ? model.stopIndex + 1 : model.stages.length;
-    setPhase("revealing");
-    clearTimers();
-    for (let i = 2; i <= target; i++) {
-      timers.current.push(setTimeout(() => setReveal(i), (i - 1) * CADENCE_MS));
+    // Validation has landed while cost continues. Hand off immediately to the
+    // value-bearing inline DFM card; never narrate unfinished cost as complete.
+    if (running) {
+      clearTimers();
+      setReveal(Math.min(3, model.stages.length));
+      setPhase("revealing");
+      timers.current.push(
+        setTimeout(() => {
+          setOpen(false);
+          setPhase("idle");
+          onDone?.();
+        }, 220)
+      );
+      return;
     }
-    const landedAt = Math.max(1, target - 1) * CADENCE_MS;
-    timers.current.push(setTimeout(() => setPhase("settled"), landedAt + SETTLE_MS));
+    // The real result is already available, so land it immediately. Motion marks
+    // truth; it does not add a theatrical multi-second delay before the answer.
+    const target = runState === "interrupted"
+      ? 1
+      : model.stopIndex >= 0
+        ? model.stopIndex + 1
+        : model.stages.length;
+    clearTimers();
+    setReveal(target);
+    setPhase("settled");
     timers.current.push(
       setTimeout(() => {
         setOpen(false);
         setPhase("idle");
         toast(
-          analyzed
+          runState === "complete"
             ? "Verification complete — deterministic: same input, same verdict, every time"
-            : analysisFailureCopy(result.costError || result.validationError).toast
+            : runState === "partial"
+              ? "Routing and DFM are ready — should-cost is unavailable"
+              : analysisFailureCopy(result.costError || result.validationError).toast
         );
         onDone?.();
-      }, landedAt + SETTLE_MS + 720)
+      }, SETTLE_MS)
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, result, fileName, guided]);
+  }, [open, result, fileName, guided, running, runState]);
 
   // An unexpected request failure can end with no result. Do not strand the user
   // behind a forever-running modal; the screen-level recovery state remains visible.
@@ -162,42 +186,44 @@ export function PipelineOverlay({
   if (guided) {
     return (
       <div
-        role="dialog"
+        className="cv-verify-pipeline-rail"
+        role="status"
         aria-label="Checking the sample CAD"
         aria-live="polite"
         style={{
           position: "fixed",
-          inset: 0,
+          top: 126,
+          right: 24,
           zIndex: 70,
-          background: "rgba(246,246,247,0.88)",
-          backdropFilter: "blur(6px)",
-          WebkitBackdropFilter: "blur(6px)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 24,
+          width: "min(430px, calc(100vw - 32px))",
+          maxHeight: "calc(100dvh - 142px)",
+          pointerEvents: "none",
         }}
       >
         <div
+          className="cv-verify-pipeline-panel"
           style={{
-            width: 500,
-            maxWidth: "92vw",
+            width: "100%",
+            maxHeight: "inherit",
+            overflowY: "auto",
+            overscrollBehavior: "contain",
             background: C.panel,
             border: `1px solid ${C.hair}`,
             borderRadius: 20,
             padding: "28px 30px",
             boxShadow: "0 30px 80px -30px rgba(23,24,26,0.3)",
             animation: "vscreenIn 300ms cubic-bezier(0.2,0,0,1) both",
+            pointerEvents: "auto",
           }}
         >
           <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, fontWeight: 650, letterSpacing: "0.14em", color: C.measured }}>
             REAL SAMPLE · RUNNING
           </p>
           <h2 style={{ margin: "10px 0 0", color: C.ink, fontSize: 25, fontWeight: 450, lineHeight: 1.2, letterSpacing: "-0.02em" }}>
-            Turning this CAD file into four useful answers.
+            Reading the shape now. The first answer appears as soon as DFM lands.
           </h2>
           <p style={{ margin: "10px 0 0", color: C.ink55, fontSize: 13, lineHeight: 1.65 }}>
-            ProofShape is reading the shape, comparing manufacturing methods, and calculating an estimate.
+            The 3D stage stays visible while ProofShape measures, routes, and then calculates cost.
           </p>
           <div style={{ marginTop: 20, display: "grid", gap: 10 }}>
             {[
@@ -223,43 +249,61 @@ export function PipelineOverlay({
   }
 
   const stopped = model.stopIndex >= 0 && reveal >= model.stopIndex + 1;
-  const done = phase === "settled" && !stopped;
+  const partial = runState === "partial";
+  const interrupted = runState === "interrupted";
+  const done = phase === "settled" && runState === "complete" && !stopped;
 
-  const verdictText = stopped
-    ? "THE WALK STOPS AT THE FAILED GATE"
-    : done
-      ? "COMPLETE — DETERMINISTIC · EVERY NUMBER CARRIES ITS SOURCE"
-      : "COMPUTING — GATES CHECKING IN";
-  const verdictColor = stopped ? C.fail : done ? C.pass : C.ink45;
+  const verdictText = interrupted
+    ? "INTERRUPTED · NO VERDICT PRODUCED"
+    : partial
+      ? running
+        ? "ROUTING + DFM READY · COST CONTINUES"
+        : "PARTIAL RESULT · COST UNAVAILABLE"
+      : stopped
+        ? "THE WALK STOPS AT THE FAILED GATE"
+        : done
+          ? "COMPLETE — DETERMINISTIC · EVERY NUMBER CARRIES ITS SOURCE"
+          : "COMPUTING — GATES CHECKING IN";
+  const verdictColor = interrupted
+    ? C.cond
+    : partial
+      ? C.measured
+      : stopped
+        ? C.fail
+        : done
+          ? C.pass
+          : C.ink45;
 
   return (
     <div
-      role="dialog"
+      className="cv-verify-pipeline-rail"
+      role="status"
       aria-label="Verification pipeline"
       aria-live="polite"
       style={{
         position: "fixed",
-        inset: 0,
+        top: 126,
+        right: 24,
         zIndex: 70,
-        background: "rgba(246,246,247,0.88)",
-        backdropFilter: "blur(6px)",
-        WebkitBackdropFilter: "blur(6px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
+        width: "min(430px, calc(100vw - 32px))",
+        maxHeight: "calc(100dvh - 142px)",
+        pointerEvents: "none",
       }}
     >
       <div
+        className="cv-verify-pipeline-panel"
         style={{
-          width: 480,
-          maxWidth: "92vw",
+          width: "100%",
+          maxHeight: "inherit",
+          overflowY: "auto",
+          overscrollBehavior: "contain",
           background: C.panel,
           border: `1px solid ${C.hair}`,
           borderRadius: 20,
           padding: "26px 28px",
           boxShadow: "0 30px 80px -30px rgba(23,24,26,0.3)",
           animation: "vscreenIn 300ms cubic-bezier(0.2,0,0,1) both",
+          pointerEvents: "auto",
         }}
       >
         <style>{"@keyframes vpip{0%,100%{opacity:.25}50%{opacity:1}}"}</style>
@@ -272,11 +316,18 @@ export function PipelineOverlay({
             type="button"
             onClick={dismiss}
             title="Skip to the walk"
+            aria-label="Dismiss verification progress"
             style={{
               marginLeft: "auto",
+              marginRight: -12,
               background: "none",
               border: "none",
               padding: 0,
+              width: 44,
+              height: 44,
+              flexShrink: 0,
+              display: "grid",
+              placeItems: "center",
               cursor: "pointer",
               fontFamily: MONO,
               fontSize: 13,

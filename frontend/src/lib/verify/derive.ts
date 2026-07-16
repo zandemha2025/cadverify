@@ -60,6 +60,12 @@ export function routeDfmOutcome(
   route: CostEstimate | null,
 ): RouteDfmOutcome {
   const base = validationVerdict ?? "unknown";
+  // A missing cost estimate is not evidence against the independently completed
+  // routing + DFM verdict. Preserve that first result; reconciliation only adds
+  // information when the cost engine actually returned a route estimate.
+  if (!route) {
+    return { verdict: base, blocked: false, primaryBlocker: null };
+  }
   const blockers = route?.dfm_blockers?.filter((item) => item.trim().length > 0) ?? [];
   const routeBlocked = !!route && (
     route.dfm_ready === false ||
@@ -77,7 +83,7 @@ export function routeDfmOutcome(
   if (base === "issues" || route?.dfm_verdict === "issues") {
     return { verdict: "issues", blocked: false, primaryBlocker: null };
   }
-  if (base === "pass" && route?.dfm_ready === true && route.dfm_verdict === "pass") {
+  if (base === "pass" && route.dfm_ready === true && route.dfm_verdict === "pass") {
     return { verdict: "pass", blocked: false, primaryBlocker: null };
   }
   return { verdict: "unknown", blocked: false, primaryBlocker: null };

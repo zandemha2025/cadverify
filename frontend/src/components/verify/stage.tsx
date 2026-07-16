@@ -152,8 +152,15 @@ export function Stage({
   }, [file, assembly?.glbUrl]);
 
   // Honest render-mode readout: what the viewer is actually looking at.
-  const renderMode: { state: string; label: string } = assembly
+  const renderMode: { state: string; label: string } = webGlAvailable === false
     ? {
+        state: "static-envelope",
+        label: bbox
+          ? "measured envelope · interactive 3D unavailable"
+          : "static CAD fallback · interactive 3D unavailable",
+      }
+    : assembly
+      ? {
         state: "real-assembly",
         label: `real assembly shell · ${assembly.partCount} parts`,
       }
@@ -239,7 +246,7 @@ export function Stage({
                 : C.ink40,
           }}
         >
-          <span aria-hidden>{renderMode.state === "bbox-envelope" ? "▢ " : "● "}</span>
+          <span aria-hidden>{renderMode.state === "bbox-envelope" || renderMode.state === "static-envelope" ? "▢ " : "● "}</span>
           {renderMode.label}
         </p>
         {/* Assembly mode: name the highlighted part-of-interest + its product-tree
@@ -389,7 +396,7 @@ function StaticStageFallback({
           {dimensions
             ? `measured envelope · ${dimensions} · geometry and verdict remain available`
             : hasFile
-              ? "the engine result remains available; measured dimensions appear when parsing completes"
+              ? "local CAD preview only · measured dimensions appear if parsing completes"
               : "drop a part to measure its envelope; verification remains fully available"}
         </p>
       </div>

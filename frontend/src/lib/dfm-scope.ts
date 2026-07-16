@@ -69,6 +69,28 @@ export function severityCounts(issues: readonly IndexedIssue[]): SeverityCounts 
   return c;
 }
 
+/** Highest-action issue for summaries. Stable within a severity bucket so the
+ * engine's own ordering is preserved after critical > advisory > info. */
+export function highestPriorityIssue(
+  issues: readonly IndexedIssue[]
+): IndexedIssue | null {
+  const rank: Record<DfmSeverityBucket, number> = {
+    critical: 0,
+    advisory: 1,
+    info: 2,
+  };
+  let best: IndexedIssue | null = null;
+  let bestRank = Number.POSITIVE_INFINITY;
+  for (const candidate of issues) {
+    const candidateRank = rank[issueSeverityBucket(candidate.issue.severity)];
+    if (candidateRank < bestRank) {
+      best = candidate;
+      bestRank = candidateRank;
+    }
+  }
+  return best;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Flatten helpers                                                    */
 /* ------------------------------------------------------------------ */
@@ -183,6 +205,8 @@ export interface DfmPartition {
   candidateProcessCount: number;
 }
 
+export type RouteScopedVerdict = "pass" | "issues" | "fail" | "unknown";
+
 /**
  * Partition the full candidate matrix into { route, extra } by issue identity
  * (code|message), keeping the CANONICAL keys from `flattenIssues` on every row.
@@ -216,6 +240,23 @@ export function partitionDfmByRoute(
     recommendedProcess: summary.recommendedProcess,
     candidateProcessCount: summary.candidateProcessCount,
   };
+}
+
+/** Verdict for the route the user is actually being told to use. The backend's
+ * `overall_verdict` can summarize every candidate process; it must not turn an
+ * FDM recommendation amber because CNC turning rejected the same geometry. */
+export function routeScopedDfmVerdict(
+  result: ValidationResult | null | undefined,
+  recommendedProcess?: string | null
+): RouteScopedVerdict {
+  if (!result) return "unknown";
+  const process = recommendedProcess?.trim() ?? "";
+  if (!process) return result.overall_verdict;
+  const partition = partitionDfmByRoute(result, process);
+  if (partition.counts.critical > 0) return "fail";
+  if (partition.counts.advisory > 0) return "issues";
+  const routeScore = result.process_scores.find((score) => score.process === process);
+  return routeScore?.verdict ?? result.overall_verdict;
 }
 
 /* ------------------------------------------------------------------ */

@@ -9,7 +9,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { C, MONO, SANS } from "@/lib/verify/tokens";
-import { runVerification, type VerifyResult } from "@/lib/verify/run";
+import {
+  QTY_LADDER,
+  retryVerificationCost,
+  runVerification,
+  type VerifyResult,
+} from "@/lib/verify/run";
+import { geometryFromResult } from "@/lib/verify/pipeline";
+import { isCurrentRun } from "@/lib/verify/run-gates";
 import { listMachines } from "@/lib/verify/machine-api";
 import { CAD_ACCEPT, isSupportedCad, unsupportedCadGuidance } from "@/lib/cad-file";
 import { VERIFY_PART_CAD_INPUT } from "@/lib/verify/file-inputs";
@@ -33,7 +40,7 @@ import { ShortcutsOverlay } from "./shortcuts-overlay";
 import { CalibrationSwitcher } from "./calibration-switcher";
 import { WelcomeGuide, WELCOME_STORAGE_KEY } from "./welcome-guide";
 import { GuidedResultSummary } from "./guided-result-summary";
-import { sampleCubeFile } from "@/lib/verify/sample-cad";
+import { sampleBracketFile } from "@/lib/verify/sample-cad";
 import { designIdFromSearch, designRevisionFromSearch, importDesignStep } from "@/lib/verify/design-import";
 import {
   workspaceScreenFromSearch,
@@ -85,6 +92,7 @@ export function VerifyApp({
   const [guidedSummaryOpen, setGuidedSummaryOpen] = useState(false);
   const [env, setEnv] = useState({ temp: false, sour: false, pressure: false });
   const [materialClass, setMaterialClass] = useState("polymer");
+  const [materialTouched, setMaterialTouched] = useState(false);
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [running, setRunning] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -127,8 +135,16 @@ export function VerifyApp({
   // — the material-chip race where the walk still reads "Polymer" after clicking Steel.
   // Only the latest-dispatched run is allowed to write result/running state.
   const runSeq = useRef(0);
+  // The sample owns a separate UI lifecycle. Leaving it or starting personal CAD
+  // invalidates its completion callback even if the underlying request finishes.
+  const guidedRunSeq = useRef(0);
 
   const nav = useCallback((s: string) => {
+    if (s !== "verify") {
+      ++guidedRunSeq.current;
+      setGuidedSampleState("idle");
+      setGuidedSummaryOpen(false);
+    }
     if (s === "acquisition") return setScreen("acquisition");
     if (s === "palette") return setScreen("palette");
     setScreen(s as Screen);
@@ -136,13 +152,14 @@ export function VerifyApp({
 
   const pickFile = useCallback(() => fileRef.current?.click(), []);
   const pickOwnFile = useCallback(() => {
+    ++guidedRunSeq.current;
     setGuidedSampleState("idle");
     setGuidedSummaryOpen(false);
     fileRef.current?.click();
   }, []);
 
   const runVerify = useCallback(
-    async (f: File) => {
+    async (f: File): Promise<VerifyResult | null> => {
       if (!isSupportedCad(f.name)) {
         const guidance = unsupportedCadGuidance(f.name);
         ++runSeq.current;
@@ -159,7 +176,7 @@ export function VerifyApp({
         setAssemblySelectedId(null);
         setAssemblyAnalysis(null);
         setAssemblyAnalyzing(false);
-        return;
+        return null;
       }
 
       const seq = ++runSeq.current;
@@ -187,7 +204,7 @@ export function VerifyApp({
       const asm = await fetchAssembly(f).catch(() => null);
       if (runSeq.current !== seq) {
         asm?.revoke();
-        return;
+        return null;
       }
       if (asm) {
         setAssembly(asm);
@@ -207,14 +224,81 @@ export function VerifyApp({
             if (runSeq.current !== seq) return;
             setAssemblyAnalyzing(false);
           });
-        return;
+        return null;
       }
 
+      let progressiveResult: VerifyResult | null = null;
       try {
-        const r = await runVerification({ file: f, env, materialClass });
+        const r = await runVerification(
+          { file: f, env, materialClass },
+          {
+            onValidation: ({ validation, validationError }) => {
+              if (runSeq.current !== seq || !validation) return;
+              // First useful answer: render real routing + DFM while the
+              // sequential should-cost request continues in the background.
+              const nextResult: VerifyResult = {
+                file: f,
+                validation,
+                validationError,
+                cost: null,
+                costGeometryInvalid: null,
+                costError: null,
+                machines: [],
+                machinesError: null,
+                verification: null,
+                quantities: QTY_LADDER,
+                env,
+                envDeclared: env.temp || env.sour || env.pressure,
+                envCaptured: false,
+                envError: null,
+                meshHash: null,
+                partContext: null,
+                partContextError: null,
+              };
+              progressiveResult = nextResult;
+              setResult(nextResult);
+            },
+          }
+        );
         // Drop a result that a newer run has superseded — last dispatch wins, so the
         // displayed verdict/material always matches the most recent selection.
-        if (runSeq.current === seq) setResult(r);
+        if (runSeq.current === seq) {
+          setResult(r);
+          return r;
+        }
+        return null;
+      } catch (caught) {
+        if (runSeq.current === seq) {
+          const message =
+            caught instanceof Error ? caught.message : "Verification could not finish";
+          // The progress callback runs asynchronously; keep its last real value
+          // even though TypeScript cannot narrow callback assignments here.
+          const preserved = progressiveResult as VerifyResult | null;
+          const failedResult: VerifyResult = preserved
+            ? { ...preserved, costError: message }
+            : {
+                file: f,
+                validation: null,
+                validationError: message,
+                cost: null,
+                costGeometryInvalid: null,
+                costError: message,
+                machines: [],
+                machinesError: null,
+                verification: null,
+                quantities: QTY_LADDER,
+                env,
+                envDeclared: env.temp || env.sour || env.pressure,
+                envCaptured: false,
+                envError: null,
+                meshHash: null,
+                partContext: null,
+                partContextError: null,
+              };
+          setResult(failedResult);
+          return failedResult;
+        }
+        return null;
       } finally {
         if (runSeq.current === seq) setRunning(false);
       }
@@ -227,16 +311,40 @@ export function VerifyApp({
     else pickFile();
   }, [file, runVerify, pickFile]);
 
+  const onRetryCost = useCallback(async () => {
+    if (!file || !result?.validation) {
+      onReverify();
+      return;
+    }
+    const seq = ++runSeq.current;
+    const previous = result;
+    setRunning(true);
+    try {
+      const retried = await retryVerificationCost(
+        { file, env, materialClass },
+        previous.machines,
+        previous.partContext?.annual_volume
+      );
+      if (runSeq.current === seq) setResult({ ...previous, ...retried });
+    } finally {
+      if (runSeq.current === seq) setRunning(false);
+    }
+  }, [env, file, materialClass, onReverify, result]);
+
   const runSample = useCallback(() => {
+    const guidedSeq = ++guidedRunSeq.current;
     setScreen("verify");
     setGuidedSampleState("running");
-    void runVerify(sampleCubeFile()).then(
-      () => {
+    setGuidedSummaryOpen(false);
+    void runVerify(sampleBracketFile()).then((sampleResult) => {
+      if (!isCurrentRun(guidedSeq, guidedRunSeq.current)) return;
+      if (sampleResult?.validation || sampleResult?.cost || sampleResult?.costGeometryInvalid) {
         setGuidedSampleState("ready");
         setGuidedSummaryOpen(true);
-      },
-      () => setGuidedSampleState("error"),
-    );
+      } else {
+        setGuidedSampleState("error");
+      }
+    });
   }, [runVerify]);
 
   const rememberWelcomeSeen = useCallback(() => {
@@ -412,6 +520,7 @@ export function VerifyApp({
       analysisReady: !!assemblyAnalysis,
     };
   }, [assembly, assemblySelectedId, assemblyAnalysis]);
+  const stageGeometry = result ? geometryFromResult(result) : null;
 
   const activeWorkspaceSection: Screen =
     screen === "compare" || screen === "part"
@@ -468,8 +577,7 @@ export function VerifyApp({
         onUpload={pickOwnFile}
         onBack={() => {
           setGuidedSummaryOpen(false);
-          setGuidedSampleState("idle");
-          setScreen("home");
+          nav("home");
         }}
       />
 
@@ -483,7 +591,7 @@ export function VerifyApp({
               key={r.key}
               type="button"
               aria-label={r.label}
-              onClick={() => setScreen(r.key)}
+              onClick={() => nav(r.key)}
               title={r.label}
               className="cv-verify-rail-button"
               style={{ minWidth: 44, height: 38, padding: "0 10px", borderRadius: 9, border: active ? `1px solid ${C.hair}` : "1px solid transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: active ? "#eceef1" : "transparent", color: active ? C.ink : C.ink50, transition: "background-color 150ms, color 150ms, border-color 150ms", whiteSpace: "nowrap", fontFamily: "inherit", fontSize: 12 }}
@@ -500,7 +608,7 @@ export function VerifyApp({
           className="cv-verify-mobile-section"
           aria-label="Verify workspace section"
           value={activeWorkspaceSection}
-          onChange={(event) => setScreen(event.target.value as Screen)}
+          onChange={(event) => nav(event.target.value)}
         >
           {RAIL.map((item) => (
             <option key={item.key} value={item.key}>{item.label}</option>
@@ -545,7 +653,7 @@ export function VerifyApp({
       </nav>
 
       {/* main */}
-      <div className="cv-verify-main" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+      <div className="cv-verify-main" style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         {uploadRejection && (
           <div
             role="alert"
@@ -623,8 +731,7 @@ export function VerifyApp({
             onUpload={pickOwnFile}
             onBack={() => {
               setGuidedSummaryOpen(false);
-              setGuidedSampleState("idle");
-              setScreen("home");
+              nav("home");
             }}
             onRetry={runSample}
           />
@@ -633,6 +740,12 @@ export function VerifyApp({
         {screen === "home" && (
           <HomeScreen
             onPickFile={pickOwnFile}
+            onDropFile={(dropped) => {
+              ++guidedRunSeq.current;
+              setGuidedSampleState("idle");
+              setGuidedSummaryOpen(false);
+              void runVerify(dropped);
+            }}
             onSample={startGuidedSample}
             onOpenGuide={() => setWelcomeOpen(true)}
             nav={nav}
@@ -646,8 +759,8 @@ export function VerifyApp({
               meta1={
                 stageAssembly
                   ? `assembly · ${stageAssembly.partCount} parts in world position`
-                  : result?.cost?.geometry
-                  ? `Ø/bbox ${result.cost.geometry.bbox_mm.map((n) => n.toFixed(1)).join(" × ")} mm · ${result.cost.geometry.volume_cm3.toFixed(2)} cm³`
+                  : stageGeometry
+                  ? `Ø/bbox ${stageGeometry.bbox_mm.map((n) => n.toFixed(1)).join(" × ")} mm · ${stageGeometry.volume_cm3.toFixed(2)} cm³`
                   : running
                     ? "measuring geometry…"
                     : "drop STL, STEP or IGES to measure"
@@ -655,11 +768,11 @@ export function VerifyApp({
               meta2={
                 stageAssembly
                   ? undefined
-                  : result?.cost?.geometry
-                  ? `watertight ${String(result.cost.geometry.watertight)} · ● MEASURED`
+                  : stageGeometry
+                  ? `watertight ${String(stageGeometry.watertight)} · ● MEASURED`
                   : undefined
               }
-              bbox={result?.cost?.geometry?.bbox_mm ?? null}
+              bbox={stageGeometry?.bbox_mm ?? null}
               hostile={env.temp || env.sour || env.pressure}
               autoOrbit={running && !stageAssembly}
               context={result?.partContext ?? null}
@@ -684,9 +797,17 @@ export function VerifyApp({
                 env={env}
                 setEnv={setEnv}
                 materialClass={materialClass}
-                setMaterialClass={setMaterialClass}
+                materialProvenance={materialTouched ? "USER" : "DEFAULT"}
+                setMaterialClass={(next) => {
+                  // The backend contract treats "polymer" as the undeclared
+                  // default; do not label it USER until the API can preserve an
+                  // explicit-default declaration separately.
+                  setMaterialTouched(next !== "polymer");
+                  setMaterialClass(next);
+                }}
                 onPickFile={pickOwnFile}
                 onReverify={onReverify}
+                onRetryCost={onRetryCost}
                 nav={nav}
               />
             )}
@@ -741,8 +862,8 @@ function GuidedExampleBar({
         alignItems: "center",
         gap: 14,
         flexWrap: "wrap",
-        borderBottom: `1px solid ${failed ? "rgba(194,69,58,0.36)" : "rgba(55,114,171,0.3)"}`,
-        background: failed ? "#fff3f1" : "#eef5fb",
+        borderBottom: `1px solid ${failed ? "rgba(150,102,20,0.36)" : "rgba(55,114,171,0.3)"}`,
+        background: failed ? "#fff8ea" : "#eef5fb",
         padding: "11px 18px",
         color: C.ink,
       }}
@@ -756,7 +877,7 @@ function GuidedExampleBar({
           display: "grid",
           placeItems: "center",
           borderRadius: "50%",
-          background: failed ? C.fail : C.measured,
+          background: failed ? C.cond : C.measured,
           color: "#fff",
           fontFamily: MONO,
           fontSize: 11,
@@ -767,9 +888,9 @@ function GuidedExampleBar({
       <div style={{ flex: 1, minWidth: 240 }}>
         <p style={{ margin: 0, fontSize: 12.5, fontWeight: 650 }}>
           {state === "running"
-            ? "Guided example: analyzing a real 20 mm sample cube"
+            ? "Guided example: analyzing a real routing bracket"
             : failed
-              ? "The guided example could not finish"
+              ? "The guided example was interrupted"
               : "Example complete: this is a manufacturing answer"}
         </p>
         <p style={{ margin: "3px 0 0", color: C.ink55, fontSize: 11.5, lineHeight: 1.5 }}>
@@ -777,11 +898,11 @@ function GuidedExampleBar({
             ? "ProofShape is measuring geometry, checking manufacturability, choosing processes, and estimating cost."
             : failed
               ? "No completed result was created. Retry the example or check one of your own CAD files."
-              : "Start with the four plain answers: CAD health, manufacturing method, estimated cost, and what is still uncertain."}
+              : "Read geometry and DFM first; route, first issue, resource cost, and shop fit follow in decision order."}
         </p>
       </div>
       {failed ? (
-        <button type="button" onClick={onRetry} style={guidedBarButton(C.fail)}>
+        <button type="button" onClick={onRetry} style={guidedBarButton(C.cond)}>
           Retry example
         </button>
       ) : state === "ready" ? (
@@ -1026,12 +1147,29 @@ const KEYFRAMES = `
     top: 18px !important;
     left: 16px !important;
     right: 16px;
+    max-height: 108px;
+    overflow: hidden;
+  }
+  .cv-verify-stage-title h1 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .cv-verify-stage-context-card {
-    top: 116px !important;
+    top: 140px !important;
     left: 16px;
     right: 16px !important;
     width: auto !important;
+  }
+  .cv-verify-pipeline-rail {
+    top: 112px !important;
+    right: 8px !important;
+    width: calc(100vw - 16px) !important;
+    max-height: calc(100dvh - 120px) !important;
+  }
+  .cv-verify-pipeline-panel {
+    border-radius: 16px !important;
+    padding: 20px !important;
   }
 }
 `;

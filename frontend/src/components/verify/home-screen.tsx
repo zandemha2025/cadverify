@@ -33,11 +33,13 @@ import { Kicker } from "./primitives";
 
 export function HomeScreen({
   onPickFile,
+  onDropFile,
   onSample,
   onOpenGuide,
   nav,
 }: {
   onPickFile: () => void;
+  onDropFile: (file: File) => void;
   onSample: () => void;
   onOpenGuide: () => void;
   nav: (s: string) => void;
@@ -165,10 +167,9 @@ export function HomeScreen({
   return (
     <main className="cv-verify-home" style={{ animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both", flex: 1, overflowY: "auto", padding: "28px 38px", background: C.bg }}>
       <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: C.ink40 }}>{today.toUpperCase()}</p>
-      <h1 style={{ margin: "8px 0 0", fontSize: 30, fontWeight: 350, letterSpacing: "-0.022em", lineHeight: 1.2 }}>What would you like to do?</h1>
+      <h1 style={{ margin: "8px 0 0", fontSize: 30, fontWeight: 350, letterSpacing: "-0.022em", lineHeight: 1.2 }}>Drop a part. See the best route and what blocks it.</h1>
       <p style={{ margin: "8px 0 0", maxWidth: 720, color: C.ink55, fontSize: 13.5, lineHeight: 1.6 }}>
-        Turn a CAD file into a clear manufacturing answer: can it be made, how should it be made,
-        what should it cost, and what needs attention.
+        The first geometry and DFM answer appears before costing finishes. No machine setup is required.
       </p>
 
       <section
@@ -186,15 +187,28 @@ export function HomeScreen({
           </button>
         </div>
         <div className="cv-verify-start-grid" style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
-          <button type="button" onClick={onSample} style={{ minHeight: 116, border: 0, borderRadius: 14, background: C.ink, color: "#fff", padding: "16px 17px", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
-            <span style={{ display: "block", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.1em", color: "rgba(255,255,255,0.68)" }}>RECOMMENDED · 60 SECONDS</span>
-            <span style={{ display: "block", marginTop: 8, fontSize: 15, fontWeight: 650 }}>Show me a real example</span>
-            <span style={{ display: "block", marginTop: 5, color: "rgba(255,255,255,0.72)", fontSize: 11.5, lineHeight: 1.5 }}>No file needed. We run the engine and explain the answer.</span>
-          </button>
-          <button type="button" onClick={onPickFile} style={{ minHeight: 116, border: `1px solid ${C.hair}`, borderRadius: 14, background: C.sunken, color: C.ink, padding: "16px 17px", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
-            <span style={{ display: "block", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.1em", color: C.measured }}>I HAVE A CAD FILE</span>
+          <button
+            type="button"
+            onClick={onPickFile}
+            onDragOver={(event) => {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "copy";
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              const dropped = event.dataTransfer.files?.[0];
+              if (dropped) onDropFile(dropped);
+            }}
+            style={{ minHeight: 116, border: 0, borderRadius: 14, background: C.ink, color: "#fff", padding: "16px 17px", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}
+          >
+            <span style={{ display: "block", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.1em", color: "rgba(255,255,255,0.68)" }}>PRIMARY · DROP OR BROWSE CAD</span>
             <span style={{ display: "block", marginTop: 8, fontSize: 15, fontWeight: 650 }}>Check my part</span>
-            <span style={{ display: "block", marginTop: 5, color: C.ink55, fontSize: 11.5, lineHeight: 1.5 }}>Upload STEP, STL, or IGES for DFM, process, and cost.</span>
+            <span style={{ display: "block", marginTop: 5, color: "rgba(255,255,255,0.72)", fontSize: 11.5, lineHeight: 1.5 }}>STEP, STL, or IGES · local preview first · DFM as soon as it lands.</span>
+          </button>
+          <button type="button" onClick={onSample} style={{ minHeight: 116, border: `1px solid ${C.hair}`, borderRadius: 14, background: C.sunken, color: C.ink, padding: "16px 17px", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
+            <span style={{ display: "block", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.1em", color: C.measured }}>NO FILE NEEDED · REAL ENGINE</span>
+            <span style={{ display: "block", marginTop: 8, fontSize: 15, fontWeight: 650 }}>Run a guided example</span>
+            <span style={{ display: "block", marginTop: 5, color: C.ink55, fontSize: 11.5, lineHeight: 1.5 }}>See one result in decision order, then check your own part.</span>
           </button>
           <Link href="/designs" style={{ minHeight: 116, display: "block", border: `1px solid ${C.hair}`, borderRadius: 14, background: C.sunken, color: C.ink, padding: "16px 17px", textAlign: "left", textDecoration: "none" }}>
             <span style={{ display: "block", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.1em", color: C.user }}>I NEED TO CREATE ONE</span>
