@@ -46,5 +46,6 @@ test("Design Studio import copy follows the real verification lifecycle", () => 
 
 test("phone Verify stage separates the title from the context evidence card", () => {
   assert.match(appSource, /\.cv-verify-stage-title \{[\s\S]*?top: 18px !important/);
-  assert.match(appSource, /\.cv-verify-stage-context-card \{[\s\S]*?top: 116px !important/);
+  assert.match(appSource, /\.cv-verify-stage-title \{[\s\S]*?max-height: 108px/);
+  assert.match(appSource, /\.cv-verify-stage-context-card \{[\s\S]*?top: 140px !important/);
 });

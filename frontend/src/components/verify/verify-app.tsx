@@ -1123,12 +1123,29 @@ const KEYFRAMES = `
     top: 18px !important;
     left: 16px !important;
     right: 16px;
+    max-height: 108px;
+    overflow: hidden;
+  }
+  .cv-verify-stage-title h1 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .cv-verify-stage-context-card {
-    top: 116px !important;
+    top: 140px !important;
     left: 16px;
     right: 16px !important;
     width: auto !important;
+  }
+  .cv-verify-pipeline-rail {
+    top: 112px !important;
+    right: 8px !important;
+    width: calc(100vw - 16px) !important;
+    max-height: calc(100dvh - 120px) !important;
+  }
+  .cv-verify-pipeline-panel {
+    border-radius: 16px !important;
+    padding: 20px !important;
   }
 }
 `;

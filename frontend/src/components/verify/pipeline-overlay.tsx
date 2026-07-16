@@ -175,6 +175,7 @@ export function PipelineOverlay({
   if (guided) {
     return (
       <div
+        className="cv-verify-pipeline-rail"
         role="status"
         aria-label="Checking the sample CAD"
         aria-live="polite"
@@ -184,12 +185,17 @@ export function PipelineOverlay({
           right: 24,
           zIndex: 70,
           width: "min(430px, calc(100vw - 32px))",
+          maxHeight: "calc(100dvh - 142px)",
           pointerEvents: "none",
         }}
       >
         <div
+          className="cv-verify-pipeline-panel"
           style={{
             width: "100%",
+            maxHeight: "inherit",
+            overflowY: "auto",
+            overscrollBehavior: "contain",
             background: C.panel,
             border: `1px solid ${C.hair}`,
             borderRadius: 20,
@@ -243,6 +249,7 @@ export function PipelineOverlay({
 
   return (
     <div
+      className="cv-verify-pipeline-rail"
       role="status"
       aria-label="Verification pipeline"
       aria-live="polite"
@@ -252,12 +259,17 @@ export function PipelineOverlay({
         right: 24,
         zIndex: 70,
         width: "min(430px, calc(100vw - 32px))",
+        maxHeight: "calc(100dvh - 142px)",
         pointerEvents: "none",
       }}
     >
       <div
+        className="cv-verify-pipeline-panel"
         style={{
           width: "100%",
+          maxHeight: "inherit",
+          overflowY: "auto",
+          overscrollBehavior: "contain",
           background: C.panel,
           border: `1px solid ${C.hair}`,
           borderRadius: 20,
@@ -277,11 +289,18 @@ export function PipelineOverlay({
             type="button"
             onClick={dismiss}
             title="Skip to the walk"
+            aria-label="Dismiss verification progress"
             style={{
               marginLeft: "auto",
+              marginRight: -12,
               background: "none",
               border: "none",
               padding: 0,
+              width: 44,
+              height: 44,
+              flexShrink: 0,
+              display: "grid",
+              placeItems: "center",
               cursor: "pointer",
               fontFamily: MONO,
               fontSize: 13,

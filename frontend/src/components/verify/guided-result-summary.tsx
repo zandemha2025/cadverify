@@ -357,7 +357,7 @@ function eyebrow(color: string): CSSProperties {
 
 function summaryButton(quiet: boolean): CSSProperties {
   return {
-    minHeight: 40,
+    minHeight: 44,
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
