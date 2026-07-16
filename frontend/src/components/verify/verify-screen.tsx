@@ -149,12 +149,6 @@ export function VerifyScreen(props: Props) {
     setDecision(null);
   }, [result]);
 
-  const hostile = env.temp || env.sour || env.pressure;
-  // The env door tells the EXACT truth about the round-trip. `result` reflects the
-  // world as it was actually persisted for the last run; before/while a run it
-  // states intent, never a "captured" claim it can't back up.
-  const door = envDoorStatus(hostile, running, result);
-
   return (
     <>
     <div
@@ -186,85 +180,8 @@ export function VerifyScreen(props: Props) {
           materials that survive its service conditions — and what will it really take?
         </p>
 
-        {/* environment door */}
-        <section style={{ order: 2, marginTop: 16, border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "18px 20px" }}>
-          <div style={{ marginBottom: 15 }}>
-            <Kicker>MAKE THIS VERDICT YOURS · OPTIONAL</Kicker>
-            <p style={{ margin: "6px 0 0", color: C.ink55, fontSize: 12.5, lineHeight: 1.55 }}>
-              {result
-                ? "The answer above uses a default material and ambient service until you declare otherwise."
-                : "You can start with the defaults. Declare these only when they matter to your part."}
-            </p>
-          </div>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <Kicker>SERVICE CONDITIONS</Kicker>
-            <span style={{ fontFamily: MONO, fontSize: 10.5, color: door.chipColor }}>{door.chip}</span>
-          </div>
-          <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {ENV_CHIPS.map((chip) => {
-              const on = env[chip.key];
-              return (
-                <button
-                  key={chip.key}
-                  type="button"
-                  onClick={() => setEnv({ ...env, [chip.key]: !on })}
-                  style={{
-                    border: on ? `1px solid ${C.ink}` : `1px solid ${C.hair}`,
-                    background: on ? C.ink : "#ffffff",
-                    color: on ? "#ffffff" : C.ink,
-                    borderRadius: 999,
-                    padding: "8px 16px",
-                    fontSize: 12.5,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    transition: "all 150ms",
-                  }}
-                >
-                  {chip.label}
-                </button>
-              );
-            })}
-          </div>
-          <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: door.color, lineHeight: 1.6 }}>
-            {door.line}
-          </p>
-          <div style={{ marginTop: 16, borderTop: `1px solid ${C.hair2}`, paddingTop: 14 }}>
-            <Kicker>
-              MATERIAL CLASS ·{" "}
-              <span style={{ color: materialProvenance === "USER" ? C.user : C.def }}>
-                {materialProvenance === "USER" ? "● USER" : "○ DEFAULT"}
-              </span>
-            </Kicker>
-            <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {MATERIAL_CLASSES.map((m) => {
-                const on = materialClass === m.key;
-                return (
-                  <button
-                    key={m.key}
-                    type="button"
-                    onClick={() => setMaterialClass(m.key)}
-                    style={{
-                      border: on ? `1px solid ${C.user}` : `1px solid ${C.hair}`,
-                      background: on ? "rgba(122,99,201,0.1)" : "#ffffff",
-                      color: on ? C.user : C.ink70,
-                      borderRadius: 999,
-                      padding: "7px 13px",
-                      fontSize: 12,
-                      cursor: "pointer",
-                      fontFamily: MONO,
-                      transition: "all 150ms",
-                    }}
-                  >
-                    {m.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-
         {/* the walk */}
-        <div style={{ order: 1 }}>
+        <div>
           {running && result?.validation ? (
             <FirstInsight result={result} />
           ) : running ? (
@@ -286,6 +203,16 @@ export function VerifyScreen(props: Props) {
             />
           )}
         </div>
+
+        <PersonalizationDoor
+          result={result}
+          running={running}
+          env={env}
+          setEnv={setEnv}
+          materialClass={materialClass}
+          materialProvenance={materialProvenance}
+          setMaterialClass={setMaterialClass}
+        />
       </div>
 
       {/* ask the engine — a docked row, separate from the scrolling walk. It is a
@@ -301,6 +228,127 @@ export function VerifyScreen(props: Props) {
       guided={props.guided}
     />
     </>
+  );
+}
+
+function PersonalizationDoor({
+  result,
+  running,
+  env,
+  setEnv,
+  materialClass,
+  materialProvenance,
+  setMaterialClass,
+}: Pick<
+  Props,
+  | "result"
+  | "running"
+  | "env"
+  | "setEnv"
+  | "materialClass"
+  | "materialProvenance"
+  | "setMaterialClass"
+>) {
+  const hostile = env.temp || env.sour || env.pressure;
+  // The env door tells the exact truth about the last persistence round-trip.
+  const door = envDoorStatus(hostile, running, result);
+
+  return (
+    <section
+      aria-label="Optional service and material assumptions"
+      style={{
+        marginTop: 16,
+        border: `1px solid ${C.hair}`,
+        borderRadius: 16,
+        background: C.panel,
+        padding: "18px 20px",
+      }}
+    >
+      <div style={{ marginBottom: 15 }}>
+        <Kicker>MAKE THIS VERDICT YOURS · OPTIONAL</Kicker>
+        <p style={{ margin: "6px 0 0", color: C.ink55, fontSize: 12.5, lineHeight: 1.55 }}>
+          {result
+            ? "The answer above uses a default material and ambient service until you declare otherwise."
+            : "You can start with the defaults. Declare these only when they matter to your part."}
+        </p>
+      </div>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <Kicker>SERVICE CONDITIONS</Kicker>
+        <span style={{ fontFamily: MONO, fontSize: 10.5, color: door.chipColor }}>{door.chip}</span>
+      </div>
+      <div
+        role="group"
+        aria-label="Service conditions"
+        style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 8 }}
+      >
+        {ENV_CHIPS.map((chip) => {
+          const on = env[chip.key];
+          return (
+            <button
+              key={chip.key}
+              type="button"
+              aria-pressed={on}
+              onClick={() => setEnv({ ...env, [chip.key]: !on })}
+              style={{
+                border: on ? `1px solid ${C.ink}` : `1px solid ${C.hair}`,
+                background: on ? C.ink : "#ffffff",
+                color: on ? "#ffffff" : C.ink,
+                borderRadius: 999,
+                padding: "8px 16px",
+                fontSize: 12.5,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                transition: "all 150ms",
+              }}
+            >
+              {chip.label}
+            </button>
+          );
+        })}
+      </div>
+      <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: door.color, lineHeight: 1.6 }}>
+        {door.line}
+      </p>
+      <div style={{ marginTop: 16, borderTop: `1px solid ${C.hair2}`, paddingTop: 14 }}>
+        <Kicker>
+          MATERIAL CLASS ·{" "}
+          <span style={{ color: materialProvenance === "USER" ? C.user : C.def }}>
+            {materialProvenance === "USER" ? "● USER" : "○ DEFAULT"}
+          </span>
+        </Kicker>
+        <div
+          role="radiogroup"
+          aria-label="Material class"
+          style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}
+        >
+          {MATERIAL_CLASSES.map((material) => {
+            const on = materialClass === material.key;
+            return (
+              <button
+                key={material.key}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                onClick={() => setMaterialClass(material.key)}
+                style={{
+                  border: on ? `1px solid ${C.user}` : `1px solid ${C.hair}`,
+                  background: on ? "rgba(122,99,201,0.1)" : "#ffffff",
+                  color: on ? C.user : C.ink70,
+                  borderRadius: 999,
+                  padding: "7px 13px",
+                  fontSize: 12,
+                  cursor: "pointer",
+                  fontFamily: MONO,
+                  transition: "all 150ms",
+                }}
+              >
+                {material.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </section>
   );
 }
 
