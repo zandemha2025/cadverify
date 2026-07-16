@@ -4,3 +4,8 @@
 export function validationAllowsCost<T>(validation: T | null): validation is T {
   return validation !== null;
 }
+
+/** Async UI work may commit only while it still owns the latest sequence token. */
+export function isCurrentRun(expected: number, current: number): boolean {
+  return expected === current;
+}

@@ -16,6 +16,7 @@ import {
   type VerifyResult,
 } from "@/lib/verify/run";
 import { geometryFromResult } from "@/lib/verify/pipeline";
+import { isCurrentRun } from "@/lib/verify/run-gates";
 import { listMachines } from "@/lib/verify/machine-api";
 import { CAD_ACCEPT, isSupportedCad, unsupportedCadGuidance } from "@/lib/cad-file";
 import { VERIFY_PART_CAD_INPUT } from "@/lib/verify/file-inputs";
@@ -134,8 +135,16 @@ export function VerifyApp({
   // — the material-chip race where the walk still reads "Polymer" after clicking Steel.
   // Only the latest-dispatched run is allowed to write result/running state.
   const runSeq = useRef(0);
+  // The sample owns a separate UI lifecycle. Leaving it or starting personal CAD
+  // invalidates its completion callback even if the underlying request finishes.
+  const guidedRunSeq = useRef(0);
 
   const nav = useCallback((s: string) => {
+    if (s !== "verify") {
+      ++guidedRunSeq.current;
+      setGuidedSampleState("idle");
+      setGuidedSummaryOpen(false);
+    }
     if (s === "acquisition") return setScreen("acquisition");
     if (s === "palette") return setScreen("palette");
     setScreen(s as Screen);
@@ -143,6 +152,7 @@ export function VerifyApp({
 
   const pickFile = useCallback(() => fileRef.current?.click(), []);
   const pickOwnFile = useCallback(() => {
+    ++guidedRunSeq.current;
     setGuidedSampleState("idle");
     setGuidedSummaryOpen(false);
     fileRef.current?.click();
@@ -312,10 +322,12 @@ export function VerifyApp({
   }, [env, file, materialClass, onReverify, result]);
 
   const runSample = useCallback(() => {
+    const guidedSeq = ++guidedRunSeq.current;
     setScreen("verify");
     setGuidedSampleState("running");
     setGuidedSummaryOpen(false);
     void runVerify(sampleBracketFile()).then((sampleResult) => {
+      if (!isCurrentRun(guidedSeq, guidedRunSeq.current)) return;
       if (sampleResult?.validation || sampleResult?.cost || sampleResult?.costGeometryInvalid) {
         setGuidedSampleState("ready");
         setGuidedSummaryOpen(true);
@@ -555,8 +567,7 @@ export function VerifyApp({
         onUpload={pickOwnFile}
         onBack={() => {
           setGuidedSummaryOpen(false);
-          setGuidedSampleState("idle");
-          setScreen("home");
+          nav("home");
         }}
       />
 
@@ -570,7 +581,7 @@ export function VerifyApp({
               key={r.key}
               type="button"
               aria-label={r.label}
-              onClick={() => setScreen(r.key)}
+              onClick={() => nav(r.key)}
               title={r.label}
               className="cv-verify-rail-button"
               style={{ minWidth: 44, height: 38, padding: "0 10px", borderRadius: 9, border: active ? `1px solid ${C.hair}` : "1px solid transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: active ? "#eceef1" : "transparent", color: active ? C.ink : C.ink50, transition: "background-color 150ms, color 150ms, border-color 150ms", whiteSpace: "nowrap", fontFamily: "inherit", fontSize: 12 }}
@@ -587,7 +598,7 @@ export function VerifyApp({
           className="cv-verify-mobile-section"
           aria-label="Verify workspace section"
           value={activeWorkspaceSection}
-          onChange={(event) => setScreen(event.target.value as Screen)}
+          onChange={(event) => nav(event.target.value)}
         >
           {RAIL.map((item) => (
             <option key={item.key} value={item.key}>{item.label}</option>
@@ -710,8 +721,7 @@ export function VerifyApp({
             onUpload={pickOwnFile}
             onBack={() => {
               setGuidedSummaryOpen(false);
-              setGuidedSampleState("idle");
-              setScreen("home");
+              nav("home");
             }}
             onRetry={runSample}
           />
@@ -721,6 +731,7 @@ export function VerifyApp({
           <HomeScreen
             onPickFile={pickOwnFile}
             onDropFile={(dropped) => {
+              ++guidedRunSeq.current;
               setGuidedSampleState("idle");
               setGuidedSummaryOpen(false);
               void runVerify(dropped);
