@@ -14,3 +14,12 @@ test("Verify presents the result before optional assumptions accessibly", () => 
   assert.match(screenSource, /role="radiogroup"/);
   assert.match(screenSource, /aria-checked=\{on\}/);
 });
+
+// Regression: QA ISSUE-005 — the in-flight declaration state must win over the
+// provisional result object, which cannot yet know whether persistence succeeded.
+test("service-condition copy stays pending while verification is running", () => {
+  const status = screenSource.indexOf("function envDoorStatus");
+  const pending = screenSource.indexOf("if (running && hostile)", status);
+  const persisted = screenSource.indexOf("if (result && result.envDeclared)", status);
+  assert.ok(status >= 0 && pending > status && persisted > pending);
+});

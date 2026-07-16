@@ -227,6 +227,7 @@ export function VerifyApp({
         return null;
       }
 
+      let progressiveResult: VerifyResult | null = null;
       try {
         const r = await runVerification(
           { file: f, env, materialClass },
@@ -235,7 +236,7 @@ export function VerifyApp({
               if (runSeq.current !== seq || !validation) return;
               // First useful answer: render real routing + DFM while the
               // sequential should-cost request continues in the background.
-              setResult({
+              const nextResult: VerifyResult = {
                 file: f,
                 validation,
                 validationError,
@@ -253,7 +254,9 @@ export function VerifyApp({
                 meshHash: null,
                 partContext: null,
                 partContextError: null,
-              });
+              };
+              progressiveResult = nextResult;
+              setResult(nextResult);
             },
           }
         );
@@ -268,25 +271,32 @@ export function VerifyApp({
         if (runSeq.current === seq) {
           const message =
             caught instanceof Error ? caught.message : "Verification could not finish";
-          setResult({
-            file: f,
-            validation: null,
-            validationError: message,
-            cost: null,
-            costGeometryInvalid: null,
-            costError: message,
-            machines: [],
-            machinesError: null,
-            verification: null,
-            quantities: QTY_LADDER,
-            env,
-            envDeclared: env.temp || env.sour || env.pressure,
-            envCaptured: false,
-            envError: null,
-            meshHash: null,
-            partContext: null,
-            partContextError: null,
-          });
+          // The progress callback runs asynchronously; keep its last real value
+          // even though TypeScript cannot narrow callback assignments here.
+          const preserved = progressiveResult as VerifyResult | null;
+          const failedResult: VerifyResult = preserved
+            ? { ...preserved, costError: message }
+            : {
+                file: f,
+                validation: null,
+                validationError: message,
+                cost: null,
+                costGeometryInvalid: null,
+                costError: message,
+                machines: [],
+                machinesError: null,
+                verification: null,
+                quantities: QTY_LADDER,
+                env,
+                envDeclared: env.temp || env.sour || env.pressure,
+                envCaptured: false,
+                envError: null,
+                meshHash: null,
+                partContext: null,
+                partContextError: null,
+              };
+          setResult(failedResult);
+          return failedResult;
         }
         return null;
       } finally {

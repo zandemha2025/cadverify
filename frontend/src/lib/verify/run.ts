@@ -29,7 +29,7 @@ import {
   envToServiceEnvironment,
 } from "./part-context";
 import { fetchPartContext, type PartContext } from "./part-context-read";
-import { validationAllowsCost } from "./run-gates";
+import { readJsonOrNull, validationAllowsCost } from "./run-gates";
 
 // Re-export so existing importers keep resolving these off `run` unchanged.
 export type { VerificationBlock, MakeabilityLattice } from "./verification";
@@ -159,7 +159,15 @@ async function postCost(
   }
 
   if (res.ok) {
-    return { cost: (await res.json()) as CostReport, invalid: null, error: null };
+    const cost = await readJsonOrNull<CostReport>(res);
+    return cost
+      ? { cost, invalid: null, error: null }
+      : {
+          cost: null,
+          invalid: null,
+          error:
+            "The should-cost service returned an unreadable response. Retry cost only; routing and DFM are unchanged.",
+        };
   }
 
   const body: Record<string, unknown> = await res.json().catch(() => ({}));
@@ -246,6 +254,16 @@ export async function runVerification(
     let partContext: PartContext | null = null;
     let partContextError: string | null = null;
     const meshHash = await computeMeshHash(input.file).catch(() => null);
+    const validationGate = await validationPromise;
+    if (!validationAllowsCost(validationGate.v)) {
+      return {
+        meshHash,
+        envCaptured,
+        envError,
+        partContext,
+        partContextError,
+      };
+    }
     if (meshHash) {
       const declared = await declarePartContext(meshHash, serviceEnv);
       envCaptured = declared.ok && envDeclared;

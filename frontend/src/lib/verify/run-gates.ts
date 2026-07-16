@@ -9,3 +9,16 @@ export function validationAllowsCost<T>(validation: T | null): validation is T {
 export function isCurrentRun(expected: number, current: number): boolean {
   return expected === current;
 }
+
+/** Malformed success bodies are service failures, not reasons to discard an
+ * already-rendered routing + DFM result. */
+export async function readJsonOrNull<T>(reader: {
+  json: () => Promise<unknown>;
+}): Promise<T | null> {
+  try {
+    const value = await reader.json();
+    return value == null ? null : value as T;
+  } catch {
+    return null;
+  }
+}

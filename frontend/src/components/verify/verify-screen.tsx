@@ -360,6 +360,14 @@ function envDoorStatus(
   running: boolean,
   result: VerifyResult | null
 ): { chip: string; chipColor: string; line: string; color: string } {
+  if (running && hostile) {
+    return {
+      chip: "capturing…",
+      chipColor: C.ink40,
+      line: "declaring these service conditions on the part's record, then re-costing against them…",
+      color: C.cond,
+    };
+  }
   if (result && result.envDeclared) {
     if (result.envCaptured) {
       return {
@@ -389,11 +397,9 @@ function envDoorStatus(
   }
   if (hostile) {
     return {
-      chip: running ? "capturing…" : "captured on verify",
+      chip: "captured on verify",
       chipColor: C.ink40,
-      line: running
-        ? "declaring these service conditions on the part's record, then re-costing against them…"
-        : "service conditions declared — they'll be captured on the part's record when you verify, and any material that can't survive them is struck with its cited standard.",
+      line: "service conditions declared — they'll be captured on the part's record when you verify, and any material that can't survive them is struck with its cited standard.",
       color: C.cond,
     };
   }
