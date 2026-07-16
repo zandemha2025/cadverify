@@ -46,6 +46,29 @@ export interface PipelineModel {
   computing: boolean;
 }
 
+export type PipelineRunState =
+  | "idle"
+  | "computing"
+  | "partial"
+  | "interrupted"
+  | "complete";
+
+/** Overall request state for progress copy. This is deliberately independent of
+ * individual manufacturing gates: a service interruption is not a DFM failure,
+ * and a validation-only result is useful but not a completed should-cost run. */
+export function pipelineRunState(
+  result: VerifyResult | null,
+  running: boolean
+): PipelineRunState {
+  if (running) return result ? "partial" : "computing";
+  if (!result) return "idle";
+  const hasValidation = result.validation !== null;
+  const hasCostOutcome = result.cost !== null || result.costGeometryInvalid !== null;
+  if (!hasValidation && !hasCostOutcome) return "interrupted";
+  if (!hasValidation || !hasCostOutcome) return "partial";
+  return "complete";
+}
+
 const TITLES: Record<StageKey, string> = {
   received: "received",
   measured: "measured",

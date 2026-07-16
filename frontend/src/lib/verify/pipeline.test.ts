@@ -19,6 +19,7 @@ import {
   costGeometryFromValidation,
   geometryFromResult,
   pipelineModelFrom,
+  pipelineRunState,
 } from "./pipeline.ts";
 import type { VerifyResult, CostGeometryInvalid } from "./run";
 import type { CostEstimate, CostReport, CostGeometry, ValidationResult } from "@/lib/api";
@@ -105,6 +106,23 @@ test("in flight: only received has landed; downstream stages are pending with no
   assert.equal(m.stages[0].key, "received");
   assert.equal(m.stages[0].state, "done");
   for (const s of m.stages.slice(1)) assert.equal(s.state, "pending");
+});
+
+// Regression: QA ISSUE-003 — progress copy must distinguish a first DFM result,
+// an operational interruption, and a genuinely complete two-stage run.
+test("pipeline request state never labels partial or interrupted work complete", () => {
+  const validation = { best_process: "fdm" } as unknown as ValidationResult;
+  assert.equal(pipelineRunState(null, true), "computing");
+  assert.equal(pipelineRunState(result({ validation }), true), "partial");
+  assert.equal(
+    pipelineRunState(result({ validationError: "service unavailable" }), false),
+    "interrupted"
+  );
+  assert.equal(pipelineRunState(result({ validation }), false), "partial");
+  assert.equal(
+    pipelineRunState(result({ validation, cost: report() }), false),
+    "complete"
+  );
 });
 
 test("happy path: geometry ● MEASURED, routing, Σ make-now — gates WITHHELD when no block returned", () => {

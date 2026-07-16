@@ -17,7 +17,12 @@ import { useEffect, useRef, useState } from "react";
 import { analysisFailureCopy } from "@/lib/verify/failure-copy";
 import { C, MONO } from "@/lib/verify/tokens";
 import type { VerifyResult } from "@/lib/verify/run";
-import { pipelineModelFrom, type PipelineStage, type StageState } from "@/lib/verify/pipeline";
+import {
+  pipelineModelFrom,
+  pipelineRunState,
+  type PipelineStage,
+  type StageState,
+} from "@/lib/verify/pipeline";
 import { useToast } from "./toast";
 
 const SETTLE_MS = 420;
@@ -55,6 +60,7 @@ export function PipelineOverlay({
   // received stage is landed; the reveal cascade grows this as real values arrive.
   const [reveal, setReveal] = useState(0);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const runState = pipelineRunState(result, running);
 
   const clearTimers = () => {
     timers.current.forEach(clearTimeout);
@@ -104,13 +110,12 @@ export function PipelineOverlay({
     // returns no routing, no DFM, no geometry, no cost — the completion toast would be
     // a lie. (A GEOMETRY_INVALID refusal still MEASURED the geometry, so it counts as
     // analyzed and stops honestly at a real gate.)
-    const analyzed = !!(result.cost || result.validation || result.costGeometryInvalid);
     // Validation has landed while cost continues. Hand off immediately to the
     // value-bearing inline DFM card; never narrate unfinished cost as complete.
     if (running) {
       clearTimers();
       setReveal(Math.min(3, model.stages.length));
-      setPhase("settled");
+      setPhase("revealing");
       timers.current.push(
         setTimeout(() => {
           setOpen(false);
@@ -122,7 +127,11 @@ export function PipelineOverlay({
     }
     // The real result is already available, so land it immediately. Motion marks
     // truth; it does not add a theatrical multi-second delay before the answer.
-    const target = model.stopIndex >= 0 ? model.stopIndex + 1 : model.stages.length;
+    const target = runState === "interrupted"
+      ? 1
+      : model.stopIndex >= 0
+        ? model.stopIndex + 1
+        : model.stages.length;
     clearTimers();
     setReveal(target);
     setPhase("settled");
@@ -131,15 +140,17 @@ export function PipelineOverlay({
         setOpen(false);
         setPhase("idle");
         toast(
-          analyzed
+          runState === "complete"
             ? "Verification complete — deterministic: same input, same verdict, every time"
-            : analysisFailureCopy(result.costError || result.validationError).toast
+            : runState === "partial"
+              ? "Routing and DFM are ready — should-cost is unavailable"
+              : analysisFailureCopy(result.costError || result.validationError).toast
         );
         onDone?.();
       }, SETTLE_MS)
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, result, fileName, guided, running]);
+  }, [open, result, fileName, guided, running, runState]);
 
   // An unexpected request failure can end with no result. Do not strand the user
   // behind a forever-running modal; the screen-level recovery state remains visible.
@@ -238,14 +249,30 @@ export function PipelineOverlay({
   }
 
   const stopped = model.stopIndex >= 0 && reveal >= model.stopIndex + 1;
-  const done = phase === "settled" && !stopped;
+  const partial = runState === "partial";
+  const interrupted = runState === "interrupted";
+  const done = phase === "settled" && runState === "complete" && !stopped;
 
-  const verdictText = stopped
-    ? "THE WALK STOPS AT THE FAILED GATE"
-    : done
-      ? "COMPLETE — DETERMINISTIC · EVERY NUMBER CARRIES ITS SOURCE"
-      : "COMPUTING — GATES CHECKING IN";
-  const verdictColor = stopped ? C.fail : done ? C.pass : C.ink45;
+  const verdictText = interrupted
+    ? "INTERRUPTED · NO VERDICT PRODUCED"
+    : partial
+      ? running
+        ? "ROUTING + DFM READY · COST CONTINUES"
+        : "PARTIAL RESULT · COST UNAVAILABLE"
+      : stopped
+        ? "THE WALK STOPS AT THE FAILED GATE"
+        : done
+          ? "COMPLETE — DETERMINISTIC · EVERY NUMBER CARRIES ITS SOURCE"
+          : "COMPUTING — GATES CHECKING IN";
+  const verdictColor = interrupted
+    ? C.cond
+    : partial
+      ? C.measured
+      : stopped
+        ? C.fail
+        : done
+          ? C.pass
+          : C.ink45;
 
   return (
     <div
