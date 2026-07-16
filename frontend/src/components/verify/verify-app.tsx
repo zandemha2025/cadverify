@@ -799,7 +799,10 @@ export function VerifyApp({
                 materialClass={materialClass}
                 materialProvenance={materialTouched ? "USER" : "DEFAULT"}
                 setMaterialClass={(next) => {
-                  setMaterialTouched(true);
+                  // The backend contract treats "polymer" as the undeclared
+                  // default; do not label it USER until the API can preserve an
+                  // explicit-default declaration separately.
+                  setMaterialTouched(next !== "polymer");
                   setMaterialClass(next);
                 }}
                 onPickFile={pickOwnFile}

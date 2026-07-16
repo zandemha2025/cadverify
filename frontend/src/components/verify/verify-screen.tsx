@@ -256,6 +256,23 @@ function PersonalizationDoor({
   const hostile = env.temp || env.sour || env.pressure;
   // The env door tells the exact truth about the last persistence round-trip.
   const door = envDoorStatus(hostile, running, result);
+  const materialAssumption = result?.cost?.assumptions.find(
+    (assumption) => assumption.name === "material_class"
+  );
+  const assumptionClass = materialAssumption?.unit.toLowerCase() ?? null;
+  const effectiveMaterialClass = assumptionClass && MATERIAL_CLASSES.some(
+    (material) => material.key === assumptionClass
+  )
+    ? assumptionClass
+    : materialClass;
+  const effectiveMaterialProvenance = materialAssumption
+    ? normProv(materialAssumption.provenance)
+    : materialProvenance;
+  const answerBasis = effectiveMaterialProvenance === "USER"
+    ? "The answer above uses your declared material and any service conditions you selected."
+    : effectiveMaterialProvenance === "CAD"
+      ? "The answer above uses the material class read from this CAD file; confirm it if the annotation is not authoritative."
+      : "The answer above uses a default material and ambient service until you declare otherwise.";
 
   return (
     <section
@@ -272,7 +289,7 @@ function PersonalizationDoor({
         <Kicker>MAKE THIS VERDICT YOURS · OPTIONAL</Kicker>
         <p style={{ margin: "6px 0 0", color: C.ink55, fontSize: 12.5, lineHeight: 1.55 }}>
           {result
-            ? "The answer above uses a default material and ambient service until you declare otherwise."
+            ? answerBasis
             : "You can start with the defaults. Declare these only when they matter to your part."}
         </p>
       </div>
@@ -316,9 +333,7 @@ function PersonalizationDoor({
       <div style={{ marginTop: 16, borderTop: `1px solid ${C.hair2}`, paddingTop: 14 }}>
         <Kicker>
           MATERIAL CLASS ·{" "}
-          <span style={{ color: materialProvenance === "USER" ? C.user : C.def }}>
-            {materialProvenance === "USER" ? "● USER" : "○ DEFAULT"}
-          </span>
+          <ProvChip p={effectiveMaterialProvenance} />
         </Kicker>
         <div
           role="radiogroup"
@@ -326,7 +341,7 @@ function PersonalizationDoor({
           style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}
         >
           {MATERIAL_CLASSES.map((material) => {
-            const on = materialClass === material.key;
+            const on = effectiveMaterialClass === material.key;
             return (
               <button
                 key={material.key}

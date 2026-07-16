@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const screenSource = await readFile(new URL("./verify-screen.tsx", import.meta.url), "utf8");
+const appSource = await readFile(new URL("./verify-app.tsx", import.meta.url), "utf8");
 
 // Regression: design FINDING-001 — keyboard and screen-reader order must match
 // the value-first visual order, and assumption selectors expose their state.
@@ -22,4 +23,12 @@ test("service-condition copy stays pending while verification is running", () =>
   const pending = screenSource.indexOf("if (running && hostile)", status);
   const persisted = screenSource.indexOf("if (result && result.envDeclared)", status);
   assert.ok(status >= 0 && pending > status && persisted > pending);
+});
+
+// Regression: QA ISSUE-007 — material value/provenance follows the cost record;
+// selecting the API's undeclared polymer default is never mislabeled USER.
+test("material provenance follows the engine contract", () => {
+  assert.match(screenSource, /assumption\.name === "material_class"/);
+  assert.match(screenSource, /normProv\(materialAssumption\.provenance\)/);
+  assert.match(appSource, /setMaterialTouched\(next !== "polymer"\)/);
 });
