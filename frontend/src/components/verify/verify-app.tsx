@@ -314,6 +314,7 @@ export function VerifyApp({
   const runSample = useCallback(() => {
     setScreen("verify");
     setGuidedSampleState("running");
+    setGuidedSummaryOpen(false);
     void runVerify(sampleBracketFile()).then((sampleResult) => {
       if (sampleResult?.validation || sampleResult?.cost || sampleResult?.costGeometryInvalid) {
         setGuidedSampleState("ready");

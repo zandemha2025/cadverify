@@ -29,6 +29,7 @@ import {
   envToServiceEnvironment,
 } from "./part-context";
 import { fetchPartContext, type PartContext } from "./part-context-read";
+import { validationAllowsCost } from "./run-gates";
 
 // Re-export so existing importers keep resolving these off `run` unchanged.
 export type { VerificationBlock, MakeabilityLattice } from "./verification";
@@ -210,8 +211,9 @@ export async function retryVerificationCost(
   };
 }
 
-/** Run the full verification for one dropped part. Independent calls run in
- *  parallel; each failure is isolated so a partial result is still honest. */
+/** Run the full verification for one dropped part. Lightweight independent work
+ *  runs in parallel. Costing starts only after routing + DFM returns, so a service
+ *  interruption cannot be misrepresented as a manufacturing verdict. */
 export async function runVerification(
   input: VerifyInput,
   options: RunVerificationOptions = {}
@@ -268,13 +270,37 @@ export async function runVerification(
   }
 
   const [floor, context] = await Promise.all([machinesPromise, contextPromise]);
+  const quantities = quantityLadderForAnnual(context.partContext?.annual_volume);
+
+  if (!validationAllowsCost(validationOut.v)) {
+    return {
+      file: input.file,
+      validation: null,
+      validationError: validationOut.err,
+      cost: null,
+      costGeometryInvalid: null,
+      costError: null,
+      machines: floor.machines,
+      machinesError: floor.error,
+      verification: null,
+      quantities,
+      env: input.env,
+      envDeclared,
+      envCaptured: context.envCaptured,
+      envError: context.envError,
+      meshHash: context.meshHash,
+      partContext: context.partContext,
+      partContextError: context.partContextError,
+    };
+  }
+
   const owned = ownedProcessesFrom(floor.machines).filter((p) =>
     KNOWN_ENGINE_PROCESSES.has(p)
   );
   const costOut = await postCost(
     input,
     owned,
-    quantityLadderForAnnual(context.partContext?.annual_volume)
+    quantities
   );
 
   // The verification block rides the cost response when the org declared machines
@@ -292,7 +318,7 @@ export async function runVerification(
     machines: floor.machines,
     machinesError: floor.error,
     verification,
-    quantities: costOut.cost?.quantities ?? QTY_LADDER,
+    quantities: costOut.cost?.quantities ?? quantities,
     env: input.env,
     envDeclared,
     envCaptured: context.envCaptured,
