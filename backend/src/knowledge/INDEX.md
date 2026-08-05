@@ -30,6 +30,7 @@ Loaded and validated by `loader.py`; every record resolves to a citation.
 | [DFM from first principles](library/foundations/dfm-first-principles.md) | The ten principles the numbers come from — the copilot's reasoning backbone |
 | [GD&T and tolerancing](library/foundations/gdt-and-tolerancing.md) | 101 to expert, the datum scheme as a functional statement, and the mistakes ranked by cost |
 | [Materials and service environments](library/foundations/materials-and-service-environments.md) | Alloy families, damage mechanisms, and why compliance is never a boolean |
+| [The environment atlas](library/foundations/environment-atlas.md) | All 18 environments, what each attacks with, and why their solutions conflict |
 | [Cost and should-cost](library/foundations/cost-and-should-cost.md) | The anatomy of a credible estimate and the five places it goes wrong |
 | [Quality, inspection and NDT](library/foundations/quality-inspection-and-ndt.md) | How a part gets believed; FAI vs PPAP; designing for provability |
 
@@ -38,7 +39,8 @@ Loaded and validated by `loader.py`; every record resolves to a citation.
 | Document | Covers |
 |---|---|
 | [Subtractive machining](library/processes/subtractive-machining.md) | `cnc_3axis`, `cnc_5axis`, `cnc_turning`, `wire_edm` |
-| [Additive manufacturing](library/processes/additive-manufacturing.md) | `dmls`, `slm`, `ebm`, `sls`, `mjf`, `fdm`, `sla`, `dlp`, `binder_jetting`, `ded`, `waam` |
+| [Additive manufacturing](library/processes/additive-manufacturing.md) | Metal AM in depth: `dmls`, `slm`, `ebm`, `binder_jetting`, `ded`, `waam` — plus when AM is the right answer at all |
+| [Polymer additive](library/processes/polymer-additive.md) | `fdm`, `sla`, `dlp`, `sls`, `mjf` — four technologies with opposite constraints |
 | [Moulding and casting](library/processes/moulding-and-casting.md) | `injection_molding`, `die_casting`, `investment_casting`, `sand_casting` |
 | [Forging and sheet metal](library/processes/forging-and-sheet-metal.md) | `forging`, `sheet_metal` |
 
@@ -59,6 +61,7 @@ Loaded and validated by `loader.py`; every record resolves to a citation.
 |---|---|
 | [The auditor playbook](library/audit/auditor-playbook.md) | How expert auditors think, the findings that recur, what good evidence is |
 | [Industry regimes](library/audit/industry-regimes.md) | Oil & gas, aerospace, medical, automotive — what each demands and fears |
+| [Specialised regimes](library/audit/specialised-regimes.md) | Nuclear, pressure equipment, rail, marine class, structural, export control, hygienic — and the trap in each |
 
 ### Exemplars
 
@@ -69,23 +72,58 @@ Loaded and validated by `loader.py`; every record resolves to a citation.
 
 ---
 
-## Reading paths
+## Reading paths by role
 
-**New to manufacturing.** Manufacturing 101 → DFM first principles → Good vs bad
-→ the process document for whatever you are working on.
+The corpus serves several different jobs. Start where your question lives.
 
-**Building the engine.** README (the contract) → CAD development → Mesh quality
-and repair → `packs/design_rules.yaml` → DFM first principles.
+**Design engineer** — "will this part work and can it be made?"
+DFM from first principles → the process document for your route → GD&T and
+tolerancing → the environment atlas → Good vs bad.
 
-**Preparing for an audit.** The auditor playbook → Industry regimes → the
-relevant checklist in `packs/audit_checklists.yaml` → Quality, inspection and NDT.
+**Manufacturing engineer** — "how do we actually make this, and what will bite?"
+Manufacturing 101 → your process document → the red-flag catalogue → Cost and
+should-cost → Quality, inspection and NDT.
 
-**Reviewing someone else's part.** The red-flag catalogue (start with the
+**CAD designer / drafter** — "is this model and definition fit to release?"
+CAD modelling quality → MBD, PMI and drawings → File formats and
+interoperability → GD&T and tolerancing → CAD data management.
+
+**Quality engineer / auditor** — "can we prove it?"
+The auditor playbook → Industry regimes → Specialised regimes → the relevant
+checklist in `packs/audit_checklists.yaml` → Quality, inspection and NDT.
+
+**Procurement / cost engineer** — "is this quote fair, and what is driving it?"
+Cost and should-cost → Manufacturing 101 (the volume bands and crossover) → the
+process document for the routed process → the economics section of the red-flag
+catalogue.
+
+**Materials / corrosion engineer** — "will it survive its world?"
+Materials and service environments → The environment atlas →
+`packs/environments.yaml` → the process document for what the alloy does to
+manufacturability.
+
+**Platform engineer** — "how do I build on this?"
+README (the contract) → CAD development → Mesh quality and repair →
+`packs/design_rules.yaml` → DFM from first principles.
+
+**New to the whole field.** Manufacturing 101 → DFM from first principles →
+Good vs bad → then whichever role path above matches your job.
+
+## Reading paths by task
+
+**Reviewing an unfamiliar part.** The red-flag catalogue (start with the
 five-minute scan) → GD&T and tolerancing → the relevant process document.
 
-**Selecting a material.** Materials and service environments →
-`packs/environments.yaml` → the relevant process document for what the alloy does
-to manufacturability.
+**Choosing a process.** Manufacturing 101 (the six questions, in order) → Cost
+and should-cost (the crossover) → candidate process documents.
+
+**Entering a new industry.** Industry regimes or Specialised regimes → the
+auditor playbook → the relevant checklist.
+
+**Debugging a part that failed in service.** The environment atlas (which
+mechanism?) → Materials and service environments → the process document (was it
+a process defect?) → Quality, inspection and NDT (would inspection have caught
+it?).
 
 ---
 

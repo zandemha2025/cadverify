@@ -127,22 +127,42 @@ exists for analyzer citations.
 
 ---
 
-## Current coverage, honestly
+## Current coverage
 
-The first pass covers all 21 `ProcessType` values, but not evenly. Density
-follows where the platform's declared customers live (oil & gas pressure work,
-aerospace, metal AM), so the thin areas are known rather than accidental:
+The corpus is held to **parity**: a user in any industry gets the same depth of
+answer, so no process, environment or regime is allowed to be thin.
 
-| Area | Depth | Where to extend next |
-|---|---|---|
-| Metal powder bed, CNC milling, injection moulding, casting, sheet metal | Good | — |
-| Turning, EDM, forging, DED/WAAM, binder jetting | Adequate | More numeric rules per feature class |
-| Polymer AM (`fdm`, `sla`, `dlp`, `sls`, `mjf`) | **Thin — 1–2 rules each** | Material-specific limits, orientation guidance, post-processing |
-| Environments | 8 declared | Radiation, vacuum/outgassing, hydrogen service, food/pharma contact |
-| Audit regimes | 6 checklists | Nuclear (ASME NQA-1), rail (IRIS), pressure equipment (PED/CE) |
+| Area | Coverage |
+|---|---|
+| Design rules | 89 rules; **every one of the 21 `ProcessType` values carries 6–10 process-specific rules** |
+| Service environments | 18, spanning corrosion, thermal, biological, structural, mechanical and wear |
+| Audit regimes | 13 checklists, 71 items |
+| Red flags | 33, each with an observable signal |
+| Glossary | 32 terms |
+| Written library | 23 documents |
 
-Applying the contract matters more than filling the table. A thin area with
-well-sourced rules is more useful than a full one with invented numbers.
+`test_every_process_meets_the_parity_floor` fails the build if any process drops
+below six process-specific rules. **The fix is to add sourced rules, not to lower
+the floor.**
+
+### Where to extend next
+
+Coverage is even, not complete. The honest next steps:
+
+- **Licensed reference works.** Machinery's Handbook and the ASM Handbook are the
+  field's canonical references and are commercially licensed. Facts may be stated
+  and attributed; text may not be reproduced. Digital enterprise licensing is
+  worth pricing.
+- **Public-domain technical literature.** MIL-HDBK series, NASA technical reports
+  (NTRS), DOE and NIST handbooks are free to use and substantial. This is the
+  largest available uplift that costs nothing but effort.
+- **Regimes not yet covered:** aviation maintenance (EASA Part 21/145), mining,
+  agricultural machinery, semiconductor fab equipment.
+- **Customer shop data.** The point of the whole design. Every number here is a
+  cold start waiting to be replaced.
+
+Applying the contract matters more than filling the table. A narrow area with
+well-sourced rules is worth more than a broad one with invented numbers.
 
 ## What this corpus is *not*
 

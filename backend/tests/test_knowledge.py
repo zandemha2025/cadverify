@@ -215,6 +215,19 @@ def test_checklists_for_process(kb):
     assert "api_6a_psl3" in found
 
 
+def test_no_duplicate_identifiers(kb):
+    """Duplicates silently shadow each other on lookup."""
+    terms = [t.term.casefold() for t in kb.glossary]
+    assert len(terms) == len(set(terms)), "duplicate glossary terms"
+
+    env_names = [e.name for e in kb.environments.values()]
+    assert len(env_names) == len(set(env_names)), "duplicate environment names"
+
+    for checklist in kb.checklists.values():
+        ids = [i.item_id for i in checklist.items]
+        assert len(ids) == len(set(ids)), f"duplicate item ids in {checklist.checklist_id}"
+
+
 def test_glossary_lookup_is_case_insensitive(kb):
     assert kb.define("should-cost") is not None
     assert kb.define("SHOULD-COST") is not None

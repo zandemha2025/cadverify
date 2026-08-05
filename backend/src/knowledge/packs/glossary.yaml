@@ -195,6 +195,130 @@ terms:
       available gage, it is a design problem discovered very late.
     source_id: aiag_msa
 
+  - term: "Technical data (export control)"
+    domain: compliance
+    definition: >-
+      Under ITAR and the EAR, information required for the design, development,
+      production or use of a controlled item — explicitly including CAD models,
+      drawings and manufacturing process information.
+    common_confusion: >-
+      Assumed to mean documents rather than models, and assumed to require
+      shipping something. Granting a foreign person read access to a server is an
+      export; so is sending a model out for a quote.
+    source_id: itar_ear
+
+  - term: "Commercial-grade dedication"
+    domain: quality
+    definition: >-
+      The nuclear process of accepting a commercially procured item into
+      safety-related service by identifying its critical characteristics and
+      verifying them independently, rather than relying on the supplier's
+      certificate.
+    common_confusion: "Read as extra paperwork on a purchase. It is an engineering activity, and the critical characteristics come from the design."
+    source_id: asme_nqa1
+
+  - term: "Execution class (EXC1–EXC4)"
+    domain: quality
+    definition: >-
+      The structural-steelwork severity class that determines tolerance,
+      inspection extent, traceability and welder qualification for a fabricated
+      structure.
+    common_confusion: "Assumed to be the fabricator's choice. The designer sets it; unstated, the fabricator defaults to the lowest."
+    source_id: aws_d1_1_en_1090
+
+  - term: "PED category (I–IV)"
+    domain: quality
+    definition: >-
+      The EU Pressure Equipment Directive's hazard category, derived from
+      pressure, volume or size, and fluid group — which then sets the
+      conformity-assessment module and the level of notified-body involvement.
+    common_confusion: >-
+      Derived from pressure alone. Fluid group matters: the same vessel holding a
+      dangerous fluid can jump categories and require a notified body.
+    source_id: eu_ped
+
+  - term: "TML / CVCM"
+    domain: materials
+    definition: >-
+      Total mass loss and collected volatile condensable material — the ASTM E595
+      vacuum outgassing screen. NASA's accepted limits are TML ≤ 1.0% and
+      CVCM ≤ 0.10%.
+    common_confusion: "Applied only to structural polymers, when labels, tapes, lubricants and conformal coatings need screening too."
+    source_id: astm_e595
+
+  - term: "Hydrogen embrittlement"
+    domain: materials
+    definition: >-
+      Loss of ductility, toughness and fatigue resistance when atomic hydrogen
+      dissolves into a metal lattice. Susceptibility runs inverse to strength.
+    common_confusion: >-
+      The instinct to solve a hydrogen pressure problem with a stronger material
+      makes it worse. Hydrogen service uses its own allowable-stress tables for
+      exactly this reason.
+    source_id: asme_b31_12
+
+  - term: "Dead leg"
+    domain: process
+    definition: >-
+      A blind or stagnant branch in a fluid system where product is not swept by
+      normal flow. Hygienic standards limit its length relative to diameter.
+    common_confusion: "Treated as a piping detail. It is a geometric requirement that can be checked in the model before anything is fabricated."
+    source_id: hygienic_design
+
+  - term: "Corrosivity category (C1–CX)"
+    domain: materials
+    definition: >-
+      ISO 9223's classification of atmospheric aggressiveness by time-of-wetness
+      and chloride and sulphur dioxide deposition, from indoor-dry to extreme
+      offshore and tropical industrial.
+    common_confusion: "Replaced by adjectives like 'coastal' or 'industrial', which cannot be designed against or audited."
+    source_id: iso_9223
+
+  - term: "Clearance vs creepage"
+    domain: platform
+    definition: >-
+      Clearance is the shortest path through air between conductors; creepage is
+      the shortest path across an insulating surface. Both scale with voltage;
+      creepage also scales with pollution degree.
+    common_confusion: "Conflated. Creepage is the one contamination degrades, and the one ribs and grooves are used to lengthen."
+    source_id: ipc_2221
+
+  - term: "Rapid gas decompression (RGD)"
+    domain: materials
+    definition: >-
+      Failure of an elastomer when gas dissolved into it under pressure expands
+      during depressurisation, blistering or splitting the seal.
+    common_confusion: "The seal fails during the pressure drop, not during service — so a seal that held perfectly can fail on shutdown."
+    source_id: api_6a
+
+  - term: "Sensitisation"
+    domain: materials
+    definition: >-
+      Precipitation of chromium carbides at grain boundaries in austenitic
+      stainless held around 425–815 °C, depleting chromium locally and opening
+      the boundaries to intergranular attack.
+    common_confusion: "Thought of as a heat-treatment problem. It happens in the heat-affected zone of every weld unless L or stabilised grades are used."
+    source_id: asm_handbook
+
+  - term: "Semantic vs graphic PMI"
+    domain: cad
+    definition: >-
+      Graphic PMI stores annotation as lines and text — a picture of a tolerance.
+      Semantic PMI stores it as a structured object with type, value, modifiers,
+      datum references and links to the faces it applies to.
+    common_confusion: >-
+      They look identical in a viewer. Only semantic PMI can be extracted,
+      ballooned or used to drive inspection, and only AP242 carries it.
+    source_id: asme_y14_41
+
+  - term: "Chordal deviation"
+    domain: cad
+    definition: "The maximum distance between a true curved surface and the flat triangles approximating it in a mesh."
+    common_confusion: >-
+      Ignored when quoting measurements from a mesh. It bounds the accuracy of
+      every radius, wall thickness and angle taken from tessellated geometry.
+    source_id: asme_y14_41
+
   - term: "Provenance (MEASURED / SHOP / USER / DEFAULT)"
     domain: platform
     definition: >-

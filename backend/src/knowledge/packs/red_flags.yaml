@@ -351,6 +351,158 @@ red_flags:
     source_id: boothroyd_dfma
     tier: handbook
 
+  - flag_id: RF_CONTROLLED_DATA_UNMARKED
+    category: compliance
+    name: "Export-controlled geometry with no classification on it"
+    looks_like: >-
+      A defence or dual-use model sitting on a general engineering share, sent
+      out for quotes, or uploaded to a cloud tool, with nothing recording that it
+      is controlled.
+    signal: >-
+      Geometry associated with a defence or dual-use programme carrying no
+      jurisdiction or classification attribute, or accessible to accounts outside
+      the permitted nationality set.
+    why_bad: >-
+      A CAD model is technical data. Transferring it to a foreign person —
+      including by granting read access to a server, or by sending it for a quote
+      — is an export whether or not any physical part moves. It happens silently
+      and continuously, through ordinary engineering workflow.
+    cost_of_missing_it: "A criminal-liability regime, not a quality finding. Penalties are personal as well as corporate."
+    correct_form: "Classification recorded as a machine-readable attribute on the item, enforced at the data layer, travelling with every derived file."
+    source_id: itar_ear
+    tier: standard
+
+  - flag_id: RF_HYGIENIC_GEOMETRY
+    category: geometry
+    name: "Un-cleanable geometry on a product-contact surface"
+    looks_like: >-
+      Horizontal ledges, flat vessel bottoms, dead legs, lap joints, exposed
+      threads and standard hex fasteners inside a food or pharmaceutical
+      product-contact volume.
+    signal: >-
+      On a product-contact surface: any upward-facing horizontal face, any
+      un-drained low point, any blind stub exceeding the dead-leg limit, any
+      exposed thread, or an internal corner radius below the applicable minimum.
+    why_bad: >-
+      In hygienic design the geometry *is* the hazard. Product retained in a
+      crevice supports microbial growth that cleaning cannot reach, and no
+      cleaning validation rescues a shape that cannot be cleaned.
+    cost_of_missing_it: "A contamination event and a product recall; in pharmaceutical work, a regulatory action."
+    correct_form: "Self-draining slopes, continuous ground welds, radiused corners, no dead legs, hygienic fasteners, specified product-contact surface finish."
+    source_id: hygienic_design
+    tier: handbook
+
+  - flag_id: RF_STRENGTH_SUBSTITUTION_IN_HYDROGEN
+    category: compliance
+    name: "A stronger material specified to solve a hydrogen pressure problem"
+    looks_like: "A high-strength low-alloy steel or hardened stainless chosen for a hydrogen component because the pressure demand rose."
+    signal: >-
+      A hydrogen-service declaration paired with a high-strength or high-hardness
+      alloy, or with a material selected from general pressure-vessel allowables
+      rather than hydrogen-specific ones.
+    why_bad: >-
+      Hydrogen compatibility runs **inverse** to strength — the stronger and
+      harder the alloy, the worse it behaves. This inverts the normal instinct,
+      so a competent pressure engineer with no hydrogen background reaches for
+      exactly the wrong answer, confidently.
+    cost_of_missing_it: "Embrittlement failure of a flammable-gas pressure boundary."
+    correct_form: "Stable austenitic stainless such as 316/316L, low hardness and cold work, selected from the hydrogen code's own allowable tables."
+    source_id: asme_b31_12
+    tier: standard
+
+  - flag_id: RF_UNSCREENED_NONMETALLIC_IN_VACUUM
+    category: compliance
+    name: "An unscreened polymer or adhesive in a vacuum assembly"
+    looks_like: "A commercial adhesive, tape, label, elastomer or lubricant specified in a spacecraft or vacuum assembly with no outgassing record."
+    signal: "A non-metallic item in a vacuum-service assembly with no ASTM E595 TML/CVCM record, or values above 1.0% / 0.10%."
+    why_bad: >-
+      Volatiles evaporate in vacuum and recondense on the coldest nearby surface
+      — usually the optics, detector or radiator. The instrument degrades because
+      of the adhesive holding a bracket somewhere else entirely, which makes the
+      cause very hard to find after the fact.
+    cost_of_missing_it: "Mission performance loss with no possibility of repair."
+    correct_form: "Every non-metallic screened to ASTM E595 and listed on an approved materials and processes list, including labels, tapes and lubricants."
+    source_id: astm_e595
+    tier: standard
+
+  - flag_id: RF_EXECUTION_CLASS_UNSTATED
+    category: definition
+    name: "Structural execution class not specified"
+    looks_like: "A welded structural assembly released with no execution class, tolerance class or inspection extent stated."
+    signal: "A structural weldment definition with no EXC (or equivalent) declaration and no identified critical welds."
+    why_bad: >-
+      The execution class drives tolerance, inspection extent, traceability and
+      welder qualification. Unstated, the fabricator reasonably defaults to the
+      lowest — and inspects accordingly. The designer owns this decision, so an
+      unstated class is a design omission that shows up as a fabrication one.
+    cost_of_missing_it: "A structure inspected to a lower standard than its load path warranted."
+    correct_form: "Execution class stated by the designer, with critical welds identified explicitly rather than by blanket percentage."
+    source_id: aws_d1_1_en_1090
+    tier: standard
+
+  - flag_id: RF_CLASS_APPROVAL_SUBSTITUTED
+    category: compliance
+    name: "An equivalent grade substituted where class or code approval was required"
+    looks_like: >-
+      A chemically identical material from a works without classification-society
+      approval, or an ASME-approved material used on PED equipment with no
+      European approval route.
+    signal: >-
+      A material meeting the specification but sourced outside the approval
+      route the governing regime requires (approved works, harmonised spec,
+      European Approval for Materials, or particular material appraisal).
+    why_bad: >-
+      Approval attaches to the route as well as the composition. Technically
+      identical material from an unapproved source is not acceptable, and the
+      discovery point is usually the surveyor or the notified body, after the
+      part is made.
+    cost_of_missing_it: "Rejection of finished product with no technical defect in it."
+    correct_form: "Specify the approval route with the grade; treat a source change on a certified item as a design change."
+    source_id: marine_class
+    tier: standard
+
+  - flag_id: RF_SINGLE_CYCLE_QUALIFICATION
+    category: compliance
+    name: "Reusable device qualified for one cycle, not its service life"
+    looks_like: "A reusable instrument or component validated through a single sterilisation cycle and sold for hundreds."
+    signal: "A repeated-sterilisation declaration with qualification evidence covering fewer cycles than the stated service life."
+    why_bad: >-
+      Degradation is cumulative. Steam hydrolyses susceptible polymers, gamma
+      dose accumulates, and joints fatigue thermally — over hundreds of cycles,
+      not one. A single-cycle qualification proves the device survives day one.
+    cost_of_missing_it: "Field failure of a device that passed its validation exactly as written."
+    correct_form: "Qualify to the full expected cycle count, with the cleaning step validated on worst-case geometry."
+    source_id: iso_17665_11135_11137
+    tier: standard
+
+  - flag_id: RF_COMMERCIAL_ITEM_UNDEDICATED
+    category: compliance
+    name: "A commercial item accepted into safety-related service on its certificate"
+    looks_like: "A valve, fastener or instrument bought commercially and installed in a nuclear safety-related application on the vendor's certificate alone."
+    signal: "A safety-classified item with no commercial-grade dedication record identifying and verifying its critical characteristics."
+    why_bad: >-
+      Under NQA-1 the supplier's word is not evidence. Dedication requires the
+      buyer to identify the characteristics that matter for the safety function
+      and verify them independently on the received item.
+    cost_of_missing_it: "A major finding, and potentially an operability determination on installed plant."
+    correct_form: "Critical characteristics identified at design time, verified on receipt, with records."
+    source_id: asme_nqa1
+    tier: standard
+
+  - flag_id: RF_WATER_TRAP
+    category: geometry
+    name: "Water trap designed into an outdoor structure"
+    looks_like: "Upward-facing channels, horizontal ledges, blind pockets and unsealed lap joints on a part with outdoor service."
+    signal: "On an atmospheric-exposure part: upward-facing faces with no drain path at their low point, or lap joints with no seal."
+    why_bad: >-
+      A trapped poultice of water and debris stays wet long after the surrounding
+      structure dries, so corrosion concentrates precisely where nobody inspects.
+      The part looks fine for years and then fails from the inside of a joint.
+    cost_of_missing_it: "Premature field corrosion and unplanned maintenance across a whole fleet or installation."
+    correct_form: "Slope every upward-facing surface, drain every low point, seal or delete lap joints, radius edges so coating holds thickness."
+    source_id: iso_9223
+    tier: standard
+
   - flag_id: RF_QUALIFICATION_INVALIDATED_SILENTLY
     category: compliance
     name: "A change that quietly invalidated a qualification"
