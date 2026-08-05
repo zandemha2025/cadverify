@@ -399,3 +399,361 @@ checklists:
         classic_finding: "A lattice or internal channel structure with no feasible inspection method, declared conforming on the strength of the build log alone."
         severity_if_missing: major
         design_lever: "Design inspectability in: if no method can see it, do not put a critical feature there."
+
+  # ═══ NUCLEAR ══════════════════════════════════════════════════════════════
+
+  - checklist_id: nuclear_nqa1
+    name: "Nuclear — NQA-1 / 10 CFR 50 Appendix B"
+    regime: "ASME NQA-1 / 10 CFR 50 Appendix B"
+    applies_to: [all]
+    source_id: asme_nqa1
+    tier: standard
+    mindset: >-
+      The strictest regime in commercial manufacturing, and the one with the
+      longest memory. The auditor assumes the records will be read in forty
+      years by someone who cannot ask anyone a question, so everything must be
+      self-explanatory on paper. The recurring theme is that nothing is accepted
+      on a supplier's word alone.
+    items:
+      - id: NQ-01
+        trigger: "Is this item safety-related, and how was that determined?"
+        evidence_expected: "A documented classification of the item against its safety function, driving which requirements apply."
+        classic_finding: "A safety-related item procured through the commercial route because nobody classified it at the point of purchase."
+        severity_if_missing: major
+        design_lever: "Carry safety classification as a first-class attribute on the item, from design onward."
+
+      - id: NQ-02
+        trigger: "Commercial-grade dedication for any item not supplied under an NQA-1 programme"
+        evidence_expected: >-
+          Identified critical characteristics, a verification method for each,
+          and records of the verification actually performed on the received
+          item — not the supplier's certificate.
+        classic_finding: "A commercial item accepted on a vendor certificate with no independent verification of critical characteristics."
+        severity_if_missing: major
+        design_lever: "Identify at design time which characteristics are critical, because those are what dedication must verify."
+
+      - id: NQ-03
+        trigger: "Independent design verification"
+        evidence_expected: "Design verified by a competent person other than the designer, by review, alternate calculation or test, with records."
+        classic_finding: "Self-checked calculations, or a reviewer who reported to the designer."
+        severity_if_missing: major
+        design_lever: "Design outputs must be independently checkable — which means assumptions and inputs are explicit."
+
+      - id: NQ-04
+        trigger: "Cobalt and residual chemistry control in high-flux regions"
+        evidence_expected: "Specified limits on cobalt and other activating elements, with actual chemistry on the material certificate."
+        classic_finding: "Cobalt-bearing hardfacing specified with no consideration of activation, dominating plant dose rates for decades."
+        severity_if_missing: major
+        design_lever: "Treat activation as a design constraint on material selection, not as a procurement preference."
+
+      - id: NQ-05
+        trigger: "Record retention and traceability over plant life"
+        evidence_expected: "Lifetime quality records retained and retrievable, traceable from installed component back to material and process."
+        classic_finding: "Records retained but not retrievable — an archive nobody can index against an installed component."
+        severity_if_missing: major
+        design_lever: "Permanent, machine-readable identification that survives installation and decades of service."
+
+      - id: NQ-06
+        trigger: "Counterfeit, fraudulent and suspect items"
+        evidence_expected: "A CFSI programme with receipt inspection appropriate to the item and its source."
+        classic_finding: "Fasteners or valves from a distributor with certificates that cannot be traced to a mill."
+        severity_if_missing: major
+        design_lever: "Specify items that can be sourced through qualified routes; exotic or obsolete parts push buyers toward grey markets."
+
+  # ═══ PRESSURE EQUIPMENT (EU) ══════════════════════════════════════════════
+
+  - checklist_id: pressure_equipment_ped
+    name: "Pressure equipment — EU PED and ASME dual-market"
+    regime: "Directive 2014/68/EU (PED) / ASME BPVC Section VIII"
+    applies_to: [sand_casting, investment_casting, forging, sheet_metal, cnc_3axis, cnc_5axis, cnc_turning]
+    source_id: eu_ped
+    tier: standard
+    mindset: >-
+      Two regimes that look similar and are not interchangeable. The auditor
+      wants to see that the correct one was chosen at the start, and that
+      material approval, examination and documentation all follow that same
+      route consistently.
+    items:
+      - id: PE-01
+        trigger: "Which category is this equipment, and how was the category derived?"
+        evidence_expected: "Category I–IV derived from pressure, volume or size, and fluid group, with the conformity-assessment module chosen accordingly."
+        classic_finding: "Category assessed on pressure alone, ignoring fluid group, and a notified body therefore not involved when it should have been."
+        severity_if_missing: major
+        design_lever: "Category is set by design parameters — a small change in volume or pressure can move the whole conformity route."
+
+      - id: PE-02
+        trigger: "How is the material approved for pressure duty?"
+        evidence_expected: "A harmonised material specification, a European Approval for Materials, or a Particular Material Appraisal — with documentation."
+        classic_finding: "An ASME-approved material used on a PED vessel with no European route to approval established."
+        severity_if_missing: major
+        design_lever: "Choose materials with a route in both regimes if the equipment will be sold into both markets."
+
+      - id: PE-03
+        trigger: "Minimum wall after all allowances"
+        evidence_expected: "Calculation showing the wall satisfies the code at its tolerance lower limit, plus corrosion allowance and forming thinning."
+        classic_finding: "Nominal wall satisfies the calculation and the toleranced minimum does not."
+        severity_if_missing: major
+        design_lever: "Tolerance wall unilaterally from the calculated minimum, never bilaterally around a nominal."
+
+      - id: PE-04
+        trigger: "Welding procedure and personnel qualification, under the correct regime"
+        evidence_expected: "WPS and PQR approved under the applicable code, with welder qualifications current and in scope."
+        classic_finding: "ASME Section IX qualifications presented for PED work with no notified-body approval of the procedures."
+        severity_if_missing: major
+        design_lever: "Design joints that both regimes recognise; exotic joint details multiply qualification cost."
+
+      - id: PE-05
+        trigger: "Declaration of conformity and the technical file"
+        evidence_expected: "A complete technical file: design calculations, material certificates, NDE records, test records, and the declaration itself."
+        classic_finding: "CE marking applied with an incomplete technical file, discovered at market surveillance rather than at build."
+        severity_if_missing: major
+        design_lever: "The file is assembled from design outputs; incomplete design records make a complete file impossible later."
+
+  # ═══ RAIL ═════════════════════════════════════════════════════════════════
+
+  - checklist_id: rail_en15085_iris
+    name: "Rail — EN 15085 welding and IRIS/ISO TS 22163"
+    regime: "EN 15085 / ISO/TS 22163 (IRIS)"
+    applies_to: [sheet_metal, forging, cnc_3axis, cnc_5axis, sand_casting]
+    source_id: en_15085
+    tier: standard
+    mindset: >-
+      Rail combines a safety-critical welded structure with a thirty-year service
+      life and a long obsolescence tail. The auditor checks the weld regime
+      first, then whether the organisation can still supply and support the
+      product in twenty years.
+    items:
+      - id: RL-01
+        trigger: "Weld performance class for each joint"
+        evidence_expected: "Each weld assigned a performance class from its safety and stress category, with the examination extent that follows."
+        classic_finding: "A single blanket weld class applied to the whole vehicle — over-inspecting most joints and under-inspecting the critical ones."
+        severity_if_missing: major
+        design_lever: "Assign weld classes at design time from the actual load path; it drives the entire inspection cost."
+
+      - id: RL-02
+        trigger: "Certification level of the welding organisation"
+        evidence_expected: "EN 15085-2 certification at a level covering the classes actually performed, with qualified welding coordination personnel."
+        classic_finding: "A supplier certified at a lower level than the joints being welded require."
+        severity_if_missing: major
+        design_lever: "Specifying a high weld class narrows the qualified supply base — know that before releasing."
+
+      - id: RL-03
+        trigger: "RAMS evidence for the design"
+        evidence_expected: "Reliability, availability, maintainability and safety analysis traceable to the design, not written afterwards."
+        classic_finding: "RAMS produced as a deliverable at the end, with no evidence it influenced any design decision."
+        severity_if_missing: minor
+        design_lever: "Maintainability is geometry: access for inspection and replacement is designed in or absent."
+
+      - id: RL-04
+        trigger: "Obsolescence management over a 30-year life"
+        evidence_expected: "Identified obsolescence risks with mitigation, including a route to re-manufacture."
+        classic_finding: "No plan for components whose suppliers will not exist for most of the vehicle's life."
+        severity_if_missing: minor
+        design_lever: "Model and definition quality is the re-manufacture route — an unmaintainable CAD model is an obsolescence risk."
+
+      - id: RL-05
+        trigger: "First-article inspection and configuration control"
+        evidence_expected: "FAI against the released definition, with configuration control over the whole build state."
+        classic_finding: "Configuration drift across a long production run, with no single record of what was fitted to which vehicle."
+        severity_if_missing: major
+        design_lever: "Effectivity per vehicle must be recorded from the first unit, not reconstructed later."
+
+  # ═══ MARINE AND OFFSHORE CLASS ════════════════════════════════════════════
+
+  - checklist_id: marine_class_survey
+    name: "Marine and offshore — classification society survey"
+    regime: "DNV / ABS / Lloyd's Register / Bureau Veritas rules"
+    applies_to: [sand_casting, investment_casting, forging, sheet_metal, cnc_3axis, cnc_turning]
+    source_id: marine_class
+    tier: standard
+    mindset: >-
+      Unusual among these regimes: a surveyor attends in person and witnesses
+      operations as they happen. So the manufacturing sequence itself is subject
+      to approval, and an operation performed without the witness present may
+      have to be repeated — or the item rejected.
+    items:
+      - id: MC-01
+        trigger: "Is the material from an approved works, to an approved grade?"
+        evidence_expected: "Class-approved material grade from a works holding class approval, with a class-stamped certificate."
+        classic_finding: "Correct grade from a works without class approval — technically identical material, not acceptable to class."
+        severity_if_missing: major
+        design_lever: "Specify class grades from the start; substituting an equivalent national grade invalidates the certificate."
+
+      - id: MC-02
+        trigger: "Were the required survey and witness points held?"
+        evidence_expected: "A manufacturing and inspection plan with class hold points, signed at each stage by the attending surveyor."
+        classic_finding: "A hold point passed without the surveyor present, forcing rework or re-testing."
+        severity_if_missing: major
+        design_lever: "Hold points constrain the manufacturing sequence, so they belong in planning, not in expediting."
+
+      - id: MC-03
+        trigger: "Welding procedure and welder approval to class"
+        evidence_expected: "Class-approved WPS and welder qualifications, current and covering the joints performed."
+        classic_finding: "National or company weld qualifications presented where class approval was required."
+        severity_if_missing: major
+        design_lever: "Unusual joint configurations require separate class approval and lead time."
+
+      - id: MC-04
+        trigger: "Corrosion protection and coating for the declared exposure"
+        evidence_expected: "Coating specification, surface preparation records, thickness measurements, and cathodic protection design where applicable."
+        classic_finding: "Coating specified generically with no stated corrosivity category or design life to first maintenance."
+        severity_if_missing: minor
+        design_lever: "Water traps, sharp edges and lap joints are coating failure sites designed in at CAD stage."
+
+      - id: MC-05
+        trigger: "Traceability from certificate to installed item"
+        evidence_expected: "Hard stamping or permanent marking traceable to the class certificate and the heat."
+        classic_finding: "Marking removed by machining or obscured by coating, breaking the chain at the last step."
+        severity_if_missing: major
+        design_lever: "Design a marking location that survives machining, coating and installation."
+
+  # ═══ STRUCTURAL STEELWORK ═════════════════════════════════════════════════
+
+  - checklist_id: structural_steel_execution
+    name: "Structural steelwork — AWS D1.1 / EN 1090 execution"
+    regime: "AWS D1.1 (US) / EN 1090-2 with EN ISO 3834 (EU)"
+    applies_to: [sheet_metal, cnc_3axis, forging]
+    source_id: aws_d1_1_en_1090
+    tier: standard
+    mindset: >-
+      Large, welded, and inspected by sampling rather than exhaustively. The
+      auditor checks that the execution class was set correctly, because it
+      determines everything downstream — tolerances, inspection extent, and
+      welder qualification.
+    items:
+      - id: ST-01
+        trigger: "What execution class applies, and who set it?"
+        evidence_expected: "EXC1–EXC4 (or the equivalent) stated by the designer, driving tolerance, inspection extent and traceability."
+        classic_finding: "No execution class specified, so the fabricator defaults to the lowest — with inspection to match."
+        severity_if_missing: major
+        design_lever: "The designer owns this. An unstated execution class is a design omission, not a fabrication one."
+
+      - id: ST-02
+        trigger: "Weld procedure and welder qualification in scope"
+        evidence_expected: "Qualified WPSs covering the actual joint configurations, positions and material grades, with current welder qualifications."
+        classic_finding: "Welding performed in a position or thickness outside the qualification range."
+        severity_if_missing: major
+        design_lever: "Design joints in positions that can actually be welded — overhead and confined joints raise qualification and defect rates."
+
+      - id: ST-03
+        trigger: "NDE extent matched to joint category"
+        evidence_expected: "Inspection extent per joint type and execution class, with records identifying which welds were examined."
+        classic_finding: "A percentage of welds inspected, chosen by the fabricator rather than targeted at the critical joints."
+        severity_if_missing: major
+        design_lever: "Identify critical welds explicitly rather than relying on a blanket percentage."
+
+      - id: ST-04
+        trigger: "Distortion and dimensional tolerance control"
+        evidence_expected: "Welding sequence planned for distortion, with dimensional checks against the applicable tolerance class."
+        classic_finding: "Distortion corrected by heat straightening with no record, altering material properties invisibly."
+        severity_if_missing: minor
+        design_lever: "Symmetric joint design and balanced welding reduce distortion far more cheaply than correcting it."
+
+      - id: ST-05
+        trigger: "Material traceability and CE marking of the fabricated product"
+        evidence_expected: "Mill certificates traceable to members, factory production control, and a declaration of performance where required."
+        classic_finding: "Traceability lost during cutting and nesting, when marked plate becomes unmarked parts."
+        severity_if_missing: major
+        design_lever: "Part marking scheme designed into the nesting, so identity survives the cut."
+
+  # ═══ EXPORT CONTROL ═══════════════════════════════════════════════════════
+
+  - checklist_id: export_control_technical_data
+    name: "Defence and dual-use — export control of technical data"
+    regime: "ITAR (22 CFR 120–130) / EAR (15 CFR 730–774)"
+    applies_to: [all]
+    source_id: itar_ear
+    tier: standard
+    mindset: >-
+      The regime engineers break by accident, doing ordinary work. **A CAD model
+      is technical data.** Sending it to an overseas supplier, or storing it
+      where a foreign-national colleague can open it, is an export — whether or
+      not any physical part moves. The auditor traces who could see the data, not
+      just who was sent it.
+    items:
+      - id: EX-01
+        trigger: "Is this item or its technical data controlled, and on what list?"
+        evidence_expected: "A documented jurisdiction and classification determination — USML category or ECCN — made before the data was shared."
+        classic_finding: "No determination made at all, on the assumption that a commercial-looking part is uncontrolled."
+        severity_if_missing: major
+        design_lever: "Classification is an attribute of the item and its data; it belongs on the item record, not in someone's memory."
+
+      - id: EX-02
+        trigger: "Who has access to the model, including by system permission?"
+        evidence_expected: "Access controls on the PDM/PLM system and on file shares, with nationality-aware permissioning where required."
+        classic_finding: >-
+          Controlled models on a general engineering share that foreign-national
+          employees can read — a deemed export that happened silently and
+          continuously.
+        severity_if_missing: major
+        design_lever: "Controlled items need access control at the data layer, which means classification must be machine-readable."
+
+      - id: EX-03
+        trigger: "Supplier and subcontractor transfers"
+        evidence_expected: "Licences or exemptions covering every transfer of technical data to a foreign supplier, including quoting packages."
+        classic_finding: "A model sent to an overseas shop for a quote, before any licence existed — quoting counts as a transfer."
+        severity_if_missing: major
+        design_lever: "Quoting workflows must respect classification, which means the flag has to travel with the file."
+
+      - id: EX-04
+        trigger: "Cloud storage, backups and third-party tooling"
+        evidence_expected: "Data residency and access controls for any cloud service touching controlled data, including analysis and rendering tools."
+        classic_finding: "Controlled geometry uploaded to a cloud tool with foreign administrators and no residency guarantee."
+        severity_if_missing: major
+        design_lever: "Any platform processing customer geometry inherits this obligation — it is an architecture requirement, not a policy one."
+
+  # ═══ FOOD, BEVERAGE AND PHARMACEUTICAL EQUIPMENT ══════════════════════════
+
+  - checklist_id: hygienic_equipment_design
+    name: "Food, beverage and pharma — hygienic equipment design"
+    regime: "3-A Sanitary Standards / EHEDG / 21 CFR 174–190"
+    applies_to: [sheet_metal, cnc_3axis, cnc_5axis, cnc_turning, investment_casting]
+    source_id: hygienic_design
+    tier: handbook
+    mindset: >-
+      Almost uniquely, the auditor's findings are about **geometry**. They will
+      run a hand along a weld, look for a crevice, check whether the vessel
+      drains, and look for threads on a product-contact surface. Material
+      declarations matter, but the shape is the hazard.
+    items:
+      - id: HY-01
+        trigger: "Does every product-contact surface drain?"
+        evidence_expected: "Self-draining slopes with no horizontal ledges, low points, or un-drainable pockets."
+        classic_finding: "A flat vessel bottom or a horizontal pipe run that holds residue after every clean."
+        severity_if_missing: major
+        design_lever: "Drainage is pure geometry, decided in CAD and impossible to fix in fabrication."
+
+      - id: HY-02
+        trigger: "Are there crevices, dead legs or lap joints on product contact?"
+        evidence_expected: "Continuous full-penetration welds ground smooth; no lap joints, no dead legs beyond the permitted length."
+        classic_finding: "A fitting installed on a stub that exceeds the dead-leg limit, harbouring product indefinitely."
+        severity_if_missing: major
+        design_lever: "Dead-leg length is a dimensional requirement — checkable in the model before anything is built."
+
+      - id: HY-03
+        trigger: "Product-contact surface roughness"
+        evidence_expected: "A specified Ra with a stated measurement basis, verified on the finished surface including welds."
+        classic_finding: "Surface finish specified for the plate and never verified across the welds, which are the rough part."
+        severity_if_missing: major
+        design_lever: "Additive as-built surfaces are generally unacceptable on product contact without machining or polishing."
+
+      - id: HY-04
+        trigger: "Exposed threads, sharp corners and blind fasteners on product contact"
+        evidence_expected: "No exposed threads; internal corners radiused to the applicable minimum; hygienic fasteners or none."
+        classic_finding: "A standard hex bolt inside a product-contact vessel."
+        severity_if_missing: major
+        design_lever: "Fastener selection on product contact is a hygiene decision, not a hardware one."
+
+      - id: HY-05
+        trigger: "Material declarations for every product-contact item"
+        evidence_expected: "Food-contact declarations for metals, elastomers, lubricants and coatings, valid for the actual product and temperature."
+        classic_finding: "Elastomer seals declared food-grade at ambient, used at process temperature outside the declaration."
+        severity_if_missing: major
+        design_lever: "Declare product and process conditions with the material requirement, not separately."
+
+      - id: HY-06
+        trigger: "Cleanability validation on worst-case geometry"
+        evidence_expected: "Cleaning validated on the hardest-to-clean feature actually present, with residue limits."
+        classic_finding: "Validation performed on a simplified test article that omits the difficult geometry."
+        severity_if_missing: major
+        design_lever: "Identify the worst-case cleanable feature at design time — and preferably delete it."

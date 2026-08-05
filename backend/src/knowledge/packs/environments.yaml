@@ -329,3 +329,446 @@ environments:
     auditor_focus: "Erosion allowance in the wall calculation; hard-facing procedure and bond integrity; inspection interval justification."
     source_id: asm_handbook
     tier: handbook
+
+  - env_id: hydrogen_service
+    name: "Hydrogen service — gaseous or liquid"
+    family: corrosion
+    summary: >-
+      Containment of hydrogen at pressure. A rapidly growing duty as hydrogen
+      energy scales, and one where ordinary pressure-vessel intuition is
+      actively misleading.
+    trigger: "Any wetted surface exposed to hydrogen gas or liquid hydrogen at pressure."
+    constraints: {}
+    damage_mechanisms:
+      - id: HE
+        name: "Hydrogen embrittlement"
+        mechanism: >-
+          Atomic hydrogen dissolves into the lattice and reduces ductility,
+          fracture toughness and fatigue resistance. Susceptibility runs
+          **inverse to strength**: the stronger and harder the alloy, the worse
+          it behaves. This inverts the usual instinct to solve a pressure
+          problem by specifying a stronger material.
+        design_response: >-
+          Prefer stable austenitic stainless — 316/316L is the reference choice
+          and is relatively tolerant of high-pressure hydrogen. Keep strength and
+          hardness low, avoid cold work, and use the hydrogen-specific allowable
+          stress tables rather than general pressure-vessel values.
+      - id: HE_FATIGUE
+        name: "Accelerated fatigue crack growth"
+        mechanism: >-
+          Hydrogen markedly increases fatigue crack growth rate, so a component
+          with acceptable static margin can still fail early under pressure
+          cycling — which is exactly the duty cycle of refuelling equipment.
+        design_response: "Design to hydrogen-specific fatigue data; minimise stress concentrations; plan inspection intervals against hydrogen crack-growth rates, not air data."
+      - id: H2_PERMEATION
+        name: "Permeation and leakage"
+        mechanism: >-
+          The hydrogen molecule is small enough to permeate polymers and to leak
+          through joints that hold other gases, and it is flammable across an
+          extremely wide concentration range.
+        design_response: "Metal-to-metal sealing where practical; qualify elastomers for hydrogen including rapid gas decompression; design for leak detection and ventilation."
+    typical_compliant_materials:
+      - "316 / 316L austenitic stainless (the reference choice)"
+      - "304L, and other stable austenitic grades within code limits"
+      - "Aluminium alloys, generally tolerant"
+      - "Copper alloys for low-pressure service"
+    typical_noncompliant_materials:
+      - "High-strength low-alloy steels — restricted or excluded by the hydrogen code regardless of inert-gas performance"
+      - "Martensitic stainless and hardened steels"
+      - "Titanium in some hydrogen conditions (hydride formation)"
+    design_notes:
+      - "A material qualified for a pressure vessel in nitrogen may be excluded in hydrogen at the same pressure. Never carry an inert-service material choice into hydrogen service."
+      - "Metastable austenitic grades can transform to martensite under cold work, creating a susceptible microstructure in a nominally acceptable alloy."
+    auditor_focus: >-
+      Material selection traced to the hydrogen code's own allowable tables, not
+      the general ones; hardness and cold-work control; elastomer qualification
+      including rapid gas decompression; leak testing with hydrogen or helium
+      rather than air.
+    source_id: asme_b31_12
+    tier: standard
+
+  - env_id: vacuum_space
+    name: "Vacuum and space"
+    family: thermal
+    summary: >-
+      Hard vacuum, extreme thermal cycling, radiation, and no possibility of
+      maintenance. Every material property that depends on an atmosphere changes
+      or disappears.
+    trigger: "Operation in vacuum, near-vacuum, or on-orbit."
+    constraints: {}
+    damage_mechanisms:
+      - id: OUTGASSING
+        name: "Outgassing and contamination"
+        mechanism: >-
+          Volatiles evaporate from polymers, adhesives and coatings in vacuum and
+          recondense on the coldest nearby surface — which is usually the optics,
+          the detector or the radiator. The instrument degrades because of the
+          adhesive holding a bracket somewhere else.
+        design_response: >-
+          Screen every non-metallic to ASTM E595 and accept only TML ≤ 1.0% and
+          CVCM ≤ 0.10%. Bake out assemblies. Keep line of sight from outgassing
+          sources to sensitive cold surfaces closed.
+      - id: COLD_WELDING
+        name: "Cold welding and galling"
+        mechanism: >-
+          In vacuum there is no oxide layer to re-form on a freshly exposed metal
+          surface, so clean like metals in contact under load can diffusion-bond.
+          A mechanism that moved freely on the bench seizes on orbit.
+        design_response: "Dissimilar material pairs at sliding interfaces; solid-film lubricants qualified for vacuum; avoid identical alloys in contact."
+      - id: THERMAL_CYCLING_VAC
+        name: "Thermal cycling with no convection"
+        mechanism: >-
+          Heat moves only by conduction and radiation. Temperature swings are
+          large and gradients are steep, so differential expansion at bonded and
+          bolted joints drives fatigue over thousands of orbits.
+        design_response: "Match coefficients of expansion at joints, use flexures rather than rigid restraint, design conduction paths deliberately."
+      - id: RADIATION_SPACE
+        name: "Radiation and atomic oxygen"
+        mechanism: >-
+          Ionising radiation degrades polymers and damages electronics; in low
+          Earth orbit atomic oxygen erodes exposed polymers and some metals.
+        design_response: "Radiation-tolerant material selection and shielding; atomic-oxygen-resistant coatings on exposed surfaces in LEO."
+    typical_compliant_materials:
+      - "Aluminium alloys, titanium, stainless steel"
+      - "PEEK, Vespel and other screened low-outgassing polymers"
+      - "Space-qualified adhesives and conformal coatings meeting E595"
+    typical_noncompliant_materials:
+      - "Most commercial elastomers, plasticised polymers and unscreened adhesives"
+      - "Zinc and cadmium platings (whisker growth and sublimation)"
+      - "Identical metal pairs at loaded sliding interfaces"
+    design_notes:
+      - "No maintenance is possible. Design life must be achieved without intervention, which changes the whole risk calculus."
+      - "Every non-metallic in the assembly needs an outgassing record, including labels, tapes and lubricants."
+    auditor_focus: "ASTM E595 records for every non-metallic; bake-out procedures; contamination control plan; materials and processes list approved by the customer."
+    source_id: astm_e595
+    tier: standard
+
+  - env_id: nuclear_radiation
+    name: "Nuclear and ionising radiation service"
+    family: structural
+    summary: >-
+      Components exposed to neutron or gamma flux, under a quality regime with
+      the longest record-retention and the strictest change control of any
+      industry.
+    trigger: "Exposure to neutron flux or significant gamma dose over the design life."
+    constraints: {}
+    damage_mechanisms:
+      - id: IRRADIATION_EMBRITTLEMENT
+        name: "Neutron irradiation embrittlement"
+        mechanism: >-
+          Fast neutrons displace atoms in the lattice, producing defect clusters
+          that harden the steel and raise its ductile-to-brittle transition
+          temperature — progressively, over decades. A vessel that was tough when
+          built becomes less tough every year of operation.
+        design_response: >-
+          Control residual copper, nickel and phosphorus, which drive the shift.
+          Run a surveillance programme with coupons removed and tested over life,
+          so the actual shift is measured rather than predicted.
+      - id: IASCC
+        name: "Irradiation-assisted stress-corrosion cracking"
+        mechanism: "Radiation alters both the microstructure and the local water chemistry, so alloys that resist SCC unirradiated crack under flux."
+        design_response: "Low-carbon and stabilised grades, controlled water chemistry, minimised residual stress, and design for in-service inspection."
+      - id: ACTIVATION
+        name: "Activation"
+        mechanism: >-
+          Materials become radioactive under neutron flux. Cobalt is the notorious
+          case — trace cobalt in stainless and in hardfacing activates to Co-60
+          and dominates plant dose rates for decades.
+        design_response: "Specify low-cobalt material and cobalt-free hardfacing in high-flux regions; this is a design specification, not a procurement preference."
+      - id: POLYMER_RADIATION
+        name: "Polymer radiation degradation"
+        mechanism: "Polymers cross-link or chain-scission under dose; polypropylene and PTFE degrade notably, while some elastomers harden and crack."
+        design_response: "Qualify every polymer to the total integrated dose over life, not to a dose rate."
+    typical_compliant_materials:
+      - "Low-cobalt austenitic stainless (304L, 316L)"
+      - "Reactor-grade low-alloy steel with controlled copper and phosphorus"
+      - "Zirconium alloys for in-core cladding"
+      - "Radiation-qualified EPDM and specific elastomer grades"
+    typical_noncompliant_materials:
+      - "Cobalt-bearing hardfacing in high-flux regions"
+      - "PTFE and polypropylene at significant integrated dose"
+      - "Materials with uncontrolled residual chemistry"
+    design_notes:
+      - "Design for remote handling and in-service inspection: once activated, a component may never again be touched by hand."
+      - "Record retention is measured in decades. Traceability decisions made now are read by someone in forty years."
+    auditor_focus: >-
+      NQA-1 / 10 CFR 50 Appendix B programme compliance; commercial-grade
+      dedication for any non-safety-qualified item; design verification records;
+      surveillance coupon programme; full residual chemistry on material
+      certificates.
+    source_id: astm_e185
+    tier: standard
+
+  - env_id: potable_water
+    name: "Potable water contact"
+    family: biological
+    summary: "Components wetted by drinking water, governed by what leaches out of them rather than by what they are made of."
+    trigger: "Any wetted surface in a drinking-water system."
+    constraints: {}
+    damage_mechanisms:
+      - id: LEACHING
+        name: "Leaching of regulated substances"
+        mechanism: >-
+          Metals, coatings, elastomers and solders release trace substances into
+          water over time. Certification is of the **finished component** under a
+          standardised extraction protocol — so an approved alloy in a
+          non-approved coating is not an approved component.
+        design_response: "Specify certified components and material formulations; treat a coating or elastomer change as a certification change."
+      - id: BIOFILM
+        name: "Biofilm and stagnation"
+        mechanism: >-
+          Dead legs, crevices and rough surfaces host biofilm, which supports
+          microbiologically influenced corrosion and water-quality failures.
+        design_response: "Design out dead legs and crevices; drainable geometry; surface finish smooth enough to resist colonisation."
+      - id: DEZINCIFICATION
+        name: "Dezincification and erosion of brass"
+        mechanism: "Ordinary brasses lose zinc selectively in some waters, leaving porous, weak copper."
+        design_response: "Dezincification-resistant brass or bronze; velocity limits to avoid erosion-corrosion of copper alloys."
+    typical_compliant_materials:
+      - "Certified stainless steel, dezincification-resistant brass, bronze"
+      - "Certified PEX, PP-R, PVC-U and PE piping materials"
+      - "Certified EPDM and NBR elastomer formulations"
+    typical_noncompliant_materials:
+      - "Leaded alloys beyond the applicable lead-content limits"
+      - "Uncertified coatings, greases and thread sealants on wetted surfaces"
+    auditor_focus: "Certification of the finished component, not the raw material; lead-content compliance; change control on any wetted formulation."
+    source_id: nsf_61
+    tier: standard
+
+  - env_id: food_pharma_contact
+    name: "Food, beverage and pharmaceutical contact"
+    family: biological
+    summary: >-
+      Product-contact surfaces where the requirement is hygienic design as much
+      as material chemistry — the geometry has to be cleanable in place.
+    trigger: "Any surface contacting food, beverage or pharmaceutical product."
+    constraints: {}
+    damage_mechanisms:
+      - id: MIGRATION
+        name: "Migration into product"
+        mechanism: "Substances transfer from the contact material into the product, governed by composition, temperature, contact time and the product's own chemistry."
+        design_response: "Use listed food-contact materials and formulations; verify against the actual product and process temperature, not a generic case."
+      - id: HARBOURAGE
+        name: "Microbial harbourage"
+        mechanism: >-
+          Crevices, dead legs, un-drainable pockets, threads, lap joints and
+          rough surfaces retain product and support microbial growth that
+          cleaning cannot reach. In hygienic design the geometry is the hazard.
+        design_response: >-
+          Continuous full-penetration welds ground smooth, radiused internal
+          corners, self-draining slopes, no dead legs, no exposed threads on
+          product-contact surfaces, and surface finish specified as a hygiene
+          requirement.
+      - id: CLEANING_CHEMISTRY
+        name: "Cleaning and sanitising chemical attack"
+        mechanism: "Clean-in-place cycles use hot caustic and acid, and repeated exposure attacks elastomers and some stainless grades, especially with chlorides present."
+        design_response: "Select alloys and elastomers for the cleaning regime as well as the product; 316L is the baseline and higher grades where chlorides are present."
+    typical_compliant_materials:
+      - "316L stainless with a specified product-contact surface finish"
+      - "Listed food-grade EPDM, silicone, PTFE and fluoroelastomers"
+      - "Listed food-contact polymers (PP, PE, PEEK grades)"
+    typical_noncompliant_materials:
+      - "Carbon steel and uncoated aluminium on product contact"
+      - "Unlisted elastomer formulations and lubricants"
+      - "Copper alloys with many food products"
+    design_notes:
+      - "Surface finish on product contact is a hygiene specification with a number, not a cosmetic preference."
+      - "As-built additive surfaces are generally unacceptable on product contact without machining or polishing — porosity is harbourage."
+    auditor_focus: "Material declarations for every product-contact item; weld and surface-finish records; cleanability validation on worst-case geometry."
+    source_id: fda_food_contact
+    tier: standard
+
+  - env_id: repeated_sterilisation
+    name: "Repeated sterilisation"
+    family: biological
+    summary: "Devices and equipment reprocessed many times over their service life, where the sterilisation cycle is the dominant ageing mechanism."
+    trigger: "Any reusable item subject to a validated sterilisation cycle."
+    constraints: {}
+    damage_mechanisms:
+      - id: STEAM_HYDROLYSIS
+        name: "Steam autoclave degradation"
+        mechanism: >-
+          Repeated cycles of saturated steam at roughly 121–134 °C hydrolyse
+          susceptible polymers and drive thermal fatigue at dissimilar-material
+          joints. Degradation is cumulative across hundreds of cycles.
+        design_response: "Specify hydrolysis-resistant polymers (PEEK, PPSU, silicone); qualify to the full cycle count, not a single cycle."
+      - id: EO_DIFFUSION
+        name: "Ethylene oxide diffusion and residue"
+        mechanism: "EO must reach every surface and then be aerated out; sealed volumes and absorbent materials retain residue above allowable limits."
+        design_response: "No sealed volumes; permeable packaging; materials that do not retain EO; aeration time as part of the design case."
+      - id: GAMMA_DEGRADATION
+        name: "Radiation sterilisation degradation"
+        mechanism: "Gamma or e-beam dose cross-links or chain-scissions polymers; polypropylene and PTFE degrade markedly, and repeated doses accumulate."
+        design_response: "Radiation-stabilised grades; qualify to cumulative dose; consider single-use if the material cannot take repeat dosing."
+      - id: CLEANING_ACCESS
+        name: "Cleanability between cycles"
+        mechanism: "Sterilisation does not remove soil. A device that cannot be cleaned cannot be sterilised, regardless of cycle validation."
+        design_response: "Design for disassembly and visual inspection; no blind lumens without a validated cleaning method; no trapped AM powder."
+    design_notes:
+      - "Qualify to the full expected number of cycles. Single-cycle qualification is a common and serious shortcut."
+      - "The cleaning step, not the sterilisation step, is where reusable-device design usually fails."
+    auditor_focus: "Cycle-count qualification; cleaning validation on worst-case geometry; residue limits for EO; material compatibility records for the specific validated cycle."
+    source_id: iso_17665_11135_11137
+    tier: standard
+
+  - env_id: atmospheric_marine
+    name: "Atmospheric exposure — coastal, industrial, topside"
+    family: corrosion
+    summary: >-
+      Outdoor exposure short of immersion. Frequently under-specified because it
+      sounds mild, and it is the most common cause of premature field corrosion.
+    trigger: "Outdoor or unconditioned service over a multi-year life."
+    constraints: {}
+    damage_mechanisms:
+      - id: ATMOSPHERIC_CORROSION
+        name: "Atmospheric corrosion"
+        mechanism: >-
+          Corrosion rate is governed by time-of-wetness plus chloride and sulphur
+          dioxide deposition. ISO 9223 grades this from C1 (indoor, dry) to CX
+          (extreme offshore and tropical industrial), and the rate difference
+          across that range is orders of magnitude.
+        design_response: "State the corrosivity category as a design input; select coating system and alloy against that category and the required time to first maintenance."
+      - id: WATER_TRAPS
+        name: "Water traps and poultices"
+        mechanism: >-
+          Horizontal ledges, upward-facing channels, blind pockets and lap joints
+          hold water and debris. The trapped poultice stays wet long after the
+          surrounding structure dries, so corrosion concentrates exactly where
+          nobody inspects.
+        design_response: "Slope all upward-facing surfaces, provide drain paths at every low point, seal or avoid lap joints, and radius edges so coatings hold thickness."
+      - id: COATING_EDGE_FAILURE
+        name: "Coating failure at edges and welds"
+        mechanism: "Paint and powder coatings thin at sharp edges and cannot cover weld spatter or undercut, so failure starts there and undercuts the surrounding film."
+        design_response: "Radius edges to a stated minimum before coating; specify weld dressing; design for coating access."
+    typical_compliant_materials:
+      - "Galvanised or duplex-coated steel for moderate categories"
+      - "316L or duplex stainless for coastal and offshore"
+      - "Anodised or correctly coated aluminium, isolated from dissimilar metals"
+    typical_noncompliant_materials:
+      - "Uncoated carbon steel outdoors"
+      - "304 stainless in chloride-bearing coastal atmospheres (pitting and staining)"
+      - "Untreated aluminium in direct contact with carbon steel or copper"
+    auditor_focus: "Stated corrosivity category and the design life to first maintenance; coating specification, surface preparation and inspection records."
+    source_id: iso_9223
+    tier: standard
+
+  - env_id: hpht_downhole
+    name: "High-pressure, high-temperature downhole"
+    family: mechanical
+    summary: >-
+      Deep-well service combining extreme pressure, elevated temperature,
+      corrosive produced fluids and no access for intervention.
+    trigger: "Downhole service, typically above roughly 690 bar or 150 °C."
+    constraints: {}
+    damage_mechanisms:
+      - id: COMBINED_LOADING
+        name: "Combined pressure, temperature and load"
+        mechanism: >-
+          Material allowable stress falls with temperature exactly where pressure
+          demand is highest, and elastomer seals lose capability in the same
+          direction. Margins that look comfortable at ambient can vanish at depth.
+        design_response: "Design to derated allowables at actual bottom-hole temperature; qualify seals at combined pressure and temperature, not separately."
+      - id: RGD
+        name: "Rapid gas decompression of elastomers"
+        mechanism: >-
+          Gas dissolves into elastomer under pressure; on rapid depressurisation
+          it expands inside the material and blisters or splits it. The seal
+          fails during the pressure drop, not during service.
+        design_response: "RGD-qualified elastomer compounds, sized seal grooves, and controlled depressurisation rates as an operating requirement."
+      - id: COMBINED_CORROSION
+        name: "Combined sour, chloride and CO2 attack"
+        mechanism: "Produced fluids bring H2S, CO2, chlorides and elemental sulphur together at temperature — a set of constraints whose individual solutions conflict."
+        design_response: "Select against the full combined envelope, not one mechanism at a time; nickel alloys are frequently the only alloy family that satisfies all of it."
+    design_notes:
+      - "No intervention is possible. Reliability targets are set by the cost of a workover, not by the cost of the part."
+      - "Every environment constraint stacks here — sour service, chloride SCC, elevated temperature and pressure simultaneously."
+    auditor_focus: "Qualification at combined conditions rather than at each condition separately; elastomer RGD test records; derated allowables at design temperature."
+    source_id: api_6a
+    tier: standard
+
+  - env_id: vibration_fatigue
+    name: "Vibration and cyclic loading"
+    family: structural
+    summary: >-
+      Any duty where the load cycles — rotating equipment, transport, engines,
+      actuation. The environment that most often kills parts that passed every
+      static check.
+    trigger: "Cyclic or vibratory loading over the service life."
+    constraints: {}
+    damage_mechanisms:
+      - id: HCF
+        name: "High-cycle fatigue"
+        mechanism: >-
+          Cracks initiate at surface stress concentrations and grow under cyclic
+          load. Fatigue life is dominated by surface finish, residual stress and
+          geometric stress concentration — not by static strength. A stronger
+          material with a sharper fillet is usually worse.
+        design_response: >-
+          Generous radii at every section change, controlled surface finish on
+          stressed surfaces, machining marks aligned with rather than across the
+          principal stress, and compressive residual stress (shot peening, rolling)
+          where specified.
+      - id: RESONANCE
+        name: "Resonance"
+        mechanism: "If a natural frequency coincides with an excitation frequency, response amplifies dramatically and fatigue life collapses."
+        design_response: "Compute natural frequencies against the excitation spectrum at design time; separate them by stiffness or mass change rather than by damping alone."
+      - id: FRETTING
+        name: "Fretting fatigue"
+        mechanism: >-
+          Micromotion at a clamped or press-fit joint abrades the surface and
+          initiates cracks at loads far below plain fatigue limits. Common at
+          bolted flanges, splines and interference fits.
+        design_response: "Increase clamp load or eliminate micromotion, add compliant layers or coatings, and radius the edge of contact."
+      - id: FASTENER_LOOSENING
+        name: "Fastener loosening"
+        mechanism: "Transverse vibration walks threaded fasteners loose; joint preload decays and the joint then fatigues rapidly."
+        design_response: "Design joints to remain in friction grip, specify and control preload, and use positive locking where vibration is severe."
+    design_notes:
+      - "As-built additive surfaces have markedly worse fatigue performance than machined ones — this is the main reason AM aerospace parts are machined at their interfaces."
+      - "EDM recast layers and grinding burn are fatigue initiation sites that no dimensional inspection detects."
+    auditor_focus: "Fatigue basis and its assumed surface condition; residual-stress treatments specified and verified; natural-frequency analysis against the actual excitation."
+    source_id: asm_handbook
+    tier: handbook
+
+  - env_id: electrical_thermal
+    name: "Electrical and thermal management"
+    family: structural
+    summary: >-
+      Mechanical parts sharing space with live circuits and heat sources —
+      enclosures, heat sinks, busbars, connector housings.
+    trigger: "Any part carrying current, insulating live parts, or managing electronic heat."
+    constraints: {}
+    damage_mechanisms:
+      - id: CLEARANCE_CREEPAGE
+        name: "Insufficient clearance and creepage"
+        mechanism: >-
+          Clearance is the shortest path through air; creepage is the shortest
+          path across a surface. Required distances rise with voltage and with
+          pollution degree, and creepage matters more in dirty or humid
+          environments because contamination makes the surface conductive.
+        design_response: "Size both against voltage and pollution degree; add ribs and grooves to lengthen the creepage path without growing the part."
+      - id: THERMAL_PATH
+        name: "Inadequate thermal path"
+        mechanism: >-
+          Junction temperature governs electronics life, and the path from
+          junction to ambient runs through interfaces whose contact resistance
+          dominates. Surface flatness and finish at the mating face often matter
+          more than the heat sink's fin design.
+        design_response: "Specify flatness and finish at thermal interfaces, design mounting pressure deliberately, and account for interface material thickness."
+      - id: CTE_MISMATCH_ELEC
+        name: "Thermal expansion mismatch at electronic joints"
+        mechanism: "Solder joints and die attaches fatigue under power cycling when the components either side expand at different rates."
+        design_response: "Match expansion coefficients where possible, allow compliance, and avoid rigidly constraining assemblies across a thermal gradient."
+      - id: EMI_ENCLOSURE
+        name: "Enclosure shielding integrity"
+        mechanism: >-
+          Shielding effectiveness is set by the largest aperture, not by the
+          material thickness. A long ventilation slot leaks far more than its
+          area suggests.
+        design_response: "Keep aperture longest dimension well below the wavelength of concern; use many small holes rather than one slot; maintain continuous conductive gasket contact."
+    design_notes:
+      - "A mechanical engineer designing an enclosure is making electrical safety decisions whether or not they realise it."
+      - "Anodising is an insulator — an anodised chassis does not provide a ground path or a shielding bond without masked contact areas."
+    auditor_focus: "Clearance and creepage against declared voltage and pollution degree; thermal interface specification; bonding and grounding paths; safety-agency file consistency."
+    source_id: ipc_2221
+    tier: standard

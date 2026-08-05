@@ -276,6 +276,103 @@ aiag_msa:
     tolerance is tight relative to gage capability will fail MSA regardless of
     how well it is machined.
 
+# ── Pressure equipment, rail, marine, structural, defence, hygienic ──────────
+
+eu_ped:
+  tier: standard
+  title: "Pressure Equipment Directive"
+  publisher: "European Union"
+  designation: "Directive 2014/68/EU (PED)"
+  access: free
+  scope: >-
+    EU market access for pressure equipment. Categorises equipment I–IV from
+    pressure, volume and fluid group, and assigns a conformity-assessment module
+    accordingly — with notified-body involvement rising with category. Requires
+    material qualification (harmonised spec, European approval, or particular
+    material appraisal) and CE marking with a declaration of conformity.
+  caution: >-
+    A vessel built to ASME BPVC is not automatically PED-compliant, and vice
+    versa. The two regimes differ in material approval route, examination and
+    documentation, so dual-market equipment is designed for both from the start
+    or requalified expensively later.
+
+en_15085:
+  tier: standard
+  title: "Railway applications — Welding of railway vehicles and components"
+  publisher: CEN
+  designation: "EN 15085 (parts 1–5)"
+  access: paid
+  scope: >-
+    Certification of welding organisations for rail, with weld performance
+    classes tied to safety and stress category. Determines the examination
+    level, the welding coordination personnel required, and the acceptance
+    criteria for each weld on the vehicle.
+
+iris_22163:
+  tier: standard
+  title: "Railway applications — Quality management system — Business management system requirements for rail organizations"
+  publisher: ISO / IRIS
+  designation: "ISO/TS 22163 (IRIS)"
+  access: paid
+  scope: >-
+    The rail-sector QMS built on ISO 9001, adding project management, RAMS
+    (reliability, availability, maintainability, safety), obsolescence
+    management, configuration management and first-article inspection.
+
+marine_class:
+  tier: standard
+  title: "Classification society rules for materials and welding"
+  publisher: "DNV / ABS / Lloyd's Register / BV"
+  designation: "Class society rules (DNV, ABS, LR, BV)"
+  access: free
+  scope: >-
+    Marine and offshore classification: approved material grades from approved
+    works, survey and witness points during manufacture, welding procedure and
+    welder approval, and class certification of the finished item. Class
+    surveyors witness in person, which makes the manufacturing sequence part of
+    the design problem.
+
+aws_d1_1_en_1090:
+  tier: standard
+  title: "Structural welding code — steel / Execution of steel and aluminium structures"
+  publisher: AWS / CEN
+  designation: "AWS D1.1 (US) and EN 1090-2 with EN ISO 3834 (EU)"
+  access: paid
+  scope: >-
+    Structural steel fabrication: weld procedure and welder qualification, joint
+    details, distortion and dimensional tolerances, inspection extent by joint
+    category. EN 1090 adds execution classes EXC1–EXC4 and CE marking of
+    fabricated structural steelwork.
+
+itar_ear:
+  tier: standard
+  title: "Export control of defence articles and technical data"
+  publisher: "US Department of State / Department of Commerce"
+  designation: "ITAR (22 CFR 120–130) and EAR (15 CFR 730–774)"
+  access: free
+  scope: >-
+    Controls on defence articles and dual-use items — including **technical
+    data**, which explicitly covers CAD models, drawings and manufacturing
+    process information. Transfer to a foreign person, including electronically
+    or by granting access to a server, is an export whether or not anything
+    physically moves.
+  caution: >-
+    This is the control most often broken by ordinary engineering workflow:
+    sharing a model with an overseas supplier, or storing it where a foreign
+    national employee can open it, is a controlled export.
+
+hygienic_design:
+  tier: handbook
+  title: "Hygienic design standards for food and pharmaceutical equipment"
+  publisher: "3-A SSI / EHEDG"
+  designation: "3-A Sanitary Standards; EHEDG design guidelines"
+  access: paid
+  scope: >-
+    The geometry rules for cleanable equipment: self-draining slopes, radiused
+    internal corners, continuous ground welds, no dead legs, no exposed threads
+    or crevices on product contact, and specified product-contact surface
+    roughness.
+
 # ── Additive manufacturing ───────────────────────────────────────────────────
 
 iso_astm_52900:
@@ -320,6 +417,119 @@ astm_f2792_hip:
     HIP closes internal gas porosity and lack-of-fusion that is not surface
     connected. It does not close surface-connected defects and does not fix
     geometry.
+
+# ── Hydrogen, vacuum, nuclear, water, food, sterilisation, electronics ───────
+
+asme_b31_12:
+  tier: standard
+  title: "Hydrogen Piping and Pipelines"
+  publisher: ASME
+  designation: "ASME B31.12"
+  access: paid
+  scope: >-
+    The hydrogen-specific piping and pipeline code. Carries hydrogen-specific
+    allowable stress tables that restrict or exclude high-strength steels from
+    hydrogen service regardless of how they perform in inert-gas service, and
+    sets material and temperature limits for hydrogen piping, tubing, valves and
+    fittings.
+  caution: >-
+    Hydrogen compatibility runs inverse to strength. A material qualified for a
+    pressure vessel in nitrogen may be excluded in hydrogen at the same pressure.
+
+astm_e595:
+  tier: standard
+  title: "Standard Test Method for Total Mass Loss and Collected Volatile Condensable Materials from Outgassing in a Vacuum Environment"
+  publisher: ASTM
+  designation: "ASTM E595"
+  access: paid
+  scope: >-
+    The spacecraft outgassing screen: a specimen held at 125 °C under vacuum for
+    24 hours, with total mass loss (TML) and collected volatile condensable
+    material (CVCM) measured. NASA's accepted limits are TML ≤ 1.0% and
+    CVCM ≤ 0.10%. Applies to organics, polymers, adhesives, coatings,
+    elastomers and composite matrices.
+
+astm_e185:
+  tier: standard
+  title: "Standard Practice for Design of Surveillance Programs for Light-Water Moderated Nuclear Power Reactor Vessels"
+  publisher: ASTM
+  designation: "ASTM E185"
+  access: paid
+  scope: >-
+    Surveillance of neutron-irradiation embrittlement in reactor pressure vessel
+    steels — the practice behind tracking the shift in ductile-to-brittle
+    transition temperature over a vessel's life.
+
+asme_nqa1:
+  tier: standard
+  title: "Quality Assurance Requirements for Nuclear Facility Applications"
+  publisher: ASME
+  designation: "ASME NQA-1"
+  access: paid
+  scope: >-
+    The nuclear QA programme standard, invoked with 10 CFR 50 Appendix B in the
+    US. Adds commercial-grade dedication, extensive design verification, and
+    record retention measured in decades rather than years.
+
+nsf_61:
+  tier: standard
+  title: "Drinking Water System Components — Health Effects"
+  publisher: NSF / ANSI
+  designation: "NSF/ANSI/CAN 61"
+  access: paid
+  scope: >-
+    Certification of materials and components in contact with potable water,
+    based on what leaches from the finished component into water — including
+    coatings, elastomers, solders and metal alloys. Lead-content limits are
+    governed separately (NSF/ANSI 372 and national law).
+
+fda_food_contact:
+  tier: standard
+  title: "Indirect food additives — food-contact substances"
+  publisher: US FDA
+  designation: "21 CFR Parts 174–190"
+  edition: "plus EU Regulation 1935/2004 and 10/2011 for the EU"
+  access: free
+  scope: >-
+    What a material in contact with food may be made of, and what may migrate
+    from it. Complemented by hygienic-design practice (3-A Sanitary Standards,
+    EHEDG) which governs the geometry: drainability, crevice-free joints,
+    cleanable surface finish.
+
+iso_17665_11135_11137:
+  tier: standard
+  title: "Sterilization of health care products — moist heat / ethylene oxide / radiation"
+  publisher: ISO
+  designation: "ISO 17665, ISO 11135, ISO 11137"
+  access: paid
+  scope: >-
+    Validation and control of the three dominant sterilisation routes. Each
+    imposes different material constraints: repeated steam autoclaving hydrolyses
+    some polymers, EO requires aeration and diffusion access, and gamma
+    irradiation degrades polypropylene and PTFE while leaving metals unaffected.
+
+iso_9223:
+  tier: standard
+  title: "Corrosion of metals and alloys — Corrosivity of atmospheres — Classification, determination and estimation"
+  publisher: ISO
+  designation: "ISO 9223"
+  access: paid
+  scope: >-
+    Atmospheric corrosivity categories C1–CX by time-of-wetness, chloride and
+    sulphur dioxide deposition. The defensible way to say "coastal" or
+    "industrial" as a design input rather than as an adjective.
+
+ipc_2221:
+  tier: standard
+  title: "Generic Standard on Printed Board Design"
+  publisher: IPC
+  designation: "IPC-2221 (with IPC-A-610 for acceptance)"
+  access: paid
+  scope: >-
+    Electrical clearance and creepage by voltage and pollution degree, conductor
+    sizing for current and temperature rise, and the acceptance criteria for
+    assembled electronics. The design rules that govern any enclosure or
+    mechanical part sharing space with live circuits.
 
 # ── Process- and vendor-specific ─────────────────────────────────────────────
 
