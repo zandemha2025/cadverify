@@ -1,0 +1,441 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# THE CITATION REGISTRY
+#
+# Every source referenced anywhere in the knowledge corpus is defined here,
+# exactly once. Rules reference sources by `source_id`; the loader fails
+# validation if a rule cites an id that is not in this file.
+#
+# tier: standard | vendor | handbook | practice | contested
+#   standard  — published consensus standard, citable to a clause
+#   vendor    — a machine/material vendor's published capability
+#   handbook  — established engineering reference, consensus, no clause
+#   practice  — widely-taught shop practice, no single authority
+#   contested — reputable sources materially disagree (record the range)
+#
+# `edition` is recorded when the requirement is edition-sensitive (it usually
+# is). `access` says whether the text is free — an auditor will ask.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Dimensioning, tolerancing, metrology ─────────────────────────────────────
+
+asme_y14_5:
+  tier: standard
+  title: "Dimensioning and Tolerancing"
+  publisher: ASME
+  designation: "ASME Y14.5-2018"
+  edition: "2018 (reaffirmed 2024)"
+  access: paid
+  scope: >-
+    The US GD&T language: symbols, datum reference frames, material condition
+    modifiers, profile, position, runout. Y14.5-2018 supersedes Y14.5-2009;
+    drawings and models must state which edition governs.
+
+asme_y14_41:
+  tier: standard
+  title: "Digital Product Definition Data Practices"
+  publisher: ASME
+  designation: "ASME Y14.41"
+  access: paid
+  scope: >-
+    How to put product definition on the model instead of a drawing — the
+    model-based definition (MBD) rulebook, including annotation planes,
+    saved views, and what a query-only model may and may not assert.
+
+iso_gps_1101:
+  tier: standard
+  title: "Geometrical product specifications (GPS) — Geometrical tolerancing"
+  publisher: ISO
+  designation: "ISO 1101"
+  access: paid
+  scope: >-
+    The ISO GPS counterpart to ASME Y14.5. NOT interchangeable: ISO defaults to
+    the independency principle unless (E) is invoked; ASME defaults to Rule #1
+    (envelope). A part toleranced under one and inspected under the other can be
+    accepted or rejected wrongly.
+
+iso_2768:
+  tier: standard
+  title: "General tolerances for linear and angular dimensions"
+  publisher: ISO
+  designation: "ISO 2768-1 / -2"
+  access: paid
+  scope: >-
+    Blanket tolerance classes (f/m/c/v for linear, H/K/L for geometrical) that
+    apply to every dimension without an explicit tolerance. Widely invoked by a
+    title-block note; widely misunderstood as "no tolerance required".
+
+iso_286:
+  tier: standard
+  title: "ISO code system for tolerances on linear sizes (limits and fits)"
+  publisher: ISO
+  designation: "ISO 286-1 / -2"
+  access: paid
+  scope: "The H7/g6-style fit system: shaft/hole tolerance grades and deviations."
+
+iso_4287:
+  tier: standard
+  title: "Surface texture: profile method — terms, definitions, parameters"
+  publisher: ISO
+  designation: "ISO 4287 / ISO 21920 series"
+  access: paid
+  scope: >-
+    Defines Ra, Rz, Rq and the filtering that makes them meaningful. Ra without
+    a stated cut-off and evaluation length is not a specification.
+
+# ── Oil, gas, pressure ───────────────────────────────────────────────────────
+
+api_6a:
+  tier: standard
+  title: "Specification for Wellhead and Christmas Tree Equipment"
+  publisher: API
+  designation: "API Spec 6A"
+  edition: "21st edition (+ addenda/errata)"
+  access: paid
+  scope: >-
+    Design, materials, welding, NDE, testing and documentation for surface
+    wellhead equipment. Carries the PSL 1–4 ladder: PSL-1 is baseline; PSL-2
+    adds mandatory traceability plus surface NDE and hardness; PSL-3 extends
+    testing/hydro duration; PSL-4 adds full heat traceability, low-temperature
+    impact testing, 100% NDE of pressure-containing welds, hardness survey,
+    gas seat testing and full dimensional inspection.
+
+api_q1:
+  tier: standard
+  title: "Specification for Quality Management System Requirements for Manufacturing Organizations for the Petroleum and Natural Gas Industry"
+  publisher: API
+  designation: "API Spec Q1"
+  access: paid
+  scope: >-
+    The QMS a monogram licensee must run. Where API 6A says what the product
+    must be, Q1 says what the *organisation* must be — design control, risk
+    assessment, contingency planning, supplier control, MOC.
+
+nace_mr0175:
+  tier: standard
+  title: "Petroleum and natural gas industries — Materials for use in H2S-containing environments in oil and gas production"
+  publisher: NACE / ISO
+  designation: "NACE MR0175 / ISO 15156 (Parts 1–3)"
+  access: paid
+  scope: >-
+    Governs material selection for sour (H2S) service. Part 1 sets the selection
+    principles and the sour-service definition by H2S partial pressure and pH;
+    Part 2 covers carbon and low-alloy steels (the ≤ 22 HRC / 248 HBW ceiling
+    for SSC resistance, applied to base metal, weld metal and HAZ); Part 3 lists
+    qualified corrosion-resistant alloys with their environmental limits.
+  caution: >-
+    Compliance is environment-specific. "NACE material" is not a property of an
+    alloy in the abstract — an alloy is qualified only within stated limits of
+    H2S partial pressure, chloride, pH, temperature and elemental sulphur.
+
+asme_bpvc_viii:
+  tier: standard
+  title: "Boiler and Pressure Vessel Code, Section VIII — Rules for Construction of Pressure Vessels"
+  publisher: ASME
+  designation: "ASME BPVC Section VIII, Div. 1 / Div. 2"
+  access: paid
+  scope: >-
+    Pressure-retaining wall thickness by calculation, joint efficiency, nozzle
+    reinforcement, and the examination that backs each. Div. 1 is rule-based
+    with higher design margin; Div. 2 is analysis-based, thinner walls, far more
+    documentation and NDE.
+
+asme_bpvc_ix:
+  tier: standard
+  title: "Boiler and Pressure Vessel Code, Section IX — Welding, Brazing and Fusing Qualifications"
+  publisher: ASME
+  designation: "ASME BPVC Section IX"
+  access: paid
+  scope: "WPS / PQR / WPQ — how a weld procedure and a welder become qualified."
+
+api_5l:
+  tier: standard
+  title: "Specification for Line Pipe"
+  publisher: API
+  designation: "API Spec 5L"
+  access: paid
+  scope: "Line pipe grades, chemistry, mechanical and testing; PSL1 vs PSL2."
+
+# ── Aerospace ────────────────────────────────────────────────────────────────
+
+as9100:
+  tier: standard
+  title: "Quality Management Systems — Requirements for Aviation, Space and Defense Organizations"
+  publisher: SAE / IAQG
+  designation: "AS9100D (EN 9100 / JISQ 9100)"
+  access: paid
+  scope: >-
+    ISO 9001 plus aerospace: configuration management, counterfeit-part
+    prevention, product safety, special-process control, FOD, key characteristics.
+
+as9102:
+  tier: standard
+  title: "Aerospace First Article Inspection Requirement"
+  publisher: SAE
+  designation: "AS9102"
+  access: paid
+  scope: >-
+    The FAI: every drawing/model characteristic ballooned, numbered, measured
+    and recorded on Forms 1–3, with the specific means of inspection and the
+    material/special-process certifications attached.
+
+as9145:
+  tier: standard
+  title: "Requirements for Advanced Product Quality Planning and Production Part Approval Process"
+  publisher: SAE
+  designation: "AS9145"
+  access: paid
+  scope: "APQP/PPAP for aerospace; integrates with 9100, 9102 and 9103."
+
+nadcap:
+  tier: standard
+  title: "NADCAP special process accreditation"
+  publisher: PRI / PerformanceReview Institute
+  designation: "NADCAP (AC7100 series audit criteria)"
+  access: paid
+  scope: >-
+    Accreditation of *special processes* — heat treat, NDT, chemical processing,
+    welding, coatings, materials testing, and AM — where conformity cannot be
+    verified by inspecting the finished part. Not required by AS9100 itself;
+    required by most primes via flow-down.
+
+# ── Medical ──────────────────────────────────────────────────────────────────
+
+iso_13485:
+  tier: standard
+  title: "Medical devices — Quality management systems — Requirements for regulatory purposes"
+  publisher: ISO
+  designation: "ISO 13485:2016"
+  access: paid
+  scope: "The device QMS: design controls, DHF/DMR/DHR, validation, traceability, complaint handling."
+
+fda_820:
+  tier: standard
+  title: "Quality System Regulation / Quality Management System Regulation"
+  publisher: US FDA
+  designation: "21 CFR Part 820"
+  edition: "QMSR harmonisation with ISO 13485 effective 2026-02-02"
+  access: free
+  scope: >-
+    US device quality regulation. §820.30 design controls — design inputs,
+    outputs, review, verification, validation, transfer, changes, and the DHF —
+    is the clause a design-side audit lives in.
+
+iso_10993:
+  tier: standard
+  title: "Biological evaluation of medical devices"
+  publisher: ISO
+  designation: "ISO 10993 series"
+  access: paid
+  scope: >-
+    Biocompatibility. Critically, it evaluates the *finished device including
+    its manufacturing residues* — so process, cleaning and surface finish are
+    part of the biological argument, not just the alloy.
+
+# ── Automotive ───────────────────────────────────────────────────────────────
+
+iatf_16949:
+  tier: standard
+  title: "Quality management system requirements for automotive production and relevant service parts organizations"
+  publisher: IATF
+  designation: "IATF 16949:2016"
+  access: paid
+  scope: "Automotive QMS on top of ISO 9001: APQP, FMEA, MSA, SPC, control plans, PPAP."
+
+aiag_ppap:
+  tier: standard
+  title: "Production Part Approval Process"
+  publisher: AIAG
+  designation: "AIAG PPAP, 4th edition"
+  access: paid
+  scope: >-
+    The 18-element evidence package (design records, change documents, FMEAs,
+    process flow, control plan, MSA, dimensional results, material/performance
+    test results, initial process studies, qualified laboratory documentation,
+    appearance approval, sample product, master sample, checking aids,
+    customer-specific requirements, and the Part Submission Warrant) with
+    submission levels 1–5.
+
+aiag_vda_fmea:
+  tier: standard
+  title: "FMEA Handbook (Design FMEA and Process FMEA)"
+  publisher: AIAG / VDA
+  designation: "AIAG-VDA FMEA Handbook, 1st edition"
+  access: paid
+  scope: >-
+    The 7-step FMEA replacing RPN with Action Priority (AP). A DFMEA that still
+    ranks by RPN is an audit finding at most OEMs.
+
+aiag_msa:
+  tier: standard
+  title: "Measurement Systems Analysis"
+  publisher: AIAG
+  designation: "AIAG MSA, 4th edition"
+  access: paid
+  scope: >-
+    Gage R&R and friends. The rule that bites design: a characteristic whose
+    tolerance is tight relative to gage capability will fail MSA regardless of
+    how well it is machined.
+
+# ── Additive manufacturing ───────────────────────────────────────────────────
+
+iso_astm_52900:
+  tier: standard
+  title: "Additive manufacturing — General principles — Fundamentals and vocabulary"
+  publisher: ISO / ASTM
+  designation: "ISO/ASTM 52900"
+  access: paid
+  scope: "The seven process categories and the vocabulary everything else uses."
+
+iso_astm_52910:
+  tier: standard
+  title: "Additive manufacturing — Design — Requirements, guidelines and recommendations"
+  publisher: ISO / ASTM
+  designation: "ISO/ASTM 52910"
+  access: paid
+  scope: "Design for AM: when AM is the right answer and what the design must account for."
+
+iso_astm_52911:
+  tier: standard
+  title: "Additive manufacturing — Design — Part 1: Laser-based powder bed fusion of metals"
+  publisher: ISO / ASTM
+  designation: "ISO/ASTM 52911-1"
+  access: paid
+  scope: "L-PBF-specific design guidance: orientation, supports, overhangs, powder removal."
+
+astm_f3301:
+  tier: standard
+  title: "Standard for Additive Manufacturing — Post Processing Methods"
+  publisher: ASTM
+  designation: "ASTM F3301"
+  access: paid
+  scope: "Post-processing of PBF metal parts: stress relief, HIP, support removal, finishing."
+
+astm_f2792_hip:
+  tier: standard
+  title: "Hot isostatic pressing practice for AM and castings"
+  publisher: ASTM / industry practice
+  designation: "HIP practice (see ASTM A1080 for steel castings)"
+  access: paid
+  scope: >-
+    HIP closes internal gas porosity and lack-of-fusion that is not surface
+    connected. It does not close surface-connected defects and does not fix
+    geometry.
+
+# ── Process- and vendor-specific ─────────────────────────────────────────────
+
+nadca_standards:
+  tier: handbook
+  title: "NADCA Product Specification Standards for Die Castings"
+  publisher: North American Die Casting Association
+  designation: "NADCA Product Standards (S-4A series)"
+  access: paid
+  scope: "Die casting draft, tolerance, flatness, parting-line and porosity classes."
+
+sfsa_casting:
+  tier: handbook
+  title: "Steel Castings Handbook / casting design guidance"
+  publisher: Steel Founders' Society of America
+  designation: "SFSA Steel Castings Handbook"
+  access: free
+  scope: >-
+    Casting design for soundness: section modulus, directional solidification,
+    riser and chill placement, hot spots, and what a foundry can and cannot
+    hold dimensionally.
+
+din_6935:
+  tier: standard
+  title: "Cold bending of flat rolled steel"
+  publisher: DIN
+  designation: "DIN 6935"
+  access: paid
+  scope: "Minimum bend radii and bend-allowance computation for cold-formed steel."
+
+machinerys_handbook:
+  tier: handbook
+  title: "Machinery's Handbook"
+  publisher: Industrial Press
+  designation: "Machinery's Handbook (31st ed.)"
+  access: paid
+  scope: "The general machining/mechanical reference: threads, fits, feeds, materials."
+
+asm_handbook:
+  tier: handbook
+  title: "ASM Handbook"
+  publisher: ASM International
+  designation: "ASM Handbook (multi-volume)"
+  access: paid
+  scope: "Materials, heat treatment, failure analysis, forming, casting, welding, corrosion."
+
+sandvik_machining:
+  tier: vendor
+  title: "Sandvik Coromant machining guides and application data"
+  publisher: Sandvik Coromant
+  designation: "Sandvik Coromant technical guide"
+  access: free
+  scope: "Tooling geometry, feeds/speeds, achievable corner radii and engagement limits."
+
+boothroyd_dfma:
+  tier: handbook
+  title: "Product Design for Manufacture and Assembly"
+  publisher: Boothroyd, Dewhurst & Knight
+  designation: "Boothroyd Dewhurst DFMA"
+  access: paid
+  scope: >-
+    The quantitative DFA method — minimum theoretical part count, handling and
+    insertion time — and the origin of the "cost is decided in design" claim
+    that most DFM tooling rests on.
+
+# ── Practice-tier and contested rules ────────────────────────────────────────
+
+shop_practice_machining:
+  tier: practice
+  title: "General machine-shop practice (consensus of published DFM guides)"
+  publisher: "industry consensus"
+  designation: "shop practice — machining"
+  access: free
+  scope: >-
+    Rules everyone teaches and no one owns: 3:1 pocket depth-to-tool-diameter
+    before chatter management dominates, internal radii sized above the tool
+    radius rather than equal to it, 4:1 unsupported-length limits on small tools.
+  caution: "No authority behind these. They are strong priors, not requirements."
+
+shop_practice_sheet_metal:
+  tier: contested
+  title: "Sheet-metal minimum feature rules (sources disagree)"
+  publisher: "industry consensus"
+  designation: "shop practice — sheet metal"
+  access: free
+  scope: >-
+    Minimum flange length is published as 3×t by some fabricators and 4×t by
+    others; hole-to-bend is published as 2×t, and as 1.5×t + bend radius.
+  disagreement: >-
+    The spread is real and comes from tooling: a shop with narrow press-brake
+    dies holds shorter flanges than one running standard V-dies. Encode the
+    range; let the shop's own capability override it.
+
+shop_practice_moulding:
+  tier: practice
+  title: "Injection-moulding design consensus (Protolabs, Xometry, moulder guides)"
+  publisher: "industry consensus"
+  designation: "shop practice — injection moulding"
+  access: free
+  scope: >-
+    Uniform nominal wall 1.5–4 mm for engineering thermoplastics; ribs at
+    50–65% of nominal wall to avoid sink; rib base fillet 0.25–0.5× nominal
+    wall; rib spacing ≥ 2× nominal wall; 1° draft per 25 mm of draw as a
+    starting point, plus ~1.5° extra per 0.025 mm of texture depth.
+
+dfam_practice:
+  tier: practice
+  title: "Design for additive manufacturing consensus"
+  publisher: "industry consensus"
+  designation: "shop practice — DfAM"
+  access: free
+  scope: >-
+    The 45° self-supporting overhang heuristic for L-PBF; powder-evacuation
+    ports of roughly 2 mm or larger on enclosed volumes; minimum unsupported
+    hole diameter around 1.5 mm for polymer powder bed.
+  caution: >-
+    45° is a heuristic, not a physical constant. Achievable angle depends on
+    alloy, layer thickness, laser parameters, and the surface finish accepted
+    on the down-skin. Well-tuned machines print 30–40° routinely.

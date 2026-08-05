@@ -1,0 +1,207 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# GLOSSARY — the vocabulary, defined once
+#
+# The copilot speaks to manufacturing engineers, procurement, and quality people
+# who do not share a dialect. A term defined here is defined for everyone; a
+# definition that carries a common misunderstanding says so, because the
+# misunderstanding is usually the expensive part.
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "1.0.0"
+
+terms:
+
+  - term: "DFM / DFMA"
+    domain: method
+    definition: >-
+      Design for Manufacture (can it be made economically by the chosen process)
+      and Design for Assembly (can the assembly be built with fewer, easier
+      parts). DFA usually finds the larger savings, because deleting a part
+      deletes its tooling, its inspection and its supply chain too.
+    common_confusion: "DFM is often read as 'a checklist of radii'. Its real content is process selection and part-count reduction."
+    source_id: boothroyd_dfma
+
+  - term: "Should-cost"
+    domain: cost
+    definition: >-
+      A bottom-up, physics-based estimate of what a part ought to cost given a
+      process, a material, a volume and a set of rates — built from cycle time,
+      material mass, setup, tooling amortisation and overhead.
+    common_confusion: >-
+      Confused with market price. A should-cost is an independent engineering
+      estimate used to interrogate a quote, not a prediction of what anyone will
+      charge.
+    source_id: boothroyd_dfma
+
+  - term: "Marginal cost (owned equipment)"
+    domain: cost
+    definition: >-
+      The incremental resource cost of making a part on equipment you already
+      own: material, consumables, energy, and the labour actually consumed —
+      excluding the sunk capital of the machine.
+    common_confusion: "Compared directly against a supplier's price, which includes their capital recovery, overhead and margin. The two answer different questions."
+    source_id: boothroyd_dfma
+
+  - term: "Datum reference frame (DRF)"
+    domain: gdt
+    definition: >-
+      The coordinate system established by contacting datum features in a stated
+      precedence order, against which located and oriented tolerances are
+      verified.
+    common_confusion: >-
+      Treated as a measurement convenience. It is a functional statement: the DRF
+      should reproduce how the part locates in its assembly, or inspection
+      measures the wrong thing correctly.
+    source_id: asme_y14_5
+
+  - term: "Rule #1 (envelope principle)"
+    domain: gdt
+    definition: >-
+      Under ASME Y14.5, the size tolerance of a regular feature of size also
+      controls its form: at maximum material condition the feature must fit a
+      perfect-form boundary.
+    common_confusion: >-
+      Assumed universal. ISO GPS defaults to the independency principle instead —
+      form is NOT controlled by size unless (E) is invoked. Same drawing, two
+      acceptance outcomes.
+    source_id: asme_y14_5
+
+  - term: "MMC and bonus tolerance"
+    domain: gdt
+    definition: >-
+      Applying the maximum-material-condition modifier to a position tolerance
+      allows additional positional tolerance as the feature departs from MMC —
+      the 'bonus'. It is legitimate whenever the requirement is assembly
+      clearance rather than alignment.
+    common_confusion: >-
+      Applied to form and profile controls, where it is not permitted — profile,
+      circularity and cylindricity always apply regardless of feature size.
+    source_id: asme_y14_5
+
+  - term: "MBD / PMI"
+    domain: cad
+    definition: >-
+      Model-Based Definition: the 3D model, not a drawing, is the authoritative
+      product definition. Product and Manufacturing Information is the annotation
+      (GD&T, notes, finishes) carried on that model.
+    common_confusion: >-
+      'We have PMI' can mean graphic PMI (pictures) or semantic PMI (machine-
+      readable, face-linked). Only the latter survives to automated inspection.
+    source_id: asme_y14_41
+
+  - term: "B-rep vs mesh"
+    domain: cad
+    definition: >-
+      A boundary representation defines faces as exact mathematical surfaces with
+      topology; a mesh approximates them with triangles. B-rep is exact; a mesh
+      is exact only to its chordal deviation.
+    common_confusion: >-
+      Measurements taken on a mesh are quoted to more digits than the tessellation
+      supports. Radius, wall thickness and angle are all affected.
+    source_id: asme_y14_41
+
+  - term: "PSL (Product Specification Level)"
+    domain: quality
+    definition: >-
+      API 6A's four-rung ladder of inspection, testing and documentation
+      requirements. PSL-1 baseline; PSL-2 adds mandatory traceability, surface
+      NDE and hardness; PSL-3 extends testing; PSL-4 adds full heat traceability,
+      low-temperature impact testing, 100% NDE of pressure-containing welds and
+      full dimensional inspection.
+    common_confusion: "Read as a quality grade of the metal. It is a grade of evidence."
+    source_id: api_6a
+
+  - term: "PPAP"
+    domain: quality
+    definition: >-
+      Production Part Approval Process: the 18-element evidence package proving a
+      production process can make conforming parts at rate, submitted at the end
+      of APQP.
+    common_confusion: "Treated as paperwork at the end. It is the audit of whether APQP actually happened, and its content is decided during design."
+    source_id: aiag_ppap
+
+  - term: "FAI (First Article Inspection)"
+    domain: quality
+    definition: >-
+      Per AS9102, a full verification of every drawing or model characteristic on
+      a representative first production part, recorded on Forms 1–3 with the
+      means of inspection stated.
+    common_confusion: >-
+      Confused with PPAP. FAI verifies one part against the definition (low-rate,
+      aerospace); PPAP demonstrates process capability at rate (high-volume,
+      automotive).
+    source_id: as9102
+
+  - term: "Special process"
+    domain: quality
+    definition: >-
+      A process whose result cannot be fully verified by inspecting the finished
+      product — heat treatment, welding, NDT, chemical processing, coating, and
+      additive manufacturing. Control is by qualified procedure and accredited
+      source instead.
+    common_confusion: "Assumed covered by AS9100 certification. AS9100 does not require NADCAP; most primes require it by flow-down."
+    source_id: nadcap
+
+  - term: "Sour service"
+    domain: materials
+    definition: >-
+      Service in an H2S-bearing environment severe enough to require
+      NACE MR0175 / ISO 15156 material controls, determined from H2S partial
+      pressure against in-situ pH, with chloride, temperature and elemental
+      sulphur moving the boundary.
+    common_confusion: "Treated as a yes/no property of an alloy. It is a property of the alloy within a stated environment."
+    source_id: nace_mr0175
+
+  - term: "HIP (hot isostatic pressing)"
+    domain: process
+    definition: >-
+      Simultaneous high temperature and isostatic gas pressure that closes
+      internal porosity and lack-of-fusion in castings and AM parts.
+    common_confusion: >-
+      Believed to fix everything. It cannot close surface-connected defects, it
+      changes microstructure, and it changes dimensions — so machining stock has
+      to survive it.
+    source_id: astm_f2792_hip
+
+  - term: "Key characteristic"
+    domain: quality
+    definition: >-
+      A feature whose variation significantly affects fit, performance, service
+      life or manufacturability, designated by engineering and controlled with
+      statistical methods downstream.
+    common_confusion: "Communicated by tight tolerance instead of explicit designation, so the shop cannot tell which tight dimensions actually matter."
+    source_id: as9100
+
+  - term: "Buy-to-fly ratio"
+    domain: cost
+    definition: "The mass of raw material purchased divided by the mass of the finished part. Aerospace machined parts routinely run 10:1 or worse."
+    common_confusion: "Ignored in cost models that price only cutting time — on expensive alloys the removed material can dominate."
+    source_id: boothroyd_dfma
+
+  - term: "Process capability (Cp / Cpk / Ppk)"
+    domain: quality
+    definition: >-
+      A ratio of the specification width to the process spread. Cpk and Ppk also
+      penalise a mean that is off-centre; Ppk uses overall (long-term) variation
+      and is what PPAP initial studies report.
+    common_confusion: "Quoted from a short soft-tool run and presented as production capability."
+    source_id: iatf_16949
+
+  - term: "Gage R&R"
+    domain: quality
+    definition: "The share of observed variation attributable to the measurement system — repeatability plus reproducibility — usually expressed against the tolerance."
+    common_confusion: >-
+      Treated as a metrology problem. When the tolerance is too tight for any
+      available gage, it is a design problem discovered very late.
+    source_id: aiag_msa
+
+  - term: "Provenance (MEASURED / SHOP / USER / DEFAULT)"
+    domain: platform
+    definition: >-
+      This platform's label for where a number came from: MEASURED (observed from
+      reality), SHOP (a validated shop value), USER (declared by the customer),
+      DEFAULT (a literature or engine assumption).
+    common_confusion: >-
+      Everything in this knowledge corpus is DEFAULT. Nothing here becomes
+      MEASURED by being cited well.
+    source_id: boothroyd_dfma

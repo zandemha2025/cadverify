@@ -1,0 +1,401 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# AUDITOR CHECKLISTS — what an expert auditor actually opens, and why
+#
+# Not a compliance certification. This encodes where experienced auditors look
+# first, what evidence they expect to exist, and what the classic finding is
+# when it does not. Written from the design/manufacturing-engineering side: the
+# items a CAD or DFM decision can actually influence.
+#
+# severity_if_missing: observation | minor | major
+#   observation — noted, no corrective action demanded
+#   minor       — a lapse in an otherwise effective control
+#   major       — the control is absent or ineffective; product acceptance at risk
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "1.0.0"
+
+checklists:
+
+  # ═══ THE UNIVERSAL AUDIT MINDSET ══════════════════════════════════════════
+
+  - checklist_id: universal_design_evidence
+    name: "Universal — the design-side evidence any auditor wants"
+    regime: "cross-industry"
+    applies_to: [all]
+    source_id: as9100
+    tier: standard
+    mindset: >-
+      An auditor is not checking whether the part is good. They are checking
+      whether you can DEMONSTRATE the part is good, by a route that does not
+      depend on anyone's memory. The recurring question is "show me" — and the
+      recurring finding is not a bad part, it is a good part with no traceable
+      basis for believing it is good.
+    items:
+      - id: UD-01
+        trigger: "Which revision of the model or drawing was manufactured?"
+        evidence_expected: >-
+          A configuration record binding the released revision to the work order,
+          the inspection record, and the shipped part. The released CAD file
+          under change control, not a copy on someone's desktop.
+        classic_finding: >-
+          Parts made from an uncontrolled model copy; the released revision and
+          the manufactured revision differ, and nobody can say when they diverged.
+        severity_if_missing: major
+        design_lever: "Single source of truth for released geometry; every downstream artifact references the revision."
+
+      - id: UD-02
+        trigger: "Where did this number come from?"
+        evidence_expected: >-
+          A traceable basis for each specified value — a calculation, a standard
+          clause, a test, or a documented design decision.
+        classic_finding: >-
+          A tolerance, wall thickness or material choice inherited from a
+          previous part with no record of whether the basis still applies.
+        severity_if_missing: minor
+        design_lever: "Provenance on every specified value — exactly what this platform computes."
+
+      - id: UD-03
+        trigger: "How do you know the process can hold this?"
+        evidence_expected: "Capability data, a qualified process, or 100% inspection with a capable gage."
+        classic_finding: >-
+          A tolerance tighter than the process capability, backed by nothing but
+          sorting — invisible on the drawing, expensive forever.
+        severity_if_missing: major
+        design_lever: "Compare specified tolerance against process capability at design time."
+
+      - id: UD-04
+        trigger: "Show me the measurement system for this characteristic."
+        evidence_expected: "A gage that resolves the tolerance, calibrated, with an MSA or documented capability."
+        classic_finding: "A characteristic specified more tightly than any available gage can discriminate."
+        severity_if_missing: major
+        design_lever: "Flag characteristics whose tolerance approaches measurement uncertainty."
+
+      - id: UD-05
+        trigger: "Which characteristics are critical, and how does the shop know?"
+        evidence_expected: "Identified key/critical characteristics flowed down to the control plan and the operator's instruction."
+        classic_finding: >-
+          Criticality communicated only by tight tolerance, so the shop treats
+          every tight dimension as critical, or none of them.
+        severity_if_missing: major
+        design_lever: "Explicit key-characteristic marking on the model, not implied by tolerance."
+
+      - id: UD-06
+        trigger: "What changed, and who assessed the impact?"
+        evidence_expected: "A change record with impact assessment covering fit, function, qualification, and downstream documentation."
+        classic_finding: "A 'minor' geometry change that silently invalidated a qualification, a fixture, or a first article."
+        severity_if_missing: major
+        design_lever: "Geometric diff between revisions, surfaced with its downstream consequences."
+
+  # ═══ OIL & GAS ════════════════════════════════════════════════════════════
+
+  - checklist_id: api_6a_psl3
+    name: "Oil & gas — API 6A pressure-containing equipment (PSL-2/3 focus)"
+    regime: "API 6A / API Q1 / NACE MR0175"
+    applies_to: [forging, sand_casting, investment_casting, cnc_3axis, cnc_5axis, cnc_turning]
+    source_id: api_6a
+    tier: standard
+    mindset: >-
+      The auditor's mental model is a leak path. Every question traces back to:
+      can pressure get out, and would we know before it did? They will work from
+      the material certificate forward and from the hydrostatic test backward,
+      and meet in the middle at the NDE records.
+    items:
+      - id: OG-01
+        trigger: "Material traceability to heat number"
+        evidence_expected: >-
+          Every pressure-containing component traceable from the finished part
+          back to the original heat of steel, with chemical analysis and
+          mechanical test results travelling with the equipment. Mandatory from
+          PSL-2 upward.
+        classic_finding: "Heat traceability broken at a sub-supplier or lost during a machining subcontract."
+        severity_if_missing: major
+        design_lever: "Design for permanent marking that survives machining and coating."
+
+      - id: OG-02
+        trigger: "Hardness survey including weld and HAZ for sour service"
+        evidence_expected: >-
+          Actual hardness readings ≤ 22 HRC / 248 HBW on base metal, weld metal
+          and heat-affected zone, with PWHT records where required, per
+          NACE MR0175 / ISO 15156-2.
+        classic_finding: >-
+          Base metal surveyed and compliant; HAZ never measured. The HAZ is where
+          SSC actually initiates.
+        severity_if_missing: major
+        design_lever: "Flag material/environment pairs that only pass on base-metal hardness."
+
+      - id: OG-03
+        trigger: "The specific ISO 15156-3 qualification and its environmental limits"
+        evidence_expected: >-
+          The table entry the CRA is qualified under, and the H2S partial
+          pressure, chloride, pH, temperature and elemental-sulphur limits of
+          that entry, compared against the actual declared service condition.
+        classic_finding: >-
+          'NACE compliant' asserted as a material property with no environment
+          attached — the single most common sour-service documentation defect.
+        severity_if_missing: major
+        design_lever: "Never store NACE compliance as a boolean without its qualified envelope."
+
+      - id: OG-04
+        trigger: "NDE coverage against PSL"
+        evidence_expected: >-
+          Surface NDE (MT or PT) and hardness at PSL-2 and above; 100% volumetric
+          examination (RT or UT) of pressure-containing welds after all welding,
+          PWHT and machining for PSL-2/3/4.
+        classic_finding: "Volumetric NDE performed before final machining, so the examined condition is not the delivered condition."
+        severity_if_missing: major
+        design_lever: "Design geometry that is actually inspectable — access, thickness and couplant path for UT, film access for RT."
+
+      - id: OG-05
+        trigger: "Hydrostatic test at 1.5× rated working pressure with the required hold"
+        evidence_expected: "Test records with pressure, hold duration, gauge calibration, and the fixture arrangement."
+        classic_finding: "Hold duration short of the PSL requirement, or a test port that the final design cannot accommodate."
+        severity_if_missing: major
+        design_lever: "Verify the design permits test-port access and venting before release."
+
+      - id: OG-06
+        trigger: "Forging grain flow and macroetch"
+        evidence_expected: "Macroetch sections demonstrating grain flow following the part contour, per the qualification."
+        classic_finding: "A machined-from-billet substitution accepted as 'equivalent' to a forging with no grain-flow argument."
+        severity_if_missing: major
+        design_lever: "Treat forging and billet as different processes with different integrity arguments, never as a cost swap."
+
+      - id: OG-07
+        trigger: "Additive manufacturing in the pressure boundary"
+        evidence_expected: >-
+          A qualification path agreed with the purchaser, HIP records, full
+          volumetric NDE, and witness coupons from the same build.
+        classic_finding: "AM introduced for lead-time relief on a pressure part with no qualification basis at all."
+        severity_if_missing: major
+        design_lever: "Refuse to route pressure-boundary parts to AM without an explicit qualification flag."
+
+  # ═══ AEROSPACE ════════════════════════════════════════════════════════════
+
+  - checklist_id: aerospace_as9100_fai
+    name: "Aerospace — AS9100 / AS9102 first article and special processes"
+    regime: "AS9100D / AS9102 / NADCAP"
+    applies_to: [all]
+    source_id: as9102
+    tier: standard
+    mindset: >-
+      The auditor assumes nothing is verified until it is recorded against a
+      ballooned characteristic. Their two favourite entry points are the FAI
+      package and the special-process approvals, because both fail quietly and
+      both invalidate everything downstream.
+    items:
+      - id: AS-01
+        trigger: "Is every drawing or model characteristic ballooned, numbered and reported?"
+        evidence_expected: "AS9102 Forms 1–3 with each characteristic, its specified value, actual result, and the means of inspection."
+        classic_finding: >-
+          Characteristics on the model but not on the balloon map — typically
+          PMI-carried tolerances that the 2D extraction missed. In an MBD
+          workflow this is the number-one FAI defect.
+        severity_if_missing: major
+        design_lever: "Extract characteristics from the model itself (AP242 semantic PMI), not from a derived drawing."
+
+      - id: AS-02
+        trigger: "Are special processes performed by accredited sources, current for the actual scope?"
+        evidence_expected: >-
+          NADCAP or customer approval certificates for heat treat, NDT, chemical
+          processing, welding, coatings and materials testing — checked against
+          the specific commodity and scope, and in date.
+        classic_finding: "A current certificate that does not cover the specific process class actually performed."
+        severity_if_missing: major
+        design_lever: "Bind each specified special process to the accreditation scope required to perform it."
+
+      - id: AS-03
+        trigger: "Configuration control of the digital product definition"
+        evidence_expected: "The released model under configuration management, with derived files traceable to it."
+        classic_finding: >-
+          A STEP file emailed to a supplier and manufactured, while the released
+          native model moved on. The two now differ and nobody noticed.
+        severity_if_missing: major
+        design_lever: "Hash and version every derived geometry artifact against its released source."
+
+      - id: AS-04
+        trigger: "Counterfeit and material provenance controls"
+        evidence_expected: "Procurement from approved sources with full certification, and a counterfeit-prevention process."
+        classic_finding: "Distributor material with a certificate that cannot be traced to a mill."
+        severity_if_missing: major
+        design_lever: "Treat unqualified material substitution as a design change, not a purchasing decision."
+
+      - id: AS-05
+        trigger: "Key characteristics identified and flowed down with variation control"
+        evidence_expected: "Identified KCs with capability monitoring on the shop floor."
+        classic_finding: "KCs identified in engineering and never reaching the control plan."
+        severity_if_missing: minor
+        design_lever: "Carry KC designation as a first-class model attribute."
+
+      - id: AS-06
+        trigger: "Foreign object damage and debris control in design"
+        evidence_expected: "FOD prevention in the process, and designs that do not create un-inspectable traps."
+        classic_finding: "Blind internal passages and AM lattices that cannot be verified clear of debris or unfused powder."
+        severity_if_missing: minor
+        design_lever: "Flag enclosed volumes with no line of sight or evacuation route."
+
+  # ═══ MEDICAL ══════════════════════════════════════════════════════════════
+
+  - checklist_id: medical_design_controls
+    name: "Medical — ISO 13485 / 21 CFR 820.30 design controls"
+    regime: "ISO 13485:2016 / FDA QMSR (21 CFR 820)"
+    applies_to: [all]
+    source_id: fda_820
+    tier: standard
+    mindset: >-
+      The auditor reads the design history file as a chain and pulls on it. Every
+      design output must trace to a design input; every verification must trace
+      to an output; every validation to a user need. A break anywhere in that
+      chain is the finding, regardless of how good the device is.
+    items:
+      - id: MD-01
+        trigger: "Trace this dimension back to a design input."
+        evidence_expected: "A requirements trace from user need → design input → design output → verification result."
+        classic_finding: "Geometry that exists because a previous device had it, with no input requirement behind it."
+        severity_if_missing: major
+        design_lever: "Attach requirement IDs to features, so geometry carries its justification."
+
+      - id: MD-02
+        trigger: "Design verification versus design validation"
+        evidence_expected: >-
+          Verification that outputs meet inputs (test, inspection, analysis) AND
+          validation that the device meets user needs in actual or simulated use.
+        classic_finding: "Verification performed thoroughly and validation assumed — the two conflated in the DHF."
+        severity_if_missing: major
+        design_lever: "Keep the two record types distinct from the start."
+
+      - id: MD-03
+        trigger: "Biocompatibility of the finished, processed device"
+        evidence_expected: "ISO 10993 evaluation on the finished device including cleaning, passivation and sterilisation residues."
+        classic_finding: "Biocompatibility argued from the raw alloy certificate, ignoring manufacturing residues."
+        severity_if_missing: major
+        design_lever: "Treat cleanability as geometry: no blind crevices, no trapped AM powder, drainable internals."
+
+      - id: MD-04
+        trigger: "Cleaning and sterilisation validation for the actual geometry"
+        evidence_expected: "Validated cleaning process demonstrated on worst-case geometry, with residue limits."
+        classic_finding: "A complex internal geometry validated using a simplified test article."
+        severity_if_missing: major
+        design_lever: "Identify the worst-case cleanable feature at design time and design it out where possible."
+
+      - id: MD-05
+        trigger: "Design change control and its impact on prior qualification"
+        evidence_expected: "Change record with an assessment of impact on verification, validation and regulatory status."
+        classic_finding: "A supplier-driven process change treated as no design impact, invalidating the biological evaluation."
+        severity_if_missing: major
+        design_lever: "Surface which qualifications a geometry or process change puts at risk."
+
+  # ═══ AUTOMOTIVE ═══════════════════════════════════════════════════════════
+
+  - checklist_id: automotive_ppap
+    name: "Automotive — IATF 16949 / APQP / PPAP"
+    regime: "IATF 16949:2016 / AIAG PPAP 4th ed / AIAG-VDA FMEA"
+    applies_to: [injection_molding, die_casting, sheet_metal, forging, cnc_3axis, cnc_turning]
+    source_id: aiag_ppap
+    tier: standard
+    mindset: >-
+      The auditor is checking whether the process is capable and controlled at
+      rate, not whether one part is good. PPAP is the evidence package proving
+      APQP actually happened; the auditor reads it as a chain from DFMEA through
+      process flow to PFMEA to control plan, and any link that does not
+      reconcile with the others is the finding.
+    items:
+      - id: AU-01
+        trigger: "Do the DFMEA, process flow, PFMEA and control plan reconcile?"
+        evidence_expected: >-
+          Every special characteristic in the DFMEA appearing in the PFMEA and
+          controlled in the control plan, with the same identifiers throughout.
+        classic_finding: >-
+          Four documents authored independently that disagree about which
+          characteristics matter — the single most common PPAP rejection.
+        severity_if_missing: major
+        design_lever: "Special characteristics designated once, in the model, and inherited by every downstream document."
+
+      - id: AU-02
+        trigger: "Initial process studies — is the process capable?"
+        evidence_expected: "Ppk on special characteristics against the customer's threshold, from a run at production rate with production tooling."
+        classic_finding: "Capability demonstrated on a soft-tool sample run and presented as production capability."
+        severity_if_missing: major
+        design_lever: "Compare designed tolerance to realistic process capability before the tool is cut."
+
+      - id: AU-03
+        trigger: "Measurement systems analysis on every special characteristic"
+        evidence_expected: "Gage R&R within the customer's limit, on the actual production gage."
+        classic_finding: >-
+          A tolerance so tight the gage consumes most of it, so R&R fails no
+          matter how good the process is. A design defect discovered at PPAP.
+        severity_if_missing: major
+        design_lever: "Flag tolerances that leave insufficient room for measurement variation."
+
+      - id: AU-04
+        trigger: "Is the FMEA in the current 7-step AP format?"
+        evidence_expected: "AIAG-VDA seven-step FMEA with Action Priority."
+        classic_finding: "Legacy RPN-ranked FMEA submitted where the customer requires AP."
+        severity_if_missing: minor
+        design_lever: "n/a — documentation discipline, but design engineers own the DFMEA."
+
+      - id: AU-05
+        trigger: "Dimensional results against a ballooned drawing, all cavities"
+        evidence_expected: "Full layout per cavity or per tool position, not a single representative sample."
+        classic_finding: "One cavity measured on a multi-cavity tool; the others never characterised."
+        severity_if_missing: major
+        design_lever: "Cavity-to-cavity variation is a tooling design decision made long before PPAP."
+
+  # ═══ ADDITIVE QUALIFICATION ═══════════════════════════════════════════════
+
+  - checklist_id: additive_qualification
+    name: "Additive manufacturing — qualification of a printed part"
+    regime: "ISO/ASTM 52900 series / ASTM F42 / customer-specific"
+    applies_to: [dmls, slm, ebm, binder_jetting, ded, waam]
+    source_id: iso_astm_52910
+    tier: standard
+    mindset: >-
+      In AM the process makes the material, so the auditor treats every build as
+      a small metallurgy plant. They will ask what is frozen, what is monitored,
+      and what proves this build behaved like the qualified one.
+    items:
+      - id: AM-01
+        trigger: "What exactly is frozen in the qualified process?"
+        evidence_expected: >-
+          A locked parameter set: machine, alloy and powder specification, layer
+          thickness, laser/beam parameters, scan strategy, atmosphere, and build
+          plate temperature.
+        classic_finding: "A silent machine firmware or parameter update after qualification, with no requalification."
+        severity_if_missing: major
+        design_lever: "Bind a part's qualification to a specific machine and parameter set, not to a process name."
+
+      - id: AM-02
+        trigger: "Powder lifecycle control"
+        evidence_expected: "Virgin/recycled blending rules, sieving, oxygen and moisture control, lot traceability, and a reuse limit."
+        classic_finding: "Recycled powder reused indefinitely with no chemistry re-verification; oxygen pickup degrades ductility invisibly."
+        severity_if_missing: major
+        design_lever: "Powder lot is part of material traceability — treat it as heat number."
+
+      - id: AM-03
+        trigger: "Build orientation and location on the plate — are they controlled?"
+        evidence_expected: "A fixed, recorded orientation and plate layout, because properties vary with both."
+        classic_finding: "Orientation left to the operator or the nesting software, so properties vary build to build."
+        severity_if_missing: major
+        design_lever: "Treat orientation as design output, recorded on the model, not a shop-floor convenience."
+
+      - id: AM-04
+        trigger: "Witness coupons from the same build"
+        evidence_expected: "Tensile and metallurgical coupons built alongside the part and tested per build."
+        classic_finding: "Coupons from a separate qualification build used to accept later production builds."
+        severity_if_missing: major
+        design_lever: "Reserve plate area for coupons in the build layout at design time."
+
+      - id: AM-05
+        trigger: "Post-processing: stress relief, HIP, support removal, finishing"
+        evidence_expected: "Documented sequence with records; HIP cycle parameters where fatigue or pressure duty requires it."
+        classic_finding: >-
+          HIP assumed to fix everything. It closes internal gas porosity and
+          lack-of-fusion, but not surface-connected defects, and it changes
+          microstructure and dimensions.
+        severity_if_missing: major
+        design_lever: "Model the pre-HIP condition and the machining stock that survives it."
+
+      - id: AM-06
+        trigger: "Inspection of internal geometry"
+        evidence_expected: "CT or another volumetric method appropriate to the wall thickness and the defect size of interest."
+        classic_finding: "A lattice or internal channel structure with no feasible inspection method, declared conforming on the strength of the build log alone."
+        severity_if_missing: major
+        design_lever: "Design inspectability in: if no method can see it, do not put a critical feature there."

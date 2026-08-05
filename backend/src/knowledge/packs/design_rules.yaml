@@ -1,0 +1,921 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DESIGN RULES — the numeric knowledge the engine is allowed to assume
+#
+# Every rule is a DEFAULT-provenance assumption. A shop-measured value beats it.
+# Every rule carries `source_id` (must exist in sources.yaml) and `why`.
+#
+# relation:
+#   min        value is a floor           (feature must be ≥ value)
+#   max        value is a ceiling         (feature must be ≤ value)
+#   ratio_max  dimensionless ratio ceiling (e.g. depth ÷ diameter ≤ 10)
+#   ratio_min  dimensionless ratio floor
+#   band       value_min..value_max is the acceptable window
+#   advisory   no threshold; a qualitative rule the copilot may narrate
+#
+# `detects` names the analyzer Issue codes this rule backs, so a DFM finding can
+# be traced to the rule and the rule to the source.
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "1.0.0"
+
+rules:
+
+  # ═══ UNIVERSAL — apply regardless of process ══════════════════════════════
+
+  - rule_id: UNIVERSAL_WATERTIGHT
+    processes: [all]
+    category: model_integrity
+    title: "The solid must be closed"
+    statement: >-
+      A manufacturable solid is watertight and manifold: every edge bounds
+      exactly two faces, normals are consistently outward, and the enclosed
+      volume is well defined.
+    relation: advisory
+    why: >-
+      Volume, mass, wall thickness, centre of gravity and every cost number
+      derived from them are undefined on an open or self-intersecting shell. A
+      pressure part additionally cannot pass a hydrostatic argument if its
+      geometry does not enclose a volume.
+    good: "Closed shell; Euler characteristic consistent; zero boundary edges."
+    bad: >-
+      Naked edges from a failed STEP import; duplicate coincident faces from a
+      mirrored body; inverted normals on a subtracted feature.
+    detects: [NON_WATERTIGHT, NON_MANIFOLD, INVERTED_NORMALS]
+    source_id: asme_y14_41
+    tier: standard
+
+  - rule_id: UNIVERSAL_UNIFORM_WALL
+    processes: [all]
+    category: geometry
+    title: "Keep wall thickness uniform"
+    statement: >-
+      Hold a single nominal wall wherever function permits; transition between
+      thicknesses gradually rather than in a step.
+    relation: advisory
+    why: >-
+      Every process punishes non-uniformity by a different mechanism and all of
+      them punish it. Moulding and casting: differential shrinkage causes sink,
+      voids and warp. Machining: thin regions adjacent to thick ones deflect
+      under cutting load. Powder-bed AM: mass change alters the local thermal
+      history and residual stress. Uniform wall is the single most transferable
+      DFM rule across the 21 processes.
+    good: "3 mm nominal throughout, 3:1 taper at any required transition."
+    bad: "A 10 mm boss standing directly on a 2 mm wall."
+    detects: [NON_UNIFORM_WALL, THICK_SECTION, SINK_RISK]
+    source_id: boothroyd_dfma
+    tier: handbook
+
+  - rule_id: UNIVERSAL_TOLERANCE_ONLY_WHERE_FUNCTIONAL
+    processes: [all]
+    category: tolerancing
+    title: "Tolerance the function, not the geometry"
+    statement: >-
+      Apply tight tolerance only to features that carry a fit, a seal, a load
+      path or an alignment. Everything else takes the general tolerance class.
+    relation: advisory
+    why: >-
+      Tolerance is the most expensive thing on a drawing per character typed.
+      Halving a tolerance typically moves the feature to a slower process, a
+      better machine, an added operation, or 100% inspection — often all four.
+      Blanket-tight drawings are the most common and most expensive DFM defect
+      in the field, and they are invisible in the geometry.
+    good: "Two bore diameters at H7; everything else ISO 2768-m."
+    bad: "±0.02 mm in the title block applied to 180 dimensions."
+    detects: [OVER_TOLERANCED, UNREACHABLE_TOLERANCE]
+    source_id: iso_2768
+    tier: standard
+
+  # ═══ SUBTRACTIVE — CNC MILLING ════════════════════════════════════════════
+
+  - rule_id: CNC_INTERNAL_CORNER_RADIUS
+    processes: [cnc_3axis, cnc_5axis]
+    category: geometry
+    title: "Internal corners cannot be sharp"
+    statement: >-
+      Every internal vertical corner carries the radius of the cutter that made
+      it. Specify a radius at least 130% of the intended tool radius; never
+      exactly equal to it.
+    relation: min
+    metric: internal_corner_radius_mm
+    value_min: 0.5
+    value_typical: 1.0
+    units: mm
+    why: >-
+      A radius exactly equal to the tool radius forces the cutter into 180° of
+      wrap at the corner — full radial engagement, a chatter and deflection
+      spike, and a dwell mark. Oversizing by ~30% lets the tool roll through the
+      corner at constant engagement. Sharp internal corners require EDM, broach
+      or a corner-relief undercut, each a separate operation.
+    good: "R4 internal corners for a 6 mm end mill, or a corner relief slot."
+    bad: "R0 internal corners drawn because the CAD default is sharp."
+    detects: [SHARP_INTERNAL_CORNER, TIGHT_INTERNAL_RADIUS]
+    source_id: sandvik_machining
+    tier: vendor
+
+  - rule_id: CNC_POCKET_DEPTH_RATIO
+    processes: [cnc_3axis, cnc_5axis]
+    category: geometry
+    title: "Pocket depth against tool diameter"
+    statement: >-
+      Keep pocket depth within about 3× the diameter of the largest tool that
+      fits the corner radius. 3–4× is workable with reduced parameters; beyond
+      4× needs specialist tooling and a real cost premium.
+    relation: ratio_max
+    metric: pocket_depth_over_tool_diameter
+    value_typical: 3.0
+    value_max: 4.0
+    units: ratio
+    why: >-
+      Tool deflection grows with the cube of unsupported length. Past ~3:1 the
+      shop compensates with lighter cuts and more passes, so cycle time rises
+      steeply while accuracy falls. Deep narrow pockets are the classic
+      "geometrically fine, economically absurd" feature.
+    good: "20 mm deep pocket with R5 corners → 10 mm tool at 2:1."
+    bad: "40 mm deep pocket with R1.5 corners → 3 mm tool at 13:1."
+    detects: [DEEP_POCKET, EXCESSIVE_TOOL_REACH]
+    source_id: shop_practice_machining
+    tier: practice
+
+  - rule_id: CNC_HOLE_DEPTH_RATIO
+    processes: [cnc_3axis, cnc_5axis, cnc_turning]
+    category: geometry
+    title: "Hole depth against hole diameter"
+    statement: >-
+      Standard drilling reaches about 10× diameter. Beyond that the hole needs
+      peck cycles, through-coolant, or gun drilling.
+    relation: ratio_max
+    metric: hole_depth_over_diameter
+    value_typical: 5.0
+    value_max: 10.0
+    units: ratio
+    why: >-
+      Chip evacuation, not cutting, limits drilled depth. Past ~5:1 chips pack
+      the flutes; past ~10:1 the drill wanders and hole straightness stops being
+      a given. Deep holes also drift, so a deep hole with a position tolerance
+      is two problems, not one.
+    good: "Ø8 mm hole, 40 mm deep (5:1), standard jobber drill."
+    bad: "Ø3 mm hole, 60 mm deep (20:1) with ⌖0.1 position."
+    detects: [DEEP_HOLE, HOLE_DEPTH_RATIO]
+    source_id: machinerys_handbook
+    tier: handbook
+
+  - rule_id: CNC_MIN_WALL
+    processes: [cnc_3axis, cnc_5axis]
+    category: geometry
+    title: "Minimum machinable wall"
+    statement: >-
+      About 0.5 mm in aluminium and 0.8–1.0 mm in steel and stainless as an
+      absolute floor; 1.5–2.0 mm as the practical minimum for a part that must
+      hold tolerance.
+    relation: min
+    metric: wall_thickness_mm
+    value_min: 0.5
+    value_typical: 1.5
+    units: mm
+    why: >-
+      A thin wall deflects away from the cutter, springs back, and chatters. The
+      resulting wall is thinner than modelled, wavy, and often out of flatness.
+      Wall height matters as much as thickness: above roughly 15× thickness the
+      wall is not practical without sacrificial support or a wax fill.
+    good: "2 mm ribs at 20 mm tall in 6061."
+    bad: "0.6 mm wall, 40 mm tall, in 316L, with a flatness callout."
+    detects: [THIN_WALL]
+    source_id: shop_practice_machining
+    tier: practice
+
+  - rule_id: CNC_3AXIS_TOOL_ACCESS
+    processes: [cnc_3axis]
+    category: accessibility
+    title: "3-axis sees only from +Z"
+    statement: >-
+      Every feature must be reachable along a single tool axis per setup. Any
+      geometry hidden from that axis is an undercut and needs another setup, a
+      5-axis machine, or a different process.
+    relation: advisory
+    why: >-
+      Each additional setup adds fixturing, a re-datum, and a tolerance stack
+      between setups — features machined in different setups cannot hold tight
+      relative position to each other. Setup count is frequently the dominant
+      cost driver on a prismatic part, more than material or cycle time.
+    good: "All features on two faces; one flip; datums carried on the flip."
+    bad: "Cross-drilled holes on five faces plus an internal undercut groove."
+    detects: [UNDERCUT, INACCESSIBLE_FEATURE, MULTI_SETUP]
+    source_id: shop_practice_machining
+    tier: practice
+
+  - rule_id: CNC_FIXTURING_DATUM
+    processes: [cnc_3axis, cnc_5axis, cnc_turning]
+    category: fixturing
+    title: "The part must be holdable"
+    statement: >-
+      Provide a flat, reachable surface of sufficient area to clamp or vice, and
+      leave stock for workholding where the finished part offers none.
+    relation: min
+    metric: fixture_surface_mm
+    value_typical: 15.0
+    units: mm
+    why: >-
+      A part that cannot be gripped rigidly cannot be cut accurately. Organic,
+      fully-lofted or thin-shelled parts often need a sacrificial tab, a soft
+      jaw, or a printed fixture — all real cost that no geometry check reports
+      unless you look for it.
+    good: "A 25 mm flat pad on the underside, machined off in the second op."
+    bad: "A topology-optimised bracket with no planar face anywhere."
+    detects: [NO_FIXTURE_SURFACE, FIXTURING_RISK]
+    source_id: shop_practice_machining
+    tier: practice
+
+  - rule_id: CNC_5AXIS_TRADE
+    processes: [cnc_5axis]
+    category: accessibility
+    title: "5-axis buys access, not miracles"
+    statement: >-
+      5-axis removes the single-direction constraint and collapses setups, but
+      the tool still needs a straight, collision-free path with the holder
+      clearing the part.
+    relation: advisory
+    why: >-
+      Engineers routinely assume 5-axis means "any geometry". It does not: deep
+      internal cavities, re-entrant channels, and enclosed voids remain
+      unreachable. What 5-axis really buys is fewer setups and better tool
+      orientation — usually a tolerance and finish win as much as an access one.
+    good: "An impeller blade flank cut in one setup with a short, rigid tool."
+    bad: "An enclosed internal manifold assumed reachable because it's 5-axis."
+    detects: [INACCESSIBLE_FEATURE, HOLDER_COLLISION]
+    source_id: shop_practice_machining
+    tier: practice
+
+  # ═══ SUBTRACTIVE — TURNING & EDM ══════════════════════════════════════════
+
+  - rule_id: TURNING_SLENDERNESS
+    processes: [cnc_turning]
+    category: geometry
+    title: "Slender turned parts deflect"
+    statement: >-
+      Beyond about 3× diameter unsupported, a turned part needs tailstock
+      support; beyond about 8× it needs a steady rest or a sliding-head machine.
+    relation: ratio_max
+    metric: length_over_diameter
+    value_typical: 3.0
+    value_max: 8.0
+    units: ratio
+    why: >-
+      The workpiece, not the tool, is the flexible element in turning. A slender
+      bar bows away from the insert and produces a barrel-shaped diameter, then
+      springs back — the measured error is not where the tool was.
+    good: "Ø20 × 50 mm shaft between centres."
+    bad: "Ø6 × 200 mm shaft with ±0.01 mm diameter, chucked one end."
+    detects: [SLENDER_TURNED_PART, DEFLECTION_RISK]
+    source_id: machinerys_handbook
+    tier: handbook
+
+  - rule_id: EDM_2D_PROFILE_ONLY
+    processes: [wire_edm]
+    category: accessibility
+    title: "Wire EDM cuts a ruled surface, extruded in Z"
+    statement: >-
+      Wire EDM produces profiles that are straight (or tapered/ruled) through
+      the stock thickness. It cannot produce a blind pocket floor, and it needs
+      a start hole for any internal profile.
+    relation: advisory
+    why: >-
+      The wire is a straight line. Anything not expressible as a swept straight
+      line between the upper and lower guides is not wire-EDM geometry — that is
+      sinker EDM, a different process with an electrode cost of its own.
+    good: "A hardened die plate profile with sharp internal corners, cut after heat treat."
+    bad: "A sculpted 3D cavity floor expected from wire EDM."
+    detects: [NON_RULED_SURFACE, MISSING_START_HOLE]
+    source_id: shop_practice_machining
+    tier: practice
+
+  - rule_id: EDM_RECAST_LAYER
+    processes: [wire_edm]
+    category: surface_integrity
+    title: "EDM leaves a recast layer"
+    statement: >-
+      Every EDM cut leaves a resolidified white layer with tensile residual
+      stress and micro-cracks. Fatigue-critical and sour-service surfaces need
+      skim passes and often removal of the recast layer.
+    relation: advisory
+    why: >-
+      The recast layer is brittle and hydrogen-charged relative to the base
+      metal. In a fatigue application it is a crack starter; in sour service it
+      is a cracking site under H2S. This is a surface-integrity requirement that
+      never appears in the geometry and is a classic aerospace/oil-gas audit
+      question.
+    good: "Rough cut plus two skim passes, then stress relief on a critical surface."
+    bad: "Single-pass EDM on a fatigue-loaded root radius, no skim, no note."
+    detects: [RECAST_LAYER_RISK]
+    source_id: asm_handbook
+    tier: handbook
+
+  # ═══ ADDITIVE — METAL POWDER BED (DMLS / SLM / EBM) ═══════════════════════
+
+  - rule_id: AM_OVERHANG_ANGLE
+    processes: [dmls, slm, ebm]
+    category: geometry
+    title: "Overhangs below the self-supporting angle need support"
+    statement: >-
+      Treat 45° from the build plate as the default self-supporting limit.
+      Well-characterised machine/alloy combinations reach 30–40°; below the
+      limit, supports are required.
+    relation: min
+    metric: overhang_angle_deg
+    value_min: 30.0
+    value_typical: 45.0
+    units: degrees
+    why: >-
+      Each layer must be partly supported by the solidified layer beneath it.
+      Below the critical angle the melt pool sits on loose powder, which
+      conducts heat an order of magnitude worse than solid metal — the pool runs
+      hot, sinks, and produces dross, a rough down-skin, and dimensional error.
+      45° is a heuristic, not a constant: it moves with alloy, layer thickness
+      and laser parameters.
+    good: "Teardrop or diamond internal channels that self-support at the crown."
+    bad: "Horizontal circular channels that need internal supports nobody can reach."
+    detects: [UNSUPPORTED_OVERHANG, STEEP_OVERHANG]
+    source_id: dfam_practice
+    tier: practice
+
+  - rule_id: AM_POWDER_EVACUATION
+    processes: [dmls, slm, ebm, sls, mjf, binder_jetting]
+    category: geometry
+    title: "Enclosed volumes must be able to drain"
+    statement: >-
+      Every internal cavity needs at least two evacuation ports, roughly ≥ 2 mm,
+      positioned so powder can actually flow out.
+    relation: min
+    metric: powder_evacuation_port_mm
+    value_min: 2.0
+    value_typical: 3.0
+    units: mm
+    why: >-
+      Trapped powder is mass the part carries forever, a contamination source,
+      and in medical and aerospace a rejectable condition that is invisible
+      externally. Two ports matter more than one large one: powder needs an air
+      path in as well as a route out.
+    good: "Lattice core with 4 mm drain ports at the low point of each cell run."
+    bad: "A sealed hollow manifold printed as a single closed volume."
+    detects: [TRAPPED_POWDER, ENCLOSED_VOID]
+    source_id: iso_astm_52911
+    tier: standard
+
+  - rule_id: AM_RESIDUAL_STRESS
+    processes: [dmls, slm, ded, waam]
+    category: process_physics
+    title: "Residual stress is designed in, not printed out"
+    statement: >-
+      Large flat cross-sections parallel to the plate, abrupt section changes,
+      and long unbroken scan vectors all accumulate residual stress. Stress
+      relief before plate removal is the default, not an option.
+    relation: advisory
+    why: >-
+      Each melted layer contracts against a rigid substrate, building tensile
+      stress at the surface and compressive stress below. In a stiff, flat part
+      that stress can exceed the yield strength — the part curls off supports
+      during the build or springs on removal from the plate. It is a design
+      variable long before it is a process variable.
+    good: "Orient to minimise cross-sectional area per layer; stress relieve on-plate."
+    bad: "A large flat plate printed horizontally and cut off untreated."
+    detects: [RESIDUAL_STRESS_RISK, LARGE_FLAT_CROSS_SECTION]
+    source_id: astm_f3301
+    tier: standard
+
+  - rule_id: AM_AS_BUILT_SURFACE
+    processes: [dmls, slm, ebm, ded, waam]
+    category: surface_integrity
+    title: "As-built AM surfaces are rough, and down-skins are worse"
+    statement: >-
+      As-built L-PBF surfaces run roughly Ra 6–20 µm; down-facing surfaces are
+      significantly rougher than up-facing ones. Any sealing, bearing or
+      fatigue surface needs machining stock — typically 0.5–1.0 mm.
+    relation: min
+    metric: machining_stock_mm
+    value_min: 0.5
+    value_typical: 1.0
+    units: mm
+    why: >-
+      Partially-melted particles sinter to the boundary and the down-skin
+      inherits the dross of the overhang beneath it. Fatigue life of as-built AM
+      is dominated by surface roughness, which is why aerospace AM parts are
+      almost always machined at the interfaces. Stock has to be modelled in —
+      you cannot add it after the build.
+    good: "Sealing face printed 1 mm oversize, finish-machined after HIP."
+    bad: "As-built O-ring groove specified at Ra 0.8 µm."
+    detects: [AS_BUILT_SURFACE_FINISH, NO_MACHINING_STOCK]
+    source_id: astm_f3301
+    tier: standard
+
+  - rule_id: AM_MIN_FEATURE_METAL
+    processes: [dmls, slm]
+    category: geometry
+    title: "Minimum printable metal feature"
+    statement: >-
+      Roughly 0.4 mm minimum wall and ~0.5 mm minimum positive feature for
+      typical 30–60 µm layer L-PBF; unsupported holes below ~0.5 mm close up.
+    relation: min
+    metric: wall_thickness_mm
+    value_min: 0.4
+    value_typical: 0.8
+    units: mm
+    why: >-
+      Feature size is bounded by the melt-pool width, itself set by beam spot
+      and power. Below roughly two melt-pool widths a wall is a single-track
+      structure with no overlap — porous, weak, and dimensionally unreliable.
+    good: "0.8 mm lattice struts on a 40 µm layer machine."
+    bad: "0.2 mm foil-thin fins expected to be gas-tight."
+    detects: [THIN_WALL, UNPRINTABLE_FEATURE]
+    source_id: iso_astm_52911
+    tier: standard
+
+  # ═══ ADDITIVE — POLYMER ═══════════════════════════════════════════════════
+
+  - rule_id: FDM_LAYER_ANISOTROPY
+    processes: [fdm]
+    category: process_physics
+    title: "FDM parts are anisotropic — Z is the weak axis"
+    statement: >-
+      Interlayer strength is a fraction of in-plane strength. Orient so that
+      principal tensile and bending loads run in-plane, not across layers.
+    relation: advisory
+    why: >-
+      In-plane strength comes from continuous extruded filament; Z strength
+      comes only from the polymer diffusion achieved at the layer interface
+      during the brief time the interface is above glass transition. A geometry
+      that is safe in one orientation fails in another, and orientation is
+      usually not recorded anywhere on the drawing.
+    good: "A hook printed so the load runs along the layer, not across it."
+    bad: "A threaded boss printed vertically and loaded in tension."
+    detects: [LAYER_ADHESION_RISK, ORIENTATION_SENSITIVE]
+    source_id: iso_astm_52910
+    tier: standard
+
+  - rule_id: SLS_MIN_HOLE
+    processes: [sls, mjf]
+    category: geometry
+    title: "Small holes trap powder"
+    statement: >-
+      Unsupported holes below about 1.5 mm diameter tend to fill with sintered
+      or caked powder that will not clear.
+    relation: min
+    metric: hole_diameter_mm
+    value_min: 1.5
+    value_typical: 2.0
+    units: mm
+    why: >-
+      The powder bed is also the support. Heat bleeding into powder around a
+      small bore partially sinters it into a plug that no bead-blast will
+      remove. The part looks correct and the hole is not there.
+    good: "Ø2.5 mm vent holes, blown clear in post-processing."
+    bad: "Ø0.8 mm cooling holes in an SLS nylon manifold."
+    detects: [TRAPPED_POWDER, UNDERSIZED_HOLE]
+    source_id: dfam_practice
+    tier: practice
+
+  - rule_id: SLA_RESIN_DRAIN_AND_CURE
+    processes: [sla, dlp]
+    category: geometry
+    title: "Resin must drain, and cured resin keeps moving"
+    statement: >-
+      Provide drain holes on any cup or enclosed volume, and expect dimensional
+      change and embrittlement through post-cure and UV exposure over time.
+    relation: advisory
+    why: >-
+      Uncured resin trapped in a cavity cures later, unevenly, and swells the
+      part. Separately, most SLA resins continue to cross-link after the build:
+      an SLA part is an excellent geometry prototype and a poor long-term
+      functional part, which is a fact routinely lost between design and use.
+    good: "Drain holes at the low point of every cup, oriented for drainage."
+    bad: "A sealed float body printed in SLA, then dimensioned six months later."
+    detects: [TRAPPED_RESIN, ENCLOSED_VOID]
+    source_id: iso_astm_52910
+    tier: standard
+
+  # ═══ ADDITIVE — BINDER JET / DED / WAAM ═══════════════════════════════════
+
+  - rule_id: BINDER_JET_SINTER_SHRINK
+    processes: [binder_jetting]
+    category: process_physics
+    title: "Binder jet parts shrink — a lot — during sintering"
+    statement: >-
+      Expect roughly 15–20% linear shrinkage during sintering, and design for
+      sinter support: large flat spans and cantilevers slump.
+    relation: advisory
+    why: >-
+      The green part is powder held by binder. Densification during sintering is
+      volumetric and only approximately isotropic — the part sags under its own
+      weight at temperature. Tolerance capability is therefore much worse than
+      the printer's own resolution, which is the number people quote.
+    good: "Compact, self-supporting geometry with sinter setters designed alongside."
+    bad: "A long thin bracket expected to hold ±0.1 mm straight from sinter."
+    detects: [SINTER_DISTORTION, LARGE_UNSUPPORTED_SPAN]
+    source_id: iso_astm_52900
+    tier: standard
+
+  - rule_id: DED_WAAM_NEAR_NET
+    processes: [ded, waam]
+    category: process_physics
+    title: "DED and WAAM are near-net, not net"
+    statement: >-
+      Treat these as deposition processes followed by machining. Design in
+      several millimetres of stock on every functional surface.
+    relation: min
+    metric: machining_stock_mm
+    value_min: 2.0
+    value_typical: 4.0
+    units: mm
+    why: >-
+      Bead width and layer height are one to two orders of magnitude larger than
+      powder-bed; surface waviness follows. The economic case for WAAM is
+      buy-to-fly ratio on large parts, not surface quality, and pretending
+      otherwise wrecks the cost model.
+    good: "A large forged-replacement blank deposited, stress relieved, then machined."
+    bad: "A WAAM part quoted with an as-deposited sealing face."
+    detects: [AS_BUILT_SURFACE_FINISH, NO_MACHINING_STOCK]
+    source_id: iso_astm_52900
+    tier: standard
+
+  # ═══ FORMATIVE — INJECTION MOULDING ═══════════════════════════════════════
+
+  - rule_id: IM_NOMINAL_WALL
+    processes: [injection_molding]
+    category: geometry
+    title: "Nominal wall band for engineering thermoplastics"
+    statement: "Design to a uniform nominal wall of roughly 1.5–4 mm."
+    relation: band
+    metric: wall_thickness_mm
+    value_min: 1.5
+    value_typical: 2.5
+    value_max: 4.0
+    units: mm
+    why: >-
+      Below ~1 mm the cavity will not reliably fill at achievable pressures over
+      any distance. Above ~4 mm the core stays molten after the skin freezes and
+      draws a void or a sink, while cycle time rises with roughly the square of
+      wall thickness — thick walls cost twice, in scrap and in seconds.
+    good: "2.5 mm walls everywhere, ribbed for stiffness."
+    bad: "A 6 mm solid boss to 'make it strong'."
+    detects: [THICK_SECTION, SINK_RISK, THIN_WALL]
+    source_id: shop_practice_moulding
+    tier: practice
+
+  - rule_id: IM_RIB_THICKNESS
+    processes: [injection_molding]
+    category: geometry
+    title: "Ribs at 50–65% of nominal wall"
+    statement: >-
+      Rib base thickness should be 50–65% of the nominal wall it stands on;
+      fillet the base at 0.25–0.5× nominal wall; space ribs at least 2× nominal
+      wall apart.
+    relation: band
+    metric: rib_to_wall_ratio
+    value_min: 0.5
+    value_typical: 0.6
+    value_max: 0.65
+    units: ratio
+    why: >-
+      A rib as thick as the wall creates a local mass concentration that cools
+      last and pulls a visible sink on the opposite show surface. At ~0.6× the
+      rib freezes with the wall. This is the highest-value ratio in moulding
+      design: it buys stiffness at lower material and shorter cycle than
+      thickening the wall.
+    good: "1.5 mm ribs on a 2.5 mm wall with R0.8 base fillets, 5 mm apart."
+    bad: "2.5 mm ribs on a 2.5 mm wall behind a Class-A surface."
+    detects: [HIGH_RIB_RATIO, SINK_RISK]
+    source_id: shop_practice_moulding
+    tier: practice
+
+  - rule_id: IM_DRAFT
+    processes: [injection_molding, die_casting, investment_casting, sand_casting, forging]
+    category: geometry
+    title: "Every face parallel to the draw needs draft"
+    statement: >-
+      Start at roughly 1° per 25 mm of draw for moulding, 1–2° for die casting,
+      2–3° for sand casting, and add ~1.5° per 0.025 mm of surface-texture depth.
+    relation: min
+    metric: draft_angle_deg
+    value_min: 0.5
+    value_typical: 1.0
+    units: degrees
+    why: >-
+      The part shrinks onto the core as it cools and grips it. Without draft,
+      ejection drags the wall — scuffing, stress whitening, or a stuck part that
+      stops the press. Textured surfaces need more draft because the texture is
+      itself an undercut. Zero-draft walls are the most common single reason a
+      moulded design fails first-article.
+    good: "1.5° on all vertical faces, 3° on the textured outer shell."
+    bad: "A 60 mm deep, zero-draft, textured box wall."
+    detects: [INSUFFICIENT_DRAFT, NO_DRAFT]
+    source_id: shop_practice_moulding
+    tier: practice
+
+  - rule_id: IM_UNDERCUT_COST
+    processes: [injection_molding, die_casting]
+    category: tooling
+    title: "Undercuts buy side actions, and side actions buy cost"
+    statement: >-
+      Any feature that cannot be released along the draw needs a slide, lifter
+      or collapsible core — each adding tool cost, cycle time, and a failure
+      mode.
+    relation: advisory
+    why: >-
+      Tool complexity, not part complexity, drives moulding cost. A snap-fit
+      moved to a through-hole in the draw direction can delete a slide, and with
+      it a five-figure tooling line item and a recurring maintenance risk. This
+      is where a DFM engine earns its keep: the geometry looks harmless.
+    good: "Snap features shut off through the wall so they release in the draw."
+    bad: "Four side-actions on a low-volume part to preserve a cosmetic detail."
+    detects: [UNDERCUT, SIDE_ACTION_REQUIRED]
+    source_id: boothroyd_dfma
+    tier: handbook
+
+  - rule_id: IM_BOSS_DESIGN
+    processes: [injection_molding]
+    category: geometry
+    title: "Bosses stand off the wall, not on it"
+    statement: >-
+      Support bosses with ribs or gussets rather than thickening their base;
+      keep boss outer wall at ~60% of nominal and use a cored hole.
+    relation: advisory
+    why: >-
+      A solid boss on a wall is a thick section by another name — sink on the
+      show face, a void in the core, and a long cycle. Coring the boss and
+      supporting it with thin ribs gives the same screw retention with uniform
+      wall everywhere.
+    good: "Cored boss, 1.5 mm wall, three gussets, standing 0.5 mm off the floor."
+    bad: "A solid 8 mm cylindrical boss moulded directly onto a 2.5 mm floor."
+    detects: [THICK_SECTION, SINK_RISK]
+    source_id: shop_practice_moulding
+    tier: practice
+
+  # ═══ FORMATIVE — CASTING ══════════════════════════════════════════════════
+
+  - rule_id: CAST_DIRECTIONAL_SOLIDIFICATION
+    processes: [sand_casting, investment_casting, die_casting]
+    category: process_physics
+    title: "Design a path for solidification to run to the riser"
+    statement: >-
+      Section sizes should increase monotonically toward the riser so metal
+      freezes progressively from the thin extremities back to the feeder.
+    relation: advisory
+    why: >-
+      Liquid metal shrinks as it freezes and must be fed from somewhere. Any
+      thick region isolated behind a thin one freezes last with no feed path and
+      forms a shrinkage cavity — always in the heaviest section, which is
+      usually the most highly stressed one. This is the central rule of casting
+      design and the reason "uniform wall" gets a casting-specific twist:
+      uniform is good, but taper toward the feeder is better.
+    good: "Wall tapering from 8 mm at the riser down to 5 mm at the extremity."
+    bad: "A heavy isolated hub in the middle of a thin web."
+    detects: [SHRINKAGE_RISK, ISOLATED_HEAVY_SECTION, HOT_SPOT]
+    source_id: sfsa_casting
+    tier: handbook
+
+  - rule_id: CAST_HOT_SPOT_JUNCTIONS
+    processes: [sand_casting, investment_casting, die_casting]
+    category: geometry
+    title: "Junctions are hot spots — stagger them"
+    statement: >-
+      Avoid L, X and heavy T junctions of equal sections. Stagger crossing ribs,
+      use radii rather than sharp intersections, and core out heavy junctions.
+    relation: advisory
+    why: >-
+      The inscribed-circle diameter at a junction is larger than in either
+      adjoining member, so the junction has more mass per unit surface area and
+      freezes last. An X junction of four 10 mm ribs behaves thermally like a
+      ~14 mm section. Cavities and hot tears form exactly there.
+    good: "Offset the crossing ribs to make two T junctions instead of one X."
+    bad: "Four ribs meeting at a point under a bearing boss."
+    detects: [HOT_SPOT, FRAGILE_CORE, SHRINKAGE_RISK]
+    source_id: sfsa_casting
+    tier: handbook
+
+  - rule_id: CAST_CORE_ROBUSTNESS
+    processes: [sand_casting, investment_casting]
+    category: tooling
+    title: "Cores must be supportable and removable"
+    statement: >-
+      Every cored passage needs core prints to locate it and a route for the
+      core material to come out afterwards. Long, slender cores shift or break.
+    relation: advisory
+    why: >-
+      A core is a fragile object surrounded by liquid metal and buoyant in it.
+      An unsupported slender core floats and shifts, producing eccentric walls
+      that pass a visual inspection and fail a wall-thickness ultrasonic check —
+      a very expensive discovery point in pressure work.
+    good: "Cored passages with prints at both ends and a straight extraction path."
+    bad: "A 200 mm long, Ø12 mm blind core with a single print."
+    detects: [FRAGILE_CORE, CORE_SHIFT_RISK, INACCESSIBLE_CORE]
+    source_id: sfsa_casting
+    tier: handbook
+
+  - rule_id: CAST_MACHINING_ALLOWANCE
+    processes: [sand_casting, investment_casting, die_casting]
+    category: geometry
+    title: "Cast tolerance is coarse — machine what must be accurate"
+    statement: >-
+      Expect roughly ±1 mm class capability for sand casting, tighter for
+      investment and die casting. Add machining stock to functional surfaces
+      and tolerance the rest to the casting class.
+    relation: min
+    metric: machining_stock_mm
+    value_min: 1.5
+    value_typical: 3.0
+    units: mm
+    why: >-
+      Pattern wear, mould expansion, core shift and non-uniform contraction all
+      stack. A casting drawing that applies machined tolerances to as-cast
+      surfaces is unbuildable as drawn; the foundry will either quote a huge
+      premium or quietly plan a machining operation you did not price.
+    good: "As-cast to ISO 8062 class; 3 mm stock on the two mating faces."
+    bad: "±0.1 mm applied to an as-cast rib thickness."
+    detects: [UNREACHABLE_TOLERANCE, NO_MACHINING_STOCK]
+    source_id: sfsa_casting
+    tier: handbook
+
+  - rule_id: DIE_CAST_DRAFT_AND_WALL
+    processes: [die_casting]
+    category: geometry
+    title: "Die casting: thin, uniform, drafted"
+    statement: >-
+      Typical die-cast wall 1.5–3 mm in aluminium; draft ~1° external and ~2°
+      internal as a starting point.
+    relation: band
+    metric: wall_thickness_mm
+    value_min: 1.0
+    value_typical: 2.5
+    value_max: 4.0
+    units: mm
+    why: >-
+      Die casting fills fast and freezes fast. Thin uniform walls fill and eject
+      cleanly; thick sections trap gas because the metal front folds over
+      entrapped air, giving subsurface porosity that only shows up when the part
+      is machined into or pressure tested. Internal faces need more draft than
+      external because they shrink onto the core.
+    good: "2.5 mm housing wall, 2° internal draft, ribbed rather than thickened."
+    bad: "A 10 mm thick pressure-tight boss in a die casting."
+    detects: [THICK_SECTION, POROSITY_RISK, INSUFFICIENT_DRAFT]
+    source_id: nadca_standards
+    tier: handbook
+
+  # ═══ FORMATIVE — FORGING ══════════════════════════════════════════════════
+
+  - rule_id: FORGE_GRAIN_FLOW
+    processes: [forging]
+    category: process_physics
+    title: "Forging's value is grain flow — design to it"
+    statement: >-
+      Orient the part so grain flow follows the principal stress path and is not
+      cut through by subsequent machining of critical surfaces.
+    relation: advisory
+    why: >-
+      A forging is stronger than a bar-stock equivalent because deformation
+      aligns the grain with the shape. Machining a critical feature across that
+      flow exposes end grain — the fatigue and stress-corrosion weak direction.
+      This is why forged wellhead and rotorcraft components carry grain-flow
+      requirements and macroetch inspections, and why an "equivalent" machined
+      billet part is not equivalent.
+    good: "Flow following the bore and out along the flange, verified by macroetch."
+    bad: "A critical thread machined across exposed end grain."
+    detects: [GRAIN_FLOW_RISK]
+    source_id: asm_handbook
+    tier: handbook
+
+  - rule_id: FORGE_DRAFT_AND_FILLETS
+    processes: [forging]
+    category: geometry
+    title: "Forgings need generous draft and radii"
+    statement: >-
+      Typically 3–7° draft and radii substantially larger than a machined
+      equivalent; thin webs and deep ribs resist die fill.
+    relation: min
+    metric: draft_angle_deg
+    value_min: 3.0
+    value_typical: 5.0
+    units: degrees
+    why: >-
+      Hot metal must flow into the die cavity and then release from it. Sharp
+      corners are where flow stalls, dies crack from stress concentration, and
+      laps and cold shuts form. Generous radii are simultaneously a die-life
+      requirement and a part-integrity requirement.
+    good: "5° draft, R6 fillets, webs no thinner than the die can fill."
+    bad: "A 1 mm fillet and 1° draft on a hot-forged steel flange."
+    detects: [INSUFFICIENT_DRAFT, MISSING_FILLETS, HIGH_RIB_RATIO]
+    source_id: asm_handbook
+    tier: handbook
+
+  # ═══ FORMATIVE — SHEET METAL ══════════════════════════════════════════════
+
+  - rule_id: SM_BEND_RADIUS
+    processes: [sheet_metal]
+    category: geometry
+    title: "Minimum inside bend radius"
+    statement: >-
+      Default the inside bend radius to one material thickness; mild steel
+      commonly goes to 0.5×t, and hard tempers and high-strength alloys need
+      more.
+    relation: min
+    metric: bend_radius_over_thickness
+    value_min: 0.5
+    value_typical: 1.0
+    units: ratio
+    why: >-
+      The outer fibre of a bend is in tension and cracks if strained past the
+      material's forming limit. Ductility, grain direction and temper all move
+      the limit — bending across the rolling direction tolerates a tighter
+      radius than bending along it, which is why a bend that works on one coil
+      cracks on the next.
+    good: "R1.5 inside on 1.5 mm 5052-H32, bent across the grain."
+    bad: "R0 'sharp bends' modelled in CAD on 3 mm 7075-T6."
+    detects: [TIGHT_BEND_RADIUS, BEND_CRACK_RISK]
+    source_id: din_6935
+    tier: standard
+
+  - rule_id: SM_MIN_FLANGE
+    processes: [sheet_metal]
+    category: geometry
+    title: "Minimum flange length"
+    statement: >-
+      Published minimums range from 3×t to 4×t (plus bend radius). Encode the
+      range; a shop with narrow dies holds the shorter figure.
+    relation: min
+    metric: flange_length_over_thickness
+    value_min: 3.0
+    value_typical: 4.0
+    units: ratio
+    why: >-
+      The flange must span the press-brake die opening to be formed at all. Too
+      short and it drops into the vee, producing a partial bend, a deformed
+      edge, or nothing. The limit is a property of the shop's tooling, not of
+      the material — the exact case for letting a declared machine inventory
+      override a literature default.
+    good: "6 mm flange on 1.5 mm sheet (4×t)."
+    bad: "2 mm flange on 2 mm sheet."
+    detects: [SHORT_FLANGE]
+    source_id: shop_practice_sheet_metal
+    tier: contested
+
+  - rule_id: SM_HOLE_TO_BEND
+    processes: [sheet_metal]
+    category: geometry
+    title: "Holes must stand clear of the bend"
+    statement: >-
+      Keep holes at least 2×t from the bend line, or 1.5×t plus the bend radius;
+      slots want 3×t. Sources disagree — treat as a range.
+    relation: min
+    metric: hole_to_bend_over_thickness
+    value_min: 1.5
+    value_typical: 2.5
+    units: ratio
+    why: >-
+      Material inside the bend deformation zone stretches. A hole caught in it
+      pulls into an oval and the surrounding flange distorts. The failure is
+      cosmetic-looking and functional: the hole no longer accepts its fastener
+      at position.
+    good: "Ø5 holes 5 mm from the bend on 2 mm sheet."
+    bad: "Threaded inserts placed 1 mm from a bend line."
+    detects: [HOLE_NEAR_BEND, DEFORMED_FEATURE]
+    source_id: shop_practice_sheet_metal
+    tier: contested
+
+  - rule_id: SM_BEND_RELIEF
+    processes: [sheet_metal]
+    category: geometry
+    title: "Partial bends need relief notches"
+    statement: >-
+      Where a bend ends part-way across a panel, add a relief notch at least
+      one material thickness wide and deeper than the bend radius.
+    relation: min
+    metric: bend_relief_width_over_thickness
+    value_min: 1.0
+    value_typical: 1.5
+    units: ratio
+    why: >-
+      Without relief the material at the end of the bend tears or drags a
+      distorted web with it. This is the single most common flat-pattern defect
+      and the one most often absent from a CAD model built as a solid and
+      unfolded afterwards.
+    good: "Relief notches at both ends of every partial flange."
+    bad: "A flange bent to a sharp internal corner with no relief."
+    detects: [MISSING_BEND_RELIEF, TEAR_RISK]
+    source_id: din_6935
+    tier: standard
+
+  - rule_id: SM_UNIFORM_THICKNESS
+    processes: [sheet_metal]
+    category: geometry
+    title: "One thickness per part"
+    statement: >-
+      A sheet-metal part is one gauge throughout. Local thickening, pockets or
+      variable wall means it is not a sheet-metal part.
+    relation: advisory
+    why: >-
+      Obvious in principle, routinely violated in practice — a solid model
+      shelled to "about" a gauge, or a machined part reclassified as fabricated
+      to save money. The engine should catch it, because the cost model changes
+      completely and the quote will come back as machining.
+    good: "Uniform 2 mm 304 throughout; stiffness from ribs and joggles."
+    bad: "A 'sheet metal' bracket with a 6 mm boss modelled into one face."
+    detects: [NON_UNIFORM_WALL, PROCESS_MISMATCH]
+    source_id: shop_practice_sheet_metal
+    tier: practice

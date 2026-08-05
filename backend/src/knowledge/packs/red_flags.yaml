@@ -1,0 +1,366 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# RED FLAGS — what bad looks like, and the tell that reveals it
+#
+# Each entry pairs a real-world failure pattern with the SIGNAL an engine can
+# actually observe. `signal` is written so it can become a detector; `cost_of_
+# missing_it` is why anyone should care.
+#
+# category:
+#   geometry     — visible in the shape
+#   definition   — visible in the tolerancing / annotation / spec
+#   model        — visible in the CAD file itself, not the shape
+#   process      — a routing or capability mismatch
+#   economics    — the part is buildable and the cost is wrong
+#   compliance   — the part is buildable and would not survive audit
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "1.0.0"
+
+red_flags:
+
+  # ═══ GEOMETRY ═════════════════════════════════════════════════════════════
+
+  - flag_id: RF_UNIFORM_TIGHT_TOLERANCE
+    category: definition
+    name: "Blanket tight tolerance"
+    looks_like: >-
+      A single tight tolerance in the title block applied to every dimension,
+      often ±0.05 mm or tighter, on a part where two features actually matter.
+    signal: >-
+      Ratio of tightly-toleranced characteristics to total characteristics
+      approaching 1.0; tolerance distribution with no spread.
+    why_bad: >-
+      Tolerance is the most expensive thing on a drawing per keystroke. Blanket
+      tightness routes the part to a better machine, adds inspection on every
+      feature, and multiplies scrap — for function nobody asked for. It is also
+      invisible: the geometry looks fine.
+    cost_of_missing_it: "Frequently the largest single avoidable cost on a machined part; 2–5× is routine."
+    correct_form: "Tight where function demands it, ISO 2768-m elsewhere, with the functional features identified."
+    source_id: iso_2768
+    tier: standard
+
+  - flag_id: RF_SHARP_INTERNAL_CORNER
+    category: geometry
+    name: "Zero-radius internal corner"
+    looks_like: "Pockets and slots modelled with mathematically sharp internal vertical corners."
+    signal: "Internal corner radius below the smallest practical tool radius, or exactly zero."
+    why_bad: >-
+      No rotating cutter produces a sharp internal corner. The part either gets
+      quietly re-radiused by the shop — changing the geometry you designed — or
+      it needs EDM, a separate process with its own setup and cost.
+    cost_of_missing_it: "An unplanned secondary process, or a silent geometry change discovered at first article."
+    correct_form: "Radius sized above the intended tool radius, or an explicit corner-relief undercut."
+    source_id: sandvik_machining
+    tier: vendor
+
+  - flag_id: RF_ZERO_DRAFT
+    category: geometry
+    name: "Zero draft on a moulded or cast part"
+    looks_like: "Vertical walls parallel to the draw direction with no taper."
+    signal: "Faces within a small angular tolerance of parallel to the identified draw axis."
+    why_bad: >-
+      The part shrinks onto the core and grips it. Ejection scuffs the wall,
+      whitens the polymer, or sticks the part and stops the press. Textured
+      surfaces make it worse because texture is itself an undercut.
+    cost_of_missing_it: "Tool rework after first shots — weeks of schedule, not just money."
+    correct_form: "1° per 25 mm of draw minimum, more for texture and for internal faces."
+    source_id: shop_practice_moulding
+    tier: practice
+
+  - flag_id: RF_ISOLATED_HEAVY_SECTION
+    category: geometry
+    name: "Thick section with no feed path"
+    looks_like: "A heavy hub or boss surrounded by thinner material, in a cast or moulded part."
+    signal: "Local inscribed-sphere diameter substantially above the part's modal wall, not adjacent to a feed location."
+    why_bad: >-
+      It freezes last with nothing left to feed it, so it forms a shrinkage
+      cavity — reliably in the heaviest and usually most highly stressed
+      section. In moulding it becomes a sink or a void.
+    cost_of_missing_it: "Radiographic rejection late, after tooling is committed."
+    correct_form: "Core it out, or taper sections so solidification runs toward the feeder."
+    source_id: sfsa_casting
+    tier: handbook
+
+  - flag_id: RF_TRAPPED_VOLUME
+    category: geometry
+    name: "Enclosed internal volume with no evacuation"
+    looks_like: "A sealed cavity, lattice core, or internal manifold with no port to the outside."
+    signal: "A closed internal shell with no connectivity to the exterior boundary."
+    why_bad: >-
+      In powder-bed AM it traps powder permanently — dead mass, contamination,
+      and a rejectable condition invisible from outside. In SLA it traps resin
+      that cures later and swells the part. In casting it is a core that cannot
+      be removed.
+    cost_of_missing_it: "Scrap at final inspection, or a latent defect shipped."
+    correct_form: "Two or more evacuation ports, ≥ 2 mm, at the geometry's low points."
+    source_id: iso_astm_52911
+    tier: standard
+
+  - flag_id: RF_NO_FIXTURE_SURFACE
+    category: geometry
+    name: "Nothing to hold it by"
+    looks_like: "A fully organic or topology-optimised part with no planar, parallel or clampable feature."
+    signal: "No planar face above a minimum area threshold; no pair of parallel faces suitable for a vice."
+    why_bad: >-
+      A part that cannot be gripped rigidly cannot be cut accurately. The shop
+      responds with sacrificial tabs, soft jaws, or a printed fixture — real
+      cost that geometry checks do not report and quotes silently absorb.
+    cost_of_missing_it: "Unmodelled fixturing cost and an unexplained quote premium."
+    correct_form: "A designed sacrificial datum pad, machined off in the final operation."
+    source_id: shop_practice_machining
+    tier: practice
+
+  - flag_id: RF_DEEP_NARROW_FEATURE
+    category: geometry
+    name: "Deep narrow feature"
+    looks_like: "A slot, pocket or hole whose depth greatly exceeds the largest tool that fits it."
+    signal: "depth ÷ (2 × minimum internal radius) above roughly 4, or hole depth ÷ diameter above 10."
+    why_bad: >-
+      Tool deflection rises with the cube of unsupported length and chip
+      evacuation collapses. Cycle time rises steeply while accuracy falls. The
+      feature is geometrically legal and economically absurd.
+    cost_of_missing_it: "An order-of-magnitude cycle-time surprise on one feature."
+    correct_form: "Open the corner radius, split the part, or accept a specialist process and price it."
+    source_id: shop_practice_machining
+    tier: practice
+
+  # ═══ DEFINITION ═══════════════════════════════════════════════════════════
+
+  - flag_id: RF_DATUM_ON_CENTERLINE
+    category: definition
+    name: "Datum feature that is not a feature"
+    looks_like: "Datums attached to an axis, centreline or centre plane rather than to real physical surfaces."
+    signal: "Datum references not resolvable to a physical face, bore or width in the model."
+    why_bad: >-
+      An inspector cannot touch a centreline. Datum features must be physical
+      because the datum reference frame is established by contacting them.
+      Multiple features can share a centreline, so the callout is also ambiguous.
+    cost_of_missing_it: "Inspection results that do not mean what the designer intended — silently."
+    correct_form: "Datum features on real surfaces, chosen for how the part is located in its assembly."
+    source_id: asme_y14_5
+    tier: standard
+
+  - flag_id: RF_DATUM_NOT_FUNCTIONAL
+    category: definition
+    name: "Datum scheme that does not match the assembly"
+    looks_like: "A datum reference frame chosen for convenient measurement rather than for how the part actually mounts."
+    signal: "Datum surfaces that carry no mating interface in the assembly context."
+    why_bad: >-
+      If the CMM setup does not mirror the functional datum structure, every
+      inspection result is invalid regardless of machine accuracy. Parts pass
+      inspection and do not assemble; or fail inspection and would have worked.
+    cost_of_missing_it: "The most expensive class of GD&T error — it invalidates all downstream measurement."
+    correct_form: "Establish the DRF from the mating features, in the order the part actually locates."
+    source_id: asme_y14_5
+    tier: standard
+
+  - flag_id: RF_MIXED_TOLERANCING_STANDARD
+    category: definition
+    name: "ASME and ISO tolerancing mixed"
+    looks_like: "A model annotated with ASME Y14.5 symbols and a title block invoking ISO GPS, or no standard stated at all."
+    signal: "No governing standard and edition declared, or conflicting invocations."
+    why_bad: >-
+      The defaults differ fundamentally: ASME applies Rule #1 (envelope) to size
+      by default; ISO applies independency unless (E) is invoked. The same
+      drawing accepts different parts under the two readings.
+    cost_of_missing_it: "Cross-border acceptance disputes with both parties reading the same document correctly."
+    correct_form: "State the governing standard AND edition explicitly, once, and tolerance consistently with it."
+    source_id: iso_gps_1101
+    tier: standard
+
+  - flag_id: RF_UNREACHABLE_TOLERANCE
+    category: definition
+    name: "Tolerance tighter than the process can hold"
+    looks_like: "A machined-class tolerance applied to an as-cast, as-printed, or as-formed surface."
+    signal: "Specified tolerance below the process capability table entry for the routed process."
+    why_bad: >-
+      The part is unbuildable as drawn. The supplier either quotes a large
+      premium, or quietly adds a machining operation nobody priced, or ships
+      nonconforming parts on a concession.
+    cost_of_missing_it: "An unpriced secondary operation, or a stream of concessions."
+    correct_form: "Tolerance to the process class and add machining stock where accuracy is genuinely needed."
+    source_id: iso_2768
+    tier: standard
+
+  - flag_id: RF_SURFACE_FINISH_WITHOUT_BASIS
+    category: definition
+    name: "Ra with no cut-off or evaluation length"
+    looks_like: "'Ra 0.8' on a face with no filtering basis, sometimes on a surface the process cannot reach."
+    signal: "Surface-finish callout lacking cut-off/evaluation-length, or below the process's achievable Ra."
+    why_bad: >-
+      Ra is meaningless without its filter — the same surface yields different
+      values under different cut-offs. And an as-built AM or as-cast surface
+      simply cannot reach fine Ra without a finishing operation.
+    cost_of_missing_it: "Measurement disputes, or an unplanned finishing operation."
+    correct_form: "State the parameter, the value, the cut-off, and confirm the routed process can achieve it."
+    source_id: iso_4287
+    tier: standard
+
+  - flag_id: RF_NACE_AS_BOOLEAN
+    category: compliance
+    name: "'NACE compliant' asserted without an environment"
+    looks_like: "A material selected because it is 'a NACE material', with no H2S partial pressure, pH, chloride or temperature stated."
+    signal: "Sour-service declaration with a compliance flag but no environmental parameters."
+    why_bad: >-
+      ISO 15156 qualifies alloys within stated environmental limits. Outside
+      those limits the same alloy is not qualified. Compliance is a property of
+      the material-in-its-environment, never of the material alone.
+    cost_of_missing_it: "A sour-service cracking failure — the consequence class that gets people killed."
+    correct_form: "Record the environment, then the specific table entry the alloy is qualified under for it."
+    source_id: nace_mr0175
+    tier: standard
+
+  - flag_id: RF_HAZ_NOT_SURVEYED
+    category: compliance
+    name: "Hardness surveyed on base metal only"
+    looks_like: "A sour-service hardness report showing compliant base metal, with no weld or HAZ readings."
+    signal: "Welded sour-service part with hardness evidence covering fewer than base metal, weld and HAZ."
+    why_bad: "The HAZ is the hardest region and where SSC actually initiates. Surveying only the base metal measures the safe part."
+    cost_of_missing_it: "A major audit finding at best; a cracking failure at worst."
+    correct_form: "Hardness across base metal, weld metal and HAZ, with PWHT records."
+    source_id: nace_mr0175
+    tier: standard
+
+  # ═══ MODEL ════════════════════════════════════════════════════════════════
+
+  - flag_id: RF_NON_WATERTIGHT
+    category: model
+    name: "Open or non-manifold shell"
+    looks_like: "Naked edges, holes in the mesh, duplicate faces, or self-intersections."
+    signal: "Boundary edges present; edges shared by more than two faces; volume undefined or negative."
+    why_bad: >-
+      Volume, mass, wall thickness and every cost number derived from them are
+      undefined. Any number reported from such a model is fiction — which is
+      precisely what a provenance-carrying engine must refuse to do.
+    cost_of_missing_it: "Every downstream number silently wrong, with no visible error."
+    correct_form: "Repair to a closed manifold solid before any analysis, and say that a repair happened."
+    source_id: asme_y14_41
+    tier: standard
+
+  - flag_id: RF_DECIMATED_MESH
+    category: model
+    name: "Coarse tessellation presented as the part"
+    looks_like: "Faceted cylinders, visible chords on curved surfaces, an STL exported at a loose deviation."
+    signal: "Chordal deviation large relative to feature size; low facet count on curved regions."
+    why_bad: >-
+      Wall-thickness and radius measurements taken on a coarse tessellation are
+      wrong by the chordal error, and small features vanish entirely. A DFM
+      verdict computed on a decimated mesh is a verdict about the mesh.
+    cost_of_missing_it: "False DFM findings, and worse, missed real ones."
+    correct_form: "Analyse from B-rep where available; when tessellating, state the deviation and label the result."
+    source_id: asme_y14_41
+    tier: standard
+
+  - flag_id: RF_UNIT_AMBIGUITY
+    category: model
+    name: "Unit ambiguity in a neutral file"
+    looks_like: "An STL with no unit declaration, interpreted as millimetres when authored in inches (or vice versa)."
+    signal: "Overall dimensions implausible for the part class by a factor near 25.4."
+    why_bad: >-
+      STL carries no units. A 25.4× error passes every geometric check because
+      the geometry is internally consistent — it is simply the wrong size, and
+      every derived cost is wrong by the cube of the factor on material.
+    cost_of_missing_it: "The most embarrassing possible quoting error, and a common one."
+    correct_form: "Detect implausible scale, ask, and record the declared unit as USER provenance."
+    source_id: asme_y14_41
+    tier: standard
+
+  - flag_id: RF_BROKEN_FEATURE_TREE
+    category: model
+    name: "Model that cannot be edited"
+    looks_like: "Rollback errors, hundreds of features, sketches referencing imported faces, no design intent."
+    signal: "Rebuild errors present; feature count far above the geometric complexity; external references to dead geometry."
+    why_bad: >-
+      A model nobody can change safely means every change becomes a remodel, and
+      every revision risks silent geometry drift. This is a cost and risk signal
+      that lives entirely in the file, not the shape.
+    cost_of_missing_it: "Engineering-change cost that nobody attributes to the model, and revision defects."
+    correct_form: "Stable references, minimal well-named features, sketches on planes rather than imported faces."
+    source_id: boothroyd_dfma
+    tier: handbook
+
+  - flag_id: RF_PMI_LOST_IN_TRANSLATION
+    category: model
+    name: "PMI that did not survive the exchange"
+    looks_like: "GD&T visible as graphics in the received file but not machine-readable, or missing entirely."
+    signal: "Semantic PMI count in the received file below the source; AP203/AP214 used where semantic PMI was required."
+    why_bad: >-
+      AP203 and AP214 carry PMI only as polylines — pictures of tolerances, not
+      tolerances. Only AP242 preserves machine-readable GD&T with face links. In
+      an MBD workflow the characteristics silently stop existing, which is the
+      number-one AS9102 first-article defect.
+    cost_of_missing_it: "Characteristics never inspected because nothing downstream knew they existed."
+    correct_form: "AP242 with semantic PMI, and a validation step that counts characteristics before and after."
+    source_id: asme_y14_41
+    tier: standard
+
+  # ═══ PROCESS & ECONOMICS ══════════════════════════════════════════════════
+
+  - flag_id: RF_PROCESS_MISMATCH
+    category: process
+    name: "Geometry that contradicts its declared process"
+    looks_like: "A 'sheet metal' part with a machined boss; a 'casting' with zero draft; a 'turned' part with off-axis features."
+    signal: "Geometry violating the defining constraint of the declared process family."
+    why_bad: >-
+      The declared routing and the cost model are wrong together. The quote comes
+      back as a different process at a different price, usually late.
+    cost_of_missing_it: "A whole cost model built on the wrong process family."
+    correct_form: "Reconcile geometry and routing before costing; or route to the process the geometry actually implies."
+    source_id: boothroyd_dfma
+    tier: handbook
+
+  - flag_id: RF_AM_FOR_ITS_OWN_SAKE
+    category: economics
+    name: "Additive chosen for a part that does not need it"
+    looks_like: "A simple prismatic part routed to metal powder bed because AM is available."
+    signal: "Low geometric complexity, no internal channels, no consolidation, and a subtractive route within envelope."
+    why_bad: >-
+      Metal AM's cost is dominated by build time and powder, both of which scale
+      with volume. For a simple part, machining wins decisively — and AM adds
+      qualification burden the part never needed.
+    cost_of_missing_it: "Order-of-magnitude overspend plus an unnecessary qualification programme."
+    correct_form: "Route to AM for consolidation, internal complexity, lead time, or buy-to-fly — with the reason recorded."
+    source_id: iso_astm_52910
+    tier: standard
+
+  - flag_id: RF_SETUP_COUNT_IGNORED
+    category: economics
+    name: "Cost estimated from cycle time alone"
+    looks_like: "A machined-part estimate built from material removal and cutting time, with setups unmodelled."
+    signal: "Cost model with no setup term, or a setup count of one on a part with features on many faces."
+    why_bad: >-
+      On low and medium volumes, setup and fixturing frequently dominate. A model
+      that ignores setups systematically under-quotes prismatic parts and
+      over-values design changes that reduce cutting time but not setups.
+    cost_of_missing_it: "A should-cost model that is confidently wrong in a consistent direction."
+    correct_form: "Count setups from accessibility, amortise setup across the lot, and show the term."
+    source_id: boothroyd_dfma
+    tier: handbook
+
+  - flag_id: RF_VALIDATED_WITHOUT_MEASUREMENT
+    category: economics
+    name: "An assumption presented as a validated number"
+    looks_like: "A cost or capability figure rendered with the same confidence as a measured one."
+    signal: "A number whose provenance chain terminates in a literature default but is not labelled as such."
+    why_bad: >-
+      This is the failure the whole platform exists to prevent. Once a default is
+      indistinguishable from a measurement, every number becomes untrustworthy,
+      including the good ones.
+    cost_of_missing_it: "The product's entire credibility, on one number."
+    correct_form: "Label it DEFAULT, show the source, and let a real measurement replace it visibly."
+    source_id: boothroyd_dfma
+    tier: handbook
+
+  - flag_id: RF_QUALIFICATION_INVALIDATED_SILENTLY
+    category: compliance
+    name: "A change that quietly invalidated a qualification"
+    looks_like: "A 'minor' geometry, material, supplier or parameter change on a qualified part."
+    signal: "Geometry or process delta on a part carrying a qualification flag, with no linked requalification record."
+    why_bad: >-
+      Qualification attaches to a specific configuration and process. Changing
+      either without assessment leaves a part that is documented as qualified
+      and is not.
+    cost_of_missing_it: "A major finding, a recall, or an unairworthy part in service."
+    correct_form: "Every change on a qualified part triggers an impact assessment against what the qualification covered."
+    source_id: as9100
+    tier: standard
