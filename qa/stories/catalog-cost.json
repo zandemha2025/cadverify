@@ -1,0 +1,372 @@
+[
+ {
+  "id": "CAT-001",
+  "area": "API catalog/cost",
+  "page": "GET /api/v1/catalog",
+  "feature": "Parts\u00d7decisions grid",
+  "story": "As a viewer, I see a paginated grid of my org's parts with recommended route, unit cost, DFM findings, provenance posture, and Drafted/Costed state so I can browse the portfolio without joining raw endpoints.",
+  "expected": "Requires viewer role; rows built only from caller's org (resolve_org; no membership = empty grid, never cross-org). Offset pagination (page/page_size<=100) with consistent total; facets state/route/has_findings applied before pagination; invalid state value = 400. Response includes facets summary over full org catalog, filters echo, and honest truncated flag when scan cap exceeded.",
+  "evidence": "backend/src/api/catalog.py:46-183",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-002",
+  "area": "API catalog/cost",
+  "page": "GET /api/v1/catalog?keyset=true",
+  "feature": "Keyset catalog (SCALE mode)",
+  "story": "As a viewer with a huge inventory, I can walk the whole uncapped catalog with keyset pagination over the materialized part-summary projection.",
+  "expected": "keyset=true returns {rows, next_cursor}; passing next_cursor back walks pages; facet filters do not apply. Undecodable cursor = 400 'invalid cursor', never 500. Cold projection with real parts: first page (no cursor) falls back read-only to legacy capped catalog with cold_projection:true and truncated flag.",
+  "evidence": "backend/src/api/catalog.py:67-140",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-003",
+  "area": "API catalog/cost",
+  "page": "GET /api/v1/catalog/portfolio",
+  "feature": "Portfolio savings roll-up",
+  "story": "As a viewer, I see my org's Costed parts ranked by engine-computed redesign savings with an honest posture aggregate so I can prioritize redesigns.",
+  "expected": "Viewer role; org-scoped (no org = empty roll-up). savings is always a delta of two persisted engine numbers; parts with no signal carry savings:null + reason; parts with no cost decision excluded (excluded_no_cost_count); validated copied from confidence band, never set here. $/year figures appear only when user-declared annual_volume exists (context_note added when programs declared); truncated scan adds a note. Interactive rate limit 600/hour.",
+  "evidence": "backend/src/api/catalog.py:186-241",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-004",
+  "area": "API catalog/cost",
+  "page": "GET /api/v1/catalog/triage",
+  "feature": "Makeability triage roll-up",
+  "story": "As a viewer, I see how many of my org's parts are makeable / needs_review / unknown per process so I can triage a legacy pile at portfolio scale.",
+  "expected": "Viewer role; org-scoped; empty org returns zeroed summary (not error). Buckets are exhaustive and mutually exclusive (sum to total); parts with no analysis are 'unknown', never assumed makeable. Uses SQL GROUP BY over part_summaries projection; cold projection with real parts falls back read-only to legacy capped fold with truncated:true + note. Programs grouping present only when user-declared programs exist.",
+  "evidence": "backend/src/api/catalog.py:244-307",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-005",
+  "area": "API catalog/cost",
+  "page": "GET /api/v1/catalog/makeability",
+  "feature": "In-house makeability rollup + bucket drill-down",
+  "story": "As a viewer, I see how many parts are makeable on owned equipment vs. outside vs. blocked by a capability gap, and can drill into each bucket, so I can plan in-house work.",
+  "expected": "Viewer role; org-scoped; rollup counts 6 buckets from stored Phase-C verdicts, never recomputed. Invalid bucket name = 400 listing valid buckets; bucket drill-down returns keyset {rows, next_cursor} with per-row makeability {verdict, stale, gap}; bad cursor = 400. Stale verdicts counted and flagged (stale_note), never hidden; cold projection with real parts adds cold_projection:true + note; zero evaluated parts adds evaluation_note.",
+  "evidence": "backend/src/api/catalog.py:310-411",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-006",
+  "area": "API catalog/cost",
+  "page": "GET /api/v1/catalog/capability-investment",
+  "feature": "Capability-investment ranking + unlock drill-down",
+  "story": "As a viewer, I see which single machine acquisition would unlock the most blocked parts so I can justify equipment purchases.",
+  "expected": "Viewer role; org-scoped; ranking is a GROUP BY over stored (unlock_process, unlock_gate) gap data \u2014 no acquisition dollar cost ever fabricated (basis_note states this). Parts blocked by multiple constraints reported separately in summary.blocked_by_multiple_constraints, never folded in. ?process= (optionally &gate=) returns keyset drill-down of unlocked parts; bad cursor = 400; stale entries flagged; empty ranking with zero blocked adds explanatory note.",
+  "evidence": "backend/src/api/catalog.py:414-495",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-007",
+  "area": "API catalog/cost",
+  "page": "GET /api/v1/cost-decisions + GET /api/v1/cost-decisions/{id}",
+  "feature": "Cost-decision list + detail",
+  "story": "As a viewer, I list my org's saved cost decisions (cursor-paginated, filterable by process/date) and open one to see the full immutable result_json with governance state.",
+  "expected": "Viewer role; list is org-scoped via caller_org_subquery; ULID cursor pagination with has_more/next_cursor; invalid ISO created_after/before = 400. Detail returns full envelope incl. mesh_hash (private source identity), share_url, governance fields; a decision in another org = 404 (never 403, existence never leaks).",
+  "evidence": "backend/src/api/cost_decisions.py:76-170; backend/src/services/cost_decision_service.py:396-412",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-008",
+  "area": "API catalog/cost",
+  "page": "GET /api/v1/cost-decisions/compare?ids=a,b",
+  "feature": "Compare two decisions",
+  "story": "As a viewer, I get a structured diff of two owned decisions (unit cost by qty, make/tooling process, crossover, driver deltas) to evaluate alternatives.",
+  "expected": "Viewer role; exactly two comma-separated ids required else 400; each id must resolve in caller's org else 404. Response compares recommended unit cost per quantity with delta and pct, plus process/crossover diffs.",
+  "evidence": "backend/src/api/cost_decisions.py:120-138; cost_decision_service.py:826+",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-009",
+  "area": "API catalog/cost",
+  "page": "PUT /api/v1/cost-decisions/{id}/disposition",
+  "feature": "Record/withdraw human sourcing outcome",
+  "story": "As an analyst, I record the four-way outcome (inhouse/outside/acquire/redesign) or withdraw it with null, without altering the engine artifact.",
+  "expected": "Analyst role; org-scoped 404. Invalid disposition = 400 (422 via Literal at router); note >1000 chars = 400. Recording 'inhouse' while the selected route is DFM-blocked = 409 (fail closed). Any real change reopens an existing approval; identical repeat PUT is idempotent (no timestamp rewrite, no duplicate audit). result_json remains byte-identical; audit event emitted.",
+  "evidence": "backend/src/api/cost_decisions.py:173-195; cost_decision_service.py:488-571",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-010",
+  "area": "API catalog/cost",
+  "page": "POST /api/v1/cost-decisions/{id}/approve + DELETE .../approve",
+  "feature": "Approve / reopen signoff",
+  "story": "As an analyst, I sign off a saved decision (optional note \u22641000 chars) or reopen its approval, leaving the saved artifact immutable.",
+  "expected": "Analyst role; org-scoped 404. Approve sets approval_status=approved with approver id/timestamp/trimmed note; DELETE resets to unreviewed and clears approver fields. Response returns governance fields incl. time-aware is_stale (future stale_at not stale until effective instant).",
+  "evidence": "backend/src/api/cost_decisions.py:198-230; cost_decision_service.py:363-455",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-011",
+  "area": "API catalog/cost",
+  "page": "GET /api/v1/cost-decisions/{id}/pdf",
+  "feature": "Cost-report PDF download",
+  "story": "As a viewer, I download the cost-report PDF of a saved decision for offline review.",
+  "expected": "Viewer role; org-scoped (service resolves via user_id, 404 for foreign decisions). Returns application/pdf with sanitized attachment filename; PDF generated or fetched from cache by cost_pdf_service.",
+  "evidence": "backend/src/api/cost_decisions.py:233-250",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-012",
+  "area": "API catalog/cost",
+  "page": "GET /api/v1/cost-decisions/{id}/export.json + export.csv",
+  "feature": "Glass-box JSON/CSV export",
+  "story": "As a viewer, I export the decision's raw result_json (plus governance block) or an estimates/line-items/confidence CSV for external analysis.",
+  "expected": "Viewer role; org-scoped 404. JSON export = result_json merged with governance fields, attachment Content-Disposition with sanitized filename stem; CSV export = build_estimates_csv over result_json + governance, text/csv attachment.",
+  "evidence": "backend/src/api/cost_decisions.py:253-299",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-013",
+  "area": "API catalog/cost",
+  "page": "POST /api/v1/cost-decisions/{id}/share + DELETE .../share",
+  "feature": "Create/revoke public share link",
+  "story": "As an analyst, I generate a public /s/cost/{short_id} link for a decision and can revoke it so the link 404s immediately.",
+  "expected": "Analyst role; org-scoped 404. POST is idempotent \u2014 an existing share returns the same short id; sets is_public=true. DELETE clears share_short_id and is_public, returns 'Share revoked'.",
+  "evidence": "backend/src/api/cost_decisions.py:302-326; cost_decision_service.py:703-751",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-014",
+  "area": "API catalog/cost",
+  "page": "GET /s/cost/{short_id}",
+  "feature": "Public shared cost view",
+  "story": "As an anonymous link recipient, I view a shared cost decision sanitized of owner PII so the owner can share evidence safely.",
+  "expected": "No auth; 404 when short_id unknown or share revoked (is_public false). Response is allow-listed \u2014 excludes user_id, api_key_id, mesh_hash, params_hash, ids \u2014 while decision content (estimates, provenance, confidence band) is verbatim. Headers: X-Robots-Tag noindex and Cache-Control private,no-store; rate-limited 120/hour.",
+  "evidence": "backend/src/api/cost_decisions.py:329-343; cost_decision_service.py:754-780",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-015",
+  "area": "API catalog/cost",
+  "page": "GET /api/v1/machine-inventory/catalog + GET .../import/template",
+  "feature": "Machine reference catalog + CSV template",
+  "story": "As a viewer, I fetch static MachineProfile templates (provenance 'catalog_template') to prefill a declaration, and the exact CSV header for a bulk import.",
+  "expected": "Viewer role; no org required for /catalog. Templates are editable prefills, never claimed as the org's machines. Template endpoint returns plaintext header (required column process; optional name/count/max_workpiece_kg/hourly_rate_usd/capital_frac/materials/material_thickness_map/capabilities/notes) plus an example row.",
+  "evidence": "backend/src/api/machine_inventory.py:146-175",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-016",
+  "area": "API catalog/cost",
+  "page": "GET + PUT /api/v1/machine-inventory/shop-capabilities",
+  "feature": "Shop-level secondary ops",
+  "story": "As an analyst, I declare (upsert) my org's shop-level secondary-op set; as a viewer I read it back (empty ops when unset).",
+  "expected": "GET viewer / PUT analyst; both 403 when caller has no org. PUT gated by kill switch; idempotent per org; a malformed op value or non-positive limit = 400, never coerced. A successful PUT marks the org's makeability projection stale in the same transaction.",
+  "evidence": "backend/src/api/machine_inventory.py:178-218",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-017",
+  "area": "API catalog/cost",
+  "page": "POST /api/v1/machine-inventory/import",
+  "feature": "Bulk machine CSV import",
+  "story": "As an analyst, I bulk-import owned machines from CSV and get an honest partial-success summary.",
+  "expected": "Analyst role + kill switch; 403 no org. Accepts multipart file or raw text/csv body; streamed with size cap (MACHINE_IMPORT_MAX_MB, default 10MB) = 413 on overflow, 400 empty or non-UTF-8. Strict parse: valid rows INSERTED (append, no natural key), bad rows reported per-line; returns 200 {imported, skipped, total, errors:[{line,reason}]}. Any import marks makeability projection stale.",
+  "evidence": "backend/src/api/machine_inventory.py:221-270",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-018",
+  "area": "API catalog/cost",
+  "page": "POST /api/v1/machine-inventory + GET '' + GET /{machine_id}",
+  "feature": "Declare + list/read machines",
+  "story": "As an analyst I declare one owned machine; as a viewer I list the org's machines (keyset, id ASC) and read one by id.",
+  "expected": "Create: analyst + kill switch, 403 no org, malformed capability field = 400 never coerced, 201 with provenance:'user' payload, audit event machine.created, marks projection stale. List/get: viewer, org-scoped; foreign or unknown id = 404 'no such machine in org'.",
+  "evidence": "backend/src/api/machine_inventory.py:274-333",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-019",
+  "area": "API catalog/cost",
+  "page": "PATCH /api/v1/machine-inventory/{machine_id} + DELETE /{machine_id}",
+  "feature": "Edit / delete machine",
+  "story": "As an analyst, I patch only the supplied machine fields (merged result re-validated) or delete a machine from the org registry.",
+  "expected": "Analyst + kill switch; 403 no org; 404 when machine not in caller's org; 400 on malformed field. Both mutations mark the makeability projection stale in the same txn and emit machine.updated/machine.deleted audit events; delete returns {deleted:true, id}.",
+  "evidence": "backend/src/api/machine_inventory.py:336-386",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-020",
+  "area": "API catalog/cost",
+  "page": "GET /api/v1/material-library + GET /{version_id}",
+  "feature": "Material catalog versions list + detail",
+  "story": "As a viewer, I list my org's materials-catalog versions (newest first, with flag_enabled) and open one with its full payload.",
+  "expected": "Viewer role; org-scoped; caller with no org gets empty versions list (list) and 404 (detail). Detail includes payload; foreign-org version = 404. flag_enabled reflects MATERIAL_LIBRARY_ENABLED.",
+  "evidence": "backend/src/api/material_library.py:74-138",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-021",
+  "area": "API catalog/cost",
+  "page": "GET /api/v1/material-library/effective",
+  "feature": "Effective material overlay honesty",
+  "story": "As a viewer, I see whether the engine is actually overlaying a governed material catalog right now, so I never mistake an authored-but-unused catalog for a live one.",
+  "expected": "Viewer role. using_governed true only when flag on AND a published catalog is in effect; otherwise source='base_rate_table_material_prices' and payload null. Response always carries provenance:'default' and validated:false \u2014 declared prices are never validated.",
+  "evidence": "backend/src/api/material_library.py:93-122",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-022",
+  "area": "API catalog/cost",
+  "page": "POST /api/v1/material-library + PATCH /{version_id}",
+  "feature": "Create/edit material draft",
+  "story": "As an org admin, I create a draft catalog (blank, from payload, or copied from an existing version) and edit its name/note/payload while still draft.",
+  "expected": "Requires org-admin (require_org_role); 400 when caller has no org. Invalid payload = 400; editing a non-draft = 409; unknown version / foreign org = 404. Returns serialized version with payload.",
+  "evidence": "backend/src/api/material_library.py:141-190",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-023",
+  "area": "API catalog/cost",
+  "page": "DELETE /api/v1/material-library/{version_id} + POST /{version_id}/archive",
+  "feature": "Discard draft / archive published",
+  "story": "As an org admin, I discard an unwanted draft outright, or archive a superseded published version \u2014 but never delete the audit trail or strand the live overlay.",
+  "expected": "Org-admin; 404 unknown version. DELETE only works on drafts \u2014 published/archived = 409 (audit trail). Archive only works on published versions (409 otherwise) and the version currently in effect cannot be archived (409).",
+  "evidence": "backend/src/api/material_library.py:193-224",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-024",
+  "area": "API catalog/cost",
+  "page": "POST /api/v1/material-library/{version_id}/publish",
+  "feature": "Publish material catalog",
+  "story": "As an org admin, I publish a draft with an effective date so the costing engine overlays it from that instant.",
+  "expected": "Org-admin; only drafts publishable (already-published = 409); effective_from in the past = 400; publishing closes the previously open version's effective_to (no overlap). Side effects in same txn: org cost decisions marked stale (reason material_library_published:vN, stale_at=effective_from) and library.version_published audit event.",
+  "evidence": "backend/src/api/material_library.py:227-256",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-025",
+  "area": "API catalog/cost",
+  "page": "GET /api/v1/rate-library + /effective + /{version_id}",
+  "feature": "Rate-card versions list/effective/detail",
+  "story": "As a viewer, I list my org's rate-card versions, read one with payload, and see whether the engine is actually using a governed card vs. hardcoded RATE_CARD_V0.",
+  "expected": "Viewer role; org-scoped; no org = empty list / 404 detail. /effective: using_governed true only when RATE_LIBRARY_ENABLED and a published card in effect, else source='default_rate_card_v0'; always provenance:'default', validated:false.",
+  "evidence": "backend/src/api/rate_library.py:74-135",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-026",
+  "area": "API catalog/cost",
+  "page": "POST /api/v1/rate-library + PATCH/DELETE /{version_id} + POST /{version_id}/archive",
+  "feature": "Rate-card draft lifecycle",
+  "story": "As an org admin, I draft a rate card (default table or copy of a version), edit it while draft, discard drafts, and archive superseded published versions.",
+  "expected": "Org-admin; 400 no org. Payload validated on create/edit (400 on invalid); edit/discard non-draft = 409; archive non-published = 409; archiving the currently-in-effect card = 409 (would strand the engine); unknown/foreign version = 404.",
+  "evidence": "backend/src/api/rate_library.py:138-221; rate_library_service.py:276-403",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-027",
+  "area": "API catalog/cost",
+  "page": "GET /api/v1/rate-library/{version_id}/diff/{other_id}",
+  "feature": "Rate-card structural diff",
+  "story": "As a viewer, I see exactly which leaf keys changed between two of my org's rate-card versions (path, from, to) to review a governance change.",
+  "expected": "Viewer role; both versions must exist in caller's org else 404 (never cross-tenant). Only genuinely changed leaf keys listed; unchanged keys never appear; response includes serialized from/to metadata.",
+  "evidence": "backend/src/api/rate_library.py:224-250",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-028",
+  "area": "API catalog/cost",
+  "page": "POST /api/v1/rate-library/{version_id}/publish",
+  "feature": "Publish rate card",
+  "story": "As an org admin, I publish a draft rate card with an effective date so the engine reads it as the base default table.",
+  "expected": "Org-admin; draft-only (409 otherwise); past effective_from = 400; timeline never overlaps (prior open version closed). Marks org cost decisions stale (reason rate_library_published:vN) and emits library.version_published audit event in same txn.",
+  "evidence": "backend/src/api/rate_library.py:253-282",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-029",
+  "area": "API catalog/cost",
+  "page": "GET /api/v1/shop-library + GET /{version_id}",
+  "feature": "Shop-profile versions list + detail",
+  "story": "As a viewer, I list my org's per-slug shop-profile versions and read one with payload, replacing the read-only flat-file profiles.",
+  "expected": "Viewer role; org-scoped; no org = empty list / 404 detail; foreign version = 404; flag_enabled reflects SHOP_LIBRARY_ENABLED. Governed profile is declared calibration bound as SHOP provenance \u2014 never validated/certified.",
+  "evidence": "backend/src/api/shop_library.py:76-108",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-030",
+  "area": "API catalog/cost",
+  "page": "POST /api/v1/shop-library + PATCH/DELETE /{version_id} + POST /{version_id}/archive + POST /{version_id}/publish",
+  "feature": "Shop-profile lifecycle (draft/edit/discard/archive/publish)",
+  "story": "As an org admin, I draft a shop profile under a slug, edit it while draft, discard drafts, archive superseded published versions, and publish with an effective date.",
+  "expected": "Org-admin; 400 no org; invalid body = 400; edit/discard non-draft = 409; archive: only published and not currently-in-effect-for-its-slug (409); publish is draft-only with no past effective_from, marks org decisions stale (reason shop_profile_published:slug:vN) and emits a library.version_published audit event.",
+  "evidence": "backend/src/api/shop_library.py:111-229",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-031",
+  "area": "API catalog/cost",
+  "page": "GET /api/v1/part-context/{mesh_hash}",
+  "feature": "Read declared part context",
+  "story": "As a viewer, I read the user-declared business context (program, parent assembly, units per parent, annual volume, service environment, BOM linkage) for a part in my org.",
+  "expected": "Viewer role; org-scoped \u2014 no org or no declared row = 404 'no declared context for part' (cross-tenant read also 404). Response carries provenance:'user' \u2014 declared, never inferred from the mesh.",
+  "evidence": "backend/src/api/part_context.py:65-79",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-032",
+  "area": "API catalog/cost",
+  "page": "PUT /api/v1/part-context/{mesh_hash}",
+  "feature": "Declare part context (upsert) + portfolio_delta",
+  "story": "As an analyst, I declare or update a part's context idempotently on (org, mesh_hash) and get back the recomputed portfolio row so the UI patches state without refetching the rate-limited portfolio.",
+  "expected": "Analyst role; 400 when no org; non-positive units_per_parent/annual_volume (or invalid service_environment / BOM fields) = 400, never coerced. Response is provenance:'user' and includes portfolio_delta computed after commit via the same build_portfolio path as GET /catalog/portfolio (byte-identical to a refetch). Nothing flips validated or fabricates demand.",
+  "evidence": "backend/src/api/part_context.py:82-124",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-033",
+  "area": "API catalog/cost",
+  "page": "POST /api/v1/bom/ingest-assembly",
+  "feature": "Assembly STEP/IGES BOM ingest",
+  "story": "As an analyst, I upload a STEP/IGES assembly and persist its real derived parent->child edge tree (source 'assembly_step') so rollups use measured instance counts.",
+  "expected": "Analyst + kill switch + org limits; 403 no org; upload capped (BOM_ASSEMBLY_MAX_MB, default 256MB) = 413; empty upload = 400. Reuses /validate/assembly extraction (security gate + 400s); idempotent per (org, assembly_key) \u2014 re-ingest replaces the tree; assembly_key defaults to filename; single-part file persists 0 edges with an honest note, never a fabricated hierarchy. Returns {assembly_key, edges, roots, source}.",
+  "evidence": "backend/src/api/bom.py:99-135",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-034",
+  "area": "API catalog/cost",
+  "page": "POST /api/v1/bom/onboard + GET /api/v1/bom/onboard/template",
+  "feature": "Customer BOM CSV/JSON onboard",
+  "story": "As an analyst, I onboard a parent_ref,child_ref,qty_per_parent BOM (CSV/JSON, file or raw body) against an assembly_key; the template endpoint gives me the exact header.",
+  "expected": "Analyst + kill switch; 403 no org; size cap 413 (BOM_IMPORT_MAX_MB default 10MB); empty body = 400; missing assembly_key (query/form/filename) = 400; non-UTF-8 = 400; > BOM_MAX_ROWS = 413. Strict parse: valid edges persisted (re-onboard replaces tree, source 'bom_csv'); malformed rows skipped and reported as errors:[{line,reason}]. Template (viewer) returns header + example row.",
+  "evidence": "backend/src/api/bom.py:138-221",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-035",
+  "area": "API catalog/cost",
+  "page": "GET /api/v1/bom/{assembly_key}/ancestry?child_ref= + GET /api/v1/bom/{assembly_key}",
+  "feature": "Ancestry chain + tree read",
+  "story": "As a viewer, I trace a part child->root with the rolled-up multiplier and read the persisted edge list for an assembly key.",
+  "expected": "Viewer role; 403 no org; org-scoped so another org's tree is invisible. Missing tree or child_ref not in it = 200 with has_tree=false, empty chains, rolled_up_multiplier=null \u2014 never 500 or fabricated ancestry; shared components return every root-path in ancestry_paths and the SUMMED multiplier. Tree read returns {assembly_key, edges, roots, has_tree} with empty edges (not 404) for an absent tree.",
+  "evidence": "backend/src/api/bom.py:224-268",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-036",
+  "area": "API catalog/cost",
+  "page": "POST /api/v1/manifest/import + GET /api/v1/manifest/import/template",
+  "feature": "Parts-manifest CSV import",
+  "story": "As an analyst, I bulk-import my org's declared parts manifest (SAP/Excel CSV, usually without geometry) with honest partial success; the template gives the exact columns.",
+  "expected": "Analyst + kill switch + org limits; 403 no org. Multipart file or raw text/csv; streamed cap (MANIFEST_IMPORT_MAX_MB default 10MB) = 413; empty = 400; non-UTF-8 = 400. Valid rows UPSERTED on (org_id, part_id) last-write-wins; bad rows reported per-line; fully-invalid file still 200 with imported=0 + errors. Returns {imported, updated, skipped, total, errors}. Template (viewer): required part_id, optional declared metadata columns.",
+  "evidence": "backend/src/api/manifest.py:99-151,188-202",
+  "test_via": "API"
+ },
+ {
+  "id": "CAT-037",
+  "area": "API catalog/cost",
+  "page": "GET /api/v1/manifest + GET /api/v1/manifest/coverage",
+  "feature": "Manifest list + geometry-coverage headline",
+  "story": "As a viewer, I page through my org's declared manifest (keyset, part_id ASC) and see the coverage headline: total declared parts, by_program rollup, and how many have uploaded geometry.",
+  "expected": "Viewer role; 403 when caller has no org; org-scoped (one org's manifest never leaks). List returns {parts, next_cursor} with next_cursor null only on the final page and bounded limit. Coverage counts with_geometry/without_geometry by exact normalized-stem match against the same org's uploaded analyses \u2014 an honest count, never inferred.",
+  "evidence": "backend/src/api/manifest.py:154-185",
+  "test_via": "API"
+ }
+]
