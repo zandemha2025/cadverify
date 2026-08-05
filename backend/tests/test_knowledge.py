@@ -130,19 +130,26 @@ def test_checklists_reference_only_real_processes(kb):
         assert not unknown, f"{checklist.checklist_id} references {unknown}"
 
 
-def test_every_process_family_has_design_rules(kb):
-    """Each of the three families must carry more than the universal rules."""
-    families = {
-        "additive": ["dmls", "fdm", "binder_jetting"],
-        "subtractive": ["cnc_3axis", "cnc_turning", "wire_edm"],
-        "formative": ["injection_molding", "sand_casting", "sheet_metal", "forging"],
-    }
-    for family, processes in families.items():
-        for process in processes:
-            specific = [
-                r for r in kb.rules_for(process) if not r.universal
-            ]
-            assert specific, f"no process-specific rules for {process} ({family})"
+MIN_RULES_PER_PROCESS = 6
+
+
+def test_every_process_meets_the_parity_floor(kb):
+    """No thin corners.
+
+    The founder's requirement is that a user in any industry gets the same depth
+    of answer, so every process must carry a comparable body of process-specific
+    knowledge — not just the popular ones. This guards against the corpus
+    drifting back toward covering only metal machining and metal AM.
+    """
+    thin = {}
+    for pt in ProcessType:
+        specific = [r for r in kb.rules_for(pt.value) if not r.universal]
+        if len(specific) < MIN_RULES_PER_PROCESS:
+            thin[pt.value] = len(specific)
+    assert not thin, (
+        f"processes below the parity floor of {MIN_RULES_PER_PROCESS}: {thin}. "
+        f"Add sourced rules rather than lowering the floor."
+    )
 
 
 def test_universal_rules_apply_everywhere(kb):

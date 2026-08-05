@@ -425,6 +425,88 @@ shop_practice_moulding:
     wall; rib spacing ≥ 2× nominal wall; 1° draft per 25 mm of draw as a
     starting point, plus ~1.5° extra per 0.025 mm of texture depth.
 
+shop_practice_polymer_am:
+  tier: practice
+  title: "Polymer AM design consensus (service-bureau and printer-OEM guides)"
+  publisher: "industry consensus"
+  designation: "shop practice — polymer AM"
+  access: free
+  scope: >-
+    The published consensus across polymer AM service bureaux and printer OEMs:
+    FDM minimum wall around three perimeters (~1.2 mm) and 2–3 mm for loaded
+    parts, unsupported bridging to roughly 10 mm (25 mm with active cooling),
+    dimensional capability around ±0.3 mm or ±0.3%; SLA vertical wall from
+    1.5 mm and hollow wall from 2 mm with drain holes of 3.5–4 mm; SLS/MJF
+    minimum wall 0.8 mm (2.5–3 mm loaded), moving-part clearance 0.5–0.7 mm,
+    internal channels ≥ 2 mm, escape holes 3.5–4 mm.
+  caution: >-
+    These are bureau capability statements, not standards. They describe what a
+    given provider will accept on a given machine and material, and they differ
+    between providers. Treat as a strong default that a shop profile overrides.
+
+vendor_binder_jet:
+  tier: vendor
+  title: "Metal binder jetting design guides (printer OEMs)"
+  publisher: "binder jet OEMs"
+  designation: "binder jet OEM design guide"
+  access: free
+  scope: >-
+    Green-state handling minimum wall of about 2 mm (below 0.75 mm the green
+    part lacks strength), minimum fillet radius around 1 mm to prevent green
+    cracking, minimum hole about 1.5 mm, escape holes about 5 mm, and sintering
+    shrinkage from roughly 0.8–3% infiltrated up to about 20% for full sinter.
+  caution: >-
+    Shrinkage and achievable tolerance are strongly machine-, alloy- and
+    geometry-specific, and OEM figures assume their own sinter profile and
+    setters.
+
+shop_practice_edm:
+  tier: practice
+  title: "EDM design consensus (job-shop and machine-builder guidance)"
+  publisher: "industry consensus"
+  designation: "shop practice — EDM"
+  access: free
+  scope: >-
+    Minimum wire-EDM internal corner radius as wire radius plus spark gap
+    (about 0.15 mm for a 0.25 mm wire), wire diameters of roughly 0.10–0.30 mm,
+    taper capability to about ±30° at much reduced speed, practical stock
+    heights of roughly 10–300 mm, and a start hole for every internal profile.
+
+asm_forging_design:
+  tier: handbook
+  title: "Forging design, dimensions and tolerances"
+  publisher: ASM International
+  designation: "ASM Handbook — bulk forming / closed-die forging design"
+  access: paid
+  scope: >-
+    Closed-die forging design: parting line and flash, web and rib proportions
+    for metal flow, standard draft around 1° (tighter only for high-tolerance
+    work), and the rule that dimensions across the parting plane carry worse
+    tolerance than dimensions contained within a single die half, because they
+    depend on die closure, die wear and final flash thickness.
+
+iso_8062:
+  tier: standard
+  title: "Geometrical product specifications (GPS) — Dimensional and geometrical tolerances for moulded parts"
+  publisher: ISO
+  designation: "ISO 8062"
+  access: paid
+  scope: >-
+    Casting tolerance grades (CT/DCTG) and required machining allowance grades.
+    The correct way to tolerance an as-cast surface instead of inventing a
+    machined-class number for it.
+
+iso_astm_52907:
+  tier: standard
+  title: "Additive manufacturing — Feedstock materials — Methods to characterize metal powders"
+  publisher: ISO / ASTM
+  designation: "ISO/ASTM 52907"
+  access: paid
+  scope: >-
+    Sampling and characterisation of metal AM powder — chemistry, particle size
+    distribution, flow, apparent density. The basis for treating a powder lot
+    with the same seriousness as a heat number.
+
 dfam_practice:
   tier: practice
   title: "Design for additive manufacturing consensus"
