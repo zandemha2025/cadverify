@@ -1,7 +1,8 @@
+# syntax=docker/dockerfile:1.7
 # =============================================================================
 # Stage 1 — builder: install build tools + compile C extensions into a venv
 # =============================================================================
-FROM python:3.12-slim AS builder
+FROM python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf AS builder
 
 WORKDIR /build
 
@@ -25,19 +26,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHONDONTWRITEBYTECODE=1
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements-prod.lock ./
+RUN pip install --no-cache-dir --require-hashes -r requirements-prod.lock
 
 # Download SAM-2 Hiera Small checkpoint (~150 MB)
 # License: Apache-2.0 (Meta AI)
 RUN mkdir -p /build/models
-ADD https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_small.pt /build/models/sam2_hiera_small.pt
+ADD --checksum=sha256:6d1aa6f30de5c92224f8172114de081d104bbd23dd9dc5c58996f0cad5dc4d38 \
+    https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_small.pt \
+    /build/models/sam2_hiera_small.pt
 
 # =============================================================================
 # Stage 2 — runtime: slim image with only runtime deps + venv + app code
 # =============================================================================
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf
 
 WORKDIR /app
 
@@ -87,6 +91,7 @@ RUN useradd --create-home --shell /bin/bash cadverify
 # Copy venv from builder
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHONDONTWRITEBYTECODE=1
 
 # Copy pre-baked SAM-2 model weights from builder
 COPY --from=builder /build/models /app/models
@@ -110,4 +115,4 @@ EXPOSE 8000
 # Web entrypoint (default). Worker overrides CMD to: arq src.jobs.worker.WorkerSettings
 # --no-server-header suppresses uvicorn's `server: uvicorn` banner (S6); the app
 # middleware then stamps a neutral Server value.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--no-server-header"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--no-server-header"]

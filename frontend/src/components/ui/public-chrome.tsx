@@ -2,8 +2,6 @@ import Link from "next/link";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 
-const GITHUB_URL = "https://github.com/zandemha2025/cadverify";
-
 /**
  * The primary public CTA — "Sign up" → /signup. The platform is fully gated
  * (no anonymous demo), so the marketing front door is account creation. No
@@ -58,7 +56,7 @@ export function PublicHeader({
             className="h-4 w-[3px] rounded-[1px] bg-primary transition-transform group-hover:scale-y-110"
           />
           <span className="cv-wordmark text-[17px] text-foreground">
-            CadVerify
+            ProofShape
           </span>
           <span className="hidden text-xs text-subtle-foreground sm:inline">
             should-cost, made of glass
@@ -101,14 +99,9 @@ export function PublicFooter() {
         <Link href="/" className="transition-colors hover:text-foreground">
           Home
         </Link>
-        <a
-          href={GITHUB_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="transition-colors hover:text-foreground"
-        >
-          GitHub
-        </a>
+        <Link href="/developers" className="transition-colors hover:text-foreground">
+          Developers
+        </Link>
       </div>
     </footer>
   );

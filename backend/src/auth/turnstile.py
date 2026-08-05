@@ -5,6 +5,8 @@ success response (network error, non-200, success=false).
 """
 from __future__ import annotations
 
+from src.config.public_urls import error_doc_url
+
 import os
 
 import httpx
@@ -19,7 +21,7 @@ def _fail() -> HTTPException:
         detail={
             "code": "captcha_failed",
             "message": "Captcha verification failed.",
-            "doc_url": "https://docs.cadverify.com/errors#captcha_failed",
+            "doc_url": error_doc_url("captcha_failed"),
         },
     )
 

@@ -44,6 +44,9 @@ export function DataTable<TData, TValue>({
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
 
+  // TanStack intentionally returns opaque function objects; this component is
+  // kept outside React Compiler memoization and owns the table instance locally.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data,
     columns,

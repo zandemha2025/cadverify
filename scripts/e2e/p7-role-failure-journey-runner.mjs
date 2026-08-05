@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { captureBuildIdentity, makeReleaseEvidence } from "./human-sim-release-evidence.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const pw = require("playwright-core");
@@ -27,8 +28,12 @@ const artifacts = {
   md: path.join(outputRoot, `qa-report-p7-role-failure-${runId}.md`),
 };
 
+// This runner is a release gate: a required route that is absent, rejects the
+// seeded session, or returns an upstream/server failure is a failed release—not
+// a green run with skips. Local report-only diagnostics must opt out explicitly.
 const failOnUnavailable =
-  process.argv.includes("--require-app") || process.env.E2E_FAIL_ON_UNAVAILABLE === "1";
+  !process.argv.includes("--allow-unavailable") &&
+  process.env.E2E_FAIL_ON_UNAVAILABLE !== "0";
 
 const launchOptions = {
   channel: "chrome",
@@ -67,6 +72,7 @@ const visibleCopyRoutes = [
 const governanceApprovalNote = `P7 governance approval ${runId}`;
 
 const forbiddenPatterns = [
+  /\bCadVerify\b/i,
   /\bin development\b/i,
   /\bunder construction\b/i,
   /\bcoming soon\b/i,
@@ -105,8 +111,8 @@ Optional auth hooks:
   E2E_VIEWER_STORAGE_STATE=/path/to/state.json      Seeded low-role storage state.
 
 Behavior:
-  If APP_URL is unavailable, writes an explicit SKIPPED_UNAVAILABLE report and exits 0.
-  Pass --require-app or E2E_FAIL_ON_UNAVAILABLE=1 to make an unavailable app fail.`;
+  Required journey skips and unavailable apps fail by default.
+  Pass --allow-unavailable or E2E_FAIL_ON_UNAVAILABLE=0 only for report-only local diagnostics.`;
 }
 
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
@@ -142,6 +148,13 @@ function isIgnorableRequestFailure(url, method, failure) {
   if (/favicon\.ico|\/_next\/webpack-hmr|vercel\/speed-insights/i.test(url)) return true;
   if (failure !== "net::ERR_ABORTED") return false;
   if (/[?&]_rsc=/.test(url)) return true;
+  if (method === "GET" && /\/api\/proxy\/cost-decisions\?limit=8(?:&|$)/.test(url)) return true;
+  if (
+    method === "GET" &&
+    /\/api\/proxy\/(?:governance\/change-requests|ground-truth|machine-inventory|rate-library(?:\/effective)?)(?:[/?#]|$)/.test(url)
+  ) {
+    return true;
+  }
   return method === "GET" && /\/_next\/static\/chunks\/[^/?]+\.js(?:\?|$)/.test(url);
 }
 
@@ -336,7 +349,7 @@ class P7RoleFailureQA {
       screenshotDir,
       `${String(this.steps.length + 1).padStart(2, "0")}-${slug(name)}.png`
     );
-    await page.screenshot({ path: file, fullPage, animations: "disabled" });
+    await page.screenshot({ path: file, fullPage, animations: "disabled", caret: "initial" });
     return file;
   }
 
@@ -529,7 +542,14 @@ class P7RoleFailureQA {
       await this.loginWithCredentials(page, email, password, label);
     }
     await this.assertAuthenticated(page, label);
-    return { context, page, label, source: storageState ? "storage" : sessionCookie ? "cookie" : "credentials" };
+    return {
+      context,
+      page,
+      label,
+      source: storageState ? "storage" : sessionCookie ? "cookie" : "credentials",
+      email: email || null,
+      password: password || null,
+    };
   }
 
   async signupContext(prefix, label) {
@@ -606,6 +626,12 @@ asyncio.run(main())
   }
 
   async seededPasswordContext(prefix, label) {
+    if (!process.env.DATABASE_URL) {
+      const signedUp = await this.signupContext(prefix, `${label}-signup-fallback`);
+      signedUp.source = "signup-password-user";
+      return signedUp;
+    }
+
     const context = await this.newContext();
     const page = await context.newPage();
     this.attachPage(page);
@@ -622,7 +648,12 @@ asyncio.run(main())
       throw new SkipStep("no primary org-admin session was available to invite a viewer");
     }
 
-    const viewer = await this.seededPasswordContext("p7-viewer", "self-seeded-viewer");
+    const viewer =
+      (await this.authContextFromHooks("VIEWER", "viewer-invite-identity")) ||
+      (await this.seededPasswordContext("p7-viewer", "self-seeded-viewer"));
+    if (!viewer.email) {
+      throw new Error("viewer identity needs an email so the primary org can invite it");
+    }
     const invite = await this.proxyJson(this.primary.context, "/api/proxy/orgs/invites", {
       method: "POST",
       body: { email: viewer.email, role: "viewer" },
@@ -679,7 +710,7 @@ asyncio.run(main())
           throw new SkipStep(`${route.path} returned 404; Verify UI flag appears off in this build`);
         }
         const redirected = isLoginUrl(page.url());
-        const loginCopy = /Log in to CadVerify|Welcome back|Create an account/i.test(text);
+        const loginCopy = /Log in to ProofShape|Welcome back|Create an account/i.test(text);
         assert(
           redirected || loginCopy,
           `${route.path} did not redirect to or render login. URL: ${page.url()}`
@@ -1088,9 +1119,12 @@ asyncio.run(main())
 
   async runSeededLowRoleChecks() {
     await this.step("low-role viewer session is available", async () => {
-      const lowRole =
-        (await this.authContextFromHooks("VIEWER", "seeded-viewer")) ||
-        (await this.selfSeedViewerContext());
+      const lowRole = this.primary
+        ? await this.selfSeedViewerContext()
+        : await this.authContextFromHooks("VIEWER", "seeded-viewer");
+      if (!lowRole) {
+        throw new SkipStep("no primary org-admin or low-role viewer session was available");
+      }
       this.lowRole = lowRole;
       this.evidence.lowRoleAuth = {
         source: lowRole.source,
@@ -1193,7 +1227,7 @@ asyncio.run(main())
     const passedSteps = this.steps.filter((s) => s.status === "pass").length;
     const status =
       statusOverride ||
-      (blocking.length === 0 && failedSteps === 0
+      (blocking.length === 0 && failedSteps === 0 && !(failOnUnavailable && skippedSteps > 0)
         ? skippedSteps > 0
           ? "PASS_WITH_SKIPS"
           : "PASS"
@@ -1209,6 +1243,20 @@ asyncio.run(main())
               this.issues.filter((i) => i.severity === "medium").length * 8 -
               this.issues.filter((i) => i.severity === "low").length * 3
           );
+
+    const criticalPaths = {
+      "WORK-05": {
+        initialStatus: this.evidence.governanceInitial?.approval_status,
+        approvedAt: this.evidence.governanceApproval?.approved_at,
+        reopenedStatus: this.evidence.governanceApproval?.reopened_status,
+        staleReason: this.evidence.governanceStale?.stale_reason,
+      },
+      "ROLE-01": {
+        sessionSource: this.evidence.lowRoleAuth?.source,
+        orgRole: this.evidence.lowRoleAuth?.org_role,
+        adminMutationStatus: this.evidence.lowRoleAdminUsers?.status,
+      },
+    };
 
     const data = {
       status,
@@ -1234,6 +1282,8 @@ asyncio.run(main())
       requestFailures: this.requestFailures,
       visited: this.visited,
       evidence: this.evidence,
+      buildIdentity: captureBuildIdentity(repoRoot),
+      releaseEvidence: makeReleaseEvidence(criticalPaths),
       screenshotDir,
     };
 

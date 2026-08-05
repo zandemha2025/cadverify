@@ -11,6 +11,9 @@ services:
         condition: service_started
     environment:
       - PORT=8000
+      - RATE_LIBRARY_ENABLED=1
+    volumes:
+      - blobdata:/data
     healthcheck:
       test:
         - CMD-SHELL
@@ -29,6 +32,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    environment:
+      - RATE_LIBRARY_ENABLED=1
+    volumes:
+      - blobdata:/data
 
   postgres:
     image: postgres:16-alpine
@@ -57,7 +64,7 @@ services:
       - "3000:3000"
     environment:
       - API_BASE=http://backend:8000
-      - NEXT_PUBLIC_API_BASE=http://localhost:8000
+      - AUTH_PROXY_SECRET=${AUTH_PROXY_SECRET:-}
     healthcheck:
       test:
         - CMD-SHELL
@@ -70,3 +77,4 @@ services:
 
 volumes:
   pgdata:
+  blobdata:

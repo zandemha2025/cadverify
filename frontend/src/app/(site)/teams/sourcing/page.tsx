@@ -13,7 +13,7 @@ import { SourcingView } from "./sourcing-view";
  */
 
 export const metadata: Metadata = {
-  title: "For Sourcing — CadVerify",
+  title: "For Sourcing — ProofShape",
   description:
     "The sourcing-native verdict: for every part, the computed choice — make in-house on the floor you own, make outside, or acquire the capability — with the resource math underneath.",
 };

@@ -19,7 +19,8 @@ def client(monkeypatch):
     # Force main.py to re-read env if it was already imported.
     import main
     importlib.reload(main)
-    return TestClient(main.app)
+    with TestClient(main.app) as test_client:
+        yield test_client
 
 
 def test_health(client):
@@ -30,6 +31,7 @@ def test_health(client):
     body = r.json()
     assert body["status"] in ("ok", "degraded")
     assert "version" in body
+    assert "build_id" in body
 
 
 def test_validate_quick_on_clean_cube(client, cube_10mm, stl_bytes_of):
@@ -82,14 +84,13 @@ def test_validate_enforces_upload_limit(monkeypatch, cube_10mm, stl_bytes_of):
     monkeypatch.setenv("MAX_UPLOAD_MB", "1")  # 1 MiB cap
     import main
     importlib.reload(main)
-    client = TestClient(main.app)
-
     # ~2 MiB body
     oversized = b"\x00" * (2 * 1024 * 1024)
-    r = client.post(
-        "/api/v1/validate",
-        files={"file": ("big.stl", oversized, "application/octet-stream")},
-    )
+    with TestClient(main.app) as client:
+        r = client.post(
+            "/api/v1/validate",
+            files={"file": ("big.stl", oversized, "application/octet-stream")},
+        )
     assert r.status_code == 413
     assert "exceeds" in r.json()["message"].lower()
 

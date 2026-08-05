@@ -1,0 +1,111 @@
+{
+  "oilgas": {
+    "env_declare_status": 200,
+    "cost_steel_status": 200,
+    "cost_stainless_status": 200,
+    "validate_status": 200,
+    "steel_summary": {
+      "keys": [
+        "filename",
+        "status",
+        "reason",
+        "geometry",
+        "material_class",
+        "quantities",
+        "estimates",
+        "engine_feasibility",
+        "routing",
+        "notes",
+        "assumptions",
+        "decision",
+        "verification",
+        "saved",
+        "identity"
+      ],
+      "verification_keys": [
+        "verdict",
+        "best_machine",
+        "resource",
+        "gap",
+        "env_exclusions",
+        "per_route",
+        "inventory_declared",
+        "environment_declared",
+        "provenance",
+        "note"
+      ],
+      "env_exclusions": [
+        {
+          "gate": "environment",
+          "axis": "Mild Steel",
+          "need": "NACE MR0175 sour-service qualified",
+          "have": {
+            "nace_mr0175": false,
+            "sour_service": null
+          },
+          "human": "Mild Steel excluded: sour service requires NACE MR0175 qualification (material not NACE MR0175 / sour_service)"
+        },
+        {
+          "gate": "environment",
+          "axis": "Ductile Iron",
+          "need": "NACE MR0175 sour-service qualified",
+          "have": {
+            "nace_mr0175": null,
+            "sour_service": null
+          },
+          "human": "Ductile Iron excluded: sour service requires NACE MR0175 qualification (material not NACE MR0175 / sour_service)"
+        }
+      ],
+      "verdict": "unknown",
+      "material_class": "steel"
+    }
+  },
+  "aero": {
+    "cost_status": 200,
+    "summary": {
+      "keys": [
+        "filename",
+        "status",
+        "reason",
+        "geometry",
+        "material_class",
+        "quantities",
+        "estimates",
+        "engine_feasibility",
+        "routing",
+        "notes",
+        "assumptions",
+        "decision",
+        "saved",
+        "identity"
+      ],
+      "material_class": "titanium"
+    }
+  },
+  "auto": {
+    "cost_status": 200,
+    "summary": {
+      "keys": [
+        "filename",
+        "status",
+        "reason",
+        "geometry",
+        "material_class",
+        "quantities",
+        "estimates",
+        "engine_feasibility",
+        "routing",
+        "notes",
+        "assumptions",
+        "decision",
+        "saved",
+        "identity"
+      ],
+      "material_class": "polymer"
+    }
+  },
+  "jobshop_template_status": 404,
+  "jobshop": {
+    "header": "{\"code\":\"NOT_FOUND\",\"message\":\"Not Found\",\"doc_url\":\"https://docs.cadverify.com/errors/NOT_FOUND\"}"
+  }
+}

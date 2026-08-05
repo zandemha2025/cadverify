@@ -28,6 +28,7 @@ from src.auth.rate_limit import limiter
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
+from src.services import catalog_service as catalog_svc
 from src.services import part_context_service as svc
 
 logger = logging.getLogger("cadverify.part_context")
@@ -44,6 +45,12 @@ class DeclareContextBody(BaseModel):
     # PUT: {max_temp_c, min_temp_c, pressure_bar, corrosive, sour_service, medium,
     # standard}. USER-declared, never inferred; validated in the service.
     service_environment: Optional[dict] = None
+    # BOM-rollup linkage (Slice 3): name a persisted bom_edges tree + this part's
+    # child_ref + vehicles/year, so the annual volume rolls up from the real
+    # hierarchy. All optional — unset → the flat declared annual_volume, unchanged.
+    bom_assembly_key: Optional[str] = None
+    bom_child_ref: Optional[str] = None
+    bom_roots_per_year: Optional[int] = None
 
 
 async def _require_org(session: AsyncSession, user_id: int) -> str:
@@ -87,6 +94,14 @@ async def declare_part_context(
     A non-positive ``units_per_parent`` / ``annual_volume`` is a 400 — those are
     physical counts and a value ``<= 0`` is nonsense. The response is always
     ``provenance: "user"`` (a declared assertion, never inferred).
+
+    W6-1 (Wave-B): the response also carries a ``portfolio_delta`` — the recomputed
+    portfolio row for this part + the per-program rollup, taken from the SAME
+    ``build_portfolio`` path ``GET /portfolio`` uses. This lets the Programs view
+    PATCH its in-memory portfolio from the write result instead of refetching the
+    whole (rate-limited) portfolio on every edit, which previously drove the view
+    into an hour-long 429 lockout during ordinary triage. The delta figures are
+    byte-identical to a full refetch (never a drifted, client-invented rollup).
     """
     org_id = await _require_org(session, user.user_id)
     try:
@@ -94,10 +109,16 @@ async def declare_part_context(
             session,
             org_id,
             mesh_hash,
-            body.model_dump(),
+            body.model_dump(exclude_unset=True),
             created_by=user.user_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     await session.commit()
-    return svc.serialize_context(row)
+    payload = svc.serialize_context(row)
+    # Recompute AFTER commit so the delta reflects the persisted write (same code
+    # path as the read endpoint — the client patches its state from this verbatim).
+    payload["portfolio_delta"] = await catalog_svc.portfolio_delta(
+        session, org_id, mesh_hash
+    )
+    return payload

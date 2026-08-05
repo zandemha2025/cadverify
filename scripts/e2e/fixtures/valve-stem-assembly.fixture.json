@@ -1,0 +1,81 @@
+{
+  "id": "VALVE-STEM-ASSEMBLY-FIDELITY-001",
+  "name": "Severe-service valve stem in valve-body lab fixture",
+  "boundary": "Synthetic oil-and-gas valve assembly fixture for CadVerify QA. It is not customer proprietary CAD, native CAD vendor certification, or operator signoff.",
+  "coordinateSystem": {
+    "units": "mm",
+    "x": "valve body width",
+    "y": "stem axis",
+    "z": "outward service-side normal"
+  },
+  "parentAssembly": {
+    "id": "severe-service-valve-body",
+    "kind": "oil-gas-valve-body",
+    "dimensionsMm": {
+      "width": 420,
+      "height": 520,
+      "thickness": 180
+    },
+    "frontSkinZMm": 90,
+    "environment": {
+      "name": "sour high-pressure refinery service",
+      "temperatureMinC": -20,
+      "temperatureMaxC": 120,
+      "sourService": true,
+      "pressureBar": 350,
+      "standard": "NACE MR0175 / ISO 15156",
+      "shutdownCriticality": "turnaround-critical"
+    },
+    "recess": {
+      "id": "stem-bore-and-packing-pocket",
+      "centerMm": [0, 0, 95],
+      "dimensionsMm": [300, 300, 12]
+    },
+    "mountAnchors": [
+      {
+        "id": "lower-guide-land",
+        "positionMm": [0, -96, 95]
+      },
+      {
+        "id": "upper-guide-land",
+        "positionMm": [0, 96, 95]
+      }
+    ]
+  },
+  "part": {
+    "id": "valve-stem",
+    "kind": "shaft-stem",
+    "geometryRepresentation": "deterministic browser mesh generated from this fixture",
+    "material": "17-4PH stainless, H1150 condition",
+    "finish": "ground sealing surfaces",
+    "dimensionsMm": {
+      "length": 260,
+      "height": 34,
+      "depth": 34
+    },
+    "localAnchors": [
+      {
+        "id": "lower-guide-land",
+        "positionMm": [-96, 0, -17]
+      },
+      {
+        "id": "upper-guide-land",
+        "positionMm": [96, 0, -17]
+      }
+    ]
+  },
+  "partToParentTransform": {
+    "translationMm": [0, 0, 112],
+    "rotationDeg": [0, 0, 90],
+    "placementToleranceMm": 0.5,
+    "requiredStandOffMm": 5,
+    "expectedNormal": "+Z/outward"
+  },
+  "cinematicExpectations": {
+    "initialState": "exploded preview with stem separated from valve body",
+    "finalState": "stem seated through the body guide lands with anchors aligned",
+    "explodedOffsetMm": [160, 130, 115],
+    "requiredRenderedSurfaces": ["valve body", "stem bore", "valve stem", "guide anchors"],
+    "minimumVisualDeltaPixels": 900
+  }
+}

@@ -39,6 +39,7 @@ from src.auth.rbac import (
     require_role,
 )
 from src.auth.require_api_key import AuthedUser
+from src.config.public_urls import error_doc_url
 from src.db.engine import get_db_session
 from src.db.models import (
     Analysis,
@@ -62,9 +63,8 @@ router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 # tests. Every endpoint below requires org-admin (superadmin bypasses).
 require_admin = require_org_role(OrgRole.admin)
 
-# Platform roles assignable through this self-service endpoint. ``superadmin`` is
-# intentionally excluded: platform staff are provisioned out-of-band, never
-# granted via an org-admin PATCH (that would be privilege escalation).
+# Platform roles assignable by a platform superadmin. ``superadmin`` itself is
+# intentionally excluded because that role is provisioned out-of-band.
 _ASSIGNABLE_ROLES = frozenset({"viewer", "analyst", "admin"})
 
 
@@ -264,8 +264,21 @@ async def update_user_role(
     ctx: OrgAuthContext = Depends(require_admin),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Update a user's platform role. Org-admin cannot change own role, cannot
-    grant ``superadmin``, and cannot touch a user outside their org (404)."""
+    """Update a user's global platform role (platform superadmin only).
+
+    Organization admins manage ``memberships.org_role`` on the org router. They
+    must never mutate ``users.role`` because a user can belong to multiple orgs
+    and this column gates product access everywhere.
+    """
+    if not ctx.is_superadmin:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "platform_superadmin_required",
+                "message": "Only a platform superadmin can change a user's platform role.",
+                "doc_url": error_doc_url("platform_superadmin_required"),
+            },
+        )
     if ctx.user_id == user_id:
         raise HTTPException(status_code=400, detail="Cannot change own role")
 
@@ -284,32 +297,20 @@ async def update_user_role(
     if target is None:
         raise HTTPException(status_code=404, detail="User not found")
 
-    if not ctx.is_superadmin:
-        row = (
-            await session.execute(
-                select(Membership.id).where(
-                    Membership.user_id == user_id,
-                    Membership.org_id == ctx.org_id,
-                )
-            )
-        ).first()
-        if row is None:
-            raise HTTPException(status_code=404, detail="User not found")
-
     old_role = target.role
     target.role = body.role
-    await session.commit()
+    from src.services.audit_service import emit_event
 
-    # Audit: user.role_changed
-    import asyncio
-    from src.services.audit_service import fire_and_forget_audit, _lookup_email
-    _admin_email = await _lookup_email(ctx.user_id)
-    asyncio.create_task(fire_and_forget_audit(
-        user_id=ctx.user_id, user_email=_admin_email,
-        action="user.role_changed", resource_type="user",
+    await emit_event(
+        session,
+        actor_id=ctx.user_id,
+        action="user.role_changed",
+        resource_type="user",
         resource_id=str(user_id),
         detail={"old_role": old_role, "new_role": body.role, "changed_by": ctx.user_id},
-    ))
+        org_id=ctx.org_id,
+    )
+    await session.commit()
 
     return {
         "id": target.id,
@@ -345,16 +346,16 @@ async def deactivate_user(
     if user.user_id == user_id:
         raise HTTPException(status_code=400, detail="Cannot deactivate yourself")
     result = await org_service.set_user_active(session, user_id, active=False)
-    await session.commit()
+    from src.services.audit_service import emit_event
 
-    import asyncio
-    from src.services.audit_service import _lookup_email, fire_and_forget_audit
-    _actor_email = await _lookup_email(user.user_id)
-    asyncio.create_task(fire_and_forget_audit(
-        user_id=user.user_id, user_email=_actor_email,
-        action="user.deactivated", resource_type="user",
+    await emit_event(
+        session,
+        actor_id=user.user_id,
+        action="user.deactivated",
+        resource_type="user",
         resource_id=str(user_id), detail={"deactivated_by": user.user_id},
-    ))
+    )
+    await session.commit()
     return result
 
 
@@ -366,16 +367,16 @@ async def reactivate_user(
 ):
     """Reactivate a deactivated account (superadmin)."""
     result = await org_service.set_user_active(session, user_id, active=True)
-    await session.commit()
+    from src.services.audit_service import emit_event
 
-    import asyncio
-    from src.services.audit_service import _lookup_email, fire_and_forget_audit
-    _actor_email = await _lookup_email(user.user_id)
-    asyncio.create_task(fire_and_forget_audit(
-        user_id=user.user_id, user_email=_actor_email,
-        action="user.reactivated", resource_type="user",
+    await emit_event(
+        session,
+        actor_id=user.user_id,
+        action="user.reactivated",
+        resource_type="user",
         resource_id=str(user_id), detail={"reactivated_by": user.user_id},
-    ))
+    )
+    await session.commit()
     return result
 
 
@@ -387,16 +388,16 @@ async def revoke_user_sessions(
 ):
     """Invalidate every dashboard session for an account (superadmin)."""
     result = await org_service.revoke_user_sessions(session, user_id)
-    await session.commit()
+    from src.services.audit_service import emit_event
 
-    import asyncio
-    from src.services.audit_service import _lookup_email, fire_and_forget_audit
-    _actor_email = await _lookup_email(user.user_id)
-    asyncio.create_task(fire_and_forget_audit(
-        user_id=user.user_id, user_email=_actor_email,
-        action="user.sessions_revoked", resource_type="user",
+    await emit_event(
+        session,
+        actor_id=user.user_id,
+        action="user.sessions_revoked",
+        resource_type="user",
         resource_id=str(user_id), detail={"revoked_by": user.user_id},
-    ))
+    )
+    await session.commit()
     return result
 
 

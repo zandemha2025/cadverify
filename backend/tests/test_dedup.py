@@ -18,6 +18,7 @@ import pytest
 
 from src.auth.require_api_key import AuthedUser
 from src.services.analysis_service import (
+    AnalysisRun,
     compute_mesh_hash,
     compute_process_set_hash,
 )
@@ -37,14 +38,17 @@ def _make_mock_route_helpers(parse_mesh_tracker=None):
     mock_mesh.vertices = [[0, 0, 0]]
     mock_mesh.faces = [[0, 0, 0]]
     mock_parse_mesh.return_value = (mock_mesh, ".stl")
+    # run_analysis / run_quick_analysis now parse via the ASYNC pooled front door
+    # (gauntlet F1 fix — off the event loop), so the tracker lives on the awaited
+    # helper, which is the one actually invoked on a cache miss.
+    mock_parse_mesh_async = AsyncMock(return_value=(mock_mesh, ".stl"))
     if parse_mesh_tracker is not None:
-        original_side_effect = mock_parse_mesh.side_effect
-
         def _tracking_parse(*args, **kwargs):
             parse_mesh_tracker.append(1)
             return (mock_mesh, ".stl")
 
         mock_parse_mesh.side_effect = _tracking_parse
+        mock_parse_mesh_async.side_effect = _tracking_parse
 
     mock_proc = MagicMock()
     mock_proc.value = "fdm"
@@ -60,7 +64,14 @@ def _make_mock_route_helpers(parse_mesh_tracker=None):
     mock_timeout = MagicMock(return_value=30)
     mock_issue_to_dict = MagicMock()
 
-    return (mock_timeout, mock_issue_to_dict, mock_parse_mesh, mock_resolve, mock_to_response)
+    return (
+        mock_timeout,
+        mock_issue_to_dict,
+        mock_parse_mesh,
+        mock_resolve,
+        mock_to_response,
+        mock_parse_mesh_async,
+    )
 
 
 def _make_session_with_cache(cache_store: dict):
@@ -147,6 +158,90 @@ def _pipeline_patches():
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_rule_pack_name_and_version_are_part_of_cache_identity(authed_user):
+    """Same bytes/processes under two governed packs must never share a cache row."""
+    from src.services.analysis_service import run_analysis
+
+    helpers = _make_mock_route_helpers()
+    cached = MagicMock(
+        id=9,
+        result_json={"verdict": "pass"},
+        duration_ms=1.0,
+        face_count=12,
+    )
+    session = AsyncMock()
+
+    with (
+        patch("src.services.analysis_service._get_route_helpers", return_value=helpers),
+        patch(
+            "src.services.analysis_service._check_cache",
+            new=AsyncMock(return_value=cached),
+        ) as check_cache,
+        patch(
+            "src.services.analysis_service._write_usage_event",
+            new=AsyncMock(),
+        ),
+    ):
+        await run_analysis(
+            b"same",
+            "same.stl",
+            "fdm",
+            "aerospace",
+            authed_user,
+            session,
+        )
+        await run_analysis(
+            b"same",
+            "same.stl",
+            "fdm",
+            "automotive",
+            authed_user,
+            session,
+        )
+
+    first_hash = check_cache.await_args_list[0].args[3]
+    second_hash = check_cache.await_args_list[1].args[3]
+    assert first_hash != second_hash
+    assert first_hash == compute_process_set_hash(
+        ["fdm", "rule_pack=aerospace@1.0.0"]
+    )
+    assert second_hash == compute_process_set_hash(
+        ["fdm", "rule_pack=automotive@1.0.0"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_worker_mode_returns_exact_fresh_persisted_analysis_id(
+    db_session, authed_user, _pipeline_patches
+):
+    """Delayed workers link the row produced by this run, not a later variant."""
+    from src.services.analysis_service import run_analysis
+
+    helpers = _make_mock_route_helpers()
+    with patch("src.services.analysis_service._get_route_helpers", return_value=helpers):
+        outcome = await run_analysis(
+            file_bytes=b"exact-row",
+            filename="exact.stl",
+            processes="fdm",
+            rule_pack=None,
+            user=authed_user,
+            session=db_session,
+            return_persisted_id=True,
+        )
+
+    assert isinstance(outcome, AnalysisRun)
+    assert outcome.analysis_id is not None
+    persisted = [
+        obj
+        for obj in db_session._added
+        if obj.__class__.__name__ == "Analysis"
+    ]
+    assert len(persisted) == 1
+    assert outcome.analysis_id == persisted[0].id
+    assert outcome.result["filename"] == "cube.stl"
 
 
 @pytest.mark.asyncio
@@ -390,14 +485,20 @@ async def test_concurrent_duplicate_upload(db_session, authed_user, _pipeline_pa
         exec_hit = MagicMock()
         exec_hit.scalars.return_value.first.return_value = cached_analysis
 
-        # Sequence of execute() calls in the persist path:
+        # Sequence of execute() calls in this mocked persist path:
         #   1. cache check -> None (miss)
         #   2. W1 resolve_org read (stamps org_id on the new row) -> None here
-        #   3. re-query after the IntegrityError -> cached row
+        #   3. projection/signature helper query
+        #   4. usage-event org resolution
+        #   5. same-transaction audit actor-email resolution
+        #   6. re-query after an uncaught duplicate flush (when reached)
         db_session.execute.side_effect = [
             MagicMock(scalars=MagicMock(return_value=MagicMock(first=MagicMock(return_value=None)))),
             MagicMock(scalar_one_or_none=MagicMock(return_value=None)),  # resolve_org
-            exec_hit,  # re-query after IntegrityError
+            MagicMock(),
+            MagicMock(scalar_one_or_none=MagicMock(return_value=None)),
+            MagicMock(scalar_one_or_none=MagicMock(return_value="user@example.com")),
+            exec_hit,
         ]
 
         result2 = await run_analysis(

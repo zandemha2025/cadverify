@@ -1,0 +1,24 @@
+=== mesh parse cache: cold (miss) vs warm (hit) ===
+host: single-container x86_64 / py3.11.15
+part: tests/assets/cube.step  (19030 bytes)
+faces: 185308  vertices: 92654
+cold  (miss, gmsh/OCC tessellation): 4.1410s
+warm  (hit, deep copy): best 3.152ms  avg 4.558ms  (N=10)
+speedup on hit: 1314x (cold 4.1410s -> warm 0.0032s)
+cache counters: hits=10 misses=1 entries=1 bytes=6671088
+
+=== verify-flow burst (same part, 3 endpoints) ===
+  validate                 3.8753s  [MISS/parse]
+  validate/cost            0.0026s  [HIT/copy]
+  validate/preview-mesh    0.0027s  [HIT/copy]
+  cached total:        3.8807s
+  3x cold (no cache):  ~12.4229s  (each endpoint re-parses)
+cache counters: hits=2 misses=1
+
+--- provenance ---
+Generated 2026-07-08 by scripts/perf/perf_mesh_cache.py (committed) via:
+  cd backend && PYTHONPATH=. .venv/bin/python scripts/perf/perf_mesh_cache.py
+Every figure above is a real time.perf_counter() measurement from this run on
+a single container (no extrapolation). Cold = gmsh/OCC STEP tessellation of the
+185,308-face cube.step; warm = cache hit returning a deep copy (mesh.copy()).
+Per-process cache: each uvicorn worker/replica has its own; no cross-worker share.

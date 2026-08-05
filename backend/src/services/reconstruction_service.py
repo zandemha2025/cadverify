@@ -20,15 +20,17 @@ instead of silently egressing or throwing a confusing 500.
 """
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import importlib.util
 import logging
 import os
 import re
-from typing import Optional
+from typing import BinaryIO, Optional
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from ulid import ULID
 
 from src.auth.org_context import caller_org_subquery
 from src.auth.require_api_key import AuthedUser
@@ -43,9 +45,36 @@ RECON_BLOB_DIR = os.getenv("RECON_BLOB_DIR", "/data/blobs/reconstruct")
 DEFAULT_RECONSTRUCTION_BACKEND = "local"
 
 _TRUTHY = {"1", "true", "yes", "on"}
+_PINNED_REPLICATE_MODEL_RE = re.compile(
+    r"^[a-z0-9](?:[a-z0-9-]{0,62})/[a-z0-9](?:[a-z0-9._-]{0,127})"
+    r":[a-f0-9]{64}$"
+)
 
 # ULID validation: 26 alphanumeric characters (Crockford Base32)
-_ULID_RE = re.compile(r"^[0-9A-Za-z]{26}$")
+_ULID_RE = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
+
+
+def _reconstruction_store():
+    from src.storage import get_object_store
+
+    return get_object_store(
+        "reconstruct",
+        default_root=os.getenv("RECON_BLOB_DIR", RECON_BLOB_DIR),
+    )
+
+
+def _reconstruction_key(job_ulid: str, relative: str) -> str:
+    _validate_ulid(job_ulid)
+    if not relative or relative.startswith("/") or ".." in relative.split("/"):
+        raise ValueError("invalid reconstruction object key")
+    return f"{job_ulid}/{relative}"
+
+
+async def _cleanup_reconstruction_prefix(prefix: str) -> None:
+    try:
+        await asyncio.to_thread(_reconstruction_store().delete_prefix, prefix)
+    except Exception:
+        logger.exception("Failed to clean reconstruction objects under %s", prefix)
 
 
 class ReconstructionUnavailableError(RuntimeError):
@@ -60,10 +89,67 @@ class ReconstructionUnavailableError(RuntimeError):
     code = "RECONSTRUCTION_UNAVAILABLE"
 
 
+class ReconstructionEgressAcknowledgementRequiredError(
+    ReconstructionUnavailableError
+):
+    """The queued request did not authorize the current remote backend."""
+
+    code = "RECONSTRUCTION_EGRESS_ACKNOWLEDGEMENT_REQUIRED"
+
+
+class ReconstructionQueueUnavailableError(RuntimeError):
+    """A persisted reconstruction job could not be scheduled."""
+
+    code = "RECONSTRUCTION_ENQUEUE_FAILED"
+
+    def __init__(self, message: str, job_id: str) -> None:
+        super().__init__(message)
+        self.job_id = job_id
+
+
+class ReconstructionIdempotencyConflictError(ValueError):
+    """An idempotency key was reused for different reconstruction input."""
+
+
 def _validate_ulid(ulid: str) -> None:
     """Validate ULID format to prevent path traversal (threat model)."""
     if not _ULID_RE.match(ulid):
         raise ValueError(f"Invalid ULID format: {ulid}")
+
+
+def _request_fingerprint(
+    images: list[tuple[bytes, str]],
+    process_types: str | None,
+    rule_pack: str | None,
+    egress_acknowledged: bool = False,
+) -> str:
+    """Hash the complete reconstruction request without persisting image bytes."""
+    digest = hashlib.sha256()
+    digest.update((process_types or "").encode("utf-8"))
+    digest.update(b"\0")
+    digest.update((rule_pack or "").encode("utf-8"))
+    digest.update(b"\0egress_acknowledged=")
+    digest.update(b"1" if egress_acknowledged else b"0")
+    for image_bytes, content_type in images:
+        digest.update(b"\0")
+        digest.update(content_type.encode("utf-8"))
+        digest.update(len(image_bytes).to_bytes(8, "big"))
+        digest.update(hashlib.sha256(image_bytes).digest())
+    return digest.hexdigest()
+
+
+async def _publish_reconstruction_job(job: Job) -> None:
+    """Offer a committed queued row to ARQ using its deterministic job ID."""
+    from src.jobs.arq_backend import get_job_queue
+
+    try:
+        queue = await get_job_queue()
+        await queue.enqueue("reconstruction", dict(job.params_json or {}), job.ulid)
+    except Exception as exc:
+        raise ReconstructionQueueUnavailableError(
+            "Reconstruction was retained but publication could not be confirmed",
+            job.ulid,
+        ) from exc
 
 
 def configured_backend() -> str:
@@ -80,6 +166,34 @@ def remote_egress_allowed() -> bool:
     cloud.  It must be an explicit, informed choice -- never default-on.
     """
     return os.getenv("RECONSTRUCTION_ALLOW_REMOTE_EGRESS", "").strip().lower() in _TRUTHY
+
+
+def remote_backend_configuration_error() -> str | None:
+    """Return a safe operator-facing reason when remote inference is incomplete.
+
+    Community model APIs are mutable unless a concrete version is selected.
+    Requiring ``owner/model:<64-hex-version>`` makes the inference dependency an
+    explicit release input instead of silently following a provider's latest
+    model. The provider token is checked only for presence and is never returned.
+    """
+    if not os.getenv("REPLICATE_API_TOKEN", "").strip():
+        return "the approved reconstruction provider credential is missing"
+    model = os.getenv("TRIPOSR_REPLICATE_MODEL", "").strip().lower()
+    if not _PINNED_REPLICATE_MODEL_RE.fullmatch(model):
+        return (
+            "the reconstruction provider model is not pinned to an approved "
+            "64-character version"
+        )
+    return None
+
+
+def _require_remote_backend_configuration() -> None:
+    reason = remote_backend_configuration_error()
+    if reason is not None:
+        raise ReconstructionUnavailableError(
+            "Remote image-to-3D is not available in this deployment because "
+            f"{reason}."
+        )
 
 
 def local_backend_available() -> bool:
@@ -109,6 +223,7 @@ def resolve_reconstruction_backend() -> tuple[str, bool]:
 
     # Explicitly choosing remote IS an informed opt-in to third-party egress.
     if backend == "remote":
+        _require_remote_backend_configuration()
         return "remote", True
 
     if backend == "none":
@@ -122,6 +237,7 @@ def resolve_reconstruction_backend() -> tuple[str, bool]:
             return "local", False
         # No local model. Only egress if the operator explicitly opted in.
         if remote_egress_allowed():
+            _require_remote_backend_configuration()
             return "remote", True
         raise ReconstructionUnavailableError(
             "Reconstruction is not available in this deployment: no local model "
@@ -166,6 +282,25 @@ def check_reconstruction_availability() -> dict:
     }
 
 
+def require_job_backend_authorization(job_params: dict) -> dict:
+    """Resolve the current backend and prevent consent-free deferred egress.
+
+    Deployment configuration can change after a job is accepted but before a
+    worker consumes it. A request accepted for a local backend must never begin
+    using a remote backend merely because operators changed configuration while
+    it was queued.
+    """
+    availability = check_reconstruction_availability()
+    if not availability["available"]:
+        raise ReconstructionUnavailableError(str(availability["reason"]))
+    if availability.get("egress") and job_params.get("egress_acknowledged") is not True:
+        raise ReconstructionEgressAcknowledgementRequiredError(
+            "Remote reconstruction was not authorized for this queued request. "
+            "Submit a new request after acknowledging third-party processing."
+        )
+    return availability
+
+
 def get_reconstruction_engine():
     """Factory: return the effective ReconstructionEngine.
 
@@ -202,35 +337,60 @@ def get_reconstruction_engine():
 async def save_reconstruction_images(
     job_ulid: str, images: list[tuple[bytes, str]]
 ) -> str:
-    """Save uploaded images to blob storage. Returns input directory path."""
+    """Save uploaded images to the configured durable object store."""
     _validate_ulid(job_ulid)
-    input_dir = os.path.join(RECON_BLOB_DIR, job_ulid, "input")
-    os.makedirs(input_dir, exist_ok=True)
+    store = _reconstruction_store()
 
-    for i, (img_bytes, content_type) in enumerate(images):
-        # Derive extension from content_type
-        ext_map = {
-            "image/jpeg": "jpg",
-            "image/png": "png",
-            "image/webp": "webp",
-        }
-        ext = ext_map.get(content_type, "bin")
-        filepath = os.path.join(input_dir, f"image_{i:03d}.{ext}")
-        with open(filepath, "wb") as f:
-            f.write(img_bytes)
+    try:
+        for i, (img_bytes, content_type) in enumerate(images):
+            # Derive extension from content_type
+            ext_map = {
+                "image/jpeg": "jpg",
+                "image/png": "png",
+                "image/webp": "webp",
+            }
+            ext = ext_map.get(content_type, "bin")
+            key = _reconstruction_key(job_ulid, f"input/image_{i:03d}.{ext}")
+            await asyncio.to_thread(
+                store.put,
+                key,
+                img_bytes,
+                content_type=content_type,
+            )
+    except BaseException:
+        await _cleanup_reconstruction_prefix(f"{job_ulid}/input")
+        raise
 
-    return input_dir
+    return store.url(_reconstruction_key(job_ulid, "input"))
+
+
+def load_reconstruction_images(job_ulid: str) -> list[tuple[bytes, str]]:
+    """Load deterministic input objects for a reconstruction worker."""
+    store = _reconstruction_store()
+    prefix = _reconstruction_key(job_ulid, "input")
+    ext_to_ct = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "webp": "image/webp",
+    }
+    images: list[tuple[bytes, str]] = []
+    for key in store.list_keys(prefix):
+        ext = key.rsplit(".", 1)[-1].lower()
+        images.append((store.get(key), ext_to_ct.get(ext, "application/octet-stream")))
+    return images
 
 
 async def save_reconstruction_mesh(job_ulid: str, mesh_bytes: bytes) -> str:
-    """Save reconstructed mesh to blob storage. Returns path to mesh.stl."""
-    _validate_ulid(job_ulid)
-    output_dir = os.path.join(RECON_BLOB_DIR, job_ulid, "output")
-    os.makedirs(output_dir, exist_ok=True)
-    mesh_path = os.path.join(output_dir, "mesh.stl")
-    with open(mesh_path, "wb") as f:
-        f.write(mesh_bytes)
-    return mesh_path
+    """Save reconstructed mesh to durable storage and return its locator."""
+    store = _reconstruction_store()
+    key = _reconstruction_key(job_ulid, "output/mesh.stl")
+    return await asyncio.to_thread(
+        store.put,
+        key,
+        mesh_bytes,
+        content_type="application/sla",
+    )
 
 
 async def create_reconstruction_job(
@@ -239,6 +399,8 @@ async def create_reconstruction_job(
     images: list[tuple[bytes, str]],
     process_types: str | None,
     rule_pack: str | None,
+    submission_id: str,
+    egress_acknowledged: bool = False,
 ) -> Job:
     """Create a reconstruction job: validate images, persist Job row, save blobs, enqueue.
 
@@ -252,6 +414,8 @@ async def create_reconstruction_job(
     Returns:
         The created Job ORM instance.
     """
+    _validate_ulid(submission_id)
+
     # Validate image count
     if len(images) < 1 or len(images) > 4:
         raise ValueError("Upload 1-4 images for reconstruction")
@@ -260,35 +424,98 @@ async def create_reconstruction_job(
     for img_bytes, content_type in images:
         validate_image(img_bytes, content_type)
 
-    # Create Job row
+    # A browser-generated ULID is both the public job ID and the database
+    # idempotency key.  The unique jobs.ulid constraint makes retried multipart
+    # POSTs converge on one durable row without a new migration.
     from src.auth.org_context import resolve_org
 
+    org_id = await resolve_org(session, user.user_id)
+    fingerprint = _request_fingerprint(
+        images,
+        process_types,
+        rule_pack,
+        egress_acknowledged,
+    )
+    existing = (
+        await session.execute(
+            select(Job).where(
+                Job.ulid == submission_id,
+                Job.org_id == org_id,
+                Job.job_type == "reconstruction",
+            )
+        )
+    ).scalars().first()
+    if existing is not None:
+        stored_fingerprint = (existing.params_json or {}).get("request_fingerprint")
+        if stored_fingerprint != fingerprint:
+            raise ReconstructionIdempotencyConflictError(
+                "Idempotency-Key was already used for different reconstruction input"
+            )
+        if (
+            existing.status == "failed"
+            and isinstance(existing.result_json, dict)
+            and existing.result_json.get("code") == "RECONSTRUCTION_ENQUEUE_FAILED"
+        ):
+            existing.status = "queued"
+            existing.result_json = None
+            existing.completed_at = None
+            await session.commit()
+        if existing.status == "queued":
+            await _publish_reconstruction_job(existing)
+        return existing
+
     job = Job(
-        ulid=str(ULID()),
+        ulid=submission_id,
         user_id=user.user_id,
-        org_id=await resolve_org(session, user.user_id),
+        org_id=org_id,
         job_type="reconstruction",
         status="queued",
         params_json={
             "image_count": len(images),
             "process_types": process_types,
             "rule_pack": rule_pack,
+            "egress_acknowledged": egress_acknowledged,
+            "request_fingerprint": fingerprint,
         },
     )
     session.add(job)
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        await session.rollback()
+        concurrent = (
+            await session.execute(
+                select(Job).where(
+                    Job.ulid == submission_id,
+                    Job.org_id == org_id,
+                    Job.job_type == "reconstruction",
+                )
+            )
+        ).scalars().first()
+        if concurrent is None or (
+            concurrent.params_json or {}
+        ).get("request_fingerprint") != fingerprint:
+            raise ReconstructionIdempotencyConflictError(
+                "Idempotency-Key was already used for another request"
+            ) from exc
+        if concurrent.status == "queued":
+            await _publish_reconstruction_job(concurrent)
+        return concurrent
 
-    # Save images to blob storage
-    await save_reconstruction_images(job.ulid, images)
+    # Persist blobs and the DB row before enqueue. This closes the historical
+    # race where a fast worker could consume the job before the request-scoped
+    # transaction committed and report job_not_found.
+    try:
+        await save_reconstruction_images(job.ulid, images)
+        await session.commit()
+    except BaseException:
+        await _cleanup_reconstruction_prefix(job.ulid)
+        raise
 
-    # Enqueue arq task
-    from src.jobs.arq_backend import get_arq_pool
-    pool = await get_arq_pool()
-    await pool.enqueue_job(
-        "run_reconstruction_job",
-        job.ulid,
-        _job_id=f"recon_{job.ulid}",
-    )
+    # Publication is outcome-ambiguous on network failure.  Keep the committed
+    # row and customer input so the same Idempotency-Key can safely reconcile
+    # publication on the API client's retry.
+    await _publish_reconstruction_job(job)
 
     logger.info(
         "Created reconstruction job %s with %d images for user %s",
@@ -299,13 +526,14 @@ async def create_reconstruction_job(
     return job
 
 
-async def get_reconstruction_mesh_path(
+async def open_reconstruction_mesh(
     session: AsyncSession, job_ulid: str, user_id: int
-) -> Optional[str]:
-    """Return path to reconstructed mesh if job is complete and in caller's org.
+) -> Optional[BinaryIO]:
+    """Open a completed mesh stream when the job is in the caller's org.
 
     Returns None if the job does not exist, belongs to another org, or is not
     yet complete (W1 step 3: org-scoped — ``user_id`` resolves the org boundary).
+    The caller owns and must close the returned stream.
     """
     _validate_ulid(job_ulid)
 
@@ -324,8 +552,10 @@ async def get_reconstruction_mesh_path(
     if job.status not in ("done", "partial"):
         return None
 
-    mesh_path = os.path.join(RECON_BLOB_DIR, job_ulid, "output", "mesh.stl")
-    if not os.path.exists(mesh_path):
-        return None
+    from src.storage import ObjectNotFoundError
 
-    return mesh_path
+    key = _reconstruction_key(job_ulid, "output/mesh.stl")
+    try:
+        return await asyncio.to_thread(_reconstruction_store().open, key)
+    except ObjectNotFoundError:
+        return None

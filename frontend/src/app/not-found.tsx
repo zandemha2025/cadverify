@@ -13,7 +13,7 @@ export default function NotFound() {
           <p style={{ margin: "0 auto 28px", maxWidth: 560, color: "rgba(255,255,255,0.62)", fontSize: 18, lineHeight: 1.55 }}>
             The link may be private, expired, or not issued yet. Public pages stay visible; product records stay behind the session gate.
           </p>
-          <Link href="/" className="st-pill st-pill-solid">Back to CadVerify</Link>
+          <Link href="/" className="st-pill st-pill-solid">Back to ProofShape</Link>
         </div>
       </section>
     </SiteShell>

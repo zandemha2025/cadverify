@@ -12,6 +12,8 @@ import * as React from "react";
 import { Factory } from "lucide-react";
 import type { CostReport, ValidationResult } from "@/lib/api";
 import { blockersByProcess } from "@/lib/cost-views";
+import { procLabel } from "@/lib/status";
+import { marginalRate } from "@/lib/verify/verification";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { RoutingCard, DfmMatrix } from "@/components/glass-box";
@@ -36,6 +38,15 @@ export function RoutingDfmView({
     () => (report ? blockersByProcess(report) : {}),
     [report]
   );
+  const makeNowProcess = report?.decision?.make_now_process ?? null;
+  const machineGrounding = React.useMemo(
+    () => marginalRate(report?.verification, makeNowProcess),
+    [report?.verification, makeNowProcess]
+  );
+  const machineFit =
+    makeNowProcess && report?.verification?.per_route
+      ? report.verification.per_route[makeNowProcess]
+      : null;
 
   if (!report && !validation) {
     return (
@@ -58,6 +69,37 @@ export function RoutingDfmView({
           archetype, recommended process and reasoning live in the engine.
         </Card>
       ) : null}
+
+      {machineGrounding && makeNowProcess && (
+        <Card data-testid="machine-grounding" className="p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <span className="cv-eyebrow">Owned-machine grounding</span>
+              <p className="mt-1 text-sm leading-relaxed text-foreground">
+                <span className="font-semibold">
+                  {machineGrounding.machine ?? "An owned machine"}
+                </span>{" "}
+                clears the declared floor gates for {procLabel(makeNowProcess)}.
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {machineFit?.machines_evaluated ?? 0} declared machine
+                {(machineFit?.machines_evaluated ?? 0) === 1 ? "" : "s"} evaluated ·
+                USER-declared capability and marginal rate
+              </p>
+            </div>
+            <div className="rounded-sm border border-border bg-muted px-3 py-2 text-right">
+              <p className="num text-sm font-semibold text-foreground">
+                {machineGrounding.rateUsd == null
+                  ? "Rate withheld"
+                  : `$${machineGrounding.rateUsd.toFixed(2)}/hr`}
+              </p>
+              <p className="text-micro uppercase tracking-wide text-muted-foreground">
+                decision rate
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {report && report.engine_feasibility.length > 0 && (
         <DfmMatrix

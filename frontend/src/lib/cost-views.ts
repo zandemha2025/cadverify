@@ -142,6 +142,27 @@ export function pickEstimate(
   );
 }
 
+/**
+ * The make-now recommendation's estimate at its STABLE quantity — the LARGEST
+ * costed quantity, where setup is fully amortized. This is the reading the
+ * should-cost HEADLINE anchors on, so the resident Inspector (drivers · Σ ·
+ * provenance) traces the SAME number the headline shows (F5).
+ *
+ * The bug it replaces: the Inspector picked `pickEstimate(report, make_now)` with
+ * no qty, which returns the FIRST (smallest-qty) estimate — so the drivers panel
+ * reconciled to a different quantity's unit cost than the headline (e.g. drivers
+ * @qty 100 = $8.72 under a headline @qty 10,000 = $8.68). We never fabricate: we
+ * select the engine's REAL estimate for the make-now route at the largest costed
+ * quantity, and return null when there's no decision or no estimate for it.
+ */
+export function makeNowStableEstimate(report: CostReport): CostEstimate | null {
+  const proc = report.decision?.make_now_process;
+  if (!proc) return null;
+  const forProc = report.estimates.filter((e) => e.process === proc);
+  if (forProc.length === 0) return null;
+  return forProc.reduce((best, e) => (e.quantity > best.quantity ? e : best));
+}
+
 /** Half-width % for an estimate (prefer the confidence band, else the error band). */
 export function estimateHalfWidth(e: CostEstimate): number {
   return Math.round(e.confidence?.half_width_pct ?? e.est_error_band_pct ?? 0);

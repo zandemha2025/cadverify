@@ -1,0 +1,203 @@
+C
+Verify
+/
+bracket_A_rev.stl
+Default rate card (v0) · none authored
+⌘K
+Verify a part
+bracket_A_rev.stl
+
+Ø/bbox 80.9 × 50.6 × 12.3 mm · 48.01 cm³
+watertight true · ● MEASURED
+
+● real geometry · STL
+
+CONTEXT
+
+not declared
+
+no parent assembly declared
+
+orphan until declared
+X-ray
+No parent assembly
+drag to orbit
+
+Can this be made — on your machines, in materials that survive its world — and what will it really take?
+
+DECLARE ITS WORLD
+
+ambient
+120 °C service
+sour service (H₂S)
+35 MPa pressure
+
+no world declared — the part is verified in ambient conditions.
+
+DECLARED MATERIAL CLASS · ● USER
+
+Polymer
+Aluminum
+Steel
+Stainless
+Titanium
+
+VERDICT · DFM PASS · SHOULD-COST COMPUTED
+
+Should-cost $21.20/unit on DLP Resin at qty 10,000
+
+The engine returned routing, DFM, and a glass-box should-cost. Whether it's makeable on your machines is the makeability verification — not evaluated here because no machines and no world are declared. Declare your floor or a world to resolve it, never assumed.
+
+Open the record →
+
+PART IDENTITY · RETRIEVED FROM YOUR LIBRARY
+
+◆
+RETRIEVED · your part library
+
+Looks like your Mounting bracket L · PN-BRK-001 · Chassis-2024
+
+72% · MEDIUM CONFIDENCE
+geometry 93% · name 33%
+
+a retrieved SUGGESTION to confirm, not a verified identity; retrieval can be wrong — check before trusting.
+
+other near matches: cube.step · 5%
+
+Confirm
+Not this
+declare manually →
+1
+
+Envelope — against your machines
+
+0 machines declared
+
+No machines declared.
+
+Your floor is the denominator of every makeability verdict. Declare it once — a CSV or five minutes of typing.
+
+Declare your floor →
+2
+
+Materials that survive this world
+
+polymer
+
+material class polymer · route hint polymer ○ DEFAULT
+
+environment-driven survival filtering (NACE MR0175 / HDT tables) is part of the makeability verification — DECLARE A WORLD TO EVALUATE. Invalid materials are filtered out visibly, never silently.
+
+3
+
+Process physics — geometry against each route
+
+Wire EDMROUTE PICK
+pass
+DLP Resin
+issues
+SLS (Powder)
+issues
+MJF (HP)
+issues
+Binder Jetting
+issues
+Sheet Metal
+issues
+
+17 priority fixes across routes · overall pass · rendered from POST /validate
+
+4
+
+What it really takes
+
+on DLP Resin · Standard Resin
+
+MATERIAL
+○ DEFAULT
+
+3.116 $
+
+PARTS PER BUILD
+○ DEFAULT
+
+9 parts
+
+MACHINE TIME
+○ DEFAULT
+
+10.889 $
+
+CYCLE TIME
+○ MODEL
+
+0.907 hr
+
+LABOR
+○ DEFAULT
+
+6.028 $
+
+SETUP
+○ DEFAULT
+
+1.168 $
+
+lead 40.6–75.4 days [queue model — not your scheduler] · computed hours are ○ MODEL from an assumption at SHOP rates — tap any driver for its verbatim derivation.
+
+5
+
+Resource cost — yours, not a market's
+
+QUANTITY 100 · engine-exact — a computed point
+annual volume · program not set
+1
+crossover ≈ 854
+10,000
+
+DLP Resin — MAKE NOW
+
+$21.29 /unit at this qty
+
+engine-exact — a computed point
+
+hours × your rates + mass × your lot price · 0% of drivers grounded (● measured/shop/user)
+band & drivers read at computed qty 100
+
+assumption-based, not yet validated
+
+Injection Molding — NOT OWNED → ACQUIRE
+
+$153.6 /unit incl. tooling
+
+engine-exact — a computed point
+
+amortizes past 854 units · conditional on a DFM redesign
+
+Open acquisition consideration →
+
+engine note: Make by dlp (Standard Resin) — $40.0/unit at qty 1, the cheapest make-as-is option and your low-volume pick. dlp stays cheapest up to ~854 units; above ~854, injection_molding is cheaper ($5.12/unit at qty 10000). Note: injection_molding requires design-for-molding — the part currently FAILS draft DFM (72 sidewall faces (99.9% of sidewall area) below 1.0° draft for injection_molding.); the tooling cost shown is 'if redesigned for molding', not a current-capability quote.
+
+Decide
+
+Make in-house
+Make outside
+Acquire capability
+Redesign
+
+next → pick one above · your choice is noted on this verification beside the saved cost-decision record.
+
+Open the record →
+the cost-decision is the immutable saved artifact; your choice above is noted in this verification session and the record opens from Records.
+
+this verdict ships hatched — assumption band, not shop-validated · n=0. It flips solid only when your actuals come back.
+
+See how truth arrives →
+Compare routes @ 1,000
+Compare saved decisions →
+Why this verdict?
+An uncomputable ask
+
+answers are deterministic engine artifacts — verdict, materials, drivers, hours, cost, routes, and saved records
+
+Verification complete — deterministic: same input, same verdict, every time

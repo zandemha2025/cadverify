@@ -160,7 +160,7 @@ export function SourcingView() {
               posture.
             </p>
             <p className="st-mono" style={monoLine}>
-              in-house — M2 Pro marginal $14.14 · outside — banded yardstick $26.92 ±50%{" "}
+              in-house — M2 Pro marginal $14.14 · outside — banded should-cost $26.92 ±50%{" "}
               <IllustrativeTag />
               <br />
               acquire — IM $7,800 tool → $6.45/unit past 1,962 <IllustrativeTag />{" "}
@@ -227,7 +227,7 @@ export function SourcingView() {
               <IllustrativeTag block />
             </div>
             <p style={{ margin: "26px auto 0", maxWidth: 560, fontSize: 16.5, lineHeight: 1.6, fontWeight: 300, color: "var(--st-ink-60)" }}>
-              A banded should-cost is more wieldable than a fake-exact point. The supplier can argue with an assumption —
+              A banded should-cost is more useful in the room than a false-precision point. The supplier can argue with an assumption —
               sometimes they&apos;re right, and the model absorbs it. Either way, the conversation is about drivers now,
               not postures.
             </p>

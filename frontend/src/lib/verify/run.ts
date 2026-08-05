@@ -20,13 +20,16 @@
  */
 import { validateFile, type ValidationResult, type CostReport, type CostGeometry } from "@/lib/api";
 import { API_BASE } from "@/lib/api-base";
+import { apiProblemDetail, apiRecoveryMessage } from "@/lib/api-recovery";
 import { listMachines, ownedProcessesFrom, type OwnedMachine } from "./machine-api";
-import type { VerificationBlock } from "./verification";
+import { readVerification, type VerificationBlock } from "./verification";
 import {
   computeMeshHash,
   declarePartContext,
   envToServiceEnvironment,
 } from "./part-context";
+import { fetchPartContext, type PartContext } from "./part-context-read";
+import { readJsonOrNull, validationAllowsCost } from "./run-gates";
 
 // Re-export so existing importers keep resolving these off `run` unchanged.
 export type { VerificationBlock, MakeabilityLattice } from "./verification";
@@ -39,6 +42,17 @@ export interface VerifyInput {
    *  MR0175 / HDT). It is NEVER used client-side to fabricate a changed cost. */
   env: { temp: boolean; sour: boolean; pressure: boolean };
   materialClass: string;
+}
+
+export interface VerifyProgress {
+  /** The first useful engine result. Costing intentionally remains sequential so
+   *  the two geometry-heavy requests never double peak worker memory. */
+  validation: ValidationResult | null;
+  validationError: string | null;
+}
+
+export interface RunVerificationOptions {
+  onValidation?: (progress: VerifyProgress) => void;
 }
 
 /** Engine process ids the cost endpoint accepts in `owned_processes` — passing an
@@ -76,6 +90,11 @@ export interface VerifyResult {
   envDeclared: boolean;
   envCaptured: boolean;
   envError: string | null;
+  /** SHA-256 of the uploaded bytes, matching the backend's mesh_hash. */
+  meshHash: string | null;
+  /** Existing/persisted USER context for this part, if the org declared one. */
+  partContext: PartContext | null;
+  partContextError: string | null;
 }
 
 /** Log-spaced quantity ladder the scrub interpolates over — the crossover story
@@ -83,6 +102,33 @@ export interface VerifyResult {
  *  Capped at 6 points to honor the backend contract (`_MAX_QTYS = 6` in
  *  routes.py); these bracket the typical crossover (~1–2k) on both sides. */
 export const QTY_LADDER = [1, 100, 1000, 2000, 5000, 10000];
+
+/** Keep the six-point engine contract while ensuring a declared annual volume
+ *  becomes an exact computed point on the next verification. The closest
+ *  interior ladder point is replaced because the declared point carries the
+ *  same local curve information; the low/high anchors remain intact. */
+export function quantityLadderForAnnual(
+  annualVolume: number | null | undefined
+): number[] {
+  if (
+    annualVolume == null ||
+    !Number.isInteger(annualVolume) ||
+    annualVolume <= 0 ||
+    QTY_LADDER.includes(annualVolume)
+  ) {
+    return QTY_LADDER;
+  }
+  const replaceable = QTY_LADDER.slice(1, -1);
+  const nearest = replaceable.reduce((best, quantity) =>
+    Math.abs(Math.log(quantity) - Math.log(annualVolume)) <
+    Math.abs(Math.log(best) - Math.log(annualVolume))
+      ? quantity
+      : best
+  );
+  return [...QTY_LADDER.filter((quantity) => quantity !== nearest), annualVolume].sort(
+    (a, b) => a - b
+  );
+}
 
 /**
  * POST /validate/cost directly so we can pass `owned_processes` (marginal
@@ -92,11 +138,12 @@ export const QTY_LADDER = [1, 100, 1000, 2000, 5000, 10000];
  */
 async function postCost(
   input: VerifyInput,
-  ownedProcesses: string[]
+  ownedProcesses: string[],
+  quantities: number[]
 ): Promise<{ cost: CostReport | null; invalid: CostGeometryInvalid | null; error: string | null }> {
   const form = new FormData();
   form.append("file", input.file);
-  form.append("qty", QTY_LADDER.join(","));
+  form.append("qty", quantities.join(","));
   form.append("cavities", "1");
   form.append("complexity", "moderate");
   form.append("material_class", input.materialClass);
@@ -112,7 +159,15 @@ async function postCost(
   }
 
   if (res.ok) {
-    return { cost: (await res.json()) as CostReport, invalid: null, error: null };
+    const cost = await readJsonOrNull<CostReport>(res);
+    return cost
+      ? { cost, invalid: null, error: null }
+      : {
+          cost: null,
+          invalid: null,
+          error:
+            "The should-cost service returned an unreadable response. Retry cost only; routing and DFM are unchanged.",
+        };
   }
 
   const body: Record<string, unknown> = await res.json().catch(() => ({}));
@@ -127,52 +182,144 @@ async function postCost(
     };
   }
   const detail =
-    (body.message as string) || (body.detail as string) || `Cost request failed (${res.status})`;
+    apiProblemDetail(body) ||
+    apiRecoveryMessage({
+      status: res.status,
+      payload: body,
+      resource: "verification",
+      retryAfter: res.headers.get("retry-after"),
+    });
   return { cost: null, invalid: null, error: detail };
 }
 
-/** Run the full verification for one dropped part. Independent calls run in
- *  parallel; each failure is isolated so a partial result is still honest. */
-export async function runVerification(input: VerifyInput): Promise<VerifyResult> {
-  // The floor first (cheap) — its owned processes calibrate the cost to marginal.
-  let machines: OwnedMachine[] = [];
-  let machinesError: string | null = null;
-  try {
-    machines = (await listMachines()).machines;
-  } catch (e) {
-    machinesError = e instanceof Error ? e.message : "Could not load machine inventory";
-  }
+export interface CostRetryResult {
+  cost: CostReport | null;
+  costGeometryInvalid: CostGeometryInvalid | null;
+  costError: string | null;
+  verification: VerificationBlock | null;
+  quantities: number[];
+}
+
+/** Retry only the failed costing subsystem. Successful routing + DFM stays on
+ *  screen and is not recomputed or replaced while a transient cost outage clears. */
+export async function retryVerificationCost(
+  input: VerifyInput,
+  machines: OwnedMachine[],
+  annualVolume?: number | null
+): Promise<CostRetryResult> {
   const owned = ownedProcessesFrom(machines).filter((p) => KNOWN_ENGINE_PROCESSES.has(p));
+  const quantities = quantityLadderForAnnual(annualVolume);
+  const costOut = await postCost(input, owned, quantities);
+  return {
+    cost: costOut.cost,
+    costGeometryInvalid: costOut.invalid,
+    costError: costOut.error,
+    verification: readVerification(costOut.cost) ?? null,
+    quantities: costOut.cost?.quantities ?? quantities,
+  };
+}
+
+/** Run the full verification for one dropped part. Lightweight independent work
+ *  runs in parallel. Costing starts only after routing + DFM returns, so a service
+ *  interruption cannot be misrepresented as a manufacturing verdict. */
+export async function runVerification(
+  input: VerifyInput,
+  options: RunVerificationOptions = {}
+): Promise<VerifyResult> {
+  // Start the first useful answer immediately. Floor/context work is lightweight
+  // and runs beside it; the second geometry-heavy call (cost) still waits until
+  // validation has released its worker memory.
+  const validationPromise = validateFile(input.file).then(
+    (v) => ({ v, err: null as string | null }),
+    (e) => ({
+      v: null as ValidationResult | null,
+      err: e instanceof Error ? e.message : "Validation failed",
+    })
+  );
+
+  const machinesPromise = listMachines().then(
+    (payload) => ({ machines: payload.machines, error: null as string | null }),
+    (e) => ({
+      machines: [] as OwnedMachine[],
+      error: e instanceof Error ? e.message : "Could not load machine inventory",
+    })
+  );
 
   // ── the environment round-trip (real) ──────────────────────────────────────
-  // Persist the declared world to THIS part's context (keyed by the mesh_hash the
-  // server itself computes) BEFORE costing, so the verification block the cost
-  // route returns reflects it. Ambient (nothing toggled) sends an empty env, which
-  // the backend treats as a no-op AND which coherently clears a prior declaration.
-  // Best-effort: a failure (no org / role / network) is surfaced honestly, never
-  // faked into a "captured" claim, and never blocks the walk.
   const serviceEnv = envToServiceEnvironment(input.env);
   const envDeclared = Object.keys(serviceEnv).length > 0;
-  let envCaptured = false;
-  let envError: string | null = null;
-  const meshHash = await computeMeshHash(input.file).catch(() => null);
-  if (meshHash) {
-    const declared = await declarePartContext(meshHash, serviceEnv);
-    envCaptured = declared.ok && envDeclared;
-    if (envDeclared && !declared.ok) envError = declared.error;
-  } else if (envDeclared) {
-    envError = "could not compute this part's mesh hash in the browser";
+  const contextPromise = (async () => {
+    let envCaptured = false;
+    let envError: string | null = null;
+    let partContext: PartContext | null = null;
+    let partContextError: string | null = null;
+    const meshHash = await computeMeshHash(input.file).catch(() => null);
+    const validationGate = await validationPromise;
+    if (!validationAllowsCost(validationGate.v)) {
+      return {
+        meshHash,
+        envCaptured,
+        envError,
+        partContext,
+        partContextError,
+      };
+    }
+    if (meshHash) {
+      const declared = await declarePartContext(meshHash, serviceEnv);
+      envCaptured = declared.ok && envDeclared;
+      if (envDeclared && !declared.ok) envError = declared.error;
+      const fresh = await fetchPartContext(meshHash);
+      if (fresh.error) partContextError = fresh.error;
+      partContext = fresh.context ?? null;
+    } else if (envDeclared) {
+      envError = "could not compute this part's mesh hash in the browser";
+    }
+    return { meshHash, envCaptured, envError, partContext, partContextError };
+  })();
+
+  const validationOut = await validationPromise;
+  try {
+    options.onValidation?.({
+      validation: validationOut.v,
+      validationError: validationOut.err,
+    });
+  } catch {
+    // Rendering progress is best-effort and must never change the deterministic run.
   }
 
-  // Validation and costing run after the env is on the record, so the cost route
-  // reads the just-written context. (Validation carries no env; it can parallel.)
-  const [validationOut, costOut] = await Promise.all([
-    validateFile(input.file).then(
-      (v) => ({ v, err: null as string | null }),
-      (e) => ({ v: null as ValidationResult | null, err: e instanceof Error ? e.message : "Validation failed" })
-    ),
-    postCost(input, owned),
-  ]);
+  const [floor, context] = await Promise.all([machinesPromise, contextPromise]);
+  const quantities = quantityLadderForAnnual(context.partContext?.annual_volume);
+
+  if (!validationAllowsCost(validationOut.v)) {
+    return {
+      file: input.file,
+      validation: null,
+      validationError: validationOut.err,
+      cost: null,
+      costGeometryInvalid: null,
+      costError: null,
+      machines: floor.machines,
+      machinesError: floor.error,
+      verification: null,
+      quantities,
+      env: input.env,
+      envDeclared,
+      envCaptured: context.envCaptured,
+      envError: context.envError,
+      meshHash: context.meshHash,
+      partContext: context.partContext,
+      partContextError: context.partContextError,
+    };
+  }
+
+  const owned = ownedProcessesFrom(floor.machines).filter((p) =>
+    KNOWN_ENGINE_PROCESSES.has(p)
+  );
+  const costOut = await postCost(
+    input,
+    owned,
+    quantities
+  );
 
   // The verification block rides the cost response when the org declared machines
   // and/or this part's environment; its ABSENCE (never a fabricated value) drives
@@ -186,21 +333,16 @@ export async function runVerification(input: VerifyInput): Promise<VerifyResult>
     cost: costOut.cost,
     costGeometryInvalid: costOut.invalid,
     costError: costOut.error,
-    machines,
-    machinesError,
+    machines: floor.machines,
+    machinesError: floor.error,
     verification,
-    quantities: costOut.cost?.quantities ?? QTY_LADDER,
+    quantities: costOut.cost?.quantities ?? quantities,
     env: input.env,
     envDeclared,
-    envCaptured,
-    envError,
+    envCaptured: context.envCaptured,
+    envError: context.envError,
+    meshHash: context.meshHash,
+    partContext: context.partContext,
+    partContextError: context.partContextError,
   };
-}
-
-function readVerification(obj: unknown): VerificationBlock | null {
-  if (obj && typeof obj === "object" && "verification" in obj) {
-    const v = (obj as { verification?: unknown }).verification;
-    if (v && typeof v === "object" && "verdict" in v) return v as VerificationBlock;
-  }
-  return null;
 }

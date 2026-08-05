@@ -7,10 +7,12 @@ verdicts (per D-11 override: NOT hard_reject — routes to tighter Turnstile
 """
 from __future__ import annotations
 
+from functools import lru_cache
+
 import httpx
 import redis.asyncio as aioredis
 
-from src.auth.redis_util import require_redis_url
+from src.auth.redis_util import register_redis_client, require_redis_url
 
 SOURCE = (
     "https://raw.githubusercontent.com/disposable-email-domains/"
@@ -20,8 +22,10 @@ TTL_S = 24 * 3600
 KEY = "disposable_domains"
 
 
+@lru_cache(maxsize=1)
 def _r() -> aioredis.Redis:
-    return aioredis.from_url(require_redis_url(), decode_responses=True)
+    client = aioredis.from_url(require_redis_url(), decode_responses=True)
+    return register_redis_client(client, _r.cache_clear)
 
 
 async def get_soft_flag_set() -> set[str]:

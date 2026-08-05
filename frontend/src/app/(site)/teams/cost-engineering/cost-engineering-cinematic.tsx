@@ -66,28 +66,29 @@ export default function CostEngineeringCinematic() {
   const cap3 = React.useRef<HTMLDivElement | null>(null);
   const cap4 = React.useRef<HTMLDivElement | null>(null);
   const cap5 = React.useRef<HTMLDivElement | null>(null);
+  const lightingRef = React.useRef<{
+    key: THREE.DirectionalLight | null;
+    rim: THREE.DirectionalLight | null;
+    blue: THREE.Color | null;
+    green: THREE.Color | null;
+  }>({ key: null, rim: null, blue: null, green: null });
 
   const choreography = React.useMemo<Choreography>(() => {
-    // grabbed once from the shared scene (foundation exposes no light handles).
-    let keyLight: THREE.DirectionalLight | null = null;
-    let rimLight: THREE.DirectionalLight | null = null;
-    let rimBlue: THREE.Color | null = null;
-    let rimGreen: THREE.Color | null = null;
-
     return (f) => {
       const { scene, part, camera, renderer, materials, ghosts, shadow, dt, elapsed } = f;
+      const lighting = lightingRef.current;
 
-      if (!rimLight) {
+      if (!lighting.rim) {
         scene.traverse((o) => {
           const dl = o as THREE.DirectionalLight;
           if (dl.isDirectionalLight) {
             // key sits camera-left (x=-3); rim sits camera-right (x=4).
-            if (dl.position.x < 0) keyLight = dl;
-            else rimLight = dl;
+            if (dl.position.x < 0) lighting.key = dl;
+            else lighting.rim = dl;
           }
         });
-        rimBlue = new f.THREE.Color(0xbcd2ff);
-        rimGreen = new f.THREE.Color(0x55b880);
+        lighting.blue = new f.THREE.Color(0xbcd2ff);
+        lighting.green = new f.THREE.Color(0x55b880);
       }
 
       const m1 = measureSection(sec1.current); // lands
@@ -124,11 +125,11 @@ export default function CostEngineeringCinematic() {
       renderer.toneMappingExposure = 1.15 * Math.max(0.3, 1 - a3 * 0.7 + a4 * 0.55);
 
       // validated act: the light itself turns green — the earned solid
-      if (rimLight && rimBlue && rimGreen) {
-        rimLight.color.copy(rimBlue).lerp(rimGreen, a4);
-        rimLight.intensity = 1.6 + a4 * 1.8;
+      if (lighting.rim && lighting.blue && lighting.green) {
+        lighting.rim.color.copy(lighting.blue).lerp(lighting.green, a4);
+        lighting.rim.intensity = 1.6 + a4 * 1.8;
       }
-      if (keyLight) keyLight.intensity = 2.4 - a4 * 0.9;
+      if (lighting.key) lighting.key.intensity = 2.4 - a4 * 0.9;
 
       // this page is the pure shaft + x-ray: keep the shared studio's extra
       // props (metrology / scan / gearbox ghosts / contact shadow) quiet.
@@ -149,7 +150,6 @@ export default function CostEngineeringCinematic() {
       }
     };
     // refs are stable across renders — the choreography is built once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -219,7 +219,7 @@ export default function CostEngineeringCinematic() {
             </DisplayHeading>
             <p style={{ margin: "20px 0 0", fontSize: 16.5, lineHeight: 1.6, fontWeight: 300, color: "var(--st-ink-60)" }}>
               Program needs the number by Thursday&apos;s review. The engine walks the part through
-              envelope, materials, physics — then builds the resource-cost record, every driver
+              envelope, materials, physics — then builds the should-cost record, every driver
               sourced. The spreadsheet version of this week used to start with hunting for the last
               analogous part.
             </p>
@@ -250,7 +250,7 @@ export default function CostEngineeringCinematic() {
             </DisplayHeading>
             <p style={{ margin: "20px 0 0", fontSize: 16.5, lineHeight: 1.6, fontWeight: 300, color: "var(--st-ink-60)" }}>
               Every driver drills to its verbatim derivation. Disagree with the machine rate?
-              Override it — the row re-tags USER, the report re-costs server-side, and the audit
+              Override it — the row re-tags USER, the whole estimate re-costs and reconciles, and the audit
               trail keeps both versions.
             </p>
             <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 8 }}>

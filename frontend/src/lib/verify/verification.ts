@@ -119,6 +119,74 @@ export function verdictBannerModel(verdict: MakeabilityLattice): VerdictBannerMo
   return BANNER[verdict] ?? BANNER.unknown;
 }
 
+const LATTICE_VALUES = new Set<MakeabilityLattice>([
+  "makeable_in_house",
+  "makeable_with_secondary_op",
+  "makeable_not_on_owned",
+  "makeable_outsource_only",
+  "environment_excluded",
+  "not_makeable",
+  "unknown",
+]);
+
+/** Read the persisted verification block defensively from an engine report.
+ * Old records may predate the field; malformed values are treated as absent,
+ * never coerced into a pass. */
+export function readVerification(report: unknown): VerificationBlock | null {
+  if (!report || typeof report !== "object") return null;
+  const candidate = (report as { verification?: unknown }).verification;
+  if (!candidate || typeof candidate !== "object") return null;
+  const verdict = (candidate as { verdict?: unknown }).verdict;
+  if (typeof verdict !== "string" || !LATTICE_VALUES.has(verdict as MakeabilityLattice)) {
+    return null;
+  }
+  return candidate as VerificationBlock;
+}
+
+export interface RecordVerdictModel {
+  text: string;
+  kicker: string;
+  tone: Tone;
+}
+
+/** The verdict label for persisted records. Machine fit wins whenever the
+ * report carries it. DFM is only a fallback dimension and can never be used to
+ * fabricate an in-house claim. */
+export function recordVerdictModel(
+  report: unknown,
+  state: {
+    hasCostedRoute: boolean;
+    dfmReady?: boolean | null;
+    dfmVerdict?: string | null;
+  },
+): RecordVerdictModel {
+  if (!state.hasCostedRoute) {
+    return { text: "Verdict withheld.", kicker: "VERDICT · WITHHELD", tone: "neutral" };
+  }
+
+  const verification = readVerification(report);
+  if (verification) {
+    const model = verdictBannerModel(verification.verdict);
+    return { text: model.title, kicker: model.kicker, tone: model.tone };
+  }
+
+  if (state.dfmReady === false || state.dfmVerdict === "fail") {
+    return { text: "Blocked by route geometry.", kicker: "DFM · BLOCKED", tone: "fail" };
+  }
+  if (state.dfmVerdict === "issues") {
+    return {
+      text: "Makeable as modeled — DFM advisories.",
+      kicker: "DFM · ADVISORIES · MACHINE FIT NOT EVALUATED",
+      tone: "cond",
+    };
+  }
+  return {
+    text: "Costed route — machine fit not evaluated.",
+    kicker: "SHOULD-COST · MACHINE FIT NOT EVALUATED",
+    tone: "neutral",
+  };
+}
+
 /** ✓ for a clear pass, ✗ for a real failure, ? for an undeclared/unknown gate. */
 export function fitMark(verdict: MakeabilityLattice): { glyph: string; tone: Tone } {
   if (verdict === "makeable_in_house" || verdict === "makeable_with_secondary_op")

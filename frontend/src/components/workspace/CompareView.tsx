@@ -54,7 +54,7 @@ export function CompareView({
           dec.crossover_qty
         ).toLocaleString()} units${
           dec.tooling_process
-            ? `; ${procLabel(dec.tooling_process)} wins above it (tooling amortises)`
+            ? `; ${procLabel(dec.tooling_process)} wins above it (tooling amortizes)`
             : ""
         }.`
       : `${procLabel(dec.make_now_process)} stays cheapest at every quantity tested — no tooling crossover.`;

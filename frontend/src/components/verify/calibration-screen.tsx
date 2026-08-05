@@ -25,6 +25,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { C, MONO } from "@/lib/verify/tokens";
+import { GROUND_TRUTH_CSV_INPUT } from "@/lib/verify/file-inputs";
 import {
   Card,
   Kicker,
@@ -338,7 +339,13 @@ function HallmarkPanel() {
           drop actual hours &amp; invoiced costs (CSV) — the engine validates on parts it never saw
         </p>
         <div style={{ marginTop: 12, display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
-          <GhostButton primary disabled={busy} onClick={() => csvRef.current?.click()}>
+          <GhostButton
+            primary
+            disabled={busy}
+            aria-label="Choose ground-truth actuals CSV"
+            aria-controls={GROUND_TRUTH_CSV_INPUT.id}
+            onClick={() => csvRef.current?.click()}
+          >
             {busy ? "Working…" : "Send actuals (CSV)"}
           </GhostButton>
           <GhostButton disabled={busy} onClick={onRecalibrate}>
@@ -346,6 +353,10 @@ function HallmarkPanel() {
           </GhostButton>
           <input
             ref={csvRef}
+            id={GROUND_TRUTH_CSV_INPUT.id}
+            name={GROUND_TRUTH_CSV_INPUT.name}
+            data-testid={GROUND_TRUTH_CSV_INPUT.testId}
+            aria-label={GROUND_TRUTH_CSV_INPUT.ariaLabel}
             type="file"
             accept=".csv,text/csv"
             style={{ display: "none" }}
@@ -396,6 +407,23 @@ function HallmarkPanel() {
           recalibration refused: {shortfall.n_real} real of {shortfall.min_real} needed —{" "}
           {shortfall.reason}
         </p>
+      )}
+
+      {result && result.n_skipped > 0 && (
+        <div
+          role="status"
+          style={{ marginTop: 10, border: `1px solid ${C.cond}`, borderRadius: 8, padding: "9px 10px" }}
+        >
+          <p style={{ margin: 0, fontFamily: MONO, fontSize: 10.5, color: C.cond }}>
+            {result.n_skipped} record{result.n_skipped === 1 ? "" : "s"} could not be costed; the
+            calibration excluded them.
+          </p>
+          {(result.skipped ?? []).slice(0, 3).map((item) => (
+            <p key={`${item.part_id}-${item.process}-${item.quantity}`} style={{ margin: "5px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink45 }}>
+              {item.part_id} · {item.process} × {item.quantity}: {item.reason}
+            </p>
+          ))}
+        </div>
       )}
 
       <div style={{ marginTop: 14, borderTop: `1px solid #efeff2`, paddingTop: 10 }}>

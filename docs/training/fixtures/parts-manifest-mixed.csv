@@ -1,0 +1,4 @@
+part_id,description,material_class,program,parent_assembly,units_per_parent,annual_volume,quantity,region,source,notes
+PV-INT-001,Valve actuator bracket,stainless,Integration QA,VALVE-ASSY,2,12000,24000,US,SAP-QA,declared valid row
+PV-INT-002,Sensor mounting plate,aluminum,Integration QA,VALVE-ASSY,1,6000,6000,US,SAP-QA,declared valid row
+PV-BAD-003,Intentional bad row,unobtanium,Integration QA,VALVE-ASSY,zero,0,0,US,SAP-QA,must be skipped

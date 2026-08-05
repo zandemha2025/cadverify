@@ -1,0 +1,90 @@
+C
+Verify
+Default rate card (v0) · none authored
+⌘K
+Verify a part
+cube.step
+
+measuring geometry…
+
+● real shell · 41k-tri preview
+
+CONTEXT
+
+not declared
+
+no parent assembly declared
+
+orphan until declared
+X-ray
+No parent assembly
+drag to orbit
+
+Can this be made — on your machines, in materials that survive its world — and what will it really take?
+
+DECLARE ITS WORLD
+
+capturing…
+120 °C service
+sour service (H₂S)
+35 MPa pressure
+
+declaring this world on the part's record, then re-costing against it…
+
+DECLARED MATERIAL CLASS · ● USER
+
+Polymer
+Aluminum
+Steel
+Stainless
+Titanium
+
+COMPUTING — GATES CHECKING IN
+
+Running the part through routing, DFM, and the glass-box should-cost…
+
+▸ routing + DFM (POST /validate)
+
+▸ should-cost record (POST /validate/cost)
+
+▸ your declared floor (GET /machine-inventory)
+
+Compare routes @ 1,000
+Compare saved decisions →
+Why this verdict?
+An uncomputable ask
+
+answers are deterministic engine artifacts — verdict, materials, drivers, hours, cost, routes, and saved records
+
+VERIFYING · cube.step
+
+✕
+
+THE VERDICT · COMPUTING — GATES CHECKING IN
+
+▸
+received
+—
+parsed in-process · mesh discarded after measurement
+
+▸
+measured
+—
+measuring geometry…
+
+▸
+routed
+—
+routing the part…
+
+▸
+gates walked
+—
+walking the gates…
+
+▸
+record assembled
+—
+assembling the record…
+
+deterministic — same input, same verdict, every time · no step is skipped, none is faked

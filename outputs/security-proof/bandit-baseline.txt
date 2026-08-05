@@ -1,0 +1,301 @@
+Working... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:03
+Run started:2026-07-08 21:28:30.250779+00:00
+
+Test results:
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: src/analysis/base_analyzer.py:162:4
+161	            ))
+162	    except Exception:
+163	        pass  # Skip if check fails on malformed mesh
+164	    return issues
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: src/analysis/context.py:439:4
+438	            return d, "quadric"
+439	    except Exception:
+440	        pass
+441	
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: src/api/health.py:64:4
+63	        postgres_ok = True
+64	    except Exception:
+65	        pass
+66	
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: src/api/metrics.py:100:8
+99	                update_queue_metrics(await summarize_queue_health(session, org_id=None))
+100	        except Exception:
+101	            # Metrics must stay scrapeable even if the DB is momentarily
+102	            # unavailable. /health is the dependency gate; stale/missing queue
+103	            # gauges are safer than turning the scrape endpoint into another
+104	            # failing dependency.
+105	            pass
+106	    payload, content_type = render_latest()
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: src/auth/password.py:140:4
+139	        asyncio.create_task(fire_and_forget_audit(**kwargs))
+140	    except Exception:
+141	        pass
+142	
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: src/auth/password.py:209:8
+208	            await update_password_hash(user_id, hash_password(body.password))
+209	        except Exception:
+210	            pass
+211	
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: src/auth/rate_limit.py:89:4
+88	        limit_str = str(exc.limit.limit.amount)
+89	    except Exception:
+90	        pass
+91	    return JSONResponse(
+
+--------------------------------------------------
+>> Issue: [B112:try_except_continue] Try, Except, Continue detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b112_try_except_continue.html
+   Location: src/corpus/demo_seed.py:89:16
+88	                    seen.add(json.loads(line)["part_id"])
+89	                except Exception:
+90	                    continue
+91	    return seen
+
+--------------------------------------------------
+>> Issue: [B112:try_except_continue] Try, Except, Continue detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b112_try_except_continue.html
+   Location: src/corpus/gather.py:137:16
+136	                    rec = json.loads(line)
+137	                except Exception:
+138	                    continue
+139	                seen_ids.add(rec["part_id"])
+
+--------------------------------------------------
+>> Issue: [B112:try_except_continue] Try, Except, Continue detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b112_try_except_continue.html
+   Location: src/corpus/gather.py:292:8
+291	            nf = int(g["num_faces"])
+292	        except Exception:
+293	            continue
+294	        if nf < MIN_FACES or nf > MAX_FACES:
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: src/corpus/gather.py:482:4
+481	            return r.json().get("license", {}).get("spdx_id") or "UNKNOWN"
+482	    except Exception:
+483	        pass
+484	    return "UNKNOWN"
+
+--------------------------------------------------
+>> Issue: [B112:try_except_continue] Try, Except, Continue detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b112_try_except_continue.html
+   Location: src/eval/engine.py:98:12
+97	                issues = analyzer.analyze(gp.ctx)
+98	            except Exception:  # pragma: no cover - defensive, mirrors routes.py
+99	                continue
+100	            scores.append(score_process(issues, gp.geometry, proc))
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b101_assert_used.html
+   Location: src/orchestration/adaptive_branch.py:300:4
+299	
+300	    assert best is not None  # generators is non-empty (checked in run())
+301	    return best
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b101_assert_used.html
+   Location: src/orchestration/adaptive_branch.py:415:16
+414	                gen_name = action.generator
+415	                assert gen_name is not None
+416	                break
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b101_assert_used.html
+   Location: src/orchestration/adaptive_branch.py:418:12
+417	            # DEEPEN: descend into the chosen child and keep selecting.
+418	            assert action.child is not None
+419	            node = action.child
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: src/parsers/gdt_extractor.py:240:8
+239	            desc = str(name) if name else ""
+240	        except Exception:
+241	            pass
+242	
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: src/parsers/gdt_extractor.py:262:8
+261	            value = abs(upper - lower) if upper is not None and lower is not None else 0.0
+262	        except Exception:
+263	            pass
+264	
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: src/parsers/gdt_extractor.py:354:20
+353	                                results.append((name, value))
+354	                    except Exception:
+355	                        pass
+356	            except Exception:
+
+--------------------------------------------------
+>> Issue: [B112:try_except_continue] Try, Except, Continue detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b112_try_except_continue.html
+   Location: src/parsers/gdt_extractor.py:356:12
+355	                        pass
+356	            except Exception:
+357	                continue
+358	    except Exception as exc:
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: src/segmentation/sam3d/cache.py:98:4
+97	            json.dump(data, f)
+98	    except Exception:
+99	        # Cache write failures are non-fatal
+100	        pass
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: src/services/analysis_service.py:426:4
+425	        mesh._cache.clear()
+426	    except Exception:
+427	        pass
+428	    del ctx, features, universal_issues, process_scores, geometry
+
+--------------------------------------------------
+>> Issue: [B112:try_except_continue] Try, Except, Continue detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b112_try_except_continue.html
+   Location: src/services/batch_service.py:440:8
+439	            p = load_profile(slug)
+440	        except Exception:  # pragma: no cover - defensive; skip unreadable profile
+441	            continue
+442	        if req.lower() == (p.name or "").lower():
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b101_assert_used.html
+   Location: src/services/cost_pdf_service.py:121:4
+120	    # Guard against path traversal in the cache filename.
+121	    assert "/" not in decision.ulid and ".." not in decision.ulid, (
+122	        f"Invalid ULID format: {decision.ulid}"
+123	    )
+124	
+
+--------------------------------------------------
+>> Issue: [B101:assert_used] Use of assert detected. The enclosed code will be removed when compiling to optimised byte code.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b101_assert_used.html
+   Location: src/services/pdf_service.py:157:4
+156	    # T-04B-01: Validate ULID has no path traversal characters
+157	    assert "/" not in analysis.ulid and ".." not in analysis.ulid, (
+158	        f"Invalid ULID format: {analysis.ulid}"
+159	    )
+160	
+
+--------------------------------------------------
+>> Issue: [B311:blacklist] Standard pseudo-random generators are not suitable for security/cryptographic purposes.
+   Severity: Low   Confidence: High
+   CWE: CWE-330 (https://cwe.mitre.org/data/definitions/330.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b311-random
+   Location: src/services/webhook_service.py:259:46
+258	
+259	    delay = RETRY_DELAYS[delivery.attempts] + random.uniform(
+260	        0, RETRY_DELAYS[delivery.attempts] * 0.1
+261	    )
+262	    delivery.next_retry_at = datetime.now(timezone.utc) + timedelta(seconds=delay)
+
+--------------------------------------------------
+
+Code scanned:
+	Total lines of code: 38554
+	Total lines skipped (#nosec): 0
+	Total potential issues skipped due to specifically being disabled (e.g., #nosec BXXX): 5
+
+Run metrics:
+	Total issues (by severity):
+		Undefined: 0
+		Low: 25
+		Medium: 0
+		High: 0
+	Total issues (by confidence):
+		Undefined: 0
+		Low: 0
+		Medium: 0
+		High: 25
+Files skipped (0):

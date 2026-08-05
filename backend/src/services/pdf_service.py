@@ -14,7 +14,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from fastapi import HTTPException
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,9 +29,14 @@ _TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "pdf"
 
 _pdf_semaphore = asyncio.Semaphore(2)
 
+# autoescape on: the report interpolates user-controlled values ({{ filename }},
+# issue messages) into HTML that WeasyPrint parses, so an unescaped '<' in an
+# uploaded filename would inject markup into the rendered PDF. Templates carry no
+# |safe expressions, so escaping changes no legitimate output (literal &mdash;
+# etc. in template text is not escaped — only {{ }} expressions are).
 _jinja_env = Environment(
     loader=FileSystemLoader(str(_TEMPLATE_DIR)),
-    autoescape=False,
+    autoescape=select_autoescape(("html", "xml")),
 )
 
 # ── Custom Jinja2 filters ──────────────────────────────────────

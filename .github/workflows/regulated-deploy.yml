@@ -1,0 +1,372 @@
+name: Regulated Deployment
+
+on:
+  workflow_call:
+    inputs:
+      target_environment:
+        required: true
+        type: string
+      aws_region:
+        required: true
+        type: string
+      release_sha:
+        required: true
+        type: string
+      backend_digest:
+        required: true
+        type: string
+      frontend_digest:
+        required: true
+        type: string
+      forbidden_boundary_fingerprint:
+        description: Staging account/cluster/namespace fingerprint production must not reuse
+        required: false
+        default: ""
+        type: string
+    outputs:
+      boundary_fingerprint:
+        description: SHA-256 of the verified AWS account, EKS cluster ARN, and namespace
+        value: ${{ jobs.deploy.outputs.boundary_fingerprint }}
+
+concurrency:
+  group: regulated-deploy-${{ inputs.target_environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: Verify and deploy signed digests
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (inputs.target_environment == 'regulated-staging' || inputs.target_environment == 'regulated-production') &&
+      (inputs.aws_region == 'us-gov-west-1' || inputs.aws_region == 'us-gov-east-1')
+    # Ephemeral runner inside the approved GovCloud/customer boundary, operated
+    # only by authorized U.S. persons. Public hosted runners are prohibited.
+    runs-on: [self-hosted, linux, x64, govcloud, us-person]
+    environment: ${{ inputs.target_environment }}
+    outputs:
+      boundary_fingerprint: ${{ steps.boundary.outputs.fingerprint }}
+    env:
+      TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+      AWS_REGION: ${{ inputs.aws_region }}
+      EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_GOVCLOUD_ACCOUNT_ID }}
+      CADVERIFY_BOUNDARY_ENVIRONMENT: ${{ vars.CADVERIFY_BOUNDARY_ENVIRONMENT }}
+      BACKEND_REPOSITORY: ${{ vars.AWS_GOVCLOUD_BACKEND_REPOSITORY }}
+      FRONTEND_REPOSITORY: ${{ vars.AWS_GOVCLOUD_FRONTEND_REPOSITORY }}
+      COSIGN_KMS_URI: ${{ vars.AWS_GOVCLOUD_COSIGN_KMS_URI }}
+      EKS_CLUSTER: ${{ vars.AWS_GOVCLOUD_EKS_CLUSTER }}
+      HELM_VALUES_SECRET_ID: ${{ vars.AWS_GOVCLOUD_HELM_VALUES_SECRET_ID }}
+      CADVERIFY_NAMESPACE: ${{ vars.CADVERIFY_NAMESPACE }}
+      CADVERIFY_RELEASE_NAME: ${{ vars.CADVERIFY_RELEASE_NAME }}
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      BACKEND_DIGEST: ${{ inputs.backend_digest }}
+      FRONTEND_DIGEST: ${{ inputs.frontend_digest }}
+      FORBIDDEN_BOUNDARY_FINGERPRINT: ${{ inputs.forbidden_boundary_fingerprint }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Validate immutable release inputs and environment contract
+        env:
+          DEPLOY_ROLE_ARN: ${{ secrets.AWS_GOVCLOUD_DEPLOY_ROLE_ARN }}
+        run: |
+          case "$RELEASE_SHA" in
+            *[!0-9a-f]*|'') echo "release_sha must be lowercase hexadecimal"; exit 1 ;;
+          esac
+          test "${#RELEASE_SHA}" -eq 40 || { echo "release_sha must contain 40 characters"; exit 1; }
+          for digest in "$BACKEND_DIGEST" "$FRONTEND_DIGEST"; do
+            case "$digest" in sha256:*) ;; *) echo "image digest must use sha256"; exit 1 ;; esac
+            digest_hex=${digest#sha256:}
+            case "$digest_hex" in
+              *[!0-9a-f]*|'') echo "image digest must be lowercase hexadecimal"; exit 1 ;;
+            esac
+            test "${#digest_hex}" -eq 64 || { echo "sha256 digest must contain 64 hex characters"; exit 1; }
+          done
+          test -n "$DEPLOY_ROLE_ARN" || { echo "AWS_GOVCLOUD_DEPLOY_ROLE_ARN is required"; exit 1; }
+          case "$EXPECTED_AWS_ACCOUNT_ID" in
+            *[!0-9]*|'') echo "AWS_GOVCLOUD_ACCOUNT_ID must contain 12 digits"; exit 1 ;;
+          esac
+          test "${#EXPECTED_AWS_ACCOUNT_ID}" -eq 12 || { echo "AWS_GOVCLOUD_ACCOUNT_ID must contain 12 digits"; exit 1; }
+          test "$CADVERIFY_BOUNDARY_ENVIRONMENT" = "$TARGET_ENVIRONMENT" || {
+            echo "CADVERIFY_BOUNDARY_ENVIRONMENT does not match the protected target environment"
+            exit 1
+          }
+          if test "$TARGET_ENVIRONMENT" = regulated-production; then
+            test -n "$FORBIDDEN_BOUNDARY_FINGERPRINT" || {
+              echo "production requires the verified staging boundary fingerprint"
+              exit 1
+            }
+          fi
+          test -n "$BACKEND_REPOSITORY" || { echo "AWS_GOVCLOUD_BACKEND_REPOSITORY is required"; exit 1; }
+          test -n "$FRONTEND_REPOSITORY" || { echo "AWS_GOVCLOUD_FRONTEND_REPOSITORY is required"; exit 1; }
+          test -n "$COSIGN_KMS_URI" || { echo "AWS_GOVCLOUD_COSIGN_KMS_URI is required"; exit 1; }
+          test -n "$EKS_CLUSTER" || { echo "AWS_GOVCLOUD_EKS_CLUSTER is required"; exit 1; }
+          test -n "$HELM_VALUES_SECRET_ID" || { echo "AWS_GOVCLOUD_HELM_VALUES_SECRET_ID is required"; exit 1; }
+          test -n "$CADVERIFY_NAMESPACE" || { echo "CADVERIFY_NAMESPACE is required"; exit 1; }
+          test -n "$CADVERIFY_RELEASE_NAME" || { echo "CADVERIFY_RELEASE_NAME is required"; exit 1; }
+          command -v jq >/dev/null || { echo "jq is required on the regulated runner"; exit 1; }
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA" || { echo "checked-out SHA mismatch"; exit 1; }
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main || {
+            echo "release_sha is not reachable from protected main"
+            exit 1
+          }
+
+      - name: Configure GovCloud credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6.2.2
+        with:
+          role-to-assume: ${{ secrets.AWS_GOVCLOUD_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Verify exact account, cluster, namespace, and environment isolation
+        id: boundary
+        run: |
+          account_id=$(aws sts get-caller-identity --query Account --output text)
+          test "$account_id" = "$EXPECTED_AWS_ACCOUNT_ID" || {
+            echo "OIDC role resolved to the wrong AWS GovCloud account"
+            exit 1
+          }
+          cluster_arn=$(aws eks describe-cluster \
+            --name "$EKS_CLUSTER" \
+            --region "$AWS_REGION" \
+            --query cluster.arn \
+            --output text)
+          expected_prefix="arn:aws-us-gov:eks:$AWS_REGION:$account_id:cluster/"
+          case "$cluster_arn" in
+            "$expected_prefix"*) ;;
+            *) echo "EKS cluster ARN is outside the expected GovCloud account/region"; exit 1 ;;
+          esac
+          fingerprint=$(printf '%s' "$account_id|$cluster_arn|$CADVERIFY_NAMESPACE" \
+            | sha256sum | cut -d' ' -f1)
+          if test -n "$FORBIDDEN_BOUNDARY_FINGERPRINT" \
+            && test "$fingerprint" = "$FORBIDDEN_BOUNDARY_FINGERPRINT"; then
+            echo "regulated production resolves to the staging account/cluster/namespace"
+            exit 1
+          fi
+          echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GovCloud ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2.1.6
+
+      - name: Install Helm
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.1
+
+      - name: Connect to the approved EKS cluster
+        run: |
+          aws eks update-kubeconfig --name "$EKS_CLUSTER" --region "$AWS_REGION"
+          kubectl auth can-i get deployments --namespace "$CADVERIFY_NAMESPACE" | grep -qx yes
+          kubectl get namespace "$CADVERIFY_NAMESPACE" >/dev/null
+
+      - name: Fetch private non-secret Helm values inside the boundary
+        run: |
+          umask 077
+          aws secretsmanager get-secret-value \
+            --secret-id "$HELM_VALUES_SECRET_ID" \
+            --query SecretString \
+            --output text > "$RUNNER_TEMP/cadverify-regulated-values.yaml"
+          test -s "$RUNNER_TEMP/cadverify-regulated-values.yaml"
+
+      - name: Verify image signatures with the GovCloud KMS key
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          cosign verify --insecure-ignore-tlog --key "$COSIGN_KMS_URI" \
+            "$REGISTRY/$BACKEND_REPOSITORY@$BACKEND_DIGEST"
+          cosign verify --insecure-ignore-tlog --key "$COSIGN_KMS_URI" \
+            "$REGISTRY/$FRONTEND_REPOSITORY@$FRONTEND_DIGEST"
+
+      - name: Verify signed release configuration attestations
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          cosign verify-attestation --insecure-ignore-tlog --type custom \
+            --key "$COSIGN_KMS_URI" \
+            "$REGISTRY/$BACKEND_REPOSITORY@$BACKEND_DIGEST" \
+            > "$RUNNER_TEMP/backend-attestation.json"
+          cosign verify-attestation --insecure-ignore-tlog --type custom \
+            --key "$COSIGN_KMS_URI" \
+            "$REGISTRY/$FRONTEND_REPOSITORY@$FRONTEND_DIGEST" \
+            > "$RUNNER_TEMP/frontend-attestation.json"
+          jq -e --arg release "$RELEASE_SHA" '
+            def entries: if type == "array" then .[] else . end;
+            def statement:
+              if has("payload") then (.payload | @base64d | fromjson) else . end;
+            [ entries | statement
+              | select(.predicate.component == "backend"
+                       and .predicate.release_sha == $release) ]
+            | length > 0
+          ' "$RUNNER_TEMP/backend-attestation.json" >/dev/null
+          jq -e --arg release "$RELEASE_SHA" '
+            def entries: if type == "array" then .[] else . end;
+            def statement:
+              if has("payload") then (.payload | @base64d | fromjson) else . end;
+            [ entries | statement
+              | select(.predicate.component == "frontend"
+                       and .predicate.release_sha == $release) ]
+            | length > 0
+          ' "$RUNNER_TEMP/frontend-attestation.json" >/dev/null
+
+      - name: Require externally reconciled runtime and SAML secrets
+        env:
+          CADVERIFY_AUTH_MODE: saml
+          CADVERIFY_RUNTIME_SECRET: cadverify-runtime
+          CADVERIFY_SAML_SECRET: cadverify-saml
+          CADVERIFY_OTEL_CA_SECRET: cadverify-otel-ca
+          CADVERIFY_OTEL_CA_KEY: ca.crt
+        run: bash scripts/ops/k8s-required-secrets-gate.sh
+
+      - name: Render and policy-check the exact deployment
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          helm lint charts/cadverify \
+            --values "$RUNNER_TEMP/cadverify-regulated-values.yaml" \
+            --set production.operatorAcknowledgement=CONFIGURED_EXTERNAL_DEPENDENCIES \
+            --set-string image.backend.repository="$REGISTRY/$BACKEND_REPOSITORY" \
+            --set-string image.backend.digest="$BACKEND_DIGEST" \
+            --set-string image.frontend.repository="$REGISTRY/$FRONTEND_REPOSITORY" \
+            --set-string image.frontend.digest="$FRONTEND_DIGEST" \
+            --set-string deploymentEnvironment="${{ inputs.target_environment }}" \
+            --set-string release="$RELEASE_SHA"
+          helm template "$CADVERIFY_RELEASE_NAME" charts/cadverify \
+            --namespace "$CADVERIFY_NAMESPACE" \
+            --values "$RUNNER_TEMP/cadverify-regulated-values.yaml" \
+            --set production.operatorAcknowledgement=CONFIGURED_EXTERNAL_DEPENDENCIES \
+            --set-string image.backend.repository="$REGISTRY/$BACKEND_REPOSITORY" \
+            --set-string image.backend.digest="$BACKEND_DIGEST" \
+            --set-string image.frontend.repository="$REGISTRY/$FRONTEND_REPOSITORY" \
+            --set-string image.frontend.digest="$FRONTEND_DIGEST" \
+            --set-string deploymentEnvironment="${{ inputs.target_environment }}" \
+            --set-string release="$RELEASE_SHA" \
+            > "$RUNNER_TEMP/cadverify-regulated-rendered.yaml"
+          node scripts/ops/check-regulated-manifest.mjs \
+            "$RUNNER_TEMP/cadverify-regulated-rendered.yaml"
+          kubectl apply --server-side --dry-run=server \
+            --filename "$RUNNER_TEMP/cadverify-regulated-rendered.yaml" >/dev/null
+
+      - name: Deploy atomically
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          helm upgrade --install "$CADVERIFY_RELEASE_NAME" charts/cadverify \
+            --namespace "$CADVERIFY_NAMESPACE" \
+            --values "$RUNNER_TEMP/cadverify-regulated-values.yaml" \
+            --set production.operatorAcknowledgement=CONFIGURED_EXTERNAL_DEPENDENCIES \
+            --set-string image.backend.repository="$REGISTRY/$BACKEND_REPOSITORY" \
+            --set-string image.backend.digest="$BACKEND_DIGEST" \
+            --set-string image.frontend.repository="$REGISTRY/$FRONTEND_REPOSITORY" \
+            --set-string image.frontend.digest="$FRONTEND_DIGEST" \
+            --set-string deploymentEnvironment="${{ inputs.target_environment }}" \
+            --set-string release="$RELEASE_SHA" \
+            --atomic \
+            --timeout 20m
+
+      - name: Verify rollouts and deep dependency health
+        run: |
+          for component in backend worker frontend; do
+            kubectl rollout status \
+              "deployment/$CADVERIFY_RELEASE_NAME-$component" \
+              --namespace "$CADVERIFY_NAMESPACE" \
+              --timeout=10m
+          done
+          kubectl port-forward \
+            --namespace "$CADVERIFY_NAMESPACE" \
+            "service/$CADVERIFY_RELEASE_NAME-backend" 18000:8000 \
+            > "$RUNNER_TEMP/backend-port-forward.log" 2>&1 &
+          backend_port_forward_pid=$!
+          kubectl port-forward \
+            --namespace "$CADVERIFY_NAMESPACE" \
+            "service/$CADVERIFY_RELEASE_NAME-frontend" 13000:3000 \
+            > "$RUNNER_TEMP/frontend-port-forward.log" 2>&1 &
+          frontend_port_forward_pid=$!
+          trap 'kill "$backend_port_forward_pid" "$frontend_port_forward_pid" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:18000/health >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          health_token_b64=$(kubectl get secret cadverify-runtime \
+            --namespace "$CADVERIFY_NAMESPACE" \
+            --output 'go-template={{ index .data "DEEP_HEALTH_TOKEN" }}')
+          health_token=$(printf '%s' "$health_token_b64" | base64 --decode)
+          test "${#health_token}" -ge 32 || {
+            echo "regulated deep-health token is missing or too short"
+            exit 1
+          }
+          CADVERIFY_API_URL=http://127.0.0.1:18000 \
+          CADVERIFY_REQUIRE_WORKER=1 \
+          CADVERIFY_REQUIRE_WORKER_STRICT=1 \
+          CADVERIFY_REQUIRE_DEEP=1 \
+          CADVERIFY_DEEP_HEALTH_TOKEN="$health_token" \
+          node scripts/ops/fly-live-health-gate.mjs
+          unset health_token health_token_b64
+          curl --fail --silent --show-error --retry 10 --retry-all-errors \
+            --retry-delay 2 --max-time 15 \
+            --header 'X-Real-IP: 127.0.0.1' \
+            http://127.0.0.1:13000/api/auth/proxy-health >/dev/null
+          ingress_host=$(kubectl get ingress \
+            --namespace "$CADVERIFY_NAMESPACE" \
+            --selector app.kubernetes.io/instance="$CADVERIFY_RELEASE_NAME" \
+            --output jsonpath='{.items[0].spec.rules[0].host}')
+          test -n "$ingress_host" || {
+            echo "regulated ingress host is missing"
+            exit 1
+          }
+          # Exercise the real TLS ingress without injecting forwarding headers.
+          # This proves the controller supplies the client IP that Next signs;
+          # the port-forward probe above proves the shared secret independently.
+          curl --fail --silent --show-error --retry 10 --retry-all-errors \
+            --retry-delay 2 --max-time 20 --proto '=https' --tlsv1.2 \
+            "https://$ingress_host/api/auth/proxy-health" >/dev/null
+
+      - name: Write non-secret deployment evidence
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          mkdir -p outputs/regulated-deployment
+          values_hash=$(sha256sum "$RUNNER_TEMP/cadverify-regulated-values.yaml" | cut -d' ' -f1)
+          chart_hash=$(find charts/cadverify -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
+          printf '%s\n' \
+            "environment=${{ inputs.target_environment }}" \
+            "release_sha=$RELEASE_SHA" \
+            "backend_image=$REGISTRY/$BACKEND_REPOSITORY@$BACKEND_DIGEST" \
+            "frontend_image=$REGISTRY/$FRONTEND_REPOSITORY@$FRONTEND_DIGEST" \
+            "chart_hash=$chart_hash" \
+            "private_values_hash=$values_hash" \
+            "namespace=$CADVERIFY_NAMESPACE" \
+            "auth_proxy_handshake=pass" \
+            "auth_proxy_ingress_handshake=pass" \
+            > outputs/regulated-deployment/deployment-record.txt
+          kubectl get deployments \
+            --namespace "$CADVERIFY_NAMESPACE" \
+            --selector app.kubernetes.io/instance="$CADVERIFY_RELEASE_NAME" \
+            --output custom-columns='NAME:.metadata.name,READY:.status.readyReplicas,AVAILABLE:.status.availableReplicas,IMAGE:.spec.template.spec.containers[0].image' \
+            >> outputs/regulated-deployment/deployment-record.txt
+
+      - name: Upload deployment evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: regulated-deployment-${{ inputs.target_environment }}-${{ inputs.release_sha }}
+          path: outputs/regulated-deployment/deployment-record.txt
+          if-no-files-found: error
+
+      - name: Remove private values from the runner
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/cadverify-regulated-values.yaml" ]; then
+            shred --remove "$RUNNER_TEMP/cadverify-regulated-values.yaml" || \
+              rm -f "$RUNNER_TEMP/cadverify-regulated-values.yaml"
+          fi
+          rm -f "$RUNNER_TEMP/cadverify-regulated-rendered.yaml"
+          rm -f "$RUNNER_TEMP/backend-attestation.json" "$RUNNER_TEMP/frontend-attestation.json"

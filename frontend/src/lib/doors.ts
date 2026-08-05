@@ -1,5 +1,5 @@
 /**
- * The three front doors (D5 FE-3). CadVerify's three co-equal personas each
+ * The three front doors (D5 FE-3). ProofShape's three co-equal personas each
  * enter through their own door, with their own hero object and their own first
  * verb (D1 "three real doors, three hero objects, three first verbs"):
  *

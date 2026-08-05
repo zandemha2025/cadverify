@@ -21,8 +21,14 @@ import {
   exportCostJson,
   exportCostCsv,
   reopenCostDecisionApproval,
+  setCostDecisionDisposition,
 } from "@/lib/api";
 import type { CostDecisionDetail } from "@/lib/api";
+import {
+  COST_DISPOSITION_NOTE_MAX_LENGTH,
+  COST_DISPOSITIONS,
+  type CostDisposition,
+} from "@/lib/cost-disposition";
 import { SavedCostDecisionView } from "@/components/cost/SavedCostDecisionView";
 import PdfDownloadButton from "@/components/PdfDownloadButton";
 import ShareButton from "@/components/ShareButton";
@@ -33,6 +39,9 @@ import { ErrorState } from "@/components/ui/error-state";
 import { Spinner } from "@/components/ui/spinner";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/components/ui/auth-provider";
+import { canMutateWorkspace } from "@/lib/role-capabilities";
+import { makeNowEstimate, routeDfmOutcome } from "@/lib/verify/derive";
 
 function BackLink({ onClick }: { onClick: () => void }) {
   return (
@@ -49,15 +58,76 @@ function formatDate(iso?: string | null): string {
 function GovernancePanel({
   decision,
   onUpdate,
+  canMutate,
 }: {
   decision: CostDecisionDetail;
   onUpdate: (patch: Partial<CostDecisionDetail>) => void;
+  canMutate: boolean;
 }) {
   const [note, setNote] = useState("");
+  const [dispositionNote, setDispositionNote] = useState(
+    decision.disposition_note ?? ""
+  );
+  const [dispositionError, setDispositionError] = useState<string | null>(null);
   const [saving, setSaving] = useState<"approve" | "reopen" | null>(null);
+  const [savingDisposition, setSavingDisposition] = useState<
+    CostDisposition | "withdraw" | "note" | null
+  >(null);
   const approved = decision.approval_status === "approved";
+  const persistedDispositionNote = decision.disposition_note ?? "";
+  const dispositionNoteDirty =
+    dispositionNote.trim() !== persistedDispositionNote;
+  const routeDfmBlocked = routeDfmOutcome(
+    undefined,
+    makeNowEstimate(decision.result),
+  ).blocked;
+
+  useEffect(() => {
+    setDispositionNote(decision.disposition_note ?? "");
+  }, [decision.disposition_note]);
+
+  async function saveDisposition(
+    next: CostDisposition | null,
+    action: "choice" | "note" | "withdraw" = "choice"
+  ) {
+    if (!canMutate) return;
+    const wasApproved = approved;
+    setSavingDisposition(
+      action === "note" ? "note" : next ?? "withdraw"
+    );
+    setDispositionError(null);
+    try {
+      const patch = await setCostDecisionDisposition(
+        decision.id,
+        next,
+        next ? dispositionNote : undefined
+      );
+      onUpdate(patch);
+      setDispositionNote(patch.disposition_note ?? "");
+      toast.success(
+        action === "note"
+          ? wasApproved
+            ? "Outcome note saved; prior approval reopened"
+            : "Outcome note saved"
+          : next
+          ? wasApproved
+            ? "Outcome saved; prior approval reopened"
+            : "Outcome saved"
+          : wasApproved
+            ? "Outcome withdrawn; prior approval reopened"
+            : "Outcome withdrawn"
+      );
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Outcome was not saved";
+      setDispositionError(message);
+      toast.error(message);
+    } finally {
+      setSavingDisposition(null);
+    }
+  }
 
   async function approve() {
+    if (!canMutate) return;
     setSaving("approve");
     try {
       const patch = await approveCostDecision(decision.id, note);
@@ -72,6 +142,7 @@ function GovernancePanel({
   }
 
   async function reopen() {
+    if (!canMutate) return;
     setSaving("reopen");
     try {
       const patch = await reopenCostDecisionApproval(decision.id);
@@ -114,19 +185,183 @@ function GovernancePanel({
             )}
           </div>
 
-          {approved ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={saving === "reopen"}
-              onClick={reopen}
-            >
-              {saving !== "reopen" && <RotateCcw />} Reopen
-            </Button>
+          {canMutate &&
+            (approved ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={saving === "reopen"}
+                disabled={Boolean(savingDisposition)}
+                onClick={reopen}
+              >
+                {saving !== "reopen" && <RotateCcw />} Reopen
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                loading={saving === "approve"}
+                disabled={Boolean(savingDisposition)}
+                onClick={approve}
+              >
+                {saving !== "approve" && <ShieldCheck />} Approve
+              </Button>
+            ))}
+        </div>
+
+        <div
+          data-testid="cost-decision-disposition"
+          className="space-y-3 rounded-[var(--radius-sm)] border border-border bg-muted p-3"
+        >
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Recorded outcome
+            </p>
+            <p className="mt-1 text-sm text-foreground">
+              {decision.user_disposition_label ??
+                (canMutate
+                  ? "Choose what the organization will do with this part."
+                  : "No outcome has been recorded.")}
+            </p>
+            {decision.disposition_updated_at && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Updated {formatDate(decision.disposition_updated_at)} by user {" "}
+                {decision.disposition_updated_by_user_id ?? "—"}.
+              </p>
+            )}
+          </div>
+          {canMutate && (
+            <div className="space-y-2">
+              {routeDfmBlocked && (
+                <p className="text-xs text-destructive" data-testid="record-disposition-route-block">
+                  Route DFM is blocked. Make in-house stays locked until revised CAD passes; record Redesign, Make outside, or Acquire capability instead.
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+              {COST_DISPOSITIONS.map((option) => {
+                const selected = decision.user_disposition === option.key;
+                const blockedOption = routeDfmBlocked && option.key === "inhouse";
+                return (
+                  <Button
+                    key={option.key}
+                    type="button"
+                    size="sm"
+                    variant={selected ? "primary" : "secondary"}
+                    aria-pressed={selected}
+                    data-testid={`record-disposition-${option.key}`}
+                    disabled={Boolean(savingDisposition || saving) || blockedOption}
+                    title={blockedOption ? "Revised CAD must pass route DFM first" : undefined}
+                    loading={savingDisposition === option.key}
+                    onClick={() => void saveDisposition(option.key)}
+                  >
+                    {option.label}
+                  </Button>
+                );
+              })}
+              {decision.user_disposition && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  data-testid="record-disposition-withdraw"
+                  disabled={Boolean(savingDisposition || saving)}
+                  loading={savingDisposition === "withdraw"}
+                  onClick={() => void saveDisposition(null, "withdraw")}
+                >
+                  Withdraw outcome
+                </Button>
+              )}
+              </div>
+            </div>
+          )}
+          {canMutate ? (
+            <>
+              <p className="text-xs text-muted-foreground">
+                Choose the accountable sourcing action, then add the reason or
+                constraint that reviewers need. Changing either the outcome or its
+                note reopens any prior approval for a fresh signoff.
+              </p>
+              <div className="space-y-2">
+                <label
+                  htmlFor="cost-disposition-note"
+                  className="text-xs font-medium text-foreground"
+                >
+                  Outcome note (optional)
+                </label>
+                <Textarea
+                  id="cost-disposition-note"
+                  data-testid="record-disposition-note"
+                  value={dispositionNote}
+                  onChange={(event) => setDispositionNote(event.target.value)}
+                  disabled={Boolean(savingDisposition || saving)}
+                  maxLength={COST_DISPOSITION_NOTE_MAX_LENGTH}
+                  placeholder="Why this action was chosen, constraints, owner, or next review point"
+                  className="min-h-24"
+                  aria-describedby="cost-disposition-note-help cost-disposition-note-count"
+                />
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p
+                    id="cost-disposition-note-help"
+                    className="text-xs text-muted-foreground"
+                  >
+                    The note persists beside the immutable cost record and appears
+                    in JSON, CSV, and PDF exports.
+                  </p>
+                  <p
+                    id="cost-disposition-note-count"
+                    className="font-mono text-xs text-muted-foreground"
+                  >
+                    {dispositionNote.length}/{COST_DISPOSITION_NOTE_MAX_LENGTH}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  data-testid="record-disposition-note-save"
+                  disabled={
+                    !decision.user_disposition ||
+                    !dispositionNoteDirty ||
+                    Boolean(savingDisposition || saving)
+                  }
+                  loading={savingDisposition === "note"}
+                  onClick={() =>
+                    decision.user_disposition &&
+                    void saveDisposition(decision.user_disposition, "note")
+                  }
+                >
+                  Save outcome note
+                </Button>
+                {!decision.user_disposition && dispositionNote.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Choose an outcome to save this note.
+                  </p>
+                )}
+                {dispositionError && (
+                  <p
+                    role="alert"
+                    data-testid="record-disposition-error"
+                    className="text-sm text-destructive"
+                  >
+                    Nothing changed — {dispositionError}. Retry the same action when
+                    the service is available.
+                  </p>
+                )}
+              </div>
+            </>
           ) : (
-            <Button size="sm" loading={saving === "approve"} onClick={approve}>
-              {saving !== "approve" && <ShieldCheck />} Approve
-            </Button>
+            <div data-testid="cost-decision-read-only" className="space-y-2">
+              {decision.disposition_note && (
+                <div>
+                  <p className="text-xs font-medium text-foreground">Outcome note</p>
+                  <p className="mt-1 whitespace-pre-wrap break-words text-sm text-muted-foreground">
+                    {decision.disposition_note}
+                  </p>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Read-only access. An analyst can record an outcome or change its note.
+              </p>
+            </div>
           )}
         </div>
 
@@ -148,14 +383,20 @@ function GovernancePanel({
             <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <CheckCircle2 className="size-3.5" aria-hidden /> Approval note
             </div>
-            <p className="text-sm text-foreground">{decision.approval_note}</p>
+            <p
+              data-testid="approval-note"
+              className="whitespace-pre-wrap break-words text-sm text-foreground"
+            >
+              {decision.approval_note}
+            </p>
           </div>
         )}
 
-        {!approved && (
+        {!approved && canMutate && (
           <Textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
+            disabled={Boolean(savingDisposition)}
             maxLength={1000}
             placeholder="Optional approval note"
             className="min-h-20"
@@ -173,6 +414,8 @@ export default function CostDecisionDetailPage({
 }) {
   const { id } = use(params);
   const router = useRouter();
+  const { user } = useAuth();
+  const canMutate = canMutateWorkspace(user?.role);
   const [decision, setDecision] = useState<CostDecisionDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -210,7 +453,7 @@ export default function CostDecisionDetailPage({
   }
 
   async function runRfqPackage() {
-    if (!decision) return;
+    if (!decision || !canMutate) return;
     setExporting("rfq");
     try {
       const pkg = await createRfqPackage({
@@ -257,12 +500,14 @@ export default function CostDecisionDetailPage({
         ).toLocaleString()}`}
         actions={
           <>
-            <ShareButton
-              analysisId={id}
-              kind="cost"
-              initialShared={decision.is_public}
-              initialShareUrl={decision.share_url}
-            />
+            {canMutate && (
+              <ShareButton
+                analysisId={id}
+                kind="cost"
+                initialShared={decision.is_public}
+                initialShareUrl={decision.share_url}
+              />
+            )}
             <PdfDownloadButton
               analysisId={id}
               filename={decision.filename}
@@ -284,20 +529,27 @@ export default function CostDecisionDetailPage({
             >
               {exporting !== "csv" && <Sheet />} CSV
             </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={exporting === "rfq"}
-              onClick={() => void runRfqPackage()}
-            >
-              {exporting !== "rfq" && <FileCheck2 />} RFQ ZIP
-            </Button>
+            {canMutate && (
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={exporting === "rfq"}
+                onClick={() => void runRfqPackage()}
+              >
+                {exporting !== "rfq" && <FileCheck2 />} RFQ ZIP
+              </Button>
+            )}
           </>
         }
       />
 
+      <p className="break-all font-mono text-xs text-muted-foreground" data-testid="cost-decision-mesh-hash">
+        Source SHA-256 · {decision.mesh_hash}
+      </p>
+
       <GovernancePanel
         decision={decision}
+        canMutate={canMutate}
         onUpdate={(patch) =>
           setDecision((current) => (current ? { ...current, ...patch } : current))
         }

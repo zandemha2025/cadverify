@@ -23,6 +23,7 @@ from src.auth.rbac import (
     OrgRole,
     Role,
     require_org_role,
+    require_role_and_org_role,
 )
 from src.auth.require_api_key import AuthedUser, require_api_key
 
@@ -240,6 +241,47 @@ class TestRequireOrgRoleMember:
             new=AsyncMock(return_value=("org-A", "viewer")),
         ):
             assert client.get("/orgadmin").status_code == 403
+
+
+class TestRequirePlatformAndOrgRole:
+    """Tenant mutations must clear both independent authorization axes."""
+
+    @staticmethod
+    def _response(platform_role: str, membership):
+        app = FastAPI()
+        dep = require_role_and_org_role(Role.analyst, OrgRole.member)
+
+        @app.post("/mutate")
+        async def _mutate(user: AuthedUser = Depends(dep)):  # noqa: ANN202
+            return {"user_id": user.user_id}
+
+        app.dependency_overrides[require_api_key] = lambda: AuthedUser(
+            user_id=7,
+            api_key_id=1,
+            key_prefix="k",
+            role=platform_role,
+        )
+        with patch(
+            "src.auth.rbac.lookup_org_membership",
+            new=AsyncMock(return_value=membership),
+        ):
+            return TestClient(app, raise_server_exceptions=False).post("/mutate")
+
+    def test_analyst_member_admitted(self):
+        assert self._response("analyst", ("org-A", "member")).status_code == 200
+
+    def test_analyst_viewer_denied_immediately(self):
+        response = self._response("analyst", ("org-A", "viewer"))
+        assert response.status_code == 403
+        assert response.json()["detail"]["code"] == "insufficient_org_role"
+
+    def test_platform_viewer_org_admin_still_denied(self):
+        response = self._response("viewer", ("org-A", "admin"))
+        assert response.status_code == 403
+        assert response.json()["detail"]["code"] == "insufficient_role"
+
+    def test_superadmin_without_membership_retains_explicit_bypass(self):
+        assert self._response("superadmin", None).status_code == 200
 
 
 # ---------------------------------------------------------------------------

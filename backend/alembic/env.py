@@ -18,7 +18,7 @@ _backend_dir = str(Path(__file__).resolve().parents[1])
 if _backend_dir not in sys.path:
     sys.path.insert(0, _backend_dir)
 
-from src.db.engine import Base  # noqa: E402
+from src.db.engine import Base, _async_url, _ensure_prod_tls  # noqa: E402
 import src.db.models  # noqa: E402, F401 — register all models with Base.metadata
 
 config = context.config
@@ -30,11 +30,7 @@ target_metadata = Base.metadata
 
 def run_migrations_online() -> None:
     async def do() -> None:
-        url = os.environ["DATABASE_URL"]
-        if url.startswith("postgresql://"):
-            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
-        url = url.replace("sslmode=require", "ssl=require")
-        url = url.replace("&channel_binding=require", "").replace("?channel_binding=require&", "?").replace("?channel_binding=require", "")
+        url = _async_url(_ensure_prod_tls(os.environ["DATABASE_URL"]))
         engine = create_async_engine(url, poolclass=None)
 
         def _run(connection) -> None:

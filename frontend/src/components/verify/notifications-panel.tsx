@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { C, MONO } from "@/lib/verify/tokens";
 import { ConfidenceBand, Spinner } from "./primitives";
 import {
+  dismissNotification,
   loadNotifications,
   markAllNotificationsRead,
   markNotificationRead,
@@ -41,6 +42,7 @@ export function NotificationsPanel({
   nav?: (s: string) => void;
 }) {
   const [state, setState] = useState<NotifState>({ loading: true, notifs: [], deliveryCount: null, error: null });
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -74,6 +76,21 @@ export function NotificationsPanel({
   const clearAll = () => {
     markAllNotificationsRead().catch(() => {});
     setState((s) => ({ ...s, notifs: [] }));
+  };
+
+  const dismiss = async (n: DerivedNotif) => {
+    setActionError(null);
+    try {
+      await dismissNotification(n.id);
+      setState((current) => ({
+        ...current,
+        notifs: current.notifs.filter((item) => item.id !== n.id),
+      }));
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "notification was not dismissed"
+      );
+    }
   };
 
   const { loading, notifs, error } = state;
@@ -131,6 +148,15 @@ export function NotificationsPanel({
           </p>
         )}
 
+        {!loading && !error && actionError && (
+          <p
+            role="alert"
+            style={{ margin: 0, padding: "8px 14px 16px", fontFamily: MONO, fontSize: 11, color: C.fail, lineHeight: 1.6 }}
+          >
+            nothing changed — {actionError}
+          </p>
+        )}
+
         {!loading && !error && notifs.length === 0 && (
           <div style={{ padding: "6px 14px 16px" }}>
             <p style={{ margin: 0, fontSize: 13, color: C.ink }}>You&apos;re all caught up.</p>
@@ -142,22 +168,36 @@ export function NotificationsPanel({
 
         {!loading &&
           notifs.map((n) => (
-            <button
+            <div
               key={n.id}
-              type="button"
-              onClick={() => go(n)}
-              style={{ width: "100%", textAlign: "left", background: "none", border: "none", borderRadius: 10, padding: "10px 14px", cursor: "pointer", fontFamily: "inherit", color: "inherit", transition: "background 120ms" }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = C.bg)}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+              style={{ display: "flex", alignItems: "flex-start", gap: 4, borderRadius: 10, padding: "4px 6px" }}
             >
-              <p style={{ margin: 0, fontSize: 13, color: TONE[n.tone], lineHeight: 1.4 }}>{n.title}</p>
-              <p style={{ margin: "4px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink45, lineHeight: 1.5 }}>{n.meta}</p>
-              {n.hatched && (
-                <div style={{ marginTop: 8, maxWidth: 240 }}>
-                  <ConfidenceBand validated={false} pointFraction={0.5} />
-                </div>
-              )}
-            </button>
+              <button
+                type="button"
+                onClick={() => go(n)}
+                aria-label={`Open notification: ${n.title}`}
+                style={{ flex: 1, textAlign: "left", background: "none", border: "none", borderRadius: 8, padding: "6px 8px", cursor: "pointer", fontFamily: "inherit", color: "inherit", transition: "background 120ms" }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = C.bg)}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+              >
+                <p style={{ margin: 0, fontSize: 13, color: TONE[n.tone], lineHeight: 1.4 }}>{n.title}</p>
+                <p style={{ margin: "4px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink45, lineHeight: 1.5 }}>{n.meta}</p>
+                {n.hatched && (
+                  <div style={{ marginTop: 8, maxWidth: 240 }}>
+                    <ConfidenceBand validated={false} pointFraction={0.5} />
+                  </div>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => void dismiss(n)}
+                aria-label={`Dismiss notification: ${n.title}`}
+                title="Dismiss from my inbox"
+                style={{ background: "none", border: "none", borderRadius: 8, cursor: "pointer", padding: "7px", fontFamily: MONO, fontSize: 10, color: C.ink40 }}
+              >
+                ✕
+              </button>
+            </div>
           ))}
       </div>
 
@@ -165,6 +205,9 @@ export function NotificationsPanel({
         <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink40, lineHeight: 1.5, flex: 1 }}>
           Read states stay out of this queue.
         </span>
+        <a href="/notifications" style={{ fontFamily: MONO, fontSize: 10, color: C.ink45, textDecoration: "none" }}>
+          MANAGE →
+        </a>
       </div>
     </div>
   );

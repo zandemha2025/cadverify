@@ -56,6 +56,13 @@ export interface DeclareEnvResult {
   error: string | null;
 }
 
+export interface PreservePartContextFields {
+  program?: string | null;
+  parent_assembly?: string | null;
+  units_per_parent?: number | null;
+  annual_volume?: number | null;
+}
+
 /**
  * Persist the declared world for a part (PUT /part-context/{mesh_hash}). Idempotent
  * on (org, mesh_hash). Best-effort by contract: a failure (no org on the session,
@@ -65,8 +72,16 @@ export interface DeclareEnvResult {
  */
 export async function declarePartContext(
   meshHash: string,
-  env: ServiceEnvironment
+  env: ServiceEnvironment,
+  preserve?: PreservePartContextFields | null
 ): Promise<DeclareEnvResult> {
+  const body: Record<string, unknown> = { service_environment: env };
+  if (preserve) {
+    body.program = preserve.program ?? null;
+    body.parent_assembly = preserve.parent_assembly ?? null;
+    body.units_per_parent = preserve.units_per_parent ?? null;
+    body.annual_volume = preserve.annual_volume ?? null;
+  }
   let res: Response;
   try {
     res = await fetch(
@@ -74,7 +89,7 @@ export async function declarePartContext(
       {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ service_environment: env }),
+        body: JSON.stringify(body),
         cache: "no-store",
       }
     );
@@ -82,10 +97,10 @@ export async function declarePartContext(
     return { ok: false, error: e instanceof Error ? e.message : "Network error" };
   }
   if (res.ok) return { ok: true, error: null };
-  const body: Record<string, unknown> = await res.json().catch(() => ({}));
+  const errorBody: Record<string, unknown> = await res.json().catch(() => ({}));
   const detail =
-    (body.detail as string) ||
-    (body.message as string) ||
+    (errorBody.detail as string) ||
+    (errorBody.message as string) ||
     `part-context declare failed (${res.status})`;
   return { ok: false, error: typeof detail === "string" ? detail : JSON.stringify(detail) };
 }

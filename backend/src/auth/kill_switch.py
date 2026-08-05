@@ -9,6 +9,8 @@ Semantics (AUTH-09):
 """
 from __future__ import annotations
 
+from src.config.public_urls import error_doc_url
+
 import os
 import threading
 import time
@@ -43,6 +45,6 @@ def require_kill_switch_open() -> None:
             detail={
                 "code": "service_paused",
                 "message": "New analyses temporarily disabled. Retry in an hour.",
-                "doc_url": "https://docs.cadverify.com/errors#service_paused",
+                "doc_url": error_doc_url("service_paused"),
             },
         )

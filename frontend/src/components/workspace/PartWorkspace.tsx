@@ -38,7 +38,7 @@ import {
   type ValidationResult,
 } from "@/lib/api";
 import { severityTone, verdictLabel, verdictTone, procLabel } from "@/lib/status";
-import { parseCalibration, pickEstimate } from "@/lib/cost-views";
+import { parseCalibration, makeNowStableEstimate } from "@/lib/cost-views";
 import { costPersistUiEnabled } from "@/lib/cost-decision";
 import { flattenIssues } from "@/components/IssueList";
 import { CAD_ACCEPT, isSupportedCad, supportedCadLabel } from "@/lib/cad-file";
@@ -58,6 +58,7 @@ import { GlassBoxView, type ScenarioSummary } from "@/components/workspace/Glass
 import { RoutingDfmView } from "@/components/workspace/RoutingDfmView";
 import { CompareView } from "@/components/workspace/CompareView";
 import { DecisionInspector } from "@/components/workspace/DecisionInspector";
+import { UnitWarningBanner } from "@/components/workspace/UnitWarningBanner";
 import { CostArtifactBar } from "@/components/instrument/CostArtifactBar";
 import {
   CostOptionsForm,
@@ -209,7 +210,12 @@ export default function PartWorkspace({
   // the number the whole frame is about — and traces it to its governed sources.
   const inspectorEstimate = useMemo(() => {
     if (!report?.decision) return null;
-    return pickEstimate(report, report.decision.make_now_process);
+    // Anchor to the make-now route's STABLE (largest, setup-amortized) quantity —
+    // the reading the should-cost headline shows — so the Inspector's drivers
+    // reconcile to the SAME qty's unit cost. (F5: this used pickEstimate() with no
+    // qty, which returns the FIRST/smallest-qty estimate and disagreed with the
+    // headline — drivers @qty 100 under a headline @qty 10,000.)
+    return makeNowStableEstimate(report);
   }, [report]);
   const overrideKeys = useMemo(() => Object.keys(opts.overrides ?? {}), [opts.overrides]);
 
@@ -317,13 +323,13 @@ export default function PartWorkspace({
     }
   }, []);
 
-  const runDfm = useCallback(async (theFile: File) => {
+  const runDfm = useCallback(async (theFile: File, sourceUnits: CostOptions["units"]) => {
     setDfmLoading(true);
     setDfmError(null);
     setValidation(null);
     setSelectedIssueKey(null);
     try {
-      const data = await validateFile(theFile);
+      const data = await validateFile(theFile, undefined, undefined, undefined, sourceUnits);
       setValidation(data);
     } catch (err) {
       setDfmError(err instanceof Error ? err.message : "Analysis failed");
@@ -346,7 +352,7 @@ export default function PartWorkspace({
       setFile(selected);
       setTab(landingTab(role));
       void runCost(selected, opts);
-      void runDfm(selected);
+      void runDfm(selected, opts.units);
     },
     [opts, role, runCost, runDfm]
   );
@@ -367,7 +373,10 @@ export default function PartWorkspace({
   const handleRecost = useCallback(() => {
     if (!file || validateQty(opts.qty)) return;
     void runCost(file, opts);
-  }, [file, opts, runCost]);
+    // Source units change geometry, not just price. Re-run DFM from the same
+    // declaration so Routing and Decision can never describe different parts.
+    void runDfm(file, opts.units);
+  }, [file, opts, runCost, runDfm]);
 
   const reset = useCallback(() => {
     setFile(null);
@@ -515,7 +524,7 @@ export default function PartWorkspace({
         onSaveScenario={onSaveScenario}
         onRecallScenario={onRecallScenario}
         handleRecost={handleRecost}
-        runDfm={runDfm}
+        runDfm={(candidate) => void runDfm(candidate, opts.units)}
         reset={reset}
       />
     );
@@ -574,6 +583,8 @@ export default function PartWorkspace({
               </Button>
             </div>
           </div>
+
+          <UnitWarningBanner warnings={report?.unit_warnings} />
 
           <Tabs value={tab} onValueChange={(v) => setTab(v as WorkTab)}>
             <TabsList className="w-full justify-start overflow-x-auto">
@@ -678,7 +689,7 @@ export default function PartWorkspace({
                     <ErrorState
                       title="Analysis unavailable"
                       message={dfmError}
-                      onRetry={() => file && runDfm(file)}
+                      onRetry={() => file && runDfm(file, opts.units)}
                     />
                   ) : (
                     <RoutingDfmView
@@ -873,7 +884,7 @@ function buildAnswerSummary(
   const lines: string[] = [];
   if (report?.decision) {
     const dec = report.decision;
-    lines.push(`CadVerify — ${report.filename}`);
+    lines.push(`ProofShape — ${report.filename}`);
     lines.push(`Make by ${procLabel(dec.make_now_process)} / ${dec.make_now_material}`);
     for (const q of report.quantities) {
       const r = dec.recommendation[String(q)];

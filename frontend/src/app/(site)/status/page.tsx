@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { SiteShell } from "@/components/site/site-shell";
 
 export const metadata: Metadata = {
-  title: "Status - CadVerify",
-  description: "CadVerify public status page.",
+  title: "Status - ProofShape",
+  description: "ProofShape public status page.",
 };
 
 export default function StatusPage() {
@@ -15,7 +15,7 @@ export default function StatusPage() {
           Public incident feed is not live yet.
         </h1>
         <p style={{ maxWidth: 680, color: "rgba(255,255,255,0.68)", fontSize: 18, lineHeight: 1.6 }}>
-          CadVerify does not show synthetic uptime. Pilot customers receive deployment-specific support channels and incident communication. A public automated feed will appear here when it is wired to production monitoring.
+          ProofShape does not show synthetic uptime. Pilot customers receive deployment-specific support channels and incident communication. A public automated feed will appear here when it is wired to production monitoring.
         </p>
         <div style={{ marginTop: 42, display: "grid", gap: 14 }}>
           {[

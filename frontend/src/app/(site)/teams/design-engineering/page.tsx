@@ -58,9 +58,12 @@ export default function DesignEngineeringPage() {
   const cap5 = React.useRef<HTMLElement | null>(null);
 
   const choreography = React.useMemo(
-    () => makeDesignChoreography({ sec1, sec2, sec3, sec4 }),
+    () => {
+      // The factory stores these refs; it reads `.current` only in animation frames.
+      // eslint-disable-next-line react-hooks/refs
+      return makeDesignChoreography({ sec1, sec2, sec3, sec4 });
+    },
     // refs are stable — the choreography is built once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
@@ -135,8 +138,8 @@ export default function DesignEngineeringPage() {
             }}
           >
             You already design to stress, weight, and tolerance — because you can measure them while you work. Now
-            makeability is measurable too: envelope, materials-for-the-world, physics, and what it really takes — at
-            design speed.
+            makeability is measurable too: envelope, materials for the service environment, physics, and true build
+            cost — at design speed.
           </p>
         </div>
       </section>

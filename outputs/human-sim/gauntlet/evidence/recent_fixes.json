@@ -1,0 +1,35 @@
+{
+  "fix1_material": {},
+  "fix1_basis": "geometry-manufacturability; material not declared",
+  "fix2_longbar": {
+    "best": "binder_jetting",
+    "bbox": [
+      300.0,
+      20.0,
+      20.0
+    ],
+    "top": [
+      [
+        "binder_jetting",
+        1.0
+      ],
+      [
+        "cnc_3axis",
+        1.0
+      ],
+      [
+        "cnc_5axis",
+        1.0
+      ],
+      [
+        "wire_edm",
+        1.0
+      ],
+      [
+        "sls",
+        0.9
+      ]
+    ]
+  },
+  "fix3_features": {}
+}

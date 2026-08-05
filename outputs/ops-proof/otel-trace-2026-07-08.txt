@@ -1,0 +1,38 @@
+# Generated 2026-07-08T22:44:12Z by backend/scripts/otel_trace_proof.py
+# Command: cd backend && .venv/bin/python scripts/otel_trace_proof.py
+# Env: OTEL tracing activated via in-memory exporter (no OTLP egress); real request through Starlette TestClient.
+
+=== CADVerify OpenTelemetry trace proof ===
+Real spans from a real POST /api/v1/validate/cost/demo (cube.step), in-memory exporter.
+Library: opentelemetry-sdk 1.43.0 (real OTel, not a fallback)
+HTTP status: 200   decision status: OK
+Spans emitted: 10
+
+--- spans (flat) ---
+name='POST /api/v1/validate/cost/demo http receive' span=0f71202a9198f805 parent=0c3654a807dfae17 dur=0.122ms
+name='cost.parse_mesh' span=56de89cd176f0cb1 parent=0c3654a807dfae17 dur=3921.219ms
+    attrs: cadverify.file.suffix=.step, cadverify.file.bytes=19030, cadverify.units=mm
+name='cost.dfm_analysis' span=a9aa0b2bf1609081 parent=9b80b7477d7a2bba dur=2455.550ms
+name='cost.should_cost' span=a397950a6107c00e parent=9b80b7477d7a2bba dur=44.067ms
+    attrs: cadverify.status=OK
+name='cost.compute' span=9b80b7477d7a2bba parent=0c3654a807dfae17 dur=2511.842ms
+name='cost.serialize' span=b1ef6887043d1abb parent=0c3654a807dfae17 dur=0.118ms
+name='POST /api/v1/validate/cost/demo http send' span=09837e854b4e1bbe parent=0c3654a807dfae17 dur=0.046ms
+    attrs: http.status_code=200
+name='POST /api/v1/validate/cost/demo http send' span=d174e8f10673f8db parent=0c3654a807dfae17 dur=0.010ms
+name='POST /api/v1/validate/cost/demo http send' span=6fb3481ef6b1055d parent=0c3654a807dfae17 dur=0.013ms
+name='POST /api/v1/validate/cost/demo' span=0c3654a807dfae17 parent=(root) dur=6614.469ms
+    attrs: cadverify.request_id=otel-proof-0001, http.method=POST, http.route=/api/v1/validate/cost/demo, http.status_code=200, http.target=/api/v1/validate/cost/demo
+
+--- trace tree (parent -> child, with durations) ---
+POST /api/v1/validate/cost/demo  [6614.469ms]
+  POST /api/v1/validate/cost/demo http receive  [0.122ms]
+  cost.parse_mesh  [3921.219ms]
+  cost.compute  [2511.842ms]
+    cost.dfm_analysis  [2455.550ms]
+    cost.should_cost  [44.067ms]
+  cost.serialize  [0.118ms]
+  POST /api/v1/validate/cost/demo http send  [0.046ms]
+  POST /api/v1/validate/cost/demo http send  [0.010ms]
+  POST /api/v1/validate/cost/demo http send  [0.013ms]
+

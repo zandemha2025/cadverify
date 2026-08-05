@@ -64,7 +64,7 @@ function Segmented<T extends string | number>({
   onChange: (v: T) => void;
 }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2" role="group" aria-label={label}>
       <span className="cv-eyebrow">{label}</span>
       <div className="inline-flex flex-wrap gap-1 rounded-[var(--radius)] border border-border bg-muted p-0.5">
         {options.map((o) => (

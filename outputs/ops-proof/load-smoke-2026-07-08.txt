@@ -1,0 +1,27 @@
+=== CADVerify local load smoke ===
+generated: 2026-07-08T22:47:22.426Z
+api: http://127.0.0.1:8077
+driver: Node v22.22.2 fetch (k6 NOT installed in this container)
+
+SCOPE / HONESTY: single-container smoke on shared CI-grade hardware. NOT a
+production-scale or SLA benchmark. Latencies are wall-clock per request from
+THIS host to a co-located uvicorn; do not extrapolate to production concurrency.
+/health & /health/deep 503 = honest dependency degradation (Redis/worker
+absent in this container), NOT a load failure — they are counted as served.
+preflight /health status: 200  body: {"status":"ok","version":"dev","postgres":true,"redis":false,"async":{"redis":false,"worker":"unavailable","expected":false,"worker_strict":false},"reconstruction":{"available":false,"backend":"none",
+GET /health
+  requests=200  errors=0  error_rate=0.00%
+  throughput=254.47 req/s  wall=786ms
+  latency_ms  p50=58.103  p95=248.742  p99=253.004  max=254.648
+
+GET /health/deep
+  requests=100  errors=0  error_rate=0.00%
+  throughput=305.23 req/s  wall=328ms
+  latency_ms  p50=29.723  p95=50.024  p99=51.669  max=52.058
+
+POST /api/v1/validate/cost/demo (parse -> DFM -> should-cost, cube.step)
+  requests=12  errors=0  error_rate=0.00%
+  throughput=0.22 req/s  wall=54478ms
+  latency_ms  p50=16407.779  p95=21736.304  p99=21736.304  max=21736.304
+
+config: {"health":{"requests":200,"concurrency":20},"healthDeep":{"requests":100,"concurrency":10},"cost":{"requests":12,"concurrency":4}}

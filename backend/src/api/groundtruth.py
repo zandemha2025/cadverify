@@ -189,13 +189,15 @@ async def create_ground_truth(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    await session.commit()
     from src.services.audit_service import emit_event
-    emit_event(
-        user.user_id, "groundtruth.ingested", "ground_truth", row.ulid,
+
+    await emit_event(
+        session, user.user_id, "groundtruth.ingested", "ground_truth", row.ulid,
         {"org_id": org_id, "part_id": row.part_id, "process": row.process,
          "quantity": row.quantity},
+        org_id=org_id,
     )
+    await session.commit()
     return svc.row_to_public(row)
 
 

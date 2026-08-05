@@ -1,17 +1,22 @@
 """Audit logging service -- append-only audit trail for compliance.
 
 Provides:
-  - log_action()           -- insert a single audit_log row
-  - fire_and_forget_audit() -- background wrapper for log_action
-  - query_audit_log()      -- cursor-paginated query with filters
-  - export_audit_csv()     -- CSV export of filtered audit entries
+  - append_audit_entry() -- append inside a caller-owned transaction
+  - log_action()         -- append and commit a standalone required event
+  - emit_event()         -- concise transactional product-event wrapper
+  - query_audit_log()    -- cursor-paginated query with filters
+  - export_audit_csv()   -- CSV export of filtered audit entries
+
+Audit writes are deliberately load-bearing. Security and product mutations add
+their audit row to the SAME ``AsyncSession`` before commit, so the mutation and
+its evidence either commit together or roll back together. Authentication flows
+without an existing mutation transaction await ``log_action`` before issuing a
+session. There is no background-task path that can lose an event on process exit.
 """
 from __future__ import annotations
 
-import asyncio
 import csv
 import io
-import logging
 from datetime import datetime
 from typing import Optional
 
@@ -19,9 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.engine import get_session_factory
-from src.db.models import AuditLog
-
-logger = logging.getLogger("cadverify.audit")
+from src.db.models import AuditLog, User
 
 
 # ---------------------------------------------------------------------------
@@ -29,21 +32,14 @@ logger = logging.getLogger("cadverify.audit")
 # ---------------------------------------------------------------------------
 
 
-async def _lookup_email(user_id: int | None) -> str:
-    """Best-effort email lookup for audit. Returns 'system' if not found."""
+async def _lookup_email(session: AsyncSession, user_id: int | None) -> str:
+    """Resolve the denormalized actor identity in the current transaction."""
     if user_id is None:
         return "system"
-    try:
-        from src.db.models import User
-
-        async with get_session_factory()() as session:
-            from sqlalchemy import select as _sel
-            row = (await session.execute(
-                _sel(User.email).where(User.id == user_id)
-            )).scalar_one_or_none()
-            return row or f"user:{user_id}"
-    except Exception:
-        return f"user:{user_id}"
+    row = (
+        await session.execute(select(User.email).where(User.id == user_id))
+    ).scalar_one_or_none()
+    return row or f"user:{user_id}"
 
 
 # ---------------------------------------------------------------------------
@@ -51,85 +47,116 @@ async def _lookup_email(user_id: int | None) -> str:
 # ---------------------------------------------------------------------------
 
 
-async def log_action(
+async def append_audit_entry(
+    session: AsyncSession,
     user_id: int | None,
-    user_email: str,
     action: str,
     resource_type: str,
     resource_id: str | None = None,
     detail: dict | None = None,
+    *,
+    user_email: str | None = None,
+    org_id: str | None = None,
     ip_address: str | None = None,
     user_agent: str | None = None,
     file_hash: str | None = None,
     result_summary: str | None = None,
 ) -> None:
-    """Insert an audit_log row. Swallows DB errors to avoid breaking requests."""
-    try:
-        async with get_session_factory()() as session:
-            from src.auth.org_context import resolve_org
+    """Add an audit row without committing the caller-owned transaction.
 
-            org_id = (
-                await resolve_org(session, user_id)
-                if user_id is not None
-                else None
-            )
-            entry = AuditLog(
-                user_id=user_id,
-                org_id=org_id,
-                user_email=user_email,
-                action=action,
-                resource_type=resource_type,
-                resource_id=resource_id,
-                detail_json=detail,
-                ip_address=ip_address,
-                user_agent=user_agent,
-                file_hash=file_hash,
-                result_summary=result_summary,
-            )
-            session.add(entry)
-            await session.commit()
-    except Exception:
-        logger.exception("Failed to write audit log entry action=%s", action)
-
-
-async def fire_and_forget_audit(**kwargs) -> None:
-    """Wrapper that calls log_action in a background task.
-
-    Usage from routes: asyncio.create_task(fire_and_forget_audit(...))
+    Any lookup or insert failure propagates. The caller's subsequent commit is
+    the durability boundary for both the protected mutation and this row.
     """
-    await log_action(**kwargs)
+    if org_id is None and user_id is not None:
+        from src.auth.org_context import resolve_org
+
+        org_id = await resolve_org(session, user_id)
+    if not user_email:
+        user_email = await _lookup_email(session, user_id)
+    session.add(
+        AuditLog(
+            user_id=user_id,
+            org_id=org_id,
+            user_email=user_email,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            detail_json=detail,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            file_hash=file_hash,
+            result_summary=result_summary,
+        )
+    )
 
 
-def emit_event(
+async def log_action(
+    user_id: int | None,
+    user_email: str | None,
+    action: str,
+    resource_type: str,
+    resource_id: str | None = None,
+    detail: dict | None = None,
+    *,
+    org_id: str | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+    file_hash: str | None = None,
+    result_summary: str | None = None,
+) -> None:
+    """Commit one standalone required event, propagating any failure.
+
+    Auth flows await this before returning a signed session. It is intentionally
+    strict: an unavailable audit ledger makes the protected action unavailable.
+    """
+    async with get_session_factory()() as session:
+        await append_audit_entry(
+            session,
+            user_id,
+            action,
+            resource_type,
+            resource_id,
+            detail,
+            user_email=user_email,
+            org_id=org_id,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            file_hash=file_hash,
+            result_summary=result_summary,
+        )
+        await session.commit()
+
+
+async def emit_event(
+    session: AsyncSession,
     actor_id: int | None,
     action: str,
     resource_type: str,
     resource_id: str | None = None,
     detail: dict | None = None,
+    *,
+    user_email: str | None = None,
+    org_id: str | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+    file_hash: str | None = None,
+    result_summary: str | None = None,
 ) -> None:
-    """Fire-and-forget a product audit event, resolving the actor's email.
-
-    The shared one-liner behind the §35 product events (decision/machine/library/
-    governance/ground-truth): schedule a background task that looks up the actor
-    email and writes one ``audit_log`` row. Best-effort — never blocks or breaks
-    the request; a scheduling failure is swallowed (audit is not load-bearing for
-    the mutation that already committed).
-    """
-    async def _run():
-        email = await _lookup_email(actor_id)
-        await log_action(
-            user_id=actor_id,
-            user_email=email,
-            action=action,
-            resource_type=resource_type,
-            resource_id=resource_id,
-            detail=detail,
-        )
-
-    try:
-        asyncio.create_task(_run())
-    except Exception:
-        logger.warning("failed to schedule audit event %s", action, exc_info=True)
+    """Append a product event to ``session``; caller commits it with mutation."""
+    await append_audit_entry(
+        session,
+        actor_id,
+        action,
+        resource_type,
+        resource_id,
+        detail,
+        user_email=user_email,
+        org_id=org_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        file_hash=file_hash,
+        result_summary=result_summary,
+    )
 
 
 # ---------------------------------------------------------------------------

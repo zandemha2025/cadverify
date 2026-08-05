@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { CSSProperties } from "react";
 import Link from "next/link";
+import { backendOrigin } from "@/lib/api-base";
 // Import SiteShell from its module path rather than the `@/components/site`
 // barrel: the barrel re-exports `lib/site/scroll-acts` (React hooks, no
 // "use client" directive), which would pull that client-only module into this
@@ -36,10 +37,15 @@ import styles from "./developers.module.css";
  */
 
 export const metadata: Metadata = {
-  title: "Developers — CadVerify",
+  title: "Developers — ProofShape",
   description:
     "The engine is an API. Send an STL, STEP/STP or IGES/IGS file, get back the full auditable report — routing, DFM, drivers with provenance, confidence, decision. Or self-host the whole stack with Docker Compose.",
 };
+
+// The API hostname is supplied when the container starts. Keeping this page
+// dynamic prevents a staging hostname from being frozen into the promoted
+// production image at build time.
+export const dynamic = "force-dynamic";
 
 // JSON syntax hues (design values; tokens where the foundation defines them).
 const STR = "#9fc0a8"; // string literal green (no token in the register)
@@ -52,6 +58,7 @@ const I1 = "  ";
 const I2 = "    ";
 
 export default function DevelopersPage() {
+  const apiOrigin = backendOrigin();
   return (
     <SiteShell>
       {/* ── hero ─────────────────────────────────────────────────────────── */}
@@ -165,7 +172,7 @@ export default function DevelopersPage() {
           <h2 style={sectionH2}>1 — Validate a part with curl</h2>
           <div style={codeBlock}>
             <p style={{ margin: 0, color: "rgba(245,245,247,0.35)" }}># manufacturability + cost in one request</p>
-            <p style={codeLine}>curl -X POST https://cadvrfy-api.fly.dev/api/v1/validate \</p>
+            <p style={codeLine}>curl -X POST {apiOrigin}/api/v1/validate \</p>
             <p style={codeLine}>
               {I1}-H <span style={{ color: STR }}>&quot;Authorization: Bearer cv_live_YOUR_KEY&quot;</span> \
             </p>
@@ -219,8 +226,8 @@ export default function DevelopersPage() {
             used for air-gapped and export-controlled deployments.
           </p>
           <div style={codeBlock}>
-            <p style={codeLine}>git clone https://github.com/zandemha2025/cadverify.git</p>
-            <p style={codeLine}>cd cadverify</p>
+            <p style={codeLine}>git clone &quot;$PROOFSHAPE_DEPLOYMENT_REPOSITORY&quot; proofshape</p>
+            <p style={codeLine}>cd proofshape</p>
             <p style={codeLine}>
               cp .env.example .env{I1}<span style={{ color: "rgba(245,245,247,0.35)" }}># set secrets, storage, origins</span>
             </p>

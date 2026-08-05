@@ -97,6 +97,40 @@ def test_known_material_name_and_class_accepted():
     svc.validate_machine(m)
 
 
+def test_placeholder_shorthands_accepted():
+    # WA-2: the add-machine form placeholder literally suggests "6061, 316L, PP"
+    # (plus 304/ss304) — those bare shorthands must validate, not 400.
+    for token in ("6061", "316L", "304", "ss304", "PP", "pp", "316l"):
+        m = _good_machine()
+        m["materials"] = [token]
+        svc.validate_machine(m)  # no raise
+
+
+def test_shorthands_normalize_to_registry_names():
+    # Accepted shorthands are STORED as the real registry material, not the bare
+    # token the user typed (so downstream matching sees a real material).
+    payload = svc._normalize(
+        {**_good_machine(), "materials": ["6061", "316L", "304", "PP"]}
+    )
+    assert payload["materials"] == [
+        "6061-T6 Aluminum",
+        "SS316L",
+        "304 Stainless",
+        "PP (Molded)",
+    ]
+
+
+def test_garbage_material_still_reported_with_vocab_hint():
+    # A genuinely unknown material stays an honest 400 — and the message now
+    # points at the accepted vocabulary instead of only saying "unknown".
+    m = _good_machine()
+    m["materials"] = ["unobtainium"]
+    with pytest.raises(ValueError, match="unknown material") as exc:
+        svc.validate_machine(m)
+    msg = str(exc.value)
+    assert "accepted:" in msg and "shorthand" in msg
+
+
 def test_capital_frac_out_of_range_reported():
     m = _good_machine()
     m["capital_frac"] = 1.5

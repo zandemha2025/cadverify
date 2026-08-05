@@ -121,7 +121,10 @@ async def test_upsert_inserts_when_absent():
 async def test_upsert_updates_existing_row_in_place():
     existing = PartContext(org_id="org-a", mesh_hash="mesh-1", created_by=1)
     existing.program = "OldProgram"
+    existing.parent_assembly = "pump skid"
+    existing.units_per_parent = 2
     existing.annual_volume = 500
+    existing.service_environment = {"max_temp_c": 90, "sour_service": True}
     sess = _FakeSession(existing=existing)
 
     row = await svc.upsert_context(
@@ -136,10 +139,38 @@ async def test_upsert_updates_existing_row_in_place():
     assert sess.added is None
     assert row.program == "NewProgram"
     assert row.annual_volume == 9000
-    # fields not supplied in the body are cleared to None (declared set only)
-    assert row.units_per_parent is None
+    # omitted fields are preserved: Verify can refresh service-world context
+    # without erasing the user's declared parent assembly / demand context.
+    assert row.parent_assembly == "pump skid"
+    assert row.units_per_parent == 2
+    assert row.service_environment == {"max_temp_c": 90, "sour_service": True}
     # created_by is not overwritten on update (stamped at insert)
     assert row.created_by == 1
+    assert sess.flush_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_upsert_explicit_null_clears_existing_declared_field():
+    existing = PartContext(org_id="org-a", mesh_hash="mesh-1", created_by=1)
+    existing.program = "OldProgram"
+    existing.parent_assembly = "pump skid"
+    existing.units_per_parent = 2
+    existing.annual_volume = 500
+    sess = _FakeSession(existing=existing)
+
+    row = await svc.upsert_context(
+        sess,
+        "org-a",
+        "mesh-1",
+        {"parent_assembly": None, "annual_volume": None},
+        created_by=99,
+    )
+
+    assert row is existing
+    assert row.program == "OldProgram"
+    assert row.parent_assembly is None
+    assert row.units_per_parent == 2
+    assert row.annual_volume is None
     assert sess.flush_calls == 1
 
 

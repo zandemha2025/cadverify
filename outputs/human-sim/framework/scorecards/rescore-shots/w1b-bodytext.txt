@@ -1,0 +1,183 @@
+C
+Verify
+/
+cube.step
+Default rate card (v0) · none authored
+⌘K
+Verify a part
+cube.step
+
+Ø/bbox 20.0 × 15.0 × 10.0 mm · 2.72 cm³
+watertight true · ● MEASURED
+
+● real shell · 41k-tri preview
+
+CONTEXT
+
+not declared
+
+no parent assembly declared
+
+orphan until declared
+X-ray
+No parent assembly
+drag to orbit
+
+Can this be made — on your machines, in materials that survive its world — and what will it really take?
+
+DECLARE ITS WORLD
+
+ambient
+120 °C service
+sour service (H₂S)
+35 MPa pressure
+
+no world declared — the part is verified in ambient conditions.
+
+DECLARED MATERIAL CLASS · ● USER
+
+Polymer
+Aluminum
+Steel
+Stainless
+Titanium
+
+VERDICT · DFM ISSUES · SHOULD-COST COMPUTED
+
+Should-cost $8.68/unit on FDM / FFF at qty 10,000
+
+The engine returned routing, DFM, and a glass-box should-cost. Whether it's makeable on your machines is the makeability verification — not evaluated here because no machines and no world are declared. Declare your floor or a world to resolve it, never assumed.
+
+Open the record →
+1
+
+Envelope — against your machines
+
+0 machines declared
+
+No machines declared.
+
+Your floor is the denominator of every makeability verdict. Declare it once — a CSV or five minutes of typing.
+
+Declare your floor →
+2
+
+Materials that survive this world
+
+polymer
+
+material class polymer · route hint polymer ○ DEFAULT
+
+environment-driven survival filtering (NACE MR0175 / HDT tables) is part of the makeability verification — DECLARE A WORLD TO EVALUATE. Invalid materials are filtered out visibly, never silently.
+
+3
+
+Process physics — geometry against each route
+
+DLP ResinROUTE PICK
+issues
+CNC 3-Axis
+pass
+CNC 5-Axis
+pass
+Wire EDM
+pass
+SLA Resin
+issues
+SLS (Powder)
+issues
+
+15 priority fixes across routes · overall issues · rendered from POST /validate
+
+4
+
+What it really takes
+
+on FDM / FFF · PLA
+
+MATERIAL
+○ DEFAULT
+
+0.093 $
+
+PARTS PER BUILD
+○ DEFAULT
+
+68 parts
+
+MACHINE TIME
+○ DEFAULT
+
+1.406 $
+
+CYCLE TIME
+○ MODEL
+
+0.176 hr
+
+LABOR
+○ DEFAULT
+
+7.052 $
+
+SETUP
+○ DEFAULT
+
+0.13 $
+
+lead 9.1–16.9 days [queue model — not your scheduler] · computed hours are ○ MODEL from an assumption at SHOP rates — tap any driver for its verbatim derivation.
+
+5
+
+Resource cost — yours, not a market's
+
+QUANTITY 100 · engine-exact — a computed point
+annual volume · program not set
+1
+crossover ≈ 923
+10,000
+
+FDM / FFF — MAKE NOW
+
+$8.72 /unit at this qty
+
+engine-exact — a computed point
+
+hours × your rates + mass × your lot price · 0% of drivers grounded (● measured/shop/user)
+band & drivers read at computed qty 100
+
+assumption-based, not yet validated
+
+Injection Molding — NOT OWNED → ACQUIRE
+
+$62.18 /unit incl. tooling
+
+engine-exact — a computed point
+
+amortizes past 923 units · conditional on a DFM redesign
+
+Open acquisition consideration →
+
+engine note: Make by fdm (PLA) — $30.0/unit at qty 1, the cheapest make-as-is option and your low-volume pick. fdm stays cheapest up to ~923 units; above ~923, injection_molding is cheaper ($2.78/unit at qty 10000). Note: injection_molding requires design-for-molding — the part currently FAILS draft DFM (114818 sidewall faces (100.0% of sidewall area) below 1.0° draft for injection_molding.); the tooling cost shown is 'if redesigned for molding', not a current-capability quote.
+
+Decide
+
+Make in-house
+Make outside
+Acquire capability
+Redesign
+
+next → pick one above · your choice is noted on this verification beside the saved cost-decision record.
+
+Open the record →
+the cost-decision is the immutable saved artifact; your choice above is noted in this verification session and the record opens from Records.
+
+this verdict ships hatched — assumption band, not shop-validated · n=0. It flips solid only when your actuals come back.
+
+See how truth arrives →
+Compare routes @ 1,000
+Compare saved decisions →
+Why this verdict?
+An uncomputable ask
+
+answers are deterministic engine artifacts — verdict, materials, drivers, hours, cost, routes, and saved records

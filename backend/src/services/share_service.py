@@ -62,6 +62,17 @@ async def create_share(
     short_id = generate_short_id()
     analysis.share_short_id = short_id
     analysis.is_public = True
+    from src.services.audit_service import emit_event
+
+    await emit_event(
+        session,
+        actor_id=user_id,
+        action="share.created",
+        resource_type="share",
+        resource_id=short_id,
+        detail={"analysis_ulid": analysis_ulid},
+        org_id=analysis.org_id,
+    )
     await session.commit()
 
     logger.info(
@@ -70,17 +81,6 @@ async def create_share(
         short_id,
         user_id,
     )
-
-    # Audit: share.created
-    import asyncio
-    from src.services.audit_service import fire_and_forget_audit, _lookup_email
-    _email = await _lookup_email(user_id)
-    asyncio.create_task(fire_and_forget_audit(
-        user_id=user_id, user_email=_email,
-        action="share.created", resource_type="share",
-        resource_id=short_id,
-        detail={"analysis_ulid": analysis_ulid},
-    ))
 
     return {"share_url": f"/s/{short_id}", "share_short_id": short_id}
 
@@ -105,20 +105,20 @@ async def revoke_share(
     old_short_id = analysis.share_short_id
     analysis.share_short_id = None
     analysis.is_public = False
+    from src.services.audit_service import emit_event
+
+    await emit_event(
+        session,
+        actor_id=user_id,
+        action="share.revoked",
+        resource_type="share",
+        resource_id=old_short_id,
+        detail={"analysis_ulid": analysis_ulid},
+        org_id=analysis.org_id,
+    )
     await session.commit()
 
     logger.info("Analysis %s unshared by user %d", analysis_ulid, user_id)
-
-    # Audit: share.revoked
-    import asyncio
-    from src.services.audit_service import fire_and_forget_audit, _lookup_email
-    _email = await _lookup_email(user_id)
-    asyncio.create_task(fire_and_forget_audit(
-        user_id=user_id, user_email=_email,
-        action="share.revoked", resource_type="share",
-        resource_id=old_short_id,
-        detail={"analysis_ulid": analysis_ulid},
-    ))
 
 
 async def get_shared_analysis(

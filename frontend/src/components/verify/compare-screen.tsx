@@ -261,7 +261,7 @@ function RecordSelect({
       <select
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
-        style={{ maxWidth: 300, background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 8, padding: "8px 12px", fontFamily: MONO, fontSize: 12, color: C.ink, outline: "none", cursor: "pointer" }}
+        style={{ maxWidth: 300, background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 8, padding: "8px 12px", fontFamily: MONO, fontSize: 12, color: C.ink, cursor: "pointer" }}
       >
         {records.map((r) => (
           <option key={r.id} value={r.id} disabled={r.id === disabledId}>
