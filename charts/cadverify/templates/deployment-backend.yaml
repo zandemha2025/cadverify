@@ -1,3 +1,4 @@
+{{- include "cadverify.validateProductionValues" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -7,26 +8,76 @@ metadata:
     app.kubernetes.io/component: backend
 spec:
   replicas: {{ .Values.replicaCount.backend }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       {{- include "cadverify.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: backend
   template:
     metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       labels:
         {{- include "cadverify.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: backend
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
+      serviceAccountName: {{ include "cadverify.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.topologySpreadConstraints.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: {{ .Values.topologySpreadConstraints.maxSkew }}
+          topologyKey: {{ .Values.topologySpreadConstraints.topologyKey | quote }}
+          whenUnsatisfiable: {{ .Values.topologySpreadConstraints.whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              {{- include "cadverify.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: backend
+      {{- end }}
       containers:
         - name: backend
-          image: "{{ .Values.image.backend.repository }}:{{ .Values.image.backend.tag }}"
+          image: {{ include "cadverify.backendImage" . | quote }}
           imagePullPolicy: {{ .Values.image.backend.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           ports:
-            - containerPort: 8000
+            - name: http
+              containerPort: 8000
               protocol: TCP
+          {{- if .Values.runtimeSecret.existingSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.runtimeSecret.existingSecret | quote }}
+          {{- end }}
           env:
             - name: PORT
               value: "8000"
+            - name: RELEASE
+              value: {{ .Values.release | quote }}
+            - name: DEPLOYMENT_ENVIRONMENT
+              value: {{ .Values.deploymentEnvironment | quote }}
+            - name: HOME
+              value: /tmp
+            - name: XDG_CACHE_HOME
+              value: /tmp/.cache
+            - name: MPLCONFIGDIR
+              value: /tmp/matplotlib
+            {{- if not .Values.runtimeSecret.existingSecret }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
@@ -34,14 +85,97 @@ spec:
                   key: database-url
             - name: REDIS_URL
               value: {{ include "cadverify.redisUrl" . | quote }}
+            {{- end }}
             - name: AUTH_MODE
               value: {{ .Values.auth.mode | quote }}
+            - name: PASSWORD_LOGIN_ENABLED
+              value: {{ ternary "1" "0" (has .Values.auth.mode (list "password" "hybrid")) | quote }}
+            - name: MAGIC_LINK_ENABLED
+              value: {{ ternary "1" "0" .Values.frontend.magicLink.enabled | quote }}
+            - name: PUBLIC_PASSWORD_SIGNUP_ENABLED
+              value: {{ ternary "1" "0" .Values.auth.publicPasswordSignup | quote }}
+            - name: SESSION_COOKIE_DOMAIN
+              value: ""
+            - name: WEBHOOK_SSRF_GUARD_ENABLED
+              value: "1"
+            - name: SECURITY_HEADERS_ENABLED
+              value: "1"
+            - name: RECONSTRUCTION_BACKEND
+              value: {{ .Values.reconstruction.backend | quote }}
+            - name: RECONSTRUCTION_ALLOW_REMOTE_EGRESS
+              value: {{ ternary "1" "0" .Values.reconstruction.allowRemoteEgress | quote }}
             - name: AUDIT_ENABLED
               value: {{ .Values.audit.enabled | quote }}
             - name: AUDIT_RETENTION_DAYS
               value: {{ .Values.audit.retentionDays | quote }}
             - name: RBAC_DEFAULT_ROLE
               value: {{ .Values.rbac.defaultRole | quote }}
+            - name: ASYNC_STRICT_HEALTH
+              value: {{ ternary "1" "0" .Values.health.asyncStrict | quote }}
+            - name: WORKER_STRICT_HEALTH
+              value: {{ ternary "1" "0" .Values.health.workerStrict | quote }}
+            - name: OBJECT_STORE_BACKEND
+              value: {{ .Values.objectStore.backend | quote }}
+            {{- if .Values.production.enabled }}
+            - name: PRODUCTION_STORAGE_REQUIRED
+              value: "1"
+            - name: PRODUCTION_OBSERVABILITY_REQUIRED
+              value: "1"
+            - name: PRODUCTION_TLS_REQUIRED
+              value: "1"
+            - name: PRODUCTION_DEEP_HEALTH_AUTH_REQUIRED
+              value: "1"
+            - name: PRODUCTION_AUTH_PROXY_REQUIRED
+              value: "1"
+            - name: PRODUCTION_VERIFIED_SIGNUP_REQUIRED
+              value: "1"
+            - name: PRODUCTION_HOST_ONLY_SESSION_COOKIE_REQUIRED
+              value: "1"
+            - name: PRODUCTION_CRYPTO_SECRET_QUALITY_REQUIRED
+              value: "1"
+            - name: PRODUCTION_SSRF_GUARD_REQUIRED
+              value: "1"
+            - name: PRODUCTION_SECURITY_HEADERS_REQUIRED
+              value: "1"
+            {{- if .Values.production.regulated }}
+            - name: PRODUCTION_REGULATED_BOUNDARY_REQUIRED
+              value: "1"
+            - name: SENTRY_DSN
+              value: ""
+            - name: PRODUCTION_OTLP_TLS_REQUIRED
+              value: "1"
+            - name: PRODUCTION_KMS_REQUIRED
+              value: "1"
+            {{- end }}
+            {{- end }}
+            {{- if eq .Values.objectStore.backend "s3" }}
+            - name: OBJECT_STORE_S3_BUCKET
+              value: {{ .Values.objectStore.s3.bucket | quote }}
+            - name: OBJECT_STORE_S3_REGION
+              value: {{ .Values.objectStore.s3.region | quote }}
+            - name: OBJECT_STORE_S3_PREFIX
+              value: {{ .Values.objectStore.s3.prefix | quote }}
+            {{- if .Values.objectStore.s3.kmsKeyId }}
+            - name: OBJECT_STORE_S3_KMS_KEY_ID
+              value: {{ .Values.objectStore.s3.kmsKeyId | quote }}
+            {{- end }}
+            {{- if .Values.objectStore.s3.endpoint }}
+            - name: OBJECT_STORE_S3_ENDPOINT
+              value: {{ .Values.objectStore.s3.endpoint | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.observability.otel.enabled }}
+            - name: OTEL_TRACING_ENABLED
+              value: "1"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.observability.otel.endpoint | quote }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.observability.otel.serviceName | quote }}
+            {{- if .Values.observability.otel.caSecret }}
+            - name: OTEL_EXPORTER_OTLP_CERTIFICATE
+              value: "/var/run/cadverify/otel/{{ .Values.observability.otel.caKey }}"
+            {{- end }}
+            {{- end }}
             {{- if .Values.saml.enabled }}
             - name: SAML_ENABLED
               value: "true"
@@ -55,33 +189,73 @@ spec:
               value: {{ .Values.saml.spSloUrl | quote }}
             {{- end }}
           volumeMounts:
-            - name: blobs
+            - name: tmp
+              mountPath: /tmp
+            - name: data
               mountPath: /data/blobs
+            {{- if and .Values.observability.otel.enabled .Values.observability.otel.caSecret }}
+            - name: otel-ca
+              mountPath: /var/run/cadverify/otel
+              readOnly: true
+            {{- end }}
             {{- if .Values.saml.enabled }}
             - name: saml-config
               mountPath: /app/saml
               readOnly: true
             {{- end }}
+          startupProbe:
+            tcpSocket:
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5
           livenessProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            initialDelaySeconds: 15
-            periodSeconds: 30
+            tcpSocket:
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
           readinessProbe:
             httpGet:
+              # Deep health is token-protected and performs an S3 canary. The
+              # lightweight readiness route still gates Postgres/Redis/worker.
               path: /health
-              port: 8000
-            initialDelaySeconds: 5
+              port: http
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           resources:
             {{- toYaml .Values.resources.backend | nindent 12 }}
       volumes:
-        - name: blobs
+        - name: tmp
+          emptyDir:
+            sizeLimit: 2Gi
+        - name: data
+          {{- if and (eq .Values.objectStore.backend "local") .Values.persistence.blobs.enabled }}
           persistentVolumeClaim:
             claimName: {{ include "cadverify.fullname" . }}-blobs
+          {{- else }}
+          emptyDir:
+            sizeLimit: {{ .Values.ephemeralStorage.dataSize }}
+          {{- end }}
+        {{- if and .Values.observability.otel.enabled .Values.observability.otel.caSecret }}
+        - name: otel-ca
+          secret:
+            secretName: {{ .Values.observability.otel.caSecret | quote }}
+            items:
+              - key: {{ .Values.observability.otel.caKey | quote }}
+                path: {{ .Values.observability.otel.caKey | quote }}
+        {{- end }}
         {{- if .Values.saml.enabled }}
         - name: saml-config
-          configMap:
-            name: {{ include "cadverify.fullname" . }}-saml
+          {{- if .Values.saml.existingSecret }}
+          secret:
+            secretName: {{ .Values.saml.existingSecret | quote }}
+          {{- else }}
+          projected:
+            sources:
+              - configMap:
+                  name: {{ include "cadverify.fullname" . }}-saml
+              - secret:
+                  name: {{ include "cadverify.fullname" . }}-saml
+          {{- end }}
         {{- end }}

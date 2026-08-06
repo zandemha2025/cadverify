@@ -6,7 +6,7 @@ via the canonical ``analyze_geometry`` pass, and writes ``data/corpus/manifest.j
 
 Sources (spec §2.5):
   1. Thingi10K  (HF dataset ``Thingi10K/Thingi10K``) — bulk, per-file license. PRIMARY.
-  2. Existing 107 repo parts (Printables / GitHub / Thangs ...) — additive-biased sample.
+  2. Operator-supplied, license-documented parts — additive-biased sample.
   3. Permissive GitHub open-hardware repos — mechanical geometry diversity.
   (4. ABC CAD dataset — gated/login on probed mirrors -> logged BLOCKED, skipped.)
 
@@ -23,23 +23,28 @@ Run from ``backend/``::
 from __future__ import annotations
 
 import argparse
+import base64
 import csv
 import hashlib
 import io
 import json
 import logging
 import os
+import re
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Iterable, Optional
+from urllib.parse import quote
 
 import requests
 import trimesh
 
 from src.analysis.base_analyzer import analyze_geometry, detect_units
 from src.corpus.guess import process_family_guess
-from src.corpus.paths import MANIFEST, MESH_DIR, ensure_dirs
+from src.corpus.paths import MANIFEST, MESH_DIR, REPO_ROOT, ensure_dirs
+from src.corpus.provenance import has_complete_provenance, has_documented_license
 
 logger = logging.getLogger("cadverify.corpus.gather")
 
@@ -50,26 +55,21 @@ HF_DS = "Thingi10K/Thingi10K"
 HF_META = f"https://huggingface.co/datasets/{HF_DS}/resolve/main/metadata"
 HF_RAW = f"https://huggingface.co/datasets/{HF_DS}/resolve/main/raw_meshes"
 
-# scratchpad cache for the (large) Thingi10K metadata CSVs
+# Local metadata cache and operator import directory. Both are overrideable and
+# resolve without any developer-machine-specific paths.
+_cache_home = Path(os.getenv("XDG_CACHE_HOME", Path.home() / ".cache"))
 CACHE_DIR = Path(
-    "/private/tmp/claude-501/-Users-nazeem-Desktop-developer-cadverify/"
-    "3182c9c6-e59b-4394-a584-d9c4cd4ce0dc/scratchpad/corpus_cache"
-)
+    os.getenv("CADVERIFY_CORPUS_CACHE_DIR", _cache_home / "cadverify" / "corpus")
+).expanduser()
 EXISTING_PARTS_DIR = Path(
-    "/private/tmp/claude-501/-Users-nazeem-Desktop-developer-cadverify/"
-    "3182c9c6-e59b-4394-a584-d9c4cd4ce0dc/scratchpad/parts"
-)
+    os.getenv("CADVERIFY_EXISTING_PARTS_DIR", REPO_ROOT / "data" / "import-corpus")
+).expanduser()
 
-# Openly-licensed Thingi10K licenses we accept (exclude Non-Commercial / No-Derivatives
-# to keep the corpus cleanly redistributable). Maps the verbose CSV string -> short code.
+# Version-specific Thingi10K license labels we can map without guessing. Every
+# ambiguous version, plus NC/ND/unknown, is rejected during candidate selection
+# before any asset download. Add mappings only with retained source review.
 THINGI_LICENSE_OK = {
-    "Creative Commons - Attribution": "CC-BY",
-    "Creative Commons - Attribution - Share Alike": "CC-BY-SA",
     "Creative Commons - Public Domain Dedication": "CC0-1.0",
-    "Public Domain": "Public-Domain",
-    "BSD License": "BSD",
-    "GNU - GPL": "GPL",
-    "GNU - LGPL": "LGPL",
 }
 
 # Face-count buckets (lo, hi] for size stratification (spec §2.6).
@@ -92,8 +92,8 @@ GITHUB_REPOS = [
 ]
 
 LOG_PATH = Path(
-    "/Users/nazeem/Desktop/developer/cadverify/outputs/c4-corpus-log.md"
-)
+    os.getenv("CADVERIFY_CORPUS_LOG", REPO_ROOT / "outputs" / "c4-corpus-log.md")
+).expanduser()
 
 _HEADERS = {"User-Agent": "cadverify-corpus-gatherer/1.0 (research; local corpus)"}
 
@@ -188,6 +188,12 @@ def add_part(
 
     Returns the part_id on success, else None (dropped / duplicate).
     """
+    if not has_complete_provenance(source_url, license):
+        glog(
+            f"provenance drop: {filename} requires HTTPS source_url + reviewed license "
+            f"(got license={license!r})"
+        )
+        return None
     stl_bytes = normalize_to_stl(raw, original_format)
     if stl_bytes is None:
         return None
@@ -316,7 +322,12 @@ def select_stratified(cands: list[dict], target: int) -> list[dict]:
                 break
 
     def order_key(c: dict) -> str:
-        return hashlib.sha1(c["file_id"].encode()).hexdigest()
+        # Non-cryptographic: SHA1 is only a stable deterministic shuffle key for
+        # even corpus stratification — never used for integrity or secrecy.
+        # usedforsecurity=False documents that intent and clears bandit B324.
+        return hashlib.sha1(
+            c["file_id"].encode(), usedforsecurity=False
+        ).hexdigest()
 
     per_bucket = max(1, target // len(FACE_BUCKETS))
     chosen: list[dict] = []
@@ -417,15 +428,6 @@ def _existing_source_url(filename: str, source: str) -> str:
     return ""
 
 
-def _existing_license(filename: str, source: str) -> str:
-    s = source.lower()
-    if "github" in s or "gitlab" in s:
-        return "UNKNOWN (open-hardware repo — see source_url)"
-    if "printables" in s or "thangs" in s or "bimmerpost" in s or "drive" in s:
-        return "UNKNOWN (consumer-site per-model — see source_url)"
-    return "UNKNOWN"
-
-
 def ingest_existing(out_fh, seen_ids, near, limit: Optional[int] = None) -> int:
     if not EXISTING_PARTS_DIR.exists():
         glog(f"existing-parts: dir not found {EXISTING_PARTS_DIR} — skipped")
@@ -451,8 +453,10 @@ def ingest_existing(out_fh, seen_ids, near, limit: Optional[int] = None) -> int:
             continue
         row = prov.get(stl.name, {})
         source = (row.get("source") or "Local repo parts").strip()
-        url = _existing_source_url(stl.name, source)
-        lic = _existing_license(stl.name, source)
+        url = (row.get("source_url") or "").strip() or _existing_source_url(
+            stl.name, source
+        )
+        lic = (row.get("license") or "").strip()
         pid = add_part(
             raw=raw, original_format="stl", filename=stl.name,
             source_url=url, dataset=f"repo-parts:{source}", license=lic,
@@ -468,28 +472,125 @@ def ingest_existing(out_fh, seen_ids, near, limit: Optional[int] = None) -> int:
 # ──────────────────────────────────────────────────────────────────────────────
 # Source 3: permissive GitHub repos
 # ──────────────────────────────────────────────────────────────────────────────
-def _gh_license(repo: str) -> str:
+@dataclass(frozen=True)
+class GitHubSource:
+    repo: str
+    requested_ref: str
+    commit_sha: str
+    license_spdx: str
+    license_path: str
+    license_blob_sha: str
+    license_sha256: str
+    license_artifact_url: str
+
+
+def _resolve_github_source(repo: str, ref: str) -> GitHubSource | None:
+    """Pin a mutable ref and its repository license to one immutable commit."""
     try:
-        r = requests.get(f"https://api.github.com/repos/{repo}/license",
-                         headers=_HEADERS, timeout=20)
-        if r.status_code == 200:
-            return r.json().get("license", {}).get("spdx_id") or "UNKNOWN"
-    except Exception:
-        pass
-    return "UNKNOWN"
+        encoded_ref = quote(ref, safe="")
+        commit_response = requests.get(
+            f"https://api.github.com/repos/{repo}/commits/{encoded_ref}",
+            headers=_HEADERS,
+            timeout=20,
+        )
+        if commit_response.status_code != 200:
+            glog(
+                f"github {repo}@{ref}: commit resolution HTTP "
+                f"{commit_response.status_code} — skipped"
+            )
+            return None
+        commit_sha = str(commit_response.json().get("sha") or "").strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{40}", commit_sha):
+            glog(f"github {repo}@{ref}: invalid resolved commit SHA — skipped")
+            return None
+
+        license_response = requests.get(
+            f"https://api.github.com/repos/{repo}/license",
+            params={"ref": commit_sha},
+            headers=_HEADERS,
+            timeout=20,
+        )
+        if license_response.status_code != 200:
+            glog(
+                f"github {repo}@{commit_sha}: license HTTP "
+                f"{license_response.status_code} — skipped"
+            )
+            return None
+        document = license_response.json()
+        license_spdx = str(
+            (document.get("license") or {}).get("spdx_id") or ""
+        ).strip()
+        if not has_documented_license(license_spdx):
+            glog(
+                f"github {repo}@{commit_sha}: no reviewed SPDX license — skipped"
+            )
+            return None
+        license_path = str(document.get("path") or "").strip()
+        license_blob_sha = str(document.get("sha") or "").strip().lower()
+        path_parts = PurePosixPath(license_path).parts
+        if (
+            not license_path
+            or license_path.startswith("/")
+            or ".." in path_parts
+            or not re.fullmatch(r"[0-9a-f]{40}", license_blob_sha)
+            or document.get("encoding") != "base64"
+        ):
+            glog(
+                f"github {repo}@{commit_sha}: incomplete license artifact — skipped"
+            )
+            return None
+        encoded_content = "".join(str(document.get("content") or "").split())
+        license_bytes = base64.b64decode(encoded_content, validate=True)
+        if not license_bytes or len(license_bytes) > 1_000_000:
+            glog(
+                f"github {repo}@{commit_sha}: invalid license artifact size — skipped"
+            )
+            return None
+        computed_blob_sha = hashlib.sha1(  # nosec B324 - Git object identity
+            f"blob {len(license_bytes)}\0".encode() + license_bytes,
+            usedforsecurity=False,
+        ).hexdigest()
+        if computed_blob_sha != license_blob_sha:
+            glog(
+                f"github {repo}@{commit_sha}: license blob identity mismatch — skipped"
+            )
+            return None
+        quoted_license_path = quote(license_path, safe="/")
+        return GitHubSource(
+            repo=repo,
+            requested_ref=ref,
+            commit_sha=commit_sha,
+            license_spdx=license_spdx,
+            license_path=license_path,
+            license_blob_sha=license_blob_sha,
+            license_sha256=hashlib.sha256(license_bytes).hexdigest(),
+            license_artifact_url=(
+                f"https://github.com/{repo}/blob/{commit_sha}/{quoted_license_path}"
+            ),
+        )
+    except Exception as exc:
+        glog(f"github {repo}@{ref}: immutable source resolution failed ({exc})")
+        return None
 
 
 def fetch_github(out_fh, seen_ids, near, sleep: float = 0.1) -> int:
     added = 0
     for repo, ref, cap in GITHUB_REPOS:
-        lic = _gh_license(repo)
+        source = _resolve_github_source(repo, ref)
+        if source is None:
+            continue
         try:
             tree = requests.get(
-                f"https://api.github.com/repos/{repo}/git/trees/{ref}?recursive=1",
-                headers=_HEADERS, timeout=30,
+                f"https://api.github.com/repos/{repo}/git/trees/"
+                f"{source.commit_sha}?recursive=1",
+                headers=_HEADERS,
+                timeout=30,
             )
             if tree.status_code != 200:
-                glog(f"github {repo}@{ref}: tree HTTP {tree.status_code} — skipped")
+                glog(
+                    f"github {repo}@{source.commit_sha}: tree HTTP "
+                    f"{tree.status_code} — skipped"
+                )
                 continue
             entries = tree.json().get("tree", [])
         except Exception as exc:
@@ -498,13 +599,19 @@ def fetch_github(out_fh, seen_ids, near, sleep: float = 0.1) -> int:
         mesh_files = [e["path"] for e in entries
                       if e.get("type") == "blob"
                       and e["path"].lower().endswith((".stl", ".obj", ".ply", ".off"))]
-        glog(f"github {repo}@{ref}: {len(mesh_files)} mesh files, license={lic}")
+        glog(
+            f"github {repo}@{source.commit_sha}: {len(mesh_files)} mesh files, "
+            f"license={source.license_spdx}"
+        )
         repo_added = 0
         for path in mesh_files:
             if repo_added >= cap:
                 break
-            raw_url = f"https://raw.githubusercontent.com/{repo}/{ref}/" + \
-                      requests.utils.quote(path)
+            quoted_path = quote(path, safe="/")
+            raw_url = (
+                f"https://raw.githubusercontent.com/{repo}/"
+                f"{source.commit_sha}/{quoted_path}"
+            )
             try:
                 r = requests.get(raw_url, headers=_HEADERS, timeout=60)
                 if r.status_code != 200:
@@ -514,10 +621,22 @@ def fetch_github(out_fh, seen_ids, near, sleep: float = 0.1) -> int:
                 pid = add_part(
                     raw=r.content, original_format=fmt,
                     filename=path.split("/")[-1],
-                    source_url=f"https://github.com/{repo}/blob/{ref}/{path}",
-                    dataset=f"github:{repo}", license=lic, out_fh=out_fh,
+                    source_url=(
+                        f"https://github.com/{repo}/blob/"
+                        f"{source.commit_sha}/{quoted_path}"
+                    ),
+                    dataset=f"github:{repo}@{source.commit_sha}",
+                    license=source.license_spdx,
+                    out_fh=out_fh,
                     seen_ids=seen_ids, near=near,
-                    extra={"repo_path": path},
+                    extra={
+                        "repo_path": path,
+                        "github_requested_ref": source.requested_ref,
+                        "github_commit_sha": source.commit_sha,
+                        "license_artifact_url": source.license_artifact_url,
+                        "license_artifact_blob_sha": source.license_blob_sha,
+                        "license_artifact_sha256": source.license_sha256,
+                    },
                 )
                 if pid:
                     added += 1

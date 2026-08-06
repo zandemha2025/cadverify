@@ -9,6 +9,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
+from src.config.public_urls import error_doc_url
+
 # Stable error codes — do not rename or remove once published
 ERROR_CODES: dict[int, str] = {
     400: "BAD_REQUEST",
@@ -25,9 +27,6 @@ ERROR_CODES: dict[int, str] = {
     504: "ANALYSIS_TIMEOUT",
 }
 
-DOC_BASE = "https://docs.cadverify.com/errors"
-
-
 def _build_error(
     status_code: int,
     code: str,
@@ -38,7 +37,7 @@ def _build_error(
     payload = {
         "code": code,
         "message": message,
-        "doc_url": f"{DOC_BASE}/{code}",
+        "doc_url": error_doc_url(code),
     }
     if detail is not None:
         payload["detail"] = detail
@@ -52,7 +51,7 @@ async def structured_http_error_handler(
     # If detail is already a dict with 'code', use it as-is
     if isinstance(exc.detail, dict) and "code" in exc.detail:
         return JSONResponse(
-            status_code=exc.status_code, content=exc.detail
+            status_code=exc.status_code, content=exc.detail, headers=exc.headers
         )
     if isinstance(exc.detail, dict):
         message = str(exc.detail.get("message") or exc.detail.get("reason") or exc.detail)
@@ -63,6 +62,7 @@ async def structured_http_error_handler(
     return JSONResponse(
         status_code=exc.status_code,
         content=_build_error(exc.status_code, code, message, detail=detail),
+        headers=exc.headers,
     )
 
 

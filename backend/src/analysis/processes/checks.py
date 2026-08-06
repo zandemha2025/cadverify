@@ -21,7 +21,11 @@ import numpy as np
 from src.analysis.citations import parse_citation
 from src.analysis.constants import STANDARD_GAUGES
 from src.analysis.context import GeometryContext
-from src.analysis.features.base import Feature, FeatureKind
+from src.analysis.features.base import (
+    Feature,
+    FeatureKind,
+    has_rotational_surface_evidence,
+)
 from src.analysis.models import Issue, ProcessType, Severity
 
 logger = logging.getLogger("cadverify.checks")
@@ -79,6 +83,14 @@ def check_overhangs(
         return []  # self-supporting process
     threshold = 90.0 + max_angle_deg
     oh_mask = ctx.angles_from_up_deg > threshold
+    # Faces resting ON the build plate need no supports: exclude near-flat
+    # downward faces whose centroid sits at the part's z-minimum (scale-aware
+    # tolerance so micro and macro parts both behave).
+    if len(ctx.centroids):
+        z = ctx.centroids[:, 2]
+        z_tol = max(0.1, ctx.bbox_diag * 1e-3)
+        on_plate = (z <= float(z.min()) + z_tol) & (ctx.angles_from_up_deg >= 175.0)
+        oh_mask = oh_mask & ~on_plate
     oh_faces = np.where(oh_mask)[0]
     if len(oh_faces) == 0:
         return []
@@ -209,9 +221,13 @@ def check_trapped_volumes(
     if len(ctx.bodies) <= 1:
         return issues
     try:
-        main = max(ctx.bodies, key=lambda m: m.volume if m.is_watertight else 0)
-        for sub in ctx.bodies:
-            if sub is main or not sub.is_watertight:
+        main_index = max(range(len(ctx.bodies)), key=ctx.body_volumes.__getitem__)
+        main = ctx.bodies[main_index]
+        if ctx.body_volumes[main_index] <= 0:
+            return issues
+        for index, sub in enumerate(ctx.bodies):
+            sub_volume = ctx.body_volumes[index]
+            if index == main_index or sub_volume <= 0:
                 continue
             center = sub.centroid
             if main.is_watertight and main.contains([center])[0]:
@@ -219,7 +235,7 @@ def check_trapped_volumes(
                     code="TRAPPED_VOLUME",
                     severity=Severity.ERROR,
                     message=(
-                        f"Internal cavity ({sub.volume:.0f}mm³) traps material "
+                        f"Internal cavity ({sub_volume:.0f}mm³) traps material "
                         f"in {process.value}. Needs >= {min_drain_mm}mm drain holes."
                     ),
                     process=process,
@@ -482,7 +498,9 @@ def check_fillet_requirements(
 ) -> list[Issue]:
     if len(ctx.dihedral_angles_rad) == 0:
         return []
-    sharp = ctx.dihedral_angles_rad < np.radians(120)
+    # An "internal corner" is a CONCAVE sharp edge — convex edges (a box's
+    # outer corners) and coplanar seams need no fillet for material flow.
+    sharp = (ctx.dihedral_angles_rad < np.radians(120)) & ctx.concave_mask
     count = int(np.sum(sharp))
     if count < 5:
         return []
@@ -572,6 +590,12 @@ def check_rotational_symmetry(
     tolerance: float = 0.10,
 ) -> list[Issue]:
     """Part must be roughly rotationally symmetric for turning."""
+    # Trimesh's inertia calculation derives mass properties and divides by
+    # signed volume. Open or zero-volume meshes have already failed the
+    # universal solid-geometry gate; asking for inertia here adds no truthful
+    # signal and can emit divide-by-zero RuntimeWarnings plus a noisy traceback.
+    if not ctx.info.is_watertight or not np.isfinite(ctx.info.volume) or ctx.info.volume <= 0:
+        return []
     try:
         inertia = ctx.mesh.moment_inertia
         eig = np.linalg.eigvalsh(inertia)
@@ -581,14 +605,18 @@ def check_rotational_symmetry(
         # Two eigenvalues should be approximately equal for rotational symmetry
         ratio_01 = eig[0] / eig[1] if eig[1] > 0 else 0
         ratio_12 = eig[1] / eig[2] if eig[2] > 0 else 0
-        is_symmetric = (abs(1.0 - ratio_01) < tolerance) or (abs(1.0 - ratio_12) < tolerance)
+        is_symmetric = (
+            (abs(1.0 - ratio_01) < tolerance)
+            or (abs(1.0 - ratio_12) < tolerance)
+        ) and has_rotational_surface_evidence(ctx.features, ctx.info.surface_area)
         if not is_symmetric:
             return [Issue(
                 code="NOT_ROTATIONALLY_SYMMETRIC",
                 severity=Severity.ERROR,
                 message=(
-                    f"Part lacks rotational symmetry (eigenvalue ratios: "
-                    f"{ratio_01:.2f}, {ratio_12:.2f}). Required for {process.value}."
+                    f"Part lacks positive rotational geometry (eigenvalue ratios: "
+                    f"{ratio_01:.2f}, {ratio_12:.2f}; no material outer cylindrical "
+                    f"surface). Required for {process.value}."
                 ),
                 process=process,
                 fix_suggestion="CNC turning requires axially symmetric geometry. Use mill-turn or 3/5-axis CNC.",
@@ -768,9 +796,12 @@ def check_core_feasibility(
     if len(ctx.bodies) <= 1:
         return issues
     try:
-        main = max(ctx.bodies, key=lambda m: m.volume if m.is_watertight else 0)
-        for sub in ctx.bodies:
-            if sub is main or not sub.is_watertight or sub.volume <= 0:
+        main_index = max(range(len(ctx.bodies)), key=ctx.body_volumes.__getitem__)
+        main = ctx.bodies[main_index]
+        if ctx.body_volumes[main_index] <= 0:
+            return issues
+        for index, sub in enumerate(ctx.bodies):
+            if index == main_index or ctx.body_volumes[index] <= 0:
                 continue
             center = sub.centroid
             if main.is_watertight and main.contains([center])[0]:

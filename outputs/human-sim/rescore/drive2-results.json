@@ -1,0 +1,714 @@
+{
+  "focus": {
+    "email": {
+      "active": true,
+      "outlineStyle": "auto",
+      "outlineWidth": "1px",
+      "outlineColor": "rgb(16, 16, 16)",
+      "outlineOffset": "0px",
+      "borderColor": "rgba(245, 245, 247, 0.16)",
+      "boxShadow": "none"
+    },
+    "password": {
+      "active": true,
+      "outlineStyle": "auto",
+      "outlineWidth": "1px",
+      "outlineColor": "rgb(16, 16, 16)",
+      "outlineOffset": "0px"
+    }
+  },
+  "contrast": [
+    {
+      "t": "Verify",
+      "color": "rgba(23, 24, 26, 0.66)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "13px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "cube.step",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "12.5px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "Default rate card (v0) · none authored",
+      "color": "rgba(23, 24, 26, 0.7)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "12px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "watertight true · ● MEASURED",
+      "color": "rgb(59, 123, 184)",
+      "bg": "rgb(246, 246, 247)",
+      "size": "11px",
+      "weight": "400",
+      "ratio": 4.13
+    },
+    {
+      "t": "CONTEXT",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgba(255, 255, 255, 0.78)",
+      "size": "10px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "not declared",
+      "color": "rgba(23, 24, 26, 0.62)",
+      "bg": "rgba(255, 255, 255, 0.78)",
+      "size": "10px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "no parent assembly declared",
+      "color": "rgba(23, 24, 26, 0.66)",
+      "bg": "rgba(255, 255, 255, 0.78)",
+      "size": "11px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "orphan until declared",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgba(246, 246, 247, 0.72)",
+      "size": "9.5px",
+      "weight": "400",
+      "ratio": 16.45
+    },
+    {
+      "t": "drag to orbit",
+      "color": "rgba(23, 24, 26, 0.6)",
+      "bg": "rgb(246, 246, 247)",
+      "size": "10.5px",
+      "weight": "400",
+      "ratio": 16.45
+    },
+    {
+      "t": "on your machines",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(246, 246, 247)",
+      "size": "17.5px",
+      "weight": "500",
+      "ratio": 16.45
+    },
+    {
+      "t": "DECLARE ITS WORLD",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10.5px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "ambient",
+      "color": "rgba(23, 24, 26, 0.62)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10.5px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "no world declared — the part is verified in ambient con",
+      "color": "rgba(23, 24, 26, 0.62)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10.5px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "● USER",
+      "color": "rgb(122, 99, 201)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10.5px",
+      "weight": "400",
+      "ratio": 4.71
+    },
+    {
+      "t": "VERDICT · DFM ISSUES · SHOULD-COST COMPUTED",
+      "color": "rgb(176, 120, 24)",
+      "bg": "rgba(23, 24, 26, 0.016)",
+      "size": "10.5px",
+      "weight": "400",
+      "ratio": 4.69
+    },
+    {
+      "t": "at qty 10,000",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgba(23, 24, 26, 0.016)",
+      "size": "14px",
+      "weight": "400",
+      "ratio": 1
+    },
+    {
+      "t": "on your machines",
+      "color": "rgba(23, 24, 26, 0.7)",
+      "bg": "rgba(23, 24, 26, 0.016)",
+      "size": "14px",
+      "weight": "500",
+      "ratio": 1
+    },
+    {
+      "t": "Envelope — against your machines",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "15px",
+      "weight": "500",
+      "ratio": 17.77
+    },
+    {
+      "t": "0 machines declared",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "11px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "No machines declared.",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "14px",
+      "weight": "500",
+      "ratio": 17.77
+    },
+    {
+      "t": "Materials that survive this world",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "15px",
+      "weight": "500",
+      "ratio": 17.77
+    },
+    {
+      "t": "polymer",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "11px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "polymer",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "11.5px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "○ DEFAULT",
+      "color": "rgb(107, 114, 128)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10px",
+      "weight": "400",
+      "ratio": 4.83
+    },
+    {
+      "t": "DECLARE A WORLD TO EVALUATE",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "9px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "Process physics — geometry against each route",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "15px",
+      "weight": "500",
+      "ratio": 17.77
+    },
+    {
+      "t": "ROUTE PICK",
+      "color": "rgb(59, 123, 184)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "9.5px",
+      "weight": "400",
+      "ratio": 4.46
+    },
+    {
+      "t": "issues",
+      "color": "rgb(176, 120, 24)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10px",
+      "weight": "400",
+      "ratio": 3.79
+    },
+    {
+      "t": "CNC 3-Axis",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "13px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "CNC 5-Axis",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "13px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "Wire EDM",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "13px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "SLA Resin",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "13px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "issues",
+      "color": "rgb(176, 120, 24)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10px",
+      "weight": "400",
+      "ratio": 3.79
+    },
+    {
+      "t": "SLS (Powder)",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "13px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "issues",
+      "color": "rgb(176, 120, 24)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10px",
+      "weight": "400",
+      "ratio": 3.79
+    },
+    {
+      "t": "15 priority fixes across routes · overall issues · rend",
+      "color": "rgba(23, 24, 26, 0.62)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10.5px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "What it really takes",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "15px",
+      "weight": "500",
+      "ratio": 17.77
+    },
+    {
+      "t": "on FDM / FFF · PLA",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "11px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "MATERIAL",
+      "color": "rgba(23, 24, 26, 0.62)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "○ DEFAULT",
+      "color": "rgb(107, 114, 128)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10px",
+      "weight": "400",
+      "ratio": 4.83
+    },
+    {
+      "t": "PARTS PER BUILD",
+      "color": "rgba(23, 24, 26, 0.62)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "○ DEFAULT",
+      "color": "rgb(107, 114, 128)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10px",
+      "weight": "400",
+      "ratio": 4.83
+    },
+    {
+      "t": "MACHINE TIME",
+      "color": "rgba(23, 24, 26, 0.62)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "○ DEFAULT",
+      "color": "rgb(107, 114, 128)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10px",
+      "weight": "400",
+      "ratio": 4.83
+    },
+    {
+      "t": "CYCLE TIME",
+      "color": "rgba(23, 24, 26, 0.62)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "○ MODEL",
+      "color": "rgb(107, 114, 128)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10px",
+      "weight": "400",
+      "ratio": 4.83
+    },
+    {
+      "t": "○ DEFAULT",
+      "color": "rgb(107, 114, 128)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10px",
+      "weight": "400",
+      "ratio": 4.83
+    },
+    {
+      "t": "○ DEFAULT",
+      "color": "rgb(107, 114, 128)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10px",
+      "weight": "400",
+      "ratio": 4.83
+    },
+    {
+      "t": "[queue model — not your scheduler]",
+      "color": "rgb(107, 114, 128)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10.5px",
+      "weight": "400",
+      "ratio": 4.83
+    },
+    {
+      "t": "Resource cost — yours, not a market's",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "15px",
+      "weight": "500",
+      "ratio": 17.77
+    },
+    {
+      "t": "· engine-exact — a computed point",
+      "color": "rgba(23, 24, 26, 0.62)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10.5px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "program not set",
+      "color": "rgb(122, 99, 201)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10px",
+      "weight": "400",
+      "ratio": 4.71
+    },
+    {
+      "t": "crossover ≈ 923",
+      "color": "rgba(23, 24, 26, 0.6)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "9.5px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "10,000",
+      "color": "rgba(23, 24, 26, 0.6)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "9.5px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "FDM / FFF — MAKE NOW",
+      "color": "rgb(31, 138, 91)",
+      "bg": "rgba(31, 138, 91, 0.02)",
+      "size": "10px",
+      "weight": "400",
+      "ratio": 1
+    },
+    {
+      "t": "/unit at this qty",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgba(31, 138, 91, 0.02)",
+      "size": "13px",
+      "weight": "300",
+      "ratio": 4.1
+    },
+    {
+      "t": "engine-exact — a computed point",
+      "color": "rgba(23, 24, 26, 0.62)",
+      "bg": "rgba(31, 138, 91, 0.02)",
+      "size": "9.5px",
+      "weight": "400",
+      "ratio": 4.1
+    },
+    {
+      "t": "assumption-based, not yet validated",
+      "color": "rgb(176, 120, 24)",
+      "bg": "rgba(31, 138, 91, 0.02)",
+      "size": "9.5px",
+      "weight": "400",
+      "ratio": 1.14
+    },
+    {
+      "t": "Injection Molding — NOT OWNED → ACQUIRE",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "/unit incl. tooling",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "13px",
+      "weight": "300",
+      "ratio": 17.77
+    },
+    {
+      "t": "engine-exact — a computed point",
+      "color": "rgba(23, 24, 26, 0.62)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "9.5px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "amortizes past 923 units · conditional on a DFM redesig",
+      "color": "rgba(23, 24, 26, 0.64)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "10px",
+      "weight": "400",
+      "ratio": 17.77
+    },
+    {
+      "t": "Decide",
+      "color": "rgb(23, 24, 26)",
+      "bg": "rgb(255, 255, 255)",
+      "size": "15px",
+      "weight": "500",
+      "ratio": 17.77
+    }
+  ],
+  "captured": {
+    "belowThreshold": [
+      {
+        "t": "at qty 10,000",
+        "color": "rgba(23, 24, 26, 0.64)",
+        "bg": "rgba(23, 24, 26, 0.016)",
+        "size": "14px",
+        "weight": "400",
+        "ratio": 1
+      },
+      {
+        "t": "on your machines",
+        "color": "rgba(23, 24, 26, 0.7)",
+        "bg": "rgba(23, 24, 26, 0.016)",
+        "size": "14px",
+        "weight": "500",
+        "ratio": 1
+      },
+      {
+        "t": "FDM / FFF — MAKE NOW",
+        "color": "rgb(31, 138, 91)",
+        "bg": "rgba(31, 138, 91, 0.02)",
+        "size": "10px",
+        "weight": "400",
+        "ratio": 1
+      },
+      {
+        "t": "assumption-based, not yet validated",
+        "color": "rgb(176, 120, 24)",
+        "bg": "rgba(31, 138, 91, 0.02)",
+        "size": "9.5px",
+        "weight": "400",
+        "ratio": 1.14
+      },
+      {
+        "t": "issues",
+        "color": "rgb(176, 120, 24)",
+        "bg": "rgb(255, 255, 255)",
+        "size": "10px",
+        "weight": "400",
+        "ratio": 3.79
+      },
+      {
+        "t": "issues",
+        "color": "rgb(176, 120, 24)",
+        "bg": "rgb(255, 255, 255)",
+        "size": "10px",
+        "weight": "400",
+        "ratio": 3.79
+      },
+      {
+        "t": "issues",
+        "color": "rgb(176, 120, 24)",
+        "bg": "rgb(255, 255, 255)",
+        "size": "10px",
+        "weight": "400",
+        "ratio": 3.79
+      },
+      {
+        "t": "/unit at this qty",
+        "color": "rgba(23, 24, 26, 0.64)",
+        "bg": "rgba(31, 138, 91, 0.02)",
+        "size": "13px",
+        "weight": "300",
+        "ratio": 4.1
+      },
+      {
+        "t": "engine-exact — a computed point",
+        "color": "rgba(23, 24, 26, 0.62)",
+        "bg": "rgba(31, 138, 91, 0.02)",
+        "size": "9.5px",
+        "weight": "400",
+        "ratio": 4.1
+      },
+      {
+        "t": "watertight true · ● MEASURED",
+        "color": "rgb(59, 123, 184)",
+        "bg": "rgb(246, 246, 247)",
+        "size": "11px",
+        "weight": "400",
+        "ratio": 4.13
+      },
+      {
+        "t": "ROUTE PICK",
+        "color": "rgb(59, 123, 184)",
+        "bg": "rgb(255, 255, 255)",
+        "size": "9.5px",
+        "weight": "400",
+        "ratio": 4.46
+      }
+    ],
+    "neutralMutedLowest": [
+      {
+        "t": "at qty 10,000",
+        "color": "rgba(23, 24, 26, 0.64)",
+        "bg": "rgba(23, 24, 26, 0.016)",
+        "size": "14px",
+        "weight": "400",
+        "ratio": 1
+      },
+      {
+        "t": "on your machines",
+        "color": "rgba(23, 24, 26, 0.7)",
+        "bg": "rgba(23, 24, 26, 0.016)",
+        "size": "14px",
+        "weight": "500",
+        "ratio": 1
+      },
+      {
+        "t": "/unit at this qty",
+        "color": "rgba(23, 24, 26, 0.64)",
+        "bg": "rgba(31, 138, 91, 0.02)",
+        "size": "13px",
+        "weight": "300",
+        "ratio": 4.1
+      },
+      {
+        "t": "engine-exact — a computed point",
+        "color": "rgba(23, 24, 26, 0.62)",
+        "bg": "rgba(31, 138, 91, 0.02)",
+        "size": "9.5px",
+        "weight": "400",
+        "ratio": 4.1
+      },
+      {
+        "t": "○ DEFAULT",
+        "color": "rgb(107, 114, 128)",
+        "bg": "rgb(255, 255, 255)",
+        "size": "10px",
+        "weight": "400",
+        "ratio": 4.83
+      },
+      {
+        "t": "○ DEFAULT",
+        "color": "rgb(107, 114, 128)",
+        "bg": "rgb(255, 255, 255)",
+        "size": "10px",
+        "weight": "400",
+        "ratio": 4.83
+      },
+      {
+        "t": "○ DEFAULT",
+        "color": "rgb(107, 114, 128)",
+        "bg": "rgb(255, 255, 255)",
+        "size": "10px",
+        "weight": "400",
+        "ratio": 4.83
+      },
+      {
+        "t": "○ DEFAULT",
+        "color": "rgb(107, 114, 128)",
+        "bg": "rgb(255, 255, 255)",
+        "size": "10px",
+        "weight": "400",
+        "ratio": 4.83
+      }
+    ],
+    "qtyLines": [
+      "Should-cost $8.68/unit on FDM / FFF at qty 10,000",
+      "0.093 $",
+      "1.406 $",
+      "7.052 $",
+      "0.13 $",
+      "QUANTITY 100 · engine-exact — a computed point",
+      "$8.72 /unit at this qty",
+      "band & drivers read at computed qty 100",
+      "$62.18 /unit incl. tooling",
+      "amortizes past 923 units · conditional on a DFM redesign",
+      "Compare routes @ 1,000"
+    ],
+    "steelHeadline": [
+      "VERDICT · DFM ISSUES · SHOULD-COST COMPUTED",
+      "Should-cost $10.68/unit on CNC 3-Axis at qty 10,000",
+      "material class steel · route hint steel ○ DEFAULT",
+      "Process physics — geometry against each route",
+      "DLP ResinROUTE PICK",
+      "CNC 3-Axis",
+      "CNC 5-Axis",
+      "SLA Resin",
+      "15 priority fixes across routes · overall issues · rendered from POST /validate",
+      "on CNC 3-Axis · Mild Steel",
+      "CNC 3-Axis — MAKE NOW",
+      "Compare routes @ 1,000",
+      "answers are deterministic engine artifacts — verdict, materials, drivers, hours, cost, routes, and saved records"
+    ],
+    "txtHasUnsupported": true,
+    "txtErrorSnippet": "AL CLASS · ● USER\n\nPolymer\nAluminum\nSteel\nStainless\nTitanium\n\nVERDICT · COULD NOT ANALYZE\n\nWe couldn't read this file.\n\nUnsupported file type: .txt. Use .stl, .step, .stp, .iges, or .igs No routing, DFM, or should-cost was computed, and nothing here is estimated. Upload a CAD part (.stl, .step, .stp, .iges, or .igs) to"
+  }
+}

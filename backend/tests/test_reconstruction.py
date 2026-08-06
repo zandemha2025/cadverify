@@ -8,6 +8,7 @@ passes.
 from __future__ import annotations
 
 import io
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import numpy as np
@@ -33,6 +34,8 @@ from src.reconstruction.scoring import (
     confidence_level,
     confidence_message,
 )
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 # ---------------------------------------------------------------------------
@@ -287,6 +290,10 @@ class TestZeroEgressBackendResolution:
         from src.services import reconstruction_service as rs
 
         monkeypatch.setenv("RECONSTRUCTION_BACKEND", "remote")
+        monkeypatch.setenv("REPLICATE_API_TOKEN", "test-token")
+        monkeypatch.setenv(
+            "TRIPOSR_REPLICATE_MODEL", f"approved/triposr:{'a' * 64}"
+        )
         backend, egress = rs.resolve_reconstruction_backend()
         assert backend == "remote"
         assert egress is True
@@ -300,6 +307,10 @@ class TestZeroEgressBackendResolution:
 
         monkeypatch.delenv("RECONSTRUCTION_BACKEND", raising=False)
         monkeypatch.setenv("RECONSTRUCTION_ALLOW_REMOTE_EGRESS", "1")
+        monkeypatch.setenv("REPLICATE_API_TOKEN", "test-token")
+        monkeypatch.setenv(
+            "TRIPOSR_REPLICATE_MODEL", f"approved/triposr:{'a' * 64}"
+        )
         monkeypatch.setattr(rs, "local_backend_available", lambda: False)
 
         backend, egress = rs.resolve_reconstruction_backend()
@@ -315,6 +326,25 @@ class TestZeroEgressBackendResolution:
             rs.resolve_reconstruction_backend()
         assert rs.check_reconstruction_availability()["available"] is False
 
+    def test_remote_backend_requires_token_and_pinned_model(self, monkeypatch):
+        from src.services import reconstruction_service as rs
+
+        monkeypatch.setenv("RECONSTRUCTION_BACKEND", "remote")
+        monkeypatch.delenv("REPLICATE_API_TOKEN", raising=False)
+        monkeypatch.delenv("TRIPOSR_REPLICATE_MODEL", raising=False)
+        report = rs.check_reconstruction_availability()
+        assert report["available"] is False
+        assert report["egress"] is False
+
+        monkeypatch.setenv("REPLICATE_API_TOKEN", "test-token")
+        monkeypatch.setenv("TRIPOSR_REPLICATE_MODEL", "stability-ai/triposr")
+        assert rs.check_reconstruction_availability()["available"] is False
+
+        monkeypatch.setenv(
+            "TRIPOSR_REPLICATE_MODEL", f"approved/triposr:{'b' * 64}"
+        )
+        assert rs.check_reconstruction_availability()["available"] is True
+
     def test_egress_factory_logs_acknowledgment(self, monkeypatch, caplog):
         """Every egress path must log a loud data-egress acknowledgment."""
         import logging
@@ -323,10 +353,33 @@ class TestZeroEgressBackendResolution:
 
         monkeypatch.setenv("RECONSTRUCTION_BACKEND", "remote")
         monkeypatch.setenv("REPLICATE_API_TOKEN", "test-token")
+        monkeypatch.setenv(
+            "TRIPOSR_REPLICATE_MODEL", f"approved/triposr:{'a' * 64}"
+        )
         with caplog.at_level(logging.WARNING, logger="cadverify.reconstruction_service"):
             engine = rs.get_reconstruction_engine()
         assert engine is not None
         assert any("DATA EGRESS" in rec.getMessage() for rec in caplog.records)
+
+    def test_deferred_remote_egress_requires_request_level_acknowledgement(
+        self, monkeypatch
+    ):
+        from src.services import reconstruction_service as rs
+
+        monkeypatch.setenv("RECONSTRUCTION_BACKEND", "remote")
+        monkeypatch.setenv("REPLICATE_API_TOKEN", "test-token")
+        monkeypatch.setenv(
+            "TRIPOSR_REPLICATE_MODEL", f"approved/triposr:{'c' * 64}"
+        )
+
+        with pytest.raises(
+            rs.ReconstructionEgressAcknowledgementRequiredError
+        ) as exc:
+            rs.require_job_backend_authorization({"egress_acknowledged": False})
+        assert exc.value.code == "RECONSTRUCTION_EGRESS_ACKNOWLEDGEMENT_REQUIRED"
+        assert rs.require_job_backend_authorization(
+            {"egress_acknowledged": True}
+        )["egress"] is True
 
 
 class TestEngineProtocol:
@@ -334,8 +387,7 @@ class TestEngineProtocol:
         """LocalTripoSR must be a subclass of ReconstructionEngine."""
         import ast
 
-        with open("src/reconstruction/local_triposr.py") as f:
-            tree = ast.parse(f.read())
+        tree = ast.parse((BACKEND_ROOT / "src/reconstruction/local_triposr.py").read_text())
         classes = {
             n.name: [b.attr if hasattr(b, "attr") else b.id for b in n.bases]
             for n in ast.walk(tree)
@@ -347,8 +399,7 @@ class TestEngineProtocol:
         """RemoteTripoSR must be a subclass of ReconstructionEngine."""
         import ast
 
-        with open("src/reconstruction/remote_triposr.py") as f:
-            tree = ast.parse(f.read())
+        tree = ast.parse((BACKEND_ROOT / "src/reconstruction/remote_triposr.py").read_text())
         classes = {
             n.name: [b.attr if hasattr(b, "attr") else b.id for b in n.bases]
             for n in ast.walk(tree)

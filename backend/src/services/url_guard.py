@@ -117,6 +117,24 @@ def _resolve_ips(host: str) -> list[ipaddress._BaseAddress]:
     return ips
 
 
+def validate_public_host(host: str) -> None:
+    """Require every address for ``host`` to be publicly routable.
+
+    Unlike :func:`validate_outbound_url`, this primitive cannot be disabled by
+    the webhook-specific compatibility switch. Security-sensitive clients such
+    as OIDC use it immediately before egress so a provider document cannot
+    redirect server-side requests to loopback, private, link-local, metadata,
+    carrier-grade NAT, multicast, or reserved networks.
+    """
+    if not host:
+        raise UnsafeURLError("URL has no host")
+    for ip in _resolve_ips(host):
+        if _ip_is_blocked(ip):
+            raise UnsafeURLError(
+                f"URL host '{host}' resolves to a non-routable address ({ip})"
+            )
+
+
 def validate_outbound_url(url: str | None) -> None:
     """Validate a user-supplied outbound URL, raising UnsafeURLError if unsafe.
 
@@ -138,11 +156,7 @@ def validate_outbound_url(url: str | None) -> None:
     if not host:
         raise UnsafeURLError("URL has no host")
 
-    for ip in _resolve_ips(host):
-        if _ip_is_blocked(ip):
-            raise UnsafeURLError(
-                f"URL host '{host}' resolves to a non-routable address ({ip})"
-            )
+    validate_public_host(host)
 
 
 def is_safe_outbound_url(url: str | None) -> bool:

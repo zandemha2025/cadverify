@@ -39,7 +39,7 @@ export function AlertDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md" hideClose>
+      <DialogContent className="max-w-md" hideClose role="alertdialog">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}

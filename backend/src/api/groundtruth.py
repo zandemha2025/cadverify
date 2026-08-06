@@ -178,8 +178,10 @@ async def create_ground_truth(
 ):
     """Persist one real ground-truth record for the caller's organization.
 
-    Org-stamped and validated through the costing ``GroundTruthRecord`` (a
-    non-positive cost / empty part_id is a clean 400). Dedup: last write wins on
+    Org-stamped and validated through the costing ``GroundTruthRecord``. A
+    non-positive cost or empty part_id is rejected by the request schema as a
+    structured 422 VALIDATION_ERROR; values that pass the schema but fail
+    domain validation return a clean 400. Dedup: last write wins on
     ``(part_id, process, quantity, shop)`` within the org.
     """
     org_id = await _require_org(session, user)
@@ -189,13 +191,15 @@ async def create_ground_truth(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    await session.commit()
     from src.services.audit_service import emit_event
-    emit_event(
-        user.user_id, "groundtruth.ingested", "ground_truth", row.ulid,
+
+    await emit_event(
+        session, user.user_id, "groundtruth.ingested", "ground_truth", row.ulid,
         {"org_id": org_id, "part_id": row.part_id, "process": row.process,
          "quantity": row.quantity},
+        org_id=org_id,
     )
+    await session.commit()
     return svc.row_to_public(row)
 
 

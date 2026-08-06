@@ -21,13 +21,12 @@
  * HONESTY (this page is the last line — see DESIGN-DECISIONS.md):
  *  - Only the real fixture is engine output: $14.14 · drivers 6.39/3.89/3.82/0.04
  *    (Σ reconciles) · band ±40% n=0 · SHOP rate $30/hr · util 0.80.
- *  - The design's Act-2 machine_cost derivation printed
- *    "0.0682 hr × $30/hr ÷ 0.8 × 1.15 overhead [15.2hr ÷ 223 parts] = $3.82",
- *    which actually computes to $2.94 (math that does not sum) and leans on
- *    non-fixture specifics (a 1.15 overhead, a 15.2 hr build, 223 parts). It is
- *    replaced here with a derivation grounded ONLY in fixture inputs — the SHOP
- *    rate $30/hr and util 0.80 — where the per-unit machine time back-solves to
- *    the real $3.82 (0.1019 hr × $30/hr ÷ 0.80 = $3.82). Nothing invented.
+ *  - Act 2 quotes the engine's REAL machine_cost source string VERBATIM
+ *    (cycle 0.0682 hr · "0.0682 hr × $30/hr ÷ 0.8 utilization × region-labor
+ *    ×1 × 1.15 overhead [build-job 380mm ÷ 25mm/hr = 15.2hr full build ÷ 223
+ *    parts/build]"), which computes to $2.94 pre-margin; the displayed $3.82
+ *    line item is that × the bound 0.30 margin (2.94 × 1.30 = 3.82). No
+ *    back-solved hours, no fabricated arithmetic.
  *  - The "$7,800 acquisition consideration" is not in the fixture, so it wears an
  *    <IllustrativeTag/> (the marginal-vs-acquire distinction itself is kept —
  *    it is the thesis).
@@ -66,28 +65,29 @@ export default function CostEngineeringCinematic() {
   const cap3 = React.useRef<HTMLDivElement | null>(null);
   const cap4 = React.useRef<HTMLDivElement | null>(null);
   const cap5 = React.useRef<HTMLDivElement | null>(null);
+  const lightingRef = React.useRef<{
+    key: THREE.DirectionalLight | null;
+    rim: THREE.DirectionalLight | null;
+    blue: THREE.Color | null;
+    green: THREE.Color | null;
+  }>({ key: null, rim: null, blue: null, green: null });
 
   const choreography = React.useMemo<Choreography>(() => {
-    // grabbed once from the shared scene (foundation exposes no light handles).
-    let keyLight: THREE.DirectionalLight | null = null;
-    let rimLight: THREE.DirectionalLight | null = null;
-    let rimBlue: THREE.Color | null = null;
-    let rimGreen: THREE.Color | null = null;
-
     return (f) => {
       const { scene, part, camera, renderer, materials, ghosts, shadow, dt, elapsed } = f;
+      const lighting = lightingRef.current;
 
-      if (!rimLight) {
+      if (!lighting.rim) {
         scene.traverse((o) => {
           const dl = o as THREE.DirectionalLight;
           if (dl.isDirectionalLight) {
             // key sits camera-left (x=-3); rim sits camera-right (x=4).
-            if (dl.position.x < 0) keyLight = dl;
-            else rimLight = dl;
+            if (dl.position.x < 0) lighting.key = dl;
+            else lighting.rim = dl;
           }
         });
-        rimBlue = new f.THREE.Color(0xbcd2ff);
-        rimGreen = new f.THREE.Color(0x55b880);
+        lighting.blue = new f.THREE.Color(0xbcd2ff);
+        lighting.green = new f.THREE.Color(0x55b880);
       }
 
       const m1 = measureSection(sec1.current); // lands
@@ -124,11 +124,11 @@ export default function CostEngineeringCinematic() {
       renderer.toneMappingExposure = 1.15 * Math.max(0.3, 1 - a3 * 0.7 + a4 * 0.55);
 
       // validated act: the light itself turns green — the earned solid
-      if (rimLight && rimBlue && rimGreen) {
-        rimLight.color.copy(rimBlue).lerp(rimGreen, a4);
-        rimLight.intensity = 1.6 + a4 * 1.8;
+      if (lighting.rim && lighting.blue && lighting.green) {
+        lighting.rim.color.copy(lighting.blue).lerp(lighting.green, a4);
+        lighting.rim.intensity = 1.6 + a4 * 1.8;
       }
-      if (keyLight) keyLight.intensity = 2.4 - a4 * 0.9;
+      if (lighting.key) lighting.key.intensity = 2.4 - a4 * 0.9;
 
       // this page is the pure shaft + x-ray: keep the shared studio's extra
       // props (metrology / scan / gearbox ghosts / contact shadow) quiet.
@@ -149,7 +149,6 @@ export default function CostEngineeringCinematic() {
       }
     };
     // refs are stable across renders — the choreography is built once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -219,12 +218,12 @@ export default function CostEngineeringCinematic() {
             </DisplayHeading>
             <p style={{ margin: "20px 0 0", fontSize: 16.5, lineHeight: 1.6, fontWeight: 300, color: "var(--st-ink-60)" }}>
               Program needs the number by Thursday&apos;s review. The engine walks the part through
-              envelope, materials, physics — then builds the resource-cost record, every driver
+              envelope, materials, physics — then builds the should-cost record, every driver
               sourced. The spreadsheet version of this week used to start with hunting for the last
               analogous part.
             </p>
             <p className="st-mono" style={{ margin: "20px 0 0", fontSize: 12, lineHeight: 1.8, color: "var(--st-ink-40)" }}>
-              verdict: makeable in-house — M2 Pro (MJF) · $14.14/unit marginal ±40% · Σ ✓ · 412 ms
+              verdict: makeable in-house — M2 Pro (MJF) · $14.14/unit should-cost ±40% · Σ ✓ · 412 ms
             </p>
           </div>
         </div>
@@ -250,7 +249,7 @@ export default function CostEngineeringCinematic() {
             </DisplayHeading>
             <p style={{ margin: "20px 0 0", fontSize: 16.5, lineHeight: 1.6, fontWeight: 300, color: "var(--st-ink-60)" }}>
               Every driver drills to its verbatim derivation. Disagree with the machine rate?
-              Override it — the row re-tags USER, the report re-costs server-side, and the audit
+              Override it — the row re-tags USER, the whole estimate re-costs and reconciles, and the audit
               trail keeps both versions.
             </p>
             <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -274,7 +273,9 @@ export default function CostEngineeringCinematic() {
                 </span>
               </div>
               <p className="st-mono" style={{ margin: 0, fontSize: 11, lineHeight: 1.7, color: "var(--st-ink-35)" }}>
-                &ldquo;0.1019 machine-hr/unit × $30/hr SHOP ÷ 0.80 utilization = $3.82&rdquo;
+                &ldquo;0.0682 hr × $30/hr ÷ 0.8 utilization × region-labor ×1 × 1.15 overhead
+                [build-job 380mm ÷ 25mm/hr = 15.2hr full build ÷ 223 parts/build]&rdquo;
+                {" "}= $2.94 · × 1.30 margin = $3.82
               </p>
               <p className="st-mono" style={{ margin: "4px 0 0", fontSize: 11.5, color: "var(--st-prov-user)" }}>
                 override → re-tags <ProvenanceChip provenance="USER" /> · re-costs · both versions retained

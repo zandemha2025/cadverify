@@ -24,8 +24,8 @@ import { Eyebrow, DisplayHeading, IllustrativeTag } from "@/components/site/evid
  * + full footer through <SiteShell>. Each persona row links to its /teams/*
  * journey; the nav "Teams" link stays lit across the whole subtree.
  *
- * HONESTY: the fixture family (M2 Pro / PP / $14.14 marginal / $7,800 IM
- * acquisition / crossover 1,962 / Midwest rates $52·$95·$30 / margin 0.30 ·
+ * HONESTY: the fixture family (M2 Pro / PP / $12.81 owned-machine marginal /
+ * $7,800 IM acquisition / crossover 1,960 / Midwest rates $52·$95·$30 / margin 0.30 ·
  * util 0.80) is the one real fixture, presented as engine output across every
  * site page. The Sourcing card, alone among the five, prints fabricated
  * shop-vs-shop per-unit costs at qty 1,000 ($5.96 / $10.45 / $2.68) that are
@@ -36,7 +36,7 @@ import { Eyebrow, DisplayHeading, IllustrativeTag } from "@/components/site/evid
  */
 
 export const metadata: Metadata = {
-  title: "Teams — CadVerify",
+  title: "Teams — ProofShape",
   description:
     "One record. Five people who have to defend it. The same engine output, read through different lenses — cost engineering, sourcing, design engineering, in-house manufacturing and shop owners.",
 };
@@ -160,7 +160,7 @@ export default function TeamsPage() {
           Five people who have to defend it.
         </DisplayHeading>
         <p style={{ margin: "26px 0 0", maxWidth: 640, fontSize: 18, lineHeight: 1.65, fontWeight: 300, color: "rgba(245,245,247,0.62)" }}>
-          {"The same engine output, read through different lenses — because a cost engineer, a buyer, a design engineer and a shop owner ask different questions of the same number. Role lenses read the same record; the answer never changes, only what's foregrounded."}
+          {"The same engine output, read through different lenses — because a cost engineer, a buyer, a design engineer, an in-house manufacturing lead and a shop owner ask different questions of the same number. Role lenses read the same record; the answer never changes, only what's foregrounded."}
         </p>
       </section>
 
@@ -180,7 +180,7 @@ export default function TeamsPage() {
               </p>
               <p style={{ margin: 0, color: L65 }}>→ PP survives the declared world ✓</p>
               <p style={{ margin: 0, color: L65 }}>
-                → 0.068 machine-hr · 4.2 g · <span style={{ color: INK }}>$14.14 marginal</span>
+                → 0.068 machine-hr · 4.2 g · <span style={{ color: INK }}>$12.81 marginal</span>
               </p>
               <p style={{ margin: "8px 0 0", color: GOLD }}>not owned: IM → $7,800 acquisition consideration</p>
             </div>
@@ -191,7 +191,7 @@ export default function TeamsPage() {
           index="01"
           kicker="COST ENGINEERING · OEM"
           heading="Defend the number in the review."
-          body={"You're the one who signs the should-cost. Every driver carries its source string, line items reconcile to the unit cost on screen, and the confidence band states its basis — so when the program review pushes back, you trace the answer to its inputs instead of defending a black box."}
+          body={"You're the one who signs the should-cost. Every driver carries its source, line items reconcile to the unit cost on screen, and the confidence band states its basis — so when the program review pushes back, you trace the answer to its inputs instead of defending a black box."}
           href="/teams/cost-engineering"
           card={
             <div style={CARD}>
@@ -237,7 +237,7 @@ export default function TeamsPage() {
               <p style={CARD_HEAD}>DFM · NAMED AND ACTIONABLE</p>
               <p style={{ margin: "8px 0 0", color: GOLD }}>▲ draft 0.4° measured · ≥1.0° required</p>
               <p style={{ margin: 0, color: L65 }}>→ faces highlighted in 3D</p>
-              <p style={{ margin: 0, color: L65 }}>→ fix unlocks IM route at qty ≥ 1,962</p>
+              <p style={{ margin: 0, color: L65 }}>→ fix unlocks IM route at qty ≥ 1,960</p>
             </div>
           }
         />

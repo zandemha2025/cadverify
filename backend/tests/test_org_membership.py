@@ -955,7 +955,7 @@ def _authpath_app():
 
 @_requires_pg
 @pytest.mark.asyncio
-async def test_deactivation_blocks_password_login():
+async def test_deactivation_blocks_password_login(monkeypatch):
     import src.db.engine as eng
     from httpx import ASGITransport, AsyncClient
 
@@ -963,6 +963,8 @@ async def test_deactivation_blocks_password_login():
     email = f"pwdeact-{tag}@example.com"
     users: list[int] = []
     orgs: list[str] = []
+    monkeypatch.setenv("SIGNUP_RATE_LIMIT_DISABLED", "1")
+    monkeypatch.delenv("RELEASE", raising=False)
     app = _authpath_app()
     transport = ASGITransport(app=app)
     try:
@@ -1328,10 +1330,8 @@ async def test_machine_created_audit_event():
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# Product audit-sink plumbing for the remaining §35 events. The endpoint wiring
-# for these is a single ``emit_event`` / ``fire_and_forget_audit`` call each
-# (each router has its own green live-PG test); here we prove the shared sink
-# actually persists a row for every one of those action names.
+# Product audit-sink plumbing for the remaining §35 events. Here we prove both
+# standalone required writes and caller-owned transactional writes persist.
 # ══════════════════════════════════════════════════════════════════════════
 
 
@@ -1340,7 +1340,7 @@ async def test_machine_created_audit_event():
 async def test_product_audit_events_persist():
     import src.db.engine as eng
 
-    from src.services.audit_service import emit_event, fire_and_forget_audit
+    from src.services.audit_service import emit_event, log_action
 
     tag = uuid.uuid4().hex[:10]
     users: list[int] = []
@@ -1355,7 +1355,6 @@ async def test_product_audit_events_persist():
             await s.commit()
 
         rid = f"res-{tag}"
-        # fire_and_forget_audit is a coroutine -> awaiting it commits synchronously.
         for action, rtype in (
             ("decision.created", "cost_decision"),
             ("library.version_published", "rate_card"),
@@ -1363,12 +1362,22 @@ async def test_product_audit_events_persist():
             ("governance.rejected", "change_request"),
             ("groundtruth.ingested", "ground_truth"),
         ):
-            await fire_and_forget_audit(
+            await log_action(
                 user_id=uid, user_email=f"orgm-{tag}@example.com", action=action,
                 resource_type=rtype, resource_id=rid, detail={"org_id": org_a},
+                org_id=org_a,
             )
-        # emit_event schedules a background task -> poll for it.
-        emit_event(uid, "machine.updated", "machine", rid, {"org_id": org_a})
+        async with eng.get_session_factory()() as s:
+            await emit_event(
+                s,
+                uid,
+                "machine.updated",
+                "machine",
+                rid,
+                {"org_id": org_a},
+                org_id=org_a,
+            )
+            await s.commit()
 
         expected = {
             "decision.created", "library.version_published", "governance.approved",

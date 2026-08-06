@@ -1,8 +1,9 @@
 import { createRequire } from "node:module";
-import { randomBytes } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { createHash, randomBytes } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { captureBuildIdentity, makeReleaseEvidence } from "./human-sim-release-evidence.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const pw = require("playwright-core");
@@ -11,6 +12,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../..");
 const baseUrl = process.env.APP_URL || "http://localhost:3000";
+const loginEmail = process.env.E2E_LOGIN_EMAIL || "";
+const loginPassword = process.env.E2E_LOGIN_PASSWORD || "";
+const cadUploadTimeoutMs = Number.parseInt(process.env.E2E_CAD_UPLOAD_TIMEOUT_MS || "150000", 10);
 const outputRoot = process.env.E2E_ARTIFACT_DIR
   ? path.resolve(process.env.E2E_ARTIFACT_DIR)
   : path.join(repoRoot, ".gstack", "qa-reports");
@@ -27,6 +31,7 @@ const launchOptions = {
 };
 
 const forbiddenPatterns = [
+  /\bCadVerify\b/i,
   /\bin development\b/i,
   /\bunder construction\b/i,
   /\bcoming soon\b/i,
@@ -44,11 +49,11 @@ const forbiddenPatterns = [
 ];
 
 const expectedSignals = {
-  "/": [/CadVerify/i, /cost/i],
-  "/platform": [/Platform/i, /Verify/i],
+  "/": [/ProofShape/i, /cost/i],
+  "/platform": [/Platform/i, /verification|decision layer/i],
   "/developers": [/Developers/i, /api/i],
   "/api-reference": [/API/i, /validate/i],
-  "/docs": [/API|Docs|CadVerify/i],
+  "/docs": [/API|Docs|ProofShape/i],
   "/teams": [/teams/i, /sourcing/i],
   "/teams/cost-engineering": [/Cost engineering|cost/i],
   "/teams/design-engineering": [/Design engineering|engineering/i],
@@ -58,7 +63,7 @@ const expectedSignals = {
   "/method": [/method/i, /geometry/i],
   "/security": [/security/i, /CAD/i],
   "/status": [/status/i],
-  "/company": [/pilot/i, /CadVerify/i],
+  "/company": [/pilot/i, /ProofShape/i],
   "/pilot-report": [/pilot/i, /report/i],
   "/privacy": [/Privacy/i],
   "/terms": [/Terms/i],
@@ -66,6 +71,7 @@ const expectedSignals = {
 };
 
 const appRoutes = [
+  { path: "/designs", signal: /ProofShape Design Studio|Safe parametric CAD/i },
   { path: "/cost", signal: /cost|should-cost|workbench|analyze/i },
   { path: "/analyze", signal: /Upload|Analyze|CAD|analysis/i },
   { path: "/batch", signal: /Batch|Start batch|ZIP/i },
@@ -77,12 +83,14 @@ const appRoutes = [
   { path: "/reconstruct", signal: /Image to 3D|Reconstruct|photographs/i },
   { path: "/label", signal: /Parts \(Label\)|Labeling|corpus|label/i },
   { path: "/design-system", signal: /Foundations|Glass box|Calibration|Design/i },
-  { path: "/settings/developer", signal: /Developer|API|settings|404|not found/i, allow404: true },
+  { path: "/settings/developer", signal: /Developer|API|settings/i },
+  { path: "/settings/organization", signal: /Organization|members|invites/i },
+  { path: "/settings/security", signal: /Security|password|sessions|SSO/i },
   { path: "/notifications", signal: /Notifications|all caught up|states/i },
 ];
 
 const railSurfaces = [
-  { title: "Home", signal: /Home|verification desk|CadVerify/i },
+  { title: "Home", signal: /Home|verification desk|ProofShape/i },
   { title: "Verify", signal: /Drop a part|Verify a part|STEP|STL/i },
   { title: "Parts", signal: /Parts|No parts|catalog/i },
   { title: "Records", signal: /Records|No records|verified/i },
@@ -112,10 +120,29 @@ function firstMatch(text, regex) {
   return text.slice(start, end).replace(/\s+/g, " ").trim();
 }
 
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+function isPostResponse(response, pathname) {
+  return response.request().method() === "POST" && new URL(response.url()).pathname === pathname;
+}
+
 function isIgnorableRequestFailure(url, method, failure) {
   if (/favicon\.ico|vercel\/speed-insights|\/_next\/webpack-hmr/i.test(url)) return true;
   if (failure !== "net::ERR_ABORTED") return false;
   if (/[?&]_rsc=/.test(url)) return true;
+  if (method === "GET" && /\/api\/proxy\/cost-decisions\?limit=8(?:&|$)/.test(url)) return true;
+  // The rail sweep intentionally leaves Programs after proving the surface.
+  // A subsequent document navigation may cancel its still-in-flight read; only
+  // that browser-generated ERR_ABORTED is expected (HTTP/network errors remain).
+  if (method === "GET" && /\/api\/proxy\/catalog\/portfolio(?:\?|$)/.test(url)) return true;
+  if (
+    method === "GET" &&
+    /\/api\/proxy\/(?:governance\/change-requests|ground-truth|machine-inventory|rate-library(?:\/effective)?)(?:[/?#]|$)/.test(url)
+  ) {
+    return true;
+  }
   return method === "GET" && /\/_next\/static\/chunks\/[^/?]+\.js(?:\?|$)/.test(url);
 }
 
@@ -126,6 +153,7 @@ class HumanE2E {
     this.consoleErrors = [];
     this.requestFailures = [];
     this.visited = [];
+    this.criticalPaths = {};
   }
 
   async init() {
@@ -142,6 +170,12 @@ class HumanE2E {
       viewport: { width: 1440, height: 960 },
       baseURL: baseUrl,
       reducedMotion: "reduce",
+    });
+    await this.context.addInitScript(() => {
+      // Pre-seed the first-run WelcomeGuide seen-flag: these runners create
+      // fresh contexts (empty localStorage) and drive /verify directly; the
+      // guide's full-screen dialog overlay would otherwise intercept clicks.
+      try { window.localStorage.setItem("proofshape_welcome_v2", "1"); } catch {}
     });
     this.page = await this.context.newPage();
     this.page.on("console", (msg) => {
@@ -178,7 +212,10 @@ class HumanE2E {
 
   async shot(name, fullPage = false) {
     const file = path.join(screenshotDir, `${String(this.steps.length + 1).padStart(2, "0")}-${slug(name)}.png`);
-    await this.page.screenshot({ path: file, fullPage, animations: "disabled" });
+    // Playwright's default caret hiding mutates an input's inline style. If a
+    // screenshot races React hydration, that test-only mutation creates a false
+    // hydration mismatch. Keep the page DOM untouched while capturing evidence.
+    await this.page.screenshot({ path: file, fullPage, animations: "disabled", caret: "initial" });
     return file;
   }
 
@@ -187,7 +224,14 @@ class HumanE2E {
     try {
       const out = await fn();
       const screenshot = out?.screenshot || (await this.shot(name));
-      this.steps.push({ name, status: "pass", ms: Date.now() - started, screenshot, url: this.page.url() });
+      this.steps.push({
+        name,
+        status: "pass",
+        ms: Date.now() - started,
+        screenshot,
+        url: this.page.url(),
+        evidence: out?.evidence || null,
+      });
       return out;
     } catch (error) {
       let screenshot = null;
@@ -254,6 +298,52 @@ class HumanE2E {
         return { screenshot: await this.shot(`public-${pathname === "/" ? "home" : pathname}`) };
       });
     }
+
+    await this.step("public pilot request records a durable receipt", async () => {
+      await this.goto("/company#pilot", "pilot request", { settleMs: 700 });
+      await this.page.getByLabel("Work email").fill(uniqueEmail("pilot"));
+      await this.page.getByLabel("Company").fill("ProofShape Human Simulation");
+      await this.page.getByLabel("What do you make?").fill(
+        "Precision brackets and sealed housings for production equipment",
+      );
+      await this.page.getByLabel("Deployment preference").selectOption("cloud");
+      const send = this.page.getByRole("button", { name: "Send request" });
+      await send.waitFor({ state: "visible", timeout: 8000 });
+      await this.page.waitForFunction(() => {
+        const button = [...document.querySelectorAll("button")].find(
+          (element) => element.textContent?.trim() === "Send request",
+        );
+        return button instanceof HTMLButtonElement && !button.disabled;
+      });
+      const receiptResponsePromise = this.page.waitForResponse(
+        (response) => isPostResponse(response, "/api/pilot/request"),
+        { timeout: 12_000 },
+      );
+      await send.click();
+      const receiptResponse = await receiptResponsePromise;
+      const receiptBody = await receiptResponse.json().catch(() => ({}));
+      await this.page.getByText("Request received and recorded.").waitFor({ timeout: 12_000 });
+      const text = await this.scanVisibleText("pilot-request-success");
+      const receiptId = text.match(/CV-[A-Za-z0-9-]{12,}/)?.[0];
+      if (!receiptId) {
+        throw new Error("pilot request did not expose a durable receipt");
+      }
+      assert(receiptResponse.ok(), `pilot request returned ${receiptResponse.status()}`);
+      const responseReceipt = typeof receiptBody.receipt === "string"
+        ? `CV-${receiptBody.receipt}`
+        : null;
+      assert(responseReceipt === receiptId, "pilot response receipt did not match visible receipt");
+      const screenshot = await this.shot("public-pilot-request");
+      const evidence = {
+        receiptId,
+        acknowledged: true,
+        responseStatus: receiptResponse.status(),
+        responseReceiptMatches: responseReceipt === receiptId,
+        screenshot,
+      };
+      this.criticalPaths["PUB-03"] = evidence;
+      return { screenshot, evidence };
+    });
   }
 
   async runAuth() {
@@ -261,10 +351,35 @@ class HumanE2E {
       await this.context.clearCookies();
       await this.page.goto("/verify", { waitUntil: "domcontentloaded", timeout: 30_000 });
       await this.page.waitForURL(/\/login(?:\?|$)/, { timeout: 12_000 });
-      await this.expectText(/Log in to CadVerify/i, "login gate");
+      await this.expectText(/Log in to ProofShape/i, "login gate");
       await this.scanVisibleText("login-gate");
       return { screenshot: await this.shot("login-gate") };
     });
+
+    if (loginEmail && loginPassword) {
+      await this.step("signup rejects weak password", async () => {
+        await this.goto("/signup", "signup");
+        await this.page.getByLabel("Email").fill(uniqueEmail("weak"));
+        await this.page.getByLabel("Password").fill("short");
+        await this.page.getByRole("button", { name: /^Create account$/ }).click();
+        await this.page.getByText("Password must be at least 8 characters.").waitFor({ timeout: 5000 });
+        await this.scanVisibleText("signup-weak-password");
+        return { screenshot: await this.shot("signup-weak-password") };
+      });
+
+      await this.step("login reuses existing synthetic account and lands in app", async () => {
+        await this.goto("/login?next=/verify", "login");
+        await this.page.getByLabel("Email").fill(loginEmail);
+        await this.page.getByLabel("Password").fill(loginPassword);
+        await this.page.getByRole("button", { name: /^Log in$/ }).click();
+        await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
+        await this.expectText(/ProofShape|Home|Verify/i, "verify shell after login");
+        await this.scanVisibleText("login-existing-account");
+        return { screenshot: await this.shot("login-existing-account") };
+      });
+      this.account = { email: loginEmail, password: loginPassword };
+      return;
+    }
 
     await this.step("signup rejects weak password", async () => {
       await this.goto("/signup", "signup");
@@ -282,10 +397,10 @@ class HumanE2E {
       await this.page.getByLabel("Email").fill(email);
       await this.page.getByLabel("Password").fill(password);
       await this.page.getByRole("button", { name: /^Create account$/ }).click();
-      await this.page.waitForURL(/\/onboarding(?:\?|$)/, { timeout: 20_000 });
-      await this.expectText(/Declare your world before the engine prices it/i, "onboarding");
-      await this.scanVisibleText("onboarding");
-      return { screenshot: await this.shot("onboarding") };
+      await this.page.waitForURL(/\/verify(?:\?|$)/, { timeout: 20_000 });
+      await this.expectText(/MAKE THE ESTIMATES YOURS/i, "first-run Verify setup");
+      await this.scanVisibleText("first-run Verify setup");
+      return { screenshot: await this.shot("first-run-verify-setup") };
     });
 
     this.account = { email, password };
@@ -295,7 +410,7 @@ class HumanE2E {
     await this.step("authenticated /verify loads Verify shell", async () => {
       await this.goto("/verify", "verify shell", { settleMs: 1200 });
       if (/\/login/.test(this.page.url())) throw new Error("authenticated user was redirected back to login");
-      await this.expectText(/CadVerify|Home|Verify/i, "verify shell");
+      await this.expectText(/ProofShape|Home|Verify/i, "verify shell");
       return { screenshot: await this.shot("verify-shell-home") };
     });
 
@@ -310,8 +425,8 @@ class HumanE2E {
     }
 
     await this.step("command palette jumps to Triage", async () => {
-      await this.page.locator('button[title="Command palette (⌘K)"]').click();
-      await this.page.locator('input[placeholder="Search or jump to a surface…"]').fill("triage");
+      await this.page.getByRole("button", { name: "Open Verify command palette" }).click();
+      await this.page.getByRole("textbox", { name: "Command palette search" }).fill("triage");
       await this.page.keyboard.press("Enter");
       await this.page.waitForTimeout(700);
       await this.expectText(/Triage|makeability/i, "command palette triage jump");
@@ -319,15 +434,16 @@ class HumanE2E {
       return { screenshot: await this.shot("command-palette-triage") };
     });
 
-    await this.step("notifications panel opens and derives state", async () => {
-      await this.page.locator('button[title="Notifications"]').click();
-      await this.page.getByText(/NOTIFICATIONS|Notifications/i).first().waitFor({ timeout: 8000 });
+    await this.step("notifications inbox opens and derives state", async () => {
+      await this.page.getByRole("link", { name: "Notifications" }).click();
+      await this.page.waitForURL((url) => url.pathname === "/notifications", { timeout: 8000 });
+      await this.page.getByRole("heading", { name: "Notifications" }).waitFor({ timeout: 8000 });
       await this.page.waitForTimeout(1000);
-      const text = await this.scanVisibleText("notifications-panel");
+      const text = await this.scanVisibleText("notifications-inbox");
       if (/couldn.t read your states/i.test(text)) {
-        this.issue("medium", "Notifications panel shows an API read failure", firstMatch(text, /couldn.t read your states[^\n]*/i) || "API read failure");
+        this.issue("medium", "Notifications inbox shows an API read failure", firstMatch(text, /couldn.t read your states[^\n]*/i) || "API read failure");
       }
-      return { screenshot: await this.shot("notifications-panel") };
+      return { screenshot: await this.shot("notifications-inbox") };
     });
   }
 
@@ -356,14 +472,14 @@ class HumanE2E {
     await this.step("mobile public home loads without non-final copy", async () => {
       await this.page.setViewportSize({ width: 390, height: 844 });
       await this.goto("/", "mobile-public-home", { settleMs: 1200 });
-      await this.expectText(/CadVerify|cost/i, "mobile public home");
+      await this.expectText(/ProofShape|cost/i, "mobile public home");
       return { screenshot: await this.shot("mobile-public-home", true) };
     });
 
     await this.step("mobile Verify shell loads authenticated", async () => {
       await this.goto("/verify", "mobile-verify", { settleMs: 1200 });
       if (/\/login/.test(this.page.url())) throw new Error("authenticated mobile user was redirected back to login");
-      await this.expectText(/CadVerify|Home|Verify/i, "mobile verify shell");
+      await this.expectText(/ProofShape|Home|Verify/i, "mobile verify shell");
       return { screenshot: await this.shot("mobile-verify", true) };
     });
 
@@ -375,7 +491,16 @@ class HumanE2E {
       await this.goto("/verify", "verify-upload", { settleMs: 700 });
       await this.page.locator('button[title="Verify"]').click();
       const input = this.page.locator('input[type="file"][accept*=".stl"]').first();
-      await input.setInputFiles(path.join(repoRoot, "backend/tests/assets/cube.step"));
+      const fixturePath = path.join(repoRoot, "backend/tests/assets/cube.step");
+      const validationResponsePromise = this.page.waitForResponse(
+        (response) => isPostResponse(response, "/api/proxy/validate"),
+        { timeout: cadUploadTimeoutMs },
+      );
+      const costResponsePromise = this.page.waitForResponse(
+        (response) => isPostResponse(response, "/api/proxy/validate/cost"),
+        { timeout: cadUploadTimeoutMs },
+      );
+      await input.setInputFiles(fixturePath);
       await this.page.waitForTimeout(3000);
       await this.shot("verify-upload-after-3s");
       await this.page
@@ -385,7 +510,7 @@ class HumanE2E {
             /computed from POST \/validate\/cost|What it really takes|Geometry invalid|Cost request failed|Validation failed|repair required|unit cost|bbox/i.test(text) &&
             !/measuring geometry/i.test(text)
           );
-        }, null, { timeout: 90_000 })
+        }, null, { timeout: cadUploadTimeoutMs })
         .catch(async () => {
           const text = await this.visibleText();
           throw new Error(`STEP upload did not reach a terminal visible result. Current text: ${text.slice(0, 500).replace(/\s+/g, " ")}`);
@@ -394,7 +519,55 @@ class HumanE2E {
       if (/Cost request failed|Validation failed|Network error|Geometry invalid|repair required/i.test(text)) {
         this.issue("high", "Verify STEP upload surfaced an engine failure", firstMatch(text, /Cost request failed|Validation failed|Network error|Geometry invalid|repair required/i) || "Upload failed");
       }
-      return { screenshot: await this.shot("verify-step-upload-result") };
+      const [validationResponse, costResponse] = await Promise.all([
+        validationResponsePromise,
+        costResponsePromise,
+      ]);
+      assert(validationResponse.ok(), `POST /validate returned ${validationResponse.status()}`);
+      assert(costResponse.ok(), `POST /validate/cost returned ${costResponse.status()}`);
+      const validation = await validationResponse.json();
+      const cost = await costResponse.json();
+      const fixtureSha256 = createHash("sha256").update(await readFile(fixturePath)).digest("hex");
+      const geometry = validation?.geometry || {};
+      assert(Array.isArray(geometry.bounding_box_mm), "Verify validation omitted bounding_box_mm");
+      assert(typeof geometry.volume_mm3 === "number", "Verify validation omitted volume_mm3");
+      assert(typeof geometry.surface_area_mm2 === "number", "Verify validation omitted surface_area_mm2");
+      assert(geometry.is_watertight === true, "Verify validation did not prove watertight geometry");
+      assert(cost?.saved?.id, "Verify cost response omitted the durable saved decision id");
+      const screenshot = await this.shot("verify-step-upload-result");
+      const evidence = {
+        filename: validation.filename,
+        fixtureSha256,
+        boundingBoxMm: geometry.bounding_box_mm,
+        volumeMm3: geometry.volume_mm3,
+        surfaceAreaMm2: geometry.surface_area_mm2,
+        watertight: geometry.is_watertight,
+        overallVerdict: validation.overall_verdict,
+        decisionId: cost.saved.id,
+        validationStatus: validationResponse.status(),
+        costStatus: costResponse.status(),
+        screenshot,
+      };
+      this.criticalPaths["VER-05"] = evidence;
+      return { screenshot, evidence };
+    });
+  }
+
+  async runSessionLifecycle() {
+    await this.step("account menu signs out and valid login restores the workspace", async () => {
+      await this.goto("/verify", "session lifecycle", { settleMs: 500 });
+      await this.page.getByRole("button", { name: "Account" }).click();
+      await this.page.getByText(this.account.email).waitFor();
+      await this.page.getByText("Sign out", { exact: true }).click();
+      await this.page.waitForURL((url) => url.pathname === "/login", { timeout: 12_000 });
+      await this.page.goto("/verify", { waitUntil: "domcontentloaded" });
+      await this.page.waitForURL((url) => url.pathname === "/login", { timeout: 12_000 });
+      await this.page.getByLabel("Email").fill(this.account.email);
+      await this.page.getByLabel("Password").fill(this.account.password);
+      await this.page.getByRole("button", { name: /^Log in$/ }).click();
+      await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
+      await this.expectText(/ProofShape|Home|Verify/i, "restored workspace");
+      return { screenshot: await this.shot("session-logout-login") };
     });
   }
 
@@ -431,6 +604,8 @@ class HumanE2E {
       consoleErrors: this.consoleErrors,
       requestFailures: this.requestFailures,
       visited: this.visited,
+      buildIdentity: captureBuildIdentity(repoRoot),
+      releaseEvidence: makeReleaseEvidence(this.criticalPaths),
       screenshotDir,
     };
     await writeFile(artifacts.json, `${JSON.stringify(data, null, 2)}\n`);
@@ -460,7 +635,7 @@ class HumanE2E {
 ## Coverage
 
 - Public marketing routes: home, platform, developers, teams, method, security, status, company.
-- Auth routes: gated /verify redirect, weak-password rejection, real signup, onboarding.
+- Auth routes: gated /verify redirect, weak-password rejection, real signup, canonical first-run Verify setup.
 - Authenticated app: Verify rail surfaces, command palette branch, notifications, batch, cost history, compare, history, reconstruct, label, design system, developer settings.
 - Upload path: real STEP file through the Verify UI using backend/tests/assets/cube.step.
 - Responsive smoke: mobile public home and authenticated Verify shell.
@@ -488,6 +663,7 @@ try {
   await runner.runAuthedAppRoutes();
   await runner.runMobileSmoke();
   await runner.runCadUpload();
+  await runner.runSessionLifecycle();
 } finally {
   await runner.finish().catch((error) => {
     console.error(error);

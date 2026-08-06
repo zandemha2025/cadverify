@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useState } from "react";
+import { use, useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
@@ -26,8 +26,13 @@ export default function BatchDetailPage({
   const router = useRouter();
   const [progress, setProgress] = useState<BatchProgress | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [downloadingCsv, setDownloadingCsv] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [itemsLoadState, setItemsLoadState] = useState<
+    "loading" | "ready" | "error"
+  >("loading");
+  const progressSnapshotRef = useRef("");
 
   const isTerminal = progress ? TERMINAL_STATUSES.has(progress.status) : false;
   const isCompleted =
@@ -48,6 +53,7 @@ export default function BatchDetailPage({
   };
 
   const handleCsvDownload = async () => {
+    setDownloadingCsv(true);
     try {
       const blob = await downloadBatchCsv(batchId);
       const url = URL.createObjectURL(blob);
@@ -60,11 +66,27 @@ export default function BatchDetailPage({
       URL.revokeObjectURL(url);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "CSV download failed");
+    } finally {
+      setDownloadingCsv(false);
     }
   };
 
   const handleProgressUpdate = useCallback((p: BatchProgress) => {
     setProgress(p);
+    const snapshot = [
+      p.status,
+      p.completed_items,
+      p.failed_items,
+      p.skipped_items,
+      p.pending_items,
+    ].join(":");
+    if (
+      TERMINAL_STATUSES.has(p.status) ||
+      (progressSnapshotRef.current && progressSnapshotRef.current !== snapshot)
+    ) {
+      setRefreshKey((key) => key + 1);
+    }
+    progressSnapshotRef.current = snapshot;
   }, []);
 
   return (
@@ -100,7 +122,12 @@ export default function BatchDetailPage({
               </Button>
             )}
             {isCompleted && (
-              <Button variant="secondary" size="sm" onClick={handleCsvDownload}>
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={itemsLoadState === "loading" || downloadingCsv}
+                onClick={handleCsvDownload}
+              >
                 Download CSV
               </Button>
             )}
@@ -114,7 +141,11 @@ export default function BatchDetailPage({
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Items
         </h2>
-        <BatchItemsTable batchId={batchId} refreshKey={refreshKey} />
+        <BatchItemsTable
+          batchId={batchId}
+          refreshKey={refreshKey}
+          onLoadStateChange={setItemsLoadState}
+        />
       </section>
 
       <AlertDialog

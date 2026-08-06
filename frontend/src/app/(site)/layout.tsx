@@ -20,7 +20,7 @@ import "./site-theater.css";
  */
 
 export const metadata: Metadata = {
-  title: "CadVerify — verification, made of glass",
+  title: "ProofShape — verification, made of glass",
   description:
     "Makeability verification: can this part be made — on your machines, in materials that survive its world — and what will it really take? Should-cost is one artifact inside the verdict, never the destination.",
 };

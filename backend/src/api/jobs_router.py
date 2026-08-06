@@ -7,13 +7,20 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.rbac import Role, require_role
-from src.auth.require_api_key import AuthedUser, require_api_key
+from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 from src.services import job_service
 
 logger = logging.getLogger("cadverify.jobs_router")
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+
+def _failed_job_error(result_json: object) -> dict[str, str]:
+    payload = result_json if isinstance(result_json, dict) else {}
+    code = payload.get("code") or "JOB_FAILED"
+    message = payload.get("message") or payload.get("error") or "Job failed"
+    return {"code": str(code), "message": str(message)}
 
 
 @router.get("/{job_id}")
@@ -35,9 +42,12 @@ async def get_job_status(
         "started_at": job.started_at.isoformat() if job.started_at else None,
         "completed_at": job.completed_at.isoformat() if job.completed_at else None,
         "result_url": None,
+        "error": None,
     }
     if job.status in ("done", "partial"):
         response["result_url"] = f"/api/v1/jobs/{job.ulid}/result"
+    elif job.status == "failed":
+        response["error"] = _failed_job_error(job.result_json)
     return response
 
 

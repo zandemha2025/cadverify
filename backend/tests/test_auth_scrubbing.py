@@ -30,6 +30,32 @@ def test_scrub_processor_handles_nested_dict():
     assert out["req"]["headers"]["authorization"] == "***REDACTED***"
 
 
+def test_scrub_processor_redacts_magic_sessions_passwords_and_query_tokens():
+    ev = {
+        "request": {
+            "data": {
+                "token": "one-time-magic-token",
+                "session": "signed-dashboard-session",
+                "password": "correct horse battery staple",
+                "cf_turnstile_response": "captcha-token",
+            },
+            "url": "https://api.example.test/auth/magic/verify?token=secret-value",
+            "headers": {"cookie": "dash_session=secret"},
+        }
+    }
+    out = scrub_processor(None, None, ev)
+    dump = json.dumps(out)
+    for secret in (
+        "one-time-magic-token",
+        "signed-dashboard-session",
+        "correct horse battery staple",
+        "captcha-token",
+        "secret-value",
+        "dash_session=secret",
+    ):
+        assert secret not in dump
+
+
 def test_sentry_before_send_scrubs_nested_json():
     event = {
         "message": "error for cv_live_abcd_xxxxxxxxxxxx",

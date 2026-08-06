@@ -23,15 +23,15 @@ import styles from "./security.module.css";
  * shared when it's real" (NO pen-test badge), the report available under NDA the
  * day it lands. The zero-egress / geometry-never-leaves claims are real
  * (verified in the backend's local path). The one quoted source string
- * (`0.082 hr × $52/hr × region-labor ×1 [shop: Midwest Precision CNC]`) is the
- * real fixture's labor_cost driver source — the same string carried by the
- * product prototype and the Method page — not an invented figure.
+ * (`finish 0.08hr/part + bulk 0.5hr/build ÷ 223 = 0.082hr × $52/hr ×
+ * region-labor ×1`) is the real fixture's labor_cost driver source, VERBATIM
+ * as the engine emits it — not an invented or spliced figure.
  */
 
 export const metadata: Metadata = {
-  title: "Security — CadVerify",
+  title: "Security — ProofShape",
   description:
-    "Your CAD is the crown jewels. CadVerify was designed from the first commit for CAD-as-IP and export-controlled work: geometry never leaves your environment, run it where your program requires, and every answer is defensible.",
+    "Your CAD is the crown jewels. ProofShape was designed from the first commit for CAD-as-IP and export-controlled work: geometry never leaves your environment, run it where your program requires, and every answer is defensible.",
 };
 
 const INK_62 = "rgba(245,245,247,0.62)";
@@ -105,7 +105,7 @@ export default function SecurityPage() {
           }}
         >
           For an aerospace, automotive or defense program, where the model runs and
-          what leaves your network matter as much as the answer. CadVerify was
+          what leaves your network matter as much as the answer. ProofShape was
           designed from the first commit for CAD-as-IP and export-controlled work.
         </p>
 
@@ -238,7 +238,7 @@ export default function SecurityPage() {
             className="st-mono"
             style={{ margin: "14px 0 0", fontSize: 11.5, color: "var(--st-ink-45)" }}
           >
-            &ldquo;0.082 hr × $52/hr × region-labor ×1 [shop: Midwest Precision CNC]&rdquo;
+            &ldquo;finish 0.08hr/part + bulk 0.5hr/build ÷ 223 = 0.082hr × $52/hr × region-labor ×1&rdquo;
             — a real source string, attached to a real driver
           </p>
         </Posture>

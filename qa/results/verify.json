@@ -1,0 +1,134 @@
+[
+ {
+  "id": "VER-001",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "Unauthenticated /verify 307-redirects to /login?next=%2Fverify (verifySession enforced). No-membership state (real user, membership removed in DB): verify-organization-gate renders 'ORGANIZATION REQUIRED / You haven't joined an organization yet.' with invitation guidance, 'No organization data has been loaded or treated as empty.' and an Open organization settings link \u2014 screenshot VER-001-gate-nomember.png. 'Memberships-but-none-active' branch is unreachable with real data: backend resolve_org() always falls back to the oldest live membership when users.current_org_id is NULL (verified by nulling it in DB \u2014 workspace correctly loads with the resolved org), so that gate copy is defensive-only. 'Access unavailable' (organizationAccess=null) state not inducible without breaking the backend; copy verified in code only. VERIFY_UI-off 404 not toggled (would affect the shared dev server)."
+ },
+ {
+  "id": "VER-002",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "first-run open, Esc-close records key, no reopen after key, ?welcome=1 opens+strips param, shop/machines + file-picker actions, Start here reopens"
+ },
+ {
+  "id": "VER-003",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "Success path verified end-to-end: sample runs the real POST /validate + /validate/cost, guided-example-status bar walks running->ready, GuidedResultSummary shows headline, recommended route, first issue, measured geometry (envelope/volume/faces/watertight), resource cost and shop fit; 'Show full technical result' closes into the walk. Leaving via rail navigation or 'Back to start' cancels the guided lifecycle. Minor observation: keyboard-hotkey navigation (H) bypasses nav()'s cancellation, so returning to Verify by hotkey still shows the ready-state bar; no summary dialog was observed popping over Home in the probe."
+ },
+ {
+  "id": "VER-004",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "sldprt gets SolidWorks-specific copy, txt gets generic copy, role=alert, no network call for rejected files, dismiss works, accept attr lists stl/step/stp/iges/igs"
+ },
+ {
+  "id": "VER-005",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "Verified with /validate delayed 2.5s and /validate/cost delayed 9s (real engine, slowed): verify-first-insight renders 'ROUTING + DFM READY \u00b7 COST CALCULATING' with best route (DLP Resin), first route issue (overhang threshold), MEASURED chips (bbox/volume/watertight) and 'DFM ISSUES \u00b7 cost continues without rerunning DFM' while cost is in flight; cost POST starts only after /validate returns; GET /machine-inventory + PUT /part-context/{hash} run alongside. Run-token supersedence verified in VER-011 rapid material switch. (Earlier automated miss was a harness regex expecting DFM PASS/FAIL; actual verdict label was 'DFM ISSUES'.)"
+ },
+ {
+  "id": "VER-006",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "Overlay ('VERIFYING \u00b7 <file>', THE VERDICT \u00b7 COMPUTING \u2014 GATES CHECKING IN) narrates all five milestones (received/measured/routed/gates walked/record assembled) with pending detail and 'no step is skipped, none is faked' footer, with a dismiss (Skip to the walk) control; appears only past the 260ms perceptible-wait threshold (suppressed for instant runs by design). Partial state 'ROUTING + DFM READY \u00b7 COST CONTINUES' is transient: the overlay hands off to the inline FirstInsight card 220ms after validation lands (deliberate, per pipeline-overlay.tsx); settled/complete headers reach the screen only on non-progressive paths and otherwise surface as the completion toast. Interrupted state checked in VER-008 run. Blocked-gate stop renders in the walk (VER-007) with downstream steps not rendered. \u00b7 overlay at geometry stop: \"(closed \u2014 handed off to walk by design)\"; "
+ },
+ {
+  "id": "VER-007",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "400 GEOMETRY_INVALID from /validate/cost renders fail banner + walk-stops block quoting backend message with measured facts + Repair & re-upload; no downstream steps; overlay marks stages not computed"
+ },
+ {
+  "id": "VER-008",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "Outages induced by client-side request interception (no server outage inducible safely). Total outage: 'ANALYSIS INTERRUPTED \u00b7 NO VERDICT PRODUCED' with exact error + Retry verification. Cost-only outage: 'DFM ISSUES \u00b7 RESOURCE COST INTERRUPTED / Routing and DFM are ready. Cost needs another try.' names the costError (Failed to fetch) and why machine fit is absent; 'Retry cost only' re-POSTed only /validate/cost (no extra /validate) and merged onto the preserved DFM into a completed walk; 'Rerun full verification' offered. (Automated check initially flagged missing DFM verdict due to a regex expecting PASS/FAIL; actual label is 'DFM ISSUES' \u2014 verified from screenshot.)"
+ },
+ {
+  "id": "VER-009",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "no verification block: banner says SHOULD-COST COMPUTED and explicitly not-evaluated (no machines/env declared)"
+ },
+ {
+  "id": "VER-010",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "Env chip toggle re-runs verification: PUT /part-context/{sha256-of-bytes} carries max_temp_c before POST /validate/cost; door chip states verified \u2014 'ambient' when undeclared (t4 run), 'capturing\u2026' transient, '\u25cf USER \u00b7 on the record' after successful persistence, and 'drives this preview only' when the PUT was aborted (induced). Env-excluded materials rendered struck-through with per-material citation ('Standard Resin excluded: service 120C exceeds material max service temperature 60C', 'PLA excluded: \u2026'); sour-service NACE citation not separately exercised. Declared annual_volume=750 persisted alongside and reshaped the qty ladder to [1,100,750,2000,5000,10000] on subsequent runs. (One automated re-run flagged the pre-run 'ambient' chip due to reading the DOM before first paint; the same check passed in the earlier run.)"
+ },
+ {
+  "id": "VER-011",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "class selection re-runs cost with declared material (response assumption verified), provenance DEFAULT->USER, rapid Steel->Titanium leaves Titanium displayed (monotonic run token). run1 material=polymer; material sequence from responses=[\"polymer\",\"polymer\",\"polymer\",\"steel\",\"titanium\"]; "
+ },
+ {
+  "id": "VER-012",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "Empty floor: step 1 shows 'No machines declared.' with 'Declare your floor \u2192' CTA opening the Machines screen. After declaring machines via the same authed proxy (cnc_3axis 'QA VF-2' 762x406x508 @ $85/hr, sla 'QA Mars 4', plus a 'thermoforming' machine unknown to the engine): step 1 lists machines with USER provenance + envelope summaries; owned_processes forwarded to /validate/cost is exactly 'cnc_3axis,sla' on every call (unknown thermoforming omitted; cost never 400s); verification block returned (verdict 'Makeable \u2014 outsource only', \u2717 marks per route with 'makeable outsource only'); rate dot fills once an hourly rate exists. Note: with a service world already on the part's record, the empty-floor state shows the honest lattice verdict ('Makeability unknown \u2014 not enough is declared') instead of 'MAKEABILITY NOT EVALUATED', which appears only when neither machines nor env are declared (verified in VER-009 run)."
+ },
+ {
+  "id": "VER-013",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "scrub reads 6-pt ladder with engine-exact/interpolated labels, honest crossover text, unvalidated band \u00b7 crossover_qty=529; ladder=[1,100,1000,2000,5000,10000] \u00b7 declared annual_volume=750 (via PUT part-context) replaced nearest interior ladder point on later runs: qty sent = 1,100,750,2000,5000,10000 (engine-exact declared point). Crossover: engine decision.crossover_qty=529 marked on the axis; band label 'not shop-validated' shown for unvalidated estimates; OWNED->MARGINAL absent with no machines (honest)."
+ },
+ {
+  "id": "VER-014",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "hydrate/choose/note/withdraw verified in prior run; induced save outage shows \"Decision controls paused \u2026Nothing was changed.\" + Retry clears and a real save then succeeds. Disposition persists via PUT /cost-decisions/{id}/disposition (story says PATCH; PUT is the implemented method) \u00b7 saved.id=\"01KZA3ABZBCCSAQF43P8HAQM8N\""
+ },
+ {
+  "id": "VER-015",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "modal opens from tooling card/acquire, engine-only crossover economics, purchase price explicitly withheld, capability-investment ranking fetched, Esc returns to walk. "
+ },
+ {
+  "id": "VER-016",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "drivers/routes/crossover/verdict artifacts, keyword-free NL + uncomputable refusals with grammar copy, compare-saved live GET honest refusal (single record)"
+ },
+ {
+  "id": "VER-017",
+  "status": "BLOCKED",
+  "error_found": "",
+  "notes": "Assembly path not exercisable on this server: /validate/assembly and all STEP parsing return a documented 501 (gmsh import fails \u2014 libGLU.so.1 missing), and the briefing fixture nist_periodic_ctc05.stp is single-solid anyway (0 assembly occurrences; AS1 18-part assembly used instead). UI is honest on the 501: falls back to the single-part path and renders ANALYSIS INTERRUPTED \u00b7 NO VERDICT PRODUCED quoting the server reason; no assembly, verdict, or cost is fabricated. validate statuses: [\"501 /validate/preview-mesh\",\"501 /validate/assembly?format=json\",\"501 /validate\",\"501 /validate\"]; interrupted banner quotes server detail=true"
+ },
+ {
+  "id": "VER-018",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "context card orphan-until-declared on 404, no false error \u00b7 GET /part-context/{sha256} hydrates the stage card (testid verify-stage-context); 404 renders 'orphan until declared' pill (not an error); after declaring a service world the card shows a 'service world' pill; declared annual_volume=750 reshaped the next run's cost quantity ladder (750 became a computed point). Lineage-path display with a declared parent not exercised (no program/assembly declared)."
+ },
+ {
+  "id": "VER-019",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": " \u00b7 empty/anonymous corpus: engine returned no grounded identity and no card rendered (honest empty per story)"
+ },
+ {
+  "id": "VER-020",
+  "status": "BLOCKED",
+  "error_found": "",
+  "notes": "Happy path not exercisable: design generation fails server-side (no STEP tooling on this box), so no revision ever reaches status=ready to download/verify. Error paths verified live: invalid id -> role=alert \"That Design Studio link is invalid.\" with Return to Design Studio link; invalid revision -> \"That design revision is invalid.\"; failed/nonexistent design -> role=alert with exact fetch reason. design generation itself fails on this server (revision status=failed, engine proofshape-occ-v1; STEP tooling unavailable \u2014 same libGLU/gmsh gap), so the happy import path cannot run \u00b7 failed-design alert: \"The design artifact is not ready (409).\\nReturn to Design Studio\" \u00b7 nonexistent-id alert: \"The design artifact is not ready (404).\\nReturn to Design Studio\""
+ },
+ {
+  "id": "VER-021",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "empty org shows dashed empties + start grid + withheld CALIBRATED KPI; induced fetch failure raises role=alert honesty banner + RETRY NEEDED; retry restores"
+ },
+ {
+  "id": "VER-022",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "H/V/P/R/G/M/T/C nav, ? sheet, Ctrl+K palette toggle+Esc, typing guarded, ?screen deep-link, hollow rate dot, mobile select <760px"
+ }
+]

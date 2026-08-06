@@ -69,7 +69,7 @@ errors, has request failures, or loses the autonomous low-role viewer proof.
 - Publish a governed rate card.
 - Declare owned machines with rates and envelopes.
 - Ingest historical actuals and verify recalibration refuses below the floor.
-- Confirm Verify UI shows declared machines and governed truth honestly.
+- Confirm Verify UI shows declared machines and effective rate truth honestly.
 - Create an API key and reveal it exactly once.
 - Verify a real STEP file in the declared service world.
 - Confirm portfolio exposure is withheld until declared volume, then compute

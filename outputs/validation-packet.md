@@ -30,9 +30,9 @@ This packet stays adversarial on purpose. V1 survives because every number is pr
 
 Setup (verified working this session):
 ```bash
-cd /Users/nazeem/Desktop/developer/cadverify/backend
-PARTS=/private/tmp/claude-501/-Users-nazeem-Desktop-developer-cadverify/3182c9c6-e59b-4394-a584-d9c4cd4ce0dc/scratchpad/parts
-PY=/Users/nazeem/Desktop/developer/cadverify/backend/.venv/bin/python
+cd backend
+PARTS="${CADVERIFY_REAL_PARTS_DIR:?Set this to the reviewed, licensed real-part corpus}"
+PY="${PYTHON:-.venv/bin/python}"
 ```
 
 ### Beat 1 — Lead with the honesty gate (kill the teardown bug first)
@@ -112,7 +112,7 @@ The framing that holds: **V1 stands behind the decision (crossover quantity + ma
 ### B.2 — RESIDUAL WEAKNESSES (R-a / R-b NOW FIXED in Cycle 3; R-c / R-d remain)
 
 - **R-a · High-qty AM lead time — FIXED (Cycle 3 R1, audited `outputs/audit-c3.md` Check 1).** Production now uses a finite **parallel machine-pool** model `ceil(qty·cycle_hr / (n_machines · machine_hours_per_day))` instead of one machine at 8 hr/day. **ECU `mjf @ q5000`: 744.1–1381.9 d → 49.7–92.3 d** (≈7–13 weeks); no costed process reads multi-year at automotive volume. The pool assumption is surfaced as an inspectable `lead_time.capacity` driver (e.g. `6 machines × 22 hr/day [DEFAULT]`) and is overridable → USER (`--set n_machines.MJF=20` → 18.9–35.1 d, unit cost unchanged). Verified live on the ECU mount + a second part (e46 ecu box plug).
-- **R-b · Serial AM (FDM/SLA) +70% high — FIXED (Cycle 3 R2, audited `outputs/audit-c3.md` Check 2).** FDM/SLA now apply a legitimate **XY build-plate nesting** model: per-part single-nozzle/laser **deposition stays per-part**, but the shared **Z-axis plate sweep is amortized** over the XY nest count (`xy_packing_density × plate_area ÷ footprint`, DEFAULT 0.50, overridable → USER, shown as a `parts_per_build` driver). Re-run accuracy harness: **fdm median +0.75 → +0.38, sla +0.61 → +0.35** (both within the ±60% C2 bar); throttle `fdm $15.96 → $9.62 (−3%)`, `sla $25.00 → $14.82 (−17%)`, both in band. **Accuracy report C2 flipped FAIL → PASS; Overall PASS** (all 5 criteria green, C1 82% → 84%). Deposition-dominated parts that nest 1–2/plate stay at the high edge — the honest, disclosed single-nozzle residual.
+- **R-b · Serial AM (FDM/SLA) +70% high — FIXED (Cycle 3 R2, audited `outputs/audit-c3.md` Check 2).** FDM/SLA now apply a legitimate **XY build-plate nesting** model: per-part single-nozzle/laser **deposition stays per-part**, but the shared **Z-axis plate sweep is amortized** over the XY nest count (`xy_packing_density × plate_area ÷ footprint`, DEFAULT 0.50, overridable → USER, shown as a `parts_per_build` driver). Re-run regression harness: **fdm median +0.75 → +0.38, sla +0.61 → +0.35** (both within the ±60% C2 bar); throttle `fdm $15.96 → $9.62 (−3%)`, `sla $25.00 → $14.82 (−17%)`, both in band. **Regression C2 flipped FAIL → PASS** (all five model guardrails green). This is not supplier-quote accuracy evidence. Deposition-dominated parts that nest 1–2/plate stay at the high edge — the honest, disclosed single-nozzle residual.
 - **R-c · `parts_per_build` is a volumetric packing proxy** (`packing_density` 0.10), not a true orientation-aware bin-packer. Overridable per process; one real bureau quote collapses the band.
 - **R-d · Absolute should-cost is characterized against INDEPENDENT LOCAL BANDS, not real supplier quotes.** 82% of (part, process, qty) estimates land in the independent band; CNC and IM are well-centered (100% in band); AM carries a size-dependent residual. Absolute $ is ±40-60% — now **measured per process** (see `accuracy-report.md`), not asserted. The single highest-leverage next step is 10-20 real supplier quotes on these exact parts.
 
@@ -146,11 +146,11 @@ Ordered to extract the most decision-relevant signal. Lead with the CASTOR autop
 
 - **Coherence (live):** ECU mount q50/5000 → headline **mjf $44.13** ≡ `@ qty 50` reco **mjf $44.13** ≡ DFM-ready argmin (cnc_3axis $43.60 correctly excluded — undercuts). Throttle q100/10000 → headline **mjf $7.25** ≡ reco **mjf**. `test_g4_decision_coherence_across_parts` loops the set and asserts equality + DFM-ready — passes.
 - **Independent geometry/cost re-derivation (raw trimesh, bypassing the engine):** ECU SLS unit cost reproduced to the cent — `n=16, machine $37.50, material $4.45, labor $3.89, setup $1.40 → $47.25`. The MEASURED drivers are real, not fabricated.
-- **Accuracy harness (local, independent, zero network):** 202 comparisons, **165/202 = 82% in independent band**; CNC 100% in band (median -5% on 3-axis); IM 100% in band (median -28%); serial-AM (fdm/sla) flagged high (the honest C2 FAIL). Reproducible via `python -m src.costing.harness`; `test_harness_is_deterministic` passes. Report: `outputs/accuracy-report.md`.
+- **Regression harness (local, independent, zero network):** the captured external geometry-only run covers 202 comparisons; reproduce it only with a license-reviewed corpus via `python -m src.costing.harness --real-parts-dir <licensed-corpus>`. Protected CI runs deterministic, internally authored coupons with no private assets; `test_harness_is_deterministic` passes. Neither suite is supplier-quote ground truth. Production accuracy remains blocked until `python -m src.costing.harness --require-production-evidence` passes the 20+ part provenance-locked supplier holdout thresholds. Reports: `outputs/accuracy-report.md` (external historical geometry benchmark) and `outputs/calibration-report.md` (CI regression).
 - **Invariants/IP:** `assert_sums()` enforces Σ=unit (incl. the min-charge-floor line — verified throttle q1 Σ=$90.00); `grep cost_factor src/costing/` → none (toy model unsurfaced); G7 + harness socket-block tests pass (zero network).
 - **Gate suite:** `pytest tests/test_costing_model.py tests/test_costing_gates.py tests/test_costing_accuracy.py` → **36 passed in 413.91s**.
 
 **Key file paths:**
-- Costing package: `/Users/nazeem/Desktop/developer/cadverify/backend/src/costing/` (cost_model.py, decision.py, rates.py, drivers.py, estimate.py, leadtime.py, report.py, cli.py, harness.py)
-- Tests: `/Users/nazeem/Desktop/developer/cadverify/backend/tests/{test_costing_model.py, test_costing_gates.py, test_costing_accuracy.py}`
-- Spec / notes / accuracy / audit: `/Users/nazeem/Desktop/developer/cadverify/outputs/{v1-fix-spec.md, v1-build-notes.md, accuracy-report.md, audit-v1.md}`
+- Costing package: `backend/src/costing/` (cost_model.py, decision.py, rates.py, drivers.py, estimate.py, leadtime.py, report.py, cli.py, harness.py)
+- Tests: `backend/tests/{test_costing_model.py, test_costing_gates.py, test_costing_accuracy.py}`
+- Spec / notes / accuracy / audit: `outputs/{v1-fix-spec.md, v1-build-notes.md, accuracy-report.md, audit-v1.md}`

@@ -81,6 +81,10 @@ def _mock_route_helpers():
     mock_mesh.vertices = [[0, 0, 0]]
     mock_mesh.faces = [[0, 0, 0]]
     mock_parse_mesh.return_value = (mock_mesh, ".stl")
+    # run_analysis / run_quick_analysis now parse via the ASYNC pooled front door
+    # (gauntlet F1 fix — off the event loop), so the awaited helper is the one
+    # actually invoked; the sync mock stays for tuple shape but isn't called.
+    mock_parse_mesh_async = AsyncMock(return_value=(mock_mesh, ".stl"))
 
     mock_resolve = MagicMock()
     # Return a list of mock ProcessType enums
@@ -107,10 +111,12 @@ def _mock_route_helpers():
             mock_parse_mesh,
             mock_resolve,
             mock_to_response,
+            mock_parse_mesh_async,
         ),
     ):
         yield {
             "parse_mesh": mock_parse_mesh,
+            "parse_mesh_async": mock_parse_mesh_async,
             "resolve": mock_resolve,
             "to_response": mock_to_response,
             "timeout": mock_timeout,
@@ -203,7 +209,8 @@ async def test_run_analysis_cache_hit(db_session, authed_user, _mock_route_helpe
     )
 
     assert result == {"cached": True, "verdict": "pass"}
-    # Pipeline (parse_mesh) should NOT have been called
+    # Pipeline (parse) should NOT have been called
+    _mock_route_helpers["parse_mesh_async"].assert_not_called()
     _mock_route_helpers["parse_mesh"].assert_not_called()
 
 
@@ -310,6 +317,6 @@ async def test_run_analysis_version_mismatch_bypasses_cache(db_session, authed_u
         session=db_session,
     )
 
-    # Pipeline was called (parse_mesh invoked)
-    _mock_route_helpers["parse_mesh"].assert_called_once()
+    # Pipeline was called (async pooled parse invoked)
+    _mock_route_helpers["parse_mesh_async"].assert_called_once()
     assert result is not None

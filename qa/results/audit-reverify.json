@@ -1,0 +1,77 @@
+[
+ {
+  "check": "box-missing-fillets-phantom",
+  "status": "PASS",
+  "detail": "Fresh POST /api/v1/validate qa-box.stl (fixed build 19b91e4, fresh account+key): zero MISSING_FILLETS issues on any process \u2014 die/investment/sand casting and forging no longer report 'sharp internal corners' on the convex box. No fillet text in priority_fixes either."
+ },
+ {
+  "check": "box-overhang-on-buildplate",
+  "status": "PASS",
+  "detail": "Same run: zero OVERHANG / 'Supports required' issues on any additive process for the box's flat bottom. Box verdict improved as required: overall_verdict now 'pass' (was 'issues'), best_process now fdm with verdict 'pass' score 1.0; ten processes score a clean 1.0. Remaining box findings are the previously-verified true positives only (INSUFFICIENT_DRAFT x5, THICK_WALL, NON_UNIFORM_WALLS, TOO_THICK_SHEET, NOT_ROTATIONALLY_SYMMETRIC, plus info/warning items CUPPING_RISK, RESIDUAL_STRESS_RISK, etc.) \u2014 no true positives lost."
+ },
+ {
+  "check": "step-phantom-boss",
+  "status": "PASS",
+  "detail": "POST /validate qa-cube.step: features are now 12 'flat' features + exactly one 'cylinder_hole' (radius 2.999 mm vs true 3.0, confidence 0.994). Zero cylinder_boss features from flat faces. The real R3 through-hole detection is intact."
+ },
+ {
+  "check": "repair-honesty",
+  "status": "PASS",
+  "detail": "POST /validate/repair qa-broken.stl: repair_applied true, tier 'trimesh', repair_details = {holes_filled: 2 (real face-count delta 10->12, no longer a hardcoded 0 \u2014 repair_service.py:106-112 now computes the tier-1 delta and documents it as an approximation), original_volume_mm3: 9000.0, repaired_volume_mm3: 10000.0, volume_change_pct: 11.11}. All three required volume fields present and populated; repaired mesh is watertight (vol 10000). Before-analysis still honestly flags NON_WATERTIGHT + NOT_SOLID_VOLUME (true positive kept)."
+ },
+ {
+  "check": "ranking-tie-break",
+  "status": "PASS",
+  "detail": "FIXED. best_process verdict-aware (profile_matcher) AND the serialized process_scores list now uses the same verdict-aware key (routes.py). Verified on fresh geometry: at equal score every 'pass' ranks above 'issues'; zero violations. Caveat: analyses cached BEFORE this fix retain their stored old ordering in result_json until the analysis version bumps \u2014 fresh runs are correct."
+ },
+ {
+  "check": "threshold-drift-docstring",
+  "status": "PASS",
+  "detail": "backend/src/analysis/constants.py:1-14 docstring rewritten: explicitly states the module 'is NOT the single source of truth for the live per-process analyzers', names the real consumers accurately (legacy additive_analyzer \u2014 confirmed import at additive_analyzer.py:14 \u2014 and STANDARD_GAUGES via processes/checks.py:22, the module's only two importers), documents the known SLA divergence (0.4mm/19 deg inline vs 0.3mm/30 deg table) and states inline citations win in live analysis. Text is accurate against the code."
+ },
+ {
+  "check": "thinwall-true-positive-intact",
+  "status": "PASS",
+  "detail": "POST /validate qa-thinwall.stl: 0.6mm wall still flagged \u2014 THIN_WALL error measured 0.593mm on fdm, sls, ebm, binder_jetting, ded, waam, cnc_3axis, cnc_5axis, cnc_turning, forging and THIN_WALL_MOLDING error on die/investment/sand casting; correctly NOT flagged for sla/dlp/mjf/dmls/slm/wire_edm/sheet_metal. Same coverage, measured value and error severity as pass 1; scores fail (0.0/0.05) on affected processes. True positive fully preserved; best_process dlp now carries verdict 'pass'."
+ },
+ {
+  "check": "analyze-cost-factor-multiplier",
+  "status": "PASS",
+  "detail": "Live Playwright run: logged in, uploaded qa-box.stl on /analyze; process cards render 'Est. cost factor: \u00d70.60', '\u00d71.44', '\u00d72.40', '\u00d730.00' etc. \u2014 multiplier glyph, zero occurrences of 'Est. cost factor: $'. Code: ProcessScoreCard.tsx:53 now emits &times; before the factor. No console errors."
+ },
+ {
+  "check": "verify-n-samples-label",
+  "status": "PASS",
+  "detail": "Code: part-standing.ts:152 sets nSamples verbatim from the payload (conf?.n_samples ?? null) with an explicit comment that it is NOT derived from `validated` (a STAND-IN calibration can be validated=false with n>0); part-screen.tsx:588 renders ` \u00b7 n=${standing.nSamples ?? 0}` \u2014 hardcode removed. Live spot-check (qa-tester account, /verify -> Parts -> qa-box.stl -> Open standing): part screen shows 'assumption-based, not yet validated \u00b7 n=0 \u00b7 crossover 529', matching the payload's n_samples=0 and verbatim band label. Caveat (outside this finding's original scope): catalog-screen.tsx:550 quick-view and verify-screen.tsx:2177 still contain literal 'n=0' strings on other surfaces."
+ },
+ {
+  "check": "crossover-1960-copy",
+  "status": "PASS",
+  "detail": "Live engine re-confirmed: /validate/cost object.stl qty=10 shop=midwest-precision-cnc -> decision.crossover_qty = 1960.0, mjf@10 $14.14. All five pages now read 1,960: home ('make by MJF below 1,960 units', 'crossover \u2248 1,960' axis, 'crossover 1,960 units' chip), /method ('MJF wins \u2264 1,960 units', '~1,960 units'), /platform ('crossover 1,960 units'), /teams/sourcing ('past 1,960'), /teams/design-engineering ('crossover at 1,960 units'). No '1,962' remains on any served page (only in the internal /design-system source). Live dial (Playwright): 'Make by MJF (PP)' at qty 1,959; flips to 'Tool up: injection molding' + 'conditional \u2014 the part fails draft today' at qty 1,977 \u2014 threshold is CROSSOVER=1960 (crossover-dial.tsx:22, flip at qty<=1960). NOTE: verification required repairing the environment \u2014 the 'restarted' stack had failed half-way (rebuilt .next 01:12 but next-server from the pre-fix build still held port 3000 with EADDRINUSE killing the new one, and the aborted launcher had taken the backend down with it); both services were restarted on build 19b91e4 before any UI/copy verification."
+ },
+ {
+  "check": "routing-claims-copy",
+  "status": "PASS",
+  "detail": "Live engine routing for object.stl: archetype bulk_solid, recommended_process mjf, confidence 0.4, reasoning 'General solid (48% of bbox filled, ~6.2mm mean wall) with no dominant sheet/rotational/prismatic signature \u2192 additive (MJF/SLS) for a polymer prototype.' Pages now match: home 'bulk_solid \u2192 mjf \u00b7 confidence 0.40' (plus accurate prose 'no dominant sheet, rotational or prismatic signature'); /method 'GEOMETRIC ROUTING \u00b7 CONFIDENCE 0.40 \u00b7 ARCHETYPE BULK_SOLID \u2192 MJF' with the engine reasoning quoted; /developers JSON 'recommended_process': 'mjf', 'confidence': 0.4, reasoning 'General solid (48% of bbox filled\u2026' with honest ellipsis; /teams/in-house 'routed bulk_solid \u2192 mjf'; /teams/shop-owners mjf-based. Zero cnc_turning claims for this part on any page (and the engine indeed produces no cnc_turning estimate). Minor caveat: /method's quoted reasoning elides ', ~6.2mm mean wall' mid-quote without an ellipsis \u2014 all stated values remain true and engine-traceable."
+ },
+ {
+  "check": "security-source-string",
+  "status": "PASS",
+  "detail": "/security now quotes 'finish 0.08hr/part + bulk 0.5hr/build \u00f7 223 = 0.082hr \u00d7 $52/hr \u00d7 region-labor \u00d71' \u2014 byte-identical to the live engine's labor_cost driver source (re-confirmed on the canonical run) \u2014 followed by '\u2014 a real source string, attached to a real driver'. The spliced '[shop: Midwest Precision CNC]' suffix is gone. The claim is now literally true."
+ },
+ {
+  "check": "platform-thumbnails-claim",
+  "status": "PASS",
+  "detail": "/platform no longer claims rendered thumbnails: the line now reads 'Every list in the product carries the record's measured identity \u2014 and where production doesn't serve the mesh, the preview is withheld rather than invented, because a fabricated shape is worse than none.' No 'thumbnail' text remains on any marketing page. Matches actual product behavior (Parts grid observed live showing 'PREVIEW WITHHELD' glyphs)."
+ },
+ {
+  "check": "teams-marginal-labels",
+  "status": "PASS",
+  "detail": "Live engine: owned_processes=mjf run yields $12.81/unit marginal (vs $14.14 should-cost). Teams pages now use the right numbers with the right labels: shop-owners 'fits ST-20 & M2 Pro \u2713 \u00b7 $12.81 marginal at your rates'; in-house '\u2713 MAKEABLE IN-HOUSE \u2014 M2 Pro \u00b7 $12.81/unit marginal' and '$12.81 marginal at your rates' (with the engine's real 0.068 machine-hours); sourcing 'in-house \u2014 M2 Pro marginal $12.81 \u00b7 outside \u2014 banded should-cost $26.92 \u00b150%'. $14.14 appears only as should-cost (e.g. cost-engineering 'M2 Pro (MJF) \u00b7 $14.14/unit should-cost \u00b140%'); zero occurrences of '$14.14 marginal' on any page."
+ },
+ {
+  "check": "cost-engineering-receipt",
+  "status": "PASS",
+  "detail": "/teams/cost-engineering machine receipt now quotes the engine's real source string: '0.0682 hr \u00d7 $30/hr \u00f7 0.8 utilization \u00d7 region-labor \u00d71 \u00d7 1.15 overhead [build-job 380mm \u00f7 25mm/hr = 15.2hr full build \u00f7 \u2026' with '= $2.94 \u00b7 \u00d7 1.30 margin = $3.82'. Arithmetic reconciles: 0.0682\u00d730\u00f70.8\u00d71.15 = 2.941 \u2248 $2.94; \u00d71.30 = 3.824 \u2248 $3.82 = engine line_items.machine 3.8213 (live-confirmed cycle_time 0.0682 hr). The back-solved 0.1019 hr figure is gone, and the page no longer contradicts the 0.068 machine-hours shown on the other teams pages."
+ }
+]

@@ -1,0 +1,262 @@
+[
+ {
+  "id": "SITE-001",
+  "area": "Site",
+  "page": "/",
+  "feature": "Cinematic scroll home",
+  "story": "As a visitor, I scroll the home page and see the five-act WebGL part story (hero, routed, glass box, assembly, $14.14 number, close) with captions fading in per section.",
+  "expected": "Fixed WebGL PartStage renders behind content; a right-edge 6-stop progress rail (PART...PROOF) highlights the active act and clicking a dot scrolls to that section; a floating 'See it on your part' pill appears mid-story and links to /company#pilot; 'The full platform ->' links to /platform and 'or read the method first ->' links to /method. Page has no own metadata export, so tab title falls back to the (site) layout default 'ProofShape \u2014 verification, made of glass'.",
+  "evidence": "frontend/src/app/(site)/page.tsx; frontend/src/app/(site)/layout.tsx; frontend/src/components/site/part-stage.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-002",
+  "area": "Site",
+  "page": "/",
+  "feature": "Live crossover dial (interactive)",
+  "story": "As a visitor, I drag the quantity slider on the 'PROOF' act and watch the make-vs-tool-up recommendation flip at the 1,962-unit crossover.",
+  "expected": "A range input (aria-label 'Quantity', log scale 1 to 10,000, default qty 500) updates the SVG curves, unit-cost readout, and highlighted curve; at qty <= 1962 the MJF 'make' branch is recommended, above it the injection-molding branch (qualified 'if redesigned'); an underline link below routes to /company#pilot.",
+  "evidence": "frontend/src/app/(site)/_home/crossover-dial.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-003",
+  "area": "Site",
+  "page": "/",
+  "feature": "Closing email pill (no-op input)",
+  "story": "As a visitor, I type my email in the close-act pill and click 'Request a pilot'.",
+  "expected": "The email input is decorative \u2014 it is not inside a form and its value is never submitted or carried anywhere; 'Request a pilot' is a plain Link that navigates to /company#pilot regardless of input contents.",
+  "evidence": "frontend/src/app/(site)/page.tsx (Act 5 close, ~lines 504-513)",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-004",
+  "area": "Site",
+  "page": "all site pages",
+  "feature": "Shared top nav",
+  "story": "As a visitor on any marketing page, I use the top nav to reach every main section, log in, or request a pilot.",
+  "expected": "Wordmark 'ProofShape' links to /; nav links Method, Platform, Teams, Security, Developers, Company route to those paths with the current section highlighted (data-active, including /teams/* subtree); 'Log in' -> /login; 'Request a pilot' -> /company#pilot. A mobile <details> menu mirrors all links, closes on link click and Escape. Cinematic pages use a transparent fixed variant, document pages a sticky blurred bar.",
+  "evidence": "frontend/src/components/site/site-shell.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-005",
+  "area": "Site",
+  "page": "all document pages",
+  "feature": "Shared footer",
+  "story": "As a visitor, I use the footer to cross-navigate and reach legal pages.",
+  "expected": "Footer shows tagline 'ProofShape \u2014 verification, made of glass', links Home + the six nav items + Log in, and a legal row with current year plus Privacy -> /privacy, Terms -> /terms, DPA -> /dpa, Status -> /status. Cinematic pages instead close with an inline tagline linking Method, Platform, Security, Developers.",
+  "evidence": "frontend/src/components/site/site-shell.tsx (SiteFooter, SiteFooterTagline)",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-006",
+  "area": "Site",
+  "page": "/method",
+  "feature": "Method document page",
+  "story": "As a visitor, I read how the $14.14 number is built: five-stage walk, scroll-assembled driver sum, honesty rail, and the +/-40% objection section.",
+  "expected": "Document page in SiteShell; scrolling the record-assembly section reveals four drivers that reconcile to $14.14; closing CTAs 'Cost a part' -> /signup and 'Explore the platform' -> /platform. No page-level metadata export (title falls back to the layout default).",
+  "evidence": "frontend/src/app/(site)/method/page.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-007",
+  "area": "Site",
+  "page": "/platform",
+  "feature": "Platform document page",
+  "story": "As a visitor, I read the platform overview (one engine, three surfaces) and continue to signup or the method.",
+  "expected": "Static server-rendered page with metadata title 'Platform \u2014 ProofShape'; closing CTAs 'Cost a part' -> /signup and 'How the number is built' -> /method; nav/footer chrome via SiteShell.",
+  "evidence": "frontend/src/app/(site)/platform/page.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-008",
+  "area": "Site",
+  "page": "/teams",
+  "feature": "Teams index (persona hub)",
+  "story": "As a visitor, I browse the five persona journeys and open the one matching my role.",
+  "expected": "Metadata title 'Teams \u2014 ProofShape'; journey links route to /teams/in-house-manufacturing, /teams/cost-engineering, /teams/sourcing, /teams/design-engineering, /teams/shop-owners; closing CTAs 'Request a pilot' -> /company#pilot and 'Explore the platform' -> /platform.",
+  "evidence": "frontend/src/app/(site)/teams/page.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-009",
+  "area": "Site",
+  "page": "/teams/cost-engineering",
+  "feature": "Cost engineering journey",
+  "story": "As a cost engineer visitor, I scroll the cinematic journey and reach the pilot CTA.",
+  "expected": "Server wrapper exports metadata 'For Cost Engineering \u2014 ProofShape' and renders the client cinematic (WebGL + scroll acts); an inline link back to /teams in the hero; closing CTAs are plain <a> tags to /company#pilot (solid) and /teams (ghost).",
+  "evidence": "frontend/src/app/(site)/teams/cost-engineering/page.tsx; frontend/src/app/(site)/teams/cost-engineering/cost-engineering-cinematic.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-010",
+  "area": "Site",
+  "page": "/teams/design-engineering",
+  "feature": "Design engineering journey",
+  "story": "As a design engineer visitor, I scroll the five-act journey (flag, dial, fix, gate) and reach the pilot CTA.",
+  "expected": "Client page ('use client', no metadata export \u2014 title falls back to layout default); scroll-driven caption reveals with no form/slider inputs; hero links back to /teams; closing CTAs Link to /company#pilot and /teams.",
+  "evidence": "frontend/src/app/(site)/teams/design-engineering/page.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-011",
+  "area": "Site",
+  "page": "/teams/in-house-manufacturing",
+  "feature": "In-house manufacturing journey",
+  "story": "As a manufacturing/MRO visitor, I read the persona page and reach the pilot CTA.",
+  "expected": "Server component with metadata 'ProofShape \u2014 For In-house manufacturing & MRO'; link back to /teams near the top; closing CTAs -> /company#pilot and /teams.",
+  "evidence": "frontend/src/app/(site)/teams/in-house-manufacturing/page.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-012",
+  "area": "Site",
+  "page": "/teams/shop-owners",
+  "feature": "Shop owners journey",
+  "story": "As a shop owner visitor, I scroll the cinematic journey and reach the pilot CTA.",
+  "expected": "Server wrapper exports metadata 'For shop owners \u2014 ProofShape' and renders the client body; hero links back to /teams; closing CTAs -> /company#pilot and /teams.",
+  "evidence": "frontend/src/app/(site)/teams/shop-owners/page.tsx; frontend/src/app/(site)/teams/shop-owners/shop-owners-client.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-013",
+  "area": "Site",
+  "page": "/teams/sourcing",
+  "feature": "Sourcing journey",
+  "story": "As a sourcing/procurement visitor, I scroll the cinematic journey and reach the pilot CTA.",
+  "expected": "Server wrapper exports metadata 'For Sourcing \u2014 ProofShape'; client SourcingView renders WebGL stage and scroll reveals; hero links back to /teams; closing CTAs -> /company#pilot (PILOT_HREF) and /teams.",
+  "evidence": "frontend/src/app/(site)/teams/sourcing/page.tsx; frontend/src/app/(site)/teams/sourcing/sourcing-view.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-014",
+  "area": "Site",
+  "page": "/developers",
+  "feature": "Developers document page",
+  "story": "As a developer visitor, I read the API pitch with the fixture JSON record reveal and continue to signup or docs.",
+  "expected": "Static server page with metadata 'Developers \u2014 ProofShape'; the JSON 'record arriving' reveal is pure CSS (no client JS); closing CTAs 'Get an API key' -> /signup and 'Full API reference' -> /docs.",
+  "evidence": "frontend/src/app/(site)/developers/page.tsx; frontend/src/app/(site)/developers/developers.module.css",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-015",
+  "area": "Site",
+  "page": "/api-reference",
+  "feature": "API reference doorway",
+  "story": "As a developer visitor, I land on the durable API reference doorway and jump to the interactive console.",
+  "expected": "Metadata 'API Reference - ProofShape'; 'Open API console' is an <a> to /scalar and 'Developer overview' links to /developers; a static <pre> lists the four endpoints (POST /api/v1/validate, POST /api/v1/validate/cost, GET /api/v1/cost-decisions, GET /api/v1/catalog) with Bearer auth note.",
+  "evidence": "frontend/src/app/(site)/api-reference/page.tsx; frontend/src/app/scalar/route.ts",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-016",
+  "area": "Site",
+  "page": "/company",
+  "feature": "Company page + pilot anchor",
+  "story": "As a visitor, I read the mission, the four-week pilot program, why-now, and contact sections, arriving at #pilot from any 'Request a pilot' CTA.",
+  "expected": "Metadata 'Company \u2014 ProofShape'; section id='pilot' has scrollMarginTop so /company#pilot lands below the sticky nav; four WeekCell columns describe the pilot; contact section points to the form (no email address published); chrome via SiteShell.",
+  "evidence": "frontend/src/app/(site)/company/page.tsx; frontend/src/app/(site)/company/company-view.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-017",
+  "area": "Site",
+  "page": "/company#pilot",
+  "feature": "Pilot request form (real submission)",
+  "story": "As a prospective customer, I submit the pilot request form (work email, company, what you make, deployment preference) and receive a durable receipt.",
+  "expected": "On mount the form GETs /api/pilot/request for a Turnstile site key (submit disabled until ready, and until the Turnstile token exists when a key is configured); submit POSTs JSON {requestId (UUID, reused for retry idempotency), email, company, what, deployment, turnstileToken, website honeypot} to /api/pilot/request, which validates and forwards to the backend /auth/pilot-request; success replaces the form with a 'Request received' status showing receipt 'CV-<id>'; failures show role=alert error text and reset Turnstile. Required-field validation on email/company/what; deployment select offers undecided/cloud/vpc/air-gapped.",
+  "evidence": "frontend/src/app/(site)/company/pilot-form.tsx; frontend/src/app/api/pilot/request/route.ts",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-018",
+  "area": "Site",
+  "page": "/security",
+  "feature": "Security document page",
+  "story": "As a security reviewer visitor, I read the deployment models (cloud, self-hosted, air-gapped) and data-handling claims.",
+  "expected": "Metadata 'Security \u2014 ProofShape'; no compliance badges; closing CTAs 'Talk to us' -> /company#pilot and 'Self-host it today' -> /developers; chrome via SiteShell.",
+  "evidence": "frontend/src/app/(site)/security/page.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-019",
+  "area": "Site",
+  "page": "/pilot-report",
+  "feature": "Pilot report artifact page",
+  "story": "As a visitor evaluating a pilot, I read what the closeout report contains (held-out accuracy, floor declaration, decision ledger, next actions).",
+  "expected": "Metadata 'Pilot Report - ProofShape'; four numbered cards render from a static list; single CTA 'Request a pilot' -> /company#pilot; chrome via SiteShell.",
+  "evidence": "frontend/src/app/(site)/pilot-report/page.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-020",
+  "area": "Site",
+  "page": "/privacy",
+  "feature": "Privacy notice",
+  "story": "As a visitor, I read how CAD, account, pilot, and usage data are handled.",
+  "expected": "Metadata 'Privacy - ProofShape'; sections What we collect / How it is used / Retention and deletion; 'Talk to ProofShape' pill links to /company#pilot; also linked from the pilot form's fallback note.",
+  "evidence": "frontend/src/app/(site)/privacy/page.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-021",
+  "area": "Site",
+  "page": "/terms",
+  "feature": "Terms summary",
+  "story": "As a visitor, I read the public service terms (evidence-not-authority framing, accounts, uploads, pilot terms).",
+  "expected": "Metadata 'Terms - ProofShape'; static article, no links or CTAs beyond shared nav/footer; reachable from the footer legal row.",
+  "evidence": "frontend/src/app/(site)/terms/page.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-022",
+  "area": "Site",
+  "page": "/dpa",
+  "feature": "DPA summary",
+  "story": "As a procurement/security visitor, I read DPA availability, subprocessors, and security-review process.",
+  "expected": "Metadata 'Data Processing Addendum - ProofShape'; static article stating the DPA travels with the pilot and questionnaires go through pilot intake; no form or CTA links in body.",
+  "evidence": "frontend/src/app/(site)/dpa/page.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-023",
+  "area": "Site",
+  "page": "/status",
+  "feature": "Honest status placeholder",
+  "story": "As a visitor, I check service status and see an explicit statement that no public feed exists yet rather than synthetic uptime.",
+  "expected": "Metadata 'Status - ProofShape'; three rows (Hosted app, API, Workers) each read 'No public metric feed yet'; no fake green indicators; linked from the footer legal row.",
+  "evidence": "frontend/src/app/(site)/status/page.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-024",
+  "area": "Site",
+  "page": "404 (any unknown route)",
+  "feature": "Not-found page",
+  "story": "As a visitor hitting a bad or private link, I see a branded 404 inside the site chrome and can return home.",
+  "expected": "not-found.tsx renders inside SiteShell with heading 'That record is not here.' and a 'Back to ProofShape' pill linking to /; nav and footer remain fully functional.",
+  "evidence": "frontend/src/app/not-found.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-025",
+  "area": "Site",
+  "page": "500 (root error boundary)",
+  "feature": "Root error page",
+  "story": "As a visitor when a page crashes, I see a generic error screen with an error ID and can retry.",
+  "expected": "Root error boundary captures the exception to Sentry with the digest, shows 'Something went wrong', renders 'Error ID: <digest>' when present, and a 'Try again' button that calls the retry callback to re-render. Note: it uses product UI (Button, light tokens), not the site-theater chrome.",
+  "evidence": "frontend/src/app/error.tsx; frontend/src/app/global-error.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "SITE-026",
+  "area": "Site",
+  "page": "/robots.txt + /sitemap.xml + OG image",
+  "feature": "SEO/crawl metadata",
+  "story": "As a crawler (or SEO auditor), I fetch robots.txt and sitemap.xml and get the correct public-route inventory.",
+  "expected": "robots.txt allows the 18 public marketing routes and disallows app/auth routes (/analyze, /verify, /login, /signup, /settings, etc.), pointing at ${NEXT_PUBLIC_SITE_URL}/sitemap.xml; sitemap.xml lists the same 18 routes with priority 1.0 for home and 0.7 elsewhere; a root opengraph-image.tsx serves the social preview image and the (site) layout supplies the default title/description.",
+  "evidence": "frontend/src/app/robots.ts; frontend/src/app/sitemap.ts; frontend/src/app/opengraph-image.tsx; frontend/src/app/(site)/layout.tsx",
+  "test_via": "UI"
+ }
+]

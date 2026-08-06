@@ -30,6 +30,25 @@ _requires_pg = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def _loop_hermetic_engine():
+    """Keep asyncpg pools bound to each pytest-asyncio test loop.
+
+    The DB engine is a module singleton; in the full live-Postgres suite a pool
+    created by an earlier async test can be bound to a now-closed event loop.
+    Dropping the singleton here mirrors the org-membership integration tests.
+    """
+    import src.db.engine as _eng
+
+    _eng._ENGINE = None
+    _eng._SESSION_FACTORY = None
+    try:
+        yield
+    finally:
+        _eng._ENGINE = None
+        _eng._SESSION_FACTORY = None
+
+
 def _build_app():
     from fastapi import FastAPI
 

@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * Light-instrument primitives for the Verify surface. Explicit-hex, theme-
- * independent (the app is dark-first; this register is the founder-approved light
- * instrument). These are the honesty atoms: a provenance dot/chip, the hatched
+ * Light-instrument primitives for the Verify workspace. Explicit-hex and theme-
+ * independent inside the shared light-first ProofShape shell. These are the
+ * honesty atoms: a provenance dot/chip, the hatched
  * (assumption) vs solid (validated) band, cards, kicker, and empty states.
  */
 import * as React from "react";
@@ -161,6 +161,8 @@ export function GhostButton({
   disabled,
   title,
   style,
+  "aria-label": ariaLabel,
+  "aria-controls": ariaControls,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
@@ -168,6 +170,8 @@ export function GhostButton({
   disabled?: boolean;
   title?: string;
   style?: React.CSSProperties;
+  "aria-label"?: string;
+  "aria-controls"?: string;
 }) {
   return (
     <button
@@ -175,6 +179,8 @@ export function GhostButton({
       onClick={onClick}
       disabled={disabled}
       title={title}
+      aria-label={ariaLabel}
+      aria-controls={ariaControls}
       style={{
         display: "inline-flex",
         alignItems: "center",

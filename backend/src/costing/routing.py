@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Optional
 
 from src.analysis.models import ProcessType
+from src.analysis.features.base import has_rotational_surface_evidence
 from src.costing.makeability import environment_gate
 from src.profiles.database import get_materials_for_process
 from src.costing.rates import (
@@ -61,7 +62,7 @@ def _inertia_axisymmetric(mesh, tolerance: float = ROTATIONAL_INERTIA_TOL) -> bo
         return False
 
 
-def is_rotational(geometry, mesh=None):
+def is_rotational(geometry, mesh=None, features=None):
     """Rotational predicate (spec §5.1) — CONSISTENT with the DFM gate by design.
 
     A part is routed to turning only when BOTH signals agree:
@@ -73,7 +74,10 @@ def is_rotational(geometry, mesh=None):
          tolerance), AND
       2. inertia-eigenvalue axisymmetry (`_inertia_axisymmetric`) — the SAME test
          `checks.check_rotational_symmetry` runs for CNC turning, at the SAME 0.15
-         tolerance.
+         tolerance, AND
+      3. a measured outer cylindrical surface covering at least 5% of the part's
+         surface area. This rejects boxy L brackets and open enclosures whose
+         similar extents and inertia moments otherwise mimic a round part.
 
     Requiring (2) makes `rotational ⟹ the engine's rotational-symmetry DFM check
     passes`, so routing can NEVER headline "turnable" on a part the DFM hard-fails
@@ -101,10 +105,30 @@ def is_rotational(geometry, mesh=None):
     rotational = (
         (roundness >= 0.80)
         and _inertia_axisymmetric(mesh)
+        and has_rotational_surface_evidence(
+            features, float(getattr(geometry, "surface_area", 0.0) or 0.0)
+        )
         and (cross_dia >= 5.0)
         and (0.25 <= ld <= 8.0)
     )
     return rotational, axis_len, cross_dia
+
+
+def is_long_prismatic_bar(drivers, material_class: str) -> bool:
+    """A slender prismatic solid — bar/rod stock. Saw-to-length + turn/3-axis,
+    never 5-axis. Gate is DISJOINT from prismatic_block (block_aspect<=4.0),
+    sheet_like, rotational, and thin_wall_enclosure so no other shape reclassifies
+    (see F4: `d[2]/d[1] >= 4.0` forces `d[2]/d[0] >= 4.0` since d[0]<=d[1], so a
+    bar never also qualifies as a compact prismatic_block)."""
+    if material_class == "polymer":
+        return False
+    d = drivers.bbox_mm            # sorted ascending
+    if drivers.bbox_volume_cm3 <= 0 or d[1] <= 0:
+        return False
+    solidity = drivers.volume_cm3 / drivers.bbox_volume_cm3
+    bar_aspect = d[2] / d[1]       # longest / MIDDLE extent = slenderness
+    cross_max = d[1]               # largest cross-section extent (mm)
+    return solidity >= 0.6 and bar_aspect >= 4.0 and cross_max <= 60.0
 
 
 def material_family(material_name: str) -> Optional[str]:
@@ -211,6 +235,12 @@ def _routing_sane(process: ProcessType, material_class: str, drivers) -> bool:
         # only a genuine constant-gauge flat sheet (geometry-gated), never a box
         # or a rotational solid — this is the structural fix for the panel route
         return bool(getattr(drivers, "sheet_like", False))
+    if process == PT.CNC_5AXIS and is_long_prismatic_bar(drivers, material_class):
+        # F4: a slender bar's ordinary features can trip the 3-axis undercut
+        # ERROR while turning is gated out (not rotational) — without this gate
+        # 5-axis becomes the cheapest surviving costed route for plain bar stock.
+        # Saw-to-length + turn/3-axis is the sane route; 5-axis is never it.
+        return False
     return True
 
 
@@ -290,8 +320,8 @@ def eligible_processes(result, drivers, material_class: str, rates: RateCard,
 # ──────────────────────────────────────────────────────────────────────────
 @dataclass
 class RoutingRecommendation:
-    archetype: str             # sheet_panel | rotational | prismatic_block |
-                               # thin_wall_enclosure | bulk_solid
+    archetype: str             # sheet_panel | rotational | long_prismatic_bar |
+                               # prismatic_block | thin_wall_enclosure | bulk_solid
     process: str               # primary recommended ProcessType.value
     eval_family: str           # sheet_metal | subtractive | additive | injection_molding
     material_hint: str         # suggested material class for this archetype
@@ -396,8 +426,9 @@ def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingReco
       1. constant-gauge flat sheet  -> sheet metal / stamping
       2. axisymmetric (turnable)    -> CNC turning
       3. thin-wall non-flat shell   -> injection molding (vol) / AM (proto)
-      4. compact prismatic block    -> CNC milling
-      5. bulky / freeform solid     -> AM or CNC by size
+      4. slender prismatic bar      -> saw-to-length + turn / 3-axis mill (F4)
+      5. compact prismatic block    -> CNC milling
+      6. bulky / freeform solid     -> AM or CNC by size
     """
     d = drivers.bbox_mm
     gauge = drivers.sheet_gauge_mm
@@ -470,7 +501,35 @@ def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingReco
             alternatives=[PT.SHEET_METAL.value, PT.CNC_3AXIS.value],
         )
 
-    # 4) PRISMATIC BLOCK (compact, machinable from billet) --------------------
+    # 4) LONG PRISMATIC BAR (slender bar/rod stock) — F4 -----------------------
+    # Placed BEFORE prismatic_block; disjoint from it by construction (a bar's
+    # d[2]/d[1] >= 4.0 forces d[2]/d[0] >= 4.0, which fails the block's <= 4.0
+    # ceiling), so no compact block is reclassified. `drivers.rotational` is
+    # already handled by branch (2) above and is always False here — this check
+    # is kept for robustness in case classification order ever changes.
+    if is_long_prismatic_bar(drivers, material_class):
+        if drivers.rotational:
+            return RoutingRecommendation(
+                archetype="long_prismatic_bar",
+                process=PT.CNC_TURNING.value, eval_family="subtractive",
+                material_hint=material_class, confidence=0.7,
+                reasoning=(
+                    f"Slender round bar ({d[2]:.0f}mm long × Ø{d[1]:.0f}mm): saw to "
+                    f"length, then turn — 5-axis is not warranted for bar stock."),
+                alternatives=[PT.CNC_3AXIS.value],
+            )
+        return RoutingRecommendation(
+            archetype="long_prismatic_bar",
+            process=PT.CNC_3AXIS.value, eval_family="subtractive",
+            material_hint=material_class, confidence=0.7,
+            reasoning=(
+                f"Slender prismatic bar ({d[2]:.0f}mm long × {d[1]:.0f}×{d[0]:.0f}mm "
+                f"cross-section): saw to length, then 3-axis mill — 5-axis is not "
+                f"warranted for bar stock."),
+            alternatives=[PT.CNC_TURNING.value],
+        )
+
+    # 5) PRISMATIC BLOCK (compact, machinable from billet) --------------------
     if solidity >= 0.5 and block_aspect <= 4.0 and material_class != "polymer":
         return RoutingRecommendation(
             archetype="prismatic_block",
@@ -483,7 +542,7 @@ def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingReco
             alternatives=[PT.CNC_5AXIS.value],
         )
 
-    # 5) BULK / FREEFORM default ---------------------------------------------
+    # 6) BULK / FREEFORM default ---------------------------------------------
     return RoutingRecommendation(
         archetype="bulk_solid",
         process=PT.MJF.value if material_class == "polymer" else PT.CNC_3AXIS.value,

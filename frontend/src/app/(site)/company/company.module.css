@@ -153,6 +153,19 @@
   .formGrid { grid-template-columns: 1fr; }
   .formGridWide { grid-column: span 1; }
 }
+.fieldLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+.fieldLabel span {
+  font-family: var(--st-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(245, 245, 247, 0.48);
+}
 .pilotInput {
   width: 100%;
   background: #0a0b0d;
@@ -170,6 +183,11 @@
 }
 .pilotInput:focus {
   border-color: rgba(245, 245, 247, 0.4);
+}
+.pilotInput:focus-visible,
+.sendBtn:focus-visible {
+  outline: 2px solid rgba(245, 245, 247, 0.76);
+  outline-offset: 3px;
 }
 .formFoot {
   margin-top: 16px;
@@ -193,4 +211,20 @@
 }
 .sendBtn:hover {
   transform: scale(1.03);
+}
+.mailFallback {
+  margin: 14px 0 0;
+  font-family: var(--st-font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+  color: rgba(245, 245, 247, 0.42);
+}
+.mailFallback a {
+  color: rgba(245, 245, 247, 0.8);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(245, 245, 247, 0.24);
+}
+.mailFallback a:hover {
+  color: #f5f5f7;
+  border-bottom-color: rgba(245, 245, 247, 0.62);
 }

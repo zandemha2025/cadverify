@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "status": "UNVERIFIED",
+  "clean": false,
+  "gitHead": null,
+  "servedBuilds": {
+    "frontend": null,
+    "backend": null
+  },
+  "fixtures": {
+    "cube-step": "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a"
+  },
+  "slides": {},
+  "message": "This placeholder cannot verify a build. Load a clean release-generated evidence manifest to enable BUILD VERIFIED badges."
+}

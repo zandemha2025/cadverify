@@ -1,0 +1,14 @@
+{
+  "orgA_decision_id": "01KX77T86RBSN42VA8S1AEK18Z",
+  "tenant_iso_status": 404,
+  "tenant_leaks_A_email": false,
+  "orgB_list_has_A": false,
+  "unauth_api_status": 401,
+  "unauth_ui_url": "http://localhost:3097/login?next=%2Fcost-decisions",
+  "orgB_members_status": 200,
+  "logout_cleared": true,
+  "postlogout_status": 401,
+  "junk_status": 400,
+  "junk_leaks": false,
+  "malformed_status": 400
+}

@@ -41,7 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from src.auth.disposable import normalize_email
-from src.auth.org_context import personal_org_slug
+from src.auth.org_context import personal_org_slug, revoke_org_api_keys
 from src.db.models import Membership, OrgInvite, Organization, User
 
 # admin(3) > member(2) > viewer(1) — mirrors rbac.OrgRole ranks.
@@ -514,6 +514,9 @@ async def remove_member(
         raise _409(
             "Cannot remove the last admin — an org must keep at least one."
         )
+    # Offboarding and key invalidation are one transaction. A key issued by the
+    # removed org must not survive and authenticate against another membership.
+    await revoke_org_api_keys(session, target_user_id, org_id)
     await session.delete(m)
     # If the removed member's active org pointed here, clear it so resolution
     # falls back to a real membership (never leaks the removed org).

@@ -1,0 +1,206 @@
+C
+Verify
+/
+cube.step
+Default rate card (v0) · none authored
+⌘K
+Verify a part
+cube.step
+
+Ø/bbox 20.0 × 15.0 × 10.0 mm · 2.72 cm³
+watertight true · ● MEASURED
+
+● real shell · 41k-tri preview
+
+CONTEXT
+
+not declared
+
+no parent assembly declared
+
+service world
+orphan until declared
+X-ray
+No parent assembly
+drag to orbit
+
+Can this be made — on your machines, in materials that survive its world — and what will it really take?
+
+DECLARE ITS WORLD
+
+● USER · on the record
+120 °C service
+sour service (H₂S)
+35 MPa pressure
+
+world declared — captured on this part's record (part-context, keyed to its mesh). The verification below reflects it: materials that can't survive this world are struck with their cited standard.
+
+DECLARED MATERIAL CLASS · ● USER
+
+Polymer
+Aluminum
+Steel
+Stainless
+Titanium
+
+VERDICT · UNKNOWN — NOT ENOUGH DECLARED
+
+Makeability unknown — not enough is declared.
+
+No inventory (or a required capability) is declared, so the machine verdict is honestly unknown — never a fabricated pass. Declare your floor to resolve it.
+
+should-cost $11.95/unit on CNC 5-Axis at qty 10,000
+
+Open the record →
+
+No confident match in your part library yet — geometry retrieved 3 prior parts, none confident enough to suggest.
+
+1
+
+Envelope — against your machines
+
+0 machines declared
+
+No machines declared.
+
+Your floor is the denominator of every makeability verdict. Declare it once — a CSV or five minutes of typing.
+
+Declare your floor →
+2
+
+Materials that survive this world
+
+steel
+
+material class steel · route hint steel ○ DEFAULT
+
+Ductile Iron
+Ductile Iron excluded: sour service requires NACE MR0175 qualification (material not NACE MR0175 / sour_service)
+Mild Steel
+Mild Steel excluded: sour service requires NACE MR0175 qualification (material not NACE MR0175 / sour_service)
+
+excluded materials are struck visibly, never dropped silently — each cites the property / standard, and the decision below is computed over the survivors.
+
+3
+
+Process physics — geometry against each route
+
+DLP ResinROUTE PICK
+issues
+CNC 3-Axis
+pass
+CNC 5-Axis
+pass
+Wire EDM
+pass
+SLA Resin
+issues
+SLS (Powder)
+issues
+
+15 priority fixes across routes · overall issues · rendered from POST /validate
+
+4
+
+What it really takes
+
+on CNC 5-Axis · AISI 4130
+
+MATERIAL
+○ DEFAULT
+
+0.06 $
+
+MACHINE TIME
+○ DEFAULT
+
+1.631 $
+
+CYCLE TIME
+○ MODEL
+
+0.03 hr
+
+LABOR
+○ DEFAULT
+
+8.69 $
+
+LEARNING CURVE
+○ DEFAULT
+
+0.497 ×
+
+SETUP
+○ DEFAULT
+
+0.35 $
+
+NRE COST
+○ DEFAULT
+
+0.011 $
+
+INSPECTION COST
+○ DEFAULT
+
+1.132 $
+
+CONSUMABLES COST
+○ DEFAULT
+
+0.082 $
+
+lead 11.2–20.8 days [queue model — not your scheduler] · computed hours are ○ MODEL from an assumption at SHOP rates — tap any driver for its verbatim derivation.
+
+5
+
+Resource cost — yours, not a market's
+
+QUANTITY 100 · engine-exact — a computed point
+annual volume · program not set
+1
+no crossover computed
+10,000
+
+CNC 5-Axis — MAKE NOW
+
+$24.42 /unit at this qty
+
+engine-exact — a computed point
+
+hours × your rates + mass × your lot price · 0% of drivers grounded (● measured/shop/user)
+band & drivers read at computed qty 100
+
+assumption-based, not yet validated
+
+engine note: Make by cnc_5axis (AISI 4130) — $189.01/unit at qty 1, the cheapest make-as-is option and your low-volume pick. cnc_5axis is cheapest at every quantity tested — no tooling crossover. environment (sour service) excludes Ductile Iron, Mild Steel; decision computed over NACE-qualified materials
+
+Decide
+
+Make in-house
+Make outside
+Acquire capability
+Redesign
+
+next → pick one above · your choice is noted on this verification beside the saved cost-decision record.
+
+Open the record →
+the cost-decision is the immutable saved artifact; your choice above is noted in this verification session and the record opens from Records.
+
+this verdict ships hatched — assumption band, not shop-validated · n=0. It flips solid only when your actuals come back.
+
+See how truth arrives →
+
+MAKEABILITY — UNKNOWN · USER
+
+inventory declared false · environment declared true
+
+Machine fit is a MEASURED-geometry × USER-declared-capability comparison. 'unknown' when no inventory is declared or a required capability is undeclared — never a fabricated pass. Environment exclusions cite the material property/standard. Known limitations: the 5-axis/undercut need is inherited from the upstream process router (not re-derived from geometry); force gates (tonnage/taper) require a declared force.
+
+Compare routes @ 1,000
+Compare saved decisions →
+Why this verdict?
+An uncomputable ask
+
+answers are deterministic engine artifacts — verdict, materials, drivers, hours, cost, routes, and saved records

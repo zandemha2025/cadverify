@@ -1,0 +1,82 @@
+C
+Verify
+/
+junk.txt
+Default rate card (v0) · none authored
+⌘K
+Verify a part
+junk.txt
+
+drop STL, STEP or IGES to measure
+
+▢ bbox envelope · shell unavailable
+
+CONTEXT
+
+not declared
+
+no parent assembly declared
+
+orphan until declared
+X-ray
+No parent assembly
+drag to orbit
+
+Can this be made — on your machines, in materials that survive its world — and what will it really take?
+
+DECLARE ITS WORLD
+
+ambient
+120 °C service
+sour service (H₂S)
+35 MPa pressure
+
+no world declared — the part is verified in ambient conditions.
+
+DECLARED MATERIAL CLASS · ● USER
+
+Polymer
+Aluminum
+Steel
+Stainless
+Titanium
+
+VERDICT · COULD NOT ANALYZE
+
+We couldn't read this file.
+
+Unsupported file type: .txt. Use .stl, .step, .stp, .iges, or .igs No routing, DFM, or should-cost was computed, and nothing here is estimated. Upload a CAD part (.stl, .step, .stp, .iges, or .igs) to run the walk.
+
+1
+
+Envelope — against your machines
+
+0 machines declared
+
+No machines declared.
+
+Your floor is the denominator of every makeability verdict. Declare it once — a CSV or five minutes of typing.
+
+Declare your floor →
+2
+
+Materials that survive this world
+
+material class withheld — costing unavailable
+
+environment-driven survival filtering (NACE MR0175 / HDT tables) is part of the makeability verification — DECLARE A WORLD TO EVALUATE. Invalid materials are filtered out visibly, never silently.
+
+3
+
+Process physics — geometry against each route
+
+routing/DFM unavailable — Unsupported file type: .txt. Use .stl, .step, .stp, .iges, or .igs · withheld, never faked
+
+Compare routes @ 1,000
+Compare saved decisions →
+Why this verdict?
+An uncomputable ask
+
+answers are deterministic engine artifacts — verdict, materials, drivers, hours, cost, routes, and saved records
+
+Could not analyze — this part couldn't be tessellated; no routing, DFM, or cost was computed

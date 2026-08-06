@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
-import { getBatchItems, type BatchItem } from "@/lib/api/batch";
+import {
+  analysisPageHref,
+  getBatchItems,
+  type BatchItem,
+} from "@/lib/api/batch";
 import { DataTable } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -30,9 +34,15 @@ interface Props {
   batchId: string;
   /** Trigger a refresh by changing this key. */
   refreshKey?: number;
+  /** Keeps parent actions synchronized with the visible item results. */
+  onLoadStateChange?: (state: "loading" | "ready" | "error") => void;
 }
 
-export default function BatchItemsTable({ batchId, refreshKey }: Props) {
+export default function BatchItemsTable({
+  batchId,
+  refreshKey,
+  onLoadStateChange,
+}: Props) {
   const [items, setItems] = useState<BatchItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,37 +51,63 @@ export default function BatchItemsTable({ batchId, refreshKey }: Props) {
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [expandedErrors, setExpandedErrors] = useState<Set<string>>(new Set());
+  const [retryKey, setRetryKey] = useState(0);
 
-  const fetchItems = useCallback(
-    async (cursor?: string) => {
-      try {
-        const resp = await getBatchItems(batchId, {
-          status: statusFilter === "all" ? undefined : statusFilter,
-          cursor,
-          limit: 50,
-        });
-        setItems((prev) => (cursor ? [...prev, ...resp.items] : resp.items));
-        setNextCursor(resp.next_cursor);
-        setHasMore(resp.has_more);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load items");
-      }
-    },
+  const fetchPage = useCallback(
+    (cursor?: string) =>
+      getBatchItems(batchId, {
+        status: statusFilter === "all" ? undefined : statusFilter,
+        cursor,
+        limit: 50,
+      }),
     [batchId, statusFilter],
   );
 
   // Initial load + filter change
   useEffect(() => {
+    let active = true;
     setLoading(true);
     setError(null);
-    fetchItems().finally(() => setLoading(false));
-  }, [fetchItems, refreshKey]);
+    setItems([]);
+    setNextCursor(null);
+    setHasMore(false);
+    onLoadStateChange?.("loading");
+
+    void fetchPage()
+      .then((resp) => {
+        if (!active) return;
+        setItems(resp.items);
+        setNextCursor(resp.next_cursor);
+        setHasMore(resp.has_more);
+        setLoading(false);
+        onLoadStateChange?.("ready");
+      })
+      .catch((caught) => {
+        if (!active) return;
+        setError(caught instanceof Error ? caught.message : "Failed to load items");
+        setLoading(false);
+        onLoadStateChange?.("error");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [fetchPage, onLoadStateChange, refreshKey, retryKey]);
 
   const loadMore = async () => {
     if (!nextCursor) return;
     setLoadingMore(true);
-    await fetchItems(nextCursor);
-    setLoadingMore(false);
+    try {
+      const resp = await fetchPage(nextCursor);
+      setItems((prev) => [...prev, ...resp.items]);
+      setNextCursor(resp.next_cursor);
+      setHasMore(resp.has_more);
+      setError(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to load items");
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   const toggleError = useCallback((itemId: string) => {
@@ -131,15 +167,32 @@ export default function BatchItemsTable({ batchId, refreshKey }: Props) {
         ),
       },
       {
+        id: "result",
+        header: "Result",
+        cell: ({ row }) => {
+          const item = row.original;
+          if (!item.analysis_url) return <span className="text-muted-foreground">—</span>;
+          return (
+            <div className="text-xs leading-5">
+              <p className="font-medium text-foreground">{item.verdict ?? "—"}</p>
+              <p className="text-muted-foreground">
+                {item.best_process ?? "No best process"} · {item.issue_count ?? "—"} issues
+              </p>
+            </div>
+          );
+        },
+      },
+      {
         id: "actions",
         header: "",
         cell: ({ row }) => {
           const item = row.original;
+          const analysisHref = analysisPageHref(item.analysis_url);
           return (
             <div className="flex items-center justify-end gap-1">
-              {item.analysis_id != null && (
+              {analysisHref && (
                 <Button asChild variant="ghost" size="sm">
-                  <Link href={`/analyses/${item.analysis_id}`}>View</Link>
+                  <Link href={analysisHref}>View</Link>
                 </Button>
               )}
               {item.error_message && (
@@ -162,8 +215,14 @@ export default function BatchItemsTable({ batchId, refreshKey }: Props) {
     [expandedErrors, toggleError],
   );
 
+  const loadState = loading ? "loading" : error ? "error" : "ready";
+
   return (
-    <div className="space-y-3">
+    <div
+      className="space-y-3"
+      data-batch-items-state={loadState}
+      aria-busy={loading || undefined}
+    >
       {/* Status filter */}
       <div className="flex items-center gap-2">
         <span className="text-sm text-muted-foreground">Filter</span>
@@ -186,8 +245,7 @@ export default function BatchItemsTable({ batchId, refreshKey }: Props) {
           message={error}
           onRetry={() => {
             setError(null);
-            setLoading(true);
-            fetchItems().finally(() => setLoading(false));
+            setRetryKey((key) => key + 1);
           }}
         />
       )}

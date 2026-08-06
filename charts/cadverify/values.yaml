@@ -1,3 +1,20 @@
+# Default values are intentionally suitable for local chart development only.
+# Production installs must use values-regulated.yaml (or an equivalent private
+# overlay) and satisfy the fail-closed checks in _helpers.tpl.
+
+production:
+  enabled: false
+  regulated: false
+  # CI may set this only to render the checked-in placeholder overlay. Never use
+  # it for an install or upgrade.
+  documentationRenderOnly: false
+  # Required only when production.enabled=true. This prevents an example values
+  # file from being installed accidentally before external dependencies exist.
+  operatorAcknowledgement: ""
+
+release: dev
+deploymentEnvironment: development
+
 replicaCount:
   backend: 2
   worker: 2
@@ -7,96 +24,217 @@ image:
   backend:
     repository: cadverify-backend
     tag: latest
+    digest: ""
     pullPolicy: IfNotPresent
   frontend:
     repository: cadverify-frontend
     tag: latest
+    digest: ""
     pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# Production secrets are created outside Helm (AWS Secrets Manager + External
+# Secrets, Sealed Secrets, or an equivalent customer-controlled mechanism).
+# The referenced Secret must expose environment-variable keys such as
+# DATABASE_URL, REDIS_URL, SESSION_SECRET, DASHBOARD_SESSION_SECRET,
+# API_KEY_PEPPER, CONNECTOR_SECRET_KEY, and CONNECTOR_FINGERPRINT_KEY.
+runtimeSecret:
+  existingSecret: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  automountServiceAccountToken: false
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+terminationGracePeriodSeconds: 60
+
+ephemeralStorage:
+  # Scratch/cache only. S3 remains the source of truth in production.
+  dataSize: 20Gi
 
 resources:
   backend:
-    requests:
-      cpu: "250m"
-      memory: "512Mi"
-    limits:
-      cpu: "1000m"
-      memory: "2Gi"
-  worker:
     requests:
       cpu: "500m"
       memory: "1Gi"
     limits:
       cpu: "2000m"
       memory: "4Gi"
+  worker:
+    requests:
+      cpu: "1000m"
+      memory: "2Gi"
+    limits:
+      cpu: "4000m"
+      memory: "8Gi"
   frontend:
     requests:
-      cpu: "100m"
-      memory: "128Mi"
+      cpu: "250m"
+      memory: "256Mi"
     limits:
-      cpu: "500m"
-      memory: "512Mi"
+      cpu: "1000m"
+      memory: "1Gi"
+
+autoscaling:
+  backend:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 65
+  frontend:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+topologySpreadConstraints:
+  enabled: false
+  topologyKey: topology.kubernetes.io/zone
+  maxSkew: 1
+  whenUnsatisfiable: DoNotSchedule
+
+health:
+  asyncStrict: true
+  workerStrict: true
+
+objectStore:
+  backend: local
+  s3:
+    bucket: ""
+    region: ""
+    endpoint: ""
+    prefix: cadverify
+    kmsKeyId: ""
 
 persistence:
   blobs:
     enabled: true
     size: 50Gi
     storageClass: ""
-    # Backend + worker replicas both mount blob storage. Multi-replica installs
-    # need a ReadWriteMany class or an external blob backend; do not leave this
-    # as implicit ReadWriteOnce in enterprise renders.
     accessModes:
       - ReadWriteMany
-  postgres:
-    enabled: true
-    size: 20Gi
-    storageClass: ""
 
-# WARNING: templates/secret-saml.yaml ships sp-key.pem / sp-cert.pem as EMPTY
-# string placeholders by default (samlSecrets below). They are fine for
-# receiving unsigned assertions, but SP request signing / encrypted
-# assertions (advanced_settings authnRequestsSigned or
-# wantAssertionsEncrypted) will silently fail with an empty key. Provide the
-# real PEMs before enabling those, e.g.:
-#   helm upgrade ... --set-file samlSecrets.spKey=sp-key.pem \
-#                    --set-file samlSecrets.spCert=sp-cert.pem
-# or point the Secret at an external/sealed secret. Do NOT commit real keys here.
+# SAML configuration should be supplied as an externally managed Secret in
+# production. It must contain settings.json and advanced_settings.json.
 saml:
   enabled: false
+  existingSecret: ""
   idpMetadata: ""
   spEntityId: ""
   spAcsUrl: ""
   spSloUrl: ""
 
-# Populated via --set-file (see WARNING above) or an external/sealed secret;
-# templates/secret-saml.yaml renders these into the sp-key.pem / sp-cert.pem
-# keys of the SAML Secret. Left empty by default.
 samlSecrets:
   spKey: ""
   spCert: ""
 
 auth:
-  mode: "google"
+  mode: password
+  # Local chart users may opt in. Production overlays must keep public password
+  # signup off and prove identity through magic link or the enterprise IdP.
+  publicPasswordSignup: true
 
 audit:
   enabled: true
   retentionDays: 365
 
 rbac:
-  defaultRole: "analyst"
+  defaultRole: analyst
+
+frontend:
+  # Server-side URL used by the Next.js proxy inside the cluster.
+  apiBase: ""
+  # Optional explicit same-origin SSO initiation path. Empty derives the
+  # standard SAML/OIDC path from auth.mode.
+  ssoLoginPath: ""
+  magicLink:
+    enabled: false
+    # Public widget key, sourced from the externally managed runtime Secret so
+    # one immutable frontend digest can move between environments.
+    siteKeySecretKey: TURNSTILE_SITE_KEY
+
+reconstruction:
+  # Regulated production permits local/on-prem inference or an honest disabled
+  # state only. Remote third-party reconstruction is a separate boundary change.
+  backend: local
+  allowRemoteEgress: false
+
+observability:
+  otel:
+    enabled: false
+    endpoint: ""
+    serviceName: cadverify-api
+    caSecret: ""
+    caKey: ca.crt
+
+regulatedControls:
+  # Set true only after the landing zone proves service-mesh mTLS or equivalent
+  # encryption for pod-to-pod traffic in this namespace.
+  inClusterEncryption: false
 
 ingress:
   enabled: false
-  className: "nginx"
-  host: "cadverify.example.com"
+  className: nginx
+  host: cadverify.example.com
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
   tls: []
 
+networkPolicy:
+  enabled: false
+  ingressControllerNamespaceLabels:
+    kubernetes.io/metadata.name: ingress-nginx
+  ingressControllerPodLabels:
+    app.kubernetes.io/name: ingress-nginx
+  observabilityNamespaceLabels:
+    kubernetes.io/metadata.name: observability
+  observabilityPodLabels:
+    app.kubernetes.io/name: opentelemetry-collector
+  # Exact private endpoint/NAT destinations by workload. Keep migration limited
+  # to the database; it must not inherit the API/worker S3 or IdP egress set.
+  backendEgressRules: []
+  workerEgressRules: []
+  migrationEgressRules: []
+  # Override for an approved non-EKS identity design, but every listed port
+  # must appear in that workload's rules in regulated mode.
+  requiredPorts:
+    backend: [80, 443, 5432, 6379]
+    worker: [80, 443, 5432, 6379]
+    migration: [5432]
+
 postgresql:
-  host: "postgres"
+  host: postgres
   port: 5432
-  database: "cadverify"
-  username: "cadverify"
+  database: cadverify
+  username: cadverify
   password: ""
 
 redis:
-  host: "redis"
+  host: redis
   port: 6379

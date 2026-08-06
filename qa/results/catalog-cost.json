@@ -1,0 +1,224 @@
+[
+ {
+  "id": "CAT-001",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "page_size=500 -> 422 (cap<=100: {\"code\":\"VALIDATION_ERROR\",\"message\":\"[{'type': 'less_than_equal', 'loc': ('quer); cross-org: other-org catalog empty verified"
+ },
+ {
+  "id": "CAT-002",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "keyset keys=['next_cursor', 'rows']; cold_projection=None truncated=None nrows=2"
+ },
+ {
+  "id": "CAT-003",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "portfolio keys=['rows', 'summary']"
+ },
+ {
+  "id": "CAT-004",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "triage keys=['by_process', 'summary']; body={\"summary\": {\"total\": 2, \"analyzed\": 0, \"makeable\": 0, \"needs_review\": 0, \"unknown\": 2, \"truncated\": false}, \"by_process\": [{\"process\": \"mjf\", \"label\": \"MJF 3D Printing\", \"count\": 2}]}"
+ },
+ {
+  "id": "CAT-005",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "makeability keys=['buckets', 'evaluation_note', 'summary']; body={\"summary\": {\"makeable_in_house\": 0, \"makeable_outside\": 0, \"needs_capability\": 0, \"not_makeable\": 0, \"unknown\": 2, \"geometry_invalid\": 0, \"total\": 2, \"stale_count\": 0, \"stale\": false, \"truncated\": false}, \"buckets\": [\"makeable_in_house\", \"makeable_outside\", \"needs_capability\", \"not_makeable\", \"unknown\", \"geometry_invalid\"], \"evaluation_note\": \"No parts have been evaluated against a declared machine inventory \\u2014 in-house makeability is 'unknown'. Declare machines and (re-)cost parts to popul; invalid-bucket detail: {\"code\": \"BAD_REQUEST\", \"message\": \"invalid bucket: expected one of makeable_in_house, makeable_outside, needs_capability, not_makeable, unknown, geometry_invalid\", \"doc_url\": \"http://localhost:3000/d; could not find valid bucket name to drill (tried None, makeable_now, makeable, blocked)"
+ },
+ {
+  "id": "CAT-006",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "keys=['basis_note', 'note', 'ranking', 'summary']; body={\"ranking\": [], \"summary\": {\"acquisitions\": 0, \"parts_unlockable_by_one_acquisition\": 0, \"blocked_by_multiple_constraints\": 0, \"total_blocked\": 0, \"stale\": false, \"truncated\": false}, \"basis_note\": \"Ranking counts parts whose SINGLE binding constraint one acquisition closes, computed only from stored gap data. Parts blocked by multiple constraints are reported in blocked_by_multiple_constraints and never folded in. No acquisition dollar cost is shown \\u2014 none is available from engine data (ne"
+ },
+ {
+  "id": "CAT-007",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "cross-org: foreign decision detail verified"
+ },
+ {
+  "id": "CAT-008",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "compare keys=['a', 'b', 'diff', 'unit_cost_by_qty', 'unit_costs_by_process']; body={\"a\": {\"id\": \"01KZA2CSJQJ4W4B2QXX1D68D92\", \"filename\": \"qa-box.stl\", \"label\": null, \"make_now_process\": \"mjf\", \"make_now_material\": \"PP (Polypropylene)\", \"tooling_process\": \"injection_molding\", \"crossover_qty\": 2815.0, \"material_class\": \"polymer\", \"created_at\": \"2026-08-05T22:58:34.159669+00:00\"}, \"; cross-org: foreign compare verified"
+ },
+ {
+  "id": "CAT-009",
+  "status": "TESTED-FAIL",
+  "error_found": "note>1000 chars: documented expected=400, actual=422 (router Field(max_length=1000) rejects with 422 before the service 400 at cost_decision_service.py:506-509 can fire)",
+  "notes": "invalid disposition -> 422 (422 via Literal, documented); inhouse -> 200; DFM-blocked 409 path not triggerable with clean fixture"
+ },
+ {
+  "id": "CAT-010",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "long approve note -> 422 (validation reject; expected col makes no status claim)"
+ },
+ {
+  "id": "CAT-011",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "pdf 53591 bytes, disposition=attachment; filename=\"qa-box-cost-report.pdf\""
+ },
+ {
+  "id": "CAT-012",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-013",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "share resp={\"share_url\": \"/s/cost/XBQ5xzjPbb4C\", \"share_short_id\": \"XBQ5xzjPbb4C\"}"
+ },
+ {
+  "id": "CAT-014",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-015",
+  "status": "TESTED-FAIL",
+  "error_found": "Template example row is malformed: header is process,name,... but the example row is 'Haas VF-2 #1,cnc_3axis,...' (name/process swapped), and the capabilities JSON is not CSV-quoted (inner quotes not doubled) so csv parsing shatters the row. Importing the template endpoint output verbatim into POST /machine-inventory/import fails its own contract: 200 {imported:0, skipped:1, errors:[{line:2, reason: capabilities is not valid JSON}]} (machine_inventory_service._example_row)",
+  "notes": "Header itself is correct and complete (process + all 9 optional columns); catalog returns provenance=catalog_template entries and passed"
+ },
+ {
+  "id": "CAT-016",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "initial={\"ops\": {}, \"provenance\": \"user\", \"updated_at\": null}"
+ },
+ {
+  "id": "CAT-017",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "summary={\"imported\": 1, \"skipped\": 1, \"total\": 2, \"errors\": [{\"line\": 3, \"reason\": \"count not an integer ('abc')\"}]}"
+ },
+ {
+  "id": "CAT-018",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "machine keys=['capabilities', 'capital_frac', 'count', 'created_at', 'hourly_rate_usd', 'id', 'material_thickness_map', 'materials', 'max_workpiece_kg', 'name', 'notes', 'process', 'provenance', 'updated_at']; id=01KZA2RT5CQ22MHCMAJT295EZE"
+ },
+ {
+  "id": "CAT-019",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-020",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "cross-org: foreign material version verified"
+ },
+ {
+  "id": "CAT-021",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "pre-publish effective={\"flag_enabled\": false, \"using_governed\": false, \"source\": \"base_rate_table_material_prices\", \"provenance\": \"default\", \"validated\": false, \"payload\": null}; post-publish effective: flag=False using_governed=False source=base_rate_table_material_prices"
+ },
+ {
+  "id": "CAT-022",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "draft keys=['change_note', 'created_at', 'created_by', 'effective_from', 'effective_to', 'id', 'name', 'payload', 'provenance', 'published_at', 'status', 'ulid', 'validated', 'version']"
+ },
+ {
+  "id": "CAT-023",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-024",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "published v1: status=published effective_from=2026-08-05T23:06:05.347371+00:00; decision stale_reason=material_library_published:v1 stale_at=2026-08-05T23:06:05.347371+00:00"
+ },
+ {
+  "id": "CAT-025",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "initial empty-versions list + flag_enabled verified in earlier run before drafts existed; post-publish: flag=True governed=True source=governed_rate_card"
+ },
+ {
+  "id": "CAT-026",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "create-default-draft (200, payload seeded from default table), copy via from_version_id, and draft discard all verified in earlier run"
+ },
+ {
+  "id": "CAT-027",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "diff={\"changed\": [{\"path\": \"global.labor_rate\", \"from\": 70.0, \"to\": 35.0}], \"added\": [], \"removed\": []}; cross-org: foreign rate diff verified"
+ },
+ {
+  "id": "CAT-028",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "publish/409/400/timeline-close verified; fresh decision marked stale with reason=rate_library_published:v4; already-stale decisions keep first reason by design (stale_at IS NULL filter, cost_decision_service.py:593)"
+ },
+ {
+  "id": "CAT-029",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-030",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "full lifecycle verified (draft/edit/400 invalid/publish/409s/archive rules); fresh decision marked stale with reason=shop_profile_published:qa-shop:v4; already-stale decisions keep first reason by design"
+ },
+ {
+  "id": "CAT-031",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "cross-org: foreign part-context verified"
+ },
+ {
+  "id": "CAT-032",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "declare keys=['annual_volume', 'mesh_hash', 'parent_assembly', 'portfolio_delta', 'program', 'provenance', 'units_per_parent']; portfolio row match=True; portfolio context_note=Annualized $/year figures are derived from USER-DECLARED annual volumes (provenance: user); parts without a declared volume show null, never a fabricated demand quantity."
+ },
+ {
+  "id": "CAT-033",
+  "status": "BLOCKED",
+  "error_found": "",
+  "notes": "Core behavior (persist real STEP/IGES edge tree) not exercisable: server returns honest 501 NOT_IMPLEMENTED 'STEP/IGES parsing is unavailable on this server (gmsh not installed)' for any STEP upload (health also reports reconstruction unavailable). Pre-extraction guard verified: empty upload -> 400 (expected 400). Auth/kill-switch/org gates shared with other BOM routes verified there."
+ },
+ {
+  "id": "CAT-034",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "onboard={\"assembly_key\": \"qa-vehicle\", \"edges\": 4, \"roots\": [\"vehicle\"], \"source\": \"bom_csv\", \"skipped\": 1, \"errors\": [{\"line\": 6, \"reason\": \"qty_per_parent must be > 0 (got -3)\"}]}"
+ },
+ {
+  "id": "CAT-035",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "ancestry={\"assembly_key\": \"qa-vehicle\", \"child_ref\": \"handle\", \"has_tree\": true, \"ancestry\": [\"handle\", \"door-assembly\", \"vehicle\"], \"ancestry_paths\": [[\"handle\", \"door-assembly\", \"vehicle\"], [\"handle\", \"trunk-assembly\", \"vehicle\"]], \"rolled_up_multiplier\": 9, \"roots\": [\"vehicle\"]}; cross-org: foreign bom tree invisible (empty edges) verified"
+ },
+ {
+  "id": "CAT-036",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "summary={\"imported\": 2, \"updated\": 0, \"skipped\": 1, \"total\": 3, \"errors\": [{\"line\": 4, \"reason\": \"missing part_id\"}]}; re-import summary={\"imported\": 0, \"updated\": 1, \"skipped\": 0, \"total\": 1, \"errors\": []}"
+ },
+ {
+  "id": "CAT-037",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "with_geometry counts only /validate-uploaded analyses by normalized stem; verified 0 before upload, 1 after uploading qa-box.stl analysis; cross-org: other-org manifest empty verified"
+ }
+]

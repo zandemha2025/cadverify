@@ -1,8 +1,10 @@
-# CadVerify V1 — Accuracy Characterization (local, independent references)
+# CadVerify V1 — Historical Geometry Benchmark (local, independent references)
 
-**Author:** Accuracy-Harness agent (Cycle 2) · **Status:** MEASURED from real runs · **Network egress:** zero
+**Author:** Accuracy-Harness agent (Cycle 2) · **Suite:** external geometry-only archive (historical captured run) · **Status:** MEASURED model regression · **Network egress:** zero
 
-Sample: **12 real automotive STL parts** spanning size × shape (tiny→large × rotational/flat/boxy). References: **R1** AM volumetric ($/cm³ + per-part handling), **R2** CNC MRR-machining math, **R3** IM tooling size×cavity bands, **R4** shop/bureau minimums — all computed locally with constants INDEPENDENT of V1's rate card (see `backend/src/costing/harness.py`). Reference quantities q ∈ {100, 1000}.
+> This report uses an operator-held automotive archive whose recovered manifest does not contain a concrete redistribution license for every model and contains no supplier quotes. The archive is therefore not committed or fetched by CI. Protected CI runs internally authored regression coupons in `outputs/calibration-report.md`; reproduce this external geometry benchmark only after license review with `python -m src.costing.harness --real-parts-dir <licensed-corpus>`. Neither report is production-accuracy evidence.
+
+Sample: **12 automotive STL geometries** spanning size × shape (tiny→large × rotational/flat/boxy). References: **R1** AM volumetric ($/cm³ + per-part handling), **R2** CNC MRR-machining math, **R3** IM tooling size×cavity bands, **R4** shop/bureau minimums — all computed locally with constants INDEPENDENT of V1's rate card (see `backend/src/costing/harness.py`). Reference quantities q ∈ {100, 1000}.
 
 **Total comparisons:** 202 (part × process × qty with a reference). **In independent band:** 169/202 = **84%**.
 
@@ -271,7 +273,7 @@ _Median signed error is the headline per-process bias; a value near 0 means V1 s
 - **B-5 tooling** — cover.stl IM tool $6,000 ∈ R3 band [$1,500, $8,000] ✓.
 - **B-5 tooling** — ThrottleBodyAdapterGas IM tool $6,000 ∈ R3 band [$1,500, $8,000] ✓.
 
-## Acceptance criteria (fix-spec §13.4)
+## Historical model-regression guardrails (not production accuracy evidence)
 
 | criterion | result | detail |
 |-----------|--------|--------|
@@ -310,4 +312,6 @@ Per-process medians (the bias each process carries):
 
 ## Stated honesty line
 
-Overall: **PASS** against the independent local references. V1 stands behind the **DECISION** (make-vs-buy direction + crossover quantity, which depend on the fixed-vs-variable split, not absolute $). Absolute should-cost is characterized HERE — measured, per process, against independent local bands — not asserted. These bands are an independent cross-check, **not** a claim of absolute should-cost truth: that requires real supplier quotes (the path above). Every figure in this report is reproducible by `python -m src.costing.harness` (zero network, runs in seconds).
+Regression result: **PASS** against the independent local references. V1 stands behind the **DECISION** (make-vs-buy direction + crossover quantity, which depend on the fixed-vs-variable split, not absolute $). Absolute should-cost is characterized HERE — measured, per process, against independent local bands — not asserted. These bands are an independent cross-check, **not** a claim of absolute should-cost truth: that requires real supplier quotes.
+
+**Production accuracy status: BLOCKED.** This geometry-only archive cannot satisfy the provenance-locked supplier-quote holdout gates (20+ independent parts, MAPE ≤30%, P90 absolute error ≤50%, and every process median bias within ±25%).

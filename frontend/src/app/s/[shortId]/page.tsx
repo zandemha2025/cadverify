@@ -35,13 +35,13 @@ export async function generateMetadata({
         title: `${data.filename} - DFM Analysis`,
         description: `Verdict: ${data.verdict} | ${processCount} processes evaluated | ${data.face_count} faces`,
         type: "article",
-        siteName: "CadVerify",
+        siteName: "ProofShape",
       },
       twitter: { card: "summary" },
       robots: { index: false, follow: false },
     };
   } catch {
-    return { title: "Shared Analysis - CadVerify" };
+    return { title: "Shared Analysis - ProofShape" };
   }
 }
 
@@ -55,7 +55,7 @@ function PublicShell({ children }: { children: React.ReactNode }) {
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex h-14 max-w-3xl items-center gap-2 px-4">
           <Box className="size-5 text-primary" />
-          <span className="font-semibold text-foreground">CadVerify</span>
+          <span className="font-semibold text-foreground">ProofShape</span>
           <span className="ml-2 text-xs text-muted-foreground">
             Shared analysis · read-only
           </span>
@@ -116,7 +116,7 @@ export default async function SharedAnalysisPage({
               revoked by its owner.
             </p>
             <Button asChild className="mt-6">
-              <Link href="/">Go to CadVerify</Link>
+              <Link href="/">Go to ProofShape</Link>
             </Button>
           </CardContent>
         </Card>
@@ -255,10 +255,10 @@ export default async function SharedAnalysisPage({
       <Card>
         <CardContent className="text-center">
           <p className="text-sm text-muted-foreground">
-            This is a shared analysis from CadVerify.
+            This is a shared analysis from ProofShape.
           </p>
           <Button asChild className="mt-3">
-            <Link href="/">View on CadVerify</Link>
+            <Link href="/">View on ProofShape</Link>
           </Button>
         </CardContent>
       </Card>

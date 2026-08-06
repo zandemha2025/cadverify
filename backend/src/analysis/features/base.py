@@ -51,3 +51,36 @@ class Feature:
 
     # Free-form per-detector metadata (e.g. dihedral residuals, fit quality).
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+def has_rotational_surface_evidence(
+    features: list[Feature],
+    surface_area_mm2: float,
+    *,
+    min_fraction: float = 0.05,
+) -> bool:
+    """Return true only for a materially sized, measured outer cylinder.
+
+    The cylinder detector also sees triangulated planar patches. Those patches
+    have normal variation in only one direction, while a true cylindrical wall
+    spans two independent radial directions. Requiring that rank plus a minimum
+    share of total surface area prevents a small bore—or a boxy part with similar
+    inertia moments—from being presented as lathe-ready.
+    """
+    if not features or surface_area_mm2 <= 0:
+        return False
+    boss_area = 0.0
+    for feature in features:
+        if feature.kind != FeatureKind.CYLINDER_BOSS:
+            continue
+        singular_values = (feature.metadata or {}).get("singular_values", [])
+        if (
+            len(singular_values) < 2
+            or float(singular_values[0]) <= 0
+            or float(singular_values[1]) / float(singular_values[0]) < 0.25
+        ):
+            continue
+        area = feature.area or 0.0
+        if area > 0:
+            boss_area += float(area)
+    return boss_area >= min_fraction * float(surface_area_mm2)

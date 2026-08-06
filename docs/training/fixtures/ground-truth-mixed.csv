@@ -1,0 +1,10 @@
+part_id,process,quantity,actual_unit_cost_usd,material_class,shop,region,currency,source,source_type,vendor_quote_id,invoice_date,evidence_sha256,notes
+GT-001,fdm,100,12.50,polymer,,US,USD,training-001,demo,Q-001,2026-01-10,76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a,synthetic practice row never validates
+GT-002,fdm,200,10.80,polymer,,US,USD,training-002,demo,Q-002,2026-01-11,76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a,synthetic practice row never validates
+GT-003,fdm,300,9.90,polymer,,US,USD,training-003,demo,Q-003,2026-01-12,76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a,synthetic practice row never validates
+GT-004,fdm,400,9.40,polymer,,US,USD,training-004,demo,Q-004,2026-01-13,76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a,synthetic practice row never validates
+GT-005,fdm,500,9.10,polymer,,US,USD,training-005,demo,Q-005,2026-01-14,76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a,synthetic practice row never validates
+GT-006,fdm,600,8.90,polymer,,US,USD,training-006,demo,Q-006,2026-01-15,76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a,synthetic practice row never validates
+GT-007,fdm,700,8.75,polymer,,US,USD,training-007,demo,Q-007,2026-01-16,76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a,synthetic practice row never validates
+GT-008,fdm,800,8.60,polymer,,US,USD,training-008,demo,Q-008,2026-01-17,76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a,synthetic practice row never validates
+GT-BAD,not_a_process,0,-1,unobtanium,QA Shop,US,US,broken,actual,Q-BAD,2026-99-99,not-a-sha,intentional rejected row

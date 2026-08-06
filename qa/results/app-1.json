@@ -1,0 +1,158 @@
+[
+ {
+  "id": "APP-001",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "Dropzone accept='.stl,.step,.stp,.iges,.igs'; drop fired POST /api/proxy/validate/cost + POST /api/proxy/validate?units=mm in parallel (<3s apart, both 200). bad.txt -> 'Unsupported file type' with zero validate requests; qty 'abc' -> options panel opened with 'Fix the quantity list before submitting.' and no request. Routing-tab loading copy 'Analyzing across all manufacturing processes\u2026' observed. Anonymous /analyze redirected to /login?next=%2Fanalyze."
+ },
+ {
+  "id": "APP-002",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "Five tabs (Decision|Routing & DFM|Glass Box|Compare|History). /analyze lands on Routing & DFM (mfg lens); switching to Cost eng landed on Glass Box and auto-opened the Inspector (default tab Sources); Sourcing landed on Compare. With no cost report (broken part) Glass Box showed 'No cost breakdown yet' and Compare 'Nothing to compare yet'. 'New part' reset to the cold-start dropzone."
+ },
+ {
+  "id": "APP-003",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "Selecting an OVERHANG issue row highlighted its faces ('shown in 3D' + 'Highlighting OVERHANG' note, severity-colored); clicking the DFM-matrix draft blocker selected/highlighted the injection-molding issue. Canvas face-click and the no-geometry-linked-faces toast were not deterministically exercisable on this part (every matrix blocker had geometry-linked issues); not observed to fail."
+ },
+ {
+  "id": "APP-004",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "GET /api/proxy/shops listed 2 profiles; picking 'Midwest Precision CNC' toasted 'Calibrating to Midwest Precision CNC\u2026', re-ran POST /validate/cost and flipped the badge to 'Calibrated to'. Glass Box driver rate editor applied an override (toast 'Override \u2026 \u2014 re-costing', server re-cost, '1 override applied' chip); 'Reset overrides' re-cost + 'Cleared overrides' toast. 'Save as scenario' stored a session chip (shop \u00b7 ovr \u00b7 qty label); clicking the chip recalled options and re-cost. Scenarios cleared on reset."
+ },
+ {
+  "id": "APP-005",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "qa-broken.stl: POST /validate/cost returned 400 GEOMETRY_INVALID; UI rendered the CostGeometryInvalidCard (repair reason + measured volume/watertight geometry) and a 'Geometry invalid' header badge \u2014 no generic error. Screenshot APP-005-geometry-invalid-card.png. Generic cost/DFM ErrorState retries and 429/5xx toasts could not be force-triggered in this environment (no fault injection); no deviation observed."
+ },
+ {
+  "id": "APP-006",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "Sub-plausible part (0.3mm cube) produced report.unit_warnings -> persistent [data-testid=cad-unit-warning] banner ('Confirm CAD source units\u2026' + IMPLAUSIBLE_VOLUME message). Setting units=inch and 'Re-cost with these inputs' re-ran BOTH /validate/cost and /validate; banner cleared. Inspector: Lineage/Governance/Sources/Audit tabs, defaults to Sources for cost role, collapsible; a driver override applied from the Inspector Sources tab triggered a real server re-cost."
+ },
+ {
+  "id": "APP-007",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "Empty state 'No history yet' with no report. With report: saved scenario chips recallable, 'Open cost history' navigated to /cost-decisions, 'Copy decision summary' wrote a plaintext make-by/crossover/DFM summary to the clipboard (verified content + 'Decision summary copied' toast). report.saved present -> CostArtifactBar rendered ('Saved to cost history' with Open in history/PDF/JSON/CSV/RFQ ZIP/Share actions)."
+ },
+ {
+  "id": "APP-008",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "GET /api/proxy/analyses/{id} on mount; success rendered filename/STL/date header + full dashboard. Bogus ULID -> 404 handled as 'Analysis not found' ErrorState with 'Back to history' link."
+ },
+ {
+  "id": "APP-009",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "Share: POST /api/proxy/analyses/{id}/share -> modal showing http://localhost:3000/s/<token>, 'Shared' badge + Copy link/Revoke. Revoke: DELETE same endpoint, returned to unshared 'Share' button."
+ },
+ {
+  "id": "APP-010",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "GET /api/proxy/analyses/{id}/pdf downloaded 'qa-box-dfm-report.pdf' (valid %PDF, 29KB)."
+ },
+ {
+  "id": "APP-011",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "'Attempt mesh repair' rendered on the NON_WATERTIGHT analysis (absent on clean ones); click opened a file picker, re-selecting qa-broken.stl POSTed /api/proxy/validate/repair; dashboard swapped for the RepairComparison ('Mesh repaired' Tier trimesh 10->12 faces, Original 'Not manufacturable' vs Repaired 'Issues found', download-repaired-file offer). Screenshot APP-011-repair-comparison.png."
+ },
+ {
+  "id": "APP-012",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "'Linked cost decisions' card listed the qa-box decisions (filename, mjf make-now, unreviewed) with 'Open decision' navigating to /cost-decisions/{id}; card absent on the broken analysis with no linked decision."
+ },
+ {
+  "id": "APP-013",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "GET /api/proxy/analyses?limit=20; rows for all runs. Verdict select (All verdicts/Pass/Advisory/Required): choosing Required re-fetched with verdict=fail and showed only qa-broken.stl. Row click -> /analyses/{ulid}. 'Load more'/500-cap counter and empty state not exercisable (4 rows, has_more=false); load-error retry not force-triggerable."
+ },
+ {
+  "id": "APP-014",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "QuotaDisplay rendered used/total progress bar from X-RateLimit headers with 'Resets in N min'."
+ },
+ {
+  "id": "APP-015",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "/cost (flag off) rendered the identical PartWorkspace cold-start dropzone; qa-part2.stl drop fired the same /validate/cost + /validate pair, landed on the Decision tab with 'Lens Design eng', 5 tabs, and persisted the decision (CostArtifactBar shown)."
+ },
+ {
+  "id": "APP-016",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "NEXT_PUBLIC_STAGE_UI unset (default build): no DoorChooser rendered and no cv_door localStorage written \u2014 /cost behaves as APP-015, the documented flag-off expectation. Flag-on router not exercisable without a rebuild."
+ },
+ {
+  "id": "APP-017",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "GET /api/proxy/cost-decisions?limit=20; columns File/Make now/Crossover/Quantities/Shared/Governance/When with Unreviewed badge and relative time; CostHonestyNote ('assumption-based, not yet validated') above the table; 'Compare decisions' routed to /cost-decisions/compare; row click -> /cost-decisions/{id}; 'Shared' badge appeared for the shared decision. Pagination cap + empty state not exercisable (rows exist)."
+ },
+ {
+  "id": "APP-018",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "Detail GET on mount; header + 'Source SHA-256 \u00b7 <64-hex>' mesh hash; exports: PDF 'qa-part2-cost-report.pdf' (54KB), JSON 'qa-part2-cost.json', CSV 'qa-part2-cost.csv'. Bogus id -> 'Cost decision not found' ErrorState with 'Back to cost history'."
+ },
+ {
+  "id": "APP-019",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "Approve with note POSTed /cost-decisions/{id}/approve: badge flipped to Approved with 'Signed off by user N on <date>' + approval-note card and 'Decision approved' toast; Reopen DELETEd the endpoint, badge back to Unreviewed. Stale warn card and read-only-role variant not exercisable (no stale data; analyst account)."
+ },
+ {
+  "id": "APP-020",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "'Make outside' PUT /cost-decisions/{id}/disposition and rendered the recorded outcome + updated-by line; outcome note saved ('Outcome note saved' toast); changing outcome while approved reopened approval ('Outcome saved; prior approval reopened' toast, badge Unreviewed); withdraw cleared the outcome. 'Make in-house' enabled (route DFM clean on this part) \u2014 blocked/tooltip state and read-only variant not exercisable."
+ },
+ {
+  "id": "APP-021",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "Share POST -> modal with public URL http://localhost:3000/s/cost/<token>; DELETE revoked. 'RFQ ZIP' POSTed /rfq-packages with title 'RFQ package - qa-part2.stl', then downloaded /rfq-packages/{id}/download.zip as 'RFQ package - qa-part2-rfq.zip' (valid PK zip, 77KB) with 'RFQ package generated' toast."
+ },
+ {
+  "id": "APP-022",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "GET /cost-decisions?limit=100 filled both pickers; Compare disabled until two distinct ids; the id chosen on one side was disabled on the other; GET /cost-decisions/compare?ids=A,B rendered summary cards (make-now, crossover) and the per-quantity unit-cost table with cheaper side highlighted and signed \u0394 ($ and %). Fewer-than-2 empty state not exercisable (decisions exist). Screenshot APP-022-compare.png."
+ },
+ {
+  "id": "APP-023",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "bad.txt -> toast 'Only .zip files are accepted' (no request). qa-batch.zip: staged upload copy observed ('Uploading ZIP directly\u2026'), GET /uploads/capabilities + POST /api/proxy/batch fired, then auto-routed to /batch/{batch_id}. 5GB limit, CSV manifest, webhook, retry/failure-recovery states and double-submit lock not exercisable with a small local fixture (no deviation observed)."
+ },
+ {
+  "id": "APP-024",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "GET /api/proxy/batches?limit=20; row showed truncated ULID '01KZA3NDGYV1\u2026', Completed badge, 2/2 items, created date; 'Download CSV' present only for the completed batch and fetched batch_<ulid>_results.csv (header filename,status,verdict,best_process,issue_count,duration_ms); row click -> /batch/{ulid}. Cursor/empty/error states not exercisable."
+ },
+ {
+  "id": "APP-025",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "Detail polled GET /api/proxy/batch/{id} (multiple polls, 5s interval) until 'completed'; items table (GET /batch/{id}/items) listed qa-box.stl/qa-part2.stl with statuses, verdicts, best process and 'View' links to created /analyses/{id}; 'Download CSV' appeared on completion and downloaded the results CSV."
+ },
+ {
+  "id": "APP-026",
+  "status": "TESTED-PASS",
+  "error_found": "",
+  "notes": "Second batch (concurrency 1): 'Cancel batch' shown while non-terminal; AlertDialog 'Pending items will be skipped. This cannot be undone.'; confirm POSTed /batch/{id}/cancel, toasted 'Batch cancelled', items refreshed to Skipped (0/2, 2 skipped). Terminal Cancelled state hides the Cancel button and offers no CSV (verified on revisit; the in-page button clears on the next 5s poll). Screenshots APP-026-cancel-dialog.png / APP-026-cancelled-terminal.png."
+ }
+]

@@ -97,13 +97,19 @@ def _tier2_repair(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
 
 
 def _do_repair(mesh: trimesh.Trimesh) -> tuple:
-    """Run two-tier repair. Returns (repaired_mesh, tier_used, holes_filled_approx)."""
+    """Run two-tier repair. Returns (repaired_mesh, tier_used, holes_filled_approx).
+
+    holes_filled is approximated by the face-count delta of whichever tier
+    produced the returned mesh — the trimesh tier must report its own real
+    delta, never a hardcoded 0 (a filled hole adds faces on tier 1 too).
+    """
     original_faces = len(mesh.faces)
 
     _tier1_repair(mesh)
 
     if mesh.is_watertight:
-        return (mesh, "trimesh", 0)
+        holes_filled = abs(len(mesh.faces) - original_faces)
+        return (mesh, "trimesh", holes_filled)
 
     repaired = _tier2_repair(mesh)
     holes_filled = abs(len(repaired.faces) - original_faces)
@@ -151,6 +157,13 @@ async def repair_mesh(
     # Run repair with timeout (T-05A-01)
     repair_start = time.time()
     original_faces = len(mesh.faces)
+    # Volume before repair: unreliable for a non-watertight mesh (that is why
+    # repair is needed) but recorded so the post-repair delta is disclosed,
+    # not silent — hole filling can materially change enclosed volume.
+    try:
+        original_volume_mm3 = float(mesh.volume)
+    except Exception:
+        original_volume_mm3 = None
     loop = asyncio.get_event_loop()
     try:
         repaired_mesh, tier, holes_filled = await asyncio.wait_for(
@@ -197,12 +210,30 @@ async def repair_mesh(
         session,
     )
 
+    try:
+        repaired_volume_mm3 = float(repaired_mesh.volume)
+    except Exception:
+        repaired_volume_mm3 = None
+    volume_change_pct = None
+    if original_volume_mm3 and repaired_volume_mm3:
+        volume_change_pct = round(
+            (repaired_volume_mm3 - original_volume_mm3)
+            / abs(original_volume_mm3) * 100.0,
+            2,
+        )
+
     repair_details = {
         "tier": tier,
         "original_faces": original_faces,
         "repaired_faces": len(repaired_mesh.faces),
         "holes_filled": holes_filled,
         "duration_ms": repair_duration_ms,
+        # Honest disclosure: repair changes geometry. The pre-repair volume of
+        # a non-watertight mesh is itself an estimate; the delta is reported
+        # so a materially different solid is never silently substituted.
+        "original_volume_mm3": original_volume_mm3,
+        "repaired_volume_mm3": repaired_volume_mm3,
+        "volume_change_pct": volume_change_pct,
     }
 
     return {

@@ -178,6 +178,10 @@ class _FakeSession:
         s = str(stmt).lower()
         if "cost_decisions" in s:
             return _FakeResult(self._cost)
+        # Slice 3: these mock orgs declare no BOM tree, so the bom_edges scan is
+        # empty and build_portfolio takes the flat-declared (byte-identical) path.
+        if "bom_edges" in s:
+            return _FakeResult([])
         return _FakeResult(self._an)
 
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib
 import time
+from types import SimpleNamespace
 
 import pytest
 from fastapi import Depends, FastAPI, Request, Response
@@ -16,10 +17,18 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 
+def _fake_request(user=None, host="203.0.113.10"):
+    return SimpleNamespace(
+        state=SimpleNamespace(authed_user=user) if user is not None else SimpleNamespace(),
+        client=SimpleNamespace(host=host),
+    )
+
+
 @pytest.fixture
 def client_with_limits(monkeypatch):
     # Force memory:// for test speed and isolation.
     monkeypatch.setenv("REDIS_URL", "memory://")
+    monkeypatch.delenv("RATE_LIMIT_DISABLED", raising=False)
     import src.auth.rate_limit as rl
 
     importlib.reload(rl)
@@ -74,6 +83,30 @@ def test_successful_response_has_ratelimit_headers(client_with_limits):
     assert "X-RateLimit-Remaining" in r.headers
 
 
+def test_key_func_uses_api_key_id_for_bearer_callers():
+    from src.auth.rate_limit import _api_key_id
+    from src.auth.require_api_key import AuthedUser
+
+    user = AuthedUser(user_id=7, api_key_id=42, key_prefix="abcd1234")
+
+    assert _api_key_id(_fake_request(user)) == "key:42"
+
+
+def test_key_func_uses_user_id_for_dashboard_session_callers():
+    from src.auth.rate_limit import _api_key_id
+    from src.auth.require_api_key import AuthedUser
+
+    user = AuthedUser(user_id=7, api_key_id=0, key_prefix="session")
+
+    assert _api_key_id(_fake_request(user)) == "user:7"
+
+
+def test_key_func_uses_ip_for_public_callers():
+    from src.auth.rate_limit import _api_key_id
+
+    assert _api_key_id(_fake_request(host="198.51.100.24")) == "ip:198.51.100.24"
+
+
 # ---------------------------------------------------------------------------
 # Storage backend resolution (F-ARCH-3): fail loud in production
 # ---------------------------------------------------------------------------
@@ -116,3 +149,19 @@ def test_resolve_storage_uri_uses_real_redis(monkeypatch):
     import src.auth.rate_limit as rl
 
     assert rl._resolve_storage_uri() == "redis://cache:6379"
+
+
+def test_rate_limit_disabled_only_outside_release(monkeypatch):
+    monkeypatch.setenv("RATE_LIMIT_DISABLED", "1")
+    monkeypatch.delenv("RELEASE", raising=False)
+    import src.auth.rate_limit as rl
+
+    assert rl._limiter_enabled() is False
+
+
+def test_rate_limit_disabled_ignored_in_release(monkeypatch):
+    monkeypatch.setenv("RATE_LIMIT_DISABLED", "1")
+    monkeypatch.setenv("RELEASE", "prod-v1")
+    import src.auth.rate_limit as rl
+
+    assert rl._limiter_enabled() is True

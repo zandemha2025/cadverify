@@ -22,8 +22,8 @@
  *  - $14.14 with drivers 6.39/3.89/3.82/0.04 sum exactly (6.39+3.89+3.82+0.04);
  *  - band $8.49–19.80 · ±40% · assumption-based · n=0 is hatched, never solid,
  *    and no measured accuracy figure is printed;
- *  - shop rates $52/$95/$30, margin 0.30, util 0.80, crossover 1,962, routing
- *    cnc_turning 0.80, DFM 423 faces / 1 sidewall <1.0°, lead 5.6–10.4d all
+ *  - shop rates $52/$95/$30, margin 0.30, util 0.80, crossover 1,960, routing
+ *    bulk_solid → mjf 0.40, DFM 423 faces / 1 sidewall <1.0°, lead 5.6–10.4d all
  *    match the canonical fixture. No fabricated figure wears a filled ● chip.
  */
 
@@ -232,7 +232,7 @@ function RecordAssembles() {
 }
 
 const ASSEMBLY_ROWS = [
-  { label: "labor", detail: "0.082 hr × $52/hr", value: "$6.39" },
+  { label: "labor", detail: "0.123 hr × $52/hr", value: "$6.39" },
   { label: "amortized fixed", detail: "setup ÷ 10 units", value: "$3.89" },
   { label: "machine", detail: "15.2 hr build ÷ 223 parts", value: "$3.82" },
   { label: "material", detail: "4.63 cm³ × $7/kg lot", value: "$0.04" },
@@ -310,9 +310,9 @@ function Stages() {
         <div className="st-card" style={{ marginTop: 22, overflow: "hidden" }}>
           <div style={{ padding: "20px 22px", borderBottom: "1px solid var(--st-line-soft)" }}>
             <p className="st-mono" style={{ margin: 0, fontSize: 10.5, letterSpacing: "0.16em", color: "var(--st-ink-40)" }}>
-              GEOMETRIC ROUTING · CONFIDENCE 0.80 · ARCHETYPE ROTATIONAL
+              GEOMETRIC ROUTING · CONFIDENCE 0.40 · ARCHETYPE BULK_SOLID
             </p>
-            <p style={{ margin: "10px 0 0", fontSize: 21, fontWeight: 400 }}>→ CNC turning</p>
+            <p style={{ margin: "10px 0 0", fontSize: 21, fontWeight: 400 }}>→ MJF</p>
             <p
               style={{
                 margin: "10px 0 0",
@@ -324,13 +324,15 @@ function Stages() {
                 paddingLeft: 14,
               }}
             >
-              &ldquo;Axisymmetric cross-section (round, turnable): axis 21mm × Ø21mm → CNC turning / mill-turn. A round metal
-              part is rarely powder-bed printed at production volume.&rdquo;
+              &ldquo;General solid (48% of bbox filled) with no dominant sheet/rotational/prismatic
+              signature&rdquo; — its undercut faces block machining as drawn, so at qty 10, MJF prints it
+              tooling-free. Injection molding is cheaper per unit but needs a draft fix and only pays its tool back
+              past ~1,960 units.
             </p>
           </div>
           <div className="st-mono" style={{ padding: "16px 22px", display: "flex", flexDirection: "column", gap: 8, fontSize: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ color: "var(--st-ink-55)" }}>cnc_turning · mjf · cnc_5axis</span>
+              <span style={{ color: "var(--st-ink-55)" }}>mjf · sla · cnc_5axis</span>
               <span style={{ color: "var(--st-conditional)" }}>issues 0.8–0.9</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
@@ -442,7 +444,7 @@ function Stages() {
         >
           <div>
             <p className="st-mono" style={{ margin: 0, fontSize: 10.5, letterSpacing: "0.16em", color: "var(--st-ink-40)" }}>
-              RESOURCE COST · MAKE NOW · MJF (PP) · QTY 10
+              SHOULD-COST · MAKE NOW · MJF (PP) · QTY 10
             </p>
             <p
               className="st-readout"
@@ -481,7 +483,7 @@ function Stages() {
               <p className="st-mono" style={{ margin: 0, fontSize: 10.5, letterSpacing: "0.14em", color: "var(--st-ink-40)" }}>
                 CROSSOVER
               </p>
-              <p style={{ margin: "5px 0 0", fontSize: 19, fontWeight: 300 }}>MJF wins ≤ 1,962 units</p>
+              <p style={{ margin: "5px 0 0", fontSize: 19, fontWeight: 300 }}>MJF wins ≤ 1,960 units</p>
               <p style={{ margin: "4px 0 0", fontSize: 12.5, fontWeight: 300, color: "var(--st-conditional)" }}>
                 injection molding above — if redesigned, never a current quote
               </p>

@@ -32,3 +32,23 @@ export function supportedCadLabel(): string {
   const upper = CAD_EXTS.map((e) => e.toUpperCase());
   return `${upper.slice(0, -1).join(", ")} or ${upper[upper.length - 1]}`;
 }
+
+export interface UnsupportedCadGuidance {
+  title: string;
+  action: string;
+}
+
+/** Actionable, truthful recovery copy for a file the engine cannot ingest. */
+export function unsupportedCadGuidance(name: string): UnsupportedCadGuidance {
+  const ext = fileExt(name);
+  if (ext === "sldprt" || ext === "sldasm") {
+    return {
+      title: "SolidWorks files need a STEP export",
+      action: "Open the model in SolidWorks, export it as STEP AP242 (.step or .stp), then upload that exported file.",
+    };
+  }
+  return {
+    title: "This CAD format cannot be verified directly",
+    action: `Export the model as ${supportedCadLabel()}, then upload the exported file.`,
+  };
+}

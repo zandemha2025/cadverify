@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { IntegrationsClient } from "./integrations-client";
 
 export const metadata: Metadata = {
-  title: "Integrations - CadVerify",
+  title: "Integrations - ProofShape",
   robots: { index: false, follow: false },
 };
 

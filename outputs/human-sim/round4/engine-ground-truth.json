@@ -1,0 +1,350 @@
+{
+  "quantities_by_design": {
+    "nut": 8,
+    "rod": 1,
+    "bolt": 6,
+    "l-bracket": 2,
+    "plate": 1
+  },
+  "count": 18,
+  "parts": [
+    {
+      "name": "nut",
+      "tree": "as1/ROD-ASSEMBLY/rod-assembly/NUT::1/nut",
+      "qty": 8,
+      "best_process": "sheet_metal",
+      "best_process_basis": "most-manufacturable process makeable in the 'aluminum' material class (material-aware DFM)",
+      "make_now": "sheet_metal",
+      "make_now_material": "5052 Aluminum (Sheet)",
+      "cost_basis": "fabrication_upper_bound_if_made_in_house",
+      "unit_cost": 9.38,
+      "cots": {
+        "kind": "nut",
+        "buy": 0.2,
+        "range": [
+          0.05,
+          1
+        ],
+        "rec": "BUY — standard off-the-shelf fastener; do not machine in-house",
+        "prov": "DEFAULT"
+      }
+    },
+    {
+      "name": "nut",
+      "tree": "as1/ROD-ASSEMBLY/rod-assembly/NUT::2/nut",
+      "qty": 8,
+      "best_process": "sheet_metal",
+      "best_process_basis": "most-manufacturable process makeable in the 'aluminum' material class (material-aware DFM)",
+      "make_now": "sheet_metal",
+      "make_now_material": "5052 Aluminum (Sheet)",
+      "cost_basis": "fabrication_upper_bound_if_made_in_house",
+      "unit_cost": 9.38,
+      "cots": {
+        "kind": "nut",
+        "buy": 0.2,
+        "range": [
+          0.05,
+          1
+        ],
+        "rec": "BUY — standard off-the-shelf fastener; do not machine in-house",
+        "prov": "DEFAULT"
+      }
+    },
+    {
+      "name": "rod",
+      "tree": "as1/ROD-ASSEMBLY/rod-assembly/ROD/rod",
+      "qty": 1,
+      "best_process": "cnc_5axis",
+      "best_process_basis": "most-manufacturable process makeable in the 'aluminum' material class (material-aware DFM)",
+      "make_now": "cnc_5axis",
+      "make_now_material": "6061-T6 Aluminum",
+      "unit_cost": 201.07,
+      "cots": null
+    },
+    {
+      "name": "bolt",
+      "tree": "as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/BOLT/bolt",
+      "qty": 6,
+      "best_process": "cnc_turning",
+      "best_process_basis": "most-manufacturable process makeable in the 'aluminum' material class (material-aware DFM)",
+      "make_now": "cnc_turning",
+      "make_now_material": "6061-T6 Aluminum",
+      "cost_basis": "fabrication_upper_bound_if_made_in_house",
+      "unit_cost": 23.99,
+      "cots": {
+        "kind": "bolt",
+        "buy": 0.75,
+        "range": [
+          0.2,
+          3
+        ],
+        "rec": "BUY — standard off-the-shelf fastener; do not machine in-house",
+        "prov": "DEFAULT"
+      }
+    },
+    {
+      "name": "nut",
+      "tree": "as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/NUT::3/nut",
+      "qty": 8,
+      "best_process": "cnc_3axis",
+      "best_process_basis": "most-manufacturable process makeable in the 'aluminum' material class (material-aware DFM)",
+      "make_now": "sheet_metal",
+      "make_now_material": "5052 Aluminum (Sheet)",
+      "cost_basis": "fabrication_upper_bound_if_made_in_house",
+      "unit_cost": 9.38,
+      "cots": {
+        "kind": "nut",
+        "buy": 0.2,
+        "range": [
+          0.05,
+          1
+        ],
+        "rec": "BUY — standard off-the-shelf fastener; do not machine in-house",
+        "prov": "DEFAULT"
+      }
+    },
+    {
+      "name": "bolt",
+      "tree": "as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/BOLT/bolt",
+      "qty": 6,
+      "best_process": "cnc_turning",
+      "best_process_basis": "most-manufacturable process makeable in the 'aluminum' material class (material-aware DFM)",
+      "make_now": "cnc_turning",
+      "make_now_material": "6061-T6 Aluminum",
+      "cost_basis": "fabrication_upper_bound_if_made_in_house",
+      "unit_cost": 23.99,
+      "cots": {
+        "kind": "bolt",
+        "buy": 0.75,
+        "range": [
+          0.2,
+          3
+        ],
+        "rec": "BUY — standard off-the-shelf fastener; do not machine in-house",
+        "prov": "DEFAULT"
+      }
+    },
+    {
+      "name": "nut",
+      "tree": "as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/NUT::3/nut",
+      "qty": 8,
+      "best_process": "cnc_5axis",
+      "best_process_basis": "most-manufacturable process makeable in the 'aluminum' material class (material-aware DFM)",
+      "make_now": "sheet_metal",
+      "make_now_material": "5052 Aluminum (Sheet)",
+      "cost_basis": "fabrication_upper_bound_if_made_in_house",
+      "unit_cost": 9.38,
+      "cots": {
+        "kind": "nut",
+        "buy": 0.2,
+        "range": [
+          0.05,
+          1
+        ],
+        "rec": "BUY — standard off-the-shelf fastener; do not machine in-house",
+        "prov": "DEFAULT"
+      }
+    },
+    {
+      "name": "bolt",
+      "tree": "as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/BOLT/bolt",
+      "qty": 6,
+      "best_process": "cnc_turning",
+      "best_process_basis": "most-manufacturable process makeable in the 'aluminum' material class (material-aware DFM)",
+      "make_now": "cnc_turning",
+      "make_now_material": "6061-T6 Aluminum",
+      "cost_basis": "fabrication_upper_bound_if_made_in_house",
+      "unit_cost": 23.99,
+      "cots": {
+        "kind": "bolt",
+        "buy": 0.75,
+        "range": [
+          0.2,
+          3
+        ],
+        "rec": "BUY — standard off-the-shelf fastener; do not machine in-house",
+        "prov": "DEFAULT"
+      }
+    },
+    {
+      "name": "nut",
+      "tree": "as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/NUT::3/nut",
+      "qty": 8,
+      "best_process": "cnc_5axis",
+      "best_process_basis": "most-manufacturable process makeable in the 'aluminum' material class (material-aware DFM)",
+      "make_now": "sheet_metal",
+      "make_now_material": "5052 Aluminum (Sheet)",
+      "cost_basis": "fabrication_upper_bound_if_made_in_house",
+      "unit_cost": 9.38,
+      "cots": {
+        "kind": "nut",
+        "buy": 0.2,
+        "range": [
+          0.05,
+          1
+        ],
+        "rec": "BUY — standard off-the-shelf fastener; do not machine in-house",
+        "prov": "DEFAULT"
+      }
+    },
+    {
+      "name": "l-bracket",
+      "tree": "as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/L-BRACKET/l-bracket",
+      "qty": 2,
+      "best_process": "cnc_5axis",
+      "best_process_basis": "most-manufacturable process makeable in the 'aluminum' material class (material-aware DFM)",
+      "make_now": "cnc_5axis",
+      "make_now_material": "6061-T6 Aluminum",
+      "unit_cost": 178.91,
+      "cots": null
+    },
+    {
+      "name": "plate",
+      "tree": "as1/PLATE/plate",
+      "qty": 1,
+      "best_process": "cnc_3axis",
+      "best_process_basis": "most-manufacturable process makeable in the 'aluminum' material class (material-aware DFM)",
+      "make_now": "cnc_3axis",
+      "make_now_material": "6061-T6 Aluminum",
+      "unit_cost": 235.41,
+      "cots": null
+    },
+    {
+      "name": "bolt",
+      "tree": "as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/BOLT/bolt",
+      "qty": 6,
+      "best_process": "cnc_turning",
+      "best_process_basis": "most-manufacturable process makeable in the 'aluminum' material class (material-aware DFM)",
+      "make_now": "cnc_turning",
+      "make_now_material": "6061-T6 Aluminum",
+      "cost_basis": "fabrication_upper_bound_if_made_in_house",
+      "unit_cost": 23.99,
+      "cots": {
+        "kind": "bolt",
+        "buy": 0.75,
+        "range": [
+          0.2,
+          3
+        ],
+        "rec": "BUY — standard off-the-shelf fastener; do not machine in-house",
+        "prov": "DEFAULT"
+      }
+    },
+    {
+      "name": "nut",
+      "tree": "as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/NUT::3/nut",
+      "qty": 8,
+      "best_process": "cnc_3axis",
+      "best_process_basis": "most-manufacturable process makeable in the 'aluminum' material class (material-aware DFM)",
+      "make_now": "sheet_metal",
+      "make_now_material": "5052 Aluminum (Sheet)",
+      "cost_basis": "fabrication_upper_bound_if_made_in_house",
+      "unit_cost": 9.38,
+      "cots": {
+        "kind": "nut",
+        "buy": 0.2,
+        "range": [
+          0.05,
+          1
+        ],
+        "rec": "BUY — standard off-the-shelf fastener; do not machine in-house",
+        "prov": "DEFAULT"
+      }
+    },
+    {
+      "name": "bolt",
+      "tree": "as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/BOLT/bolt",
+      "qty": 6,
+      "best_process": "cnc_turning",
+      "best_process_basis": "most-manufacturable process makeable in the 'aluminum' material class (material-aware DFM)",
+      "make_now": "cnc_turning",
+      "make_now_material": "6061-T6 Aluminum",
+      "cost_basis": "fabrication_upper_bound_if_made_in_house",
+      "unit_cost": 23.99,
+      "cots": {
+        "kind": "bolt",
+        "buy": 0.75,
+        "range": [
+          0.2,
+          3
+        ],
+        "rec": "BUY — standard off-the-shelf fastener; do not machine in-house",
+        "prov": "DEFAULT"
+      }
+    },
+    {
+      "name": "nut",
+      "tree": "as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/NUT::3/nut",
+      "qty": 8,
+      "best_process": "cnc_5axis",
+      "best_process_basis": "most-manufacturable process makeable in the 'aluminum' material class (material-aware DFM)",
+      "make_now": "sheet_metal",
+      "make_now_material": "5052 Aluminum (Sheet)",
+      "cost_basis": "fabrication_upper_bound_if_made_in_house",
+      "unit_cost": 9.38,
+      "cots": {
+        "kind": "nut",
+        "buy": 0.2,
+        "range": [
+          0.05,
+          1
+        ],
+        "rec": "BUY — standard off-the-shelf fastener; do not machine in-house",
+        "prov": "DEFAULT"
+      }
+    },
+    {
+      "name": "bolt",
+      "tree": "as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/BOLT/bolt",
+      "qty": 6,
+      "best_process": "cnc_turning",
+      "best_process_basis": "most-manufacturable process makeable in the 'aluminum' material class (material-aware DFM)",
+      "make_now": "cnc_turning",
+      "make_now_material": "6061-T6 Aluminum",
+      "cost_basis": "fabrication_upper_bound_if_made_in_house",
+      "unit_cost": 23.99,
+      "cots": {
+        "kind": "bolt",
+        "buy": 0.75,
+        "range": [
+          0.2,
+          3
+        ],
+        "rec": "BUY — standard off-the-shelf fastener; do not machine in-house",
+        "prov": "DEFAULT"
+      }
+    },
+    {
+      "name": "nut",
+      "tree": "as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/NUT::3/nut",
+      "qty": 8,
+      "best_process": "cnc_5axis",
+      "best_process_basis": "most-manufacturable process makeable in the 'aluminum' material class (material-aware DFM)",
+      "make_now": "sheet_metal",
+      "make_now_material": "5052 Aluminum (Sheet)",
+      "cost_basis": "fabrication_upper_bound_if_made_in_house",
+      "unit_cost": 9.38,
+      "cots": {
+        "kind": "nut",
+        "buy": 0.2,
+        "range": [
+          0.05,
+          1
+        ],
+        "rec": "BUY — standard off-the-shelf fastener; do not machine in-house",
+        "prov": "DEFAULT"
+      }
+    },
+    {
+      "name": "l-bracket",
+      "tree": "as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/L-BRACKET/l-bracket",
+      "qty": 2,
+      "best_process": "cnc_5axis",
+      "best_process_basis": "most-manufacturable process makeable in the 'aluminum' material class (material-aware DFM)",
+      "make_now": "cnc_5axis",
+      "make_now_material": "6061-T6 Aluminum",
+      "unit_cost": 178.91,
+      "cots": null
+    }
+  ]
+}

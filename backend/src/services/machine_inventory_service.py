@@ -180,8 +180,62 @@ def _validate_capabilities(caps: Any, errors: list[str]) -> None:
                 errors.append(f"capability '{key}' must be a non-empty string")
 
 
+# Common alloy/polymer shorthands → the registry name they unambiguously mean.
+# The add-machine form's own placeholder suggests bare designations (``6061``,
+# ``316L``, ``PP``) that are NOT registry names, so a shop owner's first natural
+# inventory entry used to 400. Each entry here maps a real, unambiguous shorthand
+# to a real registry material — no shorthand is added for an ambiguous stem
+# (e.g. bare ``PA12`` / ``17-4`` / ``Ti-6Al-4V`` each match several registry
+# entries), so we never GUESS which material the user meant. Keys are lower-case;
+# lookup is case-insensitive.
+_MATERIAL_ALIASES: dict[str, str] = {
+    "6061": "6061-T6 Aluminum",
+    "7075": "7075-T6 Aluminum",
+    "316l": "SS316L",
+    "ss316l": "SS316L",
+    "304": "304 Stainless",
+    "ss304": "304 Stainless",
+    "pp": "PP (Molded)",
+    "4130": "AISI 4130",
+    "4140": "AISI 4140",
+}
+
+# What the validator actually accepts, surfaced in the error so the message
+# points at the real vocabulary instead of only saying "unknown".
+_MATERIAL_VOCAB_HINT = (
+    "accepted: a material class ("
+    + ", ".join(sorted(KNOWN_MATERIAL_CLASSES))
+    + "), an exact registry name (e.g. 6061-T6 Aluminum, SS316L, 304 Stainless, "
+    "PP (Molded)), or a common shorthand ("
+    + ", ".join(sorted(_MATERIAL_ALIASES)) + ")"
+)
+
+
+def _canonical_material(name: str) -> Optional[str]:
+    """Resolve a declared material to its canonical stored form, or ``None`` if
+    genuinely unknown.
+
+    Order: a known material CLASS (kept as its lower-case class token) → a common
+    unambiguous SHORTHAND (mapped to its registry name) → an exact registry NAME
+    (returned in the registry's canonical casing). Case-insensitive. Nothing is
+    coerced: an unrecognised token resolves to ``None`` and stays a reported error.
+    """
+    stripped = name.strip()
+    low = stripped.lower()
+    if low in KNOWN_MATERIAL_CLASSES:
+        return low
+    alias = _MATERIAL_ALIASES.get(low)
+    if alias is not None:
+        return alias
+    prof = get_material_by_name(stripped)
+    if prof is not None:
+        return prof.name
+    return None
+
+
 def _validate_materials(materials: Any, errors: list[str]) -> None:
-    """Each declared material must be a known material NAME or material CLASS."""
+    """Each declared material must be a known material NAME, CLASS, or an
+    unambiguous shorthand (see ``_MATERIAL_ALIASES``)."""
     if materials is None:
         return
     if not isinstance(materials, (list, tuple)):
@@ -192,11 +246,12 @@ def _validate_materials(materials: Any, errors: list[str]) -> None:
             errors.append(f"material entries must be non-empty strings (got {m!r})")
             continue
         name = m.strip()
-        if name.lower() in KNOWN_MATERIAL_CLASSES:
+        if _canonical_material(name) is not None:
             continue
-        if get_material_by_name(name) is not None:
-            continue
-        errors.append(f"unknown material '{name}' (not a known material or class)")
+        errors.append(
+            f"unknown material '{name}' (not a known material, class, or shorthand; "
+            f"{_MATERIAL_VOCAB_HINT})"
+        )
 
 
 def _validate_thickness_map(tmap: Any, errors: list[str]) -> None:
@@ -288,6 +343,13 @@ def _normalize(fields: dict) -> dict:
         out["count"] = 1
     if out.get("capabilities") is None:
         out["capabilities"] = {}
+    # Canonicalize accepted materials (shorthand → registry name) so the stored
+    # value is the real material the form advertised, not the bare shorthand.
+    mats = out.get("materials")
+    if isinstance(mats, (list, tuple)):
+        out["materials"] = [
+            _canonical_material(m) or m if isinstance(m, str) else m for m in mats
+        ]
     return out
 
 
@@ -309,13 +371,31 @@ _FLOAT_COLUMNS = ("max_workpiece_kg", "hourly_rate_usd", "capital_frac")
 
 
 def _example_row() -> str:
-    """One illustrative data row for the /import/template body."""
+    """One illustrative data row for the /import/template body.
+
+    Built with csv.writer so the row matches MACHINE_HEADER's column order
+    exactly and embedded JSON quotes are CSV-escaped — the template's own
+    example must survive a round-trip through /machine-inventory/import.
+    """
     caps = json.dumps({"x": 762, "y": 406, "z": 508, "axes": 3,
                        "achievable_it_grade": 9})
-    return (
-        f'Haas VF-2 #1,cnc_3axis,1,200,75,0.4,304 Stainless|steel,,"{caps}",'
-        "shop floor A"
+    row = {
+        "process": "cnc_3axis",
+        "name": "Haas VF-2 #1",
+        "count": "1",
+        "max_workpiece_kg": "200",
+        "hourly_rate_usd": "75",
+        "capital_frac": "0.4",
+        "materials": "304 Stainless|steel",
+        "material_thickness_map": "",
+        "capabilities": caps,
+        "notes": "shop floor A",
+    }
+    buf = io.StringIO()
+    csv.writer(buf).writerow(
+        [row[c] for c in MACHINE_REQUIRED_COLUMNS + MACHINE_OPTIONAL_COLUMNS]
     )
+    return buf.getvalue().rstrip("\r\n")
 
 
 def _clean(v) -> str:

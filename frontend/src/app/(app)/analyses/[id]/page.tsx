@@ -12,6 +12,7 @@ import RepairButton from "@/components/RepairButton";
 import RepairComparison from "@/components/RepairComparison";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -99,6 +100,36 @@ export default function AnalysisDetailPage({
           </>
         }
       />
+
+      {analysis.decision_links.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Linked cost decisions</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {analysis.decision_links.map((decision) => (
+              <div
+                key={decision.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border p-3"
+              >
+                <div>
+                  <p className="font-medium text-foreground">{decision.filename}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {decision.make_now_process ?? "No make-now route"} · {decision.approval_status}
+                  </p>
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => router.push(decision.url)}
+                >
+                  Open decision
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Show repair comparison when available, otherwise original dashboard */}
       {repairResult ? (

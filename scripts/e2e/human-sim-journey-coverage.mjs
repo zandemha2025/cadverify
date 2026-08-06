@@ -1,6 +1,11 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  captureBuildIdentity,
+  validateBuildIdentities,
+  validateCriticalEvidence,
+} from "./human-sim-release-evidence.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,6 +24,10 @@ const reportSpecs = {
     title: "Human Web App Journey",
     file: `human-e2e-${runId}.json`,
   },
+  design: {
+    title: "Design Studio Golden Journeys",
+    file: `design-studio-e2e-${runId}.json`,
+  },
   enterprise: {
     title: "Enterprise CAD Organization Journey",
     file: `enterprise-domain-${runId}.json`,
@@ -26,6 +35,10 @@ const reportSpecs = {
   p7: {
     title: "P7 Role and Failure Journey",
     file: `p7-role-failure-${runId}.json`,
+  },
+  assembly: {
+    title: "Assembly Context Visual Fidelity",
+    file: `assembly-visual-fidelity-${runId}.json`,
   },
 };
 
@@ -63,6 +76,7 @@ const verifyRailSurfaces = [
 ];
 
 const authenticatedRoutes = [
+  "/designs",
   "/cost",
   "/analyze",
   "/batch",
@@ -75,6 +89,8 @@ const authenticatedRoutes = [
   "/label",
   "/design-system",
   "/settings/developer",
+  "/settings/organization",
+  "/settings/security",
   "/notifications",
 ];
 
@@ -84,10 +100,12 @@ const enterpriseSteps = [
   "org admin publishes a governed rate card",
   "CAD organization declares owned machines with rates and envelopes",
   "historical actuals ingest but recalibration refuses below floor",
-  "Verify UI shows declared machines and governed truth honestly",
-  "Developer settings creates and reveals an API key exactly once",
+  "Verify UI shows declared machines and effective rate truth honestly",
+  "Developer settings creates, rotates, and revokes an API key exactly once",
   "CAD engineer verifies a real STEP file in a declared service world",
-  "portfolio withholds exposure until declared volume, then computes server-side math",
+  "portfolio withholds exposure until declared volume is re-verified at its exact quantity",
+  "Verify stage renders declared parent context in product UI",
+  "portfolio computes exact server-side exposure after declared-volume re-verification",
   "Programs UI and cost history show the verified enterprise part",
 ];
 
@@ -134,6 +152,24 @@ const visibleCopyRoutes = [
   "/rfq-packages",
 ];
 
+const designStudioSteps = [
+  "Design Studio account signs up through the real web form",
+  "Design Studio loads inside the unified ProofShape shell",
+  "Unsupported freeform geometry is rejected without approximation",
+  "Incomplete enclosure description asks for exact missing dimensions",
+  "Plate description prefills exact clean millimetre values",
+  "Unsafe plate hole margin is blocked before generation",
+  "Golden mounting plate generates real CAD with exact geometry and hash",
+  "Plate revision is immutable and historical STEP bytes remain exact",
+  "Historical plate revision enters Verify with the exact measured result",
+  "Golden L bracket generates as a recognizable prismatic template",
+  "L bracket Verify rejects CNC turning and completes DFM plus cost",
+  "Golden open enclosure generates with an open thin-wall cavity",
+  "Open enclosure routes as thin-wall geometry and rejects CNC turning",
+  "Archive confirmation supports cancel and irreversible confirm branches",
+  "Design Studio remains usable on a mobile viewport with WebGL fallback",
+];
+
 function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -142,7 +178,7 @@ function exactStep(name) {
   return `^${escapeRegExp(name)}$`;
 }
 
-function req(id, report, step, persona, surface, branch) {
+function req(id, report, step, persona, surface, branch, options = {}) {
   return {
     id,
     report,
@@ -150,10 +186,12 @@ function req(id, report, step, persona, surface, branch) {
     persona,
     surface,
     branch,
+    alternatives: options.alternatives || [],
+    criticalEvidenceId: options.criticalEvidenceId || null,
   };
 }
 
-const requirements = [
+export const requirements = [
   ...publicRoutes.map((route) =>
     req(
       `public${route === "/" ? ".home" : route.replaceAll("/", ".")}`,
@@ -163,6 +201,15 @@ const requirements = [
       "Public web",
       `Open ${route} and verify final copy, page signal, console health, and screenshot evidence.`
     )
+  ),
+  req(
+    "public.pilot-request",
+    "human",
+    "public pilot request records a durable receipt",
+    "Public evaluator",
+    "Pilot intake",
+    "Submit the actual public form and receive a durable server-side receipt.",
+    { criticalEvidenceId: "PUB-03" }
   ),
   req(
     "auth.verify-redirect",
@@ -186,7 +233,15 @@ const requirements = [
     "signup creates real account and lands in app",
     "New user",
     "Signup",
-    "Create a real local account and land in authenticated product UI."
+    "Create a real local account and land in authenticated product UI.",
+    {
+      alternatives: [
+        {
+          report: "enterprise",
+          stepPattern: exactStep("enterprise engineer signs up and receives an org"),
+        },
+      ],
+    }
   ),
   req(
     "verify.shell-authenticated",
@@ -217,7 +272,7 @@ const requirements = [
   req(
     "notifications.panel-derived-state",
     "human",
-    "notifications panel opens and derives state",
+    "notifications inbox opens and derives state",
     "Authenticated user",
     "Notifications",
     "Open notification UI and verify its derived state."
@@ -254,7 +309,47 @@ const requirements = [
     "Verify processes a real STEP file upload",
     "CAD engineer",
     "CAD analysis",
-    "Upload and process a real STEP fixture through the browser."
+    "Upload and process a real STEP fixture through the browser.",
+    { criticalEvidenceId: "VER-05" }
+  ),
+  req(
+    "auth.logout-login",
+    "human",
+    "account menu signs out and valid login restores the workspace",
+    "Authenticated user",
+    "Session lifecycle",
+    "Sign out through the visible account menu, prove the protected boundary returns, and log back in."
+  ),
+  ...designStudioSteps.map((step, index) =>
+    req(
+      `design-studio.${String(index + 1).padStart(2, "0")}`,
+      "design",
+      step,
+      "CAD design engineer",
+      "Design Studio",
+      "Complete the current ProofShape Design Studio journey with exact CAD, revision, DFM, cost, archive, and responsive evidence.",
+      {
+        criticalEvidenceId: ({ 6: "DES-05", 7: "DES-10", 8: "DES-11" })[index] || null,
+      }
+    )
+  ),
+  req(
+    "assembly-context.automotive",
+    "assembly",
+    "DOOR-HANDLE-ASSEMBLY-FIDELITY-001: part seats into parent assembly within transform tolerance",
+    "CAD engineer",
+    "Populated assembly context",
+    "Render a part inside its parent assembly with declared automotive service environment, then seat it and verify transform/pixel evidence.",
+    { criticalEvidenceId: "DOOR-HANDLE-ASSEMBLY-FIDELITY-001" }
+  ),
+  req(
+    "assembly-context.oil-gas",
+    "assembly",
+    "VALVE-STEM-ASSEMBLY-FIDELITY-001: part seats into parent assembly within transform tolerance",
+    "CAD engineer",
+    "Populated assembly context",
+    "Render a part inside its parent assembly with declared severe-service environment, then seat it and verify transform/pixel evidence.",
+    { criticalEvidenceId: "VALVE-STEM-ASSEMBLY-FIDELITY-001" }
   ),
   ...enterpriseSteps.map((step, index) =>
     req(
@@ -263,7 +358,10 @@ const requirements = [
       step,
       "Enterprise CAD organization",
       "Enterprise operating model",
-      "Run the enterprise CAD/procurement branch with governed data and organization context."
+      "Run the enterprise CAD/procurement branch with governed data and organization context.",
+      {
+        criticalEvidenceId: ({ 2: "ENT-01", 4: "ENT-02", 10: "ENT-04" })[index] || null,
+      }
     )
   ),
   ...protectedRoutes.map((route) =>
@@ -293,7 +391,10 @@ const requirements = [
       step,
       "Failure-path user",
       "Failure and recovery",
-      "Drive a non-happy-path branch and verify bounded, production-grade behavior."
+      "Drive a non-happy-path branch and verify bounded, production-grade behavior.",
+      {
+        criticalEvidenceId: ({ 7: "WORK-05", 9: "ROLE-01" })[index] || null,
+      }
     )
   ),
   ...visibleCopyRoutes.map((route) =>
@@ -364,18 +465,44 @@ function reportProblems(reports) {
   return problems;
 }
 
-function coverageFor(requirement, reports) {
-  const report = reports[requirement.report];
-  const pattern = new RegExp(requirement.stepPattern);
-  const matches = report.steps.filter((step) => step.status === "pass" && pattern.test(step.name));
+export function coverageFor(requirement, reports, criticalEvidence) {
+  const candidates = [
+    { report: requirement.report, stepPattern: requirement.stepPattern },
+    ...(requirement.alternatives || []),
+  ];
+  const matches = [];
+  for (const candidate of candidates) {
+    const report = reports[candidate.report];
+    if (!report) continue;
+    const pattern = new RegExp(candidate.stepPattern);
+    for (const step of report.steps) {
+      if (step.status === "pass" && pattern.test(step.name)) {
+        matches.push({
+          report: candidate.report,
+          name: step.name,
+          url: step.url || "",
+          screenshot: step.screenshot || null,
+          evidence: step.evidence || null,
+        });
+      }
+    }
+  }
+  const stepMatched = matches.length > 0;
+  const critical = requirement.criticalEvidenceId
+    ? criticalEvidence.byRequirement[requirement.criticalEvidenceId]
+    : null;
   return {
     ...requirement,
-    covered: matches.length > 0,
-    matches: matches.map((step) => ({
-      name: step.name,
-      url: step.url || "",
-      screenshot: step.screenshot || null,
-    })),
+    stepMatched,
+    criticalEvidence: critical
+      ? {
+          id: requirement.criticalEvidenceId,
+          valid: critical.valid,
+          missingFields: critical.failures.map((item) => item.field),
+        }
+      : null,
+    covered: stepMatched && (!critical || critical.valid),
+    matches,
   };
 }
 
@@ -431,15 +558,28 @@ function markdown(data) {
     .join("\n");
   const missingRows = data.missing.length
     ? data.missing
-        .map((item) => `| ${item.id} | ${item.report} | ${item.surface} | ${item.branch} |`)
+        .map(
+          (item) =>
+            `| ${item.id} | ${item.report} | ${item.surface} | ${item.stepMatched ? `critical evidence ${item.criticalEvidence?.id || "missing"}` : "step not passed"} | ${item.branch} |`
+        )
         .join("\n")
-    : "| none |  |  |  |";
+    : "| none |  |  |  |  |";
+  const criticalRows = Object.entries(data.criticalEvidence.byRequirement)
+    .map(
+      ([id, item]) =>
+        `| ${id} | ${item.report} | ${item.valid ? "PASS" : "FAIL"} | ${item.failures.map((failure) => failure.field).join(", ") || "none"} |`
+    )
+    .join("\n");
 
   return `# Human-Simulated E2E Journey Coverage
 
 - Date: ${runId}
 - Status: ${data.status}
+- Local release claim: ${data.localReleaseClaim || "not qualified"}
+- Git HEAD: ${data.buildIdentity.gitHead}
+- Build ID: ${data.buildIdentity.buildId} (${data.buildIdentity.buildIdSource})
 - Required branches: ${data.coveredBranches}/${data.requiredBranches}
+- Critical evidence: ${data.criticalEvidence.valid}/${data.criticalEvidence.total}
 - Output root: ${outputRoot}
 
 ## Report Gates
@@ -454,10 +594,16 @@ ${reportRows}
 | --- | ---: |
 ${surfaceRows}
 
+## Critical Golden Evidence
+
+| Golden ID | Report | Status | Missing/invalid fields |
+| --- | --- | --- | --- |
+${criticalRows}
+
 ## Missing Branches
 
-| ID | Report | Surface | Branch |
-| --- | --- | --- | --- |
+| ID | Report | Surface | Reason | Branch |
+| --- | --- | --- | --- | --- |
 ${missingRows}
 
 ## Problems
@@ -467,10 +613,18 @@ ${data.problems.length ? data.problems.map((problem) => `- ${problem}`).join("\n
 }
 
 async function main() {
+  const buildIdentity = captureBuildIdentity(repoRoot);
   const reports = await loadReports();
-  const coverage = requirements.map((requirement) => coverageFor(requirement, reports));
+  const identityProblems = validateBuildIdentities(reports, buildIdentity);
+  const criticalEvidence = validateCriticalEvidence(reports);
+  const coverage = requirements.map((requirement) => coverageFor(requirement, reports, criticalEvidence));
   const missing = coverage.filter((item) => !item.covered);
-  const problems = [...reportProblems(reports), ...evidenceProblems(reports)];
+  const problems = [
+    ...reportProblems(reports),
+    ...identityProblems.map((item) => item.message),
+    ...criticalEvidence.problems.map((item) => item.message),
+    ...evidenceProblems(reports),
+  ];
 
   const reportSummaries = Object.fromEntries(
     Object.entries(reports).map(([key, report]) => [
@@ -485,21 +639,30 @@ async function main() {
         issues: report.issues,
         consoleErrors: report.consoleErrors,
         requestFailures: report.requestFailures,
+        buildIdentity: report.data.buildIdentity || null,
       },
     ])
   );
 
+  const status = missing.length === 0 && problems.length === 0 ? "PASS" : "NEEDS_FIXES";
   const data = {
-    status: missing.length === 0 && problems.length === 0 ? "PASS" : "NEEDS_FIXES",
+    status,
+    // The hardened gate proves current-build branch coverage plus the
+    // structured critical contracts. LOCAL_100 remains reserved until every
+    // browser row in the golden matrix has its own outcome schema.
+    localReleaseClaim: status === "PASS" ? "LOCAL_GATE_PASS" : null,
     generatedAt: new Date().toISOString(),
     runId,
     outputRoot,
+    buildIdentity,
     requiredBranches: requirements.length,
     coveredBranches: coverage.filter((item) => item.covered).length,
     reports: reportSummaries,
     bySurface: bySurface(coverage),
     coverage,
     missing,
+    identityProblems,
+    criticalEvidence,
     problems,
   };
 
@@ -513,6 +676,18 @@ async function main() {
         status: data.status,
         requiredBranches: data.requiredBranches,
         coveredBranches: data.coveredBranches,
+        localReleaseClaim: data.localReleaseClaim,
+        buildIdentity,
+        criticalEvidence: {
+          total: criticalEvidence.total,
+          valid: criticalEvidence.valid,
+          missingFields: criticalEvidence.problems.map((item) => ({
+            requirementId: item.requirementId,
+            report: item.report,
+            field: item.field,
+            expected: item.expected,
+          })),
+        },
         reports: reportSummaries,
         missing: missing.map((item) => item.id),
         problems,
@@ -528,7 +703,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}

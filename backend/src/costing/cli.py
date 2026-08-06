@@ -75,7 +75,7 @@ def _parse_overrides(args) -> dict:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="src.costing.cli",
-                                     description="CadVerify V0 decision layer")
+                                     description="ProofShape decision layer")
     parser.add_argument("part", help="path to part .stl")
     parser.add_argument("--qty", default="50,5000", help="comma list, e.g. 50,5000")
     parser.add_argument("--material-class", default=None,

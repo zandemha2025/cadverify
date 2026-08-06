@@ -19,6 +19,8 @@ class _Row:
     hmac_index: str
     secret_hash: str
     revoked_at: object
+    org_id: str = "org-a"
+    active_org_id: str = "org-a"
 
 
 class _Req:
@@ -108,6 +110,7 @@ async def test_valid_key_returns_authed_user(monkeypatch):
     assert u.api_key_id == 7
     assert u.key_prefix == prefix
     assert u.role == "analyst"
+    assert u.org_id == "org-a"
     assert req.state.authed_user is u
 
 

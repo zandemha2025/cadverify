@@ -1,0 +1,143 @@
+{
+  "email": "r5_1783612929874@anodeadvisory.com",
+  "rowCount": 18,
+  "rows": [
+    "plate as1/PLATE/plate ×1 $235.4",
+    "l-bracket as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/L-BRACKET/l-bracket ×2 $178.9",
+    "l-bracket as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/L-BRACKET/l-bracket ×2 $178.9",
+    "rod as1/ROD-ASSEMBLY/rod-assembly/ROD/rod ×1 $201.1",
+    "bolt as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/BOLT/bolt ×6 BUY $0.75",
+    "bolt as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/BOLT/bolt ×6 BUY $0.75",
+    "bolt as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/BOLT/bolt ×6 BUY $0.75",
+    "bolt as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/BOLT/bolt ×6 BUY $0.75",
+    "bolt as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/BOLT/bolt ×6 BUY $0.75",
+    "bolt as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/BOLT/bolt ×6 BUY $0.75",
+    "nut ·3 as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/NUT::3/nut ×8 BUY $0.20",
+    "nut ·3 as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/NUT::3/nut ×8 BUY $0.20",
+    "nut as1/ROD-ASSEMBLY/rod-assembly/NUT::1/nut ×8 BUY $0.20",
+    "nut ·2 as1/ROD-ASSEMBLY/rod-assembly/NUT::2/nut ×8 BUY $0.20",
+    "nut ·3 as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/NUT::3/nut ×8 BUY $0.20",
+    "nut ·3 as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/NUT::3/nut ×8 BUY $0.20",
+    "nut ·3 as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/NUT::3/nut ×8 BUY $0.20",
+    "nut ·3 as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/NUT::3/nut ×8 BUY $0.20"
+  ],
+  "idx": {
+    "bolt": [
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      14,
+      15,
+      16,
+      17
+    ],
+    "nut": [
+      12,
+      13
+    ],
+    "plate": [
+      0
+    ],
+    "rod": [
+      3
+    ],
+    "bracket": [
+      1,
+      2
+    ],
+    "other": []
+  },
+  "nutCots": [
+    {
+      "i": 12,
+      "row": "nut as1/ROD-ASSEMBLY/rod-assembly/NUT::1/nut ×8 BUY $0.20",
+      "cots": "SHOULD-COST · BUY (STANDARD HARDWARE) ○ DEFAULT BUY ~$0.20 /unit Standard off-the-shelf nut — do not machine in-house. Catalog range $0.05–$1.00. ○ DEFAULT · catalog estimate (high confidence), not a live quote FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $9.38/unit if this were fabricated in-house on Sheet Metal in 5052 Aluminum (Sheet) — a make-it-yourself upper-bound for a catalog part, not the recommended cost. Recommendation: BUY — standard off-the-shelf fastener; do not machine in-house",
+      "fab": "FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $9.38/unit if this were fabricated in-house on Sheet Metal in 5052 Aluminum (Sheet) — a make-it-yourself upper-bound for a catalog part, not the recommended cost."
+    },
+    {
+      "i": 13,
+      "row": "nut ·2 as1/ROD-ASSEMBLY/rod-assembly/NUT::2/nut ×8 BUY $0.20",
+      "cots": "SHOULD-COST · BUY (STANDARD HARDWARE) ○ DEFAULT BUY ~$0.20 /unit Standard off-the-shelf nut — do not machine in-house. Catalog range $0.05–$1.00. ○ DEFAULT · catalog estimate (high confidence), not a live quote FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $9.38/unit if this were fabricated in-house on Sheet Metal in 5052 Aluminum (Sheet) — a make-it-yourself upper-bound for a catalog part, not the recommended cost. Recommendation: BUY — standard off-the-shelf fastener; do not machine in-house",
+      "fab": "FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $9.38/unit if this were fabricated in-house on Sheet Metal in 5052 Aluminum (Sheet) — a make-it-yourself upper-bound for a catalog part, not the recommended cost."
+    }
+  ],
+  "boltCots": [
+    {
+      "i": 4,
+      "row": "bolt as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/BOLT/bolt ×6 BUY $0.75",
+      "cots": "SHOULD-COST · BUY (STANDARD HARDWARE) ○ DEFAULT BUY ~$0.75 /unit Standard off-the-shelf bolt — do not machine in-house. Catalog range $0.20–$3.00. ○ DEFAULT · catalog estimate (high confidence), not a live quote FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $23.99/unit if this were fabricated in-house on CNC Turning in 6061-T6 Aluminum — a make-it-yourself upper-bound for a catalog part, not the recommended cost. Recommendation: BUY — standard off-the-shelf fastener; do not machine in-house",
+      "fab": "FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $23.99/unit if this were fabricated in-house on CNC Turning in 6061-T6 Aluminum — a make-it-yourself upper-bound for a catalog part, not the recommended cost."
+    },
+    {
+      "i": 5,
+      "row": "bolt as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/BOLT/bolt ×6 BUY $0.75",
+      "cots": "SHOULD-COST · BUY (STANDARD HARDWARE) ○ DEFAULT BUY ~$0.75 /unit Standard off-the-shelf bolt — do not machine in-house. Catalog range $0.20–$3.00. ○ DEFAULT · catalog estimate (high confidence), not a live quote FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $23.99/unit if this were fabricated in-house on CNC Turning in 6061-T6 Aluminum — a make-it-yourself upper-bound for a catalog part, not the recommended cost. Recommendation: BUY — standard off-the-shelf fastener; do not machine in-house",
+      "fab": "FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $23.99/unit if this were fabricated in-house on CNC Turning in 6061-T6 Aluminum — a make-it-yourself upper-bound for a catalog part, not the recommended cost."
+    },
+    {
+      "i": 6,
+      "row": "bolt as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/BOLT/bolt ×6 BUY $0.75",
+      "cots": "SHOULD-COST · BUY (STANDARD HARDWARE) ○ DEFAULT BUY ~$0.75 /unit Standard off-the-shelf bolt — do not machine in-house. Catalog range $0.20–$3.00. ○ DEFAULT · catalog estimate (high confidence), not a live quote FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $23.99/unit if this were fabricated in-house on CNC Turning in 6061-T6 Aluminum — a make-it-yourself upper-bound for a catalog part, not the recommended cost. Recommendation: BUY — standard off-the-shelf fastener; do not machine in-house",
+      "fab": "FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $23.99/unit if this were fabricated in-house on CNC Turning in 6061-T6 Aluminum — a make-it-yourself upper-bound for a catalog part, not the recommended cost."
+    },
+    {
+      "i": 7,
+      "row": "bolt as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/BOLT/bolt ×6 BUY $0.75",
+      "cots": "SHOULD-COST · BUY (STANDARD HARDWARE) ○ DEFAULT BUY ~$0.75 /unit Standard off-the-shelf bolt — do not machine in-house. Catalog range $0.20–$3.00. ○ DEFAULT · catalog estimate (high confidence), not a live quote FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $23.99/unit if this were fabricated in-house on CNC Turning in 6061-T6 Aluminum — a make-it-yourself upper-bound for a catalog part, not the recommended cost. Recommendation: BUY — standard off-the-shelf fastener; do not machine in-house",
+      "fab": "FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $23.99/unit if this were fabricated in-house on CNC Turning in 6061-T6 Aluminum — a make-it-yourself upper-bound for a catalog part, not the recommended cost."
+    },
+    {
+      "i": 8,
+      "row": "bolt as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/BOLT/bolt ×6 BUY $0.75",
+      "cots": "SHOULD-COST · BUY (STANDARD HARDWARE) ○ DEFAULT BUY ~$0.75 /unit Standard off-the-shelf bolt — do not machine in-house. Catalog range $0.20–$3.00. ○ DEFAULT · catalog estimate (high confidence), not a live quote FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $23.99/unit if this were fabricated in-house on CNC Turning in 6061-T6 Aluminum — a make-it-yourself upper-bound for a catalog part, not the recommended cost. Recommendation: BUY — standard off-the-shelf fastener; do not machine in-house",
+      "fab": "FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $23.99/unit if this were fabricated in-house on CNC Turning in 6061-T6 Aluminum — a make-it-yourself upper-bound for a catalog part, not the recommended cost."
+    },
+    {
+      "i": 9,
+      "row": "bolt as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/BOLT/bolt ×6 BUY $0.75",
+      "cots": "SHOULD-COST · BUY (STANDARD HARDWARE) ○ DEFAULT BUY ~$0.75 /unit Standard off-the-shelf bolt — do not machine in-house. Catalog range $0.20–$3.00. ○ DEFAULT · catalog estimate (high confidence), not a live quote FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $23.99/unit if this were fabricated in-house on CNC Turning in 6061-T6 Aluminum — a make-it-yourself upper-bound for a catalog part, not the recommended cost. Recommendation: BUY — standard off-the-shelf fastener; do not machine in-house",
+      "fab": "FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $23.99/unit if this were fabricated in-house on CNC Turning in 6061-T6 Aluminum — a make-it-yourself upper-bound for a catalog part, not the recommended cost."
+    },
+    {
+      "i": 10,
+      "row": "nut ·3 as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/NUT::3/nut ×8 BUY $0.20",
+      "cots": "SHOULD-COST · BUY (STANDARD HARDWARE) ○ DEFAULT BUY ~$0.20 /unit Standard off-the-shelf nut — do not machine in-house. Catalog range $0.05–$1.00. ○ DEFAULT · catalog estimate (high confidence), not a live quote FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $9.38/unit if this were fabricated in-house on Sheet Metal in 5052 Aluminum (Sheet) — a make-it-yourself upper-bound for a catalog part, not the recommended cost. Recommendation: BUY — standard off-the-shelf fastener; do not machine in-house",
+      "fab": "FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $9.38/unit if this were fabricated in-house on Sheet Metal in 5052 Aluminum (Sheet) — a make-it-yourself upper-bound for a catalog part, not the recommended cost."
+    },
+    {
+      "i": 11,
+      "row": "nut ·3 as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/NUT::3/nut ×8 BUY $0.20",
+      "cots": "SHOULD-COST · BUY (STANDARD HARDWARE) ○ DEFAULT BUY ~$0.20 /unit Standard off-the-shelf nut — do not machine in-house. Catalog range $0.05–$1.00. ○ DEFAULT · catalog estimate (high confidence), not a live quote FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $9.38/unit if this were fabricated in-house on Sheet Metal in 5052 Aluminum (Sheet) — a make-it-yourself upper-bound for a catalog part, not the recommended cost. Recommendation: BUY — standard off-the-shelf fastener; do not machine in-house",
+      "fab": "FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $9.38/unit if this were fabricated in-house on Sheet Metal in 5052 Aluminum (Sheet) — a make-it-yourself upper-bound for a catalog part, not the recommended cost."
+    },
+    {
+      "i": 14,
+      "row": "nut ·3 as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/NUT::3/nut ×8 BUY $0.20",
+      "cots": "SHOULD-COST · BUY (STANDARD HARDWARE) ○ DEFAULT BUY ~$0.20 /unit Standard off-the-shelf nut — do not machine in-house. Catalog range $0.05–$1.00. ○ DEFAULT · catalog estimate (high confidence), not a live quote FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $9.38/unit if this were fabricated in-house on Sheet Metal in 5052 Aluminum (Sheet) — a make-it-yourself upper-bound for a catalog part, not the recommended cost. Recommendation: BUY — standard off-the-shelf fastener; do not machine in-house",
+      "fab": "FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $9.38/unit if this were fabricated in-house on Sheet Metal in 5052 Aluminum (Sheet) — a make-it-yourself upper-bound for a catalog part, not the recommended cost."
+    },
+    {
+      "i": 15,
+      "row": "nut ·3 as1/L-BRACKET-ASSEMBLY::1/l-bracket-assembly/NUT-BOLT-ASSEMBLY::3/nut-bolt-assembly/NUT::3/nut ×8 BUY $0.20",
+      "cots": "SHOULD-COST · BUY (STANDARD HARDWARE) ○ DEFAULT BUY ~$0.20 /unit Standard off-the-shelf nut — do not machine in-house. Catalog range $0.05–$1.00. ○ DEFAULT · catalog estimate (high confidence), not a live quote FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $9.38/unit if this were fabricated in-house on Sheet Metal in 5052 Aluminum (Sheet) — a make-it-yourself upper-bound for a catalog part, not the recommended cost. Recommendation: BUY — standard off-the-shelf fastener; do not machine in-house",
+      "fab": "FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $9.38/unit if this were fabricated in-house on Sheet Metal in 5052 Aluminum (Sheet) — a make-it-yourself upper-bound for a catalog part, not the recommended cost."
+    },
+    {
+      "i": 16,
+      "row": "nut ·3 as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::1/nut-bolt-assembly/NUT::3/nut ×8 BUY $0.20",
+      "cots": "SHOULD-COST · BUY (STANDARD HARDWARE) ○ DEFAULT BUY ~$0.20 /unit Standard off-the-shelf nut — do not machine in-house. Catalog range $0.05–$1.00. ○ DEFAULT · catalog estimate (high confidence), not a live quote FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $9.38/unit if this were fabricated in-house on Sheet Metal in 5052 Aluminum (Sheet) — a make-it-yourself upper-bound for a catalog part, not the recommended cost. Recommendation: BUY — standard off-the-shelf fastener; do not machine in-house",
+      "fab": "FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $9.38/unit if this were fabricated in-house on Sheet Metal in 5052 Aluminum (Sheet) — a make-it-yourself upper-bound for a catalog part, not the recommended cost."
+    },
+    {
+      "i": 17,
+      "row": "nut ·3 as1/L-BRACKET-ASSEMBLY::2/l-bracket-assembly/NUT-BOLT-ASSEMBLY::2/nut-bolt-assembly/NUT::3/nut ×8 BUY $0.20",
+      "cots": "SHOULD-COST · BUY (STANDARD HARDWARE) ○ DEFAULT BUY ~$0.20 /unit Standard off-the-shelf nut — do not machine in-house. Catalog range $0.05–$1.00. ○ DEFAULT · catalog estimate (high confidence), not a live quote FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $9.38/unit if this were fabricated in-house on Sheet Metal in 5052 Aluminum (Sheet) — a make-it-yourself upper-bound for a catalog part, not the recommended cost. Recommendation: BUY — standard off-the-shelf fastener; do not machine in-house",
+      "fab": "FABRICATION UPPER-BOUND · IF MADE IN-HOUSE $9.38/unit if this were fabricated in-house on Sheet Metal in 5052 Aluminum (Sheet) — a make-it-yourself upper-bound for a catalog part, not the recommended cost."
+    }
+  ]
+}

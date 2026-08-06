@@ -19,6 +19,7 @@ import type {
   CostReport,
   Issue,
 } from "@/lib/api";
+import type { MakeabilityLattice } from "./verification";
 
 /** The make-now route's estimate — the largest-quantity point for the decision's
  *  make-now process (setup fully amortized = the stable read). Inlined (not a
@@ -68,7 +69,7 @@ export function standingKind(row: CatalogRowApi): StandingKind {
 export function standingTag(row: CatalogRowApi): StandingTag {
   switch (standingKind(row)) {
     case "costed":
-      return { label: "VERIFIED · Σ ✓", tone: "pass" };
+      return { label: "COSTED · RECORD", tone: "neutral" };
     case "blocked":
       return { label: "BLOCKED — SEE FINDINGS", tone: "fail" };
     case "invalid":
@@ -97,12 +98,29 @@ export interface PartStanding {
   validated: boolean;
   /** the honest band label, VERBATIM from the engine's confidence object, or null. */
   bandLabel: string | null;
+  /** confidence.n_samples on the make-now estimate, VERBATIM from the payload —
+   *  null when the record carries no confidence object. NOT derived from
+   *  `validated`: a STAND-IN calibration can be validated=false with n>0. */
+  nSamples: number | null;
   crossoverQty: number | null;
   /** the cost-decision id backing this standing ("open record →"), or null. */
   recordId: string | null;
   /** when this standing was last updated (catalog updated_at, ISO). */
   updatedAt: string;
+  /** Persisted machine-fit lattice, independent of route DFM. Null for records
+   *  that predate machine verification or where it was not evaluated. */
+  makeabilityVerdict: MakeabilityLattice | null;
 }
+
+const MAKEABILITY_VALUES = new Set<MakeabilityLattice>([
+  "makeable_in_house",
+  "makeable_with_secondary_op",
+  "makeable_not_on_owned",
+  "makeable_outsource_only",
+  "environment_excluded",
+  "not_makeable",
+  "unknown",
+]);
 
 export function deriveStanding(
   row: CatalogRowApi,
@@ -112,6 +130,11 @@ export function deriveStanding(
   const detailWithheld = Boolean(est?.environment_excluded);
   const kind = detailWithheld ? "blocked" : standingKind(row);
   const conf = est?.confidence;
+  const rawMakeability = detail?.result.verification?.verdict;
+  const makeabilityVerdict =
+    typeof rawMakeability === "string" && MAKEABILITY_VALUES.has(rawMakeability as MakeabilityLattice)
+      ? (rawMakeability as MakeabilityLattice)
+      : null;
   return {
     kind,
     process: row.recommended_route?.process ?? detail?.make_now_process ?? null,
@@ -126,9 +149,11 @@ export function deriveStanding(
     // Prefer the record's own confidence flag; fall back to the row's.
     validated: conf?.validated ?? row.unit_cost?.validated ?? false,
     bandLabel: conf?.label ?? null,
+    nSamples: conf?.n_samples ?? null,
     crossoverQty: detail?.crossover_qty ?? null,
     recordId: row.cost_decision?.id ?? null,
     updatedAt: row.updated_at,
+    makeabilityVerdict,
   };
 }
 

@@ -1,0 +1,107 @@
+[
+  {
+    "check": "ART-01 live response persists with saved pointer",
+    "status": "PASS",
+    "detail": "POST /api/proxy/validate/cost on qa-box.stl (qty=1,100,1000,5000) returned 200 with saved.id=01KZA8PQPY61GC139KMGG5QA2K and url /api/v1/cost-decisions/{id}; decision listed under the owning account. Baseline numbers: crossover_qty=529.0, make_now=fdm/PLA, picks fdm@1 $30.00, mjf@100 $5.03, mjf@1000/5000 $4.96, volume 12.0 cm3, 32 estimates, all confidence.validated=false."
+  },
+  {
+    "check": "ART-02 saved record result_json byte-identical to live response",
+    "status": "PASS",
+    "detail": "GET /api/proxy/cost-decisions/{id} .result compared key-by-key (sorted-JSON equality) against the live response: all 12 shared keys (estimates, decision, geometry, quantities, routing, assumptions, notes, engine_feasibility, status, reason, filename, material_class) byte-identical. Only differences are the documented response-only 'identity' retrieval block and the 'saved' pointer, both attached after persistence by design."
+  },
+  {
+    "check": "ART-03 saved record summary fields consistent with result",
+    "status": "PASS",
+    "detail": "Record top-level crossover_qty=529.0, make_now_process=fdm, quantities=[1,100,1000,5000] all agree with result.decision; mesh_hash present for the owner (beef04f8...), approval_status=unreviewed."
+  },
+  {
+    "check": "ART-04 export.json matches saved record and live response",
+    "status": "PASS",
+    "detail": "GET .../export.json: all 12 decision keys byte-identical to the live response; only addition is a 'governance' block (approval/disposition state), no altered numbers."
+  },
+  {
+    "check": "ART-05 export.csv every estimate row matches",
+    "status": "PASS",
+    "detail": "Parsed 32/32 rows; unit_cost_usd, fixed_cost_usd, variable_cost_usd, confidence_low_usd, confidence_high_usd, confidence_validated (all False) and material match the saved record exactly for every process+qty pair. confidence_label honestly says 'assumption-based, not yet validated'."
+  },
+  {
+    "check": "ART-06 PDF headline numbers match",
+    "status": "PASS",
+    "detail": "GET .../pdf (5 pages, extracted with pypdf): geometry volume 12.0 cm3 / 38.0 cm2 / 40.0x30.0x10.0 bbox / watertight Yes / 12 faces; crossover 529.0; make-now fdm/PLA; tooling candidate injection_molding flagged 'redesign required'; per-qty picks $30.00 / $5.03 / $4.96 / $4.96 with redesigned alternative injection_molding $4.03 all present and matching."
+  },
+  {
+    "check": "ART-07 PDF per-process estimate table matches (strict)",
+    "status": "PASS",
+    "detail": "All 32 rows matched a strict regex on process + qty + unit$ + fixed$ + variable$ + $low-$high band against the saved record (32/32 full-row matches, includes injection_molding $6,002.83 @qty1)."
+  },
+  {
+    "check": "ART-08 PDF Validated? column honest",
+    "status": "PASS",
+    "detail": "All 32 estimate rows show Validated?=No, matching confidence.validated=false everywhere; header copy states bands are assumption-based, not a quote."
+  },
+  {
+    "check": "ART-09 cost share JSON matches saved numbers",
+    "status": "PASS",
+    "detail": "POST .../share -> /s/cost/v6KYqSwVUW67. Unauthenticated GET of the backend share JSON: 32/32 estimates match on unit/fixed/variable/conf low/point/high/validated; decision block and geometry block sorted-JSON identical to the saved record; crossover 529.0 present."
+  },
+  {
+    "check": "ART-10 cost share JSON withholds PII",
+    "status": "PASS",
+    "detail": "Public share payload contains no mesh_hash (beef04f8 absent), no user id, no email, no org fields (only textual hit for 'org' is the substring in 'forging'). Keys limited to filename/label/created_at/decision content."
+  },
+  {
+    "check": "ART-11 cost share page renders matching numbers logged-out",
+    "status": "PASS",
+    "detail": "GET /s/cost/v6KYqSwVUW67 with no cookies -> 200. Rendered HTML shows 'Make by FDM', crossover 'below ~529 units', confidence band $18.00-$42.00 (+/-40%) matching fdm@qty1 low/high, volume 12.0 cm3, per-qty picks $30.00/$5.03/$4.96 and redesigned $4.03 -- all matching the saved record."
+  },
+  {
+    "check": "ART-12 cost share page free of PII",
+    "status": "PASS",
+    "detail": "Share HTML contains no owner email, no user id, no mesh hash, no org/owner name; page is noindex and labeled 'Shared should-cost - read-only'."
+  },
+  {
+    "check": "ART-13 RFQ line-items.csv matches decision",
+    "status": "PASS",
+    "detail": "POST /api/proxy/rfq-packages with the decision -> 201, package 01KZA912WDV15PTJYGJ5EPNYDK. download.zip line-items.csv row: crossover_qty=529.0, make_now_process=fdm, approval_status=unreviewed, unvalidated_confidence=True, raw_cad_included=False -- all consistent with the saved record."
+  },
+  {
+    "check": "ART-14 RFQ cost-drivers.csv matches all 32 estimates",
+    "status": "PASS",
+    "detail": "decisions/01-qa-box/cost-drivers.csv: 32/32 rows match saved unit/fixed/variable/conf-low/high and validated=False exactly (same schema as export.csv)."
+  },
+  {
+    "check": "ART-15 RFQ embedded JSONs match",
+    "status": "PASS",
+    "detail": "decisions/01-qa-box/cost-decision.json and the cost-decisions.json rollup ('cost_decision' payload) are sorted-JSON identical to the live decision on estimates/decision/geometry/quantities; rollup meta repeats crossover 529.0 / make_now fdm / unvalidated_confidence=True."
+  },
+  {
+    "check": "ART-16 RFQ supplier brief carries honest warnings",
+    "status": "PASS",
+    "detail": "supplier-brief.md and supplier-brief.pdf both state 'should-cost evidence ... not a supplier quote', Approved decisions: 0, and warnings decision_unapproved + confidence_unvalidated for qa-box.stl; manifest metadata.contract=should_cost_evidence_not_supplier_quote."
+  },
+  {
+    "check": "ART-17 RFQ should-cost-report.pdf identical to export PDF",
+    "status": "PASS",
+    "detail": "decisions/01-qa-box/should-cost-report.pdf is byte-identical (sha256) to GET .../pdf, so no divergent rendering path; raw-cad-unavailable.txt honestly says 'Raw CAD not included: not_requested'."
+  },
+  {
+    "check": "ART-18 RFQ ZIP free of owner PII",
+    "status": "PASS",
+    "detail": "All text members of the ZIP scanned: no owner email, no user_id, no mesh hash."
+  },
+  {
+    "check": "ART-19 analysis saved record matches live /validate",
+    "status": "PASS",
+    "detail": "POST /api/proxy/validate on qa-box.stl -> verdict=issues, best_process=dlp, volume 12000.0 mm3, bbox 40x30x10, 12 faces. GET /api/proxy/analyses/01KZA92Z088AK9YW4A4NHDCHTE .result: overall_verdict, best_process, geometry, process_scores, universal_issues, features all sorted-JSON identical to the live response."
+  },
+  {
+    "check": "ART-20 analysis PDF matches record",
+    "status": "PASS",
+    "detail": "GET .../analyses/{id}/pdf: Verdict ISSUES, Faces 12, Volume 12000.0 mm3, Surface 3800.0 mm2, bbox 40.0x30.0x10.0, watertight/manifold Yes; all 21 process-ranking rows match live score+verdict (dlp 1.0 ISSUES ... injection_molding 0.05 FAIL, forging 0.0 FAIL)."
+  },
+  {
+    "check": "ART-21 analysis share page consistent and PII-free logged-out",
+    "status": "PASS",
+    "detail": "POST .../analyses/{id}/share -> /s/oeK9Vz7DOQHp. Logged-out share JSON matches live on best_process/geometry/process_scores (verdict field 'issues'); rendered HTML shows Issues found, Faces 12, Volume 12.0 cm3 (=12000 mm3), 40.0 x 30.0 x 10.0 mm, Watertight Yes, dlp ranked 1. No mesh hash, email, user id or org in JSON or HTML (owner-facing PDF footer keeps mesh hash, share strips it)."
+  }
+]

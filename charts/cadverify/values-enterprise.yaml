@@ -1,4 +1,6 @@
-# Enterprise overlay: SAML, air-gapped, audit
+# Legacy air-gapped/on-prem overlay. New regulated cloud deployments should use
+# values-regulated.yaml and the production runbook. This file stays compatible
+# with disconnected image-loading workflows.
 image:
   backend:
     pullPolicy: Never

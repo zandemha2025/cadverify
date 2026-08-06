@@ -5,8 +5,10 @@ metadata:
   name: {{ include "cadverify.fullname" . }}
   labels:
     {{- include "cadverify.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
   annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   ingressClassName: {{ .Values.ingress.className | quote }}
   {{- if .Values.ingress.tls }}
@@ -23,7 +25,17 @@ spec:
     - host: {{ .Values.ingress.host | quote }}
       http:
         paths:
-          - path: /api
+          # Keep the backend prefix narrow. Next owns /api/auth, /api/proxy,
+          # and /api/public-share; a broad /api backend rule shadows those
+          # first-party routes and breaks every browser session flow.
+          - path: /api/v1
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "cadverify.fullname" . }}-backend
+                port:
+                  number: 8000
+          - path: /scim/v2
             pathType: Prefix
             backend:
               service:
@@ -38,7 +50,7 @@ spec:
                 port:
                   number: 8000
           - path: /health
-            pathType: Exact
+            pathType: Prefix
             backend:
               service:
                 name: {{ include "cadverify.fullname" . }}-backend

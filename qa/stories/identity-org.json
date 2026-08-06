@@ -1,0 +1,362 @@
+[
+ {
+  "id": "ID-001",
+  "area": "API identity",
+  "page": "POST /api/v1/identity/confirm",
+  "feature": "Confirm part identity",
+  "story": "As an analyst, I confirm/correct a part's declared identity so future retrievals carry a human assertion instead of a guess.",
+  "expected": "Analyst role required; upserts declared_part_id/name/program onto the (org, mesh_hash) corpus row with source='user_confirmed' and emits identity.confirm audit event. 400 if caller has no org, mesh_hash blank, or no declared field supplied; 404 if the mesh has no corpus row in the caller's org (incl. another org's part \u2014 never a cross-tenant write, never a fabricated signature). Rate-limited 120/hour.",
+  "evidence": "backend/src/api/identity.py:66-128",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-002",
+  "area": "API identity",
+  "page": "POST /api/v1/identity/library/onboard",
+  "feature": "Bulk parts-master onboarding",
+  "story": "As an analyst, I bulk-upload my org's CAD library (files or ZIP) with an identity mapping so the corpus has real declared identities on day one.",
+  "expected": "Analyst role + kill-switch open required; 403 if no org. Accepts multipart files and/or ZIP plus optional CSV/JSON mapping; 400 if no files, 413 if >512MB (env PARTS_MASTER_MAX_MB) or over ONBOARD_MAX_FILES cap, 400 if mapping is not UTF-8. Returns honest summary {onboarded, skipped:[{filename,reason}], mapping_errors, library_size} \u2014 unparseable files are skipped, never abort the batch; missing names onboard bare geometry with no guessing. Rate-limited 20/hour.",
+  "evidence": "backend/src/api/identity.py:207-300",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-003",
+  "area": "API identity",
+  "page": "GET /api/v1/identity/library + GET /api/v1/identity/library/template",
+  "feature": "Library view + mapping template",
+  "story": "As a viewer, I see my org's identity-corpus size and recent entries, and download the mapping CSV contract.",
+  "expected": "Viewer role required. GET /library returns {library_size, recent:[...]} org-scoped with declared identity only (raw signature vector never emitted); 403 if caller has no org. GET /library/template returns text/csv with header 'filename' (required) + optional part_id/name/program/material_class and needs no org.",
+  "evidence": "backend/src/api/identity.py:303-338",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-004",
+  "area": "API orgs",
+  "page": "POST /api/v1/orgs",
+  "feature": "Create organization",
+  "story": "As an analyst, I create a named org and become its admin.",
+  "expected": "Analyst role + kill-switch open required; 201 with {org_id, name, slug, org_role:'admin'}; caller's active org is NOT auto-switched. 400 for empty name or name >200 chars. Emits org.created audit event.",
+  "evidence": "backend/src/api/org_routes.py:145-162; src/services/org_service.py:143-145",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-005",
+  "area": "API orgs",
+  "page": "GET /api/v1/orgs",
+  "feature": "List my orgs",
+  "story": "As a viewer, I list every org I belong to and see which is active.",
+  "expected": "Viewer role required; returns caller's memberships with the active org flagged; no cross-user data.",
+  "evidence": "backend/src/api/org_routes.py:165-174",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-006",
+  "area": "API orgs",
+  "page": "POST /api/v1/orgs/switch",
+  "feature": "Switch active org",
+  "story": "As a member with a dashboard session, I switch my active org.",
+  "expected": "Viewer role + kill-switch open; org-bound API keys are refused with 403 {code:'api_key_org_bound'} \u2014 only dashboard sessions may switch (keys are permanently org-bound). 403 'not a member of that organization' when switching to an org without membership. Emits org.switched.",
+  "evidence": "backend/src/api/org_routes.py:177-214; src/services/org_service.py:544",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-007",
+  "area": "API orgs",
+  "page": "GET/POST /api/v1/orgs/saml/group-mappings + DELETE /api/v1/orgs/saml/group-mappings/{id}",
+  "feature": "SAML JIT group-role mappings",
+  "story": "As an org admin, I manage SAML group-to-role mappings for JIT provisioning in my org.",
+  "expected": "Org-admin role required (mutations kill-switch gated); mappings are strictly org-scoped \u2014 list returns only caller-org rows, delete of another org's mapping fails. POST returns 201 with serialized mapping; both mutations emit saml.group_mapping.* audit events.",
+  "evidence": "backend/src/api/org_routes.py:218-297",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-008",
+  "area": "API orgs",
+  "page": "POST /api/v1/orgs/invites + GET /api/v1/orgs/invites",
+  "feature": "Create/list invites",
+  "story": "As an org admin, I invite an email at a role and review my org's invites.",
+  "expected": "Org-admin required; invited role may not exceed the inviter's (403). POST returns 201 with the one-time accept_link exactly once (token stored only as hash, never persisted raw) and emailed flag; email send is best-effort \u2014 missing RESEND config or send failure never breaks invite creation. GET lists org invites (pending/accepted/expired/revoked) with no tokens. Invite creation rate-limited 20/hour.",
+  "evidence": "backend/src/api/org_routes.py:301-353",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-009",
+  "area": "API orgs",
+  "page": "POST /api/v1/orgs/invites/accept",
+  "feature": "Accept invite",
+  "story": "As an invited user, I redeem the one-time token to join the org at the invited role.",
+  "expected": "Any authed user (viewer+), kill-switch gated; token is hash-compared and single-use. 400 empty token; 404 unknown/used token; 409 revoked, already-used, or expired; 403 if the invite was issued to a different account/email. Accepting never escalates an existing member's role; returns {org_id, org_role, created} and emits member.joined only when a membership is created.",
+  "evidence": "backend/src/api/org_routes.py:356-385; src/services/org_service.py:356-421",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-010",
+  "area": "API orgs",
+  "page": "DELETE /api/v1/orgs/invites/{invite_id}",
+  "feature": "Revoke invite",
+  "story": "As an org admin, I revoke a pending invite so the link stops working.",
+  "expected": "Org-admin required, kill-switch gated, org-scoped: 404 if the invite is absent (or belongs to another org), 409 if already accepted; returns the serialized invite with revoked state.",
+  "evidence": "backend/src/api/org_routes.py:388-401; src/services/org_service.py:331-333",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-011",
+  "area": "API orgs",
+  "page": "GET /api/v1/orgs/members",
+  "feature": "List org members",
+  "story": "As any org member (viewer+), I see my org's members and their org roles.",
+  "expected": "Org viewer role required; returns only the caller's active org's members \u2014 no cross-org leakage; 403 if the caller has no org.",
+  "evidence": "backend/src/api/org_routes.py:405-415",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-012",
+  "area": "API orgs",
+  "page": "PATCH /api/v1/orgs/members/{user_id}/role",
+  "feature": "Change member org role",
+  "story": "As an org admin, I change a member's org role.",
+  "expected": "Org-admin required, kill-switch gated; 404 if the target is not a member of this org; 409 when demoting the last admin (an org must keep at least one admin). Emits member.role_changed and returns {user_id, org_role}.",
+  "evidence": "backend/src/api/org_routes.py:418-443; src/services/org_service.py:482-495",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-013",
+  "area": "API orgs",
+  "page": "DELETE /api/v1/orgs/members/{user_id}",
+  "feature": "Remove member / self-leave",
+  "story": "As an org admin I remove a member, or as any member I leave the org myself.",
+  "expected": "Route accepts org viewer, but a non-admin removing anyone other than themselves gets 403 {code:'insufficient_org_role'} \u2014 self-leave only. 404 if target not a member; 409 if the last admin would be removed or leave. Removal is org-scoped (not account deactivation) and takes effect immediately via membership re-validation; emits member.left/member.removed.",
+  "evidence": "backend/src/api/org_routes.py:446-479; src/services/org_service.py:512-514",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-014",
+  "area": "API admin",
+  "page": "GET /api/v1/admin/users + GET /api/v1/admin/users/{user_id}",
+  "feature": "Admin user list/detail",
+  "story": "As an org admin I list and inspect only my org's users; as a superadmin I see all users platform-wide.",
+  "expected": "require_org_role(admin): org-admin results are bounded by an INNER JOIN on memberships to ctx.org_id; a user outside the org returns 404 on detail so cross-org existence never leaks. Superadmin sees every user with primary (oldest) membership enriched. List is cursor-paginated (limit 1-100, next_cursor/has_more); detail includes org_role, auth_provider, analysis_count, batch_count.",
+  "evidence": "backend/src/api/admin_routes.py:95-252",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-015",
+  "area": "API admin",
+  "page": "PATCH /api/v1/admin/users/{user_id}/role",
+  "feature": "Assign platform role",
+  "story": "As a platform superadmin, I change a user's global platform role.",
+  "expected": "Superadmin only: an org-admin gets 403 {code:'platform_superadmin_required'} (org admins manage org_role on the org router, never users.role). 400 changing own role or role not in {viewer, analyst, admin} \u2014 'superadmin' is deliberately not assignable via API; 404 unknown user. Emits user.role_changed with old/new roles.",
+  "evidence": "backend/src/api/admin_routes.py:260-319",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-016",
+  "area": "API admin",
+  "page": "POST /api/v1/admin/users/{user_id}/deactivate + /reactivate",
+  "feature": "Account deactivation lifecycle",
+  "story": "As a platform superadmin, I deactivate a compromised/offboarded account and later reactivate it.",
+  "expected": "Superadmin only (deliberately not org-admin \u2014 deactivation is account-level and blocks EVERY auth path: login, Google/SAML/magic re-provision, existing sessions, API keys). Deactivate: 400 on self, 404 unknown user; flips is_active, sets deactivated_at, and bumps session_version so existing dashboard sessions die immediately. Reactivate reverses it; both idempotent (session_version only bumps on actual state change) and audited.",
+  "evidence": "backend/src/api/admin_routes.py:322-380; src/services/org_service.py:601-627",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-017",
+  "area": "API admin",
+  "page": "POST /api/v1/admin/users/{user_id}/revoke-sessions",
+  "feature": "Revoke all dashboard sessions",
+  "story": "As a platform superadmin, I invalidate every dashboard session for an account without deactivating it.",
+  "expected": "Superadmin only; 404 unknown user. Bumps users.session_version so every existing dashboard cookie is invalidated on next validation while API keys and the account remain active; returns the new session_version and emits user.sessions_revoked.",
+  "evidence": "backend/src/api/admin_routes.py:383-401; src/services/org_service.py:630-643",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-018",
+  "area": "API admin",
+  "page": "GET /api/v1/admin/usage-summary",
+  "feature": "Org usage counters",
+  "story": "As an org admin, I see real usage counts for my org's trailing window.",
+  "expected": "Org-admin required; days param 1-90 (default 30). Returns separate honest counts (analyses, cost_decisions, usage_events, webhook_deliveries) plus per-event-type and per-webhook-status breakdowns from persisted tables \u2014 never invented aggregate numbers. Org-admin counts are filtered to ctx.org_id; superadmin is unfiltered (org_id null in response).",
+  "evidence": "backend/src/api/admin_routes.py:413-480",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-019",
+  "area": "API admin",
+  "page": "GET /api/v1/admin/webhook-deliveries",
+  "feature": "Webhook delivery log",
+  "story": "As an org admin, I inspect recent webhook delivery attempts and retry timing.",
+  "expected": "Org-admin required; latest deliveries (limit 1-100) joined to batch ULID, org-scoped unless superadmin. Response contains status/attempts/response_code/retry timestamps but deliberately NEVER the payload body.",
+  "evidence": "backend/src/api/admin_routes.py:488-525",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-020",
+  "area": "API admin",
+  "page": "GET /api/v1/admin/ops/queue-health",
+  "feature": "Queue/worker health",
+  "story": "As an org admin/operator, I check async queue, batch, webhook, and worker posture.",
+  "expected": "Org-admin required; returns PII-free summary scoped to the caller's org (superadmin sees platform-wide, org filter None).",
+  "evidence": "backend/src/api/admin_routes.py:533-540",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-021",
+  "area": "API admin",
+  "page": "GET /api/v1/admin/audit-log",
+  "feature": "Audit log query/export",
+  "story": "As an org admin, I query or CSV-export my org's audit trail for compliance.",
+  "expected": "Org-admin required; start/end ISO datetimes mandatory (400 on invalid) with a hard 90-day max range (400 above). Org-admin sees only their org's entries, superadmin all orgs. format=csv returns text/csv attachment; default JSON is cursor-paginated (limit 1-200) with optional user_id/action filters.",
+  "evidence": "backend/src/api/admin_routes.py:550-596",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-022",
+  "area": "API SCIM",
+  "page": "GET /scim/v2/ServiceProviderConfig + /Schemas + /ResourceTypes",
+  "feature": "SCIM discovery",
+  "story": "As an IdP (Okta/Entra) using an org-admin API key, I discover the SCIM capabilities.",
+  "expected": "Bearer API-key auth + org-admin role; a token without an org context gets 403 {code:'scim_org_required'} \u2014 SCIM strictly requires an org-scoped admin key. Returns static SCIM 2.0 config/schema/resource-type documents.",
+  "evidence": "backend/src/api/scim.py:37-54",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-023",
+  "area": "API SCIM",
+  "page": "GET/POST /scim/v2/Users + GET/PUT/PATCH /scim/v2/Users/{id}",
+  "feature": "SCIM user provisioning",
+  "story": "As an IdP, I list, create, read, replace, and patch users in the customer org.",
+  "expected": "Org-admin key required; all operations are bounded to the key's org. List supports startIndex/count (max 100) and SCIM filter. POST returns 201 and create_or_update upserts by userName; PUT preserves userName from the existing resource; PATCH requires the SCIM PatchOp schema when schemas is supplied (400 otherwise). Mutations are committed per request.",
+  "evidence": "backend/src/api/scim.py:57-145",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-024",
+  "area": "API SCIM",
+  "page": "DELETE /scim/v2/Users/{id}",
+  "feature": "SCIM deprovision (soft)",
+  "story": "As an IdP, I deprovision a user when they leave the customer's directory.",
+  "expected": "Org-admin key required; DELETE is implemented as a PATCH setting active=false (soft deactivation, never a hard delete) and returns 204 with no body. Org-scoped \u2014 cannot deprovision users outside the key's org.",
+  "evidence": "backend/src/api/scim.py:148-163",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-025",
+  "area": "API SCIM",
+  "page": "GET /scim/v2/Groups + GET/PATCH /scim/v2/Groups/{group_id}",
+  "feature": "SCIM group (role) sync",
+  "story": "As an IdP, I read and push group membership so directory groups drive org roles.",
+  "expected": "Org-admin key required; groups are org-scoped, group_id accepts a path segment (:path converter). PATCH applies membership operations and commits; unknown group/org mismatch surfaces the service's error rather than crossing the tenant boundary.",
+  "evidence": "backend/src/api/scim.py:166-203",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-026",
+  "area": "API admission",
+  "page": "Depends(admit_analysis) on POST /validate and sibling compute routes",
+  "feature": "Concurrency admission control",
+  "story": "As the platform, I bound in-flight analyses so a burst returns clean retryable 429s instead of DB-pool 500s, and no single org starves the rest.",
+  "expected": "Beyond MAX_CONCURRENT_ANALYSES (default 8) globally the request gets 429 {code:'server_busy'} with Retry-After; beyond MAX_CONCURRENT_ANALYSES_PER_ORG (default 3) for the caller's org it gets 429 {code:'org_at_capacity'} with Retry-After. Slots are always released in finally even when the analysis fails. Fails OPEN (no-op) for unauthenticated callers, unresolvable membership, or a membership-lookup DB error; ADMISSION_DISABLED bypass works only outside RELEASE \u2014 in production the gate cannot be switched off.",
+  "evidence": "backend/src/api/admission.py:78-236; backend/src/api/routes.py:771,928,1125",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-027",
+  "area": "API governance",
+  "page": "POST /api/v1/governance/change-requests",
+  "feature": "Propose change request",
+  "story": "As an org member, I propose a DRAFT rate-card/shop-profile version for admin review.",
+  "expected": "Org member+ required; 400 if caller has no org, unknown asset_type, target version not found (404), or target not in 'draft' status (400). On success creates a 'proposed' request, emits an org-scoped admin-audience notification (governance.change_requested), and returns the serialized request. Rate-limited 60/hour.",
+  "evidence": "backend/src/api/governance.py:66-101; src/services/governance_service.py:65-101",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-028",
+  "area": "API governance",
+  "page": "GET /api/v1/governance/change-requests + /{request_id}",
+  "feature": "List/read change requests",
+  "story": "As any org member (viewer+), I browse my org's change requests and open one.",
+  "expected": "Viewer role required; list is org-scoped newest-first with optional ?status filter and returns an honest empty list when the caller has no org. Detail returns 404 for a missing request, another org's request, or a caller with no org \u2014 cross-tenant reads never succeed.",
+  "evidence": "backend/src/api/governance.py:104-134",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-029",
+  "area": "API governance",
+  "page": "POST /api/v1/governance/change-requests/{id}/approve",
+  "feature": "Approve (publishes draft)",
+  "story": "As an org admin, I approve a proposed change, which publishes the target draft through the library's own publish path.",
+  "expected": "Org-admin required; 404 unknown/cross-org request, 409 if the request is not in 'proposed' status. Publishing goes through the library's existing path \u2014 a publish failure surfaces that library error and the request is NOT marked approved (fail-closed). Success resolves the pending review notification, emits governance.approved + library.version_published audit events, and returns both the request and the published version.",
+  "evidence": "backend/src/api/governance.py:137-178; src/services/governance_service.py:155-215",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-030",
+  "area": "API governance",
+  "page": "POST /api/v1/governance/change-requests/{id}/reject",
+  "feature": "Reject change request",
+  "story": "As an org admin, I reject a proposed change with an optional note; the draft stays a draft.",
+  "expected": "Org-admin required; 404 unknown/cross-org, 409 if not 'proposed'. Rejection never mutates the target draft (it remains draft, nothing published), resolves the review notification, emits governance.rejected, and returns the request in 'rejected' state with the note.",
+  "evidence": "backend/src/api/governance.py:181-209",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-031",
+  "area": "API notifications",
+  "page": "GET /api/v1/notifications",
+  "feature": "Inbox listing",
+  "story": "As any org member (viewer+), I list my org's notifications with unread/dismissed/status filters.",
+  "expected": "Viewer role required; org-scoped with per-user read/dismiss state, cursor-paginated (limit 1-100). status must match open|resolved|all; default shows unread non-dismissed; 400 when dismissed=true is combined with unread=true (contradictory). A caller with no org gets an honest empty list, not an error.",
+  "evidence": "backend/src/api/notifications.py:21-62",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-032",
+  "area": "API notifications",
+  "page": "POST /api/v1/notifications/{id}/read + /dismiss + /restore",
+  "feature": "Per-notification state",
+  "story": "As any org member, I mark a notification read, dismiss it from my inbox, or restore a dismissed one \u2014 affecting only my own view.",
+  "expected": "Viewer role required; state (read_at/dismissed_at) is per-user, org-scoped \u2014 another org's notification id is not reachable. dismiss/restore return 404 when the caller has no org; read no-ops with {ok:true}. Each returns the updated serialized notification.",
+  "evidence": "backend/src/api/notifications.py:65-149",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-033",
+  "area": "API notifications",
+  "page": "POST /api/v1/notifications/read-all",
+  "feature": "Mark all read",
+  "story": "As any org member, I clear my unread badge in one call.",
+  "expected": "Viewer role required; marks all of the caller's org notifications read for this user only and returns {ok:true, count, read_at}. No-org callers get count 0 with ok:true (honest no-op).",
+  "evidence": "backend/src/api/notifications.py:152-174",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-034",
+  "area": "API middleware",
+  "page": "Any HTTP response (SecurityHeadersMiddleware)",
+  "feature": "Security hardening headers",
+  "story": "As a security reviewer, I verify every API response carries hardening headers without breaking streaming bodies.",
+  "expected": "Every HTTP response (including streamed CSV exports \u2014 pure-ASGI, not buffered) carries Strict-Transport-Security (max-age=63072000; includeSubDomains), X-Content-Type-Options: nosniff, X-Frame-Options: DENY, Referrer-Policy: strict-origin-when-cross-origin, Permissions-Policy disabling camera/mic/geolocation, and Server rewritten to 'ProofShape' (stack never advertised). SECURITY_HEADERS_ENABLED=0 disables it (default on).",
+  "evidence": "backend/src/api/security_headers.py:21-56; backend/main.py:449",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-035",
+  "area": "API middleware",
+  "page": "Any HTTP request/response (RequestIDMiddleware)",
+  "feature": "X-Request-ID correlation",
+  "story": "As an operator debugging an incident, I correlate a client request with logs and Sentry via one ID.",
+  "expected": "An inbound X-Request-ID header is propagated; absent one, a UUID4 is generated. The ID is echoed back on the response as X-Request-ID, bound into structlog contextvars for every log line of the request, tagged onto the Sentry scope, and unbound after completion.",
+  "evidence": "backend/src/api/middleware.py:18-38; backend/main.py:405",
+  "test_via": "API"
+ },
+ {
+  "id": "ID-036",
+  "area": "API identity",
+  "page": "Rate-limit + kill-switch behavior across identity/org/governance/notifications routes",
+  "feature": "Per-route limits and mutation kill-switch",
+  "story": "As the platform, I throttle each route (e.g. 20/hour onboarding, 20/hour invites, 60/hour governance decisions, 120/hour reads) and gate all mutations behind the global kill-switch.",
+  "expected": "Exceeding a route's slowapi limit returns 429; every mutating route in orgs/identity onboarding carries Depends(require_kill_switch_open) so writes are refused while the kill-switch is closed, while reads remain available \u2014 fail-closed for writes only.",
+  "evidence": "backend/src/api/org_routes.py:145,301,356,388,419,446; backend/src/api/identity.py:67,207-208",
+  "test_via": "API"
+ }
+]

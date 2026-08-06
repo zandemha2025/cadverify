@@ -1,0 +1,322 @@
+[
+ {
+  "id": "AUTH-001",
+  "area": "Auth",
+  "page": "/login",
+  "feature": "Password login",
+  "story": "As a returning user, I want to log in with email and password so that I can reach my secure workspace.",
+  "expected": "When AUTH_MODE is password/hybrid, the form POSTs /api/auth/login; on 2xx the browser navigates to the sanitized ?next= path (safeLocalPath, default /verify \u2014 external/protocol-relative URLs rejected). On failure the server's detail.message renders under the password field (fallback 'Invalid email or password.'); network failure shows 'Could not reach the server.'",
+  "evidence": "/home/user/cadverify/frontend/src/app/(auth)/login/page.tsx; /home/user/cadverify/frontend/src/app/(auth)/login/login-form.tsx",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "AUTH-002",
+  "area": "Auth",
+  "page": "/login",
+  "feature": "Magic-link request with Turnstile",
+  "story": "As a user without a password, I want to request a single-use sign-in link so that I can authenticate by email.",
+  "expected": "Rendered only when MAGIC_LINK_UI_ENABLED=1 and TURNSTILE_SITE_KEY is set. Submit is disabled until a Turnstile token exists; missing token shows 'Complete the security check first.' POST /api/auth/magic/start {email, turnstileToken}; success redirects to /magic/sent; failure shows the server detail message and resets the Turnstile widget.",
+  "evidence": "/home/user/cadverify/frontend/src/app/(auth)/login/login-form.tsx",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "AUTH-003",
+  "area": "Auth",
+  "page": "/login",
+  "feature": "Enterprise SSO entry + managed-access footer",
+  "story": "As an enterprise user, I want an SSO button so that I sign in through my organization's identity provider.",
+  "expected": "When SSO_LOGIN_PATH is set, a 'Continue with enterprise SSO' anchor links to that path; with password also enabled an 'OR USE PASSWORD' divider appears. When neither password nor magic signup is available the footer reads 'Access is managed by your organization administrator' instead of a signup link.",
+  "evidence": "/home/user/cadverify/frontend/src/app/(auth)/login/page.tsx; /home/user/cadverify/frontend/src/app/(auth)/login/login-form.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "AUTH-004",
+  "area": "Auth",
+  "page": "/signup",
+  "feature": "Signup mode gating (password / magic / managed)",
+  "story": "As a new user, I want the signup page to offer only the enabled enrollment path so that I follow the correct flow for this environment.",
+  "expected": "If public password signup is enabled (publicPasswordSignupEnabled from PUBLIC_PASSWORD_SIGNUP_ENABLED + RELEASE), the direct form renders; client validates >=8 chars with a letter and digit before POST /api/auth/signup, success navigates to /onboarding, errors show the server detail message. If magic is enabled instead, a 'Verify email and continue' card links to /login#magic-link. Otherwise a 'Contact your organization administrator' card renders (with SSO link if SSO_LOGIN_PATH is set).",
+  "evidence": "/home/user/cadverify/frontend/src/app/(auth)/signup/page.tsx; /home/user/cadverify/frontend/src/app/(auth)/signup/signup-form.tsx",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "AUTH-005",
+  "area": "Auth",
+  "page": "/magic/sent",
+  "feature": "Non-enumerating sent confirmation",
+  "story": "As a user who requested a magic link, I want a confirmation page so that I know to check my email without leaking whether the address exists.",
+  "expected": "Static page reads 'If that address is allowed to sign in, a single-use link is on its way.' (no account enumeration), with a 'Try another email' link back to /login. Page is noindex.",
+  "evidence": "/home/user/cadverify/frontend/src/app/(auth)/magic/sent/page.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "AUTH-006",
+  "area": "Auth",
+  "page": "/magic/verify",
+  "feature": "Magic-link exchange with token scrubbing",
+  "story": "As a user clicking my emailed link, I want to confirm the exchange so that a session is established without the token lingering in my URL/history.",
+  "expected": "Token is read from the URL fragment (or legacy query) then immediately removed via history.replaceState, held only in memory. Clicking 'Continue to ProofShape' POSTs /api/auth/magic/exchange {token}; success redirects to the response's sanitized redirect path (default /verify); non-2xx shows 'Magic link invalid or expired.' (or server detail); absent token shows 'This sign-in link is missing or malformed.' with a 'Request a new link' \u2192 /login.",
+  "evidence": "/home/user/cadverify/frontend/src/app/(auth)/magic/verify/page.tsx; /home/user/cadverify/frontend/src/app/(auth)/magic/verify/magic-verify-client.tsx",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "AUTH-007",
+  "area": "Auth",
+  "page": "/orgs/accept",
+  "feature": "Organization invite redemption",
+  "story": "As an invited teammate, I want opening my invite link to redeem the token so that I join the organization with the intended role.",
+  "expected": "On mount, POST /api/proxy/orgs/invites/accept {token}. Missing token \u2192 'Invite token missing.' 401/403 \u2192 'Log in as the invited account.' with a login link whose next returns to /orgs/accept?token=\u2026. Success \u2192 'Invitation accepted.' showing org_role and whether membership was created vs 'already a member; invite consumed without changing your role', plus an 'Open ProofShape' \u2192 /verify. Other errors show the backend detail; unreachable server shows 'Could not reach ProofShape.'",
+  "evidence": "/home/user/cadverify/frontend/src/app/(auth)/orgs/accept/page.tsx",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "VER-001",
+  "area": "Verify",
+  "page": "/verify",
+  "feature": "Auth + organization access gate",
+  "story": "As a signed-in user without an active organization, I want an explicit gate instead of empty data so that I know why org-scoped tools are unavailable.",
+  "expected": "Layout 404s if VERIFY_UI flag is off and verifySession() enforces login. With no active org the workspace renders OrganizationAccessGate (testid verify-organization-gate) in three honest states: access unavailable (retry link + admin note), memberships-but-none-active ('Choose an active organization'), or no memberships ('Open the invitation link\u2026 No organization data has been loaded or treated as empty'), all linking to /settings/organization.",
+  "evidence": "/home/user/cadverify/frontend/src/app/(verify)/layout.tsx; /home/user/cadverify/frontend/src/app/(verify)/verify/page.tsx; /home/user/cadverify/frontend/src/components/verify/verify-app.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "VER-002",
+  "area": "Verify",
+  "page": "/verify",
+  "feature": "Guided first-run welcome dialog",
+  "story": "As a first-time user, I want a 60-second start-here guide so that I pick the fastest path to a first result.",
+  "expected": "Dialog opens when localStorage proofshape_welcome_v2 is unset or ?welcome=1 (the param is stripped from the URL after opening). Offers four actions: 'Check my CAD file' (opens file picker), 'Show me a real example' (guided sample), 'Create a simple part' (navigates to /designs), 'Set up my shop' (Machines screen). Closing records the storage key; private-browsing storage failure still lets the guide work this visit. 'Start here' button reopens it anytime.",
+  "evidence": "/home/user/cadverify/frontend/src/components/verify/welcome-guide.tsx; /home/user/cadverify/frontend/src/components/verify/verify-app.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "VER-003",
+  "area": "Verify",
+  "page": "/verify",
+  "feature": "Guided example run + result summary",
+  "story": "As a new user with no file, I want to run a built-in sample through the real engine so that I learn to read the answer before uploading my own CAD.",
+  "expected": "Runs a deterministic in-browser STL (sample-routing-bracket.stl, 50x40x6mm L-bracket) through the identical POST /validate + /validate/cost pipeline. A status bar (testid guided-example-status) shows running/ready/error ('No completed result was created. Retry the example\u2026'). On success the GuidedResultSummary dialog presents headline, recommended route, first issue with measured/threshold evidence, measured geometry, resource cost (or its honest failure reason), and shop fit \u2014 'Show full technical result' closes into the walk; leaving the screen or starting an own upload cancels the guided lifecycle.",
+  "evidence": "/home/user/cadverify/frontend/src/components/verify/verify-app.tsx; /home/user/cadverify/frontend/src/lib/verify/sample-cad.ts; /home/user/cadverify/frontend/src/components/verify/guided-result-summary.tsx",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "VER-004",
+  "area": "Verify",
+  "page": "/verify",
+  "feature": "CAD drop with unsupported-format rejection",
+  "story": "As an engineer, I want to drop STL/STEP/IGES and be told clearly when a format can't be verified so that no bogus analysis starts.",
+  "expected": "Accepted extensions: stl, step, stp, iges, igs (input accept + drop zones on Home and stage). An unsupported file (e.g. .sldprt) triggers a role=alert banner (testid verify-upload-rejection): 'SolidWorks files need a STEP export' (or generic guidance), states '<file> was not uploaded\u2026 No analysis was started and no record was created', offers 'Choose a STEP export' and dismiss; no network request is made for the rejected file.",
+  "evidence": "/home/user/cadverify/frontend/src/lib/cad-file.ts; /home/user/cadverify/frontend/src/components/verify/verify-app.tsx; /home/user/cadverify/frontend/src/components/verify/home-screen.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "VER-005",
+  "area": "Verify",
+  "page": "/verify",
+  "feature": "Progressive pipeline: DFM first, cost sequential",
+  "story": "As an engineer, I want the routing+DFM answer as soon as it lands so that I'm not blocked behind the slower should-cost call.",
+  "expected": "runVerification POSTs /validate first; when it returns, the FirstInsight card (testid verify-first-insight) shows best route, route-scoped DFM verdict, first issue, and MEASURED geometry chips while POST /validate/cost runs sequentially (never in parallel) with GET /machine-inventory and PUT /part-context/{mesh_hash} alongside. A monotonic run token guarantees a superseded run (new file/material/env mid-flight) never overwrites the newer result.",
+  "evidence": "/home/user/cadverify/frontend/src/lib/verify/run.ts; /home/user/cadverify/frontend/src/components/verify/verify-screen.tsx; /home/user/cadverify/frontend/src/components/verify/verify-app.tsx",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "VER-006",
+  "area": "Verify",
+  "page": "/verify",
+  "feature": "Pipeline overlay run states (computing/partial/interrupted/complete)",
+  "story": "As a user, I want a five-milestone progress rail so that I always know what the engine actually computed versus withheld.",
+  "expected": "Overlay narrates received\u2192measured\u2192routed\u2192gates walked\u2192record assembled with per-stage states pending/done/blocked/withheld. Header verdict maps pipelineRunState: computing ('GATES CHECKING IN'), partial while running ('ROUTING + DFM READY \u00b7 COST CONTINUES') or settled-partial ('PARTIAL RESULT \u00b7 COST UNAVAILABLE'), interrupted ('INTERRUPTED \u00b7 NO VERDICT PRODUCED'), complete ('COMPLETE \u2014 DETERMINISTIC'). A blocked gate stops the walk and downstream stages read 'not computed past the failed gate'; absent responses render as withheld, never as failures or passes. Dismissible ('Skip to the walk').",
+  "evidence": "/home/user/cadverify/frontend/src/lib/verify/pipeline.ts; /home/user/cadverify/frontend/src/components/verify/pipeline-overlay.tsx",
+  "test_via": "UI"
+ },
+ {
+  "id": "VER-007",
+  "area": "Verify",
+  "page": "/verify",
+  "feature": "Geometry-invalid gate stop",
+  "story": "As an engineer with a broken mesh, I want the walk to stop at the geometry gate so that no cost or verdict is fabricated from bad geometry.",
+  "expected": "A 400 with code GEOMETRY_INVALID from POST /validate/cost renders the fail banner 'Geometry invalid \u2014 the engine won't guess', a dashed 'THE WALK STOPS AT THE FAILED GATE' block quoting the backend message and any measured facts (faces/watertight/volume) from the refusal payload, plus 'Repair & re-upload'. Downstream steps (materials/physics/cost/decide) do not render.",
+  "evidence": "/home/user/cadverify/frontend/src/lib/verify/run.ts; /home/user/cadverify/frontend/src/components/verify/verify-screen.tsx",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "VER-008",
+  "area": "Verify",
+  "page": "/verify",
+  "feature": "Interrupted analysis + cost-only retry",
+  "story": "As a user hit by a transient cost-service outage, I want to retry only the failed costing so that my successful DFM result is preserved.",
+  "expected": "Nothing returned at all \u2192 'ANALYSIS INTERRUPTED \u00b7 NO VERDICT PRODUCED' banner with the exact error and 'Retry verification'. Validation ok but no cost \u2192 'DFM <verdict> \u00b7 RESOURCE COST INTERRUPTED / Routing and DFM are ready. Cost needs another try.' naming the costError and why machine fit is absent, with 'Retry cost only' (retryVerificationCost re-POSTs /validate/cost only, merging onto the preserved result) and 'Rerun full verification'.",
+  "evidence": "/home/user/cadverify/frontend/src/components/verify/verify-screen.tsx; /home/user/cadverify/frontend/src/lib/verify/run.ts; /home/user/cadverify/frontend/src/components/verify/verify-app.tsx",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "VER-009",
+  "area": "Verify",
+  "page": "/verify",
+  "feature": "Makeability verdict banner (lattice or honest not-evaluated)",
+  "story": "As a shop owner, I want the verdict driven by the engine's makeability lattice so that DFM never masquerades as a machine-fit answer.",
+  "expected": "When the cost response carries a verification block, its verdict (makeable_in_house / makeable_with_secondary_op / makeable_not_on_owned / makeable_outsource_only / environment_excluded / not_makeable) drives the banner tone/copy plus should-cost line and best machine. Without the block, the banner branches on what actually ran: 'SHOULD-COST COMPUTED' states explicitly that makeability was 'not evaluated here because no machines and no service conditions are declared'; a DFM-blocked route shows 'Conditional should-cost\u2026 not makeable as modeled' with the primary blocker.",
+  "evidence": "/home/user/cadverify/frontend/src/components/verify/verify-screen.tsx; /home/user/cadverify/frontend/src/lib/verify/verification.ts",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "VER-010",
+  "area": "Verify",
+  "page": "/verify",
+  "feature": "Service-conditions door with real persistence round-trip",
+  "story": "As an engineer, I want declared service conditions (120\u00b0C, sour H2S, 35 MPa) persisted to the part's record so that costing and material exclusions reflect the real world.",
+  "expected": "Toggling any env chip re-runs verification: the world is PUT to /part-context/{mesh_hash} (SHA-256 of file bytes, computed in-browser) before POST /validate/cost. The door chip tells the exact truth: '\u25cf USER \u00b7 on the record' only when persistence succeeded, 'drives this preview only (\u2026server error)' when it failed, 'ambient' when undeclared, 'capturing\u2026' while running. Env-excluded materials render struck-through citing the standard (NACE MR0175 / HDT); no strikes states that honestly.",
+  "evidence": "/home/user/cadverify/frontend/src/lib/verify/part-context.ts; /home/user/cadverify/frontend/src/lib/verify/run.ts; /home/user/cadverify/frontend/src/components/verify/verify-screen.tsx",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "VER-011",
+  "area": "Verify",
+  "page": "/verify",
+  "feature": "Material class selection with provenance and race guard",
+  "story": "As an engineer, I want to switch material class (polymer/aluminum/steel/stainless/titanium) so that the cost re-computes with my declaration, correctly labelled.",
+  "expected": "Selecting a class re-runs verification with material_class in the /validate/cost form; the provenance chip reads USER only for non-default choices (or CAD when the cost report's material_class assumption says so), else DEFAULT with copy 'uses a default material and ambient service until you declare otherwise'. The monotonic run token ensures rapid re-selection never leaves a stale material's result on screen.",
+  "evidence": "/home/user/cadverify/frontend/src/components/verify/verify-screen.tsx; /home/user/cadverify/frontend/src/components/verify/verify-app.tsx; /home/user/cadverify/frontend/src/lib/verify/run.ts",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "VER-012",
+  "area": "Verify",
+  "page": "/verify",
+  "feature": "Machine floor + per-route machine fit",
+  "story": "As a shop owner, I want my declared machines compared per-route against the part so that fit is a measured-vs-declared comparison, never a fabricated pass.",
+  "expected": "Step 1 lists up to 8 machines from GET /machine-inventory with USER provenance and envelope summaries; empty floor shows 'No machines declared' with a 'Declare your floor \u2192' CTA to the Machines screen. Only known engine process ids are forwarded as owned_processes to /validate/cost (unknown ids omitted so the call never 400s). With a verification block, RouteFitBlock renders \u2713/\u2717/? per route with the concrete need-vs-have gap and an 'acquisition gap' line; without it, copy states 'MAKEABILITY NOT EVALUATED \u2014 no fit is faked here'. Undeclared capability renders '?', never a pass.",
+  "evidence": "/home/user/cadverify/frontend/src/lib/verify/machine-api.ts; /home/user/cadverify/frontend/src/lib/verify/run.ts; /home/user/cadverify/frontend/src/components/verify/verify-screen.tsx",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "VER-013",
+  "area": "Verify",
+  "page": "/verify",
+  "feature": "Should-cost quantity scrub with crossover and marginal rate",
+  "story": "As a cost engineer, I want to scrub quantity across the engine's computed ladder so that I see make-now vs tooling economics with honest interpolation labels.",
+  "expected": "The scrub reads the real 6-point ladder [1,100,1000,2000,5000,10000] (a declared annual_volume from part-context replaces the nearest interior point and becomes an exact computed point). Each readout is labelled 'engine-exact', 'interpolated between computed N and M', or 'clamped\u2026 not extrapolated'. Crossover qty from decision.crossover_qty marks the axis ('no crossover computed' otherwise). When an owned passing machine declares an hourly rate, the make-now card reads 'OWNED \u2192 MARGINAL' naming machine + $/hr with SHOP provenance. The confidence band shows the engine's real low/point/high and 'not shop-validated \u00b7 n=0' when unvalidated.",
+  "evidence": "/home/user/cadverify/frontend/src/components/verify/verify-screen.tsx; /home/user/cadverify/frontend/src/lib/verify/run.ts; /home/user/cadverify/frontend/src/lib/verify/scrub.ts",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "VER-014",
+  "area": "Verify",
+  "page": "/verify",
+  "feature": "Decision disposition (decide + hallmark)",
+  "story": "As a decision owner, I want to record make-inhouse/outside/redesign/acquire with an optional note on the saved cost-decision so that the outcome is auditable.",
+  "expected": "When the cost report carries saved.id, the persisted disposition + note hydrate via GET /cost-decisions/{id}; choosing/withdrawing/noting calls setCostDecisionDisposition (PATCH) and toasts with the record short-id; failures show 'Decision controls paused \u2014 <error>. Nothing was changed.' with Retry. 'Make in-house' is disabled with an explanatory lock while route DFM is blocked. With persistence off, the choice is kept session-only and labelled '(persistence off)'. Choosing Acquire opens the acquisition modal; 'Open the record \u2192' navigates to Records.",
+  "evidence": "/home/user/cadverify/frontend/src/components/verify/verify-screen.tsx; /home/user/cadverify/frontend/src/lib/cost-disposition.ts",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "VER-015",
+  "area": "Verify",
+  "page": "/verify",
+  "feature": "Acquisition consideration modal",
+  "story": "As a shop owner weighing capex, I want the not-owned tooling route framed as a capital question so that I see crossover economics without invented vendor prices.",
+  "expected": "Opens from the tooling card / Acquire disposition (Esc closes back to the walk). Charts only engine-computed per-quantity unit costs and decision.crossover_qty; the org ranking of 'which acquisition unlocks the most parts' loads from the capability-investment endpoint (fetchCapabilityInvestment). Standalone tool purchase price is explicitly withheld (engine produces no vendor capex); with no cost/decision/tooling route an honest empty state renders, never a fake chart.",
+  "evidence": "/home/user/cadverify/frontend/src/components/verify/acquisition-modal.tsx; /home/user/cadverify/frontend/src/lib/verify/triage-api.ts",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "VER-016",
+  "area": "Verify",
+  "page": "/verify",
+  "feature": "Ask-the-engine dock with honest refusals",
+  "story": "As a user, I want to query the computed result ('cost drivers at qty 500', 'compare routes') so that I get deterministic engine artifacts, never generated numbers.",
+  "expected": "The dock is disabled until a cost report exists ('Load a part above\u2026'). parseAsk routes to artifacts: cost-at-qty, compare-routes (refuses when only one route was costed), compare saved decisions (live GET /cost-decisions/compare; refuses when persistence is off or only one record exists, quoting why), explain-verdict, materials, drivers, time, crossover. Any natural-language or non-deterministic ask renders a refusal artifact rather than a fabricated answer.",
+  "evidence": "/home/user/cadverify/frontend/src/components/verify/verify-screen.tsx; /home/user/cadverify/frontend/src/lib/verify/ask.ts",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "VER-017",
+  "area": "Verify",
+  "page": "/verify",
+  "feature": "Assembly upload with per-part analysis",
+  "story": "As an engineer uploading a multi-part STEP assembly, I want the whole rendered in world position with per-part DFM and should-cost so that I inspect each part in context.",
+  "expected": "STEP/IGES with >=2 solids goes to POST /validate/assembly?format=json (structured model) and ?format=glb (combined render); the single-part /validate/cost path is skipped so no spurious 400 flashes. The heavier per-part analysis (fetchAssemblyAnalysis, ~15s) then populates rows with tree-counted quantity (FACT), DFM verdict, and unit cost \u2014 'analysing per-part\u2026' shown honestly while in flight; a part that fails analysis shows its own error, never a fabricated figure. Selecting a part highlights it on the stage with name + tree path; a new upload revokes the old GLB and run-token guards stale merges. Single solids stay on the unchanged single-part path.",
+  "evidence": "/home/user/cadverify/frontend/src/lib/verify/assembly.ts; /home/user/cadverify/frontend/src/components/verify/verify-app.tsx; /home/user/cadverify/frontend/src/components/verify/assembly-panel.tsx",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "VER-018",
+  "area": "Verify",
+  "page": "/verify",
+  "feature": "Part context card (lineage + orphan state)",
+  "story": "As a program manager, I want a part's declared lineage (program \u2192 assembly \u2192 part, units/parent) on the stage so that I see where it lives \u2014 or that it has no home yet.",
+  "expected": "After a run, GET /part-context/{mesh_hash} hydrates the stage context card (testid verify-stage-context): declared parent shows the lineage path and 'N / parent' pill; a 404 is not an error \u2014 the card shows 'orphan until declared'; a genuine read failure shows a 'context read failed' pill. A declared annual_volume also reshapes the cost quantity ladder on the next run.",
+  "evidence": "/home/user/cadverify/frontend/src/components/verify/stage.tsx; /home/user/cadverify/frontend/src/lib/verify/part-context-read.ts; /home/user/cadverify/frontend/src/lib/verify/run.ts",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "VER-019",
+  "area": "Verify",
+  "page": "/verify",
+  "feature": "Retrieval-grounded identity suggestion",
+  "story": "As a librarian of parts, I want the org's closest prior part suggested with real confidence so that I can confirm identity without the system asserting it as fact.",
+  "expected": "A grounded identity riding the cost report renders a suggestion card (confidence % + bucket, runner-ups, RETRIEVED provenance); confirming POSTs /identity/confirm with the part's mesh_hash and toasts 'saved to your part library'; 'Not this' dismisses reversibly and offers manual declaration. A non-grounded-but-close match renders a softer low-confidence card; an empty/anonymous corpus renders nothing at all. Confirm without a mesh hash errors 're-verify to confirm'.",
+  "evidence": "/home/user/cadverify/frontend/src/components/verify/verify-screen.tsx; /home/user/cadverify/frontend/src/lib/verify/identity.ts",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "VER-020",
+  "area": "Verify",
+  "page": "/verify?design=\u2026",
+  "feature": "Design Studio STEP handoff with integrity check",
+  "story": "As a Design Studio user, I want my generated STEP revision to import and verify automatically so that the artifact takes the same untrusted path as a manual upload.",
+  "expected": "?design=<26-char id>(&revision=N) fetches /api/proxy/designs/{id}/download.step (or /revisions/{N}/download.step), enforces the 100 MB limit, rejects empty bodies, and verifies the SHA-256 of the bytes against the x-geometry-sha256 header before running the normal verification. A status banner walks loading \u2192 running \u2192 ready (dismissible); invalid ids/revisions or any failure show role=alert with the exact reason and a 'Return to Design Studio' link. Import requires an active organization.",
+  "evidence": "/home/user/cadverify/frontend/src/lib/verify/design-import.ts; /home/user/cadverify/frontend/src/components/verify/verify-app.tsx",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "VER-021",
+  "area": "Verify",
+  "page": "/verify (Home screen)",
+  "feature": "Home dashboard with honest unavailable/empty states",
+  "story": "As a returning user, I want a desk of real org data (records, floor, reviews, ground truth) so that loading failures are never presented as empty results.",
+  "expected": "Home fetches GET /cost-decisions?limit=8, /machine-inventory, governance change-requests, ground-truth, and program portfolio. Any failure raises a role=alert 'Couldn't load <sources>\u2026 nothing is being presented as an empty result' with a 'Retry organization data' button, and the affected KPI reads 'RETRY NEEDED'; true empties show dashed empty states ('Nothing in flight', 'n=0 \u00b7 every band still hatched'). The calibrated-estimates KPI stays permanently withheld ('\u2014') because no list summary can derive it. Start-here grid offers drop/browse CAD (drag-drop supported), guided example, and Design Studio link.",
+  "evidence": "/home/user/cadverify/frontend/src/components/verify/home-screen.tsx; /home/user/cadverify/frontend/src/lib/verify/home-derive.ts",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "VER-022",
+  "area": "Verify",
+  "page": "/verify",
+  "feature": "Workspace navigation: hotkeys, palette, rate dot",
+  "story": "As a power user, I want keyboard navigation and a command palette so that I can jump between Verify surfaces instantly.",
+  "expected": "Keys H/V/P/R/G/M/T/C switch surfaces (Home/Verify/Parts/Records/Programs/Machines/Triage/Calibration), '?' opens the shortcuts sheet, Cmd/Ctrl+K toggles the command palette, Esc closes overlays; typing in inputs never triggers nav. ?screen= deep-links a starting surface. The rail's rate dot fills only when GET /machine-inventory shows at least one machine with a finite hourly_rate_usd (hollow while loading/none); a mobile <select> replaces tabs under 760px.",
+  "evidence": "/home/user/cadverify/frontend/src/components/verify/verify-app.tsx; /home/user/cadverify/frontend/src/components/verify/command-surfaces.tsx; /home/user/cadverify/frontend/src/components/verify/shortcuts-overlay.tsx",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "SHARE-001",
+  "area": "Share",
+  "page": "/s/[shortId]",
+  "feature": "Public read-only DFM analysis share",
+  "story": "As a recipient of a share link, I want to view the DFM analysis without logging in so that I can review the verdict and issues.",
+  "expected": "Server component fetches the public backend endpoint /s/{shortId} (no auth); renders filename + verdict badge, geometry stat cards (faces, volume cm3, dimensions, watertight \u2014 each omitted when absent), issues sorted error>warning>info with codes and fix suggestions, and a process-ranking table sorted by score. A 404/revoked/failed fetch renders 'Analysis not available\u2026 may have been revoked by its owner' with a link home. OG metadata is generated from the data; page is noindex; header labels it 'Shared analysis \u00b7 read-only'.",
+  "evidence": "/home/user/cadverify/frontend/src/app/s/[shortId]/page.tsx; /home/user/cadverify/frontend/src/lib/api.ts",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "SHARE-002",
+  "area": "Share",
+  "page": "/s/cost/[shortId]",
+  "feature": "Public read-only should-cost share",
+  "story": "As a supplier or teammate, I want to view a shared should-cost decision without auth so that I see the recommendation with its honesty caveats intact.",
+  "expected": "Fetches public /s/cost/{shortId}; renders 'Make by <process>' with DFM-ready/needs-redesign badge, a crossover sentence derived from decision.crossover_qty (or 'stays cheapest at every quantity tested', or 'costed but returned no make-vs-buy decision'), the travelling CostHonestyNote, verbatim confidence band (low\u2013high, \u00b1%, validated n or basis), geometry cards, a recommendation-by-quantity table with 'not DFM-ready' badges and 'cheaper if redesigned' alternates, and provenance-tagged assumption chips. Missing/revoked \u2192 'Cost decision not available'. Noindex; footer states 'assumption-based, not a validated quote'.",
+  "evidence": "/home/user/cadverify/frontend/src/app/s/cost/[shortId]/page.tsx; /home/user/cadverify/frontend/src/lib/api.ts; /home/user/cadverify/frontend/src/lib/cost-decision.ts",
+  "test_via": "UI+API"
+ },
+ {
+  "id": "DOCS-001",
+  "area": "Docs",
+  "page": "/docs",
+  "feature": "Docs compatibility redirect",
+  "story": "As a holder of an old docs link, I want /docs to forward me so that I land on the current API quickstart.",
+  "expected": "/docs unconditionally issues a Next.js redirect to /developers; no content is rendered at /docs itself.",
+  "evidence": "/home/user/cadverify/frontend/src/app/docs/page.tsx",
+  "test_via": "UI"
+ }
+]

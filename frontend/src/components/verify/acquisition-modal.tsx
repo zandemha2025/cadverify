@@ -240,7 +240,7 @@ function FullConsideration({
           </>
         ) : (
           <>
-            The engine found no break-even at the quantities considered ({NUM(Q_MIN)}–{NUM(Q_MAX)}) — the{" "}
+            The engine found no breakeven at the quantities considered ({NUM(Q_MIN)}–{NUM(Q_MAX)}) — the{" "}
             {procLabel(toolProc)} tool does not pay back against your owned
             {makeProc ? <> {procLabel(makeProc)}</> : ""} route in this range.
           </>
@@ -326,7 +326,7 @@ function FullConsideration({
           <p style={{ margin: 0, fontSize: 13.5, fontWeight: 500 }}>Capital &amp; payback, org-wide</p>
         </div>
         <p style={{ margin: "8px 0 0", fontSize: 12.5, lineHeight: 1.6, color: C.ink60 }}>
-          The engine computes the break-even quantity{crossover != null ? <> (<span style={{ fontFamily: MONO }}>{NUM(crossover)}</span> units)</> : ""}. The
+          The engine computes the breakeven quantity{crossover != null ? <> (<span style={{ fontFamily: MONO }}>{NUM(crossover)}</span> units)</> : ""}. The
           standalone vendor tool price is not an engine output, so no purchase price is printed here. The org-wide
           capability ranking below is read from the same makeability projection as Triage.
         </p>

@@ -12,6 +12,8 @@ from src.db.models import Job
 
 logger = logging.getLogger("cadverify.jobs.tasks")
 
+_TERMINAL_JOB_STATUSES = {"done", "partial", "failed"}
+
 
 async def run_sam3d_job(ctx: dict, job_ulid: str) -> dict:
     """Process a SAM-3D segmentation job.
@@ -22,6 +24,7 @@ async def run_sam3d_job(ctx: dict, job_ulid: str) -> dict:
     4. On failure: run segment_heuristic() fallback
     5. Write result to jobs row
     """
+    import asyncio
     import io
     import os
 
@@ -41,20 +44,33 @@ async def run_sam3d_job(ctx: dict, job_ulid: str) -> dict:
         if job is None:
             logger.error("Job %s not found", job_ulid)
             return {"error": "job_not_found"}
+        if job.job_type != "sam3d":
+            logger.error("Job %s has unexpected type %s", job_ulid, job.job_type)
+            return {"error": "job_type_mismatch"}
+        if job.status in _TERMINAL_JOB_STATUSES:
+            logger.info("SAM-3D job %s already terminal: %s", job_ulid, job.status)
+            return job.result_json or {"status": job.status}
+        if job.status == "running" and int(ctx.get("job_try", 1)) <= 1:
+            logger.info("SAM-3D job %s is already running", job_ulid)
+            return job.result_json or {"status": "running"}
 
         # Update status to running
         job.status = "running"
-        job.started_at = datetime.now(timezone.utc)
+        job.started_at = job.started_at or datetime.now(timezone.utc)
         await session.commit()
 
         # 2. Load mesh from blob storage
         mesh_hash = job.params_json.get("mesh_hash", "") if job.params_json else ""
-        blob_dir = os.getenv("MESH_BLOB_DIR", "/data/blobs/meshes")
-        blob_path = os.path.join(blob_dir, f"{mesh_hash}.bin")
 
         try:
-            with open(blob_path, "rb") as f:
-                mesh_bytes = f.read()
+            from src.services.job_service import MESH_BLOB_DIR
+            from src.storage import get_object_store
+
+            store = get_object_store(
+                "meshes",
+                default_root=os.getenv("MESH_BLOB_DIR", MESH_BLOB_DIR),
+            )
+            mesh_bytes = await asyncio.to_thread(store.get, f"{mesh_hash}.bin")
             mesh = trimesh.load(io.BytesIO(mesh_bytes), file_type="stl")
         except Exception:
             logger.exception("Failed to load mesh for job %s", job_ulid)

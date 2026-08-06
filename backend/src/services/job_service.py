@@ -1,6 +1,7 @@
 """Job service -- create, query, and manage async jobs."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import Optional
@@ -19,14 +20,31 @@ MESH_BLOB_DIR = os.getenv("MESH_BLOB_DIR", "/data/blobs/meshes")
 
 
 async def save_mesh_blob(mesh_hash: str, file_bytes: bytes) -> str:
-    """Save mesh bytes to blob storage. Returns blob path. Idempotent."""
+    """Save mesh bytes to blob storage. Returns a locator. Idempotent.
+
+    Wired through the object-store abstraction (:mod:`src.storage`). With the
+    default local backend this is byte-for-byte identical to the historical
+    behavior: the blob lands at ``$MESH_BLOB_DIR/{hash}.bin`` and the returned
+    value is that absolute filesystem path. With S3 selected, the worker reads
+    the same key through the object-store interface and no shared volume is
+    required.
+    """
+    from src.storage import LocalObjectStore, get_object_store
+
     blob_dir = os.getenv("MESH_BLOB_DIR", MESH_BLOB_DIR)
-    os.makedirs(blob_dir, exist_ok=True)
-    blob_path = os.path.join(blob_dir, f"{mesh_hash}.bin")
-    if not os.path.exists(blob_path):
-        with open(blob_path, "wb") as f:
-            f.write(file_bytes)
-    return blob_path
+    store = get_object_store("meshes", default_root=blob_dir)
+    key = f"{mesh_hash}.bin"
+    if not await asyncio.to_thread(store.exists, key):
+        await asyncio.to_thread(
+            store.put,
+            key,
+            file_bytes,
+            content_type="application/octet-stream",
+        )
+    # Preserve the historical contract: local backend returns the on-disk path.
+    if isinstance(store, LocalObjectStore):
+        return store.local_path(key)
+    return store.url(key)
 
 
 async def create_sam3d_job(
@@ -50,6 +68,18 @@ async def create_sam3d_job(
         )
     ).scalars().first()
     if existing is not None:
+        # Releases before the durable-publication fix marked ambiguous queue
+        # failures terminal.  Revive only that exact legacy state so a retry can
+        # safely offer the same deterministic ARQ job ID again.
+        if (
+            existing.status == "failed"
+            and isinstance(existing.result_json, dict)
+            and existing.result_json.get("code") == "SAM3D_ENQUEUE_FAILED"
+        ):
+            existing.status = "queued"
+            existing.result_json = None
+            existing.completed_at = None
+            await session.flush()
         logger.info(
             "Idempotent hit: job %s already exists for analysis %d",
             existing.ulid,

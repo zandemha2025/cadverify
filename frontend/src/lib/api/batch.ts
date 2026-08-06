@@ -6,6 +6,23 @@
  */
 
 import { API_BASE } from "../api-base";
+import {
+  apiRecoveryMessage,
+  networkRecoveryMessage,
+} from "../api-recovery";
+import {
+  acceptedBatchFromErrorPayload,
+  analysisPageHref,
+} from "../recovery-records";
+import {
+  getUploadCapabilities,
+  finalizeDirectUploadAttempt,
+  uploadBatchZipDirect,
+  type UploadProgress,
+} from "./direct-upload";
+
+export { analysisPageHref };
+export type { UploadProgress } from "./direct-upload";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -17,6 +34,25 @@ export interface BatchCreateResponse {
   status_url: string;
 }
 
+export class BatchApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly acceptedBatch?: BatchCreateResponse;
+
+  constructor(
+    message: string,
+    status: number,
+    code?: string,
+    acceptedBatch?: BatchCreateResponse,
+  ) {
+    super(message);
+    this.name = "BatchApiError";
+    this.status = status;
+    this.code = code;
+    this.acceptedBatch = acceptedBatch;
+  }
+}
+
 export interface BatchProgress {
   batch_ulid: string;
   status:
@@ -26,10 +62,11 @@ export interface BatchProgress {
     | "completed"
     | "failed"
     | "cancelled";
-  input_mode: "zip" | "s3";
+  input_mode: "zip" | "s3" | "direct_upload";
   total_items: number;
   completed_items: number;
   failed_items: number;
+  skipped_items: number;
   pending_items: number;
   concurrency_limit: number;
   created_at: string | null;
@@ -43,6 +80,10 @@ export interface BatchItem {
   status: string;
   priority: string;
   analysis_id: number | null;
+  analysis_url: string | null;
+  verdict: string | null;
+  best_process: string | null;
+  issue_count: number | null;
   error_message: string | null;
   duration_ms: number | null;
   created_at: string | null;
@@ -61,6 +102,7 @@ export interface BatchSummaryRow {
   total_items: number;
   completed_items: number;
   failed_items: number;
+  skipped_items: number;
   created_at: string | null;
 }
 
@@ -78,11 +120,35 @@ async function apiFetch(
   url: string,
   options: RequestInit = {},
 ): Promise<Response> {
-  const res = await fetch(url, options);
+  let res: Response;
+  try {
+    res = await fetch(url, options);
+  } catch {
+    throw new Error(networkRecoveryMessage("batch"));
+  }
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(body.detail || body.message || `Request failed: ${res.status}`);
+    const payload = await res.json().catch(() => ({ detail: res.statusText }));
+    const body = payload as {
+      detail?: {
+        code?: string;
+      } | string;
+      code?: string;
+    };
+    const detail = body.detail;
+    const code = detail && typeof detail === "object" ? detail.code : body.code;
+    const acceptedBatch = acceptedBatchFromErrorPayload(payload);
+    throw new BatchApiError(
+      apiRecoveryMessage({
+        status: res.status,
+        payload,
+        resource: "batch",
+        retryAfter: res.headers.get("retry-after"),
+      }),
+      res.status,
+      code,
+      acceptedBatch,
+    );
   }
 
   return res;
@@ -104,16 +170,60 @@ async function apiFetchJson<T>(
  * Create a batch from a ZIP file upload.
  * Uses FormData -- browser sets Content-Type with boundary automatically.
  */
+export interface CreateBatchOptions {
+  webhookUrl?: string;
+  manifest?: File;
+  concurrencyLimit?: number;
+  onUploadProgress?: (progress: UploadProgress) => void;
+}
+
+function reportUploadProgress(
+  options: CreateBatchOptions | undefined,
+  progress: UploadProgress,
+): void {
+  try {
+    options?.onUploadProgress?.(progress);
+  } catch {
+    // Presentation callbacks must not interrupt or orphan an upload.
+  }
+}
+
 export async function createBatch(
   file: File,
-  options?: {
-    webhookUrl?: string;
-    manifest?: File;
-    concurrencyLimit?: number;
-  },
+  options?: CreateBatchOptions,
 ): Promise<BatchCreateResponse> {
+  reportUploadProgress(options, {
+    stage: "checking",
+    percent: null,
+    uploadedBytes: 0,
+    totalBytes: file.size,
+  });
+  // Fail closed when capability discovery itself is unavailable (including
+  // rollout 404/501). Only an explicit direct_upload:false response authorizes
+  // the legacy multi-GB proxied FormData path.
+  const capabilities = await getUploadCapabilities();
+
   const formData = new FormData();
-  formData.append("file", file);
+  if (capabilities.direct_upload) {
+    const directUploadId = await uploadBatchZipDirect(file, {
+      onProgress: options?.onUploadProgress,
+    });
+    formData.append("direct_upload_id", directUploadId);
+    reportUploadProgress(options, {
+      stage: "creating",
+      percent: 100,
+      uploadedBytes: file.size,
+      totalBytes: file.size,
+    });
+  } else {
+    formData.append("file", file);
+    reportUploadProgress(options, {
+      stage: "proxying",
+      percent: null,
+      uploadedBytes: 0,
+      totalBytes: file.size,
+    });
+  }
 
   if (options?.webhookUrl) {
     formData.append("webhook_url", options.webhookUrl);
@@ -125,14 +235,16 @@ export async function createBatch(
     formData.append("concurrency_limit", String(options.concurrencyLimit));
   }
 
-  return apiFetchJson<BatchCreateResponse>(`${API_BASE}/batch`, {
+  const result = await apiFetchJson<BatchCreateResponse>(`${API_BASE}/batch`, {
     method: "POST",
     body: formData,
   });
+  if (capabilities.direct_upload) finalizeDirectUploadAttempt(file);
+  return result;
 }
 
 /**
- * Get batch progress (denormalized counters).
+ * Get batch progress with exact durable item-state counters.
  */
 export async function getBatchProgress(
   batchId: string,

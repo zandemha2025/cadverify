@@ -7,13 +7,15 @@ Mounted under /auth:
 """
 from __future__ import annotations
 
+from src.config.public_urls import api_origin, error_doc_url
+
 import os
 
 from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
-from src.auth.dashboard_session import set_session_cookie
+from src.auth.dashboard_session import session_cookie_domain, set_session_cookie
 from src.auth.disposable import normalize_email
 from src.auth.hashing import hmac_index, mint_token
 from src.auth.models import (
@@ -22,7 +24,7 @@ from src.auth.models import (
     upsert_user,
     user_has_active_api_key,
 )
-from src.auth.signup_limits import per_ip_signup_limit
+from src.auth.signup_limits import ip_signup_limit_enabled, per_ip_signup_limit
 
 oauth = OAuth()
 oauth.register(
@@ -34,12 +36,6 @@ oauth.register(
 )
 
 router = APIRouter()
-
-
-def _api_origin() -> str:
-    """Derive API origin from DASHBOARD_ORIGIN for the OAuth redirect URI."""
-    dash = os.environ["DASHBOARD_ORIGIN"]
-    return dash.replace("cadverify.com", "api.cadverify.com")
 
 
 @router.get("/google/start")
@@ -54,9 +50,9 @@ async def google_start(request: Request):
     # limiting in local/dev without Redis configured. Previously this call
     # was unconditional, so it raised KeyError (os.environ["REDIS_URL"]) on
     # any environment without Redis instead of degrading gracefully.
-    if os.getenv("REDIS_URL"):
+    if ip_signup_limit_enabled():
         await per_ip_signup_limit(request)
-    redirect_uri = f"{_api_origin()}/auth/google/callback"
+    redirect_uri = f"{api_origin()}/auth/google/callback"
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
@@ -70,7 +66,7 @@ async def google_callback(request: Request):
             detail={
                 "code": "oauth_failed",
                 "message": "Google sign-in failed.",
-                "doc_url": "https://docs.cadverify.com/errors#oauth_failed",
+                "doc_url": error_doc_url("oauth_failed"),
             },
         )
     info = token.get("userinfo") or {}
@@ -82,7 +78,7 @@ async def google_callback(request: Request):
             detail={
                 "code": "oauth_no_email",
                 "message": "Google did not return a verified email.",
-                "doc_url": "https://docs.cadverify.com/errors#oauth_no_email",
+                "doc_url": error_doc_url("oauth_no_email"),
             },
         )
     email_norm = normalize_email(email)
@@ -120,7 +116,7 @@ async def google_callback(request: Request):
         secure=True,
         httponly=False,
         samesite="lax",
-        domain=".cadverify.com",
+        domain=session_cookie_domain(),
         path="/settings/developer",
     )
     return resp

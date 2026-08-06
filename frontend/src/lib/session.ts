@@ -12,6 +12,7 @@
 import { cookies } from "next/headers";
 
 export const SESSION_COOKIE = "dash_session";
+export const REVEAL_COOKIE = "cv_mint_once";
 const THIRTY_DAYS = 60 * 60 * 24 * 30;
 
 export async function setSession(token: string): Promise<void> {
@@ -28,6 +29,16 @@ export async function setSession(token: string): Promise<void> {
 
 export async function clearSession(): Promise<void> {
   (await cookies()).delete(SESSION_COOKIE);
+}
+
+export async function setRevealOnce(token: string): Promise<void> {
+  (await cookies()).set(REVEAL_COOKIE, token, {
+    httpOnly: false, // intentional: RevealOnceModal reads and immediately scrubs it
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/settings/developer",
+    maxAge: 60,
+  });
 }
 
 export async function getSessionToken(): Promise<string | null> {

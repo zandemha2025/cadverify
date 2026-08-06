@@ -1,0 +1,218 @@
+[
+ {
+  "id": "ID-001",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "confirm 200; source=user_confirmed; declared fields upserted; 400 no declared field; 400 blank mesh_hash; 404 unknown mesh; 404 cross-tenant confirm; no cross-tenant write happened; 403 platform viewer (analyst gate); identity.confirm audit event. Rate-limit 120/hour not exhausted (budget). No-org 400 branch untestable: signup always creates an org."
+ },
+ {
+  "id": "ID-002",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "onboard 200; honest summary shape; 2 valid files onboarded; qa-fake.stl skipped with reason, batch not aborted; ZIP onboard works (bare geometry); 400 no files; 400 non-UTF-8 mapping; 403 platform viewer (analyst gate). 413 >512MB / ONBOARD_MAX_FILES cap not exercised (impractical payload size); 20/hour limit not exhausted."
+ },
+ {
+  "id": "ID-003",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "GET /library shape; raw signature vector never emitted; org-scoped: B never sees A rows; viewer role allowed on library read; template text/csv; header starts with filename; optional columns present. No-org 403 branch untestable: every account has an org."
+ },
+ {
+  "id": "ID-004",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "201 {org_id,name,slug,org_role:admin}; active org NOT auto-switched; 400 empty name; 400 name>200; platform-viewer 403 (analyst gate); org.created audit event present (recorded under the NEW org's scope - verified via superadmin audit-log with resource_id = new org)."
+ },
+ {
+  "id": "ID-005",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "caller memberships listed; active org flagged; no cross-user data (M sees only own orgs)"
+ },
+ {
+  "id": "ID-006",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "API key refused 403 api_key_org_bound; dashboard session switch 200; 403 not a member; switch back 200; org.switched audit event"
+ },
+ {
+  "id": "ID-007",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "POST 201 serialized mapping; 400 invalid role; list shows own mapping; org B list excludes A rows; cross-org delete 404; own delete ok; saml.group_mapping.* audit events (created)"
+ },
+ {
+  "id": "ID-008",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "201 invite M; one-time accept_link + emailed flag; 400 invalid role; GET lists org invites; no raw tokens in list; non-admin-of-A invite attempt via M personal-org key returned 201 (M is admin of own org, so 201/permitted there). Role-exceeds-inviter 403 branch unreachable (only org admins can invite; admin is top org role). Emailed flag observed (best-effort, no RESEND config). 20/hour limit exercised under ID-036."
+ },
+ {
+  "id": "ID-009",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "400 empty token; 404 unknown token; 403 different account redeems; correct account joins {org_id,org_role,created}; 409 re-accept (single-use); member.joined audit event. Expired-invite 409 branch not exercisable (cannot age a token). Never-escalate branch implied by created-only membership."
+ },
+ {
+  "id": "ID-010",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "cross-org revoke 404; revoke returns invite in revoked state; accepting revoked token 409; revoking accepted invite 409; unknown id 404"
+ },
+ {
+  "id": "ID-011",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "org viewer sees active-org members; no cross-org leakage; org B list only B members"
+ },
+ {
+  "id": "ID-012",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "non-admin PATCH 403; 404 target not a member; 409 demoting last admin; returns {user_id,org_role}; member.role_changed audit event"
+ },
+ {
+  "id": "ID-013",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "non-admin removing other 403 insufficient_org_role; 404 target not a member; 409 removing last admin; self-leave by non-admin 200; membership gone immediately; account still active after leave (org-scoped removal); member.left/removed audit event; departed member's org-A key loses org access (membership re-validation)"
+ },
+ {
+  "id": "ID-014",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "org-admin list has own-org users; org-admin list bounded to own org; cross-org detail 404 (no existence leak); detail fields present; superadmin cursor pagination limit=2; cursor page 2 follows; superadmin sees any user detail; limit bounds 422; org member (non-admin) 403"
+ },
+ {
+  "id": "ID-015",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "org-admin 403 platform_superadmin_required; 400 role=superadmin not assignable; 404 unknown user; 400 changing own role; demotion effective: V (analyst->viewer) got 403 on analyst-gated routes in ID-001/002/004 while reads still worked (ID-003); user.role_changed audit with old/new roles"
+ },
+ {
+  "id": "ID-016",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "C session works pre-deactivation; org-admin refused 403 (superadmin only); 400 self-deactivate; 404 unknown user; deactivate 200; API key blocked after deactivation; existing dashboard session dead; password login refused; idempotent (session_version unchanged on repeat); reactivate 200; API key restored after reactivate; deactivate/reactivate audited. SAML/Google/magic re-provision paths not exercisable locally (no IdP); password/session/key paths all blocked as specified."
+ },
+ {
+  "id": "ID-017",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "org-admin 403; 404 unknown user; returns new session_version; existing dashboard session invalidated; API key still works, account active; user.sessions_revoked audit event"
+ },
+ {
+  "id": "ID-018",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "separate honest counts under counts{}; per-event-type breakdown present; webhook-status breakdown present; org-admin filtered to own org; real analysis count >=1; superadmin unfiltered org_id null; superadmin counts >= org counts; days bounds rejected 422; org member (non-admin) 403"
+ },
+ {
+  "id": "ID-019",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "200 with deliveries list; no payload body fields; non-admin 403; limit bound 422. No webhook endpoints configured in env, so deliveries list is honestly empty; per-row fields not observable on real rows."
+ },
+ {
+  "id": "ID-020",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "org-admin 200; PII-free summary; non-admin 403; superadmin platform-wide 200"
+ },
+ {
+  "id": "ID-021",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "missing start/end rejected 422; invalid datetime 400; >90-day range 400; org-admin sees only own-org entries; superadmin sees all orgs; action filter works; JSON cursor-paginated; format=csv text/csv attachment; limit 201 rejected; non-admin 403"
+ },
+ {
+  "id": "ID-022",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "200 /scim/v2/ServiceProviderConfig; SCIM 2.0 schema doc; 200 /scim/v2/Schemas; 200 /scim/v2/ResourceTypes; no auth 401; org-member-bound key 403 (org-admin required). 403 {code:scim_org_required} for an org-less token untestable: every mintable key is org-bound."
+ },
+ {
+  "id": "ID-023",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "POST 201 create; list startIndex/count; SCIM filter userName eq; GET by id; cross-org GET 404; PUT preserves userName; PATCH wrong schema 400; PatchOp applies active=false"
+ },
+ {
+  "id": "ID-024",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "cross-org DELETE 404; 204 no body; soft deactivation - still readable active:false"
+ },
+ {
+  "id": "ID-025",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "groups listed; GET group path segment 'role:member'; PATCH membership applied; member visible after PATCH; unknown group 404 SCIM error; PATCH unknown group surfaces service error (no tenant crossing)"
+ },
+ {
+  "id": "ID-026",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "unauthenticated caller passes admission fail-open, clean 401 (no 429/500); 401 body is an auth error. Load-dependent sub-assertions NOT exercised (per harness rules on not exhausting capacity/limits): global server_busy 429 beyond 8 in-flight, per-org org_at_capacity 429 beyond 3, finally-release, RELEASE-mode ADMISSION_DISABLED lockout. Code inspection confirms admit_analysis dependency on /validate siblings."
+ },
+ {
+  "id": "ID-027",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "org member proposes -> 'proposed'; second proposal created; 400 unknown asset_type; 404 target version not found; cross-org target 404; 400 target not in draft status (published); governance.change_requested notification emitted to admin inbox. 60/hour limit not exhausted (budget)."
+ },
+ {
+  "id": "ID-028",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "list shows org requests; newest-first; ?status filter honored; org member (viewer+) reads detail; missing 404; cross-org detail 404; B list excludes A requests. No-org honest-empty branch untestable."
+ },
+ {
+  "id": "ID-029",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "org member (non-admin) 403; cross-org admin 404; unknown request 404; approve 200 request approved; returns published version; re-approve 409 (not proposed); governance.approved audit event; library.version_published audit event; pending review notification resolved. Publish-failure fail-closed branch not exercisable without breaking the library."
+ },
+ {
+  "id": "ID-030",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "cross-org reject 404; unknown 404; reject 200 status rejected; note persisted; target draft remained draft (nothing published); re-reject 409; governance.rejected audit event"
+ },
+ {
+  "id": "ID-031",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "default list shows unread non-dismissed; invalid status rejected; 400 dismissed=true + unread=true contradictory; cursor-paginated limit=1; cursor follows to next page; org-scoped: B never sees A ids; limit bound 422. No-org honest-empty branch untestable (every account has an org)."
+ },
+ {
+  "id": "ID-032",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "read returns updated serialized notification; per-user state: MA still sees it unread after A read; dismiss sets dismissed_at; dismissed item left default inbox; restore 200; restored item back in inbox; org B notification created for cross-org probe; another org's notification id 404; unknown id 404. No-org dismiss/restore-404 and read-noop branches untestable (every account has an org)."
+ },
+ {
+  "id": "ID-033",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "{ok,count,read_at}; counted MA unread items; MA inbox cleared; A's unread state unaffected (per-user only). No-org count-0 branch untestable."
+ },
+ {
+  "id": "ID-034",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "FIX VERIFIED: uvicorn banner gone - exactly ONE 'server: ProofShape' header (checked via raw http.client preserving duplicates) on normal responses (/health, authed JSON /api/v1/orgs), error responses (404 unknown route, 405 method mismatch, unauth 401), and the streamed CSV audit-log export. All hardening headers present on every case: HSTS max-age=63072000; includeSubDomains, X-Content-Type-Options nosniff, X-Frame-Options DENY, Referrer-Policy strict-origin-when-cross-origin, Permissions-Policy camera/microphone/geolocation disabled. SECURITY_HEADERS_ENABLED=0 disable path not testable without restarting the app (default-on confirmed live)."
+ },
+ {
+  "id": "ID-035",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "inbound X-Request-ID echoed; absent header -> distinct UUID4 per request. structlog contextvar binding + Sentry tagging not externally observable via API."
+ },
+ {
+  "id": "ID-036",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "slowapi 429 hit on invite creation; exactly 20/hour allowed before 429; Retry-After header on 429; reads still available (invite list 200); org list read unaffected; kill-switch dependency present on org/identity mutation routes (code). Kill-switch open state allows all mutations (verified throughout the run); the CLOSED state is driven by the running process's env and cannot be flipped without restarting/modifying the app (forbidden) - dependency presence confirmed in code on all mutating org/identity routes."
+ }
+]

@@ -154,6 +154,7 @@ async def test_face_count_cap_rejects_oversize(monkeypatch):
     mock_user.user_id = 1
     mock_user.api_key_id = 1
     mock_session = AsyncMock()
+    mock_session.add = MagicMock()
 
     with pytest.raises(HTTPException) as exc_info:
         await repair_service.repair_mesh(
@@ -187,6 +188,7 @@ async def test_timeout_returns_original_analysis(monkeypatch):
     mock_user.user_id = 1
     mock_user.api_key_id = 1
     mock_session = AsyncMock()
+    mock_session.add = MagicMock()
     exec_result = MagicMock()
     exec_result.scalars.return_value.first.return_value = None
     mock_session.execute.return_value = exec_result

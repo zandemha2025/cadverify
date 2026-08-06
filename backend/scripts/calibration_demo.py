@@ -1,5 +1,5 @@
-"""Per-shop calibration — create/save/load two real shop profiles and re-cost a
-real repo part with each, capturing the before/after the calibration-readme cites.
+"""Per-shop calibration — create/save/load two shop profiles and re-cost one
+deterministic calibration part with each.
 
 Run from the backend dir (engine imports `from src...`):
     .venv/bin/python scripts/calibration_demo.py [PART.stl]
@@ -17,12 +17,10 @@ from src.costing import (
     ShopProfile, save_profile, load_profile, list_profiles,
 )
 from src.costing.cli import _run_engine
+from src.costing.harness import MEDIUM_FLAT_MOUNT, ensure_fixture_parts_dir
 
-PARTS_DIR = os.environ.get(
-    "CADVERIFY_PARTS_DIR",
-    "/private/tmp/claude-501/-Users-nazeem-Desktop-developer-cadverify/"
-    "3182c9c6-e59b-4394-a584-d9c4cd4ce0dc/scratchpad/parts")
-DEFAULT_PART = "1090523_b8dd5bfe-0a71-405c-906b-aa8dc51a6c30_EK_0BD1_ECU_Firewall_mount.stl"
+PARTS_DIR = ensure_fixture_parts_dir()
+DEFAULT_PART = MEDIUM_FLAT_MOUNT
 
 
 def example_profiles():
@@ -100,7 +98,7 @@ def main():
     assert reloaded.labor_rate == 52.0, "persistence round-trip failed"
     print(f"Reloaded '{reloaded.name}' OK (labor_rate=${reloaded.labor_rate}/hr).\n")
 
-    # 2) re-cost the SAME real part three ways
+    # 2) re-cost the SAME deterministic part three ways
     result, mesh, feats = _run_engine(part)
     qtys = [50, 5000]
     runs = {

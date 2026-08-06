@@ -14,6 +14,7 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { cn } from "@/lib/utils";
 import { STAGE_UI } from "@/lib/stage-flag";
 import { computeHighlightVertexColors } from "@/lib/highlight-colors";
+import { probeWebGlSupport } from "@/lib/site/webgl";
 
 /* Non-highlighted faces keep a machined tint when vertex-colouring is on (i.e.
    during DFM inspection) so the flagged faces still pop against them. Stage
@@ -36,6 +37,7 @@ function STLModel({
   onFaceClick,
   distanceScale = 1.6,
   onHalfHeight,
+  onReady,
 }: {
   url: string;
   highlightFaces?: number[];
@@ -47,6 +49,8 @@ function STLModel({
   distanceScale?: number;
   /** reports the normalised half-height so the contact shadow seats at the base. */
   onHalfHeight?: (h: number) => void;
+  /** reports that the real STL bytes were parsed and mounted, not merely requested. */
+  onReady?: () => void;
 }) {
   const geometry = useLoader(STLLoader, url);
   const meshRef = useRef<THREE.Mesh>(null);
@@ -70,6 +74,10 @@ function STLModel({
   useEffect(() => {
     onHalfHeight?.(norm.half);
   }, [norm.half, onHalfHeight]);
+
+  useEffect(() => {
+    onReady?.();
+  }, [geometry, onReady]);
 
   // Per-face highlight via vertex colors (STL geometry is non-indexed:
   // face i -> vertices 3i, 3i+1, 3i+2).
@@ -258,7 +266,16 @@ export default function CadViewer({
 }: CadViewerProps) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [halfH, setHalfH] = useState(1);
+  const [webGlAvailable, setWebGlAvailable] = useState<boolean | null>(null);
+  const [previewReady, setPreviewReady] = useState(false);
   const onHalfHeight = useCallback((h: number) => setHalfH(h), []);
+  const onPreviewReady = useCallback(() => setPreviewReady(true), []);
+
+  // Probe before react-three-fiber mounts. When GPU/WebGL is unavailable,
+  // mounting Canvas causes repeated renderer retries and leaves a blank panel.
+  useEffect(() => {
+    setWebGlAvailable(probeWebGlSupport());
+  }, []);
 
   useEffect(() => {
     if (file && file.name.toLowerCase().endsWith(".stl")) {
@@ -270,6 +287,10 @@ export default function CadViewer({
   }, [file]);
 
   const url = useMemo(() => src ?? objectUrl, [src, objectUrl]);
+
+  useEffect(() => {
+    setPreviewReady(false);
+  }, [url]);
 
   const instrument = surface === "instrument";
 
@@ -291,10 +312,39 @@ export default function CadViewer({
     );
   }
 
+  if (webGlAvailable !== true) {
+    return (
+      <div
+        role="status"
+        className={cn(
+          "flex h-full flex-col items-center justify-center rounded-[var(--radius)] border px-6 text-center",
+          instrument
+            ? "border-border bg-card-raised text-muted-foreground"
+            : "border-border bg-muted text-muted-foreground",
+          className,
+        )}
+      >
+        <p className="text-sm font-medium text-foreground">
+          {webGlAvailable === null
+            ? "Preparing the interactive preview…"
+            : "Interactive 3D is unavailable in this browser."}
+        </p>
+        {webGlAvailable === false && (
+          <p className="mt-1 max-w-md text-xs leading-5">
+            The generated STEP, measured dimensions, evidence hash, download, and Verify handoff
+            remain available below.
+          </p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
+      aria-label={previewReady ? "Interactive 3D preview ready" : "Loading real 3D preview"}
+      data-preview-state={previewReady ? "ready" : "loading"}
       className={cn(
-        "h-full overflow-hidden rounded-[var(--radius)] border",
+        "relative h-full overflow-hidden rounded-[var(--radius)] border",
         instrument
           ? STAGE_UI
             ? "border-[#252a2f]"
@@ -324,6 +374,15 @@ export default function CadViewer({
           : undefined
       }
     >
+      {!previewReady && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-background/20 text-xs font-medium text-muted-foreground"
+        >
+          Loading real 3D preview…
+        </div>
+      )}
       <Canvas
         dpr={[1, 2]}
         gl={{ antialias: true, powerPreference: "high-performance" }}
@@ -367,12 +426,13 @@ export default function CadViewer({
             onFaceClick={onFaceClick}
             distanceScale={instrument ? 1.55 : 1.9}
             onHalfHeight={onHalfHeight}
+            onReady={onPreviewReady}
           />
-          {instrument ? (
-            <StudioRig />
-          ) : (
-            <Environment preset="studio" />
-          )}
+          {/* Keep every viewer mode self-contained. Drei's named presets resolve
+              to remote HDR assets; production CSP correctly blocks those
+              requests, leaving a noisy console and a preview at risk. The
+              Lightformer rig above builds the environment map in-process. */}
+          <StudioRig />
           {/* soft contact shadow seats the part on an invisible plane */}
           <ContactShadows
             position={[0, -halfH - 0.02, 0]}

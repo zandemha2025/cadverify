@@ -1,0 +1,7 @@
+{
+  "unauth_analyses": 401,
+  "unauth_validate": 401,
+  "garbage_cookie": 401,
+  "empty_cookie": 401,
+  "tampered_token": 401
+}

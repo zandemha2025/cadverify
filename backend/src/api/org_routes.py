@@ -18,7 +18,8 @@ no-email fallback (the one-time link is always in the response).
 """
 from __future__ import annotations
 
-import asyncio
+from src.config.public_urls import dashboard_origin, error_doc_url
+
 import logging
 import os
 from typing import Optional
@@ -35,7 +36,6 @@ from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 from src.services import org_service as svc
 from src.services import org_saml_service as saml_svc
-from src.services.audit_service import _lookup_email, fire_and_forget_audit
 
 logger = logging.getLogger("cadverify.orgs")
 
@@ -80,28 +80,31 @@ async def _ctx_org(ctx: OrgAuthContext, session: AsyncSession) -> str:
     return org_id
 
 
-def _emit(actor_id: int, action: str, resource_id: Optional[str], detail: dict) -> None:
-    """Fire-and-forget an org-lifecycle audit event (best-effort, never blocks)."""
-    async def _run():
-        email = await _lookup_email(actor_id)
-        await fire_and_forget_audit(
-            user_id=actor_id,
-            user_email=email,
-            action=action,
-            resource_type="org",
-            resource_id=resource_id,
-            detail=detail,
-        )
+async def _emit(
+    session: AsyncSession,
+    actor_id: int,
+    action: str,
+    resource_id: Optional[str],
+    detail: dict,
+    *,
+    org_id: Optional[str] = None,
+) -> None:
+    """Append an org-lifecycle event to the mutation transaction."""
+    from src.services.audit_service import emit_event
 
-    try:
-        asyncio.create_task(_run())
-    except Exception:
-        logger.warning("failed to emit audit %s", action, exc_info=True)
+    await emit_event(
+        session,
+        actor_id=actor_id,
+        action=action,
+        resource_type="org",
+        resource_id=resource_id,
+        detail=detail,
+        org_id=org_id,
+    )
 
 
 def _invite_link(raw_token: str) -> str:
-    base = os.getenv("DASHBOARD_ORIGIN", "https://cadverify.com").rstrip("/")
-    return f"{base}/orgs/accept?token={raw_token}"
+    return f"{dashboard_origin()}/orgs/accept?token={raw_token}"
 
 
 def _send_invite_email(email: str, link: str, org_name: Optional[str]) -> bool:
@@ -111,7 +114,7 @@ def _send_invite_email(email: str, link: str, org_name: Optional[str]) -> bool:
     sending and rely on the one-time link returned to the admin in the response —
     the flow never breaks on missing email infra. Mirrors magic_link's sender.
     """
-    if not os.getenv("RESEND_API_KEY"):
+    if not os.getenv("RESEND_API_KEY") or not os.getenv("RESEND_FROM"):
         return False
     try:
         import resend
@@ -120,9 +123,9 @@ def _send_invite_email(email: str, link: str, org_name: Optional[str]) -> bool:
         who = f" to {org_name}" if org_name else ""
         resend.Emails.send(
             {
-                "from": os.getenv("RESEND_FROM", "login@cadverify.com"),
+                "from": os.environ["RESEND_FROM"],
                 "to": email,
-                "subject": "You've been invited to a CadVerify organization",
+                "subject": "You've been invited to a ProofShape organization",
                 "html": (
                     f'<p>You\'ve been invited{who}.</p>'
                     f'<p><a href="{link}">Accept the invitation</a> '
@@ -151,8 +154,10 @@ async def create_org(
     """Create a named org; the caller becomes its admin. Personal orgs and the
     caller's active org are unaffected (no auto-switch)."""
     org = await svc.create_org(session, user.user_id, body.name)
+    await _emit(
+        session, user.user_id, "org.created", org.id, {"name": org.name}, org_id=org.id
+    )
     await session.commit()
-    _emit(user.user_id, "org.created", org.id, {"name": org.name})
     response.status_code = 201
     return {"org_id": org.id, "name": org.name, "slug": org.slug, "org_role": "admin"}
 
@@ -178,10 +183,34 @@ async def switch_org(
     user: AuthedUser = Depends(require_role(Role.viewer)),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Set the caller's active org (validated against a live membership)."""
+    """Set the caller's active org using a dashboard session only.
+
+    Bearer API keys are permanently bound to their issuing organization. Letting
+    a key mutate ``users.current_org_id`` would move that credential, and every
+    user-scoped route behind it, across the tenant boundary.
+    """
+    if user.org_id is not None:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "api_key_org_bound",
+                "message": (
+                    "API keys cannot switch organizations. "
+                    "Use a dashboard session to switch organizations."
+                ),
+                "doc_url": error_doc_url("api_key_org_bound"),
+            },
+        )
     result = await svc.switch_org(session, user.user_id, body.org_id)
+    await _emit(
+        session,
+        user.user_id,
+        "org.switched",
+        body.org_id,
+        {"org_role": result["org_role"]},
+        org_id=body.org_id,
+    )
     await session.commit()
-    _emit(user.user_id, "org.switched", body.org_id, {"org_role": result["org_role"]})
     return result
 
 
@@ -218,9 +247,8 @@ async def create_saml_group_mapping(
         org_role=body.org_role,
         created_by=ctx.user_id,
     )
-    await session.commit()
-    response.status_code = 201
-    _emit(
+    await _emit(
+        session,
         ctx.user_id,
         "saml.group_mapping.created",
         str(row.id),
@@ -230,7 +258,10 @@ async def create_saml_group_mapping(
             "group_value": row.group_value,
             "org_role": row.org_role,
         },
+        org_id=org_id,
     )
+    await session.commit()
+    response.status_code = 201
     return saml_svc.serialize_mapping(row)
 
 
@@ -249,8 +280,8 @@ async def delete_saml_group_mapping(
     """Delete one SAML JIT mapping from the caller org."""
     org_id = await _ctx_org(ctx, session)
     row = await saml_svc.delete_saml_group_mapping(session, org_id, mapping_id)
-    await session.commit()
-    _emit(
+    await _emit(
+        session,
         ctx.user_id,
         "saml.group_mapping.deleted",
         str(row.id),
@@ -260,7 +291,9 @@ async def delete_saml_group_mapping(
             "group_value": row.group_value,
             "org_role": row.org_role,
         },
+        org_id=org_id,
     )
+    await session.commit()
     return {"deleted": True, "id": row.id, "org_id": org_id}
 
 
@@ -278,18 +311,26 @@ async def create_invite(
     exceed the inviter's). Returns the one-time accept link; emails it when
     configured (graceful no-email fallback otherwise). Rate-limited (no spam)."""
     org_id = await _ctx_org(ctx, session)
+    inviter_role = ctx.org_role
+    if inviter_role is None:
+        raise HTTPException(
+            status_code=403,
+            detail="An active organization role is required to invite members",
+        )
     invite, raw = await svc.create_invite(
-        session, org_id, ctx.org_role, body.email, body.role, ctx.user_id
+        session, org_id, inviter_role, body.email, body.role, ctx.user_id
     )
-    await session.commit()
-    link = _invite_link(raw)
-    emailed = _send_invite_email(invite.email, link, None)
-    _emit(
+    await _emit(
+        session,
         ctx.user_id,
         "member.invited",
         str(invite.id),
         {"org_id": org_id, "email": invite.email, "role": invite.role},
+        org_id=org_id,
     )
+    await session.commit()
+    link = _invite_link(raw)
+    emailed = _send_invite_email(invite.email, link, None)
     response.status_code = 201
     out = svc.serialize_invite(invite)
     # The raw token / accept link is returned exactly once, here, and never
@@ -327,14 +368,16 @@ async def accept_invite(
     membership, invite, created = await svc.accept_invite(
         session, user.user_id, body.token
     )
-    await session.commit()
     if created:
-        _emit(
+        await _emit(
+            session,
             user.user_id,
             "member.joined",
             str(invite.id),
             {"org_id": invite.org_id, "role": membership.org_role},
+            org_id=invite.org_id,
         )
+    await session.commit()
     return {
         "org_id": membership.org_id,
         "org_role": membership.org_role,
@@ -388,13 +431,15 @@ async def change_member_role(
     demoted (an org must always keep at least one admin)."""
     org_id = await _ctx_org(ctx, session)
     m = await svc.change_member_role(session, org_id, user_id, body.role)
-    await session.commit()
-    _emit(
+    await _emit(
+        session,
         ctx.user_id,
         "member.role_changed",
         str(user_id),
         {"org_id": org_id, "new_role": m.org_role},
+        org_id=org_id,
     )
+    await session.commit()
     return {"user_id": user_id, "org_role": m.org_role}
 
 
@@ -418,15 +463,17 @@ async def remove_member(
             detail={
                 "code": "insufficient_org_role",
                 "message": "Only an org admin may remove another member.",
-                "doc_url": "https://docs.cadverify.com/errors#insufficient_org_role",
+                "doc_url": error_doc_url("insufficient_org_role"),
             },
         )
     await svc.remove_member(session, org_id, user_id, ctx.user_id)
-    await session.commit()
-    _emit(
+    await _emit(
+        session,
         ctx.user_id,
         "member.left" if is_self else "member.removed",
         str(user_id),
         {"org_id": org_id},
+        org_id=org_id,
     )
+    await session.commit()
     return {"removed": True, "user_id": user_id, "org_id": org_id}

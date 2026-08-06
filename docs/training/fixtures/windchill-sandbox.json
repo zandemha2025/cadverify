@@ -1,0 +1,5 @@
+[
+  {"kind":"part","ID":"OR:wt.part.WTPart:1","Number":"PUMP-10","Revision":"A","Name":"Pump body","Material":"Duplex 2205"},
+  {"kind":"part","ID":"OR:wt.part.WTPart:2","Number":"SEAL-20","Revision":"B","Name":"Seal kit","Material":"FKM"},
+  {"kind":"PartUse","ParentNumber":"PUMP-10","ChildNumber":"SEAL-20","Quantity":4,"Unit":"EA","FindNumber":"0010"}
+]

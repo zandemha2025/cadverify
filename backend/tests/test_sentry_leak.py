@@ -1,4 +1,4 @@
-"""Capture a Sentry event locally and assert cv_live_ is scrubbed.
+"""Capture a Sentry event locally and assert auth material is scrubbed.
 
 Dumps the scrubbed payload to backend/build/captured_sentry.json so the CI
 grep step can independently verify no raw cv_live_ token leaks through.
@@ -9,11 +9,19 @@ import os
 from src.auth.scrubbing import sentry_before_send
 
 
-def test_captured_event_has_no_cv_live():
+def test_captured_event_has_no_auth_material():
     simulated_event = {
         "message": "auth failed for cv_live_abcd1234_" + "x" * 32,
         "extra": {
-            "headers": {"Authorization": "Bearer cv_live_eeeeffff_" + "y" * 32}
+            "headers": {
+                "Authorization": "Bearer cv_live_eeeeffff_" + "y" * 32,
+                "cookie": "dash_session=FAKE_SESSION_SENTINEL",
+            },
+            "request": {
+                "token": "FAKE_MAGIC_TOKEN_SENTINEL",
+                "password": "FAKE_PASSWORD_SENTINEL",
+                "cf_turnstile_response": "FAKE_TURNSTILE_SENTINEL",
+            },
         },
         "breadcrumbs": [
             {
@@ -32,3 +40,10 @@ def test_captured_event_has_no_cv_live():
     # non-redacted occurrences of cv_live_ indicate a leak.
     remaining = dump.replace("cv_live_***REDACTED***", "")
     assert "cv_live_" not in remaining, f"LEAK: {dump}"
+    for sentinel in (
+        "FAKE_SESSION_SENTINEL",
+        "FAKE_MAGIC_TOKEN_SENTINEL",
+        "FAKE_PASSWORD_SENTINEL",
+        "FAKE_TURNSTILE_SENTINEL",
+    ):
+        assert sentinel not in dump, f"LEAK: {sentinel}"
