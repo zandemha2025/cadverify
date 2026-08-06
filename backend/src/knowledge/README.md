@@ -56,6 +56,18 @@ corpus records **the range and the disagreement** rather than picking a winner
 and pretending. A rule marked `contested` must carry `disagreement:` explaining
 who says what. This is the honesty rule applied to knowledge itself.
 
+### Licence and ingestion
+
+Every source also declares a `licence` and an `ingestion` policy, both defaulting
+to the restrictive value. `ingestion: full` — permission to copy the text itself
+— is **rejected by the loader** unless the licence is `public_domain` or `open`,
+and any free-licence claim must state its basis in `licence_note`.
+
+Almost everything here is `facts_only`: state what a source establishes, with
+attribution, and never copy or machine-ingest the text. See
+[INGESTION.md](INGESTION.md) for the reasoning, the public-domain corpus that
+*is* ingestible, and how an outside document becomes corpus entries.
+
 ### Rules for contributors
 
 1. **No orphan numbers.** Every numeric rule carries a `source_id` present in

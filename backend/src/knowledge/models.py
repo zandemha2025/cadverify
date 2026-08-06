@@ -34,6 +34,36 @@ class SourceTier(str, Enum):
     CONTESTED = "contested"
 
 
+class Licence(str, Enum):
+    """The copyright status of a source, which governs what may be done with it.
+
+    This is deliberately separate from ``Source.access`` (whether the text costs
+    money). A freely-readable standard is still copyrighted; a paid US
+    Government document is still public domain. Price and licence are different
+    questions and conflating them is how ingestion pipelines get built on
+    material that cannot carry them.
+    """
+
+    PUBLIC_DOMAIN = "public_domain"  # e.g. US Government works (17 USC 105)
+    OPEN = "open"                    # explicit open licence permitting reuse
+    PROPRIETARY = "proprietary"      # all rights reserved
+    UNKNOWN = "unknown"              # not yet determined — treated as proprietary
+
+
+class IngestionPolicy(str, Enum):
+    """What this corpus may do with a source.
+
+    ``FACTS_ONLY`` is the default and covers almost everything here: a
+    threshold value or a requirement is a fact, and facts are not copyrightable
+    — but the expression is, and the act of machine-copying the text is
+    reproduction regardless of how the output is later worded.
+    """
+
+    FULL = "full"                    # text may be ingested and stored
+    FACTS_ONLY = "facts_only"        # state facts with attribution; never copy the text
+    REFERENCE_ONLY = "reference_only"  # cite that it exists and what it requires; no content
+
+
 class Relation(str, Enum):
     """How a rule's value constrains the measured feature."""
 
@@ -55,7 +85,12 @@ class FindingSeverity(str, Enum):
 
 @dataclass(frozen=True)
 class Source:
-    """One entry in the citation registry (``packs/sources.yaml``)."""
+    """One entry in the citation registry (``packs/sources.yaml``).
+
+    ``licence`` and ``ingestion`` default to the most restrictive values.
+    Loosening them requires stating why in the YAML, which is the point: the
+    safe default should be free and the permissive one should cost a decision.
+    """
 
     source_id: str
     tier: SourceTier
@@ -67,11 +102,23 @@ class Source:
     access: Optional[str] = None
     caution: Optional[str] = None
     disagreement: Optional[str] = None
+    licence: Licence = Licence.PROPRIETARY
+    ingestion: IngestionPolicy = IngestionPolicy.FACTS_ONLY
+    licence_note: Optional[str] = None
 
     @property
     def citation(self) -> Citation:
         """Render as the analyzers' ``Citation`` so the UI can inspect it."""
         return Citation(standard=self.designation, text=self.title)
+
+    @property
+    def may_ingest_text(self) -> bool:
+        """Whether this source's text may be copied into the corpus.
+
+        True only for public-domain and openly-licensed material. Everything
+        else contributes attributed facts, never text.
+        """
+        return self.ingestion is IngestionPolicy.FULL
 
 
 @dataclass(frozen=True)
@@ -287,6 +334,14 @@ class KnowledgeBase:
         """Case-insensitive glossary lookup."""
         needle = term.strip().casefold()
         return next((t for t in self.glossary if t.term.casefold() == needle), None)
+
+    def ingestible_sources(self) -> tuple[Source, ...]:
+        """Sources whose text may legitimately be ingested.
+
+        The candidate set for any bulk-ingestion pipeline. Anything outside it
+        contributes attributed facts only.
+        """
+        return tuple(s for s in self.sources.values() if s.may_ingest_text)
 
     def contested_rules(self) -> tuple[DesignRule, ...]:
         """Rules whose sources materially disagree.

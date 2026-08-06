@@ -1,7 +1,9 @@
 # Knowledge corpus — index
 
 Start with [README.md](README.md) for the corpus contract (provenance tiers, the
-rules for contributors, and how the engine consumes this).
+rules for contributors, and how the engine consumes this), and
+[INGESTION.md](INGESTION.md) for what may and may not be brought in from outside
+— the licence and ingestion policy the loader enforces.
 
 ---
 

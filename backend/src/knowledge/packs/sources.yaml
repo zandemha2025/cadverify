@@ -215,6 +215,9 @@ fda_820:
   designation: "21 CFR Part 820"
   edition: "QMSR harmonisation with ISO 13485 effective 2026-02-02"
   access: free
+  licence: public_domain
+  licence_note: "US Government work — edicts of government are not subject to copyright (17 USC 105)."
+  ingestion: full
   scope: >-
     US device quality regulation. §820.30 design controls — design inputs,
     outputs, review, verification, validation, transfer, changes, and the DHF —
@@ -284,6 +287,12 @@ eu_ped:
   publisher: "European Union"
   designation: "Directive 2014/68/EU (PED)"
   access: free
+  licence: open
+  licence_note: >-
+    EU legislative text, reusable with acknowledgement of source under the
+    Commission's reuse policy. The harmonised standards it references are NOT
+    free — they are CEN documents and remain proprietary.
+  ingestion: full
   scope: >-
     EU market access for pressure equipment. Categorises equipment I–IV from
     pressure, volume and fluid group, and assigns a conformity-assessment module
@@ -350,6 +359,9 @@ itar_ear:
   publisher: "US Department of State / Department of Commerce"
   designation: "ITAR (22 CFR 120–130) and EAR (15 CFR 730–774)"
   access: free
+  licence: public_domain
+  licence_note: "US Government work (17 USC 105)."
+  ingestion: full
   scope: >-
     Controls on defence articles and dual-use items — including **technical
     data**, which explicitly covers CAD models, drawings and manufacturing
@@ -490,6 +502,9 @@ fda_food_contact:
   designation: "21 CFR Parts 174–190"
   edition: "plus EU Regulation 1935/2004 and 10/2011 for the EU"
   access: free
+  licence: public_domain
+  licence_note: "US Government work (17 USC 105). The cited EU regulations are separately reusable with attribution."
+  ingestion: full
   scope: >-
     What a material in contact with food may be made of, and what may migrate
     from it. Complemented by hygienic-design practice (3-A Sanitary Standards,
@@ -594,6 +609,124 @@ boothroyd_dfma:
     The quantitative DFA method — minimum theoretical part count, handling and
     insertion time — and the origin of the "cost is decided in design" claim
     that most DFM tooling rests on.
+
+# ── Public-domain reference works (ingestible in full) ───────────────────────
+#
+# US Government works are not subject to copyright (17 USC 105). These are the
+# closest free equivalents to the commercially-licensed handbooks, and they are
+# the corpus's legitimate bulk-ingestion candidates. See INGESTION.md.
+
+doe_hdbk_1017:
+  tier: handbook
+  title: "DOE Fundamentals Handbook — Material Science (Volumes 1–2)"
+  publisher: "US Department of Energy"
+  designation: "DOE-HDBK-1017/1-93 and /2-93"
+  access: free
+  licence: public_domain
+  licence_note: "US Government work (17 USC 105). Published openly by the DOE Technical Standards Program."
+  ingestion: full
+  scope: >-
+    Textbook-grade fundamentals: crystal structure and grain, stress and strain
+    mechanisms in metals, failure modes (ductile and brittle fracture, fatigue,
+    creep), thermal stress and shock, brittle-fracture and the ductile-to-brittle
+    transition, and the behaviour of the metals used in nuclear plant. Written
+    to teach, which makes it unusually good source material.
+
+doe_hdbk_1018:
+  tier: handbook
+  title: "DOE Fundamentals Handbook — Mechanical Science (Volumes 1–2)"
+  publisher: "US Department of Energy"
+  designation: "DOE-HDBK-1018/1-93 and /2-93"
+  access: free
+  licence: public_domain
+  licence_note: "US Government work (17 USC 105)."
+  ingestion: full
+  scope: >-
+    Diesel engines, heat exchangers, pumps, valves, and the mechanical equipment
+    fundamentals behind them — bearings, seals, fits and mechanical drive.
+
+mil_hdbk_5h:
+  tier: handbook
+  title: "Metallic Materials and Elements for Aerospace Vehicle Structures"
+  publisher: "US Department of Defense"
+  designation: "MIL-HDBK-5H"
+  edition: "1998, superseded"
+  access: free
+  licence: public_domain
+  licence_note: "US Government work (17 USC 105); freely redistributable as a cancelled/superseded military handbook."
+  ingestion: full
+  scope: >-
+    Design allowables and property data for aerospace metallic materials, plus
+    the methodology behind statistically-derived A- and B-basis allowables,
+    joint and fastener analysis, and fatigue and fracture data presentation.
+  caution: >-
+    **Superseded.** MIL-HDBK-5H was replaced by MMPDS, which is maintained by
+    Battelle under paid membership and is the version the FAA accepts for
+    showing compliance. Use MIL-HDBK-5H for methodology and design principles;
+    do NOT present its allowables as current. Any actual allowable must come
+    from the current MMPDS edition, licensed.
+
+mil_std_1629a:
+  tier: standard
+  title: "Procedures for Performing a Failure Mode, Effects and Criticality Analysis"
+  publisher: "US Department of Defense"
+  designation: "MIL-STD-1629A"
+  access: free
+  licence: public_domain
+  licence_note: "US Government work (17 USC 105); cancelled military standard, freely redistributable."
+  ingestion: full
+  scope: >-
+    The original FMECA method — the ancestor of every DFMEA and PFMEA in use
+    today, including criticality analysis. Cancelled but still the clearest
+    statement of the underlying method.
+
+nasa_technical_standards:
+  tier: standard
+  title: "NASA technical standards and the NASA Technical Reports Server"
+  publisher: "NASA"
+  designation: "NASA-STD series; NTRS"
+  access: free
+  licence: public_domain
+  licence_note: "US Government works (17 USC 105). NTRS-hosted contractor reports may carry separate rights — check per document."
+  ingestion: full
+  scope: >-
+    Fastener design and analysis, fracture control for spaceflight hardware,
+    workmanship standards for soldering and crimping, structural design and test
+    factors, materials and processes selection, and several decades of
+    engineering reports behind them.
+  caution: >-
+    NTRS hosts some contractor- and journal-published material whose rights are
+    not NASA's to grant. Verify per document rather than assuming the whole
+    server is public domain.
+
+faa_ac_43_13:
+  tier: handbook
+  title: "Acceptable Methods, Techniques and Practices — Aircraft Inspection and Repair"
+  publisher: "US Federal Aviation Administration"
+  designation: "FAA AC 43.13-1B / 43.13-2B"
+  access: free
+  licence: public_domain
+  licence_note: "US Government work (17 USC 105)."
+  ingestion: full
+  scope: >-
+    Intensely practical: inspection of structures, corrosion identification and
+    treatment, welding and brazing practice, fastener and rivet selection, sheet
+    metal repair, control cable and bonding practice. The best free source on
+    what acceptable workmanship actually looks like.
+
+nist_publications:
+  tier: handbook
+  title: "NIST technical publications and reference data"
+  publisher: "US National Institute of Standards and Technology"
+  designation: "NIST SP / TN / IR series"
+  access: free
+  licence: public_domain
+  licence_note: "US Government work (17 USC 105)."
+  ingestion: full
+  scope: >-
+    Measurement uncertainty and its expression, dimensional metrology practice,
+    materials reference data including cryogenic properties, and the
+    manufacturing-systems and model-based-definition research programme.
 
 # ── Practice-tier and contested rules ────────────────────────────────────────
 

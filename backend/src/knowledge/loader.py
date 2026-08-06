@@ -23,7 +23,9 @@ from src.knowledge.models import (
     Environment,
     FindingSeverity,
     GlossaryTerm,
+    IngestionPolicy,
     KnowledgeBase,
+    Licence,
     RedFlag,
     Relation,
     Source,
@@ -100,15 +102,52 @@ def _tier(value: Any, *, owner: str) -> SourceTier:
 # ── individual pack parsers ──────────────────────────────────────────────────
 
 
+_INGESTIBLE_LICENCES = {Licence.PUBLIC_DOMAIN, Licence.OPEN}
+
+
 def _load_sources() -> dict[str, Source]:
     raw = _read(_SOURCES_YAML)
     sources: dict[str, Source] = {}
     for source_id, body in raw.items():
         if not isinstance(body, dict):
             raise KnowledgeValidationError(f"source {source_id!r} must be a mapping")
+        owner = f"source {source_id!r}"
+
+        try:
+            licence = Licence(str(body.get("licence", Licence.PROPRIETARY.value)))
+        except ValueError as exc:
+            raise KnowledgeValidationError(
+                f"{owner} has unknown licence {body.get('licence')!r}; "
+                f"expected one of {[x.value for x in Licence]}"
+            ) from exc
+
+        try:
+            ingestion = IngestionPolicy(
+                str(body.get("ingestion", IngestionPolicy.FACTS_ONLY.value))
+            )
+        except ValueError as exc:
+            raise KnowledgeValidationError(
+                f"{owner} has unknown ingestion policy {body.get('ingestion')!r}; "
+                f"expected one of {[x.value for x in IngestionPolicy]}"
+            ) from exc
+
+        # The guard that matters. Text may only be ingested when the licence
+        # actually permits it — never because someone set the field hopefully.
+        if ingestion is IngestionPolicy.FULL and licence not in _INGESTIBLE_LICENCES:
+            raise KnowledgeValidationError(
+                f"{owner} declares ingestion 'full' with licence {licence.value!r}. "
+                f"Full text ingestion requires 'public_domain' or 'open'. "
+                f"Facts may still be stated with attribution under 'facts_only'."
+            )
+        if licence in _INGESTIBLE_LICENCES and not body.get("licence_note"):
+            raise KnowledgeValidationError(
+                f"{owner} claims licence {licence.value!r} but gives no "
+                f"`licence_note` explaining the basis. State why it is free to use."
+            )
+
         sources[source_id] = Source(
             source_id=source_id,
-            tier=_tier(body.get("tier"), owner=f"source {source_id!r}"),
+            tier=_tier(body.get("tier"), owner=owner),
             title=str(body.get("title", "")),
             publisher=str(body.get("publisher", "")),
             designation=str(body.get("designation", source_id)),
@@ -117,6 +156,9 @@ def _load_sources() -> dict[str, Source]:
             access=body.get("access"),
             caution=body.get("caution"),
             disagreement=body.get("disagreement"),
+            licence=licence,
+            ingestion=ingestion,
+            licence_note=body.get("licence_note"),
         )
     if not sources:
         raise KnowledgeValidationError("sources.yaml defined no sources")

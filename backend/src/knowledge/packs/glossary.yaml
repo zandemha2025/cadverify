@@ -319,6 +319,64 @@ terms:
       every radius, wall thickness and angle taken from tessellated geometry.
     source_id: asme_y14_41
 
+  - term: "A-basis / B-basis allowable"
+    domain: materials
+    definition: >-
+      Statistically derived design allowables. A-basis: 99% of the population is
+      expected to equal or exceed the value, at 95% confidence. B-basis: 90% at
+      95% confidence. A-basis is used where failure of a single load path is
+      critical; B-basis where load is redundantly carried.
+    common_confusion: >-
+      Confused with typical or minimum published properties from a datasheet.
+      A typical value is roughly a mean and is not a design allowable at all.
+    source_id: mil_hdbk_5h
+
+  - term: "FMECA"
+    domain: quality
+    definition: >-
+      Failure Mode, Effects and Criticality Analysis — the systematic
+      identification of how a design or process can fail, what each failure
+      causes, and how critical it is. The ancestor of the modern DFMEA and PFMEA.
+    common_confusion: >-
+      Treated as a document produced for a customer. Its value is entirely in
+      being done early enough to change the design; done afterwards it is an
+      archaeology exercise.
+    source_id: mil_std_1629a
+
+  - term: "Measurement uncertainty"
+    domain: quality
+    definition: >-
+      A quantified doubt about a measurement result, stated as an interval with a
+      coverage factor. Distinct from error, which is the unknown difference from
+      the true value.
+    common_confusion: >-
+      A measured value quoted without its uncertainty cannot be compared with a
+      tolerance honestly — the comparison silently assumes the measurement is
+      exact.
+    source_id: nist_publications
+
+  - term: "Edge distance"
+    domain: platform
+    definition: >-
+      The distance from a fastener hole centre to the nearest free edge, normally
+      expressed in hole diameters. Below roughly two diameters the joint fails by
+      tear-out rather than by the fastener.
+    common_confusion: >-
+      Assumed to be a workmanship detail. It is a structural requirement: the
+      fastener's rated strength is irrelevant if the material behind it tears.
+    source_id: faa_ac_43_13
+
+  - term: "Preload"
+    domain: platform
+    definition: >-
+      The tension induced in a fastener at assembly, which clamps the joint faces
+      together so that service load is carried by friction rather than by the
+      fastener in shear.
+    common_confusion: >-
+      Most bolted-joint failures are preload failures presenting as fastener
+      failures. An unspecified torque is an unspecified joint.
+    source_id: nasa_technical_standards
+
   - term: "Provenance (MEASURED / SHOP / USER / DEFAULT)"
     domain: platform
     definition: >-

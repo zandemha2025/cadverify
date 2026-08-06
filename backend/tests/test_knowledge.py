@@ -17,7 +17,13 @@ from src.knowledge import (
     library_documents,
 )
 from src.knowledge.loader import PACKS_DIR, _load_design_rules, _load_sources
-from src.knowledge.models import FindingSeverity, Relation, SourceTier
+from src.knowledge.models import (
+    FindingSeverity,
+    IngestionPolicy,
+    Licence,
+    Relation,
+    SourceTier,
+)
 
 
 @pytest.fixture(scope="module")
@@ -110,6 +116,81 @@ def test_contested_rules_are_reachable(kb):
     contested = kb.contested_rules()
     assert contested
     assert all(r.tier is SourceTier.CONTESTED for r in contested)
+
+
+# ── licence and ingestion policy ─────────────────────────────────────────────
+
+
+def test_sources_default_to_restrictive_licence(kb):
+    """A source added carelessly must be safe, not permissive."""
+    for source in kb.sources.values():
+        if source.licence is Licence.PROPRIETARY:
+            assert source.ingestion is not IngestionPolicy.FULL, source.source_id
+
+
+def test_full_ingestion_requires_a_free_licence(kb):
+    """The guard that matters: text ingestion needs an actual licence for it."""
+    for source in kb.ingestible_sources():
+        assert source.licence in (Licence.PUBLIC_DOMAIN, Licence.OPEN), (
+            f"{source.source_id} may be ingested but is licensed "
+            f"{source.licence.value!r}"
+        )
+
+
+def test_free_licence_claims_state_their_basis(kb):
+    """A claim that something is free to use needs a reason, not a hope."""
+    for source in kb.sources.values():
+        if source.licence in (Licence.PUBLIC_DOMAIN, Licence.OPEN):
+            assert source.licence_note, source.source_id
+
+
+def test_ingestible_corpus_is_not_empty(kb):
+    """There is legitimately free material, and we should know what it is."""
+    ingestible = kb.ingestible_sources()
+    assert len(ingestible) >= 8
+    ids = {s.source_id for s in ingestible}
+    # The public-domain reference works the ingestion pipeline targets.
+    for expected in ("doe_hdbk_1017", "mil_std_1629a", "faa_ac_43_13"):
+        assert expected in ids
+
+
+def test_licensed_handbooks_are_facts_only(kb):
+    """The canonical commercial references must never be marked ingestible."""
+    for source_id in ("machinerys_handbook", "asm_handbook", "boothroyd_dfma"):
+        source = kb.sources[source_id]
+        assert source.licence is Licence.PROPRIETARY, source_id
+        assert source.ingestion is IngestionPolicy.FACTS_ONLY, source_id
+
+
+def test_hopeful_full_ingestion_is_rejected():
+    """Setting `ingestion: full` on a proprietary source must fail the load."""
+    raw = yaml.safe_load((PACKS_DIR / "sources.yaml").read_text(encoding="utf-8"))
+    raw["machinerys_handbook"]["ingestion"] = "full"
+
+    import src.knowledge.loader as loader_mod
+
+    original = loader_mod._read
+    loader_mod._read = lambda path: raw  # type: ignore[assignment]
+    try:
+        with pytest.raises(KnowledgeValidationError, match="requires 'public_domain'"):
+            _load_sources()
+    finally:
+        loader_mod._read = original  # type: ignore[assignment]
+
+
+def test_unexplained_free_licence_is_rejected():
+    raw = yaml.safe_load((PACKS_DIR / "sources.yaml").read_text(encoding="utf-8"))
+    raw["doe_hdbk_1017"].pop("licence_note", None)
+
+    import src.knowledge.loader as loader_mod
+
+    original = loader_mod._read
+    loader_mod._read = lambda path: raw  # type: ignore[assignment]
+    try:
+        with pytest.raises(KnowledgeValidationError, match="licence_note"):
+            _load_sources()
+    finally:
+        loader_mod._read = original  # type: ignore[assignment]
 
 
 # ── coverage against the engine's own vocabulary ─────────────────────────────

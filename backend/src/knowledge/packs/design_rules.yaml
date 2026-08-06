@@ -1997,3 +1997,140 @@ rules:
     detects: [LARGE_FLAT_CROSS_SECTION, PEEL_FORCE_RISK]
     source_id: shop_practice_polymer_am
     tier: practice
+
+  # ═══ JOINTS AND FASTENING ═════════════════════════════════════════════════
+  # Drawn from public-domain sources — see INGESTION.md.
+
+  - rule_id: FASTENER_EDGE_DISTANCE
+    processes: [all]
+    category: geometry
+    title: "Fasteners need edge distance"
+    statement: >-
+      Keep fastener holes at least two hole diameters from any free edge,
+      measured centre to edge. Less than that and the material between the hole
+      and the edge tears out.
+    relation: ratio_min
+    metric: edge_distance_over_hole_diameter
+    value_min: 2.0
+    value_typical: 2.5
+    units: ratio
+    why: >-
+      A loaded fastener bears against the hole and drives a shear-out failure
+      through the remaining ligament to the edge. Below about 2D the joint fails
+      by tear-out at a load far below the fastener's own rating, so the fastener
+      size on the drawing tells you nothing about the joint's strength. The same
+      constraint governs hole-to-hole spacing.
+    good: "Ø5 mm rivets on 12 mm edge distance and 20 mm pitch."
+    bad: "A row of fasteners 4 mm from the edge of the flange."
+    detects: [INSUFFICIENT_EDGE_DISTANCE, TEAR_OUT_RISK]
+    source_id: faa_ac_43_13
+    tier: handbook
+
+  - rule_id: JOINT_DESIGNED_FOR_PRELOAD
+    processes: [all]
+    category: assembly
+    title: "Bolted joints carry load by friction, not by the bolt"
+    statement: >-
+      Design bolted joints so that clamped friction carries the service load and
+      the bolt sees preload rather than cyclic shear. Specify and control the
+      preload.
+    relation: advisory
+    why: >-
+      A correctly preloaded joint transmits load through the friction between
+      the clamped faces; the bolt barely feels the cycling and lasts
+      indefinitely. An under-preloaded joint lets the faces slip, the bolt takes
+      the load in bearing and shear, and fatigue life collapses. Nearly every
+      bolted-joint failure in service is a preload failure wearing a fastener
+      failure costume.
+    good: "Faying surfaces sized and finished for friction grip, torque specified and verified."
+    bad: "A shear-loaded joint with an unspecified 'tighten securely' note."
+    detects: [JOINT_PRELOAD_UNDEFINED, FASTENER_FATIGUE_RISK]
+    source_id: nasa_technical_standards
+    tier: standard
+
+  - rule_id: DISSIMILAR_METAL_JOINT
+    processes: [all]
+    category: assembly
+    title: "Isolate dissimilar metals at joints"
+    statement: >-
+      Where dissimilar metals meet in a joint that may become wet, isolate them
+      or select a couple with a small potential difference — and never pair a
+      small anode with a large cathode.
+    relation: advisory
+    why: >-
+      Dissimilar metals in an electrolyte form a galvanic cell and the less noble
+      one corrodes. **Area ratio governs the rate**, which is the part people get
+      backwards: a stainless fastener in an aluminium plate is acceptable, while
+      an aluminium fastener in a stainless plate concentrates the whole cell's
+      current into a tiny anode and consumes it.
+    good: "Stainless fasteners in aluminium structure, with a sealant or isolating washer."
+    bad: "Aluminium rivets through a stainless plate, unsealed, outdoors."
+    detects: [GALVANIC_COUPLE_RISK]
+    source_id: faa_ac_43_13
+    tier: handbook
+
+  # ═══ SECTION CHANGES, STRESS AND THERMAL BEHAVIOUR ════════════════════════
+
+  - rule_id: STRESS_CONCENTRATION_AT_SECTION_CHANGE
+    processes: [all]
+    category: geometry
+    title: "Every abrupt section change is a stress raiser"
+    statement: >-
+      Blend section changes with generous radii. A sharp step multiplies local
+      stress well above the nominal value calculated from the section.
+    relation: advisory
+    why: >-
+      Stress flows like a fluid: where the section changes abruptly, the flow
+      lines crowd and local stress rises by a concentration factor that depends
+      on the radius relative to the section. Since fatigue cracks initiate at
+      peak local stress, a part sized correctly on nominal stress can still fail
+      at a corner. This is why a stronger material with a sharper fillet is
+      usually worse than a weaker one with a generous fillet.
+    good: "Generous blend radii at every shoulder, sized against the adjoining section."
+    bad: "A sharp-cornered step at the highest-bending-moment section."
+    detects: [STRESS_CONCENTRATION, MISSING_FILLETS, SHARP_INTERNAL_CORNER]
+    source_id: doe_hdbk_1017
+    tier: handbook
+
+  - rule_id: THERMAL_STRESS_AT_RESTRAINT
+    processes: [all]
+    category: process_physics
+    title: "Restrained expansion becomes stress"
+    statement: >-
+      Any part that changes temperature while restrained develops stress
+      proportional to the temperature change, whether or not any external load
+      is applied. Allow expansion, or design for the stress.
+    relation: advisory
+    why: >-
+      Thermal strain that cannot become movement becomes stress instead, and it
+      does not care that the part is otherwise unloaded. Rapid temperature change
+      makes it worse by adding a gradient through the section — the surface tries
+      to move before the core does, which is thermal shock. Section changes and
+      stiff restraint concentrate both.
+    good: "Flexures or slotted holes to allow growth; gradual section changes across a gradient."
+    bad: "A rigidly bolted assembly of dissimilar materials cycling over 200 °C."
+    detects: [THERMAL_STRESS_RISK, RESTRAINT_RISK]
+    source_id: doe_hdbk_1017
+    tier: handbook
+
+  - rule_id: TRANSITION_TEMPERATURE_BASIS
+    processes: [all]
+    category: process_physics
+    title: "Toughness at temperature, not strength at ambient"
+    statement: >-
+      For any part serving below ambient, the acceptance basis is impact toughness
+      at the minimum design metal temperature — not room-temperature tensile
+      properties.
+    relation: advisory
+    why: >-
+      Body-centred-cubic metals lose toughness abruptly below a transition
+      temperature and fail by cleavage with no plastic warning, while
+      face-centred-cubic metals have no such transition. The transition also
+      shifts upward with irradiation, with strain ageing, and with section
+      thickness — so a material that was tough when installed may not be later.
+      Tensile data at 20 °C says nothing about any of this.
+    good: "Charpy impact results at the minimum design metal temperature, per heat, including welds and HAZ."
+    bad: "A carbon-steel part accepted for −40 °C service on room-temperature tensile data."
+    detects: [BRITTLE_FRACTURE_RISK, MISSING_IMPACT_QUALIFICATION]
+    source_id: doe_hdbk_1017
+    tier: handbook
