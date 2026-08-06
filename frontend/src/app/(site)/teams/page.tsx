@@ -24,8 +24,8 @@ import { Eyebrow, DisplayHeading, IllustrativeTag } from "@/components/site/evid
  * + full footer through <SiteShell>. Each persona row links to its /teams/*
  * journey; the nav "Teams" link stays lit across the whole subtree.
  *
- * HONESTY: the fixture family (M2 Pro / PP / $14.14 marginal / $7,800 IM
- * acquisition / crossover 1,962 / Midwest rates $52·$95·$30 / margin 0.30 ·
+ * HONESTY: the fixture family (M2 Pro / PP / $12.81 owned-machine marginal /
+ * $7,800 IM acquisition / crossover 1,960 / Midwest rates $52·$95·$30 / margin 0.30 ·
  * util 0.80) is the one real fixture, presented as engine output across every
  * site page. The Sourcing card, alone among the five, prints fabricated
  * shop-vs-shop per-unit costs at qty 1,000 ($5.96 / $10.45 / $2.68) that are
@@ -180,7 +180,7 @@ export default function TeamsPage() {
               </p>
               <p style={{ margin: 0, color: L65 }}>→ PP survives the declared world ✓</p>
               <p style={{ margin: 0, color: L65 }}>
-                → 0.068 machine-hr · 4.2 g · <span style={{ color: INK }}>$14.14 marginal</span>
+                → 0.068 machine-hr · 4.2 g · <span style={{ color: INK }}>$12.81 marginal</span>
               </p>
               <p style={{ margin: "8px 0 0", color: GOLD }}>not owned: IM → $7,800 acquisition consideration</p>
             </div>
@@ -237,7 +237,7 @@ export default function TeamsPage() {
               <p style={CARD_HEAD}>DFM · NAMED AND ACTIONABLE</p>
               <p style={{ margin: "8px 0 0", color: GOLD }}>▲ draft 0.4° measured · ≥1.0° required</p>
               <p style={{ margin: 0, color: L65 }}>→ faces highlighted in 3D</p>
-              <p style={{ margin: 0, color: L65 }}>→ fix unlocks IM route at qty ≥ 1,962</p>
+              <p style={{ margin: 0, color: L65 }}>→ fix unlocks IM route at qty ≥ 1,960</p>
             </div>
           }
         />

@@ -22,7 +22,7 @@ import styles from "./developers.module.css";
  * page-local `.jl` line-in stagger + blinking caret (developers.module.css).
  *
  * MUST-KEEP (present, real fields): the /validate vs /validate/cost split and
- * the real fixture record — unit_cost 14.14 · routing cnc_turning 0.80 · drivers
+ * the real fixture record — unit_cost 14.14 · routing bulk_solid → mjf 0.40 · drivers
  * (labor_cost 6.39, provenance SHOP) · confidence low 8.49 / high 19.80 /
  * validated false / n_samples 0 · line_items 6.39/3.89/3.82/0.04 (Σ = 14.14 ✓).
  *
@@ -128,7 +128,7 @@ export default function DevelopersPage() {
               {I1}&quot;unit_cost_usd&quot;: <span style={{ color: "#f5f5f7", fontWeight: 600 }}>14.14</span>,
             </p>
             <p className={styles.jsonLine} style={{ color: "rgba(245,245,247,0.6)", animationDelay: "800ms" }}>
-              {I1}&quot;routing&quot;: {"{"} &quot;recommended_process&quot;: <span style={{ color: STR }}>&quot;cnc_turning&quot;</span>, &quot;confidence&quot;: 0.8 {"}"},
+              {I1}&quot;routing&quot;: {"{"} &quot;recommended_process&quot;: <span style={{ color: STR }}>&quot;mjf&quot;</span>, &quot;confidence&quot;: 0.4 {"}"},
             </p>
             <p className={styles.jsonLine} style={{ color: "rgba(245,245,247,0.6)", animationDelay: "1050ms" }}>
               {I1}&quot;drivers&quot;: [ {"{"} &quot;name&quot;: <span style={{ color: STR }}>&quot;labor_cost&quot;</span>, &quot;value&quot;: 6.39, &quot;provenance&quot;: <span style={{ color: SHOP }}>&quot;SHOP&quot;</span>, &quot;source&quot;: <span style={{ color: STR }}>&quot;0.082hr × $52/hr…&quot;</span> {"}"}, <span style={{ color: "rgba(245,245,247,0.35)" }}>…4 more</span> ],
@@ -198,7 +198,7 @@ export default function DevelopersPage() {
               {I2}&quot;label&quot;: <span style={{ color: STR }}>&quot;assumption-based, not yet validated&quot;</span> {"}"},
             </p>
             <p style={respLine}>
-              {I1}&quot;routing&quot;: {"{"} &quot;recommended_process&quot;: <span style={{ color: STR }}>&quot;cnc_turning&quot;</span>, &quot;confidence&quot;: 0.8, &quot;reasoning&quot;: <span style={{ color: STR }}>&quot;Axisymmetric…&quot;</span> {"}"},
+              {I1}&quot;routing&quot;: {"{"} &quot;recommended_process&quot;: <span style={{ color: STR }}>&quot;mjf&quot;</span>, &quot;confidence&quot;: 0.4, &quot;reasoning&quot;: <span style={{ color: STR }}>&quot;General solid (48% of bbox filled…&quot;</span> {"}"},
             </p>
             <p style={respLine}>
               {I1}&quot;drivers&quot;: [ {"{"} &quot;name&quot;: <span style={{ color: STR }}>&quot;labor_cost&quot;</span>, &quot;value&quot;: 6.39, &quot;provenance&quot;: <span style={{ color: SHOP }}>&quot;SHOP&quot;</span>, &quot;source&quot;: <span style={{ color: STR }}>&quot;0.082hr × $52/hr…&quot;</span> {"}"}, … ],

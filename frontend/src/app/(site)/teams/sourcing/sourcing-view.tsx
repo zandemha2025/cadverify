@@ -18,10 +18,11 @@
  * fabricated figures as if measured — the outside should-cost $26.92 ±50%, the
  * acquire economics ($7,800 tool → $6.45/unit), and the competing labor rate
  * ($14/hr against the real $52/hr Midwest loaded rate). Only the real fixture
- * may be shown as engine output ($14.14, crossover 1,962, $52/hr). So every
- * invented figure here wears an [illustrative] / ILLUSTRATIVE DATA tag, and the
- * catalog-triage board carries a scenario marker. $14.14, the
- * crossover 1,962, and $52/hr stay untagged as the only real engine output.
+ * may be shown as engine output ($12.81 owned-machine marginal, crossover
+ * 1,960, $52/hr). So every invented figure here wears an [illustrative] /
+ * ILLUSTRATIVE DATA tag, and the catalog-triage board carries a scenario
+ * marker. $12.81, the crossover 1,960, and $52/hr stay untagged as the only
+ * real engine output.
  */
 
 import * as React from "react";
@@ -160,10 +161,10 @@ export function SourcingView() {
               posture.
             </p>
             <p className="st-mono" style={monoLine}>
-              in-house — M2 Pro marginal $14.14 · outside — banded should-cost $26.92 ±50%{" "}
+              in-house — M2 Pro marginal $12.81 · outside — banded should-cost $26.92 ±50%{" "}
               <IllustrativeTag />
               <br />
-              acquire — IM $7,800 tool → $6.45/unit past 1,962 <IllustrativeTag />{" "}
+              acquire — IM $7,800 tool → $6.45/unit past 1,960 <IllustrativeTag />{" "}
               <span style={{ color: "var(--st-conditional)" }}>· if redesigned</span>
             </p>
           </div>

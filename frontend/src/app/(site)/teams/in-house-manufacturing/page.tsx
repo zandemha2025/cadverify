@@ -31,8 +31,9 @@ import { IllustrativeTag, ScenarioChip } from "@/components/site/evidence";
  *    DECISION WORKSPACE" and For Sourcing's portfolio board) so illustrative
  *    batch figures are not presented as measured customer output.
  * Everything else is the real fixture (object.stl · Ø21.16 × 21.43 ·
- * $30/$95 rates · $14.14 · 0.068 hr · lead 5.6–10.4 d) or the honesty
- * principle itself (withheld ≠ zero; hatched → solid on measured jobs).
+ * $30/$95 rates · routed bulk_solid → mjf · $12.81 owned-machine marginal ·
+ * 0.068 hr · lead 5.6–10.4 d) or the honesty principle itself
+ * (withheld ≠ zero; hatched → solid on measured jobs).
  */
 
 export const metadata: Metadata = {
@@ -169,7 +170,7 @@ export default function InHouseManufacturingPage() {
               OBJECT.STL · DROPPED AT 09:41
             </p>
             <p style={{ margin: "8px 0 0", color: "rgba(245,245,247,0.65)" }}>
-              measured Ø21.16 × 21.43 · watertight ✓ · routed rotational → cnc_turning · 412 ms
+              measured Ø21.16 × 21.43 · watertight ✓ · routed bulk_solid → mjf · 412 ms
             </p>
           </div>
         </Act>
@@ -198,7 +199,7 @@ export default function InHouseManufacturingPage() {
           <p style={BODY}>
             Not &ldquo;makeable&rdquo; &mdash;{" "}
             <em style={EM}>
-              &ldquo;yes, on your M2 Pro, in PP, 0.068 machine-hours and 4.2 grams per part, $14.14
+              &ldquo;yes, on your M2 Pro, in PP, 0.068 machine-hours and 4.2 grams per part, $12.81
               marginal at your rates.&rdquo;
             </em>{" "}
             And when the answer is no, it says why: exceeds every envelope you own, or the declared
@@ -207,7 +208,7 @@ export default function InHouseManufacturingPage() {
           </p>
           <div style={CARD}>
             <p style={{ margin: 0, color: "var(--st-pass)" }}>
-              ✓ MAKEABLE IN-HOUSE — M2 Pro · $14.14/unit marginal · lead 5.6–10.4 days
+              ✓ MAKEABLE IN-HOUSE — M2 Pro · $12.81/unit marginal · lead 5.6–10.4 days
             </p>
             <p style={{ margin: "6px 0 0", color: "var(--st-ink-45)" }}>
               vs last paid price on file: none —{" "}

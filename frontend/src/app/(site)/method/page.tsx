@@ -22,8 +22,8 @@
  *  - $14.14 with drivers 6.39/3.89/3.82/0.04 sum exactly (6.39+3.89+3.82+0.04);
  *  - band $8.49–19.80 · ±40% · assumption-based · n=0 is hatched, never solid,
  *    and no measured accuracy figure is printed;
- *  - shop rates $52/$95/$30, margin 0.30, util 0.80, crossover 1,962, routing
- *    cnc_turning 0.80, DFM 423 faces / 1 sidewall <1.0°, lead 5.6–10.4d all
+ *  - shop rates $52/$95/$30, margin 0.30, util 0.80, crossover 1,960, routing
+ *    bulk_solid → mjf 0.40, DFM 423 faces / 1 sidewall <1.0°, lead 5.6–10.4d all
  *    match the canonical fixture. No fabricated figure wears a filled ● chip.
  */
 
@@ -310,7 +310,7 @@ function Stages() {
         <div className="st-card" style={{ marginTop: 22, overflow: "hidden" }}>
           <div style={{ padding: "20px 22px", borderBottom: "1px solid var(--st-line-soft)" }}>
             <p className="st-mono" style={{ margin: 0, fontSize: 10.5, letterSpacing: "0.16em", color: "var(--st-ink-40)" }}>
-              GEOMETRIC ROUTING · CONFIDENCE 0.80 · ARCHETYPE ROTATIONAL
+              GEOMETRIC ROUTING · CONFIDENCE 0.40 · ARCHETYPE BULK_SOLID
             </p>
             <p style={{ margin: "10px 0 0", fontSize: 21, fontWeight: 400 }}>→ MJF</p>
             <p
@@ -324,9 +324,10 @@ function Stages() {
                 paddingLeft: 14,
               }}
             >
-              &ldquo;Polymer part with undercut faces that block machining as drawn: at qty 10, MJF prints it
+              &ldquo;General solid (48% of bbox filled) with no dominant sheet/rotational/prismatic
+              signature&rdquo; — its undercut faces block machining as drawn, so at qty 10, MJF prints it
               tooling-free. Injection molding is cheaper per unit but needs a draft fix and only pays its tool back
-              past ~1,962 units.&rdquo;
+              past ~1,960 units.
             </p>
           </div>
           <div className="st-mono" style={{ padding: "16px 22px", display: "flex", flexDirection: "column", gap: 8, fontSize: 12 }}>
@@ -482,7 +483,7 @@ function Stages() {
               <p className="st-mono" style={{ margin: 0, fontSize: 10.5, letterSpacing: "0.14em", color: "var(--st-ink-40)" }}>
                 CROSSOVER
               </p>
-              <p style={{ margin: "5px 0 0", fontSize: 19, fontWeight: 300 }}>MJF wins ≤ 1,962 units</p>
+              <p style={{ margin: "5px 0 0", fontSize: 19, fontWeight: 300 }}>MJF wins ≤ 1,960 units</p>
               <p style={{ margin: "4px 0 0", fontSize: 12.5, fontWeight: 300, color: "var(--st-conditional)" }}>
                 injection molding above — if redesigned, never a current quote
               </p>

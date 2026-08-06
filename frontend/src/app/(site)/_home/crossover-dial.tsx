@@ -9,7 +9,7 @@
  *
  * HONESTY: the two curves are FITTED from the engine's real costed quantities,
  * anchored to the fixture — the MJF curve passes through $14.14 at qty 10 and
- * crosses the injection-molding alternative at the real crossover of 1,962. It
+ * crosses the injection-molding alternative at the real crossover of 1,960. It
  * is labeled "fitted … schematic between computed points" on the card, so the
  * dial never claims a continuous engine curve. The injection branch is always
  * qualified "if redesigned," never quoted as a current price.
@@ -19,7 +19,7 @@ import * as React from "react";
 import Link from "next/link";
 import { PILOT_HREF } from "@/components/site";
 
-const CROSSOVER = 1962;
+const CROSSOVER = 1960;
 
 /** unit = fixedAmort/qty + variablePerUnit (the engine's fitted form). */
 const dialUnitAt = (f: number, v: number, q: number): number => f / q + v;
@@ -178,7 +178,7 @@ export function CrossoverDial({
               }}
             >
               <span>1</span>
-              <span>crossover &asymp; 1,962</span>
+              <span>crossover &asymp; 1,960</span>
               <span>10,000</span>
             </div>
           </div>

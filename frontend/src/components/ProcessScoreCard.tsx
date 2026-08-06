@@ -50,7 +50,7 @@ export default function ProcessScoreCard({
           {material && <p>Material: {material}</p>}
           {machine && <p>Machine: {machine}</p>}
           {costFactor !== null && (
-            <p className="num">Est. cost factor: ${costFactor.toFixed(2)}</p>
+            <p className="num">Est. cost factor: &times;{costFactor.toFixed(2)}</p>
           )}
           {issueCount > 0 && (
             <p>

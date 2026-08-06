@@ -10,9 +10,9 @@
  * during the Friday-RFQ act). Copy is verbatim from the canonical design.
  *
  * Honesty: every figure shown is the real fixture — Midwest rates $52/$95/$30 ·
- * margin 0.30 (● SHOP, bound from the accounting export) · $14.14 marginal ·
- * lead 5.6–10.4d [queue model] · DFM 423 faces (59.6%) undercut · cnc_turning
- * issues 0.9 (the canonical 0.8–0.9 DFM band). No fabricated engine numbers, so
+ * margin 0.30 (● SHOP, bound from the accounting export) · $12.81 owned-machine
+ * marginal · lead 5.6–10.4d [queue model] · DFM 423 faces (59.6%) undercut ·
+ * mjf issues 0.9 (the canonical 0.8–0.9 DFM band). No fabricated engine numbers, so
  * no [illustrative] tags are needed; the loop-closing act describes a measured
  * residual as a FUTURE state you earn on your own delivered jobs, never a
  * measured accuracy claimed now.
@@ -168,7 +168,7 @@ export default function ShopOwnersClient() {
               two hours, done before you lock up.
             </p>
             <p className="st-mono" style={{ margin: "20px 0 0", fontSize: 12, lineHeight: 1.9, color: "rgba(245,245,247,0.45)" }}>
-              verdict: fits ST-20 &amp; M2 Pro ✓ · $14.14 marginal at your rates
+              verdict: fits ST-20 &amp; M2 Pro ✓ · $12.81 marginal at your rates
               <br />
               your margin, your call · lead 5.6–10.4 days{" "}
               <span style={{ color: "rgba(245,245,247,0.35)" }}>[queue model]</span>
@@ -188,12 +188,12 @@ export default function ShopOwnersClient() {
             <p style={{ margin: "20px 0 0", fontSize: 16.5, lineHeight: 1.6, fontWeight: 300, color: "rgba(245,245,247,0.6)" }}>
               The DFM matrix runs against the processes on your floor. A part that&rsquo;s 60% undercut
               for your 3-axis cells isn&rsquo;t a job — it&rsquo;s a re-fixturing money pit. Skip it, or
-              quote the mill-turn cell it really needs.
+              quote the M2 Pro it really needs.
             </p>
             <p className="st-mono" style={{ margin: "20px 0 0", fontSize: 12, lineHeight: 1.9, color: "rgba(245,245,247,0.45)" }}>
               cnc_3axis <span style={{ color: "var(--st-fail)" }}>fail</span> — 423 faces (59.6%) undercut
               <br />
-              cnc_turning <span style={{ color: "var(--st-pass)" }}>issues 0.9</span> — quote from the mill-turn cell
+              mjf <span style={{ color: "var(--st-pass)" }}>issues 0.9</span> — quote from the M2 Pro
             </p>
           </div>
         </div>

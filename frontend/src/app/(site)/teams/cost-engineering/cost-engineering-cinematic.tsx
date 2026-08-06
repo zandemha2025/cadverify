@@ -21,13 +21,12 @@
  * HONESTY (this page is the last line — see DESIGN-DECISIONS.md):
  *  - Only the real fixture is engine output: $14.14 · drivers 6.39/3.89/3.82/0.04
  *    (Σ reconciles) · band ±40% n=0 · SHOP rate $30/hr · util 0.80.
- *  - The design's Act-2 machine_cost derivation printed
- *    "0.0682 hr × $30/hr ÷ 0.8 × 1.15 overhead [15.2hr ÷ 223 parts] = $3.82",
- *    which actually computes to $2.94 (math that does not sum) and leans on
- *    non-fixture specifics (a 1.15 overhead, a 15.2 hr build, 223 parts). It is
- *    replaced here with a derivation grounded ONLY in fixture inputs — the SHOP
- *    rate $30/hr and util 0.80 — where the per-unit machine time back-solves to
- *    the real $3.82 (0.1019 hr × $30/hr ÷ 0.80 = $3.82). Nothing invented.
+ *  - Act 2 quotes the engine's REAL machine_cost source string VERBATIM
+ *    (cycle 0.0682 hr · "0.0682 hr × $30/hr ÷ 0.8 utilization × region-labor
+ *    ×1 × 1.15 overhead [build-job 380mm ÷ 25mm/hr = 15.2hr full build ÷ 223
+ *    parts/build]"), which computes to $2.94 pre-margin; the displayed $3.82
+ *    line item is that × the bound 0.30 margin (2.94 × 1.30 = 3.82). No
+ *    back-solved hours, no fabricated arithmetic.
  *  - The "$7,800 acquisition consideration" is not in the fixture, so it wears an
  *    <IllustrativeTag/> (the marginal-vs-acquire distinction itself is kept —
  *    it is the thesis).
@@ -224,7 +223,7 @@ export default function CostEngineeringCinematic() {
               analogous part.
             </p>
             <p className="st-mono" style={{ margin: "20px 0 0", fontSize: 12, lineHeight: 1.8, color: "var(--st-ink-40)" }}>
-              verdict: makeable in-house — M2 Pro (MJF) · $14.14/unit marginal ±40% · Σ ✓ · 412 ms
+              verdict: makeable in-house — M2 Pro (MJF) · $14.14/unit should-cost ±40% · Σ ✓ · 412 ms
             </p>
           </div>
         </div>
@@ -274,7 +273,9 @@ export default function CostEngineeringCinematic() {
                 </span>
               </div>
               <p className="st-mono" style={{ margin: 0, fontSize: 11, lineHeight: 1.7, color: "var(--st-ink-35)" }}>
-                &ldquo;0.1019 machine-hr/unit × $30/hr SHOP ÷ 0.80 utilization = $3.82&rdquo;
+                &ldquo;0.0682 hr × $30/hr ÷ 0.8 utilization × region-labor ×1 × 1.15 overhead
+                [build-job 380mm ÷ 25mm/hr = 15.2hr full build ÷ 223 parts/build]&rdquo;
+                {" "}= $2.94 · × 1.30 margin = $3.82
               </p>
               <p className="st-mono" style={{ margin: "4px 0 0", fontSize: 11.5, color: "var(--st-prov-user)" }}>
                 override → re-tags <ProvenanceChip provenance="USER" /> · re-costs · both versions retained

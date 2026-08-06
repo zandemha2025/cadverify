@@ -585,7 +585,7 @@ function StandingCard({
         </div>
         <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink50 }}>
           {standing.bandLabel ?? (standing.validated ? "validated band" : "assumption band — not shop-validated")}
-          {!standing.validated ? " · n=0" : ""}
+          {!standing.validated ? ` · n=${standing.nSamples ?? 0}` : ""}
           {standing.crossoverQty != null ? ` · crossover ${NUM(standing.crossoverQty)}` : ""}
         </p>
       </div>

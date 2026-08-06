@@ -98,6 +98,10 @@ export interface PartStanding {
   validated: boolean;
   /** the honest band label, VERBATIM from the engine's confidence object, or null. */
   bandLabel: string | null;
+  /** confidence.n_samples on the make-now estimate, VERBATIM from the payload —
+   *  null when the record carries no confidence object. NOT derived from
+   *  `validated`: a STAND-IN calibration can be validated=false with n>0. */
+  nSamples: number | null;
   crossoverQty: number | null;
   /** the cost-decision id backing this standing ("open record →"), or null. */
   recordId: string | null;
@@ -145,6 +149,7 @@ export function deriveStanding(
     // Prefer the record's own confidence flag; fall back to the row's.
     validated: conf?.validated ?? row.unit_cost?.validated ?? false,
     bandLabel: conf?.label ?? null,
+    nSamples: conf?.n_samples ?? null,
     crossoverQty: detail?.crossover_qty ?? null,
     recordId: row.cost_decision?.id ?? null,
     updatedAt: row.updated_at,

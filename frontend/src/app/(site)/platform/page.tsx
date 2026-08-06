@@ -31,7 +31,7 @@ import {
  *    ILLUSTRATIVE DATA — they were unlabeled invented figures in the design.
  *  - The moats sample numbers stay covered by the design's shared "sample figures
  *    illustrative" caption; the portfolio board already wears ILLUSTRATIVE DATA.
- * Only the real fixture ($14.14 · band ±40% n=0 · crossover 1,962 · 1 sidewall
+ * Only the real fixture ($14.14 · band ±40% n=0 · crossover 1,960 · 1 sidewall
  * <1.0°) is presented as computed engine output.
  */
 
@@ -309,7 +309,7 @@ export default function PlatformPage() {
                 color: "var(--st-ink-40)",
               }}
             >
-              {"±60% · assumption-based · n=0 · crossover 1,962 units"}
+              {"±60% · assumption-based · n=0 · crossover 1,960 units"}
             </p>
           </Panel>
         </Panel>
@@ -327,7 +327,7 @@ export default function PlatformPage() {
             </DisplayHeading>
             <p style={cardBodySm}>
               {
-                "Every part lives on a lit 3D stage — X-ray into the driver stack, highlight the exact faces a DFM blocker points at, section it. Every list in the product carries real rendered thumbnails, because a cost without its geometry is just a rumor."
+                "Every part lives on a lit 3D stage — X-ray into the driver stack, highlight the exact faces a DFM blocker points at, section it. Every list in the product carries the record's measured identity — and where production doesn't serve the mesh, the preview is withheld rather than invented, because a fabricated shape is worse than none."
               }
             </p>
             {/* geometry is the ONE measured tier — filled ● MEASURED is honest here */}

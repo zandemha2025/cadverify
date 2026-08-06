@@ -17,8 +17,8 @@
  *
  * HONESTY (this page is the last line):
  *  - Only the real fixture is presented as engine output: $14.14 · drivers
- *    6.39/3.89/3.82/0.04 · band $8.49–19.80 ±40% n=0 · crossover 1,962 ·
- *    routing cnc_turning 0.80 · DFM 1 sidewall <1.0° · Midwest rates
+ *    6.39/3.89/3.82/0.04 · band $8.49–19.80 ±40% n=0 · crossover 1,960 ·
+ *    routing bulk_solid → mjf 0.40 · DFM 1 sidewall <1.0° · Midwest rates
  *    $52/$30 · util 0.80.
  *  - The copilot ($8.01) is a modeled what-if; the design dressed it in
  *    a filled ● "ENGINE OUTPUT — COMPUTED" chip. That is a filled provenance
@@ -241,10 +241,10 @@ export default function HomePage() {
               and chooses the machine.
             </h2>
             <p style={actBody}>
-              Axisymmetric. &Oslash;21 mm. Undercut. Before a single dollar is computed, the engine routes the part the way a manufacturing engineer would — and says its reasoning out loud.
+              A general solid — 48% of its box filled, no dominant sheet, rotational or prismatic signature. Before a single dollar is computed, the engine routes the part the way a manufacturing engineer would — and says its reasoning out loud.
             </p>
             <p className="st-mono" style={{ margin: "22px 0 0", fontSize: 12.5, lineHeight: 1.7, color: "var(--st-ink-40)" }}>
-              rotational &rarr; mjf · confidence 0.80
+              bulk_solid &rarr; mjf · confidence 0.40
               <br />
               envelope — fits 6 of 6 machines you&rsquo;d declare · size is not the constraint
             </p>
@@ -315,7 +315,7 @@ export default function HomePage() {
               $8.49 ······ ±40%, assumption-based, not yet validated ······ $19.80
             </p>
             <p style={{ margin: "30px auto 0", maxWidth: 520, fontSize: 16, lineHeight: 1.6, fontWeight: 300, color: "var(--st-ink-55)" }}>
-              And the decision behind it: make by MJF below 1,962 units.
+              And the decision behind it: make by MJF below 1,960 units.
               <br />
               Tool up beyond — stated honestly as &ldquo;if redesigned.&rdquo;
             </p>
@@ -406,7 +406,7 @@ export default function HomePage() {
                   </span>
                 </div>
                 <p className="st-mono" style={{ margin: "10px 0 0", fontSize: 11, color: "var(--st-ink-40)" }}>
-                  ±60% · assumption-based · n=0 · crossover 1,962 units
+                  ±60% · assumption-based · n=0 · crossover 1,960 units
                 </p>
               </div>
             </div>

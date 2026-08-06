@@ -14,7 +14,7 @@
  *
  * Copy is VERBATIM from the audited canonical design. Every figure was checked
  * against the sanctioned fixture list (DESIGN-DECISIONS.md): $14.14 (qty-10 MJF)
- * and the 1,962-unit crossover are the real fixture; the 0.4° draft is the
+ * and the 1,960-unit crossover are the real fixture; the 0.4° draft is the
  * measured value behind the sanctioned "1 sidewall <1.0°"; the qty-5,000 IM
  * $8.01 always carries its conditional qualifier ("requires ≥1.0° draft" /
  * "[illustrative rev]"); the 120 °C world is a declared-input materials gate.
@@ -183,7 +183,7 @@ export default function DesignEngineeringPage() {
             <p style={ACT_BODY}>
               At qty 10, MJF wins and the draft doesn&rsquo;t matter. At 5,000, molding wins by half —{" "}
               <em style={{ fontStyle: "normal", color: "var(--st-conditional)" }}>if</em> the part is redesigned to
-              eject. The crossover at 1,962 units decides whether this week&rsquo;s task is &ldquo;ship it&rdquo; or
+              eject. The crossover at 1,960 units decides whether this week&rsquo;s task is &ldquo;ship it&rdquo; or
               &ldquo;add the draft.&rdquo;
             </p>
             <p className="st-mono" style={{ ...MONO, color: "var(--st-ink-45)" }}>

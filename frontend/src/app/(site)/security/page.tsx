@@ -23,9 +23,9 @@ import styles from "./security.module.css";
  * shared when it's real" (NO pen-test badge), the report available under NDA the
  * day it lands. The zero-egress / geometry-never-leaves claims are real
  * (verified in the backend's local path). The one quoted source string
- * (`0.082 hr × $52/hr × region-labor ×1 [shop: Midwest Precision CNC]`) is the
- * real fixture's labor_cost driver source — the same string carried by the
- * product prototype and the Method page — not an invented figure.
+ * (`finish 0.08hr/part + bulk 0.5hr/build ÷ 223 = 0.082hr × $52/hr ×
+ * region-labor ×1`) is the real fixture's labor_cost driver source, VERBATIM
+ * as the engine emits it — not an invented or spliced figure.
  */
 
 export const metadata: Metadata = {
@@ -238,7 +238,7 @@ export default function SecurityPage() {
             className="st-mono"
             style={{ margin: "14px 0 0", fontSize: 11.5, color: "var(--st-ink-45)" }}
           >
-            &ldquo;0.082 hr × $52/hr × region-labor ×1 [shop: Midwest Precision CNC]&rdquo;
+            &ldquo;finish 0.08hr/part + bulk 0.5hr/build ÷ 223 = 0.082hr × $52/hr × region-labor ×1&rdquo;
             — a real source string, attached to a real driver
           </p>
         </Posture>
