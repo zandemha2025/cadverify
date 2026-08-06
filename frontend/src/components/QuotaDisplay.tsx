@@ -39,13 +39,15 @@ export default function QuotaDisplay({ rateLimits }: Props) {
   }
 
   const used = rateLimits.limit - rateLimits.remaining;
+  // X-RateLimit-Reset is an absolute epoch timestamp (seconds), not a duration.
+  const resetInSec = rateLimits.reset - Math.floor(Date.now() / 1000);
 
   return (
     <div className="space-y-3">
       <QuotaBar used={used} total={rateLimits.limit} label="Rate limit usage" />
-      {rateLimits.reset > 0 && (
+      {resetInSec > 0 && (
         <p className="text-xs text-muted-foreground">
-          Resets in {Math.ceil(rateLimits.reset / 60)} min
+          Resets in {Math.ceil(resetInSec / 60)} min
         </p>
       )}
     </div>
