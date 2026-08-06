@@ -83,6 +83,14 @@ def check_overhangs(
         return []  # self-supporting process
     threshold = 90.0 + max_angle_deg
     oh_mask = ctx.angles_from_up_deg > threshold
+    # Faces resting ON the build plate need no supports: exclude near-flat
+    # downward faces whose centroid sits at the part's z-minimum (scale-aware
+    # tolerance so micro and macro parts both behave).
+    if len(ctx.centroids):
+        z = ctx.centroids[:, 2]
+        z_tol = max(0.1, ctx.bbox_diag * 1e-3)
+        on_plate = (z <= float(z.min()) + z_tol) & (ctx.angles_from_up_deg >= 175.0)
+        oh_mask = oh_mask & ~on_plate
     oh_faces = np.where(oh_mask)[0]
     if len(oh_faces) == 0:
         return []
@@ -490,7 +498,9 @@ def check_fillet_requirements(
 ) -> list[Issue]:
     if len(ctx.dihedral_angles_rad) == 0:
         return []
-    sharp = ctx.dihedral_angles_rad < np.radians(120)
+    # An "internal corner" is a CONCAVE sharp edge — convex edges (a box's
+    # outer corners) and coplanar seams need no fillet for material flow.
+    sharp = (ctx.dihedral_angles_rad < np.radians(120)) & ctx.concave_mask
     count = int(np.sum(sharp))
     if count < 5:
         return []

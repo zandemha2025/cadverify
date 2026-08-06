@@ -1,7 +1,16 @@
-"""Manufacturing DFM thresholds — single source of truth.
+"""Manufacturing DFM threshold reference tables.
 
-All process analyzers import from here. Changing a threshold requires
-touching only this file.
+HONESTY NOTE (2026-08-06 correctness audit): this module is NOT the single
+source of truth for the live per-process analyzers. The registry analyzers
+under ``processes/additive|formative|subtractive`` carry their own
+individually *cited* thresholds inline (e.g. SLA runs 0.4 mm recommended
+wall / 19° support angle per Formlabs guidance, while the table below lists
+the 0.3 mm minimum / 30°). Consumers of THIS module today: the legacy
+``additive_analyzer`` and ``STANDARD_GAUGES`` (via processes/checks.py).
+Treat these tables as reference documentation; when a value here disagrees
+with a cited inline threshold, the inline citation wins in live analysis.
+Consolidating the two remains an open refactor — do not "fix" it by editing
+either side without re-validating analyzer outputs.
 """
 from __future__ import annotations
 

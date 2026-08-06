@@ -111,6 +111,14 @@ def detect_cylinders(
         if residual > max_axis_residual:
             continue
 
+        # Planar-patch rejection: a FLAT face also has residual ~0 (any
+        # in-plane axis is orthogonal to its one normal direction), which
+        # would mint phantom max-confidence cylinders out of every flat side
+        # of a box. Real cylinder-wall normals sweep an arc — they need TWO
+        # meaningful singular directions; a plane has only one.
+        if sv[0] <= 0 or (sv[1] / sv[0]) < 0.1:
+            continue
+
         mean = comp_centroids.mean(axis=0)
         if not np.isfinite(mean).all():
             continue
@@ -159,6 +167,11 @@ def detect_cylinders(
         )
         dot = float(np.mean(np.sum(comp_normals * radial_unit, axis=1)))
         if not np.isfinite(dot):
+            continue
+        # A real cylinder wall's normals align strongly with the radial
+        # direction (|dot| near 1). Near-zero alignment means this surface is
+        # not a wall around the axis — skip rather than guess boss-vs-hole.
+        if abs(dot) < 0.3:
             continue
         kind = FeatureKind.CYLINDER_HOLE if dot < 0 else FeatureKind.CYLINDER_BOSS
 

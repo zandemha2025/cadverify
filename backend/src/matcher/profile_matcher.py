@@ -159,7 +159,14 @@ def rank_processes(
     can be made in) => unfiltered geometry ranking, byte-identical to before —
     the honest behaviour when material is not declared.
     """
-    scores = sorted(analysis.process_scores, key=lambda s: s.score, reverse=True)
+    # Tie-break equal scores by verdict: a clean "pass" must outrank an
+    # equally-scored "issues"/"fail" process — otherwise an affinity-boosted
+    # process with open issues can surface as "best" over a clean sibling.
+    verdict_order = {"pass": 0, "issues": 1, "fail": 2}
+    scores = sorted(
+        analysis.process_scores,
+        key=lambda s: (-s.score, verdict_order.get(s.verdict, 3)),
+    )
     if not material_class:
         return scores
     compatible = processes_for_material_class(material_class)
