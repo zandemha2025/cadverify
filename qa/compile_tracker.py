@@ -148,6 +148,45 @@ def write_xlsx(rows) -> None:
         summary.cell(row=r, column=2, value=areas[k]).font = Font(name=ARIAL, size=10)
     summary.column_dimensions["A"].width = 24
 
+    # Audits sheet: one row per correctness/fidelity check from
+    # qa/results/audit-*.json ({check, status, detail}).
+    audit_files = sorted((QA / "results").glob("audit-*.json"))
+    if audit_files:
+        aud = wb.create_sheet("Audits")
+        aud.sheet_view.showGridLines = False
+        for c, h in enumerate(["audit", "check", "status", "detail"], 1):
+            cell = aud.cell(row=1, column=c, value=h)
+            cell.font = Font(name=ARIAL, size=10, bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="1F5FA8")
+            cell.border = border
+        r = 2
+        for path in audit_files:
+            try:
+                checks = json.loads(path.read_text())
+            except Exception:
+                continue
+            for chk in checks:
+                vals = [path.stem.replace("audit-", ""), chk.get("check", ""),
+                        chk.get("status", ""), chk.get("detail", "")]
+                for c, v in enumerate(vals, 1):
+                    cell = aud.cell(row=r, column=c, value=v)
+                    cell.font = Font(name=ARIAL, size=9, color=INK)
+                    cell.border = border
+                    cell.alignment = Alignment(vertical="top", wrap_text=(c == 4))
+                st = chk.get("status", "")
+                scell = aud.cell(row=r, column=3)
+                if st == "PASS":
+                    scell.font = Font(name=ARIAL, size=9, bold=True, color="1E7F4F")
+                    scell.fill = PatternFill("solid", fgColor="E4F2EA")
+                elif st == "FAIL":
+                    scell.font = Font(name=ARIAL, size=9, bold=True, color="B3442E")
+                    scell.fill = PatternFill("solid", fgColor="F8E8E3")
+                r += 1
+        for col, w in zip("ABCD", (14, 40, 8, 100)):
+            aud.column_dimensions[col].width = w
+        aud.freeze_panes = "A2"
+        aud.auto_filter.ref = f"A1:D{r - 1}"
+
     wb.save(XLSX_PATH)
     print(f"wrote {XLSX_PATH}")
 

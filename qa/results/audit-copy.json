@@ -1,0 +1,127 @@
+[
+  {
+    "check": "HOME/METHOD-FIXTURE-14.14 — '$14.14 per unit · MJF (PP) · quantity 10 · captured cost-truth-engine output · object.stl · Midwest Precision shop calibration'",
+    "status": "PASS",
+    "detail": "Reproduced live: POST /api/v1/validate/cost with object.stl (gmsh sample, the canonical part), qty=10, shop=midwest-precision-cnc returns mjf/PP (Polypropylene) unit_cost_usd=14.14 and decision.make_now_process=mjf. The headline number is a real, reproducible engine output, not a mockup."
+  },
+  {
+    "check": "DRIVERS-SUM — drivers 6.39 / 3.89 / 3.82 / 0.04 shown on home, /method, /developers reconcile to $14.14 ('Σ line items = unit cost', 'no naked totals')",
+    "status": "PASS",
+    "detail": "Engine line_items: labor 6.3935, amortized_fixed 3.887, machine 3.8213, material 0.0417 — sum 14.1435 -> 14.14; displayed 2-dp values also sum to 14.14. Re-verified on a second (owned-machine) run: 12.806 -> displayed 12.81. Reconciliation claim holds."
+  },
+  {
+    "check": "BAND-LABEL — '$8.49 … ±40%, assumption-based, not yet validated … $19.80 · n=0' presented as the fixture's confidence band",
+    "status": "PASS",
+    "detail": "Engine confidence for the mjf@10 estimate: low_usd 8.49, high_usd 19.8, validated false, n_samples 0, label exactly 'assumption-based, not yet validated', method 'assumption-band'. Copy matches the payload verbatim. All 8 estimates in the run start unvalidated, matching 'Every estimate starts unvalidated — and labeled so'."
+  },
+  {
+    "check": "CROSSOVER-1962 — 'make by MJF below 1,962 units' (home), 'MJF wins ≤ 1,962 units' (/method), 'crossover 1,962 units' (platform, sourcing, design-engineering), dial code comment 'the real crossover of 1,962'",
+    "status": "FAIL",
+    "detail": "Live engine returns decision.crossover_qty = 1960.0 for the canonical fixture (verified twice, qty=10 and qty=10,5000; decision note: 'mjf stays cheapest up to ~1960 units'). Every site page prints 1,962 — several without any approximation marker — while claiming these are captured engine output. Small (0.1%) but the pages assert exact engine capture; the number does not trace to the current engine."
+  },
+  {
+    "check": "ROUTING-CLAIMS — home 'rotational → mjf · confidence 0.80'; /method 'GEOMETRIC ROUTING · CONFIDENCE 0.80 · ARCHETYPE ROTATIONAL' + quoted reasoning; /developers JSON 'recommended_process: cnc_turning, confidence: 0.8'; in-house 'routed rotational → cnc_turning'; shop-owners 'cnc_turning issues 0.9'",
+    "status": "FAIL",
+    "detail": "Live engine routing for object.stl: archetype 'bulk_solid', recommended_process 'mjf', confidence 0.4, drivers.rotational=false, reasoning 'General solid (48% of bbox filled…) with no dominant sheet/rotational/prismatic signature'. No cnc_turning estimate is produced even when explicitly requested (processes=cnc_turning), and /validate process_scores contain no cnc_turning. The pages present archetype ROTATIONAL, confidence 0.80, a cnc_turning route, and a quoted routing rationale ('Axisymmetric…') as captured engine output for this part; none of it matches the running engine, and the pages also contradict each other (mjf vs cnc_turning). The 'Axisymmetric' hero framing likewise contradicts rotational=false."
+  },
+  {
+    "check": "METHOD-FIXTURE-PANELS — measured-facts chips (volume/bbox/wall/watertight) and '19 RATES BOUND · Midwest Precision CNC · 2026-Q2 accounting export'",
+    "status": "PASS",
+    "detail": "Engine geometry: volume_cm3 4.63, bbox_mm [21.2, 21.4, 21.5], watertight true; routing.drivers.nominal_wall_mm 6.17. All four 'measured' chips match the live payload. HUD figures Ø21.16/21.43 match precise bbox (21.16, 21.43). [Also: the calibration panel —] backend/data/shop_profiles/midwest-precision-cnc.json contains exactly 19 bound values (labor_rate 52, margin 0.3, overhead 0.15, utilization 0.8, 7 machine rates incl. CNC_3AXIS 95 and MJF 30, 5 material prices, 3 region multipliers) and source string 'Shop accounting export 2026-Q2 (loaded rates + negotiated resin lots)'. Every displayed rate and the count are real."
+  },
+  {
+    "check": "METHOD-DFM-AND-LEAD — 'cnc_3axis — 423 faces (59.6%) undercut fail', 'injection_molding — 1 sidewall < 1.0° draft fail', 'mjf · sla · cnc_5axis issues 0.8–0.9', 'lead 5.6–10.4 days'",
+    "status": "PASS",
+    "detail": "Engine blockers verbatim: '423 faces (59.6%) are undercuts for cnc_3axis.' (fail, score 0.0); '1 sidewall faces (0.2% of sidewall area) below 1.0° draft for injection_molding.' (fail); mjf 0.9 / sla 0.9 / cnc_5axis 0.8 all 'issues'; lead_time low 5.6 / high 10.4 days. All quoted DFM figures trace to real payload values. (IM also carries a second blocker, min wall 0.07mm — omitted on the page but omission, not fabrication.)"
+  },
+  {
+    "check": "HOME-INTERACTIVE-PANELS — copilot '$8.01 [illustrative]' card and the 'fitted from the engine's costed quantities' crossover dial",
+    "status": "PASS",
+    "detail": "Marked with an explicit [illustrative] tag and scenario chip per the honesty rules (the design's filled 'ENGINE OUTPUT' chip was removed). In fact $8.01 and ±60% match a real engine run (injection_molding@5000 unit_cost 8.01, band ±60%), so the label is conservative rather than misleading. The product's ask feature (lib/verify/ask.ts) is a deterministic grammar that only selects engine values and refuses everything else — 'cannot hallucinate a number' holds (there is no generative model in the loop at all). [Also: the live crossover dial —] Honestly labeled as fitted/schematic, not a continuous engine curve. IM parameters are the engine's exact fixed_cost_usd 7800 / variable 6.45; the MJF curve passes through the real $14.14 at qty 10; the >crossover branch is qualified 'if redesigned, never a current quote', matching decision.tooling_dfm_ready=false. (Its 'crossover ≈ 1,962' marker inherits the 1,962-vs-1960 discrepancy flagged separately, though it at least carries '≈'.)"
+  },
+  {
+    "check": "SECURITY-EGRESS — 'geometry never leaves your environment', 'CAD parsed in-process and discarded', 'zero network egress for the geometry', 'never persisted, never trained on'",
+    "status": "PASS",
+    "detail": "No outbound HTTP in the parse/analysis/costing path (httpx/requests only in auth, webhooks, reconstruction — health reports reconstruction backend 'none', egress false). STEP/IGES parsing writes a 0600 tempfile and unlinks it in a finally block; STL is parsed in memory. Persistence (cost_decision_service) stores mesh_hash + derived result JSON only — exactly the 'derived record' the page discloses as stored. No training pipeline on geometry exists in the repo."
+  },
+  {
+    "check": "SECURITY-SOURCE-STRING — '\"0.082 hr × $52/hr × region-labor ×1 [shop: Midwest Precision CNC]\" — a real source string, attached to a real driver'",
+    "status": "FAIL",
+    "detail": "Minor but literal: the engine never emits that exact string. The real labor_cost source is 'finish 0.08hr/part + bulk 0.5hr/build ÷ 223 = 0.082hr × $52/hr × region-labor ×1' (no shop bracket), and the '[shop: Midwest Precision CNC]' suffix appears only on assumption entries (labor_rate/margin/overhead/utilization). The quoted line is a truncation of one real string spliced with the suffix of another, presented in quotation marks as 'a real source string' on the page whose claim is 'verbatim source strings'. Substance is accurate (all fragments are genuinely emitted; the rate and shop are real), but the quote is not verbatim."
+  },
+  {
+    "check": "SECURITY-COMPLIANCE — no compliance badges; 'SOC 2 Type II — in progress', 'Pen test — scheduled pre-GA · shared when it's real', 'DPA — available'",
+    "status": "PASS",
+    "detail": "The compliance section is plain text chips stating in-progress/scheduled states — no SOC2/ISO/pen-test badge imagery anywhere on the site (grep for 'SOC' outside /security: none). A /dpa page exists. The claims are honest by construction (they promise nothing measurable yet) and consistent with the repo (no audit reports present)."
+  },
+  {
+    "check": "SECURITY-IDENTITY-KEYS — 'SAML SSO / Google / magic-link; sessions server-verified; keys shown once, per-key rate-limit headers, revoke instantly'",
+    "status": "PASS",
+    "detail": "All verified: SAML (src/auth/saml.py + org_saml_service + /saml dir), OIDC Google (oidc.py), magic link (magic_link.py); dashboard sessions HMAC-signed and version-checked server-side on every request; key mint returns the cv_live_ secret exactly once (list endpoint returns prefix only — verified live); live /validate/cost response carries x-ratelimit-limit/remaining/reset headers (observed 60/59). [Also: instant revoke —] Tested live: minted key -> 200 on /api/v1/materials; DELETE /keys/{id} -> 204; same key immediately 401. Revocation is instant as claimed."
+  },
+  {
+    "check": "DEV-API-SHAPE — /developers response record fields + rate-limit header example vs the real API",
+    "status": "PASS",
+    "detail": "Every advertised field exists with the advertised semantics in the live payload, including confidence.label 'assumption-based, not yet validated' verbatim, drivers with provenance+source strings, and line_items {labor, amortized_fixed, machine, material}. Caveats: the page flattens the real nesting (values live under estimates[] per process/qty, not top-level) and shows '…4 more' drivers where the engine returns 5 more (6 total); the routing VALUES shown are wrong (covered by ROUTING-CLAIMS). The product does render from the same API via the dashboard proxy. [Also: the X-RateLimit example block —] Header names are the real contract (live responses carry x-ratelimit-limit/remaining/reset plus retry-after). The example VALUES (100/97) are conventional HTTP chrome and do not match the actual 60/hour validate limit — tolerable as an unlabeled example since it claims header mechanics, not a documented quota; the docs/TESTING state the real limits."
+  },
+  {
+    "check": "PLATFORM-THUMBNAILS — 'Every list in the product carries real rendered thumbnails, because a cost without its geometry is just a rumor'",
+    "status": "FAIL",
+    "detail": "The product deliberately does the opposite in its main lists: catalog-screen.tsx renders a neutral GeometryGlyph labeled 'PREVIEW WITHHELD' because 'production does not serve the mesh to the product … no shape is invented' (its own comment). Records/catalog rows carry no rendered part thumbnails. The product's honest-withholding behavior is good — but it makes this marketing mechanics claim false. (Face-highlight and 3D-stage claims on the same panel ARE real: inspection-bind.ts binds affected_faces_sample to the uploaded mesh, stage-canvas renders it.)"
+  },
+  {
+    "check": "PLATFORM-ILLUSTRATIVE-LABELS — portfolio savings board, batch counts, scenario panels wear 'ILLUSTRATIVE DATA' / [illustrative] / 'sample figures illustrative' markers",
+    "status": "PASS",
+    "detail": "The platform page's invented figures (Bearing flange $41.80/$1.27M board, batch counts, $8.01 scenario) all carry explicit ILLUSTRATIVE DATA headers or [illustrative] tags; the 'withheld' row honestly shows '— none on file'. Only real fixture values ($14.14, ±40% n=0, 1 sidewall draft) go untagged. Same pattern holds on /teams/sourcing ($26.92 ±50% and the acquire line both tagged)."
+  },
+  {
+    "check": "TEAMS-MARGINAL-14.14 — shop-owners '$14.14 marginal at your rates', in-house '✓ MAKEABLE IN-HOUSE — M2 Pro · $14.14/unit marginal', sourcing 'in-house — M2 Pro marginal $14.14'",
+    "status": "FAIL",
+    "detail": "The engine has a real owned-equipment marginal mode (estimate.py 'owned-equipment / in-house marginal costing'), and running the fixture with owned_processes=mjf yields $12.81/unit — not $14.14. $14.14 is the NON-owned should-cost including 0.30 margin and 1.15 overhead. Calling $14.14 'marginal' contradicts the engine's own semantics and its actual owned-machine output (which also moves the crossover to ~2945, not 1,962, further breaking the paired claims on those pages)."
+  },
+  {
+    "check": "TEAMS-COSTENG-BACKSOLVE — cost-engineering page quotes '\"0.1019 machine-hr/unit × $30/hr SHOP ÷ 0.80 utilization = $3.82\"' as the machine_cost receipt",
+    "status": "FAIL",
+    "detail": "Fabricated arithmetic presented in quotation marks as an engine receipt: the engine's cycle_time is 0.0682 hr/part and its real machine_cost source is '0.0682 hr × $30/hr ÷ 0.8 utilization × region-labor ×1 × 1.15 overhead [build-job 380mm ÷ 25mm/hr = 15.2hr full build ÷ 223 parts/build]'. The 0.1019 hr figure is back-solved to make the sum work while omitting overhead/margin, is never emitted by the engine, and contradicts the '0.068 machine-hours' printed on the in-house and teams pages for the same part. The page's own header comment admits the back-solve while claiming 'Nothing invented'."
+  },
+  {
+    "check": "PRODUCT-PROVENANCE-CHIPS — MEASURED/USER/SHOP/DEFAULT chips must match payload provenance; overrides re-tag USER",
+    "status": "PASS",
+    "detail": "derive.ts maps driver.provenance verbatim (normProv) with one conservative refinement only — an already-DEFAULT time-denominated driver displays as MODEL; grounded values are never downgraded and hollow values never upgraded to filled. Verified live that overrides={\"labor_rate\":60} re-tags the assumption USER and propagates into the labor driver source ('0.082hr × $60/hr'); SHOP tags appear only when a shop is actually bound; geometry facts marked ● MEASURED are read from the payload's measured geometry block."
+  },
+  {
+    "check": "PRODUCT-N0-HARDCODE — part-screen prints '· n=0' for every non-validated band",
+    "status": "FAIL",
+    "detail": "part-screen.tsx:588 renders `{!standing.validated ? \" · n=0\" : \"\"}` — n=0 is hardcoded off the validated flag instead of read from confidence.n_samples. The engine has a reachable third state (confidence.py _empirical_interval): STAND-IN/synthetic-record calibrations return validated=false with n_samples>0 (label 'STAND-IN-derived spread — NOT a validated accuracy claim'), in which case the UI would print 'n=0' contradicting the payload's n_samples. Truthful in the common assumption-band case (n_samples genuinely 0, verified live), false by construction in the stand-in state."
+  },
+  {
+    "check": "PRODUCT-ERROR-MESSAGES — rejection copy must describe what actually happened (fake STL, non-watertight mesh)",
+    "status": "PASS",
+    "detail": "qa-fake.stl (42 bytes of PDF-magic) -> 400 'File is too small to be a valid STL (minimum 84 bytes for header + triangle count)' — factually accurate for this file. qa-broken.stl -> 400 GEOMETRY_INVALID 'Geometry is not a measurable solid (volume ≤ 0 or non-watertight)… Repair required', with the actual measured geometry attached (watertight:false, volume 0.0) proving the message against its own evidence. Both messages describe the real failure."
+  },
+  {
+    "check": "STATUS-PAGE — 'Public incident feed is not live yet… ProofShape does not show synthetic uptime'",
+    "status": "PASS",
+    "detail": "The /status page is static, renders 'No public metric feed yet' for all three rows, and shows no fabricated uptime numbers or green dots. The claim of not having a feed is true, and the honest-empty framing matches the actual absence of monitoring wiring."
+  },
+  {
+    "check": "SESSIONS-REVOKED-PROMISE — settings/security success copy 'Password configured. Older dashboard sessions were revoked.'",
+    "status": "PASS",
+    "detail": "Backend /password/initialize performs a compare-and-set that bumps users.session_version in the same transaction as the credential write and returns a fresh session at the new version; dashboard_session verification rejects any cookie whose session_version differs (dashboard_session.py:214). Older sessions are genuinely invalidated when the success message shows."
+  },
+  {
+    "check": "SHARE-REVOKE-PROMISE — records screen toast 'share link revoked — the public link 404s immediately'",
+    "status": "PASS",
+    "detail": "Tested live: POST …/share created /s/cost/ZjB65I9CFrop (public 200); DELETE …/share -> 'Share revoked'; the backing data endpoint /api/v1/shared/cost/{id} 404s immediately and the public page instantly flips to an honest 'no longer available… may have been revoked by its owner' state. Caveat: the human-facing /s/cost/ page itself returns HTTP 200 with that message (only the data API literally 404s), but the promise's substance — immediate loss of access — holds."
+  },
+  {
+    "check": "FLYWHEEL-VALIDATION — 'feed invoices back… band flips hatched→solid and states its measured residual on your held-out parts; synthetic never counts'",
+    "status": "PASS",
+    "detail": "Fully implemented, not vapor: groundtruth_service keeps per-process residuals with a by-part held-out split, requires MIN_REAL_RECORDS/MIN_RESIDUALS floors, explicitly excludes synthetic records from validated accuracy, and confidence.py only sets validated=true 'when every residual behind it came from REAL' ground truth; a stand-in interval can never flip validated. The marketing description matches the code's actual honesty gates."
+  },
+  {
+    "check": "HONEST-EMPTY-STATES — 'withheld, not invented' / identity fallback / paid-price 'none on file'",
+    "status": "PASS",
+    "detail": "Observed live in the payload: identity: {grounded:false, matches:[], reason:'no org corpus yet — falls back to standard-catalog + file metadata (never a fabricated identity)'}. Product code returns null (rendered as withheld) rather than fabricating when the engine did not carry a value (derive.ts contract), and the platform page's own example row shows '— none on file / withheld'. Empty states tell the truth."
+  }
+]

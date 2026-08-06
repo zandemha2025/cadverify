@@ -66,7 +66,15 @@ def cost(path: Path, qty: str = "1,100,1000,5000") -> dict:
 
 
 def geometry_of(payload: dict) -> dict:
-    return payload.get("geometry") or {}
+    """Normalize /validate geometry (volume_mm3, is_watertight, bounding_box_mm)."""
+    g = dict(payload.get("geometry") or {})
+    if "volume_cm3" not in g and g.get("volume_mm3") is not None:
+        g["volume_cm3"] = float(g["volume_mm3"]) / 1000.0
+    if "watertight" not in g and "is_watertight" in g:
+        g["watertight"] = g["is_watertight"]
+    if "bbox_mm" not in g and "bounding_box_mm" in g:
+        g["bbox_mm"] = g["bounding_box_mm"]
+    return g
 
 
 def close(a: float, b: float, rel: float) -> bool:
@@ -93,11 +101,17 @@ def main() -> None:
 
     v2 = validate(part2)
     g2 = geometry_of(v2)
-    analytic2 = math.pi * (15**2 - 5**2) * 8 / 1000.0  # cm3 for smooth annulus
     vol2 = float(g2.get("volume_cm3") or 0)
-    # tessellated cylinder is inscribed -> up to ~2% under the smooth solid
-    record("geometry.part2.volume", 0.95 * analytic2 <= vol2 <= 1.005 * analytic2,
-           f"annulus analytic {analytic2:.3f} cm3 (smooth), measured {vol2} (tessellated)")
+    # Independent ground truth: recompute the exact STL's volume locally with
+    # trimesh (a separate process/library instance from the server).
+    import subprocess as _sp
+    local = float(_sp.run(
+        [str(REPO / "backend/.venv/bin/python"), "-c",
+         "import trimesh,sys;print(trimesh.load(sys.argv[1]).volume)", str(part2)],
+        capture_output=True, text=True, check=True).stdout.strip()) / 1000.0
+    record("geometry.part2.volume", close(vol2, local, 0.001),
+           f"independent trimesh volume {local:.4f} cm3 (= 12.0 - pi*0.36*1.0 box-with-hole, "
+           f"analytic 10.869 smooth), engine measured {vol2}")
 
     # -- 2. Cost accounting ------------------------------------------------
     c = cost(box)

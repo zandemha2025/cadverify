@@ -1,0 +1,102 @@
+[
+  {
+    "check": "box-geometry-exact",
+    "status": "PASS",
+    "detail": "qa-box.stl: reported volume 12000.0 mm3 (= 12 cm3 exactly), 12 faces, 8 vertices, surface 3800 mm2 (= 2*(1200+400+300)), bbox 40x30x10, watertight+manifold true. All match analytic ground truth."
+  },
+  {
+    "check": "box-no-thin-wall-flag",
+    "status": "PASS",
+    "detail": "No THIN_WALL / THIN_WALL_MOLDING issue on any of the 22 process scores for the 40x30x10 solid box (min through-thickness 10mm is above every process minimum). No phantom thin-wall."
+  },
+  {
+    "check": "box-no-universal-issues",
+    "status": "PASS",
+    "detail": "universal_issues is empty for the benign box (no NON_WATERTIGHT / NOT_SOLID_VOLUME / degenerate-geometry findings). Correct."
+  },
+  {
+    "check": "box-missing-fillets-phantom",
+    "status": "FAIL",
+    "detail": "Die/investment/sand casting and forging report MISSING_FILLETS: '18 sharp internal corners' on a fully CONVEX box that has zero internal (concave) corners. Root cause: check_fillet_requirements (backend/src/analysis/processes/checks.py:493) counts every face-adjacency edge with normal divergence < 120 deg and never consults ctx.concave_mask, so it counts the box's 6 coplanar face diagonals (0 deg) plus its 12 convex outer edges = 18 'internal corners'. Contrast check_internal_radii (line 439) which correctly ANDs with concave_mask. Phantom warning on benign geometry; it also feeds priority_fixes."
+  },
+  {
+    "check": "box-overhang-on-buildplate-face",
+    "status": "FAIL",
+    "detail": "FDM/SLA/DLP/DMLS/SLM/EBM/DED/WAAM all warn OVERHANG 'Supports required' for the box's 2 bottom triangles (z-min face resting on the build plate). check_overhangs (checks.py:84) flags every face with angle-from-up > 90+threshold with no exclusion for plate-contact faces, so a flat-bottomed brick in its natural orientation is told it needs supports - false in practice (first layer sits on the plate). Warning-level and a common conservative heuristic, but it is what drags the perfect box's overall_verdict to 'issues' and puts an untrue fix in priority_fixes."
+  },
+  {
+    "check": "box-formative-findings-true",
+    "status": "PASS",
+    "detail": "Remaining box findings verified geometrically true: INSUFFICIENT_DRAFT (all 8 sidewall faces genuinely have 0 deg draft, thresholds 1.0/0.5/3.0/5.0 deg match MIN_DRAFT_ANGLE in constants.py), THICK_WALL 39.995mm max section (true for a solid block vs 6/12mm molding limits), NON_UNIFORM_WALLS 4.0:1 (true 10-40mm section variation), NOT_ROTATIONALLY_SYMMETRIC (true), TOO_THICK_SHEET 10mm > 6mm gauge (true), CONDUCTIVITY_REQUIRED / SINTERING_SHRINKAGE (material-agnostic info, honest)."
+  },
+  {
+    "check": "thinwall-measured-value-accuracy",
+    "status": "PASS",
+    "detail": "qa-thinwall.stl (true thickness 0.600mm, independently confirmed in trimesh: extents 60x40x0.6, vol 1440 mm3): THIN_WALL issues report measured_value 0.593mm / 'Thinnest: 0.59mm' - a real ray-cast measurement 1.2% below truth, well within the 20% tolerance. Reported volume 1440.0 mm3 and bbox 60x40x0.6 exact. Not an invented number."
+  },
+  {
+    "check": "thinwall-flag-coverage-matches-thresholds",
+    "status": "PASS",
+    "detail": "0.6mm wall flagged THIN_WALL exactly where the per-process minimum exceeds it: FDM 0.8, SLS 0.7, EBM 0.7, binder_jetting 1.0, DED 1.5, WAAM 2.0, CNC 3ax/5ax 0.8, turning 1.0, forging 3.0, and THIN_WALL_MOLDING for die 0.8 / investment 1.0 / sand 3.0 casting - all matching MIN_WALL_THICKNESS / WALL_THICKNESS_RANGE in backend/src/analysis/constants.py. Correctly NOT flagged for SLA (0.4), DLP (0.3), MJF (0.5), DMLS/SLM (0.4), wire EDM, or sheet metal (0.6mm is a workable gauge; NON_STANDARD_GAUGE info notes nearest standard 0.5mm). Required_value in each issue equals the analyzer's threshold."
+  },
+  {
+    "check": "thinwall-severity-and-scores",
+    "status": "PASS",
+    "detail": "THIN_WALL emitted as ERROR (33.3% of faces affected > 10% escalation rule in checks.py:53), which per profile_matcher.score_process drives verdict 'fail' and score 0.0 for every affected process; processes without errors score 1.0 - (0.1 x warnings). Observed scores (fdm 0.0, sls 0.0, cnc_3axis 0.05, dlp 1.0, wire_edm 1.0, sheet_metal 1.0) follow the documented model, and the plate correctly ranks resin/EDM/sheet processes above powder/CNC/casting."
+  },
+  {
+    "check": "threshold-table-single-source-drift",
+    "status": "FAIL",
+    "detail": "constants.py declares itself 'single source of truth - all process analyzers import from here', but NO analyzer imports MIN_WALL_THICKNESS or SUPPORT_ANGLE_THRESHOLD; each hardcodes values. SLA drifts from the table: analyzer uses 0.4mm min wall and 19 deg overhang (sla.py:27-29) vs constants' 0.3mm and 30 deg; DLP build volume in the check is 218x123x250 (Saturn 4 Ultra) vs constants' 192x120x200. Emitted flags match each analyzer's own hardcoded threshold (messages are internally consistent), but they do not match the documented threshold table."
+  },
+  {
+    "check": "best-process-selection-consistency",
+    "status": "FAIL",
+    "detail": "For both qa-box and qa-thinwall, best_process = dlp with verdict 'issues': the geometry-affinity boost (+0.1 for small parts, profile_matcher.py:79) cancels the -0.1 overhang-warning deduction, yielding score 1.00 labeled 'issues', and the stable sort then ranks dlp above equally-scored processes with clean 'pass' verdicts (sls/mjf/cnc_3axis for the box; wire_edm/sheet_metal for the 0.6mm plate - where dlp would need supports and sheet metal is the obvious route). Score ordering is otherwise monotone and sensible; the tie-break ignoring verdict and the 1.0-score-with-issues label are the flaws."
+  },
+  {
+    "check": "broken-nonwatertight-flagged",
+    "status": "PASS",
+    "detail": "qa-broken.stl: universal NON_WATERTIGHT error ('4 boundary edges' - correct: 2 removed triangles on adjacent sides leave a 4-edge boundary loop), NOT_SOLID_VOLUME warning, is_watertight=false, is_manifold=false, volume 0.0, overall_verdict 'fail'. All geometrically true (trimesh independently confirms non-watertight, 10 faces)."
+  },
+  {
+    "check": "broken-cost-refuses-geometry-invalid",
+    "status": "PASS",
+    "detail": "POST /api/v1/validate/cost on qa-broken.stl -> HTTP 400 {code: GEOMETRY_INVALID, message: 'Geometry is not a measurable solid... Repair required'}, with honest geometry echo (volume_cm3 0.0, watertight false, face_count 10) and NO estimates/decision emitted. No confident cost on invalid geometry."
+  },
+  {
+    "check": "box-cost-confident-path-sane",
+    "status": "PASS",
+    "detail": "POST /validate/cost on qa-box.stl -> 200, status OK, geometry echo exact (12.0 cm3, watertight, 12 faces). 16 process/material estimates; each carries an explicit +/-40% assumption band with basis text ('no ground truth yet', validated:false) - uncertainty honestly labeled rather than fake precision. Decision (make-now MJF, tooling crossover ~2815 units toward injection molding, tooling_dfm_ready:false due to no draft) is internally consistent with the DFM results."
+  },
+  {
+    "check": "repair-after-actually-watertight",
+    "status": "PASS",
+    "detail": "POST /validate/repair on qa-broken.stl: repair_applied true, tier 'trimesh', faces 10->12. Decoded repaired_file_b64 and re-verified independently in trimesh: is_watertight True, volume 10000 mm3 (positive), 12 faces. repaired_analysis matches that mesh exactly (watertight true, vol 10000, manifold true) - a genuine watertightness improvement, not a claimed one."
+  },
+  {
+    "check": "repair-comparison-honesty",
+    "status": "FAIL",
+    "detail": "The before/after analyses are honest (before: non-watertight/vol 0; after: watertight/vol 10000 - the fill triangulates the 4-edge corner hole with a diagonal patch, cutting a 2000 mm3 wedge off the original 12000 mm3 box, which the after-numbers truthfully reflect). But repair_details reports holes_filled: 0 despite a hole having been filled - hardcoded 0 on the tier-1 success path (repair_service.py:106, only the pymeshfix path computes a count). Factual misreport in the repair summary; also nothing in the response warns that the repaired solid's volume differs 17% from the pre-damage part."
+  },
+  {
+    "check": "step-parse-volume-exact",
+    "status": "PASS",
+    "detail": "qa-cube.step parsed: volume 2717.3 mm3, bbox 20x15x10, watertight tessellation (185308 faces). Read the STEP entities directly: the solid is actually a 20x15x10 block with one R3.0 through-hole (CYLINDRICAL_SURFACE radius 3, axis at (10,7.5)) - analytic volume 3000 - pi*9*10 = 2717.26 mm3; parser matches to 0.002%. NOTE: the audit brief's ground truth ('10mm cube, ~1 cm3') does not describe this fixture's real content - the parse itself is exact for what the file contains, so the parser is vindicated and the fixture description is what is wrong."
+  },
+  {
+    "check": "step-dfm-and-hole-detection",
+    "status": "PASS",
+    "detail": "DFM ran fully on the tessellated STEP result: 22 process scores, empty universal issues (correct - solid is valid), verdicts consistent with the STL fixtures (draft/fillet/turning failures for formative, cnc_3axis/5axis clean pass). Feature detection found the real through-hole: cylinder_hole radius 2.999mm vs true 3.0mm (0.03% error), confidence 0.994."
+  },
+  {
+    "check": "step-phantom-boss-features",
+    "status": "FAIL",
+    "detail": "qa-cube.step feature list also reports 6 'cylinder_boss' features at confidence 1.0 (radii 2.493-2.499 and 4.013, 19k-35k faces each) on a part that contains zero bosses - only flat faces and one hole. These are false detections presented with maximum confidence and overlapping face sets; they would mislead any downstream consumer of the feature list (issues themselves are unaffected)."
+  },
+  {
+    "check": "citations-reference-real-standards",
+    "status": "PASS",
+    "detail": "Spot-checked 5 citations from the emitted issues against the analyzer/rule-pack sources: ISO/ASTM 52910:2018 s5.3 (FDM overhang; real AM design-guidelines standard, relevant), SAE AMS 7003 (DMLS/SLM residual stress / LPBF process spec; real, relevant - though 'HIP mandatory for Ti' is a paraphrase), ASTM F3187 s7 (DED machining allowance; real Standard Guide for DED of Metals, relevant), NADCA s3 (die-casting 1 deg draft / 1mm fillets; real body, canonical guidance), AMS 2175 (aerospace rule pack casting quality; real casting classification/inspection spec). citations.py deliberately refuses to fabricate a 'standard' field from prose (vendor guidance like 'Carbon M2: 0.3mm min' stays as text). No invented standards found."
+  }
+]

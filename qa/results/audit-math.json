@@ -1,0 +1,67 @@
+[
+ {
+  "check": "geometry.box.volume",
+  "status": "PASS",
+  "detail": "box 40x30x10mm analytic 12.000 cm3, measured 12.0"
+ },
+ {
+  "check": "geometry.box.bbox",
+  "status": "PASS",
+  "detail": "analytic [10,30,40] sorted, measured [10.0, 30.0, 40.0]"
+ },
+ {
+  "check": "geometry.box.watertight",
+  "status": "PASS",
+  "detail": "watertight=True"
+ },
+ {
+  "check": "geometry.part2.volume",
+  "status": "PASS",
+  "detail": "independent trimesh volume 10.8763 cm3 (= 12.0 - pi*0.36*1.0 box-with-hole, analytic 10.869 smooth), engine measured 10.876299999999999"
+ },
+ {
+  "check": "cost.estimates.present",
+  "status": "PASS",
+  "detail": "32 estimates"
+ },
+ {
+  "check": "cost.unit_eq_sum_line_items",
+  "status": "PASS",
+  "detail": "every estimate: unit_cost == sum(line_items)"
+ },
+ {
+  "check": "cost.quantities.echo",
+  "status": "PASS",
+  "detail": "requested [1, 100, 1000, 5000], echoed [1, 100, 1000, 5000]"
+ },
+ {
+  "check": "cost.unit_cost.monotonic_amortization",
+  "status": "PASS",
+  "detail": "unit cost non-increasing with qty per process"
+ },
+ {
+  "check": "cost.crossover.coherent",
+  "status": "PASS",
+  "detail": "crossover=529.0; below: fdm=14.18 vs injection_molding=62.83; above: injection_molding=8.83 vs fdm=14.18"
+ },
+ {
+  "check": "honesty.assumptions.provenance",
+  "status": "PASS",
+  "detail": "14 assumptions all provenance-tagged"
+ },
+ {
+  "check": "honesty.validated_false_without_groundtruth",
+  "status": "PASS",
+  "detail": "no band claims validated=true without real ground truth"
+ },
+ {
+  "check": "determinism.same_input_same_decision",
+  "status": "PASS",
+  "detail": "two identical /validate/cost runs byte-identical (ids/save pointers excluded)"
+ },
+ {
+  "check": "units.inch_scaling",
+  "status": "PASS",
+  "detail": "inch-declared box analytic 196644.8 cm3, measured 196644.768"
+ }
+]

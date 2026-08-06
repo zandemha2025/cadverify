@@ -2351,7 +2351,15 @@ def _to_response(
                 "standards": _analyzer_standards(ps.process),
                 "issues": [_issue_to_dict(i) for i in ps.issues],
             }
-            for ps in sorted(result.process_scores, key=lambda s: s.score, reverse=True)
+            # Same verdict-aware ordering as rank_processes: at equal score a
+            # clean "pass" ranks above "issues"/"fail" in the serialized list.
+            for ps in sorted(
+                result.process_scores,
+                key=lambda s: (
+                    -s.score,
+                    {"pass": 0, "issues": 1, "fail": 2}.get(s.verdict, 3),
+                ),
+            )
         ],
         "priority_fixes": get_priority_fixes(result),
     }
