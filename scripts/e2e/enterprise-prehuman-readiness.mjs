@@ -34,7 +34,7 @@ const reports = {
 
 const files = {
   workflow: path.join(repoRoot, ".github/workflows/ci.yml"),
-  saasPromotion: path.join(repoRoot, ".github/workflows/saas-promote.yml"),
+  saasPromotion: path.join(repoRoot, ".github/workflows/aws-commercial-promote.yml"),
   regulatedDeploy: path.join(repoRoot, ".github/workflows/regulated-deploy.yml"),
   flyPromotionScript: path.join(repoRoot, "scripts/ops/promote-fly-release.sh"),
   frontendPackage: path.join(repoRoot, "frontend/package.json"),
@@ -233,21 +233,21 @@ async function main() {
     await check("DEPLOY-PIPELINE-001", "Production deploy and release gates", async () => {
       contains(
         workflow,
-        "Build frontend production image and push on main",
-        "Build backend production image and push on main",
-        "Write immutable commercial release manifest",
+        "Build frontend production image",
+        "Build backend production image",
+        "Write source-bound container build manifest",
         "Lint and render Helm chart",
         "Postgres restore drill",
         "Run human and enterprise browser journeys"
       );
       contains(
         saasPromotion,
-        "Require a successful CI release for this exact SHA",
-        "Download CI-owned immutable release manifest",
-        "Deploy and verify staging",
-        "Deploy and verify production",
-        "environment: saas-staging",
-        "environment: saas-production"
+        "Validate protected release source and exact protected-main CI",
+        "Download exact scanned release image artifacts",
+        "Publish and release AWS commercial staging",
+        "Publish staged artifacts and release AWS commercial production",
+        "environment: aws-commercial-staging",
+        "environment: aws-commercial-production"
       );
       contains(
         flyPromotionScript,
@@ -303,7 +303,7 @@ async function main() {
       contains(
         enterpriseOpsTest,
         "test_admin_queue_health_surface_is_real_and_pii_safe",
-        "test_fly_configs_describe_deploy_surface_without_external_proof_claims"
+        "test_aws_commercial_release_surface_and_fly_are_separated"
       );
       assert(p7.evidence?.lowRoleAdminUsers?.status === 403, "viewer admin denial did not pass");
       return {
