@@ -458,7 +458,7 @@ async function main() {
       screenshots.push(
         await inspectScreenshot(
           enterprise,
-          "Verify UI shows declared machines and governed truth honestly",
+          "Verify UI shows declared machines and effective rate truth honestly",
           "machine and calibration result"
         )
       );

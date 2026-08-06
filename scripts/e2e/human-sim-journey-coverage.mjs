@@ -100,7 +100,7 @@ const enterpriseSteps = [
   "org admin publishes a governed rate card",
   "CAD organization declares owned machines with rates and envelopes",
   "historical actuals ingest but recalibration refuses below floor",
-  "Verify UI shows declared machines and governed truth honestly",
+  "Verify UI shows declared machines and effective rate truth honestly",
   "Developer settings creates, rotates, and revokes an API key exactly once",
   "CAD engineer verifies a real STEP file in a declared service world",
   "portfolio withholds exposure until declared volume is re-verified at its exact quantity",
