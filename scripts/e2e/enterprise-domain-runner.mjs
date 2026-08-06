@@ -797,7 +797,7 @@ class EnterpriseDomainQA {
     await this.step("CAD engineer verifies a real STEP file in a declared service world", async () => {
       await this.goto("/verify", "cad-verify", 1000);
       await this.clickRail("Verify");
-      await this.page.getByRole("button", { name: /^Polymer$/i }).click();
+      await this.page.getByRole("radio", { name: /^Polymer$/i }).click();
       await this.page.getByRole("button", { name: /120.*service/i }).click();
       await this.page.getByRole("button", { name: /sour service/i }).click();
       await this.page.getByRole("button", { name: /35 MPa pressure/i }).click();
@@ -856,7 +856,7 @@ class EnterpriseDomainQA {
         response.request().method() === "POST" &&
         new URL(response.url()).pathname === "/api/proxy/validate"
       , { timeout: cadUploadTimeoutMs });
-      await this.page.getByRole("button", { name: /^Stainless$/i }).click();
+      await this.page.getByRole("radio", { name: /^Stainless$/i }).click();
       const [costResponse, validationResponse] = await Promise.all([costPromise, validationPromise]);
       const [cost, validation] = await Promise.all([
         costResponse.json(),
@@ -935,7 +935,7 @@ class EnterpriseDomainQA {
 
       await this.goto("/verify", "interrupted-verification", 500);
       await this.clickRail("Verify");
-      await this.page.getByRole("button", { name: /^Stainless$/i }).click();
+      await this.page.getByRole("radio", { name: /^Stainless$/i }).click();
       await this.page.getByRole("button", { name: /120.*service/i }).click();
       await this.page.getByRole("button", { name: /sour service/i }).click();
       await this.page.getByRole("button", { name: /35 MPa pressure/i }).click();
@@ -1394,7 +1394,7 @@ class EnterpriseDomainQA {
     await this.step("Verify stage renders declared parent context in product UI", async () => {
       await this.goto("/verify", "verify-stage-context", 1000);
       await this.clickRail("Verify");
-      await this.page.getByRole("button", { name: /^Stainless$/i }).click();
+      await this.page.getByRole("radio", { name: /^Stainless$/i }).click();
       await this.page.getByRole("button", { name: /120.*service/i }).click();
       await this.page.getByRole("button", { name: /sour service/i }).click();
       await this.page.getByRole("button", { name: /35 MPa pressure/i }).click();
