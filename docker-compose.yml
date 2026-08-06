@@ -1,10 +1,23 @@
 services:
+  # One-shot: brings the database schema to the current revision, then exits.
+  # backend/worker wait for it so a first-ever `docker compose up` works with
+  # no manual migration step.
+  migrate:
+    build: ./backend
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   backend:
     build: ./backend
     ports:
       - "8000:8000"
     env_file: .env
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -28,6 +41,8 @@ services:
     command: ["arq", "src.jobs.worker.WorkerSettings"]
     env_file: .env
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -62,9 +77,15 @@ services:
     build: ./frontend
     ports:
       - "3000:3000"
+    # Same .env as the backend so shared auth material (AUTH_PROXY_SECRET) and
+    # feature flags stay in one file; API_BASE is overridden to the in-network
+    # service name.
+    env_file: .env
     environment:
       - API_BASE=http://backend:8000
-      - AUTH_PROXY_SECRET=${AUTH_PROXY_SECRET:-}
+    depends_on:
+      backend:
+        condition: service_healthy
     healthcheck:
       test:
         - CMD-SHELL
