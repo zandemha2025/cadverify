@@ -134,6 +134,10 @@ function isIgnorableRequestFailure(url, method, failure) {
   if (failure !== "net::ERR_ABORTED") return false;
   if (/[?&]_rsc=/.test(url)) return true;
   if (method === "GET" && /\/api\/proxy\/cost-decisions\?limit=8(?:&|$)/.test(url)) return true;
+  // A document navigation cancels an in-flight decision-detail read; the
+  // $-anchored segment matches only /cost-decisions/{id}, never the
+  // export/pdf/share sub-resources.
+  if (method === "GET" && /\/api\/proxy\/cost-decisions\/[^/?#]+$/.test(url)) return true;
   if (
     method === "GET" &&
     /\/api\/proxy\/(?:governance\/change-requests|ground-truth|machine-inventory|rate-library(?:\/effective)?)(?:[/?#]|$)/.test(url)
@@ -1576,8 +1580,19 @@ class EnterpriseDomainQA {
       const rollup = portfolio.summary.programs?.find((item) => item.program === programName);
       assert(row, "program source row disappeared from portfolio");
       assert(row.cost_decision?.id === cubeDecisions[0].id, "Programs source decision did not equal the newest Records decision");
+      // Arm the detail-read wait BEFORE the click so the step cannot end
+      // (and the next step's document navigation cannot abort the fetch)
+      // while GET /cost-decisions/{id} is still in flight — and so the
+      // captured detail text is real decision content, not loading chrome.
+      const detailResponsePromise = this.page.waitForResponse(
+        (res) =>
+          res.request().method() === "GET" &&
+          new URL(res.url()).pathname === `/api/proxy/cost-decisions/${cubeDecisions[0].id}`,
+        { timeout: 20_000 },
+      );
       await this.page.getByText("cube.step", { exact: true }).first().click();
       await this.page.waitForURL(new RegExp(`/cost-decisions/${cubeDecisions[0].id}$`), { timeout: 20_000 });
+      await detailResponsePromise;
       const recordsDetailText = (await this.visibleText()).replace(/\s+/g, " ").trim();
       const recordsDetailShot = await this.shot("ENT-05-program-source-decision-record", true);
       this.evidence.programRollup = {

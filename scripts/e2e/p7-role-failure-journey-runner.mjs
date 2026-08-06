@@ -149,6 +149,10 @@ function isIgnorableRequestFailure(url, method, failure) {
   if (failure !== "net::ERR_ABORTED") return false;
   if (/[?&]_rsc=/.test(url)) return true;
   if (method === "GET" && /\/api\/proxy\/cost-decisions\?limit=8(?:&|$)/.test(url)) return true;
+  // A document navigation cancels an in-flight decision-detail read; the
+  // $-anchored segment matches only /cost-decisions/{id}, never the
+  // export/pdf/share sub-resources.
+  if (method === "GET" && /\/api\/proxy\/cost-decisions\/[^/?#]+$/.test(url)) return true;
   if (
     method === "GET" &&
     /\/api\/proxy\/(?:governance\/change-requests|ground-truth|machine-inventory|rate-library(?:\/effective)?)(?:[/?#]|$)/.test(url)
