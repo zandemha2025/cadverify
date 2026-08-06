@@ -1,0 +1,158 @@
+[
+  {
+    "id": "SITE-001",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Tab title = layout default 'ProofShape \u2014 verification, made of glass'; WebGL canvas renders; nav[aria-label='Story progress'] rail has exactly 6 stops labeled PART...PROOF; clicking the last dot scrolled 0 -> ~5900px to the PROOF act; 'See it on your part' pill -> /company#pilot; 'The full platform ->' -> /platform; 'or read the method first ->' -> /method; zero console errors on full scroll."
+  },
+  {
+    "id": "SITE-002",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "input[type=range][aria-label='Quantity'] default 500 units with 'Make by MJF (PP)'; dragged to 1,959 units (<=1962) -> still MJF make branch; 2,089 units (>1962) -> 'Tool up: injection molding' with 'if redesigned' conditional line; unit-cost readout and highlighted curve updated ($10.43 -> $10.18); underline link below -> /company#pilot. Log-scale slider quantization means the flip lands between achievable values 1,960 and ~1,978, consistent with the <=1962 expectation."
+  },
+  {
+    "id": "SITE-003",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Close-act email input (aria-label 'Work email') has no enclosing form; typed an email and clicked 'Request a pilot' \u2014 plain Link navigation to /company#pilot, zero POST requests fired, input value not carried anywhere."
+  },
+  {
+    "id": "SITE-004",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Wordmark 'ProofShape' -> /; all six nav links + 'Log in' (/login) + 'Request a pilot' (/company#pilot) correct; data-active=true on current section and on /teams for /teams/sourcing subtree; home uses st-nav-cinematic, /method uses st-nav-document; mobile <details> menu mirrors all 8 links, closes on link click and on Escape."
+  },
+  {
+    "id": "SITE-005",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Document-page footer: tagline 'ProofShape \u2014 verification, made of glass', links Home + six nav items + Log in, legal row '\u00a9 2026 ProofShape' with Privacy /privacy, Terms /terms, DPA /dpa, Status /status. Cinematic home has no full footer; closes with inline p.st-footer-tagline containing exactly 4 links (Method/Platform/Security/Developers)."
+  },
+  {
+    "id": "SITE-006",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Title falls back to layout default as documented; full-page scroll reveals the record-assembly drivers reconciling to $14.14; 'Cost a part' -> /signup, 'Explore the platform' -> /platform; no console errors."
+  },
+  {
+    "id": "SITE-007",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Title 'Platform \u2014 ProofShape'; 'Cost a part' -> /signup, 'How the number is built' -> /method; SiteShell nav+footer chrome; no console errors."
+  },
+  {
+    "id": "SITE-008",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Title 'Teams \u2014 ProofShape'; all five persona journey links present (/teams/in-house-manufacturing, /teams/cost-engineering, /teams/sourcing, /teams/design-engineering, /teams/shop-owners); 'Request a pilot' -> /company#pilot, 'Explore the platform' -> /platform."
+  },
+  {
+    "id": "SITE-009",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Title 'For Cost Engineering \u2014 ProofShape'; hero link back to /teams; WebGL canvas renders; full scroll clean (no console errors); closing CTAs -> /company#pilot and /teams."
+  },
+  {
+    "id": "SITE-010",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Client page title falls back to layout default 'ProofShape \u2014 verification, made of glass' as documented; zero form/slider inputs on the page; hero /teams link; closing CTAs -> /company#pilot and /teams; no console errors."
+  },
+  {
+    "id": "SITE-011",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Title 'ProofShape \u2014 For In-house manufacturing & MRO'; /teams link near top; closing CTAs -> /company#pilot and /teams; SiteShell chrome; no console errors."
+  },
+  {
+    "id": "SITE-012",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Title 'For shop owners \u2014 ProofShape'; hero /teams link; closing CTAs -> /company#pilot and /teams; full scroll with no console errors."
+  },
+  {
+    "id": "SITE-013",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Title 'For Sourcing \u2014 ProofShape'; WebGL stage canvas renders; hero /teams link; closing CTAs -> /company#pilot and /teams; no console errors."
+  },
+  {
+    "id": "SITE-014",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Title 'Developers \u2014 ProofShape'; 'Get an API key' -> /signup, 'Full API reference' -> /docs; page renders with no console errors (record reveal is CSS-only, no client JS needed)."
+  },
+  {
+    "id": "SITE-015",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Title 'API Reference - ProofShape'; 'Open API console' -> /scalar (route responds 307 to the console), 'Developer overview' -> /developers; static <pre> lists all four endpoints (POST /api/v1/validate, POST /api/v1/validate/cost, GET /api/v1/cost-decisions, GET /api/v1/catalog) with Bearer auth note."
+  },
+  {
+    "id": "SITE-016",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Title 'Company \u2014 ProofShape'; section#pilot exists with computed scroll-margin-top 84px; navigating /company#pilot lands the section in view below the sticky nav; four 'Week N' pilot columns; contact section points to the form, no mailto:/email published; SiteShell chrome; no console errors."
+  },
+  {
+    "id": "SITE-017",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "On mount form GET /api/pilot/request -> 200 {turnstileSiteKey:null} (dev release, no Turnstile gate) and submit enabled; empty submit blocked by native required validation (no POST fired); deployment select offers exactly [undecided, cloud, vpc, air-gapped]; filled submit POSTed JSON with UUID requestId + website honeypot -> 200 {status:'received', receipt:...}; form replaced by 'Request received' status showing durable receipt CV-80e28993-bcf1-4173-962e-7a5c053aff51; no console errors."
+  },
+  {
+    "id": "SITE-018",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Title 'Security \u2014 ProofShape'; cloud/self-hosted/air-gapped deployment models rendered; no compliance badges (SOC 2 honestly stated as 'in progress', explicitly no badge printed early); 'Talk to us' -> /company#pilot, 'Self-host it today' -> /developers; SiteShell chrome."
+  },
+  {
+    "id": "SITE-019",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Title 'Pilot Report - ProofShape'; numbered cards cover held-out accuracy, floor declaration, decision ledger, next actions; single CTA 'Request a pilot' -> /company#pilot; SiteShell chrome."
+  },
+  {
+    "id": "SITE-020",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Title 'Privacy - ProofShape'; 'What we collect' / usage / 'Retention and deletion' sections present; 'Talk to ProofShape' pill -> /company#pilot."
+  },
+  {
+    "id": "SITE-021",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Title 'Terms - ProofShape'; static article with zero links/CTAs in the body beyond shared nav/footer; reachable from footer legal row (verified in SITE-005)."
+  },
+  {
+    "id": "SITE-022",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Title 'Data Processing Addendum - ProofShape'; static article (0 links, 0 forms in body) stating DPA travels with the pilot, subprocessors, and security-questionnaire process via pilot intake."
+  },
+  {
+    "id": "SITE-023",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Title 'Status - ProofShape'; exactly three rows (Hosted app, API, Workers), each reading 'No public metric feed yet' (3 occurrences); no fake green indicators."
+  },
+  {
+    "id": "SITE-024",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "GET /qa-zfinal-bogus-route -> HTTP 404 with branded page inside SiteShell: heading 'That record is not here.', 'Back to ProofShape' pill href=/; clicked Method in the nav from the 404 page and it navigated correctly; footer present."
+  },
+  {
+    "id": "SITE-025",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Found as RETEST-FAIL in this sweep: 'Try again' button is dead: clicking it throws an unhandled TypeError and never re-renders. Repro: injected a render-time crash on / (patched Number.prototype.toLocaleString to throw) -> root error boundary correctly rendered 'Something went wrong' with the Try again button (no Error ID line, as expected for a digest-less client error). Cleared the fault and clicked 'Try again': pageerror 'TypeError: l is not a function' and the boundary stayed up permanently (>12s). Root cause: frontend/src/app/error.tsx and global-error.tsx destructure and call the prop `unstable_retry`, but the installed Next.js 16.3.0 passes only `{error, retry}` (per node_modules/next/dist/docs/.../error.md version history, `retry` became stable in v16.3.0 replacing v16.2.0's `unstable_retry`; confirmed in dist/client/components/error-boundary.js which passes `retry:` only). So `unstable_retry` is undefined and `unstable_retry()` throws. Expected: retry callback re-renders the page; actual: TypeError, no recovery. Screenshot: qa/results/screenshots/zfinal-site-025-after-retry.png. \u2014 fix(frontend): error boundaries use Next 16.3 'retry' prop (0baedd2); re-verified RETEST-PASS (see retest-zzverify-fixes.json). Fallback UI itself (heading, notified copy, conditional Error ID, product-UI styling) matches the story; only the retry path is broken. This is a post-merge regression vs earlier passes (Next now at 16.3.0)."
+  },
+  {
+    "id": "SITE-026",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "robots.txt allows exactly the 18 public marketing routes and disallows the app/auth routes (/analyze,/batch,/cost,/cost-decisions,/history,/label,/reconstruct,/settings,/verify,/login,/signup,/magic,/orgs), pointing at ${NEXT_PUBLIC_SITE_URL}/sitemap.xml; sitemap.xml lists the same 18 routes with priority 1 for / and 0.7 elsewhere; /opengraph-image serves image/png (53,631 bytes); (site) layout supplies the default title 'ProofShape \u2014 verification, made of glass'."
+  }
+]

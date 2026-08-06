@@ -1,0 +1,14 @@
+[
+  {
+    "id": "SITE-025",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Verified with the sweep agent's repro: injected a render-time fault on / (Number.prototype.toLocaleString patched to throw while a flag is set) -> root error boundary rendered 'Something went wrong' + 'Try again' (no Error ID line, as expected for a digest-less client error). Cleared the fault and clicked 'Try again': zero pageerror/console errors (previously 'TypeError: l is not a function'), boundary dismissed, and the working home page re-rendered. Fix confirmed: error.tsx/global-error.tsx/(app)/error.tsx now destructure `retry`, which Next 16.3.0 passes (per node_modules/next/dist/docs error.md). Screenshot: qa/results/screenshots/zzverify-site-025.png (recovered page after retry). NOTE: the port-3000 process is `next start` serving the pre-fix 12:50 production build (not `next dev`; no hot reload) and still reproduced the old TypeError; killing/restarting it was permission-denied, so verification ran against a fresh `next build` of the working tree served identically via `next start -p 3001`. Port 3000 needs a rebuild+restart to pick up the fix."
+  },
+  {
+    "id": "APP-014",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Fresh account zzverify-fixes@proofshape.local + key (prefix HVmoXhIF); burned one POST /api/v1/validate (200, x-ratelimit-limit=60, remaining=59, x-ratelimit-reset=1786026988 epoch, ~3601s out). /history (page rendering QuotaDisplay) showed 'Rate limit usage 1 / 60 used (2%)' and 'Resets in 61 min' — sane countdown = ceil((reset-now)/60) for the 60-min window, vs the previous ~29,767,091 min (epoch treated as duration). QuotaDisplay.tsx now computes reset - Date.now()/1000. Screenshot: qa/results/screenshots/zzverify-app-014.png. Same caveat as SITE-025: verified on a fresh production build served on port 3001 because port 3000 runs the stale pre-fix build."
+  }
+]

@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/button";
 
 export default function RootError({
   error,
-  unstable_retry,
+  retry,
 }: {
   error: Error & { digest?: string };
-  unstable_retry: () => void;
+  retry: () => void;
 }) {
   useEffect(() => {
     Sentry.captureException(error, {
@@ -30,7 +30,7 @@ export default function RootError({
           Error ID: {error.digest}
         </p>
       )}
-      <Button className="mt-2" onClick={() => unstable_retry()}>
+      <Button className="mt-2" onClick={() => retry()}>
         Try again
       </Button>
     </div>
