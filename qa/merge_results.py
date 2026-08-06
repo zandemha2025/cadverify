@@ -16,8 +16,9 @@ QA = Path(__file__).parent
 RESULTS = QA / "results"
 CSV_PATH = QA / "user-stories.csv"
 VALID = {"TESTED-PASS", "TESTED-FAIL", "BLOCKED", "FIXED", "RETEST-PASS", "RETEST-FAIL", "N/A"}
-RANK = {"TESTED-FAIL": 3, "RETEST-FAIL": 3, "BLOCKED": 2, "FIXED": 1,
-        "TESTED-PASS": 0, "RETEST-PASS": 0, "N/A": 0}
+# RETEST-* statuses always supersede first-pass statuses.
+RANK = {"RETEST-FAIL": 5, "RETEST-PASS": 4, "TESTED-FAIL": 3, "BLOCKED": 2,
+        "FIXED": 1, "TESTED-PASS": 0, "N/A": 0}
 
 
 def main() -> None:

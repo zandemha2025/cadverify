@@ -52,3 +52,14 @@ Rules:
 - BLOCKED when the environment genuinely can't exercise it (say why).
 - Do not fix anything. Do not modify app code. Only write your results file.
 - Your final chat message should be ONLY a count summary (pass/fail/blocked) plus the ids of failures.
+
+## RETEST addendum (pass 2, post-fix)
+The stack was fixed and restarted. Changes since pass 1:
+- gmsh native libs installed: STEP/IGES parsing, /validate/assembly, BOM ingest-assembly, and Design Studio STEP generation now WORK (no more 501s for STEP).
+- Labeling corpus seeded with 2 QA parts (data/corpus/manifest.jsonl) — corpus/label stories are now testable.
+- Fixes applied: non-ZIP batch upload -> 400; malformed reconstruction job id -> 404; machine-import template example row corrected; single `server: ProofShape` header (no uvicorn banner); BAT-031/CAT-009 expected behavior updated in qa/stories/*.json (422 for schema-invalid payloads).
+Retest rules:
+- Re-test EVERY story in your slice against qa/stories/<slice>.json (re-read it — some expected texts changed).
+- Statuses: RETEST-PASS / RETEST-FAIL / BLOCKED (only for genuinely environment-bound stories: S3, reconstruction backend, dev-flag states).
+- Write results to qa/results/retest-<slice>.json. Same JSON format.
+- Create FRESH accounts/keys (pass-1 keys have burned rate-limit budget).
