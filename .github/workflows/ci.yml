@@ -382,7 +382,7 @@ jobs:
           pkill -f "arq src.jobs.worker.WorkerSettings" 2>/dev/null || true
 
   docker-build:
-    name: Container Images & Deployment Contract Proof
+    name: Container Images & Deploy Config Proof
     runs-on: ubuntu-latest
     needs: [backend, frontend]
     permissions:
