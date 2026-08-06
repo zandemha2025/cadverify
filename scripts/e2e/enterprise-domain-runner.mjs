@@ -239,6 +239,12 @@ class EnterpriseDomainQA {
       viewport: { width: 1440, height: 960 },
       reducedMotion: "reduce",
     });
+    await this.context.addInitScript(() => {
+      // Pre-seed the first-run WelcomeGuide seen-flag: these runners create
+      // fresh contexts (empty localStorage) and drive /verify directly; the
+      // guide's full-screen dialog overlay would otherwise intercept clicks.
+      try { window.localStorage.setItem("proofshape_welcome_v2", "1"); } catch {}
+    });
     this.page = await this.context.newPage();
     this.page.on("console", (msg) => {
       if (msg.type() !== "error") return;
@@ -473,6 +479,9 @@ class EnterpriseDomainQA {
       const context = await this.browser.newContext({
         baseURL: baseUrl,
         extraHTTPHeaders: { "x-real-ip": clientIp },
+      });
+      await context.addInitScript(() => {
+        try { window.localStorage.setItem("proofshape_welcome_v2", "1"); } catch {}
       });
       let status = 0;
       try {

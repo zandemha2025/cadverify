@@ -171,6 +171,12 @@ class HumanE2E {
       baseURL: baseUrl,
       reducedMotion: "reduce",
     });
+    await this.context.addInitScript(() => {
+      // Pre-seed the first-run WelcomeGuide seen-flag: these runners create
+      // fresh contexts (empty localStorage) and drive /verify directly; the
+      // guide's full-screen dialog overlay would otherwise intercept clicks.
+      try { window.localStorage.setItem("proofshape_welcome_v2", "1"); } catch {}
+    });
     this.page = await this.context.newPage();
     this.page.on("console", (msg) => {
       if (msg.type() === "error") {
