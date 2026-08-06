@@ -728,6 +728,73 @@ nist_publications:
     materials reference data including cryogenic properties, and the
     manufacturing-systems and model-based-definition research programme.
 
+military_training_manuals:
+  tier: handbook
+  title: "US military trade training manuals"
+  publisher: "US Army / US Navy"
+  designation: "Army TM series; Navy NAVEDTRA rate training manuals"
+  access: free
+  licence: public_domain
+  licence_note: "US Government works (17 USC 105). Freely redistributable, including the cancelled editions."
+  ingestion: full
+  scope: >-
+    The closest free equivalent to the commercial trade handbooks, and written
+    to take a reader from nothing to competent — which is exactly what a
+    curriculum needs. Covers machine tools and machining practice, welding,
+    foundry and patternmaking, sheet-metal layout and forming, and machinery
+    repair, at genuine teaching depth with worked practice rather than summary.
+  caution: >-
+    Written for the equipment and materials of their era, so speeds, feeds and
+    specific alloys are dated. The geometry, the mechanisms and the practice are
+    not — use them for fundamentals and for teaching order, never for current
+    machining data.
+
+pre_1930_handbooks:
+  tier: handbook
+  title: "Pre-1930 engineering handbooks in the public domain"
+  publisher: "various (originally Industrial Press, McGraw-Hill and others)"
+  designation: "early editions of the classic mechanical handbooks"
+  access: free
+  licence: public_domain
+  licence_note: >-
+    US copyright has expired on works published before 1930, so the earliest
+    editions of several still-current handbooks are public domain and available
+    in full from library scanning projects. The CURRENT editions of the same
+    titles remain fully protected — the licence attaches to the edition, never
+    to the title.
+  ingestion: full
+  scope: >-
+    Thread forms and standards, gear geometry, mechanics of materials, fits and
+    limits, and shop mathematics — the parts of the field that were settled a
+    century ago and have not moved since.
+  caution: >-
+    Materials data, allowables, safety practice and anything referencing a
+    standard are obsolete and must not be used. Confirm the specific edition's
+    publication date before relying on its status; a later edition of the same
+    book is not free.
+
+patent_literature:
+  tier: handbook
+  title: "Granted patent specifications"
+  publisher: "USPTO / EPO / WIPO"
+  designation: "published patent specifications"
+  access: free
+  licence: public_domain
+  licence_note: >-
+    Patent specifications are published by governments specifically to teach the
+    invention, and the text is freely usable. The patent grants an exclusive
+    right to PRACTISE the invention — reading and describing it is exactly what
+    publication is for.
+  ingestion: full
+  scope: >-
+    Process detail at a level rarely published elsewhere: tooling arrangements,
+    process parameter windows, failure modes the applicant had to design around,
+    and prior-art discussion that surveys a field. Full text is searchable free.
+  caution: >-
+    A patent describes what its applicant claimed, not established consensus.
+    Treat it as one practitioner's account — useful for mechanism and for
+    process detail, never as a standard.
+
 usace_em:
   tier: handbook
   title: "US Army Corps of Engineers Engineer Manuals"

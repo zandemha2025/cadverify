@@ -177,6 +177,51 @@ For `full` sources it is legitimate to quote. If that is built, two rules hold:
 
 ---
 
+## Getting the knowledge without buying the book
+
+The knowledge in the commercial handbooks is not owned by them. Minimum bend
+radii, the galvanic series and thread geometry are engineering fact, published
+in many places. What the publishers own is their particular expression and
+arrangement. Four legitimate routes to the same knowledge, none of which costs
+anything:
+
+**1. Borrow it.** Lawful acquisition includes borrowing. Machinery's Handbook
+sits in every technical and university library, many public library systems
+lend digital technical collections, and alumni access often survives
+graduation. A person reading a borrowed copy and extracting facts is doing
+exactly what libraries exist for. This is the most overlooked route and the
+best one.
+
+**2. Military trade training manuals.** These are the massive textbooks people
+are usually reaching for, and they are public domain. The Army TM series and
+the Navy NAVEDTRA rate training manuals cover machining, welding, foundry and
+patternmaking, and sheet-metal layout at genuine teaching depth — written to
+take a reader from nothing to competent, which makes them unusually good source
+material for a curriculum. Dated on speeds, feeds and specific alloys; not
+dated on geometry, mechanism or practice.
+
+**3. Pre-1930 editions.** US copyright has expired on works published before
+1930, so the earliest editions of several still-current handbooks are public
+domain and available in full from library scanning projects. Thread forms, gear
+geometry, mechanics and fits were settled a century ago and have not moved.
+**The licence attaches to the edition, never to the title** — a current edition
+of the same book is fully protected.
+
+**4. Patents.** Published by governments specifically to teach the invention,
+free in full text, and containing process detail rarely published elsewhere:
+parameter windows, tooling arrangements, and the failure modes the applicant had
+to design around. The patent restricts *practising* the invention, not reading
+or describing it. Treat each as one practitioner's account rather than as
+consensus.
+
+### What does not count
+
+Downloading a pirated copy of the handbook. Same copy, same problem, and it
+poisons everything downstream — under the AI-training decisions to date, the
+lawfulness of how the material was obtained is treated separately from what was
+done with it afterwards. A clean process on an unlawfully obtained copy is not
+clean.
+
 ## The licensed works, and what to do about them
 
 Machinery's Handbook, the ASM Handbook, Shigley, Kalpakjian, Roark, Peterson,

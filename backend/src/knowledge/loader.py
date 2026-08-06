@@ -18,6 +18,8 @@ import yaml
 from src.knowledge.models import (
     AuditChecklist,
     ChecklistItem,
+    CurriculumModule,
+    CurriculumTrack,
     DamageMechanism,
     DesignRule,
     Environment,
@@ -43,6 +45,7 @@ _ENVIRONMENTS_YAML = PACKS_DIR / "environments.yaml"
 _CHECKLISTS_YAML = PACKS_DIR / "audit_checklists.yaml"
 _RED_FLAGS_YAML = PACKS_DIR / "red_flags.yaml"
 _GLOSSARY_YAML = PACKS_DIR / "glossary.yaml"
+_CURRICULUM_YAML = PACKS_DIR / "curriculum.yaml"
 
 _CACHE: Optional[KnowledgeBase] = None
 
@@ -370,6 +373,121 @@ def _load_glossary(sources: dict[str, Source]) -> tuple[GlossaryTerm, ...]:
     return tuple(terms)
 
 
+def _load_curriculum(
+    known_record_ids: set[str],
+) -> tuple[dict[str, CurriculumModule], dict[str, CurriculumTrack]]:
+    """Load the curriculum and verify it stays anchored to the corpus.
+
+    Two checks matter here. Prerequisites must form a DAG — a cycle means no
+    valid learning order exists. And ``covers`` must name real corpus records,
+    so a module cannot drift into describing knowledge the engine does not
+    actually have.
+    """
+    raw = _read(_CURRICULUM_YAML)
+    modules: dict[str, CurriculumModule] = {}
+
+    for entry in raw.get("modules", []):
+        module_id = str(entry.get("module_id", ""))
+        owner = f"curriculum module {module_id!r}"
+        if not module_id:
+            raise KnowledgeValidationError("a curriculum module is missing module_id")
+        if module_id in modules:
+            raise KnowledgeValidationError(f"duplicate module_id {module_id!r}")
+
+        for required in ("question", "understand", "misconception"):
+            if not entry.get(required):
+                raise KnowledgeValidationError(f"{owner} has no `{required}`")
+
+        covers = _tuple(entry.get("covers"))
+        unknown = set(covers) - known_record_ids
+        if unknown:
+            raise KnowledgeValidationError(
+                f"{owner} claims to cover unknown records {sorted(unknown)}; "
+                f"a module must stay anchored to records the engine has"
+            )
+
+        modules[module_id] = CurriculumModule(
+            module_id=module_id,
+            title=str(entry.get("title", module_id)),
+            tier=int(entry.get("tier", 0)),
+            question=str(entry["question"]),
+            understand=str(entry["understand"]),
+            misconception=str(entry["misconception"]),
+            depends_on=_tuple(entry.get("depends_on")),
+            reading=_tuple(entry.get("reading")),
+            covers=covers,
+        )
+
+    # Prerequisites must resolve, and must not cycle.
+    for module in modules.values():
+        missing = set(module.depends_on) - set(modules)
+        if missing:
+            raise KnowledgeValidationError(
+                f"module {module.module_id!r} depends on unknown "
+                f"{sorted(missing)}"
+            )
+
+    _assert_acyclic(modules)
+
+    tracks: dict[str, CurriculumTrack] = {}
+    for entry in raw.get("tracks", []):
+        track_id = str(entry.get("track_id", ""))
+        if not track_id:
+            raise KnowledgeValidationError("a curriculum track is missing track_id")
+        if track_id in tracks:
+            raise KnowledgeValidationError(f"duplicate track_id {track_id!r}")
+
+        module_ids = _tuple(entry.get("modules"))
+        unknown = set(module_ids) - set(modules)
+        if unknown:
+            raise KnowledgeValidationError(
+                f"track {track_id!r} references unknown modules {sorted(unknown)}"
+            )
+
+        # A track that presents a module before its prerequisite teaches in an
+        # order that cannot work.
+        seen: set[str] = set()
+        for module_id in module_ids:
+            unmet = set(modules[module_id].depends_on) - seen
+            if unmet:
+                raise KnowledgeValidationError(
+                    f"track {track_id!r} places {module_id!r} before its "
+                    f"prerequisites {sorted(unmet)}"
+                )
+            seen.add(module_id)
+
+        tracks[track_id] = CurriculumTrack(
+            track_id=track_id,
+            title=str(entry.get("title", track_id)),
+            goal=str(entry.get("goal", "")),
+            modules=module_ids,
+        )
+
+    return modules, tracks
+
+
+def _assert_acyclic(modules: dict[str, CurriculumModule]) -> None:
+    """Depth-first cycle detection over the prerequisite graph."""
+    WHITE, GREY, BLACK = 0, 1, 2
+    colour = {module_id: WHITE for module_id in modules}
+
+    def visit(module_id: str, path: list[str]) -> None:
+        colour[module_id] = GREY
+        for prerequisite in modules[module_id].depends_on:
+            if colour[prerequisite] == GREY:
+                cycle = " -> ".join(path + [module_id, prerequisite])
+                raise KnowledgeValidationError(
+                    f"curriculum prerequisites form a cycle: {cycle}"
+                )
+            if colour[prerequisite] == WHITE:
+                visit(prerequisite, path + [module_id])
+        colour[module_id] = BLACK
+
+    for module_id in modules:
+        if colour[module_id] == WHITE:
+            visit(module_id, [])
+
+
 # ── public API ───────────────────────────────────────────────────────────────
 
 
@@ -390,13 +508,24 @@ def load_knowledge(*, force_reload: bool = False) -> KnowledgeBase:
         return _CACHE
 
     sources = _load_sources()
+    design_rules = _load_design_rules(sources)
+    red_flags = _load_red_flags(sources)
+
+    # The curriculum may only claim to cover records that actually exist.
+    known_record_ids = {r.rule_id for r in design_rules} | {
+        f.flag_id for f in red_flags
+    }
+    modules, tracks = _load_curriculum(known_record_ids)
+
     kb = KnowledgeBase(
         sources=sources,
-        design_rules=_load_design_rules(sources),
+        design_rules=design_rules,
         environments=_load_environments(sources),
         checklists=_load_checklists(sources),
-        red_flags=_load_red_flags(sources),
+        red_flags=red_flags,
         glossary=_load_glossary(sources),
+        modules=modules,
+        tracks=tracks,
     )
 
     logger.info(

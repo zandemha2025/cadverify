@@ -16,6 +16,8 @@ from src.knowledge.loader import (
 from src.knowledge.models import (
     AuditChecklist,
     ChecklistItem,
+    CurriculumModule,
+    CurriculumTrack,
     DamageMechanism,
     DesignRule,
     Environment,
@@ -33,6 +35,8 @@ from src.knowledge.models import (
 __all__ = [
     "AuditChecklist",
     "ChecklistItem",
+    "CurriculumModule",
+    "CurriculumTrack",
     "DamageMechanism",
     "DesignRule",
     "Environment",

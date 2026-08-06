@@ -1,0 +1,434 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# THE CURRICULUM — knowledge in dependency order
+#
+# The rest of the corpus is a reference: you look things up in it. This is the
+# other half — what must be understood BEFORE something else makes sense.
+#
+# It exists so the platform can do three things a flat reference cannot:
+#
+#   1. Explain a finding at the user's level, by walking back through the
+#      prerequisites of the concept the finding rests on.
+#   2. Know what it is assuming. If a verdict depends on a concept the user has
+#      not met, the verdict is not yet an answer for that user.
+#   3. Onboard a real person, in an order that works.
+#
+# `depends_on` is a hard prerequisite: the module genuinely does not make sense
+# without it. `covers` points at the corpus records the module is built from,
+# so a module cannot drift away from what the engine actually knows.
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "1.0.0"
+
+modules:
+
+  # ═══ TIER 0 — the vocabulary everything else assumes ══════════════════════
+
+  - module_id: what_manufacturing_is
+    title: "The three process families"
+    tier: 0
+    depends_on: []
+    question: "What are the fundamentally different ways of making a part?"
+    understand: >-
+      Subtractive removes material, formative forces it into a shape, additive
+      builds it up. Each pays a different cost — time per unit, tooling up
+      front, or qualification burden — and almost every manufacturing argument
+      is about where the crossover between them sits.
+    misconception: >-
+      That these are interchangeable ways of making the same shape. They are
+      not: each imposes geometry constraints the others do not, and a part
+      designed for one is usually wrong for another.
+    reading: [library/foundations/manufacturing-101.md]
+    covers: [UNIVERSAL_UNIFORM_WALL, RF_PROCESS_MISMATCH, EDM_CONDUCTIVE_ONLY,
+             SM_UNIFORM_THICKNESS, DED_WAAM_NEAR_NET, BINDER_JET_SINTER_SHRINK,
+             DLP_PIXEL_RESOLUTION, EBM_SURFACE_AND_STRESS_TRADE, EBM_POWDER_CAKE]
+
+  - module_id: provenance_and_honesty
+    title: "Where a number comes from"
+    tier: 0
+    depends_on: []
+    question: "Why does the platform label every number, and what do the labels mean?"
+    understand: >-
+      MEASURED came from reality, SHOP from a validated shop value, USER from a
+      customer declaration, DEFAULT from literature. A number without a label is
+      not trustworthy, and an assumption presented as a measurement destroys
+      confidence in the measurements too.
+    misconception: >-
+      That labelling is a UI decoration. It is the detector for the largest
+      class of defect in the field: a number nobody can trace.
+    reading: [README.md]
+    covers: [RF_VALIDATED_WITHOUT_MEASUREMENT]
+
+  - module_id: what_a_model_must_be
+    title: "What makes geometry analysable"
+    tier: 0
+    depends_on: []
+    question: "Why does the engine sometimes refuse to answer?"
+    understand: >-
+      Volume, mass and wall thickness are undefined on an open or
+      self-intersecting shell, so every number derived from one is fiction. A
+      mesh is exact only to its chordal deviation, so measurements taken from a
+      coarse tessellation carry that error.
+    misconception: >-
+      That a model which displays correctly is analysable. Naked edges,
+      inverted normals and unit ambiguity are all invisible on screen.
+    reading: [library/cad/mesh-quality-and-repair.md]
+    covers: [UNIVERSAL_WATERTIGHT, RF_NON_WATERTIGHT, RF_DECIMATED_MESH, RF_UNIT_AMBIGUITY,
+             RF_TRAPPED_VOLUME]
+
+  # ═══ TIER 1 — the design fundamentals ═════════════════════════════════════
+
+  - module_id: dfm_principles
+    title: "Why manufacturability rules exist"
+    tier: 1
+    depends_on: [what_manufacturing_is]
+    question: "What is actually driving cost, before any specific rule?"
+    understand: >-
+      Cost is committed in design and spent in manufacturing. The three
+      decisions that dominate are process selection, part count, and where
+      tolerance is spent — all of which are made before any feature is drawn.
+    misconception: >-
+      That DFM is a checklist of radii. The radii matter, and they are an order
+      of magnitude less important than choosing the wrong process or keeping a
+      part that should not exist.
+    reading: [library/foundations/dfm-first-principles.md]
+    covers: [UNIVERSAL_PART_COUNT, UNIVERSAL_STANDARD_TOOLING, RF_SETUP_COUNT_IGNORED,
+             CNC_THREAD_AS_CALLOUT, CNC_FIXTURING_DATUM, TURN_THIN_WALL_TUBULAR,
+             TURN_CONCENTRICITY_ONE_SETUP, RF_NO_FIXTURE_SURFACE, RF_DEEP_NARROW_FEATURE,
+             CNC_POCKET_DEPTH_RATIO, CNC_HOLE_DEPTH_RATIO, TURNING_SLENDERNESS,
+             CNC_INTERNAL_CORNER_RADIUS, EDM_CORNER_RADIUS_WIRE, RF_SHARP_INTERNAL_CORNER,
+             TURN_RELIEF_GROOVE, IM_GATE_AND_WELD_LINE, CAST_CORE_ROBUSTNESS,
+             BJ_SINTER_SETTERS, FORGE_PARTING_LINE, SM_HARDWARE_CLEARANCE,
+             UNIVERSAL_PART_COUNT]
+
+  - module_id: tool_access
+    title: "Every process works from a direction"
+    tier: 1
+    depends_on: [what_manufacturing_is]
+    question: "Why does hidden geometry cost so much more than visible geometry?"
+    understand: >-
+      Milling reaches from a tool axis, moulding releases along the draw, powder
+      bed builds upward, a press brake needs the flange to span the die.
+      Geometry contradicting that direction needs another setup, a side action,
+      or a different process — step changes in cost, not gradual ones.
+    misconception: >-
+      That cost rises smoothly with complexity. It does not: the cost surface is
+      a staircase, and DFM is largely the art of staying on a tread.
+    reading: [library/foundations/dfm-first-principles.md]
+    covers: [CNC_3AXIS_TOOL_ACCESS, IM_DRAFT, IM_UNDERCUT_COST, AM_OVERHANG_ANGLE,
+             CNC_5AXIS_TRADE, EDM_2D_PROFILE_ONLY, EDM_START_HOLE, PBF_SUPPORT_ACCESS,
+             FDM_OVERHANG, FDM_BRIDGING, SLA_CUPPING_AND_DRAINAGE, SLA_HOLLOW_AND_ORIENT,
+             SLA_SUPPORT_WITNESS, AM_POWDER_EVACUATION, SLS_INTERNAL_CHANNEL,
+             SLS_MIN_HOLE, BJ_ESCAPE_HOLES, SLA_RESIN_DRAIN_AND_CURE,
+             DIE_CAST_DRAFT_AND_WALL, FORGE_DRAFT_AND_FILLETS, SM_BEND_RELIEF,
+             EDM_TAPER_AND_HEIGHT, RF_ZERO_DRAFT, RF_TRAPPED_VOLUME]
+
+  - module_id: uniform_section
+    title: "Why uniform wall thickness matters everywhere"
+    tier: 1
+    depends_on: [what_manufacturing_is]
+    question: "Why does the same rule appear in every process?"
+    understand: >-
+      Each family punishes non-uniformity by its own mechanism — differential
+      shrinkage in moulding and casting, differential deflection in machining,
+      differential thermal history in powder bed. One geometric habit, four
+      failure modes.
+    misconception: >-
+      That thicker is stronger. Thick sections sink, void, warp and lengthen
+      cycle time; stiffness comes from geometry, not from mass.
+    reading: [library/foundations/dfm-first-principles.md]
+    covers: [UNIVERSAL_UNIFORM_WALL, IM_RIB_THICKNESS, CAST_DIRECTIONAL_SOLIDIFICATION,
+             RF_ISOLATED_HEAVY_SECTION, IM_NOMINAL_WALL, IM_BOSS_DESIGN, CNC_MIN_WALL,
+             AM_MIN_FEATURE_METAL, FDM_MIN_WALL, SLA_MIN_WALL, SLS_MIN_WALL,
+             BJ_GREEN_STRENGTH, CAST_HOT_SPOT_JUNCTIONS, CAST_FILLET_ALL_JUNCTIONS,
+             BJ_GREEN_FILLETS, FORGE_WEB_AND_RIB, SM_BEND_RADIUS, SM_MIN_FLANGE,
+             SM_HOLE_TO_BEND, STRESS_CONCENTRATION_AT_SECTION_CHANGE,
+             FASTENER_EDGE_DISTANCE, AM_RESIDUAL_STRESS, FDM_WARPING,
+             DED_WAAM_DISTORTION, THERMAL_STRESS_AT_RESTRAINT]
+
+  # ═══ TIER 2 — specification ═══════════════════════════════════════════════
+
+  - module_id: tolerance_economics
+    title: "Tolerance is the expensive part of a drawing"
+    tier: 2
+    depends_on: [dfm_principles]
+    question: "Why is a blanket tight tolerance the costliest thing on most parts?"
+    understand: >-
+      Halving a tolerance typically moves the part to a better machine, adds an
+      operation, adds inspection and adds scrap. Tolerance belongs only on
+      features carrying a fit, a seal, a load path or an alignment.
+    misconception: >-
+      That tight tolerance is a safe default. It is invisible in the geometry,
+      unbounded in cost, and usually protects nothing.
+    reading: [library/foundations/gdt-and-tolerancing.md]
+    covers: [UNIVERSAL_TOLERANCE_ONLY_WHERE_FUNCTIONAL, RF_UNIFORM_TIGHT_TOLERANCE,
+             RF_UNREACHABLE_TOLERANCE, FDM_FIT_CLEARANCE, SLA_SHRINKAGE_AND_FITS,
+             IM_SHRINKAGE_TOLERANCE, CAST_TOLERANCE_CLASS, CAST_MACHINING_ALLOWANCE,
+             SM_BEND_TOLERANCE_STACK, FORGE_ACROSS_PARTING_TOLERANCE,
+             SLS_MOVING_PART_CLEARANCE]
+
+  - module_id: datum_schemes
+    title: "Datums are a functional statement"
+    tier: 2
+    depends_on: [tolerance_economics]
+    question: "Why can a part pass inspection and still not assemble?"
+    understand: >-
+      The datum reference frame should reproduce how the part locates in its
+      assembly. If the measurement setup does not mirror the functional datum
+      structure, every result is invalid regardless of machine accuracy.
+    misconception: >-
+      That datums are chosen for measurement convenience, and that a centreline
+      can be a datum feature. An inspector cannot touch a centreline.
+    reading: [library/foundations/gdt-and-tolerancing.md]
+    covers: [RF_DATUM_ON_CENTERLINE, RF_DATUM_NOT_FUNCTIONAL, RF_MIXED_TOLERANCING_STANDARD]
+
+  - module_id: measurability
+    title: "If it cannot be measured, it cannot be accepted"
+    tier: 2
+    depends_on: [tolerance_economics]
+    question: "What makes a requirement real rather than decorative?"
+    understand: >-
+      A characteristic needs an instrument that can reach it, a gage that
+      resolves its tolerance, and a fixturing scheme that matches its datums.
+      A tolerance tight relative to gage capability fails measurement analysis
+      no matter how well the part is made.
+    misconception: >-
+      That measurement is somebody else's problem, downstream. It is a design
+      constraint discovered very late and very expensively if ignored.
+    reading: [library/foundations/quality-inspection-and-ndt.md]
+    covers: [UNIVERSAL_DESIGN_FOR_INSPECTION, RF_SURFACE_FINISH_WITHOUT_BASIS,
+             AM_AS_BUILT_SURFACE, EDM_RECAST_LAYER, MJF_SURFACE_AND_COLOUR,
+             DED_WAAM_NEAR_NET]
+
+  # ═══ TIER 2 — materials and their world ═══════════════════════════════════
+
+  - module_id: environment_first
+    title: "Environment gates material gates process"
+    tier: 2
+    depends_on: [what_manufacturing_is]
+    question: "In what order should material decisions be made?"
+    understand: >-
+      The service environment narrows the material set; the material narrows the
+      process set; the process constrains the geometry. Reversing that order
+      produces an elegant part that fails in service.
+    misconception: >-
+      That a cheaper alloy is cheaper. An alloy that cracks in sour service is
+      not a saving.
+    reading: [library/foundations/environment-atlas.md, library/foundations/materials-and-service-environments.md]
+    covers: [RF_NACE_AS_BOOLEAN, TRANSITION_TEMPERATURE_BASIS, DISSIMILAR_METAL_JOINT,
+             RF_WATER_TRAP, RF_UNSCREENED_NONMETALLIC_IN_VACUUM,
+             RF_DUPLEX_ABOVE_TEMPERATURE_LIMIT, RF_SINGLE_CYCLE_QUALIFICATION,
+             RF_HYGIENIC_GEOMETRY]
+
+  - module_id: damage_mechanisms
+    title: "How materials actually fail"
+    tier: 2
+    depends_on: [environment_first]
+    question: "Why does knowing the mechanism matter more than knowing the rule?"
+    understand: >-
+      Hydrogen embrittles, chlorides crack austenitics, BCC metals go brittle
+      below a transition temperature, ferrite embrittles at temperature. Knowing
+      the mechanism lets you reason about the case no table covers.
+    misconception: >-
+      That compliance is a property of an alloy. It is a property of an alloy
+      within a stated environment, and outside those limits it does not hold.
+    reading: [library/foundations/materials-and-service-environments.md]
+    covers: [RF_HAZ_NOT_SURVEYED, RF_STRENGTH_SUBSTITUTION_IN_HYDROGEN,
+             RF_DUPLEX_WELDED_AS_STAINLESS, FORGE_GRAIN_FLOW, SM_GRAIN_DIRECTION,
+             FDM_LAYER_ANISOTROPY, DED_WAAM_INTERPASS, DED_SUBSTRATE_IS_DESIGN,
+             PBF_ORIENTATION_IS_A_DESIGN_OUTPUT, PBF_POWDER_LOT_TRACEABILITY,
+             SLS_BED_POSITION_VARIATION, JOINT_DESIGNED_FOR_PRELOAD]
+
+  # ═══ TIER 3 — economics ═══════════════════════════════════════════════════
+
+  - module_id: cost_anatomy
+    title: "What a cost estimate is made of"
+    tier: 3
+    depends_on: [dfm_principles, tolerance_economics]
+    question: "What separates a credible estimate from an opinion with decimal places?"
+    understand: >-
+      Gross material, conversion time, setup amortised over the lot, tooling
+      over the programme, secondary operations, yield. Every input labelled, the
+      sensitivity shown, and nothing called validated until reality confirms it.
+    misconception: >-
+      That should-cost, marginal cost and market price are comparable. They
+      answer different questions, and comparing a quote to a marginal cost
+      always says "make" and is always wrong about why.
+    reading: [library/foundations/cost-and-should-cost.md]
+    covers: [RF_SETUP_COUNT_IGNORED, RF_AM_FOR_ITS_OWN_SAKE, RF_VALIDATED_WITHOUT_MEASUREMENT]
+
+  - module_id: crossover
+    title: "The crossover is the answer"
+    tier: 3
+    depends_on: [cost_anatomy]
+    question: "Why give a quantity rather than a recommendation?"
+    understand: >-
+      Two processes with different fixed and marginal costs cross at exactly one
+      quantity. Telling someone where the decision flips survives the volume
+      changing, which it always does — and it makes the estimate arguable.
+    misconception: >-
+      That there is a single right process for a part. There is a right process
+      for a part at a volume.
+    reading: [library/foundations/cost-and-should-cost.md]
+    covers: []
+
+  # ═══ TIER 3 — evidence ════════════════════════════════════════════════════
+
+  - module_id: evidence_mindset
+    title: "Being right is not the same as being able to prove it"
+    tier: 3
+    depends_on: [measurability]
+    question: "What is an auditor actually checking?"
+    understand: >-
+      Not whether the part is good — whether you can demonstrate it is good, by
+      a route that does not depend on anyone's memory. A good part with no
+      traceable basis is a finding; a mediocre part with complete evidence is
+      not.
+    misconception: >-
+      That audit is paperwork applied at the end. What the evidence costs is
+      decided at design time.
+    reading: [library/audit/auditor-playbook.md]
+    covers: [RF_QUALIFICATION_INVALIDATED_SILENTLY]
+
+  - module_id: regime_differences
+    title: "Each industry fears something different"
+    tier: 3
+    depends_on: [evidence_mindset]
+    question: "Why does the same part need different evidence in different industries?"
+    understand: >-
+      Oil and gas fears a release, aerospace a fatigue failure, medical harm to
+      a patient, automotive a defect at a million units. The fear determines the
+      evidence, so knowing the fear predicts the audit.
+    misconception: >-
+      That a certified QMS covers a new industry. The QMS covers the habits; the
+      evidence has to be rebuilt.
+    reading: [library/audit/industry-regimes.md, library/audit/specialised-regimes.md]
+    covers: [RF_CONTROLLED_DATA_UNMARKED, RF_CLASS_APPROVAL_SUBSTITUTED]
+
+  # ═══ TIER 4 — the definition itself ═══════════════════════════════════════
+
+  - module_id: definition_authority
+    title: "Which artifact is the truth"
+    tier: 4
+    depends_on: [datum_schemes, evidence_mindset]
+    question: "Which revision was manufactured, and how would you know?"
+    understand: >-
+      One released source of truth, immutable once released, with every derived
+      artifact traceable to the revision it came from. The most common serious
+      audit finding across every industry is a supplier working from an
+      uncontrolled copy.
+    misconception: >-
+      That a filename is version control, and that sending a STEP file is a
+      neutral act. It creates a derived artifact that will drift.
+    reading: [library/cad/cad-data-management.md, library/cad/mbd-pmi-and-drawings.md]
+    covers: [RF_PMI_LOST_IN_TRANSLATION, RF_BROKEN_FEATURE_TREE]
+
+  - module_id: interop_loss
+    title: "Every exchange loses something"
+    tier: 4
+    depends_on: [definition_authority, what_a_model_must_be]
+    question: "What disappears when a model crosses an organisational boundary?"
+    understand: >-
+      AP203 and AP214 carry tolerances as pictures; only AP242 carries them as
+      machine-readable objects. Characteristics that do not survive the exchange
+      never reach the balloon map and are never inspected.
+    misconception: >-
+      That an annotation visible in a viewer is a tolerance. Graphic PMI looks
+      exactly right and delivers nothing — the only reliable check is counting
+      characteristics before and after.
+    reading: [library/cad/file-formats-and-interoperability.md]
+    covers: [RF_PMI_LOST_IN_TRANSLATION]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TRACKS — ordered paths through the modules for a given job.
+# A track is a claim about what someone in that role needs, in what order.
+# ─────────────────────────────────────────────────────────────────────────────
+
+tracks:
+
+  - track_id: design_engineer
+    title: "Design engineer"
+    goal: "Release a part that can be made, measured and proven."
+    modules:
+      - what_manufacturing_is
+      - dfm_principles
+      - uniform_section
+      - tool_access
+      - environment_first
+      - tolerance_economics
+      - datum_schemes
+      - measurability
+
+  - track_id: manufacturing_engineer
+    title: "Manufacturing engineer"
+    goal: "Route a part correctly and know what will bite before it does."
+    modules:
+      - what_manufacturing_is
+      - tool_access
+      - uniform_section
+      - dfm_principles
+      - tolerance_economics
+      - cost_anatomy
+      - crossover
+      - measurability
+
+  - track_id: cad_engineer
+    title: "CAD designer"
+    goal: "Produce a definition that survives change and exchange."
+    modules:
+      - what_a_model_must_be
+      - what_manufacturing_is
+      - dfm_principles
+      - tolerance_economics
+      - datum_schemes
+      - measurability
+      - evidence_mindset
+      - definition_authority
+      - interop_loss
+
+  - track_id: quality_engineer
+    title: "Quality engineer or auditor"
+    goal: "Know what evidence is required and where it is usually missing."
+    modules:
+      - provenance_and_honesty
+      - what_manufacturing_is
+      - dfm_principles
+      - tolerance_economics
+      - measurability
+      - evidence_mindset
+      - regime_differences
+      - datum_schemes
+      - definition_authority
+
+  - track_id: procurement
+    title: "Procurement or cost engineer"
+    goal: "Interrogate a quote on its physics rather than on its total."
+    modules:
+      - what_manufacturing_is
+      - provenance_and_honesty
+      - dfm_principles
+      - tolerance_economics
+      - cost_anatomy
+      - crossover
+
+  - track_id: materials_engineer
+    title: "Materials or corrosion engineer"
+    goal: "Select for the world the part lives in, then for manufacturability."
+    modules:
+      - what_manufacturing_is
+      - environment_first
+      - damage_mechanisms
+      - dfm_principles
+      - tolerance_economics
+      - measurability
+      - evidence_mindset
+
+  - track_id: platform_engineer
+    title: "Platform engineer"
+    goal: "Build on the corpus without breaking its promises."
+    modules:
+      - provenance_and_honesty
+      - what_a_model_must_be
+      - what_manufacturing_is
+      - dfm_principles
+      - tolerance_economics
+      - cost_anatomy

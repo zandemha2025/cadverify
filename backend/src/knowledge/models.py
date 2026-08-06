@@ -287,6 +287,37 @@ class GlossaryTerm:
     common_confusion: Optional[str] = None
 
 
+@dataclass(frozen=True)
+class CurriculumModule:
+    """One unit of understanding, with its hard prerequisites.
+
+    The reference packs answer "what is the rule?". A module answers "what must
+    someone already understand for that rule to mean anything?" — which is what
+    lets the platform explain a finding at the reader's level instead of
+    restating it louder.
+    """
+
+    module_id: str
+    title: str
+    tier: int
+    question: str
+    understand: str
+    misconception: str
+    depends_on: tuple[str, ...] = ()
+    reading: tuple[str, ...] = ()
+    covers: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class CurriculumTrack:
+    """An ordered path through the modules for one job."""
+
+    track_id: str
+    title: str
+    goal: str
+    modules: tuple[str, ...] = ()
+
+
 @dataclass
 class KnowledgeBase:
     """The loaded corpus. Built once and cached by :func:`load_knowledge`."""
@@ -297,6 +328,8 @@ class KnowledgeBase:
     checklists: dict[str, AuditChecklist] = field(default_factory=dict)
     red_flags: tuple[RedFlag, ...] = ()
     glossary: tuple[GlossaryTerm, ...] = ()
+    modules: dict[str, CurriculumModule] = field(default_factory=dict)
+    tracks: dict[str, CurriculumTrack] = field(default_factory=dict)
 
     # ── lookups ──────────────────────────────────────────────────────────
 
@@ -334,6 +367,64 @@ class KnowledgeBase:
         """Case-insensitive glossary lookup."""
         needle = term.strip().casefold()
         return next((t for t in self.glossary if t.term.casefold() == needle), None)
+
+    # ── curriculum ───────────────────────────────────────────────────────
+
+    def module(self, module_id: str) -> Optional[CurriculumModule]:
+        return self.modules.get(module_id)
+
+    def track(self, track_id: str) -> Optional[CurriculumTrack]:
+        return self.tracks.get(track_id)
+
+    def modules_covering(self, record_id: str) -> tuple[CurriculumModule, ...]:
+        """Modules that teach the concept behind a rule or red flag.
+
+        The bridge from a finding to an explanation: given a fired rule, this
+        answers "what is the idea this rests on?"
+        """
+        return tuple(m for m in self.modules.values() if record_id in m.covers)
+
+    def prerequisites_of(self, module_id: str) -> tuple[CurriculumModule, ...]:
+        """Every module needed before this one, in a valid learning order.
+
+        Depth-first over the prerequisite graph, deepest first, deduplicated.
+        The loader has already proved the graph is acyclic, so this terminates.
+        """
+        ordered: list[CurriculumModule] = []
+        seen: set[str] = set()
+
+        def walk(current_id: str) -> None:
+            module = self.modules.get(current_id)
+            if module is None or current_id in seen:
+                return
+            seen.add(current_id)
+            for prerequisite in module.depends_on:
+                walk(prerequisite)
+            ordered.append(module)
+
+        for prerequisite in self.modules[module_id].depends_on:
+            walk(prerequisite)
+        return tuple(ordered)
+
+    def explain_path(self, record_id: str) -> tuple[CurriculumModule, ...]:
+        """The full chain of understanding behind a finding, in teaching order.
+
+        Given a rule or red flag the engine fired, returns the prerequisite
+        modules followed by the module that teaches it — so the platform can
+        explain *why the threshold exists* at whatever depth the reader needs,
+        instead of restating the finding louder.
+        """
+        path: list[CurriculumModule] = []
+        seen: set[str] = set()
+        for module in self.modules_covering(record_id):
+            for prerequisite in self.prerequisites_of(module.module_id):
+                if prerequisite.module_id not in seen:
+                    seen.add(prerequisite.module_id)
+                    path.append(prerequisite)
+            if module.module_id not in seen:
+                seen.add(module.module_id)
+                path.append(module)
+        return tuple(path)
 
     def ingestible_sources(self) -> tuple[Source, ...]:
         """Sources whose text may legitimately be ingested.

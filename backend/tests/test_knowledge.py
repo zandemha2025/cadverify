@@ -327,6 +327,77 @@ def test_red_flags_span_categories(kb):
         assert kb.red_flags_in(category), category
 
 
+# ── the curriculum ───────────────────────────────────────────────────────────
+
+
+def test_curriculum_loads(kb):
+    assert kb.modules
+    assert kb.tracks
+
+
+def test_every_module_states_the_misconception(kb):
+    """The misconception is usually the part that changes someone's mind."""
+    for module in kb.modules.values():
+        assert module.question.strip(), module.module_id
+        assert module.understand.strip(), module.module_id
+        assert module.misconception.strip(), module.module_id
+
+
+def test_prerequisites_resolve_and_are_ordered(kb):
+    for module in kb.modules.values():
+        for prerequisite_id in module.depends_on:
+            assert prerequisite_id in kb.modules, module.module_id
+        ordered = kb.prerequisites_of(module.module_id)
+        seen: set[str] = set()
+        for prerequisite in ordered:
+            # Anything a prerequisite itself needs must already have appeared.
+            assert set(prerequisite.depends_on) <= seen, prerequisite.module_id
+            seen.add(prerequisite.module_id)
+
+
+def test_tracks_never_present_a_module_before_its_prerequisites(kb):
+    for track in kb.tracks.values():
+        seen: set[str] = set()
+        for module_id in track.modules:
+            unmet = set(kb.modules[module_id].depends_on) - seen
+            assert not unmet, f"{track.track_id}: {module_id} before {unmet}"
+            seen.add(module_id)
+
+
+def test_every_rule_can_be_explained(kb):
+    """A finding the platform cannot explain is a finding it should not make.
+
+    The curriculum's job is to let a verdict be justified at the reader's
+    level, so every design rule must resolve to at least one module.
+    """
+    unexplained = [
+        r.rule_id for r in kb.design_rules if not kb.modules_covering(r.rule_id)
+    ]
+    assert not unexplained, f"rules with no explanation path: {unexplained}"
+
+
+def test_explain_path_ends_at_the_teaching_module(kb):
+    path = kb.explain_path("IM_RIB_THICKNESS")
+    assert path
+    assert "IM_RIB_THICKNESS" in path[-1].covers
+    # Prerequisites come first, so tiers never decrease along the path.
+    tiers = [m.tier for m in path]
+    assert tiers == sorted(tiers)
+
+
+def test_explain_path_is_empty_for_unknown_records(kb):
+    assert kb.explain_path("NO_SUCH_RULE") == ()
+
+
+def test_every_track_covers_the_tier_zero_ground(kb):
+    """No track may assume vocabulary it never taught."""
+    for track in kb.tracks.values():
+        assert track.modules, track.track_id
+        assert track.goal.strip(), track.track_id
+        first = kb.modules[track.modules[0]]
+        assert first.tier == 0, f"{track.track_id} opens at tier {first.tier}"
+
+
 # ── the library ──────────────────────────────────────────────────────────────
 
 
