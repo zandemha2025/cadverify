@@ -94,6 +94,7 @@ jobs:
             libxft2 \
             libxinerama1 \
             libgomp1 \
+            poppler-utils \
             postgresql-client
 
       - name: Install dependencies
