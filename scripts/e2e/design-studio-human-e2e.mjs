@@ -434,7 +434,12 @@ class DesignStudioE2E {
     );
     await link.click();
     await this.page.waitForURL((url) => url.pathname === "/verify" && url.searchParams.get("revision") === String(revision));
-    await this.page.getByText(/Verification complete — deterministic/i).waitFor({ timeout: 150_000 });
+    // The completion toast was deliberately retired by the front-loaded
+    // verify UX (progressive results close the overlay before cost settles,
+    // so a "complete" toast would narrate unfinished cost). The durable
+    // completion signal is the import banner, set only after runVerify —
+    // validation AND cost — resolves.
+    await this.page.getByText(/Verification finished\./i).waitFor({ timeout: 150_000 });
     const [artifactResponse, validationResponse, costResponse] = await Promise.all([
       artifactResponsePromise,
       validationResponsePromise,
