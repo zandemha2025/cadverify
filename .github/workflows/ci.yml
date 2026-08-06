@@ -320,6 +320,7 @@ jobs:
             libxft2 \
             libxinerama1 \
             libgomp1 \
+            poppler-utils \
             postgresql-client
           python -m venv backend/.venv
           backend/.venv/bin/python -m pip install --upgrade pip
