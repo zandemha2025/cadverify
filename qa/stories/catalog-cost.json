@@ -85,7 +85,7 @@
   "page": "PUT /api/v1/cost-decisions/{id}/disposition",
   "feature": "Record/withdraw human sourcing outcome",
   "story": "As an analyst, I record the four-way outcome (inhouse/outside/acquire/redesign) or withdraw it with null, without altering the engine artifact.",
-  "expected": "Analyst role; org-scoped 404. Invalid disposition = 400 (422 via Literal at router); note >1000 chars = 400. Recording 'inhouse' while the selected route is DFM-blocked = 409 (fail closed). Any real change reopens an existing approval; identical repeat PUT is idempotent (no timestamp rewrite, no duplicate audit). result_json remains byte-identical; audit event emitted.",
+  "expected": "Analyst role; org-scoped 404. Invalid disposition = 400 (422 via Literal at router); note >1000 chars = 422 VALIDATION_ERROR (router schema max_length). Recording 'inhouse' while the selected route is DFM-blocked = 409 (fail closed). Any real change reopens an existing approval; identical repeat PUT is idempotent (no timestamp rewrite, no duplicate audit). result_json remains byte-identical; audit event emitted.",
   "evidence": "backend/src/api/cost_decisions.py:173-195; cost_decision_service.py:488-571",
   "test_via": "API"
  },

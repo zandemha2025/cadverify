@@ -305,7 +305,7 @@
   "page": "POST /api/v1/ground-truth + GET '' + GET /{record_id}",
   "feature": "Org-scoped ground-truth records",
   "story": "As an analyst, I persist real cost/quote data (with provenance and stand_in honesty flags) for my org; as a viewer I read it back.",
-  "expected": "Create: kill-switch gated, analyst, 403 without org, 400 on invalid payload (non-positive cost etc.); last-write-wins dedup on (part_id, process, quantity, shop); emits groundtruth.ingested audit event; source_type synthetic/seed/demo/stand_in is forced to stand_in=True and can never validate. Reads: viewer, org-scoped; detail returns 404 for other-org record.",
+  "expected": "Create: kill-switch gated, analyst, 403 without org, 422 VALIDATION_ERROR on schema-invalid payload (non-positive cost, empty part_id); 400 for domain-invalid values that pass the schema; last-write-wins dedup on (part_id, process, quantity, shop); emits groundtruth.ingested audit event; source_type synthetic/seed/demo/stand_in is forced to stand_in=True and can never validate. Reads: viewer, org-scoped; detail returns 404 for other-org record.",
   "evidence": "backend/src/api/groundtruth.py:170-232",
   "test_via": "API"
  },

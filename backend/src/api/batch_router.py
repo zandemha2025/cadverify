@@ -13,6 +13,7 @@ from src.config.public_urls import error_doc_url
 import asyncio
 import logging
 import os
+import zipfile
 from datetime import datetime, timezone
 from typing import Optional, cast
 
@@ -328,9 +329,11 @@ async def create_batch(
                     zip_tmp_path,
                     batch.ulid,
                 )
-            except ValueError as exc:
-                # Bad archive (zip bomb / too many items): reject, don't orphan.
-                raise HTTPException(status_code=400, detail=str(exc))
+            except (ValueError, zipfile.BadZipFile) as exc:
+                # Bad archive (not a ZIP / zip bomb / too many items): reject
+                # with a clean 400, don't orphan the batch or leak a 500.
+                message = str(exc) or "Uploaded file is not a valid ZIP archive"
+                raise HTTPException(status_code=400, detail=message)
 
             # Parse manifest CSV if provided
             if manifest_bytes is not None:

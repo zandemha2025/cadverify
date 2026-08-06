@@ -371,13 +371,31 @@ _FLOAT_COLUMNS = ("max_workpiece_kg", "hourly_rate_usd", "capital_frac")
 
 
 def _example_row() -> str:
-    """One illustrative data row for the /import/template body."""
+    """One illustrative data row for the /import/template body.
+
+    Built with csv.writer so the row matches MACHINE_HEADER's column order
+    exactly and embedded JSON quotes are CSV-escaped — the template's own
+    example must survive a round-trip through /machine-inventory/import.
+    """
     caps = json.dumps({"x": 762, "y": 406, "z": 508, "axes": 3,
                        "achievable_it_grade": 9})
-    return (
-        f'Haas VF-2 #1,cnc_3axis,1,200,75,0.4,304 Stainless|steel,,"{caps}",'
-        "shop floor A"
+    row = {
+        "process": "cnc_3axis",
+        "name": "Haas VF-2 #1",
+        "count": "1",
+        "max_workpiece_kg": "200",
+        "hourly_rate_usd": "75",
+        "capital_frac": "0.4",
+        "materials": "304 Stainless|steel",
+        "material_thickness_map": "",
+        "capabilities": caps,
+        "notes": "shop floor A",
+    }
+    buf = io.StringIO()
+    csv.writer(buf).writerow(
+        [row[c] for c in MACHINE_REQUIRED_COLUMNS + MACHINE_OPTIONAL_COLUMNS]
     )
+    return buf.getvalue().rstrip("\r\n")
 
 
 def _clean(v) -> str:

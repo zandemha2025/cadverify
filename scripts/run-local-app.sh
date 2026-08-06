@@ -192,7 +192,7 @@ log "Starting backend (uvicorn) on http://127.0.0.1:${BACKEND_PORT} …"
   trap '' INT
   cd "$BACKEND_DIR" || exit 1
   # multiple workers so the part's cost + DFM analyses run in parallel (faster resolve)
-  exec "${ISOLATED_EXEC[@]}" "$VENV_PY" -m uvicorn main:app --host 127.0.0.1 --port "$BACKEND_PORT" --workers 4 >>"$BACKEND_LOG" 2>&1
+  exec "${ISOLATED_EXEC[@]}" "$VENV_PY" -m uvicorn main:app --host 127.0.0.1 --port "$BACKEND_PORT" --workers 4 --no-server-header >>"$BACKEND_LOG" 2>&1
 ) &
 BACK_PID=$!
 log "Backend logs: $BACKEND_LOG"

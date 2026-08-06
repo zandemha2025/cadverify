@@ -179,9 +179,14 @@ async def download_reconstruction_mesh(
     session: AsyncSession = Depends(get_db_session),
 ):
     """Download the reconstructed mesh STL file. Requires authentication and job ownership."""
-    mesh_stream = await reconstruction_service.open_reconstruction_mesh(
-        session, job_id, user.user_id
-    )
+    try:
+        mesh_stream = await reconstruction_service.open_reconstruction_mesh(
+            session, job_id, user.user_id
+        )
+    except ValueError:
+        # Malformed job id (not a valid ULID) is indistinguishable from an
+        # unknown job to the caller — 404, never a 500.
+        mesh_stream = None
     if mesh_stream is None:
         raise HTTPException(status_code=404, detail="Mesh not found or job not complete")
 
