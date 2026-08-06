@@ -1,0 +1,224 @@
+[
+ {
+  "id": "CAT-001",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "row keys=analysis,cost_decision,file_type,filename,findings,lifecycle_state,part_key,provenance_posture,recommended_route,route_blocker_count,unit_cost,updated_at"
+ },
+ {
+  "id": "CAT-002",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "keyset nrows=2 cold=None"
+ },
+ {
+  "id": "CAT-003",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "summary={\"parts\": 2, \"costed\": 2, \"drafted\": 0, \"excluded_no_cost_count\": 0, \"truncated\": false, \"posture\": {\"measured\": 0, \"shop\": 0, \"user\": 0, \"default\": 12, \"total\": 12, \"grounded\": 0, \"grounded_pct\": 0.0; row0={\"part_key\": \"8138faf735730b4b125a0cafab8b271ade8f0992c27e4e9d110dd32575be69bc\", \"filename\": \"qa-part2.stl\", \"lifecycle_state\": \"Costed\", \"make_now_process\": \"mjf\", \"unit_cost\": {\"usd\": 5.21, \"qty\": 50, \"currency\": \"USD\", \"withheld\": false, \"withheld"
+ },
+ {
+  "id": "CAT-004",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "summary={\"total\": 2, \"analyzed\": 0, \"makeable\": 0, \"needs_review\": 0, \"unknown\": 2, \"truncated\": false}"
+ },
+ {
+  "id": "CAT-005",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "summary={\"makeable_in_house\": 0, \"makeable_outside\": 0, \"needs_capability\": 0, \"not_makeable\": 0, \"unknown\": 2, \"geometry_invalid\": 0, \"total\": 2, \"stale_count\": 0, \"stale\": false, \"truncated\": false}"
+ },
+ {
+  "id": "CAT-006",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-007",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "list key is cost_decisions; ULID cursor pagination + org-scoped 404 verified"
+ },
+ {
+  "id": "CAT-008",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-009",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "409 inhouse-DFM-blocked path not triggerable with clean fixture (no DFM-blocked route)"
+ },
+ {
+  "id": "CAT-010",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-011",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "pdf 54178 bytes; attachment; filename=\"qa-box-cost-report.pdf\""
+ },
+ {
+  "id": "CAT-012",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-013",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-014",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-015",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "example row=cnc_3axis,Haas VF-2 #1,1,200,75,0.4,304 Stainless|steel,,\"{\"\"x\"\": 762, \"\"y\"\": 406, \"\"z\"\": 508, \"\"axes\"\": 3, \"\"achievable_it_grade\"\": 9}\",sho; roundtrip={\"imported\": 1, \"skipped\": 0, \"total\": 1, \"errors\": []}"
+ },
+ {
+  "id": "CAT-016",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-017",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-018",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-019",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-020",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-021",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "pre-publish={\"flag_enabled\": false, \"using_governed\": false, \"source\": \"base_rate_table_material_prices\", \"provenance\": \"default\", \"validated\": false, \"payload\": null}; post-publish: flag off -> still base table (honest)"
+ },
+ {
+  "id": "CAT-022",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-023",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-024",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "stale_reason=material_library_published:v1 stale_at=2026-08-06T00:15:58.961962+00:00"
+ },
+ {
+  "id": "CAT-025",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "pre-publish effective={\"flag_enabled\": true, \"using_governed\": false, \"source\": \"default_rate_card_v0\"}; post-publish={\"flag_enabled\": true, \"using_governed\": true, \"source\": \"governed_rate_card\"}"
+ },
+ {
+  "id": "CAT-026",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-027",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "diff nested under 'diff' with from/to version metadata"
+ },
+ {
+  "id": "CAT-028",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "fresh decision 01KZA6Z8JJ238BDCETD18EKEP6 marked stale reason=rate_library_published:v3; past-date 400, re-publish 409, v1 effective_to closed verified in prior run"
+ },
+ {
+  "id": "CAT-029",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-030",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "fresh decision 01KZA6Z9AJ6MQ2Q729C3MWXFPS stale reason=shop_profile_published:qa-retest-shop:v3; full lifecycle (draft/edit/400/publish gates/409s/archive rules/discard) verified in prior run"
+ },
+ {
+  "id": "CAT-031",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-032",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "portfolio_delta.row byte-identical to GET /catalog/portfolio row; 400s never coerced"
+ },
+ {
+  "id": "CAT-033",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "ingest resp={\"assembly_key\": \"qa-cube.step\", \"edges\": 0, \"roots\": [], \"source\": \"assembly_step\", \"note\": \"no multi-level hierarchy in this assembly (nothing to roll up)\"}"
+ },
+ {
+  "id": "CAT-034",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-035",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": ""
+ },
+ {
+  "id": "CAT-036",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "template header=part_id,description,material_class,program,parent_assembly,units_per_parent,annual_volume,quantity,r"
+ },
+ {
+  "id": "CAT-037",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "coverage honest: with_geometry 0->1 after /validate upload of qa-box.stl (normalized-stem exact match)"
+ }
+]

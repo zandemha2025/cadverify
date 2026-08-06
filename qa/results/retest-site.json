@@ -1,0 +1,158 @@
+[
+ {
+  "id": "SITE-001",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "title fallback OK; 1 canvas; rail 6 stops (PART|ROUTED|OPENED|SEATED|THE NUMBER|PROOF); dot click scrolled 0->5130px; pill -> /company#pilot; /platform + /method links OK; no console errors"
+ },
+ {
+  "id": "SITE-002",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "default 500 units MJF make; ~1900 units MAKE, ~2100 units 'Tool up: injection molding' with 'if redesigned' \u2014 flips at documented 1,962 crossover; SVG curves render; /company#pilot link present"
+ },
+ {
+  "id": "SITE-003",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "email input not inside any form; typed value, clicked Request a pilot -> plain Link nav to /company#pilot; zero non-GET requests fired"
+ },
+ {
+  "id": "SITE-004",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "wordmark -> /; six nav links present; data-active on current section incl /teams/* subtree; Log in -> /login; Request a pilot -> /company#pilot; mobile menu: opens, 8 links, Escape closes, link click navigates"
+ },
+ {
+  "id": "SITE-005",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "document footer: tagline + Home + six nav + Log in + legal row (2026, Privacy/Terms/DPA/Status) all correct, Privacy click routed; home closes with inline tagline (Method/Platform/Security/Developers), footer count on home=0"
+ },
+ {
+  "id": "SITE-006",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "title OK; CTAs/links verified; no console errors"
+ },
+ {
+  "id": "SITE-007",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "title OK; CTAs/links verified; no console errors"
+ },
+ {
+  "id": "SITE-008",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "title OK; CTAs/links verified; no console errors"
+ },
+ {
+  "id": "SITE-009",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "title OK; CTAs/links verified; no console errors"
+ },
+ {
+  "id": "SITE-010",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "title OK; CTAs/links verified; no console errors"
+ },
+ {
+  "id": "SITE-011",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "title OK; CTAs/links verified; no console errors"
+ },
+ {
+  "id": "SITE-012",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "title OK; CTAs/links verified; no console errors"
+ },
+ {
+  "id": "SITE-013",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "title OK; CTAs/links verified; no console errors"
+ },
+ {
+  "id": "SITE-014",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "title OK; CTAs/links verified; no console errors"
+ },
+ {
+  "id": "SITE-015",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "title OK; CTAs/links verified; no console errors"
+ },
+ {
+  "id": "SITE-016",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "Title 'Company \u2014 ProofShape'; section#pilot has non-zero scroll-margin-top and /company#pilot lands the section in view below the sticky nav; four WeekCell columns present (rendered uppercase 'WEEK 1'..'WEEK 4' \u2014 initial automated case-sensitive match was a false positive, verified in page text); no email address published in body; SiteShell chrome; no console errors."
+ },
+ {
+  "id": "SITE-017",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "GET /api/pilot/request cfg={\"turnstileSiteKey\":null}; empty submit blocked by native required validation (email,company,what); deployment opts undecided,cloud,vpc,air-gapped; real POST -> 200; role=status 'Request received' with receipt CV-bd3d4ef9-e4c1-4712-9173-dc90ce9f856b"
+ },
+ {
+  "id": "SITE-018",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "title OK; CTAs/links verified; no console errors"
+ },
+ {
+  "id": "SITE-019",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "title OK; CTAs/links verified; no console errors"
+ },
+ {
+  "id": "SITE-020",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "title OK; CTAs/links verified; no console errors"
+ },
+ {
+  "id": "SITE-021",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "title OK; CTAs/links verified; no console errors"
+ },
+ {
+  "id": "SITE-022",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "title OK; CTAs/links verified; no console errors"
+ },
+ {
+  "id": "SITE-023",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "Title 'Status - ProofShape'; exactly three rows (Hosted app, API, Workers) each 'No public metric feed yet'; no fake green indicators \u2014 the only 'uptime' mention is the honest disclaimer 'ProofShape does not show synthetic uptime' (initial regex hit was a false positive); no console errors."
+ },
+ {
+  "id": "SITE-024",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "bogus route -> HTTP 404, branded 'That record is not here.' in SiteShell, Back pill -> /, nav+footer present, Method click routed; only console entry is the expected resource-404"
+ },
+ {
+  "id": "SITE-025",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "injected toLocaleString crash -> root error boundary 'Something went wrong' with 'Try again' button (client error carries no digest so no Error ID line, as documented 'when present'); cleared fault + Try again re-rendered the working page"
+ },
+ {
+  "id": "SITE-026",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "robots.txt: 18 Allow (exact public set), 13 Disallow app/auth routes, Sitemap pointer -> http://localhost:3000/sitemap.xml; sitemap.xml: same 18 routes, priority 1 home / 0.7 others; /opengraph-image -> 200 image/png 53631 bytes; layout default title verified on home"
+ }
+]

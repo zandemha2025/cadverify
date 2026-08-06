@@ -341,6 +341,24 @@ async def run_analysis(
     On cache miss runs the full pipeline, persists, writes usage_event.
     Handles race condition via IntegrityError catch (T-03B-01).
     """
+    # Suffix gate BEFORE the cache lookup. The fresh path rejects unsupported
+    # suffixes inside the parse prelude, but a cache hit (same bytes, new
+    # filename) skips parsing entirely and would otherwise reach source-
+    # evidence persistence, where normalize_suffix raises an unhandled
+    # ValueError -> 500. Same status and message as the parse-path gate.
+    from pathlib import Path as _Path
+
+    from fastapi import HTTPException
+
+    _suffix = _Path(filename or "").suffix.lower()
+    if _suffix not in (".stl", ".step", ".stp", ".iges", ".igs"):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unsupported file type: {_suffix}. "
+                "Use .stl, .step, .stp, .iges, or .igs"
+            ),
+        )
     (
         analysis_timeout_sec_fn,
         _issue_to_dict,

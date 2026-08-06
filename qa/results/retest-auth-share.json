@@ -1,0 +1,62 @@
+[
+  {
+    "id": "AUTH-001",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Wrong password renders \"Invalid email or password.\" under the form; valid login with ?next=https://evil.example/phish rejects the external URL and lands on /verify (safeLocalPath default). wrong-pw message shown: true; external ?next= sanitized -> /verify"
+  },
+  {
+    "id": "AUTH-002",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "MAGIC_LINK_UI_ENABLED / TURNSTILE_SITE_KEY unset in the running frontend process env; the rendered /login has no magic-link section or Turnstile widget (RSC payload shows turnstileSiteKey: undefined) per the documented gating. Token/submit-disable behavior not exercisable locally (same as pass 1). Initial automated FAIL was a detector artifact matching the serialized prop name in the RSC payload, not rendered UI."
+  },
+  {
+    "id": "AUTH-003",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "SSO_LOGIN_PATH unset: SSO anchor and OR-USE-PASSWORD divider correctly absent; password signup enabled so footer shows the signup link, not the managed-access note."
+  },
+  {
+    "id": "AUTH-004",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Password signup form renders (public signup enabled). Client validation blocks <8 chars and letters-only passwords before any POST; valid signup POSTs /api/auth/signup and navigates via /onboarding. short pw blocked client-side: true; letters-only pw blocked client-side: true; valid signup POSTed=true, landed on /verify"
+  },
+  {
+    "id": "AUTH-005",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Exact non-enumerating copy present, \"Try another email\" links to /login, meta robots noindex."
+  },
+  {
+    "id": "AUTH-006",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "No token -> \"This sign-in link is missing or malformed.\" with Request-a-new-link -> /login. #token= fragment is scrubbed to /magic/verify (history.replaceState, verified post-hydration) and held in memory; \"Continue to ProofShape\" POSTs /api/auth/magic/exchange and a bogus token renders \"Magic link invalid or expired.\" Initial automated FAIL was a timing artifact (checked before client hydration)."
+  },
+  {
+    "id": "AUTH-007",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Fresh invite (viewer) created via POST /api/proxy/orgs/invites as qa-tester. logged-out: prompt=true, login link next-returns=true (/login?next=%2Forgs%2Faccept%3Ftoken%3DQhLr8l1M8scgp7jYV7nBDHbeYNQ4ypdi42lHHUtdoXY); missing token message=true; redeem: accepted=true, role viewer shown=true, Open-ProofShape link=true"
+  },
+  {
+    "id": "SHARE-001",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Fresh share /s/xUS262U4hyfI (qa-box.stl) viewed logged-out. filename=true, read-only header=true, geometry cards=true, process ranking=true, noindex=true; bogus id: not-available+revoked copy=true, home link=true"
+  },
+  {
+    "id": "SHARE-002",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Fresh cost share /s/cost/QUnXUyrBZ1CQ viewed logged-out. Make-by=true, badge=true, crossover sentence=true, confidence band=true, footer=true, noindex=true; bogus id message=true"
+  },
+  {
+    "id": "DOCS-001",
+    "status": "RETEST-PASS",
+    "error_found": "",
+    "notes": "Browser navigation to /docs lands on /developers (Next.js redirect); curl separately confirms 307 with location /developers."
+  }
+]

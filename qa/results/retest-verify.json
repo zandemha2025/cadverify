@@ -1,0 +1,134 @@
+[
+ {
+  "id": "VER-001",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "Unauth /verify 307s to /login?next=%2Fverify. Membership-less user (fresh account, membership removed in DB): verify-organization-gate renders 'ORGANIZATION REQUIRED / You haven't joined an organization yet…' with invitation guidance, the 'No organization data has been loaded or treated as empty.' honesty line and 2 links to /settings/organization (screenshot RETEST-VER-001-gate.png). Memberships-but-none-active and access-unavailable branches remain defensive-only (backend always resolves the oldest live membership), as in pass 1. VERIFY_UI-off 404 not toggled (shared dev server)."
+ },
+ {
+  "id": "VER-002",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "First-run dialog opened with all four actions; 'Set up my shop' lands on Machines screen; closing records proofshape_welcome_v2=1; no reopen once set; ?welcome=1 reopens and the param is stripped from the URL; 'Start here' button reopens the guide; 'Check my CAD file' opens the native file picker (filechooser event)."
+ },
+ {
+  "id": "VER-003",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "'Run a guided example' drives the real pipeline (POST /validate 200 + POST /validate/cost 200); guided-example-status walks running→ready; GuidedResultSummary shows recommended route, measured geometry, resource cost and shop fit; 'Show full technical result' closes into the walk; leaving via rail navigation cancels the guided lifecycle (status bar gone)."
+ },
+ {
+  "id": "VER-004",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": ".sldprt upload → role=alert verify-upload-rejection with SolidWorks-specific 'needs a STEP export' copy, 'was not uploaded… No analysis was started' honesty line, dismiss works; zero network requests fired for the rejected file; input accept='.stl,.step,.stp,.iges,.igs,model/stl,application/step'."
+ },
+ {
+  "id": "VER-005",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "With validate delayed 1.5s and cost 5s: /validate returned before /validate/cost started (sequential, never parallel); verify-first-insight visible with MEASURED chips while cost still in flight; GET /machine-inventory and PUT /part-context/{sha256} ran alongside; cost completed 200. Run-token supersedence verified in VER-011 rapid material switch."
+ },
+ {
+  "id": "VER-006",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "Overlay COMPUTING header 'GATES CHECKING IN' observed; five-milestone rail (received/measured/routed/gates walked/record assembled) narrated; partial state 'ROUTING + DFM READY · COST CALCULATING' observed; dismiss ('Skip to the walk') present in overlay markup on longer runs; geometry-blocked stop and interrupted headers exercised in VER-007/VER-008 (walk stops at failed gate, INTERRUPTED · NO VERDICT PRODUCED)."
+ },
+ {
+  "id": "VER-007",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "qa-broken.stl → /validate/cost 400 GEOMETRY_INVALID; fail banner 'Geometry invalid — the engine won't guess' + 'THE WALK STOPS AT THE FAILED GATE' block quoting the backend message with measured facts (faces/watertight/volume) and 'Repair & re-upload' CTA; downstream materials/cost/decide steps not rendered."
+ },
+ {
+  "id": "VER-008",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "Outages induced by client request interception. Total: 'ANALYSIS INTERRUPTED · NO VERDICT PRODUCED' with the exact error and 'Retry verification'. Cost-only: 'RESOURCE COST INTERRUPTED' with exact copy 'Routing and DFM are ready. Cost needs another try.', names the costError and why machine fit is absent, offers both 'Retry cost only' and 'Rerun full verification'. Retry cost only re-POSTed only /validate/cost (validate count unchanged) and merged onto the preserved DFM into a completed walk."
+ },
+ {
+  "id": "VER-009",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "Fresh org, no machines/env: banner 'VERDICT · DFM … · SHOULD-COST COMPUTED' with explicit 'not evaluated here because no machines and no service conditions are declared' copy. With machines declared (VER-012 run) the verification block drove 'Makeable — outsource only' banner with should-cost line and per-route marks."
+ },
+ {
+  "id": "VER-010",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "120°C chip toggle re-ran verification: PUT /part-context/{sha256} carrying \"max_temp_c\":120 landed before POST /validate/cost; door chip walked capturing… → '● USER · on the record' after successful persistence; induced PUT abort on the 35 MPa toggle → honest 'drives this preview only' chip. Material-exclusion citations (HDT/NACE) present in step-2 copy; ambient state verified pre-toggle."
+ },
+ {
+  "id": "VER-011",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "DEFAULT copy 'uses a default material and ambient service until you declare otherwise' before declaration; selecting Steel re-ran cost and the walk shows 'material class steel' with USER provenance; rapid Aluminum→Titanium leaves Titanium displayed (monotonic run token, no stale result)."
+ },
+ {
+  "id": "VER-012",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "Empty floor: step 1 shows 'No machines declared' with 'Declare your floor →' CTA that opens the Machines screen. Declared cnc_3axis 'QA VF-2' (762×406×508, $85/hr) + sla 'QA Mars 4' via authed proxy (unknown 'thermoforming' now rejected 400 at declaration — engine catalog enforced server-side, so unknown ids can never reach owned_processes; cost stayed 200). Re-run lists machines with USER provenance and envelope summaries '762 × 406 × 508 mm'; verification block returned 'Makeable — outsource only' with per-route ✓/✗ marks and acquisition-gap language; rail rate dot fills once the $85/hr rate exists ('Your shop rates are bound · ● SHOP')."
+ },
+ {
+  "id": "VER-013",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "Default readout 'engine-exact — a computed point'; scrubbed to qty 74 → 'interpolated between computed 1 and 100'; qty 1 edge is engine-exact (a real ladder point, no clamp needed); crossover from decision.crossover_qty marked on the axis ('crossover ≈ 529'); band labelled 'not shop-validated'. Ladder [1,100,1000,2000,5000,10000]; annual_volume replacement verified in pass 1."
+ },
+ {
+  "id": "VER-014",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "Choosing 'Make outside' saved via PUT /api/proxy/cost-decisions/{id}/disposition (story says PATCH; PUT is the implemented method, unchanged from pass 1) with toast 'Make outside — saved to cost-decision #01KZA7RR' and status '✓ … saved and auditable'; hydrate GET /cost-decisions/{id} 200; note save toasts 'Outcome note saved…'; induced save outage → 'Decision controls paused — Failed to fetch. Nothing was changed.' with Retry which clears the pause leaving state intact; 'Open the record →' navigates to Records."
+ },
+ {
+  "id": "VER-015",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "Opened from the tooling card ('Open acquisition consideration →'); modal charts only engine per-quantity unit costs with crossover economics; 'standalone vendor tool price is not an engine output, so no purchase price is printed' honesty kept; org ranking fetched from /api/proxy/catalog/capability-investment (200); Esc closes back to the walk."
+ },
+ {
+  "id": "VER-016",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "Dock disabled placeholder 'Load a part above — the engine answers only about a computed part.' without a result; with a result 'cost drivers at qty 500' renders the drivers artifact; 'compare routes' renders the comparison; 'compare saved decisions' does a live GET /cost-decisions/compare (3 calls observed); natural-language ask ('will this survive a drop test?') renders a refusal artifact — no fabricated numbers."
+ },
+ {
+  "id": "VER-017",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "STEP now works (gmsh installed). as1-tu-203.stp (5-solid AS1 assembly, 18 tree occurrences) → POST /validate/assembly?format=json 200 + ?format=glb 200, single-part /validate/cost skipped (no spurious 400). 'ANALYSING PER-PART' status shown honestly; 18 assembly-part-rows populated with tree paths, tree-counted quantities (×1/×2/×6) and unit costs (plate $235.4, l-bracket $178.9, rod $141.3; bolts ≈M12 COTS rows). Row click highlights the part on stage ('◆ selected plate as1/PLATE/plate'). Single-solid qa-cube.step stayed on the single-part path (no assembly calls) and verified normally."
+ },
+ {
+  "id": "VER-018",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "After the run, GET /part-context/{sha256} hydrates verify-stage-context; with no declared parent the card shows 'CONTEXT · not declared · no parent assembly declared · orphan until declared' (200 with empty context — same honest orphan state as the 404 path; the run's own PUT creates the row). No false error pill. annual_volume ladder reshaping verified in pass 1 and the ladder mechanics re-verified in VER-013."
+ },
+ {
+  "id": "VER-019",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "Corpus is seeded (2 QA parts in data/corpus/manifest.jsonl) and retrieval demonstrably runs: the VER-020 imported-plate run rendered the explicit honest line 'No confident match in your part library yet — geometry retrieved 4 prior parts, none confident enough to suggest.' — retrieval executed, below-bar match → NO identity card fabricated (per story: non-grounded/low corpus renders nothing or soft copy, never an assertion). No grounded suggestion reached the confident bar for this org's uploads, so the confirm POST path was not reachable live; confirm/dismiss flows remain code-verified."
+ },
+ {
+  "id": "VER-020",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "Design generation now works: POST /api/proxy/designs (plate 80×60×5, 2 holes) → 202, revision reached status=ready with geometry_hash. /verify?design=<id> fetched download.step (200), banner walked 'Imported QA_Retest_Plate.step. Verification is running.' → 'Verification finished.' (dismissible); normal untrusted pipeline ran (validate 200, cost 200) and produced the full verdict walk; on-page Evidence hash equals the revision geometry_hash (51c7179c…48ed) — integrity check passed. Tampered x-geometry-sha256 (route-injected) → role=alert 'The generated STEP artifact failed its integrity check.' with Return to Design Studio. Invalid id → 'That Design Studio link is invalid.'; invalid revision → 'That design revision is invalid.'; nonexistent id → 'The design artifact is not ready (404).' — all with Return links."
+ },
+ {
+  "id": "VER-021",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "Fresh org: dashed 'Nothing in flight.' empty state, 'n=0 · every band still hatched' ground-truth empty, calibrated KPI permanently withheld ('— CALIBRATED ESTIMATES · NO DATA'), start-here grid with drop/browse CAD + guided example + Design Studio link. Induced abort of cost-decisions + machine-inventory → role=alert 'Couldn't load records, machine inventory… nothing is being presented as an empty result' with 'Retry organization data'; KPIs read 'RETRY NEEDED'; retry restores the data and clears the flags."
+ },
+ {
+  "id": "VER-022",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "H/V/P/R/G/M/T/C hotkey nav confirmed 8/8; '?' opens the shortcuts sheet; Ctrl+K toggles the palette and Esc closes it; typing in the palette input never triggers nav; ?screen=records deep-links; rate dot hollow on a fresh org and fills once a machine declares an hourly rate ('Your shop rates are bound · ● SHOP'); mobile <select> replaces tabs at 700px."
+ }
+]
