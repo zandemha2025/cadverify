@@ -530,6 +530,20 @@ async function main() {
       await page.getByRole("button", { name: /^Create account$/ }).click();
       await page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
       await page.getByText("MAKE THE ESTIMATES YOURS").waitFor({ timeout: 12_000 });
+      // Fresh signups land on /verify?welcome=1, and the forced welcome param
+      // opens the WelcomeGuide dialog REGARDLESS of the seeded seen-flag (the
+      // first-run guide is deliberately forced for new accounts — see
+      // verify-app.tsx and welcome-guide.test.ts). Dismiss it the way a real
+      // user would and wait for its full-screen overlay to detach, or it
+      // intercepts every later pointer action in this journey.
+      const welcomeOverlay = page.locator('div[data-state="open"].fixed.inset-0').first();
+      const welcomeOpened = await welcomeOverlay
+        .waitFor({ state: "visible", timeout: 5_000 })
+        .then(() => true, () => false);
+      if (welcomeOpened) {
+        await page.keyboard.press("Escape");
+        await welcomeOverlay.waitFor({ state: "detached", timeout: 10_000 });
+      }
       return { url: page.url(), screenshot: await shot("signup-day-zero") };
     });
 
