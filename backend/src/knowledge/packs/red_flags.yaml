@@ -503,6 +503,69 @@ red_flags:
     source_id: iso_9223
     tier: standard
 
+  - flag_id: RF_DUPLEX_WELDED_AS_STAINLESS
+    category: process
+    name: "Duplex stainless welded as though it were 316"
+    looks_like: >-
+      A duplex or super duplex fabrication with no heat-input range, no interpass
+      temperature limit, no nitrogen in the backing gas, and no ferrite check.
+    signal: >-
+      A duplex or super duplex material selection on a welded part, with no
+      recorded heat-input window, interpass limit, or post-weld ferrite
+      measurement.
+    why_bad: >-
+      Duplex gets its strength and corrosion resistance from a roughly balanced
+      ferrite/austenite microstructure, and welding can destroy that balance in
+      both directions. Cool too fast and the heat-affected zone comes out
+      excessively ferritic — losing toughness and corrosion resistance. Cool too
+      slowly, or hold in the intermetallic range, and sigma phase precipitates,
+      which collapses toughness catastrophically. The part passes every
+      dimensional check and looks identical either way.
+    cost_of_missing_it: >-
+      The alloy was almost certainly selected because it was the only one
+      satisfying a combined sour and chloride envelope. A fabrication error
+      silently removes exactly the property it was chosen for.
+    correct_form: >-
+      A qualified heat-input window, a controlled interpass temperature limit,
+      nitrogen-bearing backing gas on the root, ferrite measurement as quality
+      control, and no post-weld heat treatment other than a full solution anneal
+      with rapid quench.
+    source_id: imoa_duplex
+    tier: handbook
+
+  - flag_id: RF_DUPLEX_ABOVE_TEMPERATURE_LIMIT
+    category: compliance
+    name: "Duplex specified above its service temperature ceiling"
+    looks_like: "Duplex or super duplex selected for sustained service at elevated temperature because it resists the corrosive medium."
+    signal: "A duplex or super duplex selection paired with a sustained service temperature above roughly 250–300 °C."
+    why_bad: >-
+      The ferrite phase in duplex suffers embrittlement on prolonged exposure
+      around 475 °C — and the mechanism begins well below that. This puts a
+      practical ceiling on duplex service temperature that is much lower than its
+      melting point or its short-term strength suggests, and it is invisible in a
+      normal properties table.
+    cost_of_missing_it: "Progressive embrittlement in service, discovered as a brittle failure years in."
+    correct_form: "Check the sustained service temperature against the alloy's ceiling; use austenitic or nickel alloys above it."
+    source_id: imoa_duplex
+    tier: handbook
+
+  - flag_id: RF_FREE_TO_READ_TREATED_AS_FREE_TO_USE
+    category: compliance
+    name: "A freely downloadable document treated as public domain"
+    looks_like: >-
+      A trade-association guide, vendor handbook or registration-gated standard
+      ingested into a product because it was downloadable without payment.
+    signal: "A source marked for text ingestion whose licence is proprietary or unknown, regardless of its access cost."
+    why_bad: >-
+      Price and licence are different questions. A freely downloadable IMOA or
+      Nickel Institute guide is all rights reserved; a paid US Government
+      document is public domain. Conflating them is the single most likely way an
+      ingestion pipeline gets built on material that cannot carry it.
+    cost_of_missing_it: "A disclosure in diligence, and a takedown that removes a chunk of the product's knowledge."
+    correct_form: "Record licence separately from access, default to proprietary, and require a stated basis for any free-licence claim."
+    source_id: itar_ear
+    tier: standard
+
   - flag_id: RF_QUALIFICATION_INVALIDATED_SILENTLY
     category: compliance
     name: "A change that quietly invalidated a qualification"

@@ -728,6 +728,91 @@ nist_publications:
     materials reference data including cryogenic properties, and the
     manufacturing-systems and model-based-definition research programme.
 
+usace_em:
+  tier: handbook
+  title: "US Army Corps of Engineers Engineer Manuals"
+  publisher: "US Army Corps of Engineers"
+  designation: "USACE EM series"
+  access: free
+  licence: public_domain
+  licence_note: "US Government work (17 USC 105); published openly by USACE."
+  ingestion: full
+  scope: >-
+    Painting and protective coatings, welded structural fabrication, corrosion
+    control for civil works, and the inspection of steel hydraulic structures —
+    unusually practical guidance on what long-life outdoor steelwork actually
+    requires.
+
+nrc_regulatory_guides:
+  tier: standard
+  title: "US Nuclear Regulatory Commission regulatory guides and NUREG reports"
+  publisher: "US Nuclear Regulatory Commission"
+  designation: "NRC Regulatory Guides; NUREG series"
+  access: free
+  licence: public_domain
+  licence_note: "US Government work (17 USC 105)."
+  ingestion: full
+  scope: >-
+    Acceptable methods for meeting 10 CFR 50 requirements — quality assurance
+    programme content, material qualification, welding, NDE, and decades of
+    failure analysis in the NUREG series.
+
+# ── Trade-association technical literature (free to read, still copyrighted) ─
+#
+# These are the highest-value FREE sources in the corpus and a good illustration
+# of the price/licence split: no paywall, all rights reserved. Facts may be
+# stated with attribution; the text may not be ingested.
+
+imoa_duplex:
+  tier: handbook
+  title: "Practical Guidelines for the Fabrication of Duplex Stainless Steels"
+  publisher: "International Molybdenum Association"
+  designation: "IMOA Duplex Fabrication Guidelines (3rd ed., 2014)"
+  access: free
+  licence: proprietary
+  licence_note: "Freely downloadable from IMOA, but all rights reserved — free to read is not free to copy."
+  ingestion: facts_only
+  scope: >-
+    The reference work on duplex stainless fabrication: maintaining the
+    ferrite/austenite phase balance through welding, heat-input and interpass
+    control, intermetallic (sigma) precipitation and how to avoid it, nitrogen
+    in shielding and backing gas, ferrite measurement as quality control,
+    forming, machining and pickling.
+  caution: >-
+    Directly relevant to sour and subsea service, where duplex and super duplex
+    are frequently the only alloys satisfying the combined constraints — and
+    where a fabrication error silently destroys the corrosion resistance the
+    alloy was selected for.
+
+nickel_institute:
+  tier: handbook
+  title: "Nickel Institute technical publications"
+  publisher: "Nickel Institute"
+  designation: "Nickel Institute technical guides"
+  access: free
+  licence: proprietary
+  licence_note: "Freely downloadable, all rights reserved."
+  ingestion: facts_only
+  scope: >-
+    Fabrication, welding and corrosion behaviour of stainless and nickel alloys,
+    including alloy selection for specific corrosive media and the practical
+    consequences of getting heat treatment or welding wrong.
+
+ecss_space:
+  tier: standard
+  title: "European Cooperation for Space Standardization — space product assurance"
+  publisher: ECSS / ESA
+  designation: "ECSS-Q-ST-70 series"
+  access: free
+  licence: proprietary
+  licence_note: "Downloadable after registration and acceptance of the ECSS licence agreement; not public domain."
+  ingestion: facts_only
+  scope: >-
+    Materials, mechanical parts and processes for spaceflight hardware:
+    materials and processes selection and approval, outgassing and contamination
+    control, and the declared-materials-list discipline. The European
+    counterpart to the NASA standards.
+
 # ── Practice-tier and contested rules ────────────────────────────────────────
 
 shop_practice_machining:

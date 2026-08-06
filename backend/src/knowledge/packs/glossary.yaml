@@ -377,6 +377,56 @@ terms:
       failures. An unspecified torque is an unspecified joint.
     source_id: nasa_technical_standards
 
+  - term: "Phase balance (duplex stainless)"
+    domain: materials
+    definition: >-
+      The proportion of ferrite to austenite in a duplex stainless steel,
+      targeted at roughly equal parts. Strength, toughness and corrosion
+      resistance all depend on holding that balance through fabrication.
+    common_confusion: >-
+      Assumed to be a property of the supplied material. Welding changes it
+      locally, so the balance in the heat-affected zone is a fabrication outcome
+      — which is why ferrite measurement is a quality-control step, not a
+      certificate line.
+    source_id: imoa_duplex
+
+  - term: "Sigma phase"
+    domain: materials
+    definition: >-
+      A brittle chromium-rich intermetallic that precipitates in duplex and some
+      austenitic stainless steels held in an intermediate temperature range,
+      severely reducing toughness and corrosion resistance.
+    common_confusion: >-
+      Invisible to dimensional inspection and to a standard material certificate.
+      It is created during fabrication, by slow cooling or an ill-chosen
+      post-weld heat treatment — not present in the delivered plate.
+    source_id: imoa_duplex
+
+  - term: "Heat input and interpass temperature"
+    domain: process
+    definition: >-
+      Heat input is the welding energy per unit length; interpass temperature is
+      how hot the workpiece is when the next pass starts. Together they set the
+      thermal cycle, and therefore the microstructure of the weld and its
+      heat-affected zone.
+    common_confusion: >-
+      Treated as welder technique. For duplex, nickel alloys and DED/WAAM
+      deposition they are qualified process parameters, and changing them
+      silently changes the material.
+    source_id: imoa_duplex
+
+  - term: "Free to read vs free to use"
+    domain: platform
+    definition: >-
+      Access cost and copyright licence are independent. A freely downloadable
+      trade-association guide is all rights reserved; a paid US Government
+      document is public domain.
+    common_confusion: >-
+      The most likely route by which an ingestion pipeline gets built on material
+      that cannot carry it. This corpus records licence separately from access
+      for exactly that reason.
+    source_id: itar_ear
+
   - term: "Provenance (MEASURED / SHOP / USER / DEFAULT)"
     domain: platform
     definition: >-

@@ -88,10 +88,48 @@ bulk-ingestion target. Query it with `kb.ingestible_sources()`.
 | **NASA standards + NTRS** | Fastener design, fracture control, workmanship, structural factors, and decades of engineering reports |
 | **FAA AC 43.13** | The best free source on what acceptable workmanship actually looks like — inspection, corrosion, welding, fasteners, sheet metal repair |
 | **NIST publications** | Measurement uncertainty, dimensional metrology, materials reference data, MBD research |
+| **USACE Engineer Manuals** | Protective coatings, welded structural fabrication, corrosion control for long-life outdoor steelwork |
+| **NRC regulatory guides and NUREG** | Acceptable methods for nuclear QA, material qualification, welding, NDE, and decades of failure analysis |
 | **US CFR** (21 CFR 820, 174–190; ITAR/EAR) | The regulations themselves |
 | **EU legislation** (PED) | The directive text — though the harmonised standards it references are CEN documents and are *not* free |
 
-### Two traps in that list
+### Free to read is not free to use
+
+The highest-value free sources in this corpus are **not** ingestible, and the
+distinction is worth internalising because it is counter-intuitive:
+
+| Source | Costs money? | Ingestible? |
+|---|---|---|
+| MIL-HDBK-5H | No | **Yes** — US Government work |
+| A paid-for print of a US Government report | Yes | **Yes** — the licence follows the work, not the price |
+| IMOA duplex fabrication guidelines | No | **No** — all rights reserved |
+| Nickel Institute technical guides | No | **No** — all rights reserved |
+| ECSS space standards | No (registration) | **No** — licence agreement, not public domain |
+
+IMOA and the Nickel Institute publish genuinely excellent material for free.
+That generosity is not a copyright waiver. Both sit at `facts_only`, and the
+corpus states what they establish with attribution — which is legitimate, and is
+where the duplex fabrication knowledge in `environments.yaml` and `red_flags.yaml`
+came from.
+
+### The NonCommercial trap
+
+Open educational resources look like an obvious ingestion target, and many of
+them carry a **CC BY-NC** licence — free to use, *except commercially*. A
+revenue-generating platform is a commercial use.
+
+- **CC BY** and **CC BY-SA** — usable commercially with attribution (SA obliges
+  you to share adaptations alike, which may not suit a proprietary product).
+- **CC BY-NC**, **CC BY-NC-SA**, **CC BY-NC-ND** — **not usable here.** This
+  covers a great deal of university courseware, including some of the most
+  obvious candidates.
+- **CC0 / public domain dedication** — usable without restriction.
+
+Check the specific licence on the specific work. "It's open courseware" is not a
+licence determination, and the NC clause is easy to miss precisely because
+everything about the material feels free.
+
+### Two more traps in that list
 
 **MIL-HDBK-5H is superseded.** MMPDS replaced it, is maintained under paid
 membership, and is the version the FAA accepts for showing compliance. Use

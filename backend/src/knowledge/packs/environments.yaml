@@ -78,6 +78,28 @@ environments:
       - "Most martensitic stainless in the hardened condition"
       - "Free-machining grades with sulphur additions"
       - "Un-relieved cold-worked material regardless of base chemistry"
+    design_notes:
+      - >-
+        Duplex and super duplex are frequently the only alloys satisfying a
+        combined sour-and-chloride envelope — which makes their fabrication a
+        first-class design concern rather than a shop detail. The alloy's
+        properties come from a roughly balanced ferrite/austenite microstructure,
+        and welding can destroy that balance in either direction: too fast a cool
+        leaves an excessively ferritic heat-affected zone with reduced toughness
+        and corrosion resistance, while too slow a cool, or a hold in the
+        intermetallic range, precipitates sigma phase and collapses toughness.
+      - >-
+        The controls that follow are design outputs, not shop preferences: a
+        qualified heat-input window, a controlled interpass temperature limit,
+        nitrogen-bearing backing gas on the root, and ferrite measurement as
+        quality control. Post-weld heat treatment must be a full solution anneal
+        with rapid quench — a partial or intermediate-temperature treatment is
+        worse than none.
+      - >-
+        Duplex also carries a service-temperature ceiling well below what its
+        strength suggests, because the ferrite phase embrittles on prolonged
+        elevated-temperature exposure. Check sustained service temperature
+        against that ceiling before selecting it.
     auditor_focus: >-
       An auditor will not accept "it's a NACE material". They will ask for the
       specific ISO 15156-3 table entry, the environmental limits it is qualified
