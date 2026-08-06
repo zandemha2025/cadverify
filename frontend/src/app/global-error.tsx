@@ -9,10 +9,10 @@ import "./globals.css";
 
 export default function GlobalError({
   error,
-  unstable_retry,
+  retry,
 }: {
   error: Error & { digest?: string };
-  unstable_retry: () => void;
+  retry: () => void;
 }) {
   useEffect(() => {
     Sentry.captureException(error);
@@ -29,7 +29,7 @@ export default function GlobalError({
             <p className="mb-4 text-muted-foreground">
               An unexpected error occurred. Please try again.
             </p>
-            <Button onClick={() => unstable_retry()}>Try again</Button>
+            <Button onClick={() => retry()}>Try again</Button>
           </div>
         </div>
       </body>
