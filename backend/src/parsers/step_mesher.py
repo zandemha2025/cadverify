@@ -266,6 +266,17 @@ def _run_rung(path: str, idx: int) -> trimesh.Trimesh:
     mesh = trimesh.Trimesh(vertices=verts, faces=faces, process=True)
     if len(mesh.vertices) == 0 or len(mesh.faces) == 0:
         raise _EmptyMeshError("STEP tessellation yielded an empty mesh.")
+    if not mesh.is_winding_consistent:
+        # gmsh emits triangles per B-rep surface patch, and patch windings can
+        # disagree after the vertex merge — an artifact of OUR tessellation, not
+        # of the user's solid. Unify it here like the sibling STEP paths do
+        # (step_parser / ap242_tessellated_parser both fix_normals their output)
+        # so the ERROR-severity INCONSISTENT_NORMALS check only ever fires on
+        # geometry the user actually supplied with flipped faces.
+        try:
+            mesh.fix_normals(multibody=True)
+        except Exception:
+            logger.warning("fix_normals failed on gmsh shell; leaving winding as-is")
     return mesh
 
 
