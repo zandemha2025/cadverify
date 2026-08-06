@@ -191,7 +191,13 @@ jobs:
       - name: Install scanners
         # Static analysis / manifest audit only — neither tool needs the heavy
         # CAD runtime deps, so this job stays fast and independent of `backend`.
-        run: pip install bandit==1.9.4 pip-audit==2.10.1 pip-tools==7.5.3
+        # pip itself is pinned: pip-tools 7.5.3 imports pip internals
+        # (pip._internal.utils.compat.stdlib_pkgs) that newer pip releases
+        # removed, and the runner image's bundled pip drifts under us. 24.0 is
+        # the version requirements-prod.lock was generated with.
+        run: |
+          pip install pip==24.0
+          pip install bandit==1.9.4 pip-audit==2.10.1 pip-tools==7.5.3
       - name: Production dependency lock is current
         run: |
           pip-compile --quiet --generate-hashes --resolver=backtracking --strip-extras \
