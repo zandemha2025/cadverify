@@ -1,0 +1,62 @@
+[
+  {
+    "id": "AUTH-001",
+    "status": "TESTED-PASS",
+    "error_found": "",
+    "notes": "Wrong password shows \"Invalid email or password.\" under the password field; correct login navigates to /verify (default next)."
+  },
+  {
+    "id": "AUTH-002",
+    "status": "TESTED-PASS",
+    "error_found": "",
+    "notes": "MAGIC_LINK_UI_ENABLED and TURNSTILE_SITE_KEY are unset in the running frontend env; the magic-link section is correctly absent per the documented gating. Turnstile/submit-disable behavior not exercisable locally."
+  },
+  {
+    "id": "AUTH-003",
+    "status": "TESTED-PASS",
+    "error_found": "",
+    "notes": "SSO_LOGIN_PATH unset: SSO anchor and divider correctly absent; password enabled so footer correctly shows the \"Create an account\" signup link instead of the managed-access note."
+  },
+  {
+    "id": "AUTH-004",
+    "status": "TESTED-PASS",
+    "error_found": "",
+    "notes": "Local gating correct (password signup form renders). Client validation (>=8 chars, letter+digit) blocks the POST with the exact messages. Valid signup POSTs /api/auth/signup (200) and navigates to /onboarding, which server-redirects to /verify?welcome=1 (expected app behavior: onboarding is a redirect page)."
+  },
+  {
+    "id": "AUTH-005",
+    "status": "TESTED-PASS",
+    "error_found": "",
+    "notes": "Static confirmation page, no account enumeration."
+  },
+  {
+    "id": "AUTH-006",
+    "status": "TESTED-PASS",
+    "error_found": "",
+    "notes": "No token -> \"This sign-in link is missing or malformed.\" with Request-a-new-link -> /login. #token= fragment is immediately scrubbed to /magic/verify (history.replaceState) and held in memory; clicking Continue POSTs /api/auth/magic/exchange and a bogus token renders the error alert."
+  },
+  {
+    "id": "AUTH-007",
+    "status": "TESTED-PASS",
+    "error_found": "",
+    "notes": "Invite created via POST /api/proxy/orgs/invites as qa-tester (org admin, role viewer). Unauthenticated open shows the log-in-as-invited-account state with next-return login link; after logging in as the invitee the token redeems (\"joined the organization as viewer\") with Open ProofShape link; missing token shows \"Invite token missing.\""
+  },
+  {
+    "id": "SHARE-001",
+    "status": "TESTED-PASS",
+    "error_found": "",
+    "notes": "Share created via POST /api/proxy/analyses/{id}/share -> /s/a4nVdkEHmqDo; viewed in a logged-out context. Bogus id shows the not-available (may have been revoked) state with a link home."
+  },
+  {
+    "id": "SHARE-002",
+    "status": "TESTED-PASS",
+    "error_found": "",
+    "notes": "Cost share /s/cost/5WB6NT4UR5Fo viewed logged-out: \"Make by CNC 3-Axis\" + DFM-ready badge, crossover sentence (\"Make below ~721 units... tool up with Die Casting above it\"), confidence band ($68.76-$206.29/unit, ±50%, assumption-basis stated), geometry cards, recommendation-by-quantity table with cheaper-if-redesigned alternates, DEFAULT/USER provenance chips, noindex, \"not a validated quote\" footer. Bogus id -> \"Cost decision not available\"."
+  },
+  {
+    "id": "DOCS-001",
+    "status": "TESTED-PASS",
+    "error_found": "",
+    "notes": "curl confirms 307 redirect /docs -> /developers; browser lands on /developers."
+  }
+]
