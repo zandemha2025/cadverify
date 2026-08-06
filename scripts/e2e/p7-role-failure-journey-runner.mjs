@@ -1156,6 +1156,12 @@ asyncio.run(main())
 
     await this.step("low-role Verify members panel shows gated copy when mounted", async () => {
       const page = this.lowRole.page;
+      // This is a fresh context with empty localStorage: pre-seed the
+      // first-run WelcomeGuide's seen-flag so its full-screen dialog overlay
+      // does not intercept the rail click below.
+      await page.addInitScript(() => {
+        try { window.localStorage.setItem("proofshape_welcome_v2", "1"); } catch {}
+      });
       const res = await page.goto("/verify", { waitUntil: "domcontentloaded", timeout: 30_000 });
       await page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => {});
       await page.waitForTimeout(1000);
