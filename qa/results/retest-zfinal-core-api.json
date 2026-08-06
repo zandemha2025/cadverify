@@ -1,0 +1,134 @@
+[
+ {
+  "id": "CORE-001",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "Fresh key. 200 on qa-box.stl: geometry summary (12 faces, watertight), 21 ranked process_scores with standards citations, best_process fdm with honest basis 'geometry-manufacturability; material not declared'. ?units=inch scaled x25.4 exactly once (bbox 1016x762x254, volume 196644768 mm3); include_thickness added wall_thickness_map. 401 no key (auth_missing envelope). 400s: unknown rule_pack (lists 4 packs), unknown units, unknown processes value ('Unknown process: warp_drive'), bad magic (qa-fake.stl), unsupported .xyz suffix, empty file. Persistence verified via /api/v1/analyses (rows for each run). Untested this pass: 413 >100MB (budget), 504 timeout, 403 viewer (no platform-viewer account creatable this pass: sandbox permission layer denied superadmin key minting; 403 verified in both prior passes)."
+ },
+ {
+  "id": "CORE-002",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "202 Accepted with {analysis_id, job_id ULID, poll_url /api/v1/jobs/{ulid}, result} and synchronous result included. Job row created and completed (status 'partial', job_type sam3d) and result fetchable via /jobs/{id}/result. 503 SAM3D_ENQUEUE_FAILED path untestable (Redis healthy)."
+ },
+ {
+  "id": "CORE-003",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "401 no key. STL: 200 model/gltf-binary ('glTF' magic), X-Mesh-Original-Faces:12, X-Mesh-Preview-Faces:12, X-Mesh-Decimated:false, X-Mesh-Source:stl, Cache-Control:no-store. STEP (gmsh live): 200 GLB, X-Mesh-Original-Faces:185308 -> Preview 40874, X-Mesh-Decimated:true (>50k decimation), X-Mesh-Source:step. 400 bad file. Untested: 120/hr 429, 413, single-flight cache, 403 viewer (see CORE-001 note)."
+ },
+ {
+  "id": "CORE-004",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "format=json: 200 AssemblyModel dict (kind single_part for qa-cube.step; limits/notes/tree/parts/unique_designs present). format=glb: 200 'glTF' with X-Assembly-Kind:single_part, X-Assembly-Parts:1, X-Assembly-GLB-Bytes. format=analysis: 200 with per_part/interference/not_analyzed/cost_context/boundaries; unknown material_class -> 400 listing 5 classes. 400 native CAD .SLDASM with specific licensed-reader/export-to-STEP message; 400 .stl suffix listing allowed; 400 bad STEP magic (missing ISO-10303-21 header). 401 no key. Multi-solid fixture unavailable (single-solid classified honestly)."
+ },
+ {
+  "id": "CORE-005",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "200 {filename, verdict:pass, geometry, issues:[]} with no per-process scores; 400 empty file; 401 no key. 413 untested (budget)."
+ },
+ {
+  "id": "CORE-006",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "No auth: 200 demo:true, 21 process_scores, include_thickness adds wall_thickness_map. 413 FILE_TOO_LARGE (not 400) for exact-length binary STL declaring 500,001 triangles ('exceeds DEMO_MAX_TRIANGLES limit of 500,000'). 400 bad magic. 10/hour limit verified live: 7th+ call in the hour -> 429 with Retry-After:3600 and structured rate_limited envelope. 504 untested."
+ },
+ {
+  "id": "CORE-007",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "401 no key. 200 decision: estimates with drivers/line_items, assumptions provenance DEFAULT + 'RETRIEVED (org corpus...)' identity suggestion, saved:{id, url:/api/v1/cost-decisions/<ulid>} (decision later surfaced as decision_link on the qa-box analysis, matched by org+mesh_hash). Fail-fast 400s (form fields): 7 quantities ('At most 6 quantities allowed'), qty 20000000 out of range [1,10000000], unknown shop (lists midwest-precision-cnc/shenzhen-contract-mfg), unknown overrides key ('Unknown global rate key'). qa-broken.stl -> structured 400 GEOMETRY_INVALID with geometry summary + doc_url, no 500. Uncertainty absent (ensemble disabled - allowed). 504/persist-failure/429 untested."
+ },
+ {
+  "id": "CORE-008",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "No auth. 200 same shape as /validate/cost but identity:null, no 'saved' key, no uncertainty, no validated:true anywhere in response. 400 unknown material_class. owned_processes form field not declared on demo route (silently ignored as unknown field). 240/hr 429 untested."
+ },
+ {
+  "id": "CORE-009",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "401 no key; 400 unknown rule_pack validated before file read; 200 on qa-broken.stl: original_analysis watertight:false vs repaired_analysis watertight:true, repair_applied:true, repair_details, repaired_file_b64. 413 untested."
+ },
+ {
+  "id": "CORE-010",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "401 without key on all four. 200 catalogs: rule_packs with name/version/description/override_count/mandatory_issue_count (aerospace/automotive/oil_gas/medical); 21 processes with materials+machines; materials with min_wall_mm/tensile_mpa/cost_per_kg_usd; machines with build_volume_mm/min_layer_mm/materials. Viewer-suffices clause not re-verified this pass (no viewer account creatable - see CORE-001 note; verified prior passes). 429 untested."
+ },
+ {
+  "id": "CORE-011",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "401 no key; 200 {shops:[{id,name,region,source}]}: midwest-precision-cnc (US), shenzhen-contract-mfg (CN); exactly these ids listed in the cost route's unknown-shop 400. 429 untested."
+ },
+ {
+  "id": "CORE-012",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "401 no key. 200 capability dict for batch_zip: max_parts=10000, max_part_urls_per_response=1000, part_size 16MiB, max_size 5GiB, idempotency_key_required:true, and honest available:false with unavailable_code DIRECT_UPLOAD_REQUIRES_S3 on this non-S3 server. Unknown purpose -> 422 DIRECT_UPLOAD_INVALID_PURPOSE (400-family DirectUploadError mapping)."
+ },
+ {
+  "id": "CORE-013",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "401 no key. Strict schema: extra body field -> 422 VALIDATION_ERROR extra_forbidden; missing/short Idempotency-Key -> 422 DIRECT_UPLOAD_IDEMPOTENCY_KEY_REQUIRED; missing checksum -> 422 DIRECT_UPLOAD_INVALID_CHECKSUM. Fully valid initiate (real sha256+size of qa-batch.zip, 16+ char key) -> structured 501 DIRECT_UPLOAD_REQUIRES_S3, consistent with capabilities available:false - documented honest unavailability. 201 happy path/part URLs/idempotent_replay remain environment-bound (no S3)."
+ },
+ {
+  "id": "CORE-014",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "401 no key. parts/complete/abort/status on unknown id all 404 DIRECT_UPLOAD_NOT_FOUND (route matched, service not-found); malformed complete body -> 422 VALIDATION_ERROR; legacy aliases POST /multipart/{id}/complete and DELETE /multipart/{id} live (return DIRECT_UPLOAD_NOT_FOUND, not router NOT_FOUND) and absent from openapi.json. Full lifecycle and >1000-part refresh rejection environment-bound (no S3)."
+ },
+ {
+  "id": "CORE-015",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "401 no key; 200 application/pdf (%PDF magic) with Content-Disposition: attachment; filename=\"qa-box-dfm-report.pdf\"; 404 unknown ULID; 404 for other-org caller on a real analysis (no existence leak)."
+ },
+ {
+  "id": "CORE-016",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "401 no key. POST -> 200 {share_url:/s/<short>, share_short_id}; analysis detail flipped is_public:true with share_url. DELETE -> {message:'Share revoked'} and the public link 404'd immediately after. 404 for unknown analysis and for another org's analysis."
+ },
+ {
+  "id": "CORE-017",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "Unauthenticated 200 with X-Robots-Tag: noindex and Cache-Control: private, no-store; sanitized body (verdict/geometry/process_scores/priority_fixes only - no email or key material). 404 for unknown short id and for revoked share. 120/hr IP 429 untested."
+ },
+ {
+  "id": "CORE-018",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "401 no key. List {analyses, next_cursor, has_more}, ULID-desc, cursor present; limit=0 and limit=101 -> 422; verdict=pass returns only pass rows; invalid verdict silently ignored (200). Org scoping: fresh other-org key 404s on my analysis detail and its own list is empty. Detail includes full result_json, is_public/share_url, decision_links matched by org+mesh_hash (cost decision linked to the qa-box analysis). 404 unknown ULID."
+ },
+ {
+  "id": "CORE-019",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "401 no key. Status: {job_id, status:partial, job_type:sam3d, created/started/completed timestamps, result_url set, error:null}; /result 200 {job_id, status, result}. 404 for non-existent job, malformed job id, AND another user's job (no existence leak). Failed-job error shape and queued-state /result 404 untested (job completed instantly)."
+ },
+ {
+  "id": "CORE-020",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "200 {status:ok} with real probes: postgres:true, redis:true, async{redis:true, worker:'ok', expected:true, worker_strict:false}, reconstruction{available:false, backend:'none', egress:false} (honest), version, build_id. Single 'server: ProofShape' header. 503 degraded path untestable (cannot take deps down)."
+ },
+ {
+  "id": "CORE-021",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "DEEP_HEALTH_TOKEN unset -> endpoint open: 200 without and with a wrong X-CadVerify-Health-Token. All documented fields present: checks.postgres{ok,error}, checks.redis{ok,expected,configured,error}, checks.worker{state:'ok', heartbeat_age_seconds:12, stale_threshold_seconds:90}, checks.queue{depth:3, name:'arq:queue'}, checks.object_store{ok:false, expected:false, backend:'local'} - failing-but-unexpected store correctly does not gate status. Token-gated 404 path untestable here (dev-flag state)."
+ },
+ {
+  "id": "CORE-022",
+  "status": "RETEST-PASS",
+  "error_found": "",
+  "notes": "Every error observed carried {code, message, doc_url}: BAD_REQUEST (bad params/files), NOT_FOUND (unknown route + resources), FILE_TOO_LARGE (demo 413), VALIDATION_ERROR (extra_forbidden, missing fields, limit out of range), plus passthrough detail codes preserved unchanged: auth_missing (401), GEOMETRY_INVALID (400 with geometry payload), DIRECT_UPLOAD_INVALID_PURPOSE/INVALID_CHECKSUM/IDEMPOTENCY_KEY_REQUIRED/NOT_FOUND/REQUIRES_S3 (422/404/501), rate_limited (429 with Retry-After:3600). The pass-1 plain-text 500 regression is gone (unsupported-suffix re-upload now clean 400 envelope). 409/503/504 codes not triggered."
+ }
+]
