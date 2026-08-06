@@ -523,7 +523,7 @@ async function main() {
       await page.getByLabel("Password").fill(password);
       await page.getByRole("button", { name: /^Create account$/ }).click();
       await page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
-      await page.getByText("DAY ZERO SETUP").waitFor({ timeout: 12_000 });
+      await page.getByText("MAKE THE ESTIMATES YOURS").waitFor({ timeout: 12_000 });
       return { url: page.url(), screenshot: await shot("signup-day-zero") };
     });
 

@@ -71,7 +71,7 @@ weakening the remaining browser-row requirements.
 | AUTH-01 | Open every protected route signed out | Redirect to `/login`; no protected content flashes | Protected API calls are 401 | browser |
 | AUTH-02 | Submit a weak password | `Password must be at least 8 characters.` | No user/session/org created | browser |
 | AUTH-03 | Submit an unknown email/wrong password | `Invalid email or password.` | No session; no user enumeration | browser |
-| AUTH-04 | Sign up with a valid local password | Redirect `/verify`; `DAY ZERO SETUP`; unified ProofShape shell | One user, organization membership, and session | browser |
+| AUTH-04 | Sign up with a valid local password | Redirect `/verify`; `MAKE THE ESTIMATES YOURS`; unified ProofShape shell | One user, organization membership, and session | browser |
 | AUTH-05 | Log out, revisit a protected URL, then log back in | Login boundary returns; successful login returns to a safe local `next` path | Old logged-out session is rejected | browser |
 | AUTH-06 | Request and consume a production magic link | `/magic/sent`; token disappears from URL after exchange; reuse/expiry is bounded | Exactly one session; token consumed once | external |
 | AUTH-07 | Accept, expire, and revoke organization invitations | Accepted invite enters the named org/role; invalid invite never implies success | Membership created once; invalid token changes nothing | browser |

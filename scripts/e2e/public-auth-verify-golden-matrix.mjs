@@ -495,7 +495,7 @@ class Matrix {
       await this.page.getByLabel("Password").fill(password);
       await this.page.getByRole("button", { name: /^Create account$/ }).click();
       await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
-      await this.page.getByText("DAY ZERO SETUP").waitFor();
+      await this.page.getByText("MAKE THE ESTIMATES YOURS").waitFor();
       const userRows = sqlCount(`select count(*) from users where lower(email) = lower(${sqlLiteral(email)})`);
       const membershipRows = sqlCount(`select count(*) from memberships m join users u on u.id = m.user_id where lower(u.email) = lower(${sqlLiteral(email)})`);
       const orgId = execFileSync(process.env.PSQL || "psql", [databaseUrl, "-At", "-c", `select current_org_id from users where lower(email) = lower(${sqlLiteral(email)})`], {
@@ -517,7 +517,7 @@ class Matrix {
         actions: ["Complete the real signup form.", "Wait for the authenticated Verify redirect.", "Inspect the Day Zero surface and authenticated self record."],
         observed: {
           url: `${baseUrl}/verify`,
-          visible: ["DAY ZERO SETUP", "Unified ProofShape authenticated shell"],
+          visible: ["MAKE THE ESTIMATES YOURS", "Unified ProofShape authenticated shell"],
           persisted: { userRows, membershipRows, email: visibleEmail, orgId },
           numeric: { users: userRows, memberships: membershipRows, sessions: cookies.filter((cookie) => /session/i.test(cookie.name)).length },
           authorization: { authenticatedIdentityVisible: true, authenticatedEmail: visibleEmail },
@@ -534,7 +534,7 @@ class Matrix {
 
     await this.path("VER-01", async () => {
       await this.page.goto("/verify", { waitUntil: "domcontentloaded" });
-      await this.page.getByText("DAY ZERO SETUP").waitFor();
+      await this.page.getByText("MAKE THE ESTIMATES YOURS").waitFor();
       const [machines, decisions, portfolio, truth] = await Promise.all([
         this.api("/api/proxy/machine-inventory"),
         this.api("/api/proxy/cost-decisions?limit=50"),

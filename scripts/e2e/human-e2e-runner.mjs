@@ -398,7 +398,7 @@ class HumanE2E {
       await this.page.getByLabel("Password").fill(password);
       await this.page.getByRole("button", { name: /^Create account$/ }).click();
       await this.page.waitForURL(/\/verify(?:\?|$)/, { timeout: 20_000 });
-      await this.expectText(/DAY ZERO SETUP/i, "first-run Verify setup");
+      await this.expectText(/MAKE THE ESTIMATES YOURS/i, "first-run Verify setup");
       await this.scanVisibleText("first-run Verify setup");
       return { screenshot: await this.shot("first-run-verify-setup") };
     });

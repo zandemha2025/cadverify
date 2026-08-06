@@ -794,7 +794,7 @@ class FullMobileBrowserRun {
     const signupResponse = await signupResponsePromise;
     invariant(signupResponse.status() === 200, `signup returned HTTP ${signupResponse.status()}`);
     await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: this.actionTimeoutMs });
-    await this.page.getByText("DAY ZERO SETUP", { exact: true }).waitFor({ state: "visible", timeout: this.actionTimeoutMs });
+    await this.page.getByText("MAKE THE ESTIMATES YOURS", { exact: true }).waitFor({ state: "visible", timeout: this.actionTimeoutMs });
     await this.waitForSettled("signup Day Zero home");
 
     const setupTarget = this.page.locator(".cv-verify-setup button:not([disabled])").first();
@@ -831,14 +831,14 @@ class FullMobileBrowserRun {
       orgId: activeOrg.org_id,
       orgRole: activeOrg.org_role,
     };
-    const visualSteps = [await this.captureStage(definition.id, "375x812-day-zero", ["DAY ZERO SETUP", "Good morning."])];
+    const visualSteps = [await this.captureStage(definition.id, "375x812-day-zero", ["MAKE THE ESTIMATES YOURS", "Good morning."])];
     return {
       persona: "new organization administrator starting on a phone",
       preconditions: ["Password signup is enabled for the target environment.", "The browser has no prior session."],
       actions: ["Entered a unique email and strong password.", "Created the account through the real form.", "Inspected the live Day Zero organization checklist."],
       observed: {
         url: this.page.url(),
-        visible: ["DAY ZERO SETUP", "Good morning."],
+        visible: ["MAKE THE ESTIMATES YOURS", "Good morning."],
         persisted: { userId, orgId: activeOrg.org_id, email },
         numeric: { signupStatus: signupResponse.status(), enabledSetupTargets: await this.page.locator(".cv-verify-setup button:not([disabled])").count() },
         authorization: { platformRole: this.account.platformRole, orgRole: activeOrg.org_role },

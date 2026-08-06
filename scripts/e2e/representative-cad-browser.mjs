@@ -624,7 +624,7 @@ class RepresentativeCadBrowser {
       await this.page.getByLabel("Password").fill(password);
       await this.page.getByRole("button", { name: /^Create account$/ }).click();
       await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
-      await this.page.getByText("DAY ZERO SETUP").waitFor({ timeout: 20_000 });
+      await this.page.getByText("MAKE THE ESTIMATES YOURS").waitFor({ timeout: 20_000 });
 
       const recoveryAlert = this.page
         .getByRole("alert")

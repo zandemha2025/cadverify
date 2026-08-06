@@ -463,7 +463,7 @@ class EnterpriseDomainQA {
       await this.page.getByLabel("Password").fill(password);
       await this.page.getByRole("button", { name: /^Create account$/ }).click();
       await this.page.waitForURL(/\/verify(?:\?|$)/, { timeout: 20_000 });
-      await this.expectText(/DAY ZERO SETUP/i, "first-run Verify setup");
+      await this.expectText(/MAKE THE ESTIMATES YOURS/i, "first-run Verify setup");
       const members = await this.expectApiOk("/admin/users");
       assert(Array.isArray(members.users), "members response missing users");
       const self = members.users.find((u) => u.email === email);

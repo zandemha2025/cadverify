@@ -347,7 +347,7 @@ test("remaining public, Verify, palette, ledger, settings, batch, and reconstruc
     'getByLabel("Email")',
     'getByLabel("Password")',
     '"POST", "/api/auth/signup"',
-    'getByText("DAY ZERO SETUP"',
+    'getByText("MAKE THE ESTIMATES YOURS"',
     '"/api/proxy/orgs"',
     '"/api/proxy/orgs/members"',
     'activeOrg.org_role === "admin"',
