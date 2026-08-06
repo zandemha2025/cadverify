@@ -440,6 +440,12 @@ async function main() {
       "x-real-ip": configuredClientIp(runId, "training-guide"),
     },
   });
+  await context.addInitScript(() => {
+    // Pre-seed the first-run WelcomeGuide seen-flag: this runner creates a
+    // fresh context (empty localStorage) and drives /verify directly; the
+    // guide's full-screen dialog overlay would otherwise intercept clicks.
+    try { window.localStorage.setItem("proofshape_welcome_v2", "1"); } catch {}
+  });
   const page = await context.newPage();
   const steps = [];
   const consoleErrors = [];
