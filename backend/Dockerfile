@@ -2,7 +2,7 @@
 # =============================================================================
 # Stage 1 — builder: install build tools + compile C extensions into a venv
 # =============================================================================
-FROM python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf AS builder
+FROM python:3.14-slim@sha256:a7fb1e634c4a578f9e0bd6327f11a3cde11b7a9395f48e24360c0988bcc5c2bc AS builder
 
 WORKDIR /build
 
@@ -41,7 +41,7 @@ ADD --checksum=sha256:6d1aa6f30de5c92224f8172114de081d104bbd23dd9dc5c58996f0cad5
 # =============================================================================
 # Stage 2 — runtime: slim image with only runtime deps + venv + app code
 # =============================================================================
-FROM python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf
+FROM python:3.14-slim@sha256:a7fb1e634c4a578f9e0bd6327f11a3cde11b7a9395f48e24360c0988bcc5c2bc
 
 WORKDIR /app
 
