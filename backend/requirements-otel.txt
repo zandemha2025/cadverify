@@ -8,9 +8,9 @@
 #     OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318 uvicorn main:app  # OTLP export
 #
 # Pinned to the versions this packet was built + proven against (2026-07-08).
-opentelemetry-sdk==1.43.0
-opentelemetry-instrumentation-fastapi==0.64b0
+opentelemetry-sdk==1.44.0
+opentelemetry-instrumentation-fastapi==0.65b0
 # OTLP/HTTP exporter — needed ONLY for the OTLP export path (endpoint set). The
 # console + in-memory exporters ship inside opentelemetry-sdk, so local proof
 # works without this line; keep it for exporting to a real collector/APM.
-opentelemetry-exporter-otlp-proto-http==1.43.0
+opentelemetry-exporter-otlp-proto-http==1.44.0
