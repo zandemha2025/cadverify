@@ -57,9 +57,9 @@ export function SignupForm() {
 
   return (
     <AuthFrame
-      eyebrow="Local access"
+      eyebrow="Pilot access"
       title="Create your account"
-      body="Direct password signup is available for local development. Production verifies email ownership first."
+      body="Password signup is live on this deployment. Email-link sign-in follows when the hosted mail service is connected."
       footer={<>Already have an account? <AuthTextLink href="/login">Log in</AuthTextLink></>}
     >
       <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
