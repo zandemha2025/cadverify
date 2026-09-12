@@ -32,7 +32,7 @@ const routeSpecs = [
     design: "Direction - Cinematic.dc.html",
     title: "Home / Direction - Cinematic",
     signals: [
-      /Every part arrives\s+with a question\./i,
+      /Can it be made\?\s+What should it cost\?/i,
       /The decision, live\./i,
       /The governed decision layer\s+for everything you make\./i,
       /verification, made of glass/i,
