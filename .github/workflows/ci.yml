@@ -460,7 +460,7 @@ jobs:
       # authentication, immutable pushes, migrations, and ECS rollout.
       - name: Build frontend production image
         id: frontend-image
-        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: frontend
           push: false
@@ -481,7 +481,7 @@ jobs:
 
       - name: Build backend production image
         id: backend-image
-        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: backend
           push: false
