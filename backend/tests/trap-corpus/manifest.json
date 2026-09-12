@@ -1,0 +1,28 @@
+{
+  "corpus": "cadverify trap corpus v0 (Astra 2026-09-12)",
+  "law": "every verifier change must keep this corpus green; expected values derive from CODE thresholds (fdm.py: wall 0.8 / overhang 45deg / small 0.4 / volume (300,300,350) / aspect 8 / drain 3.0; sla.py: wall 0.4 / overhang 19deg)",
+  "fixtures": [
+    {"file": "control-cube-10mm.stl", "class": "control",
+     "expect": {"fdm": {"issues": []}}, "note": "anchored by live receipt 2026-09-12: verdict pass, process fdm, 399ms"},
+    {"file": "trap-wall-0.5mm-shell.stl", "class": "wall",
+     "expect": {"fdm": {"gates_trip": ["wall_thickness"]}, "sla": {"gates_absent": ["wall_thickness"]}},
+     "note": "outer 20mm box + inverted 19mm inner, measured wall 0.5mm: trips FDM min 0.8, passes SLA min 0.4"},
+    {"file": "trap-small-bar-0.3mm.stl", "class": "small-feature",
+     "expect": {"fdm": {"gates_trip": ["small_features", "wall_thickness"]}}},
+    {"file": "trap-build-volume-400mm.stl", "class": "build-volume",
+     "expect": {"fdm": {"gates_trip": ["build_volume"]}}},
+    {"file": "trap-aspect-2x2x100.stl", "class": "aspect",
+     "expect": {"fdm": {"gates_trip": ["aspect_ratio"]}}},
+    {"file": "trap-nonmanifold-missing-face.stl", "class": "geometry",
+     "expect": {"geometry": {"is_watertight": false}}},
+    {"file": "trap-trapped-hollow-sphere.stl", "class": "trapped-volume",
+     "expect": {"fdm": {"gates_trip": ["trapped_volumes"]}}, "note": "sealed r15 shell, wall 2mm, zero drain"},
+    {"file": "trap-inch-cube-25.4mm.stl", "class": "KNOWN-GAP",
+     "expect": {"geometry": {"unit_flag": "suspicious_scale"}},
+     "note": "EXPECTED TO FAIL TODAY - no unit/scale detection exists (T3); this row holds the gap open until T3 lands, then it must go green"},
+    {"file": "trap-overhang-90deg.stl", "class": "overhang",
+     "expect": {"fdm": {"gates_trip": ["overhangs"]}, "sla": {"gates_trip": ["overhangs"]}},
+     "note": "vertical leg + 90deg horizontal ledge; if the watertight gate flags the box-union seam, replace with L-extrusion v2 (single solid)"}
+  ],
+  "harness": "runner iterates manifest: parse mesh -> GeometryContext -> per-process analyzer.analyze(ctx) -> assert expected gates trip and expected-absent gates absent; KNOWN-GAP rows may fail without breaking CI but must be reported loudly; wire into the existing gate suite as a required check"
+}
