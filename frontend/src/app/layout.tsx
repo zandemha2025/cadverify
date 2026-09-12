@@ -34,15 +34,15 @@ export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"
   ),
-  title: "ProofShape — verification, made of glass",
+  title: "ProofShape — can it be made? What should it cost?",
   description:
-    "Makeability verification: can this part be made — on your machines, in materials that survive its world — and what will it really take? Should-cost is one artifact inside the verdict, never the destination.",
+    "Upload a 3D part file. ProofShape reads the geometry, flags what won't manufacture cleanly, chooses the process and machine that fit, and prices the run — every number traced to its source.",
   alternates: { canonical: "/" },
   icons: {
     icon: "/icon.svg",
   },
   openGraph: {
-    title: "ProofShape — verification, made of glass",
+    title: "ProofShape — can it be made? What should it cost?",
     description:
       "Makeability verification for real manufacturing decisions.",
     url: "/",
@@ -52,7 +52,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "ProofShape — verification, made of glass",
+    title: "ProofShape — can it be made? What should it cost?",
     description:
       "Makeability verification for real manufacturing decisions.",
     images: ["/opengraph-image"],

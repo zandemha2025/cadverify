@@ -216,15 +216,15 @@ export default function HomePage() {
       >
         <div ref={cap0} style={{ maxWidth: 720 }}>
           <p style={{ margin: 0, fontSize: 14, letterSpacing: "0.32em", textTransform: "uppercase", color: "var(--st-ink-45)", animation: "st-heroIn 1.4s var(--st-ease-cine) 0.6s both" }}>
-            Makeability verification
+            Manufacturability + should-cost verification
           </p>
           <h1 style={{ margin: "22px 0 0", fontSize: "clamp(52px, 6.5vw, 92px)", lineHeight: 1.02, fontWeight: 300, letterSpacing: "-0.03em", animation: "st-heroIn 1.4s var(--st-ease-cine) 0.85s both" }}>
-            Every part arrives
+            Can it be made?
             <br />
-            with a question.
+            What should it cost?
           </h1>
           <p style={{ margin: "26px 0 0", maxWidth: 560, fontSize: 19, lineHeight: 1.55, fontWeight: 300, color: "var(--st-ink-65, rgba(245,245,247,0.65))", animation: "st-heroIn 1.4s var(--st-ease-cine) 1.1s both" }}>
-            Can it be made — on your machines, in materials that survive its world — and what will it really take?
+            Upload a 3D part file. ProofShape reads the geometry, flags what won’t manufacture cleanly, chooses the process and machine that fit, and prices the run — every number traced to its source.
           </p>
         </div>
         <ScrollHint />
