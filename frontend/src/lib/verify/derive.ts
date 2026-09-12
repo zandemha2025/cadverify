@@ -35,6 +35,23 @@ export function makeNowEstimate(
   return pool.reduce((a, b) => (b.quantity > a.quantity ? b : a));
 }
 
+/**
+ * Verdict-headline default: the prototype read - the smallest computed rung
+ * of the make-now pool. A first upload's mental model is a prototype, and a
+ * headline priced at the 10,000 rung quotes territory the router's own
+ * crossover says the process has left. makeNowEstimate stays the exact-qty /
+ * amortized read for the scrub and catalog.
+ */
+export function prototypeEstimate(cost: CostReport): CostEstimate | null {
+  const proc = cost.decision?.make_now_process;
+  const estimates = cost.estimates.filter((e) => !e.environment_excluded);
+  const pool = proc
+    ? estimates.filter((e) => e.process === proc)
+    : estimates;
+  if (pool.length === 0) return null;
+  return pool.reduce((a, b) => (b.quantity < a.quantity ? b : a));
+}
+
 export type DfmVerdict = "pass" | "issues" | "fail" | "unknown";
 
 export interface RouteDfmOutcome {

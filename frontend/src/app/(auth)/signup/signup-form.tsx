@@ -59,7 +59,7 @@ export function SignupForm() {
     <AuthFrame
       eyebrow="Pilot access"
       title="Create your account"
-      body="Password signup is live on this deployment. Email-link sign-in follows when the hosted mail service is connected."
+      body="Password signup is live on this deployment. Trial accounts include 20 part checks per account. Email-link sign-in follows when the hosted mail service is connected."
       footer={<>Already have an account? <AuthTextLink href="/login">Log in</AuthTextLink></>}
     >
       <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>

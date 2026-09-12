@@ -1,14 +1,23 @@
 "use client";
 
+import * as React from "react";
 import { useState } from "react";
 import AnalysisHistoryTable from "@/components/AnalysisHistoryTable";
-import QuotaDisplay from "@/components/QuotaDisplay";
+import QuotaDisplay, { type TrialUsage } from "@/components/QuotaDisplay";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import type { RateLimits } from "@/lib/api";
 
 export default function HistoryPage() {
   const [rateLimits, setRateLimits] = useState<RateLimits | undefined>();
+  const [usage, setUsage] = useState<TrialUsage | undefined>();
+
+  React.useEffect(() => {
+    fetch("/api/auth/me/usage")
+      .then((r) => (r.ok ? r.json() : undefined))
+      .then((u) => setUsage(u))
+      .catch(() => undefined);
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -23,7 +32,7 @@ export default function HistoryPage() {
         </h2>
         <Card>
           <CardContent compact>
-            <QuotaDisplay rateLimits={rateLimits} />
+            <QuotaDisplay rateLimits={rateLimits} usage={usage} />
           </CardContent>
         </Card>
       </section>

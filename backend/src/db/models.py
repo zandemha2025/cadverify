@@ -278,6 +278,9 @@ class User(Base):
         Text, server_default="analyst", nullable=False
     )
     password_hash: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Product plan gate (trial enforcement): 'trial' accounts are capped at
+    # VALIDATION_CAP_PER_USER completed validations; 'pilot' is uncapped.
+    plan: Mapped[str] = mapped_column(Text, server_default="trial", nullable=False)
     # Org-membership beat (§39): account-level deactivation. ``is_active`` is a
     # security control (no feature flag) — false blocks EVERY auth path (login,
     # Google/SAML/magic re-provision, existing sessions, and API keys the user

@@ -47,6 +47,18 @@ def counts(monkeypatch):
     return table
 
 
+@pytest.fixture
+def plans(monkeypatch):
+    """Map user_id -> plan; absent means 'trial' (the safe default)."""
+    table: dict[int, str] = {}
+
+    async def _fake(user_id: int):
+        return table.get(user_id, "trial")
+
+    monkeypatch.setattr(vc, "_user_plan", _fake)
+    return table
+
+
 @pytest.fixture(autouse=True)
 def _caps_on(monkeypatch):
     monkeypatch.delenv("VALIDATION_CAPS_DISABLED", raising=False)
@@ -57,7 +69,7 @@ def _caps_on(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_under_both_caps_passes(membership, counts):
+async def test_under_both_caps_passes(membership, counts, plans):
     membership[7] = ("org-a", "admin")
     counts[("Analysis.org_id", "org-a")] = 99
     counts[("Analysis.user_id", 7)] = 99
@@ -65,7 +77,7 @@ async def test_under_both_caps_passes(membership, counts):
 
 
 @pytest.mark.asyncio
-async def test_org_at_cap_rejects(membership, counts):
+async def test_org_at_cap_rejects(membership, counts, plans):
     membership[7] = ("org-a", "admin")
     counts[("Analysis.org_id", "org-a")] = 100
     counts[("Analysis.user_id", 7)] = 3
@@ -79,18 +91,22 @@ async def test_org_at_cap_rejects(membership, counts):
 
 
 @pytest.mark.asyncio
-async def test_user_at_cap_rejects_even_when_org_under(membership, counts):
+async def test_user_at_cap_rejects_even_when_org_under(membership, counts, plans):
     membership[7] = ("org-a", "admin")
     counts[("Analysis.org_id", "org-a")] = 50
     counts[("Analysis.user_id", 7)] = 100
     with pytest.raises(HTTPException) as ei:
         await vc.enforce_validation_caps(_req(7))
-    assert ei.value.status_code == 429
+    assert ei.value.status_code == 403
     assert ei.value.detail["code"] == "user_validation_cap_exceeded"
+    assert ei.value.detail["used"] == 100
+    assert ei.value.detail["cap"] == 100
+    assert ei.value.detail["remaining"] == 0
+    assert ei.value.detail["plan"] == "trial"
 
 
 @pytest.mark.asyncio
-async def test_windowed_cap_carries_retry_after(membership, counts, monkeypatch):
+async def test_windowed_cap_carries_retry_after(membership, counts, plans, monkeypatch):
     monkeypatch.setenv("VALIDATION_CAP_WINDOW_DAYS", "30")
     membership[7] = ("org-a", "admin")
     counts[("Analysis.org_id", "org-a")] = 100
@@ -112,7 +128,7 @@ async def test_no_membership_fails_open(membership, counts):
 
 
 @pytest.mark.asyncio
-async def test_count_error_fails_open(membership, monkeypatch):
+async def test_count_error_fails_open(membership, plans, monkeypatch):
     membership[7] = ("org-a", "admin")
 
     async def _boom(column, key, since):
@@ -123,7 +139,7 @@ async def test_count_error_fails_open(membership, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_kill_switch_dev_only(membership, counts, monkeypatch):
+async def test_kill_switch_dev_only(membership, counts, plans, monkeypatch):
     membership[7] = ("org-a", "admin")
     counts[("Analysis.org_id", "org-a")] = 10_000
     monkeypatch.setenv("VALIDATION_CAPS_DISABLED", "1")
@@ -131,3 +147,39 @@ async def test_kill_switch_dev_only(membership, counts, monkeypatch):
     monkeypatch.setenv("RELEASE", "1.2.3")
     with pytest.raises(HTTPException):  # ignored in production
         await vc.enforce_validation_caps(_req(7))
+
+
+@pytest.mark.asyncio
+async def test_pilot_plan_is_never_trial_gated(membership, counts, plans):
+    membership[1] = ("org-owner", "admin")
+    plans[1] = "pilot"
+    counts[("Analysis.org_id", "org-owner")] = 10_000
+    counts[("Analysis.user_id", 1)] = 10_000
+    await vc.enforce_validation_caps(_req(1))  # unlimited, no raise
+
+
+@pytest.mark.asyncio
+async def test_user_trial_usage_reports_used_cap_remaining(counts, plans):
+    counts[("Analysis.user_id", 7)] = 3
+    out = await vc.user_trial_usage(7)
+    assert out == {
+        "plan": "trial",
+        "unlimited": False,
+        "used": 3,
+        "cap": 100,
+        "remaining": 97,
+        "window_days": 0,
+    }
+
+
+@pytest.mark.asyncio
+async def test_user_trial_usage_pilot_is_unlimited(counts, plans):
+    plans[1] = "pilot"
+    out = await vc.user_trial_usage(1)
+    assert out == {
+        "plan": "pilot",
+        "unlimited": True,
+        "used": None,
+        "cap": None,
+        "remaining": None,
+    }
