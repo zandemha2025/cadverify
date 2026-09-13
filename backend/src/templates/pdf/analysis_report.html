@@ -2,26 +2,29 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>DFM Analysis Report - {{ filename }}</title>
+  <title>DFM Verdict Report - {{ filename }}</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
   <!-- Section 1: Header -->
-  <h1>DFM Analysis Report</h1>
-  <p><strong>{{ filename }}</strong> &mdash; {{ created_at[:10] }}</p>
+  <h1>DFM Verdict Report</h1>
+  <p><strong>{{ filename }}</strong> &middot; Analysis {{ analysis_id }} &middot; {{ created_at[:10] }}</p>
 
-  <!-- Section 2: Summary -->
+  <!-- Section 2: Verdict -->
   <div class="summary-box">
     <p>
-      Verdict:
-      <span class="verdict-{{ verdict }}">{{ verdict | upper }}</span>
+      Overall verdict:
+      <span class="verdict-{{ overall_verdict }}">{{ overall_verdict | replace('_', ' ') | upper }}</span>
     </p>
     <p>File type: {{ file_type | upper }} &middot; Faces: {{ face_count | format_number }} &middot; Analysis time: {{ duration_ms | format_duration }}</p>
+    {% if best_process %}
+    <p>Recommended route: {{ best_process }}</p>
+    {% endif %}
   </div>
 
-  <!-- Section 3: Issues Table -->
-  <h2>Issues</h2>
+  <!-- Section 3: Issue summary by severity -->
+  <h2>Issue Summary</h2>
   {% set all_issues = [] %}
   {% for issue in result.get('universal_issues', []) %}
     {% set _ = all_issues.append(issue | merge_key('_process', '')) %}
@@ -31,35 +34,42 @@
       {% set _ = all_issues.append(issue | merge_key('_process', ps.get('process', ''))) %}
     {% endfor %}
   {% endfor %}
-  {% set sorted_issues = all_issues | sort(attribute='severity', reverse=false) | sort_by_severity %}
+  {% set sorted_issues = all_issues | sort_by_severity %}
 
   {% if sorted_issues %}
-  <table>
-    <thead>
-      <tr>
-        <th>Severity</th>
-        <th>Code</th>
-        <th>Message</th>
-        <th>Process</th>
-        <th>Measured</th>
-        <th>Required</th>
-        <th>Fix Suggestion</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for issue in sorted_issues %}
-      <tr>
-        <td class="severity-{{ issue.severity }}">{{ issue.severity | upper }}</td>
-        <td>{{ issue.code }}</td>
-        <td>{{ issue.message }}</td>
-        <td>{{ issue.get('_process', '') or issue.get('process', '') }}</td>
-        <td>{{ issue.get('measured_value', '') }}</td>
-        <td>{{ issue.get('required_value', '') }}</td>
-        <td>{{ issue.get('fix_suggestion', '') or '' }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+    {% for sev, label in [('error', 'Errors'), ('warning', 'Warnings'), ('info', 'Notes')] %}
+      {% set group = sorted_issues | selectattr('severity', 'equalto', sev) | list %}
+      {% if group %}
+      <h3 class="severity-{{ sev }}">{{ label }} ({{ group | length }})</h3>
+        {% for issue in group %}
+        <div class="issue-card">
+          <p class="issue-head"><strong>{{ issue.code }}</strong> &middot; {{ issue.message }}</p>
+          <table class="issue-facts">
+            {% if issue.get('_process') or issue.get('process') %}
+            <tr><th>Process</th><td>{{ issue.get('_process') or issue.get('process') }}</td></tr>
+            {% endif %}
+            {% if issue.get('measured_value') is not none %}
+            <tr><th>Evidence</th><td>measured {{ issue.measured_value }}{% if issue.get('required_value') is not none %} &middot; required {{ issue.required_value }}{% endif %}</td></tr>
+            {% endif %}
+            <tr><th>Location</th><td>
+              {%- if issue.get('scope') == 'whole_part' -%}
+                Applies to the whole part.
+              {%- else -%}
+                {%- if issue.get('region_center') %}Region center ({{ issue.region_center | join(', ') }}) mm. {% endif -%}
+                {%- if issue.get('affected_face_count') %}{{ issue.affected_face_count | format_number }} affected faces.{% endif -%}
+              {%- endif -%}
+            </td></tr>
+            {% if issue.get('fix_suggestion') %}
+            <tr><th>Recommended action</th><td>{{ issue.fix_suggestion }}</td></tr>
+            {% endif %}
+            {% if issue.get('citation') %}
+            <tr><th>Standard</th><td>{{ issue.citation.get('standard', '') }}{% if issue.citation.get('clause') %} {{ issue.citation.clause }}{% endif %}{% if issue.citation.get('text') %} &middot; {{ issue.citation.text }}{% endif %}</td></tr>
+            {% endif %}
+          </table>
+        </div>
+        {% endfor %}
+      {% endif %}
+    {% endfor %}
   {% else %}
   <p>No issues found.</p>
   {% endif %}
@@ -94,7 +104,13 @@
   <p>No process scores available.</p>
   {% endif %}
 
-  <!-- Section 5: Tolerance Achievability (STEP AP242 only) -->
+  <!-- Section 5: Source units (declared only) -->
+  {% if source_units %}
+  <h2>Source Units</h2>
+  <p>Declared source units: {{ source_units.declared }} &middot; scaled to mm by {{ source_units.scale_to_mm }} before geometry and DFM analysis &middot; provenance: {{ source_units.provenance }}.</p>
+  {% endif %}
+
+  <!-- Section 6: Tolerance Achievability (STEP AP242 only) -->
   {% set tolerances = result.get('tolerances', {}) %}
   {% if tolerances and tolerances.get('has_pmi') %}
   <h2>Tolerance Achievability</h2>
@@ -134,7 +150,7 @@
   </table>
   {% endif %}
 
-  <!-- Section 6: Geometry Overview -->
+  <!-- Section 7: Geometry Overview -->
   <h2>Geometry Overview</h2>
   {% set geo = result.get('geometry', {}) %}
   <div class="geometry-grid">
@@ -157,9 +173,18 @@
     </div>
   </div>
 
-  <!-- Section 7: Footer -->
+  <!-- Section 8: Limits and provenance -->
+  <h2>Limits and Provenance</h2>
+  <ul>
+    <li>Generated from the persisted analysis result only; the geometry was not re-analyzed for this report.</li>
+    <li>Measurements and thresholds come from the recorded issue data. Fields absent from the record are omitted, never estimated.</li>
+    <li>Geometry and location values are in millimeters{% if source_units %} (declared source units: {{ source_units.declared }}){% endif %}.</li>
+    <li>This report supports, and does not replace, manufacturing engineering review.</li>
+  </ul>
+
+  <!-- Section 9: Footer -->
   <div class="footer">
-    ProofShape {{ engine_version }} | mesh: {{ mesh_hash }} | {{ created_at }} | Generated by ProofShape
+    ProofShape {{ engine_version }} &middot; analysis engine {{ analysis_version }}{% if build_commit %} &middot; build {{ build_commit[:12] }}{% endif %} &middot; mesh {{ mesh_hash }} &middot; analysis {{ analysis_id }} &middot; {{ created_at }}
   </div>
 
 </body>

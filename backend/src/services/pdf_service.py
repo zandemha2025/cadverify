@@ -3,6 +3,10 @@
 Generates PDF reports from stored analysis results. Uses asyncio.Semaphore(2)
 to limit concurrent CPU-intensive WeasyPrint renders and run_in_executor to
 avoid blocking the event loop.
+
+Report content comes from the persisted analysis record only (see
+build_pdf_context): nothing is inferred at render time, and fields absent
+from the record are omitted from the report rather than estimated.
 """
 from __future__ import annotations
 
@@ -10,7 +14,6 @@ import asyncio
 import logging
 import os
 import re
-from functools import lru_cache
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -25,6 +28,9 @@ from src.db.models import Analysis
 logger = logging.getLogger("cadverify.pdf")
 
 PDF_CACHE_DIR = os.getenv("PDF_CACHE_DIR", "/data/pdf-cache/")
+# Bumped when the report layout changes so a cached PDF from an older layout
+# is never served as if it were the current one.
+PDF_TEMPLATE_VERSION = "v2"
 _TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "pdf"
 
 _pdf_semaphore = asyncio.Semaphore(2)
@@ -80,6 +86,37 @@ _jinja_env.filters["sort_by_severity"] = _sort_by_severity
 _jinja_env.filters["merge_key"] = _merge_key
 
 
+# ── Report context ─────────────────────────────────────────────
+
+
+def build_pdf_context(analysis: Analysis) -> dict:
+    """Build the template context from the persisted analysis record only.
+
+    Every value comes from the stored record. Unknown fields stay absent
+    (None) so the template omits them instead of rendering a guess.
+    """
+    result = analysis.result_json or {}
+    return {
+        "filename": analysis.filename,
+        "file_type": analysis.file_type,
+        "analysis_id": analysis.ulid,
+        "verdict": analysis.verdict,
+        "overall_verdict": result.get("overall_verdict") or analysis.verdict,
+        "best_process": result.get("best_process"),
+        "face_count": analysis.face_count,
+        "duration_ms": analysis.duration_ms,
+        "created_at": analysis.created_at.isoformat(),
+        "result": result,
+        "engine_version": _app_version,
+        "analysis_version": analysis.analysis_version,
+        "mesh_hash": (analysis.mesh_hash or "")[:12],
+        "source_units": result.get("source_units"),
+        # Deploy build identity when the host provides it (Render sets
+        # RENDER_GIT_COMMIT); omitted entirely when unknown.
+        "build_commit": os.getenv("RENDER_GIT_COMMIT") or os.getenv("GIT_COMMIT") or None,
+    }
+
+
 # ── PDF rendering ──────────────────────────────────────────────
 
 
@@ -105,17 +142,7 @@ async def generate_pdf(analysis: Analysis) -> bytes:
     Acquires _pdf_semaphore to limit concurrency, then renders via
     run_in_executor to avoid blocking the event loop.
     """
-    context = {
-        "filename": analysis.filename,
-        "file_type": analysis.file_type,
-        "verdict": analysis.verdict,
-        "face_count": analysis.face_count,
-        "duration_ms": analysis.duration_ms,
-        "created_at": analysis.created_at.isoformat(),
-        "result": analysis.result_json,
-        "engine_version": _app_version,
-        "mesh_hash": (analysis.mesh_hash or "")[:12],
-    }
+    context = build_pdf_context(analysis)
 
     async with _pdf_semaphore:
         loop = asyncio.get_event_loop()
@@ -158,7 +185,7 @@ async def get_or_generate_pdf(
         f"Invalid ULID format: {analysis.ulid}"
     )
 
-    cache_path = Path(PDF_CACHE_DIR) / f"{analysis.ulid}.pdf"
+    cache_path = Path(PDF_CACHE_DIR) / f"{analysis.ulid}.{PDF_TEMPLATE_VERSION}.pdf"
 
     # Serve from cache if available
     if cache_path.exists():
