@@ -37,7 +37,7 @@ import {
   type ShopProfileInfo,
   type ValidationResult,
 } from "@/lib/api";
-import { severityTone, verdictLabel, verdictTone, procLabel } from "@/lib/status";
+import { severityLabel, severityTone, verdictLabel, verdictTone, procLabel } from "@/lib/status";
 import { parseCalibration, makeNowStableEstimate } from "@/lib/cost-views";
 import { costPersistUiEnabled } from "@/lib/cost-decision";
 import { flattenIssues } from "@/components/IssueList";
@@ -68,6 +68,7 @@ import {
 import { RoleLens, CalibrationBar, roleById, type RoleId } from "@/components/glass-box";
 import { useInstrumentChrome, type PartFact } from "@/components/instrument/instrument-chrome";
 import { STAGE_UI } from "@/lib/stage-flag";
+import type { PinpointOverlay } from "@/components/ui/cad-viewer";
 
 /* PartHero (~1900 lines, stage-only) is code-split into its own lazy chunk so a
    flag-off build never ships it in the main bundle: it is rendered solely from
@@ -200,6 +201,29 @@ export default function PartWorkspace({
     () => dfmIssues.find((i) => i.key === selectedIssueKey) ?? null,
     [dfmIssues, selectedIssueKey]
   );
+  const pinpointOverlays = useMemo<PinpointOverlay[]>(() => {
+    if (!validation) return [];
+    return dfmIssues.flatMap((row) => {
+      const issue = row.issue;
+      if (issue.severity !== "error" && issue.severity !== "warning") return [];
+      if (row.faces.length === 0 && !issue.region_center) return [];
+      const units = validation.geometry.units ? ` ${validation.geometry.units}` : "";
+      const measured = issue.measured_value;
+      return [{
+        key: row.key,
+        code: issue.code,
+        severity: issue.severity,
+        faces: row.faces,
+        regionCenter: issue.region_center ?? null,
+        valueLabel: measured == null ? issue.code : `${Number(measured.toFixed(3))}${units}`,
+        requiredLabel: issue.required_value == null
+          ? null
+          : `${Number(issue.required_value.toFixed(3))}${units}`,
+        suggestion: issue.fix_suggestion ?? issue.message,
+        color: issue.severity === "error" ? SEVERITY_HEX.fail : SEVERITY_HEX.warn,
+      }];
+    });
+  }, [dfmIssues, validation]);
 
   const calibration = useMemo(
     () => (report ? parseCalibration({ ...report, assumptions }) : null),
@@ -599,14 +623,49 @@ export default function PartWorkspace({
             <div className="mt-4 grid gap-6 lg:grid-cols-5">
               {/* persistent studio-lit part rail (flat platform chrome) */}
               <div className="space-y-3 lg:sticky lg:top-0 lg:col-span-2 lg:self-start">
-                <div className="h-[340px]">
+                <div className="relative h-[340px]">
                   <CadViewer
                     file={file}
                     highlightFaces={highlightFaces}
                     highlightColor={highlightColor}
                     ghostUnhighlighted={!!highlightFaces}
                     onFaceClick={tab === "routing" ? onFaceClick : undefined}
+                    pinpointOverlays={tab === "routing" ? pinpointOverlays : undefined}
+                    onSelectPinpoint={(key) => setSelectedIssueKey(key)}
                   />
+                  {tab === "routing" && selectedIssue && (
+                    <div
+                      data-testid="pinpoint-issue-card"
+                      className="absolute bottom-3 left-3 right-3 z-20 rounded-[var(--radius)] border border-border bg-card/95 p-3 shadow-lg backdrop-blur-sm"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="num text-xs font-semibold text-foreground">
+                            {severityLabel(selectedIssue.issue.severity)} - {selectedIssue.issue.code}
+                          </p>
+                          {selectedIssue.issue.measured_value != null && (
+                            <p className="num mt-1 text-xs text-muted-foreground">
+                              {Number(selectedIssue.issue.measured_value.toFixed(3))} {validation?.geometry.units ?? ""}
+                              {selectedIssue.issue.required_value != null && (
+                                <> measured - needs {Number(selectedIssue.issue.required_value.toFixed(3))} {validation?.geometry.units ?? ""}</>
+                              )}
+                            </p>
+                          )}
+                          <p className="mt-1 text-xs leading-5 text-foreground">
+                            {selectedIssue.issue.fix_suggestion ?? selectedIssue.issue.message}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          aria-label="Close issue detail"
+                          className="min-h-9 min-w-9 rounded text-muted-foreground hover:bg-muted"
+                          onClick={() => setSelectedIssueKey(null)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 {costGeo || geo ? (
                   <div className="num grid grid-cols-2 gap-2 text-xs text-muted-foreground">

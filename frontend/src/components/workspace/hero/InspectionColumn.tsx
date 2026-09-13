@@ -160,7 +160,8 @@ export function InspectionColumn({
               </span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Every check passed. This part is ready to make.
+              No DFM blockers on the recommended process and no open cost caveats. The
+              full per-process matrix is one click deeper.
             </p>
           </Card>
         </Rise>
