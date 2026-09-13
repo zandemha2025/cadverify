@@ -20,6 +20,10 @@ export interface GeometryInfo {
   is_manifold: boolean;
   center_of_mass: [number, number, number];
   units: string;
+  unit_detection?: {
+    unit_flag: "suspicious_scale"; ratio: 25.4;
+    measured_bounding_box_mm: number[]; provenance: string; action: string; auto_scaled: false;
+  };
 }
 
 /**
@@ -262,6 +266,16 @@ export interface RepairResult {
   repair_details: RepairDetails;
   repaired_analysis: ValidationResult | null;
   repaired_file_b64: string | null;
+  repair_verification: {
+    validation_path: "/api/v1/validate";
+    reverified: boolean;
+    original_verdict: ValidationResult["overall_verdict"];
+    repaired_verdict: ValidationResult["overall_verdict"];
+    original_sha256: string;
+    repaired_sha256: string;
+    download_media_type: "model/stl";
+    download_filename: string;
+  } | null;
 }
 
 /* ------------------------------------------------------------------ */

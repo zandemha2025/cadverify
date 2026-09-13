@@ -2390,6 +2390,12 @@ def _to_response(
         resp["wall_thickness_map"] = serialize_wall_thickness(
             wall_thickness, decimation=wall_thickness_decimation
         )
+    # Unitless STL safety check: warn, never silently scale or change verdict.
+    if result.file_type == "stl":
+        from src.costing.units import detect_25_4_scale_ratio
+        detection = detect_25_4_scale_ratio(result.geometry.bounding_box.dimensions)
+        if detection is not None:
+            resp["geometry"]["unit_detection"] = detection
     return resp
 
 

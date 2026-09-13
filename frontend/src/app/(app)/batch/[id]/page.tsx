@@ -12,6 +12,8 @@ import { AlertDialog } from "@/components/ui/alert-dialog";
 import {
   cancelBatch,
   downloadBatchCsv,
+  getPortfolioVerdict,
+  type PortfolioVerdict,
   type BatchProgress,
 } from "@/lib/api/batch";
 
@@ -25,6 +27,7 @@ export default function BatchDetailPage({
   const { id: batchId } = use(params);
   const router = useRouter();
   const [progress, setProgress] = useState<BatchProgress | null>(null);
+  const [portfolio, setPortfolio] = useState<PortfolioVerdict | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [downloadingCsv, setDownloadingCsv] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -73,6 +76,7 @@ export default function BatchDetailPage({
 
   const handleProgressUpdate = useCallback((p: BatchProgress) => {
     setProgress(p);
+    if (TERMINAL_STATUSES.has(p.status)) getPortfolioVerdict(batchId).then(setPortfolio).catch(() => setPortfolio(null));
     const snapshot = [
       p.status,
       p.completed_items,
@@ -134,6 +138,15 @@ export default function BatchDetailPage({
           </>
         }
       />
+
+      {portfolio && (
+        <section className="rounded-lg border p-4" aria-label="Portfolio verdict">
+          <p className="text-xs font-semibold uppercase text-muted-foreground">Portfolio verdict</p>
+          <p className="mt-1 text-2xl font-semibold uppercase">{portfolio.verdict}</p>
+          <p className="text-sm text-muted-foreground">{portfolio.pass_items} pass · {portfolio.issues_items} issues · {portfolio.fail_items + portfolio.processing_failed_items} fail</p>
+          <p className="mt-1 text-xs text-muted-foreground">{portfolio.basis}</p>
+        </section>
+      )}
 
       <BatchProgressBar batchId={batchId} onProgressUpdate={handleProgressUpdate} />
 

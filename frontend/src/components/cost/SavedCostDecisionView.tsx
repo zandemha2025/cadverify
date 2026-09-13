@@ -54,6 +54,14 @@ export function SavedCostDecisionView({ report }: { report: CostReport }) {
   // Representative estimate behind the make-now process → the confidence band.
   const headEstimate = pickEstimate(report, dec.make_now_process);
   const conf = headEstimate?.confidence ?? null;
+  const costStamp = headEstimate?.dfm_ready
+    ? {
+        text: `Manufacturable by ${procLabel(dec.make_now_process)} at $${headEstimate.unit_cost_usd.toFixed(2)}/unit`,
+        quantity: headEstimate.quantity,
+        validated: headEstimate.confidence?.validated ?? false,
+        label: headEstimate.confidence?.label ?? "Assumption-based should-cost, not yet validated",
+      }
+    : null;
 
   return (
     <div className="space-y-5">
@@ -64,6 +72,16 @@ export function SavedCostDecisionView({ report }: { report: CostReport }) {
           sentence={crossoverSentence(report)}
         />
         <CardContent compact className="space-y-3">
+          {costStamp ? (
+            <div className="rounded-md border border-pass/30 bg-pass-bg p-3" data-testid="cost-stamp">
+              <p className="font-semibold text-foreground">{costStamp.text}</p>
+              <p className="text-xs text-muted-foreground">
+                At quantity {costStamp.quantity.toLocaleString()} · {costStamp.validated ? "VALIDATED" : "ESTIMATE"} · {costStamp.label}
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm font-medium text-fail">Manufacturability/cost stamp withheld: the selected route has DFM blockers.</p>
+          )}
           {conf ? (
             <ConfidenceInterval confidence={conf} />
           ) : (

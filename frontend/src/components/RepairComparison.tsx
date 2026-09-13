@@ -25,11 +25,10 @@ export default function RepairComparison({
     for (let i = 0; i < binaryString.length; i++) {
       bytes[i] = binaryString.charCodeAt(i);
     }
-    const blob = new Blob([bytes], { type: "application/octet-stream" });
+    const blob = new Blob([bytes], { type: result.repair_verification?.download_media_type ?? "model/stl" });
 
-    // Trigger download with {original}-repaired.stl filename
     const stem = originalFilename.replace(/\.[^.]+$/, "");
-    const downloadName = `${stem}-repaired.stl`;
+    const downloadName = result.repair_verification?.download_filename ?? `${stem}-repaired.stl`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -80,6 +79,21 @@ export default function RepairComparison({
           </div>
         </CardContent>
       </Card>
+
+      {result.repair_verification && (
+        <Card>
+          <CardContent compact className="space-y-1 text-xs">
+            <p className="font-semibold">Re-verified through the same validation path</p>
+            <p className="text-muted-foreground">
+              Original verdict: <b className="text-foreground">{result.repair_verification.original_verdict}</b>
+              {" · "}Repaired verdict: <b className="text-foreground">{result.repair_verification.repaired_verdict}</b>
+            </p>
+            <p className="break-all font-mono text-[10px] text-muted-foreground">
+              Repaired file SHA-256 {result.repair_verification.repaired_sha256}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Before / After comparison */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

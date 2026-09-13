@@ -94,3 +94,23 @@ def implausible_volume_warning(volume_cm3, max_bbox_mm, assumed_units: str = "mm
         # the honest state — never a corrected number.
         "provenance": "measured-geometry-vs-assumed-units",
     }
+
+
+def detect_25_4_scale_ratio(dimensions_mm):
+    """Flag a likely inch/mm boundary without changing geometry."""
+    dims = [abs(float(v)) for v in dimensions_mm if float(v) > 0]
+    if not dims:
+        return None
+    inch_residual = [abs(v / MM_PER_INCH - round(v / MM_PER_INCH)) for v in dims]
+    mm_residual = [abs(v - round(v)) for v in dims]
+    if not all(r <= 0.002 for r in inch_residual):
+        return None
+    if not all(mm > inch * MM_PER_INCH + 0.05 for mm, inch in zip(mm_residual, inch_residual)):
+        return None
+    return {
+        "unit_flag": "suspicious_scale", "ratio": 25.4,
+        "measured_bounding_box_mm": [round(v, 4) for v in dims],
+        "provenance": "MEASURED dimensions vs 25.4-ratio HEURISTIC",
+        "action": "Confirm whether the unitless mesh was authored in inches. Use units=inch only when confirmed.",
+        "auto_scaled": False,
+    }

@@ -179,3 +179,52 @@ def test_repair_rejects_bad_extension(client):
     )
     assert r.status_code == 400
     assert "Unsupported" in r.json()["message"]
+
+
+def test_repair_reverifies_and_binds_download_to_verdicts(client):
+    data = _non_watertight_stl()
+    r = client.post(
+        "/api/v1/validate/repair",
+        files={"file": ("broken.stl", data, "model/stl")},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["repair_applied"] is True
+    stamp = body["repair_verification"]
+    repaired = base64.b64decode(body["repaired_file_b64"])
+    import hashlib
+    assert stamp["validation_path"] == "/api/v1/validate"
+    assert stamp["reverified"] is True
+    assert stamp["original_verdict"] == body["original_analysis"]["overall_verdict"]
+    assert stamp["repaired_verdict"] == body["repaired_analysis"]["overall_verdict"]
+    assert stamp["original_sha256"] == hashlib.sha256(data).hexdigest()
+    assert stamp["repaired_sha256"] == hashlib.sha256(repaired).hexdigest()
+    assert stamp["download_filename"] == "broken-repaired.stl"
+    assert stamp["download_media_type"] == "model/stl"
+
+
+def test_repair_refuses_non_watertight_engine_output(client, monkeypatch):
+    from src.services import repair_service
+    broken = trimesh.Trimesh(vertices=trimesh.creation.box().vertices,
+                             faces=trimesh.creation.box().faces[:-2], process=False)
+    monkeypatch.setattr(repair_service, "_do_repair", lambda mesh: (broken, "pymeshfix", 0))
+    r = client.post(
+        "/api/v1/validate/repair",
+        files={"file": ("broken.stl", _non_watertight_stl(), "model/stl")},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["repair_applied"] is False
+    assert body["repaired_analysis"] is None
+    assert body["repaired_file_b64"] is None
+    assert body["repair_verification"] is None
+    assert "watertight positive-volume" in body["repair_details"]["reason"]
+
+
+def test_repair_download_filename_is_safe(client):
+    r = client.post(
+        "/api/v1/validate/repair",
+        files={"file": ("../buyer part.stl", _non_watertight_stl(), "model/stl")},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["repair_verification"]["download_filename"] == "buyer-part-repaired.stl"

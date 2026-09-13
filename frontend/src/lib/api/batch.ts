@@ -89,6 +89,12 @@ export interface BatchItem {
   created_at: string | null;
 }
 
+export interface PortfolioVerdict {
+  batch_id: string; verdict: "pass" | "issues" | "fail" | "incomplete";
+  total_items: number; completed_items: number; pass_items: number; issues_items: number;
+  fail_items: number; processing_failed_items: number; basis: string;
+}
+
 export interface BatchItemsResponse {
   batch_id: string;
   items: BatchItem[];
@@ -265,6 +271,10 @@ export async function getBatchItems(
   if (options?.limit) url.searchParams.set("limit", String(options.limit));
 
   return apiFetchJson<BatchItemsResponse>(url.toString());
+}
+
+export async function getPortfolioVerdict(batchId: string): Promise<PortfolioVerdict> {
+  return apiFetchJson<PortfolioVerdict>(`${API_BASE}/batch/${batchId}/portfolio-verdict`);
 }
 
 /**

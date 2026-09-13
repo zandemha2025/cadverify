@@ -112,6 +112,14 @@ export default function AnalysisDashboard({
         />
       </div>
 
+      {result.geometry.unit_detection && (
+        <Card tone="warn" className="bg-warn-bg"><CardContent compact className="space-y-1 text-sm">
+          <StatusBadge tone="warn" label="Confirm source units" size="sm" />
+          <p>{result.geometry.unit_detection.action}</p>
+          <p className="text-xs text-muted-foreground">Measured {result.geometry.unit_detection.measured_bounding_box_mm.join(" × ")} mm · 25.4-ratio heuristic · no automatic scaling applied</p>
+        </CardContent></Card>
+      )}
+
       {/* Issues (Required / Advisory / Notes) — scoped to the recommended route,
           linked to geometry. The union across all candidate processes stays
           reachable under an honest, de-emphasized expander. */}
