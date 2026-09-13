@@ -165,3 +165,31 @@ async def test_health_strict_off_switch(monkeypatch):
     # still reported truthfully
     assert data["redis"] is False
     assert data["async"]["expected"] is True
+
+
+@pytest.mark.asyncio
+async def test_health_build_id_uses_render_commit_sha(monkeypatch):
+    """Render injects RENDER_GIT_COMMIT; public health must expose that exact deploy."""
+    monkeypatch.delenv("PROOFSHAPE_BUILD_ID", raising=False)
+    monkeypatch.delenv("GITHUB_SHA", raising=False)
+    monkeypatch.delenv("CI_COMMIT_SHA", raising=False)
+    monkeypatch.delenv("RELEASE", raising=False)
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "abc123rendercommit")
+    with _mock_pg_ok():
+        resp = await _get_health()
+    assert resp.status_code == 200
+    assert resp.json()["build_id"] == "abc123rendercommit"
+
+
+@pytest.mark.asyncio
+async def test_health_explicit_build_id_wins_over_render_commit(monkeypatch):
+    """Operator-owned release identity remains the highest-priority build id."""
+    monkeypatch.setenv("PROOFSHAPE_BUILD_ID", "promoted-sha")
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "render-sha")
+    monkeypatch.delenv("RELEASE", raising=False)
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    with _mock_pg_ok():
+        resp = await _get_health()
+    assert resp.status_code == 200
+    assert resp.json()["build_id"] == "promoted-sha"

@@ -53,6 +53,7 @@ async def health_check():
     version = os.getenv("RELEASE", "dev")
     build_id = (
         os.getenv("PROOFSHAPE_BUILD_ID")
+        or os.getenv("RENDER_GIT_COMMIT")
         or os.getenv("GITHUB_SHA")
         or os.getenv("CI_COMMIT_SHA")
         or "unknown"
