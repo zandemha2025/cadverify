@@ -113,6 +113,11 @@ USER cadverify
 EXPOSE 8000
 
 # Web entrypoint (default). Worker overrides CMD to: arq src.jobs.worker.WorkerSettings
+# Run alembic migrations before binding so a deploy never serves code whose
+# schema is not yet applied (2026-09-12: #52 shipped without 0046_trial_plan;
+# /auth/me/usage 503d until the DDL was applied by hand). A failed migration
+# exits the container instead of binding. The worker keeps its dashboard CMD
+# override (arq) and never runs this line.
 # --no-server-header suppresses uvicorn's `server: uvicorn` banner (S6); the app
 # middleware then stamps a neutral Server value.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--no-server-header"]
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1 --no-server-header"]
