@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import logging
 import os
+import re
 import time
+from pathlib import Path
 
 import numpy as np
 import trimesh
@@ -153,6 +156,9 @@ async def repair_mesh(
     original_result = await analysis_service.run_analysis(
         file_bytes, filename, processes, rule_pack, user, session
     )
+    # return_persisted_id is False here, so the result is the analysis dict;
+    # assert the contract instead of silently misreading an AnalysisRun.
+    assert isinstance(original_result, dict)
 
     # Run repair with timeout (T-05A-01)
     repair_start = time.time()
@@ -178,22 +184,26 @@ async def repair_mesh(
             "repair_details": {"error": str(exc)},
             "repaired_analysis": None,
             "repaired_file_b64": None,
+            "repair_verification": None,
         }
 
     repair_duration_ms = round((time.time() - repair_start) * 1000, 1)
 
-    # Check if repair actually helped
-    if not repaired_mesh.is_watertight and tier == "trimesh":
+    # Refuse a file unless the repair actually produced a finite, positive-volume
+    # watertight solid. The engine label alone is never proof that repair worked.
+    repaired_volume = float(repaired_mesh.volume) if np.isfinite(repaired_mesh.volume) else 0.0
+    if not repaired_mesh.is_watertight or repaired_volume <= 0:
         return {
             "original_analysis": original_result,
             "repair_applied": False,
             "repair_details": {
                 "tier": tier,
-                "reason": "Tier 1 repair insufficient, Tier 2 unavailable or failed",
+                "reason": "Repair did not produce a watertight positive-volume solid.",
                 "duration_ms": repair_duration_ms,
             },
             "repaired_analysis": None,
             "repaired_file_b64": None,
+            "repair_verification": None,
         }
 
     # Export repaired mesh to binary STL
@@ -209,6 +219,7 @@ async def repair_mesh(
         user,
         session,
     )
+    assert isinstance(repaired_result, dict)
 
     try:
         repaired_volume_mm3 = float(repaired_mesh.volume)
@@ -236,10 +247,26 @@ async def repair_mesh(
         "volume_change_pct": volume_change_pct,
     }
 
+    # Verification receipt: both verdicts came from run_analysis, the identical
+    # validation pipeline used by POST /validate. Hashes bind the shown verdicts
+    # and download to the exact before/after bytes; this is evidence, not a
+    # cryptographic signature or approval.
+    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "-", Path(filename).stem).strip(".-") or "part"
+    repair_verification = {
+        "validation_path": "/api/v1/validate",
+        "reverified": True,
+        "original_verdict": original_result.get("overall_verdict", "unknown"),
+        "repaired_verdict": repaired_result.get("overall_verdict", "unknown"),
+        "original_sha256": hashlib.sha256(file_bytes).hexdigest(),
+        "repaired_sha256": hashlib.sha256(repaired_stl_bytes).hexdigest(),
+        "download_media_type": "model/stl",
+        "download_filename": f"{safe_stem}-repaired.stl",
+    }
     return {
         "original_analysis": original_result,
         "repair_applied": True,
         "repair_details": repair_details,
         "repaired_analysis": repaired_result,
         "repaired_file_b64": repaired_b64,
+        "repair_verification": repair_verification,
     }

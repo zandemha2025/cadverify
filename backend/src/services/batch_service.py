@@ -652,6 +652,33 @@ async def create_batch_items(
     return count
 
 
+
+def portfolio_verdict(counts: dict[str, int], total_items: int) -> dict:
+    """Roll up exact terminal item states; never turn failures into a pass."""
+    passed = int(counts.get("pass", 0))
+    issues = int(counts.get("issues", 0))
+    failed_verdict = int(counts.get("fail", 0))
+    processing_failed = int(counts.get("processing_failed", 0))
+    completed = passed + issues + failed_verdict
+    if processing_failed or failed_verdict:
+        verdict = "fail"
+    elif total_items > 0 and completed == total_items and issues == 0:
+        verdict = "pass"
+    elif completed == total_items:
+        verdict = "issues"
+    else:
+        verdict = "incomplete"
+    return {
+        "verdict": verdict,
+        "total_items": total_items,
+        "completed_items": completed,
+        "pass_items": passed,
+        "issues_items": issues,
+        "fail_items": failed_verdict,
+        "processing_failed_items": processing_failed,
+        "basis": "Persisted per-part validation verdicts and durable item states.",
+    }
+
 # ---------------------------------------------------------------------------
 # Progress queries
 # ---------------------------------------------------------------------------

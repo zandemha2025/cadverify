@@ -661,6 +661,30 @@ async def get_batch_items(
     }
 
 
+@router.get("/batch/{batch_id}/portfolio-verdict")
+async def get_batch_portfolio_verdict(
+    batch_id: str,
+    user: AuthedUser = Depends(require_role(Role.viewer)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    batch = (await session.execute(select(Batch).where(
+        Batch.ulid == batch_id,
+        Batch.org_id == caller_org_subquery(user.user_id),
+    ))).scalars().first()
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    rows = (await session.execute(
+        select(BatchItem.status, Analysis.verdict)
+        .outerjoin(Analysis, BatchItem.analysis_id == Analysis.id)
+        .where(BatchItem.batch_id == batch.id)
+    )).all()
+    counts: dict[str, int] = {}
+    for status, verdict in rows:
+        key = verdict if status == "completed" and verdict in {"pass", "issues", "fail"} else "processing_failed" if status == "failed" else "pending"
+        counts[key] = counts.get(key, 0) + 1
+    return {"batch_id": batch_id, **batch_service.portfolio_verdict(counts, batch.total_items)}
+
+
 # ---------------------------------------------------------------------------
 # GET /batch/{batch_id}/results/csv -- CSV export
 # ---------------------------------------------------------------------------

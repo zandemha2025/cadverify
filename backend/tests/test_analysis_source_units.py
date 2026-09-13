@@ -71,3 +71,23 @@ def test_validate_default_and_explicit_mm_share_historical_geometry(
     assert default.json()["geometry"] == explicit.json()["geometry"]
     assert "source_units" not in default.json()
     assert "source_units" not in explicit.json()
+
+
+def test_validate_flags_exact_25_4_ratio_but_never_auto_scales(client, stl_bytes_of):
+    import trimesh
+    data = stl_bytes_of(trimesh.creation.box(extents=[25.4, 25.4, 25.4]))
+    response = _post(client, data)
+    assert response.status_code == 200, response.text
+    detection = response.json()["geometry"]["unit_detection"]
+    assert detection["unit_flag"] == "suspicious_scale"
+    assert detection["ratio"] == 25.4
+    assert detection["auto_scaled"] is False
+    assert detection["measured_bounding_box_mm"] == [25.4, 25.4, 25.4]
+    assert "source_units" not in response.json()
+
+
+def test_validate_does_not_flag_ordinary_metric_box(client, stl_bytes_of):
+    import trimesh
+    response = _post(client, stl_bytes_of(trimesh.creation.box(extents=[10., 20., 30.])))
+    assert response.status_code == 200
+    assert "unit_detection" not in response.json()["geometry"]
