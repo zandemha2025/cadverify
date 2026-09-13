@@ -8,7 +8,8 @@ const dashboard = fs.readFileSync(new URL("../components/AnalysisDashboard.tsx",
 test("production tabs stay clean until a physical defect is selected", () => {
   assert.match(workspace, /if \(!validation \|\| !selectedGroup\) return \[\]/);
   assert.doesNotMatch(workspace, /setSelectedIssueKey\(pinpointGroups\[0\]\.key\)/);
-  assert.match(workspace, /markerLabel: "1"/);
+  assert.doesNotMatch(workspace, /markerLabel: "1"/);
+  assert.match(workspace, /markerLabel: ""/);
   assert.match(workspace, /pinpointOverlays=\{tab === "routing" && selectedGroup/);
   assert.match(workspace, /Previous issue/);
   assert.match(workspace, /Next issue/);
