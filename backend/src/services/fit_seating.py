@@ -10,7 +10,7 @@ from typing import Any
 
 import numpy as np
 import trimesh
-from scipy.spatial import cKDTree
+from scipy.spatial._ckdtree import cKDTree
 
 
 @dataclass(frozen=True)
