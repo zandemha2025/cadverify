@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 import structlog
+import numpy as np
 
 from fastapi import (
     APIRouter,
@@ -863,6 +864,81 @@ async def validate_file(
         )
 
     return result
+
+
+# ──────────────────────────────────────────────────────────────
+# Two-part context-of-use fit (POST /validate/fit)
+# ──────────────────────────────────────────────────────────────
+@router.post("/validate/fit", dependencies=[Depends(require_kill_switch_open)])
+@limiter.limit("30/hour;200/day")
+async def validate_fit(
+    request: Request,
+    response: Response,
+    part_a: UploadFile = File(...),
+    part_b: UploadFile = File(...),
+    seating: str = Query("shared_frame", description="shared_frame or auto"),
+    nudge_x_mm: float = Query(0.0),
+    nudge_y_mm: float = Query(0.0),
+    nudge_z_mm: float = Query(0.0),
+    user: AuthedUser = Depends(require_role(Role.analyst)),
+    _org_limit: None = Depends(enforce_org_limits),
+    _validation_cap: None = Depends(enforce_validation_caps),
+    _admission: None = Depends(admit_analysis),
+):
+    """Measure real collision and sampled clearance for two submitted meshes."""
+    from src.services.fit_service import FitGeometryError, analyze_fit, context_fit_enabled
+
+    if not context_fit_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
+    data_a, data_b = await __import__("asyncio").gather(
+        _read_capped(part_a), _read_capped(part_b)
+    )
+    async def parse_fit_part(data: bytes, filename: str):
+        if Path(filename).suffix.lower() in {".obj", ".3mf"}:
+            from src.services.fit_service import parse_supplementary_mesh
+            return await __import__("asyncio").to_thread(parse_supplementary_mesh, data, filename)
+        mesh, _suffix = await _parse_mesh_async(data, filename)
+        return mesh
+
+    try:
+        mesh_a, mesh_b = await __import__("asyncio").gather(
+            parse_fit_part(data_a, part_a.filename or "part-a"),
+            parse_fit_part(data_b, part_b.filename or "part-b"),
+        )
+        if seating not in {"shared_frame", "auto"}:
+            raise HTTPException(status_code=400, detail="seating must be shared_frame or auto")
+        from src.services.fit_seating import apply_seating, propose_auto_seating
+        if seating == "auto":
+            seating_report = await __import__("asyncio").to_thread(propose_auto_seating, mesh_a, mesh_b)
+        else:
+            seating_report = {
+                "accepted": True,
+                "method": "shared_frame",
+                "transform": np.eye(4).tolist(),
+                "reason": "submitted source coordinates retained",
+                "manual_nudge_available": True,
+            }
+        nudge = np.eye(4)
+        nudge[:3, 3] = [nudge_x_mm, nudge_y_mm, nudge_z_mm]
+        final_transform = nudge @ np.asarray(seating_report["transform"], dtype=float)
+        seated_b = apply_seating(mesh_b, final_transform.tolist())
+        result = await __import__("asyncio").to_thread(analyze_fit, mesh_a, seated_b)
+        result["seating"] = {
+            **seating_report,
+            "transform": final_transform.round(9).tolist(),
+            "manual_nudge_mm": [nudge_x_mm, nudge_y_mm, nudge_z_mm],
+        }
+        return result
+    except FitGeometryError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "FIT_GEOMETRY_UNAVAILABLE",
+                "message": str(exc),
+                "repairable": True,
+                "next_action": "Repair both shells to watertight solids and retry the same two files.",
+            },
+        ) from exc
 
 
 # ──────────────────────────────────────────────────────────────
