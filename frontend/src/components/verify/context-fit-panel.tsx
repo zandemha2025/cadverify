@@ -35,7 +35,7 @@ export function ContextFitPanel() {
         ? "Seated using the files' shared CAD frame."
         : result.seating.accepted
           ? "Seated automatically - check the fit."
-          : "We couldn't seat this with confidence. Shared frame retained - use nudge to adjust."
+          : "We couldn&apos;t seat this with confidence. Shared frame retained - use nudge to adjust."
     : "Results withheld until this pair is checked.";
   return <section className="grid min-h-0 flex-1 gap-4 p-4 lg:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)]" data-testid="context-fit-panel">
     <div className="flex min-h-[360px] flex-col overflow-hidden rounded-xl border bg-card">
@@ -54,7 +54,7 @@ export function ContextFitPanel() {
       <button className="min-h-11 w-full rounded bg-foreground px-4 text-background disabled:opacity-50" disabled={!files.part||!files.context||running} onClick={run}>{running?"Measuring this pair…":"Check fit in context"}</button>
       {error && <p role="alert" className="rounded border border-red-300 p-3 text-sm text-red-800">{error}</p>}
       {result && <div className="space-y-2" data-testid="context-fit-results">
-        {!result.seating.accepted && <div role="status" className="rounded border border-amber-300 bg-amber-50 p-3 text-sm"><b>Seating uncertain</b><p>We couldn't seat this with confidence. Preview the shared-frame position or set the position with XYZ nudge.</p></div>}
+        {!result.seating.accepted && <div role="status" className="rounded border border-amber-300 bg-amber-50 p-3 text-sm"><b>Seating uncertain</b><p>We couldn&apos;t seat this with confidence. Preview the shared-frame position or set the position with XYZ nudge.</p></div>}
         <p className="text-xs text-muted-foreground">2 measured checks. Tap one to see where.</p>
         <button type="button" className={`w-full rounded-xl border bg-card p-3 text-left ${selectedIssue === "collision" ? "ring-2 ring-red-500" : ""}`} onClick={() => setSelectedIssue(selectedIssue === "collision" ? null : "collision")}><b>◆ Collision</b><p>{result.collision.intersects ? `${result.collision.volume_mm3.toFixed(3)} mm³ measured overlap. · MEASURED` : "No measured overlap."}</p>{result.collision.intersects && <p className="text-xs">Move the part or change the overlapping geometry, then check this pair again.</p>}{result.collision.region?.render_geometry.available === false && <p className="text-xs text-muted-foreground">Intersection shell unavailable; centroid anchor only. No substitute volume rendered.</p>}</button>
         <button type="button" className={`w-full rounded-xl border bg-card p-3 text-left ${selectedIssue === "clearance" ? "ring-2 ring-amber-500" : ""}`} onClick={() => setSelectedIssue(selectedIssue === "clearance" ? null : "clearance")}><b>△ Closest measured gap</b><p>{result.collision.intersects ? "0.000 mm - the parts overlap." : `${result.clearance.closest_sampled_gap_mm.toFixed(3)} mm · MEASURED`}</p><p className="text-xs">{result.collision.intersects ? "Resolve the overlap before judging clearance." : "Compare this measured gap with your declared assembly requirement."}</p><p className="text-xs text-muted-foreground">Sampled on submitted tessellation. Not an analytic tolerance result.</p></button>
