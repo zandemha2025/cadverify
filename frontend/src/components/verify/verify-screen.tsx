@@ -50,6 +50,7 @@ import {
 import {
   driverViews,
   makeNowEstimate,
+  prototypeEstimate,
   routeDfmOutcome,
   toolingEstimate,
   nearestQty,
@@ -598,7 +599,7 @@ function Walk({
   const { cost, costGeometryInvalid, machines, verification } = result;
 
   const bbox = geometryFromResult(result)?.bbox_mm ?? null;
-  const makeNow = cost ? makeNowEstimate(cost) : null;
+  const makeNow = cost ? prototypeEstimate(cost) : null;
   const crossover = cost?.decision?.crossover_qty ?? null;
 
   const scrubQty = useMemo(() => fractionToQty(scrubFrac), [scrubFrac]);

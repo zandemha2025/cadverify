@@ -16,6 +16,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   makeNowEstimate,
+  prototypeEstimate,
   routeDfmOutcome,
   toolingEstimate,
   unitCostByQty,
@@ -92,6 +93,25 @@ test("makeNowEstimate follows decision.make_now_process and picks the stable hig
   assert.equal(mn?.process, "mjf");
   assert.equal(mn?.quantity, 10000); // largest-qty = fully amortized setup
   assert.equal(makeNowEstimate(r, 10)?.quantity, 10); // exact qty honored
+});
+
+test("prototypeEstimate headlines the smallest computed rung of the make-now pool", () => {
+  const r = report(
+    [est("mjf", 10, 14.14), est("mjf", 10000, 6.45), est("injection_molding", 10000, 5.9)],
+    {
+      make_now_process: "mjf",
+      make_now_material: "PP",
+      tooling_process: "injection_molding",
+      tooling_dfm_ready: true,
+      crossover_qty: 1962,
+      recommendation: {},
+      if_redesigned: {},
+      note: "",
+    }
+  );
+  const pe = prototypeEstimate(r);
+  assert.equal(pe?.process, "mjf");
+  assert.equal(pe?.quantity, 10); // prototype-shaped default, not the 10k rung
 });
 
 test("route DFM blocks a generally valid part instead of presenting a false pass", () => {

@@ -57,7 +57,7 @@ from sqlalchemy import func, select
 from src.auth.models import lookup_org_membership
 from src.config.public_urls import error_doc_url
 from src.db.engine import get_session_factory
-from src.db.models import Analysis
+from src.db.models import Analysis, User
 
 logger = logging.getLogger("cadverify.validation_caps")
 
@@ -117,6 +117,44 @@ async def _count(column, key, since) -> int:
         return int((await session.execute(stmt)).scalar_one())
 
 
+async def _user_plan(user_id: int) -> str:
+    """The caller's product plan; a missing row means 'trial' (the safe
+    default). A DB error here fails open in the caller exactly like the count
+    query: if the DB is down, no analysis row can persist anyway."""
+    factory = get_session_factory()
+    async with factory() as session:
+        plan = (
+            await session.execute(select(User.plan).where(User.id == user_id))
+        ).scalar_one_or_none()
+    return str(plan) if plan else "trial"
+
+
+async def user_trial_usage(user_id: int) -> dict:
+    """Usage read for the caller's own quota card ("X of Y trial checks used").
+
+    Same durable count and window semantics as enforcement, so the card can
+    never disagree with the gate. Pilot plan reports unlimited instead of a
+    number it does not enforce."""
+    plan = await _user_plan(user_id)
+    if plan == "pilot":
+        return {"plan": plan, "unlimited": True, "used": None, "cap": None, "remaining": None}
+    since = (
+        datetime.now(timezone.utc) - timedelta(days=_window_days())
+        if _window_days() > 0
+        else None
+    )
+    used = await _count(Analysis.user_id, user_id, since)
+    cap = _user_cap()
+    return {
+        "plan": plan,
+        "unlimited": False,
+        "used": used,
+        "cap": cap,
+        "remaining": max(cap - used, 0),
+        "window_days": _window_days(),
+    }
+
+
 async def enforce_validation_caps(request: Request) -> None:
     """FastAPI dependency: hard product caps on validations. Wire AFTER
     ``require_api_key`` / ``require_role`` (needs ``request.state.authed_user``),
@@ -143,6 +181,20 @@ async def enforce_validation_caps(request: Request) -> None:
         return
 
     org_id = membership[0]
+
+    try:
+        plan = await _user_plan(user.user_id)
+    except Exception:
+        logger.debug(
+            "validation_caps: plan lookup failed for user_id=%s; enforcing as trial",
+            user.user_id,
+            exc_info=True,
+        )
+        plan = "trial"
+    if plan == "pilot":
+        # Pilot accounts (owner/demo) are never trial-gated.
+        return
+
     windowed = _window_days() > 0
     since = (
         datetime.now(timezone.utc) - timedelta(days=_window_days())
@@ -171,8 +223,21 @@ async def enforce_validation_caps(request: Request) -> None:
             windowed,
         )
     if user_count >= _user_cap():
-        raise _cap_err(
-            "user_validation_cap_exceeded",
-            f"this user has reached the cap of {_user_cap()} validations {period}",
-            windowed,
+        # Trial exhaustion is a plan gate, not a throttle: 403 with a
+        # remaining-count payload the UI can render honestly. The org cap
+        # above stays a 429 circuit-breaker.
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "user_validation_cap_exceeded",
+                "message": (
+                    f"this account has used its {_user_cap()} trial checks; "
+                    "talk to the ProofShape team to keep going"
+                ),
+                "used": user_count,
+                "cap": _user_cap(),
+                "remaining": 0,
+                "plan": plan,
+                "doc_url": error_doc_url("user_validation_cap_exceeded"),
+            },
         )
