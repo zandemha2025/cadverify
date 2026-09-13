@@ -113,3 +113,36 @@ th {
 .geometry-item {
   flex: 1 1 45%;
 }
+
+h3 {
+  font-size: 11pt;
+  margin-top: 12pt;
+  margin-bottom: 4pt;
+}
+
+.issue-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 4pt;
+  padding: 6pt 8pt;
+  margin: 6pt 0;
+  page-break-inside: avoid;
+}
+
+.issue-head {
+  margin: 0 0 4pt 0;
+}
+
+.issue-facts th {
+  width: 22%;
+  background: none;
+  border-bottom: none;
+  font-size: 8.5pt;
+  color: #4b5563;
+  vertical-align: top;
+}
+
+.issue-facts td {
+  border-bottom: none;
+  font-size: 8.5pt;
+  vertical-align: top;
+}
