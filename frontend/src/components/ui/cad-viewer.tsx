@@ -5,6 +5,7 @@ import { Canvas, useLoader, useThree } from "@react-three/fiber";
 import {
   OrbitControls,
   Environment,
+  Html,
   Center,
   ContactShadows,
   Lightformer,
@@ -13,7 +14,8 @@ import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { cn } from "@/lib/utils";
 import { STAGE_UI } from "@/lib/stage-flag";
-import { computeHighlightVertexColors } from "@/lib/highlight-colors";
+import { severityLabel } from "@/lib/status";
+import { computeHighlightVertexColors, computeLayeredHighlightVertexColors } from "@/lib/highlight-colors";
 import { probeWebGlSupport } from "@/lib/site/webgl";
 
 /* Non-highlighted faces keep a machined tint when vertex-colouring is on (i.e.
@@ -38,6 +40,8 @@ function STLModel({
   distanceScale = 1.6,
   onHalfHeight,
   onReady,
+  pinpointOverlays,
+  onSelectPinpoint,
 }: {
   url: string;
   highlightFaces?: number[];
@@ -51,24 +55,29 @@ function STLModel({
   onHalfHeight?: (h: number) => void;
   /** reports that the real STL bytes were parsed and mounted, not merely requested. */
   onReady?: () => void;
+  pinpointOverlays?: PinpointOverlay[];
+  onSelectPinpoint?: (key: string) => void;
 }) {
   const geometry = useLoader(STLLoader, url);
   const meshRef = useRef<THREE.Mesh>(null);
   const materialRef = useRef<THREE.MeshStandardMaterial>(null);
-  const hasHighlights = !!highlightFaces && highlightFaces.length > 0;
+  const hasPinpoints = !!pinpointOverlays?.some((pin) => pin.faces.length > 0);
+  const hasHighlights = (!!highlightFaces && highlightFaces.length > 0) || hasPinpoints;
   const highlight = useMemo(() => new THREE.Color(highlightColor), [highlightColor]);
 
   // Normalise once: centre at origin, then derive a uniform scale to TARGET.
   const norm = useMemo(() => {
-    if (!geometry) return { scale: 1, half: 1 };
+    if (!geometry) return { scale: 1, half: 1, sourceCenter: new THREE.Vector3() };
     geometry.computeVertexNormals();
+    geometry.computeBoundingBox();
+    const sourceCenter = geometry.boundingBox?.getCenter(new THREE.Vector3()) ?? new THREE.Vector3();
     geometry.center();
     geometry.computeBoundingBox();
     const size = new THREE.Vector3();
     geometry.boundingBox?.getSize(size);
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
     const scale = TARGET / maxDim;
-    return { scale, half: (size.y * scale) / 2 };
+    return { scale, half: (size.y * scale) / 2, sourceCenter };
   }, [geometry]);
 
   useEffect(() => {
@@ -94,12 +103,17 @@ function STLModel({
       if (material) material.needsUpdate = true;
       return;
     }
-    const colors = computeHighlightVertexColors(
-      pos.count,
-      highlightFaces!,
-      BASE_COLOR,
-      highlight
-    );
+    const colors = hasPinpoints
+      ? computeLayeredHighlightVertexColors(
+          pos.count,
+          pinpointOverlays!.map((pin) => ({
+            faces: pin.faces,
+            color: new THREE.Color(pin.color),
+            priority: pin.severity === "error" ? 2 : 1,
+          })),
+          BASE_COLOR,
+        )
+      : computeHighlightVertexColors(pos.count, highlightFaces!, BASE_COLOR, highlight);
     const colorAttribute = new THREE.BufferAttribute(colors, 3);
     colorAttribute.needsUpdate = true;
     geometry.setAttribute("color", colorAttribute);
@@ -110,7 +124,7 @@ function STLModel({
     // colour attribute — the flagged faces stay the base tone. Flipping
     // needsUpdate forces the program rebuild so the vertex colours actually paint.
     if (material) material.needsUpdate = true;
-  }, [geometry, hasHighlights, highlightFaces, highlight]);
+  }, [geometry, hasHighlights, hasPinpoints, highlightFaces, highlight, pinpointOverlays]);
 
   // Hero camera frame — a well-composed 3/4 with a gentle downward tilt, pulled
   // in so the part commands the canvas. Normalised units keep it consistent.
@@ -160,6 +174,30 @@ function STLModel({
           flatShading={false}
         />
       </mesh>
+      {pinpointOverlays?.filter((pin) => pin.regionCenter).map((pin) => {
+        const region = new THREE.Vector3(...pin.regionCenter!);
+        region.sub(norm.sourceCenter).multiplyScalar(norm.scale);
+        return (
+          <Html key={pin.key} position={[region.x, region.y, region.z]} center distanceFactor={7}>
+            <button
+              type="button"
+              data-testid="pinpoint-marker"
+              data-severity={pin.severity}
+              title={`${severityLabel(pin.severity)}: ${pin.suggestion}`}
+              aria-label={`${pin.code}: ${pin.valueLabel}. ${pin.suggestion}`}
+              onClick={() => onSelectPinpoint?.(pin.key)}
+              className="flex min-h-9 min-w-9 flex-col items-center justify-center rounded-full border-2 border-white px-2 text-[9px] font-bold leading-tight text-white shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              style={{ background: pin.color }}
+            >
+              {pin.requiredLabel ? (
+                <span>{pin.valueLabel} measured - needs {pin.requiredLabel}</span>
+              ) : (
+                <span>{pin.valueLabel}</span>
+              )}
+            </button>
+          </Html>
+        );
+      })}
     </Center>
   );
 }
@@ -261,6 +299,8 @@ export default function CadViewer({
   highlightColor,
   ghostUnhighlighted,
   onFaceClick,
+  pinpointOverlays,
+  onSelectPinpoint,
   surface = "light",
   className,
 }: CadViewerProps) {
@@ -427,6 +467,8 @@ export default function CadViewer({
             distanceScale={instrument ? 1.55 : 1.9}
             onHalfHeight={onHalfHeight}
             onReady={onPreviewReady}
+            pinpointOverlays={pinpointOverlays}
+            onSelectPinpoint={onSelectPinpoint}
           />
           {/* Keep every viewer mode self-contained. Drei's named presets resolve
               to remote HDR assets; production CSP correctly blocks those
@@ -465,6 +507,18 @@ export default function CadViewer({
   );
 }
 
+export interface PinpointOverlay {
+  key: string;
+  code: string;
+  severity: "error" | "warning";
+  faces: number[];
+  regionCenter: [number, number, number] | null;
+  valueLabel: string;
+  requiredLabel: string | null;
+  suggestion: string;
+  color: string;
+}
+
 interface CadViewerProps {
   /** STL provided as a File (object URL is created/revoked internally) */
   file?: File | null;
@@ -478,6 +532,9 @@ interface CadViewerProps {
   ghostUnhighlighted?: boolean;
   /** two-way link: fires the picked triangle index when a face is clicked */
   onFaceClick?: (faceIndex: number) => void;
+  /** Backend-grounded issue faces and region centers. No synthetic geometry. */
+  pinpointOverlays?: PinpointOverlay[];
+  onSelectPinpoint?: (key: string) => void;
   /** frame treatment: "light" = machinist paper (default); "instrument" = the
    *  blueprint-twilight working canvas the Living Instrument floats the part on. */
   surface?: "light" | "instrument";

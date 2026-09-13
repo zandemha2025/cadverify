@@ -40,9 +40,10 @@ import type {
 } from "@/lib/api";
 import { flattenIssues, partitionDfmByRoute, type IndexedIssue } from "@/lib/dfm-scope";
 import { reportCostBlockerLocators } from "@/lib/inspection-bind";
+import type { PinpointOverlay } from "@/components/ui/cad-viewer";
 import { deriveBreakeven } from "@/lib/breakeven";
 import { deriveFindings } from "@/lib/findings";
-import { severityTone, verdictLabel, verdictTone, procLabel } from "@/lib/status";
+import { severityLabel, severityTone, verdictLabel, verdictTone, procLabel } from "@/lib/status";
 import type { CalibrationView } from "@/lib/cost-views";
 
 import { Button } from "@/components/ui/button";
@@ -200,6 +201,31 @@ export function PartHero({
   const highlightColor = selectedIssue
     ? SEVERITY_HEX[severityTone(selectedIssue.issue.severity)]
     : undefined;
+  const pinpointOverlays = React.useMemo<PinpointOverlay[]>(() => {
+    if (!validation) return [];
+    return allIssues.flatMap((row) => {
+      const issue = row.issue;
+      if (issue.severity !== "error" && issue.severity !== "warning") return [];
+      if (row.faces.length === 0 && !issue.region_center) return [];
+      const measured = issue.measured_value;
+      const units = validation.geometry.units ? ` ${validation.geometry.units}` : "";
+      const valueLabel = measured == null ? issue.code : `${Number(measured.toFixed(3))}${units}`;
+      const requiredLabel = issue.required_value == null
+        ? null
+        : `${Number(issue.required_value.toFixed(3))}${units}`;
+      return [{
+        key: row.key,
+        code: issue.code,
+        severity: issue.severity,
+        faces: row.faces,
+        regionCenter: issue.region_center ?? null,
+        valueLabel,
+        requiredLabel,
+        suggestion: issue.fix_suggestion ?? issue.message,
+        color: issue.severity === "error" ? SEVERITY_HEX.fail : SEVERITY_HEX.warn,
+      }];
+    });
+  }, [allIssues, validation]);
 
   /* ---- two-way wiring (promoted out of the routing tab) ------------ */
   const onFaceClick = React.useCallback(
@@ -309,14 +335,49 @@ export function PartHero({
           {/* STAGE (centre on desktop, first on mobile — the part leads) */}
           <div className="order-first min-w-0 min-[980px]:order-none min-[980px]:sticky min-[980px]:top-4 min-[980px]:self-start">
             <Rise ms={380}>
-              <div className="h-[360px] min-[980px]:h-[440px]">
+              <div className="relative h-[360px] min-[980px]:h-[440px]">
                 <CadViewer
                   file={file}
                   highlightFaces={highlightFaces}
                   highlightColor={highlightColor}
                   ghostUnhighlighted={!!highlightFaces}
                   onFaceClick={onFaceClick}
+                  pinpointOverlays={pinpointOverlays}
+                  onSelectPinpoint={setSelectedKey}
                 />
+                {selectedIssue && (
+                  <div
+                    data-testid="pinpoint-issue-card"
+                    className="absolute bottom-3 left-3 right-3 z-20 rounded-[var(--radius)] border border-border bg-card/95 p-3 shadow-lg backdrop-blur-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="num text-xs font-semibold text-foreground">
+                          {severityLabel(selectedIssue.issue.severity)} - {selectedIssue.issue.code}
+                        </p>
+                        {selectedIssue.issue.measured_value != null && (
+                          <p className="num mt-1 text-xs text-muted-foreground">
+                            {Number(selectedIssue.issue.measured_value.toFixed(3))} {validation?.geometry.units ?? ""}
+                            {selectedIssue.issue.required_value != null && (
+                              <> measured - needs {Number(selectedIssue.issue.required_value.toFixed(3))} {validation?.geometry.units ?? ""}</>
+                            )}
+                          </p>
+                        )}
+                        <p className="mt-1 text-xs leading-5 text-foreground">
+                          {selectedIssue.issue.fix_suggestion ?? selectedIssue.issue.message}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="Close issue detail"
+                        className="min-h-9 min-w-9 rounded text-muted-foreground hover:bg-muted"
+                        onClick={() => setSelectedKey(null)}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
               {costGeo || geo ? (
                 <div className="num mt-3 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
