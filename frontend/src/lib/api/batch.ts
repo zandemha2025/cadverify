@@ -92,7 +92,7 @@ export interface BatchItem {
 export interface PortfolioVerdict {
   batch_id: string; verdict: "pass" | "issues" | "fail" | "incomplete";
   total_items: number; completed_items: number; pass_items: number; issues_items: number;
-  fail_items: number; processing_failed_items: number; basis: string;
+  fail_items: number; processing_failed_items: number; skipped_items: number; basis: string;
 }
 
 export interface BatchItemsResponse {

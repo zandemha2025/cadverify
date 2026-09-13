@@ -659,8 +659,9 @@ def portfolio_verdict(counts: dict[str, int], total_items: int) -> dict:
     issues = int(counts.get("issues", 0))
     failed_verdict = int(counts.get("fail", 0))
     processing_failed = int(counts.get("processing_failed", 0))
+    skipped = int(counts.get("skipped", 0))
     completed = passed + issues + failed_verdict
-    if processing_failed or failed_verdict:
+    if processing_failed or failed_verdict or skipped:
         verdict = "fail"
     elif total_items > 0 and completed == total_items and issues == 0:
         verdict = "pass"
@@ -676,6 +677,7 @@ def portfolio_verdict(counts: dict[str, int], total_items: int) -> dict:
         "issues_items": issues,
         "fail_items": failed_verdict,
         "processing_failed_items": processing_failed,
+        "skipped_items": skipped,
         "basis": "Persisted per-part validation verdicts and durable item states.",
     }
 
