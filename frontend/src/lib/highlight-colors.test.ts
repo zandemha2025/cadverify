@@ -16,6 +16,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   computeHighlightVertexColors,
+  computeLayeredHighlightVertexColors,
   computeThicknessVertexColors,
   thicknessColorRange,
 } from "./highlight-colors.ts";
@@ -114,4 +115,25 @@ test("thickness heatmap: out-of-range values clamp into [min,max]", () => {
 test("thickness heatmap: degenerate max<=min collapses measured faces to THIN", () => {
   const colors = computeThicknessVertexColors(3, [2], 2, 2, THIN, THICK, UNMEASURED);
   assert.equal(colors[0], 1); assert.equal(colors[2], 0);
+});
+
+test("layered overlay paints every reported issue and error wins overlap", () => {
+  const colors = computeLayeredHighlightVertexColors(
+    9,
+    [
+      { faces: [0, 1], color: { r: 1, g: 0.5, b: 0 }, priority: 1 },
+      { faces: [1], color: { r: 1, g: 0, b: 0 }, priority: 2 },
+    ],
+    BASE,
+  );
+  assert.equal(colors[0], 1); assert.equal(colors[1], 0.5); // warn face 0
+  assert.equal(colors[9], 1); assert.equal(colors[10], 0); // fail wins face 1
+  assert.equal(colors[18], BASE.r); // untouched face 2
+});
+
+test("layered overlay with no payload leaves the clean part uncolored", () => {
+  const colors = computeLayeredHighlightVertexColors(3, [], BASE);
+  assert.equal(colors[0], BASE.r);
+  assert.equal(colors[1], BASE.g);
+  assert.equal(colors[2], BASE.b);
 });

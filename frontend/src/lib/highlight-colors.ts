@@ -119,3 +119,41 @@ export function thicknessColorRange(
   }
   return Number.isFinite(min) ? { min, max } : null;
 }
+
+
+export interface FaceHighlightLayer {
+  faces: readonly number[];
+  color: RGB;
+  priority: number;
+}
+
+/** Paint every reported issue at once, resolving overlapping faces by severity priority. */
+export function computeLayeredHighlightVertexColors(
+  vertexCount: number,
+  layers: readonly FaceHighlightLayer[],
+  base: RGB,
+): Float32Array {
+  const colors = new Float32Array(vertexCount * 3);
+  const faceCount = Math.floor(vertexCount / 3);
+  const winning = new Int32Array(faceCount);
+  winning.fill(-2147483648);
+  for (let v = 0; v < vertexCount; v++) {
+    colors[v * 3] = base.r;
+    colors[v * 3 + 1] = base.g;
+    colors[v * 3 + 2] = base.b;
+  }
+  for (const layer of layers) {
+    for (const face of layer.faces) {
+      if (!Number.isInteger(face) || face < 0 || face >= faceCount) continue;
+      if (layer.priority < winning[face]) continue;
+      winning[face] = layer.priority;
+      for (let k = 0; k < 3; k++) {
+        const v = face * 3 + k;
+        colors[v * 3] = layer.color.r;
+        colors[v * 3 + 1] = layer.color.g;
+        colors[v * 3 + 2] = layer.color.b;
+      }
+    }
+  }
+  return colors;
+}
