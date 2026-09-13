@@ -516,6 +516,22 @@ async def logout_all(
     return {"ok": True, "session_version": version}
 
 
+@router.get("/me/usage")
+async def me_usage(user_id: int = Depends(require_dashboard_session)) -> dict:
+    """The caller's own trial-quota read for the /history quota card.
+
+    Same durable count and cap source as enforcement
+    (src.auth.validation_caps), so the card can never disagree with the gate.
+    """
+    from src.auth.validation_caps import user_trial_usage
+
+    try:
+        return await user_trial_usage(user_id)
+    except Exception:
+        logger.warning("me/usage: usage read failed for user_id=%s", user_id, exc_info=True)
+        raise _err(503, "usage_unavailable", "Usage data is temporarily unavailable.")
+
+
 @router.get("/me")
 async def me(user_id: int = Depends(require_dashboard_session)) -> dict:
     row = await get_user_public(user_id)

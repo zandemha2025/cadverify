@@ -4,8 +4,17 @@ import type { RateLimits } from "@/lib/api";
 import { Progress } from "@/components/ui/progress";
 import { usageTone } from "@/lib/status";
 
+export interface TrialUsage {
+  plan: string;
+  unlimited: boolean;
+  used: number | null;
+  cap: number | null;
+  remaining: number | null;
+}
+
 interface Props {
   rateLimits?: RateLimits;
+  usage?: TrialUsage;
 }
 
 function QuotaBar({
@@ -23,7 +32,7 @@ function QuotaBar({
       <div className="mb-1 flex items-center justify-between text-sm">
         <span className="text-muted-foreground">{label}</span>
         <span className="num text-muted-foreground">
-          {used} / {total} used ({pct}%)
+          {used} of {total} used
         </span>
       </div>
       <Progress value={pct} tone={usageTone(used, total)} className="h-2" />
@@ -31,7 +40,43 @@ function QuotaBar({
   );
 }
 
-export default function QuotaDisplay({ rateLimits }: Props) {
+export default function QuotaDisplay({ rateLimits, usage }: Props) {
+  // The product trial cap is the honest quota; the rate-limit throttle is
+  // only a burst control and never presented as the allowance.
+  if (usage) {
+    if (usage.unlimited) {
+      return (
+        <p className="text-sm text-muted-foreground">
+          Pilot plan - unlimited checks.
+        </p>
+      );
+    }
+    if (usage.used != null && usage.cap != null) {
+      const exhausted = usage.remaining === 0;
+      return (
+        <div className="space-y-3">
+          <QuotaBar
+            used={usage.used}
+            total={usage.cap}
+            label={`${usage.used} of ${usage.cap} trial checks used`}
+          />
+          {exhausted && (
+            <p className="text-sm text-muted-foreground">
+              You&apos;ve used your {usage.cap} trial checks.{" "}
+              <a
+                className="underline"
+                href="mailto:nazeemahmed2023@gmail.com"
+              >
+                Talk to the ProofShape team
+              </a>{" "}
+              to keep going.
+            </p>
+          )}
+        </div>
+      );
+    }
+  }
+
   if (!rateLimits) {
     return (
       <p className="text-sm text-muted-foreground">Quota data unavailable</p>
@@ -39,7 +84,6 @@ export default function QuotaDisplay({ rateLimits }: Props) {
   }
 
   const used = rateLimits.limit - rateLimits.remaining;
-  // X-RateLimit-Reset is an absolute epoch timestamp (seconds), not a duration.
   const resetInSec = rateLimits.reset - Math.floor(Date.now() / 1000);
 
   return (

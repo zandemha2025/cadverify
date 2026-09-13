@@ -68,7 +68,7 @@ export function SecuritySettingsClient() {
     <div className="space-y-6">
       <PageHeader
         title="Security"
-        subtitle="Configure a password after your email address has been verified."
+        subtitle="Set or change the password for this account."
       />
       <Card className="max-w-2xl">
         <CardHeader>
@@ -77,8 +77,9 @@ export function SecuritySettingsClient() {
             <CardTitle>Initial password</CardTitle>
           </div>
           <CardDescription>
-            New production accounts begin with a verified email link. You may
-            add a password once; email-link login remains available for recovery.
+            New accounts start with a password. Email-link sign-in is not
+            connected on this deployment yet; when it is, you can also use it
+            for recovery.
           </CardDescription>
         </CardHeader>
         <CardContent>
