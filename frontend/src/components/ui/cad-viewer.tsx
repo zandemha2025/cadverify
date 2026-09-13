@@ -14,6 +14,7 @@ import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { cn } from "@/lib/utils";
 import { STAGE_UI } from "@/lib/stage-flag";
+import { severityLabel } from "@/lib/status";
 import { computeHighlightVertexColors, computeLayeredHighlightVertexColors } from "@/lib/highlight-colors";
 import { probeWebGlSupport } from "@/lib/site/webgl";
 
@@ -182,13 +183,17 @@ function STLModel({
               type="button"
               data-testid="pinpoint-marker"
               data-severity={pin.severity}
-              title={pin.suggestion}
+              title={`${severityLabel(pin.severity)}: ${pin.suggestion}`}
               aria-label={`${pin.code}: ${pin.valueLabel}. ${pin.suggestion}`}
               onClick={() => onSelectPinpoint?.(pin.key)}
-              className="flex min-h-9 min-w-9 items-center justify-center rounded-full border-2 border-white px-2 text-[10px] font-bold text-white shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex min-h-9 min-w-9 flex-col items-center justify-center rounded-full border-2 border-white px-2 text-[9px] font-bold leading-tight text-white shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               style={{ background: pin.color }}
             >
-              {pin.valueLabel}
+              {pin.requiredLabel ? (
+                <span>{pin.valueLabel} measured - needs {pin.requiredLabel}</span>
+              ) : (
+                <span>{pin.valueLabel}</span>
+              )}
             </button>
           </Html>
         );
@@ -509,6 +514,7 @@ export interface PinpointOverlay {
   faces: number[];
   regionCenter: [number, number, number] | null;
   valueLabel: string;
+  requiredLabel: string | null;
   suggestion: string;
   color: string;
 }

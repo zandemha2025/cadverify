@@ -160,7 +160,7 @@ export function InspectionColumn({
               </span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Every check passed - this part is ready.
+              Every check passed. This part is ready to make.
             </p>
           </Card>
         </Rise>

@@ -43,7 +43,7 @@ import { reportCostBlockerLocators } from "@/lib/inspection-bind";
 import type { PinpointOverlay } from "@/components/ui/cad-viewer";
 import { deriveBreakeven } from "@/lib/breakeven";
 import { deriveFindings } from "@/lib/findings";
-import { severityTone, verdictLabel, verdictTone, procLabel } from "@/lib/status";
+import { severityLabel, severityTone, verdictLabel, verdictTone, procLabel } from "@/lib/status";
 import type { CalibrationView } from "@/lib/cost-views";
 
 import { Button } from "@/components/ui/button";
@@ -208,9 +208,11 @@ export function PartHero({
       if (issue.severity !== "error" && issue.severity !== "warning") return [];
       if (row.faces.length === 0 && !issue.region_center) return [];
       const measured = issue.measured_value;
-      const valueLabel = measured == null
-        ? issue.code
-        : `${Number(measured.toFixed(3))}${validation.geometry.units ? ` ${validation.geometry.units}` : ""}`;
+      const units = validation.geometry.units ? ` ${validation.geometry.units}` : "";
+      const valueLabel = measured == null ? issue.code : `${Number(measured.toFixed(3))}${units}`;
+      const requiredLabel = issue.required_value == null
+        ? null
+        : `${Number(issue.required_value.toFixed(3))}${units}`;
       return [{
         key: row.key,
         code: issue.code,
@@ -218,6 +220,7 @@ export function PartHero({
         faces: row.faces,
         regionCenter: issue.region_center ?? null,
         valueLabel,
+        requiredLabel,
         suggestion: issue.fix_suggestion ?? issue.message,
         color: issue.severity === "error" ? SEVERITY_HEX.fail : SEVERITY_HEX.warn,
       }];
@@ -349,10 +352,15 @@ export function PartHero({
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="num text-xs font-semibold text-foreground">{selectedIssue.issue.code}</p>
+                        <p className="num text-xs font-semibold text-foreground">
+                          {severityLabel(selectedIssue.issue.severity)} - {selectedIssue.issue.code}
+                        </p>
                         {selectedIssue.issue.measured_value != null && (
                           <p className="num mt-1 text-xs text-muted-foreground">
                             {Number(selectedIssue.issue.measured_value.toFixed(3))} {validation?.geometry.units ?? ""}
+                            {selectedIssue.issue.required_value != null && (
+                              <> measured - needs {Number(selectedIssue.issue.required_value.toFixed(3))} {validation?.geometry.units ?? ""}</>
+                            )}
                           </p>
                         )}
                         <p className="mt-1 text-xs leading-5 text-foreground">
