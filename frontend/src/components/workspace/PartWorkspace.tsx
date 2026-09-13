@@ -174,6 +174,10 @@ export default function PartWorkspace({
 
   // analyze ↔ geometry linking
   const [selectedIssueKey, setSelectedIssueKey] = useState<string | null>(null);
+  const [pendingIssueLink, setPendingIssueLink] = useState<string | null>(null);
+  useEffect(() => {
+    setPendingIssueLink(new URLSearchParams(window.location.search).get("issue"));
+  }, []);
   const [showOptions, setShowOptions] = useState(false);
 
   // per-shop calibration + session-local scenarios
@@ -233,7 +237,7 @@ export default function PartWorkspace({
       regionCenter: selectedGroup.regionCenter,
       valueLabel: measured == null ? issue.code : `${Number(measured.toFixed(3))}${units}`,
       requiredLabel: issue.required_value == null ? null : `${Number(issue.required_value.toFixed(3))}${units}`,
-      markerLabel: "1",
+      markerLabel: "",
       suggestion: issue.fix_suggestion ?? issue.message,
       color: selectedGroup.severity === "error" ? SEVERITY_HEX.fail : SEVERITY_HEX.warn,
     }];
@@ -242,20 +246,52 @@ export default function PartWorkspace({
     ? pinpointGroups.findIndex((group) => group.key === selectedGroup.key)
     : -1;
 
+  const clearPinpoint = useCallback(() => {
+    setSelectedIssueKey(null);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("issue");
+      window.history.replaceState(window.history.state, "", url);
+    }
+  }, []);
+
   const selectPinpoint = useCallback((key: string) => {
+    if (key === selectedIssueKey) {
+      clearPinpoint();
+      return;
+    }
     setSelectedIssueKey(key);
+    setTab("routing");
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
       url.searchParams.set("issue", key);
       window.history.replaceState(window.history.state, "", url);
     }
-  }, []);
+  }, [clearPinpoint, selectedIssueKey]);
 
   const selectGroupAt = useCallback((index: number) => {
     const count = pinpointGroups.length;
     if (!count) return;
     selectPinpoint(pinpointGroups[(index + count) % count].key);
   }, [pinpointGroups, selectPinpoint]);
+
+  useEffect(() => {
+    if (!selectedGroup) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        clearPinpoint();
+      } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+        event.preventDefault();
+        selectGroupAt(selectedIndex - 1);
+      } else if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+        event.preventDefault();
+        selectGroupAt(selectedIndex + 1);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [clearPinpoint, selectGroupAt, selectedGroup, selectedIndex]);
 
   useEffect(() => {
     if (typeof window === "undefined" || pinpointGroups.length === 0) return;
@@ -460,23 +496,22 @@ export default function PartWorkspace({
     (faceIndex: number) => {
       const hit = pinpointGroups.find((group) => group.faces.includes(faceIndex));
       if (hit) {
-        setTab("routing");
-        setSelectedIssueKey(hit.key);
+        selectPinpoint(hit.key);
       }
     },
-    [pinpointGroups]
+    [pinpointGroups, selectPinpoint]
   );
 
   const onHighlightProcess = useCallback(
     (process: string) => {
       const hit = pinpointGroups.find((group) => group.processes.includes(process));
       if (hit) {
-        setSelectedIssueKey(hit.key);
+        selectPinpoint(hit.key);
       } else {
         toast(`No geometry-linked faces reported for ${procLabel(process)}.`);
       }
     },
-    [pinpointGroups]
+    [pinpointGroups, selectPinpoint]
   );
 
   /* ---- publish the loaded part's identity to the context-bar breadcrumb --- */
@@ -527,6 +562,12 @@ export default function PartWorkspace({
             resident Inspector tracing any number to its governed source.
           </p>
         </div>
+        {pendingIssueLink && (
+          <Card className="border-warn/40 bg-warn-bg p-4" role="status">
+            <p className="font-medium text-foreground">Issue link ready: {pendingIssueLink}</p>
+            <p className="mt-1 text-sm text-muted-foreground">Upload the original CAD file to restore this issue. The file is not stored in the URL.</p>
+          </Card>
+        )}
         <Dropzone
           accept={CAD_ACCEPT}
           onFiles={(files) => files[0] && handleFile(files[0])}
@@ -672,7 +713,7 @@ export default function PartWorkspace({
                     onSelectPinpoint={selectPinpoint}
                     pinpointCallout={selectedIssue ? {
                       title: `${severityLabel(selectedIssue.issue.severity)} - ${selectedIssue.issue.code}`,
-                      detail: selectedIssue.issue.fix_suggestion ?? selectedIssue.issue.message,
+                      detail: "",
                       color: selectedGroup?.severity === "error" ? SEVERITY_HEX.fail : SEVERITY_HEX.warn,
                     } : null}
                   />
@@ -704,6 +745,7 @@ export default function PartWorkspace({
                           )}
                         </div>
                         <div className="flex shrink-0 items-center gap-1">
+                          <button type="button" aria-label="Clear selected issue" title="Clear selection (Escape)" className="min-h-9 min-w-9 rounded border border-border hover:bg-muted" onClick={clearPinpoint}>×</button>
                           <button type="button" aria-label="Previous issue" className="min-h-9 min-w-9 rounded border border-border hover:bg-muted" onClick={() => selectGroupAt(selectedIndex - 1)}>‹</button>
                           <span className="num text-[11px] text-muted-foreground">{selectedIndex + 1}/{pinpointGroups.length}</span>
                           <button type="button" aria-label="Next issue" className="min-h-9 min-w-9 rounded border border-border hover:bg-muted" onClick={() => selectGroupAt(selectedIndex + 1)}>›</button>

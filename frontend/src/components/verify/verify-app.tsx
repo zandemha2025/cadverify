@@ -24,6 +24,7 @@ import { Stage, type StageAssembly } from "./stage";
 import { AssemblyPanel } from "./assembly-panel";
 import { fetchAssembly, fetchAssemblyAnalysis, defaultPartOfInterest, type AssemblyRender, type AssemblyAnalysis } from "@/lib/verify/assembly";
 import { VerifyScreen } from "./verify-screen";
+import { ContextFitPanel } from "./context-fit-panel";
 import { MachinesScreen } from "./machines-screen";
 import { RecordsScreen } from "./records-screen";
 import { CatalogScreen } from "./catalog-screen";
@@ -62,11 +63,12 @@ const HOTKEY_NAV: Record<string, Screen> = {
   c: "calibration",
 };
 
-type Screen = WorkspaceScreen | "part" | "program" | "acquisition" | "palette";
+type Screen = WorkspaceScreen | "part" | "program" | "context-fit" | "acquisition" | "palette";
 
 const RAIL: { key: Screen; label: string; d: string }[] = [
   { key: "home", label: "Home", d: "M3 10.5 12 3l9 7.5M5 9v11h14V9" },
   { key: "verify", label: "Verify", d: "M20 6 9 17l-5-5M4 6h5M4 12h2" },
+  { key: "context-fit", label: "Fit in context", d: "M4 7h7v10H4zM13 4h7v16h-7zM11 12h2" },
   { key: "catalog", label: "Parts", d: "M21 8 12 3 3 8l9 5zM3 8v8l9 5 9-5V8M12 13v8" },
   { key: "records", label: "Records", d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7ZM14 2v4a2 2 0 0 0 2 2h4M8 13h8M8 17h5" },
   { key: "programs", label: "Programs", d: "M3 5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" },
@@ -813,6 +815,7 @@ export function VerifyApp({
             )}
           </div>
         )}
+        {screen === "context-fit" && <ContextFitPanel />}
         {screen === "machines" && <MachinesScreen nav={nav} />}
         {screen === "records" && <RecordsScreen nav={nav} />}
         {screen === "catalog" && <CatalogScreen nav={nav} />}

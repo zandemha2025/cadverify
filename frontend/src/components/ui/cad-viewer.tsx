@@ -226,7 +226,7 @@ function STLModel({
                   color: pinpointOccluded ? pin.color : "white",
                   clipPath: pin.severity === "error" ? "polygon(50% 0,100% 50%,50% 100%,0 50%)" : "polygon(50% 0,100% 100%,0 100%)",
                 }}
-              >{pin.markerLabel ?? pin.valueLabel}</span>
+              ><span className="sr-only">{pin.markerLabel ?? pin.valueLabel}</span></span>
             </button>
           </Html>
         );
@@ -465,7 +465,7 @@ export default function CadViewer({
           </svg>
           <div data-testid="pinpoint-docked-callout" className="absolute left-2 right-2 top-2 z-20 rounded border border-border bg-card/95 px-3 py-2 text-xs shadow-lg backdrop-blur-sm sm:left-auto sm:w-72">
             <p className="font-semibold text-foreground">{pinpointCallout.title}</p>
-            <p className="mt-0.5 leading-5 text-muted-foreground">{pinpointCallout.detail}</p>
+            {pinpointCallout.detail && <p className="mt-0.5 leading-5 text-muted-foreground">{pinpointCallout.detail}</p>}
             {pinpointProjection.occluded && <p className="mt-0.5 font-medium text-foreground">On the far side - drag to spin.</p>}
           </div>
         </>
