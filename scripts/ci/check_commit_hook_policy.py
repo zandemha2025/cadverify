@@ -64,7 +64,7 @@ def main() -> int:
         return 0
 
     rng = commit_range()
-    commits = git("rev-list", rng).splitlines()
+    commits = git("rev-list", "--no-merges", rng).splitlines()
     base_ref = rng.split("..", 1)[0]
     bootstrap = subprocess.run(
         ["git", "cat-file", "-e", f"{base_ref}:.githooks/commit-msg"],
