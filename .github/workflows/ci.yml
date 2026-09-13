@@ -17,6 +17,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  commit-hook-policy:
+    name: Commit hook integrity policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - name: Verify committed hooks and new-commit attestations
+        run: |
+          git config core.hooksPath .githooks
+          test "$(git config --get core.hooksPath)" = ".githooks"
+          test -x .githooks/pre-commit
+          test -x .githooks/commit-msg
+          python3 scripts/ci/check_commit_hook_policy.py
+
   trap-corpus:
     name: Trap Corpus Gate
     runs-on: ubuntu-latest

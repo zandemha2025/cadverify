@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+root=$(git rev-parse --show-toplevel)
+gitdir=$(git rev-parse --path-format=absolute --git-dir)
+state="$gitdir/proofshape-hook-passed"
+[ -f "$state" ] || { echo 'pre-commit attestation missing; run the commit normally' >&2; exit 1; }
+now=$(date +%s); then=$(cat "$state"); rm -f "$state"
+[ $((now - then)) -le 300 ] || { echo 'pre-commit attestation expired' >&2; exit 1; }
+grep -qx 'ProofShape-Hooks: passed' "$1" || printf '\nProofShape-Hooks: passed\n' >> "$1"

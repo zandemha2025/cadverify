@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+root=$(git rev-parse --show-toplevel)
+gitdir=$(git rev-parse --path-format=absolute --git-dir)
+python3 "$root/scripts/ci/check_commit_hook_policy.py" --working-tree-only
+printf '%s\n' "$(date +%s)" > "$gitdir/proofshape-hook-passed"
