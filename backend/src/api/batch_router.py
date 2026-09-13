@@ -680,7 +680,7 @@ async def get_batch_portfolio_verdict(
     )).all()
     counts: dict[str, int] = {}
     for status, verdict in rows:
-        key = verdict if status == "completed" and verdict in {"pass", "issues", "fail"} else "processing_failed" if status == "failed" else "pending"
+        key = verdict if status == "completed" and verdict in {"pass", "issues", "fail"} else "processing_failed" if status == "failed" else "skipped" if status == "skipped" else "pending"
         counts[key] = counts.get(key, 0) + 1
     return {"batch_id": batch_id, **batch_service.portfolio_verdict(counts, batch.total_items)}
 

@@ -143,7 +143,7 @@ export default function BatchDetailPage({
         <section className="rounded-lg border p-4" aria-label="Portfolio verdict">
           <p className="text-xs font-semibold uppercase text-muted-foreground">Portfolio verdict</p>
           <p className="mt-1 text-2xl font-semibold uppercase">{portfolio.verdict}</p>
-          <p className="text-sm text-muted-foreground">{portfolio.pass_items} pass · {portfolio.issues_items} issues · {portfolio.fail_items + portfolio.processing_failed_items} fail</p>
+          <p className="text-sm text-muted-foreground">{portfolio.pass_items} pass · {portfolio.issues_items} issues · {portfolio.fail_items + portfolio.processing_failed_items} fail · {portfolio.skipped_items} skipped</p>
           <p className="mt-1 text-xs text-muted-foreground">{portfolio.basis}</p>
         </section>
       )}
