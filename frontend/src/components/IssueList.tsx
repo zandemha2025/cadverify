@@ -53,10 +53,12 @@ export default function IssueList({
   items,
   selectedKey,
   onSelect,
+  processImplications,
 }: {
   items: IndexedIssue[];
   selectedKey?: string | null;
   onSelect?: (item: IndexedIssue) => void;
+  processImplications?: ReadonlyMap<string, readonly string[]>;
 }) {
   if (items.length === 0) return null;
 
@@ -82,6 +84,7 @@ export default function IssueList({
                 item={it}
                 selected={selectedKey === it.key}
                 onSelect={onSelect}
+                processes={processImplications?.get(it.key)}
               />
             ))}
           </div>
@@ -95,10 +98,12 @@ function IssueRow({
   item,
   selected,
   onSelect,
+  processes,
 }: {
   item: IndexedIssue;
   selected: boolean;
   onSelect?: (item: IndexedIssue) => void;
+  processes?: readonly string[];
 }) {
   const { issue, faces } = item;
   const ref = useRef<HTMLDivElement>(null);
@@ -157,6 +162,15 @@ function IssueRow({
           </span>
         )}
       </div>
+      {processes && processes.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1" aria-label="Affected processes">
+          {processes.map((process) => (
+            <Badge key={process} variant="outline" size="sm" className="num">
+              {process}
+            </Badge>
+          ))}
+        </div>
+      )}
       <p className="mt-1 text-sm text-foreground">{issue.message}</p>
       {issue.fix_suggestion && (
         <p className="mt-1 whitespace-pre-line text-sm text-muted-foreground">

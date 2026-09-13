@@ -26,6 +26,8 @@ export function RoutingDfmView({
   selectedIssueKey,
   onSelectIssue,
   onHighlightProcess,
+  canonicalIssues,
+  processImplications,
 }: {
   report: CostReport | null;
   validation: ValidationResult | null;
@@ -33,6 +35,8 @@ export function RoutingDfmView({
   onSelectIssue: (it: IndexedIssue) => void;
   /** highlight the offending faces for a process's DFM blocker in the 3D rail */
   onHighlightProcess: (process: string) => void;
+  canonicalIssues?: IndexedIssue[];
+  processImplications?: ReadonlyMap<string, readonly string[]>;
 }) {
   const blockers = React.useMemo(
     () => (report ? blockersByProcess(report) : {}),
@@ -117,6 +121,8 @@ export function RoutingDfmView({
             result={validation}
             selectedIssueKey={selectedIssueKey}
             onSelectIssue={onSelectIssue}
+            canonicalIssues={canonicalIssues}
+            processImplications={processImplications}
           />
         </div>
       )}

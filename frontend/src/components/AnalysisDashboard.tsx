@@ -17,12 +17,17 @@ interface AnalysisDashboardProps {
   selectedIssueKey?: string | null;
   /** workspace wiring: fired when an issue row is clicked. */
   onSelectIssue?: (item: IndexedIssue) => void;
+  /** Optional physical-defect grouping for the production pinpoint interaction. */
+  canonicalIssues?: IndexedIssue[];
+  processImplications?: ReadonlyMap<string, readonly string[]>;
 }
 
 export default function AnalysisDashboard({
   result,
   selectedIssueKey,
   onSelectIssue,
+  canonicalIssues,
+  processImplications,
 }: AnalysisDashboardProps) {
   const [showAllCandidates, setShowAllCandidates] = useState(false);
   const tone = verdictTone(result.overall_verdict);
@@ -35,8 +40,8 @@ export default function AnalysisDashboard({
   // full flatten) so the 3D two-way highlight linking keeps working.
   const scoped = dfmScopedFlagsEnabled();
   const dfm = partitionDfmByRoute(result, result.best_process);
-  const routeIssues = scoped ? dfm.route : dfm.all;
-  const extraIssues = scoped ? dfm.extra : [];
+  const routeIssues = canonicalIssues ?? (scoped ? dfm.route : dfm.all);
+  const extraIssues = canonicalIssues ? [] : (scoped ? dfm.extra : []);
   const routeLabel = result.best_process
     ? procLabel(result.best_process)
     : "part-level checks";
@@ -115,9 +120,14 @@ export default function AnalysisDashboard({
           <h3 className="text-base font-semibold leading-[22px] text-foreground">
             Manufacturability issues
           </h3>
-          {scoped && (
+          {scoped && !canonicalIssues && (
             <span className="text-xs text-muted-foreground">
               on recommended route · {routeLabel}
+            </span>
+          )}
+          {canonicalIssues && (
+            <span className="text-xs text-muted-foreground">
+              grouped by physical defect · process implications attached
             </span>
           )}
         </div>
@@ -126,6 +136,7 @@ export default function AnalysisDashboard({
             items={routeIssues}
             selectedKey={selectedIssueKey}
             onSelect={onSelectIssue}
+            processImplications={processImplications}
           />
         ) : (
           <Card tone="pass">
