@@ -1,28 +1,483 @@
 {
-  "corpus": "cadverify trap corpus v1.1 (2026-09-13)",
+  "corpus": "cadverify trap corpus v1.2 (2026-09-13)",
   "law": "every verifier change must keep this corpus green; expected values derive from CODE thresholds (fdm.py: wall 0.8 / overhang 45deg / small 0.4 / volume (300,300,350) / aspect 8 / drain 3.0; sla.py: wall 0.4 / overhang 19deg)",
+  "semantics_note": "OVERHANG IS MEASURED FROM VERTICAL in checks.py: a face trips when angle_from_up(normal) > 90 + threshold. For an underside, angle_from_up = 90 + tilt-from-vertical, so FDM trips undersides tilted more than 45 deg FROM VERTICAL (i.e. shallower than 45 deg from horizontal). The 46/44 pair was built against this: 46-from-vertical trips FDM, 44 passes. small_features trips only when >=5% of unique edges are below threshold. wall_thickness = inward ray from face centroids; severity ERROR if >10% of faces thin, else WARNING, but an Issue is emitted either way.",
   "fixtures": [
-    {"file": "control-cube-10mm.stl", "class": "control",
-     "expect": {"fdm": {"issues": []}}, "note": "anchored by live receipt 2026-09-12: verdict pass, process fdm, 399ms"},
-    {"file": "trap-wall-0.5mm-shell.stl", "class": "wall",
-     "expect": {"fdm": {"gates_trip": ["wall_thickness"]}, "sla": {"gates_absent": ["wall_thickness"]}},
-     "note": "outer 20mm box + inverted 19mm inner, measured wall 0.5mm: trips FDM min 0.8, passes SLA min 0.4"},
-    {"file": "trap-small-bar-0.3mm.stl", "class": "small-feature",
-     "expect": {"fdm": {"gates_trip": ["small_features", "wall_thickness"]}}},
-    {"file": "trap-build-volume-400mm.stl", "class": "build-volume",
-     "expect": {"fdm": {"gates_trip": ["build_volume"]}}},
-    {"file": "trap-aspect-2x2x100.stl", "class": "aspect",
-     "expect": {"fdm": {"gates_trip": ["aspect_ratio"]}}},
-    {"file": "trap-nonmanifold-missing-face.stl", "class": "geometry",
-     "expect": {"geometry": {"is_watertight": false}}},
-    {"file": "trap-trapped-hollow-sphere.stl", "class": "trapped-volume",
-     "expect": {"fdm": {"gates_trip": ["trapped_volumes"]}}, "note": "watertight hollow solid: closed r15 outer boundary + inverted r13 inner boundary, 2mm wall, zero drain"},
-    {"file": "trap-inch-cube-25.4mm.stl", "class": "KNOWN-GAP",
-     "expect": {"geometry": {"unit_flag": "suspicious_scale"}},
-     "note": "EXPECTED TO FAIL TODAY - no unit/scale detection exists (T3); this row holds the gap open until T3 lands, then it must go green"},
-    {"file": "trap-overhang-90deg.stl", "class": "overhang",
-     "expect": {"fdm": {"gates_trip": ["overhangs"]}, "sla": {"gates_trip": ["overhangs"]}},
-     "note": "watertight single L-prism extrusion; vertical leg + 90deg horizontal ledge, no box-union seam"}
+    {
+      "file": "control-cube-10mm.stl",
+      "class": "control",
+      "expect": {
+        "fdm": {
+          "issues": []
+        }
+      },
+      "note": "anchored by live receipt 2026-09-12: verdict pass, process fdm, 399ms"
+    },
+    {
+      "file": "trap-wall-0.5mm-shell.stl",
+      "class": "wall",
+      "expect": {
+        "fdm": {
+          "gates_trip": [
+            "wall_thickness"
+          ]
+        },
+        "sla": {
+          "gates_absent": [
+            "wall_thickness"
+          ]
+        }
+      },
+      "note": "outer 20mm box + inverted 19mm inner, measured wall 0.5mm: trips FDM min 0.8, passes SLA min 0.4"
+    },
+    {
+      "file": "trap-small-bar-0.3mm.stl",
+      "class": "small-feature",
+      "expect": {
+        "fdm": {
+          "gates_trip": [
+            "small_features",
+            "wall_thickness"
+          ]
+        }
+      }
+    },
+    {
+      "file": "trap-build-volume-400mm.stl",
+      "class": "build-volume",
+      "expect": {
+        "fdm": {
+          "gates_trip": [
+            "build_volume"
+          ]
+        }
+      }
+    },
+    {
+      "file": "trap-aspect-2x2x100.stl",
+      "class": "aspect",
+      "expect": {
+        "fdm": {
+          "gates_trip": [
+            "aspect_ratio"
+          ]
+        }
+      }
+    },
+    {
+      "file": "trap-nonmanifold-missing-face.stl",
+      "class": "geometry",
+      "expect": {
+        "geometry": {
+          "is_watertight": false
+        }
+      }
+    },
+    {
+      "file": "trap-trapped-hollow-sphere.stl",
+      "class": "trapped-volume",
+      "expect": {
+        "fdm": {
+          "gates_trip": [
+            "trapped_volumes"
+          ]
+        }
+      },
+      "note": "watertight hollow solid: closed r15 outer boundary + inverted r13 inner boundary, 2mm wall, zero drain"
+    },
+    {
+      "file": "trap-inch-cube-25.4mm.stl",
+      "class": "KNOWN-GAP",
+      "expect": {
+        "geometry": {
+          "unit_flag": "suspicious_scale"
+        }
+      },
+      "note": "EXPECTED TO FAIL TODAY - no unit/scale detection exists (T3); this row holds the gap open until T3 lands, then it must go green"
+    },
+    {
+      "file": "trap-overhang-90deg.stl",
+      "class": "overhang",
+      "expect": {
+        "fdm": {
+          "gates_trip": [
+            "overhangs"
+          ]
+        },
+        "sla": {
+          "gates_trip": [
+            "overhangs"
+          ]
+        }
+      },
+      "note": "watertight single L-prism extrusion; vertical leg + 90deg horizontal ledge, no box-union seam"
+    },
+    {
+      "file": "control-wall-0.81mm-plate.stl",
+      "class": "borderline-wall-control",
+      "expect": {
+        "fdm": {
+          "gates_absent": [
+            "wall_thickness",
+            "small_features",
+            "overhangs",
+            "aspect_ratio",
+            "build_volume",
+            "trapped_volumes"
+          ]
+        },
+        "sla": {
+          "gates_absent": [
+            "wall_thickness"
+          ]
+        }
+      },
+      "note": "6x6x0.81mm solid plate, measured wall 0.81 (ray-verified). Passes FDM 0.8 by 0.01mm. Aspect 7.41 stays under 8 so the aspect gate cannot mask the wall result."
+    },
+    {
+      "file": "trap-wall-0.79mm-plate.stl",
+      "class": "borderline-wall",
+      "expect": {
+        "fdm": {
+          "gates_trip": [
+            "wall_thickness"
+          ]
+        },
+        "sla": {
+          "gates_absent": [
+            "wall_thickness"
+          ]
+        }
+      },
+      "note": "6x6x0.79mm plate, measured 0.79. Fails FDM 0.8 by 0.01mm (33% of faces thin, ERROR severity), passes SLA 0.4. Pairs with the 0.81 control: this pair is the precision test for the wall gate."
+    },
+    {
+      "file": "trap-small-rib-0.39mm.stl",
+      "class": "borderline-small-feature",
+      "expect": {
+        "fdm": {
+          "gates_trip": [
+            "small_features",
+            "wall_thickness"
+          ]
+        },
+        "sla": {
+          "gates_trip": [
+            "wall_thickness"
+          ],
+          "gates_absent": [
+            "small_features"
+          ]
+        }
+      },
+      "note": "12x12x3 base + 0.39mm rib. 9.5% of unique edges are 0.39 (>=5% gate): small_features trips FDM. Wall 0.39 also trips FDM (0.8) and SLA (0.4) - listed so the harness does not read the SLA wall flag as a false positive."
+    },
+    {
+      "file": "control-small-rib-0.41mm.stl",
+      "class": "borderline-small-feature-control",
+      "expect": {
+        "fdm": {
+          "gates_absent": [
+            "small_features"
+          ],
+          "gates_trip": [
+            "wall_thickness"
+          ]
+        },
+        "sla": {
+          "gates_absent": [
+            "small_features",
+            "wall_thickness"
+          ]
+        }
+      },
+      "note": "Same part with a 0.41mm rib: small_features must NOT trip FDM (edges clear 0.4 by 0.01). Wall 0.41 < 0.8 so FDM wall still trips (14.3% faces) while SLA clears everything - the discriminator pair isolates the small-edge threshold."
+    },
+    {
+      "file": "control-aspect-7.9.stl",
+      "class": "borderline-aspect-control",
+      "expect": {
+        "fdm": {
+          "gates_absent": [
+            "aspect_ratio",
+            "wall_thickness",
+            "small_features",
+            "overhangs"
+          ]
+        }
+      },
+      "note": "2x2x15.8 solid bar, aspect exactly 7.9 < 8. Clean control."
+    },
+    {
+      "file": "trap-aspect-8.1.stl",
+      "class": "borderline-aspect",
+      "expect": {
+        "fdm": {
+          "gates_trip": [
+            "aspect_ratio"
+          ]
+        }
+      },
+      "note": "2x2x16.3 bar, aspect 8.15 > 8. Only the aspect gate may trip; wall 2.0 and edges 2.0 keep wall/small quiet."
+    },
+    {
+      "file": "trap-overhang-46deg.stl",
+      "class": "borderline-overhang",
+      "expect": {
+        "fdm": {
+          "gates_trip": [
+            "overhangs"
+          ]
+        },
+        "sla": {
+          "gates_trip": [
+            "overhangs"
+          ]
+        }
+      },
+      "note": "Ledge underside at 46 deg FROM VERTICAL (angle_from_up 136 > 135): trips FDM and SLA. Wall >= 2.4 everywhere so wall cannot confound."
+    },
+    {
+      "file": "control-overhang-44deg.stl",
+      "class": "borderline-overhang-control",
+      "expect": {
+        "fdm": {
+          "gates_absent": [
+            "overhangs"
+          ]
+        },
+        "sla": {
+          "gates_trip": [
+            "overhangs"
+          ]
+        }
+      },
+      "note": "Same ledge at 44 deg from vertical (angle_from_up 134 < 135): FDM must NOT flag while SLA (threshold 109) must. The 46/44 pair brackets the FDM 45 gate; SLA flag on the control is EXPECTED, not noise."
+    },
+    {
+      "file": "trap-sla-overhang-20deg.stl",
+      "class": "borderline-overhang-sla",
+      "expect": {
+        "fdm": {
+          "gates_absent": [
+            "overhangs"
+          ]
+        },
+        "sla": {
+          "gates_trip": [
+            "overhangs"
+          ]
+        }
+      },
+      "note": "Steep underside at 20 deg from vertical (angle_from_up 110 > 109 by 1.0): SLA-only trip, FDM silent. Brackets the SLA 19 gate."
+    },
+    {
+      "file": "control-build-299mm.stl",
+      "class": "borderline-build-volume-control",
+      "expect": {
+        "fdm": {
+          "gates_absent": [
+            "build_volume"
+          ]
+        },
+        "sla": {
+          "gates_trip": [
+            "build_volume"
+          ]
+        }
+      },
+      "note": "299x290x299 solid block: 1mm under every FDM envelope axis. SLA flags (all dims > 200/125) as expected. Aspect 1.03 keeps the aspect gate quiet."
+    },
+    {
+      "file": "trap-build-300.1mm.stl",
+      "class": "borderline-build-volume",
+      "expect": {
+        "fdm": {
+          "gates_trip": [
+            "build_volume"
+          ]
+        },
+        "sla": {
+          "gates_trip": [
+            "build_volume"
+          ]
+        }
+      },
+      "note": "300.1x290x300: exceeds the FDM X envelope by 0.1mm. Only build_volume may trip."
+    },
+    {
+      "file": "trap-multi-lbracket-thin-steep-small.stl",
+      "class": "multi-defect",
+      "expect": {
+        "fdm": {
+          "gates_trip": [
+            "wall_thickness",
+            "overhangs",
+            "small_features"
+          ]
+        },
+        "sla": {
+          "gates_trip": [
+            "overhangs"
+          ],
+          "gates_absent": [
+            "wall_thickness",
+            "small_features"
+          ]
+        }
+      },
+      "note": "Single watertight body: base + 0.6mm wall plate + cantilevered fin with a 50-deg-from-vertical underside + three 0.35mm ribs. Measured: wall 0.6 (10.4% faces thin), 6.9% edges < 0.4 (clears the 5% significance gate), fin underside 140 deg. SLA wall (0.6 >= 0.4) and SLA small (0.35 >= 0.05) must stay silent - tests per-process threshold separation inside one part."
+    },
+    {
+      "file": "trap-multi-tallbar-46lip.stl",
+      "class": "multi-defect",
+      "expect": {
+        "fdm": {
+          "gates_trip": [
+            "aspect_ratio",
+            "overhangs"
+          ]
+        },
+        "sla": {
+          "gates_trip": [
+            "overhangs"
+          ]
+        }
+      },
+      "note": "2x2x16.5 bar (aspect 8.25) with a 46-deg-from-vertical lip at the tip, boolean-fused into one body. Aspect + overhang must both fire for FDM; wall 2.0 and small (2.2% < 5%) must not."
+    },
+    {
+      "file": "control-organic-goblet.stl",
+      "class": "organic-control",
+      "expect": {
+        "fdm": {
+          "gates_absent": [
+            "wall_thickness",
+            "overhangs",
+            "small_features",
+            "aspect_ratio",
+            "build_volume",
+            "trapped_volumes"
+          ]
+        },
+        "sla": {
+          "gates_absent": [
+            "wall_thickness",
+            "overhangs",
+            "small_features"
+          ]
+        }
+      },
+      "note": "Watertight lathed goblet, gentle taper (max 14 deg from vertical), min diameter 15mm, all edges >= ~0.6mm (n=36 lathe). The organic CLEAN control: proves the gate suite does not false-positive curved geometry. Pole-fan construction, no degenerate triangles."
+    },
+    {
+      "file": "trap-organic-pinched-neck.stl",
+      "class": "organic-multi-defect",
+      "expect": {
+        "fdm": {
+          "gates_trip": [
+            "wall_thickness",
+            "small_features",
+            "overhangs"
+          ]
+        },
+        "sla": {
+          "gates_trip": [
+            "overhangs"
+          ],
+          "gates_absent": [
+            "wall_thickness",
+            "small_features"
+          ]
+        }
+      },
+      "note": "Organic lathed form with a 0.35mm-radius cylindrical neck: measured wall 0.697 (FDM trips, SLA clears at 0.4), neck facets give 7.4% edges < 0.4 (small trips FDM, clears SLA 0.05), pinch slopes > 135 deg (overhang trips FDM+SLA). Three FDM defects in one realistic organic body."
+    },
+    {
+      "file": "trap-organic-sealed-cavity.stl",
+      "class": "organic-trapped-volume",
+      "expect": {
+        "fdm": {
+          "gates_trip": [
+            "trapped_volumes"
+          ]
+        },
+        "sla": {
+          "gates_trip": [
+            "trapped_volumes"
+          ]
+        },
+        "geometry": {
+          "is_watertight": true
+        }
+      },
+      "note": "Lathed egg with a sealed inner void (nested inverted shell, same convention as v1.1 hollow sphere): split() yields 2 bodies, void centroid contained. Wall 3.1, small 3.7% (<5). NOTE FOR ASTRA: the inner shell's inverted normals give downward-facing inner-ceiling triangles - expect the overhang gate to count ~72 faces for FDM / ~144 SLA unless the check learns to ignore internal voids. Decide deliberately whether that is a bug (then this row pins it open) or accepted behavior."
+    },
+    {
+      "file": "trap-assembly-adjacent-dumbbell-0.6neck.stl",
+      "class": "assembly-adjacent-single-body",
+      "expect": {
+        "fdm": {
+          "gates_trip": [
+            "wall_thickness",
+            "overhangs"
+          ]
+        },
+        "sla": {
+          "gates_trip": [
+            "overhangs"
+          ],
+          "gates_absent": [
+            "wall_thickness"
+          ]
+        }
+      },
+      "note": "Two 8mm spheres fused by a 0.6mm neck: ONE watertight solid that reads like an assembly. Measured wall 0.58 (FDM trips, SLA clears 0.4). Sphere undersides carry real >135-deg faces (100 FDM / 224 SLA) - overhang trips are expected physics, not noise. Neck facets give 3.0% small edges (<5% gate) so small_features must NOT fire: tests the significance threshold on a real compound body."
+    },
+    {
+      "file": "control-hollow-cup-drain-4mm.stl",
+      "class": "trapped-volume-false-positive",
+      "expect": {
+        "fdm": {
+          "gates_absent": [
+            "trapped_volumes",
+            "wall_thickness",
+            "overhangs",
+            "small_features"
+          ]
+        },
+        "sla": {
+          "gates_absent": [
+            "trapped_volumes"
+          ]
+        }
+      },
+      "note": "Open-top cup, wall 2.0, 4mm drain through the base: single connected component, so containment-based trapped detection must stay silent. The false-positive-resistance row for hollow parts."
+    },
+    {
+      "file": "trap-hollow-drain-2mm-KNOWN-GAP.stl",
+      "class": "KNOWN-GAP",
+      "expect": {
+        "fdm": {
+          "gates_trip": [
+            "trapped_volumes",
+            "overhangs",
+            "small_features"
+          ]
+        }
+      },
+      "note": "EXPECTED TO FAIL TODAY. Sealed hollow 24mm box with only a 2mm drain hole: FDM drain law is >= 3.0mm, but the code's trapped-volume check is containment-only (check_trapped_volumes has no hole-size path), so it reports NO trapped volume. This row holds the drain-size gap open exactly like v1.1's inch-cube row holds the unit-scale gap. Also expected today: internal ceiling trips overhangs (28 faces) and the 2mm hole's facets push 25.8% of edges < 0.4 (small_features) - both real under current code."
+    },
+    {
+      "file": "trap-degenerate-duplicate-face.stl",
+      "class": "geometry",
+      "expect": {
+        "geometry": {
+          "is_watertight": false
+        }
+      },
+      "note": "Cube plus one duplicated face: the shared edges are tripled, is_watertight false. Complements v1.1's missing-face trap with the duplicate-geometry failure mode common in real CAD exports."
+    }
   ],
   "harness": "runner iterates manifest: parse mesh -> GeometryContext -> per-process analyzer.analyze(ctx) -> assert expected gates trip and expected-absent gates absent; KNOWN-GAP rows may fail without breaking CI but must be reported loudly; wire into the existing gate suite as a required check"
 }
