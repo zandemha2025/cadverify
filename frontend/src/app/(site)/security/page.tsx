@@ -18,11 +18,13 @@ import styles from "./security.module.css";
  * (dark-theater register, document page). Copy is post-pivot canonical and is
  * reproduced VERBATIM.
  *
- * HONESTY (audited, no violations to fix): the compliance state is stated the
+ * HONESTY (re-audited 2026-09-12, T2 fix): the compliance state is stated the
  * way we state cost — SOC 2 Type II "in progress", pen test "scheduled pre-GA ·
  * shared when it's real" (NO pen-test badge), the report available under NDA the
- * day it lands. The zero-egress / geometry-never-leaves claims are real
- * (verified in the backend's local path). The one quoted source string
+ * day it lands. The zero-egress claim holds on the LOCAL path only (verified
+ * in the backend); the CLOUD analysis/cost paths persist exact uploaded bytes
+ * org-scoped via source_artifact_service, and the hero + data-flow copy now says
+ * so instead of the earlier blanket "discarded / Never persisted" (T2). The one quoted source string
  * (`finish 0.08hr/part + bulk 0.5hr/build ÷ 223 = 0.082hr × $52/hr ×
  * region-labor ×1`) is the real fixture's labor_cost driver source, VERBATIM
  * as the engine emits it — not an invented or spliced figure.
@@ -31,7 +33,7 @@ import styles from "./security.module.css";
 export const metadata: Metadata = {
   title: "Security — ProofShape",
   description:
-    "Your CAD is the crown jewels. ProofShape was designed from the first commit for CAD-as-IP and export-controlled work: geometry never leaves your environment, run it where your program requires, and every answer is defensible.",
+    "Your CAD is the crown jewels. ProofShape was designed from the first commit for CAD-as-IP and export-controlled work: cloud analysis keeps your exact CAD org-scoped so every report reproduces, self-hosted geometry never leaves your environment, and every answer is defensible.",
 };
 
 const INK_62 = "rgba(245,245,247,0.62)";
@@ -134,8 +136,8 @@ export default function SecurityPage() {
             <div className={styles.node} style={{ maxWidth: 200 }}>
               <p style={{ margin: 0, color: "#6aa5d8", letterSpacing: "0.12em" }}>YOUR CAD</p>
               <p style={{ margin: "5px 0 0", color: "rgba(245,245,247,0.4)" }}>
-                parsed in-process, measured — then discarded. the beam ends here for
-                geometry.
+                parsed, measured, then stored — exact bytes, org-scoped, so every report
+                reproduces. self-hosted: the beam ends here for geometry.
               </p>
             </div>
             <div style={{ maxWidth: 200, textAlign: "center" }}>
@@ -259,9 +261,10 @@ export default function SecurityPage() {
                 CAD FILE
               </p>
               <p style={{ margin: "8px 0 0", fontSize: 12.5, lineHeight: 1.55, fontWeight: 300, color: "rgba(245,245,247,0.6)" }}>
-                Parsed in-process, measured, then{" "}
-                <span style={{ color: "#f5f5f7" }}>discarded</span>. Never persisted,
-                never trained on.
+                Parsed and measured, then{" "}
+                <span style={{ color: "#f5f5f7" }}>stored</span> — exact bytes,
+                org-scoped, so reruns, history and RFQ packages reproduce.
+                Never trained on.
               </p>
             </div>
             <span style={{ alignSelf: "center", textAlign: "center", color: "rgba(245,245,247,0.3)" }}>→</span>

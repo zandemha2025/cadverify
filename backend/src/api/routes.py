@@ -40,6 +40,7 @@ from src.api.upload_validation import (
 from src.api.admission import admit_analysis
 from src.auth.kill_switch import require_kill_switch_open
 from src.auth.org_limits import enforce_org_limits
+from src.auth.validation_caps import enforce_validation_caps
 from src.auth.rate_limit import limiter
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
@@ -768,6 +769,7 @@ async def validate_file(
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
     _org_limit: None = Depends(enforce_org_limits),
+    _validation_cap: None = Depends(enforce_validation_caps),
     _admission: None = Depends(admit_analysis),
 ):
     """Upload an STL, STEP/STP, or IGES/IGS file and get manufacturing validation results."""
@@ -925,6 +927,7 @@ async def validate_preview_mesh(
     file: UploadFile = File(...),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     _org_limit: None = Depends(enforce_org_limits),
+    _validation_cap: None = Depends(enforce_validation_caps),
     _admission: None = Depends(admit_analysis),
 ):
     """Return a decimated, browser-renderable GLB of the part's REAL tessellated
@@ -1122,6 +1125,7 @@ async def validate_assembly(
     ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     _org_limit: None = Depends(enforce_org_limits),
+    _validation_cap: None = Depends(enforce_validation_caps),
     _admission: None = Depends(admit_analysis),
 ):
     """Ingest a real STEP/IGES ASSEMBLY -> per-part meshes + world positions +
@@ -1200,6 +1204,7 @@ async def validate_quick(
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
     _org_limit: None = Depends(enforce_org_limits),
+    _validation_cap: None = Depends(enforce_validation_caps),
     _admission: None = Depends(admit_analysis),
 ):
     """Quick pass/fail check — universal checks only, no process-specific analysis."""
@@ -1231,6 +1236,7 @@ async def validate_demo(
         ),
     ),
     _org_limit: None = Depends(enforce_org_limits),
+    _validation_cap: None = Depends(enforce_validation_caps),
     _admission: None = Depends(admit_analysis),
 ):
     """Public demo — full analysis, no auth, no persistence, tight rate limit."""
@@ -2037,6 +2043,7 @@ async def validate_cost(
     user: AuthedUser = Depends(require_role(Role.analyst)),
     session: AsyncSession = Depends(get_db_session),
     _org_limit: None = Depends(enforce_org_limits),
+    _validation_cap: None = Depends(enforce_validation_caps),
     _admission: None = Depends(admit_analysis),
 ):
     """Explainable make-vs-buy should-cost decision for an uploaded STL/STEP part.
@@ -2109,6 +2116,7 @@ async def validate_cost_demo(
                     "otherwise an inch part read as mm mis-costs by ~16,000×.",
     ),
     _org_limit: None = Depends(enforce_org_limits),
+    _validation_cap: None = Depends(enforce_validation_caps),
     _admission: None = Depends(admit_analysis),
 ):
     """Public demo of the should-cost / make-vs-buy decision — NO auth.
