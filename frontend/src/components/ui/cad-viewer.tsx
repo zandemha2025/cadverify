@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useState, useMemo, Suspense, useCallback } from "react";
-import { Canvas, useLoader, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber";
 import {
   OrbitControls,
   Environment,
@@ -42,6 +42,8 @@ function STLModel({
   onReady,
   pinpointOverlays,
   onSelectPinpoint,
+  onPinpointProjection,
+  pinpointOccluded,
 }: {
   url: string;
   highlightFaces?: number[];
@@ -57,6 +59,8 @@ function STLModel({
   onReady?: () => void;
   pinpointOverlays?: PinpointOverlay[];
   onSelectPinpoint?: (key: string) => void;
+  onPinpointProjection?: (point: { x: number; y: number; occluded: boolean } | null) => void;
+  pinpointOccluded?: boolean;
 }) {
   const geometry = useLoader(STLLoader, url);
   const meshRef = useRef<THREE.Mesh>(null);
@@ -143,6 +147,31 @@ function STLModel({
     camera.lookAt(0, TARGET * 0.02, 0);
   }, [camera, distanceScale, norm.scale]);
 
+  const markerRegion = pinpointOverlays?.find((pin) => pin.regionCenter)?.regionCenter ?? null;
+  const { size } = useThree();
+  const raycaster = useMemo(() => new THREE.Raycaster(), []);
+  const lastProjection = useRef("");
+  useFrame(() => {
+    if (!markerRegion || !meshRef.current || !onPinpointProjection) return;
+    const point = new THREE.Vector3(...markerRegion).sub(norm.sourceCenter).multiplyScalar(norm.scale);
+    const projected = point.clone().project(camera);
+    const direction = point.clone().sub(camera.position);
+    const distance = direction.length();
+    raycaster.set(camera.position, direction.normalize());
+    const first = raycaster.intersectObject(meshRef.current, false)[0];
+    const occluded = !!first && first.distance < distance - 0.02;
+    const next = { x: (projected.x * 0.5 + 0.5) * size.width, y: (-projected.y * 0.5 + 0.5) * size.height, occluded };
+    const signature = `${Math.round(next.x)},${Math.round(next.y)},${occluded}`;
+    if (signature !== lastProjection.current) {
+      lastProjection.current = signature;
+      onPinpointProjection(next);
+    }
+  });
+
+  useEffect(() => {
+    if (!markerRegion) onPinpointProjection?.(null);
+  }, [markerRegion, onPinpointProjection]);
+
   const ghosted = hasHighlights && ghostUnhighlighted;
 
   return (
@@ -186,14 +215,18 @@ function STLModel({
               title={`${severityLabel(pin.severity)}: ${pin.suggestion}`}
               aria-label={`${pin.code}: ${pin.valueLabel}. ${pin.suggestion}`}
               onClick={() => onSelectPinpoint?.(pin.key)}
-              className="flex min-h-9 min-w-9 flex-col items-center justify-center rounded-full border-2 border-white px-2 text-[9px] font-bold leading-tight text-white shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              style={{ background: pin.color }}
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-full border border-white/80 bg-transparent text-[9px] font-bold leading-tight text-white shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              {pin.requiredLabel ? (
-                <span>{pin.valueLabel} measured - needs {pin.requiredLabel}</span>
-              ) : (
-                <span>{pin.valueLabel}</span>
-              )}
+              <span
+                aria-hidden="true"
+                className="flex size-6 items-center justify-center border-2 border-white"
+                style={{
+                  background: pinpointOccluded ? "transparent" : pin.color,
+                  borderColor: pinpointOccluded ? pin.color : "white",
+                  color: pinpointOccluded ? pin.color : "white",
+                  clipPath: pin.severity === "error" ? "polygon(50% 0,100% 50%,50% 100%,0 50%)" : "polygon(50% 0,100% 100%,0 100%)",
+                }}
+              >{pin.markerLabel ?? pin.valueLabel}</span>
             </button>
           </Html>
         );
@@ -301,6 +334,7 @@ export default function CadViewer({
   onFaceClick,
   pinpointOverlays,
   onSelectPinpoint,
+  pinpointCallout,
   surface = "light",
   className,
 }: CadViewerProps) {
@@ -308,6 +342,7 @@ export default function CadViewer({
   const [halfH, setHalfH] = useState(1);
   const [webGlAvailable, setWebGlAvailable] = useState<boolean | null>(null);
   const [previewReady, setPreviewReady] = useState(false);
+  const [pinpointProjection, setPinpointProjection] = useState<{ x: number; y: number; occluded: boolean } | null>(null);
   const onHalfHeight = useCallback((h: number) => setHalfH(h), []);
   const onPreviewReady = useCallback(() => setPreviewReady(true), []);
 
@@ -423,6 +458,18 @@ export default function CadViewer({
           Loading real 3D preview…
         </div>
       )}
+      {pinpointCallout && pinpointProjection && (
+        <>
+          <svg className="pointer-events-none absolute inset-0 z-20 size-full" aria-hidden="true">
+            <line x1={pinpointProjection.x} y1={pinpointProjection.y} x2="94%" y2="34" stroke={pinpointCallout.color} strokeWidth="1.5" />
+          </svg>
+          <div data-testid="pinpoint-docked-callout" className="absolute left-2 right-2 top-2 z-20 rounded border border-border bg-card/95 px-3 py-2 text-xs shadow-lg backdrop-blur-sm sm:left-auto sm:w-72">
+            <p className="font-semibold text-foreground">{pinpointCallout.title}</p>
+            <p className="mt-0.5 leading-5 text-muted-foreground">{pinpointCallout.detail}</p>
+            {pinpointProjection.occluded && <p className="mt-0.5 font-medium text-foreground">On the far side - drag to spin.</p>}
+          </div>
+        </>
+      )}
       <Canvas
         dpr={[1, 2]}
         gl={{ antialias: true, powerPreference: "high-performance" }}
@@ -469,6 +516,8 @@ export default function CadViewer({
             onReady={onPreviewReady}
             pinpointOverlays={pinpointOverlays}
             onSelectPinpoint={onSelectPinpoint}
+            onPinpointProjection={setPinpointProjection}
+            pinpointOccluded={pinpointProjection?.occluded}
           />
           {/* Keep every viewer mode self-contained. Drei's named presets resolve
               to remote HDR assets; production CSP correctly blocks those
@@ -515,6 +564,7 @@ export interface PinpointOverlay {
   regionCenter: [number, number, number] | null;
   valueLabel: string;
   requiredLabel: string | null;
+  markerLabel?: string;
   suggestion: string;
   color: string;
 }
@@ -535,6 +585,7 @@ interface CadViewerProps {
   /** Backend-grounded issue faces and region centers. No synthetic geometry. */
   pinpointOverlays?: PinpointOverlay[];
   onSelectPinpoint?: (key: string) => void;
+  pinpointCallout?: { title: string; detail: string; color: string } | null;
   /** frame treatment: "light" = machinist paper (default); "instrument" = the
    *  blueprint-twilight working canvas the Living Instrument floats the part on. */
   surface?: "light" | "instrument";

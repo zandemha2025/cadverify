@@ -69,6 +69,7 @@ import { RoleLens, CalibrationBar, roleById, type RoleId } from "@/components/gl
 import { useInstrumentChrome, type PartFact } from "@/components/instrument/instrument-chrome";
 import { STAGE_UI } from "@/lib/stage-flag";
 import type { PinpointOverlay } from "@/components/ui/cad-viewer";
+import { groupForIssueKey, groupPinpointIssues } from "@/lib/pinpoint-groups";
 
 /* PartHero (~1900 lines, stage-only) is code-split into its own lazy chunk so a
    flag-off build never ships it in the main bundle: it is rendered solely from
@@ -197,33 +198,72 @@ export default function PartWorkspace({
   }, [report]);
 
   const dfmIssues = useMemo(() => (validation ? flattenIssues(validation) : []), [validation]);
-  const selectedIssue = useMemo(
-    () => dfmIssues.find((i) => i.key === selectedIssueKey) ?? null,
-    [dfmIssues, selectedIssueKey]
+  const pinpointGroups = useMemo(() => groupPinpointIssues(dfmIssues), [dfmIssues]);
+  const canonicalIssues = useMemo(
+    () => pinpointGroups.map((group) => ({
+      key: group.key,
+      issue: group.issue,
+      faces: group.faces,
+    })),
+    [pinpointGroups]
   );
+  const processImplications = useMemo(
+    () => new Map(pinpointGroups.map((group) => [group.key, group.processes] as const)),
+    [pinpointGroups]
+  );
+  const selectedGroup = useMemo(
+    () => groupForIssueKey(pinpointGroups, selectedIssueKey)
+      ?? pinpointGroups.find((group) => group.key === selectedIssueKey)
+      ?? null,
+    [pinpointGroups, selectedIssueKey]
+  );
+  const selectedIssue = selectedGroup
+    ? { key: selectedGroup.key, issue: selectedGroup.issue, faces: selectedGroup.faces }
+    : null;
   const pinpointOverlays = useMemo<PinpointOverlay[]>(() => {
-    if (!validation) return [];
-    return dfmIssues.flatMap((row) => {
-      const issue = row.issue;
-      if (issue.severity !== "error" && issue.severity !== "warning") return [];
-      if (row.faces.length === 0 && !issue.region_center) return [];
-      const units = validation.geometry.units ? ` ${validation.geometry.units}` : "";
-      const measured = issue.measured_value;
-      return [{
-        key: row.key,
-        code: issue.code,
-        severity: issue.severity,
-        faces: row.faces,
-        regionCenter: issue.region_center ?? null,
-        valueLabel: measured == null ? issue.code : `${Number(measured.toFixed(3))}${units}`,
-        requiredLabel: issue.required_value == null
-          ? null
-          : `${Number(issue.required_value.toFixed(3))}${units}`,
-        suggestion: issue.fix_suggestion ?? issue.message,
-        color: issue.severity === "error" ? SEVERITY_HEX.fail : SEVERITY_HEX.warn,
-      }];
-    });
-  }, [dfmIssues, validation]);
+    if (!validation || !selectedGroup) return [];
+    const issue = selectedGroup.issue;
+    const units = validation.geometry.units ? ` ${validation.geometry.units}` : "";
+    const measured = issue.measured_value;
+    return [{
+      key: selectedGroup.key,
+      code: issue.code,
+      severity: selectedGroup.severity,
+      faces: selectedGroup.faces,
+      regionCenter: selectedGroup.regionCenter,
+      valueLabel: measured == null ? issue.code : `${Number(measured.toFixed(3))}${units}`,
+      requiredLabel: issue.required_value == null ? null : `${Number(issue.required_value.toFixed(3))}${units}`,
+      markerLabel: "1",
+      suggestion: issue.fix_suggestion ?? issue.message,
+      color: selectedGroup.severity === "error" ? SEVERITY_HEX.fail : SEVERITY_HEX.warn,
+    }];
+  }, [selectedGroup, validation]);
+  const selectedIndex = selectedGroup
+    ? pinpointGroups.findIndex((group) => group.key === selectedGroup.key)
+    : -1;
+
+  const selectPinpoint = useCallback((key: string) => {
+    setSelectedIssueKey(key);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("issue", key);
+      window.history.replaceState(window.history.state, "", url);
+    }
+  }, []);
+
+  const selectGroupAt = useCallback((index: number) => {
+    const count = pinpointGroups.length;
+    if (!count) return;
+    selectPinpoint(pinpointGroups[(index + count) % count].key);
+  }, [pinpointGroups, selectPinpoint]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || pinpointGroups.length === 0) return;
+    const linked = new URLSearchParams(window.location.search).get("issue");
+    if (linked && pinpointGroups.some((group) => group.key === linked)) {
+      setSelectedIssueKey(linked);
+    }
+  }, [pinpointGroups]);
 
   const calibration = useMemo(
     () => (report ? parseCalibration({ ...report, assumptions }) : null),
@@ -418,27 +458,25 @@ export default function PartWorkspace({
 
   const onFaceClick = useCallback(
     (faceIndex: number) => {
-      const hit = dfmIssues.find((i) => i.faces.includes(faceIndex));
+      const hit = pinpointGroups.find((group) => group.faces.includes(faceIndex));
       if (hit) {
         setTab("routing");
         setSelectedIssueKey(hit.key);
       }
     },
-    [dfmIssues]
+    [pinpointGroups]
   );
 
   const onHighlightProcess = useCallback(
     (process: string) => {
-      const hit =
-        dfmIssues.find((i) => i.issue.process === process && i.faces.length) ??
-        dfmIssues.find((i) => i.issue.process === process);
+      const hit = pinpointGroups.find((group) => group.processes.includes(process));
       if (hit) {
         setSelectedIssueKey(hit.key);
       } else {
         toast(`No geometry-linked faces reported for ${procLabel(process)}.`);
       }
     },
-    [dfmIssues]
+    [pinpointGroups]
   );
 
   /* ---- publish the loaded part's identity to the context-bar breadcrumb --- */
@@ -630,8 +668,13 @@ export default function PartWorkspace({
                     highlightColor={highlightColor}
                     ghostUnhighlighted={!!highlightFaces}
                     onFaceClick={tab === "routing" ? onFaceClick : undefined}
-                    pinpointOverlays={tab === "routing" ? pinpointOverlays : undefined}
-                    onSelectPinpoint={(key) => setSelectedIssueKey(key)}
+                    pinpointOverlays={tab === "routing" && selectedGroup ? pinpointOverlays : undefined}
+                    onSelectPinpoint={selectPinpoint}
+                    pinpointCallout={selectedIssue ? {
+                      title: `${severityLabel(selectedIssue.issue.severity)} - ${selectedIssue.issue.code}`,
+                      detail: selectedIssue.issue.fix_suggestion ?? selectedIssue.issue.message,
+                      color: selectedGroup?.severity === "error" ? SEVERITY_HEX.fail : SEVERITY_HEX.warn,
+                    } : null}
                   />
                   {tab === "routing" && selectedIssue && (
                     <div
@@ -654,15 +697,17 @@ export default function PartWorkspace({
                           <p className="mt-1 text-xs leading-5 text-foreground">
                             {selectedIssue.issue.fix_suggestion ?? selectedIssue.issue.message}
                           </p>
+                          {selectedGroup && selectedGroup.processes.length > 0 && (
+                            <p className="mt-1 text-[11px] text-muted-foreground">
+                              Applies to: {selectedGroup.processes.map(procLabel).join(", ")}
+                            </p>
+                          )}
                         </div>
-                        <button
-                          type="button"
-                          aria-label="Close issue detail"
-                          className="min-h-9 min-w-9 rounded text-muted-foreground hover:bg-muted"
-                          onClick={() => setSelectedIssueKey(null)}
-                        >
-                          ×
-                        </button>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button type="button" aria-label="Previous issue" className="min-h-9 min-w-9 rounded border border-border hover:bg-muted" onClick={() => selectGroupAt(selectedIndex - 1)}>‹</button>
+                          <span className="num text-[11px] text-muted-foreground">{selectedIndex + 1}/{pinpointGroups.length}</span>
+                          <button type="button" aria-label="Next issue" className="min-h-9 min-w-9 rounded border border-border hover:bg-muted" onClick={() => selectGroupAt(selectedIndex + 1)}>›</button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -755,8 +800,10 @@ export default function PartWorkspace({
                       report={report}
                       validation={validation}
                       selectedIssueKey={selectedIssueKey}
-                      onSelectIssue={(it) => setSelectedIssueKey(it.key)}
+                      onSelectIssue={(it) => selectPinpoint(it.key)}
                       onHighlightProcess={onHighlightProcess}
+                      canonicalIssues={canonicalIssues}
+                      processImplications={processImplications}
                     />
                   )}
                 </TabsContent>
