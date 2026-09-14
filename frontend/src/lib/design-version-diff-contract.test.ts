@@ -11,6 +11,8 @@ test("design studio exposes a real two-revision comparison with truth limits", (
   assert.match(page, /Version diff/);
   assert.match(page, /compareDesignRevisions\(selected\.id, diffFrom, diffTo\)/);
   assert.match(page, /revisionDiff\.before, revisionDiff\.after/);
+  assert.match(page, /designRevisionPreviewUrl\(selected\.id, side\)/);
+  assert.doesNotMatch(page, /<CadViewer src=\{side\.links\.preview\}/);
   assert.match(page, /Generated geometry changes/);
   assert.match(page, /revisionDiff\.limits/);
 });
