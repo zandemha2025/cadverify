@@ -714,7 +714,7 @@ export default function PartWorkspace({
 
             <div className="mt-4 grid gap-6 lg:grid-cols-5">
               {/* persistent studio-lit part rail (flat platform chrome) */}
-              <div className="space-y-3 lg:sticky lg:top-0 lg:col-span-2 lg:self-start">
+              <div className="min-w-0 space-y-3 lg:sticky lg:top-0 lg:col-span-2 lg:self-start">
                 <div className="relative h-[340px]">
                   <CadViewer
                     file={file}

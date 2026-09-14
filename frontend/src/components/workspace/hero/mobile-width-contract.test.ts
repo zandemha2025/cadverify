@@ -11,3 +11,7 @@ test("analyze workspace and viewer cannot establish a wider mobile scroll contai
   assert.match(workspace, /min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto/);
   assert.match(viewer, /relative h-full min-w-0 w-full max-w-full overflow-hidden/);
 });
+
+test("legacy analyze viewer grid child can shrink below its canvas intrinsic width", () => {
+  assert.match(workspace, /min-w-0 space-y-3 lg:sticky lg:top-0 lg:col-span-2/);
+});
