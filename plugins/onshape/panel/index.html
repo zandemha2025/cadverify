@@ -1,4 +1,10 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ProofShape</title><link rel="stylesheet" href="panel.css"></head><body>
 <main><header><span class="mark">PS</span><div><h1>ProofShape</h1><p>Manufacturing verdict for the current part</p></div></header>
-<button id="check" type="button">Check with ProofShape</button><section id="output" aria-live="polite"><p class="empty">No check has run in this panel.</p></section>
-<footer><span>SKELETON - host install and live validation pending M2</span></footer></main><script type="module" src="panel.js"></script></body></html>
+<button id="check" type="button" disabled>Check with ProofShape</button><section id="output" aria-live="polite"><p class="empty">No check has run in this panel.</p></section>
+<footer><span>M2 adapter - runs inside Onshape with an OAuth session; otherwise stays disabled.</span></footer></main>
+<!-- Runtime config. The local relay serves this with the developer's own
+     ProofShape key; on a static host, set globalThis.PROOFSHAPE_PLUGIN_CONFIG
+     before panel.js instead. A missing config.js is fine: the panel then
+     shows the skeleton notice. -->
+<script src="config.js"></script>
+<script type="module" src="panel.js"></script></body></html>
