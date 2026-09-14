@@ -36,3 +36,4 @@ e7a2c4f3f9d0cf75315a3695b687f8b6e4655dc6f47c08bf2f90d45c4047dd9f  trap-chamfered
 eda6573e691794ef6790ca610d6223ec8b48695ab64433f3ba0ed9a4f7c62dad  trap-mjf-rib-0p1mm.stl
 f2f188a1000ffa55df5af90838de0d5a4c970dd13cd865ceaa2e7bcc3b38b567  trap-mjf-rod-12to1.stl
 dd4be9bc3b69029506e42115b0b383792d1b69362ca9478ffc059856f597d7a5  trap-mjf-build-400mm.stl
+4d6f5449ef6a0cfe996191c16f5a29ab8b51b1fbf5fcc9d3ae2d0d5e8a09d0e6  control-draft-7deg.stl

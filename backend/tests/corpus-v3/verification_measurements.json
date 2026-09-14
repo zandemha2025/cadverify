@@ -395,5 +395,16 @@
   "faces": 12,
   "watertight": true,
   "volume_mm3": 4000000.0
+ },
+ "control-draft-7deg.stl": {
+  "bbox_mm": [
+   40.0,
+   40.0,
+   30.0
+  ],
+  "faces": 12,
+  "watertight": true,
+  "volume_mm3": 39702.2,
+  "wall_draft_deg": 7.0
  }
 }
