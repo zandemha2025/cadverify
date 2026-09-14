@@ -182,9 +182,12 @@ def _prewarm_worker() -> int:
       * runs a bare ``gmsh.initialize()`` / ``finalize()`` to pay gmsh's one-time
         runtime init (~0.1s the worker's first mesh would otherwise absorb).
 
-    ANSWER-PRESERVING: it does NO real tessellation — no STEP is read, no mesh is
-    generated, no cost/geometry number is touched. It only moves WHEN the import
-    and init happen (boot instead of first request). Module-level so
+    It imports and coarsely meshes only the repository-owned 19 KB cube
+    fixture; no customer CAD, cost, or verdict is touched. Production mesh
+    density is deliberately not used for this throwaway readiness parse. This
+    moves the first real OCC read/mesh to boot without a per-worker 185k-face
+    allocation competing with browser-gate CAD parses.
+    Module-level so
     ``ProcessPoolExecutor`` can pickle it by qualified name.
 
     Best-effort: on any failure (e.g. gmsh absent) it swallows and returns — the
@@ -198,14 +201,15 @@ def _prewarm_worker() -> int:
     if _os.getenv("PARSE_POOL_PREWARM_FORCE_FAIL") == "1":
         raise RuntimeError("simulated pre-warm failure (boot-safety self-test)")
 
-    # Import the exact mesher stack the first rung would import (trimesh+numpy+gmsh).
-    from src.parsers import step_mesher  # noqa: F401
-    try:
-        import gmsh
-        gmsh.initialize(interruptible=False)
-        gmsh.finalize()
-    except Exception:  # gmsh missing / init hiccup — the real path degrades anyway
-        pass
+    # Run a real OCC import + surface mesh, deliberately coarse because this
+    # readiness fixture is thrown away. Production tessellation settings are
+    # unchanged and apply only when a customer parse arrives.
+    from pathlib import Path as _Path
+    from src.parsers.step_mesher import prewarm_step_from_bytes
+    fixture = (_Path(__file__).parent / "fixtures" / "prewarm-cube.step").read_bytes()
+    mesh = prewarm_step_from_bytes(fixture, "prewarm-cube.step")
+    if len(mesh.faces) <= 0:
+        raise RuntimeError("parse warmup fixture produced no faces")
     # Briefly hold this worker so the executor engages a DISTINCT worker for each
     # queued warmup task (rather than reusing one fast worker for all of them),
     # ensuring every worker in the pool is warmed.
@@ -219,7 +223,7 @@ def prewarm(block: bool = False, timeout: float | None = 45.0) -> int:
     ~0.7s/worker cold-start tax. Reuses the existing singleton pool — does NOT
     rebuild it.
 
-    Answer-preserving (runs no real tessellation) and BEST-EFFORT: never raises.
+    Parses only a repository-owned fixture and is BEST-EFFORT: never raises.
     Honours the pool kill switch (``is_disabled()``) and a worker warmup failure
     is logged and swallowed, leaving that worker to warm lazily on first use —
     boot is never blocked or crashed. Returns the number of warmup tasks
