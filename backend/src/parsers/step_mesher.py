@@ -179,7 +179,14 @@ def step_to_trimesh_from_bytes(data: bytes, filename: str = "upload.step") -> tr
             pass
 
 
-def _tessellate_once(path: str, algorithm, curvature_pts: float, heal: bool):
+def _tessellate_once(
+    path: str,
+    algorithm,
+    curvature_pts: float,
+    heal: bool,
+    *,
+    target_diag_segments: int = _TARGET_DIAG_SEGMENTS,
+):
     """One full gmsh initialize -> import -> generate(2) -> extract -> finalize
     cycle for a single retry rung. Returns ``(verts Nx3, faces Mx3)``.
 
@@ -211,10 +218,12 @@ def _tessellate_once(path: str, algorithm, curvature_pts: float, heal: bool):
         except Exception as exc:                # OCC reader rejected the file
             raise _StepReadError(str(exc)) from exc
 
-        # scale-aware element budget: ~_TARGET_DIAG_SEGMENTS across the diagonal
+        # Scale-aware element budget. Product rungs use
+        # ``_TARGET_DIAG_SEGMENTS``; the startup-only readiness parse supplies a
+        # much coarser private value so its throwaway mesh stays bounded.
         xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.getBoundingBox(-1, -1)
         diag = ((xmax - xmin) ** 2 + (ymax - ymin) ** 2 + (zmax - zmin) ** 2) ** 0.5
-        size_max = min(max(diag / _TARGET_DIAG_SEGMENTS, _MIN_SIZE_MM), _MAX_SIZE_MM)
+        size_max = min(max(diag / target_diag_segments, _MIN_SIZE_MM), _MAX_SIZE_MM)
         gmsh.option.setNumber("Mesh.MeshSizeMax", size_max)
         if algorithm is not None:               # rung 0 keeps gmsh's default algo
             gmsh.option.setNumber("Mesh.Algorithm", algorithm)
@@ -239,6 +248,43 @@ def _tessellate_once(path: str, algorithm, curvature_pts: float, heal: bool):
         return verts, faces
     finally:
         gmsh.finalize()
+
+
+def prewarm_step_from_bytes(
+    data: bytes, filename: str = "prewarm.step"
+) -> trimesh.Trimesh:
+    """Run one deliberately coarse real OCC import + surface mesh at boot.
+
+    This pays gmsh/OCC's first-read and first-mesh initialization without using
+    production tessellation density for a throwaway readiness fixture. Product
+    parses still use ``_TARGET_DIAG_SEGMENTS`` through ``_run_rung`` unchanged.
+    """
+    if not _HAS_GMSH:
+        raise RuntimeError("gmsh not installed")
+
+    import tempfile
+
+    suffix = Path(filename).suffix.lower() or ".step"
+    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False, mode="w+b")
+    try:
+        os.chmod(tmp.name, 0o600)
+        tmp.write(data)
+        tmp.flush()
+        tmp.close()
+        with _GMSH_LOCK:
+            verts, faces = _tessellate_once(
+                tmp.name,
+                algorithm=None,
+                curvature_pts=0.0,
+                heal=False,
+                target_diag_segments=1,
+            )
+        return trimesh.Trimesh(vertices=verts, faces=faces, process=False)
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except FileNotFoundError:
+            pass
 
 
 def _run_rung(path: str, idx: int) -> trimesh.Trimesh:

@@ -64,6 +64,15 @@ async def startup(ctx: dict) -> None:
             recon["effective_backend"],
         )
 
+    # Warm every parse-process worker with a real tiny STEP before ARQ accepts
+    # jobs. API replicas may background this work, but a queue worker must not
+    # expose a cold first customer parse after each boot.
+    from src.parsers import parse_pool
+    parse_pool.startup()
+    warmed = await asyncio.to_thread(parse_pool.prewarm, block=True, timeout=90.0)
+    ctx["parse_workers_warmup_dispatched"] = warmed
+    logger.info("parse worker startup warmup complete (dispatched=%d)", warmed)
+
     # Eagerly initialise DB engine + session factory so worker sessions work
     from src.db.engine import init_engine
 
