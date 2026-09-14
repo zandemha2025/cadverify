@@ -406,5 +406,15 @@
   "watertight": true,
   "volume_mm3": 39702.2,
   "wall_draft_deg": 7.0
+ },
+ "trap-ded-build-1600mm.stl": {
+  "bbox_mm": [
+   1600.0,
+   100.0,
+   100.0
+  ],
+  "faces": 12,
+  "watertight": true,
+  "volume_mm3": 16000000.0
  }
 }

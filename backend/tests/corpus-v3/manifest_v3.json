@@ -186,9 +186,28 @@
      "severity_of": {
       "EXTREME_ASPECT_RATIO": "WARNING"
      }
+    },
+    "binder_jetting": {
+     "codes_absent": [
+      "THIN_WALL",
+      "SMALL_FEATURES"
+     ]
+    },
+    "ded": {
+     "codes_absent": [
+      "THIN_WALL"
+     ]
+    },
+    "waam": {
+     "codes_trip": [
+      "THIN_WALL"
+     ],
+     "severity_of": {
+      "THIN_WALL": "ERROR"
+     }
     }
    },
-   "note": "50x50x2mm flat blank: 2.0mm is a standard gauge inside the 0.5-6mm range. Fully clean. | MJF: 2mm plate: all MJF geometry checks clear; aspect 25:1 trips the repo-generic 10:1 WARNING (uncited code threshold, asserted as measured behavior)."
+   "note": "50x50x2mm flat blank: 2.0mm is a standard gauge inside the 0.5-6mm range. Fully clean. | MJF: 2mm plate: all MJF geometry checks clear; aspect 25:1 trips the repo-generic 10:1 WARNING (uncited code threshold, asserted as measured behavior). | binder_jetting: 2mm clears 1.0mm green-part wall min. | ded: 2mm clears 1.5mm DED wall min (fails WAAM 2.0mm - ladder discriminator). | waam: 1.993mm plate < 2.0mm WAAM min wall (bead 4-8mm)."
   },
   {
    "file": "trap-plate-0p2mm-foil.stl",
@@ -219,9 +238,27 @@
       "THIN_WALL": "ERROR",
       "SMALL_FEATURES": "WARNING"
      }
+    },
+    "binder_jetting": {
+     "codes_trip": [
+      "THIN_WALL",
+      "SMALL_FEATURES"
+     ],
+     "severity_of": {
+      "THIN_WALL": "ERROR",
+      "SMALL_FEATURES": "WARNING"
+     }
+    },
+    "ded": {
+     "codes_trip": [
+      "THIN_WALL"
+     ],
+     "severity_of": {
+      "THIN_WALL": "ERROR"
+     }
     }
    },
-   "note": "0.2mm foil below the 0.3 code threshold. Note the message text says 'below 0.5mm min gauge' while the code trips at 0.3: threshold/message mismatch held as finding F11, not a corpus row. | MJF: 0.193mm foil vs HP MJF DG 3.1 0.5mm min wall - ERROR (>10% faces thin). | EBM: 0.193mm foil vs 0.7mm min wall (Arcam, larger melt pool); 0.2mm edge vs 0.3mm feature min."
+   "note": "0.2mm foil below the 0.3 code threshold. Note the message text says 'below 0.5mm min gauge' while the code trips at 0.3: threshold/message mismatch held as finding F11, not a corpus row. | MJF: 0.193mm foil vs HP MJF DG 3.1 0.5mm min wall - ERROR (>10% faces thin). | EBM: 0.193mm foil vs 0.7mm min wall (Arcam, larger melt pool); 0.2mm edge vs 0.3mm feature min. | binder_jetting: 0.193mm foil vs 1.0mm wall; 0.2mm edge vs 0.5mm feature (Desktop Metal). | ded: 0.193mm foil vs 1.5mm min wall (DED bead 2-4mm)."
   },
   {
    "file": "trap-deephole-4mmx44mm.stl",
@@ -327,9 +364,48 @@
      "codes_absent": [
       "HIGH_RIB_RATIO"
      ]
+    },
+    "binder_jetting": {
+     "codes_trip": [
+      "SINTERING_SHRINKAGE"
+     ],
+     "codes_absent": [
+      "THIN_WALL",
+      "SMALL_FEATURES",
+      "EXCEEDS_BUILD_VOLUME"
+     ],
+     "severity_of": {
+      "SINTERING_SHRINKAGE": "INFO"
+     }
+    },
+    "ded": {
+     "codes_trip": [
+      "MACHINING_ALLOWANCE"
+     ],
+     "codes_absent": [
+      "THIN_WALL",
+      "OVERHANG",
+      "EXCEEDS_BUILD_VOLUME"
+     ],
+     "severity_of": {
+      "MACHINING_ALLOWANCE": "INFO"
+     }
+    },
+    "waam": {
+     "codes_trip": [
+      "MACHINING_ALLOWANCE"
+     ],
+     "codes_absent": [
+      "THIN_WALL",
+      "OVERHANG",
+      "EXCEEDS_BUILD_VOLUME"
+     ],
+     "severity_of": {
+      "MACHINING_ALLOWANCE": "INFO"
+     }
     }
    },
-   "note": "60mm solid cube: modulus 10.0, under both thresholds. Boundary pair with trap-cube-100mm-bulky. The 12-vs-15 divergence between the two casting processes is documented as finding F10. | MJF: Clean MJF control: 60mm cube passes every MJF check. | EBM: Clean EBM control: 60mm cube passes every EBM check. | Forging: 1:1 aspect clears the rib rule."
+   "note": "60mm solid cube: modulus 10.0, under both thresholds. Boundary pair with trap-cube-100mm-bulky. The 12-vs-15 divergence between the two casting processes is documented as finding F10. | MJF: Clean MJF control: 60mm cube passes every MJF check. | EBM: Clean EBM control: 60mm cube passes every EBM check. | Forging: 1:1 aspect clears the rib rule. | binder_jetting: clean geometry + always-on 15-20% sintering-shrinkage INFO (Desktop Metal guidance). | ded: clean geometry + always-on near-net machining-allowance INFO (ASTM F3187 s7). | waam: clean geometry + always-on near-net machining-allowance INFO (3-5mm stock)."
   },
   {
    "file": "trap-fragile-core-pipe.stl",
@@ -391,9 +467,25 @@
      "codes_trip": [
       "OVERHANG"
      ]
+    },
+    "ded": {
+     "codes_trip": [
+      "OVERHANG"
+     ],
+     "severity_of": {
+      "OVERHANG": "WARNING"
+     }
+    },
+    "waam": {
+     "codes_trip": [
+      "OVERHANG"
+     ],
+     "severity_of": {
+      "OVERHANG": "WARNING"
+     }
     }
    },
-   "note": "Underside 10 deg above horizontal: below the Formlabs 19 deg-from-level minimum, so it trips under BOTH the citation and the code. Hard boundary anchor."
+   "note": "Underside 10 deg above horizontal: below the Formlabs 19 deg-from-level minimum, so it trips under BOTH the citation and the code. Hard boundary anchor. | ded: 10deg above horizontal < 30deg boundary for the multi-axis DED 60deg-from-vertical rule. | waam: 10deg above horizontal < 30deg boundary for the WAAM 60deg rule."
   },
   {
    "file": "control-sla-overhang-80deg-from-horizontal.stl",
@@ -408,9 +500,19 @@
      "codes_absent": [
       "OVERHANG"
      ]
+    },
+    "ded": {
+     "codes_absent": [
+      "OVERHANG"
+     ]
+    },
+    "waam": {
+     "codes_absent": [
+      "OVERHANG"
+     ]
     }
    },
-   "note": "Underside 80 deg above horizontal (10 from vertical): self-supporting under both readings. Fully clean for SLA and DLP."
+   "note": "Underside 80 deg above horizontal (10 from vertical): self-supporting under both readings. Fully clean for SLA and DLP. | ded: 80deg above horizontal clears the DED 60deg rule. | waam: 80deg clears the WAAM 60deg rule."
   },
   {
    "file": "control-cube-10mm.stl",
@@ -452,9 +554,17 @@
      "codes_absent": [
       "TRAPPED_VOLUME"
      ]
+    },
+    "waam": {
+     "codes_trip": [
+      "THIN_WALL"
+     ],
+     "severity_of": {
+      "THIN_WALL": "ERROR"
+     }
     }
    },
-   "note": "Cup WITH a compliant 4mm drain hole. Green since the F1 fix (cupping requires concave downward-pocket evidence); promoted from KNOWN-GAP to hard row. | MJF: Open cup - not an enclosed cavity; 5mm drain rule does not apply. | EBM: Open cup - drain rule n/a."
+   "note": "Cup WITH a compliant 4mm drain hole. Green since the F1 fix (cupping requires concave downward-pocket evidence); promoted from KNOWN-GAP to hard row. | MJF: Open cup - not an enclosed cavity; 5mm drain rule does not apply. | EBM: Open cup - drain rule n/a. | waam: 1.996mm cup wall < 2.0mm."
   },
   {
    "file": "control-overhang-44deg.stl",
@@ -662,9 +772,35 @@
      "severity_of": {
       "THIN_WALL": "WARNING"
      }
+    },
+    "binder_jetting": {
+     "codes_trip": [
+      "THIN_WALL",
+      "SMALL_FEATURES"
+     ],
+     "severity_of": {
+      "THIN_WALL": "WARNING",
+      "SMALL_FEATURES": "WARNING"
+     }
+    },
+    "ded": {
+     "codes_trip": [
+      "THIN_WALL"
+     ],
+     "severity_of": {
+      "THIN_WALL": "WARNING"
+     }
+    },
+    "waam": {
+     "codes_trip": [
+      "THIN_WALL"
+     ],
+     "severity_of": {
+      "THIN_WALL": "WARNING"
+     }
     }
    },
-   "note": "F7: one real 0.3mm rib among ten 5mm ribs must trip SMALL_FEATURES even though it is less than 5% of mesh edges. | MJF: 0.286mm rib: below 0.5mm min wall (WARNING) but above 0.2mm min feature - MJF discriminator row. | EBM: 0.286mm rib < 0.7mm wall; single rib stays under the 5%-of-edges SMALL_FEATURES rule."
+   "note": "F7: one real 0.3mm rib among ten 5mm ribs must trip SMALL_FEATURES even though it is less than 5% of mesh edges. | MJF: 0.286mm rib: below 0.5mm min wall (WARNING) but above 0.2mm min feature - MJF discriminator row. | EBM: 0.286mm rib < 0.7mm wall; single rib stays under the 5%-of-edges SMALL_FEATURES rule. | binder_jetting: 0.286mm rib < 1.0mm wall and 0.5mm feature mins. | ded: 0.286mm rib < 1.5mm wall. | waam: 0.286mm rib < 2.0mm wall."
   },
   {
    "file": "control-hole-8mmx16mm.stl",
@@ -699,9 +835,17 @@
      "codes_absent": [
       "TOO_THICK_SHEET"
      ]
+    },
+    "waam": {
+     "codes_trip": [
+      "THIN_WALL"
+     ],
+     "severity_of": {
+      "THIN_WALL": "ERROR"
+     }
     }
    },
-   "note": "F9: a formed 2mm U-channel stays within sheet gauge even though every bounding-box dimension is much larger than its wall thickness."
+   "note": "F9: a formed 2mm U-channel stays within sheet gauge even though every bounding-box dimension is much larger than its wall thickness. | waam: 1.994mm channel wall < 2.0mm."
   },
   {
    "file": "trap-filleted-plate-prismatic.stl",
@@ -714,9 +858,17 @@
      "severity_of": {
       "NOT_PRISMATIC": "ERROR"
      }
+    },
+    "binder_jetting": {
+     "codes_trip": [
+      "SMALL_FEATURES"
+     ],
+     "severity_of": {
+      "SMALL_FEATURES": "WARNING"
+     }
     }
    },
-   "note": "60x60x5 plate with r4 edge fillets: fillets are 27.3% of surface area - genuinely non-prismatic for wire EDM (a wire cuts a 2D profile). Retained as a hard TRIP row after F12 re-measurement showed the original KNOWN-GAP premise (prismatic part, wrong verdict) did not hold by area."
+   "note": "60x60x5 plate with r4 edge fillets: fillets are 27.3% of surface area - genuinely non-prismatic for wire EDM (a wire cuts a 2D profile). Retained as a hard TRIP row after F12 re-measurement showed the original KNOWN-GAP premise (prismatic part, wrong verdict) did not hold by area. | binder_jetting: r4 fillet tessellation edges 0.393mm < 0.5mm feature min."
   },
   {
    "file": "trap-chamfered-plate-prismatic.stl",
@@ -824,6 +976,26 @@
     }
    },
    "note": "7deg drafted frustum (30mm tall, 3.68mm offset): clears every forging check. Clean control. | Forging: 7deg drafted frustum (30mm tall, 3.68mm offset): clears every forging check. Clean control."
+  },
+  {
+   "file": "trap-ded-build-1600mm.stl",
+   "class": "ded-build-volume",
+   "expect": {
+    "ded": {
+     "codes_trip": [
+      "EXCEEDS_BUILD_VOLUME"
+     ],
+     "severity_of": {
+      "EXCEEDS_BUILD_VOLUME": "ERROR"
+     }
+    },
+    "waam": {
+     "codes_absent": [
+      "EXCEEDS_BUILD_VOLUME"
+     ]
+    }
+   },
+   "note": "1600mm axis exceeds the 1500mm large-format DED envelope. | ded: 1600mm axis exceeds the 1500mm large-format DED envelope. | waam: 1600mm bar fits the 5m WAAM envelope (trips DED - envelope discriminator)."
   }
  ]
 }
