@@ -1,0 +1,9 @@
+{
+  "name": "ProofShape for Onshape",
+  "status": "skeleton",
+  "entryPoint": "panel/index.html",
+  "actionLabel": "Check with ProofShape",
+  "supportedHost": "Onshape",
+  "permissions": ["read_current_document", "export_step"],
+  "note": "Reference metadata for the Onshape Developer Portal. This file does not claim an installed or published app."
+}

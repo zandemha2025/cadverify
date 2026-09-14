@@ -1,0 +1,33 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { ProofShapeClient, ProofShapeApiError } from "../src/client.js";
+
+const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+test("validates a STEP multipart request and normalizes a synchronous verdict", async () => {
+  const calls = [];
+  const client = new ProofShapeClient({ baseUrl: "https://staging.example", apiKey: "cv_live_test", fetchImpl: async (url, init) => {
+    calls.push({ url, init });
+    return json({ overall_verdict: "pass", issues: [], share_url: "/s/abc", sampled: { faces: 20 }, provenance: "occ-v1" });
+  }});
+  const verdict = await client.validateStep({ bytes: new Uint8Array([1, 2]), filename: "part.step" });
+  assert.equal(calls[0].url, "https://staging.example/api/v1/validate");
+  assert.equal(calls[0].init.headers.Authorization, "Bearer cv_live_test");
+  assert.ok(calls[0].init.body instanceof FormData);
+  assert.deepEqual(verdict, { badge: "PASS", issues: [], recordUrl: "https://staging.example/s/abc", sampled: { faces: 20 }, provenance: "occ-v1", raw: verdict.raw });
+});
+
+test("polls a 202 job through result and preserves honesty marks", async () => {
+  const responses = [json({ job_id: "j1", poll_url: "/api/v1/jobs/j1" }, 202), json({ job_id: "j1", status: "running" }), json({ job_id: "j1", status: "done", result_url: "/api/v1/jobs/j1/result" }), json({ result: { verdict: "issues", findings: [{ message: "Thin wall" }], sampling: "mesh", provenance: "rule-pack" } })];
+  const client = new ProofShapeClient({ baseUrl: "https://staging.example", apiKey: "cv_live_test", pollIntervalMs: 0, fetchImpl: async () => responses.shift() });
+  const result = await client.validateStep({ bytes: new Blob(["STEP"]) });
+  assert.equal(result.badge, "ISSUES");
+  assert.deepEqual(result.issues, ["Thin wall"]);
+  assert.equal(result.sampled, "mesh");
+});
+
+test("fails loudly on terminal job failure", async () => {
+  const responses = [json({ job_id: "j2" }, 202), json({ job_id: "j2", status: "failed", error: { code: "bad_step", message: "STEP rejected" } })];
+  const client = new ProofShapeClient({ baseUrl: "https://staging.example", apiKey: "cv_live_test", pollIntervalMs: 0, fetchImpl: async () => responses.shift() });
+  await assert.rejects(() => client.validateStep({ bytes: new Blob(["bad"]) }), (error) => error instanceof ProofShapeApiError && error.code === "bad_step");
+});
