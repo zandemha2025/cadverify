@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const source = await readFile(new URL("./site-design-fidelity.mjs", import.meta.url), "utf8");
+const homeHtml = await readFile(new URL("../../frontend/src/app/(site)/home-v2-html.ts", import.meta.url), "utf8");
 
 function homeSpec() {
   const start = source.indexOf('route: "/"');
@@ -62,7 +63,7 @@ test("HOME v2 does not inherit old multi-route navigation copy", () => {
 
 
 test("HOME v2 does not claim unsupported assembly ingestion or cloud zero-egress", () => {
-  assert.doesNotMatch(source, /native assembly|assembly (?:file|data|ingestion)/i);
-  assert.doesNotMatch(source, /zero network egress|cloud[^\n;]*zero[^\n;]*egress/i);
+  assert.doesNotMatch(homeHtml, /native assembly|assembly (?:file|data|ingestion)/i);
+  assert.doesNotMatch(homeHtml, /zero network egress|cloud[^\n;]*zero[^\n;]*egress/i);
   assert.match(source, /register: "home-v2"/);
 });
