@@ -43,6 +43,7 @@ import { costPersistUiEnabled } from "@/lib/cost-decision";
 import { flattenIssues } from "@/components/IssueList";
 import { CAD_ACCEPT, isSupportedCad, supportedCadLabel } from "@/lib/cad-file";
 import { clientStlIntegrityError } from "@/lib/stl-validation";
+import { analysisFailureCopy } from "@/lib/verify/failure-copy";
 
 import { Button } from "@/components/ui/button";
 import { Dropzone } from "@/components/ui/dropzone";
@@ -172,6 +173,10 @@ export default function PartWorkspace({
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [dfmLoading, setDfmLoading] = useState(false);
   const [dfmError, setDfmError] = useState<string | null>(null);
+  // Both analysis requests share one parse but have separate HTTP lifecycles. A
+  // canonical /validate 4xx outranks a sibling transport exception.
+  const dfmTerminalFailureRef = useRef<string | null>(null);
+  const analysisAttemptRef = useRef(0);
 
   // analyze ↔ geometry linking
   const [selectedIssueKey, setSelectedIssueKey] = useState<string | null>(null);
@@ -405,37 +410,59 @@ export default function PartWorkspace({
 
   /* ---- API calls -------------------------------------------------- */
 
-  const runCost = useCallback(async (theFile: File, theOpts: CostOptions) => {
+  const runCost = useCallback(async (
+    theFile: File,
+    theOpts: CostOptions,
+    attempt = analysisAttemptRef.current,
+  ) => {
     setCostLoading(true);
     setCostError(null);
     setGeomError(null);
     setReport(null);
     try {
       const result = await costEstimate(theFile, theOpts);
+      if (attempt !== analysisAttemptRef.current) return;
       setReport(result);
     } catch (err) {
+      if (attempt !== analysisAttemptRef.current) return;
       if (err instanceof CostGeometryInvalidError) {
         setGeomError({ reason: err.message, geometry: err.geometry });
       } else {
-        setCostError(err instanceof Error ? err.message : "Cost estimate failed.");
+        setCostError(
+          dfmTerminalFailureRef.current ??
+            (err instanceof Error ? err.message : "Cost estimate failed."),
+        );
       }
     } finally {
-      setCostLoading(false);
+      if (attempt === analysisAttemptRef.current) setCostLoading(false);
     }
   }, []);
 
-  const runDfm = useCallback(async (theFile: File, sourceUnits: CostOptions["units"]) => {
+  const runDfm = useCallback(async (
+    theFile: File,
+    sourceUnits: CostOptions["units"],
+    attempt = analysisAttemptRef.current,
+  ) => {
     setDfmLoading(true);
     setDfmError(null);
     setValidation(null);
     setSelectedIssueKey(null);
     try {
       const data = await validateFile(theFile, undefined, undefined, undefined, sourceUnits);
+      if (attempt !== analysisAttemptRef.current) return;
       setValidation(data);
     } catch (err) {
-      setDfmError(err instanceof Error ? err.message : "Analysis failed");
+      if (attempt !== analysisAttemptRef.current) return;
+      const message = err instanceof Error ? err.message : "Analysis failed";
+      dfmTerminalFailureRef.current = message;
+      setDfmError(message);
+      // /validate is the canonical geometry-analysis response. If it refuses the
+      // upload, end the sibling cost loader and retain this server diagnosis even
+      // when the other streamed request failed at the transport layer.
+      setCostError(message);
+      setCostLoading(false);
     } finally {
-      setDfmLoading(false);
+      if (attempt === analysisAttemptRef.current) setDfmLoading(false);
     }
   }, []);
 
@@ -462,10 +489,12 @@ export default function PartWorkspace({
           return;
         }
       }
+      dfmTerminalFailureRef.current = null;
+      const attempt = ++analysisAttemptRef.current;
       setFile(selected);
       setTab(landingTab(role));
-      void runCost(selected, opts);
-      void runDfm(selected, opts.units);
+      void runCost(selected, opts, attempt);
+      void runDfm(selected, opts.units, attempt);
     },
     [opts, role, runCost, runDfm]
   );
@@ -498,6 +527,8 @@ export default function PartWorkspace({
     setCostError(null);
     setValidation(null);
     setDfmError(null);
+    dfmTerminalFailureRef.current = null;
+    ++analysisAttemptRef.current;
     setSelectedIssueKey(null);
     setScenarios([]);
     // Part-door mode: hand control back to the door landing instead of showing
@@ -846,9 +877,9 @@ export default function PartWorkspace({
                     <LoadingPane label="Analyzing across all manufacturing processes…" />
                   ) : dfmError && !report ? (
                     <ErrorState
-                      title="Analysis unavailable"
-                      message={dfmError}
-                      onRetry={() => file && runDfm(file, opts.units)}
+                      title={analysisFailureCopy(dfmError).title}
+                      message={`${analysisFailureCopy(dfmError).explanation} ${analysisFailureCopy(dfmError).action}`}
+                      onRetry={() => file && void handleFile(file)}
                     />
                   ) : (
                     <RoutingDfmView

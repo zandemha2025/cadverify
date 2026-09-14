@@ -4,6 +4,7 @@ import {
   apiProblemDetail,
   apiRecoveryMessage,
   apiResourceFromUrl,
+  networkRecoveryMessage,
 } from "@/lib/api-recovery";
 import { API_BASE, browserOrBackendUrl } from "./api-base";
 import type { AnalysisListRow } from "./recent-parts";
@@ -1017,9 +1018,11 @@ async function _costEstimate(
   try {
     res = await fetch(url, { method: "POST", body: form });
   } catch (err) {
-    const e = err instanceof Error ? err : new Error(String(err));
-    toast.error("Connection failed. Check your network.");
-    throw e;
+    // A transport exception has no HTTP body, so do not guess that the user's
+    // network is at fault. The workspace can reconcile this sibling request with
+    // the canonical /validate result (for example, a real tessellation refusal).
+    const cause = err instanceof Error ? err : new Error(String(err));
+    throw new Error(networkRecoveryMessage("verification"), { cause });
   }
 
   // Track rate limits on every response, like apiClient does.
