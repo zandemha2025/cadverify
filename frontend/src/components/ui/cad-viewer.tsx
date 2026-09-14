@@ -425,7 +425,7 @@ export default function CadViewer({
       aria-label={previewReady ? "Interactive 3D preview ready" : "Loading real 3D preview"}
       data-preview-state={previewReady ? "ready" : "loading"}
       className={cn(
-        "relative h-full overflow-hidden rounded-[var(--radius)] border",
+        "relative h-full min-w-0 w-full max-w-full overflow-hidden rounded-[var(--radius)] border",
         instrument
           ? STAGE_UI
             ? "border-[#252a2f]"
