@@ -169,7 +169,13 @@ function STLModel({
   });
 
   useEffect(() => {
-    if (!markerRegion) onPinpointProjection?.(null);
+    if (!markerRegion) {
+      // A deselection clears the parent projection state. Clear our dedupe
+      // signature too, otherwise reselecting the same marker produces the same
+      // coordinates and useFrame suppresses the callback forever.
+      lastProjection.current = "";
+      onPinpointProjection?.(null);
+    }
   }, [markerRegion, onPinpointProjection]);
 
   const ghosted = hasHighlights && ghostUnhighlighted;
