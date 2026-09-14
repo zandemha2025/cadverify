@@ -358,6 +358,10 @@ class SiteDesignFidelity {
         ),
         hasCloserRidge: Boolean(closerRidge && closerRidge.querySelectorAll("path").length >= 3),
         visibleReceipt,
+        claimSweep: {
+          assemblyClaim: /assembly/i.test(document.body.innerText || ""),
+          zeroEgress: /zero network egress/i.test(document.documentElement.innerHTML),
+        },
       };
     });
     assert(home.hasOutcomeBand, "HOME v2 cream outcome band is missing");
@@ -368,6 +372,8 @@ class SiteDesignFidelity {
     assert(home.hasFooterTag, "HOME v2 footer tag is missing");
     assert(home.hasCloserRidge, "HOME v2 closer ridge is missing");
     assert(!home.visibleReceipt, "HOME v2 must not restore the removed receipt line");
+    assert(!home.claimSweep.assemblyClaim, "HOME v2 must not claim or imply assembly capability");
+    assert(!home.claimSweep.zeroEgress, "HOME v2 must not claim zero network egress");
     assert(!home.hasFrameworkOverlay, "framework error overlay visible");
     return home;
   }
