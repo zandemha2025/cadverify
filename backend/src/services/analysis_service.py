@@ -151,22 +151,31 @@ async def _persist_source_evidence(
         save_source_artifact,
     )
 
-    await save_source_artifact(org_id, mesh_hash, filename, file_bytes)
-    if await costable_mesh_exists(org_id, mesh_hash):
-        return
-    mesh = parsed_mesh
-    if mesh is None:
-        if parse_mesh_async_fn is None:
-            raise RuntimeError("source evidence requires a parsed mesh")
-        mesh, _suffix = await parse_mesh_async_fn(file_bytes, filename)
-        if source_units != "mm":
-            from src.costing.units import scale_mesh_to_mm
+    async def _ensure_costable_derivative() -> None:
+        if await costable_mesh_exists(org_id, mesh_hash):
+            return
+        mesh = parsed_mesh
+        if mesh is None:
+            if parse_mesh_async_fn is None:
+                raise RuntimeError("source evidence requires a parsed mesh")
+            mesh, _suffix = await parse_mesh_async_fn(file_bytes, filename)
+            if source_units != "mm":
+                from src.costing.units import scale_mesh_to_mm
 
-            mesh = scale_mesh_to_mm(mesh, source_units)
-    payload = await asyncio.to_thread(mesh.export, file_type="stl")
-    if not isinstance(payload, (bytes, bytearray, memoryview)) or not payload:
-        raise RuntimeError("CAD parser did not produce a costable STL derivative")
-    await save_costable_mesh_artifact(org_id, mesh_hash, bytes(payload))
+                mesh = scale_mesh_to_mm(mesh, source_units)
+        payload = await asyncio.to_thread(mesh.export, file_type="stl")
+        if not isinstance(payload, (bytes, bytearray, memoryview)) or not payload:
+            raise RuntimeError("CAD parser did not produce a costable STL derivative")
+        await save_costable_mesh_artifact(org_id, mesh_hash, bytes(payload))
+
+    # The exact source object and the canonical derivative have independent,
+    # deterministic keys. Persist them concurrently, but await both before the
+    # request can succeed: latency falls without weakening evidence durability.
+    async with asyncio.TaskGroup() as evidence_writes:
+        evidence_writes.create_task(
+            save_source_artifact(org_id, mesh_hash, filename, file_bytes)
+        )
+        evidence_writes.create_task(_ensure_costable_derivative())
 
 
 # ---------------------------------------------------------------------------
@@ -708,7 +717,12 @@ async def run_analysis(
     persisted_analysis_id: int | None = None
     stage_started = time.perf_counter()
     try:
-        analysis = await _persist_analysis(
+        from src.auth.org_context import resolve_org
+
+        persistence_org_id = (
+            org_id if org_id is not None else await resolve_org(session, user.user_id)
+        )
+        persist_coro = _persist_analysis(
             session=session,
             user=user,
             mesh_hash=mesh_hash,
@@ -722,21 +736,28 @@ async def run_analysis(
             face_count=_face_count,
             duration_ms=duration_ms,
             signature_vec=signature_vec,
-            org_id=org_id,
+            org_id=persistence_org_id,
         )
+        if isinstance(persistence_org_id, str) and persistence_org_id:
+            # The SQL evidence row/projections and object-store source/derivative
+            # do not depend on each other. A TaskGroup keeps the strict all-or-
+            # error boundary while overlapping their I/O.
+            async with asyncio.TaskGroup() as persistence_writes:
+                analysis_task = persistence_writes.create_task(persist_coro)
+                persistence_writes.create_task(
+                    _persist_source_evidence(
+                        persistence_org_id,
+                        mesh_hash,
+                        filename,
+                        file_bytes,
+                        parsed_mesh=mesh,
+                        source_units=effective_units,
+                    )
+                )
+            analysis = analysis_task.result()
+        else:
+            analysis = await persist_coro
         persisted_analysis_id = analysis.id
-        # Source bytes are part of the durable evidence chain, not an optional
-        # cache. A store failure aborts the request/transaction; strict health
-        # preflight prevents accepting CAD into an unhealthy production store.
-        if isinstance(analysis.org_id, str) and analysis.org_id:
-            await _persist_source_evidence(
-                analysis.org_id,
-                mesh_hash,
-                filename,
-                file_bytes,
-                parsed_mesh=mesh,
-                source_units=effective_units,
-            )
         await _write_usage_event(
             session,
             user,
