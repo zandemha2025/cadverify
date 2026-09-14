@@ -1,0 +1,16 @@
+{
+  "name": "EU Germany Automotive",
+  "region": "EU",
+  "labor_rate": 62.0,
+  "margin": 0.32,
+  "overhead": 0.20,
+  "utilization": 0.85,
+  "stock_allowance": 1.12,
+  "machine_rates": {"CNC_5AXIS": 140, "CNC_3AXIS": 98, "INJECTION_MOLDING": 72, "DIE_CASTING": 85, "CNC_TURNING": 92},
+  "material_prices": {"PA66-GF30": 7.0, "6061-T6 Aluminum": 10.0, "@polymer": 6.5, "A356 Aluminum": 4.5},
+  "region_multipliers": {"labor": 1.0, "material": 1.0, "tooling": 1.0},
+  "source": "Modeled exemplar - synthesized from public marketplace rate bands (Xometry/Fictiv/Protolabs quote ranges) and regional labor surveys; NOT a measured shop. For calibration coverage and UI demonstration only.",
+  "notes": "German automotive Tier-2 archetype: high utilization, series production, EUR costs expressed in USD at ~1.08.",
+  "created": "2026-09-14",
+  "schema_version": 1
+}
