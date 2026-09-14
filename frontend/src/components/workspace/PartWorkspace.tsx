@@ -42,6 +42,7 @@ import { parseCalibration, makeNowStableEstimate } from "@/lib/cost-views";
 import { costPersistUiEnabled } from "@/lib/cost-decision";
 import { flattenIssues } from "@/components/IssueList";
 import { CAD_ACCEPT, isSupportedCad, supportedCadLabel } from "@/lib/cad-file";
+import { clientStlIntegrityError } from "@/lib/stl-validation";
 
 import { Button } from "@/components/ui/button";
 import { Dropzone } from "@/components/ui/dropzone";
@@ -439,7 +440,7 @@ export default function PartWorkspace({
   }, []);
 
   const handleFile = useCallback(
-    (selected: File) => {
+    async (selected: File) => {
       if (!isSupportedCad(selected.name)) {
         setCostError(`Unsupported file type. Use ${supportedCadLabel()}.`);
         return;
@@ -448,6 +449,18 @@ export default function PartWorkspace({
         setShowOptions(true);
         setCostError("Fix the quantity list before submitting.");
         return;
+      }
+      if (selected.name.toLowerCase().endsWith(".stl")) {
+        const integrityError = await clientStlIntegrityError(selected);
+        if (integrityError) {
+          // Keep malformed bytes out of both CadViewer/STLLoader and the API.
+          setFile(null);
+          setReport(null);
+          setValidation(null);
+          setCostError(integrityError);
+          setDfmError(integrityError);
+          return;
+        }
       }
       setFile(selected);
       setTab(landingTab(role));
@@ -464,7 +477,7 @@ export default function PartWorkspace({
   useEffect(() => {
     if (initialFile && !seededRef.current) {
       seededRef.current = true;
-      handleFile(initialFile);
+      void handleFile(initialFile);
     }
     // handleFile is stable enough; we intentionally seed only on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps

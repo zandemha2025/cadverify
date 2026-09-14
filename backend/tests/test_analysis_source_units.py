@@ -91,3 +91,23 @@ def test_validate_does_not_flag_ordinary_metric_box(client, stl_bytes_of):
     response = _post(client, stl_bytes_of(trimesh.creation.box(extents=[10., 20., 30.])))
     assert response.status_code == 200
     assert "unit_detection" not in response.json()["geometry"]
+
+
+def test_validate_flags_fractional_inch_grid_but_never_auto_scales(client, stl_bytes_of):
+    import trimesh
+    data = stl_bytes_of(trimesh.creation.box(extents=[50.8, 25.4, 12.7]))
+    response = _post(client, data)
+    assert response.status_code == 200, response.text
+    detection = response.json()["geometry"]["unit_detection"]
+    assert detection["unit_flag"] == "suspicious_scale"
+    assert detection["ratio"] == 25.4
+    assert detection["auto_scaled"] is False
+    assert detection["measured_bounding_box_mm"] == [50.8, 25.4, 12.7]
+
+
+def test_validate_keeps_fractional_metric_control_unflagged(client, stl_bytes_of):
+    import trimesh
+    data = stl_bytes_of(trimesh.creation.box(extents=[50.5, 25.0, 12.5]))
+    response = _post(client, data)
+    assert response.status_code == 200, response.text
+    assert "unit_detection" not in response.json()["geometry"]

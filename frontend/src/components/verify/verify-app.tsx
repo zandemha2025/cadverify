@@ -20,6 +20,7 @@ import { isCurrentRun } from "@/lib/verify/run-gates";
 import { listMachines } from "@/lib/verify/machine-api";
 import { CAD_ACCEPT, isSupportedCad, unsupportedCadGuidance } from "@/lib/cad-file";
 import { VERIFY_PART_CAD_INPUT } from "@/lib/verify/file-inputs";
+import { clientStlIntegrityError } from "@/lib/stl-validation";
 import { Stage, type StageAssembly } from "./stage";
 import { AssemblyPanel } from "./assembly-panel";
 import { fetchAssembly, fetchAssemblyAnalysis, defaultPartOfInterest, type AssemblyRender, type AssemblyAnalysis } from "@/lib/verify/assembly";
@@ -182,6 +183,44 @@ export function VerifyApp({
       }
 
       const seq = ++runSeq.current;
+      if (f.name.toLowerCase().endsWith(".stl")) {
+        const integrityError = await clientStlIntegrityError(f);
+        if (runSeq.current !== seq) return null;
+        if (integrityError) {
+          latestFile.current = null;
+          setFile(null); // never hand corrupt bytes to STLLoader
+          setScreen("verify");
+          setRunning(false);
+          setUploadRejection(null);
+          setResult({
+            file: f,
+            validation: null,
+            validationError: integrityError,
+            cost: null,
+            costGeometryInvalid: null,
+            costError: integrityError,
+            machines: [],
+            machinesError: null,
+            verification: null,
+            quantities: QTY_LADDER,
+            env,
+            envDeclared: env.temp || env.sour || env.pressure,
+            envCaptured: false,
+            envError: null,
+            meshHash: null,
+            partContext: null,
+            partContextError: null,
+          });
+          setAssembly((prev) => {
+            prev?.revoke();
+            return null;
+          });
+          setAssemblySelectedId(null);
+          setAssemblyAnalysis(null);
+          setAssemblyAnalyzing(false);
+          return null;
+        }
+      }
       setUploadRejection(null);
       setFile(f);
       latestFile.current = f;
