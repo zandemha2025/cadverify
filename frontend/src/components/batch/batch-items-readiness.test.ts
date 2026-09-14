@@ -20,3 +20,10 @@ test("batch detail actions stay synchronized with visible item readiness", async
   assert.match(pageSource, /loading=\{itemsLoadState === "loading" \|\| downloadingCsv\}/);
   assert.match(pageSource, /onLoadStateChange=\{setItemsLoadState\}/);
 });
+
+test("skipped batch rows show their stored reason without expansion", async () => {
+  const source = await readFile(new URL("./BatchItemsTable.tsx", import.meta.url), "utf8");
+  assert.match(source, /item\.status === "skipped" \|\| expanded/);
+  assert.match(source, /`Skipped: \$\{item\.error_message\}`/);
+  assert.match(source, /item\.status !== "skipped"/);
+});

@@ -132,9 +132,9 @@ export default function BatchItemsTable({
               <p className="truncate font-medium text-foreground">
                 {item.filename}
               </p>
-              {item.error_message && expanded && (
-                <p className="mt-1 whitespace-pre-wrap text-xs text-fail">
-                  {item.error_message}
+              {item.error_message && (item.status === "skipped" || expanded) && (
+                <p className={`mt-1 whitespace-pre-wrap text-xs ${item.status === "skipped" ? "text-muted-foreground" : "text-fail"}`}>
+                  {item.status === "skipped" ? `Skipped: ${item.error_message}` : item.error_message}
                 </p>
               )}
             </div>
@@ -195,7 +195,7 @@ export default function BatchItemsTable({
                   <Link href={analysisHref}>View</Link>
                 </Button>
               )}
-              {item.error_message && (
+              {item.error_message && item.status !== "skipped" && (
                 <Button
                   variant="ghost"
                   size="sm"
