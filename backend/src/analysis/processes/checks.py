@@ -629,7 +629,7 @@ def check_internal_radii(
 
     cylinder_faces = {
         face
-        for feature in ctx.features
+        for feature in (getattr(ctx, "features", None) or [])
         if feature.kind == FeatureKind.CYLINDER_HOLE
         for face in feature.face_indices
     }
