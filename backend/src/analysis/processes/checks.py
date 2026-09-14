@@ -218,9 +218,35 @@ def check_trapped_volumes(
 ) -> list[Issue]:
     """Detect fully enclosed cavities (trapped powder/resin)."""
     issues: list[Issue] = []
-    if len(ctx.bodies) <= 1:
-        return issues
     try:
+        # A cavity connected through an undersized drain is one watertight shell,
+        # so component containment alone cannot see it. Reuse the feature pass to
+        # identify a measured cylindrical opening, then prove that one end opens
+        # to the exterior while the other opens into a void materially wider than
+        # the bore. This deliberately refuses to infer from a small blind hole.
+        undersized = _undersized_cavity_drain(ctx, min_drain_mm)
+        if undersized is not None:
+            diameter, cavity_center, affected_faces = undersized
+            issues.append(Issue(
+                code="TRAPPED_VOLUME",
+                severity=Severity.ERROR,
+                message=(
+                    f"Drain opening {diameter:.2f}mm is below the {min_drain_mm}mm "
+                    f"minimum for {process.value}; material can remain trapped."
+                ),
+                process=process,
+                affected_faces=affected_faces,
+                region_center=cavity_center,
+                measured_value=diameter,
+                required_value=min_drain_mm,
+                fix_suggestion=(
+                    f"Enlarge drain holes to >= {min_drain_mm}mm diameter. {cite}"
+                ),
+                citation=parse_citation(cite),
+            ))
+
+        if len(ctx.bodies) <= 1:
+            return issues
         main_index = max(range(len(ctx.bodies)), key=ctx.body_volumes.__getitem__)
         main = ctx.bodies[main_index]
         if ctx.body_volumes[main_index] <= 0:
@@ -262,6 +288,104 @@ def check_trapped_volumes(
             fix_suggestion="Verify mesh integrity via /validate/quick.",
         ))
     return issues
+
+
+def _undersized_cavity_drain(
+    ctx: GeometryContext,
+    min_drain_mm: float,
+) -> tuple[float, tuple[float, float, float], list[int]] | None:
+    """Return measured proof of a too-small drain into a wider internal void."""
+    from src.analysis.features.base import FeatureKind
+
+    mesh = ctx.mesh
+    if not mesh.is_watertight or min_drain_mm <= 0:
+        return None
+    for feature in ctx.features:
+        if (
+            feature.kind != FeatureKind.CYLINDER_HOLE
+            or feature.radius is None
+            or feature.depth is None
+            or feature.axis is None
+            or feature.radius <= 0
+            or feature.depth <= 0
+        ):
+            continue
+        diameter = 2.0 * float(feature.radius)
+        if diameter >= min_drain_mm:
+            continue
+        axis = np.asarray(feature.axis, dtype=np.float64)
+        center = np.asarray(feature.centroid, dtype=np.float64)
+        if not np.isfinite(axis).all() or not np.isfinite(center).all():
+            continue
+        axis_norm = float(np.linalg.norm(axis))
+        if axis_norm <= 1e-9:
+            continue
+        axis /= axis_norm
+        probe = max(ctx.scale_eps, min(float(feature.radius) * 0.1, 0.1))
+        endpoints = [
+            center - axis * (float(feature.depth) / 2.0 + probe),
+            center + axis * (float(feature.depth) / 2.0 + probe),
+        ]
+        outward_clear: list[bool] = []
+        axial_hit_distance: list[float | None] = []
+        for index, endpoint in enumerate(endpoints):
+            direction = axis * (-1.0 if index == 0 else 1.0)
+            try:
+                locations, _, _ = mesh.ray.intersects_location(
+                    [endpoint], [direction], multiple_hits=False
+                )
+            except Exception:
+                outward_clear.append(False)
+                axial_hit_distance.append(None)
+                continue
+            outward_clear.append(len(locations) == 0)
+            axial_hit_distance.append(
+                None if len(locations) == 0 else float(np.linalg.norm(locations[0] - endpoint))
+            )
+        if outward_clear.count(True) != 1:
+            continue
+        cavity_index = 1 - outward_clear.index(True)
+        cavity_point = endpoints[cavity_index]
+        axial_distance = axial_hit_distance[cavity_index]
+        if axial_distance is None or axial_distance <= max(diameter, float(feature.depth)):
+            continue
+        try:
+            if bool(mesh.contains([cavity_point])[0]):
+                continue
+        except Exception:
+            continue
+
+        # A blind bore ends in solid at its inner endpoint. A drain enters a
+        # cavity whose local void is wider than the bore in perpendicular axes.
+        basis = np.array([1.0, 0.0, 0.0])
+        if abs(float(np.dot(basis, axis))) > 0.9:
+            basis = np.array([0.0, 1.0, 0.0])
+        u = np.cross(axis, basis)
+        u /= np.linalg.norm(u)
+        v = np.cross(axis, u)
+        radial_distances: list[float] = []
+        try:
+            for direction in (u, -u, v, -v):
+                locations, _, _ = mesh.ray.intersects_location(
+                    [cavity_point], [direction], multiple_hits=False
+                )
+                if len(locations) == 0:
+                    break
+                radial_distances.append(float(np.linalg.norm(locations[0] - cavity_point)))
+        except Exception:
+            continue
+        if len(radial_distances) != 4 or min(radial_distances) <= diameter:
+            continue
+        return (
+            diameter,
+            (
+                float(cavity_point[0]),
+                float(cavity_point[1]),
+                float(cavity_point[2]),
+            ),
+            [int(index) for index in feature.face_indices],
+        )
+    return None
 
 
 # ──────────────────────────────────────────────────────────────
