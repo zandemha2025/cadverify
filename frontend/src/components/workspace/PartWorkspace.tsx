@@ -667,7 +667,7 @@ export default function PartWorkspace({
   return (
     <div className="flex h-full min-h-0">
       {/* ── content column ─────────────────────────────────────────── */}
-      <div className="min-w-0 flex-1 overflow-y-auto">
+      <div className="min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto">
         <div className="space-y-5 p-6">
           {/* frame header: identity + Role Lens + Calibration + reset */}
           <div className="flex flex-wrap items-start justify-between gap-3">

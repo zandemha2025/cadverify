@@ -270,7 +270,7 @@ export function PartHero({
   const costGeo = report?.geometry ?? geomError?.geometry ?? null;
 
   return (
-    <div className="min-w-0 flex-1 overflow-y-auto">
+    <div className="min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto">
       <div className="space-y-5 p-6">
         {/* ── frame header: identity + calibration + role + secondary nav ── */}
         <div className="flex flex-wrap items-start justify-between gap-3">
