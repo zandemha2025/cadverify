@@ -29,13 +29,19 @@ const launchOptions = {
 const routeSpecs = [
   {
     route: "/",
-    design: "Direction - Cinematic.dc.html",
-    title: "Home / Direction - Cinematic",
+    design: "HOME v2 / proofshape-home-11x",
+    title: "Home v2",
+    register: "home-v2",
+    navSignals: [/ProofShape/i, /Developers/i, /Check your first part free/i],
     signals: [
-      /Can it be made\?\s+What should it cost\?/i,
-      /The decision, live\./i,
-      /The governed decision layer\s+for everything you make\./i,
-      /verification, made of glass/i,
+      /Stop losing weeks to failed prints\./i,
+      /Know what breaks, where, and what it should cost - before you commit to the print\./i,
+      /See it work/i,
+      /THE VERDICT/i,
+      /THE FIX/i,
+      /THE PRICE/i,
+      /THE RECORD/i,
+      /Verdicts before prints/i,
     ],
   },
   {
@@ -308,27 +314,93 @@ class SiteDesignFidelity {
     return theater;
   }
 
+  async assertHomeV2() {
+    const home = await this.page.evaluate(() => {
+      const body = getComputedStyle(document.body);
+      const outcome = [...document.querySelectorAll("h2")].find(
+        (node) => node.textContent?.trim() === "Stop losing weeks to failed prints.",
+      );
+      const outcomeSection = outcome?.closest("section");
+      const outcomeStyle = outcomeSection ? getComputedStyle(outcomeSection) : null;
+      const chapters = ["THE VERDICT", "THE FIX", "THE PRICE", "THE RECORD"];
+      const chapterImages = [...document.querySelectorAll('img[src*="ps-captures/"]')];
+      const imageSources = chapterImages.map((image) => image.getAttribute("src") || "");
+      const closerRidge = document.querySelector("section.closer svg.ridge");
+      const visibleReceipt = [...document.querySelectorAll(".receipt")].some((node) => {
+        const style = getComputedStyle(node);
+        const rect = node.getBoundingClientRect();
+        return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+      });
+      return {
+        background: body.backgroundColor,
+        hasFrameworkOverlay: /Next\.js|Runtime Error|Unhandled Runtime Error|Build Error/i.test(document.body.innerText),
+        hasOutcomeBand: Boolean(outcomeSection),
+        outcomeBackground: outcomeStyle?.backgroundColor || "",
+        hasGhostCta: Boolean(document.querySelector('a.btn.ghost[href="#chapters"]')),
+        hasTopbar: Boolean(document.querySelector("#topbar")),
+        hasTopbarRotationCopy: document.documentElement.innerHTML.includes(
+          "STL \u00B7 STEP \u00B7 IGES IN \u00B7 VERDICT OUT IN SECONDS",
+        ),
+        chapterImages: chapters.map((chapter) => ({
+          chapter,
+          hasText: document.body.innerText.includes(chapter),
+          hasImage: imageSources.some((src, index) =>
+            src.endsWith({
+              "THE VERDICT": "g01-verdict-red.png",
+              "THE FIX": "g04-verdict-green.png",
+              "THE PRICE": "g05-cost.png",
+              "THE RECORD": "g06-ledger.png",
+            }[chapter]) && chapterImages[index].complete && chapterImages[index].naturalWidth > 0
+          ),
+        })),
+        hasFooterTag: [...document.querySelectorAll("footer .ftag")].some(
+          (node) => node.textContent?.trim() === "Verdicts before prints",
+        ),
+        hasCloserRidge: Boolean(closerRidge && closerRidge.querySelectorAll("path").length >= 3),
+        visibleReceipt,
+      };
+    });
+    assert(home.hasOutcomeBand, "HOME v2 cream outcome band is missing");
+    assert(!/rgb\(5,\s*5,\s*6\)|rgb\(13,\s*13,\s*13\)/i.test(home.outcomeBackground), `HOME v2 outcome band stayed dark: ${home.outcomeBackground}`);
+    assert(home.hasGhostCta, "HOME v2 ghost CTA is missing");
+    assert(home.hasTopbar && home.hasTopbarRotationCopy, "HOME v2 topbar rotation copy is missing");
+    assert(home.chapterImages.every((item) => item.hasText && item.hasImage), "HOME v2 chapters are missing their real product captures");
+    assert(home.hasFooterTag, "HOME v2 footer tag is missing");
+    assert(home.hasCloserRidge, "HOME v2 closer ridge is missing");
+    assert(!home.visibleReceipt, "HOME v2 must not restore the removed receipt line");
+    assert(!home.hasFrameworkOverlay, "framework error overlay visible");
+    return home;
+  }
+
+  async assertDesignRegister(spec) {
+    return spec.register === "home-v2" ? this.assertHomeV2() : this.assertDarkTheater();
+  }
+
   async verifyRoute(spec) {
     await this.step(`Claude site design route ${spec.route}`, async () => {
-      const designFile = path.join(repoRoot, "handoff_cadverify_2026-07-04", "site", spec.design);
-      const sourceText = htmlToText(await readFile(designFile, "utf8"));
-      for (const signal of spec.signals) {
-        assert(signal.test(sourceText), `${spec.design} does not contain expected design signal ${signal}`);
+      const designFile = spec.register === "home-v2"
+        ? null
+        : path.join(repoRoot, "handoff_cadverify_2026-07-04", "site", spec.design);
+      if (designFile) {
+        const sourceText = htmlToText(await readFile(designFile, "utf8"));
+        for (const signal of spec.signals) {
+          assert(signal.test(sourceText), `${spec.design} does not contain expected design signal ${signal}`);
+        }
       }
 
       const res = await this.page.goto(spec.route, { waitUntil: "domcontentloaded", timeout: 30_000 });
       await this.page.waitForLoadState("networkidle", { timeout: 6_000 }).catch(() => {});
       assert((res?.status() || 0) < 400, `${spec.route} returned HTTP ${res?.status()}`);
-      const theater = await this.assertDarkTheater();
+      const theater = await this.assertDesignRegister(spec);
       const text = await this.assertNoForbiddenCopy(spec.route);
-      for (const signal of [...desktopNavSignals, ...spec.signals]) {
+      for (const signal of [...(spec.navSignals ?? desktopNavSignals), ...spec.signals]) {
         assert(signal.test(text), `${spec.route} missing rendered signal ${signal}`);
       }
       const screenshot = await this.shot(`desktop-${spec.title}`, true);
       const fileStat = await stat(screenshot);
       assert(fileStat.size > 20_000, `${spec.route} screenshot too small to prove render (${fileStat.size} bytes)`);
       this.evidence[spec.route] = {
-        design: path.relative(repoRoot, designFile),
+        design: designFile ? path.relative(repoRoot, designFile) : spec.design,
         title: spec.title,
         background: theater.background,
         screenshot,
@@ -344,7 +416,7 @@ class SiteDesignFidelity {
       const res = await this.page.goto(spec.route, { waitUntil: "domcontentloaded", timeout: 30_000 });
       await this.page.waitForLoadState("networkidle", { timeout: 6_000 }).catch(() => {});
       assert((res?.status() || 0) < 400, `${spec.route} mobile returned HTTP ${res?.status()}`);
-      const theater = await this.assertDarkTheater();
+      const theater = await this.assertDesignRegister(spec);
       const text = await this.assertNoForbiddenCopy(`${spec.route} mobile`);
       for (const signal of spec.signals.slice(0, 2)) {
         assert(signal.test(text), `${spec.route} mobile missing rendered signal ${signal}`);
@@ -399,7 +471,7 @@ class SiteDesignFidelity {
       requestFailures: this.requestFailures,
       evidence: this.evidence,
       boundary:
-        "This gate proves the production Next website routes render the accepted Claude dark-theater site design signals. It is not a pixel-perfect computer-vision diff of every CSS value.",
+        "This gate proves HOME v2 on route / and the accepted dark-theater design signals on all other production Next website routes. It is not a pixel-perfect computer-vision diff of every CSS value.",
     };
     await mkdir(outputRoot, { recursive: true });
     await writeFile(artifacts.json, `${JSON.stringify(data, null, 2)}\n`);
