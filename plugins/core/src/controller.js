@@ -7,6 +7,7 @@ export function createCheckController({ client, view, exportStep }) {
       view.progress("Exporting STEP from Onshape...");
       try {
         const part = await exportStep();
+        if (!part?.source) throw new Error("Host export did not include revision identity");
         view.progress("Checking with ProofShape...");
         const verdict = await client.validateStep(part);
         view.verdict(verdict);

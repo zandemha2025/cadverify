@@ -70,10 +70,17 @@ export class ProofShapeClient {
     return { Authorization: `Bearer ${this.apiKey}`, Accept: "application/json", ...extra };
   }
 
-  async validateStep({ bytes, filename = "part.step", signal }) {
+  async validateStep({ bytes, filename = "part.step", source, signal }) {
+    if (!source?.host || !source?.workspaceId || !source?.documentId || !source?.revisionId) {
+      throw new TypeError("source host, workspace, document, and revision identity are required");
+    }
+    if (!/\.(?:step|stp)$/i.test(filename)) {
+      throw new TypeError("host connector must export STEP/STP, never a native CAD document");
+    }
     if (!(bytes instanceof Blob)) bytes = new Blob([bytes], { type: "application/step" });
     const form = new FormData();
     form.append("file", bytes, filename);
+    form.append("connector_source", JSON.stringify(source));
     const response = await this.fetch(joinUrl(this.baseUrl, "/api/v1/validate"), {
       method: "POST", headers: this.headers(), body: form, signal,
     });
