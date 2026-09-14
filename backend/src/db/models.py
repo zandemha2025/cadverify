@@ -72,6 +72,11 @@ class Organization(Base):
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )
+    # Shared-seats quota (0047): max consumed seats, where consumed =
+    # active memberships + pending invites. NULL = unlimited (every legacy
+    # and personal org). Enforced in org_service at invite create/accept;
+    # governed by org admins via PATCH /orgs/seat-limit.
+    seat_limit: Mapped[Optional[int]] = mapped_column(nullable=True)
 
     # relationships
     teams: Mapped[List[Team]] = relationship(
