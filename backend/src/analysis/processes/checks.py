@@ -621,6 +621,26 @@ def check_internal_radii(
         return []
     sharp = ctx.concave_mask & (ctx.dihedral_angles_rad > np.radians(30))
 
+    # Circular boundaries of detected cylindrical holes are drill geometry,
+    # not end-mill pocket corners. Polygonized blind-hole bottoms otherwise
+    # contribute one concave segment per cylinder section and dominate this
+    # count solely as a function of tessellation density.
+    from src.analysis.features.base import FeatureKind
+
+    cylinder_faces = {
+        face
+        for feature in ctx.features
+        if feature.kind == FeatureKind.CYLINDER_HOLE
+        for face in feature.face_indices
+    }
+    if cylinder_faces:
+        touches_cylinder = np.fromiter(
+            (a in cylinder_faces or b in cylinder_faces for a, b in ctx.face_adjacency),
+            dtype=bool,
+            count=len(ctx.face_adjacency),
+        )
+        sharp &= ~touches_cylinder
+
     # One real pocket is enough to be unmachinable.  The old count floor
     # silently missed a single rectangular pocket (eight tessellated concave
     # edges), while dense tessellation around a round hole could exceed any
