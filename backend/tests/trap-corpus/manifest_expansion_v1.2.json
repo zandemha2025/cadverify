@@ -348,7 +348,7 @@
   },
   {
    "file": "trap-hollow-drain-2mm-KNOWN-GAP.stl",
-   "class": "KNOWN-GAP",
+   "class": "trapped-volume-undersized-drain",
    "expect": {
     "fdm": {
      "gates_trip": [
@@ -358,7 +358,7 @@
      ]
     }
    },
-   "note": "EXPECTED TO FAIL TODAY. Sealed hollow 24mm box with only a 2mm drain hole: FDM drain law is >= 3.0mm, but the code's trapped-volume check is containment-only (check_trapped_volumes has no hole-size path), so it reports NO trapped volume. This row holds the drain-size gap open exactly like v1.1's inch-cube row holds the unit-scale gap. Also expected today: internal ceiling trips overhangs (28 faces) and the 2mm hole's facets push 25.8% of edges < 0.4 (small_features) - both real under current code."
+   "note": "Sealed hollow 24mm box with only a 2mm drain hole: FDM drain law is >= 3.0mm, and measured cylinder/cavity evidence must report trapped material. Also expected today: internal ceiling trips overhangs (28 faces) and the 2mm hole's facets push 25.8% of edges < 0.4 (small_features) - both real under current code."
   },
   {
    "file": "trap-degenerate-duplicate-face.stl",
