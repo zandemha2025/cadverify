@@ -424,7 +424,14 @@
       "THICK_WALL",
       "NON_UNIFORM_WALLS"
      ]
-    },
+    }
+   },
+   "note": "F5 remains open: the hole cylindrical surface still produces phantom thick/non-uniform wall readings."
+  },
+  {
+   "file": "trap-plate-5mm-through-hole-2mm.stl",
+   "class": "small-feature-geometry-control",
+   "expect": {
     "fdm": {
      "codes_absent": [
       "SMALL_FEATURES"
@@ -436,7 +443,7 @@
      ]
     }
    },
-   "note": "F5 isolated: plain 5mm plate with one dia 2mm through-hole. Uniform 5mm stock, min ligament 1.5mm; the hole's cylindrical surface faces still produce phantom thick-wall readings. F13: the 2mm hole's 64-section tessellation chords (0.098mm) are 31% of all edges, so SMALL_FEATURES fires on fdm/sls/mjf/ebm/binder_jetting/dmls/slm even though the smallest real feature is a 2mm hole."
+   "note": "F13 control: the 2mm hole clears print resolution; short tessellation chords on its cylindrical wall are not physical small features."
   },
   {
    "file": "trap-pocket-single-sharp-corner.stl",
@@ -457,7 +464,7 @@
   },
   {
    "file": "trap-single-0p3mm-rib-among-many.stl",
-   "class": "KNOWN-GAP",
+   "class": "small-feature-geometry-control",
    "expect": {
     "fdm": {
      "codes_trip": [
@@ -469,7 +476,7 @@
      }
     }
    },
-   "note": "F7: ten 5mm ribs + one 0.3mm rib on a 100mm plate. The 0.3mm rib is unprintable at 0.4mm nozzle resolution, but small-edge fraction ~1.4% is under the 5% significance floor, so SMALL_FEATURES stays silent. THIN_WALL still catches it at WARNING (hard sub-row, green today)."
+   "note": "F7: one real 0.3mm rib among ten 5mm ribs must trip SMALL_FEATURES even though it is less than 5% of mesh edges."
   },
   {
    "file": "control-hole-8mmx16mm.stl",
@@ -480,14 +487,21 @@
       "SHARP_INTERNAL_CORNERS",
       "DEEP_HOLE"
      ]
-    },
+    }
+   },
+   "note": "F8 remains open: the modeled flat blind-hole bottom causes a phantom sharp-corner finding."
+  },
+  {
+   "file": "control-hole-8mmx16mm.stl",
+   "class": "small-feature-geometry-control",
+   "expect": {
     "fdm": {
      "codes_absent": [
       "SMALL_FEATURES"
      ]
     }
    },
-   "note": "F8: dia 8 x 16 blind hole, ratio 2 (DEEP_HOLE absent is hard and green). The flat hole bottom's tessellation edges count as >=10 sharp concave edges, so SHARP_INTERNAL_CORNERS fires on any modeled blind hole - but a drilled hole bottom is a 118 deg conical point, not a sharp corner. F13: an 8mm blind hole's chords (0.3925mm) are under the 0.4 FDM threshold: SMALL_FEATURES fires on a hole no vendor would flag."
+   "note": "F13 control: the 8mm hole clears FDM resolution; polygon chords on the cylindrical wall are not physical small features."
   },
   {
    "file": "trap-uchannel-2mm-formed.stl",

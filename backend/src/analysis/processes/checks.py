@@ -145,12 +145,37 @@ def check_small_features(
 ) -> list[Issue]:
     if len(ctx.edge_lengths) == 0:
         return []
-    small = ctx.edge_lengths[ctx.edge_lengths < min_size_mm]
-    if len(small) == 0:
+    candidate = ctx.edge_lengths < min_size_mm
+
+    # Tessellation chords around an otherwise printable cylindrical hole are
+    # export resolution, not a physical feature size. Exclude edges attached to
+    # a measured cylinder whose diameter already clears this process threshold.
+    # Truly undersized holes remain candidates because their measured diameter
+    # does not clear the threshold.
+    if np.any(candidate) and ctx.features:
+        from src.analysis.features.base import FeatureKind
+
+        try:
+            inverse = np.asarray(ctx.mesh.edges_unique_inverse, dtype=np.int64)
+            face_edges = inverse.reshape((-1, 3))
+            for feature in ctx.features:
+                if (
+                    feature.kind not in {FeatureKind.CYLINDER_HOLE, FeatureKind.CYLINDER_BOSS}
+                    or feature.radius is None
+                    or 2.0 * float(feature.radius) < min_size_mm
+                ):
+                    continue
+                faces = np.asarray(feature.face_indices, dtype=np.int64)
+                faces = faces[(faces >= 0) & (faces < len(face_edges))]
+                if len(faces):
+                    candidate[np.unique(face_edges[faces].ravel())] = False
+        except Exception:
+            logger.warning("small-feature cylinder filtering failed", exc_info=True)
+
+    small = ctx.edge_lengths[candidate]
+    if len(small) < 3:
         return []
     pct = len(small) / len(ctx.edge_lengths) * 100
-    if pct < 5:
-        return []  # not significant
     smallest = float(small.min())
     return [Issue(
         code="SMALL_FEATURES",
