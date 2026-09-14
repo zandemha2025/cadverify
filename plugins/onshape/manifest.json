@@ -1,0 +1,22 @@
+{
+  "name": "ProofShape for Onshape",
+  "status": "m2-adapter",
+  "entryPoint": "panel/index.html",
+  "actionLabel": "Check with ProofShape",
+  "supportedHost": "Onshape",
+  "permissions": ["read_current_document", "export_step"],
+  "oauth": {
+    "flow": "authorization_code",
+    "authorizationUrl": "https://oauth.onshape.com/oauth/authorize",
+    "tokenUrl": "https://oauth.onshape.com/oauth/token",
+    "scopes": ["OAuth2Read", "OAuth2Write"],
+    "secretHandling": "Client secret and ProofShape API key stay on the loopback relay (server/oauth-relay.mjs) or the hosting service; they are never shipped to other users."
+  },
+  "stepExport": {
+    "partEndpoint": "POST /api/partstudios/d/{did}/{wv}/{wvid}/e/{eid}/translations (formatName=STEP, partIds)",
+    "studioEndpoint": "POST /api/partstudios/d/{did}/{wv}/{wvid}/e/{eid}/export/step",
+    "poll": "GET /api/translations/{tid} until requestState DONE | FAILED",
+    "download": "GET /api/documents/d/{did}/externaldata/{fid}"
+  },
+  "note": "M2 adapter: real extension-context parsing, OAuth2 flow, active-part STEP export and a loopback install/run relay, all unit-tested with mocked Onshape API responses. Not yet installed against a live Onshape document - no live receipts, not published. Status stays m2-adapter until a real part runs through a real Onshape session."
+}

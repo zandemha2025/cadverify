@@ -1,0 +1,8 @@
+{
+  "name": "@proofshape/plugins",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test 'core/test/*.test.js' 'onshape/test/*.test.js'"
+  }
+}

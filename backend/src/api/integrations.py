@@ -32,6 +32,7 @@ from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
 from src.services import connector_credentials_service as creds
 from src.services import integration_service as svc
+from src.services.cad_connector_sdk import HOST_PROGRAM
 
 router = APIRouter(tags=["integrations"])
 require_integration_admin = require_org_role(OrgRole.admin)
@@ -101,6 +102,17 @@ async def list_connectors(
     user: AuthedUser = Depends(require_role(Role.viewer)),
 ):
     return {"connectors": svc.list_connectors()}
+
+
+@router.get("/cad-hosts")
+@limiter.limit("120/hour;1000/day")
+async def list_cad_hosts(
+    request: Request,
+    response: Response,
+    user: AuthedUser = Depends(require_role(Role.viewer)),
+):
+    """Return the truthful CAD-host support matrix for connector clients."""
+    return {"hosts": [entry.as_public_dict() for entry in HOST_PROGRAM]}
 
 
 @router.get("/credential-profiles")
