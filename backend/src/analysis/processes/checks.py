@@ -158,19 +158,26 @@ def check_build_volume(
     *,
     cite: str = "",
 ) -> list[Issue]:
-    dims = ctx.info.bounding_box.dimensions
-    exceeds = []
-    for dim, limit, axis in zip(dims, max_dims_mm, ("X", "Y", "Z")):
-        if dim > limit:
-            exceeds.append(f"{axis}: {dim:.0f}mm > {limit}mm")
-    if not exceeds:
+    # Build/work envelopes allow the part to be reoriented. Axis-aligned ZIP
+    # comparisons reject valid jobs solely because the uploaded model used a
+    # different coordinate frame. For rectangular envelopes, a permutation fit
+    # exists exactly when sorted part extents fit sorted envelope extents.
+    dims = tuple(float(dim) for dim in ctx.info.bounding_box.dimensions)
+    ordered_dims = sorted(dims)
+    ordered_limits = sorted(float(limit) for limit in max_dims_mm)
+    if all(dim <= limit for dim, limit in zip(ordered_dims, ordered_limits)):
         return []
+    exceeds = [
+        f"{dim:.0f}mm > {limit:.0f}mm"
+        for dim, limit in zip(ordered_dims, ordered_limits)
+        if dim > limit
+    ]
     return [Issue(
         code="EXCEEDS_BUILD_VOLUME",
         severity=Severity.ERROR,
         message=(
-            f"Part exceeds build envelope for {process.value}: "
-            + ", ".join(exceeds) + f". {cite}"
+            f"Part does not fit the {process.value} build envelope in any "
+            f"axis-aligned rotation: " + ", ".join(exceeds) + f". {cite}"
         ),
         process=process,
         fix_suggestion="Scale down, split part, or use a larger machine.",

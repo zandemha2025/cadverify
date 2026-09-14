@@ -367,7 +367,7 @@
   },
   {
    "file": "trap-buildvolume-rotated-fit-350x200x100.stl",
-   "class": "KNOWN-GAP",
+   "class": "build-volume-rotation-control",
    "expect": {
     "fdm": {
      "codes_absent": [
@@ -379,7 +379,7 @@
   },
   {
    "file": "trap-turning-volume-rotated-x300.stl",
-   "class": "KNOWN-GAP",
+   "class": "build-volume-rotation-control",
    "expect": {
     "cnc_turning": {
      "codes_absent": [
