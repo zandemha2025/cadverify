@@ -38,3 +38,5 @@ f2f188a1000ffa55df5af90838de0d5a4c970dd13cd865ceaa2e7bcc3b38b567  trap-mjf-rod-1
 dd4be9bc3b69029506e42115b0b383792d1b69362ca9478ffc059856f597d7a5  trap-mjf-build-400mm.stl
 4d6f5449ef6a0cfe996191c16f5a29ab8b51b1fbf5fcc9d3ae2d0d5e8a09d0e6  control-draft-7deg.stl
 412eef7ded69d557f15e9b744af1ae3cb4044e447a06015d275478b9ebb300e9  trap-ded-build-1600mm.stl
+18e9ec4147d03f02cbf58306dd18c6dd57a9d48e3f3bbdd0d1c5d7bad692d97c  trap-pocket-undersized-r1-fillets.stl
+87f5c1d34c63de3eed7470404d159e426e8a943649d1a3186d112b9b26ebf284  control-pocket-r4-fillets.stl

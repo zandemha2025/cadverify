@@ -996,6 +996,44 @@
     }
    },
    "note": "1600mm axis exceeds the 1500mm large-format DED envelope. | ded: 1600mm axis exceeds the 1500mm large-format DED envelope. | waam: 1600mm bar fits the 5m WAAM envelope (trips DED - envelope discriminator)."
+  },
+  {
+   "file": "trap-pocket-undersized-r1-fillets.stl",
+   "class": "fillet-radius",
+   "expect": {
+    "forging": {
+     "codes_trip": [
+      "MISSING_FILLETS"
+     ],
+     "severity_of": {
+      "MISSING_FILLETS": "WARNING"
+     }
+    },
+    "sand_casting": {
+     "codes_trip": [
+      "MISSING_FILLETS"
+     ],
+     "severity_of": {
+      "MISSING_FILLETS": "WARNING"
+     }
+    }
+   },
+   "note": "60x60x20 block, 28x28 through-pocket with r1.0 internal corner fillets (fitted 1.0000005mm by the repaired fillet detector). Trips forging/sand_casting 3.0mm fillet mins with measured_value=1.0. die_casting (1.0mm min) and investment_casting (0.5mm min) clear at this measured radius; no expectation written at the exact boundary (5e-7 margin is luck, not a contract)."
+  },
+  {
+   "file": "control-pocket-r4-fillets.stl",
+   "class": "fillet-radius-control",
+   "expect": {
+    "forging": {
+     "codes_trip": [
+      "MISSING_FILLETS"
+     ],
+     "severity_of": {
+      "MISSING_FILLETS": "WARNING"
+     }
+    }
+   },
+   "note": "Same pocket with r4.0 fillets: fillets are COMPLIANT (4.0 >= 3.0), so no measured trip; the qualitative MISSING_FILLETS path still fires on the pocket's sharp mouth rims (concave 90deg edges) - pinned to keep the qualitative/qualitative-only distinction loud."
   }
  ]
 }

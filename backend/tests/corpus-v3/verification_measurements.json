@@ -416,5 +416,27 @@
   "faces": 12,
   "watertight": true,
   "volume_mm3": 16000000.0
+ },
+ "trap-pocket-undersized-r1-fillets.stl": {
+  "bbox_mm": [
+   60.0,
+   60.0,
+   20.0
+  ],
+  "faces": 288,
+  "watertight": true,
+  "volume_mm3": 56337.3,
+  "fitted_internal_fillet_radius_mm": 1.0000005
+ },
+ "control-pocket-r4-fillets.stl": {
+  "bbox_mm": [
+   60.0,
+   60.0,
+   20.0
+  ],
+  "faces": 288,
+  "watertight": true,
+  "volume_mm3": 56596.3,
+  "fitted_internal_fillet_radius_mm": 4.0000002
  }
 }

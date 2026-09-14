@@ -756,14 +756,49 @@ def check_fillet_requirements(
     *,
     cite: str = "",
 ) -> list[Issue]:
+    from src.analysis.features.base import FeatureKind
+
+    # Measured path: detected CONCAVE fillets carry fitted radii (features/
+    # fillets.py). Any internal fillet measurably below the minimum trips
+    # with the fitted radius as measured_value - geometry, not inference.
+    # Fillet at exactly the minimum clears (radius < min trips).
+    undersized_radii = [
+        float(f.radius)
+        for f in (getattr(ctx, "features", None) or [])
+        if f.kind == FeatureKind.FILLET
+        and f.radius is not None
+        and f.metadata.get("convex") is False
+        and float(f.radius) < min_fillet_mm
+    ]
     if len(ctx.dihedral_angles_rad) == 0:
+        sharp_count = 0
+    else:
+        # An "internal corner" is a CONCAVE sharp edge — convex edges (a box's
+        # outer corners) and coplanar seams need no fillet for material flow.
+        sharp = (ctx.dihedral_angles_rad < np.radians(120)) & ctx.concave_mask
+        sharp_count = int(np.sum(sharp))
+    if undersized_radii:
+        worst = min(undersized_radii)
+        message = (
+            f"{len(undersized_radii)} internal fillet(s) below {min_fillet_mm}mm "
+            f"(smallest fitted radius {worst:.2f}mm) for {process.value} flow "
+            f"and stress distribution."
+        )
+        if sharp_count >= 5:
+            message += f" Additionally {sharp_count} fully sharp internal corners."
+        return [Issue(
+            code="MISSING_FILLETS",
+            severity=Severity.WARNING,
+            message=message,
+            process=process,
+            measured_value=worst,
+            required_value=min_fillet_mm,
+            fix_suggestion=f"Increase internal fillets to >= {min_fillet_mm}mm. {cite}",
+            citation=parse_citation(cite),
+        )]
+    if sharp_count < 5:
         return []
-    # An "internal corner" is a CONCAVE sharp edge — convex edges (a box's
-    # outer corners) and coplanar seams need no fillet for material flow.
-    sharp = (ctx.dihedral_angles_rad < np.radians(120)) & ctx.concave_mask
-    count = int(np.sum(sharp))
-    if count < 5:
-        return []
+    count = sharp_count
     return [Issue(
         code="MISSING_FILLETS",
         severity=Severity.WARNING,
