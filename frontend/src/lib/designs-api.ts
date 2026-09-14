@@ -248,7 +248,7 @@ export function designStepUrl(id: string): string {
 
 export function designRevisionPreviewUrl(
   designId: string,
-  revision: DesignRevision,
+  revision: Pick<DesignRevision, "number" | "status" | "geometry_hash">,
 ): string | null {
   if (revision.status !== "ready" || !revision.geometry_hash) return null;
   return `${API_BASE}/designs/${encodeURIComponent(designId)}/revisions/${revision.number}/preview.stl?hash=${revision.geometry_hash}`;

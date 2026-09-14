@@ -960,7 +960,7 @@ export default function DesignsPage() {
                                 </span>
                               </div>
                               {side.links.preview ? (
-                                <CadViewer src={side.links.preview} surface="instrument" className="h-[260px]" />
+                                <CadViewer src={designRevisionPreviewUrl(selected.id, side)!} surface="instrument" className="h-[260px]" />
                               ) : (
                                 <div className="flex h-[260px] items-center justify-center rounded-[var(--radius)] border border-border bg-muted text-sm text-muted-foreground">
                                   Preview unavailable for this revision
