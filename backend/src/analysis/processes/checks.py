@@ -804,6 +804,13 @@ def check_residual_stress(
         area = float(ctx.face_areas[fg].sum())
         if area / total < 0.15:
             continue
+        # A high percentage on a tiny part is not a "large flat section".
+        # Keep the relative guard for shape significance, but also require a
+        # physically meaningful horizontal area before warning about curl.
+        # 400 mm² is a conservative 20 x 20 mm unsupported patch; the 10 mm
+        # control cube's 100 mm² face must stay clear.
+        if area < 400.0:
+            continue
         avg_normal = ctx.normals[fg].mean(axis=0)
         if abs(avg_normal[2]) > 0.95:  # nearly horizontal
             return [Issue(
