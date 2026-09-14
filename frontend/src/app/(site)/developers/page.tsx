@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import type { CSSProperties } from "react";
 import Link from "next/link";
-import { backendOrigin } from "@/lib/api-base";
+import { backendOrigin, backendUrl } from "@/lib/api-base";
 // Import SiteShell from its module path rather than the `@/components/site`
 // barrel: the barrel re-exports `lib/site/scroll-acts` (React hooks, no
 // "use client" directive), which would pull that client-only module into this
@@ -294,9 +294,12 @@ export default function DevelopersPage() {
           <Link href="/signup" className="st-pill st-pill-solid" style={{ padding: "14px 32px", fontSize: 15 }}>
             Get an API key
           </Link>
-          <Link href="/docs" className="st-pill st-pill-ghost" style={{ padding: "14px 32px", fontSize: 15 }}>
+          <a href={backendUrl("/docs")} className="st-pill st-pill-ghost" style={{ padding: "14px 32px", fontSize: 15 }}>
             Full API reference
-          </Link>
+          </a>
+          <a href={backendUrl("/openapi.json")} className="st-pill st-pill-ghost" style={{ padding: "14px 32px", fontSize: 15 }}>
+            OpenAPI JSON
+          </a>
         </div>
       </section>
     </SiteShell>
