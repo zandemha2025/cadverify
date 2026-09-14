@@ -97,15 +97,28 @@ def implausible_volume_warning(volume_cm3, max_bbox_mm, assumed_units: str = "mm
 
 
 def detect_25_4_scale_ratio(dimensions_mm):
-    """Flag a likely inch/mm boundary without changing geometry."""
+    """Flag dimensions fitting a 1/8-inch grid better than whole millimetres.
+
+    STL is unitless, so this is deliberately only a confirmation prompt. The
+    1/8-inch grid catches common fractional stock sizes (for example 2 x 1 x
+    1/2 inch) while the aggregate margin keeps ordinary mm-rounded geometry out.
+    Geometry is never rescaled from this heuristic.
+    """
     dims = [abs(float(v)) for v in dimensions_mm if float(v) > 0]
     if not dims:
         return None
-    inch_residual = [abs(v / MM_PER_INCH - round(v / MM_PER_INCH)) for v in dims]
+    eighth_inch_mm = MM_PER_INCH / 8.0
+    inch_residual_mm = [abs(v - round(v / eighth_inch_mm) * eighth_inch_mm) for v in dims]
     mm_residual = [abs(v - round(v)) for v in dims]
-    if not all(r <= 0.002 for r in inch_residual):
+    # Tessellation/float noise can move measured bounds slightly. Thirty microns
+    # is narrow enough to represent authored nominal dimensions, not vague fit.
+    if not all(r <= 0.03 for r in inch_residual_mm):
         return None
-    if not all(mm > inch * MM_PER_INCH + 0.05 for mm, inch in zip(mm_residual, inch_residual)):
+    # Require a clear aggregate win over whole-mm rounding, plus at least two
+    # independently informative axes. This rejects boxes such as 10 x 20 x 30.
+    advantage = sum(mm_residual) - sum(inch_residual_mm)
+    informative_axes = sum(mm - inch >= 0.08 for mm, inch in zip(mm_residual, inch_residual_mm))
+    if advantage < 0.20 or informative_axes < 2:
         return None
     return {
         "unit_flag": "suspicious_scale", "ratio": 25.4,

@@ -12,6 +12,16 @@ export interface AnalysisFailureCopy {
 export function analysisFailureCopy(reason: string | null | undefined): AnalysisFailureCopy {
   const value = reason?.trim() ?? "";
 
+  if (/this STL looks truncated or corrupt - re-export it/i.test(value)) {
+    return {
+      kind: "unreadable",
+      title: "We couldn’t read this STL.",
+      explanation: "The file ended before its declared triangle data was complete.",
+      action: "Re-export the original part as a clean STL, then upload that export.",
+      toast: "this STL looks truncated or corrupt - re-export it",
+    };
+  }
+
   if (/capacity|concurrent-analysis|rate limit|rate-limit|too many requests|retry shortly/i.test(value)) {
     return {
       kind: "capacity",

@@ -60,3 +60,9 @@ test("unknown failures do not invent a geometry diagnosis", () => {
   assert.match(copy.title, /could not finish/i);
   assert.doesNotMatch(copy.title + copy.explanation, /geometry|tessellat/i);
 });
+
+test("truncated STL keeps the requested plain client refusal", () => {
+  const copy = analysisFailureCopy("this STL looks truncated or corrupt - re-export it");
+  assert.equal(copy.kind, "unreadable");
+  assert.equal(copy.toast, "this STL looks truncated or corrupt - re-export it");
+});
