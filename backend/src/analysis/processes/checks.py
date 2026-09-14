@@ -595,10 +595,24 @@ def check_internal_radii(
     if len(ctx.concave_mask) == 0 or len(ctx.dihedral_angles_rad) == 0:
         return []
     sharp = ctx.concave_mask & (ctx.dihedral_angles_rad > np.radians(30))
+
+    # One real pocket is enough to be unmachinable.  The old count floor
+    # silently missed a single rectangular pocket (eight tessellated concave
+    # edges), while dense tessellation around a round hole could exceed any
+    # count floor and create a false warning.  Suppress only sub-tool-radius
+    # mesh chords, then treat any remaining concave edge as physical evidence.
+    try:
+        adjacency_edges = np.asarray(ctx.mesh.face_adjacency_edges, dtype=int)
+        vertices = np.asarray(ctx.mesh.vertices, dtype=float)
+        edge_vectors = vertices[adjacency_edges[:, 0]] - vertices[adjacency_edges[:, 1]]
+        edge_lengths = np.linalg.norm(edge_vectors, axis=1)
+        if len(edge_lengths) == len(sharp):
+            sharp &= edge_lengths >= min_radius_mm
+    except (AttributeError, IndexError, TypeError, ValueError):
+        logger.warning("internal-radius edge filtering unavailable", exc_info=True)
+
     sharp_count = int(np.sum(sharp))
-    # One ordinary square pocket contributes eight concave edge segments. A
-    # count floor of ten silently missed that common uncuttable geometry.
-    if sharp_count < 4:
+    if sharp_count == 0:
         return []
     return [Issue(
         code="SHARP_INTERNAL_CORNERS",
