@@ -59,3 +59,10 @@ test("HOME v2 does not inherit old multi-route navigation copy", () => {
   assert.match(source, /spec\.navSignals \?\? desktopNavSignals/);
   assert.equal((source.match(/navSignals:/g) || []).length, 1);
 });
+
+
+test("HOME v2 does not claim unsupported assembly ingestion or cloud zero-egress", () => {
+  assert.doesNotMatch(source, /native assembly|assembly (?:file|data|ingestion)/i);
+  assert.doesNotMatch(source, /zero network egress|cloud[^\n;]*zero[^\n;]*egress/i);
+  assert.match(source, /register: "home-v2"/);
+});
