@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ProofShapeClient, ProofShapeApiError } from "../src/client.js";
 
-const SOURCE = { host: "onshape", workspaceId: "w1", documentId: "d1", revisionId: "r1", elementId: "e1" };
+const SOURCE = { host: "onshape", workspaceId: "w1", documentId: "d1", revisionId: "m1", microversionId: "m1", elementId: "e1", partId: "p1", configuration: "Default" };
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
@@ -74,4 +74,11 @@ test("flattens process_scores issues when priority_fixes is absent", async () =>
   const verdict = await client.validateStep({ bytes: new Blob(["STEP"]), source: SOURCE });
   assert.equal(verdict.badge, "FAIL");
   assert.deepEqual(verdict.issues, ["Trapped volume (Fix: Add drain)"]);
+});
+
+
+test("refuses Onshape export without immutable part and microversion binding", async () => {
+  const client = new ProofShapeClient({ baseUrl: "https://staging.example", apiKey: "cv_live_test", fetchImpl: async () => json({}) });
+  await assert.rejects(() => client.validateStep({ bytes: new Blob(["STEP"]), source: { ...SOURCE, partId: undefined } }), /element, part, and immutable microversion/);
+  await assert.rejects(() => client.validateStep({ bytes: new Blob(["STEP"]), source: { ...SOURCE, revisionId: "workspace-head" } }), /revision must equal/);
 });

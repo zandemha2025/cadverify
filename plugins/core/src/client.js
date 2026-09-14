@@ -74,6 +74,14 @@ export class ProofShapeClient {
     if (!source?.host || !source?.workspaceId || !source?.documentId || !source?.revisionId) {
       throw new TypeError("source host, workspace, document, and revision identity are required");
     }
+    if (source.host === "onshape") {
+      if (!source.elementId || !source.partId || !source.microversionId) {
+        throw new TypeError("Onshape export requires element, part, and immutable microversion identity");
+      }
+      if (source.revisionId !== source.microversionId) {
+        throw new TypeError("Onshape revision must equal the exported immutable microversion");
+      }
+    }
     if (!/\.(?:step|stp)$/i.test(filename)) {
       throw new TypeError("host connector must export STEP/STP, never a native CAD document");
     }

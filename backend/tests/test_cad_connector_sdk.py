@@ -12,7 +12,7 @@ from src.services.cad_connector_sdk import (
 
 def _envelope(payload: bytes, **overrides):
     values = {
-        "source": CadSourceIdentity(CadHost.ONSHAPE, "w1", "d1", "r1", "e1"),
+        "source": CadSourceIdentity(CadHost.ONSHAPE, "w1", "d1", "m1", "e1", "Default", "p1", "m1"),
         "filename": "bracket.step",
         "media_type": "application/step",
         "sha256": hashlib.sha256(payload).hexdigest(),
@@ -31,7 +31,9 @@ def test_export_envelope_binds_payload_revision_and_neutral_format():
     {"sha256": "0" * 64},
     {"byte_count": 2},
     {"filename": "bracket.sldprt"},
-    {"source": CadSourceIdentity(CadHost.ONSHAPE, "w1", "d1", "", "e1")},
+    {"source": CadSourceIdentity(CadHost.ONSHAPE, "w1", "d1", "", "e1", "Default", "p1", "m1")},
+    {"source": CadSourceIdentity(CadHost.ONSHAPE, "w1", "d1", "m1", "e1", "Default", None, "m1")},
+    {"source": CadSourceIdentity(CadHost.ONSHAPE, "w1", "d1", "workspace-head", "e1", "Default", "p1", "m1")},
 ])
 def test_export_envelope_refuses_unverifiable_or_native_payload(change):
     payload = b"ISO-10303-21;revision-r1;"

@@ -46,6 +46,8 @@ class CadSourceIdentity:
     revision_id: str
     element_id: str | None = None
     configuration: str | None = None
+    part_id: str | None = None
+    microversion_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -64,6 +66,11 @@ class CadExportEnvelope:
     def validate(self, payload: bytes) -> None:
         if not all((self.source.workspace_id, self.source.document_id, self.source.revision_id)):
             raise ValueError("connector export requires workspace, document, and revision identity")
+        if self.source.host == CadHost.ONSHAPE:
+            if not all((self.source.element_id, self.source.part_id, self.source.microversion_id)):
+                raise ValueError("Onshape export requires element, part, and immutable microversion identity")
+            if self.source.revision_id != self.source.microversion_id:
+                raise ValueError("Onshape revision must equal the exported immutable microversion")
         if self.suffix not in SUPPORTED_EXCHANGE_SUFFIXES:
             raise ValueError("connector export must be STL, STEP/STP, or IGES/IGS")
         if self.byte_count <= 0 or self.byte_count != len(payload):
