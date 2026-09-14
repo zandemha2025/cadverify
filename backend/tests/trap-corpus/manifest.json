@@ -456,8 +456,7 @@
         "fdm": {
           "gates_trip": [
             "trapped_volumes",
-            "overhangs",
-            "small_features"
+            "overhangs"
           ]
         }
       },
