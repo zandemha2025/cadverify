@@ -1,0 +1,16 @@
+{
+  "name": "Texas Gulf Energy",
+  "region": "US",
+  "labor_rate": 55.0,
+  "margin": 0.30,
+  "overhead": 0.16,
+  "utilization": 0.75,
+  "stock_allowance": 1.2,
+  "machine_rates": {"CNC_TURNING": 90, "CNC_3AXIS": 88, "WIRE_EDM": 75, "CNC_5AXIS": 128},
+  "material_prices": {"AISI 4130": 3.2, "AISI 4140": 3.6, "Inconel 625": 45.0, "Super Duplex 2507": 28.0, "API 13Cr": 9.0},
+  "region_multipliers": {"labor": 1.0, "material": 1.0, "tooling": 1.0},
+  "source": "Modeled exemplar - synthesized from public marketplace rate bands (Xometry/Fictiv/Protolabs quote ranges) and regional labor surveys; NOT a measured shop. For calibration coverage and UI demonstration only.",
+  "notes": "Oil-and-gas turn/mill archetype: NACE MR0175 materials, big turning, threading.",
+  "created": "2026-09-14",
+  "schema_version": 1
+}

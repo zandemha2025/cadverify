@@ -100,6 +100,55 @@ MACHINES: list[MachineProfile] = [
     MachineProfile("DMG MORI DMU 50", "DMG MORI", ProcessType.CNC_5AXIS, (500, 450, 400), notes="5-axis simultaneous"),
     MachineProfile("Haas ST-20", "Haas", ProcessType.CNC_TURNING, (254, 254, 533), notes="10-inch chuck, 4000 RPM"),
     MachineProfile("Sodick ALC600G", "Sodick", ProcessType.WIRE_EDM, (600, 400, 350), notes="Linear motor, 0.01mm accuracy"),
+
+    # ── Depth expansion v2 (2026-09-14, data-plane lane) ─────────────────
+    # Public manufacturer datasheet specs; where a process has no single
+    # "machine envelope" (molding / casting / forging cells) build_volume is a
+    # conservative max-part proxy and the notes carry the real datasheet lever.
+    # FDM
+    MachineProfile("Stratasys Fortus 450mc", "Stratasys", ProcessType.FDM, (406, 355, 406), 0.127, 0.33, 0.4, ["ABS-M30", "ULTEM 9085", "ULTEM 1010", "Nylon 12"], notes="Production FDM, 16x14x16 in, T-class tip 0.33 mm"),
+    # SLA
+    MachineProfile("Formlabs Form 4L", "Formlabs", ProcessType.SLA, (353, 196, 350), 0.025, 0.3, 0.05, ["Standard", "Tough", "Rigid", "Castable"], notes="LFD engine, 46 um XY pixel, 35.3x19.6x35.0 cm (datasheet)"),
+    MachineProfile("3D Systems ProX 800", "3D Systems", ProcessType.SLA, (650, 750, 550), 0.05, 0.15, 0.1, ["Accura 60", "Accura 25", "Accura Xtreme"], notes="Production SLA, 650x750x550 mm (datasheet)"),
+    # DLP
+    MachineProfile("Stratasys Origin One", "Stratasys", ProcessType.DLP, (192, 108, 370), 0.05, 0.15, 0.05, ["Loctite IND405", "Somos BioSafe", "BASF RG35"], notes="P3 programmable photopolymerization, 192x108x370 mm (datasheet)"),
+    # SLS
+    MachineProfile("EOS P 770", "EOS", ProcessType.SLS, (700, 380, 580), 0.06, 0.12, 0.15, ["PA12", "PA11", "PA-GF"], notes="Twin-laser production SLS, 700x380x580 mm (datasheet)"),
+    MachineProfile("Formlabs Fuse 1+ 30W", "Formlabs", ProcessType.SLS, (165, 165, 300), 0.11, 0.11, 0.2, ["PA12", "PA11", "TPU 90A"], notes="Benchtop SLS, fixed 110 um layer (datasheet)"),
+    # MJF
+    MachineProfile("HP Jet Fusion 4200", "HP", ProcessType.MJF, (380, 284, 380), 0.08, 0.08, 0.08, ["PA12", "PA11", "PA12-GB"], notes="Production MJF, 80 um layer (datasheet)"),
+    # Metal AM
+    MachineProfile("EOS M 290", "EOS", ProcessType.DMLS, (250, 250, 325), 0.02, 0.09, 0.04, ["Ti6Al4V", "Inconel 718", "SS316L", "AlSi10Mg"], notes="Workhorse DMLS, 250x250x325 mm (datasheet)"),
+    MachineProfile("Colibrium M2 Series 5", "Colibrium Additive (GE)", ProcessType.DMLS, (250, 250, 350), 0.02, 0.1, 0.04, ["Ti6Al4V", "CoCr", "Inconel 718"], notes="Twin-laser, 250x250x350 mm (datasheet)"),
+    MachineProfile("Nikon SLM 280", "Nikon SLM Solutions", ProcessType.SLM, (280, 280, 365), 0.02, 0.09, 0.04, ["Ti6Al4V", "Inconel 718", "AlSi10Mg", "SS316L"], notes="Twin-laser, 280x280x365 mm (datasheet)"),
+    MachineProfile("GE Arcam EBM Spectra H", "GE Additive", ProcessType.EBM, (250, 250, 430), 0.05, 0.2, 0.1, ["Ti6Al4V", "TiAl"], notes="Cylindrical envelope dia 250x430 mm, high-temp alloys (datasheet)"),
+    MachineProfile("HP Metal Jet S100", "HP", ProcessType.BINDER_JET, (430, 309, 200), 0.05, 0.1, 0.12, ["SS316L", "17-4 PH SS"], notes="Metal binder jet, 430x309x200 mm (datasheet)"),
+    # DED / WAAM
+    MachineProfile("Optomec LENS 850-R", "Optomec", ProcessType.DED, (900, 1500, 900), None, None, None, ["Ti6Al4V", "Inconel 718", "SS316L"], notes="Powder-fed DED, 3 kW IPG fiber, 5-axis, 900x1500x900 mm working volume (manufacturer page, verified 2026-09-14); layer thickness application-dependent ~0.3-1.0 mm"),
+    MachineProfile("DMG MORI Lasertec 65 DED", "DMG MORI", ProcessType.DED, (735, 650, 560), None, None, None, ["SS316L", "Inconel 718", "Tool steel"], notes="Hybrid powder-nozzle DED + 5-axis milling, 735x650x560 mm (datasheet)"),
+    MachineProfile("Sciaky EBAM 110", "Sciaky", ProcessType.WAAM, (1778, 1194, 1600), None, None, None, ["Ti6Al4V", "Inconel 718", "SS316L"], notes="Wire-fed electron-beam AM; base work envelope 70x47x63 in = 1778x1194x1600 mm (manufacturer tech data, verified 2026-09-14), up to 42 kW gun"),
+    # Injection molding (envelope = conservative max-part proxy from tie-bar spacing; clamp force is the real lever, in notes)
+    MachineProfile("Haitian Mars MA3800", "Haitian", ProcessType.INJECTION_MOLDING, (600, 600, 300), None, None, None, ["ABS (Molded)", "PP (Molded)", "PA66-GF30"], notes="380 t clamp, 70 mm screw, 730 mm tie-bar spacing (datasheet, verified 2026-09-14); envelope is max-part proxy from tie-bar spacing"),
+    MachineProfile("Arburg Allrounder 570 A", "Arburg", ProcessType.INJECTION_MOLDING, (450, 450, 250), None, None, None, ["ABS (Molded)", "PC (Polycarbonate)", "PP (Molded)"], notes="2000 kN clamp, 570 mm tie-bar class (datasheet); envelope is max-part proxy"),
+    MachineProfile("Engel victory 500", "Engel", ProcessType.INJECTION_MOLDING, (700, 700, 400), None, None, None, ["ABS (Molded)", "PP (Molded)", "PA66-GF30", "PC (Polycarbonate)"], notes="500 US t class tie-bar-less clamp; large platen for its tonnage; envelope is max-part proxy"),
+    # Die casting (locking force is the real lever, in notes; envelope = structural-part proxy)
+    MachineProfile("Buhler Carat 140", "Buhler", ProcessType.DIE_CASTING, (1200, 1200, 700), None, None, None, ["A356 Aluminum", "Zinc Alloy (Zamak 3)"], notes="14,000 kN two-platen locking force (Buhler Carat series 10,500-92,000 kN, verified 2026-09-14); giga/structural castings; envelope is part proxy"),
+    MachineProfile("Buhler Evolution 420 D", "Buhler", ProcessType.DIE_CASTING, (600, 600, 400), None, None, None, ["A356 Aluminum", "Zinc Alloy (Zamak 3)"], notes="4,200 kN locking force class; mid-size cold chamber; envelope is part proxy"),
+    # Casting / forging cells (no single machine envelope - honest cell profiles)
+    MachineProfile("Vacuum investment-casting cell", "(process cell)", ProcessType.INVESTMENT_CASTING, (600, 600, 800), None, None, None, ["17-4 PH (Cast)", "Inconel 718", "A356 Aluminum"], notes="Cell profile, not one machine: shell line + vacuum pour; envelope is typical aerospace/structural pour envelope"),
+    MachineProfile("Jobbing sand-casting cell", "(process cell)", ProcessType.SAND_CASTING, (2000, 1500, 1000), None, None, None, ["Ductile Iron", "A356 Aluminum"], notes="Cell profile, not one machine: no-bake/green-sand jobbing foundry; envelope is typical flask envelope"),
+    MachineProfile("20 MN open-die forging press", "(process cell)", ProcessType.FORGING, (1500, 800, 800), None, None, None, ["AISI 4130", "7075-T6 Aluminum", "Ti6Al4V (Wrought)"], notes="Cell profile: 2,000 t open-die press + manipulator; envelope is typical billet/preform envelope"),
+    # Sheet metal
+    MachineProfile("Trumpf TruLaser 3030 fiber", "Trumpf", ProcessType.SHEET_METAL, (3000, 1500, 25), None, None, None, ["Mild Steel", "304 SS (Sheet)", "5052 Aluminum (Sheet)"], notes="Fiber laser, 3000x1500 mm sheet (datasheet); Z field used as max cut thickness: 25 mm mild steel, 20 mm stainless, 20 mm aluminum class"),
+    MachineProfile("Amada HG-1003 ATC", "Amada", ProcessType.SHEET_METAL, (3000, 500, 500), None, None, None, ["Mild Steel", "304 SS (Sheet)", "5052 Aluminum (Sheet)", "Copper C110 (Sheet)"], notes="100 t x 3 m press brake with automatic tool change; envelope = max bend length x typical open height x typical stroke"),
+    # CNC depth
+    MachineProfile("Haas VF-4", "Haas", ProcessType.CNC_3AXIS, (1270, 508, 635), notes="50x20x25 in, 8100 RPM"),
+    MachineProfile("Tormach 1100M", "Tormach", ProcessType.CNC_3AXIS, (460, 280, 262), notes="Prosumer VMC, 18x11x10.25 in"),
+    MachineProfile("Hermle C 400", "Hermle", ProcessType.CNC_5AXIS, (850, 700, 600), notes="5-axis simultaneous, 850x700x600 mm (datasheet)"),
+    MachineProfile("Haas UMC-750", "Haas", ProcessType.CNC_5AXIS, (762, 508, 508), notes="30x20x20 in trunnion 5-axis"),
+    MachineProfile("Mazak QT-200", "Mazak", ProcessType.CNC_TURNING, (380, 380, 540), notes="8-inch chuck class, max dia ~380 mm, bar capacity 65 mm"),
+    MachineProfile("Haas TL-1", "Haas", ProcessType.CNC_TURNING, (406, 406, 762), notes="16x30 in toolroom lathe"),
+    MachineProfile("FANUC RoboCut alpha-C400iB", "FANUC", ProcessType.WIRE_EDM, (400, 300, 255), notes="400x300x255 mm travels (datasheet), +-2.5 um class"),
 ]
 
 
