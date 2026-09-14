@@ -31,6 +31,7 @@ const RELAY_HEADERS = [
   "x-ratelimit-remaining",
   "x-ratelimit-reset",
   "retry-after",
+  "server-timing",
   // Preview-mesh provenance (honest decimation readout for the Verify stage).
   "x-mesh-original-faces",
   "x-mesh-preview-faces",
