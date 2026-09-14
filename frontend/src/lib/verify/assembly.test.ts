@@ -68,3 +68,43 @@ test("defaultPartOfInterest falls back to largest when all are fasteners", () =>
 test("defaultPartOfInterest returns null for empty", () => {
   assert.equal(defaultPartOfInterest([]), null);
 });
+
+test("probeAssembly refuses a backend assembly parse error instead of falling back", async () => {
+  const { probeAssembly } = await import("./assembly.ts");
+  const post = async () => new Response(
+    JSON.stringify({ detail: "Licensed reader required; export STEP AP242." }),
+    { status: 400, headers: { "content-type": "application/json" } },
+  );
+  const outcome = await probeAssembly(new File(["ISO-10303-21"], "gearbox.step"), post);
+  assert.equal(outcome.kind, "refused");
+  if (outcome.kind === "refused") assert.match(outcome.action, /export STEP AP242/i);
+});
+
+test("probeAssembly permits single-part fallback only after explicit classification", async () => {
+  const { probeAssembly } = await import("./assembly.ts");
+  const post = async () => new Response(JSON.stringify({
+    kind: "single_part",
+    part_count: 1,
+    parts: [],
+  }), { status: 200, headers: { "content-type": "application/json" } });
+  const outcome = await probeAssembly(new File(["ISO-10303-21"], "bracket.step"), post);
+  assert.deepEqual(outcome, { kind: "single_part" });
+});
+
+test("probeAssembly refuses an empty preview for a confirmed multi-solid assembly", async () => {
+  const { probeAssembly } = await import("./assembly.ts");
+  let call = 0;
+  const post = async () => {
+    call += 1;
+    if (call === 1) {
+      return new Response(JSON.stringify({ kind: "assembly", part_count: 2, parts: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response(new Blob([]), { status: 200 });
+  };
+  const outcome = await probeAssembly(new File(["ISO-10303-21"], "gearbox.step"), post);
+  assert.equal(outcome.kind, "refused");
+  if (outcome.kind === "refused") assert.match(outcome.title, /preview was empty/i);
+});
