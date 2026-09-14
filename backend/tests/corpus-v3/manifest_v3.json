@@ -23,9 +23,14 @@
      "codes_trip": [
       "TRAPPED_VOLUME"
      ]
+    },
+    "ebm": {
+     "codes_trip": [
+      "TRAPPED_VOLUME"
+     ]
     }
    },
-   "note": "Sealed hollow squat cylinder (outer r20 h15, cavity r17 h9). Internal ceiling is a true downward concave pocket: cupping positive control. Fully enclosed cavity: trapped-volume positive control for both processes. | MJF: Sealed cavity - MJF powder trap."
+   "note": "Sealed hollow squat cylinder (outer r20 h15, cavity r17 h9). Internal ceiling is a true downward concave pocket: cupping positive control. Fully enclosed cavity: trapped-volume positive control for both processes. | MJF: Sealed cavity - MJF powder trap. | EBM: Sealed cavity - powder trap."
   },
   {
    "file": "trap-buildvolume-true-exceed-350x310x100.stl",
@@ -55,9 +60,17 @@
      "codes_trip": [
       "INSUFFICIENT_DRAFT"
      ]
+    },
+    "forging": {
+     "codes_trip": [
+      "INSUFFICIENT_DRAFT"
+     ],
+     "severity_of": {
+      "INSUFFICIENT_DRAFT": "ERROR"
+     }
     }
    },
-   "note": "40mm-tall frustum, 0.5 deg wall draft. Below the 1.0 deg IM/die-cast minimum; must trip."
+   "note": "40mm-tall frustum, 0.5 deg wall draft. Below the 1.0 deg IM/die-cast minimum; must trip. | Forging: 0.5deg wall draft < FIA 5deg external minimum."
   },
   {
    "file": "control-draft-1p5deg.stl",
@@ -72,9 +85,17 @@
      "codes_absent": [
       "INSUFFICIENT_DRAFT"
      ]
+    },
+    "forging": {
+     "codes_trip": [
+      "INSUFFICIENT_DRAFT"
+     ],
+     "severity_of": {
+      "INSUFFICIENT_DRAFT": "ERROR"
+     }
     }
    },
-   "note": "Same frustum at 1.5 deg draft: above the 1.0 deg minimum by 0.5 deg. Pairs with trap-draft-0p5deg as the precision test for the draft gate."
+   "note": "Same frustum at 1.5 deg draft: above the 1.0 deg minimum by 0.5 deg. Pairs with trap-draft-0p5deg as the precision test for the draft gate. | Forging: 1.5deg clears die casting but still fails FIA 5deg - process-threshold discriminator."
   },
   {
    "file": "trap-tshape-undercut.stl",
@@ -95,9 +116,17 @@
      "severity_of": {
       "UNDERCUT": "WARNING"
      }
+    },
+    "forging": {
+     "codes_trip": [
+      "UNDERCUT"
+     ],
+     "severity_of": {
+      "UNDERCUT": "ERROR"
+     }
     }
    },
-   "note": "20x20x40 stem + 60x60x10 cap (unioned). Cap underside annulus is unreachable from +Z: true 3-axis undercut, 5-axis warning."
+   "note": "20x20x40 stem + 60x60x10 cap (unioned). Cap underside annulus is unreachable from +Z: true 3-axis undercut, 5-axis warning. | Forging: T-shape undercut - die cannot open (FIA: no undercuts)."
   },
   {
    "file": "control-stepped-shaft-noundercut.stl",
@@ -107,9 +136,14 @@
      "codes_absent": [
       "UNDERCUT"
      ]
+    },
+    "forging": {
+     "codes_absent": [
+      "UNDERCUT"
+     ]
     }
    },
-   "note": "r30 base + r15 upper, unioned so no internal artifact faces. Every downward-facing region is reachable base bottom or the shoulder faces up: no 3-axis undercut. SHARP_INTERNAL_CORNERS fires at the shoulder and is accepted milling truth (not asserted either way)."
+   "note": "r30 base + r15 upper, unioned so no internal artifact faces. Every downward-facing region is reachable base bottom or the shoulder faces up: no 3-axis undercut. SHARP_INTERNAL_CORNERS fires at the shoulder and is accepted milling truth (not asserted either way). | Forging: Stepped shaft: no undercut from Z."
   },
   {
    "file": "trap-pocket-grid-16-sharp-corners.stl",
@@ -175,9 +209,19 @@
      "severity_of": {
       "THIN_WALL": "ERROR"
      }
+    },
+    "ebm": {
+     "codes_trip": [
+      "THIN_WALL",
+      "SMALL_FEATURES"
+     ],
+     "severity_of": {
+      "THIN_WALL": "ERROR",
+      "SMALL_FEATURES": "WARNING"
+     }
     }
    },
-   "note": "0.2mm foil below the 0.3 code threshold. Note the message text says 'below 0.5mm min gauge' while the code trips at 0.3: threshold/message mismatch held as finding F11, not a corpus row. | MJF: 0.193mm foil vs HP MJF DG 3.1 0.5mm min wall - ERROR (>10% faces thin)."
+   "note": "0.2mm foil below the 0.3 code threshold. Note the message text says 'below 0.5mm min gauge' while the code trips at 0.3: threshold/message mismatch held as finding F11, not a corpus row. | MJF: 0.193mm foil vs HP MJF DG 3.1 0.5mm min wall - ERROR (>10% faces thin). | EBM: 0.193mm foil vs 0.7mm min wall (Arcam, larger melt pool); 0.2mm edge vs 0.3mm feature min."
   },
   {
    "file": "trap-deephole-4mmx44mm.stl",
@@ -269,9 +313,23 @@
       "EXTREME_ASPECT_RATIO",
       "TRAPPED_VOLUME"
      ]
+    },
+    "ebm": {
+     "codes_absent": [
+      "THIN_WALL",
+      "SMALL_FEATURES",
+      "OVERHANG",
+      "EXCEEDS_BUILD_VOLUME",
+      "TRAPPED_VOLUME"
+     ]
+    },
+    "forging": {
+     "codes_absent": [
+      "HIGH_RIB_RATIO"
+     ]
     }
    },
-   "note": "60mm solid cube: modulus 10.0, under both thresholds. Boundary pair with trap-cube-100mm-bulky. The 12-vs-15 divergence between the two casting processes is documented as finding F10. | MJF: Clean MJF control: 60mm cube passes every MJF check."
+   "note": "60mm solid cube: modulus 10.0, under both thresholds. Boundary pair with trap-cube-100mm-bulky. The 12-vs-15 divergence between the two casting processes is documented as finding F10. | MJF: Clean MJF control: 60mm cube passes every MJF check. | EBM: Clean EBM control: 60mm cube passes every EBM check. | Forging: 1:1 aspect clears the rib rule."
   },
   {
    "file": "trap-fragile-core-pipe.stl",
@@ -296,9 +354,19 @@
      "codes_trip": [
       "TRAPPED_VOLUME"
      ]
+    },
+    "ebm": {
+     "codes_trip": [
+      "TRAPPED_VOLUME"
+     ]
+    },
+    "forging": {
+     "codes_absent": [
+      "THIN_WALL"
+     ]
     }
    },
-   "note": "Solid r10 h100 rod containing a sealed dia 4mm x 100mm channel (two bodies). Core aspect 25:1 > 6: fragile-core trip; the sealed channel is also a trapped volume for AM. | MJF: Sealed pipe cavity, powder cannot escape."
+   "note": "Solid r10 h100 rod containing a sealed dia 4mm x 100mm channel (two bodies). Core aspect 25:1 > 6: fragile-core trip; the sealed channel is also a trapped volume for AM. | MJF: Sealed pipe cavity, powder cannot escape. | EBM: Sealed pipe cavity. | Forging: Pipe wall clears the 3mm web minimum."
   },
   {
    "file": "trap-pyramid-top-nonprismatic.stl",
@@ -379,9 +447,14 @@
      "codes_absent": [
       "TRAPPED_VOLUME"
      ]
+    },
+    "ebm": {
+     "codes_absent": [
+      "TRAPPED_VOLUME"
+     ]
     }
    },
-   "note": "Cup WITH a compliant 4mm drain hole. Green since the F1 fix (cupping requires concave downward-pocket evidence); promoted from KNOWN-GAP to hard row. | MJF: Open cup - not an enclosed cavity; 5mm drain rule does not apply."
+   "note": "Cup WITH a compliant 4mm drain hole. Green since the F1 fix (cupping requires concave downward-pocket evidence); promoted from KNOWN-GAP to hard row. | MJF: Open cup - not an enclosed cavity; 5mm drain rule does not apply. | EBM: Open cup - drain rule n/a."
   },
   {
    "file": "control-overhang-44deg.stl",
@@ -396,9 +469,14 @@
      "codes_trip": [
       "OVERHANG"
      ]
+    },
+    "ebm": {
+     "codes_absent": [
+      "OVERHANG"
+     ]
     }
    },
-   "note": "F3: underside 44 deg from vertical = 46 deg from horizontal, self-supporting per the Formlabs 19 deg-from-level citation, but sla.py's 90+19-from-up test trips it. The dlp sub-row is HARD and trips: DLP's own cite says 30 deg from vertical and 44 > 30 - the same file proving one gate's convention is cited right and the other's is not. Copied verbatim from trap-corpus v1.2."
+   "note": "F3: underside 44 deg from vertical = 46 deg from horizontal, self-supporting per the Formlabs 19 deg-from-level citation, but sla.py's 90+19-from-up test trips it. The dlp sub-row is HARD and trips: DLP's own cite says 30 deg from vertical and 44 > 30 - the same file proving one gate's convention is cited right and the other's is not. Copied verbatim from trap-corpus v1.2. | EBM: 44deg above horizontal = 136deg from up < 140deg threshold - clears EBM 50deg rule. Boundary control."
   },
   {
    "file": "trap-sla-overhang-30deg-from-horizontal.stl",
@@ -408,9 +486,17 @@
      "codes_absent": [
       "OVERHANG"
      ]
+    },
+    "ebm": {
+     "codes_trip": [
+      "OVERHANG"
+     ],
+     "severity_of": {
+      "OVERHANG": "WARNING"
+     }
     }
    },
-   "note": "F3: underside 30 deg above horizontal: above the Formlabs 19 deg minimum (should pass, citation-true) but inside the code's effective 71 deg band (trips today)."
+   "note": "F3: underside 30 deg above horizontal: above the Formlabs 19 deg minimum (should pass, citation-true) but inside the code's effective 71 deg band (trips today). | EBM: underside 30deg above horizontal = 150deg from up > 90+50 threshold (Arcam 50deg) - supports required."
   },
   {
    "file": "trap-buildvolume-rotated-fit-350x200x100.stl",
@@ -460,9 +546,26 @@
      "severity_of": {
       "TRAPPED_VOLUME": "ERROR"
      }
+    },
+    "ebm": {
+     "codes_trip": [
+      "TRAPPED_VOLUME",
+      "OVERHANG"
+     ],
+     "severity_of": {
+      "TRAPPED_VOLUME": "ERROR"
+     }
+    },
+    "forging": {
+     "codes_trip": [
+      "THIN_WALL"
+     ],
+     "severity_of": {
+      "THIN_WALL": "ERROR"
+     }
     }
    },
-   "note": "F5: a uniform 3mm-wall hollow box with a 4mm drain stays uniform after cylindrical-surface radial rays are excluded from wall-stock measurement. | MJF: Sealed hollow box, no drain >= 5mm (HP MJF DG 4.2 escape holes)."
+   "note": "F5: a uniform 3mm-wall hollow box with a 4mm drain stays uniform after cylindrical-surface radial rays are excluded from wall-stock measurement. | MJF: Sealed hollow box, no drain >= 5mm (HP MJF DG 4.2 escape holes). | EBM: Sealed box: powder trap, no 5mm drain. | Forging: Measured 2.99mm wall < FIA 3mm min web thickness - boundary trip."
   },
   {
    "file": "trap-plate-5mm-through-hole-2mm.stl",
@@ -513,9 +616,17 @@
      "codes_trip": [
       "MISSING_FILLETS"
      ]
+    },
+    "forging": {
+     "codes_trip": [
+      "MISSING_FILLETS"
+     ],
+     "severity_of": {
+      "MISSING_FILLETS": "WARNING"
+     }
     }
    },
-   "note": "F6: one 20x20x12 square pocket = 8 sharp concave edges. die_casting (floor >=5) fires MISSING_FILLETS (hard sub-row, green today); cnc_3axis (floor >=10) stays silent even though a 0.5mm-radius tool cannot cut the corners. The two floors disagree on the same geometry."
+   "note": "F6: one 20x20x12 square pocket = 8 sharp concave edges. die_casting (floor >=5) fires MISSING_FILLETS (hard sub-row, green today); cnc_3axis (floor >=10) stays silent even though a 0.5mm-radius tool cannot cut the corners. The two floors disagree on the same geometry. | Forging: Sharp internal pocket corner < FIA 3mm min corner radius (die life)."
   },
   {
    "file": "trap-single-0p3mm-rib-among-many.stl",
@@ -540,9 +651,20 @@
      "severity_of": {
       "THIN_WALL": "WARNING"
      }
+    },
+    "ebm": {
+     "codes_trip": [
+      "THIN_WALL"
+     ],
+     "codes_absent": [
+      "SMALL_FEATURES"
+     ],
+     "severity_of": {
+      "THIN_WALL": "WARNING"
+     }
     }
    },
-   "note": "F7: one real 0.3mm rib among ten 5mm ribs must trip SMALL_FEATURES even though it is less than 5% of mesh edges. | MJF: 0.286mm rib: below 0.5mm min wall (WARNING) but above 0.2mm min feature - MJF discriminator row."
+   "note": "F7: one real 0.3mm rib among ten 5mm ribs must trip SMALL_FEATURES even though it is less than 5% of mesh edges. | MJF: 0.286mm rib: below 0.5mm min wall (WARNING) but above 0.2mm min feature - MJF discriminator row. | EBM: 0.286mm rib < 0.7mm wall; single rib stays under the 5%-of-edges SMALL_FEATURES rule."
   },
   {
    "file": "control-hole-8mmx16mm.stl",
@@ -652,9 +774,17 @@
      "severity_of": {
       "EXTREME_ASPECT_RATIO": "WARNING"
      }
+    },
+    "forging": {
+     "codes_trip": [
+      "HIGH_RIB_RATIO"
+     ],
+     "severity_of": {
+      "HIGH_RIB_RATIO": "WARNING"
+     }
     }
    },
-   "note": "120x10x10 rod: 12:1 exceeds the repo 10:1 aspect threshold (WARNING); wall and build volume clear."
+   "note": "120x10x10 rod: 12:1 exceeds the repo 10:1 aspect threshold (WARNING); wall and build volume clear. | Forging: 12:1 bbox aspect > 6:1 rib height:width max (FIA 4.2)."
   },
   {
    "file": "trap-mjf-build-400mm.stl",
@@ -667,9 +797,33 @@
      "severity_of": {
       "EXCEEDS_BUILD_VOLUME": "ERROR"
      }
+    },
+    "ebm": {
+     "codes_trip": [
+      "EXCEEDS_BUILD_VOLUME"
+     ],
+     "severity_of": {
+      "EXCEEDS_BUILD_VOLUME": "ERROR"
+     }
     }
    },
-   "note": "400x100x100 bar: 400mm axis exceeds HP Jet Fusion 5200 380x284x380 envelope under the rotation-aware fit check."
+   "note": "400x100x100 bar: 400mm axis exceeds HP Jet Fusion 5200 380x284x380 envelope under the rotation-aware fit check. | EBM: 400mm axis exceeds Arcam Q20plus 350x380x380 envelope."
+  },
+  {
+   "file": "control-draft-7deg.stl",
+   "class": "draft-boundary-control",
+   "expect": {
+    "forging": {
+     "codes_absent": [
+      "INSUFFICIENT_DRAFT",
+      "UNDERCUT",
+      "MISSING_FILLETS",
+      "THIN_WALL",
+      "HIGH_RIB_RATIO"
+     ]
+    }
+   },
+   "note": "7deg drafted frustum (30mm tall, 3.68mm offset): clears every forging check. Clean control. | Forging: 7deg drafted frustum (30mm tall, 3.68mm offset): clears every forging check. Clean control."
   }
  ]
 }
