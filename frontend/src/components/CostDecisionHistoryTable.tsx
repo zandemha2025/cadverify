@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Calculator } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -79,10 +79,11 @@ export default function CostDecisionHistoryTable({ onRateLimitsUpdate }: Props) 
     [onRateLimitsUpdate]
   );
 
-  // Initial load.
-  if (!initialized && !loading) {
-    loadPage(undefined, true);
-  }
+  // Fetch after commit, never during render. Render-time state updates can be
+  // discarded/replayed by React and left a real non-empty API looking empty.
+  useEffect(() => {
+    if (!initialized && !loading) void loadPage(undefined, true);
+  }, [initialized, loading, loadPage]);
 
   const columns = useMemo<ColumnDef<CostDecisionSummary>[]>(
     () => [
