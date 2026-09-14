@@ -475,6 +475,10 @@ def check_draft_angles(
     no_draft_area = float(areas[no_draft_faces].sum())
     total_sidewall_area = float(areas[sidewall_faces].sum())
     pct = no_draft_area / max(total_sidewall_area, 1e-9) * 100
+    # Truthful measured_value: the LEAST-drafted offending sidewall, in
+    # draft degrees - compares directly to required_value (the minimum).
+    # Raw float from face normals; no rounding.
+    measured_value = float(np.min(draft[no_draft]))
     return [Issue(
         code="INSUFFICIENT_DRAFT",
         severity=Severity.ERROR,
@@ -484,6 +488,7 @@ def check_draft_angles(
         ),
         process=process,
         affected_faces=no_draft_faces.tolist(),
+        measured_value=measured_value,
         required_value=min_draft_deg,
         fix_suggestion=(
             f"Add >= {min_draft_deg}° draft to all walls in pull direction. {cite}"
@@ -602,12 +607,18 @@ def check_undercuts_from_z(
     if len(uc_faces) == 0:
         return []
     pct = len(uc_faces) / max(len(ctx.centroids), 1) * 100
+    # Truthful measured_value: total undercut surface area in mm^2 - the
+    # physical extent of the unreachable region. The rule is binary
+    # (required_value 0), so any positive area trips.
+    undercut_area = float(ctx.face_areas[uc_faces].sum())
     return [Issue(
         code="UNDERCUT",
         severity=severity,
         message=f"{len(uc_faces)} faces ({pct:.1f}%) are undercuts for {process.value}.",
         process=process,
         affected_faces=uc_faces.tolist(),
+        measured_value=undercut_area,
+        required_value=0.0,
         fix_suggestion=f"Remove undercuts or plan multi-setup machining. {cite}",
         citation=parse_citation(cite),
     )]
