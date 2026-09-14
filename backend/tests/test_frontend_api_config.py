@@ -258,6 +258,9 @@ def test_public_docs_use_live_urls_and_route_shims_exist():
     assert 'redirect("/developers")' in docs
 
     assert "backendOrigin()" in developers
+    assert 'href={backendUrl("/docs")}' in developers
+    assert 'href={backendUrl("/openapi.json")}' in developers
+    assert 'href="/docs"' not in developers
     assert "{apiOrigin}/api/v1/validate" in developers
     assert "cadvrfy-api.fly.dev" not in developers
     assert 'git clone &quot;$PROOFSHAPE_DEPLOYMENT_REPOSITORY&quot; proofshape' in developers
