@@ -26,8 +26,13 @@ class SLAAnalyzer:
         i: list[Issue] = []
         i.extend(check_wall_thickness(ctx, 0.4, self.process,
                  cite="Formlabs Form 4: 0.3mm min, 0.4mm recommended."))
-        i.extend(check_overhangs(ctx, 19.0, self.process,
-                 cite="Formlabs: 19° from horizontal without support."))
+        i.extend(check_overhangs(
+            ctx,
+            19.0,
+            self.process,
+            min_angle_from_horizontal_deg=19.0,
+            cite="Formlabs: 19° from horizontal without support.",
+        ))
         i.extend(check_small_features(ctx, 0.05, self.process,
                  cite="25µm XY resolution on Form 4."))
         i.extend(check_build_volume(ctx, (200, 125, 210), self.process,

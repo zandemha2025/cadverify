@@ -77,11 +77,22 @@ def check_overhangs(
     process: ProcessType,
     *,
     cite: str = "",
+    min_angle_from_horizontal_deg: float | None = None,
 ) -> list[Issue]:
-    """Faces whose angle from Z-up exceeds 90 + max_angle_deg need supports."""
-    if max_angle_deg >= 90.0:
-        return []  # self-supporting process
-    threshold = 90.0 + max_angle_deg
+    """Detect unsupported undersides using the rule source's angle convention.
+
+    Most process rules specify maximum overhang from vertical. Some, notably
+    Formlabs SLA guidance, specify a minimum angle above horizontal. Keeping the
+    convention explicit prevents a 90-degree semantic inversion.
+    """
+    if min_angle_from_horizontal_deg is not None:
+        if not 0.0 <= min_angle_from_horizontal_deg <= 90.0:
+            raise ValueError("min_angle_from_horizontal_deg must be between 0 and 90")
+        threshold = 180.0 - min_angle_from_horizontal_deg
+    else:
+        if max_angle_deg >= 90.0:
+            return []  # self-supporting process
+        threshold = 90.0 + max_angle_deg
     oh_mask = ctx.angles_from_up_deg > threshold
     # Faces resting ON the build plate need no supports: exclude near-flat
     # downward faces whose centroid sits at the part's z-minimum (scale-aware
@@ -96,19 +107,27 @@ def check_overhangs(
         return []
     pct = len(oh_faces) / max(len(ctx.centroids), 1) * 100
     region = _region_center(ctx, oh_faces)
+    if min_angle_from_horizontal_deg is None:
+        threshold_copy = f"exceed {max_angle_deg}° from vertical"
+        fix_copy = f"Keep overhangs within {max_angle_deg}° of vertical"
+        required_value = max_angle_deg
+    else:
+        threshold_copy = f"fall below {min_angle_from_horizontal_deg}° above horizontal"
+        fix_copy = f"Raise overhangs to >= {min_angle_from_horizontal_deg}° above horizontal"
+        required_value = min_angle_from_horizontal_deg
     return [Issue(
         code="OVERHANG",
         severity=Severity.WARNING,
         message=(
-            f"{len(oh_faces)} faces ({pct:.1f}%) exceed {max_angle_deg}° "
-            f"overhang threshold for {process.value}. Supports required."
+            f"{len(oh_faces)} faces ({pct:.1f}%) {threshold_copy} "
+            f"for {process.value}. Supports required."
         ),
         process=process,
         affected_faces=oh_faces.tolist(),
         region_center=region,
+        required_value=required_value,
         fix_suggestion=(
-            f"Reorient part or redesign overhangs < {max_angle_deg}° "
-            f"for {process.value}. {cite}"
+            f"Reorient part or redesign. {fix_copy} for {process.value}. {cite}"
         ),
         citation=parse_citation(cite),
     )]

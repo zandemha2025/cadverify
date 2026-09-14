@@ -338,7 +338,7 @@
   },
   {
    "file": "control-overhang-44deg.stl",
-   "class": "KNOWN-GAP",
+   "class": "sla-horizontal-angle-control",
    "expect": {
     "sla": {
      "codes_absent": [
@@ -355,7 +355,7 @@
   },
   {
    "file": "trap-sla-overhang-30deg-from-horizontal.stl",
-   "class": "KNOWN-GAP",
+   "class": "sla-horizontal-angle-control",
    "expect": {
     "sla": {
      "codes_absent": [
