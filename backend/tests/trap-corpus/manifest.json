@@ -87,13 +87,13 @@
     },
     {
       "file": "trap-inch-cube-25.4mm.stl",
-      "class": "KNOWN-GAP",
+      "class": "unit-scale",
       "expect": {
         "geometry": {
           "unit_flag": "suspicious_scale"
         }
       },
-      "note": "EXPECTED TO FAIL TODAY - no unit/scale detection exists (T3); this row holds the gap open until T3 lands, then it must go green"
+      "note": "1-inch cube (25.4mm bbox). analyze_geometry surfaces unit_flag='suspicious_scale' via the 1/8-inch-grid detector (costing/units.detect_25_4_scale_ratio). Detection only; geometry is never auto-rescaled. Promoted from KNOWN-GAP: capability landed."
     },
     {
       "file": "trap-overhang-90deg.stl",
