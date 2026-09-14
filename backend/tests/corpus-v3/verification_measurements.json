@@ -1,0 +1,442 @@
+{
+ "control-cube-10mm.stl": {
+  "bbox_mm": [
+   10.0,
+   10.0,
+   10.0
+  ],
+  "faces": 12,
+  "watertight": true,
+  "volume_mm3": 1000.0
+ },
+ "control-cube-60mm.stl": {
+  "bbox_mm": [
+   60.0,
+   60.0,
+   60.0
+  ],
+  "faces": 12,
+  "watertight": true,
+  "volume_mm3": 216000.0
+ },
+ "control-cube-80mm.stl": {
+  "bbox_mm": [
+   80.0,
+   80.0,
+   80.0
+  ],
+  "faces": 12,
+  "watertight": true,
+  "volume_mm3": 512000.0
+ },
+ "control-cylinder-r30h60-turning.stl": {
+  "bbox_mm": [
+   60.0,
+   60.0,
+   60.0
+  ],
+  "faces": 256,
+  "watertight": true,
+  "volume_mm3": 169373.62
+ },
+ "control-draft-1p5deg.stl": {
+  "bbox_mm": [
+   40.0,
+   40.0,
+   40.0
+  ],
+  "faces": 12,
+  "watertight": true,
+  "volume_mm3": 60706.71
+ },
+ "control-hole-8mmx16mm.stl": {
+  "bbox_mm": [
+   40.0,
+   40.0,
+   30.0
+  ],
+  "faces": 270,
+  "watertight": true,
+  "volume_mm3": 47197.04
+ },
+ "control-hollow-box-uniform-3mm-wall.stl": {
+  "bbox_mm": [
+   60.0,
+   60.0,
+   60.0
+  ],
+  "faces": 284,
+  "watertight": true,
+  "volume_mm3": 58498.36,
+  "wall_mm": {
+   "min": 3.0,
+   "median": 3.0,
+   "max": 38.52,
+   "pct_faces_over_6mm": 45.1
+  }
+ },
+ "control-hollow-cup-drain-4mm.stl": {
+  "bbox_mm": [
+   24.0,
+   24.0,
+   24.0
+  ],
+  "faces": 128,
+  "watertight": true,
+  "volume_mm3": 5774.31
+ },
+ "control-overhang-44deg.stl": {
+  "bbox_mm": [
+   7.0,
+   6.0,
+   8.0
+  ],
+  "faces": 24,
+  "watertight": true,
+  "volume_mm3": 246.96
+ },
+ "control-plate-2mm-flat.stl": {
+  "bbox_mm": [
+   50.0,
+   50.0,
+   2.0
+  ],
+  "faces": 12,
+  "watertight": true,
+  "volume_mm3": 5000.0
+ },
+ "control-shaft-ld9.stl": {
+  "bbox_mm": [
+   20.0,
+   20.0,
+   180.0
+  ],
+  "faces": 256,
+  "watertight": true,
+  "volume_mm3": 56457.87
+ },
+ "control-sla-overhang-80deg-from-horizontal.stl": {
+  "bbox_mm": [
+   10.0,
+   40.0,
+   80.0
+  ],
+  "faces": 12,
+  "watertight": true,
+  "volume_mm3": 20657.44
+ },
+ "control-stepped-shaft-noundercut.stl": {
+  "bbox_mm": [
+   60.0,
+   60.0,
+   50.0
+  ],
+  "faces": 512,
+  "watertight": true,
+  "volume_mm3": 56457.87
+ },
+ "trap-buildvolume-rotated-fit-350x200x100.stl": {
+  "bbox_mm": [
+   350.0,
+   200.0,
+   100.0
+  ],
+  "faces": 12,
+  "watertight": true,
+  "volume_mm3": 7000000.0
+ },
+ "trap-buildvolume-true-exceed-350x310x100.stl": {
+  "bbox_mm": [
+   350.0,
+   310.0,
+   100.0
+  ],
+  "faces": 12,
+  "watertight": true,
+  "volume_mm3": 10850000.0
+ },
+ "trap-cube-100mm-bulky.stl": {
+  "bbox_mm": [
+   100.0,
+   100.0,
+   100.0
+  ],
+  "faces": 12,
+  "watertight": true,
+  "volume_mm3": 1000000.0
+ },
+ "trap-deephole-4mmx44mm.stl": {
+  "bbox_mm": [
+   40.0,
+   40.0,
+   50.0
+  ],
+  "faces": 270,
+  "watertight": true,
+  "volume_mm3": 79447.97
+ },
+ "trap-draft-0p5deg.stl": {
+  "bbox_mm": [
+   40.0,
+   40.0,
+   40.0
+  ],
+  "faces": 12,
+  "watertight": true,
+  "volume_mm3": 62889.46
+ },
+ "trap-filleted-plate-prismatic.stl": {
+  "bbox_mm": [
+   120.0,
+   120.0,
+   9.0
+  ],
+  "faces": 926,
+  "watertight": true,
+  "volume_mm3": 26863.0,
+  "prismatic_area_pct": 72.65
+ },
+ "trap-fragile-core-pipe.stl": {
+  "bbox_mm": [
+   20.0,
+   20.0,
+   100.0
+  ],
+  "faces": 512,
+  "watertight": true,
+  "volume_mm3": 32620.1
+ },
+ "trap-plate-0p2mm-foil.stl": {
+  "bbox_mm": [
+   50.0,
+   50.0,
+   0.2
+  ],
+  "faces": 12,
+  "watertight": true,
+  "volume_mm3": 500.0
+ },
+ "trap-plate-5mm-through-hole-2mm.stl": {
+  "bbox_mm": [
+   50.0,
+   50.0,
+   5.0
+  ],
+  "faces": 272,
+  "watertight": true,
+  "volume_mm3": 12484.32,
+  "wall_mm": {
+   "min": 5.0,
+   "median": 14.515,
+   "max": 50.0,
+   "pct_faces_over_6mm": 50.0
+  }
+ },
+ "trap-pocket-grid-16-sharp-corners.stl": {
+  "bbox_mm": [
+   120.0,
+   120.0,
+   20.0
+  ],
+  "faces": 268,
+  "watertight": true,
+  "volume_mm3": 268800.0
+ },
+ "trap-pocket-single-sharp-corner.stl": {
+  "bbox_mm": [
+   60.0,
+   60.0,
+   20.0
+  ],
+  "faces": 28,
+  "watertight": true,
+  "volume_mm3": 67200.0
+ },
+ "trap-pyramid-top-nonprismatic.stl": {
+  "bbox_mm": [
+   60.0,
+   60.0,
+   40.0
+  ],
+  "faces": 20,
+  "watertight": true,
+  "volume_mm3": 95970.13
+ },
+ "trap-sealed-cavity-cupping.stl": {
+  "bbox_mm": [
+   40.0,
+   40.0,
+   15.0
+  ],
+  "faces": 512,
+  "watertight": true,
+  "volume_mm3": 10661.13
+ },
+ "trap-shaft-ld11.stl": {
+  "bbox_mm": [
+   20.0,
+   20.0,
+   220.0
+  ],
+  "faces": 256,
+  "watertight": true,
+  "volume_mm3": 69004.07
+ },
+ "trap-single-0p3mm-rib-among-many.stl": {
+  "bbox_mm": [
+   100.0,
+   100.0,
+   10.0
+  ],
+  "faces": 144,
+  "watertight": true,
+  "volume_mm3": 55030.0
+ },
+ "trap-sla-overhang-10deg-from-horizontal.stl": {
+  "bbox_mm": [
+   40.0,
+   40.0,
+   40.0
+  ],
+  "faces": 12,
+  "watertight": true,
+  "volume_mm3": 58357.54
+ },
+ "trap-sla-overhang-30deg-from-horizontal.stl": {
+  "bbox_mm": [
+   40.0,
+   40.0,
+   45.0
+  ],
+  "faces": 12,
+  "watertight": true,
+  "volume_mm3": 53524.79
+ },
+ "trap-tshape-undercut.stl": {
+  "bbox_mm": [
+   60.0,
+   60.0,
+   50.0
+  ],
+  "faces": 28,
+  "watertight": true,
+  "volume_mm3": 52000.0
+ },
+ "trap-turning-volume-rotated-x300.stl": {
+  "bbox_mm": [
+   300.0,
+   80.0,
+   80.0
+  ],
+  "faces": 256,
+  "watertight": true,
+  "volume_mm3": 1505543.28
+ },
+ "trap-uchannel-2mm-formed.stl": {
+  "bbox_mm": [
+   40.0,
+   30.0,
+   30.0
+  ],
+  "faces": 28,
+  "watertight": true,
+  "volume_mm3": 6840.0
+ },
+ "trap-chamfered-plate-prismatic.stl": {
+  "bbox_mm": [
+   100.0,
+   100.0,
+   5.0
+  ],
+  "faces": 2006,
+  "watertight": true,
+  "volume_mm3": 49800.0,
+  "prismatic_area_pct": 98.71,
+  "prismatic_face_count_pct": 80.1
+ },
+ "trap-chamfered-plate-prismatic-coarse.stl": {
+  "bbox_mm": [
+   100.0,
+   100.0,
+   5.0
+  ],
+  "faces": 16,
+  "watertight": true,
+  "volume_mm3": 49800.0,
+  "prismatic_area_pct": 98.71,
+  "prismatic_face_count_pct": 87.5
+ },
+ "trap-mjf-rib-0p1mm.stl": {
+  "bbox_mm": [
+   41.0,
+   40.0,
+   13.0
+  ],
+  "faces": 188,
+  "watertight": true,
+  "volume_mm3": 12840.0
+ },
+ "trap-mjf-rod-12to1.stl": {
+  "bbox_mm": [
+   120.0,
+   10.0,
+   10.0
+  ],
+  "faces": 12,
+  "watertight": true,
+  "volume_mm3": 12000.0
+ },
+ "trap-mjf-build-400mm.stl": {
+  "bbox_mm": [
+   400.0,
+   100.0,
+   100.0
+  ],
+  "faces": 12,
+  "watertight": true,
+  "volume_mm3": 4000000.0
+ },
+ "control-draft-7deg.stl": {
+  "bbox_mm": [
+   40.0,
+   40.0,
+   30.0
+  ],
+  "faces": 12,
+  "watertight": true,
+  "volume_mm3": 39702.2,
+  "wall_draft_deg": 7.0
+ },
+ "trap-ded-build-1600mm.stl": {
+  "bbox_mm": [
+   1600.0,
+   100.0,
+   100.0
+  ],
+  "faces": 12,
+  "watertight": true,
+  "volume_mm3": 16000000.0
+ },
+ "trap-pocket-undersized-r1-fillets.stl": {
+  "bbox_mm": [
+   60.0,
+   60.0,
+   20.0
+  ],
+  "faces": 288,
+  "watertight": true,
+  "volume_mm3": 56337.3,
+  "fitted_internal_fillet_radius_mm": 1.0000005
+ },
+ "control-pocket-r4-fillets.stl": {
+  "bbox_mm": [
+   60.0,
+   60.0,
+   20.0
+  ],
+  "faces": 288,
+  "watertight": true,
+  "volume_mm3": 56596.3,
+  "fitted_internal_fillet_radius_mm": 4.0000002
+ }
+}
