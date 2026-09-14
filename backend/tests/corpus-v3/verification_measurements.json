@@ -365,5 +365,35 @@
   "volume_mm3": 49800.0,
   "prismatic_area_pct": 98.71,
   "prismatic_face_count_pct": 87.5
+ },
+ "trap-mjf-rib-0p1mm.stl": {
+  "bbox_mm": [
+   41.0,
+   40.0,
+   13.0
+  ],
+  "faces": 188,
+  "watertight": true,
+  "volume_mm3": 12840.0
+ },
+ "trap-mjf-rod-12to1.stl": {
+  "bbox_mm": [
+   120.0,
+   10.0,
+   10.0
+  ],
+  "faces": 12,
+  "watertight": true,
+  "volume_mm3": 12000.0
+ },
+ "trap-mjf-build-400mm.stl": {
+  "bbox_mm": [
+   400.0,
+   100.0,
+   100.0
+  ],
+  "faces": 12,
+  "watertight": true,
+  "volume_mm3": 4000000.0
  }
 }

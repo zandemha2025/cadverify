@@ -18,9 +18,14 @@
       "TRAPPED_VOLUME",
       "CUPPING_RISK"
      ]
+    },
+    "mjf": {
+     "codes_trip": [
+      "TRAPPED_VOLUME"
+     ]
     }
    },
-   "note": "Sealed hollow squat cylinder (outer r20 h15, cavity r17 h9). Internal ceiling is a true downward concave pocket: cupping positive control. Fully enclosed cavity: trapped-volume positive control for both processes."
+   "note": "Sealed hollow squat cylinder (outer r20 h15, cavity r17 h9). Internal ceiling is a true downward concave pocket: cupping positive control. Fully enclosed cavity: trapped-volume positive control for both processes. | MJF: Sealed cavity - MJF powder trap."
   },
   {
    "file": "trap-buildvolume-true-exceed-350x310x100.stl",
@@ -133,9 +138,23 @@
       "TOO_THICK_SHEET",
       "NON_STANDARD_GAUGE"
      ]
+    },
+    "mjf": {
+     "codes_trip": [
+      "EXTREME_ASPECT_RATIO"
+     ],
+     "codes_absent": [
+      "THIN_WALL",
+      "SMALL_FEATURES",
+      "EXCEEDS_BUILD_VOLUME",
+      "TRAPPED_VOLUME"
+     ],
+     "severity_of": {
+      "EXTREME_ASPECT_RATIO": "WARNING"
+     }
     }
    },
-   "note": "50x50x2mm flat blank: 2.0mm is a standard gauge inside the 0.5-6mm range. Fully clean."
+   "note": "50x50x2mm flat blank: 2.0mm is a standard gauge inside the 0.5-6mm range. Fully clean. | MJF: 2mm plate: all MJF geometry checks clear; aspect 25:1 trips the repo-generic 10:1 WARNING (uncited code threshold, asserted as measured behavior)."
   },
   {
    "file": "trap-plate-0p2mm-foil.stl",
@@ -148,9 +167,17 @@
      "severity_of": {
       "TOO_THIN_SHEET": "ERROR"
      }
+    },
+    "mjf": {
+     "codes_trip": [
+      "THIN_WALL"
+     ],
+     "severity_of": {
+      "THIN_WALL": "ERROR"
+     }
     }
    },
-   "note": "0.2mm foil below the 0.3 code threshold. Note the message text says 'below 0.5mm min gauge' while the code trips at 0.3: threshold/message mismatch held as finding F11, not a corpus row."
+   "note": "0.2mm foil below the 0.3 code threshold. Note the message text says 'below 0.5mm min gauge' while the code trips at 0.3: threshold/message mismatch held as finding F11, not a corpus row. | MJF: 0.193mm foil vs HP MJF DG 3.1 0.5mm min wall - ERROR (>10% faces thin)."
   },
   {
    "file": "trap-deephole-4mmx44mm.stl",
@@ -232,9 +259,19 @@
      "codes_absent": [
       "SHRINKAGE_RISK"
      ]
+    },
+    "mjf": {
+     "codes_absent": [
+      "THIN_WALL",
+      "SMALL_FEATURES",
+      "OVERHANG",
+      "EXCEEDS_BUILD_VOLUME",
+      "EXTREME_ASPECT_RATIO",
+      "TRAPPED_VOLUME"
+     ]
     }
    },
-   "note": "60mm solid cube: modulus 10.0, under both thresholds. Boundary pair with trap-cube-100mm-bulky. The 12-vs-15 divergence between the two casting processes is documented as finding F10."
+   "note": "60mm solid cube: modulus 10.0, under both thresholds. Boundary pair with trap-cube-100mm-bulky. The 12-vs-15 divergence between the two casting processes is documented as finding F10. | MJF: Clean MJF control: 60mm cube passes every MJF check."
   },
   {
    "file": "trap-fragile-core-pipe.stl",
@@ -254,9 +291,14 @@
      "codes_trip": [
       "TRAPPED_VOLUME"
      ]
+    },
+    "mjf": {
+     "codes_trip": [
+      "TRAPPED_VOLUME"
+     ]
     }
    },
-   "note": "Solid r10 h100 rod containing a sealed dia 4mm x 100mm channel (two bodies). Core aspect 25:1 > 6: fragile-core trip; the sealed channel is also a trapped volume for AM."
+   "note": "Solid r10 h100 rod containing a sealed dia 4mm x 100mm channel (two bodies). Core aspect 25:1 > 6: fragile-core trip; the sealed channel is also a trapped volume for AM. | MJF: Sealed pipe cavity, powder cannot escape."
   },
   {
    "file": "trap-pyramid-top-nonprismatic.stl",
@@ -332,9 +374,14 @@
      "codes_absent": [
       "CUPPING_RISK"
      ]
+    },
+    "mjf": {
+     "codes_absent": [
+      "TRAPPED_VOLUME"
+     ]
     }
    },
-   "note": "Cup WITH a compliant 4mm drain hole. Green since the F1 fix (cupping requires concave downward-pocket evidence); promoted from KNOWN-GAP to hard row."
+   "note": "Cup WITH a compliant 4mm drain hole. Green since the F1 fix (cupping requires concave downward-pocket evidence); promoted from KNOWN-GAP to hard row. | MJF: Open cup - not an enclosed cavity; 5mm drain rule does not apply."
   },
   {
    "file": "control-overhang-44deg.stl",
@@ -405,9 +452,17 @@
       "THICK_WALL",
       "NON_UNIFORM_WALLS"
      ]
+    },
+    "mjf": {
+     "codes_trip": [
+      "TRAPPED_VOLUME"
+     ],
+     "severity_of": {
+      "TRAPPED_VOLUME": "ERROR"
+     }
     }
    },
-   "note": "F5: a uniform 3mm-wall hollow box with a 4mm drain stays uniform after cylindrical-surface radial rays are excluded from wall-stock measurement."
+   "note": "F5: a uniform 3mm-wall hollow box with a 4mm drain stays uniform after cylindrical-surface radial rays are excluded from wall-stock measurement. | MJF: Sealed hollow box, no drain >= 5mm (HP MJF DG 4.2 escape holes)."
   },
   {
    "file": "trap-plate-5mm-through-hole-2mm.stl",
@@ -474,9 +529,20 @@
      "severity_of": {
       "THIN_WALL": "WARNING"
      }
+    },
+    "mjf": {
+     "codes_trip": [
+      "THIN_WALL"
+     ],
+     "codes_absent": [
+      "SMALL_FEATURES"
+     ],
+     "severity_of": {
+      "THIN_WALL": "WARNING"
+     }
     }
    },
-   "note": "F7: one real 0.3mm rib among ten 5mm ribs must trip SMALL_FEATURES even though it is less than 5% of mesh edges."
+   "note": "F7: one real 0.3mm rib among ten 5mm ribs must trip SMALL_FEATURES even though it is less than 5% of mesh edges. | MJF: 0.286mm rib: below 0.5mm min wall (WARNING) but above 0.2mm min feature - MJF discriminator row."
   },
   {
    "file": "control-hole-8mmx16mm.stl",
@@ -553,6 +619,57 @@
     }
    },
    "note": "F12 tessellation-invariance pair: same chamfered plate with the chamfer at 1 segment. Face-count metric reports 87.5% (passes) here vs 80.1% (trips) on the 200-segment twin - identical geometry, opposite verdicts. Area-weighted metric passes both."
+  },
+  {
+   "file": "trap-mjf-rib-0p1mm.stl",
+   "class": "mjf-small-feature",
+   "expect": {
+    "mjf": {
+     "codes_trip": [
+      "SMALL_FEATURES",
+      "THIN_WALL"
+     ],
+     "severity_of": {
+      "SMALL_FEATURES": "WARNING",
+      "THIN_WALL": "WARNING"
+     }
+    }
+   },
+   "note": "40x40x3 plate with ten 2mm ribs + one 0.094mm rib: below HP MJF DG 3.2 0.2mm min feature and 0.5mm min wall."
+  },
+  {
+   "file": "trap-mjf-rod-12to1.stl",
+   "class": "mjf-aspect",
+   "expect": {
+    "mjf": {
+     "codes_trip": [
+      "EXTREME_ASPECT_RATIO"
+     ],
+     "codes_absent": [
+      "THIN_WALL",
+      "EXCEEDS_BUILD_VOLUME"
+     ],
+     "severity_of": {
+      "EXTREME_ASPECT_RATIO": "WARNING"
+     }
+    }
+   },
+   "note": "120x10x10 rod: 12:1 exceeds the repo 10:1 aspect threshold (WARNING); wall and build volume clear."
+  },
+  {
+   "file": "trap-mjf-build-400mm.stl",
+   "class": "mjf-build-volume",
+   "expect": {
+    "mjf": {
+     "codes_trip": [
+      "EXCEEDS_BUILD_VOLUME"
+     ],
+     "severity_of": {
+      "EXCEEDS_BUILD_VOLUME": "ERROR"
+     }
+    }
+   },
+   "note": "400x100x100 bar: 400mm axis exceeds HP Jet Fusion 5200 380x284x380 envelope under the rotation-aware fit check."
   }
  ]
 }
