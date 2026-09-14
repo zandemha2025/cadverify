@@ -193,7 +193,8 @@
   ],
   "faces": 926,
   "watertight": true,
-  "volume_mm3": 26863.0
+  "volume_mm3": 26863.0,
+  "prismatic_area_pct": 72.65
  },
  "trap-fragile-core-pipe.stl": {
   "bbox_mm": [
@@ -340,5 +341,29 @@
   "faces": 28,
   "watertight": true,
   "volume_mm3": 6840.0
+ },
+ "trap-chamfered-plate-prismatic.stl": {
+  "bbox_mm": [
+   100.0,
+   100.0,
+   5.0
+  ],
+  "faces": 2006,
+  "watertight": true,
+  "volume_mm3": 49800.0,
+  "prismatic_area_pct": 98.71,
+  "prismatic_face_count_pct": 80.1
+ },
+ "trap-chamfered-plate-prismatic-coarse.stl": {
+  "bbox_mm": [
+   100.0,
+   100.0,
+   5.0
+  ],
+  "faces": 16,
+  "watertight": true,
+  "volume_mm3": 49800.0,
+  "prismatic_area_pct": 98.71,
+  "prismatic_face_count_pct": 87.5
  }
 }

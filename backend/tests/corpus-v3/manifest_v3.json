@@ -304,7 +304,7 @@
   },
   {
    "file": "control-cube-10mm.stl",
-   "class": "KNOWN-GAP",
+   "class": "cupping-residual-stress-control",
    "expect": {
     "sla": {
      "codes_absent": [
@@ -322,11 +322,11 @@
      ]
     }
    },
-   "note": "F1/F2: solid 10mm cube. CUPPING_RISK fires on any part with >10% downward-facing area - the docstring says 'concave downward-facing pockets' but the code never tests concavity, so every flat-bottomed solid trips it. RESIDUAL_STRESS_RISK fires on any single flat facet group >15% of area with no absolute-size floor, so a 10mm metal cube gets a curl-risk warning. Fixture copied verbatim from trap-corpus v1.2."
+   "note": "Solid 10mm cube. Green since the F1 fix (cupping requires concave-pocket evidence) and F2 fix (residual-stress patch floor >=400mm2); promoted from KNOWN-GAP to hard row."
   },
   {
    "file": "control-hollow-cup-drain-4mm.stl",
-   "class": "KNOWN-GAP",
+   "class": "cupping-control",
    "expect": {
     "sla": {
      "codes_absent": [
@@ -334,7 +334,7 @@
      ]
     }
    },
-   "note": "F1: cup WITH a compliant 4mm drain hole. Drain relieves peel suction per the Formlabs guidance the check cites; the implementation cannot see drain holes and fires on the exterior base anyway. Copied verbatim from trap-corpus v1.2."
+   "note": "Cup WITH a compliant 4mm drain hole. Green since the F1 fix (cupping requires concave downward-pocket evidence); promoted from KNOWN-GAP to hard row."
   },
   {
    "file": "control-overhang-44deg.stl",
@@ -517,7 +517,22 @@
   },
   {
    "file": "trap-filleted-plate-prismatic.stl",
-   "class": "KNOWN-GAP",
+   "class": "prismatic",
+   "expect": {
+    "wire_edm": {
+     "codes_trip": [
+      "NOT_PRISMATIC"
+     ],
+     "severity_of": {
+      "NOT_PRISMATIC": "ERROR"
+     }
+    }
+   },
+   "note": "60x60x5 plate with r4 edge fillets: fillets are 27.3% of surface area - genuinely non-prismatic for wire EDM (a wire cuts a 2D profile). Retained as a hard TRIP row after F12 re-measurement showed the original KNOWN-GAP premise (prismatic part, wrong verdict) did not hold by area."
+  },
+  {
+   "file": "trap-chamfered-plate-prismatic.stl",
+   "class": "prismatic",
    "expect": {
     "wire_edm": {
      "codes_absent": [
@@ -525,7 +540,19 @@
      ]
     }
    },
-   "note": "F12: 60x60x5 plate with r4 edge fillets - a prismatic 2.5D part wire EDM cuts fine. check_prismatic counts FACES not area, so the tessellated fillet strips (256 small triangles) outvote the plate and trip NOT_PRISMATIC. Verdict changes with tessellation, not geometry."
+   "note": "F12: 100x100x5 plate, 2mm 45-deg chamfer on one top edge, chamfer tessellated at 200 segments. 98.71% prismatic by surface AREA at any mesh density; face-count metric reports 80.1% here and trips. check_prismatic is area-weighted so the verdict follows geometry, not tessellation."
+  },
+  {
+   "file": "trap-chamfered-plate-prismatic-coarse.stl",
+   "class": "prismatic",
+   "expect": {
+    "wire_edm": {
+     "codes_absent": [
+      "NOT_PRISMATIC"
+     ]
+    }
+   },
+   "note": "F12 tessellation-invariance pair: same chamfered plate with the chamfer at 1 segment. Face-count metric reports 87.5% (passes) here vs 80.1% (trips) on the 200-segment twin - identical geometry, opposite verdicts. Area-weighted metric passes both."
   }
  ]
 }

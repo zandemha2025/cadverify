@@ -934,14 +934,20 @@ def check_prismatic(
     horiz = np.abs(normals[:, 2]) > 0.95
     vert = np.abs(normals[:, 2]) < 0.05
     prismatic_faces = horiz | vert
-    pct = np.mean(prismatic_faces) * 100
+    # Weight by face AREA, not face count: a finely tessellated small
+    # feature (chamfer/fillet) must not outvote large planar faces. The
+    # face-count metric made the verdict flip with mesh density on
+    # identical geometry (F12).
+    areas = ctx.face_areas
+    total_area = float(areas.sum())
+    pct = float(areas[prismatic_faces].sum() / total_area * 100) if total_area > 0 else 0.0
     if pct > 85:
         return []
     return [Issue(
         code="NOT_PRISMATIC",
         severity=Severity.ERROR,
         message=(
-            f"Only {pct:.0f}% of faces are prismatic (horizontal or vertical). "
+            f"Only {pct:.0f}% of surface area is prismatic (horizontal or vertical). "
             f"{process.value} requires a 2.5D extruded profile."
         ),
         process=process,
