@@ -71,9 +71,11 @@ export default function RepairButton({
         size="sm"
         loading={loading}
         onClick={handleClick}
+        title={file ? "Repair this file" : "Choose the original CAD file to attempt mesh repair"}
+        aria-label={file ? "Attempt mesh repair" : "Attempt mesh repair - opens a file picker"}
       >
         {!loading && <Wrench />}
-        {loading ? "Repairing…" : "Attempt mesh repair"}
+        {loading ? "Repairing…" : file ? "Attempt mesh repair" : "Choose file to repair"}
       </Button>
       <input
         ref={fileInputRef}
