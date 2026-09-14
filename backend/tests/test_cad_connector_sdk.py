@@ -44,3 +44,18 @@ def test_host_program_covers_the_major_cad_ecosystem_without_claiming_readiness(
     assert {CadHost.ONSHAPE, CadHost.SOLIDWORKS, CadHost.FUSION, CadHost.SIEMENS_NX} <= hosts
     assert len(hosts) == 10
     assert all(entry.implementation_state != "live" for entry in HOST_PROGRAM)
+    assert all(entry.release_ready is False for entry in HOST_PROGRAM)
+    assert all(entry.supported_host_versions == () for entry in HOST_PROGRAM)
+    assert all(entry.verified_capabilities == frozenset() for entry in HOST_PROGRAM)
+    assert all(entry.supports_version("latest") is False for entry in HOST_PROGRAM)
+
+
+def test_public_catalog_separates_required_from_verified_capabilities():
+    onshape = HOST_PROGRAM[0].as_public_dict()
+    assert onshape["sdk_version"] == "1.0"
+    assert onshape["implementation_state"] == "m2_in_progress"
+    assert onshape["release_ready"] is False
+    assert onshape["verified_capabilities"] == []
+    assert onshape["required_capabilities"] == [
+        "active_document", "neutral_export", "result_deeplink", "revision_identity"
+    ]

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Mapping, Protocol
 
+SDK_VERSION = "1.0"
 SUPPORTED_EXCHANGE_SUFFIXES = ("stl", "step", "stp", "iges", "igs")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -76,9 +77,35 @@ class CadExportEnvelope:
 class CadConnectorDescriptor:
     host: CadHost
     display_name: str
-    capabilities: frozenset[ConnectorCapability]
+    required_capabilities: frozenset[ConnectorCapability]
+    verified_capabilities: frozenset[ConnectorCapability] = frozenset()
     exchange_formats: tuple[str, ...] = ("step",)
+    supported_host_versions: tuple[str, ...] = ()
     implementation_state: str = "contract_only"
+
+    @property
+    def release_ready(self) -> bool:
+        return (
+            self.implementation_state == "live"
+            and bool(self.supported_host_versions)
+            and self.required_capabilities <= self.verified_capabilities
+        )
+
+    def supports_version(self, version: str) -> bool:
+        return bool(version) and version in self.supported_host_versions
+
+    def as_public_dict(self) -> dict[str, Any]:
+        return {
+            "sdk_version": SDK_VERSION,
+            "host": self.host.value,
+            "display_name": self.display_name,
+            "required_capabilities": sorted(item.value for item in self.required_capabilities),
+            "verified_capabilities": sorted(item.value for item in self.verified_capabilities),
+            "exchange_formats": list(self.exchange_formats),
+            "supported_host_versions": list(self.supported_host_versions),
+            "implementation_state": self.implementation_state,
+            "release_ready": self.release_ready,
+        }
 
 
 class CadHostAdapter(Protocol):
@@ -94,15 +121,17 @@ class CadHostAdapter(Protocol):
         ...
 
 
+RELEASE_CAPABILITIES = frozenset(ConnectorCapability)
+
 HOST_PROGRAM: tuple[CadConnectorDescriptor, ...] = (
-    CadConnectorDescriptor(CadHost.ONSHAPE, "Onshape", frozenset(ConnectorCapability), implementation_state="m2_in_progress"),
-    CadConnectorDescriptor(CadHost.SOLIDWORKS, "SOLIDWORKS", frozenset(ConnectorCapability)),
-    CadConnectorDescriptor(CadHost.FUSION, "Autodesk Fusion", frozenset(ConnectorCapability)),
-    CadConnectorDescriptor(CadHost.SIEMENS_NX, "Siemens NX", frozenset(ConnectorCapability)),
-    CadConnectorDescriptor(CadHost.CREO, "PTC Creo", frozenset(ConnectorCapability)),
-    CadConnectorDescriptor(CadHost.CATIA, "CATIA", frozenset(ConnectorCapability)),
-    CadConnectorDescriptor(CadHost.INVENTOR, "Autodesk Inventor", frozenset(ConnectorCapability)),
-    CadConnectorDescriptor(CadHost.SOLID_EDGE, "Solid Edge", frozenset(ConnectorCapability)),
-    CadConnectorDescriptor(CadHost.RHINO, "Rhino", frozenset(ConnectorCapability)),
-    CadConnectorDescriptor(CadHost.FREECAD, "FreeCAD", frozenset(ConnectorCapability)),
+    CadConnectorDescriptor(CadHost.ONSHAPE, "Onshape", RELEASE_CAPABILITIES, implementation_state="m2_in_progress"),
+    CadConnectorDescriptor(CadHost.SOLIDWORKS, "SOLIDWORKS", RELEASE_CAPABILITIES),
+    CadConnectorDescriptor(CadHost.FUSION, "Autodesk Fusion", RELEASE_CAPABILITIES),
+    CadConnectorDescriptor(CadHost.SIEMENS_NX, "Siemens NX", RELEASE_CAPABILITIES),
+    CadConnectorDescriptor(CadHost.CREO, "PTC Creo", RELEASE_CAPABILITIES),
+    CadConnectorDescriptor(CadHost.CATIA, "CATIA", RELEASE_CAPABILITIES),
+    CadConnectorDescriptor(CadHost.INVENTOR, "Autodesk Inventor", RELEASE_CAPABILITIES),
+    CadConnectorDescriptor(CadHost.SOLID_EDGE, "Solid Edge", RELEASE_CAPABILITIES),
+    CadConnectorDescriptor(CadHost.RHINO, "Rhino", RELEASE_CAPABILITIES),
+    CadConnectorDescriptor(CadHost.FREECAD, "FreeCAD", RELEASE_CAPABILITIES),
 )
