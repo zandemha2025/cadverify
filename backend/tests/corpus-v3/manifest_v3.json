@@ -505,7 +505,7 @@
   },
   {
    "file": "trap-uchannel-2mm-formed.stl",
-   "class": "KNOWN-GAP",
+   "class": "sheet-gauge-formed",
    "expect": {
     "sheet_metal": {
      "codes_absent": [
@@ -513,7 +513,7 @@
      ]
     }
    },
-   "note": "F9: U-channel formed from 2mm sheet. check_sheet_gauge reads thickness as the smallest BBOX dimension (28mm), not wall thickness, so a correctly-gauged formed part is flagged TOO_THICK_SHEET. Every formed (non-flat) sheet part trips this."
+   "note": "F9: a formed 2mm U-channel stays within sheet gauge even though every bounding-box dimension is much larger than its wall thickness."
   },
   {
    "file": "trap-filleted-plate-prismatic.stl",

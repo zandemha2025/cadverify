@@ -904,8 +904,17 @@ def check_sheet_gauge(
     process: ProcessType,
 ) -> list[Issue]:
     issues: list[Issue] = []
-    dims = sorted(ctx.info.bounding_box.dimensions)
-    t = dims[0]
+    # Formed sheet is not flat, so no bounding-box dimension represents its
+    # gauge. Use the stable lower wall-thickness population: opposing sheet
+    # faces measure the gauge while open spans and long side rays are larger.
+    finite = ctx.wall_thickness[
+        np.isfinite(ctx.wall_thickness) & (ctx.wall_thickness > ctx.scale_eps)
+    ]
+    if len(finite):
+        sample_count = max(1, int(np.ceil(len(finite) * 0.25)))
+        t = float(np.median(np.partition(finite, sample_count - 1)[:sample_count]))
+    else:
+        t = min(ctx.info.bounding_box.dimensions)
     if t < 0.3:
         issues.append(Issue(
             code="TOO_THIN_SHEET", severity=Severity.ERROR,
