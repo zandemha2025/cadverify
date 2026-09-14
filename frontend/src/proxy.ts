@@ -54,10 +54,10 @@ function contentSecurityPolicy(nonce: string): string {
   const directUploadSource = directUploadOrigin ? ` ${directUploadOrigin}` : "";
   return `
     default-src 'self';
-    script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval'${devEval} https://challenges.cloudflare.com;
-    style-src 'self' 'unsafe-inline';
+    script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval' 'sha256-A4ctFo5+Z6EoKPA+k0/ccQc1G5XhULEhWnhvrtYP8Ss='${devEval} https://challenges.cloudflare.com;
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
     img-src 'self' data: blob: https:;
-    font-src 'self' data:;
+    font-src 'self' data: https://fonts.gstatic.com;
     connect-src 'self' blob:${directUploadSource} https://challenges.cloudflare.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io;
     frame-src https://challenges.cloudflare.com;
     worker-src 'self' blob:;
