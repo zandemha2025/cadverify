@@ -348,12 +348,11 @@
     "fdm": {
      "gates_trip": [
       "trapped_volumes",
-      "overhangs",
-      "small_features"
+      "overhangs"
      ]
     }
    },
-   "note": "Sealed hollow 24mm box with only a 2mm drain hole: FDM drain law is >= 3.0mm, and measured cylinder/cavity evidence must report trapped material. Also expected today: internal ceiling trips overhangs (28 faces) and the 2mm hole's facets push 25.8% of edges < 0.4 (small_features) - both real under current code."
+   "note": "KNOWN GAP: the 1.9848mm measured drain is below the hard FDM 3.0mm drain requirement, so TRAPPED_VOLUME remains required and failing until drain-size detection lands. OVERHANG remains hard. All 48 sub-0.4mm edges (0.2611mm, 25.8% of mesh edges) belong to the detected cylindrical hole and are tessellation chords; the physical hole diameter clears the 0.4mm feature minimum, so SMALL_FEATURES is correctly absent."
   },
   {
    "file": "trap-degenerate-duplicate-face.stl",
