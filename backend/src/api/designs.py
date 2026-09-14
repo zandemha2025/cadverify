@@ -216,6 +216,32 @@ async def list_design_revisions(
     }
 
 
+@router.get("/{design_id}/revisions/compare")
+@limiter.limit("120/hour;1000/day")
+async def compare_design_revisions(
+    design_id: str,
+    request: Request,
+    response: Response,
+    from_revision: int = Query(..., alias="from", ge=1),
+    to_revision: int = Query(..., alias="to", ge=1),
+    user: AuthedUser = Depends(require_role(Role.viewer)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    from fastapi import HTTPException
+
+    if from_revision == to_revision:
+        raise HTTPException(status_code=400, detail="Choose two different revisions")
+    before = await svc.get_revision(session, design_id, from_revision, user.user_id)
+    after = await svc.get_revision(session, design_id, to_revision, user.user_id)
+    if before is None or after is None:
+        raise HTTPException(status_code=404, detail="Design revision not found")
+    project, before_revision = before
+    after_project, after_revision = after
+    if project.id != after_project.id:
+        raise HTTPException(status_code=404, detail="Design revision not found")
+    return svc.build_revision_comparison(project, before_revision, after_revision)
+
+
 @router.get("/{design_id}/revisions/{revision_no}")
 @limiter.limit("120/hour;1000/day")
 async def get_design_revision(

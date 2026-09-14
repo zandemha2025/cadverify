@@ -257,3 +257,41 @@ export function designRevisionPreviewUrl(
 export function designRevisionStepUrl(designId: string, revisionNo: number): string {
   return `${API_BASE}/designs/${encodeURIComponent(designId)}/revisions/${revisionNo}/download.step`;
 }
+
+export type RevisionDiffValue = {
+  path: string;
+  before: unknown;
+  after: unknown;
+  delta: number | null;
+};
+
+export type DesignRevisionComparison = {
+  design_id: string;
+  design_name: string;
+  before: Pick<
+    DesignRevision,
+    "number" | "status" | "design_note" | "generation_engine" | "geometry_hash" | "created_at" | "links"
+  >;
+  after: Pick<
+    DesignRevision,
+    "number" | "status" | "design_note" | "generation_engine" | "geometry_hash" | "created_at" | "links"
+  >;
+  same_geometry: boolean;
+  plan_changes: RevisionDiffValue[];
+  geometry_changes: RevisionDiffValue[];
+  limits: string;
+};
+
+export async function compareDesignRevisions(
+  id: string,
+  fromRevision: number,
+  toRevision: number,
+): Promise<DesignRevisionComparison> {
+  const query = new URLSearchParams({
+    from: String(fromRevision),
+    to: String(toRevision),
+  });
+  return json<DesignRevisionComparison>(
+    `${API_BASE}/designs/${encodeURIComponent(id)}/revisions/compare?${query}`,
+  );
+}
