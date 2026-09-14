@@ -267,7 +267,6 @@
     "fdm": {
      "gates_trip": [
       "wall_thickness",
-      "small_features",
       "overhangs"
      ]
     },
@@ -279,7 +278,7 @@
      ]
     }
    },
-   "note": "Organic lathed form with a 0.35mm-radius cylindrical neck: measured wall 0.697 (FDM trips, SLA clears at 0.4), neck facets give 7.4% edges < 0.4 (small trips FDM, clears SLA 0.05), pinch slopes > 135 deg (overhang trips FDM+SLA). Three FDM defects in one realistic organic body."
+   "note": "Organic lathed form with a measured 0.6976mm-diameter cylindrical neck, above the FDM 0.4mm feature minimum. Its 72 sub-0.4mm edges are 0.061mm circumferential tessellation chords, not physical features. THIN_WALL and OVERHANG remain hard FDM expectations; SLA clears wall and small-feature limits."
   },
   {
    "file": "trap-organic-sealed-cavity.stl",
