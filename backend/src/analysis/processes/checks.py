@@ -500,8 +500,37 @@ def check_wall_uniformity(
     finite_mask = np.isfinite(wt)
     if not np.any(finite_mask):
         return issues
+    # Rays launched from cylindrical surfaces cross the surrounding slab/ring
+    # radially rather than measuring local wall stock. Exclude those faces from
+    # a wall-uniformity distribution; the cylinder's own dimensions are handled
+    # by the hole/boss feature checks.
+    cylinder_faces = {
+        face
+        for feature in ctx.features
+        if feature.kind in {FeatureKind.CYLINDER_HOLE, FeatureKind.CYLINDER_BOSS}
+        for face in feature.face_indices
+    }
+    if cylinder_faces:
+        finite_mask &= np.fromiter(
+            (face not in cylinder_faces for face in range(len(wt))),
+            dtype=bool,
+            count=len(wt),
+        )
+    if not np.any(finite_mask):
+        return issues
+
     t = wt[finite_mask]
-    t_min, t_max = float(t.min()), float(t.max())
+    areas = ctx.face_areas[finite_mask]
+    t_min = float(t.min())
+    # A tiny set of long rays can cross an open span instead of local stock.
+    # Use the area-weighted 75th percentile so verdicts follow physical surface
+    # area rather than triangle count or isolated ray direction.
+    order = np.argsort(t)
+    ordered_t = t[order]
+    ordered_area = areas[order]
+    cumulative_area = np.cumsum(ordered_area)
+    cutoff = 0.75 * float(cumulative_area[-1])
+    t_max = float(ordered_t[min(int(np.searchsorted(cumulative_area, cutoff)), len(t) - 1)])
 
     if t_min < min_wall:
         issues.append(Issue(

@@ -391,7 +391,7 @@
   },
   {
    "file": "control-hollow-box-uniform-3mm-wall.stl",
-   "class": "KNOWN-GAP",
+   "class": "wall-uniformity-control",
    "expect": {
     "injection_molding": {
      "codes_absent": [
@@ -407,11 +407,11 @@
      ]
     }
    },
-   "note": "F5: uniform 3mm-wall hollow box with a 4mm drain. Measured wall: min 2.99, median 3.0, but max 38.5 with 45% of faces >6mm - rays fired from the drain-hole surface travel radially through the slab and inflate t_max, producing phantom THICK_WALL/NON_UNIFORM_WALLS on a geometrically uniform part."
+   "note": "F5: a uniform 3mm-wall hollow box with a 4mm drain stays uniform after cylindrical-surface radial rays are excluded from wall-stock measurement."
   },
   {
    "file": "trap-plate-5mm-through-hole-2mm.stl",
-   "class": "KNOWN-GAP",
+   "class": "wall-uniformity-control",
    "expect": {
     "injection_molding": {
      "codes_absent": [
@@ -426,7 +426,7 @@
      ]
     }
    },
-   "note": "F5 remains open: the hole cylindrical surface still produces phantom thick/non-uniform wall readings."
+   "note": "F5: a uniform 5mm plate with a 2mm through-hole stays uniform; cylindrical-hole radial rays and isolated long span rays do not redefine wall stock."
   },
   {
    "file": "trap-plate-5mm-through-hole-2mm.stl",
