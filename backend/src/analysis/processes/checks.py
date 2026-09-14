@@ -596,7 +596,9 @@ def check_internal_radii(
         return []
     sharp = ctx.concave_mask & (ctx.dihedral_angles_rad > np.radians(30))
     sharp_count = int(np.sum(sharp))
-    if sharp_count < 10:
+    # One ordinary square pocket contributes eight concave edge segments. A
+    # count floor of ten silently missed that common uncuttable geometry.
+    if sharp_count < 4:
         return []
     return [Issue(
         code="SHARP_INTERNAL_CORNERS",

@@ -440,7 +440,7 @@
   },
   {
    "file": "trap-pocket-single-sharp-corner.stl",
-   "class": "KNOWN-GAP",
+   "class": "internal-radii-single-pocket",
    "expect": {
     "cnc_3axis": {
      "codes_trip": [
