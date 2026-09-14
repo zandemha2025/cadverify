@@ -7,7 +7,7 @@ const source = await readFile(new URL("./PartWorkspace.tsx", import.meta.url), "
 test("/analyze validates STL integrity before setting viewer file or dispatching requests", () => {
   const gate = source.indexOf("await clientStlIntegrityError(selected)");
   const viewerAssignment = source.indexOf("setFile(selected)", gate);
-  const costDispatch = source.indexOf("void runCost(selected, opts)", gate);
+  const costDispatch = source.indexOf("void runCost(selected, opts, attempt)", gate);
   assert.ok(gate >= 0);
   assert.ok(viewerAssignment > gate);
   assert.ok(costDispatch > viewerAssignment);

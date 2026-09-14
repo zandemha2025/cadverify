@@ -28,6 +28,7 @@ import * as React from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { toast } from "sonner";
+import { analysisFailureCopy } from "@/lib/verify/failure-copy";
 import { Scale, History as HistoryIcon, Copy, ExternalLink } from "lucide-react";
 
 import type {
@@ -255,13 +256,22 @@ export function PartHero({
     [allIssues]
   );
 
+  const analysisFailure = !validation && (dfmError || costError)
+    ? analysisFailureCopy(dfmError || costError)
+    : null;
+  const analysisFailureMessage = analysisFailure
+    ? `${analysisFailure.explanation} ${analysisFailure.action}`
+    : null;
+
   const headerBadge = validation ? (
     <StatusBadge
       verdict={validation.overall_verdict}
       label={verdictLabel(validation.overall_verdict, true)}
     />
-  ) : geomError ? (
-    <StatusBadge tone="fail" label="Geometry invalid" />
+  ) : geomError || analysisFailure?.kind === "geometry" ? (
+    <StatusBadge tone="fail" label="Geometry refused" />
+  ) : analysisFailure ? (
+    <StatusBadge tone="fail" label="Analysis refused" />
   ) : dfmLoading ? (
     <StatusBadge tone="neutral" label="Analyzing…" icon={false} />
   ) : undefined;
@@ -324,7 +334,7 @@ export function PartHero({
               selectedKey={selectedKey}
               onSelect={setSelectedKey}
               analyzing={dfmLoading}
-              error={!validation ? dfmError : null}
+              error={!validation ? analysisFailureMessage : null}
               onRetry={() => runDfm(file)}
               onOpenDepth={validation ? () => setDepth("inspection") : undefined}
               candidateProcessCount={partition?.candidateProcessCount}
@@ -440,7 +450,11 @@ export function PartHero({
                   filename={file.name}
                 />
               ) : costError ? (
-                <ErrorState title="Cost estimate failed" message={costError} onRetry={handleRecost} />
+                <ErrorState
+                  title={analysisFailure?.title ?? "Cost estimate failed"}
+                  message={analysisFailureMessage ?? costError}
+                  onRetry={handleRecost}
+                />
               ) : report ? (
                 <DecisionColumn
                   report={report}
