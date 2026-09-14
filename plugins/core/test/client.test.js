@@ -57,7 +57,7 @@ test("normalizes the current /validate contract: priority_fixes and share_url", 
     ],
     share_url: "/s/rec1",
   }) });
-  const verdict = await client.validateStep({ bytes: new Blob(["STEP"]) });
+  const verdict = await client.validateStep({ bytes: new Blob(["STEP"]), source: SOURCE });
   assert.equal(verdict.badge, "ISSUES");
   assert.deepEqual(verdict.issues, ["Wall below 2mm minimum (Fix: Thicken wall to 2mm)", "Drain hole under 2mm"]);
   assert.equal(verdict.recordUrl, "https://api.example/s/rec1");
@@ -71,7 +71,7 @@ test("flattens process_scores issues when priority_fixes is absent", async () =>
       { process: "cnc", verdict: "pass", issues: [] },
     ],
   }) });
-  const verdict = await client.validateStep({ bytes: new Blob(["STEP"]) });
+  const verdict = await client.validateStep({ bytes: new Blob(["STEP"]), source: SOURCE });
   assert.equal(verdict.badge, "FAIL");
   assert.deepEqual(verdict.issues, ["Trapped volume (Fix: Add drain)"]);
 });
