@@ -45,7 +45,18 @@ class SLAAnalyzer:
     def _check_cupping(self, ctx: GeometryContext) -> list[Issue]:
         """Concave downward-facing pockets trap resin during peel (suction cup)."""
         down_mask = ctx.normals[:, 2] < -0.8  # nearly downward
-        down_faces = np.where(down_mask)[0]
+
+        # A flat exterior base is not a suction cup. Require the downward
+        # region to touch at least one concave adjacency edge, which is direct
+        # mesh evidence of a pocket/cavity boundary. This keeps sealed concave
+        # ceilings detectable while rejecting solid cubes and compliant
+        # open/drained cups whose only downward area is an exterior floor.
+        pocket_faces = np.zeros(len(ctx.normals), dtype=bool)
+        if len(ctx.face_adjacency) == len(ctx.concave_mask):
+            concave_pairs = ctx.face_adjacency[ctx.concave_mask]
+            if len(concave_pairs):
+                pocket_faces[np.unique(concave_pairs)] = True
+        down_faces = np.where(down_mask & pocket_faces)[0]
         if len(down_faces) == 0:
             return []
         down_area = float(ctx.face_areas[down_faces].sum())
