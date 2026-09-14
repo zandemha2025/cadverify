@@ -23,7 +23,7 @@ import { VERIFY_PART_CAD_INPUT } from "@/lib/verify/file-inputs";
 import { clientStlIntegrityError } from "@/lib/stl-validation";
 import { Stage, type StageAssembly } from "./stage";
 import { AssemblyPanel } from "./assembly-panel";
-import { fetchAssembly, fetchAssemblyAnalysis, defaultPartOfInterest, type AssemblyRender, type AssemblyAnalysis } from "@/lib/verify/assembly";
+import { probeAssembly, fetchAssemblyAnalysis, defaultPartOfInterest, type AssemblyRender, type AssemblyAnalysis } from "@/lib/verify/assembly";
 import { VerifyScreen } from "./verify-screen";
 import { ContextFitPanel } from "./context-fit-panel";
 import { MachinesScreen } from "./machines-screen";
@@ -242,12 +242,24 @@ export function VerifyApp({
       // assembly result replaced it. A successful assembly now makes only its
       // three truthful requests: structured model, renderable GLB, and per-part
       // analysis. Single solids and non-assembly formats continue below.
-      const asm = await fetchAssembly(f).catch(() => null);
+      const assemblyProbe = await probeAssembly(f);
       if (runSeq.current !== seq) {
-        asm?.revoke();
+        if (assemblyProbe.kind === "assembly") assemblyProbe.render.revoke();
         return null;
       }
-      if (asm) {
+      if (assemblyProbe.kind === "refused") {
+        latestFile.current = null;
+        setFile(null);
+        setRunning(false);
+        setUploadRejection({
+          fileName: f.name,
+          title: assemblyProbe.title,
+          action: assemblyProbe.action,
+        });
+        return null;
+      }
+      if (assemblyProbe.kind === "assembly") {
+        const asm = assemblyProbe.render;
         setAssembly(asm);
         setAssemblySelectedId(defaultPartOfInterest(asm.model.parts));
         setRunning(false);

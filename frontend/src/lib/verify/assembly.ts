@@ -287,6 +287,12 @@ export interface AssemblyAnalysis {
   boundaries: Record<string, string>;
 }
 
+export type AssemblyProbe =
+  | { kind: "not_candidate" }
+  | { kind: "single_part" }
+  | { kind: "assembly"; render: AssemblyRender }
+  | { kind: "refused"; title: string; action: string };
+
 async function postAssembly(file: File, format: "json" | "glb" | "analysis"): Promise<Response | null> {
   const { API_BASE } = await import("@/lib/api-base");
   const form = new FormData();
@@ -301,43 +307,116 @@ async function postAssembly(file: File, format: "json" | "glb" | "analysis"): Pr
   }
 }
 
-/**
- * Detect + fetch. Returns the AssemblyModel + a renderable combined GLB when the
- * file is a real multi-part assembly; returns null for a single part, a
- * non-STEP/IGES file, or any failure (so the caller falls back to the UNCHANGED
- * single-part path — we never fabricate an assembly).
- */
-export async function fetchAssembly(file: File): Promise<AssemblyRender | null> {
-  if (!isAssemblyCandidate(file.name)) return null;
+async function refusalFromResponse(response: Response, fallback: string): Promise<AssemblyProbe> {
+  let detail = "";
+  try {
+    const body = (await response.json()) as { detail?: unknown };
+    detail = typeof body.detail === "string" ? body.detail : "";
+  } catch {
+    // A non-JSON error is still a refusal. Never reinterpret it as a single part.
+  }
+  return {
+    kind: "refused",
+    title: "This assembly could not be opened",
+    action: detail || fallback,
+  };
+}
 
-  const jsonRes = await postAssembly(file, "json");
-  if (!jsonRes || !jsonRes.ok) return null;
+/**
+ * Probe a STEP/IGES upload without silently downgrading a failed assembly request
+ * into the single-part pipeline. Only the backend's explicit `single_part`
+ * classification may take that fallback. Every transport, parse, and GLB failure
+ * becomes a visible refusal with a retry/export action.
+ */
+export async function probeAssembly(
+  file: File,
+  post: (file: File, format: "json" | "glb" | "analysis") => Promise<Response | null> = postAssembly,
+): Promise<AssemblyProbe> {
+  if (!isAssemblyCandidate(file.name)) return { kind: "not_candidate" };
+
+  const jsonRes = await post(file, "json");
+  if (!jsonRes) {
+    return {
+      kind: "refused",
+      title: "Assembly check could not reach the server",
+      action: "Check the connection and retry. The file was not analyzed as a single part.",
+    };
+  }
+  if (!jsonRes.ok) {
+    return refusalFromResponse(
+      jsonRes,
+      "Export the assembly as STEP AP242 or IGES, then retry.",
+    );
+  }
 
   let model: AssemblyModel;
   try {
     model = (await jsonRes.json()) as AssemblyModel;
   } catch {
-    return null;
+    return {
+      kind: "refused",
+      title: "Assembly response was unreadable",
+      action: "Retry the upload. The file was not analyzed as a single part.",
+    };
   }
-  // Single-solid files are NOT assemblies — leave them on the existing path.
-  if (model.kind !== "assembly" || model.part_count < 2) return null;
+  if (model.kind === "single_part" && model.part_count === 1) {
+    return { kind: "single_part" };
+  }
+  if (model.kind !== "assembly" || model.part_count < 2) {
+    return {
+      kind: "refused",
+      title: "Assembly structure was not confirmed",
+      action: "Export the assembly as STEP AP242 or IGES, then retry.",
+    };
+  }
 
-  const glbRes = await postAssembly(file, "glb");
-  if (!glbRes || !glbRes.ok) return null;
+  const glbRes = await post(file, "glb");
+  if (!glbRes) {
+    return {
+      kind: "refused",
+      title: "Assembly preview could not reach the server",
+      action: "Check the connection and retry. No single-part verdict was substituted.",
+    };
+  }
+  if (!glbRes.ok) {
+    return refusalFromResponse(
+      glbRes,
+      "The measured assembly was kept, but its preview could not be built. Retry the upload.",
+    );
+  }
   let blob: Blob;
   try {
     blob = await glbRes.blob();
   } catch {
-    return null;
+    return {
+      kind: "refused",
+      title: "Assembly preview was unreadable",
+      action: "Retry the upload. No single-part verdict was substituted.",
+    };
   }
-  if (!blob.size) return null;
+  if (!blob.size) {
+    return {
+      kind: "refused",
+      title: "Assembly preview was empty",
+      action: "Retry the upload or export the assembly as STEP AP242.",
+    };
+  }
 
   const glbUrl = URL.createObjectURL(blob);
   return {
-    model,
-    glbUrl,
-    revoke: () => URL.revokeObjectURL(glbUrl),
+    kind: "assembly",
+    render: {
+      model,
+      glbUrl,
+      revoke: () => URL.revokeObjectURL(glbUrl),
+    },
   };
+}
+
+/** Compatibility helper for callers that only need a confirmed assembly. */
+export async function fetchAssembly(file: File): Promise<AssemblyRender | null> {
+  const outcome = await probeAssembly(file);
+  return outcome.kind === "assembly" ? outcome.render : null;
 }
 
 /**
