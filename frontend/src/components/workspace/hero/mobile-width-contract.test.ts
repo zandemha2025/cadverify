@@ -15,3 +15,7 @@ test("analyze workspace and viewer cannot establish a wider mobile scroll contai
 test("legacy analyze viewer grid child can shrink below its canvas intrinsic width", () => {
   assert.match(workspace, /min-w-0 space-y-3 lg:sticky lg:top-0 lg:col-span-2/);
 });
+
+test("legacy analyze mobile grid uses a bounded track, not max-content auto", () => {
+  assert.match(workspace, /grid-cols-\[minmax\(0,1fr\)\] gap-6 lg:grid-cols-5/);
+});
