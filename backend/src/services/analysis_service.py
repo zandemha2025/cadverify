@@ -51,16 +51,61 @@ class AnalysisRun:
 
     result: dict
     analysis_id: int | None
+    stage_timings_ms: dict[str, float] | None = None
 
 
 def _analysis_return(
     result: dict,
     analysis_id: int | None,
     return_persisted_id: bool,
+    stage_timings_ms: dict[str, float] | None = None,
 ) -> dict | AnalysisRun:
     if return_persisted_id:
-        return AnalysisRun(result=result, analysis_id=analysis_id)
+        return AnalysisRun(
+            result=result,
+            analysis_id=analysis_id,
+            stage_timings_ms=stage_timings_ms,
+        )
     return result
+
+
+def _elapsed_ms(started: float) -> float:
+    return round((time.perf_counter() - started) * 1000, 1)
+
+_PERF_STAGE_ORDER = (
+    "upload_read",
+    "hash",
+    "cache_lookup",
+    "parse",
+    "geometry",
+    "context",
+    "features",
+    "universal_checks",
+    "process_analyzers",
+    "signature",
+    "serialize",
+    "pmi",
+    "persistence",
+    "total",
+)
+
+
+def server_timing_header(stage_timings_ms: dict[str, float] | None) -> str | None:
+    """Serialize bounded internal durations for the authenticated public route.
+
+    Names are a fixed allowlist and values are finite, non-negative milliseconds.
+    No CAD names, tenant identifiers, hashes, or other request data can enter the
+    response header.
+    """
+    if not stage_timings_ms:
+        return None
+    values: list[str] = []
+    for name in _PERF_STAGE_ORDER:
+        value = stage_timings_ms.get(name)
+        if not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+            continue
+        values.append(f"{name};dur={value:.1f}")
+    return ", ".join(values) or None
 
 
 def _force_gc_after_analysis() -> bool:
@@ -369,9 +414,13 @@ async def run_analysis(
     ) = _get_route_helpers()
 
     start = time.time()
+    request_started = time.perf_counter()
+    stage_timings_ms: dict[str, float] = {}
 
     # 1. Hash raw bytes BEFORE parsing (D-09, D-10)
+    stage_started = time.perf_counter()
     mesh_hash = compute_mesh_hash(file_bytes)
+    stage_timings_ms["hash"] = _elapsed_ms(stage_started)
 
     # 2. Resolve target processes
     target_processes = resolve_target_processes_fn(processes)
@@ -421,6 +470,7 @@ async def run_analysis(
     # fresh path builds — so when the caller asks for it we skip the cache short
     # circuit and run analysis, then attach the map to the RETURNED dict only.
     cached = None
+    stage_started = time.perf_counter()
     if not include_thickness:
         cached = await _check_cache(
             session,
@@ -430,6 +480,7 @@ async def run_analysis(
             analysis_version,
             org_id=org_id,
         )
+    stage_timings_ms["cache_lookup"] = _elapsed_ms(stage_started)
 
     if cached is not None:
         # 7. Cache HIT
@@ -439,6 +490,7 @@ async def run_analysis(
             mesh_hash,
             analysis_version,
         )
+        stage_started = time.perf_counter()
         # A cache hit still carries the caller's exact upload bytes. Persist
         # them under the winning analysis tenant so downstream calibration and
         # governed exports can reconcile to real source evidence. Older rows
@@ -463,10 +515,13 @@ async def run_analysis(
             cached.face_count,
             org_id=org_id,
         )
+        stage_timings_ms["persistence"] = _elapsed_ms(stage_started)
+        stage_timings_ms["total"] = _elapsed_ms(request_started)
         return _analysis_return(
             cached.result_json,
             cached.id,
             return_persisted_id,
+            stage_timings_ms,
         )
 
     # 8. Cache MISS — run full pipeline.
@@ -476,7 +531,9 @@ async def run_analysis(
     # pathological periodic-surface part (e.g. nist_ctc_05) grinds 2-3 min,
     # freezing /health, signup, and EVERY other tenant (gauntlet F1). The pooled
     # path keeps the loop free and surfaces an honest error to just this request.
+    stage_started = time.perf_counter()
     mesh, suffix = await parse_mesh_async_fn(file_bytes, filename)
+    stage_timings_ms["parse"] = _elapsed_ms(stage_started)
     if effective_units != "mm":
         # STL has no units. Convert the parsed mesh at the single geometry seam,
         # before geometry, features, universal checks, process DFM, and persisted
@@ -486,19 +543,29 @@ async def run_analysis(
         mesh = scale_mesh_to_mm(mesh, effective_units)
 
     def _run_analysis_sync():
+        sync_timings: dict[str, float] = {}
+        sync_started = time.perf_counter()
         geometry = analyze_geometry(mesh)
+        sync_timings["geometry"] = _elapsed_ms(sync_started)
+        sync_started = time.perf_counter()
         ctx = GeometryContext.build(mesh, geometry)
+        sync_timings["context"] = _elapsed_ms(sync_started)
         # ctx.mesh == mesh unless build() decimated an oversize mesh; detect on
         # ctx.mesh so feature indices align with the context per-face arrays.
+        sync_started = time.perf_counter()
         features = detect_features(ctx.mesh)
+        sync_timings["features"] = _elapsed_ms(sync_started)
         ctx.features = features
+        sync_started = time.perf_counter()
         universal_issues = run_universal_checks(mesh)
+        sync_timings["universal_checks"] = _elapsed_ms(sync_started)
         # Honestly surface to the user when the mesh was decimated for analysis.
         dec_issue = decimation_issue(ctx)
         if dec_issue is not None:
             universal_issues.append(dec_issue)
 
         process_scores = []
+        sync_started = time.perf_counter()
         for proc in target_processes:
             new_analyzer = get_analyzer(proc)
             if new_analyzer is None:
@@ -516,11 +583,13 @@ async def run_analysis(
                 proc_issues = pack.apply(proc_issues, proc)
             ps = score_process(proc_issues, geometry, proc)
             process_scores.append(ps)
+        sync_timings["process_analyzers"] = _elapsed_ms(sync_started)
 
         # Customer-context Slice 1: compute the 18-dim shape signature while the
         # mesh + geometry + ctx are still alive (they are freed before persist).
         # Best-effort / NON-FATAL — a signature failure must never affect analysis.
         signature_vec = None
+        sync_started = time.perf_counter()
         try:
             from src.eval.similarity import feature_vector
 
@@ -530,9 +599,10 @@ async def run_analysis(
                 "shape-signature computation failed — corpus write-back skipped",
                 exc_info=True,
             )
+        sync_timings["signature"] = _elapsed_ms(sync_started)
         return (
             geometry, ctx, features, universal_issues, process_scores,
-            signature_vec,
+            signature_vec, sync_timings,
         )
 
     timeout_sec = analysis_timeout_sec_fn()
@@ -540,7 +610,7 @@ async def run_analysis(
     try:
         (
             geometry, ctx, features, universal_issues, process_scores,
-            signature_vec,
+            signature_vec, sync_timings,
         ) = (
             await asyncio.wait_for(
                 loop.run_in_executor(None, _run_analysis_sync),
@@ -558,6 +628,7 @@ async def run_analysis(
             ),
         )
 
+    stage_timings_ms.update(sync_timings)
     duration_ms = round((time.time() - start) * 1000, 1)
 
     result = AnalysisResult(
@@ -576,7 +647,9 @@ async def run_analysis(
 
     result = enhance_suggestions(result)
 
+    stage_started = time.perf_counter()
     result_dict = to_response_fn(result, features, pack)
+    stage_timings_ms["serialize"] = _elapsed_ms(stage_started)
     if effective_units != "mm":
         result_dict["source_units"] = {
             "declared": effective_units,
@@ -586,6 +659,7 @@ async def run_analysis(
         }
 
     # Tolerance analysis for STEP files with AP242 support
+    stage_started = time.perf_counter()
     if suffix.lstrip(".") in ("step", "stp"):
         try:
             from src.parsers.step_ap242_parser import is_ap242_supported
@@ -603,6 +677,7 @@ async def run_analysis(
                 "has_pmi": False,
                 "pmi_note": "Tolerance analysis failed; results based on geometry only.",
             }
+    stage_timings_ms["pmi"] = _elapsed_ms(stage_started)
 
     # Capture values needed after cleanup
     _face_count = geometry.face_count
@@ -628,8 +703,10 @@ async def run_analysis(
     if _force_gc_after_analysis():
         gc.collect()
 
-    # Persist
+    # Persist. This includes the durable analysis row, original source, costable
+    # derivative, usage event, and audit event; none may move after the response.
     persisted_analysis_id: int | None = None
+    stage_started = time.perf_counter()
     try:
         analysis = await _persist_analysis(
             session=session,
@@ -711,19 +788,25 @@ async def run_analysis(
                 cached.face_count,
                 org_id=org_id,
             )
+            stage_timings_ms["persistence"] = _elapsed_ms(stage_started)
+            stage_timings_ms["total"] = _elapsed_ms(request_started)
             return _analysis_return(
                 _with_thickness(cached.result_json, _thickness_map),
                 cached.id,
                 return_persisted_id,
+                stage_timings_ms,
             )
         # If re-query also fails, just return the computed result
         # (usage event lost but the user still gets their response).
         logger.warning("Re-query after IntegrityError returned None — returning computed result")
 
+    stage_timings_ms["persistence"] = _elapsed_ms(stage_started)
+    stage_timings_ms["total"] = _elapsed_ms(request_started)
     return _analysis_return(
         _with_thickness(result_dict, _thickness_map),
         persisted_analysis_id,
         return_persisted_id,
+        stage_timings_ms,
     )
 
 

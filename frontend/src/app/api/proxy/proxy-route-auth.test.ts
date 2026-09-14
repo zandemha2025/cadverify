@@ -20,3 +20,8 @@ test("same-origin proxy rejects a missing session before reading an upload body"
   assert.ok(prepare > authCode, "missing-session rejection must happen before request-body preparation");
   assert.ok(upstream > prepare, "upstream fetch must happen only after the authenticated body is prepared");
 });
+
+
+test("same-origin proxy relays bounded backend stage timings", () => {
+  assert.match(source, /const RELAY_HEADERS = \[[\s\S]*"server-timing"/);
+});

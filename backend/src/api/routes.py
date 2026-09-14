@@ -788,8 +788,10 @@ async def validate_file(
             detail=f"Unknown units '{units}'. Use one of {sorted(_SOURCE_UNITS)}",
         )
 
+    upload_started = time.perf_counter()
     data = await _read_capped(file)
-    result = await analysis_service.run_analysis(
+    upload_read_ms = round((time.perf_counter() - upload_started) * 1000, 1)
+    analysis_run = await analysis_service.run_analysis(
         file_bytes=data,
         filename=file.filename or "unknown",
         processes=processes,
@@ -798,7 +800,23 @@ async def validate_file(
         session=session,
         include_thickness=include_thickness,
         source_units=units,
+        return_persisted_id=True,
     )
+    # The authenticated public path exposes only fixed stage names + durations.
+    # This is response metadata, not persisted analysis evidence, and contains no
+    # file name, tenant identifier, hash, or geometry payload.
+    if not isinstance(analysis_run, analysis_service.AnalysisRun):
+        raise RuntimeError("instrumented analysis did not return its run envelope")
+    if analysis_run.stage_timings_ms is not None:
+        analysis_run.stage_timings_ms["upload_read"] = upload_read_ms
+        analysis_run.stage_timings_ms["total"] = round(
+            analysis_run.stage_timings_ms.get("total", 0.0) + upload_read_ms,
+            1,
+        )
+    timing_header = analysis_service.server_timing_header(analysis_run.stage_timings_ms)
+    if timing_header:
+        response.headers["Server-Timing"] = timing_header
+    result = analysis_run.result
 
     if segmentation == "sam3d":
         from fastapi.responses import JSONResponse
