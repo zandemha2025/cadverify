@@ -107,14 +107,22 @@ def check_overhangs(
         return []
     pct = len(oh_faces) / max(len(ctx.centroids), 1) * 100
     region = _region_center(ctx, oh_faces)
+    # Truthful measured_value: the WORST offending face angle, expressed in
+    # the rule's own convention so it compares directly to required_value.
+    # From-vertical: steepest overhang past vertical. Above-horizontal:
+    # the lowest clearance above the build plate. Raw float from the mesh
+    # face normals - no rounding, no fabricated precision.
+    oh_angles = ctx.angles_from_up_deg[oh_faces]
     if min_angle_from_horizontal_deg is None:
         threshold_copy = f"exceed {max_angle_deg}° from vertical"
         fix_copy = f"Keep overhangs within {max_angle_deg}° of vertical"
         required_value = max_angle_deg
+        measured_value = float(np.max(oh_angles) - 90.0)
     else:
         threshold_copy = f"fall below {min_angle_from_horizontal_deg}° above horizontal"
         fix_copy = f"Raise overhangs to >= {min_angle_from_horizontal_deg}° above horizontal"
         required_value = min_angle_from_horizontal_deg
+        measured_value = float(180.0 - np.min(oh_angles))
     return [Issue(
         code="OVERHANG",
         severity=Severity.WARNING,
@@ -125,6 +133,7 @@ def check_overhangs(
         process=process,
         affected_faces=oh_faces.tolist(),
         region_center=region,
+        measured_value=measured_value,
         required_value=required_value,
         fix_suggestion=(
             f"Reorient part or redesign. {fix_copy} for {process.value}. {cite}"
