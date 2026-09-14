@@ -7,6 +7,7 @@ import {
   Box,
   CheckCircle2,
   Download,
+  GitCompareArrows,
   Layers3,
   Loader2,
   PanelTop,
@@ -46,6 +47,7 @@ import {
 } from "@/lib/design-plan";
 import {
   archiveDesign,
+  compareDesignRevisions,
   createDesign,
   createDesignRevision,
   DesignApiError,
@@ -56,6 +58,7 @@ import {
   listDesignRevisions,
   type Design,
   type DesignRevision,
+  type DesignRevisionComparison,
 } from "@/lib/designs-api";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/ui/auth-provider";
@@ -157,6 +160,52 @@ function formatBytes(value: number | null | undefined): string {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function diffValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "number") return Number.isInteger(value) ? String(value) : value.toFixed(3).replace(/\.?0+$/, "");
+  if (typeof value === "string") return value;
+  return JSON.stringify(value);
+}
+
+function diffPath(path: string): string {
+  return path
+    .replace(/^bbox_mm\[(0|1|2)\]$/, (_match, axis: string) => `envelope ${["X", "Y", "Z"][Number(axis)]}`)
+    .replace(/_/g, " ");
+}
+
+function RevisionDiffTable({
+  title,
+  rows,
+}: {
+  title: string;
+  rows: DesignRevisionComparison["plan_changes"];
+}) {
+  return (
+    <div className="overflow-hidden rounded-[var(--radius)] border border-border">
+      <div className="border-b border-border bg-muted px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {title} · {rows.length}
+      </div>
+      {rows.length === 0 ? (
+        <p className="px-3 py-4 text-sm text-muted-foreground">No saved values changed.</p>
+      ) : (
+        <div className="divide-y divide-border">
+          {rows.map((row) => (
+            <div key={row.path} className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-baseline gap-3 px-3 py-2 text-xs">
+              <span className="truncate text-foreground" title={row.path}>{diffPath(row.path)}</span>
+              <span className="num text-muted-foreground">{diffValue(row.before)}</span>
+              <span aria-hidden="true" className="text-subtle-foreground">→</span>
+              <span className="num font-medium text-foreground">
+                {diffValue(row.after)}
+                {row.delta != null && row.delta !== 0 ? ` (${row.delta > 0 ? "+" : ""}${diffValue(row.delta)})` : ""}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function DesignsPage() {
   const { user } = useAuth();
   const canMutate = canMutateWorkspace(user?.role);
@@ -167,6 +216,11 @@ export default function DesignsPage() {
   const [revisionHistoryOwnerId, setRevisionHistoryOwnerId] = useState<string | null>(null);
   const [revisionHistoryState, setRevisionHistoryState] = useState<"idle" | "loading" | "ready">("idle");
   const [viewedRevisionNo, setViewedRevisionNo] = useState<number | null>(null);
+  const [diffFrom, setDiffFrom] = useState<number | null>(null);
+  const [diffTo, setDiffTo] = useState<number | null>(null);
+  const [revisionDiff, setRevisionDiff] = useState<DesignRevisionComparison | null>(null);
+  const [diffLoading, setDiffLoading] = useState(false);
+  const [diffError, setDiffError] = useState<string | null>(null);
   const [form, setForm] = useState<DesignForm>({ ...DEFAULT_DESIGN_FORM });
   const [description, setDescription] = useState("");
   const [interpreting, setInterpreting] = useState(false);
@@ -416,6 +470,52 @@ export default function DesignsPage() {
     ? designRevisionPreviewUrl(selected.id, viewedRevision)
     : null;
   const geometry = viewedRevision?.geometry;
+  const readyRevisions = visibleRevisionHistory
+    .filter((revision) => revision.status === "ready")
+    .sort((a, b) => a.number - b.number);
+
+  useEffect(() => {
+    if (readyRevisions.length < 2) {
+      setDiffFrom(null);
+      setDiffTo(null);
+      setRevisionDiff(null);
+      return;
+    }
+    const latest = readyRevisions[readyRevisions.length - 1].number;
+    const previous = readyRevisions[readyRevisions.length - 2].number;
+    setDiffFrom((current) =>
+      current != null && readyRevisions.some((revision) => revision.number === current)
+        ? current
+        : previous,
+    );
+    setDiffTo((current) =>
+      current != null && readyRevisions.some((revision) => revision.number === current)
+        ? current
+        : latest,
+    );
+    setRevisionDiff(null);
+    setDiffError(null);
+  // Revision identity is carried by the server-owned ids, not array object identity.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id, readyRevisions.map((revision) => revision.id).join("|")]);
+
+  const runRevisionDiff = async () => {
+    if (!selected || diffFrom == null || diffTo == null || diffFrom === diffTo) return;
+    setDiffLoading(true);
+    setDiffError(null);
+    try {
+      setRevisionDiff(
+        await compareDesignRevisions(selected.id, diffFrom, diffTo),
+      );
+    } catch (caught) {
+      setRevisionDiff(null);
+      setDiffError(
+        caught instanceof Error ? caught.message : "Could not compare revisions.",
+      );
+    } finally {
+      setDiffLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -779,6 +879,109 @@ export default function DesignsPage() {
                         </button>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {readyRevisions.length >= 2 && (
+                  <div className="space-y-4 border-t border-border pt-4" data-testid="design-version-diff">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Version diff
+                        </p>
+                        <p className="mt-1 text-xs text-subtle-foreground">
+                          Compare two immutable revisions. Values come from the saved plans and generated geometry summaries.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-end gap-2">
+                        <label className="space-y-1 text-xs text-muted-foreground">
+                          <span className="block">From</span>
+                          <select
+                            aria-label="Diff from revision"
+                            value={diffFrom ?? ""}
+                            onChange={(event) => {
+                              setDiffFrom(Number(event.target.value));
+                              setRevisionDiff(null);
+                            }}
+                            className="h-9 rounded-[var(--radius-sm)] border border-border bg-card px-3 text-sm text-foreground"
+                          >
+                            {readyRevisions.map((revision) => (
+                              <option key={revision.id} value={revision.number} disabled={revision.number === diffTo}>
+                                R{revision.number}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="space-y-1 text-xs text-muted-foreground">
+                          <span className="block">To</span>
+                          <select
+                            aria-label="Diff to revision"
+                            value={diffTo ?? ""}
+                            onChange={(event) => {
+                              setDiffTo(Number(event.target.value));
+                              setRevisionDiff(null);
+                            }}
+                            className="h-9 rounded-[var(--radius-sm)] border border-border bg-card px-3 text-sm text-foreground"
+                          >
+                            {readyRevisions.map((revision) => (
+                              <option key={revision.id} value={revision.number} disabled={revision.number === diffFrom}>
+                                R{revision.number}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          loading={diffLoading}
+                          disabled={diffFrom == null || diffTo == null || diffFrom === diffTo}
+                          onClick={() => void runRevisionDiff()}
+                        >
+                          {!diffLoading && <GitCompareArrows />} Compare
+                        </Button>
+                      </div>
+                    </div>
+
+                    {diffError && (
+                      <p role="alert" className="text-sm text-fail">{diffError}</p>
+                    )}
+
+                    {revisionDiff && (
+                      <div className="space-y-3">
+                        <div className="grid gap-3 lg:grid-cols-2">
+                          {[revisionDiff.before, revisionDiff.after].map((side, index) => (
+                            <div key={side.number} className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <p className="num text-xs font-semibold text-foreground">
+                                  {index === 0 ? "BEFORE" : "AFTER"} · R{side.number}
+                                </p>
+                                <span className="num text-[10px] text-subtle-foreground">
+                                  {side.geometry_hash?.slice(0, 12) ?? "no hash"}
+                                </span>
+                              </div>
+                              {side.links.preview ? (
+                                <CadViewer src={side.links.preview} surface="instrument" className="h-[260px]" />
+                              ) : (
+                                <div className="flex h-[260px] items-center justify-center rounded-[var(--radius)] border border-border bg-muted text-sm text-muted-foreground">
+                                  Preview unavailable for this revision
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="grid gap-3 lg:grid-cols-2">
+                          <RevisionDiffTable title="Plan changes" rows={revisionDiff.plan_changes} />
+                          <RevisionDiffTable title="Generated geometry changes" rows={revisionDiff.geometry_changes} />
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius-sm)] border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
+                          <Badge variant={revisionDiff.same_geometry ? "neutral" : "outline"}>
+                            {revisionDiff.same_geometry ? "Same geometry hash" : "Geometry hash changed"}
+                          </Badge>
+                          <span>{revisionDiff.limits}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

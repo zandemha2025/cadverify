@@ -165,3 +165,116 @@ def test_preview_streams_only_service_authorized_artifact(monkeypatch):
     assert response.headers["content-type"].startswith("model/stl")
     assert stream.closed
     assert opened.await_args.kwargs["kind"] == "stl"
+
+
+def test_revision_compare_is_viewer_accessible_and_evidence_bound(monkeypatch):
+    from src.api import designs
+
+    project, before, _job = _rows(status="ready")
+    before.geometry_hash = "a" * 64
+    before.geometry_metadata_json = {
+        "bbox_mm": [80.0, 50.0, 6.0],
+        "volume_cm3": 23.5,
+        "surface_elements": 120,
+        "solid_count": 1,
+        "engine": "proofshape-occ-v1",
+    }
+    after = DesignRevision(
+        id=4,
+        ulid="01KREVISIONTWOXXXXXXXXXXXX",
+        design_id=project.id,
+        org_id=project.org_id,
+        created_by=7,
+        revision_no=2,
+        status="ready",
+        operation_plan_json={
+            "kind": "plate",
+            "width_mm": 82.0,
+            "depth_mm": 50.0,
+            "thickness_mm": 6.0,
+            "holes": [],
+        },
+        geometry_hash="b" * 64,
+        geometry_metadata_json={
+            "bbox_mm": [82.0, 50.0, 6.0],
+            "volume_cm3": 24.1,
+            "surface_elements": 124,
+            "solid_count": 1,
+            "engine": "proofshape-occ-v1",
+        },
+        generation_engine="proofshape-occ-v1",
+    )
+    get_revision = AsyncMock(
+        side_effect=[(project, before), (project, after)]
+    )
+    monkeypatch.setattr(designs.svc, "get_revision", get_revision)
+
+    response = TestClient(_app(role="viewer")).get(
+        f"/api/v1/designs/{project.ulid}/revisions/compare?from=1&to=2"
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["same_geometry"] is False
+    assert body["plan_changes"] == [
+        {"path": "width_mm", "before": 80.0, "after": 82.0, "delta": 2.0}
+    ]
+    assert {
+        (change["path"], change["delta"])
+        for change in body["geometry_changes"]
+    } == {
+        ("bbox_mm[0]", 2.0),
+        ("surface_elements", 4.0),
+        ("volume_cm3", 0.6),
+    }
+    assert "Surface correspondence is not inferred" in body["limits"]
+    assert get_revision.await_args_list[0].args[1:3] == (project.ulid, 1)
+    assert get_revision.await_args_list[1].args[1:3] == (project.ulid, 2)
+
+
+def test_revision_compare_preserves_list_positions_instead_of_inferring_features():
+    from src.services.design_service import build_revision_comparison
+
+    project, before, _job = _rows(status="ready")
+    before.operation_plan_json["holes"] = [
+        {"x_mm": -30.0, "y_mm": -15.0, "diameter_mm": 6.0},
+        {"x_mm": 30.0, "y_mm": 15.0, "diameter_mm": 8.0},
+    ]
+    after = DesignRevision(
+        id=4,
+        ulid="01KREVISIONTWOXXXXXXXXXXXX",
+        design_id=project.id,
+        org_id=project.org_id,
+        created_by=7,
+        revision_no=2,
+        status="ready",
+        operation_plan_json={
+            **before.operation_plan_json,
+            "holes": list(reversed(before.operation_plan_json["holes"])),
+        },
+        generation_engine="proofshape-occ-v1",
+    )
+
+    comparison = build_revision_comparison(project, before, after)
+    paths = {change["path"] for change in comparison["plan_changes"]}
+    assert paths == {
+        "holes[0].diameter_mm",
+        "holes[0].x_mm",
+        "holes[0].y_mm",
+        "holes[1].diameter_mm",
+        "holes[1].x_mm",
+        "holes[1].y_mm",
+    }
+    assert "Surface correspondence is not inferred" in comparison["limits"]
+
+
+def test_revision_compare_rejects_same_revision_before_lookup(monkeypatch):
+    from src.api import designs
+
+    get_revision = AsyncMock()
+    monkeypatch.setattr(designs.svc, "get_revision", get_revision)
+    project, _revision, _job = _rows(status="ready")
+    response = TestClient(_app(role="viewer")).get(
+        f"/api/v1/designs/{project.ulid}/revisions/compare?from=1&to=1"
+    )
+    assert response.status_code == 400
+    get_revision.assert_not_awaited()

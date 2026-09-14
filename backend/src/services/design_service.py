@@ -212,6 +212,113 @@ async def list_revisions(
     return project, revisions
 
 
+def _flatten_revision_values(value: object, prefix: str = "") -> dict[str, object]:
+    """Flatten persisted plan/geometry facts without inventing correspondence.
+
+    List positions remain explicit (for example ``holes[0].diameter_mm``). A
+    reordered list is therefore reported as changed positions, never guessed as
+    the same physical feature.
+    """
+    if isinstance(value, dict):
+        out: dict[str, object] = {}
+        for key in sorted(value):
+            path = f"{prefix}.{key}" if prefix else str(key)
+            out.update(_flatten_revision_values(value[key], path))
+        return out
+    if isinstance(value, list):
+        out = {}
+        for index, item in enumerate(value):
+            out.update(_flatten_revision_values(item, f"{prefix}[{index}]"))
+        if not value:
+            out[prefix] = []
+        return out
+    return {prefix: value}
+
+
+def _numeric_delta(before: object, after: object) -> float | None:
+    if (
+        isinstance(before, (int, float))
+        and not isinstance(before, bool)
+        and isinstance(after, (int, float))
+        and not isinstance(after, bool)
+    ):
+        return round(float(after) - float(before), 6)
+    return None
+
+
+def build_revision_comparison(
+    project: DesignProject,
+    before: DesignRevision,
+    after: DesignRevision,
+) -> dict:
+    """Build an evidence-bound structural diff of two immutable revisions.
+
+    Only persisted operation-plan fields and generated geometry metadata are
+    compared. This does not claim surface/feature correspondence between meshes.
+    """
+    plan_before = _flatten_revision_values(before.operation_plan_json or {})
+    plan_after = _flatten_revision_values(after.operation_plan_json or {})
+    plan_keys = sorted(set(plan_before) | set(plan_after))
+    plan_changes = [
+        {
+            "path": key,
+            "before": plan_before.get(key),
+            "after": plan_after.get(key),
+            "delta": _numeric_delta(plan_before.get(key), plan_after.get(key)),
+        }
+        for key in plan_keys
+        if plan_before.get(key) != plan_after.get(key)
+    ]
+
+    geometry_before = _flatten_revision_values(before.geometry_metadata_json or {})
+    geometry_after = _flatten_revision_values(after.geometry_metadata_json or {})
+    geometry_keys = sorted(set(geometry_before) | set(geometry_after))
+    geometry_changes = [
+        {
+            "path": key,
+            "before": geometry_before.get(key),
+            "after": geometry_after.get(key),
+            "delta": _numeric_delta(
+                geometry_before.get(key), geometry_after.get(key)
+            ),
+        }
+        for key in geometry_keys
+        if geometry_before.get(key) != geometry_after.get(key)
+    ]
+
+    def side(revision: DesignRevision) -> dict:
+        return {
+            "number": revision.revision_no,
+            "status": revision.status,
+            "design_note": revision.design_note,
+            "generation_engine": revision.generation_engine,
+            "geometry_hash": revision.geometry_hash,
+            "created_at": (
+                revision.created_at.isoformat() if revision.created_at else None
+            ),
+            "links": serialize_revision(project, revision)["links"],
+        }
+
+    hashes_prove_same = bool(
+        before.geometry_hash
+        and after.geometry_hash
+        and before.geometry_hash == after.geometry_hash
+    )
+    return {
+        "design_id": project.ulid,
+        "design_name": project.name,
+        "before": side(before),
+        "after": side(after),
+        "same_geometry": hashes_prove_same,
+        "plan_changes": plan_changes,
+        "geometry_changes": geometry_changes,
+        "limits": (
+            "Structural plan and generated summary diff only. "
+            "Surface correspondence is not inferred."
+        ),
+    }
+
+
 async def get_revision(
     session: AsyncSession,
     project_ulid: str,
