@@ -339,7 +339,7 @@ class SiteDesignFidelity {
         hasGhostCta: Boolean(document.querySelector('a.btn.ghost[href="#chapters"]')),
         hasTopbar: Boolean(document.querySelector("#topbar")),
         hasTopbarRotationCopy: document.documentElement.innerHTML.includes(
-          "STL \u00B7 STEP \u00B7 IGES IN \u00B7 VERDICT OUT IN SECONDS",
+          "STL \u00B7 STEP \u00B7 IGES IN \u00B7 VERDICT WITH EVIDENCE OUT",
         ),
         chapterImages: chapters.map((chapter) => ({
           chapter,
