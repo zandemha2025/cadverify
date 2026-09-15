@@ -49,7 +49,7 @@ export function buildAuthorizationUrl({
 }
 
 function basicAuthHeader(clientId, clientSecret) {
-  return `Basic ${btoa(`${encodeURIComponent(clientId)}:${encodeURIComponent(clientSecret)}`)}`;
+  return `Basic ${btoa(`${clientId}:${clientSecret}`)}`;
 }
 
 async function postTokenRequest({ tokenUrl, formFields, clientId, clientSecret, fetchImpl }) {
