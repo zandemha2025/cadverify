@@ -54,7 +54,7 @@ function contentSecurityPolicy(nonce: string): string {
   const directUploadSource = directUploadOrigin ? ` ${directUploadOrigin}` : "";
   return `
     default-src 'self';
-    script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval' 'sha256-A4ctFo5+Z6EoKPA+k0/ccQc1G5XhULEhWnhvrtYP8Ss='${devEval} https://challenges.cloudflare.com;
+    script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval' 'sha256-ljMPx85K/wOdp7taG6olvwWNUP4R/HkS2hK2QrtXg38='${devEval} https://challenges.cloudflare.com;
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
     img-src 'self' data: blob: https:;
     font-src 'self' data: https://fonts.gstatic.com;
