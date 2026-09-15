@@ -223,7 +223,7 @@ export default function CostEngineeringCinematic() {
               analogous part.
             </p>
             <p className="st-mono" style={{ margin: "20px 0 0", fontSize: 12, lineHeight: 1.8, color: "var(--st-ink-40)" }}>
-              verdict: makeable in-house — M2 Pro (MJF) · $14.14/unit should-cost ±40% · Σ ✓ · 412 ms
+              verdict: makeable in-house — M2 Pro (MJF) · $14.14/unit should-cost ±40% · Σ ✓
             </p>
           </div>
         </div>
