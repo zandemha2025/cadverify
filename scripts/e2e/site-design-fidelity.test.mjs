@@ -18,6 +18,25 @@ test("route / is re-baselined to the accepted HOME v2 signals", () => {
     "Stop losing weeks to failed prints",
     "See it work",
     "THE VERDICT",
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+const source = await readFile(new URL("./site-design-fidelity.mjs", import.meta.url), "utf8");
+const homeHtml = await readFile(new URL("../../frontend/src/app/(site)/home-v2-html.ts", import.meta.url), "utf8");
+
+function homeSpec() {
+  const start = source.indexOf('route: "/"');
+  const end = source.indexOf('\n  {\n    route: "/method"', start);
+  assert.ok(start >= 0 && end > start);
+  return source.slice(start, end);
+}
+
+test("route / is re-baselined to the accepted HOME v2 signals", () => {
+  const home = homeSpec();
+  for (const signal of [
+    "Stop losing weeks to failed prints",
+    "See it work",
+    "THE VERDICT",
     "THE FIX",
     "THE PRICE",
     "THE RECORD",
@@ -34,7 +53,7 @@ test("HOME v2 retains structural and image proof without a receipt line", () => 
   const helper = source.slice(start, end);
   for (const token of [
     'a.btn.ghost[href="#chapters"]',
-    "STL \\u00B7 STEP \\u00B7 IGES IN \\u00B7 VERDICT OUT IN SECONDS",
+    "STL \\u00B7 STEP \\u00B7 IGES IN \\u00B7 VERDICT WITH EVIDENCE OUT",
     "chapterImages[index].complete",
     "chapterImages[index].naturalWidth > 0",
     "outcomeBackground",
