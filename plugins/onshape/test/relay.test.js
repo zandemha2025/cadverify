@@ -103,3 +103,14 @@ test("unconfigured relay fails loudly instead of starting OAuth", async () => {
     await relay.stop();
   }
 });
+
+test("ONSHAPE_SCOPES env overrides requested scopes in the authorize redirect", async () => {
+  const relay = createRelay({ env: { ...ENV, ONSHAPE_SCOPES: "OAuth2Read" }, fetchImpl: async () => { throw new Error("unused"); } });
+  const port = await relay.start(0);
+  try {
+    const start = await fetch(`http://127.0.0.1:${port}/`, { redirect: "manual" });
+    assert.equal(start.status, 302);
+    const authorize = new URL(start.headers.get("location"));
+    assert.equal(authorize.searchParams.get("scope"), "OAuth2Read");
+  } finally { await relay.stop(); }
+});
