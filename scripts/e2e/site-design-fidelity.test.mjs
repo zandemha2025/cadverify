@@ -34,7 +34,7 @@ test("HOME v2 retains structural and image proof without a receipt line", () => 
   const helper = source.slice(start, end);
   for (const token of [
     'a.btn.ghost[href="#chapters"]',
-    "STL \\u00B7 STEP \\u00B7 IGES IN \\u00B7 VERDICT OUT IN SECONDS",
+    "STL \\u00B7 STEP \\u00B7 IGES IN \\u00B7 VERDICT WITH EVIDENCE OUT",
     "chapterImages[index].complete",
     "chapterImages[index].naturalWidth > 0",
     "outcomeBackground",
