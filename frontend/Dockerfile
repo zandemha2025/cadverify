@@ -39,6 +39,23 @@ COPY --from=builder --chown=node:node /app/next.config.ts ./next.config.ts
 
 RUN mkdir -p /app/.next/cache && chown -R node:node /app
 
+# Security: clear HIGH/CRITICAL findings flagged by the main-branch Trivy gate
+# (run 34987158054). Findings live in the base image's bundled npm tree and
+# openssl libs, not /app (lockfile already clean). npm 12.0.2 already carries
+# fixed sigstore/pacote/picomatch; only tar, ip-address and brace-expansion
+# still need swaps. Pack tarballs BEFORE removing bundled copies - npm pack
+# itself requires its bundled tar. Keep the pinned base: current node:22-alpine
+# carries the same vulnerable npm tree plus new openssl findings.
+RUN apk upgrade --no-cache libcrypto3 libssl3 \
+ && npm install -g npm@12.0.2 \
+ && NPM_MODS=/usr/local/lib/node_modules/npm/node_modules \
+ && cd "$NPM_MODS" \
+ && npm pack tar@7.5.21 ip-address@10.3.1 brace-expansion@5.0.9 --silent \
+ && for pkg in tar ip-address brace-expansion; do \
+      rm -rf "$pkg" && tar xzf "$pkg"-*.tgz && rm "$pkg"-*.tgz && mv package "$pkg"; \
+    done \
+ && npm cache clean --force && rm -rf /root/.npm
+
 USER node
 
 EXPOSE 3000
