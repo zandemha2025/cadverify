@@ -30,6 +30,30 @@ async function parseResponse(response) {
   return body;
 }
 
+/**
+ * Issue rows from the real /validate contract and its predecessors:
+ *   - priority_fixes (current API: flat, severity-ordered, deduped)
+ *   - top-level issues / violations / findings (earlier shapes and tests)
+ *   - process_scores[].issues (per-process nesting in the current API)
+ */
+function collectIssueRows(result) {
+  if (Array.isArray(result?.priority_fixes)) return result.priority_fixes;
+  const topLevel = result?.issues ?? result?.violations ?? result?.findings;
+  if (Array.isArray(topLevel)) return topLevel;
+  if (Array.isArray(result?.process_scores)) {
+    return result.process_scores.flatMap((score) => (Array.isArray(score?.issues) ? score.issues : []));
+  }
+  return [];
+}
+
+function formatIssue(row) {
+  if (typeof row === "string") return row;
+  if (row == null || typeof row !== "object") return String(row);
+  const message = row.message ?? row.title ?? JSON.stringify(row);
+  const fix = row.fix ?? row.fix_suggestion;
+  return fix ? `${message} (Fix: ${fix})` : message;
+}
+
 export class ProofShapeClient {
   constructor({ baseUrl, apiKey, fetchImpl = globalThis.fetch, pollIntervalMs = 1000, maxPolls = 120 }) {
     if (!baseUrl) throw new TypeError("baseUrl is required");
@@ -82,8 +106,8 @@ export class ProofShapeClient {
   normalizeVerdict(result) {
     const raw = String(result?.overall_verdict ?? result?.verdict ?? "issues").toLowerCase();
     const badge = raw === "pass" ? "PASS" : raw === "fail" ? "FAIL" : "ISSUES";
-    const issueRows = result?.issues ?? result?.violations ?? result?.findings ?? [];
-    const issues = Array.isArray(issueRows) ? issueRows.map((row) => typeof row === "string" ? row : row.message ?? row.title ?? JSON.stringify(row)) : [];
+    const issueRows = collectIssueRows(result);
+    const issues = issueRows.map((row) => formatIssue(row));
     const recordPath = result?.share_url ?? result?.record_url ?? null;
     return {
       badge,
