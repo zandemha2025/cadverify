@@ -39,6 +39,22 @@ COPY --from=builder --chown=node:node /app/next.config.ts ./next.config.ts
 
 RUN mkdir -p /app/.next/cache && chown -R node:node /app
 
+# Security: clear HIGH/CRITICAL findings flagged by the main-branch Trivy gate
+# (run 34987158054). All findings live in the base image's bundled npm tree or
+# openssl libs, not in /app (lockfile already clean). Keep the pinned base:
+# current node:22-alpine carries the same npm tree plus new openssl findings.
+RUN apk upgrade --no-cache libcrypto3 libssl3 \
+ && npm install -g npm@12.0.2 \
+ && NPM_MODS=/usr/local/lib/node_modules/npm/node_modules \
+ && cd "$NPM_MODS" \
+ && for spec in tar@7.5.21 ip-address@10.3.1 brace-expansion@5.0.9; do \
+      pkg="${spec%@*}"; \
+      rm -rf "$pkg" && npm pack "$spec" --silent && tar xzf "$pkg"-*.tgz && rm "$pkg"-*.tgz && mv package "$pkg"; \
+    done \
+ && cd "$NPM_MODS/tinyglobby/node_modules" \
+ && rm -rf picomatch && npm pack picomatch@4.0.4 --silent && tar xzf picomatch-*.tgz && rm picomatch-*.tgz && mv package picomatch \
+ && npm cache clean --force && rm -rf /root/.npm
+
 USER node
 
 EXPOSE 3000
