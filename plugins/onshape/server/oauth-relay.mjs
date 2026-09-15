@@ -52,6 +52,9 @@ export function createRelay({
   const clientSecret = env.ONSHAPE_CLIENT_SECRET;
   const proofshapeApiKey = env.PROOFSHAPE_API_KEY;
   const proofshapeBaseUrl = env.PROOFSHAPE_BASE_URL ?? "https://cadverify-api.onrender.com";
+  // Requested scopes are operator-configurable (ONSHAPE_SCOPES, space/comma separated);
+  // unset falls back to DEFAULT_SCOPES (OAuth2Read + OAuth2Write) in oauth.js.
+  const configuredScopes = (env.ONSHAPE_SCOPES ?? "").split(/[\s,]+/).filter(Boolean);
 
   /** state -> createdAt (OAuth CSRF bindings) */
   const pendingStates = new Map();
@@ -94,7 +97,7 @@ export function createRelay({
       }
       const state = randomBytes(16).toString("hex");
       pendingStates.set(state, now());
-      res.writeHead(302, { location: buildAuthorizationUrl({ clientId, redirectUri, state }) });
+      res.writeHead(302, { location: buildAuthorizationUrl({ clientId, redirectUri, state, ...(configuredScopes.length ? { scopes: configuredScopes } : {}) }) });
       res.end();
       return;
     }
