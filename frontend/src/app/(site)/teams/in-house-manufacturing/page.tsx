@@ -170,7 +170,7 @@ export default function InHouseManufacturingPage() {
               OBJECT.STL · DROPPED AT 09:41
             </p>
             <p style={{ margin: "8px 0 0", color: "rgba(245,245,247,0.65)" }}>
-              measured Ø21.16 × 21.43 · watertight ✓ · routed bulk_solid → mjf · 412 ms
+              measured Ø21.16 × 21.43 · watertight ✓ · routed bulk_solid → mjf
             </p>
           </div>
         </Act>
