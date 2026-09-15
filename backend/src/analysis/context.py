@@ -188,8 +188,27 @@ class GeometryContext:
             )
             concave_mask = np.zeros(len(dihedral), dtype=bool)
 
+        split_skipped: dict[str, Any] | None = None
         try:
-            bodies = list(mesh.split(only_watertight=False))
+            n_components = _count_connected_components(mesh)
+            cap = _max_split_bodies()
+            if n_components > cap:
+                # Unmerged triangle soup (or pathological fragment counts) makes
+                # trimesh.split construct one Trimesh per face: 200k faces took
+                # ~35s and ~200k live objects, timing out /validate and
+                # OOM-restarting the batch worker. Per-body volumes are all 0.0
+                # on non-watertight soup anyway, so collapse to a single body
+                # and record the skip honestly in metadata.
+                split_skipped = {"components": int(n_components), "cap": cap}
+                logger.warning(
+                    "mesh.split skipped: %d connected components exceed cap %d; "
+                    "treating as single body",
+                    n_components,
+                    cap,
+                )
+                bodies = [mesh]
+            else:
+                bodies = list(mesh.split(only_watertight=False))
         except Exception:
             logger.warning(
                 "mesh.split failed (n_faces=%d); treating as single body",
@@ -226,8 +245,47 @@ class GeometryContext:
             bodies=bodies,
             body_volumes=body_volumes,
             facet_groups=facet_groups,
-            metadata={"decimation": decimation} if decimation else {},
+            metadata={
+                k: v
+                for k, v in {
+                    "decimation": decimation,
+                    "body_split_skipped": split_skipped,
+                }.items()
+                if v
+            },
         )
+
+
+def _max_split_bodies() -> int:
+    """Cap on connected components passed to trimesh.split.
+
+    Env var: MAX_SPLIT_BODIES (default 512). Beyond the cap the context treats
+    the mesh as one body and records body_split_skipped in metadata.
+    """
+    try:
+        value = int(os.getenv("MAX_SPLIT_BODIES", "512"))
+    except ValueError:
+        return 512
+    return value if value > 0 else 512
+
+
+def _count_connected_components(mesh: trimesh.Trimesh) -> int:
+    """Count face-graph components WITHOUT building submeshes (cheap labels)."""
+    from scipy.sparse import csr_matrix
+    from scipy.sparse.csgraph import connected_components as _csgraph_cc
+
+    n_faces = len(mesh.faces)
+    if n_faces == 0:
+        return 0
+    adjacency = np.asarray(mesh.face_adjacency, dtype=np.int64)
+    if adjacency.size == 0:
+        return n_faces
+    graph = csr_matrix(
+        (np.ones(len(adjacency)), (adjacency[:, 0], adjacency[:, 1])),
+        shape=(n_faces, n_faces),
+    )
+    n_components, _ = _csgraph_cc(graph, directed=False)
+    return int(n_components)
 
 
 def _finite_body_volume(mesh: trimesh.Trimesh) -> float:
