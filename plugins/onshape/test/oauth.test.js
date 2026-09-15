@@ -89,3 +89,17 @@ test("token store tracks expiry with leeway", () => {
   store.clear();
   assert.ok(store.isExpired());
 });
+
+test("basic auth encodes RAW clientId:clientSecret (no URL-encoding of special chars)", async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => { calls.push({ url, init }); return tokenResponse({ access_token: "a", refresh_token: "r", expires_in: 1 }); };
+  await exchangeAuthorizationCode({ code: "c", clientId: "cid+with/special=chars", clientSecret: "sec ret:9", redirectUri: "http://localhost:8787/cb", fetchImpl });
+  const auth = calls[0].init.headers.Authorization;
+  const decoded = Buffer.from(auth.replace(/^Basic /, ""), "base64").toString("utf8");
+  assert.equal(decoded, "cid+with/special=chars:sec ret:9");
+});
+
+test("custom scopes parameter is honored (read-only app)", () => {
+  const url = new URL(buildAuthorizationUrl({ clientId: "cid", redirectUri: "http://localhost:8787/cb", state: "s", scopes: ["OAuth2Read"] }));
+  assert.equal(url.searchParams.get("scope"), "OAuth2Read");
+});
