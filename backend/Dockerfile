@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # =============================================================================
-# Stage 1 — builder: install build tools + compile C extensions into a venv
+# Stage 1 - builder: install build tools + compile C extensions into a venv
 # =============================================================================
 FROM python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf AS builder
 
@@ -39,7 +39,7 @@ ADD --checksum=sha256:6d1aa6f30de5c92224f8172114de081d104bbd23dd9dc5c58996f0cad5
     /build/models/sam2_hiera_small.pt
 
 # =============================================================================
-# Stage 2 — runtime: slim image with only runtime deps + venv + app code
+# Stage 2 - runtime: slim image with only runtime deps + venv + app code
 # =============================================================================
 FROM python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf
 
@@ -72,7 +72,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # exactly those (openssl/libssl3t64 -> 3.5.7-1~deb13u2, perl-base ->
 # 5.40.1-6+deb13u1, util-linux family -> 2.41.5-0+deb13u1, gzip -> 1.13-1+deb13u1,
 # login -> 1:4.16.0-2+really2.41.5-0+deb13u1, libpcre2-8-0 -> 10.46-1~deb13u2).
-# The 8 remaining unfixed CVEs (no published Debian fix) are pinned with
+# Round 2 (same day; post-merge gate run 35043081368, Trivy DB cache-trivy-2026-09-16):
+# libsqlite3-0 -> 3.46.1-7+deb13u2 (CVE-2026-11822, CVE-2026-11824; fix published
+# in trixie, verified resolvable at build time).
+# The remaining unfixed CVEs (no published Debian fix) are pinned with
 # justification in /.trivyignore. Base pin unchanged; apt resolves fixed versions
 # from trixie-security at build time. Rootfs-equivalent proof attached to the PR.
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -89,6 +92,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     login \
     gzip \
     libpcre2-8-0 \
+    libsqlite3-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # STEP ingestion (B4): the gmsh manylinux wheel (libgmsh.so, embedded
