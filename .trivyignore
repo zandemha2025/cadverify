@@ -1,0 +1,18 @@
+# ProofShape container gate: findings with NO published fix in Debian trixie as of 2026-09-15.
+# Gate runs severity HIGH,CRITICAL with ignore-unfixed=false; without these pins main stays red
+# on issues no Dockerfile change can fix. Revisit on each base-image refresh; remove as Debian
+# publishes fixes.
+# util-linux source (status: affected, no fix published): mount/namespace hardening issues;
+# app runs as non-root cadverify user and performs no mount operations.
+CVE-2026-76642
+CVE-2026-78408
+CVE-2026-78409
+CVE-2026-78410
+# libacl1 (status: affected): symlink traversal via libacl; no published fix.
+CVE-2026-54369
+# systemd libs (status: affected): libsystemd0/libudev1 pulled in by mesa/X runtime deps.
+CVE-2026-16742
+# ncurses libtinfo6/ncurses-bin (no published fix in trixie).
+CVE-2025-69720
+# perl-base (status: fix_deferred by the Debian security team).
+CVE-2026-9538

@@ -66,6 +66,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
+# Security upgrades (2026-09-15): post-merge main gate run 35023827392 scanned the
+# backend image at 94 HIGH/CRITICAL findings. 52 were fixable via trixie-security
+# updates not yet rolled into the pinned python:3.12-slim base; this layer applies
+# exactly those (openssl/libssl3t64 -> 3.5.7-1~deb13u2, perl-base ->
+# 5.40.1-6+deb13u1, util-linux family -> 2.41.5-0+deb13u1, gzip -> 1.13-1+deb13u1,
+# login -> 1:4.16.0-2+really2.41.5-0+deb13u1, libpcre2-8-0 -> 10.46-1~deb13u2).
+# The 8 remaining unfixed CVEs (no published Debian fix) are pinned with
+# justification in /.trivyignore. Base pin unchanged; apt resolves fixed versions
+# from trixie-security at build time. Rootfs-equivalent proof attached to the PR.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssl \
+    libssl3t64 \
+    perl-base \
+    util-linux \
+    bsdutils \
+    libblkid1 \
+    libmount1 \
+    libsmartcols1 \
+    libuuid1 \
+    liblastlog2-2 \
+    login \
+    gzip \
+    libpcre2-8-0 \
+    && rm -rf /var/lib/apt/lists/*
+
 # STEP ingestion (B4): the gmsh manylinux wheel (libgmsh.so, embedded
 # OpenCASCADE kernel = the LIVE .step/.stp path in src/parsers/step_mesher.py)
 # is dlopened at `import gmsh`. It links the FLTK GUI X-stack + OpenMP even
@@ -121,3 +146,4 @@ EXPOSE 8000
 # --no-server-header suppresses uvicorn's `server: uvicorn` banner (S6); the app
 # middleware then stamps a neutral Server value.
 CMD ["sh", "-c", "alembic upgrade head && exec uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1 --no-server-header"]
+
