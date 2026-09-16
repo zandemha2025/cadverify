@@ -44,3 +44,25 @@ CVE-2026-76957
 #   uploads; processing is confined to the non-root container.
 CVE-2026-36849
 CVE-2026-52490
+
+# Round 3 (reviewed 2026-09-15; gate run 35048087571, Trivy DB roll ~02:40Z).
+# libxml2 2.12.7+dfsg+really2.9.14-2.1+deb13u3 (status: affected, no fixed version
+#   published in trixie): integer overflow in xmlURIEscapeStr (CVE-2026-86138,
+#   CVE-2026-86139), heap overflow in xmlXPtrEval (CVE-2026-86142), integer
+#   overflow in write callbacks (CVE-2026-86143), SSRF/info-disclosure
+#   (CVE-2026-86144). Same attack surface as the round-2 libxml2 pins: xmlsec1
+#   signature verification on authenticated, API-key-gated requests only;
+#   non-root container.
+CVE-2026-86138
+CVE-2026-86139
+CVE-2026-86142
+CVE-2026-86143
+CVE-2026-86144
+# login 1:4.16.0-2+really2.41.5-0+deb13u1 (CVE-2026-53612/53613/53614, util-linux
+#   TOCTOU/SUID mount issues): FALSE POSITIVE - the installed login binary IS the
+#   util-linux 2.41.5-0+deb13u1 build Trivy names as the fix; Trivy mis-compares
+#   the epoch/renamed binary version against the source fix version. Also not
+#   reachable: the app runs as non-root cadverify and performs no mount ops.
+CVE-2026-53612
+CVE-2026-53613
+CVE-2026-53614

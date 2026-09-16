@@ -75,6 +75,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Round 2 (same day; post-merge gate run 35043081368, Trivy DB cache-trivy-2026-09-16):
 # libsqlite3-0 -> 3.46.1-7+deb13u2 (CVE-2026-11822, CVE-2026-11824; fix published
 # in trixie, verified resolvable at build time).
+# Round 3 (same evening; gate run 35048087571, Trivy DB roll ~02:40Z):
+# openssl-provider-legacy -> 3.5.7-1~deb13u2 (CVE-2026-14456; separate binary
+# package from the openssl source, not covered by the round-1 openssl upgrade).
 # The remaining unfixed CVEs (no published Debian fix) are pinned with
 # justification in /.trivyignore. Base pin unchanged; apt resolves fixed versions
 # from trixie-security at build time. Rootfs-equivalent proof attached to the PR.
@@ -93,6 +96,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gzip \
     libpcre2-8-0 \
     libsqlite3-0 \
+    openssl-provider-legacy \
     && rm -rf /var/lib/apt/lists/*
 
 # STEP ingestion (B4): the gmsh manylinux wheel (libgmsh.so, embedded

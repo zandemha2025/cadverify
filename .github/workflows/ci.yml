@@ -506,6 +506,26 @@ jobs:
           cache-from: type=gha,scope=backend-image
           cache-to: type=gha,mode=max,scope=backend-image
 
+      # Trivy DB daily pin (2026-09-16): the trivy-action internal DB cache uses
+      # save-always:false, so a red scan never saved the DB and every rerun pulled
+      # the freshest DB and failed on whatever Debian published that hour (main
+      # went red twice in one evening on intra-day DB rolls). Restore the day's
+      # pinned DB before scanning and save it even on failure; the date key
+      # rotates daily so the DB is reviewed/refreshed once per day, not per run.
+      - name: Datestamp for Trivy DB pin
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        id: trivy-db-date
+        run: echo "date=$(date +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore pinned Trivy DB (daily)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        id: trivy-db-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .cache/trivy
+          key: trivy-db-pin-${{ steps.trivy-db-date.outputs.date }}
+          restore-keys: trivy-db-pin-
+
       - name: Prepare image security evidence directory
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: mkdir -p outputs/security-proof
@@ -519,6 +539,7 @@ jobs:
           exit-code: '1'
           severity: HIGH,CRITICAL
           ignore-unfixed: false
+          cache: 'false'
 
       - name: Scan backend image (high/critical vulnerabilities)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -529,6 +550,7 @@ jobs:
           exit-code: '1'
           severity: HIGH,CRITICAL
           ignore-unfixed: false
+          cache: 'false'
 
       - name: Generate frontend CycloneDX SBOM
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -536,6 +558,7 @@ jobs:
         with:
           image-ref: proofshape-ci/frontend:${{ github.sha }}
           format: cyclonedx
+          cache: 'false'
           output: outputs/security-proof/frontend-${{ github.sha }}.cdx.json
 
       - name: Generate backend CycloneDX SBOM
@@ -544,6 +567,7 @@ jobs:
         with:
           image-ref: proofshape-ci/backend:${{ github.sha }}
           format: cyclonedx
+          cache: 'false'
           output: outputs/security-proof/backend-${{ github.sha }}.cdx.json
 
       - name: Write source-bound container build manifest
@@ -567,3 +591,10 @@ jobs:
           name: container-build-proof-${{ github.sha }}
           path: outputs/security-proof/*
           if-no-files-found: error
+
+      - name: Save Trivy DB pin even on scan failure
+        if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.trivy-db-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .cache/trivy
+          key: trivy-db-pin-${{ steps.trivy-db-date.outputs.date }}
