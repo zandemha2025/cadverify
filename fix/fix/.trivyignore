@@ -1,0 +1,46 @@
+# ProofShape container gate: findings with NO published fix in Debian trixie as of 2026-09-15.
+# Gate runs severity HIGH,CRITICAL with ignore-unfixed=false; without these pins main stays red
+# on issues no Dockerfile change can fix. Revisit on each base-image refresh; remove as Debian
+# publishes fixes.
+# util-linux source (status: affected, no fix published): mount/namespace hardening issues;
+# app runs as non-root cadverify user and performs no mount operations.
+CVE-2026-76642
+CVE-2026-78408
+CVE-2026-78409
+CVE-2026-78410
+# libacl1 (status: affected): symlink traversal via libacl; no published fix.
+CVE-2026-54369
+# systemd libs (status: affected): libsystemd0/libudev1 pulled in by mesa/X runtime deps.
+CVE-2026-16742
+# ncurses libtinfo6/ncurses-bin (no published fix in trixie).
+CVE-2025-69720
+# perl-base (status: fix_deferred by the Debian security team).
+CVE-2026-9538
+
+# Round 2 (reviewed 2026-09-15; post-merge main gate run 35043081368, Trivy DB
+# cache-trivy-2026-09-16). libsqlite3-0 was fixed via Dockerfile upgrade to
+# 3.46.1-7+deb13u2 and is NOT ignored. The 8 below have no fixed version published
+# in Debian trixie as of this date. Common mitigations: every /api/v1 route is
+# API-key gated (no anonymous reachability); the container runs as non-root user
+# cadverify with no host mounts.
+# libxml2 2.12.7+dfsg+really2.9.14-2.1+deb13u3 (status: affected, no fix published):
+#   CRITICAL DoS via crafted XML (CVE-2026-6653), HIGH double-free/UAF in Python
+#   bindings (CVE-2026-74860), stack overflow in xmlSnprintfElements
+#   (CVE-2026-86140). Input path: xmlsec1 signature verification on authenticated
+#   requests only.
+CVE-2026-6653
+CVE-2026-74860
+CVE-2026-86140
+# libexpat1 2.8.3-1~deb13u1 (status: affected, no fix published): DoS via quadratic
+#   attribute processing (CVE-2026-66046), hash-flooding DoS (CVE-2026-76956),
+#   memory corruption/ACE (CVE-2026-76957). Reachable only through fontconfig/xmlsec
+#   on authenticated requests.
+CVE-2026-66046
+CVE-2026-76956
+CVE-2026-76957
+# libtiff6 4.7.0-3+deb13u3: CVE-2026-36849 status will_not_fix by Debian (DoS via
+#   large SamplesPerPixel); CVE-2026-52490 status affected, no fix published (ACE
+#   via process_command_opts). Reachable via TIFF decode of API-key-gated image
+#   uploads; processing is confined to the non-root container.
+CVE-2026-36849
+CVE-2026-52490
