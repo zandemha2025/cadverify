@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # =============================================================================
-# Stage 1 â builder: install build tools + compile C extensions into a venv
+# Stage 1 - builder: install build tools + compile C extensions into a venv
 # =============================================================================
 FROM python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf AS builder
 
@@ -39,7 +39,7 @@ ADD --checksum=sha256:6d1aa6f30de5c92224f8172114de081d104bbd23dd9dc5c58996f0cad5
     /build/models/sam2_hiera_small.pt
 
 # =============================================================================
-# Stage 2 â runtime: slim image with only runtime deps + venv + app code
+# Stage 2 - runtime: slim image with only runtime deps + venv + app code
 # =============================================================================
 FROM python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf
 
