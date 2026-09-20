@@ -64,6 +64,12 @@ class SwitchBody(BaseModel):
     org_id: str
 
 
+class SeatLimitBody(BaseModel):
+    # None clears the cap (unlimited); >= 1 sets it. The service refuses to
+    # lower the cap below current consumption.
+    seat_limit: Optional[int] = None
+
+
 class SamlGroupMappingBody(BaseModel):
     attribute_name: str
     group_value: str
@@ -298,6 +304,53 @@ async def delete_saml_group_mapping(
 
 
 # ── invites ───────────────────────────────────────────────────────────────────
+@router.get("/seats")
+@limiter.limit("120/hour;1000/day")
+async def get_seats(
+    request: Request,
+    response: Response,
+    ctx: OrgAuthContext = Depends(require_org_role(OrgRole.viewer)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """The caller org's seat ledger: limit, members, pending invites, headroom.
+
+    Readable by every member (like the member list) so a failed invite can be
+    understood without an admin round-trip; only admins can CHANGE the limit.
+    ``available`` is null for an unlimited org — never an invented number.
+    """
+    org_id = await _ctx_org(ctx, session)
+    return await svc.seat_status(session, org_id)
+
+
+@router.patch("/seats/limit", dependencies=[Depends(require_kill_switch_open)])
+@limiter.limit("60/hour;300/day")
+async def set_seat_limit(
+    request: Request,
+    response: Response,
+    body: SeatLimitBody,
+    ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Govern the org's seat cap (admin-only). Audited.
+
+    Refuses to lower the cap below current consumption (members + pending
+    invites): usage must shrink first, so an admin can never strand the org
+    over capacity against an unachievable target.
+    """
+    org_id = await _ctx_org(ctx, session)
+    org = await svc.update_seat_limit(session, org_id, body.seat_limit)
+    await _emit(
+        session,
+        ctx.user_id,
+        "org.seat_limit_changed",
+        org_id,
+        {"org_id": org_id, "seat_limit": org.seat_limit},
+        org_id=org_id,
+    )
+    await session.commit()
+    return await svc.seat_status(session, org_id)
+
+
 @router.post("/invites", dependencies=[Depends(require_kill_switch_open)])
 @limiter.limit("20/hour;100/day")
 async def create_invite(
