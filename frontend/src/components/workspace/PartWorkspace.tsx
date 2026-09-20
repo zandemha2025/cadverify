@@ -616,7 +616,7 @@ export default function PartWorkspace({
           accept={CAD_ACCEPT}
           onFiles={(files) => files[0] && handleFile(files[0])}
           isLoading={costLoading}
-          hint="STL, STEP, STP, IGES or IGS · CAD is parsed and discarded in-process · zero egress"
+          hint="STL, STEP, STP, IGES or IGS · Uploaded to ProofShape for in-process parsing · source CAD is discarded after analysis"
         />
         {costError && <ErrorState message={costError} onRetry={() => setCostError(null)} />}
         <Card>
