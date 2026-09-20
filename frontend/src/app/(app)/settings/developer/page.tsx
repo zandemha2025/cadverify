@@ -16,6 +16,7 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { listKeys } from "../../keys/actions";
+import { backendOrigin } from "@/lib/api-base";
 
 /**
  * Settings → Developer. API keys are a feature INSIDE the platform now (no
@@ -35,6 +36,7 @@ type KeyRow = {
 
 export default async function DeveloperSettingsPage() {
   const keys = (await listKeys()) as KeyRow[];
+  const apiOrigin = backendOrigin();
 
   return (
     <div className="space-y-6">
@@ -63,6 +65,19 @@ export default async function DeveloperSettingsPage() {
             <a href="/scalar"><TerminalSquare aria-hidden />Open API console</a>
           </Button>
         </div>
+      </Card>
+
+      <Card className="overflow-hidden">
+        <div className="border-b border-border p-5">
+          <h2 className="font-medium text-foreground">First request</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Store the key in your server environment, then verify the API connection with a read-only request.
+          </p>
+        </div>
+        <pre className="overflow-x-auto bg-muted p-5 font-mono text-xs leading-6 text-foreground">{`export PROOFSHAPE_API_KEY="cv_live_…"
+
+curl ${apiOrigin}/api/v1/processes \
+  -H "Authorization: Bearer $PROOFSHAPE_API_KEY"`}</pre>
       </Card>
 
       {keys.length === 0 ? (

@@ -9,7 +9,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { KEY_REVEAL_EVENT } from "@/lib/key-reveal";
+import { KEY_REVEAL_EVENT, type KeyRevealDetail } from "@/lib/key-reveal";
 
 export function RevealOnceModal() {
   const [token, setToken] = useState<string | null>(null);
@@ -17,40 +17,24 @@ export function RevealOnceModal() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    let interval: number | null = null;
-    let timeout: number | null = null;
-
-    const readRevealCookie = () => {
-      if (token) return true;
-      const m = document.cookie.match(/(?:^|;\s*)cv_mint_once=([^;]+)/);
-      if (!m) return false;
-      setToken(decodeURIComponent(m[1]));
+    // Dashboard key creation/rotation delivers the secret only in the no-store
+    // mutation response. SSO onboarding may still arrive through the existing
+    // short-lived, path-scoped cookie, which is scrubbed immediately.
+    const reveal = (event: Event) => {
+      const detail = (event as CustomEvent<KeyRevealDetail>).detail;
+      if (!detail?.token?.startsWith("cv_live_")) return;
+      setToken(detail.token);
       setAck(false);
       setCopied(false);
-      // scrub immediately so a reload doesn't re-reveal
+    };
+    const m = document.cookie.match(/(?:^|;\s*)cv_mint_once=([^;]+)/);
+    if (m) {
+      setToken(decodeURIComponent(m[1]));
       document.cookie = "cv_mint_once=; Max-Age=0; path=/settings/developer";
-      document.cookie = "cv_mint_once=; Max-Age=0; path=/dashboard/keys";
-      document.cookie = "cv_mint_once=; Max-Age=0; path=/keys";
-      document.cookie = "cv_mint_once=; Max-Age=0; path=/";
-      if (interval != null) window.clearInterval(interval);
-      if (timeout != null) window.clearTimeout(timeout);
-      return true;
-    };
-
-    window.addEventListener(KEY_REVEAL_EVENT, readRevealCookie);
-    if (!readRevealCookie()) {
-      interval = window.setInterval(readRevealCookie, 250);
-      timeout = window.setTimeout(() => {
-        if (interval != null) window.clearInterval(interval);
-      }, 10_000);
     }
-
-    return () => {
-      window.removeEventListener(KEY_REVEAL_EVENT, readRevealCookie);
-      if (interval != null) window.clearInterval(interval);
-      if (timeout != null) window.clearTimeout(timeout);
-    };
-  }, [token]);
+    window.addEventListener(KEY_REVEAL_EVENT, reveal);
+    return () => window.removeEventListener(KEY_REVEAL_EVENT, reveal);
+  }, []);
 
   async function copy() {
     if (!token) return;
