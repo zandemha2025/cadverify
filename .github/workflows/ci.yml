@@ -266,6 +266,22 @@ jobs:
             --progress-spinner off \
             | tee ../outputs/security-proof/pip-audit-ci.txt
 
+  plugins:
+    name: CAD plugins (Onshape adapter)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugins
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Unit tests
+        # Zero-dependency node:test suites: shared ProofShape client contract,
+        # Onshape context/OAuth/STEP-export adapter, host bridge, OAuth relay.
+        run: npm test
+
   frontend:
     name: Frontend Build & Lint
     runs-on: ubuntu-latest
