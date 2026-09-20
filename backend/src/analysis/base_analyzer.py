@@ -5,6 +5,8 @@ from __future__ import annotations
 import numpy as np
 import trimesh
 
+from src.costing.units import detect_25_4_scale_ratio
+
 from src.analysis.models import (
     BoundingBox,
     GeometryInfo,
@@ -32,6 +34,7 @@ def analyze_geometry(mesh: trimesh.Trimesh) -> GeometryInfo:
             is_manifold=False,
             euler_number=0,
             center_of_mass=(0.0, 0.0, 0.0),
+            unit_flag=None,
         )
 
     bbox = BoundingBox(
@@ -44,6 +47,9 @@ def analyze_geometry(mesh: trimesh.Trimesh) -> GeometryInfo:
     )
     is_watertight = bool(mesh.is_watertight)
     volume = float(mesh.volume) if is_watertight else 0.0
+    unit_flag_hit = detect_25_4_scale_ratio(
+        [bbox.max_x - bbox.min_x, bbox.max_y - bbox.min_y, bbox.max_z - bbox.min_z]
+    )
     # Trimesh derives center_mass from mass properties by dividing integrated
     # moments by signed volume. An open or zero-volume shell has no truthful
     # solid center of mass, and asking for one emits divide-by-zero warnings.
@@ -66,7 +72,8 @@ def analyze_geometry(mesh: trimesh.Trimesh) -> GeometryInfo:
         is_watertight=is_watertight,
         is_manifold=is_watertight,  # trimesh: watertight ≈ manifold
         euler_number=int(mesh.euler_number),
-        center_of_mass=center_of_mass,
+        center_of_mass=center_of_mass,        unit_flag=unit_flag_hit["unit_flag"] if unit_flag_hit else None,
+
     )
 
 

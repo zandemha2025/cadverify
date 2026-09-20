@@ -77,11 +77,22 @@ def check_overhangs(
     process: ProcessType,
     *,
     cite: str = "",
+    min_angle_from_horizontal_deg: float | None = None,
 ) -> list[Issue]:
-    """Faces whose angle from Z-up exceeds 90 + max_angle_deg need supports."""
-    if max_angle_deg >= 90.0:
-        return []  # self-supporting process
-    threshold = 90.0 + max_angle_deg
+    """Detect unsupported undersides using the rule source's angle convention.
+
+    Most process rules specify maximum overhang from vertical. Some, notably
+    Formlabs SLA guidance, specify a minimum angle above horizontal. Keeping the
+    convention explicit prevents a 90-degree semantic inversion.
+    """
+    if min_angle_from_horizontal_deg is not None:
+        if not 0.0 <= min_angle_from_horizontal_deg <= 90.0:
+            raise ValueError("min_angle_from_horizontal_deg must be between 0 and 90")
+        threshold = 180.0 - min_angle_from_horizontal_deg
+    else:
+        if max_angle_deg >= 90.0:
+            return []  # self-supporting process
+        threshold = 90.0 + max_angle_deg
     oh_mask = ctx.angles_from_up_deg > threshold
     # Faces resting ON the build plate need no supports: exclude near-flat
     # downward faces whose centroid sits at the part's z-minimum (scale-aware
@@ -96,19 +107,36 @@ def check_overhangs(
         return []
     pct = len(oh_faces) / max(len(ctx.centroids), 1) * 100
     region = _region_center(ctx, oh_faces)
+    # Truthful measured_value: the WORST offending face angle, expressed in
+    # the rule's own convention so it compares directly to required_value.
+    # From-vertical: steepest overhang past vertical. Above-horizontal:
+    # the lowest clearance above the build plate. Raw float from the mesh
+    # face normals - no rounding, no fabricated precision.
+    oh_angles = ctx.angles_from_up_deg[oh_faces]
+    if min_angle_from_horizontal_deg is None:
+        threshold_copy = f"exceed {max_angle_deg}° from vertical"
+        fix_copy = f"Keep overhangs within {max_angle_deg}° of vertical"
+        required_value = max_angle_deg
+        measured_value = float(np.max(oh_angles) - 90.0)
+    else:
+        threshold_copy = f"fall below {min_angle_from_horizontal_deg}° above horizontal"
+        fix_copy = f"Raise overhangs to >= {min_angle_from_horizontal_deg}° above horizontal"
+        required_value = min_angle_from_horizontal_deg
+        measured_value = float(180.0 - np.min(oh_angles))
     return [Issue(
         code="OVERHANG",
         severity=Severity.WARNING,
         message=(
-            f"{len(oh_faces)} faces ({pct:.1f}%) exceed {max_angle_deg}° "
-            f"overhang threshold for {process.value}. Supports required."
+            f"{len(oh_faces)} faces ({pct:.1f}%) {threshold_copy} "
+            f"for {process.value}. Supports required."
         ),
         process=process,
         affected_faces=oh_faces.tolist(),
         region_center=region,
+        measured_value=measured_value,
+        required_value=required_value,
         fix_suggestion=(
-            f"Reorient part or redesign overhangs < {max_angle_deg}° "
-            f"for {process.value}. {cite}"
+            f"Reorient part or redesign. {fix_copy} for {process.value}. {cite}"
         ),
         citation=parse_citation(cite),
     )]
@@ -126,12 +154,37 @@ def check_small_features(
 ) -> list[Issue]:
     if len(ctx.edge_lengths) == 0:
         return []
-    small = ctx.edge_lengths[ctx.edge_lengths < min_size_mm]
-    if len(small) == 0:
+    candidate = ctx.edge_lengths < min_size_mm
+
+    # Tessellation chords around an otherwise printable cylindrical hole are
+    # export resolution, not a physical feature size. Exclude edges attached to
+    # a measured cylinder whose diameter already clears this process threshold.
+    # Truly undersized holes remain candidates because their measured diameter
+    # does not clear the threshold.
+    if np.any(candidate) and ctx.features:
+        from src.analysis.features.base import FeatureKind
+
+        try:
+            inverse = np.asarray(ctx.mesh.edges_unique_inverse, dtype=np.int64)
+            face_edges = inverse.reshape((-1, 3))
+            for feature in ctx.features:
+                if (
+                    feature.kind not in {FeatureKind.CYLINDER_HOLE, FeatureKind.CYLINDER_BOSS}
+                    or feature.radius is None
+                    or 2.0 * float(feature.radius) < min_size_mm
+                ):
+                    continue
+                faces = np.asarray(feature.face_indices, dtype=np.int64)
+                faces = faces[(faces >= 0) & (faces < len(face_edges))]
+                if len(faces):
+                    candidate[np.unique(face_edges[faces].ravel())] = False
+        except Exception:
+            logger.warning("small-feature cylinder filtering failed", exc_info=True)
+
+    small = ctx.edge_lengths[candidate]
+    if len(small) < 3:
         return []
     pct = len(small) / len(ctx.edge_lengths) * 100
-    if pct < 5:
-        return []  # not significant
     smallest = float(small.min())
     return [Issue(
         code="SMALL_FEATURES",
@@ -158,19 +211,26 @@ def check_build_volume(
     *,
     cite: str = "",
 ) -> list[Issue]:
-    dims = ctx.info.bounding_box.dimensions
-    exceeds = []
-    for dim, limit, axis in zip(dims, max_dims_mm, ("X", "Y", "Z")):
-        if dim > limit:
-            exceeds.append(f"{axis}: {dim:.0f}mm > {limit}mm")
-    if not exceeds:
+    # Build/work envelopes allow the part to be reoriented. Axis-aligned ZIP
+    # comparisons reject valid jobs solely because the uploaded model used a
+    # different coordinate frame. For rectangular envelopes, a permutation fit
+    # exists exactly when sorted part extents fit sorted envelope extents.
+    dims = tuple(float(dim) for dim in ctx.info.bounding_box.dimensions)
+    ordered_dims = sorted(dims)
+    ordered_limits = sorted(float(limit) for limit in max_dims_mm)
+    if all(dim <= limit for dim, limit in zip(ordered_dims, ordered_limits)):
         return []
+    exceeds = [
+        f"{dim:.0f}mm > {limit:.0f}mm"
+        for dim, limit in zip(ordered_dims, ordered_limits)
+        if dim > limit
+    ]
     return [Issue(
         code="EXCEEDS_BUILD_VOLUME",
         severity=Severity.ERROR,
         message=(
-            f"Part exceeds build envelope for {process.value}: "
-            + ", ".join(exceeds) + f". {cite}"
+            f"Part does not fit the {process.value} build envelope in any "
+            f"axis-aligned rotation: " + ", ".join(exceeds) + f". {cite}"
         ),
         process=process,
         fix_suggestion="Scale down, split part, or use a larger machine.",
@@ -415,6 +475,10 @@ def check_draft_angles(
     no_draft_area = float(areas[no_draft_faces].sum())
     total_sidewall_area = float(areas[sidewall_faces].sum())
     pct = no_draft_area / max(total_sidewall_area, 1e-9) * 100
+    # Truthful measured_value: the LEAST-drafted offending sidewall, in
+    # draft degrees - compares directly to required_value (the minimum).
+    # Raw float from face normals; no rounding.
+    measured_value = float(np.min(draft[no_draft]))
     return [Issue(
         code="INSUFFICIENT_DRAFT",
         severity=Severity.ERROR,
@@ -424,6 +488,7 @@ def check_draft_angles(
         ),
         process=process,
         affected_faces=no_draft_faces.tolist(),
+        measured_value=measured_value,
         required_value=min_draft_deg,
         fix_suggestion=(
             f"Add >= {min_draft_deg}° draft to all walls in pull direction. {cite}"
@@ -449,8 +514,37 @@ def check_wall_uniformity(
     finite_mask = np.isfinite(wt)
     if not np.any(finite_mask):
         return issues
+    # Rays launched from cylindrical surfaces cross the surrounding slab/ring
+    # radially rather than measuring local wall stock. Exclude those faces from
+    # a wall-uniformity distribution; the cylinder's own dimensions are handled
+    # by the hole/boss feature checks.
+    cylinder_faces = {
+        face
+        for feature in ctx.features
+        if feature.kind in {FeatureKind.CYLINDER_HOLE, FeatureKind.CYLINDER_BOSS}
+        for face in feature.face_indices
+    }
+    if cylinder_faces:
+        finite_mask &= np.fromiter(
+            (face not in cylinder_faces for face in range(len(wt))),
+            dtype=bool,
+            count=len(wt),
+        )
+    if not np.any(finite_mask):
+        return issues
+
     t = wt[finite_mask]
-    t_min, t_max = float(t.min()), float(t.max())
+    areas = ctx.face_areas[finite_mask]
+    t_min = float(t.min())
+    # A tiny set of long rays can cross an open span instead of local stock.
+    # Use the area-weighted 75th percentile so verdicts follow physical surface
+    # area rather than triangle count or isolated ray direction.
+    order = np.argsort(t)
+    ordered_t = t[order]
+    ordered_area = areas[order]
+    cumulative_area = np.cumsum(ordered_area)
+    cutoff = 0.75 * float(cumulative_area[-1])
+    t_max = float(ordered_t[min(int(np.searchsorted(cumulative_area, cutoff)), len(t) - 1)])
 
     if t_min < min_wall:
         issues.append(Issue(
@@ -513,12 +607,18 @@ def check_undercuts_from_z(
     if len(uc_faces) == 0:
         return []
     pct = len(uc_faces) / max(len(ctx.centroids), 1) * 100
+    # Truthful measured_value: total undercut surface area in mm^2 - the
+    # physical extent of the unreachable region. The rule is binary
+    # (required_value 0), so any positive area trips.
+    undercut_area = float(ctx.face_areas[uc_faces].sum())
     return [Issue(
         code="UNDERCUT",
         severity=severity,
         message=f"{len(uc_faces)} faces ({pct:.1f}%) are undercuts for {process.value}.",
         process=process,
         affected_faces=uc_faces.tolist(),
+        measured_value=undercut_area,
+        required_value=0.0,
         fix_suggestion=f"Remove undercuts or plan multi-setup machining. {cite}",
         citation=parse_citation(cite),
     )]
@@ -569,8 +669,44 @@ def check_internal_radii(
     if len(ctx.concave_mask) == 0 or len(ctx.dihedral_angles_rad) == 0:
         return []
     sharp = ctx.concave_mask & (ctx.dihedral_angles_rad > np.radians(30))
+
+    # Circular boundaries of detected cylindrical holes are drill geometry,
+    # not end-mill pocket corners. Polygonized blind-hole bottoms otherwise
+    # contribute one concave segment per cylinder section and dominate this
+    # count solely as a function of tessellation density.
+    from src.analysis.features.base import FeatureKind
+
+    cylinder_faces = {
+        face
+        for feature in (getattr(ctx, "features", None) or [])
+        if feature.kind == FeatureKind.CYLINDER_HOLE
+        for face in feature.face_indices
+    }
+    if cylinder_faces:
+        touches_cylinder = np.fromiter(
+            (a in cylinder_faces or b in cylinder_faces for a, b in ctx.face_adjacency),
+            dtype=bool,
+            count=len(ctx.face_adjacency),
+        )
+        sharp &= ~touches_cylinder
+
+    # One real pocket is enough to be unmachinable.  The old count floor
+    # silently missed a single rectangular pocket (eight tessellated concave
+    # edges), while dense tessellation around a round hole could exceed any
+    # count floor and create a false warning.  Suppress only sub-tool-radius
+    # mesh chords, then treat any remaining concave edge as physical evidence.
+    try:
+        adjacency_edges = np.asarray(ctx.mesh.face_adjacency_edges, dtype=int)
+        vertices = np.asarray(ctx.mesh.vertices, dtype=float)
+        edge_vectors = vertices[adjacency_edges[:, 0]] - vertices[adjacency_edges[:, 1]]
+        edge_lengths = np.linalg.norm(edge_vectors, axis=1)
+        if len(edge_lengths) == len(sharp):
+            sharp &= edge_lengths >= min_radius_mm
+    except (AttributeError, IndexError, TypeError, ValueError):
+        logger.warning("internal-radius edge filtering unavailable", exc_info=True)
+
     sharp_count = int(np.sum(sharp))
-    if sharp_count < 10:
+    if sharp_count == 0:
         return []
     return [Issue(
         code="SHARP_INTERNAL_CORNERS",
@@ -620,14 +756,49 @@ def check_fillet_requirements(
     *,
     cite: str = "",
 ) -> list[Issue]:
+    from src.analysis.features.base import FeatureKind
+
+    # Measured path: detected CONCAVE fillets carry fitted radii (features/
+    # fillets.py). Any internal fillet measurably below the minimum trips
+    # with the fitted radius as measured_value - geometry, not inference.
+    # Fillet at exactly the minimum clears (radius < min trips).
+    undersized_radii = [
+        float(f.radius)
+        for f in (getattr(ctx, "features", None) or [])
+        if f.kind == FeatureKind.FILLET
+        and f.radius is not None
+        and f.metadata.get("convex") is False
+        and float(f.radius) < min_fillet_mm
+    ]
     if len(ctx.dihedral_angles_rad) == 0:
+        sharp_count = 0
+    else:
+        # An "internal corner" is a CONCAVE sharp edge — convex edges (a box's
+        # outer corners) and coplanar seams need no fillet for material flow.
+        sharp = (ctx.dihedral_angles_rad < np.radians(120)) & ctx.concave_mask
+        sharp_count = int(np.sum(sharp))
+    if undersized_radii:
+        worst = min(undersized_radii)
+        message = (
+            f"{len(undersized_radii)} internal fillet(s) below {min_fillet_mm}mm "
+            f"(smallest fitted radius {worst:.2f}mm) for {process.value} flow "
+            f"and stress distribution."
+        )
+        if sharp_count >= 5:
+            message += f" Additionally {sharp_count} fully sharp internal corners."
+        return [Issue(
+            code="MISSING_FILLETS",
+            severity=Severity.WARNING,
+            message=message,
+            process=process,
+            measured_value=worst,
+            required_value=min_fillet_mm,
+            fix_suggestion=f"Increase internal fillets to >= {min_fillet_mm}mm. {cite}",
+            citation=parse_citation(cite),
+        )]
+    if sharp_count < 5:
         return []
-    # An "internal corner" is a CONCAVE sharp edge — convex edges (a box's
-    # outer corners) and coplanar seams need no fillet for material flow.
-    sharp = (ctx.dihedral_angles_rad < np.radians(120)) & ctx.concave_mask
-    count = int(np.sum(sharp))
-    if count < 5:
-        return []
+    count = sharp_count
     return [Issue(
         code="MISSING_FILLETS",
         severity=Severity.WARNING,
@@ -687,6 +858,13 @@ def check_residual_stress(
     for fg in ctx.facet_groups:
         area = float(ctx.face_areas[fg].sum())
         if area / total < 0.15:
+            continue
+        # A high percentage on a tiny part is not a "large flat section".
+        # Keep the relative guard for shape significance, but also require a
+        # physically meaningful horizontal area before warning about curl.
+        # 400 mm² is a conservative 20 x 20 mm unsupported patch; the 10 mm
+        # control cube's 100 mm² face must stay clear.
+        if area < 400.0:
             continue
         avg_normal = ctx.normals[fg].mean(axis=0)
         if abs(avg_normal[2]) > 0.95:  # nearly horizontal
@@ -811,14 +989,20 @@ def check_prismatic(
     horiz = np.abs(normals[:, 2]) > 0.95
     vert = np.abs(normals[:, 2]) < 0.05
     prismatic_faces = horiz | vert
-    pct = np.mean(prismatic_faces) * 100
+    # Weight by face AREA, not face count: a finely tessellated small
+    # feature (chamfer/fillet) must not outvote large planar faces. The
+    # face-count metric made the verdict flip with mesh density on
+    # identical geometry (F12).
+    areas = ctx.face_areas
+    total_area = float(areas.sum())
+    pct = float(areas[prismatic_faces].sum() / total_area * 100) if total_area > 0 else 0.0
     if pct > 85:
         return []
     return [Issue(
         code="NOT_PRISMATIC",
         severity=Severity.ERROR,
         message=(
-            f"Only {pct:.0f}% of faces are prismatic (horizontal or vertical). "
+            f"Only {pct:.0f}% of surface area is prismatic (horizontal or vertical). "
             f"{process.value} requires a 2.5D extruded profile."
         ),
         process=process,
@@ -837,8 +1021,17 @@ def check_sheet_gauge(
     process: ProcessType,
 ) -> list[Issue]:
     issues: list[Issue] = []
-    dims = sorted(ctx.info.bounding_box.dimensions)
-    t = dims[0]
+    # Formed sheet is not flat, so no bounding-box dimension represents its
+    # gauge. Use the stable lower wall-thickness population: opposing sheet
+    # faces measure the gauge while open spans and long side rays are larger.
+    finite = ctx.wall_thickness[
+        np.isfinite(ctx.wall_thickness) & (ctx.wall_thickness > ctx.scale_eps)
+    ]
+    if len(finite):
+        sample_count = max(1, int(np.ceil(len(finite) * 0.25)))
+        t = float(np.median(np.partition(finite, sample_count - 1)[:sample_count]))
+    else:
+        t = min(ctx.info.bounding_box.dimensions)
     if t < 0.3:
         issues.append(Issue(
             code="TOO_THIN_SHEET", severity=Severity.ERROR,

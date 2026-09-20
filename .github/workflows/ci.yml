@@ -61,8 +61,11 @@ jobs:
       - name: Install dependencies
         run: pip install --require-hashes -r requirements-prod.lock
 
-      - name: Run trap corpus gate
-        run: python scripts/trap_corpus_gate.py
+      - name: Run trap corpus gates
+        run: |
+          python -c "import rtree; assert rtree.__version__ == '1.4.1', rtree.__version__"
+          python scripts/trap_corpus_gate.py
+          python scripts/corpus_v3_gate.py
 
   backend:
     name: Backend Tests

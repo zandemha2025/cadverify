@@ -92,7 +92,7 @@ for size, name in [(0.39, 'trap-small-rib-0.39mm.stl'), (0.41, 'control-small-ri
 save(box(2,2,16.3, center=(0,0,8.15)), 'trap-aspect-8.1.stl')
 save(box(2,2,15.8, center=(0,0,7.9)),  'control-aspect-7.9.stl')
 
-# ---------- borderline overhang set (FDM 45 / SLA 19) ----------
+# ---------- borderline overhang set (FDM max 45 from vertical / SLA min 19 above horizontal) ----------
 def overhang_prism(deg, name):
     a = math.radians(deg)  # deg measured FROM VERTICAL (code semantics)
     x_tip, z_top, z_under = 7.0, 8.0, 6.5
@@ -100,15 +100,15 @@ def overhang_prism(deg, name):
     z_meet = z_under - run / math.tan(a)
     prof = [(0,0),(4,0),(4,z_meet),(x_tip,z_under),(x_tip,z_top),(4,z_top),(0,z_top)]
     save(prism_xz(prof, 6.0), name)
-overhang_prism(46, 'trap-overhang-46deg.stl')        # FDM + SLA trip
-overhang_prism(44, 'control-overhang-44deg.stl')     # FDM clear, SLA trips
+overhang_prism(46, 'trap-overhang-46deg.stl')        # FDM trips; SLA clears (44 above horizontal)
+overhang_prism(44, 'control-overhang-44deg.stl')     # FDM clears; SLA clears (46 above horizontal)
 def overhang_prism_short(deg, name):
     a = math.radians(deg)
     x_tip, z_top, z_under = 5.0, 8.0, 6.5
     z_meet = z_under - (x_tip - 4.0) / math.tan(a)
     prof = [(0,0),(4,0),(4,z_meet),(x_tip,z_under),(x_tip,z_top),(4,z_top),(0,z_top)]
     save(prism_xz(prof, 6.0), name)
-overhang_prism_short(20.0, 'trap-sla-overhang-20deg.stl') # SLA trips (110.0), FDM clear
+overhang_prism_short(20.0, 'trap-sla-overhang-20deg.stl') # both clear; underside is 70 above horizontal
 
 # ---------- multi-defect: L-bracket (thin wall + 50deg overhang + small rib) ----------
 base = box(12,10,2, center=(5.4,0,1))
