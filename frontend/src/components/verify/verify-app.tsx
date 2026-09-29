@@ -651,7 +651,7 @@ export function VerifyApp({
               onClick={() => nav(r.key)}
               title={r.label}
               className="cv-verify-rail-button"
-              style={{ minWidth: 44, height: 38, padding: "0 10px", borderRadius: 9, border: active ? `1px solid ${C.hair}` : "1px solid transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: active ? "#eceef1" : "transparent", color: active ? C.ink : C.ink50, transition: "background-color 150ms, color 150ms, border-color 150ms", whiteSpace: "nowrap", fontFamily: "inherit", fontSize: 12 }}
+              style={{ flexShrink: 0, minWidth: 44, height: 38, padding: "0 10px", borderRadius: 9, border: active ? `1px solid ${C.hair}` : "1px solid transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: active ? "#eceef1" : "transparent", color: active ? C.ink : C.ink50, transition: "background-color 150ms, color 150ms, border-color 150ms", whiteSpace: "nowrap", fontFamily: "inherit", fontSize: 12 }}
             >
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d={r.d} />
