@@ -211,6 +211,11 @@ async def run_connector_csv(
     ``mode=dry_run`` only parses and records what would happen.
     """
     connector = get_connector(connector_id)
+    if connector.mode != CONNECTOR_MODE_OFFLINE_CSV:
+        raise HTTPException(
+            status_code=400,
+            detail="This connector requires a vendor API connection. Select a CSV connector for file imports.",
+        )
     if mode not in VALID_MODES:
         raise HTTPException(status_code=400, detail="mode must be dry_run or import")
     if not raw:
