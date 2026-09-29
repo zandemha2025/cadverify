@@ -203,7 +203,7 @@ export function HomeScreen({
           >
             <span style={{ display: "block", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.1em", color: "rgba(255,255,255,0.68)" }}>PRIMARY · DROP OR BROWSE CAD</span>
             <span style={{ display: "block", marginTop: 8, fontSize: 15, fontWeight: 650 }}>Check my part</span>
-            <span style={{ display: "block", marginTop: 5, color: "rgba(255,255,255,0.72)", fontSize: 11.5, lineHeight: 1.5 }}>STEP, STL, or IGES · local preview first · DFM as soon as it lands.</span>
+            <span style={{ display: "block", marginTop: 5, color: "rgba(255,255,255,0.72)", fontSize: 11.5, lineHeight: 1.5 }}>STEP, STL, or IGES · 3D preview · geometry and DFM checks.</span>
           </button>
           <button type="button" onClick={onSample} style={{ minHeight: 116, border: `1px solid ${C.hair}`, borderRadius: 14, background: C.sunken, color: C.ink, padding: "16px 17px", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}>
             <span style={{ display: "block", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.1em", color: C.measured }}>NO FILE NEEDED · REAL ENGINE</span>
@@ -371,7 +371,7 @@ export function HomeScreen({
 
           <button type="button" onClick={onPickFile} style={{ border: `1.5px dashed #c9cbd0`, borderRadius: 14, background: C.panel, padding: 18, cursor: "pointer", fontFamily: "inherit", color: "inherit", textAlign: "center" }}>
             <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>Drop a part — STL, STEP or IGES</p>
-            <p style={{ margin: "5px 0 0", fontSize: 11, color: C.ink45 }}>parsed in-process · discarded</p>
+            <p style={{ margin: "5px 0 0", fontSize: 11, color: C.ink45 }}>source CAD retained with saved records</p>
             <span style={{ display: "inline-block", marginTop: 10, background: C.ink, color: "#fff", borderRadius: 999, padding: "8px 18px", fontSize: 12, fontWeight: 500 }}>Browse files</span>
           </button>
 

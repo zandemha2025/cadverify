@@ -21,10 +21,10 @@ import styles from "./security.module.css";
  * HONESTY (re-audited 2026-09-12, T2 fix): the compliance state is stated the
  * way we state cost — SOC 2 Type II "in progress", pen test "scheduled pre-GA ·
  * shared when it's real" (NO pen-test badge), the report available under NDA the
- * day it lands. The zero-egress claim holds on the LOCAL path only (verified
- * in the backend); the CLOUD analysis/cost paths persist exact uploaded bytes
- * org-scoped via source_artifact_service, and the hero + data-flow copy now says
- * so instead of the earlier blanket "discarded / Never persisted" (T2). The one quoted source string
+ * day it lands. Authenticated analysis/cost paths persist exact uploaded bytes
+ * org-scoped via source_artifact_service, including self-hosted API deployments.
+ * Self-hosting changes the processing/storage location, not automatic retention.
+ * The one quoted source string
  * (`finish 0.08hr/part + bulk 0.5hr/build ÷ 223 = 0.082hr × $52/hr ×
  * region-labor ×1`) is the real fixture's labor_cost driver source, VERBATIM
  * as the engine emits it — not an invented or spliced figure.
@@ -33,7 +33,7 @@ import styles from "./security.module.css";
 export const metadata: Metadata = {
   title: "Security — ProofShape",
   description:
-    "Your CAD is the crown jewels. ProofShape was designed from the first commit for CAD-as-IP and export-controlled work: cloud analysis keeps your exact CAD org-scoped so every report reproduces, self-hosted geometry never leaves your environment, and every answer is defensible.",
+    "ProofShape retains source CAD with your organization's analysis records. Self-hosted deployments let you control where CAD is processed and stored.",
 };
 
 const INK_62 = "rgba(245,245,247,0.62)";
@@ -172,12 +172,12 @@ export default function SecurityPage() {
           gap: 18,
         }}
       >
-        <Posture label="GEOMETRY NEVER LEAVES YOUR ENVIRONMENT">
+        <Posture label="CONTROL WHERE CAD IS PROCESSED AND STORED">
           <PostureBody>
-            On the local path, CAD is parsed in-process and discarded — no upload to
-            a marketplace, no part library trained on your designs, zero network
-            egress for the geometry. The mesh exists in memory for the duration of
-            the analysis and no longer.
+            Authenticated analyses retain source CAD and generated meshes with
+            your organization&apos;s records. Self-hosted deployments use the same
+            retention behavior; configure their storage and network access within
+            your environment. Self-hosting does not automatically delete uploaded CAD.
           </PostureBody>
         </Posture>
 
