@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -12,6 +12,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { API_BASE } from "@/lib/api-base";
 import {
   createIntegrationRun,
   listIntegrationConnectors,
@@ -40,6 +41,8 @@ export function IntegrationsClient() {
   const [connectorId, setConnectorId] = useState("");
   const [mode, setMode] = useState<"dry_run" | "import">("dry_run");
   const [file, setFile] = useState<File | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
 
@@ -49,23 +52,31 @@ export function IntegrationsClient() {
   );
 
   const refresh = async () => {
-    const [nextConnectors, nextRuns] = await Promise.all([
-      listIntegrationConnectors(),
-      listIntegrationRuns(),
-    ]);
-    setConnectors(nextConnectors);
-    setRuns(nextRuns);
-    setConnectorId((current) => current || nextConnectors[0]?.id || "");
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [nextConnectors, nextRuns] = await Promise.all([
+        listIntegrationConnectors(),
+        listIntegrationRuns(),
+      ]);
+      setConnectors(nextConnectors);
+      setRuns(nextRuns);
+      setConnectorId((current) => current || nextConnectors[0]?.id || "");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not load integrations";
+      setLoadError(message);
+      toast.error(message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    refresh()
-      .catch((err) => toast.error(err instanceof Error ? err.message : "Could not load integrations"))
-      .finally(() => setLoading(false));
+    void refresh();
   }, []);
 
   const submit = async () => {
-    if (!selected || !file) return;
+    if (!selected || selected.mode !== "offline_csv" || !file || running) return;
     setRunning(true);
     try {
       const run = await createIntegrationRun({
@@ -75,7 +86,10 @@ export function IntegrationsClient() {
       });
       setRuns((prev) => [run, ...prev]);
       setFile(null);
-      toast.success(mode === "dry_run" ? "Dry-run recorded" : "Import recorded");
+      if (fileInput.current) fileInput.current.value = "";
+      if (run.status === "failed") toast.error("CSV validation failed. See row errors below.");
+      else if (run.status === "partial") toast.warning("Some rows failed. See row errors below.");
+      else toast.success(mode === "dry_run" ? "Dry-run passed. No data imported." : "Import completed");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Integration run failed");
     } finally {
@@ -90,24 +104,23 @@ export function IntegrationsClient() {
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Integrations
           </p>
-          <h1 className="text-display-l font-semibold text-foreground">
-            Offline CSV connector runs
-          </h1>
+          <h1 className="text-display-l font-semibold text-foreground">Integration runs</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
             Run ERP, PLM, and actual-cost CSV exports through the same parsers
-            that feed manifests and validation records. Live credentials are not
-            used by these connectors.
+            that feed manifests and validation records. CSV runs do not connect
+            to vendor systems. Vendor API connections are listed separately below.
           </p>
         </div>
         <Button
           variant="secondary"
           onClick={() => void refresh()}
-          disabled={loading}
+          disabled={loading || running}
         >
           <RefreshCw className="mr-2 size-4" />
           Refresh
         </Button>
       </div>
+      {loadError && <p role="alert" className="text-sm text-destructive">{loadError} Use Refresh to retry.</p>}
 
       <div className="grid gap-4 lg:grid-cols-3">
         {connectors.map((connector) => (
@@ -120,6 +133,9 @@ export function IntegrationsClient() {
             </CardHeader>
             <CardContent className="space-y-3 text-sm leading-6 text-muted-foreground">
               <p>{connector.description}</p>
+              {connector.mode !== "offline_csv" && (
+                <p className="font-medium text-amber-700">Vendor API runs are not available in this workspace.</p>
+              )}
               <div className="grid grid-cols-2 gap-2 font-mono text-xs">
                 <span>{connector.source_system}</span>
                 <span className="text-right">{connector.source_kind}</span>
@@ -153,6 +169,7 @@ export function IntegrationsClient() {
               id="integration-connector"
               value={selected?.id || ""}
               onChange={(e) => setConnectorId(e.target.value)}
+              disabled={running}
               className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
             >
               {connectors.map((connector) => (
@@ -163,6 +180,7 @@ export function IntegrationsClient() {
             </select>
           </div>
 
+          {selected?.mode === "offline_csv" ? <>
           <div className="space-y-2 text-sm">
             <label htmlFor="integration-mode" className="block font-medium text-foreground">
               Mode
@@ -171,6 +189,7 @@ export function IntegrationsClient() {
               id="integration-mode"
               value={mode}
               onChange={(e) => setMode(e.target.value as "dry_run" | "import")}
+              disabled={running}
               className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
             >
               <option value="dry_run">Dry-run</option>
@@ -184,17 +203,29 @@ export function IntegrationsClient() {
             </label>
             <input
               id="integration-csv"
+              ref={fileInput}
               type="file"
               accept=".csv,text/csv"
+              disabled={running}
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               className="block h-10 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
             />
+            {selected.template_endpoint && (
+              <a className="underline" href={`${API_BASE}${selected.template_endpoint.replace(/^\/api\/v1/, "")}`} download>
+                Download CSV template
+              </a>
+            )}
           </div>
 
           <Button onClick={() => void submit()} disabled={!file || !selected || running}>
             <FileCheck2 className="mr-2 size-4" />
             {running ? "Running" : "Run"}
           </Button>
+          </> : selected && (
+            <p role="status" className="text-sm text-muted-foreground lg:col-span-3">
+              This vendor API connection cannot run yet. For a CSV export, choose SAP manifest CSV or PLM manifest CSV.
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -205,7 +236,7 @@ export function IntegrationsClient() {
         <CardContent>
           {runs.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              {loading ? "Loading..." : "No connector runs yet."}
+              {loading ? "Loading..." : loadError ? "Run history could not be loaded." : "No connector runs yet."}
             </p>
           ) : (
             <div className="overflow-x-auto">
@@ -222,10 +253,10 @@ export function IntegrationsClient() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {runs.map((run) => (
-                    <tr key={run.id}>
+                    <Fragment key={run.id}><tr>
                       <td className={`py-3 pr-4 font-medium ${STATUS[run.status]}`}>
                         <span className="inline-flex items-center gap-1.5">
-                          {run.status === "failed" ? (
+                          {run.status !== "passed" ? (
                             <AlertTriangle className="size-4" />
                           ) : (
                             <CheckCircle2 className="size-4" />
@@ -257,6 +288,20 @@ export function IntegrationsClient() {
                         {dateLabel(run.completed_at)}
                       </td>
                     </tr>
+                    <tr><td colSpan={6} className="pb-4 text-sm">
+                      <details open={run.status !== "passed"}>
+                        <summary className="cursor-pointer font-medium">Run details{run.filename ? ` · ${run.filename}` : ""}</summary>
+                        <p className="mt-2 text-muted-foreground">
+                          {run.mode === "dry_run" ? "Dry-run only. No data imported." : `${run.imported_count} imported · ${run.updated_count} updated · ${run.skipped_count} skipped`}
+                        </p>
+                        {run.errors.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-5 text-destructive">
+                          {run.errors.map((error, index) => <li key={index}>
+                            {error.line != null ? `Line ${error.line}: ` : error.index != null ? `Record ${error.index}: ` : ""}{error.reason}
+                          </li>)}
+                        </ul>}
+                        {run.status === "failed" && run.errors.length === 0 && <p className="mt-2 text-destructive">No valid rows were found. Check your CSV against the template.</p>}
+                      </details>
+                    </td></tr></Fragment>
                   ))}
                 </tbody>
               </table>
