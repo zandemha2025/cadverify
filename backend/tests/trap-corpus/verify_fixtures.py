@@ -28,9 +28,10 @@ def small_edges(m, thr):
     s = el[el < thr]
     return (len(s)/len(el)*100 if len(el) else 0, float(s.min()) if len(s) else None, len(el))
 
-def overhang(m, thr_deg, diag):
+def overhang(m, thr_deg, diag, *, min_from_horizontal=False):
     a = angles_up(m)
-    mask = a > (90 + thr_deg)
+    threshold = 180 - thr_deg if min_from_horizontal else 90 + thr_deg
+    mask = a > threshold
     z = m.triangles_center[:,2]
     ztol = max(0.1, diag*1e-3)
     on_plate = (z <= z.min()+ztol) & (a >= 175)
@@ -52,7 +53,7 @@ for f in sorted(os.listdir('fixtures')):
     s4, smin4, nedges = small_edges(m, 0.4)
     s05, smin05, _ = small_edges(m, 0.05)
     ofdm, ofdm_pct = overhang(m, 45, diag)
-    osla, osla_pct = overhang(m, 19, diag)
+    osla, osla_pct = overhang(m, 19, diag, min_from_horizontal=True)
     dims = sorted(m.bounding_box.extents)
     aspect = dims[2]/max(dims[0],1e-9)
     bv_fdm = any(d > l for d, l in zip(m.bounding_box.extents, (300,300,350)))

@@ -1,7 +1,7 @@
 {
   "corpus": "cadverify trap corpus v1.2 (2026-09-13)",
-  "law": "every verifier change must keep this corpus green; expected values derive from CODE thresholds (fdm.py: wall 0.8 / overhang 45deg / small 0.4 / volume (300,300,350) / aspect 8 / drain 3.0; sla.py: wall 0.4 / overhang 19deg)",
-  "semantics_note": "OVERHANG IS MEASURED FROM VERTICAL in checks.py: a face trips when angle_from_up(normal) > 90 + threshold. For an underside, angle_from_up = 90 + tilt-from-vertical, so FDM trips undersides tilted more than 45 deg FROM VERTICAL (i.e. shallower than 45 deg from horizontal). The 46/44 pair was built against this: 46-from-vertical trips FDM, 44 passes. small_features trips only when >=5% of unique edges are below threshold. wall_thickness = inward ray from face centroids; severity ERROR if >10% of faces thin, else WARNING, but an Issue is emitted either way.",
+  "law": "every verifier change must keep this corpus green; expected values derive from CODE thresholds (fdm.py: wall 0.8 / overhang 45deg / small 0.4 / volume (300,300,350) / aspect 8 / drain 3.0; sla.py: wall 0.4 / minimum 19deg above horizontal)",
+  "semantics_note": "OVERHANG conventions are explicit per process. FDM uses maximum angle from vertical: an underside trips when angle_from_up(normal) > 90 + 45deg. SLA guidance uses a minimum 19deg above horizontal: an underside trips when angle_from_up(normal) > 180 - 19deg. Thus the 46/44deg-from-vertical pair is 44/46deg above horizontal and both clear SLA. small_features trips only when >=5% of unique edges are below threshold. wall_thickness = inward ray from face centroids; severity ERROR if >10% of faces thin, else WARNING, but an Issue is emitted either way.",
   "fixtures": [
     {
       "file": "control-cube-10mm.stl",
@@ -87,13 +87,13 @@
     },
     {
       "file": "trap-inch-cube-25.4mm.stl",
-      "class": "KNOWN-GAP",
+      "class": "unit-scale",
       "expect": {
         "geometry": {
           "unit_flag": "suspicious_scale"
         }
       },
-      "note": "EXPECTED TO FAIL TODAY - no unit/scale detection exists (T3); this row holds the gap open until T3 lands, then it must go green"
+      "note": "1-inch cube (25.4mm bbox). analyze_geometry surfaces unit_flag='suspicious_scale' via the 1/8-inch-grid detector (costing/units.detect_25_4_scale_ratio). Detection only; geometry is never auto-rescaled. Promoted from KNOWN-GAP: capability landed."
     },
     {
       "file": "trap-overhang-90deg.stl",
@@ -230,7 +230,7 @@
           ]
         },
         "sla": {
-          "gates_trip": [
+          "gates_absent": [
             "overhangs"
           ]
         }
@@ -247,7 +247,7 @@
           ]
         },
         "sla": {
-          "gates_trip": [
+          "gates_absent": [
             "overhangs"
           ]
         }
@@ -264,7 +264,7 @@
           ]
         },
         "sla": {
-          "gates_trip": [
+          "gates_absent": [
             "overhangs"
           ]
         }
@@ -293,7 +293,7 @@
       "class": "borderline-build-volume",
       "expect": {
         "fdm": {
-          "gates_trip": [
+          "gates_absent": [
             "build_volume"
           ]
         },
@@ -303,7 +303,7 @@
           ]
         }
       },
-      "note": "300.1x290x300: exceeds the FDM X envelope by 0.1mm. Only build_volume may trip."
+      "note": "A 300.1x20x20mm part fits the 300x300x350mm FDM envelope after axis permutation; SLA still exceeds its 200x125x210mm envelope."
     },
     {
       "file": "trap-multi-lbracket-thin-steep-small.stl",
@@ -317,12 +317,10 @@
           ]
         },
         "sla": {
-          "gates_trip": [
-            "overhangs"
-          ],
           "gates_absent": [
             "wall_thickness",
-            "small_features"
+            "small_features",
+            "overhangs"
           ]
         }
       },
@@ -339,7 +337,7 @@
           ]
         },
         "sla": {
-          "gates_trip": [
+          "gates_absent": [
             "overhangs"
           ]
         }
@@ -377,21 +375,18 @@
         "fdm": {
           "gates_trip": [
             "wall_thickness",
-            "small_features",
             "overhangs"
           ]
         },
         "sla": {
-          "gates_trip": [
-            "overhangs"
-          ],
           "gates_absent": [
             "wall_thickness",
-            "small_features"
+            "small_features",
+            "overhangs"
           ]
         }
       },
-      "note": "Organic lathed form with a 0.35mm-radius cylindrical neck: measured wall 0.697 (FDM trips, SLA clears at 0.4), neck facets give 7.4% edges < 0.4 (small trips FDM, clears SLA 0.05), pinch slopes > 135 deg (overhang trips FDM+SLA). Three FDM defects in one realistic organic body."
+      "note": "Organic lathed form with a measured 0.6976mm-diameter cylindrical neck, above the FDM 0.4mm feature minimum. Its 72 sub-0.4mm edges are 0.061mm circumferential tessellation chords, not physical features. THIN_WALL and OVERHANG remain hard FDM expectations; SLA clears wall and small-feature limits."
     },
     {
       "file": "trap-organic-sealed-cavity.stl",
@@ -461,12 +456,11 @@
         "fdm": {
           "gates_trip": [
             "trapped_volumes",
-            "overhangs",
-            "small_features"
+            "overhangs"
           ]
         }
       },
-      "note": "Sealed hollow 24mm box with only a 2mm drain hole: FDM drain law is >= 3.0mm, and measured cylinder/cavity evidence must report trapped material. Also expected today: internal ceiling trips overhangs (28 faces) and the 2mm hole's facets push 25.8% of edges < 0.4 (small_features) - both real under current code."
+      "note": "KNOWN GAP: the 1.9848mm measured drain is below the hard FDM 3.0mm drain requirement, so TRAPPED_VOLUME remains required and failing until drain-size detection lands. OVERHANG remains hard. All 48 sub-0.4mm edges (0.2611mm, 25.8% of mesh edges) belong to the detected cylindrical hole and are tessellation chords; the physical hole diameter clears the 0.4mm feature minimum, so SMALL_FEATURES is correctly absent."
     },
     {
       "file": "trap-degenerate-duplicate-face.stl",

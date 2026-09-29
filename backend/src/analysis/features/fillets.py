@@ -69,7 +69,7 @@ from src.analysis.features.facet_graph import (
 def detect_fillets(
     mesh: trimesh.Trimesh,
     min_step_deg: float = 2.0,
-    max_step_deg: float = 20.0,
+    max_step_deg: float = 30.0,
     min_total_turn_deg: float = 45.0,
     max_total_turn_deg: float = 135.0,
     min_groups: int = 3,
@@ -80,7 +80,10 @@ def detect_fillets(
 
     Args:
         min_step_deg / max_step_deg: per-edge dihedral range that counts as
-            "smooth roll" (excludes coplanar ~0deg and sharp breaks).
+            "smooth roll" (excludes coplanar ~0deg and sharp breaks). The 30deg
+            ceiling admits a quarter fillet meshed at 16 sections (22.5deg per
+            step - a common coarse export); genuine sharp breaks (>=45deg)
+            stay excluded.
         min_total_turn_deg / max_total_turn_deg: acceptable accumulated turn
             across the whole strip.
         min_groups: minimum eligible facet-groups (tessellation segments)
@@ -168,95 +171,36 @@ def detect_fillets(
 
         endpoints = [g for g in comp if len(degree[g]) == 1]
         internal = [g for g in comp if len(degree[g]) == 2]
-        if len(endpoints) != 2 or len(endpoints) + len(internal) != len(comp):
-            # Not exactly 2 endpoints -> either a closed loop (0 endpoints,
-            # e.g. a bare cylindrical wall) or a malformed/branching graph.
-            # Both are explicitly rejected rather than guessed at.
+        if len(endpoints) == 0 and len(internal) == len(comp):
+            # Closed loop. A bare cylindrical wall (drill hole, boss) must
+            # NOT become a fillet, so a loop is only processed when its
+            # strip run-direction breaks cleanly into straight segments
+            # (perimeter edge-rounds on plates: straight fillet runs
+            # separated by corner arcs). Segmentation is conservative:
+            # no direction break -> skip the loop entirely.
+            paths = [
+                (p_, c_, s_, True)
+                for p_, c_, s_ in _segment_loop(comp, degree, groups, vertices, faces, min_groups)
+            ]
+            if not paths:
+                continue
+        elif len(endpoints) != 2 or len(endpoints) + len(internal) != len(comp):
+            # Malformed/branching graph: explicitly rejected, not guessed at.
             continue
+        else:
+            path, convex_flags, step_angles = _walk_path(endpoints[0], degree)
+            if path is None or len(path) != len(comp):
+                continue  # didn't recover a single simple path through everything
+            paths = [(path, convex_flags, step_angles, False)]
 
-        path, convex_flags, step_angles = _walk_path(endpoints[0], degree)
-        if path is None or len(path) != len(comp):
-            continue  # didn't recover a single simple path through everything
-
-        if len(set(convex_flags)) > 1:
-            continue  # curvature direction flips sign — not a simple fillet
-
-        total_turn = float(sum(step_angles))
-        if not (min_total_turn_deg <= total_turn <= max_total_turn_deg):
-            continue
-
-        # Flanking check: both path endpoints must border a group outside
-        # the strip that is itself NOT an eligible sliver (i.e. it's a real
-        # bounding surface, not more strip) and is at least as large.
-        flank_ok = True
-        flank_info = []
-        for end_g in (path[0], path[-1]):
-            flank = _best_flank(end_g, comp_set, eligible, pair_angles, group_area_cache)
-            if flank is None:
-                flank_ok = False
-                break
-            flank_info.append(flank)
-        if not flank_ok:
-            continue
-
-        comp_faces = np.concatenate([groups[g] for g in path])
-        area = float(face_areas[comp_faces].sum())
-        if area <= 0 or not np.isfinite(area):
-            continue
-
-        axis, radius, residual = _fit_axis_radius(comp_faces, normals, centroids, vertices, faces)
-        if axis is None:
-            continue  # can't validate strip shape without a directionality fit
-
-        # Axial length: spread of the strip's own vertices along its fitted
-        # axis (mirrors detect_cylinders' depth calc). For a fillet running
-        # along a straight edge this axis IS the strip's run direction, so
-        # this is the correct "length"; the transverse (developed arc)
-        # width is then area / length.
-        vert_idx = np.unique(faces[comp_faces])
-        pts = vertices[vert_idx]
-        mean_pt = pts.mean(axis=0)
-        axial = (pts - mean_pt) @ np.asarray(axis)
-        length_mm = float(axial.max() - axial.min()) if len(axial) else 0.0
-        if length_mm <= 1e-6:
-            continue
-        width_mm = area / length_mm
-        aspect = length_mm / max(width_mm, 1e-9)
-        if aspect < min_strip_aspect:
-            continue
-
-        conf = 0.55
-        if 60.0 <= total_turn <= 120.0:
-            conf += 0.1
-        if aspect >= 3.0:
-            conf += 0.05
-        if residual is not None and residual < 0.3:
-            conf += 0.05
-        conf = float(min(0.75, max(0.5, conf)))
-
-        centroid = tuple(float(v) for v in centroids[comp_faces].mean(axis=0))
-
-        features.append(
-            Feature(
-                kind=FeatureKind.FILLET,
-                face_indices=[int(i) for i in comp_faces],
-                centroid=centroid,
-                area=area,
-                axis=axis,
-                radius=radius,
-                confidence=conf,
-                metadata={
-                    "total_turn_deg": total_turn,
-                    "n_segments": len(path),
-                    "aspect": aspect,
-                    "axial_length_mm": length_mm,
-                    "avg_width_mm": width_mm,
-                    "axis_residual": residual,
-                    "convex": bool(convex_flags[0]) if convex_flags else None,
-                    "flank_group_ids": [f[0] for f in flank_info],
-                },
+        for path, convex_flags, step_angles, loop_segment in paths:
+            _emit_path_feature(
+                path, convex_flags, step_angles, loop_segment,
+                comp_set, eligible, pair_angles, group_area_cache,
+                groups, face_areas, centroids, normals, vertices, faces,
+                min_total_turn_deg, max_total_turn_deg, min_strip_aspect,
+                features,
             )
-        )
 
     return features
 
@@ -472,3 +416,211 @@ def _kasa_circle_radius(
         return radius if np.isfinite(radius) and radius > 0 else None
     except Exception:
         return None
+
+
+def _node_direction(g: int, groups, vertices: np.ndarray, faces: np.ndarray) -> np.ndarray:
+    """Dominant run direction of a strip node (first principal component of
+    its vertices). Sign-ambiguous by construction."""
+    vert_idx = np.unique(faces[groups[g]])
+    pts = vertices[vert_idx].astype(float)
+    pts = pts - pts.mean(axis=0)
+    if len(pts) < 3:
+        return np.array([1.0, 0.0, 0.0])
+    cov = pts.T @ pts
+    _w, v = np.linalg.eigh(cov)
+    return v[:, -1]
+
+
+def _segment_loop(comp, degree, groups, vertices, faces, min_groups):
+    """Split a closed strip ring into straight runs by run-direction breaks.
+
+    Returns candidate (path, convex_flags, step_angles) triples, one per
+    straight segment. Conservative by design: a ring with no direction
+    break (bare cylindrical wall) or only drifting arcs (corner rounds,
+    torus-like strips) yields nothing rather than a guessed radius.
+    """
+    start = comp[0]
+    ring = [start]
+    prev = None
+    current = start
+    comp_set = set(comp)
+    while True:
+        nbrs = [e[0] for e in degree[current] if e[0] in comp_set and e[0] != prev]
+        if not nbrs:
+            return []
+        nxt = nbrs[0]
+        if nxt == start:
+            break
+        if nxt in ring:
+            return []  # malformed ring
+        ring.append(nxt)
+        prev, current = current, nxt
+        if len(ring) > len(comp):
+            return []
+    if len(ring) != len(comp):
+        return []
+
+    dirs = [_node_direction(g, groups, vertices, faces) for g in ring]
+    for i in range(1, len(dirs)):
+        if float(np.dot(dirs[i - 1], dirs[i])) < 0:
+            dirs[i] = -dirs[i]
+    if float(np.dot(dirs[-1], dirs[0])) < 0:
+        dirs[-1] = -dirs[-1]
+
+    n = len(ring)
+    boundaries = [
+        i for i in range(n)
+        if float(np.dot(dirs[i], dirs[(i + 1) % n])) < float(np.cos(np.radians(45.0)))
+    ]
+    if not boundaries:
+        return []  # uniform ring: bare cylindrical wall, not fillets
+
+    segments = []
+    for k, b in enumerate(boundaries):
+        nxt_b = boundaries[(k + 1) % len(boundaries)]
+        seg = []
+        i = b
+        while True:
+            i = (i + 1) % n
+            seg.append(ring[i])
+            if i == nxt_b:
+                break
+        segments.append(seg)
+
+    out = []
+    for seg in segments:
+        if len(seg) < min_groups:
+            continue
+        # Internal consistency: the run must not itself drift (corner arcs
+        # rotate continuously and are dropped here, not fitted).
+        idx0 = ring.index(seg[0]); idx1 = ring.index(seg[-1])
+        if float(np.dot(dirs[idx0], dirs[idx1])) < float(np.cos(np.radians(30.0))):
+            continue
+        seg_set = set(seg)
+        seg_degree = {g: [e for e in degree[g] if e[0] in seg_set] for g in seg}
+        path, convex_flags, step_angles = _walk_path(seg[0], seg_degree)
+        if path is None or len(path) != len(seg):
+            continue
+        out.append((path, convex_flags, step_angles))
+    return out
+
+
+def _loop_flanks(path, comp_set, eligible, pair_angles, group_area_cache):
+    """Flanks for a ring segment: the surfaces the fillet blends between
+    border the strip ALONG its length (not at the cut endpoints). Requires
+    at least two distinct non-sliver neighbors, each at least as large as
+    the segment's biggest node."""
+    max_node_area = max(group_area_cache.get(g, 0.0) for g in path)
+    path_set = set(path)
+    flanks: dict[int, float] = {}
+    for (ga, gb), entries in pair_angles.items():
+        if ga in path_set:
+            other = gb
+        elif gb in path_set:
+            other = ga
+        else:
+            continue
+        if other in comp_set or other in eligible:
+            continue
+        if group_area_cache.get(other, 0.0) < max_node_area:
+            continue
+        mean_ang = float(np.mean([e[0] for e in entries]))
+        if other not in flanks or mean_ang > flanks[other]:
+            flanks[other] = mean_ang
+    if len(flanks) < 2:
+        return None
+    return sorted(flanks.items(), key=lambda kv: -group_area_cache.get(kv[0], 0.0))[:2]
+
+
+def _emit_path_feature(
+    path, convex_flags, step_angles, loop_segment,
+    comp_set, eligible, pair_angles, group_area_cache,
+    groups, face_areas, centroids, normals, vertices, faces,
+    min_total_turn_deg, max_total_turn_deg, min_strip_aspect,
+    features,
+) -> None:
+    """Shared tail: curvature/turn/flank/fit gates, then emit one FILLET."""
+    if len(set(convex_flags)) > 1:
+        return  # curvature direction flips sign — not a simple fillet
+
+    total_turn = float(sum(step_angles))
+    if not (min_total_turn_deg <= total_turn <= max_total_turn_deg):
+        return
+
+    if loop_segment:
+        flank_info = _loop_flanks(path, comp_set, eligible, pair_angles, group_area_cache)
+        if flank_info is None:
+            return
+    else:
+        # Flanking check: both path endpoints must border a group outside
+        # the strip that is itself NOT an eligible sliver (i.e. it's a real
+        # bounding surface, not more strip) and is at least as large.
+        flank_info = []
+        for end_g in (path[0], path[-1]):
+            flank = _best_flank(end_g, comp_set, eligible, pair_angles, group_area_cache)
+            if flank is None:
+                flank_info = None
+                break
+            flank_info.append(flank)
+        if flank_info is None:
+            return
+
+    comp_faces = np.concatenate([groups[g] for g in path])
+    area = float(face_areas[comp_faces].sum())
+    if area <= 0 or not np.isfinite(area):
+        return
+
+    axis, radius, residual = _fit_axis_radius(comp_faces, normals, centroids, vertices, faces)
+    if axis is None:
+        return  # can't validate strip shape without a directionality fit
+
+    # Axial length: spread of the strip's own vertices along its fitted
+    # axis (mirrors detect_cylinders' depth calc). For a fillet running
+    # along a straight edge this axis IS the strip's run direction, so
+    # this is the correct "length"; the transverse (developed arc)
+    # width is then area / length.
+    vert_idx = np.unique(faces[comp_faces])
+    pts = vertices[vert_idx]
+    mean_pt = pts.mean(axis=0)
+    axial = (pts - mean_pt) @ np.asarray(axis)
+    length_mm = float(axial.max() - axial.min()) if len(axial) else 0.0
+    if length_mm <= 1e-6:
+        return
+    width_mm = area / length_mm
+    aspect = length_mm / max(width_mm, 1e-9)
+    if aspect < min_strip_aspect:
+        return
+
+    conf = 0.55
+    if 60.0 <= total_turn <= 120.0:
+        conf += 0.1
+    if aspect >= 3.0:
+        conf += 0.05
+    if residual is not None and residual < 0.3:
+        conf += 0.05
+    conf = float(min(0.75, max(0.5, conf)))
+
+    centroid = tuple(float(v) for v in centroids[comp_faces].mean(axis=0))
+
+    features.append(
+        Feature(
+            kind=FeatureKind.FILLET,
+            face_indices=[int(i) for i in comp_faces],
+            centroid=centroid,
+            area=area,
+            axis=axis,
+            radius=radius,
+            confidence=conf,
+            metadata={
+                "total_turn_deg": total_turn,
+                "n_segments": len(path),
+                "aspect": aspect,
+                "axial_length_mm": length_mm,
+                "avg_width_mm": width_mm,
+                "axis_residual": residual,
+                "convex": bool(convex_flags[0]) if convex_flags else None,
+                "flank_group_ids": [f[0] for f in flank_info],
+                "closed_loop_segment": bool(loop_segment),
+            },
+        )
+    )

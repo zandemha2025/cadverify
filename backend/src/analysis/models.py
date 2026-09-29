@@ -142,6 +142,10 @@ class GeometryInfo:
     # degenerate mesh (trimesh yields NaN there); never a fabricated value.
     center_of_mass: tuple[float | None, float | None, float | None]
     units: str = "mm"                   # Detected or assumed
+    # "suspicious_scale" when the bounding box fits a 1/8-inch grid clearly
+    # better than whole millimetres (detect_25_4_scale_ratio); a confirmation
+    # prompt only - geometry is never auto-rescaled.
+    unit_flag: Optional[str] = None
 
 
 @dataclass
