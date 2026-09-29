@@ -23,6 +23,8 @@
  * under the repo's `node --test` TS-stripping runner.
  */
 
+import { apiProblemDetail, apiRecoveryMessage } from "../api-recovery.ts";
+
 /** STEP/IGES suffixes the assembly endpoint accepts — only these are probed, so
  *  STL and everything else stay on the unchanged single-part path. */
 const ASSEMBLY_SUFFIXES = [".step", ".stp", ".iges", ".igs"];
@@ -291,7 +293,7 @@ export type AssemblyProbe =
   | { kind: "not_candidate" }
   | { kind: "single_part" }
   | { kind: "assembly"; render: AssemblyRender }
-  | { kind: "refused"; title: string; action: string };
+  | { kind: "refused"; title: string; action: string; recovery?: "retry" | "sign_in" };
 
 async function postAssembly(file: File, format: "json" | "glb" | "analysis"): Promise<Response | null> {
   const { API_BASE } = await import("@/lib/api-base");
@@ -308,17 +310,25 @@ async function postAssembly(file: File, format: "json" | "glb" | "analysis"): Pr
 }
 
 async function refusalFromResponse(response: Response, fallback: string): Promise<AssemblyProbe> {
-  let detail = "";
-  try {
-    const body = (await response.json()) as { detail?: unknown };
-    detail = typeof body.detail === "string" ? body.detail : "";
-  } catch {
-    // A non-JSON error is still a refusal. Never reinterpret it as a single part.
+  const body: unknown = await response.json().catch(() => null);
+  const { status } = response;
+  if (status >= 500 || status === 429 || status === 401 || status === 403) {
+    return {
+      kind: "refused",
+      title: "CAD verification could not start",
+      action: apiRecoveryMessage({
+        status,
+        payload: body,
+        resource: "verification",
+        retryAfter: response.headers.get("retry-after"),
+      }),
+      recovery: status === 401 ? "sign_in" : status === 403 ? undefined : "retry",
+    };
   }
   return {
     kind: "refused",
-    title: "This assembly could not be opened",
-    action: detail || fallback,
+    title: "This CAD file could not be opened",
+    action: apiProblemDetail(body) || fallback,
   };
 }
 
@@ -340,6 +350,7 @@ export async function probeAssembly(
       kind: "refused",
       title: "Assembly check could not reach the server",
       action: "Check the connection and retry. The file was not analyzed as a single part.",
+      recovery: "retry",
     };
   }
   if (!jsonRes.ok) {
@@ -352,11 +363,15 @@ export async function probeAssembly(
   let model: AssemblyModel;
   try {
     model = (await jsonRes.json()) as AssemblyModel;
+    if (!model || !Array.isArray(model.parts) || typeof model.part_count !== "number") {
+      throw new Error("Unreadable assembly model");
+    }
   } catch {
     return {
       kind: "refused",
       title: "Assembly response was unreadable",
       action: "Retry the upload. The file was not analyzed as a single part.",
+      recovery: "retry",
     };
   }
   if (model.kind === "single_part" && model.part_count === 1) {
@@ -376,6 +391,7 @@ export async function probeAssembly(
       kind: "refused",
       title: "Assembly preview could not reach the server",
       action: "Check the connection and retry. No single-part verdict was substituted.",
+      recovery: "retry",
     };
   }
   if (!glbRes.ok) {
@@ -392,6 +408,7 @@ export async function probeAssembly(
       kind: "refused",
       title: "Assembly preview was unreadable",
       action: "Retry the upload. No single-part verdict was substituted.",
+      recovery: "retry",
     };
   }
   if (!blob.size) {
@@ -399,6 +416,7 @@ export async function probeAssembly(
       kind: "refused",
       title: "Assembly preview was empty",
       action: "Retry the upload or export the assembly as STEP AP242.",
+      recovery: "retry",
     };
   }
 

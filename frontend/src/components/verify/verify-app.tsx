@@ -103,6 +103,8 @@ export function VerifyApp({
     fileName: string;
     title: string;
     action: string;
+    recovery?: "retry" | "sign_in";
+    retryFile?: File;
   } | null>(null);
   // Multi-part assembly render (>= 2 solids): the combined GLB + product tree.
   // null for single parts, which keep the existing single-shell path untouched.
@@ -255,6 +257,8 @@ export function VerifyApp({
           fileName: f.name,
           title: assemblyProbe.title,
           action: assemblyProbe.action,
+          recovery: assemblyProbe.recovery,
+          retryFile: assemblyProbe.recovery === "retry" ? f : undefined,
         });
         return null;
       }
@@ -714,6 +718,7 @@ export function VerifyApp({
             style={{
               flexShrink: 0,
               display: "flex",
+              flexWrap: "wrap",
               alignItems: "center",
               gap: 12,
               padding: "12px 20px",
@@ -725,20 +730,24 @@ export function VerifyApp({
             <div style={{ minWidth: 0 }}>
               <p style={{ margin: 0, fontSize: 13, fontWeight: 650 }}>{uploadRejection.title}</p>
               <p style={{ margin: "4px 0 0", fontSize: 12, lineHeight: 1.5 }}>
-                <span style={{ fontFamily: MONO }}>{uploadRejection.fileName}</span> was not uploaded. {uploadRejection.action}{" "}
-                No analysis was started and no record was created.
+                <span style={{ fontFamily: MONO }}>{uploadRejection.fileName}</span> could not be verified. {uploadRejection.action}{" "}
+                No verification record was created.
               </p>
             </div>
-            <button
+            {uploadRejection.recovery === "sign_in" ? (
+              <Link href="/login?next=%2Fverify" style={{ marginLeft: "auto", color: "inherit", fontWeight: 600 }}>
+                Sign in again
+              </Link>
+            ) : <button
               type="button"
-              onClick={pickOwnFile}
+              onClick={() => uploadRejection.retryFile ? void runVerify(uploadRejection.retryFile) : pickOwnFile()}
               style={{ marginLeft: "auto", flexShrink: 0, minHeight: 40, border: "1px solid currentColor", borderRadius: 999, background: "#fff", color: "inherit", padding: "8px 14px", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}
             >
-              Choose a STEP export
-            </button>
+              {uploadRejection.retryFile ? "Retry upload" : "Choose another file"}
+            </button>}
             <button
               type="button"
-              aria-label="Dismiss unsupported file guidance"
+              aria-label="Dismiss upload guidance"
               onClick={() => setUploadRejection(null)}
               style={{ flexShrink: 0, width: 40, height: 40, border: 0, background: "transparent", color: "inherit", cursor: "pointer", fontSize: 20 }}
             >

@@ -108,3 +108,31 @@ test("probeAssembly refuses an empty preview for a confirmed multi-solid assembl
   assert.equal(outcome.kind, "refused");
   if (outcome.kind === "refused") assert.match(outcome.title, /preview was empty/i);
 });
+
+test("STEP failures preserve file diagnostics and distinguish service/session recovery", async () => {
+  const { probeAssembly } = await import("./assembly.ts");
+  for (const [status, body, expected, recovery] of [
+    [400, { code: "BAD_REQUEST", message: "Empty file uploaded" }, /empty file/i, undefined],
+    [413, { message: "File exceeds 100MB limit" }, /100MB/, undefined],
+    [500, {}, /service.*try again/i, "retry"],
+    [503, { detail: { message: "Parser temporarily unavailable" } }, /temporarily unavailable/i, "retry"],
+    [504, {}, /service.*try again/i, "retry"],
+    [429, {}, /try again in 12 seconds/i, "retry"],
+    [401, {}, /session expired.*sign in/i, "sign_in"],
+    [403, {}, /permission.*admin/i, undefined],
+  ] as const) {
+    const result = await probeAssembly(new File(["ISO-10303-21"], "valid.STP"), async () =>
+      Response.json(body, { status, headers: { "retry-after": "12" } }));
+    assert.equal(result.kind, "refused");
+    if (result.kind !== "refused") continue;
+    assert.match(result.action, expected);
+    assert.equal(result.recovery, recovery);
+    if (status >= 500 || status === 429) assert.doesNotMatch(result.action, /export/i);
+  }
+  for (const body of ["null", "not JSON"]) {
+    const result = await probeAssembly(new File(["ISO-10303-21"], "valid.STP"), async () =>
+      new Response(body, { status: 200 }));
+    assert.equal(result.kind, "refused");
+    if (result.kind === "refused") assert.equal(result.recovery, "retry");
+  }
+});
