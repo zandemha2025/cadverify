@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { API_BASE } from "@/lib/api-base";
+import { ConnectorCredentials } from "./connector-credentials";
 import {
   createIntegrationRun,
   listIntegrationConnectors,
@@ -35,7 +36,7 @@ function dateLabel(value: string | null): string {
   return value ? new Date(value).toLocaleString() : "—";
 }
 
-export function IntegrationsClient() {
+export function IntegrationsClient({ canManageCredentials = false }: { canManageCredentials?: boolean }) {
   const [connectors, setConnectors] = useState<IntegrationConnector[]>([]);
   const [runs, setRuns] = useState<IntegrationRun[]>([]);
   const [connectorId, setConnectorId] = useState("");
@@ -134,7 +135,7 @@ export function IntegrationsClient() {
             <CardContent className="space-y-3 text-sm leading-6 text-muted-foreground">
               <p>{connector.description}</p>
               {connector.mode !== "offline_csv" && (
-                <p className="font-medium text-amber-700">Vendor API runs are not available in this workspace.</p>
+                <p className="font-medium text-amber-700">Product connection tests available to organization admins. BOM reads and API imports are not available yet.</p>
               )}
               <div className="grid grid-cols-2 gap-2 font-mono text-xs">
                 <span>{connector.source_system}</span>
@@ -222,9 +223,13 @@ export function IntegrationsClient() {
             {running ? "Running" : "Run"}
           </Button>
           </> : selected && (
-            <p role="status" className="text-sm text-muted-foreground lg:col-span-3">
-              This vendor API connection cannot run yet. For a CSV export, choose SAP manifest CSV or PLM manifest CSV.
-            </p>
+            <>
+              <p role="status" className="text-sm text-muted-foreground lg:col-span-3">
+                This vendor API import cannot run yet. For a CSV export, choose SAP manifest CSV or PLM manifest CSV.
+              </p>
+              {canManageCredentials ? <ConnectorCredentials key={selected.id} connectorId={selected.id} /> :
+                <p className="text-sm text-muted-foreground lg:col-span-4">An organization admin can save and test a vendor connection here.</p>}
+            </>
           )}
         </CardContent>
       </Card>

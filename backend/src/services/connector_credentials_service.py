@@ -1,6 +1,7 @@
 """Encrypted connector credential profiles for enterprise integrations."""
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -24,6 +25,7 @@ from src.services.connector_adapters import (
     WindchillPartBomReadOnlyAdapter,
 )
 from src.services.integration_service import get_connector
+from src.services.connector_transport import ConnectorConnectionError, probe_product_api
 
 AUTH_TYPES = {"bearer", "basic", "oauth2_client_credentials", "api_key"}
 FINGERPRINT_ALGORITHM = "hmac_sha256"
@@ -82,8 +84,11 @@ def encrypt_secret(secret: dict[str, Any]) -> tuple[str, str]:
     if not isinstance(secret, dict) or not secret:
         raise HTTPException(status_code=400, detail="connector secret must be a non-empty object")
     canonical = _canonical_secret(secret)
-    fingerprint = _fingerprint_secret(canonical)
-    token = _fernet().encrypt(canonical.encode("utf-8")).decode("utf-8")
+    try:
+        fingerprint = _fingerprint_secret(canonical)
+        token = _fernet().encrypt(canonical.encode("utf-8")).decode("utf-8")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="Connector credential storage is not configured. Ask the workspace operator to enable it.") from exc
     return token, fingerprint
 
 
@@ -109,11 +114,17 @@ def _clean_text(value: str | None, field: str, *, max_len: int = 300) -> str:
 
 def _clean_base_url(value: str | None) -> str:
     clean = _clean_text(value, "base_url", max_len=500).rstrip("/")
-    parsed = urlparse(clean)
-    if not parsed.scheme or not parsed.netloc:
+    try:
+        parsed = urlparse(clean)
+        parsed.port  # Validate a malformed or out-of-range port before saving.
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="base_url is not a valid URL") from exc
+    if not parsed.scheme or not parsed.hostname:
         raise HTTPException(status_code=400, detail="base_url must be an absolute URL")
     if parsed.username or parsed.password:
         raise HTTPException(status_code=400, detail="base_url must not contain credentials")
+    if parsed.query or parsed.fragment or "\\" in clean or any(c.isspace() for c in clean):
+        raise HTTPException(status_code=400, detail="base_url must not contain a query, fragment, whitespace or backslash")
     hostname = (parsed.hostname or "").lower()
     local_http = parsed.scheme == "http" and hostname in {"localhost", "127.0.0.1", "::1"}
     if parsed.scheme != "https" and not (local_http and not _production_like()):
@@ -284,31 +295,17 @@ def _adapter_for(row: ConnectorCredentialProfile):
     raise HTTPException(status_code=400, detail="connector has no probe adapter")
 
 
-def probe_profile(row: ConnectorCredentialProfile) -> dict[str, Any]:
+async def probe_profile(row: ConnectorCredentialProfile) -> dict[str, Any]:
     adapter = _adapter_for(row)
-    if row.revoked_at is not None:
-        probe = adapter.probe_credentials()
-        return {
-            "connector_id": row.connector_id,
-            "credential_profile_id": row.ulid,
-            "configured": False,
-            "read_only": probe.read_only,
-            "mode": probe.mode,
-            "boundary_label": probe.boundary_label,
-            "base_url": row.base_url,
-            "auth_type": row.auth_type,
-            "secret_fingerprint": row.secret_fingerprint,
-            "secret_fingerprint_algorithm": FINGERPRINT_ALGORITHM,
-            "reason": "credential profile is revoked",
-        }
-    secret = decrypt_secret(row.encrypted_secret_json)
     probe = adapter.probe_credentials()
-    has_required_secret = bool(secret)
-    configured = row.revoked_at is None and probe.configured and has_required_secret
-    return {
+    result = {
         "connector_id": row.connector_id,
         "credential_profile_id": row.ulid,
-        "configured": configured,
+        "configured": row.revoked_at is None and probe.configured,
+        "connected": False,
+        "capability": "product_read",
+        "records_read": 0,
+        "checked_at": _now().isoformat(),
         "read_only": probe.read_only,
         "mode": probe.mode,
         "boundary_label": probe.boundary_label,
@@ -316,5 +313,21 @@ def probe_profile(row: ConnectorCredentialProfile) -> dict[str, Any]:
         "auth_type": row.auth_type,
         "secret_fingerprint": row.secret_fingerprint,
         "secret_fingerprint_algorithm": FINGERPRINT_ALGORITHM,
-        "reason": None if configured else probe.reason or "credential profile is revoked or incomplete",
+        "reason": None,
     }
+    if row.revoked_at is not None:
+        result["reason"] = "credential profile is revoked"
+        return result
+    if not probe.configured:
+        result["reason"] = probe.reason
+        return result
+    secret = decrypt_secret(row.encrypted_secret_json)
+    try:
+        async with asyncio.timeout(25):
+            result["records_read"] = await probe_product_api(row.connector_id, row.base_url, row.auth_type, secret)
+        result["connected"] = True
+    except ConnectorConnectionError as exc:
+        result["reason"] = str(exc)
+    except TimeoutError:
+        result["reason"] = "The connection test timed out. Check availability and try again."
+    return result

@@ -223,6 +223,11 @@ async function runApiCredentialLifecycle() {
         const probed = await request("POST", `/api/v1/integrations/credential-profiles/${encodeURIComponent(profileId)}/probe`);
         assert(probed.status === 200, `probe credential profile HTTP ${probed.status}: ${JSON.stringify(probed.json)}`);
         assert(probed.json?.probe?.configured === true, "probe did not mark credential configured");
+        assert(typeof probed.json.probe.connected === "boolean", "probe must report actual connection status separately");
+        if (new URL(profile.baseUrl).hostname.endsWith(".example")) {
+          assert(probed.json.probe.connected === false, "a placeholder endpoint must never be connected");
+          assert(probed.json.probe.reason, "failed connection must explain recovery");
+        }
         assert(probed.json.probe.read_only === true, "probe was not read-only");
         assert(probed.json.probe.boundary_label === "sandbox", "probe boundary was not sandbox");
         assert(!JSON.stringify(probed.json).includes(secretMarker), "probe response leaked connector secret");
@@ -230,6 +235,8 @@ async function runApiCredentialLifecycle() {
           profileId,
           connectorId,
           configured: probed.json.probe.configured,
+          connected: probed.json.probe.connected,
+          reason: probed.json.probe.reason,
           readOnly: probed.json.probe.read_only,
           boundary: probed.json.probe.boundary_label,
         };

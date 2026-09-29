@@ -167,7 +167,7 @@ async def probe_credential_profile(
     session: AsyncSession = Depends(get_db_session),
 ):
     row = await creds.get_profile(session, org_id=_ctx_org(ctx), profile_id=profile_id)
-    return {"probe": creds.probe_profile(row)}
+    return {"probe": await creds.probe_profile(row)}
 
 
 @router.delete("/credential-profiles/{profile_id}", status_code=200)

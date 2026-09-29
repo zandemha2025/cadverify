@@ -56,7 +56,7 @@ def guard_enabled() -> bool:
     return os.getenv("WEBHOOK_SSRF_GUARD_ENABLED", "1") != "0"
 
 
-def _ip_is_blocked(ip: ipaddress._BaseAddress) -> bool:
+def _ip_is_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     """True if the address falls in a range we must never egress to.
 
     Covers loopback (127/8, ::1), private (10/8, 172.16/12, 192.168/16,
@@ -87,7 +87,7 @@ def _ip_is_blocked(ip: ipaddress._BaseAddress) -> bool:
     )
 
 
-def _resolve_ips(host: str) -> list[ipaddress._BaseAddress]:
+def _resolve_ips(host: str) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
     """Resolve a hostname to every A/AAAA address, or parse an IP literal.
 
     Raises UnsafeURLError when the host cannot be resolved (a webhook we can
@@ -103,9 +103,9 @@ def _resolve_ips(host: str) -> list[ipaddress._BaseAddress]:
     except socket.gaierror as exc:
         raise UnsafeURLError(f"host does not resolve: {host}") from exc
 
-    ips: list[ipaddress._BaseAddress] = []
+    ips: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
     for info in infos:
-        addr = info[4][0]
+        addr = str(info[4][0])
         # Strip IPv6 scope id (fe80::1%eth0) before parsing.
         addr = addr.split("%", 1)[0]
         try:
@@ -117,8 +117,8 @@ def _resolve_ips(host: str) -> list[ipaddress._BaseAddress]:
     return ips
 
 
-def validate_public_host(host: str) -> None:
-    """Require every address for ``host`` to be publicly routable.
+def resolve_public_host(host: str) -> list[str]:
+    """Resolve once and require every address to be publicly routable.
 
     Unlike :func:`validate_outbound_url`, this primitive cannot be disabled by
     the webhook-specific compatibility switch. Security-sensitive clients such
@@ -128,11 +128,18 @@ def validate_public_host(host: str) -> None:
     """
     if not host:
         raise UnsafeURLError("URL has no host")
-    for ip in _resolve_ips(host):
+    ips = _resolve_ips(host)
+    for ip in ips:
         if _ip_is_blocked(ip):
             raise UnsafeURLError(
                 f"URL host '{host}' resolves to a non-routable address ({ip})"
             )
+    return [str(ip) for ip in ips]
+
+
+def validate_public_host(host: str) -> None:
+    """Validate a public host without returning its addresses."""
+    resolve_public_host(host)
 
 
 def validate_outbound_url(url: str | None) -> None:
