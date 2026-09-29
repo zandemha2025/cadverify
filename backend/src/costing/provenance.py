@@ -66,8 +66,8 @@ class CostEstimate:
     material: str
     quantity: int
     unit_cost_usd: float            # == sum of line_items.values()
-    fixed_cost_usd: float           # setup_labor + tooling (amortized over qty)
-    variable_cost_usd: float        # per-unit material + machine + labor (qty-independent)
+    fixed_cost_usd: float           # total one-time tooling + non-recurring work
+    variable_cost_usd: float        # per-unit costs with asymptotic full-lot setup allocation
     drivers: list[Driver]           # every line item, each tagged
     line_items: dict                # {"amortized_fixed":.., "material":.., "machine":.., "labor":..}
     est_error_band_pct: float       # rolled-up band (dominant cost line)

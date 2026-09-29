@@ -87,7 +87,7 @@
   <h2>Geometry</h2>
   {% set geo = result.get('geometry', {}) %}
   <table>
-    <tr><th>Volume (cm&sup3;)</th><th>Surface area (cm&sup2;)</th><th>Bounding box (mm)</th><th>Watertight</th><th>Faces</th></tr>
+    <thead><tr><th>Volume (cm&sup3;)</th><th>Surface area (cm&sup2;)</th><th>Bounding box (mm)</th><th>Watertight</th><th>Faces</th></tr></thead>
     <tr>
       <td class="num">{{ geo.get('volume_cm3', 'N/A') }}</td>
       <td class="num">{{ geo.get('surface_area_cm2', 'N/A') }}</td>
@@ -136,7 +136,7 @@
 
   <h3>Recommended pick by quantity</h3>
   <table>
-    <tr><th>Quantity</th><th>Process</th><th>Material</th><th class="num">Unit cost</th><th>Cheaper if redesigned</th></tr>
+    <thead><tr><th>Quantity</th><th>Process</th><th>Material</th><th class="num">Unit cost</th><th>Cheaper if redesigned</th></tr></thead>
     {% set rec = dec.get('recommendation', {}) %}
     {% set redes = dec.get('if_redesigned', {}) %}
     {% for q in result.get('quantities', []) %}
@@ -168,19 +168,22 @@
   {% set estimates = result.get('estimates', []) %}
   {% if estimates %}
   <p class="muted" style="margin:0 0 4px 0;">
-    Every priced estimate below. Unit cost = fixed (amortized) + variable.
+    Unit cost is the sum of the per-unit line items below, rounded to cents.
+    One-time cost covers tooling and non-recurring work; long-run cost uses
+    full-lot setup allocation. These two summary columns do not reproduce the
+    exact unit cost at each quantity because batch rounding and minimum charges apply.
     The confidence band is <span class="ci-honesty">assumption-based, not yet
     validated</span> unless tagged
     <span class="prov prov-MEASURED">MEASURED</span>. "Validated?" is
     <strong>No</strong> for every assumption-band row.
   </p>
   <table>
-    <tr>
+    <thead><tr>
       <th>Process</th><th>Material</th><th class="num">Qty</th>
-      <th class="num">Unit $</th><th class="num">Fixed $</th><th class="num">Variable $</th>
+      <th class="num">Unit $</th><th class="num">One-time $</th><th class="num">Long-run $/unit</th>
       <th class="num">Band (low&ndash;high)</th><th class="num">&plusmn;%</th>
       <th>Validated?</th><th>DFM</th>
-    </tr>
+    </tr></thead>
     {% for e in estimates %}
     {% set ci = e.get('confidence') or {} %}
     <tr>
@@ -216,11 +219,11 @@
     {% endfor %}
   {% endfor %}
   <table>
-    <tr>
+    <thead><tr>
       <th>Process</th><th>Material</th><th class="num">Qty</th>
       {% for k in li_keys %}<th class="num">{{ k }}</th>{% endfor %}
       <th class="num">&Sigma; unit</th>
-    </tr>
+    </tr></thead>
     {% for e in estimates %}
     {% set li = e.get('line_items') or {} %}
     <tr>
@@ -264,7 +267,7 @@
       {% set drivers = e.get('drivers') or [] %}
       {% if drivers %}
       <table>
-        <tr><th>Driver</th><th class="num">Value</th><th>Provenance</th><th>Basis / source</th></tr>
+        <thead><tr><th>Driver</th><th class="num">Value</th><th>Provenance</th><th>Basis / source</th></tr></thead>
         {% for d in drivers %}
         <tr>
           <td>{{ d.get('name') }}</td>
@@ -290,7 +293,7 @@
   {% set assumptions = result.get('assumptions', []) %}
   {% if assumptions %}
   <table>
-    <tr><th>Assumption</th><th class="num">Value</th><th>Unit</th><th>Source</th><th>Provenance</th></tr>
+    <thead><tr><th>Assumption</th><th class="num">Value</th><th>Unit</th><th>Source</th><th>Provenance</th></tr></thead>
     {% for a in assumptions %}
     <tr>
       <td>{{ a.get('name') }}</td>
