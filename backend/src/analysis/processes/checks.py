@@ -137,7 +137,7 @@ def check_small_features(
         code="SMALL_FEATURES",
         severity=Severity.WARNING,
         message=(
-            f"{len(small)} edges ({pct:.1f}%) below {min_size_mm}mm "
+            f"{len(small)} geometric boundary spans ({pct:.1f}%) below {min_size_mm}mm "
             f"resolution for {process.value}. Smallest: {smallest:.3f}mm."
         ),
         process=process,

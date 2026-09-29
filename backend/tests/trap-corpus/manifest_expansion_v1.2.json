@@ -2,7 +2,7 @@
  "corpus": "cadverify trap corpus v1.2-expansion (Qwen seat 2026-09-13)",
  "extends": "trap-corpus-gate v1.1 (9 meshes by Astra 2026-09-12)",
  "law": "every verifier change must keep this corpus green; expected values derive from CODE thresholds (fdm.py: wall 0.8 / overhang 45 / small 0.4 / volume (300,300,350) / aspect 8 / drain 3.0; sla.py: wall 0.4 / overhang 19 / small 0.05 / volume (200,125,210) / drain 3.5)",
- "semantics_note": "OVERHANG IS MEASURED FROM VERTICAL in checks.py: a face trips when angle_from_up(normal) > 90 + threshold. For an underside, angle_from_up = 90 + tilt-from-vertical, so FDM trips undersides tilted more than 45 deg FROM VERTICAL (i.e. shallower than 45 deg from horizontal). The 46/44 pair was built against this: 46-from-vertical trips FDM, 44 passes. small_features trips only when >=5% of unique edges are below threshold. wall_thickness = inward ray from face centroids; severity ERROR if >10% of faces thin, else WARNING, but an Issue is emitted either way.",
+ "semantics_note": "OVERHANG IS MEASURED FROM VERTICAL in checks.py: a face trips when angle_from_up(normal) > 90 + threshold. For an underside, angle_from_up = 90 + tilt-from-vertical, so FDM trips undersides tilted more than 45 deg FROM VERTICAL (i.e. shallower than 45 deg from horizontal). The 46/44 pair was built against this: 46-from-vertical trips FDM, 44 passes. small_features trips only when >=5% of measured geometric boundary spans are below threshold (triangle subdivision edges are excluded). wall_thickness = inward ray from face centroids; severity ERROR if >10% of faces thin, else WARNING, but an Issue is emitted either way.",
  "fixtures": [
   {
    "file": "control-wall-0.81mm-plate.stl",
@@ -269,8 +269,10 @@
     "fdm": {
      "gates_trip": [
       "wall_thickness",
-      "small_features",
       "overhangs"
+     ],
+     "gates_absent": [
+      "small_features"
      ]
     },
     "sla": {
@@ -283,7 +285,7 @@
      ]
     }
    },
-   "note": "Organic lathed form with a 0.35mm-radius cylindrical neck: measured wall 0.697 (FDM trips, SLA clears at 0.4), neck facets give 7.4% edges < 0.4 (small trips FDM, clears SLA 0.05), pinch slopes > 135 deg (overhang trips FDM+SLA). Three FDM defects in one realistic organic body."
+   "note": "Organic lathed form with a 0.35 mm-radius neck (0.70 mm diameter). Measured wall 0.697 mm fails FDM 0.8 mm and clears SLA 0.4 mm; steep pinch slopes require supports. Its tessellation chords are not physical sub-0.4 mm features: SMALL_FEATURES must remain absent."
   },
   {
    "file": "trap-organic-sealed-cavity.stl",
@@ -353,12 +355,14 @@
     "fdm": {
      "gates_trip": [
       "trapped_volumes",
-      "overhangs",
+      "overhangs"
+     ],
+     "gates_absent": [
       "small_features"
      ]
     }
    },
-   "note": "Sealed hollow 24mm box with only a 2mm drain hole: FDM drain law is >= 3.0mm, and measured cylinder/cavity evidence must report trapped material. Also expected today: internal ceiling trips overhangs (28 faces) and the 2mm hole's facets push 25.8% of edges < 0.4 (small_features) - both real under current code."
+   "note": "Sealed hollow 24 mm box with a 2 mm drain hole. The drain is below the 3 mm drainage requirement, so trapped material must be reported, and the internal ceiling requires supports. The 2 mm bore is above the 0.4 mm FDM feature threshold; its short tessellation chords must not trigger SMALL_FEATURES."
   },
   {
    "file": "trap-degenerate-duplicate-face.stl",

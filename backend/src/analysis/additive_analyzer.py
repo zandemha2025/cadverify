@@ -10,6 +10,7 @@ import logging
 import numpy as np
 import trimesh
 from scipy.spatial import cKDTree
+from src.analysis.context import manufacturing_edge_lengths
 
 from src.analysis.constants import (
     BUILD_VOLUMES,
@@ -194,9 +195,7 @@ def check_small_features(
     issues = []
     min_feature = MIN_FEATURE_SIZE.get(process, 0.4)
 
-    # Check for thin edges by measuring edge lengths
-    edges = mesh.edges_unique
-    edge_lengths = mesh.edges_unique_length
+    edge_lengths = manufacturing_edge_lengths(mesh)
 
     small_edges = edge_lengths[edge_lengths < min_feature]
     if len(small_edges) > 0:
@@ -208,7 +207,7 @@ def check_small_features(
                 code="SMALL_FEATURES",
                 severity=Severity.WARNING,
                 message=(
-                    f"{len(small_edges)} edges ({pct:.1f}%) are smaller than "
+                    f"{len(small_edges)} geometric boundary spans ({pct:.1f}%) are smaller than "
                     f"{min_feature}mm minimum feature size for {process.value}. "
                     f"Smallest: {smallest:.3f}mm."
                 ),

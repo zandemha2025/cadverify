@@ -17,6 +17,7 @@ Design contract:
 from __future__ import annotations
 
 import os
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -121,7 +122,7 @@ class GeometryContext:
     wall_thickness: np.ndarray       # (N,)   float — inward ray cast, inf on failure
 
     # Per-edge arrays
-    edge_lengths: np.ndarray         # (E,) float
+    edge_lengths: np.ndarray         # physical sharp-edge spans / closed-rim widths
     dihedral_angles_rad: np.ndarray  # (A,) float — from face_adjacency_angles
     face_adjacency: np.ndarray       # (A, 2) int  — from face_adjacency
     concave_mask: np.ndarray         # (A,) bool   — ~face_adjacency_convex
@@ -174,7 +175,7 @@ class GeometryContext:
 
         wall_thickness = _compute_wall_thickness(mesh, normals, centroids, scale_eps)
 
-        edge_lengths = _safe_attr(mesh, "edges_unique_length", default=np.empty(0))
+        edge_lengths = manufacturing_edge_lengths(mesh)
         adjacency = _safe_attr(mesh, "face_adjacency", default=np.empty((0, 2), dtype=int))
         dihedral = _safe_attr(mesh, "face_adjacency_angles", default=np.empty(0))
         try:
@@ -254,6 +255,68 @@ class GeometryContext:
                 if v
             },
         )
+
+
+def manufacturing_edge_lengths(mesh: trimesh.Trimesh) -> np.ndarray:
+    """Measure geometric boundaries, never the edges of the export triangles.
+
+    Join subdivision segments until a junction or a real corner. A smooth
+    closed rim contributes its in-plane width (e.g. bore diameter), not its
+    individual tessellation chords. The work is linear in boundary size.
+    """
+    edges = np.asarray(mesh.face_adjacency_edges)[
+        np.asarray(mesh.face_adjacency_angles) > np.radians(30)
+    ]
+    if len(edges) == 0:
+        return np.empty(0)
+    vertices = np.asarray(mesh.vertices)
+    neighbors: dict[int, list[int]] = defaultdict(list)
+    for index, (a, b) in enumerate(edges):
+        neighbors[int(a)].append(index)
+        neighbors[int(b)].append(index)
+
+    breaks = set()
+    for vertex, incident in neighbors.items():
+        if len(incident) != 2:
+            breaks.add(vertex)
+            continue
+        ends = [int(edges[i].sum()) - vertex for i in incident]
+        directions = vertices[ends] - vertices[vertex]
+        lengths = np.linalg.norm(directions, axis=1)
+        if np.any(lengths <= 1e-12) or np.dot(*directions) > -np.cos(np.radians(30)) * np.prod(lengths):
+            breaks.add(vertex)
+
+    visited: set[int] = set()
+    sizes = []
+    # Start open chains at their ends; the remaining components are closed rims.
+    for start in [*breaks, *neighbors]:
+        for first in neighbors[start]:
+            if first in visited:
+                continue
+            path = [start]
+            vertex, edge = start, first
+            while edge not in visited:
+                visited.add(edge)
+                vertex = int(edges[edge].sum()) - vertex
+                path.append(vertex)
+                if vertex == start or vertex in breaks:
+                    break
+                edge = next(i for i in neighbors[vertex] if i != edge)
+            points = vertices[path]
+            if path[-1] == start:
+                # ponytail: planar rim width; freeform openings need B-rep
+                # feature measurements before claiming full feature coverage.
+                points = points[:-1]
+                centered = points - points.mean(axis=0)
+                _, singular, axes = np.linalg.svd(centered, full_matrices=False)
+                if len(singular) < 2 or singular[1] <= 1e-12:
+                    continue
+                size = float(np.ptp(centered @ axes[:2].T, axis=0).min())
+            else:
+                size = float(np.linalg.norm(np.diff(points, axis=0), axis=1).sum())
+            if np.isfinite(size) and size > 1e-12:
+                sizes.append(size)
+    return np.asarray(sizes, dtype=np.float64)
 
 
 def _max_split_bodies() -> int:
