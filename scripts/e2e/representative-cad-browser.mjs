@@ -1040,7 +1040,6 @@ class RepresentativeCadBrowser {
   }
 
   async close() {
-    await this.context?.close().catch(() => {});
     await this.browser?.close().catch(() => {});
   }
 }

@@ -1510,7 +1510,6 @@ class MobileRecoveryRun {
 
   async browserRestartPersistence() {
     await this.runPath("REC-08", async () => {
-      await this.context.close();
       await this.browser.close();
       await this.launch({ width: 390, height: 844 });
       await this.login();
