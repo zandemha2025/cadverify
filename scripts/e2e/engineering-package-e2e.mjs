@@ -9,7 +9,7 @@ const base=process.env.APP_URL || 'http://localhost:3047';
 const fixture=JSON.parse(await readFile(process.env.E2E_SESSION_FILE || '/tmp/cadverify-engineering-browser.json','utf8'));
 const out=process.env.E2E_ARTIFACT_DIR || 'outputs/product-discovery-2026-09-29/evidence/implementation-browser';
 await mkdir(out,{recursive:true});
-const browser=await chromium.launch({channel:'chrome',headless:true});
+const browser=await chromium.launch({channel:'chrome',headless:true,args:process.env.CI?['--no-sandbox','--disable-dev-shm-usage']:[]});
 const context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true});
 await context.addCookies([{name:'dash_session',value:fixture.cookie,url:base,httpOnly:true,sameSite:'Lax'}]);
 await context.addInitScript(()=>localStorage.setItem('proofshape_welcome_v2','1'));
