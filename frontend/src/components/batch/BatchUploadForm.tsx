@@ -266,16 +266,16 @@ export default function BatchUploadForm() {
             disabled={uploading}
           />
         </Field>
-        <Field label="Concurrency limit" htmlFor="batch-concurrency-limit">
+        <Field label="Concurrency limit" htmlFor="batch-concurrency-limit" hint="1–12 files at a time.">
           <Input
             id="batch-concurrency-limit"
             type="number"
             min={1}
-            max={100}
+            max={12}
             value={concurrencyLimit}
             onChange={(e) =>
               setConcurrencyLimit(
-                Math.max(1, Math.min(100, Number(e.target.value) || 10)),
+                Math.max(1, Math.min(12, Number(e.target.value) || 10)),
               )
             }
             disabled={uploading}

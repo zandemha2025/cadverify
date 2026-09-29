@@ -37,7 +37,7 @@ Production is Render, currently `09555c1`. The subsequent audit branch has not b
 | PDF, JSON and CSV exports | Local native downloads of real STEP: 16 cost rows reconcile, Unicode notes/approval preserved; cost columns/headings fixed (029). Seven-page DFM PDF matches saved geometry and clarifies candidate-process scope (031) | Repeat production downloads and broader cases after deployment |
 | Public shares and revocation | Existing test coverage | Real links, access limits, revocation and tenant-data boundaries |
 | RFQ package create/review/download | Local real-STEP create/download exposed historical JSON/current-PDF mismatch; fixed and same package re-downloaded successfully (030) | Deploy; broader multi-item/raw-CAD and production proof |
-| Batch ZIP upload, progress and retry | Existing local/CI coverage | Real multi-file production batch, mixed failures and reconciliation |
+| Batch ZIP upload, progress and retry | Real local worker: mixed STEP/STL batch, useful malformed-file error, explicit native-file skip, retry with corrected ZIP + manifest, matching CSV and saved geometry. Cancellation retains 3 completed results and skips 17 queued files. UI concurrency mismatch fixed (032) | Deploy; repeat production batch, webhook and worker/storage failure recovery |
 | Direct object-storage batch input | Local Moto proof only | Authorized real storage configuration and completed worker run |
 | CSV SAP/PLM manifest imports | Real dry-run exposed hidden row errors; local recovery fixed | Production dry-run, import, duplicate/update and resulting records |
 | Quote/actuals CSV ingestion | Existing tests | Live authorized data import and calibration linkage |

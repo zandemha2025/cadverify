@@ -1,0 +1,152 @@
+{
+  "date": "2026-09-29",
+  "environment": "Disposable local Postgres/Redis, actual ARQ worker, native Chrome UI; not deployed",
+  "finding": "032",
+  "boundary_regression": {
+    "red": "Rendered input max was 100; native concurrency 13 submission returned API 400 with retained ZIP/retry and no batch creation",
+    "green": "CUA runnable check passes for min=1, max=12, clamping 13 to 12 and -1 to 1, retaining valid 2",
+    "check": "scripts/e2e/batch-concurrency-boundary.mjs"
+  },
+  "mixed_batch": {
+    "id": "01M3QQR5MJ2TZE5TMB21RGP56Y",
+    "status": "completed",
+    "portfolio": "fail",
+    "rows": [
+      {
+        "filename": "bored-block.STP",
+        "status": "completed",
+        "verdict": "pass",
+        "best_process": "fdm",
+        "issue_count": "0",
+        "duration_ms": "84.9",
+        "analysis_url": "/api/v1/analyses/01M3QMDWK76X39P0A8DVGPV4NZ",
+        "error": ""
+      },
+      {
+        "filename": "cube-10mm.stl",
+        "status": "completed",
+        "verdict": "pass",
+        "best_process": "fdm",
+        "issue_count": "0",
+        "duration_ms": "116.7",
+        "analysis_url": "/api/v1/analyses/01M3QQR7EHGZ3V008W5MMS5BCX",
+        "error": ""
+      },
+      {
+        "filename": "broken.stl",
+        "status": "failed",
+        "verdict": "",
+        "best_process": "",
+        "issue_count": "",
+        "duration_ms": "",
+        "analysis_url": "",
+        "error": "400: File is too small to be a valid STL (minimum 84 bytes for header + triangle count)."
+      },
+      {
+        "filename": "unsupported.sldprt",
+        "status": "skipped",
+        "verdict": "",
+        "best_process": "",
+        "issue_count": "",
+        "duration_ms": "",
+        "analysis_url": "",
+        "error": "Unsupported native CAD file type .sldprt. Upload STL, STEP/STP, or IGES/IGS for batch analysis; native CAD and drawings require conversion before processing."
+      }
+    ],
+    "checks": [
+      "Real STEP and STL completed",
+      "Malformed STL useful error",
+      "Unsupported extension explicitly skipped",
+      "Failed filter returns broken.stl only",
+      "Downloaded CSV reconciles all four rows"
+    ],
+    "native_file_note": "unsupported.sldprt is an extension-rejection sentinel, not a real native SolidWorks file"
+  },
+  "corrected_batch": {
+    "id": "01M3QQXP4M39G7XGJXRFRR2DC6",
+    "status": "completed",
+    "portfolio": "pass",
+    "rows": [
+      {
+        "filename": "bored-block.STP",
+        "status": "completed",
+        "verdict": "pass",
+        "best_process": "fdm",
+        "issue_count": "0",
+        "duration_ms": "2139.6",
+        "analysis_url": "/api/v1/analyses/01M3QQXS0DNM7SHBZJJ3S2NRHY",
+        "error": ""
+      },
+      {
+        "filename": "cube-10mm.stl",
+        "status": "completed",
+        "verdict": "pass",
+        "best_process": "fdm",
+        "issue_count": "0",
+        "duration_ms": "8.1",
+        "analysis_url": "/api/v1/analyses/01M3QQXQX4JZ1S27AY7T7F22YZ",
+        "error": ""
+      },
+      {
+        "filename": "repaired-block.stl",
+        "status": "completed",
+        "verdict": "pass",
+        "best_process": "cnc_3axis",
+        "issue_count": "0",
+        "duration_ms": "12.1",
+        "analysis_url": "/api/v1/analyses/01M3QQXVB82WB5K5Y5VPV7GRHY",
+        "error": ""
+      }
+    ],
+    "manifest": "batch-manifest.csv",
+    "checks": [
+      "Priorities high/normal/low shown",
+      "Per-file process selection fdm/fdm/cnc_3axis honored",
+      "Native result links open persisted analyses"
+    ],
+    "geometry": {
+      "cube-10mm.stl": {
+        "analysis_id": "01M3QQXQX4JZ1S27AY7T7F22YZ",
+        "dimensions_mm": [
+          10,
+          10,
+          10
+        ],
+        "volume_cm3": 1.0,
+        "planes": 6
+      },
+      "repaired-block.stl": {
+        "analysis_id": "01M3QQXVB82WB5K5Y5VPV7GRHY",
+        "dimensions_mm": [
+          20,
+          10,
+          5
+        ],
+        "volume_cm3": 1.0,
+        "planes": 6
+      }
+    }
+  },
+  "cancellation": {
+    "id": "01M3QR52DQKS71XQR7DECRWXD6",
+    "input": "20 copies of real backend/tests/assets/cube.step at concurrency 1",
+    "status": "cancelled",
+    "completed_retained": 3,
+    "pending_skipped": 17,
+    "processing_failed": 0,
+    "persisted_after_reload": true,
+    "worker_queue_after": 0,
+    "note": "Cancelled batch correctly does not claim a complete passing portfolio; CSV is not offered for cancelled batches."
+  },
+  "validation": {
+    "frontend_tests": 484,
+    "typescript": "pass",
+    "changed_file_eslint": "pass",
+    "production_build": "pass"
+  },
+  "limits": [
+    "Local evidence does not establish production worker/storage configuration",
+    "No webhook delivery or real object-storage upload success proven in this check",
+    "No broader manufacturing heuristic certification"
+  ]
+}
