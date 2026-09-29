@@ -232,10 +232,10 @@ function RecordAssembles() {
 }
 
 const ASSEMBLY_ROWS = [
-  { label: "labor", detail: "0.123 hr × $52/hr", value: "$6.39" },
-  { label: "amortized fixed", detail: "setup ÷ 10 units", value: "$3.89" },
-  { label: "machine", detail: "15.2 hr build ÷ 223 parts", value: "$3.82" },
-  { label: "material", detail: "4.63 cm³ × $7/kg lot", value: "$0.04" },
+  { label: "labor", detail: "(0.08 + 0.5/223) hr × $52/hr × 1.30 markup × 1.15 overhead", value: "$6.39" },
+  { label: "amortized fixed", detail: "0.5 hr × $52/hr ÷ 10 units × 1.30 markup × 1.15 overhead", value: "$3.89" },
+  { label: "machine", detail: "15.2 hr ÷ 223 × $30/hr ÷ 0.80 utilization × 1.30 markup × 1.15 overhead", value: "$3.82" },
+  { label: "material", detail: "4.63 cm³ × 0.90 g/cm³ ÷ 1000 × $7/kg × 1.10 scrap × 1.30 markup", value: "$0.04" },
 ];
 
 /* ── stages ────────────────────────────────────────────────────────────── */
@@ -503,10 +503,10 @@ const MEASURED_FACTS = [
 ];
 
 const COST_DRIVERS: { label: string; value: string; provenance: "SHOP" | "DEFAULT"; tol?: string }[] = [
-  { label: "labor — 0.082 hr × $52/hr", value: "$6.39", provenance: "SHOP", tol: "±20%" },
-  { label: "setup — 0.5 hr ÷ 10 units", value: "$3.89", provenance: "SHOP", tol: "±20%" },
-  { label: "machine — 15.2 hr build ÷ 223 parts", value: "$3.82", provenance: "SHOP", tol: "±40%" },
-  { label: "material — 4.63 cm³ × $7/kg shop lot", value: "$0.04", provenance: "SHOP", tol: "±5%" },
+  { label: "labor — (0.08 + 0.5/223) hr × $52/hr × 1.30 markup × 1.15 overhead", value: "$6.39", provenance: "SHOP", tol: "±20%" },
+  { label: "setup — 0.5 hr × $52/hr ÷ 10 units × 1.30 markup × 1.15 overhead", value: "$3.89", provenance: "SHOP", tol: "±20%" },
+  { label: "machine — 15.2 hr ÷ 223 × $30/hr ÷ 0.80 utilization × 1.30 markup × 1.15 overhead", value: "$3.82", provenance: "SHOP", tol: "±40%" },
+  { label: "material — 4.63 cm³ × 0.90 g/cm³ ÷ 1000 × $7/kg × 1.10 scrap × 1.30 markup", value: "$0.04", provenance: "SHOP", tol: "±5%" },
   { label: "nesting — 223 parts/build packing model", value: "223", provenance: "DEFAULT" },
 ];
 

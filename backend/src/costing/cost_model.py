@@ -368,6 +368,11 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     mgn = 1.0 + margin
     burden = 1.0 + overhead                   # applied to machine/labor/setup conversion cost
     util = utilization if utilization and utilization > 0 else 1.0
+    # Sources must disclose the same multipliers as their displayed values.
+    # `margin` is a markup on cost in this model (1 + margin), not gross margin.
+    margin_note = f" × {mgn:g} markup" if mgn != 1.0 else ""
+    burden_note = f" × {burden:g} overhead" if burden != 1.0 else ""
+    conversion_note = margin_note + burden_note
 
     drivers_out: list[Driver] = []
 
@@ -461,7 +466,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         name="material_cost", value=round(material_scaled, 4), unit="$",
         provenance=price_prov,
         source=(f"{mass_src} = {input_mass:.4f} kg × ${price_per_kg:g}/kg ({price_note}) "
-                f"× (1+{scrap:g} scrap) × region-material ×{rm:g}"),
+                f"× (1+{scrap:g} scrap) × region-material ×{rm:g}{margin_note}"),
         error_band_pct=5.0,
     ))
     # metal powder-bed: surface the support-structure powder as an inspectable adder
@@ -474,6 +479,8 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             name="support_material", value=round(_support_cost, 4), unit="$",
             provenance=Provenance.DEFAULT,
             source=(f"support structure {_svf:g}×net = {_support_mass:.4f} kg powder "
+                    f"× ${price_per_kg:g}/kg × (1+{scrap:g} scrap) "
+                    f"× region-material ×{rm:g}{margin_note} "
                     f"printed then removed (INCLUDED in material_cost above; surfaced for "
                     f"inspection) [metal-AM assumption, not shop-validated]"),
             error_band_pct=band,
@@ -596,7 +603,6 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                   f"[assumption, not shop-validated]") if owned_here else ""
     cav_note = f" ÷ {n_cavities} cavities" if cav_div != 1 else ""
     util_note = f" ÷ {util:g} utilization" if util != 1.0 else ""
-    burden_note = f" × {burden:g} overhead" if burden != 1.0 else ""
     learn_note = f" × {learn_mult:.3f} learning@qty{qty}" if learn_mult != 1.0 else ""
     if rl_machine != rl:
         _frac = rates.g("machine_labor_frac")
@@ -619,7 +625,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         name="machine_cost", value=round(machine_scaled, 4), unit="$",
         provenance=machine_prov_tag,
         source=(f"{machine_hr:.4f} hr × ${machine_rate_shown:g}/hr{machine_name_note}"
-                f"{owned_note}{cav_note}{util_note}{learn_note}{region_mach_note}{burden_note}"
+                f"{owned_note}{cav_note}{util_note}{learn_note}{region_mach_note}{conversion_note}"
                 f"  [{cycle_src}]"),
         error_band_pct=band,
     ))
@@ -670,11 +676,11 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     labor_scaled = post_labor_learned * rl * mgn * burden
     if post_hr_build and n > 1:
         labor_src = (f"finish {post_hr_part:g}hr/part + bulk {post_hr_build:g}hr/build "
-                     f"÷ {n} = {post_hr_part + post_hr_build / n:.3f}hr × ${labor_rate:g}/hr"
-                     f"{learn_note} × region-labor ×{rl:g}")
+                     f"÷ {n} ≈ {post_hr_part + post_hr_build / n:.6g}hr × ${labor_rate:g}/hr"
+                     f"{learn_note} × region-labor ×{rl:g}{conversion_note}")
     else:
         labor_src = (f"post-process {post_hr_part + post_hr_build / n:g} hr × "
-                     f"${labor_rate:g}/hr{learn_note} × region-labor ×{rl:g}")
+                     f"${labor_rate:g}/hr{learn_note} × region-labor ×{rl:g}{conversion_note}")
     drivers_out.append(Driver(
         name="labor_cost", value=round(labor_scaled, 4), unit="$",
         provenance=rates.prov_tag("labor_rate"), source=labor_src, error_band_pct=20.0,
@@ -694,7 +700,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         name="setup_cost", value=round(setup_scaled, 4), unit="$",
         provenance=rates.prov_tag("labor_rate"),
         source=(f"setup {setup_hr:g}hr × ${labor_rate:g}/hr × ceil({qty}/{lot_size}) "
-                f"= {n_setups} setups ÷ {qty} × region-labor ×{rl:g}"),
+                f"= {n_setups} setups ÷ {qty} × region-labor ×{rl:g}{conversion_note}"),
         error_band_pct=20.0,
     ))
 
@@ -722,7 +728,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                 name="nre_cost", value=round(nre_scaled, 4), unit="$",
                 provenance=rates.prov_tag(f"nre_hr.{process.name}"),
                 source=(f"CAM programming/NRE {nre_hr:g}hr × ${labor_rate:g}/hr × "
-                        f"region-labor ×{rl:g} ÷ {qty} order (one-time) "
+                        f"region-labor ×{rl:g} ÷ {qty} order (one-time){conversion_note} "
                         f"[assumption, not shop-validated]"),
                 error_band_pct=40.0,
             ))
@@ -737,7 +743,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                 provenance=rates.prov_tag(f"fai_hr.{process.name}"),
                 source=(f"first-article {fai_hr:g}hr × {n_setups} lot(s) ÷ {qty} + in-process "
                         f"{inspect_hr_part:g}hr/part{learn_note} = {insp_hr_per_unit:.4f}hr × "
-                        f"${labor_rate:g}/hr × region-labor ×{rl:g} "
+                        f"${labor_rate:g}/hr × region-labor ×{rl:g}{conversion_note} "
                         f"[assumption, not shop-validated]"),
                 error_band_pct=40.0,
             ))
@@ -768,7 +774,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                 name="consumables_cost", value=round(consumables_scaled, 4), unit="$",
                 provenance=Provenance.DEFAULT,
                 source=(f"wire-EDM consumable {edm_cut_hr:.3f} cut-hr × ${wire_per_hr:g}/hr "
-                        f"(brass wire + dielectric/filter) × region-material ×{rm:g} "
+                        f"(brass wire + dielectric/filter) × region-material ×{rm:g}{margin_note} "
                         f"[assumption, not shop-validated]"),
                 error_band_pct=40.0,
             ))
@@ -790,7 +796,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             name="finishing_cost", value=round(finishing_scaled, 4), unit="$",
             provenance=rates.prov_tag(f"finish_per_part.{process.name}"),
             source=(f"outsourced finishing: lot ${fin_lot:g} × {n_setups} ÷ {qty} + "
-                    f"${fin_part:g}/part = ${finishing_per_unit:.2f}/unit × region-labor ×{rl:g} "
+                    f"${fin_part:g}/part = ${finishing_per_unit:.2f}/unit × region-labor ×{rl:g}{margin_note} "
                     f"[assumption, not shop-validated]"),
             error_band_pct=40.0,
         ))
@@ -812,7 +818,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             drivers_out.append(Driver(
                 name=drv_name, value=round(comp_cost, 4), unit="$",
                 provenance=Provenance.DEFAULT,
-                source=(f"{comp_src} × ${labor_rate:g}/hr × region-labor ×{rl:g}"),
+                source=(f"{comp_src} × ${labor_rate:g}/hr × region-labor ×{rl:g}{conversion_note}"),
                 error_band_pct=band,
             ))
     elif family == "binder_jet":
@@ -829,7 +835,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             provenance=Provenance.DEFAULT,
             source=(f"debind+sinter furnace {sinter_hr_build:g}hr/batch ÷ {n_sinter} parts/batch "
                     f"= {sinter_per_part_hr:.3f}hr × ${sinter_rate:g}/hr furnace × region-machine "
-                    f"×{rl_machine:g} [binder-jet assumption, not shop-validated]"),
+                    f"×{rl_machine:g}{conversion_note} [binder-jet assumption, not shop-validated]"),
             error_band_pct=band,
         ))
     elif family == "ded":

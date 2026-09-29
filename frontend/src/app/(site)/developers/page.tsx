@@ -131,7 +131,7 @@ export default function DevelopersPage() {
               {I1}&quot;routing&quot;: {"{"} &quot;recommended_process&quot;: <span style={{ color: STR }}>&quot;mjf&quot;</span>, &quot;confidence&quot;: 0.4 {"}"},
             </p>
             <p className={styles.jsonLine} style={{ color: "rgba(245,245,247,0.6)", animationDelay: "1050ms" }}>
-              {I1}&quot;drivers&quot;: [ {"{"} &quot;name&quot;: <span style={{ color: STR }}>&quot;labor_cost&quot;</span>, &quot;value&quot;: 6.39, &quot;provenance&quot;: <span style={{ color: SHOP }}>&quot;SHOP&quot;</span>, &quot;source&quot;: <span style={{ color: STR }}>&quot;0.082hr × $52/hr…&quot;</span> {"}"}, <span style={{ color: "rgba(245,245,247,0.35)" }}>…4 more</span> ],
+              {I1}&quot;drivers&quot;: [ {"{"} &quot;name&quot;: <span style={{ color: STR }}>&quot;labor_cost&quot;</span>, &quot;value&quot;: 6.39, &quot;provenance&quot;: <span style={{ color: SHOP }}>&quot;SHOP&quot;</span>, &quot;source&quot;: <span style={{ color: STR }}>&quot;(0.08 + 0.5/223) hr × $52/hr × 1.3 markup × 1.15 overhead&quot;</span> {"}"}, <span style={{ color: "rgba(245,245,247,0.35)" }}>…4 more</span> ],
             </p>
             <p className={styles.jsonLine} style={{ color: "rgba(245,245,247,0.6)", animationDelay: "1300ms" }}>
               {I1}&quot;confidence&quot;: {"{"} &quot;low_usd&quot;: 8.49, &quot;high_usd&quot;: 19.8, &quot;validated&quot;: <span style={{ color: COND }}>false</span>, &quot;n_samples&quot;: 0 {"}"},
@@ -201,7 +201,7 @@ export default function DevelopersPage() {
               {I1}&quot;routing&quot;: {"{"} &quot;recommended_process&quot;: <span style={{ color: STR }}>&quot;mjf&quot;</span>, &quot;confidence&quot;: 0.4, &quot;reasoning&quot;: <span style={{ color: STR }}>&quot;General solid (48% of bbox filled…&quot;</span> {"}"},
             </p>
             <p style={respLine}>
-              {I1}&quot;drivers&quot;: [ {"{"} &quot;name&quot;: <span style={{ color: STR }}>&quot;labor_cost&quot;</span>, &quot;value&quot;: 6.39, &quot;provenance&quot;: <span style={{ color: SHOP }}>&quot;SHOP&quot;</span>, &quot;source&quot;: <span style={{ color: STR }}>&quot;0.082hr × $52/hr…&quot;</span> {"}"}, … ],
+              {I1}&quot;drivers&quot;: [ {"{"} &quot;name&quot;: <span style={{ color: STR }}>&quot;labor_cost&quot;</span>, &quot;value&quot;: 6.39, &quot;provenance&quot;: <span style={{ color: SHOP }}>&quot;SHOP&quot;</span>, &quot;source&quot;: <span style={{ color: STR }}>&quot;(0.08 + 0.5/223) hr × $52/hr × 1.3 markup × 1.15 overhead&quot;</span> {"}"}, … ],
             </p>
             <p style={respLine}>
               {I1}&quot;line_items&quot;: {"{"} &quot;material&quot;: 0.04, &quot;machine&quot;: 3.82, &quot;labor&quot;: 6.39, &quot;amortized_fixed&quot;: 3.89 {"}"}
