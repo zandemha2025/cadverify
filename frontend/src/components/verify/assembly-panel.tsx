@@ -24,7 +24,7 @@ import { C, MONO, USD, procLabel, statusColor } from "@/lib/verify/tokens";
 function fx(n: number | null | undefined, dp: number): string {
   return n != null && Number.isFinite(n) ? n.toFixed(dp) : "—";
 }
-import { Card, Kicker, ProvChip, Spinner } from "./primitives";
+import { Card, Kicker, ProvChip, Spinner, GhostButton } from "./primitives";
 import {
   looksLikeFastener,
   type AssemblyModel,
@@ -76,6 +76,7 @@ export function AssemblyPanel({
   onSelect,
   analysis,
   analyzing,
+  onRetryAnalysis,
 }: {
   model: AssemblyModel;
   fileName: string | null;
@@ -85,6 +86,7 @@ export function AssemblyPanel({
   analysis: AssemblyAnalysis | null;
   /** True while the per-part analysis is in flight (render is already up). */
   analyzing: boolean;
+  onRetryAnalysis: () => void;
 }) {
   const selected = useMemo(
     () => model.parts.find((p) => p.id === selectedId) ?? null,
@@ -155,7 +157,7 @@ export function AssemblyPanel({
       </p>
 
       {/* Analysis status — the honest state of the REAL per-part run. */}
-      <AnalysisStatus analysis={analysis} analyzing={analyzing} />
+      <AnalysisStatus analysis={analysis} analyzing={analyzing} onRetry={onRetryAnalysis} />
 
       {/* Part-of-interest picker — the real product tree, now carrying each
           part's real quantity + DFM verdict + should-cost. */}
@@ -322,7 +324,7 @@ function RowReadout({
 }
 
 /** The status strip replacing the P2 "PER-PART ANALYSIS — COMING" gate. */
-function AnalysisStatus({ analysis, analyzing }: { analysis: AssemblyAnalysis | null; analyzing: boolean }) {
+function AnalysisStatus({ analysis, analyzing, onRetry }: { analysis: AssemblyAnalysis | null; analyzing: boolean; onRetry: () => void }) {
   if (analyzing && !analysis) {
     return (
       <div
@@ -350,6 +352,7 @@ function AnalysisStatus({ analysis, analyzing }: { analysis: AssemblyAnalysis | 
           The per-part DFM + should-cost run did not return for this upload. The render and
           measured geometry below are real; no verdict or cost is asserted without the engine.
         </p>
+        <GhostButton onClick={onRetry}>Retry analysis</GhostButton>
       </div>
     );
   }

@@ -163,6 +163,14 @@ export function VerifyApp({
     fileRef.current?.click();
   }, []);
 
+  const runAssemblyAnalysis = useCallback(async (f: File, seq: number) => {
+    setAssemblyAnalyzing(true);
+    const analysis = await fetchAssemblyAnalysis(f).catch(() => null);
+    if (runSeq.current !== seq) return;
+    setAssemblyAnalysis(analysis);
+    setAssemblyAnalyzing(false);
+  }, []);
+
   const runVerify = useCallback(
     async (f: File): Promise<VerifyResult | null> => {
       if (!isSupportedCad(f.name)) {
@@ -270,17 +278,7 @@ export function VerifyApp({
         // The heavier per-part analysis (real DFM + should-cost + interference
         // on every solid, ~15s) now runs; the render is already up. Guarded by
         // the same run token so a superseded upload never merges stale analysis.
-        setAssemblyAnalyzing(true);
-        void fetchAssemblyAnalysis(f)
-          .then((analysis) => {
-            if (runSeq.current !== seq) return;
-            setAssemblyAnalysis(analysis);
-            setAssemblyAnalyzing(false);
-          })
-          .catch(() => {
-            if (runSeq.current !== seq) return;
-            setAssemblyAnalyzing(false);
-          });
+        void runAssemblyAnalysis(f, seq);
         return null;
       }
 
@@ -360,7 +358,7 @@ export function VerifyApp({
         if (runSeq.current === seq) setRunning(false);
       }
     },
-    [env, materialClass]
+    [env, materialClass, runAssemblyAnalysis]
   );
 
   const onReverify = useCallback(() => {
@@ -849,6 +847,7 @@ export function VerifyApp({
                 onSelect={setAssemblySelectedId}
                 analysis={assemblyAnalysis}
                 analyzing={assemblyAnalyzing}
+                onRetryAnalysis={() => file && void runAssemblyAnalysis(file, runSeq.current)}
               />
             ) : (
               <VerifyScreen
