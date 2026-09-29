@@ -45,8 +45,6 @@ export const metadata: Metadata = {
 
 const ROW: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "110px 1fr 1fr",
-  gap: 40,
   padding: "52px 0",
   borderTop: "1px solid var(--st-line-09)",
 };
@@ -131,7 +129,7 @@ function PersonaRow({
   last?: boolean;
 }) {
   return (
-    <div style={last ? { ...ROW, borderBottom: "1px solid var(--st-line-09)" } : ROW}>
+    <div className="st-teams-row" style={last ? { ...ROW, borderBottom: "1px solid var(--st-line-09)" } : ROW}>
       <span style={INDEX_NUM}>{index}</span>
       <div>
         <p className="st-mono" style={KICKER}>

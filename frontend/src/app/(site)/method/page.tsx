@@ -242,14 +242,13 @@ const ASSEMBLY_ROWS = [
 
 function StageShell({ index, title, lede, children }: { index: string; title: string; lede: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 36 }}>
+    <div className="st-method-stage">
       <span
         style={{
           fontSize: 56,
           fontWeight: 200,
           color: "rgba(245,245,247,0.16)",
           lineHeight: 1,
-          textAlign: "right",
           fontVariantNumeric: "tabular-nums",
         }}
       >
@@ -282,6 +281,7 @@ function Stages() {
                 key={f.label}
                 style={{
                   display: "inline-flex",
+                  flexWrap: "wrap",
                   alignItems: "center",
                   gap: 7,
                   border: "1px solid rgba(106,165,216,0.3)",
@@ -330,7 +330,7 @@ function Stages() {
               past ~1,960 units.
             </p>
           </div>
-          <div className="st-mono" style={{ padding: "16px 22px", display: "flex", flexDirection: "column", gap: 8, fontSize: 12 }}>
+          <div className="st-mono st-method-results" style={{ padding: "16px 22px", display: "flex", flexDirection: "column", gap: 8, fontSize: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span style={{ color: "var(--st-ink-55)" }}>mjf · sla · cnc_5axis</span>
               <span style={{ color: "var(--st-conditional)" }}>issues 0.8–0.9</span>
@@ -356,7 +356,7 @@ function Stages() {
         <div className="st-card" style={{ marginTop: 22, padding: 22 }}>
           <div className="st-mono" style={{ display: "flex", flexDirection: "column", gap: 9, fontSize: 12.5 }}>
             {COST_DRIVERS.map((d) => (
-              <div key={d.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <div key={d.label} style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                 <span style={{ color: "var(--st-ink-60)" }}>{d.label}</span>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
                   <span>{d.value}</span>
@@ -439,8 +439,8 @@ function Stages() {
         lede="The output is a choice, not a price: make by which process, and the quantity where you should tool up instead — carried with confidence bands, never a fake-exact figure."
       >
         <div
-          className="st-card"
-          style={{ marginTop: 22, padding: 26, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 26 }}
+          className="st-card st-method-pair"
+          style={{ marginTop: 22, padding: 26, gap: 26 }}
         >
           <div>
             <p className="st-mono" style={{ margin: 0, fontSize: 10.5, letterSpacing: "0.16em", color: "var(--st-ink-40)" }}>
@@ -540,7 +540,7 @@ function HonestyRail() {
         >
           Two marks tell you everything: where a number came from, and whether we&apos;ve earned it.
         </h2>
-        <div style={{ marginTop: 40, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+        <div className="st-method-pair" style={{ marginTop: 40, gap: 20 }}>
           <div className="st-card" style={{ padding: 26 }}>
             <p className="st-mono" style={{ margin: 0, fontSize: 11, letterSpacing: "0.18em", color: "var(--st-ink-40)" }}>
               PROVENANCE — THE FILL OF THE DOT
