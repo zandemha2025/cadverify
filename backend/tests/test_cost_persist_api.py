@@ -174,6 +174,37 @@ def test_validate_cost_demo_is_ephemeral(client, cube_10mm, stl_bytes_of):
     assert "saved" not in r.json()
 
 
+def test_cost_saved_pointer_tracks_units_and_engine_version(client, cube_10mm, stl_bytes_of, monkeypatch):
+    """Re-costing must not link a new live result to an incompatible old receipt."""
+    from types import SimpleNamespace
+    import src
+    from src.services import cost_decision_service
+
+    stored = {}
+
+    async def persist(session, user, **kwargs):
+        key = (kwargs["mesh_hash"], kwargs["params_hash"])
+        if key not in stored:
+            stored[key] = SimpleNamespace(ulid=str(len(stored)), result_json=kwargs["result_json"])
+        return stored[key]
+
+    monkeypatch.setattr(cost_decision_service, "persist_cost_decision", persist)
+    cl, _ = client
+    data = stl_bytes_of(cube_10mm)
+
+    def cost(units):
+        response = _post_cost(cl, "/api/v1/validate/cost", "cube.stl", data, units=units)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    mm, inch, repeat = cost("mm"), cost("inch"), cost("mm")
+    assert mm["geometry"] != inch["geometry"]
+    assert mm["saved"]["id"] != inch["saved"]["id"]
+    assert mm["saved"]["id"] == repeat["saved"]["id"]
+    monkeypatch.setattr(src, "__version__", "next-analysis-version")
+    assert cost("mm")["saved"]["id"] != mm["saved"]["id"]
+
+
 def test_validate_cost_flag_off_does_not_persist(
     client, cube_10mm, stl_bytes_of, monkeypatch
 ):

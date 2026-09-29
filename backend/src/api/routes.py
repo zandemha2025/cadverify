@@ -1995,6 +1995,7 @@ async def _run_cost_decision(
                 material_class=material_class,
                 shop=shop_slug,
                 overrides=rate_overrides,
+                source_units=effective_units,
             )
             mesh_hash = compute_mesh_hash(data)
             try:

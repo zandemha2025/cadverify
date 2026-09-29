@@ -69,14 +69,19 @@ def compute_params_hash(
     material_class: str,
     shop: Optional[str],
     overrides: Optional[dict],
+    source_units: str = "mm",
 ) -> str:
     """SHA-256 of the canonical cost parameters.
 
     Two cost runs on the same file with the same parameters produce the same
     decision, so this is the second half of the (user, mesh, params) dedup key.
     """
+    from src import __version__
+
     canonical = json.dumps(
         {
+            "engine_version": __version__,
+            "source_units": source_units,
             "quantities": sorted(quantities),
             "region": region or "US",
             "cavities": int(cavities),
