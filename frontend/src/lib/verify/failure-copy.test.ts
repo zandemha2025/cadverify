@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { analysisFailureCopy } from "./failure-copy.ts";
+import { apiRecoveryMessage } from "../api-recovery.ts";
 
 test("capacity failures never blame customer geometry", () => {
   const copy = analysisFailureCopy(
@@ -11,6 +12,9 @@ test("capacity failures never blame customer geometry", () => {
   assert.match(copy.title, /temporarily busy/i);
   assert.match(copy.action, /does not need to be re-exported/i);
   assert.doesNotMatch(copy.title + copy.explanation + copy.action, /tessellat/i);
+  assert.equal(analysisFailureCopy(apiRecoveryMessage({
+    status: 429, resource: "verification", retryAfter: "2",
+  })).kind, "capacity");
 });
 
 test("unsupported, unreadable, and actual mesher failures get distinct recovery copy", () => {

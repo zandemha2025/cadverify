@@ -144,7 +144,7 @@ async def read_source_artifact(
         keys = [
             item
             for item in await asyncio.to_thread(store.list_keys, prefix)
-            if Path(item).suffix.lower() in _SUFFIXES
+            if Path(item).stem == "source" and Path(item).suffix.lower() in _SUFFIXES
         ]
         if not keys:
             raise ObjectNotFoundError(prefix)

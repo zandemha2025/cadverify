@@ -347,7 +347,7 @@ class MobileRecoveryRun {
 
   async waitForSavedVerification() {
     await this.page
-      .getByRole("dialog", { name: "Verification pipeline" })
+      .getByRole("status", { name: "Verification pipeline" })
       .waitFor({ state: "detached", timeout: 150_000 });
     await this.page
       .getByRole("button", { name: /^Open the record/ })
@@ -591,6 +591,7 @@ class MobileRecoveryRun {
       await password.fill(this.password);
       await this.page.getByRole("button", { name: /^Create account$/ }).click();
       await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
+      await this.page.getByRole("dialog", { name: "What do you want ProofShape to help you do?" }).getByRole("button", { name: "Close", exact: true }).click();
       await this.page.goto("/onboarding", { waitUntil: "domcontentloaded" });
       await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 10_000 });
       const text = await this.bodyText();
@@ -809,6 +810,7 @@ class MobileRecoveryRun {
       await this.page.waitForURL((url) => url.pathname === "/verify" && url.searchParams.get("revision") === "1");
       await this.page.getByText("23.32 cm³", { exact: false }).first().waitFor({ timeout: 120_000 });
       const verifyUrl = this.page.url();
+      await this.waitForSavedVerification();
       await this.page.goto("/designs", { waitUntil: "domcontentloaded" });
       const after = (await this.designList()).find((design) => design.name === this.primaryDesignName);
       return {
@@ -1048,18 +1050,18 @@ class MobileRecoveryRun {
       const decisionsBefore = await this.costDecisionList();
       await this.withExpectedHttpStatuses([400], async () => {
         await input.setInputFiles(invalidStepFixture);
-        await this.page.getByText("We couldn’t read this file.", { exact: true }).waitFor({ timeout: 120_000 });
+        await this.page.getByText("This CAD file could not be opened", { exact: true }).waitFor({ timeout: 120_000 });
       });
       await this.page
-        .getByRole("dialog", { name: "Verification pipeline" })
+        .getByRole("status", { name: "Verification pipeline" })
         .waitFor({ state: "detached", timeout: 150_000 });
       await this.waitForTerminalVisualState();
       const failureText = await this.bodyText();
       const failureStep = await this.captureStage("FAIL-01", "failure", {
         suffix: "invalid-native-format",
         requiredVisible: [
-          "We couldn’t read this file.",
-          "Re-export the original part as a clean STL, STEP, STP, IGES, or IGS file",
+          "This CAD file could not be opened",
+          "missing ISO-10303-21 header",
         ],
       });
       this.artifacts.fail01Invalid = failureStep.screenshot;
@@ -1072,14 +1074,14 @@ class MobileRecoveryRun {
       const recoveryStep = await this.captureStage("FAIL-01", "recovery", {
         suffix: "valid-step-recovered",
         requiredVisible: ["cube.step", "20.0 × 15.0 × 10.0 mm", "Open the record"],
-        forbiddenVisible: ["We couldn’t read this file."],
+        forbiddenVisible: ["This CAD file could not be opened"],
       });
       this.artifacts.fail01Recovery = recoveryStep.screenshot;
       return {
         persona: "mobile manufacturing engineer correcting an unreadable STEP exchange export",
         preconditions: ["authenticated Verify workspace", "375x812 viewport", "a .step file with invalid magic bytes", "tracked backend/tests/assets/cube.step"],
         actions: ["selected the invalid .step file", "read the exact file-format guidance", "selected the tracked valid cube.step in the same session", "waited for measured geometry and saved outcome"],
-        visible: ["We couldn’t read this file.", "Re-export the original part as a clean STL, STEP, STP, IGES, or IGS file", "20.0 × 15.0 × 10.0 mm"],
+        visible: ["This CAD file could not be opened", "missing ISO-10303-21 header", "20.0 × 15.0 × 10.0 mm"],
         persisted: { decisionsBefore: decisionsBefore.length, decisionsAfter: decisionsAfter.length, recoveredCubeDecisionIds: cubeDecisions.map((decision) => decision.id) },
         numeric: { invalidRowsCreated: decisionsAfter.length - decisionsBefore.length - cubeDecisions.length, recoveredCubeDecisions: cubeDecisions.length, envelopeMm: [20, 15, 10] },
         authorization: "the same authenticated organization session handled rejection and recovery",
@@ -1087,8 +1089,8 @@ class MobileRecoveryRun {
         screenshot: failureStep.screenshot,
         visualSteps: [failureStep, recoveryStep],
         assertions: [
-          assertion("invalid file title", true, /We couldn’t read this file\./.test(failureText)),
-          assertion("clean export guidance", true, /re-export.*STL, STEP, STP, IGES, or IGS/i.test(failureText)),
+          assertion("invalid file title", true, /This CAD file could not be opened/.test(failureText)),
+          assertion("specific file diagnostic", true, /missing ISO-10303-21 header/i.test(failureText)),
           assertion("invalid magic not mislabeled tessellation", false, /This part couldn’t be tessellated/i.test(failureText)),
           assertion("valid cube envelope", true, /20\.0 × 15\.0 × 10\.0 mm/.test(recoveryText)),
           assertion("recovered cube decision exists", true, cubeDecisions.length >= 1),
@@ -1134,7 +1136,7 @@ class MobileRecoveryRun {
         await this.page.getByText("Verification is temporarily busy.", { exact: true }).waitFor({ timeout: 60_000 });
       });
       await this.page
-        .getByRole("dialog", { name: "Verification pipeline" })
+        .getByRole("status", { name: "Verification pipeline" })
         .waitFor({ state: "detached", timeout: 150_000 });
       await this.waitForTerminalVisualState();
       const failureText = await this.bodyText();
@@ -1142,7 +1144,7 @@ class MobileRecoveryRun {
         suffix: "capacity-429",
         requiredVisible: [
           "Verification is temporarily busy.",
-          "No routing, DFM, or should-cost was computed",
+          "No routing, DFM, or should-cost verdict was produced",
           "Retry verification",
         ],
       });
@@ -1161,9 +1163,9 @@ class MobileRecoveryRun {
       });
       return {
         persona: "mobile engineer retrying Verify after organization capacity is released",
-        preconditions: ["tracked cube.step already selected in Verify", "390x844 viewport", "both analysis POSTs injected as 429 capacity responses"],
+        preconditions: ["tracked cube.step already selected in Verify", "390x844 viewport", "validation POST injected as a 429 capacity response; costing must not start"],
         actions: ["selected cube.step once", "observed capacity refusal", "restored the analysis routes", "tapped Retry verification without reopening the file picker", "waited for measured completion"],
-        visible: ["Verification is temporarily busy.", "No routing, DFM, or should-cost was computed", "Retry verification →", "20.0 × 15.0 × 10.0 mm"],
+        visible: ["Verification is temporarily busy.", "No routing, DFM, or should-cost verdict was produced", "Retry verification →", "20.0 × 15.0 × 10.0 mm"],
         persisted: { decisionsBefore: decisionsBefore.length, decisionsAfter: decisionsAfter.length, selectedFilename: "cube.step" },
         numeric: { injected429Responses: injectedResponses, decisionDeltaAfterRetry: decisionsAfter.length - decisionsBefore.length },
         authorization: "capacity was bounded to the authenticated organization and did not disclose other work",
@@ -1171,9 +1173,9 @@ class MobileRecoveryRun {
         screenshot: failureStep.screenshot,
         visualSteps: [failureStep, recoveryStep],
         assertions: [
-          assertion("both Verify compute requests rejected", 2, injectedResponses),
+          assertion("validation rejected without starting costing", 1, injectedResponses),
           assertion("capacity title", true, /Verification is temporarily busy\./.test(failureText)),
-          assertion("no compute claim", true, /No routing, DFM, or should-cost was computed/i.test(failureText)),
+          assertion("no compute claim", true, /No routing, DFM, or should-cost verdict was produced/i.test(failureText)),
           assertion("retry action visible", true, /Retry verification/.test(failureText)),
           assertion("retry measured cube", true, /20\.0 × 15\.0 × 10\.0 mm/.test(recoveredText)),
           assertion("no duplicate durable decision", true, decisionsAfter.length - decisionsBefore.length <= 1),
@@ -1508,7 +1510,6 @@ class MobileRecoveryRun {
 
   async browserRestartPersistence() {
     await this.runPath("REC-08", async () => {
-      await this.context.close();
       await this.browser.close();
       await this.launch({ width: 390, height: 844 });
       await this.login();

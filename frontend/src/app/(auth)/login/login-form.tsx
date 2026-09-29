@@ -5,16 +5,9 @@ import { useSearchParams } from "next/navigation";
 import { AuthField, AuthFrame, AuthSubmit, AuthTextLink } from "@/components/auth/auth-frame";
 import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { safeLocalPath } from "@/lib/safe-return-path";
+import { authErrorMessage } from "@/lib/api-recovery";
 
 const POST_LOGIN_HOME = "/verify";
-
-function errorMessage(data: unknown, fallback: string): string {
-  if (data && typeof data === "object") {
-    const d = data as { detail?: { message?: string }; message?: string };
-    return d.detail?.message ?? d.message ?? fallback;
-  }
-  return fallback;
-}
 
 export function LoginForm({
   turnstileSiteKey,
@@ -54,7 +47,7 @@ export function LoginForm({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(errorMessage(data, "Invalid email or password."));
+        setError(authErrorMessage(res.status, data, "Invalid email or password."));
         return;
       }
       window.location.href = next;
@@ -81,7 +74,7 @@ export function LoginForm({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setMagicError(errorMessage(data, "Could not send a sign-in link."));
+        setMagicError(authErrorMessage(res.status, data, "Could not send a sign-in link."));
         setTurnstileReset((value) => value + 1);
         return;
       }

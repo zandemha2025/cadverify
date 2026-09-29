@@ -22,7 +22,7 @@ export function analysisFailureCopy(reason: string | null | undefined): Analysis
     };
   }
 
-  if (/capacity|concurrent-analysis|rate limit|rate-limit|too many requests|retry shortly/i.test(value)) {
+  if (/capacity|concurrent-analysis|rate limit|rate-limit|too many (?:verification )?requests|retry shortly/i.test(value)) {
     return {
       kind: "capacity",
       title: "Verification is temporarily busy.",

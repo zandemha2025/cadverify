@@ -29,6 +29,14 @@ export function apiProblemDetail(payload: unknown): string | null {
   return firstProblemText(problem.detail) ?? firstProblemText(problem.message);
 }
 
+/** A failed sign-in service must not be reported as rejected credentials. */
+export function authErrorMessage(status: number, payload: unknown, fallback: string): string {
+  if (status >= 500 || status === 429) {
+    return apiRecoveryMessage({ status, payload, resource: "account" });
+  }
+  return apiProblemDetail(payload) ?? fallback;
+}
+
 export function apiRecoveryMessage({
   status,
   payload,

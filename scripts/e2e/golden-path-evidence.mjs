@@ -40,7 +40,7 @@ export const REQUIRED_VISUAL_STAGE_TEXT = Object.freeze({
     "records-1440x900": Object.freeze(["Open governance"]),
   }),
   "FAIL-01": Object.freeze({
-    failure: Object.freeze(["We couldn’t read this file."]),
+    failure: Object.freeze(["This CAD file could not be opened"]),
     recovery: Object.freeze(["Open the record"]),
   }),
   "FAIL-02": Object.freeze({
@@ -68,7 +68,7 @@ export const REQUIRED_VISUAL_STAGE_FORBIDDEN_TEXT = Object.freeze({
     "records-1440x900": Object.freeze(["Verification is running."]),
   }),
   "FAIL-01": Object.freeze({
-    recovery: Object.freeze(["We couldn’t read this file."]),
+    recovery: Object.freeze(["This CAD file could not be opened"]),
   }),
   "FAIL-02": Object.freeze({
     recovery: Object.freeze(["This part couldn’t be tessellated."]),

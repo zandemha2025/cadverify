@@ -209,6 +209,36 @@ def test_overhead_raises_conversion_cost():
     assert _assumption(over, "overhead").provenance == Provenance.SHOP
 
 
+def test_driver_formulas_disclose_applied_markup_and_overhead():
+    """Every directly scaled cost must explain the factors used in its value."""
+    import pytest
+
+    result, mesh, feats = _analyze(_block())
+    conversion = {"machine_cost", "labor_cost", "setup_cost", "nre_cost",
+                  "inspection_cost", "sinter_cost", "plate_removal_cost",
+                  "support_removal_cost", "stress_relief_cost"}
+    seen = set()
+    for material_class in ("polymer", "aluminum", "stainless"):
+        reports = [estimate_decision(result, mesh, feats, EstimateOptions(
+            quantities=[10], material_class=material_class,
+            rate_overrides={"margin": margin, "overhead": overhead},
+        )) for margin, overhead in ((0, 0), (0.3, 0.15))]
+        for est in reports[1].estimates:
+            base = _est(reports[0], est["process"], 10)
+            for driver in est["drivers"]:
+                name = driver["name"]
+                if name not in conversion | {"material_cost", "support_material"}:
+                    continue
+                seen.add(name)
+                factor = 1.3 * (1.15 if name in conversion else 1)
+                assert driver["value"] == pytest.approx(
+                    _driver(base, name)["value"] * factor, abs=0.0002)
+                assert "× 1.3 markup" in driver["source"], (est["process"], driver)
+                assert ("× 1.15 overhead" in driver["source"]) == (name in conversion)
+    assert {"material_cost", "machine_cost", "labor_cost", "setup_cost",
+            "nre_cost", "inspection_cost", "support_material", "sinter_cost"} <= seen
+
+
 # ── region binding ───────────────────────────────────────────────────────────
 def test_shop_region_binds_and_user_region_overrides():
     result, mesh, feats = _analyze(_block())

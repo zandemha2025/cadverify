@@ -240,7 +240,7 @@ export default function SecurityPage() {
             className="st-mono"
             style={{ margin: "14px 0 0", fontSize: 11.5, color: "var(--st-ink-45)" }}
           >
-            &ldquo;finish 0.08hr/part + bulk 0.5hr/build ÷ 223 = 0.082hr × $52/hr × region-labor ×1&rdquo;
+            &ldquo;finish 0.08hr/part + bulk 0.5hr/build ÷ 223 ≈ 0.0822422hr × $52/hr × region-labor ×1 × 1.3 markup × 1.15 overhead&rdquo;
             — a real source string, attached to a real driver
           </p>
         </Posture>

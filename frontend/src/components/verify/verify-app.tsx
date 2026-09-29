@@ -103,6 +103,8 @@ export function VerifyApp({
     fileName: string;
     title: string;
     action: string;
+    recovery?: "retry" | "sign_in";
+    retryFile?: File;
   } | null>(null);
   // Multi-part assembly render (>= 2 solids): the combined GLB + product tree.
   // null for single parts, which keep the existing single-shell path untouched.
@@ -159,6 +161,14 @@ export function VerifyApp({
     setGuidedSampleState("idle");
     setGuidedSummaryOpen(false);
     fileRef.current?.click();
+  }, []);
+
+  const runAssemblyAnalysis = useCallback(async (f: File, seq: number) => {
+    setAssemblyAnalyzing(true);
+    const analysis = await fetchAssemblyAnalysis(f).catch(() => null);
+    if (runSeq.current !== seq) return;
+    setAssemblyAnalysis(analysis);
+    setAssemblyAnalyzing(false);
   }, []);
 
   const runVerify = useCallback(
@@ -255,6 +265,8 @@ export function VerifyApp({
           fileName: f.name,
           title: assemblyProbe.title,
           action: assemblyProbe.action,
+          recovery: assemblyProbe.recovery,
+          retryFile: assemblyProbe.recovery === "retry" ? f : undefined,
         });
         return null;
       }
@@ -266,17 +278,7 @@ export function VerifyApp({
         // The heavier per-part analysis (real DFM + should-cost + interference
         // on every solid, ~15s) now runs; the render is already up. Guarded by
         // the same run token so a superseded upload never merges stale analysis.
-        setAssemblyAnalyzing(true);
-        void fetchAssemblyAnalysis(f)
-          .then((analysis) => {
-            if (runSeq.current !== seq) return;
-            setAssemblyAnalysis(analysis);
-            setAssemblyAnalyzing(false);
-          })
-          .catch(() => {
-            if (runSeq.current !== seq) return;
-            setAssemblyAnalyzing(false);
-          });
+        void runAssemblyAnalysis(f, seq);
         return null;
       }
 
@@ -356,7 +358,7 @@ export function VerifyApp({
         if (runSeq.current === seq) setRunning(false);
       }
     },
-    [env, materialClass]
+    [env, materialClass, runAssemblyAnalysis]
   );
 
   const onReverify = useCallback(() => {
@@ -647,7 +649,7 @@ export function VerifyApp({
               onClick={() => nav(r.key)}
               title={r.label}
               className="cv-verify-rail-button"
-              style={{ minWidth: 44, height: 38, padding: "0 10px", borderRadius: 9, border: active ? `1px solid ${C.hair}` : "1px solid transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: active ? "#eceef1" : "transparent", color: active ? C.ink : C.ink50, transition: "background-color 150ms, color 150ms, border-color 150ms", whiteSpace: "nowrap", fontFamily: "inherit", fontSize: 12 }}
+              style={{ flexShrink: 0, minWidth: 44, height: 38, padding: "0 10px", borderRadius: 9, border: active ? `1px solid ${C.hair}` : "1px solid transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: active ? "#eceef1" : "transparent", color: active ? C.ink : C.ink50, transition: "background-color 150ms, color 150ms, border-color 150ms", whiteSpace: "nowrap", fontFamily: "inherit", fontSize: 12 }}
             >
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d={r.d} />
@@ -714,6 +716,7 @@ export function VerifyApp({
             style={{
               flexShrink: 0,
               display: "flex",
+              flexWrap: "wrap",
               alignItems: "center",
               gap: 12,
               padding: "12px 20px",
@@ -725,20 +728,24 @@ export function VerifyApp({
             <div style={{ minWidth: 0 }}>
               <p style={{ margin: 0, fontSize: 13, fontWeight: 650 }}>{uploadRejection.title}</p>
               <p style={{ margin: "4px 0 0", fontSize: 12, lineHeight: 1.5 }}>
-                <span style={{ fontFamily: MONO }}>{uploadRejection.fileName}</span> was not uploaded. {uploadRejection.action}{" "}
-                No analysis was started and no record was created.
+                <span style={{ fontFamily: MONO }}>{uploadRejection.fileName}</span> could not be verified. {uploadRejection.action}{" "}
+                No verification record was created.
               </p>
             </div>
-            <button
+            {uploadRejection.recovery === "sign_in" ? (
+              <Link href="/login?next=%2Fverify" style={{ marginLeft: "auto", color: "inherit", fontWeight: 600 }}>
+                Sign in again
+              </Link>
+            ) : <button
               type="button"
-              onClick={pickOwnFile}
+              onClick={() => uploadRejection.retryFile ? void runVerify(uploadRejection.retryFile) : pickOwnFile()}
               style={{ marginLeft: "auto", flexShrink: 0, minHeight: 40, border: "1px solid currentColor", borderRadius: 999, background: "#fff", color: "inherit", padding: "8px 14px", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}
             >
-              Choose a STEP export
-            </button>
+              {uploadRejection.retryFile ? "Retry upload" : "Choose another file"}
+            </button>}
             <button
               type="button"
-              aria-label="Dismiss unsupported file guidance"
+              aria-label="Dismiss upload guidance"
               onClick={() => setUploadRejection(null)}
               style={{ flexShrink: 0, width: 40, height: 40, border: 0, background: "transparent", color: "inherit", cursor: "pointer", fontSize: 20 }}
             >
@@ -840,6 +847,7 @@ export function VerifyApp({
                 onSelect={setAssemblySelectedId}
                 analysis={assemblyAnalysis}
                 analyzing={assemblyAnalyzing}
+                onRetryAnalysis={() => file && void runAssemblyAnalysis(file, runSeq.current)}
               />
             ) : (
               <VerifyScreen

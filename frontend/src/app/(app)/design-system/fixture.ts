@@ -47,7 +47,7 @@ export const ESTIMATE: CostEstimate = {
       unit: "$",
       provenance: "SHOP",
       source:
-        "CAD volume 4.63 cm³ × PP (Polypropylene) density 0.90 g/cm³ = 0.0042 kg × $7/kg (shop polymer lot price) × (1+0.1 scrap) × region-material ×1",
+        "CAD volume 4.63 cm³ × PP (Polypropylene) density 0.90 g/cm³ = 0.0042 kg × $7/kg (shop polymer lot price) × (1+0.1 scrap) × region-material ×1 × 1.3 markup",
       error_band_pct: 5.0,
     },
     {
@@ -65,7 +65,7 @@ export const ESTIMATE: CostEstimate = {
       unit: "$",
       provenance: "SHOP",
       source:
-        "0.0682 hr × $30/hr ÷ 0.8 utilization × region-labor ×1 × 1.15 overhead [build-job 380mm ÷ 25mm/hr = 15.2hr full build ÷ 223 parts/build = 0.068hr/part]",
+        "0.0682 hr × $30/hr ÷ 0.8 utilization × region-labor ×1 × 1.3 markup × 1.15 overhead [build-job 380mm ÷ 25mm/hr = 15.2hr full build ÷ 223 parts/build = 0.068hr/part]",
       error_band_pct: 40.0,
     },
     {
@@ -74,7 +74,7 @@ export const ESTIMATE: CostEstimate = {
       unit: "$",
       provenance: "SHOP",
       source:
-        "finish 0.08hr/part + bulk 0.5hr/build ÷ 223 = 0.082hr × $52/hr × region-labor ×1",
+        "finish 0.08hr/part + bulk 0.5hr/build ÷ 223 ≈ 0.0822422hr × $52/hr × region-labor ×1 × 1.3 markup × 1.15 overhead",
       error_band_pct: 20.0,
     },
     {
@@ -82,7 +82,7 @@ export const ESTIMATE: CostEstimate = {
       value: 3.887,
       unit: "$",
       provenance: "SHOP",
-      source: "setup 0.5hr × $52/hr × ceil(10/223) = 1 setups ÷ 10 × region-labor ×1",
+      source: "setup 0.5hr × $52/hr × ceil(10/223) = 1 setups ÷ 10 × region-labor ×1 × 1.3 markup × 1.15 overhead",
       error_band_pct: 20.0,
     },
   ],
