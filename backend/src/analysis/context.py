@@ -17,6 +17,7 @@ Design contract:
 from __future__ import annotations
 
 import os
+import hashlib
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -255,6 +256,11 @@ class GeometryContext:
                 if v
             },
         )
+
+
+def analysis_mesh_hash(mesh: trimesh.Trimesh) -> str:
+    """Identity of face order and coordinates at the GLB's float32 precision."""
+    return hashlib.sha256(np.asarray(mesh.triangles, dtype="<f4").tobytes()).hexdigest()
 
 
 def manufacturing_edge_lengths(mesh: trimesh.Trimesh) -> np.ndarray:

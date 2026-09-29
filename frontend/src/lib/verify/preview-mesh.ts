@@ -28,6 +28,9 @@ export interface PreviewMesh {
   decimated: boolean;
   /** parsed source suffix (step/stp/iges/igs/stl), if reported. */
   source: string | null;
+  /** Only analysis-space meshes preserve the DFM result's face indices. */
+  faceSpace: "analysis" | "preview";
+  faceHash: string | null;
   revoke: () => void;
 }
 
@@ -43,13 +46,14 @@ function readNum(res: Response, header: string): number | null {
  * (network, unauthorized, unparseable) so the stage can fall back to the HONEST
  * bounding-box envelope — we never fabricate geometry.
  */
-export async function fetchPreviewMesh(file: File): Promise<PreviewMesh | null> {
+export async function fetchPreviewMesh(file: File, options?: { forAnalysis?: boolean; units?: "mm" | "inch" }): Promise<PreviewMesh | null> {
   const form = new FormData();
   form.append("file", file);
 
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}/validate/preview-mesh`, {
+    const query = options?.forAnalysis ? `?purpose=analysis&units=${options.units ?? "mm"}` : "";
+    res = await fetch(`${API_BASE}/validate/preview-mesh${query}`, {
       method: "POST",
       body: form,
     });
@@ -73,6 +77,8 @@ export async function fetchPreviewMesh(file: File): Promise<PreviewMesh | null> 
     previewFaces: readNum(res, "x-mesh-preview-faces"),
     decimated: res.headers.get("x-mesh-decimated") === "true",
     source: res.headers.get("x-mesh-source"),
+    faceSpace: res.headers.get("x-mesh-face-space") === "analysis" ? "analysis" : "preview",
+    faceHash: res.headers.get("x-mesh-face-hash"),
     revoke: () => URL.revokeObjectURL(url),
   };
 }

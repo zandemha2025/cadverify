@@ -749,6 +749,8 @@ export default function PartWorkspace({
                 <div className="relative h-[340px]">
                   <CadViewer
                     file={file}
+                    units={opts.units}
+                    analysisMeshHash={validation?.analysis_mesh_hash}
                     highlightFaces={highlightFaces}
                     highlightColor={highlightColor}
                     ghostUnhighlighted={!!highlightFaces}

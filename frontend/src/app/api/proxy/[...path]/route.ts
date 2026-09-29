@@ -37,6 +37,8 @@ const RELAY_HEADERS = [
   "x-mesh-preview-faces",
   "x-mesh-decimated",
   "x-mesh-source",
+  "x-mesh-face-space",
+  "x-mesh-face-hash",
   // Assembly provenance lets the browser prove that a successful rendered
   // response contains the complete binary payload even after WebGL consumes it.
   "x-assembly-kind",

@@ -138,6 +138,7 @@ export interface WallThicknessMap {
 }
 
 export interface ValidationResult {
+  analysis_mesh_hash?: string;
   filename: string;
   file_type: string;
   overall_verdict: "pass" | "issues" | "fail" | "unknown";

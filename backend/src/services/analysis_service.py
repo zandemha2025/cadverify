@@ -27,7 +27,7 @@ from src.analysis.base_analyzer import (
     decimation_issue,
     run_universal_checks,
 )
-from src.analysis.context import GeometryContext
+from src.analysis.context import GeometryContext, analysis_mesh_hash
 from src.analysis.features import detect_all as detect_features
 from src.analysis.models import AnalysisResult, ProcessType, Severity
 from src.analysis.processes import get_analyzer
@@ -658,6 +658,7 @@ async def run_analysis(
 
     stage_started = time.perf_counter()
     result_dict = to_response_fn(result, features, pack)
+    result_dict["analysis_mesh_hash"] = analysis_mesh_hash(ctx.mesh)
     stage_timings_ms["serialize"] = _elapsed_ms(stage_started)
     if effective_units != "mm":
         result_dict["source_units"] = {

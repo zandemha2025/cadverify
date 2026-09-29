@@ -348,6 +348,8 @@ export function PartHero({
               <div className="relative h-[360px] min-[980px]:h-[440px]">
                 <CadViewer
                   file={file}
+                  units={opts.units}
+                  analysisMeshHash={validation?.analysis_mesh_hash}
                   highlightFaces={highlightFaces}
                   highlightColor={highlightColor}
                   ghostUnhighlighted={!!highlightFaces}

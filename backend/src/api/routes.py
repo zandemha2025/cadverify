@@ -991,27 +991,32 @@ def _preview_faces_max() -> int:
         return 150000
 
 
-def _build_preview_glb(mesh, filename: str) -> tuple[bytes, int, int, bool]:
+def _build_preview_glb(mesh, filename: str, *, for_analysis: bool = False) -> tuple[bytes, int, int, bool, str]:
     """Decimate the tessellated shell to the browser budget and export GLB bytes.
 
     Reuses the engine's quadric/vertex-cluster decimation (``_decimate_to``, the
     same path ``MAX_ANALYSIS_FACES`` uses) so the preview shares the analysis
     mesh's fidelity story. Returns ``(glb_bytes, original_faces, preview_faces,
-    decimated)``. Pure in-process trimesh — no disk, no network (zero-egress).
+    decimated, face_hash)``. Pure in-process trimesh — no disk, no network.
     """
-    from src.analysis.context import _decimate_to
+    from src.analysis.context import _decimate_to, _maybe_decimate, analysis_mesh_hash
 
     original = int(len(mesh.faces))
     out = mesh
     decimated = False
     target = _preview_faces_target()
-    if original > target:
+    if for_analysis:
+        # Face-index inspection must use the exact same deterministic mesh
+        # policy as GeometryContext; the lighter preview reorders triangles.
+        out, _ = _maybe_decimate(mesh)
+        decimated = len(out.faces) < original
+    elif original > target:
         reduced, _strategy = _decimate_to(mesh, target)
         if reduced is not None and 0 < len(reduced.faces) < original:
             out = reduced
             decimated = True
     glb = out.export(file_type="glb")
-    return bytes(glb), original, int(len(out.faces)), decimated
+    return bytes(glb), original, int(len(out.faces)), decimated, analysis_mesh_hash(out)
 
 
 @router.post("/validate/preview-mesh", dependencies=[Depends(require_kill_switch_open)])
@@ -1019,6 +1024,8 @@ def _build_preview_glb(mesh, filename: str) -> tuple[bytes, int, int, bool]:
 async def validate_preview_mesh(
     request: Request,
     file: UploadFile = File(...),
+    purpose: str = Query("preview", pattern="^(preview|analysis)$"),
+    units: str = Query("mm", pattern="^(mm|inch)$"),
     user: AuthedUser = Depends(require_role(Role.analyst)),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
@@ -1033,9 +1040,12 @@ async def validate_preview_mesh(
     """
     data = await _read_capped(file)
     mesh, suffix = await _parse_mesh_async(data, file.filename or "upload")
+    from src.costing.units import scale_mesh_to_mm
+
+    mesh = scale_mesh_to_mm(mesh, units)
     try:
-        glb, original_faces, preview_faces, decimated = _build_preview_glb(
-            mesh, file.filename or "upload"
+        glb, original_faces, preview_faces, decimated, face_hash = _build_preview_glb(
+            mesh, file.filename or "upload", for_analysis=purpose == "analysis"
         )
     except HTTPException:
         raise
@@ -1050,6 +1060,8 @@ async def validate_preview_mesh(
         "X-Mesh-Preview-Faces": str(preview_faces),
         "X-Mesh-Decimated": "true" if decimated else "false",
         "X-Mesh-Source": suffix.lstrip("."),
+        "X-Mesh-Face-Space": purpose,
+        "X-Mesh-Face-Hash": face_hash,
         "Cache-Control": "no-store",
     }
     return Response(content=glb, media_type="model/gltf-binary", headers=headers)
