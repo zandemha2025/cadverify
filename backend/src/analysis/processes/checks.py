@@ -624,15 +624,17 @@ def check_fillet_requirements(
         return []
     # An "internal corner" is a CONCAVE sharp edge — convex edges (a box's
     # outer corners) and coplanar seams need no fillet for material flow.
-    sharp = (ctx.dihedral_angles_rad < np.radians(120)) & ctx.concave_mask
+    # trimesh stores the angle BETWEEN normals: 0 is smooth/coplanar, not
+    # a sharp interior angle. An interior angle below 120° turns normals >60°.
+    sharp = (ctx.dihedral_angles_rad > np.radians(60)) & ctx.concave_mask
     count = int(np.sum(sharp))
-    if count < 5:
+    if count == 0:
         return []
     return [Issue(
         code="MISSING_FILLETS",
         severity=Severity.WARNING,
         message=(
-            f"{count} sharp internal corners need >= {min_fillet_mm}mm fillets "
+            f"{count} sharp concave mesh edges need >= {min_fillet_mm}mm fillets "
             f"for {process.value} flow and stress distribution."
         ),
         process=process,
