@@ -76,7 +76,7 @@ function PartDoorLanding({
           <Dropzone
             accept={CAD_ACCEPT}
             onFiles={(files) => files[0] && accept(files[0])}
-            hint="STL, STEP, STP, IGES or IGS · CAD is parsed and discarded in-process · zero egress"
+            hint="STL, STEP, STP, IGES or IGS · source CAD is retained as workspace evidence"
           />
         </Rise>
 
