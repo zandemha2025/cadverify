@@ -45,6 +45,7 @@ async def test_source_artifacts_are_exact_idempotent_and_tenant_scoped(tmp_path,
     costable = trimesh.creation.box(extents=[20, 15, 10]).export(file_type="stl")
     await save_costable_mesh_artifact("org-a", digest, costable)
     assert await read_costable_mesh_artifact("org-a", digest) == costable
+    assert await read_source_artifact("org-a", digest) == (source, ".step")
 
 
 @pytest.mark.asyncio
