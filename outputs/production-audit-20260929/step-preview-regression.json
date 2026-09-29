@@ -1,0 +1,19 @@
+{
+  "preview": {
+    "status": "PASS",
+    "checks": [
+      "real STEP upload",
+      "converted geometry parsed",
+      "interactive preview ready",
+      "analysis-aligned face indices"
+    ]
+  },
+  "highlight": {
+    "status": "PASS",
+    "checks": [
+      "draft finding selects",
+      "finding details visible",
+      "matching mesh fingerprint enables highlights"
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "status": "PASS",
+  "checks": [
+    "vendor API/CSV separation",
+    "template URL",
+    "partial row error",
+    "file reset",
+    "corrected CSV retry",
+    "persisted run details"
+  ]
+}
