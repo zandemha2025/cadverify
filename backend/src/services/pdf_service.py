@@ -30,7 +30,7 @@ logger = logging.getLogger("cadverify.pdf")
 PDF_CACHE_DIR = os.getenv("PDF_CACHE_DIR", "/data/pdf-cache/")
 # Bumped when the report layout changes so a cached PDF from an older layout
 # is never served as if it were the current one.
-PDF_TEMPLATE_VERSION = "v2"
+PDF_TEMPLATE_VERSION = "v3"
 _TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "pdf"
 
 _pdf_semaphore = asyncio.Semaphore(2)

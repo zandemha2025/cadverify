@@ -175,6 +175,7 @@ def test_generated_pdf_text_extracts(tmp_path):
     ).stdout
     for expected in (
         "DFM Verdict Report",
+        "Includes universal checks and all evaluated candidate processes.",
         "NON_MANIFOLD",
         "INTERNAL_CORNER_RADIUS",
         "6061-T6",
@@ -185,8 +186,7 @@ def test_generated_pdf_text_extracts(tmp_path):
 
 
 def test_cache_key_versions_template():
-    assert PDF_TEMPLATE_VERSION == "v2"
-    assert "v2" in PDF_TEMPLATE_VERSION
+    assert PDF_TEMPLATE_VERSION == "v3"
 
 
 def test_safe_filename_contract():

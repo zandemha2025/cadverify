@@ -25,6 +25,9 @@
 
   <!-- Section 3: Issue summary by severity -->
   <h2>Issue Summary</h2>
+  <p>Includes universal checks and all evaluated candidate processes.
+    Each process-specific finding applies to the named process; an overall pass
+    does not mean every candidate process passes. See Process Ranking for each route's verdict.</p>
   {% set all_issues = [] %}
   {% for issue in result.get('universal_issues', []) %}
     {% set _ = all_issues.append(issue | merge_key('_process', '')) %}

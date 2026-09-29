@@ -57,5 +57,26 @@
     "Local proof only; production still PR106",
     "Old RFQ snapshots did not retain mesh_hash; repaired PDFs leave it absent rather than borrowing live data",
     "Real quote accuracy and external integrations remain unverified"
-  ]
+  ],
+  "dfm_report": {
+    "analysis_id": "01M3QMDWK76X39P0A8DVGPV4NZ",
+    "pages": 7,
+    "all_pages_visually_inspected": true,
+    "verdict": "pass",
+    "recommended_route": "fdm",
+    "all_candidate_issue_counts": {
+      "error": 6,
+      "warning": 11,
+      "info": 5
+    },
+    "volume_mm3": 2717.3,
+    "bounding_box_mm": [
+      20,
+      15,
+      10
+    ],
+    "scope_clarified": true,
+    "sha256": "2f832665dc29ad89b920aeaf7b25766fc06f2141db904f881b46cab7d1883213",
+    "bytes": 59491
+  }
 }
