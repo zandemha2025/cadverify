@@ -1,0 +1,7 @@
+{
+  "expected": "six exterior planes and one cylindrical through-hole",
+  "detected": {
+    "flat": 6,
+    "cylinder_hole": 1
+  }
+}

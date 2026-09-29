@@ -24,7 +24,7 @@ Production is Render, currently `09555c1`. The subsequent audit branch has not b
 | Dimensions, volume, hole measurements | Known STEP: 20×15×10 mm, 6 mm bore; volume error 0.002581% | More independent shapes, orientations, thin walls and units |
 | Small-feature warnings | Live false positive; corrected local tests retain 0.39 mm fail / 0.41 mm pass | Deploy; evaluate freeform boundaries and feature coverage |
 | Casting corner warnings | Live smooth-bore false positive; corrected local coarse/fine controls | Deploy and expand representative cast geometry |
-| Flat feature detection | Extra tiny flat patches on a cylindrical wall (026) | Fix with independent coarse/fine geometry controls |
+| Flat feature detection | Fixed locally: real STEP now has six planes + one bore (026) | Deploy and extend non-cylindrical/freeform controls |
 | Remaining DFM process checks and suitability | Existing tests/trap corpus; bounded known-part evidence | Independent accuracy cases for every visible check and score |
 | Source units and scale warnings | Explicit mm/inch analysis tests; known automatic-inference gap | Resolve inference limitation honestly and verify UI switching |
 | Should-cost quantities/material/region/shop choices | Live computation and prior CI | Compare every changed input with independent expected calculations |
@@ -51,7 +51,7 @@ Production is Render, currently `09555c1`. The subsequent audit branch has not b
 | Search, navigation, notifications and theme | Prior journeys; navigation fix deployed | All menu branches, search results and notification actions |
 | Responsive/accessibility behavior | Prior 20 local cases; two Render pages checked at 390 px | Remaining functional pages, keyboard/focus and dialog flows |
 | Public product, team, method, docs and API-reference pages | Prior route sweep and selected corrections | Check every claim and interactive example against current behavior |
-| CAD retention/security statements | Visible “discarded/never stored” claims conflict with persistence (025) | Correct product/public text to the actual data flow |
+| CAD retention/security statements | Product and Method copy corrected locally (025) | Deploy and finish the wider public-claim audit |
 | Production URL and old deployments | Render works; Fly DB and disabled Vercel unresolved | Provider recovery/migration or intentional retirement/redirects |
 | Deployment repeatability and image security | Manual release worked; auto-deploy and HIGH image findings open | Resolve findings 016/017 and rerun release gates |
 
