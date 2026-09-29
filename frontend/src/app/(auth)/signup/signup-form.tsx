@@ -2,14 +2,7 @@
 
 import * as React from "react";
 import { AuthField, AuthFrame, AuthSubmit, AuthTextLink } from "@/components/auth/auth-frame";
-
-function errorMessage(data: unknown, fallback: string): string {
-  if (data && typeof data === "object") {
-    const d = data as { detail?: { message?: string }; message?: string };
-    return d.detail?.message ?? d.message ?? fallback;
-  }
-  return fallback;
-}
+import { authErrorMessage } from "@/lib/api-recovery";
 
 function passwordProblem(pw: string): string | null {
   if (pw.length < 8) return "Password must be at least 8 characters.";
@@ -44,7 +37,7 @@ export function SignupForm() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(errorMessage(data, "Could not create your account."));
+        setError(authErrorMessage(res.status, data, "Could not create your account."));
         return;
       }
       window.location.href = "/onboarding";

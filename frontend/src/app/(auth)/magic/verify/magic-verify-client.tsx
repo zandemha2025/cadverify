@@ -2,14 +2,7 @@
 
 import * as React from "react";
 import { AuthFrame, AuthSubmit, AuthTextLink } from "@/components/auth/auth-frame";
-
-function errorMessage(data: unknown): string {
-  if (data && typeof data === "object") {
-    const d = data as { detail?: { message?: string }; message?: string };
-    return d.detail?.message ?? d.message ?? "Magic link invalid or expired.";
-  }
-  return "Magic link invalid or expired.";
-}
+import { authErrorMessage } from "@/lib/api-recovery";
 
 function safeLocalPath(raw: unknown): string {
   if (typeof raw !== "string") return "/verify";
@@ -53,7 +46,7 @@ export function MagicVerifyClient() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(errorMessage(data));
+        setError(authErrorMessage(res.status, data, "Magic link invalid or expired."));
         return;
       }
       const redirect = safeLocalPath(data?.redirect);
