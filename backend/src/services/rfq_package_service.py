@@ -69,6 +69,22 @@ def _decision_status(decision: CostDecision) -> dict[str, Any]:
     }
 
 
+def _snapshot_decision(item: dict[str, Any]) -> CostDecision:
+    """Adapt saved RFQ evidence to the existing PDF renderer, without a live row."""
+    meta = item["decision"]
+    fields = {key: meta.get(key) for key in (
+        "filename", "file_type", "label", "mesh_hash", "approval_status",
+        "approved_by_user_id", "approval_note", "user_disposition",
+        "disposition_note", "disposition_updated_by_user_id", "stale_reason",
+    )}
+    for key in ("created_at", "approved_at", "disposition_updated_at", "stale_at"):
+        fields[key] = datetime.fromisoformat(meta[key]) if meta.get(key) else None
+    return CostDecision(
+        ulid=meta["id"], engine_version=meta.get("engine_version") or "unknown",
+        result_json=item["cost_decision"], **fields,
+    )
+
+
 def _confidence_unvalidated(result_json: dict[str, Any]) -> bool:
     for estimate in result_json.get("estimates", []) or []:
         confidence = estimate.get("confidence") or {}
@@ -362,6 +378,7 @@ async def _decision_item(
             "file_type": decision.file_type,
             "label": decision.label,
             "engine_version": decision.engine_version,
+            "mesh_hash": decision.mesh_hash,
             "created_at": decision.created_at.isoformat() if decision.created_at else None,
             "make_now_process": decision.make_now_process,
             "crossover_qty": decision.crossover_qty,
@@ -471,14 +488,13 @@ async def create_package(
     # gateway-timeout risk — 25 items × ~4s WeasyPrint = ~90s per download).
     #
     # Warming runs as a background cache task so create itself stays ~tens of ms
-    # — pushing ~90s of
-    # rendering into create would only relocate the timeout. The decision ORM
-    # rows are already fully loaded, so rendering never touches the (closing)
-    # session. build_zip still renders-on-miss, so a download that races the warm
+    # — pushing ~90s of rendering into create would only relocate the timeout.
+    # Render the same saved snapshot used by build_zip, independent of later
+    # changes to the live decision. build_zip still renders-on-miss, so a download that races the warm
     # is correct (just slower for that one item), and steady state is all-cache.
     import asyncio as _asyncio
 
-    decisions_to_warm = [by_id[did] for did in ids]
+    decisions_to_warm = [_snapshot_decision(item) for item in items]
 
     async def _warm() -> None:
         await _asyncio.gather(
@@ -614,20 +630,16 @@ async def build_zip(
                     )
                 )
             ).scalars().first()
-            if decision is not None:
-                try:
-                    # Stream the cached PDF bytes (rendered once at package
-                    # create time). No per-request WeasyPrint render — a 25-item
-                    # download stays well under the gateway timeout.
-                    zf.writestr(
-                        f"decisions/{index:02d}-{stem}/should-cost-report.pdf",
-                        await cached_cost_pdf(decision),
-                    )
-                except Exception:
-                    zf.writestr(
-                        f"decisions/{index:02d}-{stem}/pdf-unavailable.txt",
-                        "PDF generation failed for this local package export.\n",
-                    )
+            try:
+                zf.writestr(
+                    f"decisions/{index:02d}-{stem}/should-cost-report.pdf",
+                    await cached_cost_pdf(_snapshot_decision(item)),
+                )
+            except Exception:
+                zf.writestr(
+                    f"decisions/{index:02d}-{stem}/pdf-unavailable.txt",
+                    "PDF generation failed for this local package export.\n",
+                )
             raw = item.get("raw_cad") or {}
             if raw.get("included"):
                 filename, data = None, None

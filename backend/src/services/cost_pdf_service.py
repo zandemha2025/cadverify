@@ -103,7 +103,7 @@ def build_cost_pdf_context(decision: CostDecision) -> dict:
         "filename": decision.filename,
         "file_type": decision.file_type,
         "label": decision.label,
-        "created_at": decision.created_at.isoformat(),
+        "created_at": decision.created_at.isoformat() if decision.created_at else "",
         "material_class": (decision.result_json or {}).get("material_class"),
         "result": decision.result_json or {},
         "engine_version": decision.engine_version or _app_version,
