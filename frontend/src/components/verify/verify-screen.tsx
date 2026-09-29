@@ -2184,8 +2184,8 @@ function DecideHallmark({
           <ConfidenceBand validated={validated} pointFraction={0.5} />
           <p style={{ margin: "7px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink45, lineHeight: 1.6 }}>
             {validated
-              ? "this verdict is validated — checked against your actuals."
-              : "this verdict is unvalidated — an assumption band, not yet checked against your actuals · n=0. It firms up once your real costs come back."}
+              ? "this cost estimate is validated for this process — checked against your actuals."
+              : "this cost estimate is unvalidated for this process — an assumption band until enough measured costs are available."}
           </p>
         </div>
         <GhostButton onClick={() => nav("calibration")}>How estimates get validated →</GhostButton>

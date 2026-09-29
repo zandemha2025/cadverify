@@ -188,7 +188,11 @@ const definitions = [
       ["releaseEvidence.criticalPaths.ENT-02.heldoutReal", (value) => typeof value === "number" && value >= 3, ">= 3 costable held-out residuals"],
       ["releaseEvidence.criticalPaths.ENT-02.sourceBoundSkipped", (value) => value === 0, "0 source-bound skips"],
       ["releaseEvidence.criticalPaths.ENT-02.servedEstimateCount", (value) => typeof value === "number" && value > 0, "positive estimate count"],
-      ["releaseEvidence.criticalPaths.ENT-02.servedValidatedAll", (value) => value === true, "true"],
+      ["releaseEvidence.criticalPaths.ENT-02.measuredProcess", (value) => value === "fdm", "fdm"],
+      ["releaseEvidence.criticalPaths.ENT-02.servedMeasuredEstimateCount", (value) => typeof value === "number" && value > 0, "positive measured estimate count"],
+      ["releaseEvidence.criticalPaths.ENT-02.servedUnmeasuredEstimateCount", (value) => typeof value === "number" && value > 0, "positive unmeasured estimate count"],
+      ["releaseEvidence.criticalPaths.ENT-02.servedValidatedProcessOnly", (value) => value === true, "true"],
+      ["releaseEvidence.criticalPaths.ENT-02.selectedProvenanceVisible", (value) => value === true, "true"],
     ],
   },
   {

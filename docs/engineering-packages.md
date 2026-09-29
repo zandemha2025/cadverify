@@ -45,6 +45,7 @@ The portfolio queue groups **latest saved** blockers by evidence type and accoun
 - Frontend: **484 passed**; TypeScript and ESLint passed for all changed frontend code; production Next build passed.
 - Database/API: live PostgreSQL migration chain, tenant and role boundaries, retained originals, JSON/CSV/HTML/PDF output, immutable history, concurrent save conflict, keyset pagination, expiry on read, exact-part retrieval and stale projection regression.
 - Browser: production frontend and real local backend, signed synthetic test account and an engine-computed part. Local receipt and screenshot are in `outputs/product-discovery-2026-09-29/evidence/implementation-browser/`. Exercises invalid input, original upload, explicit review, issued PDF, tighter drawing with unchanged geometry, accountable actions, failed actual outcomes, exact order drilldown and scoped evidence reuse.
+- Enterprise browser regression: **17 steps and 9 structured journeys passed**. A machine limitation cannot hide unresolved pressure; changing alloy preserves that uncertainty and withholds the price. A separately declared pressure-free scope retains the exact $10.08 × 12,000 = $120,960 annualization oracle. FDM actuals validate 6 FDM estimates while 42 estimates for other processes remain unvalidated. Shared release contracts enforce these boundaries.
 
 The browser fixture is synthetic QA data. Its measured-study text is not a real qualification study, and no result here demonstrates field qualification, customer acceptance or a paid CadVerify deployment.
 

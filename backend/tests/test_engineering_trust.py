@@ -32,7 +32,7 @@ def test_missing_environment_coverage_is_unknown_and_cannot_pass_machine_fit():
     assert verification["environment_unknowns"]
 
 
-def _verification(verdict="pass", env=None):
+def _verification(verdict="pass", env=None, bbox=(10, 20, 30)):
     options = EstimateOptions(inventory=(MachineCap(
         process="cnc_3axis", name="Mill A", max_workpiece_kg=100,
         materials=("aluminum",), capabilities={"x": 100, "y": 100, "z": 100},
@@ -41,7 +41,18 @@ def _verification(verdict="pass", env=None):
         "process": ProcessType.CNC_3AXIS,
         "material": SimpleNamespace(name="6061-T6 Aluminum", density=2.7),
         "score": SimpleNamespace(verdict=verdict, score=0 if verdict == "fail" else 100),
-    }], SimpleNamespace(bbox_mm=(10, 20, 30), mass_kg=lambda _: .1, nominal_wall_mm=3), options)
+    }], SimpleNamespace(bbox_mm=bbox, mass_kg=lambda _: .1, nominal_wall_mm=3), options)
+
+
+def test_machine_gap_cannot_hide_unknown_service_requirements():
+    result, overrides, _ = _verification(env={"pressure_bar": 350}, bbox=(200, 200, 200))
+    assert result["verdict"] == "unknown"
+    route = result["per_route"]["cnc_3axis"]
+    assert route["verdict"] == "unknown"
+    assert any(f["have"] is not None for f in route["failures"])
+    assert any(f["axis"] == "pressure_bar" and f["have"] is None for f in route["failures"])
+    assert not route.get("resource")
+    assert not overrides
 
 
 def test_machine_fit_does_not_override_dfm_failure():

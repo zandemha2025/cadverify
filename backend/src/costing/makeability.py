@@ -25,7 +25,7 @@ caller — the fit engine never invents a dollar.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 
 from src.analysis.models import ProcessType
 from src.costing.rates import (
@@ -881,8 +881,12 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
 
         fits = [fit_machine(preq, m, shop_caps) for m in owned]
         if missing:
-            fits = [replace(f, passes=False, failures=f.failures + missing,
-                            resource_hint=None) for f in fits]
+            closest = min(fits, key=_machine_score)
+            unknown_routes.append(r)
+            per_route[r] = {"verdict": "unknown", "machines_evaluated": len(fits),
+                            "best_machine": closest.machine,
+                            "failures": closest.failures + missing}
+            continue
         route_passes = [f for f in fits if f.passes]
         if route_passes:
             best = min(
