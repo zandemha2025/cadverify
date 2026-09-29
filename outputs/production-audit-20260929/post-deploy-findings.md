@@ -112,3 +112,27 @@ The functional production canary passed on the deployed release. That result doe
 - Severity: medium accuracy issue, separate from the corrected small-feature warning.
 - The known STEP block has six planar exterior faces and one cylindrical bore. Its fresh local analysis reports eleven flat features; five are only 0.2–0.3 mm² patches on the tessellated bore. The live run also showed extra flat patches.
 - Fix `ac9eaa3`: the shared feature orchestrator excludes recognized cylindrical faces from the flat-feature output. Coarse/fine annuli previously reported 130/514 flats; both now report only two planar caps, while a real hexagonal prism retains all eight planes. Thirty-three affected tests and the trap gate pass. The actual STEP source and native browser upload now report exactly six planes and one cylindrical hole (`flat-feature-step-proof.json`, `026-flat-features-fixed-local.png`). Engine version 0.3.3 invalidates older cached classifications. Not deployed.
+
+## 027 — Saved credentials were mistaken for a tested vendor connection
+
+first divergence: step 1, expected the credential probe to perform an authenticated vendor read, state was a synchronous configuration-presence check with no HTTP request.
+
+- Severity: high evidence-integrity gap. Neither vendor choice had user-facing credential controls, and the API probe could report `configured=true` for an unreachable placeholder endpoint.
+- Fix: distinguish `configured` from `connected`; perform a bounded authenticated product read and return only its count, capability and check time. SAP uses the documented [Product Master OData API](https://help.sap.com/docs/SAP_S4HANA_ON-PREMISE/2628c891a3a04f05a293c7ca5d23e4b6/1e60f14bdc224c2c975c8fa8bcfd7f3f.html); Windchill uses [ProdMgmt/Parts](https://support.ptc.com/help/windchill_rest_services/r2.7/en/windchill_rest_services/examples_WCCG_RESTAPIsSupportedQueryOptions.html). The public URL is resolved once and its vetted IP is pinned for the connection with the original Host/SNI and certificate verification. Redirects are refused. The response limit is 1 MB and the whole probe deadline is 25 seconds. OAuth client-credential token requests use the same egress guard. No vendor records are returned or persisted.
+- Organization admins can save encrypted credentials, test access and revoke profiles in Integrations. The four supported forms are bearer, Basic, OAuth `client_secret_basic` and an API-key header. Revoked profiles do not decrypt or make requests. Failed reads surface recovery instructions; saving alone never claims a successful connection. API imports and BOM reads remain explicitly unavailable.
+- Regression: the new transport test first failed 17 cases against the old synchronous probe. Updated focused tests pass, covering vendor OData shapes, authentication, public-IP pinning, private/mixed DNS, redirects, failed auth, oversized/invalid responses and redaction. Browser checks pass for both vendor choices: save, cleared secret, blocked private endpoint, failure/retry, reload, revoke and persisted revocation. See `connector-probe-regression.json` and `027-connector-probe-fixed-local.png`.
+- Boundary: these are local HTTP-contract and native-browser proofs, not a successful real SAP or PTC tenant connection. Authorized tenant access, BOM transport, imports/reconciliation and production deployment remain open.
+
+## 028 — Missing encryption configuration returned a generic save error
+
+first divergence: step 1, expected a saved credential or actionable storage-configuration error, state was HTTP 500 after `CONNECTOR_SECRET_KEY` was absent in the production-like local environment.
+
+- Severity: medium usability/configuration issue. The encryption boundary correctly refused to use the development key, but its internal error became a generic browser failure.
+- Fix: return HTTP 503 with a clear operator-configuration message while preserving fail-closed encryption. The behavior-level test failed against the old RuntimeError and passes after the shared encryption helper fix. A generated key was stored only in the ignored, mode-0600 local test environment; no production secrets or settings were changed.
+- Local browser save/test/revoke succeeds with encrypted storage configured. Production key provisioning must be verified before this capability is released.
+
+## Follow-up CI checkpoint
+
+The exact-head run for `bf4e509` completed with eight passing jobs and one browser failure. All 54 human-journey steps passed; its copy sweep found the old “CadVerify” product name in the newly corrected Verify retention notice. The notice now uses neutral “Source CAD is retained…” wording without changing its truthful retention meaning or weakening the copy gate. This correction and findings 027/028 require a fresh exact-head CI run before release.
+
+Local validation after the connector changes: **2,349 backend tests passed, three documented environment/corpus skips**, using the disposable Postgres/Redis and an isolated temporary directory. Frontend: **484 tests passed**, typecheck, changed-file lint and production build passed. Changed backend files have zero pyright errors; the full backend baseline check passes (220 errors against the existing 228 baseline). Bandit reports zero findings in changed services. The nine native-browser credential checks above passed; every dummy profile created during this check was revoked. No production deployment or real vendor-tenant success is included in these results.

@@ -41,9 +41,9 @@ Production is Render, currently `09555c1`. The subsequent audit branch has not b
 | Direct object-storage batch input | Local Moto proof only | Authorized real storage configuration and completed worker run |
 | CSV SAP/PLM manifest imports | Real dry-run exposed hidden row errors; local recovery fixed | Production dry-run, import, duplicate/update and resulting records |
 | Quote/actuals CSV ingestion | Existing tests | Live authorized data import and calibration linkage |
-| SAP S/4HANA API | No vendor transport; CSV could falsely claim API evidence | Real read-only transport, secure credential use and tenant proof |
-| PTC Windchill API | Same gap as SAP | Real read-only transport, secure credential use and tenant proof |
-| Connector credential probe | Configuration-presence check, not a vendor connection test | Actual authenticated vendor request and actionable errors |
+| SAP S/4HANA API | Product-read transport and admin credential/test/revoke UI added locally (027); CSV evidence remains separate | BOM transport, import/reconciliation and authorized tenant proof |
+| PTC Windchill API | Product-read transport and credential UI added locally (027) | BOM transport, import/reconciliation and authorized tenant proof |
+| Connector credential probe | Actual bounded authenticated product read; DNS/IP pinning, TLS, redaction and actionable failure tests pass locally. Browser save/test-failure/revoke passes for both vendors | Deploy, configure encrypted storage (028), and verify actual authorized vendor success. No real-tenant success is claimed |
 | Machine inventory, rates and calibration | Prior enterprise CI | Live declared records, approval rules, persistence and cost effects |
 | Parts/programs/portfolio views | Prior CI bounded math and navigation | Real record editing, filtering and aggregate reconciliation |
 | Design Studio generation/edit/version/STEP export | Prior CI 15-step flow and 12 evidence contracts | Production generation, geometric accuracy, retries and exported CAD |
