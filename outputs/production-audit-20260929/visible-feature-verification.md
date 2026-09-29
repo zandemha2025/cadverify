@@ -32,11 +32,11 @@ Production is Render, currently `09555c1`. The subsequent audit branch has not b
 | Real quote accuracy and confidence | UI identifies generic/default, unvalidated estimates | Actual authorized quote/actual datasets and out-of-sample validation |
 | Saved cost decision integrity | Units/version collision fixed locally (024) | Production save/reopen/export must match each live result |
 | Glass Box overrides and scenario comparison | Prior synthetic/browser coverage | Live edit/re-cost/restore and exact reconciliation |
-| Decision approve/reopen/stale governance | Prior CI workflow passed | Production role transitions and rate-change staleness |
+| Decision approve/reopen/stale governance | Local real-STEP outcome/note/approval persisted into exports; editing the note reopened approval | Production role transitions and rate-change staleness |
 | History and persisted analysis retrieval | Live saved record reopened and survived reload | Full detail, filters, old/new engine distinction and error recovery |
-| PDF, JSON and CSV exports | Existing API/CI coverage; some PDF tests mock renderer | Download and inspect real production files and their numbers |
+| PDF, JSON and CSV exports | Local native downloads of real STEP: 16 rows reconcile, Unicode notes/approval preserved; PDF split labels and continuation headings fixed (029) | Repeat production downloads and broader cases after deployment |
 | Public shares and revocation | Existing test coverage | Real links, access limits, revocation and tenant-data boundaries |
-| RFQ package create/review/download | Prior route/API coverage | Complete live package and compare each attachment to its source |
+| RFQ package create/review/download | Local real-STEP create/download exposed historical JSON/current-PDF mismatch; fixed and same package re-downloaded successfully (030) | Deploy; broader multi-item/raw-CAD and production proof |
 | Batch ZIP upload, progress and retry | Existing local/CI coverage | Real multi-file production batch, mixed failures and reconciliation |
 | Direct object-storage batch input | Local Moto proof only | Authorized real storage configuration and completed worker run |
 | CSV SAP/PLM manifest imports | Real dry-run exposed hidden row errors; local recovery fixed | Production dry-run, import, duplicate/update and resulting records |

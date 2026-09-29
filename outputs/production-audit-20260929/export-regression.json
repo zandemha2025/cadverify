@@ -1,0 +1,61 @@
+{
+  "environment": "local disposable workspace, native Chrome UI and real backend PDF rendering",
+  "production_deployed": false,
+  "decision_id": "01M3QMDWKT478K5ST2DBVBDSP1",
+  "rfq_id": "01M3QPYV882YB6D10GSHJ3YVM4",
+  "source": "backend/tests/assets/cube.step (uploaded as audit-cube.STP)",
+  "quantities": [
+    50,
+    5000
+  ],
+  "estimate_rows": 16,
+  "checks": {
+    "json_csv_values_match": true,
+    "line_item_sums_within_half_cent": true,
+    "direct_exports_preserve_approval_and_multiline_unicode_notes": true,
+    "pdf_inspected_visually": true,
+    "pdf_continuation_headers_repeated": true,
+    "source_edit_reopens_approval": true,
+    "old_rfq_json_pdf_mismatch_reproduced": true,
+    "old_rfq_repaired_pdf_uses_original_approval_and_note": true,
+    "no_supplier_contacted": true
+  },
+  "tests": "54 passed (cost persistence API, RFQ API/service, cost and DFM PDF)",
+  "type_baseline": {
+    "errors": 220,
+    "allowed": 228,
+    "passed": true
+  },
+  "security": "Bandit medium/high gate passed; two preexisting low assert findings in PDF cache guard",
+  "file_receipts": {
+    "approved_json": {
+      "bytes": 70326,
+      "sha256": "643fc3fb14bf7e669105832c1193c5f361f195963a16d268eb5782265fe71675"
+    },
+    "approved_csv": {
+      "bytes": 7450,
+      "sha256": "433ca220f891bc70096cb040f785dd3b5392df21e4b49e78da93f894a27ad3eb"
+    },
+    "approved_pdf": {
+      "bytes": 71052,
+      "sha256": "3bd2d5a3b8f9ebc4c4f5ad83eb024e91bbb867bffcca85980013771fc0a19995"
+    },
+    "rfq_before_source_edit": {
+      "bytes": 148070,
+      "sha256": "3c944665e44a1adb4e9505cb1c144ddec5dfb41fc59b47160a96816c3ffa43a9"
+    },
+    "rfq_mismatched_after_source_edit": {
+      "bytes": 147153,
+      "sha256": "3c988f936cfc42521bca70d15935ea7c161f56f725591185716f3839e0d096b2"
+    },
+    "rfq_fixed_snapshot": {
+      "bytes": 148050,
+      "sha256": "64dd398e6e2b767672b97db67b752b9fde31ac0ce789b082a36c5f052301f3b9"
+    }
+  },
+  "limits": [
+    "Local proof only; production still PR106",
+    "Old RFQ snapshots did not retain mesh_hash; repaired PDFs leave it absent rather than borrowing live data",
+    "Real quote accuracy and external integrations remain unverified"
+  ]
+}
