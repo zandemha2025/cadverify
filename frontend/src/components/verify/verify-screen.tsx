@@ -528,7 +528,7 @@ function DropPrompt({ onPickFile }: { onPickFile: () => void }) {
     <div style={{ marginTop: 18 }}>
       <EmptyState
         title="Drop a part to begin the walk."
-        body="Upload STL, STEP or IGES. CadVerify retains source CAD with your organization’s analysis and decision evidence. Results appear after the engine computes them."
+        body="Upload STL, STEP or IGES. Source CAD is retained with your organization’s analysis and decision evidence. Results appear after the engine computes them."
       >
         <GhostButton primary onClick={onPickFile}>
           Browse files
