@@ -241,11 +241,11 @@ test("manifest loader verifies the set binding, every file hash, path confinemen
   }
 });
 
-test("terminal lifecycle helper requires the real dialog to become visible and then hidden", async () => {
+test("terminal lifecycle helper requires the real progress status to become visible and then hidden", async () => {
   const calls = [];
   const page = {
     getByRole(role, options) {
-      assert.equal(role, "dialog");
+      assert.equal(role, "status");
       assert.deepEqual(options, { name: "Verification pipeline", exact: true });
       return {
         async waitFor(options) {
@@ -256,10 +256,17 @@ test("terminal lifecycle helper requires the real dialog to become visible and t
   };
   const result = await waitForVerificationPipeline(page, { timeoutMs: 90_000 });
   assert.deepEqual(calls, [
-    { state: "visible", timeout: 15_000 },
+    { state: "visible", timeout: 90_000 },
     { state: "hidden", timeout: 90_000 },
   ]);
   assert.deepEqual(result, { appeared: true, disappeared: true });
+});
+
+test("fast completed requests do not require the intentionally delayed progress rail", async () => {
+  const page = { getByRole: () => ({ waitFor: ({ state }) => state === "visible" ? new Promise(() => {}) : Promise.resolve() }) };
+  assert.deepEqual(await waitForVerificationPipeline(page, { completed: Promise.resolve() }), {
+    appeared: false, disappeared: true,
+  });
 });
 
 function truthfulFixture() {

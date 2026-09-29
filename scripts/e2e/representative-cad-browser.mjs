@@ -5,7 +5,7 @@
  *
  * This is deliberately a bounded complement to real_cad_corpus.py's exhaustive
  * parser matrix.  Every supported fixture enters through the real Verify file
- * input, waits for the visible pipeline dialog to appear and disappear, proves
+ * input, waits for the visible pipeline status to appear and disappear, proves
  * nonzero response geometry against terminal UI text, records a disposition,
  * refreshes, and reopens the exact immutable record. The native SolidWorks
  * assembly is retained as an explicit unsupported control: the real file-input
@@ -353,11 +353,16 @@ export function assertTruthfulTerminalCase({ fixture, validation, cost, visibleT
 }
 
 /** The lifecycle oracle: API completion alone is insufficient. */
-export async function waitForVerificationPipeline(page, { timeoutMs = 135_000 } = {}) {
-  const dialog = page.getByRole("dialog", { name: "Verification pipeline", exact: true });
-  await dialog.waitFor({ state: "visible", timeout: Math.min(timeoutMs, 15_000) });
-  await dialog.waitFor({ state: "hidden", timeout: timeoutMs });
-  return { appeared: true, disappeared: true };
+export async function waitForVerificationPipeline(page, { timeoutMs = 135_000, completed } = {}) {
+  const progress = page.getByRole("status", { name: "Verification pipeline", exact: true });
+  // The UI deliberately suppresses the rail for results under 260ms. A real
+  // cost response may therefore win; the caller still validates and reopens it.
+  const visible = progress.waitFor({ state: "visible", timeout: timeoutMs }).then(() => true);
+  const appeared = completed
+    ? await Promise.race([visible, completed.then(() => false)])
+    : await visible;
+  await progress.waitFor({ state: "hidden", timeout: timeoutMs });
+  return { appeared, disappeared: true };
 }
 
 /** A screenshot is evidence only after initial async cards have left loading copy. */
@@ -624,6 +629,7 @@ class RepresentativeCadBrowser {
       await this.page.getByLabel("Password").fill(password);
       await this.page.getByRole("button", { name: /^Create account$/ }).click();
       await this.page.waitForURL((url) => url.pathname === "/verify", { timeout: 20_000 });
+      await this.page.getByRole("dialog", { name: "What do you want ProofShape to help you do?" }).getByRole("button", { name: "Close", exact: true }).click();
       await this.page.getByText("MAKE THE ESTIMATES YOURS").waitFor({ timeout: 20_000 });
 
       const recoveryAlert = this.page
@@ -693,7 +699,7 @@ class RepresentativeCadBrowser {
       (response) => isResponse(response, "POST", "/api/proxy/validate/assembly"),
       { timeout: this.caseTimeoutMs },
     );
-    const pipelinePromise = waitForVerificationPipeline(this.page, { timeoutMs: this.caseTimeoutMs });
+    const pipelinePromise = waitForVerificationPipeline(this.page, { timeoutMs: this.caseTimeoutMs, completed: costPromise });
     const started = Date.now();
     await input.setInputFiles(fixture.absolutePath);
     const [validationResponse, costResponse, assemblyResponse, pipeline] = await Promise.all([
@@ -852,7 +858,7 @@ class RepresentativeCadBrowser {
       invariant(rejectionText.includes(fixture.filename), `${fixture.id} rejection does not name the selected file`);
       invariant(/SolidWorks files need a STEP export/i.test(rejectionText), `${fixture.id} rejection does not identify the native format boundary`);
       invariant(/STEP AP242 \(\.step or \.stp\)/i.test(rejectionText), `${fixture.id} rejection has no actionable neutral-export path`);
-      invariant(/No analysis was started and no record was created/i.test(rejectionText), `${fixture.id} rejection does not state the persistence boundary`);
+      invariant(/No verification record was created/i.test(rejectionText), `${fixture.id} rejection does not state the persistence boundary`);
       await this.page.waitForTimeout(300);
       invariant(computeRequests.length === 0, `${fixture.id} unsupported selection reached compute: ${JSON.stringify(computeRequests)}`);
       const screenshot = await this.screenshot(`${fixture.id}-unsupported-control`);
