@@ -1334,6 +1334,30 @@ class RateCardVersion(Base):
 # ---------------------------------------------------------------------------
 
 
+class EngineeringPackage(Base):
+    """Immutable document/review versions. Only the latest pointer can change."""
+
+    __tablename__ = "engineering_packages"
+    __table_args__ = (
+        UniqueConstraint("org_id", "series_id", "version", name="uq_engineering_package_version"),
+        Index("ix_engineering_packages_part", "org_id", "mesh_hash", "id"),
+        Index("ix_engineering_packages_latest", "org_id", "id", postgresql_where=text("is_latest")),
+        Index("uq_engineering_packages_latest", "org_id", "series_id", unique=True, postgresql_where=text("is_latest")),
+        CheckConstraint("version > 0", name="ck_engineering_package_version"),
+        CheckConstraint("state IN ('draft', 'issued')", name="ck_engineering_package_state"),
+    )
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=lambda: str(ULID()))
+    org_id: Mapped[str] = mapped_column(Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    series_id: Mapped[str] = mapped_column(Text, nullable=False)
+    mesh_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_latest: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    state: Mapped[str] = mapped_column(Text, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_by: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
+
+
 class PartContext(Base):
     """A part's USER-DECLARED business context (W3.5 rung-1).
 

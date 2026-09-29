@@ -20,6 +20,7 @@ here flips a cost band to ``validated``.
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any, Optional
 
 from sqlalchemy import select
@@ -76,7 +77,7 @@ def validate_service_environment(env) -> None:
         if val is None:
             continue
         if key in _ENV_NUMBER_FIELDS:
-            if isinstance(val, bool) or not isinstance(val, (int, float)):
+            if isinstance(val, bool) or not isinstance(val, (int, float)) or not math.isfinite(val):
                 errors.append(f"{key} must be a number")
             elif key == "pressure_bar" and val < 0:
                 errors.append("pressure_bar must be >= 0")

@@ -33,6 +33,7 @@ import {
   ConfidenceBand,
 } from "./primitives";
 import { LibraryOnboard } from "./library-onboard";
+import { EngineeringPackageQueue } from "./engineering-package-panel";
 
 // The endpoint caps page_size at 100; 48 keeps the "one grid" feel of the design
 // while real pagination stays honest for a large org (Load more appends pages).
@@ -212,6 +213,7 @@ export function CatalogScreen({ nav }: { nav: (s: string) => void }) {
           part library so the identity corpus knows their parts by name on day one —
           the flywheel's cold start. Refreshes the grid after a successful onboard. */}
       <LibraryOnboard onChanged={() => void load(facet)} />
+      <EngineeringPackageQueue nav={nav}/>
 
       {error && (
         <p style={{ margin: "14px 0 0", fontFamily: MONO, fontSize: 11, color: C.fail }}>

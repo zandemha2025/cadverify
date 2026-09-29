@@ -21,12 +21,14 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   fetchCatalog,
+  fetchCatalogPart,
   fetchCostDecision,
   fetchCostDecisions,
   type CatalogRowApi,
   type CostDecisionDetail,
   type CostDecisionSummary,
 } from "@/lib/api";
+import { EngineeringPackagePanel } from "./engineering-package-panel";
 import { C, MONO, USD, NUM, procLabel, normProv } from "@/lib/verify/tokens";
 import { makeNowEstimate, driverViews } from "@/lib/verify/derive";
 import { fetchPartContext, type PartContext } from "@/lib/verify/part-context-read";
@@ -74,11 +76,17 @@ export function PartScreen({ nav }: { nav: (s: string) => void }) {
     setCatError(null);
     try {
       const page = await fetchCatalog({ pageSize: 100 });
-      setRows(page.rows);
       setTruncated(page.truncated);
       // Prefer an explicit hand-off (from catalog/records/machine links); else the
       // most-recently-updated part. Never a hardcoded demo part.
       const pending = getSelectedPart();
+      if (pending && !page.rows.some(r => r.part_key === pending)) {
+        const exact = await fetchCatalogPart(pending);
+        setRows([exact, ...page.rows]);
+        setSelected(pending);
+        return;
+      }
+      setRows(page.rows);
       const has = (k: string | null) => !!k && page.rows.some((r) => r.part_key === k);
       setSelected(has(pending) ? pending : page.rows[0]?.part_key ?? null);
     } catch (e) {
@@ -445,6 +453,7 @@ function Standing({ row, nav }: { row: CatalogRowApi; nav: (s: string) => void }
           )
         )}
       </div>
+      {!loading && <EngineeringPackagePanel key={row.part_key} meshHash={row.part_key} filename={row.filename} decisionId={row.cost_decision?.id ?? null} report={detail?.result ?? null}/>}
     </div>
   );
 }

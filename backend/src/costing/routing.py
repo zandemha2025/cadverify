@@ -163,7 +163,7 @@ def _env_preferred_materials(process: ProcessType, mats: list, env: dict | None)
         return mats
     props = {m.name: _material_props(m) for m in mats}
     valid, _ = environment_gate([process.value], [m.name for m in mats], env, props)
-    valid_names = set(valid.get("materials") or [])
+    valid_names = set(valid.get("materials") or []) - valid.get("unknown_materials", set())
     if not valid_names:
         return mats
     return [m for m in mats if m.name in valid_names]
@@ -179,6 +179,7 @@ def _item_env_valid(item: dict, env: dict | None) -> bool:
     return (
         process.value in set(valid.get("routes") or [])
         and mat.name in set(valid.get("materials") or [])
+        and mat.name not in valid.get("unknown_materials", set())
     )
 
 

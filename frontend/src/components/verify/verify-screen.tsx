@@ -1532,12 +1532,22 @@ function RouteFitBlock({ verification }: { verification: VerificationBlock }) {
 function EnvStrikesBlock({ verification, envDeclared }: { verification: VerificationBlock; envDeclared: boolean }) {
   const strikes = envStrikes(verification);
   const worldDeclared = envDeclared || !!verification.environment_declared;
+  const unknowns = verification.environment_unknowns ?? [];
+  if (unknowns.length > 0) {
+    return (
+      <div style={{ marginTop: 12, color: C.cond, fontSize: 12 }}>
+        <p>Service-condition evidence is incomplete. Resources remain conditional.</p>
+        <ul>{unknowns.map((item, i) => <li key={i}>{item.human}</li>)}</ul>
+        {strikes.map((s) => <p key={s.material}>{s.reason}</p>)}
+      </div>
+    );
+  }
   if (strikes.length === 0) {
     return (
       <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40, lineHeight: 1.6 }}>
         {worldDeclared
-          ? "the declared service conditions were applied — no candidate material on the shortlisted routes is excluded by them."
-          : "no service conditions declared — materials are verified at ambient. Use ‘Make this verdict yours’ below to gate them by NACE MR0175 / HDT."}
+          ? "Available catalogue properties do not exclude these candidates. Component qualification and release authorization require separate evidence."
+          : "No service conditions declared — environmental suitability has not been established. Declare the operating conditions to screen candidate materials."}
       </p>
     );
   }

@@ -290,6 +290,7 @@ async def refresh_part_summary(
     mesh_hash: str,
     *,
     mark_makeability_fresh: bool = False,
+    evaluated_decision_id: str | None = None,
 ) -> bool:
     """Recompute + UPSERT the ``(org_id, mesh_hash)`` summary from the LATEST
     analysis + LATEST cost decision for that part.
@@ -356,7 +357,8 @@ async def refresh_part_summary(
     }
     # Only a fresh cost-time recompute clears the stale flag; an analysis-persist /
     # backfill refresh leaves the EXISTING stale flag untouched (omitted from set_).
-    if mark_makeability_fresh:
+    if mark_makeability_fresh and (evaluated_decision_id is None or
+            (cost is not None and cost.ulid == evaluated_decision_id)):
         set_["makeability_stale"] = stmt.excluded.makeability_stale  # = False
     stmt = stmt.on_conflict_do_update(
         index_elements=["org_id", "mesh_hash"],
@@ -372,6 +374,7 @@ async def refresh_part_summary_safe(
     mesh_hash: Optional[str],
     *,
     mark_makeability_fresh: bool = False,
+    evaluated_decision_id: str | None = None,
 ) -> None:
     """Graceful-degrade wrapper for the write hooks — NEVER raises.
 
@@ -393,6 +396,7 @@ async def refresh_part_summary_safe(
             await refresh_part_summary(
                 session, org_id, mesh_hash,
                 mark_makeability_fresh=mark_makeability_fresh,
+                evaluated_decision_id=evaluated_decision_id,
             )
     except Exception:
         logger.warning(

@@ -29,7 +29,7 @@ function makeNowEstimate(cost: CostReport): CostEstimate | null {
   const proc = cost.decision?.make_now_process;
   const pool = proc ? cost.estimates.filter((e) => e.process === proc) : cost.estimates;
   if (pool.length === 0) return cost.estimates[0] ?? null;
-  const usable = pool.filter((e) => !e.environment_excluded);
+  const usable = pool.filter((e) => !e.environment_excluded && !e.environment_unknown);
   const ranked = usable.length > 0 ? usable : pool;
   return ranked.reduce((a, b) => (b.quantity > a.quantity ? b : a));
 }
@@ -127,7 +127,7 @@ export function deriveStanding(
   detail: CostDecisionDetail | null
 ): PartStanding {
   const est = detail?.result ? makeNowEstimate(detail.result) : null;
-  const detailWithheld = Boolean(est?.environment_excluded);
+  const detailWithheld = Boolean(est?.environment_excluded || est?.environment_unknown);
   const kind = detailWithheld ? "blocked" : standingKind(row);
   const conf = est?.confidence;
   const rawMakeability = detail?.result.verification?.verdict;

@@ -39,6 +39,26 @@ logger = logging.getLogger("cadverify.catalog")
 
 router = APIRouter(tags=["catalog"])
 
+
+@router.get("/parts/{mesh_hash}")
+@limiter.limit("240/hour;2000/day")
+async def get_catalog_part(request: Request, response: Response, mesh_hash: str,
+    user: AuthedUser = Depends(require_role(Role.viewer)), session: AsyncSession = Depends(get_db_session)):
+    """An indexed exact-part lookup, including parts beyond the first grid page."""
+    import re
+    from src.services.part_summary_service import _latest_analysis, _latest_cost, _source_ref
+    if not re.fullmatch(r"[a-f0-9]{64}", mesh_hash):
+        raise HTTPException(404, "Part not found")
+    org = await resolve_org(session, user.user_id)
+    if not org or (user.org_id is not None and user.org_id != org):
+        raise HTTPException(404, "Part not found")
+    analysis = await _latest_analysis(session, org, mesh_hash)
+    cost = await _latest_cost(session, org, mesh_hash)
+    if analysis is None and cost is None:
+        raise HTTPException(404, "Part not found")
+    return svc.derive_row(part_key=mesh_hash, analysis=_source_ref(analysis) if analysis else None,
+                          cost=_source_ref(cost) if cost else None)
+
 # Canonical lifecycle states (v1: Drafted/Costed only — vision §8 Q3).
 _STATES = {"drafted": "Drafted", "costed": "Costed"}
 

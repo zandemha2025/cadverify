@@ -625,6 +625,7 @@ def recommendation_basis_at_quantity(
         or not process
         or at_qty.get("dfm_ready") is False
         or at_qty.get("environment_excluded") is True
+        or at_qty.get("environment_unknown") is True
     ):
         return None
 
@@ -640,6 +641,7 @@ def recommendation_basis_at_quantity(
     if estimate and (
         estimate.get("dfm_ready") is False
         or estimate.get("environment_excluded") is True
+        or estimate.get("environment_unknown") is True
     ):
         return None
     confidence = (estimate or {}).get("confidence") or {}

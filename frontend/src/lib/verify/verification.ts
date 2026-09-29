@@ -52,6 +52,8 @@ export interface VerificationBlock {
   resource?: unknown;
   gap?: FitFailure[];
   env_exclusions?: FitFailure[];
+  environment_unknowns?: FitFailure[];
+  scope?: string;
   per_route?: Record<string, PerRouteFit>;
   inventory_declared?: boolean;
   environment_declared?: boolean;
@@ -73,8 +75,8 @@ export interface VerdictBannerModel {
 const BANNER: Record<MakeabilityLattice, VerdictBannerModel> = {
   makeable_in_house: {
     kicker: "VERDICT · MAKEABLE IN-HOUSE",
-    title: "Makeable on your machines.",
-    sub: "A machine you own clears every gate for the recommended route — the make-it-ourselves path is live.",
+    title: "An owned machine passes the screening checks.",
+    sub: "Available DFM and declared capability checks support an in-house route. Qualification evidence and release authorization require separate review.",
     tone: "pass",
   },
   makeable_with_secondary_op: {
@@ -110,7 +112,7 @@ const BANNER: Record<MakeabilityLattice, VerdictBannerModel> = {
   unknown: {
     kicker: "VERDICT · UNKNOWN — NOT ENOUGH DECLARED",
     title: "Makeability unknown — not enough is declared.",
-    sub: "No inventory (or a required capability) is declared, so the machine verdict is honestly unknown — never a fabricated pass. Declare your floor to resolve it.",
+    sub: "A required capability or service-condition property is missing. Review the evidence gaps below before choosing a manufacturing route.",
     tone: "neutral",
   },
 };

@@ -394,6 +394,10 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
     # populated when a service environment is declared; empty otherwise => no key
     # added => byte-identical.
     reason_by_pv = env_excluded.get("reason_by_pv") or {}
+    for e in estimates_serialized:
+        if e["process"] in env_excluded.get("unknown_pv", set()):
+            e["environment_unknown"] = True
+            e["environment_evidence_needed"] = "Applicable service-environment evidence is incomplete; resources are conditional."
     if reason_by_pv:
         for e in estimates_serialized:
             reason = reason_by_pv.get(e["process"])
@@ -613,7 +617,7 @@ def _build_verification(elig, drivers, options):
     straight from ``verify_part``'s per-route resource hint, so the cost seam and
     the verdict can never disagree.
     """
-    from dataclasses import asdict, is_dataclass
+    from dataclasses import asdict, is_dataclass, replace
 
     from src.costing.makeability import (
         environment_gate,
@@ -646,8 +650,17 @@ def _build_verification(elig, drivers, options):
         if preq.material_name:
             material_props[preq.material_name] = props
 
-    verdict = verify_part(part_req_by_route, inventory, shop_caps=shop_caps,
+    dfm_by_route = {item["process"].value: getattr(item.get("score"), "verdict", None)
+                    for item in elig}
+    # Keep blocked routes in the evidence, but never select their fitted machine
+    # as a manufacturing answer or use it as an in-house resource override.
+    screened_routes = {pv: req for pv, req in part_req_by_route.items()
+                       if dfm_by_route[pv] in {"pass", "issues"}}
+    verdict = verify_part(screened_routes, inventory, shop_caps=shop_caps,
                           env=env, material_props=material_props)
+    if not screened_routes:
+        verdict = replace(verdict, verdict="not_makeable" if dfm_by_route and
+                          all(v == "fail" for v in dfm_by_route.values()) else "unknown")
 
     # Environment exclusions run independently of inventory: verify_part
     # short-circuits to a bare ``unknown`` when NO machines are declared, so for
@@ -659,7 +672,7 @@ def _build_verification(elig, drivers, options):
                       if p.material_name})
     _gate, direct_exclusions = environment_gate(routes, materials, env,
                                                 material_props)
-    env_exclusions = verdict.env_exclusions or direct_exclusions
+    env_exclusions = direct_exclusions
 
     # Per-process marginal-rate override from each PASSING route's fitted machine.
     machine_override_by_pv: dict = {}
@@ -705,6 +718,21 @@ def _build_verification(elig, drivers, options):
     }
 
     verification = _serialize_verification(verdict, options, env_exclusions)
+    verification["scope"] = "Manufacturing screening against declared capabilities; not qualification or release authorization."
+    verification["environment_unknowns"] = [_ff_to_dict(f) for f in _gate["unknowns"]]
+    for pv, dfm in dfm_by_route.items():
+        route = verification["per_route"].setdefault(pv, {
+            "verdict": "not_makeable" if dfm == "fail" else "unknown",
+            "best_machine": None, "machines_evaluated": 0, "failures": [],
+        })
+        route["dfm_verdict"] = dfm or "unknown"
+    unknown_pv = {pv for pv, req in part_req_by_route.items()
+                  if req.material_name in _gate["unknown_materials"]}
+    env_excluded["unknown_pv"] = unknown_pv
+    if unknown_pv:
+        env_excluded["excluded_pv"].update(unknown_pv)
+        env_excluded["note"] = ((env_excluded["note"] + "; ") if env_excluded["note"] else "") + \
+            "service-environment evidence incomplete for " + ", ".join(sorted(unknown_pv))
     return verification, machine_override_by_pv, env_excluded
 
 

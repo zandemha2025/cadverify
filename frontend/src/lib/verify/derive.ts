@@ -22,7 +22,7 @@ export function makeNowEstimate(
   qty?: number
 ): CostEstimate | null {
   const proc = cost.decision?.make_now_process;
-  const estimates = cost.estimates.filter((e) => !e.environment_excluded);
+  const estimates = cost.estimates.filter((e) => !e.environment_excluded && !e.environment_unknown);
   const pool = proc
     ? estimates.filter((e) => e.process === proc)
     : estimates;
@@ -44,7 +44,7 @@ export function makeNowEstimate(
  */
 export function prototypeEstimate(cost: CostReport): CostEstimate | null {
   const proc = cost.decision?.make_now_process;
-  const estimates = cost.estimates.filter((e) => !e.environment_excluded);
+  const estimates = cost.estimates.filter((e) => !e.environment_excluded && !e.environment_unknown);
   const pool = proc
     ? estimates.filter((e) => e.process === proc)
     : estimates;
@@ -114,7 +114,7 @@ export function toolingEstimate(
   const proc = cost.decision?.tooling_process;
   if (!proc) return null;
   const pool = cost.estimates.filter(
-    (e) => e.process === proc && !e.environment_excluded
+    (e) => e.process === proc && !e.environment_excluded && !e.environment_unknown
   );
   if (pool.length === 0) return null;
   if (qty != null) {
@@ -132,7 +132,7 @@ export function unitCostByQty(
   const out = new Map<number, number>();
   if (!process) return out;
   for (const e of cost.estimates) {
-    if (e.process === process && !e.environment_excluded) {
+    if (e.process === process && !e.environment_excluded && !e.environment_unknown) {
       out.set(e.quantity, e.unit_cost_usd);
     }
   }

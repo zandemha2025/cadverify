@@ -124,10 +124,13 @@ def render_cost_html(decision: CostDecision) -> str:
 
 def _render_cost_pdf_sync(decision: CostDecision, html_str: str | None = None) -> bytes:
     """Render cost_report.html to PDF bytes (CPU-bound — call via executor)."""
-    from weasyprint import HTML
-
     if html_str is None:
         html_str = render_cost_html(decision)
+    return _render_html_pdf_sync(html_str)
+
+
+def _render_html_pdf_sync(html_str: str) -> bytes:
+    from weasyprint import HTML
     return HTML(string=html_str, base_url=str(_TEMPLATE_DIR)).write_pdf()
 
 
@@ -136,13 +139,15 @@ def _fingerprint(html_str: str) -> str:
     return hashlib.sha256(html_str.encode("utf-8")).hexdigest()[:16]
 
 
+async def generate_html_pdf(html_str: str) -> bytes:
+    """Render server-generated HTML using the shared, bounded PDF worker pool."""
+    async with _cost_pdf_semaphore:
+        return await asyncio.to_thread(_render_html_pdf_sync, html_str)
+
+
 async def generate_cost_pdf(decision: CostDecision, html_str: str | None = None) -> bytes:
     """Generate a cost-report PDF, bounded by the render semaphore."""
-    async with _cost_pdf_semaphore:
-        loop = asyncio.get_event_loop()
-        pdf_bytes = await loop.run_in_executor(
-            None, _render_cost_pdf_sync, decision, html_str
-        )
+    pdf_bytes = await generate_html_pdf(html_str if html_str is not None else render_cost_html(decision))
     logger.info(
         "Cost PDF generated for %s (%d bytes)", decision.ulid, len(pdf_bytes)
     )

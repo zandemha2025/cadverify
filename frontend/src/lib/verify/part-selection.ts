@@ -12,11 +12,15 @@
  * truth. The real identity always comes back from the catalog row.
  */
 let selected: string | null = null;
+let selectedPackage: string | null = null;
 
 /** Remember which part (by mesh_hash / catalog part_key) to open next. */
-export function setSelectedPart(meshHash: string | null): void {
+export function setSelectedPart(meshHash: string | null, packageId: string | null = null): void {
   selected = meshHash;
+  selectedPackage = packageId;
 }
+
+export function getSelectedPackage(): string | null { return selectedPackage; }
 
 /** The pending selection, or null to let the standing page pick the default. */
 export function getSelectedPart(): string | null {

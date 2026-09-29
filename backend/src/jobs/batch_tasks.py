@@ -1265,6 +1265,7 @@ async def _run_cost_item(session, batch, item) -> dict:
     # — so a ZIP with duplicate parts still completes each item, all pointing at
     # the one decision row inside this batch's immutable organization. params_hash
     # matches the route's for the same params (dedup + parity coherence).
+    result_dict["evaluation_context"] = cost_decision_service.evaluation_context(options)
     params_hash = cost_decision_service.compute_params_hash(
         quantities=quantities,
         region=region,
@@ -1273,6 +1274,7 @@ async def _run_cost_item(session, batch, item) -> dict:
         material_class=material_class,
         shop=shop_slug,
         overrides={},
+        context=result_dict["evaluation_context"],
     )
     mesh_hash = compute_mesh_hash(file_bytes)
     saved = await cost_decision_service.persist_cost_decision(
