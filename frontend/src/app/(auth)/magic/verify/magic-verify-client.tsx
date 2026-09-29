@@ -29,7 +29,8 @@ export function MagicVerifyClient() {
     // Remove both fragment and legacy query tokens immediately. The token stays
     // only in component memory while the person confirms the exchange.
     window.history.replaceState(null, "", "/magic/verify");
-    setToken(candidate);
+    // Strict Mode may replay this effect after the URL has already been scrubbed.
+    setToken((captured) => captured ?? candidate);
     setReady(true);
   }, []);
 
