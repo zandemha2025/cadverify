@@ -16,7 +16,7 @@ export async function assertMachineDetailOutage(page) {
   const state = await page.playwright.evaluate(() => {
     const sections = [...document.querySelectorAll('section')];
     const rate = sections.find(s => s.textContent.includes('RATE HISTORY'));
-    const records = sections.find(s => s.textContent.includes('PARTS ROUTED HERE'));
+    const records = sections.find(s => s.textContent.includes('RECENT RECORDS FOR THIS PROCESS'));
     return {
       rateText: rate?.textContent,
       recordsText: records?.textContent,
@@ -27,7 +27,7 @@ export async function assertMachineDetailOutage(page) {
   assert.ok(state.rateText && state.recordsText, 'Machine details must remain visible');
   assert.doesNotMatch(state.rateText, /no governed rate card in effect|current effective card: default/,
     'Failed reads cannot claim the default rate context');
-  assert.doesNotMatch(state.recordsText, /nothing routed yet/,
+  assert.doesNotMatch(state.recordsText, /No saved decisions recommending/,
     'Failed reads cannot claim an empty history');
   assert.equal(state.retryRates, true, 'Rate reads must be retryable');
   assert.equal(state.retryRecords, true, 'Record reads must be retryable');

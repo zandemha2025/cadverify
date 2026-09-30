@@ -839,7 +839,7 @@ async function runSuite(page, account) {
     return {
       observed: {
         url: page.url(),
-        visible: ["GOVERNED CARD IN EFFECT", "MJF 5200 - Bay 4", boundaryMill, "Mazak Integrex i-200", "EOS M290 - Nickel/SS Cell", "OWNED → MARGINAL"],
+        visible: ["GOVERNED CARD IN EFFECT", "MJF 5200 - Bay 4", boundaryMill, "Mazak Integrex i-200", "EOS M290 - Nickel/SS Cell", "OWNED · RATE DECLARED"],
         persisted: { rateCardId: published.body?.id ?? null, rateCardStatus: published.body?.status ?? null, machineRates },
         numeric: { machineRates: Object.fromEntries(machineRates.map((item) => [item.process, item.rate])), governedValidated: effective.body?.validated },
         authorization: {

@@ -4,9 +4,9 @@
  * YOUR MACHINES — real CRUD against /api/v1/machine-inventory (list / create /
  * get / patch / delete + CSV import) PLUS the full machine DETAIL the design calls
  * `renderMachine`: the SPEC denominator, a governed RATE HISTORY read from the real
- * rate-library, and PARTS ROUTED HERE = real cost-decisions whose make-now route is
- * this machine's process. Every declared capability is ● USER (an assertion, never a
- * measurement); a rate only re-tags ● SHOP once a governed accounting card is bound.
+ * rate-library, and recent cost-decisions recommending this machine's process.
+ * These are process matches, not machine assignments. Every declared capability
+ * and machine rate is ● USER (an assertion, never a measurement).
  * Absent inventory → the honest "declare your floor" empty state.
  */
 import { Children, cloneElement, isValidElement, useCallback, useEffect, useRef, useState } from "react";
@@ -52,12 +52,10 @@ function MachineIcon({ color = C.ink60, size = 17 }: { color?: string; size?: nu
   );
 }
 
-/** Honest owned-machine status: everything in YOUR inventory is owned, so the only
- *  real distinction is whether a rate is declared (marginal costing active) or the
- *  marginal cost is withheld until one is. Never fabricates "NOT OWNED → ACQUIRE". */
+/** Inventory declarations do not establish fit or the rate used for any part. */
 function machineStatus(m: OwnedMachine): { label: string; color: string } {
   return m.hourly_rate_usd != null
-    ? { label: "OWNED → MARGINAL", color: C.pass }
+    ? { label: "OWNED · RATE DECLARED", color: C.user }
     : { label: "OWNED · NO RATE", color: C.cond };
 }
 
@@ -202,8 +200,8 @@ export function MachinesScreen({ onChanged }: { onChanged: () => void }) {
         </div>
       </div>
       <p style={{ margin: "8px 0 0", maxWidth: 620, fontSize: 14, lineHeight: 1.6, color: C.ink55 }}>
-        Every verdict is computed against this inventory — envelope, materials, rate, throughput. Owned means marginal
-        cost; missing means an acquisition consideration, stated as one.
+        In-house costing requires a passing machine fit. Declared rates are user inputs;
+        missing rates use the estimate&apos;s stated assumptions.
       </p>
 
       {error && (
@@ -347,7 +345,7 @@ function MachineDetail({
             <Row k="capital fraction" v={m.capital_frac != null ? String(m.capital_frac) : "undeclared"} vColor={m.capital_frac != null ? C.ink : C.ink40} />
           </div>
           {m.notes && <p style={{ margin: "12px 0 0", fontSize: 12.5, lineHeight: 1.55, color: C.ink55 }}>{m.notes}</p>}
-          <p style={{ margin: "14px 0 0", fontFamily: MONO, fontSize: 10, lineHeight: 1.7, color: C.ink40 }}>every envelope check and marginal cost on this floor divides through this card</p>
+          <p style={{ margin: "14px 0 0", fontFamily: MONO, fontSize: 10, lineHeight: 1.7, color: C.ink40 }}>Declared specs are checked against each part. This card alone does not establish machine fit.</p>
           <div style={{ marginTop: 16, display: "flex", gap: 8, alignItems: "center" }}>
             <GhostButton onClick={onEdit}>Edit specs</GhostButton>
             <GhostButton onClick={onDelete} style={{ marginLeft: "auto", borderColor: "rgba(194,69,58,0.4)", color: C.fail }}>Delete machine</GhostButton>
@@ -415,7 +413,7 @@ function RateHistory({ m }: { m: OwnedMachine }) {
             )}
           </>
         ) : (
-          <p style={{ margin: "2px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink40 }}>no rate declared — marginal cost is withheld until you set one</p>
+          <p style={{ margin: "2px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink40 }}>No machine rate declared — estimates may use default rates and ownership assumptions. Check the saved cost drivers.</p>
         )}
       </div>
 
@@ -434,15 +432,16 @@ function RateHistory({ m }: { m: OwnedMachine }) {
         ) : (
           <p style={{ margin: 0, fontFamily: MONO, fontSize: 11, color: C.ink45 }}>
             {versions && versions.versions.length > 0
-              ? `${versions.versions.length} rate card version(s) authored — none in effect; this rate is your ● USER declaration`
-              : "no governed rate card in effect — this rate is your ● USER declaration"}
+              ? `${versions.versions.length} rate card version(s) authored — none in effect`
+              : "no governed rate card in effect"}
+            {m.hourly_rate_usd != null ? " — machine rate is your ● USER declaration" : " — no machine rate declared"}
           </p>
         )}
       </div>
 
       <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40, lineHeight: 1.6 }}>
         old verdicts keep the rate version they were computed with · current effective card:{" "}
-        {!loaded || error ? "unconfirmed" : usingGoverned ? "governed published card" : "default table / user machine rate"}
+        {!loaded || error ? "unconfirmed" : usingGoverned ? "governed published card" : "default table"}
       </p>
     </section>
   );
@@ -461,9 +460,7 @@ function HistRow({ a, b, tag, note, muted }: { a: string; b: string; tag?: "USER
   );
 }
 
-/** PARTS ROUTED HERE — real cost-decisions whose make-now route is this machine's
- *  process (server-filtered by `process`, defensively re-filtered client-side).
- *  Empty → the design's honest "nothing routed yet" line. */
+/** Recent decisions for the process, not evidence of fit on this machine. */
 function RoutedParts({ m }: { m: OwnedMachine }) {
   const [rows, setRows] = useState<CostDecisionSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -489,7 +486,7 @@ function RoutedParts({ m }: { m: OwnedMachine }) {
 
   return (
     <section style={{ border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
-      <Kicker>PARTS ROUTED HERE</Kicker>
+      <Kicker>RECENT RECORDS FOR THIS PROCESS</Kicker>
       {error ? (
         <div role="alert" style={{ marginTop: 12, fontFamily: MONO, fontSize: 11, color: C.fail }}>
           <p>Records unavailable — {error}</p>
@@ -499,7 +496,7 @@ function RoutedParts({ m }: { m: OwnedMachine }) {
         <div style={{ marginTop: 12 }}><Spinner label="reading records…" /></div>
       ) : rows.length === 0 ? (
         <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink40 }}>
-          nothing routed yet — verdicts routed to {procLabel(m.process)} will land here as parts are verified
+          No saved decisions recommending {procLabel(m.process)} yet.
         </p>
       ) : (
         <div style={{ marginTop: 6, display: "flex", flexDirection: "column" }}>
@@ -514,7 +511,7 @@ function RoutedParts({ m }: { m: OwnedMachine }) {
           ))}
         </div>
       )}
-      <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>routed = cost-decisions whose make-now route is this machine&apos;s process</p>
+      <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>Up to 25 recent decisions recommending this process. Open a record to inspect its machine-fit verdict; a process match does not establish fit on this machine.</p>
     </section>
   );
 }

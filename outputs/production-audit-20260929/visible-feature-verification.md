@@ -201,3 +201,5 @@ CI36718240878 completed successfully on a028e56 (through103): all9 jobs passed, 
 Inventory totals follow-up108: Home now sums declared machine quantities instead of rows. Four real entries[2,1,1,2] display6 machines on the KPI, setup and floor cards; PostgreSQL independently confirms6.497 frontend tests/types/lint/build pass; no data changes or deployment.
 
 List-error follow-up109: real API outages no longer claim an empty inventory or no saved records. Separate native Retry checks restore4 inventory entries and47 records without reload; repeated failures remain honest.497 frontend tests/types/lint/build pass; no data changes or deployment.
+
+Inventory disclosure follow-up110: rates are clearly user declarations, missing rates disclose fallback assumptions, and process-matching recent records no longer imply machine assignment. Native grouped missing-rate control shows9 machines/3 missing rates; cleanup restores the exact original4 entries/6 machines.497 frontend checks pass; existing no-rate engine control passes. No pricing change or deployment.

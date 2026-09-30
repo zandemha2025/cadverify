@@ -392,8 +392,8 @@ export function HomeScreen({
                 : machineCount === 0
                 ? "declare your floor — everything starts from the denominator"
                 : missingRateCount === 0
-                  ? "marginal costing uses your declared hourly rates"
-                  : "set hourly rates before relying on marginal cost"}
+                  ? "passing machine fits can use your declared hourly rates"
+                  : "set missing hourly rates to reduce default assumptions"}
             </p>
           </button>
 
