@@ -20,7 +20,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, StrictInt
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.org_context import resolve_org
@@ -39,8 +39,8 @@ router = APIRouter(tags=["part-context"])
 class DeclareContextBody(BaseModel):
     program: Optional[str] = None
     parent_assembly: Optional[str] = None
-    units_per_parent: Optional[int] = None
-    annual_volume: Optional[int] = None
+    units_per_parent: Optional[StrictInt] = None
+    annual_volume: Optional[StrictInt] = None
     # The declared service environment (machine-inventory §6) rides this existing
     # PUT: {max_temp_c, min_temp_c, pressure_bar, corrosive, sour_service, medium,
     # standard}. USER-declared, never inferred; validated in the service.
@@ -50,7 +50,7 @@ class DeclareContextBody(BaseModel):
     # hierarchy. All optional — unset → the flat declared annual_volume, unchanged.
     bom_assembly_key: Optional[str] = None
     bom_child_ref: Optional[str] = None
-    bom_roots_per_year: Optional[int] = None
+    bom_roots_per_year: Optional[StrictInt] = None
 
 
 async def _require_org(session: AsyncSession, user_id: int) -> str:

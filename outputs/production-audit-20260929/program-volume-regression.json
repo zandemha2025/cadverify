@@ -1,0 +1,100 @@
+{
+  "candidateInvalid": [
+    {
+      "status": "PASS",
+      "invalid": "true",
+      "value": "1.5"
+    },
+    {
+      "status": "PASS",
+      "invalid": "true",
+      "value": "-5"
+    },
+    {
+      "status": "PASS",
+      "invalid": "true",
+      "value": "0"
+    },
+    {
+      "status": "PASS",
+      "invalid": "true",
+      "value": "abc"
+    },
+    {
+      "status": "PASS",
+      "invalid": "true",
+      "value": "2147483648"
+    }
+  ],
+  "assignedInvalid": [
+    {
+      "status": "PASS",
+      "invalid": "true",
+      "value": "0"
+    },
+    {
+      "status": "PASS",
+      "invalid": "true",
+      "value": "1.5"
+    },
+    {
+      "status": "PASS",
+      "invalid": "true",
+      "value": "-5"
+    },
+    {
+      "status": "PASS",
+      "invalid": "true",
+      "value": "abc"
+    },
+    {
+      "status": "PASS",
+      "invalid": "true",
+      "value": "2147483648"
+    }
+  ],
+  "assignment50": " contains Estimates.\n- banner:\n  - button \"Collapse sidebar\":\n  - navigation \"Breadcrumb\":\n    - generic: workspace\n    - generic: verify\n  - button \"Search and jump to a workspace\":\n    - generic: Jump…\n    - generic: ⌘K\n  - link \"Notifications\":\n    - /url: /notifications\n  - button \"Account\":\n- main:\n  - navigation \"Verify workspace sections\":\n    - button \"Home\":\n    - button \"Verify\":\n    - button \"Fit in context\":\n    - button \"Parts\":\n    - button \"Records\":\n    - button \"Programs\":\n    - button \"Your machines\":\n    - button \"Triage\":\n    - button \"Calibration & truth\":\n    - button \"Default rate card — open Calibration & truth\"\n    - button \"Start here\"\n    - button \"Open Verify command palette\":\n      - text: Jump\n      - generic: ⌘K\n    - button \"Check my CAD\"\n  - main:\n    - button \"← PROGRAMS\"\n    - heading \"Audit volume 051\" [level=1]\n    - generic: ● USER — declared by your team\n    - generic: 1 assigned · 1 with a declared volume\n    - generic: WORLD MISSING\n    - generic: no assigned part has a declared service environment yet. Worlds are USER-declared on each part at the Verify door and preserved when a part is assigned here.\n    - paragraph: ASSIGNED PARTS — 1\n    - generic: nist_ftc_07_asme1_rd.stp\n    - generic: WAAM\n    - text: $909.7\n    - generic: \"@ qty 50\"\n    - generic \"MODEL — Computed from a DEFAULT assumption — not a measurement.\": ○ MODEL\n    - combobox \"Annual volume for nist_ftc_07_asme1_rd.stp\": \"50\"\n    - generic: $45,487/yr\n    - button \"remove\"\n    - button \"view all in Parts →\"\n    - paragraph: PROGRAM EXPOSURE\n    - paragraph: $45,487 /yr\n    - paragraph: = Σ (engine recommendation at each declared annual volume × that volume) over 1 part · exact quantity basis · ● USER volume\n    - paragraph: inherits the unit cost's band — hatched until validated by measured actuals\n    - paragraph: ASSIGN A VERIFIED PART\n    - generic: cube-10mm.stl\n    - generic: FDM / FFF\n    - generic: $30.00\n    - combobox \"Optional annual volume for cube-10mm.stl\"\n    - button \"Assign →\"\n    - generic: audit-cube.STP\n    - generic: FDM / FFF\n    - generic: $30.00\n    - combobox \"Optional annual volume for audit-cube.STP\"\n    - button \"Assign →\"\n- region \"Notifications alt+T\"\n- alert\n- status: 1Password menu is available. Press down arrow to select.",
+  "quantity51": " - /url: /rfq-packages\n    - generic: RFQ packages\n  - link \"Recent analyses\":\n    - /url: /history\n    - generic: Recent analyses\n  - link \"Integrations\":\n    - /url: /integrations\n    - generic: Integrations\n  - link \"API & docs\":\n    - /url: /settings/developer\n    - generic: API & docs\n  - link \"Security\":\n    - /url: /settings/security\n    - generic: Security\n  - link \"Organization\":\n    - /url: /settings/organization\n    - generic: Organization\n  - paragraph: One governed object model · a Decision contains Estimates.\n- banner:\n  - button \"Collapse sidebar\":\n  - navigation \"Breadcrumb\":\n    - generic: workspace\n    - generic: verify\n  - button \"Search and jump to a workspace\":\n    - generic: Jump…\n    - generic: ⌘K\n  - link \"Notifications\":\n    - /url: /notifications\n  - button \"Account\":\n- main:\n  - navigation \"Verify workspace sections\":\n    - button \"Home\":\n    - button \"Verify\":\n    - button \"Fit in context\":\n    - button \"Parts\":\n    - button \"Records\":\n    - button \"Programs\":\n    - button \"Your machines\":\n    - button \"Triage\":\n    - button \"Calibration & truth\":\n    - button \"Default rate card — open Calibration & truth\"\n    - button \"Start here\"\n    - button \"Open Verify command palette\":\n      - text: Jump\n      - generic: ⌘K\n    - button \"Check my CAD\"\n  - main:\n    - button \"← PROGRAMS\"\n    - heading \"Audit volume 051\" [level=1]\n    - generic: ● USER — declared by your team\n    - generic: 1 assigned · 1 with a declared volume\n    - generic: WORLD MISSING\n    - generic: no assigned part has a declared service environment yet. Worlds are USER-declared on each part at the Verify door and preserved when a part is assigned here.\n    - paragraph: ASSIGNED PARTS — 1\n    - generic: nist_ftc_07_asme1_rd.stp\n    - generic: WAAM\n    - generic: no exact cost\n    - combobox \"Annual volume for nist_ftc_07_asme1_rd.stp\": \"51\"\n    - generic: withheld\n    - button \"remove\"\n    - paragraph: \"no engine-computed recommendation at annual_volume 51; available quantities: 50, 57, 101, 102, 5000. Re-verify this CAD after declaring the volume to compute that exact point\"\n    - button \"Open Verify →\"\n    - button \"view all in Parts →\"\n    - paragraph: PROGRAM EXPOSURE\n    - paragraph: Exposure withheld at this quantity.\n    - paragraph: Exposure is not computed — not guessed, not extrapolated. Re-verify the same CAD; the declared annual volume will be included as an exact engine quantity automatically.\n    - paragraph: ASSIGN A VERIFIED PART\n    - generic: cube-10mm.stl\n    - generic: FDM / FFF\n    - generic: $30.00\n    - combobox \"Optional annual volume for cube-10mm.stl\"\n    - button \"Assign →\"\n    - generic: audit-cube.STP\n    - generic: FDM / FFF\n    - generic: $30.00\n    - combobox \"Optional annual volume for audit-cube.STP\"\n    - button \"Assign →\"\n- region \"Notifications alt+T\"\n- alert\n- status: 1Password menu is available. Press down arrow to select.",
+  "twoParts": "   - generic: Security\n  - link \"Organization\":\n    - /url: /settings/organization\n    - generic: Organization\n  - paragraph: One governed object model · a Decision contains Estimates.\n- banner:\n  - button \"Collapse sidebar\":\n  - navigation \"Breadcrumb\":\n    - generic: workspace\n    - generic: verify\n  - button \"Search and jump to a workspace\":\n    - generic: Jump…\n    - generic: ⌘K\n  - link \"Notifications\":\n    - /url: /notifications\n  - button \"Account\":\n- main:\n  - navigation \"Verify workspace sections\":\n    - button \"Home\":\n    - button \"Verify\":\n    - button \"Fit in context\":\n    - button \"Parts\":\n    - button \"Records\":\n    - button \"Programs\":\n    - button \"Your machines\":\n    - button \"Triage\":\n    - button \"Calibration & truth\":\n    - button \"Default rate card — open Calibration & truth\"\n    - button \"Start here\"\n    - button \"Open Verify command palette\":\n      - text: Jump\n      - generic: ⌘K\n    - button \"Check my CAD\"\n  - main:\n    - button \"← PROGRAMS\"\n    - heading \"Audit volume 051\" [level=1]\n    - generic: ● USER — declared by your team\n    - generic: 2 assigned · 2 with a declared volume\n    - generic: WORLD MISSING\n    - generic: no assigned part has a declared service environment yet. Worlds are USER-declared on each part at the Verify door and preserved when a part is assigned here.\n    - paragraph: ASSIGNED PARTS — 2\n    - generic: nist_ftc_07_asme1_rd.stp\n    - generic: WAAM\n    - text: $909.7\n    - generic: \"@ qty 50\"\n    - generic \"MODEL — Computed from a DEFAULT assumption — not a measurement.\": ○ MODEL\n    - combobox \"Annual volume for nist_ftc_07_asme1_rd.stp\": \"50\"\n    - generic: $45,487/yr\n    - button \"remove\"\n    - generic: cube-10mm.stl\n    - generic: MJF (HP)\n    - text: $3.11\n    - generic: \"@ qty 1,000\"\n    - generic \"MODEL — Computed from a DEFAULT assumption — not a measurement.\": ○ MODEL\n    - combobox \"Annual volume for cube-10mm.stl\": \"1000\"\n    - generic: $3,110/yr\n    - button \"remove\"\n    - button \"view all in Parts →\"\n    - paragraph: PROGRAM EXPOSURE\n    - paragraph: $48,597 /yr\n    - paragraph: = Σ (engine recommendation at each declared annual volume × that volume) over 2 parts · exact quantity basis · ● USER volume\n    - paragraph: inherits the unit cost's band — hatched until validated by measured actuals\n    - paragraph: ASSIGN A VERIFIED PART\n    - generic: audit-cube.STP\n    - generic: FDM / FFF\n    - generic: $30.00\n    - combobox \"Optional annual volume for audit-cube.STP\"\n    - button \"Assign →\"\n- region \"Notifications alt+T\"\n- alert\n- status: 1Password menu is available. Press down arrow to select.",
+  "reloadIndex": "me\":\n    - button \"Verify\":\n    - button \"Fit in context\":\n    - button \"Parts\":\n    - button \"Records\":\n    - button \"Programs\" [active]:\n    - button \"Your machines\":\n    - button \"Triage\":\n    - button \"Calibration & truth\":\n    - button \"Default rate card — open Calibration & truth\"\n    - button \"Start here\"\n    - button \"Open Verify command palette\":\n      - text: Jump\n      - generic: ⌘K\n    - button \"Check my CAD\"\n  - main:\n    - heading \"Programs\" [level=1]\n    - paragraph: Group verified parts into programs, see whether their declared worlds align, and roll up exposure from the engine's verified unit cost × your declared annual volume.\n    - textbox \"Name a program — e.g. Hydraulic actuator\"\n    - button \"Open new program\" [disabled]: Open →\n    - paragraph: a program becomes real when its first verified part is assigned — nothing is stored for an empty name\n    - paragraph: Audit volume 051\n    - generic: ● USER\n    - paragraph: 2 verified parts assigned\n    - paragraph: $48,597 /yr exposure\n    - button \"Open Audit volume 051\": Open →\n- region \"Notifications alt+T\"\n- alert",
+  "cleared": "anner:\n  - button \"Collapse sidebar\":\n  - navigation \"Breadcrumb\":\n    - generic: workspace\n    - generic: verify\n  - button \"Search and jump to a workspace\":\n    - generic: Jump…\n    - generic: ⌘K\n  - link \"Notifications\":\n    - /url: /notifications\n  - button \"Account\":\n- main:\n  - navigation \"Verify workspace sections\":\n    - button \"Home\":\n    - button \"Verify\":\n    - button \"Fit in context\":\n    - button \"Parts\":\n    - button \"Records\":\n    - button \"Programs\":\n    - button \"Your machines\":\n    - button \"Triage\":\n    - button \"Calibration & truth\":\n    - button \"Default rate card — open Calibration & truth\"\n    - button \"Start here\"\n    - button \"Open Verify command palette\":\n      - text: Jump\n      - generic: ⌘K\n    - button \"Check my CAD\"\n  - main:\n    - button \"← PROGRAMS\"\n    - heading \"Audit volume 051\" [level=1]\n    - generic: ● USER — declared by your team\n    - generic: 2 assigned · 1 with a declared volume\n    - generic: WORLD MISSING\n    - generic: no assigned part has a declared service environment yet. Worlds are USER-declared on each part at the Verify door and preserved when a part is assigned here.\n    - paragraph: ASSIGNED PARTS — 2\n    - generic: nist_ftc_07_asme1_rd.stp\n    - generic: WAAM\n    - text: $909.7\n    - generic: \"@ qty 50\"\n    - generic \"MODEL — Computed from a DEFAULT assumption — not a measurement.\": ○ MODEL\n    - combobox \"Annual volume for nist_ftc_07_asme1_rd.stp\": \"50\"\n    - generic: $45,487/yr\n    - button \"remove\"\n    - generic: cube-10mm.stl\n    - generic: FDM / FFF\n    - text: $30.00\n    - generic: \"@ qty 1\"\n    - generic \"MODEL — Computed from a DEFAULT assumption — not a measurement.\": ○ MODEL\n    - combobox \"Annual volume for cube-10mm.stl\"\n    - generic: withheld\n    - button \"remove\"\n    - button \"view all in Parts →\"\n    - paragraph: PROGRAM EXPOSURE\n    - paragraph: $45,487 /yr\n    - paragraph: = Σ (engine recommendation at each declared annual volume × that volume) over 1 part · exact quantity basis · ● USER volume\n    - paragraph: inherits the unit cost's band — hatched until validated by measured actuals\n    - paragraph: ASSIGN A VERIFIED PART\n    - generic: audit-cube.STP\n    - generic: FDM / FFF\n    - generic: $30.00\n    - combobox \"Optional annual volume for audit-cube.STP\"\n    - button \"Assign →\"\n- region \"Notifications alt+T\"\n- alert\n- status: 1Password menu is available. Press down arrow to select.",
+  "mobileBefore": {
+    "panels": [
+      {
+        "name": "Program detail",
+        "scrollWidth": 424,
+        "width": 390
+      }
+    ],
+    "viewport": 390
+  },
+  "partialIndex": {
+    "status": "PASS",
+    "included": 1,
+    "total": 2
+  },
+  "partialDetail": {
+    "status": "PASS",
+    "included": 1,
+    "total": 2
+  },
+  "mobileAfter": {
+    "status": "PASS",
+    "scrollWidth": 390,
+    "width": 390
+  },
+  "enterSaved": " truth\"\n    - button \"Start here\"\n    - button \"Open Verify command palette\":\n      - text: Jump\n      - generic: ⌘K\n    - button \"Check my CAD\"\n  - main:\n    - button \"← PROGRAMS\"\n    - heading \"Audit volume 051\" [level=1]\n    - generic: ● USER — declared by your team\n    - generic: 2 assigned · 2 with a declared volume\n    - generic: WORLD MISSING\n    - generic: no assigned part has a declared service environment yet. Worlds are USER-declared on each part at the Verify door and preserved when a part is assigned here.\n    - paragraph: ASSIGNED PARTS — 2\n    - generic: nist_ftc_07_asme1_rd.stp\n    - generic: WAAM\n    - text: $909.7\n    - generic: \"@ qty 50\"\n    - generic \"MODEL — Computed from a DEFAULT assumption — not a measurement.\": ○ MODEL\n    - combobox \"Annual volume for nist_ftc_07_asme1_rd.stp\": \"50\"\n    - generic: $45,487/yr\n    - button \"remove\"\n    - generic: cube-10mm.stl\n    - generic: MJF (HP)\n    - text: $3.11\n    - generic: \"@ qty 1,000\"\n    - generic \"MODEL — Computed from a DEFAULT assumption — not a measurement.\": ○ MODEL\n    - combobox \"Annual volume for cube-10mm.stl\": \"1000\"\n    - generic: $3,110/yr\n    - button \"remove\"\n    - button \"view all in Parts →\"\n    - paragraph: PROGRAM EXPOSURE\n    - paragraph: $48,597 /yr\n    - paragraph: = Σ (engine recommendation at each declared annual volume × that volume) over 2 parts · exact quantity basis · ● USER volume\n    - paragraph: inherits the unit cost's band — hatched until validated by measured actuals\n    - paragraph: ASSIGN A VERIFIED PART\n    - generic: audit-cube.STP\n    - generic: FDM / FFF\n    - generic: $30.00\n    - combobox \"Optional annual volume for audit-cube.STP\"\n    - button \"Assign →\"\n- region \"Notifications alt+T\"\n- alert\n- status: 1Password menu is available. Press down arrow to select.",
+  "removed": " button \"Your machines\":\n    - button \"Triage\":\n    - button \"Calibration & truth\":\n    - button \"Default rate card — open Calibration & truth\"\n    - button \"Start here\"\n    - button \"Open Verify command palette\":\n      - text: Jump\n      - generic: ⌘K\n    - button \"Check my CAD\"\n  - main:\n    - button \"← PROGRAMS\"\n    - heading \"Audit volume 051\" [level=1]\n    - generic: ● USER — declared by your team\n    - generic: 1 assigned · 1 with a declared volume\n    - generic: WORLD MISSING\n    - generic: no assigned part has a declared service environment yet. Worlds are USER-declared on each part at the Verify door and preserved when a part is assigned here.\n    - paragraph: ASSIGNED PARTS — 1\n    - generic: nist_ftc_07_asme1_rd.stp\n    - generic: WAAM\n    - text: $909.7\n    - generic: \"@ qty 50\"\n    - generic \"MODEL — Computed from a DEFAULT assumption — not a measurement.\": ○ MODEL\n    - combobox \"Annual volume for nist_ftc_07_asme1_rd.stp\": \"50\"\n    - generic: $45,487/yr\n    - button \"remove\"\n    - button \"view all in Parts →\"\n    - paragraph: PROGRAM EXPOSURE\n    - paragraph: $45,487 /yr\n    - paragraph: = Σ (engine recommendation at each declared annual volume × that volume) over 1 part · exact quantity basis · ● USER volume\n    - paragraph: inherits the unit cost's band — hatched until validated by measured actuals\n    - paragraph: ASSIGN A VERIFIED PART\n    - generic: audit-cube.STP\n    - generic: FDM / FFF\n    - generic: $30.00\n    - combobox \"Optional annual volume for audit-cube.STP\"\n    - button \"Assign →\"\n    - generic: cube-10mm.stl\n    - generic: FDM / FFF\n    - generic: $30.00\n    - combobox \"Optional annual volume for cube-10mm.stl\"\n    - button \"Assign →\"\n- region \"Notifications alt+T\"\n- alert\n- status: 1Password menu is available. Press down arrow to select.",
+  "reassignRetained": {
+    "status": "PASS",
+    "value": "1000"
+  },
+  "reassigned": "\":\n  - navigation \"Breadcrumb\":\n    - generic: workspace\n    - generic: verify\n  - button \"Search and jump to a workspace\":\n    - generic: Jump…\n    - generic: ⌘K\n  - link \"Notifications\":\n    - /url: /notifications\n  - button \"Account\":\n- main:\n  - navigation \"Verify workspace sections\":\n    - button \"Home\":\n    - button \"Verify\":\n    - button \"Fit in context\":\n    - button \"Parts\":\n    - button \"Records\":\n    - button \"Programs\":\n    - button \"Your machines\":\n    - button \"Triage\":\n    - button \"Calibration & truth\":\n    - button \"Default rate card — open Calibration & truth\"\n    - button \"Start here\"\n    - button \"Open Verify command palette\":\n      - text: Jump\n      - generic: ⌘K\n    - button \"Check my CAD\"\n  - main:\n    - button \"← PROGRAMS\"\n    - heading \"Audit volume 051\" [level=1]\n    - generic: ● USER — declared by your team\n    - generic: 2 assigned · 2 with a declared volume\n    - generic: WORLD MISSING\n    - generic: no assigned part has a declared service environment yet. Worlds are USER-declared on each part at the Verify door and preserved when a part is assigned here.\n    - paragraph: ASSIGNED PARTS — 2\n    - generic: nist_ftc_07_asme1_rd.stp\n    - generic: WAAM\n    - text: $909.7\n    - generic: \"@ qty 50\"\n    - generic \"MODEL — Computed from a DEFAULT assumption — not a measurement.\": ○ MODEL\n    - combobox \"Annual volume for nist_ftc_07_asme1_rd.stp\": \"50\"\n    - generic: $45,487/yr\n    - button \"remove\"\n    - generic: cube-10mm.stl\n    - generic: MJF (HP)\n    - text: $3.11\n    - generic: \"@ qty 1,000\"\n    - generic \"MODEL — Computed from a DEFAULT assumption — not a measurement.\": ○ MODEL\n    - combobox \"Annual volume for cube-10mm.stl\": \"1000\"\n    - generic: $3,110/yr\n    - button \"remove\"\n    - button \"view all in Parts →\"\n    - paragraph: PROGRAM EXPOSURE\n    - paragraph: $48,597 /yr\n    - paragraph: = Σ (engine recommendation at each declared annual volume × that volume) over 2 parts · exact quantity basis · ● USER volume\n    - paragraph: inherits the unit cost's band — hatched until validated by measured actuals\n    - paragraph: ASSIGN A VERIFIED PART\n    - generic: audit-cube.STP\n    - generic: FDM / FFF\n    - generic: $30.00\n    - combobox \"Optional annual volume for audit-cube.STP\"\n    - button \"Assign →\"\n  - status: cube-10mm.stl assigned to Audit volume 051 — exact-quantity exposure computed\n- region \"Notifications alt+T\"\n- alert",
+  "status": "PASS",
+  "environment": "local",
+  "expectedTotal": 48597,
+  "priceSources": [
+    "Downloaded FTC-07 saved JSON: WAAM $909.74 at quantity 50",
+    "Downloaded cube JSON: MJF $3.11 at quantity 1000"
+  ]
+}

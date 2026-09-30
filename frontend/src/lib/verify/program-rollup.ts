@@ -121,6 +121,15 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/** Empty clears a declaration; invalid input must never become a different count. */
+export function parseAnnualVolume(text: string): number | null | undefined {
+  const value = text.trim();
+  if (!value) return null;
+  const count = Number(value);
+  return /^\d+$/.test(value) && Number.isSafeInteger(count) && count > 0 && count <= 2_147_483_647
+    ? count : undefined;
+}
+
 /** Declared programs derived from the portfolio: the authoritative
  *  `summary.programs` roll-up when present, else grouped from the rows (so a
  *  freshly-loaded portfolio with contexts but no roll-up still lists them). Rows

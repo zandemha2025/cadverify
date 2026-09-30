@@ -9,7 +9,7 @@
  *  - GET /api/v1/catalog/portfolio (via program-api) → declared programs, the
  *    parts assigned to each, and the honest annualized `$/year` (engine unit cost
  *    × USER-declared volume, withheld when no volume is declared).
- *  - PUT /api/v1/part-context/{mesh} (merge-then-write) → assign a part to a
+ *  - PUT /api/v1/part-context/{mesh} (partial update) → assign a part to a
  *    program / declare its annual volume, without clobbering its declared world.
  *
  * Honesty (binding): every figure is engine/DB output or is WITHHELD. Exposure is
@@ -41,6 +41,9 @@ import {
   Spinner,
 } from "./primitives";
 import { useToast } from "./toast";
+import { parseAnnualVolume } from "@/lib/verify/program-rollup";
+
+const VOLUME_ERROR = "Enter a whole number from 1 to 2,147,483,647, or leave blank to clear the volume.";
 
 /** Exposure formatting matching the design: $X.XXM at scale, else $X,XXX. */
 function fmtExposure(n: number): string {
@@ -201,7 +204,7 @@ function ProgramIndex({
       <h1 style={h1Style}>Programs</h1>
       <p style={{ margin: "8px 0 0", maxWidth: 640, fontSize: 14, lineHeight: 1.6, color: C.ink55 }}>
         Group verified parts into programs, see whether their declared worlds align, and roll up exposure
-        from the engine&apos;s verified unit cost × your declared annual volume.
+        from the engine&apos;s estimated unit cost × your declared annual volume.
       </p>
 
       {error && (
@@ -235,7 +238,7 @@ function ProgramIndex({
           />
         </div>
       ) : (
-        <div style={{ marginTop: 24, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16, maxWidth: 1100 }}>
+        <div style={{ marginTop: 24, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))", gap: 16, maxWidth: 1100 }}>
           {programs.map((g) => (
             <ProgramCard key={g.program} g={g} onOpen={() => onOpen(g.program)} />
           ))}
@@ -268,6 +271,11 @@ function ProgramCard({ g, onOpen }: { g: ProgramRollup; onOpen: () => void }) {
           </p>
         )}
       </div>
+      {g.annualized_cost_usd != null && g.exposed_parts != null && g.exposed_parts < g.parts && (
+        <p style={{ margin: 0, fontFamily: MONO, fontSize: 11, color: C.cond }}>
+          Partial total · {NUM(g.exposed_parts)} of {NUM(g.parts)} parts included. Other parts need a volume or an exact-quantity cost.
+        </p>
+      )}
       <div style={{ marginTop: "auto", paddingTop: 4 }}>
         <GhostButton aria-label={`Open ${g.program}`} primary onClick={onOpen}>Open →</GhostButton>
       </div>
@@ -399,7 +407,7 @@ function ProgramDetail({
         </span>
       </div>
 
-      <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 16, maxWidth: 1100, alignItems: "start" }}>
+      <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 380px), 1fr))", gap: 16, maxWidth: 1100, alignItems: "start" }}>
         {/* Assigned parts */}
         <section style={cardStyle}>
           <Kicker>ASSIGNED PARTS — {NUM(assigned.length)}</Kicker>
@@ -439,6 +447,11 @@ function ProgramDetail({
                 = Σ (engine recommendation at each declared annual volume × that volume) over {NUM(withExposure.length)}{" "}
                 {withExposure.length === 1 ? "part" : "parts"} · exact quantity basis · <span style={{ color: C.user }}>● USER</span> volume
               </p>
+              {withExposure.length < assigned.length && (
+                <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 11, color: C.cond }}>
+                  Partial total · {NUM(withExposure.length)} of {NUM(assigned.length)} parts included. Other parts need a volume or an exact-quantity cost.
+                </p>
+              )}
               <div style={{ marginTop: 12, position: "relative", height: 5, borderRadius: 3, background: "#ececef", overflow: "hidden" }}>
                 <span aria-hidden style={{ position: "absolute", inset: 0, ...(allValidated ? { background: "rgba(31,138,91,0.5)" } : { backgroundImage: HATCH }) }} />
               </div>
@@ -516,9 +529,8 @@ function AssignedRow({
     setDraft(declared != null ? String(declared) : "");
   }, [declared]);
 
-  const parsed = draft.trim() === "" ? null : parseInt(draft.replace(/[^0-9]/g, ""), 10);
-  const normalized = parsed != null && Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-  const changed = normalized !== declared;
+  const normalized = parseAnnualVolume(draft);
+  const changed = normalized !== undefined && normalized !== declared;
 
   const unit = row.unit_cost;
   const basis = row.annualized_unit_cost;
@@ -553,9 +565,12 @@ function AssignedRow({
             list={listId}
             inputMode="numeric"
             disabled={busy}
-            onChange={(e) => setDraft(e.target.value.replace(/[^0-9]/g, ""))}
-            onKeyDown={(e) => { if (e.key === "Enter" && changed) onSetVolume(normalized); }}
-            onBlur={() => { if (changed) onSetVolume(normalized); }}
+            aria-label={`Annual volume for ${row.filename}`}
+            aria-invalid={normalized === undefined}
+            aria-describedby={normalized === undefined ? `${listId}-error` : undefined}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && changed && normalized !== undefined && !busy) onSetVolume(normalized); }}
+            onBlur={() => { if (changed && normalized !== undefined && !busy) onSetVolume(normalized); }}
             placeholder="volume"
             title={`annual volume — USER-declared; engine points: ${row.quantities.join(", ")}`}
             style={{ width: 96, background: C.panel, border: `1px solid #dcdce0`, borderRadius: 8, padding: "6px 10px", fontSize: 12, color: C.ink, fontFamily: MONO, textAlign: "right" }}
@@ -570,6 +585,7 @@ function AssignedRow({
           remove
         </button>
       </div>
+      {normalized === undefined && <p id={`${listId}-error`} role="alert" style={{ fontSize: 11, color: C.fail }}>{VOLUME_ERROR}</p>}
       {declared != null && row.annualized_cost_usd == null && row.annualized_reason && (
         <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <p style={{ margin: 0, flex: "1 1 360px", fontFamily: MONO, fontSize: 10, lineHeight: 1.6, color: C.cond }}>{row.annualized_reason}</p>
@@ -590,9 +606,12 @@ function CandidateRow({
   busy: boolean;
   onAssign: (v: number | null) => void;
 }) {
-  const [draft, setDraft] = useState("");
-  const parsed = draft.trim() === "" ? null : parseInt(draft.replace(/[^0-9]/g, ""), 10);
-  const volume = parsed != null && Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  const declared = row.context?.annual_volume ?? null;
+  const [draft, setDraft] = useState(declared != null ? String(declared) : "");
+  useEffect(() => {
+    setDraft(declared != null ? String(declared) : "");
+  }, [declared]);
+  const volume = parseAnnualVolume(draft);
 
   const unit = row.unit_cost;
   const inOther = row.context?.program;
@@ -612,13 +631,17 @@ function CandidateRow({
         list={listId}
         inputMode="numeric"
         disabled={busy}
-        onChange={(e) => setDraft(e.target.value.replace(/[^0-9]/g, ""))}
+        aria-label={`Optional annual volume for ${row.filename}`}
+        aria-invalid={volume === undefined}
+        aria-describedby={volume === undefined ? `${listId}-error` : undefined}
+        onChange={(e) => setDraft(e.target.value)}
         placeholder="volume (opt)"
         title={`optional annual volume — engine points: ${row.quantities.join(", ")}`}
         style={{ width: 104, background: C.panel, border: `1px solid #dcdce0`, borderRadius: 8, padding: "6px 10px", fontSize: 12, color: C.ink, fontFamily: MONO, textAlign: "right" }}
       />
       <datalist id={listId}>{row.quantities.map((quantity) => <option key={quantity} value={quantity} />)}</datalist>
-      <GhostButton disabled={busy} onClick={() => onAssign(volume)}>Assign →</GhostButton>
+      <GhostButton disabled={busy || volume === undefined} onClick={() => { if (volume !== undefined) onAssign(volume); }}>Assign →</GhostButton>
+      {volume === undefined && <p id={`${listId}-error`} role="alert" style={{ flexBasis: "100%", margin: 0, fontSize: 11, color: C.fail }}>{VOLUME_ERROR}</p>}
     </div>
   );
 }

@@ -123,11 +123,8 @@ export async function getPartContext(
 /**
  * Group a costed part into a program and/or declare its annual build volume.
  *
- * MERGE-PRESERVING by design: the PUT replaces the WHOLE context row server-side
- * (upsert_context overwrites every declared field), so we first GET the existing
- * context and carry forward its parent_assembly, units_per_parent, AND declared
- * service_environment — assigning a program must NEVER silently wipe a world the
- * user already declared at the Verify door. Only the fields in `patch` change.
+ * Send only edited fields. The server preserves omitted context, including its
+ * declared service environment and BOM linkage; null explicitly clears a field.
  *
  * `annual_volume` must be a positive integer or the backend 400s (a build count
  * of 0 or negative is nonsense); we surface that error verbatim, never swallow it.
@@ -136,23 +133,10 @@ export async function declarePartProgram(
   meshHash: string,
   patch: { program?: string | null; annual_volume?: number | null }
 ): Promise<DeclaredContext> {
-  // Best-effort read of the current row so we never clobber prior declarations.
-  const existing = await getPartContext(meshHash).catch(() => null);
-  const body = {
-    program:
-      patch.program !== undefined ? patch.program : existing?.program ?? null,
-    parent_assembly: existing?.parent_assembly ?? null,
-    units_per_parent: existing?.units_per_parent ?? null,
-    annual_volume:
-      patch.annual_volume !== undefined
-        ? patch.annual_volume
-        : existing?.annual_volume ?? null,
-    service_environment: existing?.service_environment ?? null,
-  };
   const res = await fetch(`${CTX}/${encodeURIComponent(meshHash)}`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(patch),
     cache: "no-store",
   });
   if (!res.ok) throw await toError(res);

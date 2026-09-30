@@ -170,6 +170,13 @@ async def test_part_context_upsert_read_and_isolation():
         )
         assert r.status_code == 400
 
+        # Invalid JSON counts must not coerce, overflow the DB or clear 9000.
+        for value, status in ((True, 422), (1.5, 422), ("50", 422), (2_147_483_648, 400)):
+            r = await c.put(f"/api/v1/part-context/{mesh}", json={"annual_volume": value})
+            assert r.status_code == status, r.text
+        r = await c.get(f"/api/v1/part-context/{mesh}")
+        assert r.json()["annual_volume"] == 9000
+
         # --- cross-tenant isolation -----------------------------------------
         _act_as(app, uid_b)
         # org B cannot read org A's declared context for the same mesh_hash

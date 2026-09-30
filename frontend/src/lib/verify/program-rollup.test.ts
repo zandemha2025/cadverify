@@ -18,12 +18,21 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   applyPortfolioDelta,
+  parseAnnualVolume,
   declaredPrograms,
   rowsInProgram,
   type Portfolio,
   type PortfolioRow,
   type PortfolioDelta,
 } from "./program-rollup.ts";
+
+test("annual volume preserves whole counts and distinguishes clearing from invalid input", () => {
+  for (const text of ["", "  "]) assert.equal(parseAnnualVolume(text), null);
+  for (const text of ["1", " 50 ", "2147483647"]) assert.equal(parseAnnualVolume(text), Number(text));
+  for (const text of ["0", "-5", "1.5", "1e3", "1,000", "abc", "2147483648", "9007199254740993"]) {
+    assert.equal(parseAnnualVolume(text), undefined, text);
+  }
+});
 
 function row(over: Partial<PortfolioRow> = {}): PortfolioRow {
   return {
