@@ -320,3 +320,6 @@ Turning-axis follow-up141 fixes rotation-dependent lathe stock, routing and enve
 
 
 Curved-profile follow-up142 adds measured revolution evidence for true ellipsoid/torus/profile meshes and preserves negative controls. Native actual STEP replays now offer turning with correct axes and retained source hashes; six DFM-ready estimates per new record and immutable old results pass.13focused/2569full backend tests,3documented skips; no new type/security findings. Engine0.3.18, not deployed; CI36764251477 excludes141/142. Evidence142-curved-profile-proof.json. General geometry/shop accuracy remains open, including the observed hull-based turning material-mass calculation.
+
+
+CI36764251477 completed on027d493 through140: all eight non-image jobs pass, including the full browser chain. Both actual-image runtime probes pass; only the backend image security scan fails, with the five remaining HIGH package findings. This run excludes141/142. See `ci-36764251477-summary.json`; fresh exact-head CI is still required.

@@ -1204,3 +1204,6 @@ Security recheck2026-09-30: Debian still lists stable Expat/X11/Xrender packages
 -13focused checks,2569backend tests/3documented environment skips in218.09s, protected skip policy enforced; types214errors/3warnings with zero new diagnostics; Bandit0medium/high. The true STEP parser/receipt control script passes. Frontend unchanged. Local API and worker refreshed; current CI36764251477 excludes141/142. No deployment.
 - Evidence: `142-curved-profile-proof.json`, two retained source STEP files, runnable `142-curved-step-controls.py`, selected native receipts and five native screenshots. This is a bounded2%mesh check, not exact B-rep/tolerance or general manufacturing certification. Fourfold lobes, boxes, triaxial ellipsoids and an icosahedron remain rejected.
 - Cost follow-up remains open: the saved turning material driver uses hull volume while machine time uses the enclosing cylinder. Investigate the shared stock-mass calculation next; these prices are not validated quotes.
+
+
+CI36764251477 completed on027d493 through140: all eight non-image jobs pass, including the full browser chain. Both actual-image runtime probes pass; only the backend image security scan fails, with the five remaining HIGH package findings. This run excludes141/142. See `ci-36764251477-summary.json`; fresh exact-head CI is still required.
