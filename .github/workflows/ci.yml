@@ -577,7 +577,7 @@ jobs:
           container=$(docker run --detach --publish 127.0.0.1::3000 "proofshape-ci/frontend:${GITHUB_SHA}")
           trap 'docker logs "$container"; docker rm -f "$container" >/dev/null' EXIT
           port=$(docker port "$container" 3000/tcp | awk -F: 'NR == 1 {print $NF}')
-          curl --fail --silent --show-error --retry 30 --retry-connrefused \
+          curl --fail --silent --show-error --retry 30 --retry-all-errors \
             --retry-delay 1 --retry-max-time 60 --max-time 3 \
             "http://127.0.0.1:${port}/opengraph-image" \
             --output outputs/security-proof/frontend-share.png

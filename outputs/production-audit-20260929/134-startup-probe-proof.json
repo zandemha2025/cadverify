@@ -1,0 +1,11 @@
+{
+  "finding": "134",
+  "status": "CI probe fix verified with real local TCP reset; actual image rerun pending",
+  "first_divergence": "step2, expected the bounded startup GET to retry a transient connection reset, state was curl exit56 on the first request 209ms after starting the container",
+  "ci_run": 36752779298,
+  "fix": "Replace --retry-connrefused with --retry-all-errors on this idempotent GET. Keep30 retries,1-second delay,60-second retry window,3-second attempt limit, HTTP failure and PNG1200x630 assertions.",
+  "regression": "Existing enterprise-ops test runs the exact YAML curl command against a local HTTP server that resets its first connection and returns ready on the second.",
+  "red": "exit56 Recv failure: Connection reset by peer",
+  "green": "13 enterprise-ops checks pass; exactly2 requests and final output exactlyready",
+  "limits": "No actual frontend image runtime success claim yet; Docker unavailable locally. No app/runtime/security-gate change."
+}
