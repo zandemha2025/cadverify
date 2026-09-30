@@ -66,9 +66,23 @@ async function toError(res: Response): Promise<Error> {
 }
 
 export async function listMachines(): Promise<MachineListPage> {
-  const res = await fetch(BASE, { cache: "no-store" });
-  if (!res.ok) throw await toError(res);
-  return res.json();
+  // All three callers use this as the complete declared floor, not one page.
+  // ponytail: loads inventory in memory; use paginated UI/server summaries if fleets outgrow it.
+  const machines: OwnedMachine[] = [];
+  const seen = new Set<string>();
+  let cursor: string | null = null;
+  do {
+    const res = await fetch(cursor ? `${BASE}?cursor=${encodeURIComponent(cursor)}` : BASE, { cache: "no-store" });
+    if (!res.ok) throw await toError(res);
+    const page: MachineListPage = await res.json();
+    machines.push(...page.machines);
+    cursor = page.next_cursor;
+    if (cursor) {
+      if (seen.has(cursor)) throw new Error("Machine inventory pagination stalled. Retry loading your inventory.");
+      seen.add(cursor);
+    }
+  } while (cursor);
+  return { machines, next_cursor: null };
 }
 
 export async function getMachine(id: string): Promise<OwnedMachine> {

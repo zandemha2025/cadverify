@@ -855,3 +855,14 @@ first divergence: step2, expected two valid machine rows to save with the overfl
 - Native same-file retry imports2/skips1 of3 and identifies line3's count limit. Both valid rows survive reload and independent PostgreSQL readback with their exact counts/rates. A rejected-only file adds0 machines and reports all3 errors for infinite rate, malformed motion mode and NaN envelope. The prior inventory remains present; the two clearly named Audit104 controls remain in local QA inventory.
 - Three behavior regressions fail before the fix; real PostgreSQL proves a storage-rejected row preserves the valid rows before and after it without exposing SQL/driver internals. Full2458 backend tests pass with3 documented local corpus/OCP-XDE skips;46 focused tests pass after the final finite-number wording. Types215/228 add zero diagnostic messages, changed-source Bandit has no medium/high findings. Frontend is unchanged from495 passing tests/types/lint/build.
 - Evidence: `104-machine-import-proof.json`, two CSV controls,104 native screenshots and `test_machine_inventory.py`. Local only; exact-head CI and production retest remain required. The existing CI36718240878 is still running the prior pushed103 head and does not include104.
+
+
+## 105 — Machine inventories stop at the first 100 records
+
+first divergence: step3, expected all101 stored machines after the successful97-row import, state was100 visible cards and the final imported machine absent.
+
+- Severity: medium — the shared inventory client discarded the API cursor, so the Machines screen, Home counts and Verify ownership list saw only the first page. Backend cost evaluation already loaded the complete inventory.
+- Fix: follow the existing cursor in the shared client and return the complete list to all three callers. Encode cursors, reject any page failure instead of presenting a partial inventory, and refuse repeated cursors. No new dependency or backend change; an explicit ponytail comment records the in-memory fleet-size ceiling.
+- Native proof uses101 actual local PostgreSQL records. Before:100 cards ending in temporary096. After:101 cards, Home shows101 machines, and formerly hidden temporary097 opens its correct detail. The97 temporary fixtures were backed up then removed by exact IDs/org; the original four rows match their pre-test hash exactly. Reloaded Home and Machines both show4 and no temporary names remain.
+- One runnable behavior test fails before the fix and passes after, covering complete reads, cursor encoding, a second-page503 and a repeated cursor. All496 frontend tests, types, changed-source lint and production build pass. Backend remains at104's2458 passing tests with3 documented local skips.
+- Evidence: `105-machine-pages-proof.json`, `105-machine-pages-cleanup.json`, the97-row CSV, and before/after/detail/count screenshots. Local only; production and external-workflow proof remain open.
