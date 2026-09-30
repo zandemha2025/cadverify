@@ -138,6 +138,24 @@ def test_interpret_is_analyst_only_and_returns_reviewable_plan():
     assert forbidden.status_code == 403
 
 
+def test_interpret_overflow_returns_serializable_validation_instead_of_server_error():
+    huge = "9" * 310
+    client = TestClient(_app())
+    for prompt in (
+        f"plate width {huge} mm, depth 50 mm, thickness 6 mm",
+        f"{huge} x 50 x 6 mm plate",
+        f"L bracket 80 x 50 x {huge} x 4 mm",
+        f"open enclosure 80 x 50 x 40 x {huge} mm",
+        f"plate width {huge} mm",
+    ):
+        response = client.post("/api/v1/designs/interpret", json={"prompt": prompt})
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "needs_input"
+        assert "plan" not in body
+        assert body["missing_fields"]
+
+
 def test_viewer_cannot_generate(monkeypatch):
     from src.api import designs
 

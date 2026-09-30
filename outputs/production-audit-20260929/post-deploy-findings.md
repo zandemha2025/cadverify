@@ -1149,3 +1149,12 @@ CI36752779298 is terminal: all eight non-image jobs passed, including the comple
 - Minimal fix: one shared pre-extraction guard returns the existing needs-input response with empty prefill/no plan and asks for plain decimal millimetres. This adds no expression evaluator or additional generation syntax.
 - Nine failing regression cases now pass;43focused interpreter/API/generator checks pass. Native exponent/fraction refusals and explicit800×50×1.5mm correction pass. Type diagnostics remain214errors/3warnings with zero additions; changed-source Bandit has0medium/high. Full backend2556pass/3documented skips in216.07s with skip policy enforced.
 - Evidence: `137-design-notation-proof.json` and five native screenshots. Local only; arbitrary-language and manufacturing/pricing accuracy remain open.
+
+
+## 138 — Oversized dimensions crashed response serialization and retained an old success message
+
+- Native reproduction: after a successful interpretation, a310-digit width caused the design service error while the earlier Safe dimensions extracted message stayed visible. The actual API traceback and one failing HTTP regression identify JSON serialization of infinity as the server cause.
+- Minimal fix: filter non-finite values at the shared prefill dictionary, allowing existing missing-field validation to request a valid replacement. Clear the previous interpretation message at the start of the next request. Inputs and ordinary retry behavior remain intact.
+- Native GREEN first exercised the rebuilt frontend against the still-running old API: the same real500 no longer retained the success message. After the API restart, the oversized input produced a needs-width notice; corrected80×50×6mm returned exact values and ready status. No geometry was generated.
+- One real HTTP test covers five overflow extraction paths;44focused checks pass.499frontend tests/types/changed-file lint/build pass. Backend types remain214errors/3warnings with zero new diagnostics; Bandit0medium/high. Full backend2557pass/3documented environment skips in212.84s, skip policy enforced.
+- Evidence: `138-design-overflow-proof.json`, four screenshots and the added native assertion in `scripts/e2e/design-recovery-validation.mjs`. Not deployed.

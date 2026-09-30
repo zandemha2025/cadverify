@@ -347,6 +347,7 @@ export default function DesignsPage() {
 
   const interpret = async () => {
     if (!canMutate) return;
+    setInterpretation(null);
     if (!description.trim()) {
       setError("Describe the starting shape and its dimensions first.");
       return;

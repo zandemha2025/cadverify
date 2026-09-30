@@ -21,3 +21,11 @@ export async function assertDesignComparisonIdle(page, designName) {
   assert.doesNotMatch(snapshot, /BEFORE|AFTER|Plan changes|Generated geometry changes|outage/);
   assert.equal(await page.playwright.getByRole("button", { name: "Compare", exact: true }).isEnabled(), true);
 }
+
+export async function assertDesignInterpretationFailure(page) {
+  const alerts = await page.playwright.getByRole("alert").allTextContents({});
+  assert.match(alerts.join("\n"), /could not finish|unavailable|fetch|connect/i);
+  const statuses = await page.playwright.getByRole("status").allTextContents({});
+  assert.doesNotMatch(statuses.join("\n"), /Safe dimensions extracted/);
+  assert.equal(await page.playwright.getByRole("button", { name: "Interpret safely", exact: true }).isEnabled(), true);
+}

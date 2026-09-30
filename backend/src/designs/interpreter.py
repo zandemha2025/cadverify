@@ -7,6 +7,7 @@ result before the ordinary create/revision endpoint can persist or generate it.
 """
 from __future__ import annotations
 
+import math
 import re
 from typing import Any, cast
 
@@ -138,7 +139,7 @@ def interpret_design_prompt(raw_prompt: str) -> dict[str, Any]:
             "thickness_mm": thickness,
             "wall_thickness_mm": wall,
         }.items()
-        if value is not None
+        if value is not None and math.isfinite(value)
     }
     required = {
         "plate": ("width_mm", "depth_mm", "thickness_mm"),
