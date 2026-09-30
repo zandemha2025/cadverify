@@ -4,7 +4,7 @@ The rollout is not complete. This branch isolates applicable fixes from the acti
 
 ## Scope and coordination
 
-- Base: PR #107 at `772f3b56233789b036dba1f16c0bc77613043db1`.
+- Initial base: PR #107 at `772f3b56233789b036dba1f16c0bc77613043db1`. Before combined verification, this branch was rebased without conflicts onto the audit's published BOM-demand fix `bc86ac08d4120def08ca8293339c9c2eabe3ddd3`.
 - Worktree: `/Users/nazeem/.codex/worktrees/1dfc/cadverify`; branch `codex/rollout-readiness-20260930`.
 - The active audit chat retains its BOM demand, portfolio, part-context, Verify/Programs, and production audit work. Its working files, processes, database and branch were not changed here. The user authorized direct coordination; lane ownership was sent to that chat.
 - Parallel ownership: container security evidence; SAP read/preview contract; manufacturing-process calibration evidence. This report tracks the remaining service/release work.
@@ -35,6 +35,8 @@ Before rollout: integrate the parallel changes with the active audit's latest wo
 
 ## Local checks
 
-At the upstream baseline, isolated identity/connector/release tests passed122 with one explicit PostgreSQL-dependent OIDC test skipped;14 release-evidence runner checks passed. The later combined run below must supersede this limited baseline for changed code. Details: [baseline-checks.json](baseline-checks.json).
+At the upstream baseline, isolated identity/connector/release tests passed122 with one explicit PostgreSQL-dependent OIDC test skipped;14 release-evidence runner checks passed. The combined verification receipt supersedes this limited baseline for changed code. Details: [baseline-checks.json](baseline-checks.json).
 
-Final change-specific results and review are recorded in [accuracy.md](accuracy.md) and [sap.md](sap.md), with the combined verification receipt added after the parallel work finishes. No local result is a claim that the branch is live or that real suppliers have validated its estimates.
+Final change-specific results and review are recorded in [accuracy.md](accuracy.md) and [sap.md](sap.md), with the combined verification recorded in [verification.json](verification.json). Independent review found two calibration compatibility issues (legacy residual centers and synthetic-only correction leakage); both were fixed and covered by regressions. Follow-up review found no remaining actionable issue in that scope or in the SAP preview contract. Review does not establish actual-tenant compatibility. No local result is a claim that the branch is live or that real suppliers have validated its estimates.
+
+Combined verification: **2,617 backend tests passed** with only the three protected-policy skips (missing real-corpus manifest and two unavailable OCP XDE tests); **65 final focused tests passed** after the two invariant assertions, **500 frontend tests passed**, frontend TypeScript/production build and 14 release-evidence checks passed. Changed-file lint, medium/high Bandit, route auth and the existing backend type baseline passed. The backend still has214 pre-existing type errors; no new changed-code diagnostic remains. Native SAP browser/account success is not claimed.
