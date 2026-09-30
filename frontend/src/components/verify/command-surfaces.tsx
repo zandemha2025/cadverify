@@ -5,6 +5,7 @@ import * as React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { C, MONO } from "@/lib/verify/tokens";
 import { useToast } from "./toast";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 function CommandPill({ label }: { label: string }) {
   return (
@@ -48,11 +49,8 @@ export function CommandPalette({
   const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
   const toast = useToast();
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
 
   const all: PaletteCmd[] = useMemo(() => {
     const go = (s: string) => () => {
@@ -102,7 +100,7 @@ export function CommandPalette({
     setActive(0);
   }, [q]);
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setActive((a) => Math.min(filtered.length - 1, a + 1));
@@ -113,16 +111,29 @@ export function CommandPalette({
       e.preventDefault();
       filtered[active]?.run();
     }
-    // Esc bubbles to the shell's global keydown handler, which closes the palette.
+    // The shared dialog handles Escape and restores focus.
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(23,24,26,0.35)", display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: 120 }} onClick={onClose}>
-      <div
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={onKeyDown}
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent
+        hideClose
+        className="top-[120px] block -translate-y-0 p-0"
+        onOpenAutoFocus={(event) => {
+          returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          event.preventDefault();
+          inputRef.current?.focus();
+        }}
+        onCloseAutoFocus={(event) => {
+          if (returnFocusRef.current?.isConnected) {
+            event.preventDefault();
+            returnFocusRef.current.focus();
+          }
+        }}
         style={{ width: 520, maxWidth: "90%", background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 16, boxShadow: "0 18px 50px -18px rgba(23,24,26,0.35)", overflow: "hidden", animation: "vscreenIn 200ms cubic-bezier(0.2,0,0,1) both" }}
       >
+        <DialogTitle className="sr-only">Verify command palette</DialogTitle>
+        <DialogDescription className="sr-only">Search workspace actions. Use arrow keys and Enter to choose, or Escape to return.</DialogDescription>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 16px", borderBottom: `1px solid ${C.hair}` }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.ink45} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="7" />
@@ -130,6 +141,7 @@ export function CommandPalette({
           </svg>
           <input
             ref={inputRef}
+            onKeyDown={onKeyDown}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             aria-label="Command palette search"
@@ -168,8 +180,8 @@ export function CommandPalette({
           <CommandPill label="JUMP · ACTION · GUIDE" />
           <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink45 }}>the sample computes real engine output; guides open real org state</span>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -64,7 +64,7 @@ const HOTKEY_NAV: Record<string, Screen> = {
   c: "calibration",
 };
 
-type Screen = WorkspaceScreen | "part" | "program" | "context-fit" | "acquisition" | "palette";
+type Screen = WorkspaceScreen | "part" | "program" | "context-fit" | "acquisition";
 
 const RAIL: { key: Screen; label: string; d: string }[] = [
   { key: "home", label: "Home", d: "M3 10.5 12 3l9 7.5M5 9v11h14V9" },
@@ -119,6 +119,7 @@ export function VerifyApp({
   const [assemblyAnalysis, setAssemblyAnalysis] = useState<AssemblyAnalysis | null>(null);
   const [assemblyAnalyzing, setAssemblyAnalyzing] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   // A declared machine rate is USER evidence; only an effective governed card
   // establishes this SHOP indicator. null means the context is unconfirmed.
   const [ratesBound, setRatesBound] = useState<boolean | null>(null);
@@ -156,6 +157,8 @@ export function VerifyApp({
   }, []);
 
   const nav = useCallback((s: string) => {
+    if (s === "palette") return setPaletteOpen(true);
+    setPaletteOpen(false);
     if (s !== "compare") setSelectedComparisonRecord(null);
     if (s !== "verify") {
       ++guidedRunSeq.current;
@@ -163,7 +166,6 @@ export function VerifyApp({
       setGuidedSummaryOpen(false);
     }
     if (s === "acquisition") return setScreen("acquisition");
-    if (s === "palette") return setScreen("palette");
     setScreen(s as Screen);
   }, []);
 
@@ -551,22 +553,19 @@ export function VerifyApp({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [materialClass]);
 
-  // hotkeys — ⌘K palette · H/V/P/R/G/M/T/C nav · ? shortcuts · Esc closes all
+  // AppShell owns ⌘K and delegates to this workspace's command trigger.
+  // Local hotkeys: H/V/P/R/G/M/T/C nav, ? shortcuts, Esc closes overlays.
   // (matches the design's keydown handler in support.js). Typing in a field never
   // triggers nav; modifier chords other than ⌘K are left to the browser.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const tag = ((e.target as HTMLElement | null)?.tagName ?? "").toLowerCase();
+      const element = e.target as HTMLElement | null;
+      if (e.defaultPrevented || element?.closest?.('[role="dialog"]')) return;
+      const tag = (element?.tagName ?? "").toLowerCase();
       const typing = tag === "input" || tag === "textarea" || tag === "select";
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setShortcutsOpen(false);
-        setScreen((s) => (s === "palette" ? "home" : "palette"));
-        return;
-      }
       if (e.key === "Escape") {
         setShortcutsOpen(false);
-        setScreen((s) => (s === "palette" || s === "acquisition" ? "verify" : s));
+        setScreen((s) => (s === "acquisition" ? "verify" : s));
         return;
       }
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -726,7 +725,7 @@ export function VerifyApp({
           >
             Start here
           </button>
-          <button className="cv-verify-command-button" type="button" onClick={() => setScreen("palette")} title="Verify commands (⌘K)" aria-label="Open Verify command palette" style={{ display: "inline-flex", alignItems: "center", gap: 6, minHeight: 36, border: `1px solid ${C.hair}`, background: "#fff", borderRadius: 999, padding: "7px 12px", fontFamily: MONO, fontSize: 11, color: C.ink55, cursor: "pointer" }}>Jump <span aria-hidden>⌘K</span></button>
+          <button className="cv-verify-command-button" type="button" data-workspace-command-trigger onClick={() => { setShortcutsOpen(false); setPaletteOpen((open) => !open); }} title="Verify commands (⌘K)" aria-label="Open Verify command palette" style={{ display: "inline-flex", alignItems: "center", gap: 6, minHeight: 36, border: `1px solid ${C.hair}`, background: "#fff", borderRadius: 999, padding: "7px 12px", fontFamily: MONO, fontSize: 11, color: C.ink55, cursor: "pointer" }}>Jump <span aria-hidden>⌘K</span></button>
           <button className="cv-verify-primary-action" type="button" onClick={pickOwnFile} style={{ minHeight: 36, background: C.ink, color: "#fff", border: "none", borderRadius: 999, padding: "8px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>Check my CAD</button>
         </div>
       </nav>
@@ -918,13 +917,13 @@ export function VerifyApp({
       </div>
 
       {screen === "acquisition" && <AcquisitionModal onClose={() => setScreen("verify")} result={result} nav={nav} />}
-      {screen === "palette" && (
+      {paletteOpen && (
         <CommandPalette
-          onClose={() => setScreen("home")}
+          onClose={() => setPaletteOpen(false)}
           nav={nav}
           onVerify={pickOwnFile}
           onSample={startGuidedSample}
-          onShortcuts={() => { setScreen("home"); setShortcutsOpen(true); }}
+          onShortcuts={() => { setPaletteOpen(false); setShortcutsOpen(true); }}
         />
       )}
       {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}

@@ -1129,3 +1129,14 @@ The [official Xorg archive](https://xorg.freedesktop.org/archive/individual/lib/
 - The shared unit guard used word boundaries, which fail between digits and unit letters and after the period in “in.”. Replace that single regex with alphabetic unit boundaries. Reuse the existing conversion notice, empty prefill and no-plan response; no automatic conversion or new parser.
 - Seven new unit cases reproduce RED. All34focused interpreter/API/generator checks pass, including supported mm wording. Native “in.” and attached “cm” now request conversion; explicit508×381×25.4mm fills exact values, independently equal to20×15×1in multiplied by25.4. These are prefill checks, not a new geometry-generation claim.
 - Full backend:2547pass,3documented environment skips,222.14s with skip policy enforced. Types214errors/3warnings,0new messages; changed-source Bandit0medium/high. Frontend unchanged from133's499tests/types/lint/build. Local API refreshed. Evidence:`135-design-unit-prompt-proof.json` and4native screenshots. Not deployed; known spellings do not prove arbitrary natural-language units or numeric notation.
+
+
+## 136 — Command menus collide, lose workspace context and activate the wrong keyboard command
+
+- Severity: medium navigation/accessibility defect. Native Meta+K opened both palettes; closing a menu opened from Your machines instead showed Verify. A letter key on a menu button navigated the background workspace. Shift+Tab to Keyboard shortcuts and Enter incorrectly opened Design Studio.
+- Root causes: two global chord handlers, palette represented as a workspace screen, modal events reaching workspace shortcuts, and a container Enter handler overriding native button activation.
+- Fix: use one chord owner and the existing workspace trigger; keep the workspace mounted beneath a separate palette state. Reuse the installed shared Dialog, guard background shortcuts and handle custom Arrow/Enter selection only on the search input. No new dependency.
+- Native verification: single focused menu with Meta/Ctrl+K, toggling/Escape with correct return focus and workspace, focus containment, button Enter, empty search, mixed-case selection and the global menu outside Verify pass. The smallest runnable assertions extend the existing `scripts/e2e/command-focus-validation.mjs`; before/after proof and screenshots are in `136-command-navigation-proof.json`.
+- Validation: 499 frontend tests, TypeScript, changed-file lint and production build pass. Local only; remaining destination/shortcut-sheet/responsive branches and production verification are open.
+
+CI36752779298 is terminal: all eight non-image jobs passed, including the complete browser chain. The image job failed on the five remaining backend HIGH findings and the initial frontend TCP-reset probe. Finding134 corrects the latter retry behavior; actual rebuilt-image proof remains pending. Receipt: `ci-36752779298-summary.json`.

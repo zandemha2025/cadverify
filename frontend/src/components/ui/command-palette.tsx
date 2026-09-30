@@ -110,14 +110,20 @@ export function CommandPaletteProvider({
   // ⌘K / Ctrl-K anywhere summons the palette; Esc is handled by Radix.
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
+        const workspaceTrigger = !open && document.querySelector<HTMLButtonElement>("[data-workspace-command-trigger]");
+        if (workspaceTrigger) {
+          workspaceTrigger.click();
+          return;
+        }
         setOpen((o) => !o);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [open]);
 
   const openPalette = React.useCallback(() => setOpen(true), []);
 
