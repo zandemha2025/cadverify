@@ -45,6 +45,7 @@ from src.auth.validation_caps import enforce_validation_caps
 from src.auth.rate_limit import limiter
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser, require_api_key
+from src.costing.units import mesh_source_units
 from src.db.engine import get_db_session
 from src.fixes.fix_suggester import get_priority_fixes
 from src.parsers import mesh_cache, parse_pool
@@ -764,7 +765,7 @@ async def validate_file(
         description=(
             "Declared STL source units: mm|inch (unset => mm). STL stores no "
             "unit metadata; inch scales the mesh ×25.4 into mm exactly once "
-            "before geometry and DFM analysis."
+            "before geometry and DFM analysis. STEP/IGES use their embedded units."
         ),
     ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
@@ -1042,7 +1043,7 @@ async def validate_preview_mesh(
     mesh, suffix = await _parse_mesh_async(data, file.filename or "upload")
     from src.costing.units import scale_mesh_to_mm
 
-    mesh = scale_mesh_to_mm(mesh, units)
+    mesh = scale_mesh_to_mm(mesh, mesh_source_units(file.filename or "upload", units))
     try:
         glb, original_faces, preview_faces, decimated, face_hash = _build_preview_glb(
             mesh, file.filename or "upload", for_analysis=purpose == "analysis"
@@ -1531,15 +1532,16 @@ async def _run_cost_decision(
         )
     effective_region = region or "US"
     # units: None => unset (DEFAULT mm, byte-identical, silent as it always was); a
-    # supplied value must be a known source unit and is treated USER. The DECLARATION
-    # is what drives the exactly-once mm rescale at the parse seam below.
+    # supplied value must be a known source unit and is treated USER for STL.
+    # STEP/IGES parsers already use embedded units to normalize to mm.
     units_is_user = units is not None
     if units is not None and units not in _SOURCE_UNITS:
         raise HTTPException(
             status_code=400,
             detail=f"Unknown units '{units}'. Use one of {sorted(_SOURCE_UNITS)}",
         )
-    effective_units = units or "mm"
+    effective_units = mesh_source_units(file.filename or "unknown", units)
+    units_is_user = units_is_user and Path(file.filename or "").suffix.lower() == ".stl"
     # ── Shop binding: governed (DB) profile first, else the flat-file allowlist ──
     # W4 slice 2: when SHOP_LIBRARY_ENABLED and the caller's org has a PUBLISHED
     # shop profile for this slug in effect now, bind its DECLARED overrides as
@@ -2140,7 +2142,8 @@ async def validate_cost(
     ),
     units: Optional[str] = Form(
         None,
-        description="Declared CAD source units: mm|inch (unset => mm, byte-identical). "
+        description="Declared STL source units: mm|inch (unset => mm). "
+                    "STEP/IGES use their embedded units regardless of this selector. "
                     "STL/mesh files carry NO units; an inch-authored part read as mm "
                     "mis-costs by ~16,000× (×25.4³ volume). Declaring inch scales the "
                     "mesh ×25.4 into mm ONCE before geometry/DFM/cost so the whole "
@@ -2218,7 +2221,8 @@ async def validate_cost_demo(
     ),
     units: Optional[str] = Form(
         None,
-        description="Declared CAD source units: mm|inch (unset => mm, byte-identical). "
+        description="Declared STL source units: mm|inch (unset => mm). "
+                    "STEP/IGES use their embedded units regardless of this selector. "
                     "Inch-authored meshes are scaled ×25.4 into mm ONCE before costing; "
                     "otherwise an inch part read as mm mis-costs by ~16,000×.",
     ),

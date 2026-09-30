@@ -1,0 +1,53 @@
+{
+  "date": "2026-09-29",
+  "environment": "Disposable local native browser + API + CAD parser; not deployed",
+  "finding": "033",
+  "source": "backend/tests/assets/cube.step (uploaded as audit-cube.STP)",
+  "expected_dimensions_mm": [
+    20,
+    15,
+    10
+  ],
+  "before": {
+    "selected_units": "inch",
+    "dimensions_mm": [
+      508,
+      381,
+      254
+    ],
+    "volume_cm3": 44529.0,
+    "effect": "False machine-envelope failures and changed process routing",
+    "api_regression": "All three real STEP routes failed before correction: validate, cost, preview-mesh"
+  },
+  "after": {
+    "selected_units": "inch",
+    "dimensions_mm": [
+      20,
+      15,
+      10
+    ],
+    "volume_cm3_display": 2.7,
+    "browser_preview_state": "ready",
+    "format_policy": "Only unitless STL uses the selector; STEP/IGES parsers honor embedded units",
+    "iges_control": "Real gmsh-generated 20 mm IGES cube uploaded as .IGS with units=inch remains 20x20x20 mm",
+    "version": "0.3.4"
+  },
+  "validation": {
+    "related_backend_tests": 88,
+    "frontend_tests": 484,
+    "typescript": "pass",
+    "changed_file_eslint": "pass",
+    "production_build": "pass",
+    "pyright_baseline": {
+      "errors": 220,
+      "allowed": 228
+    },
+    "bandit_medium_high": 0,
+    "bandit_preexisting_low": 2
+  },
+  "limitations": [
+    "Not production proof",
+    "STL remains unitless; heuristic inference cannot establish authored units",
+    "Historical analysis rows preserved; new engine revision forces recalculation"
+  ]
+}

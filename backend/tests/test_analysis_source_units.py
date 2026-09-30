@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib
+import io
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -111,3 +113,27 @@ def test_validate_keeps_fractional_metric_control_unflagged(client, stl_bytes_of
     response = _post(client, data)
     assert response.status_code == 200, response.text
     assert "unit_detection" not in response.json()["geometry"]
+
+
+@pytest.mark.parametrize("endpoint", ["validate", "validate/cost", "validate/preview-mesh"])
+def test_step_embedded_units_are_not_scaled_again(client, endpoint):
+    """The STL unit selector must not reinterpret already-normalized STEP CAD."""
+    import trimesh
+
+    data = (Path(__file__).parent / "assets" / "cube.step").read_bytes()
+    response = client.post(
+        f"/api/v1/{endpoint}?units=inch&processes=fdm&purpose=analysis",
+        files={"file": ("block.STP", data, "application/octet-stream")},
+        data={"units": "inch", "qty": "50"},
+    )
+    assert response.status_code == 200, response.text
+    if endpoint.endswith("preview-mesh"):
+        scene = trimesh.load(io.BytesIO(response.content), file_type="glb", process=False)
+        dimensions = next(iter(scene.geometry.values())).extents
+    elif endpoint.endswith("cost"):
+        dimensions = response.json()["geometry"]["bbox_mm"]
+        assert not any(a["name"] == "source_units" for a in response.json()["assumptions"])
+    else:
+        dimensions = response.json()["geometry"]["bounding_box_mm"]
+        assert "source_units" not in response.json()
+    assert list(dimensions) == pytest.approx([20, 15, 10], abs=1e-4)

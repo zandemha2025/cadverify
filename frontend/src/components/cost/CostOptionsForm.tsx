@@ -133,7 +133,7 @@ export function CostOptionsForm({
 
       <Field
         label="CAD source units"
-        hint="STL files do not store units. Choose how their coordinates were authored; all results are normalized to mm."
+        hint="Applies only to unitless STL coordinates. STEP and IGES use their embedded units. All results are normalized to mm."
       >
         <Select
           value={opts.units}

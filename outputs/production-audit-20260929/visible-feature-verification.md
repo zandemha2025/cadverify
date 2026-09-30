@@ -26,7 +26,7 @@ Production is Render, currently `09555c1`. The subsequent audit branch has not b
 | Casting corner warnings | Live smooth-bore false positive; corrected local coarse/fine controls | Deploy and expand representative cast geometry |
 | Flat feature detection | Fixed locally: real STEP now has six planes + one bore (026) | Deploy and extend non-cylindrical/freeform controls |
 | Remaining DFM process checks and suitability | Existing tests/trap corpus; bounded known-part evidence | Independent accuracy cases for every visible check and score |
-| Source units and scale warnings | Explicit mm/inch analysis tests; known automatic-inference gap | Resolve inference limitation honestly and verify UI switching |
+| Source units and scale warnings | Fixed STEP/IGES double scaling across DFM/cost/preview (033); real browser STEP remains 20×15×10 mm with inches selected. Explicit STL conversion regressions pass | Deploy; unitless STL inference/confirmation and canonical calibration-source unit identity remain open |
 | Should-cost quantities/material/region/shop choices | Live computation and prior CI | Compare every changed input with independent expected calculations |
 | Price assumptions, markup, overhead and driver math | Prior audit corrections deployed; CI formula checks | Broader independent examples and calibrated shop data |
 | Real quote accuracy and confidence | UI identifies generic/default, unvalidated estimates | Actual authorized quote/actual datasets and out-of-sample validation |
@@ -46,7 +46,7 @@ Production is Render, currently `09555c1`. The subsequent audit branch has not b
 | Connector credential probe | Actual bounded authenticated product read; DNS/IP pinning, TLS, redaction and actionable failure tests pass locally. Browser save/test-failure/revoke passes for both vendors | Deploy, configure encrypted storage (028), and verify actual authorized vendor success. No real-tenant success is claimed |
 | Machine inventory, rates and calibration | Prior enterprise CI | Live declared records, approval rules, persistence and cost effects |
 | Parts/programs/portfolio views | Prior CI bounded math and navigation | Real record editing, filtering and aggregate reconciliation |
-| Design Studio generation/edit/version/STEP export | Prior CI 15-step flow and 12 evidence contracts | Production generation, geometric accuracy, retries and exported CAD |
+| Design Studio generation/edit/version/STEP export | CI passes 14 steps and all 12 evidence contracts; mobile readiness race fixed (034). Local real plate renders at 390 px without overflow | Fresh CI, production generation/geometry/retry/export; local Chrome direct STEP download blocked after HTTP 200 |
 | Reconstruction and labeling | Production health reports reconstruction backend unavailable | Inspect visible availability and configure/verify actual inference |
 | Search, navigation, notifications and theme | Prior journeys; navigation fix deployed | All menu branches, search results and notification actions |
 | Responsive/accessibility behavior | Prior 20 local cases; two Render pages checked at 390 px | Remaining functional pages, keyboard/focus and dialog flows |

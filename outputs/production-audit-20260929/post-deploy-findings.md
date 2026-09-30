@@ -172,3 +172,21 @@ first divergence: step 2, expected the advertised concurrency range to start a r
 - Regression: the runnable CUA boundary check failed against max=100, then passed after the production rebuild; values 13/-1 clamp to 12/1 and valid 2 remains. All 484 frontend tests, typecheck, changed-file lint and production build pass.
 - Real native-browser/worker proof: a mixed ZIP completed two valid CAD files, failed the malformed STL with a useful message, and explicitly skipped an unsupported-extension sentinel. Its downloaded CSV matches all four rows. A corrected ZIP plus CSV manifest completed all three files with the requested priorities/processes; saved cube/block dimensions and 1 cm³ volumes match independent input geometry. Cancelling a 20-file STEP batch retained three completed results and skipped 17 queued files; the terminal state survived reload and the worker queue drained. See `batch-regression.json` and `032-batch-corrected-result-local.png`.
 - Boundary: local actual CAD/worker proof, not production. The `.sldprt` sentinel proves extension rejection only, not parsing or conversion of a real SolidWorks file. Real storage/webhook and production checks remain open.
+
+## 033 — The STL unit selector double-scales STEP/IGES geometry
+
+first divergence: step 2, expected a real 20×15×10 mm STEP to retain its embedded units with the source selector set to inches, state was 508×381×254 mm and 44,529 cm³, with false machine-envelope failures and changed process routing.
+
+- Severity: high measurement/cost accuracy issue. STEP/IGES parsing already normalizes embedded units into mm; analysis, should-cost and preview then applied the STL-only ×25.4 conversion a second time.
+- Fix: one shared file-aware unit policy feeds all three entry points and their cache/persistence identity. Only STL uses the explicit declaration. Correct the form hint/API descriptions and bump engine version to 0.3.4 so new uploads cannot reuse old scaled results. Historical evidence remains intact.
+- Regression: real uppercase STP requests failed across analysis, cost and decoded GLB preview before the fix, then returned 20×15×10 mm. A real gmsh-generated IGES cube uploaded as `.IGS` with inches selected retains its embedded 20×20×20 mm dimensions. Existing STL mm/inch scaling and persistence checks still pass. All 88 related backend checks pass, as do 484 frontend tests, typecheck, changed-file lint and build. Pyright stays 220 against 228 allowed; Bandit has no medium/high findings (two preexisting low findings).
+- Native Chrome repeated the exact source/selector combination: corrected 20×15×10 mm, 2.7 cm³, successful rendered preview and restored small-part routing. See `unit-aware-regression.json` and `033-step-units-fixed-local.png`. Not deployed; unitless-STL inference and calibrated price accuracy remain separate open gates.
+
+## 034 — Design Studio mobile CI checks before preview readiness
+
+first divergence: step 15, expected to assess the generated design after its asynchronous preview loaded, state was an immediate canvas/fallback count assertion while the actual preview request was still loading.
+
+- Severity: test reliability issue. Run 36644799499 passed eight jobs, all 54 human steps, 14 Design Studio steps and all 12 structured design evidence contracts; the final mobile assertion failed before waiting for a terminal preview state.
+- Fix: wait up to 30 seconds for either the existing rendered-preview-ready state or the explicit unavailable-WebGL message. This is stronger than merely counting a canvas element; the full gate remains enabled.
+- Verification: native Chrome generated an 80×50×6 mm plate with four 6 mm corner holes, then reloaded and selected it at 390×844. The rendered-preview-ready state appeared and document width stayed within the viewport. The three harness contract tests pass; a fresh full CI run is required. See `034-design-mobile-preview-local.png`.
+- Separate open observation: this local Chrome session blocked the direct STEP download with ERR_BLOCKED_BY_CLIENT after the backend served HTTP 200. No browser protection was bypassed and no local downloaded-file success is claimed. The CI revision-download evidence passed; the local browser-specific failure still needs diagnosis.

@@ -33,6 +33,7 @@ from src.analysis.models import AnalysisResult, ProcessType, Severity
 from src.analysis.processes import get_analyzer
 from src.analysis.rules import get_rule_pack
 from src.auth.require_api_key import AuthedUser
+from src.costing.units import mesh_source_units
 from src.db.models import Analysis, UsageEvent
 from src.fixes.fix_suggester import enhance_suggestions, get_priority_fixes
 from src.matcher.profile_matcher import rank_processes, score_process
@@ -456,9 +457,7 @@ async def run_analysis(
     # Keep that interpretation in the cache key or an earlier mm result can be
     # returned as a plausible-looking but 25.4×-too-small analysis. Explicit mm
     # remains byte/cache-identical to the historical unset default.
-    effective_units = source_units or "mm"
-    if effective_units not in {"mm", "inch"}:
-        raise ValueError("source_units must be 'mm', 'inch', or None")
+    effective_units = mesh_source_units(filename, source_units)
     process_fingerprint = [p.value for p in target_processes]
     if effective_units != "mm":
         process_fingerprint.append(f"source_units={effective_units}")

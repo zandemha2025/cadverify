@@ -20,8 +20,17 @@ broken or dishonest). Two INDEPENDENT defenses live here:
 
 from __future__ import annotations
 
+from pathlib import Path
+
 SOURCE_UNITS = ("mm", "inch")
 MM_PER_INCH = 25.4
+
+
+def mesh_source_units(filename: str, declared: str | None) -> str:
+    """Only STL needs declared units; STEP/IGES parsers already normalize to mm."""
+    if declared not in (None, *SOURCE_UNITS):
+        raise ValueError("source_units must be 'mm', 'inch', or None")
+    return (declared or "mm") if Path(filename).suffix.lower() == ".stl" else "mm"
 
 # Plausibility envelope for ONE manufacturable part, in the engine's mm
 # interpretation. Deliberately GENEROUS (egregious-only): the explicit unit
