@@ -1,0 +1,43 @@
+{
+  "finding": "067",
+  "status": "PASS",
+  "oldRecord": "01M3RCF856MX3SFCSZTMDABEMP",
+  "newRecord": "01M3RD0TQ9ZHKYN4VS147DMSY7",
+  "oldUnchanged": true,
+  "oldAggregate": "makeable_outsource_only",
+  "newAggregate": "makeable_in_house",
+  "newBestMachine": "Audit CNC 065",
+  "recommendedEdmFit": "makeable_outsource_only",
+  "oldCncPrices": {
+    "1": 134.44,
+    "100": 21.83,
+    "1000": 15.12,
+    "2000": 13.64,
+    "10000": 10.78,
+    "12000": 10.5
+  },
+  "newCncPrices": {
+    "1": 134.08,
+    "100": 21.47,
+    "1000": 14.87,
+    "2000": 13.41,
+    "10000": 10.6,
+    "12000": 10.32
+  },
+  "scope": "Native real STEP submitted to local API; saved JSON read independently from Postgres. No production change.",
+  "identicalNativeRerun": {
+    "status": "PASS",
+    "record": "/cost-decisions/01M3RD0TQ9ZHKYN4VS147DMSY7"
+  },
+  "savedStanding": {
+    "status": "PASS",
+    "text": "\u2190 PARTS\naudit-cube.STP\nnist_ftc_07_asme1_rd.stp\ncube-10mm.stl\nrepaired-block.stl\n.stp\nCOSTED \u00b7 RECORD\n\naudit-cube.STP\n\ncosted \u00b7 Wire EDM \u00b7 updated 9/30/2026\n\nbbox 20.00 \u00d7 15.00 \u00d7 10.00 mm \u00b7 2.72 cm\u00b3 \u00b7 watertight \u2713 \u00b7 \u25cf MEASURED\n\nRe-verify\nCompare\n\nAudit quantity 064 \u2192 \u2014 \u2192 audit-cube.STP \u00b7 \u25cf USER \u00b7 12,000/yr declared\n\nopen program \u2192\n\nVERDICT \u00b7 OUTSOURCE ONLY \u00b7 RECORD #7DMSY7\n\nMakeable \u2014 outsource only.\n\nshould-cost route \u00b7 Wire EDM \u00b7 $110.0/unit @ qty 1\n\nassumption-based, not yet validated \u00b7 n=0\n\nHISTORY \u2014 EVERY VERIFICATION APPENDS HERE\n\n9/30/2026\nCost decision \u2014 Wire EDM \u00b7 current\nopen record \u2192\n9/30/2026\nCost decision \u2014 Wire EDM\nopen record \u2192\n9/30/2026\nCost decision \u2014 Wire EDM\nopen record \u2192\n9/30/2026\nCost decision \u2014 FDM / FFF \u00b7 crossover 4,592\nopen record \u2192\n9/29/2026\nCost decision \u2014 FDM / FFF \u00b7 crossover 4,592\nopen record \u2192\n9/29/2026\nCost decision \u2014 FDM / FFF \u00b7 crossover 4,592\nopen record \u2192\n9/29/2026\nCost decision \u2014 FDM / FFF \u00b7 crossover 4,592\nopen record \u2192\n9/29/2026\nCost decision \u2014 FDM / FFF \u00b7 crossover 923\nopen record \u2192\n9/29/2026\nCost decision \u2014 FDM / FFF \u00b7 crossover 923\nopen record \u2192\n9/29/2026\nCost decision \u2014 MJF (HP) \u00b7 crossover 4,592\nopen record \u2192\n9/29/2026\nCost decision \u2014 MJF (HP) \u00b7 crossover 4,592\nopen record \u2192\n9/29/2026\nCost decision \u2014 MJF (HP) \u00b7 crossover 4,592\nopen record \u2192\n9/29/2026\nCost decision \u2014 MJF (HP) \u00b7 crossover 2,475\nopen record \u2192\n9/29/2026\nCost decision \u2014 MJF (HP) \u00b7 crossover 4,592\nopen record \u2192\n9/29/2026\nCost decision \u2014 FDM / FFF \u00b7 crossover 3,576\nopen re"
+  },
+  "nativeJsonExport": {
+    "status": "PASS",
+    "download": "/Users/nazeem/Downloads/audit-cube-cost (13).json",
+    "allSavedReportFieldsEqual": true,
+    "additionalField": "governance",
+    "note": "Native click returned export.json HTTP 200 and wrote this file; CUA download-event wait timed out despite the successful download."
+  }
+}

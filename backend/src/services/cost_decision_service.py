@@ -73,8 +73,8 @@ def compute_params_hash(
 ) -> str:
     """SHA-256 of the canonical cost parameters.
 
-    Two cost runs on the same file with the same parameters produce the same
-    decision, so this is the second half of the (user, mesh, params) dedup key.
+    Persistence also binds the computed evidence: inventory, governed rates and
+    calibration may change even when these form parameters stay the same.
     """
     from src import __version__
 
@@ -143,12 +143,18 @@ async def persist_cost_decision(
 ) -> CostDecision:
     """Insert (or return the deduped) CostDecision row and flush to get its ulid.
 
-    Dedup key is (org_id, user_id, mesh_hash, params_hash): a repeat cost of the
-    same file with the same params returns the existing row inside one tenant,
-    while the same user may persist an independent decision in another tenant.
+    Dedup binds the form parameters AND the complete computed evidence. A new
+    inventory, rate or calibration result must not link to an older snapshot.
+    Identical evidence reuses its row inside one tenant; historical rows remain
+    immutable. Legacy parameter-only rows are retained, never rewritten.
     Delayed workers pass their parent row's immutable ``org_id`` explicitly.
     Race-safe via IntegrityError re-query (mirrors analysis_service).
     """
+    # Normalize quantity keys exactly as JSONB does before canonical sorting.
+    snapshot = json.loads(json.dumps(result_json))
+    params_hash = hashlib.sha256(json.dumps(
+        [params_hash, engine_version, snapshot], sort_keys=True, separators=(",", ":"),
+    ).encode("utf-8")).hexdigest()
     existing = await _lookup_dedup(
         session,
         user.user_id,

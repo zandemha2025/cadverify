@@ -364,6 +364,51 @@ async def _cleanup(fx):
 
 @_requires_pg
 @pytest.mark.asyncio
+async def test_pg_cost_dedup_retains_changed_machine_and_cost_evidence():
+    """Same upload/form parameters may produce new inventory/rate/calibration evidence."""
+    import copy
+    import json
+    import src.db.engine as eng
+
+    fx = _Fixture(uuid.uuid4().hex[:8])
+    try:
+        async with eng.get_session_factory()() as s:
+            org = await fx.org(s, "snap")
+            user = await fx.user(s, org, "snap")
+            original = _cost_json(verdict="makeable_outsource_only")
+            original["decision"]["recommendation"] = {10: {"process": "cnc_3axis"}}
+            first = await _persist_cost(s, user, fx.tag, original, params="same-form")
+            await s.commit()
+
+            changed = copy.deepcopy(original)
+            changed["verification"] = _verif("makeable_in_house")
+            changed["verification"]["best_machine"] = "New CNC"
+            second = await _persist_cost(s, user, fx.tag, changed, params="same-form")
+            await s.commit()
+            assert second.id != first.id
+            assert second.result_json == changed
+            assert first.result_json == original  # historical evidence is immutable
+
+            changed_rate = copy.deepcopy(changed)
+            changed_rate["estimates"][0]["unit_cost_usd"] = 18.75
+            changed_rate["estimates"][0]["confidence"]["validated"] = True
+            third = await _persist_cost(s, user, fx.tag, changed_rate, params="same-form")
+            await s.commit()
+            assert third.id not in {first.id, second.id}
+            # JSONB round-trips quantity keys to strings; that is not a new result.
+            repeated = await _persist_cost(
+                s, user, fx.tag, json.loads(json.dumps(changed_rate)), params="same-form",
+            )
+            assert repeated.id == third.id
+            await s.commit()
+            roll = await svc.build_makeability_rollup(s, org)
+            assert roll["summary"]["makeable_in_house"] == 1
+    finally:
+        await _cleanup(fx)
+
+
+@_requires_pg
+@pytest.mark.asyncio
 async def test_pg_migration_0023_in_chain():
     """After ``alembic upgrade head`` the 0023 columns + org-leading indexes exist
     on ``part_summaries`` — proving the migration is in the chain and applied."""

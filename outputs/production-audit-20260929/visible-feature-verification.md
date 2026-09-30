@@ -92,3 +92,8 @@ Comparison conditions follow-up (063): each cost cell now retains saved DFM/envi
 ### Follow-up verification — 064–066
 
 CI 36670069143 completed with eight jobs passed and Browser E2E failed on a real Verify card mismatch (all 17 enterprise steps passed; 8/9 goldens). The selected route, cost, band, drivers and acquisition/Ask views now follow the saved quantity-specific recommendation. Native stainless STEP q1=$110 Wire EDM and q10,000=$2.46 Binder Jetting agree with the saved table. Declared volume/program readout is verified with annual demand 12,000. Shared route-fit selection prevents a CNC machine pass from claiming that an outsource-only EDM route is owned. Local validation: 492 frontend tests, typecheck, lint and production build pass. Production and a fresh exact-head CI run remain pending; no all-features or real-price-accuracy claim.
+
+
+### Saved-evidence follow-up — 067
+
+Native re-cost after a declared machine change exposed a stale saved pointer despite fresh live prices/fit. The shared persistence funnel now includes the computed snapshot in dedup identity, preserving old records and reusing identical new runs. New record, historical immutability, unchanged-rerun dedup, exact native JSON export and current Part standing are proven locally; backend 2,395 pass/3 documented skips. Not deployed. External integrations, real quote validation and the remaining ledger still prevent an all-features claim.
