@@ -15,7 +15,7 @@ Production is Render, currently `09555c1`. The subsequent audit branch has not b
 | API keys, reveal-once, revoke, usage | Prior CI enterprise journey | Live key request and revocation proof using disposable credentials |
 | Session/security settings | Page and API coverage | Exercise every visible control and verify resulting access behavior |
 | Real STEP/STP upload | Native Render uppercase `.STP` upload succeeded | Recheck corrected results after deployment |
-| STL, IGES/IGS, AP203/AP242 inputs | Prior local/CI CAD corpus, 33 pinned NIST STEP files | Broader production format matrix and known-dimension controls |
+| STL, IGES/IGS, AP203/AP242 inputs | Prior local/CI CAD corpus, 33 pinned NIST STEP files; CI 36659923104 timed out on FTC-07, while local reproduction passes | Broader production format matrix and known-dimension controls |
 | Unsupported native CAD and malformed files | Prior local/CI refusal/retry tests | Production bounded errors without losing the workspace |
 | STEP assemblies | Local/CI real 18-part assembly evidence | Production component selection and assembly export/retry |
 | Verify 3D preview | Prior live/core and CI proof | File replacement, large meshes, error recovery and all viewing controls |
@@ -56,3 +56,9 @@ Production is Render, currently `09555c1`. The subsequent audit branch has not b
 | Deployment repeatability and image security | Manual release worked; auto-deploy and HIGH image findings open | Resolve findings 016/017 and rerun release gates |
 
 External dependencies have been requested once: an authorized receiving inbox and company-IdP/SAP/Windchill test tenants. No credentials should be pasted into chat. Internal fixes and verification continue while those are pending.
+
+## Current CAD corpus CI investigation
+
+first divergence: unknown. CI run 36659923104 passed 33/34 corpus cases, but the FTC-07 worker exceeded its 90-second deadline without retaining a stack or stage receipt. Its additional missing-geometry/provenance messages are symptoms of absent output, not demonstrated geometry or network-guard defects. Eight other CI jobs passed. The same exact STEP passed the preceding CI in 26.981 seconds and the local diagnostic replay in 13.766 seconds.
+
+The gate now dumps worker stacks before its existing deadline and preserves bounded timeout output. A red-to-green regression verifies that evidence is retained; no timeout or acceptance criteria were loosened, and no speculative production parser change was made. The timeout cause remains open pending the next CI run. See [cad-corpus-timeout-investigation.json](cad-corpus-timeout-investigation.json).

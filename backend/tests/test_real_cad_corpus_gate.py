@@ -64,3 +64,21 @@ def test_cross_representation_oracle_rejects_wrong_scale():
     result = corpus.geometry_equivalence(members, ["a", "b"])
     assert result["status"] == "FAIL"
     assert any("bounding-box delta" in failure for failure in result["failures"])
+
+
+def test_worker_timeout_preserves_bounded_diagnostic_output(monkeypatch):
+    def timeout(*args, **kwargs):
+        raise corpus.subprocess.TimeoutExpired(
+            args[0], 90, output=b"partial result", stderr=b"x" * 20000 + b"blocked stack"
+        )
+
+    monkeypatch.setattr(corpus.subprocess, "run", timeout)
+    result = corpus.run_worker(
+        {"zip_path": "fixture.zip"},
+        {"inner_path": "part.stp", "expected_outcome": "OK"},
+    )
+    assert result["outcome"] == "TIMEOUT"
+    assert result["status"] == "FAIL"
+    assert result["stdout_tail"] == "partial result"
+    assert result["stderr_tail"].endswith("blocked stack")
+    assert len(result["stderr_tail"]) <= 12000

@@ -13,6 +13,7 @@ import argparse
 import asyncio
 import contextlib
 import datetime as dt
+import faulthandler
 import hashlib
 import io
 import json
@@ -855,12 +856,22 @@ def run_worker(source: Dict[str, Any], case: Dict[str, Any]) -> Dict[str, Any]:
             capture_output=True,
             timeout=PER_CASE_TIMEOUT_SEC,
         )
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
+        # TimeoutExpired retains bytes even with text=True. Keep the worker's
+        # stack dump so CI can distinguish parsing, analysis and shutdown hangs.
+        tails = {}
+        for stream in ("stdout", "stderr"):
+            output = getattr(exc, stream, None) or b""
+            tails[stream + "_tail"] = (
+                output.decode("utf-8", errors="replace")
+                if isinstance(output, bytes) else output
+            )[-12000:]
         return {
             "outcome": "TIMEOUT",
             "status": "FAIL",
             "elapsed_sec": round(time.perf_counter() - start, 3),
             "error": "case exceeded %.1fs subprocess timeout" % PER_CASE_TIMEOUT_SEC,
+            **tails,
         }
 
     parsed: Optional[Dict[str, Any]] = None
@@ -1198,6 +1209,9 @@ def line_items_sum_ok(report: Dict[str, Any]) -> bool:
 
 
 def run_worker_mode(args: argparse.Namespace) -> int:
+    # Dump before the outer deadline, including when native code or process
+    # cleanup stalls. This does not extend the gate or accept a timed-out case.
+    faulthandler.dump_traceback_later(max(0.01, PER_CASE_TIMEOUT_SEC - 5))
     sys.path.insert(0, str(BACKEND_ROOT))
     from fastapi import HTTPException
 
@@ -1301,6 +1315,7 @@ def run_worker_mode(args: argparse.Namespace) -> int:
         except Exception:
             pass
 
+    faulthandler.cancel_dump_traceback_later()
     print(json.dumps(output, sort_keys=True))
     return 0 if output.get("status") == "PASS" else 1
 

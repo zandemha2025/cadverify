@@ -1,0 +1,62 @@
+{
+  "ci_run": 36659923104,
+  "ci_head": "e4c40a0f7dc1c394bd1bef5c5afc98f8e3d10dc8",
+  "ci_status": "FAILURE",
+  "first_divergence": "unknown; worker stack and stage were not retained before the 90-second outer timeout",
+  "failed_case": {
+    "cad_category": "geometry_only",
+    "elapsed_sec": 90.044,
+    "error": "case exceeded 90.0s subprocess timeout",
+    "expected_outcome": "OK",
+    "failures": [
+      "expected OK, got TIMEOUT",
+      "network egress guard was not active",
+      "face_count is not positive",
+      "volume_cm3 is not positive",
+      "expected watertight real single-solid geometry",
+      "missing decision block",
+      "missing cost estimates",
+      "unit cost does not match rounded line-item sum",
+      "report contains non-finite values"
+    ],
+    "family": "FTC",
+    "id": "NIST-AP203-GEOM-FTC-07",
+    "inner_bytes": 402531,
+    "inner_path": "NIST-PMI-STEP-Files/AP203 geometry only/nist_ftc_07_asme1_rd.stp",
+    "inner_sha256": "a0bc551656780b26d7a0ee1beedbc07d43f41efa092f74f3c2d8383417f04481",
+    "outcome": "TIMEOUT",
+    "schema": "AP203",
+    "source": "nist_pmi_step",
+    "source_document_url": "https://www.nist.gov/document/nist-pmi-step-files",
+    "source_zip_sha256": "8fa78429e6d8d9b0d7681d223b6aa9ec98c3772185c55b1a0e3679b21c181911",
+    "status": "FAIL",
+    "worker_status": "FAIL"
+  },
+  "prior_ci": {
+    "run": 36656386856,
+    "case_status": "PASS",
+    "elapsed_sec": 26.981
+  },
+  "local_reproduction": {
+    "id": "NIST-AP203-GEOM-FTC-07",
+    "inner_sha256": "a0bc551656780b26d7a0ee1beedbc07d43f41efa092f74f3c2d8383417f04481",
+    "status": "PASS",
+    "outcome": "OK",
+    "elapsed_sec": 13.766,
+    "geometry": {
+      "bbox_mm": [
+        311.6,
+        135.9,
+        222.7
+      ],
+      "face_count": 246354,
+      "surface_area_cm2": 3909.71,
+      "volume_cm3": 1726.0,
+      "watertight": true
+    },
+    "failures": []
+  },
+  "diagnostic_change": "Dump worker stacks before the existing 90-second deadline and retain bounded subprocess output on timeout. No parser or timeout budget changes.",
+  "regression": "Missing stdout_tail fails before the fix; all four outer corpus tests pass after it.",
+  "remaining": "CI timeout root cause is unresolved; a local pass does not clear the failed CI run."
+}
