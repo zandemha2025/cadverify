@@ -47,6 +47,59 @@ export async function assertComparisonIdentity(page, { idA, idB, differentCad = 
   assert.equal(await page.playwright.getByText("Different CAD inputs. Price differences may reflect geometry as well as costing inputs.", { exact: true }).isVisible(), differentCad);
 }
 
+export async function assertComparisonOptions(page, expectedIds) {
+  const ids = await page.playwright.evaluate(() => {
+    const select = [...document.querySelectorAll("select")].find((el) => el.closest("label")?.textContent.trim().startsWith("A"));
+    return [...select?.options ?? []].map((option) => option.value).filter(Boolean);
+  });
+  assert.equal(new Set(ids).size, ids.length, "Older pages must not duplicate a directly selected record");
+  assert.equal(JSON.stringify([...ids].sort()), JSON.stringify([...expectedIds].sort()), "Every requested saved record must be selectable");
+  return ids.length;
+}
+
+export async function assertOpenDecisionOptions(page, expectedIds) {
+  const labels = await page.playwright.getByRole("option").allTextContents({});
+  assert.equal(new Set(labels).size, labels.length, "Picker labels must distinguish saved records");
+  const suffixes = labels.map((label) => label.match(/#([A-Z0-9]{6})$/)?.[1]).sort();
+  assert.equal(JSON.stringify(suffixes), JSON.stringify(expectedIds.map((id) => id.slice(-6)).sort()));
+  return labels.length;
+}
+
+export async function assertComparisonCleared(page) {
+  assert.equal(await page.playwright.getByRole("heading", { name: "Recommended unit cost by quantity", exact: true }).isVisible(), false,
+    "Changing either decision must remove the previous pair's result until Compare is run again");
+  assert.equal(await page.playwright.getByRole("button", { name: "Compare", exact: true }).isEnabled(), true);
+  return { status: "PASS", previousResultCleared: true };
+}
+
+export async function assertComparisonPending(page) {
+  const disabled = await page.playwright.evaluate(() =>
+    [...document.querySelectorAll('[role="combobox"]')].map((el) => el.hasAttribute("disabled")));
+  assert.equal(JSON.stringify(disabled), "[true,true]", "An in-flight comparison must retain its selected pair");
+  return { status: "PASS", pickersDisabled: true };
+}
+
+export async function assertSelectedComparisonUnavailable(page) {
+  assert.equal(await page.playwright.getByText("Could not load the selected comparison — Cost decision not found", { exact: true }).isVisible(), true);
+  assert.equal(await page.playwright.getByRole("button", { name: "Retry records", exact: true }).isEnabled(), true);
+  assert.equal(await page.playwright.getByText("Nothing to compare yet.", { exact: true }).isVisible(), false);
+  return { status: "PASS", missingSelectedRecord: "recoverable error" };
+}
+
+export async function assertDecisionPickerFits(page, expectedViewport) {
+  const state = await page.playwright.evaluate(() => ({
+    viewport: innerWidth, width: document.documentElement.scrollWidth,
+    controls: [...document.querySelectorAll('[role="combobox"]')].map((el) => ({
+      left: el.getBoundingClientRect().left, right: el.getBoundingClientRect().right,
+    })),
+  }));
+  assert.equal(state.viewport, expectedViewport);
+  assert.equal(state.controls.length, 2);
+  assert.ok(state.width <= state.viewport + 1, JSON.stringify(state));
+  assert.ok(state.controls.every((el) => el.left >= 0 && el.right <= state.viewport + 1), JSON.stringify(state));
+  return { status: "PASS", ...state };
+}
+
 // CUA assertion; expected values come from the native saved-report export.
 export async function assertComparedRoute(page, { quantity, process, makePrice, toolPrice }) {
   const text = await page.playwright.locator("section").filter({ hasText: "ROUTE VS ROUTE" }).innerText();

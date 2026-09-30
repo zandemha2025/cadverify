@@ -66,6 +66,9 @@ export function CompareScreen({ nav, initialRecordId }: {
 }) {
   const [records, setRecords] = useState<CostDecisionSummary[] | null>(null);
   const [listErr, setListErr] = useState<string | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [retryList, setRetryList] = useState(0);
   const [idA, setIdA] = useState<string | null>(null);
   const [idB, setIdB] = useState<string | null>(null);
 
@@ -83,39 +86,68 @@ export function CompareScreen({ nav, initialRecordId }: {
   // 1) the record picker — the org's own saved decisions (most recent first).
   useEffect(() => {
     let cancelled = false;
-    fetchCostDecisions({ limit: 100 }).then(
-      (page) => {
-        if (cancelled) return;
-        const records = page.cost_decisions;
-        setRecords(records);
-        const selected = initialRecordId ? records.find((r) => r.id === initialRecordId) : records[0];
+    setRecords(null);
+    setListErr(null);
+    setIdA(null);
+    setIdB(null);
+    void (async () => {
+      try {
+        const page = await fetchCostDecisions({ limit: 100 });
+        const records = [...page.cost_decisions];
+        let selected = initialRecordId ? records.find((r) => r.id === initialRecordId) : records[0];
         if (initialRecordId && !selected) {
-          setListErr("The selected record is outside the recent list. Choose two records below.");
-        } else if (selected && records.length >= 2) {
-          const other = records.find((r) => r.id !== selected.id && selected.mesh_hash && r.mesh_hash === selected.mesh_hash)
-            ?? records.find((r) => r.id !== selected.id);
+          selected = await fetchCostDecision(initialRecordId);
+          records.push(selected);
+        }
+        let other = records.find((r) => r.id !== selected?.id && selected?.mesh_hash && r.mesh_hash === selected.mesh_hash);
+        if (selected?.mesh_hash && !other && page.has_more) {
+          const samePart = await fetchCostDecisions({ meshHash: selected.mesh_hash, limit: 2 });
+          other = samePart.cost_decisions.find((r) => r.id !== selected?.id && r.mesh_hash === selected?.mesh_hash);
+          if (other && !records.some((r) => r.id === other?.id)) records.push(other);
+        }
+        if (cancelled) return;
+        setRecords(records);
+        setNextCursor(page.has_more ? page.next_cursor : null);
+        if (selected) {
+          other ??= records.find((r) => r.id !== selected.id);
           setIdA(selected.id);
           setIdB(other?.id ?? null);
         }
-      },
-      (e) => {
+      } catch (e) {
         if (cancelled) return;
         setRecords([]);
+        setNextCursor(null);
         setListErr(e instanceof Error ? e.message : "Could not load records");
       }
-    );
+    })();
     return () => { cancelled = true; };
-  }, [initialRecordId]);
+  }, [initialRecordId, retryList]);
+
+  const loadOlder = async () => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    setListErr(null);
+    try {
+      const page = await fetchCostDecisions({ cursor: nextCursor, limit: 100 });
+      setRecords((prev) => [...(prev ?? []), ...page.cost_decisions.filter((r) => !prev?.some((p) => p.id === r.id))]);
+      setNextCursor(page.has_more ? page.next_cursor : null);
+    } catch (e) {
+      setListErr(e instanceof Error ? e.message : "Could not load older records");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   // 2) load the engine-computed diff + both details whenever the pair changes.
   useEffect(() => {
+    const seq = ++reqRef.current;
     if (!idA || !idB || idA === idB) {
       setCmp(null);
       setDetA(null);
       setDetB(null);
+      setLoading(false);
       return;
     }
-    const seq = ++reqRef.current;
     setLoading(true);
     setCmpErr(null);
     Promise.all([
@@ -140,6 +172,7 @@ export function CompareScreen({ nav, initialRecordId }: {
         setLoading(false);
       }
     );
+    return () => { reqRef.current++; };
   }, [idA, idB]);
 
   const idxA = useMemo(() => bandIndex(detA), [detA]);
@@ -167,7 +200,15 @@ export function CompareScreen({ nav, initialRecordId }: {
       </Frame>
     );
   }
-  if (records.length < 2) {
+  if (records.length === 0 && listErr) {
+    return (
+      <Frame nav={nav}>
+        <p role="alert">Could not load the selected comparison — {listErr}</p>
+        <GhostButton onClick={() => setRetryList((n) => n + 1)}>Retry records</GhostButton>
+      </Frame>
+    );
+  }
+  if (records.length < 2 && !nextCursor) {
     return (
       <Frame>
         <div style={{ marginTop: 24, maxWidth: 640 }}>
@@ -201,6 +242,11 @@ export function CompareScreen({ nav, initialRecordId }: {
         <RecordSelect label="A" value={idA} onChange={(id) => { setIdA(id); setListErr(null); }} records={records} disabledId={idB} />
         <span style={{ fontFamily: MONO, fontSize: 12, color: C.ink40 }}>vs</span>
         <RecordSelect label="B" value={idB} onChange={setIdB} records={records} disabledId={idA} />
+        {nextCursor && (
+          <GhostButton disabled={loadingMore} onClick={loadOlder}>
+            {loadingMore ? "Loading records…" : "Load older records"}
+          </GhostButton>
+        )}
       </div>
 
       {listErr && <p role="alert" style={{ margin: "14px 0 0", fontSize: 12, color: C.cond }}>{listErr}</p>}
@@ -284,6 +330,7 @@ function RecordSelect({
         {records.map((r) => (
           <option key={r.id} value={r.id} disabled={r.id === disabledId}>
             {(r.label || r.filename)}{r.make_now_process ? ` · ${procLabel(r.make_now_process)}` : ""}
+            {` · ${new Date(r.created_at).toLocaleString()} · #${r.id.slice(-6)}`}
           </option>
         ))}
       </select>

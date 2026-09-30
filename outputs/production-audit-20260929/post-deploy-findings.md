@@ -667,3 +667,24 @@ Final validation: **2,395 backend tests passed**, three documented real-corpus/O
 - Validation:493 frontend tests, typecheck, changed-file lint and production build pass; existing native comparison checks now cover the identity pair and differing-input message. Evidence: `comparison-identity-regression.json` and086 screenshots. Local only; production and comparison records outside the100-record picker remain open.
 
 CI checkpoint: [36690028303](https://github.com/zandemha2025/cadverify/actions/runs/36690028303) completed successfully on `89ea94d` through083: all9 jobs,54 human steps,31 role/governance steps,34 real CAD cases and the full restore/load/readiness/training chain passed. This run excludes084–086. Sanitized receipt: `ci-36690028303-summary.json`; no new production deployment.
+
+## 087 — Comparison pickers omit older saved decisions
+
+- Severity: medium navigation/correctness defect. Both comparison screens discarded `next_cursor` after100 records. A selected NIST record outside the first page opened with blank A/B and instructed the user to choose another recent record.
+- Fix: retain the existing cursor and provide Load older records on both screens. Verify retrieves the exact selected record through the existing owned-detail endpoint and finds a same-CAD partner through the existing identity filter. Deduplicate those pinned records when subsequent pages reach them. Read failures retain loaded choices; initial failures and missing selected records offer Retry. Timestamp and short record ID distinguish repeated filenames; constrained flex children keep the longer labels inside the viewport.
+- Native RED→GREEN: a read-only loopback proxy reduces actual API pages to2 without fabricating bodies. Both screens reach all42 PostgreSQL decisions over20 additional pages; Verify retains exact NIST A/B and has no duplicate options. Missing selected-record404 gives an explicit recoverable error, then Retry restores the same pair. A real transport outage retains4 choices; Verify paging retry adds the next2. Standalone first-page404 Retry restores both real choices.
+- Repeated pagination exhausted the local account's60/hour route limit; the UI accurately showed429. Remaining recovery checks used the existing local test switch with RELEASE unset. Production configuration was untouched. The temporary proxy is stopped and the frontend again calls the real local API directly.
+- Validation:493 frontend tests, typecheck, changed-file lint and production build pass. Final native direct-API picker exposes42 distinct options; desktop1280 and mobile390/320 have no document/control overflow. Evidence: `comparison-pagination-selection-regression.json`,087 screenshots and shared runnable `scripts/e2e/compare-route-validation.mjs`. Not deployed; currentCI36694513963 runs priorc02604f.
+
+## 088 — Changed comparison selections retain the previous pair's prices
+
+- Severity: high result-integrity defect. Native standalone Compare A/B changed B from NIST recordR6J1J8 toX10PA4 while the old price table stayed visible under the new selector. The shared no-stale-result assertion failed.
+- Fix: clear the stored comparison and its error whenever either selection changes. Disable both selectors during the existing comparison request, preventing a late response from appearing under a different pair. The existing Compare loading control already prevents duplicate requests; no new state abstraction or dependency.
+- Native RED→GREEN: changing A and changing B each remove the previous table; Compare produces the newly selected sphere pair with$4.22/$4.22 and no change at5,000. A two-second real-request delay proves both pickers remain disabled while comparison runs.493 frontend tests, typecheck, lint and build pass.
+- Evidence: `comparison-pagination-selection-regression.json`,088 before/after screenshots and shared runnable comparison checks. Not deployed; no change to backend cost calculations or accuracy tolerances.
+
+## 089 — Authentication-service outage masquerades as a signed-out session
+
+- Severity: medium availability/recovery defect; **open**. During the controlled whole-API outage, hard reload and cross-page navigation redirected the already authenticated local account to the ordinary login page. Restoring the API reopened the protected comparison page with the same session, without entering credentials.
+- Root cause confirmed in `frontend/src/lib/dal.ts`: `getUser()` returns null for every non-OK response and every fetch failure; `verifySession()` treats every null as missing/invalid authentication. A backend outage is therefore indistinguishable from a real401.
+- Required follow-up: preserve the authentication boundary while presenting a recoverable service-unavailable state for failed session verification. Audit all callers before changing the shared contract; verify valid, invalid, missing and unavailable-session paths. No fix or production proof is claimed yet.
