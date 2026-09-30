@@ -716,7 +716,8 @@ class EnterpriseDomainQA {
         assert(text.includes(name), `${name} missing from Your machines UI`);
       }
       assert(/\$48\.00?\/hr|\$48\/hr|\$48\.0\/hr/.test(text), "MJF hourly rate missing from UI");
-      assert(/OWNED\s*→\s*MARGINAL/i.test(text), "owned marginal status missing");
+      assert(/OWNED\s*·\s*RATE DECLARED/i.test(text), "owned rate declaration missing");
+      assert(/In-house costing requires a passing machine fit/i.test(text), "machine-fit costing requirement missing");
       const machineShot = await this.shot("declared-machine-floor-ui", true);
 
       await this.clickRail("Calibration & truth");

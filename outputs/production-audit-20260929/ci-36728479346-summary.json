@@ -1,0 +1,58 @@
+{
+  "run_id": 36728479346,
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36728479346",
+  "head_sha": "2594aeb6f0ca497f6911899051482a171780e2b6",
+  "status": "completed",
+  "conclusion": "failure",
+  "jobs": [
+    {
+      "name": "Backend Tests",
+      "conclusion": "success"
+    },
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "conclusion": "success"
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "conclusion": "success"
+    },
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "conclusion": "success"
+    },
+    {
+      "name": "Commit hook integrity policy",
+      "conclusion": "success"
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "conclusion": "success"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "conclusion": "success"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "conclusion": "failure"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "conclusion": "success"
+    }
+  ],
+  "browser_first_divergence": {
+    "step": "Verify UI shows declared machines and effective rate truth honestly",
+    "expected_by_stale_test": "OWNED \u2192 MARGINAL",
+    "actual_ui": "OWNED \u00b7 RATE DECLARED",
+    "finding": 110,
+    "consequence": "Early label assertion prevented the later calibration-refusal UI capture; ENT-02 assertion visible refusal therefore lacked evidence. No evidence was fabricated or waived."
+  },
+  "correction": "Assert the accurate rate-declaration label and the passing-machine-fit condition. Preserve rate values, actuals floor, HTTP422 refusal, recovery and measured-band assertions.",
+  "local_validation": {
+    "node_syntax": "PASS",
+    "enterprise_golden_release_contracts_pass": 27
+  },
+  "limits": "New full exact-head browser CI required; downstream suites after enterprise were not run in this failed chain. No production deployment."
+}
