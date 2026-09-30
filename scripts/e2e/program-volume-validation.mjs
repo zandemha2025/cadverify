@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
 
+export async function assertAssignedProgramOpens(page, program) {
+  assert.equal(await page.playwright.getByRole("heading", { name: program, exact: true }).count(), 1,
+    "Open program must retain the part's declared program");
+  assert.equal(await page.playwright.getByRole("heading", { name: "Programs", exact: true }).count(), 0,
+    "An assigned-program link must open its detail");
+  return { status: "PASS", program };
+}
+
 // CUA-controlled browser check; enter the draft before invoking this assertion.
 export async function assertInvalidProgramVolume(page, name, draft) {
   const state = await page.playwright.evaluate((name) => {

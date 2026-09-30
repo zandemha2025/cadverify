@@ -109,13 +109,14 @@ interface ProgramScreenProps {
   nav: (s: string) => void;
   /** the shell screen key — "programs" shows the index, "program" the detail. */
   screen: string;
+  selected: string | null;
+  onSelect: (name: string) => void;
 }
 
-export function ProgramScreen({ nav, screen }: ProgramScreenProps) {
+export function ProgramScreen({ nav, screen, selected, onSelect }: ProgramScreenProps) {
   const toast = useToast();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -142,10 +143,10 @@ export function ProgramScreen({ nav, screen }: ProgramScreenProps) {
 
   const open = useCallback(
     (name: string) => {
-      setSelected(name);
+      onSelect(name);
       nav("program");
     },
-    [nav]
+    [nav, onSelect]
   );
 
   const back = useCallback(() => {

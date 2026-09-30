@@ -88,6 +88,7 @@ export function VerifyApp({
   ) ?? null;
   const hasActiveOrganization = activeOrganization !== null;
   const [screen, setScreen] = useState<Screen>("home");
+  const [selectedProgram, setSelectedProgram] = useState<string | null>(null);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [guidedSampleState, setGuidedSampleState] = useState<
     "idle" | "running" | "ready" | "error"
@@ -899,9 +900,14 @@ export function VerifyApp({
         {screen === "machines" && <MachinesScreen nav={nav} onChanged={onInventoryChanged} />}
         {screen === "records" && <RecordsScreen nav={nav} />}
         {screen === "catalog" && <CatalogScreen nav={nav} />}
-        {screen === "part" && <PartScreen nav={nav} />}
+        {screen === "part" && <PartScreen nav={nav} onOpenProgram={(name) => {
+          setSelectedProgram(name);
+          nav("program");
+        }} />}
         {screen === "compare" && <CompareScreen nav={nav} />}
-        {(screen === "programs" || screen === "program") && <ProgramScreen nav={nav} screen={screen} />}
+        {(screen === "programs" || screen === "program") && (
+          <ProgramScreen nav={nav} screen={screen} selected={selectedProgram} onSelect={setSelectedProgram} />
+        )}
         {screen === "triage" && <TriageScreen nav={nav} />}
         {screen === "calibration" && <CalibrationScreen />}
       </div>

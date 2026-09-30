@@ -405,3 +405,13 @@ first divergence: step 2, expected the oversized identity mapping to be rejected
 - Evidence: `test_onboard_rejects_oversized_inputs_before_import`, `library-import-regression.json`, and `056-library-size-error-local.png`. This is bounded local/API proof, not a production load certification.
 
 Validation for 054–056: 56 focused backend tests pass, including live PostgreSQL and existing batch reader checks. Frontend library tests (5), typecheck, changed-source lint and production build pass. Backend type baseline remains 217 against 228 allowed; Bandit reports no medium/high findings in the changed backend files. The final full backend suite passes 2,394 tests with three documented real-corpus/OCP-XDE skips (170.12 seconds).
+
+
+## 057 — A part's “open program” action discards its assigned program
+
+first divergence: step 3, expected the NIST part's link to open “Audit volume 051”, state was the general Programs list, requiring another selection.
+
+- Severity: medium navigation/context issue.
+- Fix: keep the selected program in the existing workspace component and pass the part's saved program name to the existing detail view. Program-list selection uses that same state. Unassigned parts still go to the assignment/list entry point.
+- Native red-to-green: the exact-heading regression failed before the fix and passes afterward. The direct link opens both assigned parts and their unchanged $48,597 annual estimate; back-to-list and normal list selection also pass.
+- Validation: all 489 frontend tests, typecheck, changed-source lint and production build pass. Evidence: `program-link-regression.json`, `057-*.png`, and the assertion in `scripts/e2e/program-volume-validation.mjs`. Local only.

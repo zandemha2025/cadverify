@@ -63,7 +63,10 @@ const TONE: Record<"pass" | "cond" | "fail" | "neutral", string> = {
   neutral: C.ink45,
 };
 
-export function PartScreen({ nav }: { nav: (s: string) => void }) {
+export function PartScreen({ nav, onOpenProgram }: {
+  nav: (s: string) => void;
+  onOpenProgram: (name: string) => void;
+}) {
   const [rows, setRows] = useState<CatalogRowApi[] | null>(null);
   const [catError, setCatError] = useState<string | null>(null);
   const [truncated, setTruncated] = useState(false);
@@ -144,7 +147,7 @@ export function PartScreen({ nav }: { nav: (s: string) => void }) {
       ) : (
         <>
           <PartSwitcher rows={rows} selected={selected} onSelect={setSelected} truncated={truncated} />
-          {row && <Standing key={row.part_key} row={row} nav={nav} />}
+          {row && <Standing key={row.part_key} row={row} nav={nav} onOpenProgram={onOpenProgram} />}
         </>
       )}
     </main>
@@ -216,7 +219,11 @@ function PartSwitcher({
   );
 }
 
-function Standing({ row, nav }: { row: CatalogRowApi; nav: (s: string) => void }) {
+function Standing({ row, nav, onOpenProgram }: {
+  row: CatalogRowApi;
+  nav: (s: string) => void;
+  onOpenProgram: (name: string) => void;
+}) {
   const [detail, setDetail] = useState<CostDecisionDetail | null>(null);
   const [context, setContext] = useState<PartContext | null>(null);
   const [ctxError, setCtxError] = useState<string | null>(null);
@@ -396,7 +403,7 @@ function Standing({ row, nav }: { row: CatalogRowApi; nav: (s: string) => void }
           </p>
           <button
             type="button"
-            onClick={() => nav("programs")}
+            onClick={() => lin.program ? onOpenProgram(lin.program) : nav("programs")}
             style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 10.5, color: C.user }}
           >
             {lin.hasHome ? "open program →" : "assign →"}
