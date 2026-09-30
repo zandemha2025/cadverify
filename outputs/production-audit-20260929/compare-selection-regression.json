@@ -1,0 +1,12 @@
+{
+  "beforeError": "Part Compare must retain the selected saved record\n+ actual - expected\n\n+ '01M3R5PQHVPT6BE584E0R6J1J8'\n- '01M3R3SCMPTWKBDBKX0FXNXD1E'\n        ^\n",
+  "after": {
+    "status": "PASS",
+    "recordId": "01M3R3SCMPTWKBDBKX0FXNXD1E"
+  },
+  "defaultPartner": "01M3R3DMAH71BJ0094R4FVNWHG",
+  "nist": {
+    "status": "PASS",
+    "recordId": "01M3R5PQHVPT6BE584E0R6J1J8"
+  }
+}

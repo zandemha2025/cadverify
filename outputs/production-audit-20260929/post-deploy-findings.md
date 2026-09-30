@@ -440,3 +440,12 @@ Native saved-cube comparison at quantity 100 called FDM the make-now route and p
 The route panel now consumes the already-loaded saved decision and existing quantity helpers: each curve point, selected process, unit price and band belongs to that quantity's actual recommendation. Tooling points exclude environment-invalid estimates. The panel reuses the shared crossover explanation and explicitly labels conditional tooling, including when it is cheaper. No costs, backend calculations or historical records are rewritten. Removed the superseded static-process curve helper.
 
 The native assertion fails before the fix, then passes for cube quantities 1 (FDM $30), 100 (MJF $3.27), and 10,000 (MJF $3.11 versus conditional molding $2.69); NIST quantity 102 retains WAAM $910.0 versus conditional die casting $908.9. Switching to side B shows its own NIST 5,000-unit prices, $909.7/$44.58. All 489 frontend tests, typecheck, changed-file lint and final production build pass. Evidence: `compare-route-regression.json`, `060-*.png`, runnable CUA assertion `scripts/e2e/compare-route-validation.mjs`. Full CI and production proof remain pending.
+
+
+## 061 — Part Compare discarded the selected saved record
+
+Clicking Compare from the real cube standing opened the two newest NIST records instead. The standing button only called `nav("compare")`; the comparison screen always initialized from the first two list entries.
+
+The existing shell now carries the selected record ID through ordinary props, as it already does for the selected program. Side A uses that exact saved record; side B prefers another record with the same filename. Leaving comparison clears the handoff. If the requested record lies outside the recent list, the UI asks for an explicit selection instead of silently substituting another part. Manual selection and the normal unselected entry remain available.
+
+Native regression: cube navigation fails with the NIST ID before the fix, then passes with cube ID `01M3R3SCMPTWKBDBKX0FXNXD1E` and its prior cube record. Opening NIST next correctly replaces the selected ID with `01M3R5PQHVPT6BE584E0R6J1J8`. All 489 frontend tests, typecheck, changed-file lint and production build pass. Evidence: `compare-selection-regression.json`, `061-*.png`, and `assertSelectedComparisonRecord` in the existing CUA comparison check. Production verification remains pending.

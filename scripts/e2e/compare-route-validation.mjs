@@ -1,5 +1,15 @@
 import assert from "node:assert/strict";
 
+export async function assertSelectedComparisonRecord(page, recordId) {
+  const selected = await page.playwright.evaluate(() => {
+    const select = [...document.querySelectorAll("select")].find((el) =>
+      el.closest("label")?.textContent.trim().startsWith("A"));
+    return select?.value;
+  });
+  assert.equal(selected, recordId, "Part Compare must retain the selected saved record");
+  return { status: "PASS", recordId };
+}
+
 // CUA assertion; expected values come from the native saved-report export.
 export async function assertComparedRoute(page, { quantity, process, makePrice, toolPrice }) {
   const text = await page.playwright.locator("section").filter({ hasText: "ROUTE VS ROUTE" }).innerText();

@@ -89,6 +89,7 @@ export function VerifyApp({
   const hasActiveOrganization = activeOrganization !== null;
   const [screen, setScreen] = useState<Screen>("home");
   const [selectedProgram, setSelectedProgram] = useState<string | null>(null);
+  const [selectedComparisonRecord, setSelectedComparisonRecord] = useState<string | null>(null);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [guidedSampleState, setGuidedSampleState] = useState<
     "idle" | "running" | "ready" | "error"
@@ -155,6 +156,7 @@ export function VerifyApp({
   }, []);
 
   const nav = useCallback((s: string) => {
+    if (s !== "compare") setSelectedComparisonRecord(null);
     if (s !== "verify") {
       ++guidedRunSeq.current;
       setGuidedSampleState("idle");
@@ -903,8 +905,11 @@ export function VerifyApp({
         {screen === "part" && <PartScreen nav={nav} onOpenProgram={(name) => {
           setSelectedProgram(name);
           nav("program");
+        }} onCompare={(recordId) => {
+          setSelectedComparisonRecord(recordId);
+          nav("compare");
         }} />}
-        {screen === "compare" && <CompareScreen nav={nav} />}
+        {screen === "compare" && <CompareScreen nav={nav} initialRecordId={selectedComparisonRecord} />}
         {(screen === "programs" || screen === "program") && (
           <ProgramScreen nav={nav} screen={screen} selected={selectedProgram} onSelect={setSelectedProgram} />
         )}

@@ -63,9 +63,10 @@ const TONE: Record<"pass" | "cond" | "fail" | "neutral", string> = {
   neutral: C.ink45,
 };
 
-export function PartScreen({ nav, onOpenProgram }: {
+export function PartScreen({ nav, onOpenProgram, onCompare }: {
   nav: (s: string) => void;
   onOpenProgram: (name: string) => void;
+  onCompare: (recordId: string) => void;
 }) {
   const [rows, setRows] = useState<CatalogRowApi[] | null>(null);
   const [catError, setCatError] = useState<string | null>(null);
@@ -147,7 +148,7 @@ export function PartScreen({ nav, onOpenProgram }: {
       ) : (
         <>
           <PartSwitcher rows={rows} selected={selected} onSelect={setSelected} truncated={truncated} />
-          {row && <Standing key={row.part_key} row={row} nav={nav} onOpenProgram={onOpenProgram} />}
+          {row && <Standing key={row.part_key} row={row} nav={nav} onOpenProgram={onOpenProgram} onCompare={onCompare} />}
         </>
       )}
     </main>
@@ -219,10 +220,11 @@ function PartSwitcher({
   );
 }
 
-function Standing({ row, nav, onOpenProgram }: {
+function Standing({ row, nav, onOpenProgram, onCompare }: {
   row: CatalogRowApi;
   nav: (s: string) => void;
   onOpenProgram: (name: string) => void;
+  onCompare: (recordId: string) => void;
 }) {
   const [detail, setDetail] = useState<CostDecisionDetail | null>(null);
   const [context, setContext] = useState<PartContext | null>(null);
@@ -371,7 +373,7 @@ function Standing({ row, nav, onOpenProgram }: {
               Re-verify
             </GhostButton>
             {standing.recordId && (
-              <GhostButton onClick={() => nav("compare")} title="Compare this part across calibrations / routes">
+              <GhostButton onClick={() => onCompare(standing.recordId!)} title="Compare this part across calibrations / routes">
                 Compare
               </GhostButton>
             )}

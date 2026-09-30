@@ -81,3 +81,5 @@ CI 36667332535 passed eight jobs but stopped in enterprise cost verification on 
 Part-standing follow-up (059): fixed the off-screen verdict/history column on phones. Native checks now pass at 390/320 px, including a real expanded record, keyboard collapse and restored desktop layout. Typecheck, changed-file lint and production build pass. This local change is not deployed.
 
 Verify comparison follow-up (060): route curves now follow the saved recommendation at each quantity and display the tooling redesign requirement. Native cube low/mid/high quantities and NIST/side-B checks reconcile with native saved exports. All 489 frontend tests, typecheck, changed-file lint and build pass; exact-head CI and deployment remain pending.
+
+Part-to-comparison follow-up (061): a part's Compare action now retains its exact saved record instead of substituting the newest record. Native cube and subsequent NIST navigation pass, with all frontend checks green locally. Production verification is still required.

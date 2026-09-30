@@ -58,7 +58,10 @@ function bandText(b: Band | null): string {
   return b.validated ? `±${Math.round(b.pct)}% validated` : `±${Math.round(b.pct)}% n=${b.n}`;
 }
 
-export function CompareScreen({ nav }: { nav: (s: string) => void }) {
+export function CompareScreen({ nav, initialRecordId }: {
+  nav: (s: string) => void;
+  initialRecordId: string | null;
+}) {
   const [records, setRecords] = useState<CostDecisionSummary[] | null>(null);
   const [listErr, setListErr] = useState<string | null>(null);
   const [idA, setIdA] = useState<string | null>(null);
@@ -77,20 +80,30 @@ export function CompareScreen({ nav }: { nav: (s: string) => void }) {
 
   // 1) the record picker — the org's own saved decisions (most recent first).
   useEffect(() => {
+    let cancelled = false;
     fetchCostDecisions({ limit: 100 }).then(
       (page) => {
-        setRecords(page.cost_decisions);
-        if (page.cost_decisions.length >= 2) {
-          setIdA(page.cost_decisions[0].id);
-          setIdB(page.cost_decisions[1].id);
+        if (cancelled) return;
+        const records = page.cost_decisions;
+        setRecords(records);
+        const selected = initialRecordId ? records.find((r) => r.id === initialRecordId) : records[0];
+        if (initialRecordId && !selected) {
+          setListErr("The selected record is outside the recent list. Choose two records below.");
+        } else if (selected && records.length >= 2) {
+          const other = records.find((r) => r.id !== selected.id && r.filename === selected.filename)
+            ?? records.find((r) => r.id !== selected.id);
+          setIdA(selected.id);
+          setIdB(other?.id ?? null);
         }
       },
       (e) => {
+        if (cancelled) return;
         setRecords([]);
         setListErr(e instanceof Error ? e.message : "Could not load records");
       }
     );
-  }, []);
+    return () => { cancelled = true; };
+  }, [initialRecordId]);
 
   // 2) load the engine-computed diff + both details whenever the pair changes.
   useEffect(() => {
@@ -183,12 +196,13 @@ export function CompareScreen({ nav }: { nav: (s: string) => void }) {
       {/* the pair picker — real records, A vs B */}
       <div style={{ marginTop: 20, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, maxWidth: 1100 }}>
         <Kicker color={C.ink45}>PICK TWO RECORDS</Kicker>
-        <RecordSelect label="A" value={idA} onChange={setIdA} records={records} disabledId={idB} />
+        <RecordSelect label="A" value={idA} onChange={(id) => { setIdA(id); setListErr(null); }} records={records} disabledId={idB} />
         <span style={{ fontFamily: MONO, fontSize: 12, color: C.ink40 }}>vs</span>
         <RecordSelect label="B" value={idB} onChange={setIdB} records={records} disabledId={idA} />
       </div>
 
-      {idA === idB && (
+      {listErr && <p role="alert" style={{ margin: "14px 0 0", fontSize: 12, color: C.cond }}>{listErr}</p>}
+      {idA && idA === idB && (
         <p style={{ margin: "14px 0 0", fontFamily: MONO, fontSize: 11, color: C.cond }}>
           pick two different records — a decision compared to itself has no delta.
         </p>
@@ -264,6 +278,7 @@ function RecordSelect({
         onChange={(e) => onChange(e.target.value)}
         style={{ maxWidth: 300, background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 8, padding: "8px 12px", fontFamily: MONO, fontSize: 12, color: C.ink, cursor: "pointer" }}
       >
+        <option value="" disabled>Choose a record</option>
         {records.map((r) => (
           <option key={r.id} value={r.id} disabled={r.id === disabledId}>
             {(r.label || r.filename)}{r.make_now_process ? ` · ${procLabel(r.make_now_process)}` : ""}
