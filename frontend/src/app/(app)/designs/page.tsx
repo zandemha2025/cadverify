@@ -224,6 +224,7 @@ export default function DesignsPage() {
   const [revisionDiff, setRevisionDiff] = useState<DesignRevisionComparison | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
   const [diffError, setDiffError] = useState<string | null>(null);
+  const diffRunIdRef = useRef(0);
   const [form, setForm] = useState<DesignForm>({ ...DEFAULT_DESIGN_FORM });
   const [description, setDescription] = useState("");
   const [interpreting, setInterpreting] = useState(false);
@@ -504,21 +505,31 @@ export default function DesignsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.id, readyRevisions.map((revision) => revision.id).join("|")]);
 
+  useEffect(() => {
+    ++diffRunIdRef.current;
+    setRevisionDiff(null);
+    setDiffError(null);
+    setDiffLoading(false);
+    return () => { ++diffRunIdRef.current; };
+  }, [revisionRefreshKey, diffFrom, diffTo]);
+
   const runRevisionDiff = async () => {
     if (!selected || diffFrom == null || diffTo == null || diffFrom === diffTo) return;
+    const runId = ++diffRunIdRef.current;
     setDiffLoading(true);
     setDiffError(null);
     try {
-      setRevisionDiff(
-        await compareDesignRevisions(selected.id, diffFrom, diffTo),
-      );
+      const comparison = await compareDesignRevisions(selected.id, diffFrom, diffTo);
+      if (runId !== diffRunIdRef.current) return;
+      setRevisionDiff(comparison);
     } catch (caught) {
+      if (runId !== diffRunIdRef.current) return;
       setRevisionDiff(null);
       setDiffError(
         caught instanceof Error ? caught.message : "Could not compare revisions.",
       );
     } finally {
-      setDiffLoading(false);
+      if (runId === diffRunIdRef.current) setDiffLoading(false);
     }
   };
 

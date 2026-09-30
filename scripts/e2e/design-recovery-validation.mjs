@@ -14,3 +14,10 @@ export async function assertDesignListFailure(page) {
   assert.doesNotMatch(snapshot, /No designs yet/);
   assert.equal(await page.playwright.getByRole("button", { name: "Try again", exact: true }).isEnabled(), true);
 }
+
+export async function assertDesignComparisonIdle(page, designName) {
+  assert.equal(await page.playwright.getByRole("heading", { name: designName, exact: true }).isVisible(), true);
+  const snapshot = await page.playwright.getByTestId("design-version-diff").innerText();
+  assert.doesNotMatch(snapshot, /BEFORE|AFTER|Plan changes|Generated geometry changes|outage/);
+  assert.equal(await page.playwright.getByRole("button", { name: "Compare", exact: true }).isEnabled(), true);
+}
