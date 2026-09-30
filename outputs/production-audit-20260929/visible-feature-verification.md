@@ -248,3 +248,6 @@ Security follow-up126: minimal Next.js16.3.5→16.3.6 patch changes npm audit fr
 
 
 Saved-analysis follow-ups127/128: shared records now explain their original upload filename/date. A real API outage no longer claims an existing analysis is missing; repeated failure remains truthful and native Retry restores the exact stored geometry after restart without reload. Real404feedback is preserved.499frontend tests/types/changed-source lint/build pass. No backend/data change or deployment. CI36747006495 on9d1ab39 has passed the patched frontend gate and remains running; it excludes127/128.
+
+
+Automatic fit follow-up129: native realSTL controls prove accepted30mm alignment, exact1000mm³ overlap,10mm manual gap, refused nonmatching alignment with15mm original gap and5mm manually corrected gap. Provenance now distinguishes the actual transform and its bounded surface-alignment limitation. Six realAPI combinations,47focused and2526full backend tests/3documented skips,499frontend tests/types/lint/build pass. No measurement algorithm change; broad automatic mating, engineering accuracy, production and external-provider proof remain open. See `129-fit-seating-provenance-proof.json`.

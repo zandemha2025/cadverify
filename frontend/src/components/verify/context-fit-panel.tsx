@@ -32,12 +32,12 @@ export function ContextFitPanel() {
   const seatingLine = result
     ? nudged
       ? result.seating.accepted && result.seating.method !== "shared_frame"
-        ? "Seated automatically, then set by you."
+        ? "Automatically aligned, then offset by you."
         : "Position set by you."
       : result.seating.method === "shared_frame"
         ? "Seated using the files' shared CAD frame."
         : result.seating.accepted
-          ? "Seated automatically - check the fit."
+          ? "Automatically aligned surfaces - check orientation and fit."
           : "We couldn't seat this with confidence. Shared frame retained - use nudge to adjust."
     : "Results withheld until this pair is checked.";
   return <section className="grid min-h-0 flex-1 gap-4 p-4 lg:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)]" data-testid="context-fit-panel">

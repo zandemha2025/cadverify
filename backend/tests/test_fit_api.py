@@ -42,6 +42,44 @@ def test_fit_endpoint_returns_real_collision(client, cube_10mm, stl_bytes_of, mo
     assert body["timing_ms"]["pair_total"] >= body["timing_ms"]["collision_boolean"]
 
 
+@pytest.mark.parametrize("mode,unmatched,nudge,accepted,shift,gap,volume", [
+    ("shared_frame", False, 0, True, 0, 20, 0),
+    ("shared_frame", False, 5, True, 5, 25, 0),
+    ("auto", False, 0, True, -30, 0, 1000),
+    ("auto", False, 20, True, -10, 10, 0),
+    ("auto", True, 0, False, 0, 15, 0),
+    ("auto", True, -10, False, -10, 5, 0),
+])
+def test_fit_seating_provenance_matches_measured_placement(
+    client, monkeypatch, stl_bytes_of, mode, unmatched, nudge, accepted, shift, gap, volume,
+):
+    monkeypatch.setenv("CONTEXT_FIT_ENABLED", "1")
+    a = trimesh.creation.box(extents=[10, 10, 10])
+    b = trimesh.creation.box(extents=[20, 5, 3] if unmatched else [10, 10, 10])
+    b.apply_translation([30, 0, 0])
+    response = client.post(f"/api/v1/validate/fit?seating={mode}&nudge_x_mm={nudge}", files={
+        "part_a": ("part.stl", stl_bytes_of(a)),
+        "part_b": ("assembly.stl", stl_bytes_of(b)),
+    })
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["coordinate_frame"] == "part_a_source_frame"
+    assert result["seating"]["accepted"] is accepted
+    assert result["seating"]["transform"][0][3] == pytest.approx(shift)
+    assert result["clearance"]["closest_sampled_gap_mm"] == pytest.approx(gap, abs=1e-6)
+    assert result["collision"]["volume_mm3"] == pytest.approx(volume, abs=1e-6)
+    limits = " ".join(result["limits"])
+    if mode == "shared_frame":
+        assert "same assembly coordinate frame" in limits
+    elif accepted:
+        assert "bounded surface alignment" in limits
+        assert "does not verify assembly constraints" in limits
+        assert "same assembly coordinate frame" not in limits
+    else:
+        assert "original file coordinates were retained" in limits
+    assert ("Manual XYZ offset" in limits) is bool(nudge)
+
+
 @pytest.mark.parametrize("kind", ["stl", "obj", "3mf"])
 def test_fit_and_preview_share_per_file_units_and_mm_nudge(client, monkeypatch, kind):
     import io

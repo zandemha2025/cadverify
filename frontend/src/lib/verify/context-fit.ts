@@ -3,7 +3,7 @@ import { API_BASE } from "@/lib/api-base";
 export type FitUnits = { part: "mm" | "inch"; context: "mm" | "inch" };
 
 export interface FitResult {
-  coordinate_frame: "shared_source_frame";
+  coordinate_frame: "shared_source_frame" | "part_a_source_frame";
   seating: { method: string; accepted: boolean; reason: string; transform: number[][]; manual_nudge_mm: number[] };
   collision: { intersects: boolean; volume_mm3: number; method: string; region: null | { region_center: [number, number, number]; part_a_faces: number[]; part_b_faces: number[]; render_geometry: { available: boolean; media_type?: string; encoding?: string; data?: string; reason?: string } } };
   clearance: { closest_sampled_gap_mm: number; method: string; tight_zone: { region_center: [number, number, number] | null; part_a_faces: number[]; part_b_faces: number[]; sample_count: number } };

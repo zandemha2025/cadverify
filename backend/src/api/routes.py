@@ -965,6 +965,18 @@ async def validate_fit(
         final_transform = nudge @ np.asarray(seating_report["transform"], dtype=float)
         seated_b = apply_seating(mesh_b, final_transform.tolist())
         result = await __import__("asyncio").to_thread(analyze_fit, mesh_a, seated_b)
+        result["coordinate_frame"] = "part_a_source_frame"
+        if seating == "shared_frame":
+            result["limits"].append("Shared-frame seating assumes both files were exported in the same assembly coordinate frame.")
+        elif seating_report["accepted"]:
+            result["limits"].append("Automatic seating proposes a bounded surface alignment; it does not verify assembly constraints or a unique mating orientation.")
+        else:
+            result["limits"].append("Automatic seating was ambiguous or high-residual; original file coordinates were retained before any manual offset.")
+        if any(value != 0 for value in (nudge_x_mm, nudge_y_mm, nudge_z_mm)):
+            result["limits"].append(
+                f"Manual XYZ offset ({nudge_x_mm:g}, {nudge_y_mm:g}, {nudge_z_mm:g}) mm "
+                "is applied to the assembly after seating, in your part's coordinate frame."
+            )
         for label, file, units in [("Your part", part_a, part_a_units), ("Assembly", part_b, part_b_units)]:
             source = f"source coordinates interpreted as {units}" if Path(file.filename or "").suffix.lower() in {".stl", ".obj"} else "embedded CAD units"
             result["limits"].append(f"{label}: {source}, normalized to mm before seating and measurement.")

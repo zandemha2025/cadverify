@@ -233,7 +233,6 @@ def analyze_fit(mesh_a: trimesh.Trimesh, mesh_b: trimesh.Trimesh) -> dict[str, A
     pair_ms = (time.perf_counter() - pair_start) * 1000
     limits = [
         "Clearance is sampled on submitted tessellation and is not an analytic B-rep tolerance result.",
-        "Shared-frame seating assumes both files were exported in the same assembly coordinate frame.",
     ]
     if len(mesh_a.faces) + len(mesh_b.faces) > _max_pair_faces():
         limits.append(
@@ -244,8 +243,6 @@ def analyze_fit(mesh_a: trimesh.Trimesh, mesh_b: trimesh.Trimesh) -> dict[str, A
             "The true tightest spot may be smaller than the closest measured gap; a 25,000-face proxy was sampled."
         )
     return {
-        "coordinate_frame": "shared_source_frame",
-        "seating": {"method": "shared_source_frame", "transform_applied": False},
         "collision": {
             "intersects": bool(volume > 1e-9),
             "volume_mm3": round(volume, 6),
