@@ -1,0 +1,75 @@
+{
+  "conclusion": "success",
+  "createdAt": "2026-09-30T14:53:50Z",
+  "headSha": "8ae64d521b2cba2819b52bd7da9e21399ef54713",
+  "status": "completed",
+  "updatedAt": "2026-09-30T15:33:38Z",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36732575107",
+  "jobs": [
+    {
+      "name": "Backend Tests",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T14:53:53Z",
+      "completed_at": "2026-09-30T15:09:40Z"
+    },
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T14:53:54Z",
+      "completed_at": "2026-09-30T14:54:45Z"
+    },
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T14:53:54Z",
+      "completed_at": "2026-09-30T14:54:04Z"
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T14:53:54Z",
+      "completed_at": "2026-09-30T14:55:47Z"
+    },
+    {
+      "name": "Commit hook integrity policy",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T14:53:54Z",
+      "completed_at": "2026-09-30T14:55:22Z"
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T14:53:54Z",
+      "completed_at": "2026-09-30T14:55:14Z"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T14:54:08Z",
+      "completed_at": "2026-09-30T14:55:06Z"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T15:09:44Z",
+      "completed_at": "2026-09-30T15:33:37Z"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T15:09:44Z",
+      "completed_at": "2026-09-30T15:13:59Z"
+    }
+  ],
+  "scope": "Exact remote8ae64d5 through116 and the enterprise-label correction. Excludes local117\u2013119.",
+  "limitations": "Not production deployment or external-provider proof. Main-only image CVE findings remain open."
+}

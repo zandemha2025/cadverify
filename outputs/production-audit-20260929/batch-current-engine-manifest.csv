@@ -1,0 +1,6 @@
+filename,process_types,priority
+cube.STP,cnc_3axis,normal
+bored-block-mm.iges,cnc_3axis,normal
+bored-block-inch.iges,cnc_3axis,normal
+open-bored-block-mm.iges,cnc_3axis,normal
+broken.stl,cnc_3axis,normal

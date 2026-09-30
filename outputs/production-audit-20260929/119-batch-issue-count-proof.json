@@ -1,0 +1,157 @@
+{
+  "batch_id": "01M3SEVV9PBYEC4AQYBBZQ4A6A",
+  "environment": "local Next frontend, FastAPI, real ARQ worker, PostgreSQL and Redis",
+  "deployment": "not deployed",
+  "controls": [
+    {
+      "filename": "cube.STP",
+      "status": "completed",
+      "attempts": 1,
+      "analysis_id": "01M3SEVZYSXXZRMF2D9QAY47SQ",
+      "engine": "0.3.16",
+      "csv_issue_count": "0",
+      "geometry": {
+        "faces": 185328,
+        "units": "mm",
+        "vertices": 92664,
+        "volume_mm3": 2717.3,
+        "is_manifold": true,
+        "is_watertight": true,
+        "center_of_mass": [
+          10.0,
+          7.5,
+          5.0
+        ],
+        "bounding_box_mm": [
+          20.0,
+          15.0,
+          10.0
+        ],
+        "surface_area_mm2": 1432.0
+      },
+      "universal_issue_codes": []
+    },
+    {
+      "filename": "bored-block-mm.iges",
+      "status": "completed",
+      "attempts": 1,
+      "analysis_id": "01M3SEVZFJYDNE7AQ5AXGDE4Y3",
+      "engine": "0.3.16",
+      "csv_issue_count": "0",
+      "geometry": {
+        "faces": 185316,
+        "units": "mm",
+        "vertices": 92658,
+        "volume_mm3": 2717.3,
+        "is_manifold": true,
+        "is_watertight": true,
+        "center_of_mass": [
+          10.0,
+          7.5,
+          5.0
+        ],
+        "bounding_box_mm": [
+          20.0,
+          15.0,
+          10.0
+        ],
+        "surface_area_mm2": 1432.0
+      },
+      "universal_issue_codes": []
+    },
+    {
+      "filename": "bored-block-inch.iges",
+      "status": "completed",
+      "attempts": 1,
+      "analysis_id": "01M3SEW66Y6SWWAE63BNQ29DCX",
+      "engine": "0.3.16",
+      "csv_issue_count": "0",
+      "geometry": {
+        "faces": 185452,
+        "units": "mm",
+        "vertices": 92726,
+        "volume_mm3": 44529010.2,
+        "is_manifold": true,
+        "is_watertight": true,
+        "center_of_mass": [
+          254.0,
+          190.5,
+          127.0
+        ],
+        "bounding_box_mm": [
+          508.0,
+          381.0,
+          254.0
+        ],
+        "surface_area_mm2": 923839.4
+      },
+      "universal_issue_codes": []
+    },
+    {
+      "filename": "open-bored-block-mm.iges",
+      "status": "completed",
+      "attempts": 1,
+      "analysis_id": "01M3SEWCJJJJDDWQ70EMS42809",
+      "engine": "0.3.16",
+      "csv_issue_count": "2",
+      "geometry": {
+        "faces": 150005,
+        "units": "mm",
+        "vertices": 75474,
+        "volume_mm3": 0.0,
+        "is_manifold": false,
+        "is_watertight": false,
+        "center_of_mass": [
+          null,
+          null,
+          null
+        ],
+        "bounding_box_mm": [
+          20.0,
+          15.0,
+          10.0
+        ],
+        "surface_area_mm2": 1160.2
+      },
+      "universal_issue_codes": [
+        "NON_WATERTIGHT",
+        "NOT_SOLID_VOLUME"
+      ]
+    },
+    {
+      "filename": "broken.stl",
+      "status": "failed",
+      "attempts": 1,
+      "analysis_id": null,
+      "engine": null,
+      "csv_issue_count": "",
+      "error": "400: File is too small to be a valid STL (minimum 84 bytes for header + triangle count)."
+    }
+  ],
+  "source_note": "Repository cube.step is a 20\u00d715\u00d710 bored block, not a simple cube. Inch IGES uses the same numeric coordinates in inches, so dimensions are 25.4\u00d7 and volume is 25.4\u00b3\u00d7 the mm case.",
+  "csv_evidence": "Direct existing server generator on the same persisted rows; not a native browser download claim.",
+  "scope": "Recommended-route plus universal findings, reusing catalog_service.scoped_findings; quick-analysis legacy supported; missing evidence remains null.",
+  "native_checks": [
+    "Before: failed open IGES row falsely shows 0 issues",
+    "Linked same analysis has NON_WATERTIGHT and NOT_SOLID_VOLUME",
+    "After: same batch row shows 2 issues",
+    "Broken STL Show error displays minimum84-byte explanation",
+    "Failed status filter contains only malformed STL",
+    "Reload retains all5terminal rows and the corrected2issue count"
+  ],
+  "tests": {
+    "focused": 14,
+    "pyright_errors": 214,
+    "pyright_warnings": 3,
+    "new_diagnostics": 0,
+    "bandit_medium_high": 0,
+    "bandit_existing_low": 1,
+    "full_backend_passed": 2499,
+    "full_backend_skipped": 3,
+    "seconds": 225.82,
+    "skip_reasons": [
+      "real corpus manifest not present",
+      "optional OCP XDE unavailable (two tests)"
+    ]
+  }
+}
