@@ -879,14 +879,14 @@ function WebhooksPanel() {
 
   return (
     <Card style={{ padding: "20px 22px" }}>
-      <Kicker>WEBHOOKS — THE RECORD, PUSHED</Kicker>
+      <Kicker>BATCH WEBHOOKS — DELIVERY LOG</Kicker>
       <p style={{ margin: "12px 0 0", fontSize: 12.5, lineHeight: 1.6, color: C.ink55 }}>
-        Push the full verification record — with provenance, the same JSON the API returns — to your
-        PLM/ERP on <span style={{ fontFamily: MONO, fontSize: 11.5, color: C.ink }}>verification.completed</span>,{" "}
-        <span style={{ fontFamily: MONO, fontSize: 11.5, color: C.ink }}>validation.flipped</span>, and more.
+        Configure a webhook URL and shared signing secret when starting a batch. Receive signed JSON
+        summaries for the batch and its processed items. Full verification records are available
+        separately in the app and API.
       </p>
       <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 7, fontFamily: MONO, fontSize: 10.5 }}>
-        {["verification.completed", "validation.flipped", "triage.finished", "decision.recorded"].map((e) => (
+        {["batch.completed", "batch_item.completed"].map((e) => (
           <span key={e} style={{ border: `1px solid #dcdce0`, color: C.ink50, borderRadius: 999, padding: "5px 12px" }}>
             {e}
           </span>

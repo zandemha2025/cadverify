@@ -5,6 +5,7 @@ with exponential backoff retries and timing-safe verification.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import logging
@@ -18,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Batch, WebhookDelivery
-from src.services.url_guard import UnsafeURLError, validate_outbound_url
+from src.services.url_guard import validate_outbound_url
 
 logger = logging.getLogger("cadverify.webhook_service")
 
@@ -166,12 +167,13 @@ async def deliver_webhook(
         logger.warning("Webhook delivery %d has no signing secret", delivery_id)
         return False
 
-    # SSRF guard (S7) defense-in-depth: re-validate at delivery time in case
-    # DNS was rebound to an internal address after the request-time check.
+    # Resolve once at delivery time and connect only to the vetted addresses,
+    # preserving Host and TLS SNI as in connector_transport.
     # A rejected URL is a permanent failure -- mark failed, never retried.
     try:
-        validate_outbound_url(batch.webhook_url)
-    except UnsafeURLError:
+        url = httpx.URL(batch.webhook_url)
+        addresses = await asyncio.to_thread(validate_outbound_url, str(url))
+    except (ValueError, httpx.InvalidURL):
         logger.warning(
             "Webhook delivery blocked by SSRF guard: delivery=%d batch=%s",
             delivery_id, batch.ulid,
@@ -188,6 +190,7 @@ async def deliver_webhook(
     signature = sign_webhook_payload(payload_bytes, secret)
 
     headers = {
+        "Host": url.netloc.decode("ascii"),
         "Content-Type": "application/json",
         "X-CadVerify-Signature": signature,
         "User-Agent": "ProofShape-Webhook/1.0",
@@ -198,25 +201,36 @@ async def deliver_webhook(
     delivery.last_attempt_at = now
 
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(
-                batch.webhook_url,
-                content=payload_bytes,
-                headers=headers,
-            )
-        delivery.response_code = resp.status_code
-        if 200 <= resp.status_code < 300:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=False, trust_env=False) as client:
+            targets = addresses or [url.host]  # Preserve the operator's explicit guard off-switch.
+            for index, address in enumerate(targets):
+                try:
+                    # Acknowledgement needs only the status; never buffer an
+                    # unbounded response body supplied by the recipient.
+                    async with client.stream(
+                        "POST", url.copy_with(host=address), content=payload_bytes,
+                        headers=headers, extensions={"sni_hostname": url.host},
+                    ) as response:
+                        status = response.status_code
+                    break
+                except (httpx.ConnectError, httpx.ConnectTimeout):
+                    if index == len(targets) - 1:
+                        raise
+            else:
+                raise httpx.ConnectError("No webhook address available")
+        delivery.response_code = status
+        if 200 <= status < 300:
             delivery.status = "delivered"
             await session.commit()
             logger.info(
                 "Webhook delivered: delivery=%d batch=%s status=%d",
-                delivery_id, batch.ulid, resp.status_code,
+                delivery_id, batch.ulid, status,
             )
             return True
         else:
             logger.warning(
                 "Webhook non-2xx: delivery=%d batch=%s status=%d",
-                delivery_id, batch.ulid, resp.status_code,
+                delivery_id, batch.ulid, status,
             )
             await session.commit()
             return False

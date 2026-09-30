@@ -1,0 +1,36 @@
+{
+  "finding": 122,
+  "first_divergence": "step 2, expected the HTTP request to connect to the address validated by the SSRF guard, state was the original hostname passed to HTTPX for another resolution",
+  "before": {
+    "failing_controls": 5,
+    "response_body": "HTTPX post buffered recipient response bodies, including the controlled body that must not be consumed"
+  },
+  "fix": [
+    "Return already validated addresses from the existing URL guard and resolve off the event loop",
+    "Reuse connector transport pattern: pin vetted IP, preserve Host/port/path/query and TLS SNI, retain certificate verification",
+    "Disable environment proxies and redirects; fall back across vetted addresses only for connection establishment failures",
+    "Read and close response headers without consuming the recipient body",
+    "Preserve existing operator guard off-switch and delivery retry policy"
+  ],
+  "checks": {
+    "focused_passed": 114,
+    "backend_full_passed": 2516,
+    "backend_skipped": 3,
+    "backend_seconds": 218.15,
+    "backend_type_errors": 214,
+    "backend_type_warnings": 3,
+    "new_type_messages": 0,
+    "changed_source_bandit_medium_high": 0
+  },
+  "transport_controls": [
+    "Public hostname/custom HTTPS port/query with a second forbidden DNS answer never requested",
+    "IPv6-to-IPv4 connection fallback uses only vetted addresses",
+    "IPv6 literal HTTP custom port retains Host",
+    "302 is not followed; 503 remains pending with its real status",
+    "ConnectError/ConnectTimeout remain retryable; ReadTimeout does not immediately repost to another IP",
+    "Fifth failed attempt stops scheduling",
+    "Exact transmitted bytes independently match recipient HMAC; no raw secret in headers/body",
+    "Response stream closes without body consumption"
+  ],
+  "limits": "HTTPX MockTransport boundary controls, not actual external receiver receipt or a TLS handshake. Installed httpcore source confirms sni_hostname is passed to TLS server_hostname. The full suite started before the unreachable-loop type safeguard was added; all 114 focused checks and type checks passed after it. No production deployment."
+}

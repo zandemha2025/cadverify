@@ -9,7 +9,7 @@ any URL that resolves to a private / loopback / link-local / reserved range
 (incl. the 169.254.169.254 cloud metadata address and IPv6 fc00::/7 / ::1).
 
 Validation runs twice: at request time (batch creation → 400) and again at
-delivery time as defense-in-depth, since DNS can be rebound between the two.
+delivery time, which pins the returned addresses instead of resolving again.
 
 Off-switch: WEBHOOK_SSRF_GUARD_ENABLED=0 disables the guard entirely (default
 on). It exists only for closed-network operators who deliberately deliver to
@@ -142,12 +142,13 @@ def validate_public_host(host: str) -> None:
     resolve_public_host(host)
 
 
-def validate_outbound_url(url: str | None) -> None:
+def validate_outbound_url(url: str | None) -> list[str] | None:
     """Validate a user-supplied outbound URL, raising UnsafeURLError if unsafe.
 
     No-op when the guard is disabled or the URL is falsy. Enforces http(s)
     scheme, a present host, and that EVERY resolved address is a public,
-    routable one.
+    routable one. Returns the validated addresses for delivery to pin, or None
+    when validation is disabled/not applicable.
     """
     if not url or not guard_enabled():
         return
@@ -163,7 +164,7 @@ def validate_outbound_url(url: str | None) -> None:
     if not host:
         raise UnsafeURLError("URL has no host")
 
-    validate_public_host(host)
+    return resolve_public_host(host)
 
 
 def is_safe_outbound_url(url: str | None) -> bool:

@@ -99,7 +99,7 @@ def test_hostname_resolving_to_public_ip_is_accepted():
         "src.services.url_guard.socket.getaddrinfo",
         return_value=[(2, 1, 6, "", ("93.184.216.34", 0))],
     ):
-        validate_outbound_url("https://webhooks.example.com/hook")
+        assert validate_outbound_url("https://webhooks.example.com/hook") == ["93.184.216.34"]
 
 
 def test_hostname_resolving_to_private_ip_is_rejected():

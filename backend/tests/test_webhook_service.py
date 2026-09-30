@@ -7,10 +7,13 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+from ipaddress import ip_address
 import re
+import threading
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from src.services.webhook_service import (
@@ -137,29 +140,113 @@ async def test_delivery_without_a_secret_is_terminal_without_network(secret):
 
 
 @pytest.mark.asyncio
-async def test_configured_delivery_signs_the_exact_sent_body():
-    from src.services import webhook_service
+@pytest.mark.parametrize("url,addresses,fail_first,status", [
+    ("https://hooks.example.test:8443/receiver?tenant=a", ["93.184.216.34"], False, 204),
+    ("https://hooks.example.test/receiver", ["2606:4700:4700::1111", "93.184.216.34"], True, 200),
+    ("http://[2606:4700:4700::1111]:8080/receiver", ["2606:4700:4700::1111"], False, 202),
+    ("https://hooks.example.test/receiver", ["93.184.216.34"], False, 302),
+    ("https://hooks.example.test/receiver", ["93.184.216.34"], False, 503),
+])
+async def test_configured_delivery_signs_the_exact_sent_body(monkeypatch, url, addresses, fail_first, status):
+    from src.services import url_guard, webhook_service
 
     secret = "local-test-only-signing-sentinel"
     delivery = MagicMock(batch_id=1, status="pending", attempts=0,
                          payload_json={"event": "batch.completed", "batch_id": "LOCAL-AUDIT-CONTROL"})
-    batch = MagicMock(webhook_url="https://hooks.example.test/receiver", webhook_secret=secret)
+    batch = MagicMock(webhook_url=url, webhook_secret=secret)
     delivery_result, batch_result = MagicMock(), MagicMock()
     delivery_result.scalars.return_value.first.return_value = delivery
     batch_result.scalars.return_value.first.return_value = batch
     session = AsyncMock()
     session.execute.side_effect = [delivery_result, batch_result]
-    with patch.object(webhook_service, "validate_outbound_url"), patch.object(webhook_service.httpx, "AsyncClient") as factory:
-        client = factory.return_value.__aenter__.return_value
-        client.post.return_value = MagicMock(status_code=204)
-        assert await webhook_service.deliver_webhook(session, 7)
-        sent = client.post.call_args.kwargs
-        timestamp, signature = sent["headers"]["X-CadVerify-Signature"].split(",")
-        expected = hmac.new(secret.encode(), timestamp[2:].encode() + b"." + sent["content"], hashlib.sha256).hexdigest()
+    requests, resolver_threads, client_options = [], [], []
+    original = httpx.URL(url)
+    main_thread = threading.get_ident()
+    def resolve(host):
+        resolver_threads.append(threading.get_ident())
+        # A second lookup would return a forbidden address. No socket is opened.
+        return [ip_address(ip) for ip in (addresses if len(resolver_threads) == 1 else ["127.0.0.1"])]
+
+    class UnreadBody(httpx.AsyncByteStream):
+        closed = False
+        async def __aiter__(self):
+            raise AssertionError("Webhook acknowledgements must not buffer unbounded recipient bodies")
+            yield b""  # pragma: no cover
+        async def aclose(self):
+            self.closed = True
+
+    body = UnreadBody()
+    def handle(request):
+        requests.append(request)
+        if fail_first and len(requests) == 1:
+            raise httpx.ConnectError("unreachable first vetted address", request=request)
+        return httpx.Response(status, stream=body, headers={"Location": "http://127.0.0.1/forbidden"})
+
+    real_client = httpx.AsyncClient
+    def client(**options):
+        client_options.append(options)
+        return real_client(transport=httpx.MockTransport(handle), **options)
+    monkeypatch.setenv("WEBHOOK_SSRF_GUARD_ENABLED", "1")
+    monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:9")
+    monkeypatch.setattr(url_guard, "_resolve_ips", resolve)
+    monkeypatch.setattr(httpx, "AsyncClient", client)
+    ok = await webhook_service.deliver_webhook(session, 7)
+    assert [request.url.host for request in requests] == addresses
+    assert len(resolver_threads) == 1 and resolver_threads[0] != main_thread
+    assert client_options[0]["trust_env"] is False
+    assert client_options[0]["follow_redirects"] is False
+    assert body.closed
+    for request in requests:
+        assert request.method == "POST"
+        assert request.url.raw_path == original.raw_path
+        assert request.url.port == original.port
+        assert request.headers["Host"] == original.netloc.decode("ascii")
+        assert request.extensions["sni_hostname"] == original.host
+        timestamp, signature = request.headers["X-CadVerify-Signature"].split(",")
+        expected = hmac.new(secret.encode(), timestamp[2:].encode() + b"." + request.content, hashlib.sha256).hexdigest()
         assert signature == "v1=" + expected
-        assert secret not in repr(sent)
-        assert delivery.status == "delivered"
-        assert delivery.attempts == 1
+        assert secret not in str(request.headers) + request.content.decode()
+    assert ok is (200 <= status < 300)
+    assert delivery.status == ("delivered" if ok else "pending")
+    assert delivery.response_code == status
+    assert delivery.attempts == 1
+    session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure,connection_count", [
+    (httpx.ConnectError, 2), (httpx.ConnectTimeout, 2), (httpx.ReadTimeout, 1),
+])
+async def test_transport_failures_remain_retryable_without_reposting_after_send(monkeypatch, failure, connection_count):
+    from src.services import webhook_service
+
+    delivery = MagicMock(batch_id=1, status="pending", attempts=0, response_code=None, payload_json={"event": "batch.completed"})
+    batch = MagicMock(webhook_url="https://hooks.example.test/receiver", webhook_secret="test-only-key")
+    delivery_result, batch_result = MagicMock(), MagicMock()
+    delivery_result.scalars.return_value.first.return_value = delivery
+    batch_result.scalars.return_value.first.return_value = batch
+    session = AsyncMock()
+    session.execute.side_effect = [delivery_result, batch_result, delivery_result, delivery_result]
+    requests = []
+    def handle(request):
+        requests.append(request)
+        raise failure("controlled transport failure", request=request)
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: real_client(transport=httpx.MockTransport(handle), **kw))
+    monkeypatch.setattr(webhook_service, "validate_outbound_url", lambda url: ["93.184.216.34", "93.184.216.35"])
+    assert not await webhook_service.deliver_webhook(session, 7)
+    assert len(requests) == connection_count
+    assert delivery.status == "pending" and delivery.attempts == 1
+    assert delivery.response_code is None
+    pool = AsyncMock()
+    await webhook_service.schedule_webhook_retry(session, 7, pool)
+    assert pool.enqueue_job.call_args.args == ("dispatch_webhook", 7)
+    assert pool.enqueue_job.call_args.kwargs["_defer_by"].total_seconds() > 0
+    assert delivery.next_retry_at is not None
+    delivery.attempts = 5
+    await webhook_service.schedule_webhook_retry(session, 7, pool)
+    assert delivery.status == "failed"
+    pool.enqueue_job.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
