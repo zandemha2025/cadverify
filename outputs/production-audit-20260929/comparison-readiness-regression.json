@@ -1,0 +1,22 @@
+{
+  "beforeError": "Every conditional price needs its saved readiness label: CNC 3-Axis\n$649.6\n±50% n=0\n$649.6\n±50% n=0\n0%\n\n0 !== 2\n",
+  "cnc": {
+    "status": "PASS",
+    "process": "CNC 3-Axis",
+    "labels": 2,
+    "row": "CNC 3-Axis\n$649.6\n±50% n=0\nrequires redesign\n$649.6\n±50% n=0\nrequires redesign\n0%"
+  },
+  "dieCasting": {
+    "status": "PASS",
+    "process": "Die Casting",
+    "labels": 2,
+    "row": "Die Casting\n$44.58\n±60% n=0\nrequires redesign\n$44.58\n±60% n=0\nrequires redesign\n0%"
+  },
+  "waam": {
+    "status": "PASS",
+    "process": "WAAM",
+    "labels": 0,
+    "row": "WAAM\n$909.7\n±60% n=0\n$909.7\n±60% n=0\n0%"
+  },
+  "driverExplanation": true
+}

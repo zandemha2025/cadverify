@@ -1,5 +1,16 @@
 import assert from "node:assert/strict";
 
+export async function assertComparisonReadiness(page, process, count) {
+  const row = await page.playwright.evaluate((process) => {
+    const section = [...document.querySelectorAll("section")].find((el) => el.innerText.includes("CALIBRATION VS CALIBRATION"));
+    return [...section?.querySelectorAll("span") ?? []].find((el) => el.textContent === process)?.parentElement.innerText;
+  }, process);
+  assert.ok(row, `Missing comparison row: ${process}`);
+  assert.equal((row.match(/requires redesign/g) ?? []).length, count,
+    `Every conditional price needs its saved readiness label: ${row}`);
+  return { status: "PASS", process, labels: count, row };
+}
+
 export async function assertComparisonFits(page, expectedViewport) {
   const state = await page.playwright.evaluate(() => {
     const panel = [...document.querySelectorAll("main")].find((el) =>

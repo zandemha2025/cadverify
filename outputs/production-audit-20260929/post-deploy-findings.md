@@ -458,3 +458,12 @@ At a confirmed 390 px viewport, the comparison main scrolled to 479 px; the rout
 Reused the program/standing auto-fit grid pattern, bounded native record selectors, and kept the per-process table legible in a labeled, keyboard-focusable horizontal scroll region. At 390 and 320 px the main now fits exactly and every record/quantity/side control is within the viewport. At 320 px, ArrowRight reaches scrollLeft 134 and brings the delta column to x=263; the table's 340 px content is intentionally scrollable. The route slider still yields the exact saved MJF $3.11 / conditional molding $2.69 at 10,000. Desktop layout also passes.
 
 Typecheck, changed-file lint and production build pass. See `compare-mobile-regression.json`, `062-*.png` and `assertComparisonFits` in the existing CUA comparison check. The viewport assertion also guards against testing the wrong active tab. Production proof remains pending.
+
+
+## 063 — Comparison price cells dropped saved readiness conditions
+
+The real NIST comparison showed CNC 3-axis at $649.61 and die casting at $44.58 (quantity 5,000) without either cell's stored `dfm_ready=false` condition. WAAM is DFM-ready at $909.74. Even after the route chart was corrected, the separate per-process price table still omitted these conditions.
+
+The existing process/quantity band index now retains readiness alongside confidence. Each price cell shows `requires redesign` for DFM-blocked estimates, or `environment excluded` when the saved estimate is excluded. No prices or deltas change. Replaced the fallback claim that differences were mostly quantity effects with the actual comparison threshold: no comparable driver difference above 5% was identified.
+
+Native NIST regression fails before the change and passes after it: both CNC and die-casting cells are labeled, both feasible WAAM cells remain unmarked, and the unsupported quantity explanation is absent. All 489 frontend tests, typecheck, changed-file lint and production build pass. The environment-exclusion label is wired from the saved flag but has not been separately replayed through this native comparison screen. Evidence: `comparison-readiness-regression.json`, `063-*.png` and the CUA comparison assertion. Production verification remains pending.

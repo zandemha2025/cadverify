@@ -85,3 +85,5 @@ Verify comparison follow-up (060): route curves now follow the saved recommendat
 Part-to-comparison follow-up (061): a part's Compare action now retains its exact saved record instead of substituting the newest record. Native cube and subsequent NIST navigation pass, with all frontend checks green locally. Production verification is still required.
 
 Comparison responsive follow-up (062): both cards and all controls fit 390/320 px, and keyboard scrolling reaches the complete price table. Native high-quantity results remain correct; desktop layout and build/type/lint checks pass. Production remains pending.
+
+Comparison conditions follow-up (063): each cost cell now retains saved DFM/environment conditions, and driver commentary no longer guesses the cause of a gap. Native NIST blocked/feasible rows and all frontend checks pass; a native excluded-environment comparison case and production proof remain open.

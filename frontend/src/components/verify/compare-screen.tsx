@@ -33,6 +33,7 @@ interface Band {
   pct: number | null;
   validated: boolean;
   n: number;
+  condition: "environment excluded" | "requires redesign" | null;
 }
 function bandIndex(detail: CostDecisionDetail | null): Map<string, Map<number, Band>> {
   const idx = new Map<string, Map<number, Band>>();
@@ -43,6 +44,7 @@ function bandIndex(detail: CostDecisionDetail | null): Map<string, Map<number, B
       pct: Number.isFinite(e.est_error_band_pct) ? e.est_error_band_pct : null,
       validated: e.confidence?.validated ?? false,
       n: e.confidence?.n_samples ?? 0,
+      condition: e.environment_excluded ? "environment excluded" : e.dfm_ready === false ? "requires redesign" : null,
     });
     idx.set(e.process, inner);
   }
@@ -398,7 +400,7 @@ function CalibrationPanel({
           <ProvChip p={divergent.bProv} /> — the rest track within noise
         </p>
       ) : (
-        <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40 }}>drivers track closely across both — the gap is mostly quantity effects</p>
+        <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40 }}>No comparable driver difference above 5% was identified.</p>
       )}
       <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink35 }}>negotiate the driver, not the total</p>
     </section>
@@ -412,6 +414,7 @@ function Figure({ cost, band }: { cost: number | null; band: Band | null }) {
     <span style={{ textAlign: "right", color: C.ink70, display: "inline-flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.35 }}>
       <span>{USD(cost)}</span>
       <span style={{ fontSize: 9.5, color: band?.validated ? C.pass : C.cond }}>{bandText(band)}</span>
+      {band?.condition && <span style={{ fontSize: 9.5, color: C.cond }}>{band.condition}</span>}
     </span>
   );
 }
