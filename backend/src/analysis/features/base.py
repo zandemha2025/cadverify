@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+import numpy as np
+
+if TYPE_CHECKING:
+    import trimesh
 
 
 class FeatureKind(str, Enum):
@@ -54,10 +59,11 @@ class Feature:
 
 
 def has_rotational_surface_evidence(
-    features: list[Feature],
+    features: Optional[list[Feature]],
     surface_area_mm2: float,
     *,
     min_fraction: float = 0.05,
+    mesh: Optional[trimesh.Trimesh] = None,
 ) -> bool:
     """Return true only for a materially sized, measured outer rotational surface.
 
@@ -65,12 +71,13 @@ def has_rotational_surface_evidence(
     have normal variation in only one direction, while a circular cylinder or
     cone spans two independent radial directions. Requiring that rank plus a minimum
     share of total surface area prevents a small bore—or a boxy part with similar
-    inertia moments—from being presented as lathe-ready.
+    inertia moments—from being presented as lathe-ready. A complete spherical
+    mesh is also rotational, even though it has no cylindrical surface.
     """
-    if not features or surface_area_mm2 <= 0:
+    if not np.isfinite(surface_area_mm2) or surface_area_mm2 <= 0:
         return False
     boss_area = 0.0
-    for feature in features:
+    for feature in features or []:
         if feature.kind != FeatureKind.CYLINDER_BOSS and not (
             feature.kind == FeatureKind.CURVED
             and (feature.metadata or {}).get("surface") == "conical"
@@ -87,4 +94,19 @@ def has_rotational_surface_evidence(
         area = feature.area or 0.0
         if area > 0:
             boss_area += float(area)
-    return boss_area >= min_fraction * float(surface_area_mm2)
+    if boss_area >= min_fraction * float(surface_area_mm2):
+        return True
+    if mesh is None or not mesh.is_volume:
+        return False
+    # ponytail: whole spheres within 2% tessellation error only; general curved
+    # solids of revolution need a measured axial-profile test, not an inertia guess.
+    # Check face interiors too: every vertex of a cube lies on one sphere.
+    center = mesh.center_mass
+    radii = np.linalg.norm(mesh.vertices - center, axis=1)
+    face_radii = np.linalg.norm(mesh.triangles_center - center, axis=1)
+    radius = float(np.mean(radii))
+    return bool(
+        np.isfinite(radius) and radius > 0
+        and np.all(np.abs(radii / radius - 1) <= 0.02)
+        and np.all(np.abs(face_radii / radius - 1) <= 0.02)
+    )

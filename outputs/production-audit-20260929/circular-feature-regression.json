@@ -1,6 +1,7 @@
 {
   "finding": "071",
   "engine_version": "0.3.10",
+  "followup_verification_version": "0.3.11 (072 adds spherical turning evidence)",
   "fixture_construction": "Gmsh/OpenCASCADE: sphere r=10; circular cone r=10 to r=8 over h=20; 20x20x10 block minus an extruded ellipse with semiaxes 6 and 3. Exact analytic volumes and dimensions provide the independent oracle.",
   "controls": [
     {
@@ -13,7 +14,7 @@
         20
       ],
       "expected_flats": 0,
-      "expected_rotational_evidence": null,
+      "expected_rotational_evidence": true,
       "observed_volume_error_percent": 0.011017923597836616,
       "observed_features": []
     },

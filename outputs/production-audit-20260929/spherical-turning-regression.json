@@ -1,0 +1,40 @@
+{
+  "finding": "072",
+  "engine_version": "0.3.11",
+  "fixture": "shape-controls/sphere-r10.step",
+  "sha256": "6767939573a7d8b1dce898f537d89f3a771339ed297f02b480e85727f0ab5a9d",
+  "analytic_radius_mm": 10,
+  "environment": "Local API 8017 / frontend 3017; not production",
+  "before": {
+    "rotational": false,
+    "turning_verdict": "Required",
+    "suitability_percent": 0,
+    "blocker": "NOT_ROTATIONALLY_SYMMETRIC",
+    "eigenvalue_ratios": [
+      1,
+      1
+    ]
+  },
+  "after": {
+    "rotational": true,
+    "turning_row": "CNC Turning\t\nPass\t100%\t\u2014",
+    "blocker_absent": true,
+    "routing": "GEOMETRIC ROUTING\nCNC Turning\narchetype: rotational\nconfidence 0.80\n\nAxisymmetric cross-section (round, turnable): axis 20mm \u00d7 \u00d820mm \u2192 CNC turning / mill-turn. A round metal part is rarely powder-bed printed at production volume.\n\nalternatives: CNC 5-Axis \u00b7 MJF (HP)\n\nDECIDED BY\nrotational\nyes\nsheet_like\nno\nplanar_aspect\n1.00\nnominal_wall_mm\n6.67\nsheet_gauge_mm\n20.00\nbend_count\n0.00\n"
+  },
+  "scope": "Measured complete spherical surface within 2% radial tessellation tolerance. This does not certify arbitrary solids of revolution, fixtures/toolpaths, or supplier prices.",
+  "validation": {
+    "focused_geometry_checks": 25,
+    "backend_passed": 2399,
+    "backend_skips": [
+      "real corpus manifest unavailable locally",
+      "OCP XDE unavailable (2 cases)"
+    ],
+    "known_step_controls": 3,
+    "unchanged_local_reference_estimates": 77,
+    "pyright_errors": 216,
+    "pyright_baseline": 228,
+    "new_changed_file_type_diagnostics": 0,
+    "bandit_medium_high": 0,
+    "bandit_preexisting_low": 2
+  }
+}

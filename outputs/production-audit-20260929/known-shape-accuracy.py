@@ -20,5 +20,5 @@ for control in proof["controls"]:
     assert sum(f.kind.value == "flat" for f in features) == control["expected_flats"]
     assert not any(f.kind.value.startswith("cylinder_") for f in features)
     if control["expected_rotational_evidence"] is not None:
-        assert has_rotational_surface_evidence(features, mesh.area) == control["expected_rotational_evidence"]
+        assert has_rotational_surface_evidence(features, mesh.area, mesh=mesh) == control["expected_rotational_evidence"]
     print("PASS:", control["filename"], "analytic dimensions/volume and surface classification")

@@ -734,15 +734,15 @@ def check_rotational_symmetry(
         is_symmetric = (
             (abs(1.0 - ratio_01) < tolerance)
             or (abs(1.0 - ratio_12) < tolerance)
-        ) and has_rotational_surface_evidence(ctx.features, ctx.info.surface_area)
+        ) and has_rotational_surface_evidence(ctx.features, ctx.info.surface_area, mesh=ctx.mesh)
         if not is_symmetric:
             return [Issue(
                 code="NOT_ROTATIONALLY_SYMMETRIC",
                 severity=Severity.ERROR,
                 message=(
                     f"Part lacks positive rotational geometry (eigenvalue ratios: "
-                    f"{ratio_01:.2f}, {ratio_12:.2f}; no material outer cylindrical "
-                    f"surface). Required for {process.value}."
+                    f"{ratio_01:.2f}, {ratio_12:.2f}; insufficient outer rotational "
+                    f"surface evidence). Required for {process.value}."
                 ),
                 process=process,
                 fix_suggestion="CNC turning requires axially symmetric geometry. Use mill-turn or 3/5-axis CNC.",

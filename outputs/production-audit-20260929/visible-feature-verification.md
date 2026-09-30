@@ -21,7 +21,7 @@ Production is Render, currently `09555c1`. The subsequent audit branch has not b
 | Verify 3D preview | Prior live/core and CI proof | File replacement, large meshes, error recovery and all viewing controls |
 | Analyze/cost 3D preview | Missing on live STEP; fixed locally | Deploy and repeat real-file render/inspection proof |
 | Locate a DFM finding | Local preview now uses analysis mesh and exact fingerprint guard | Real STEP selection passes locally; cached-mesh mismatch recovery and production proof remain |
-| Dimensions, volume, hole measurements | Known STEP: 20×15×10 mm, 6 mm bore; volume error 0.002581% | More independent shapes, orientations, thin walls and units |
+| Dimensions, volume, hole measurements | Known STEP: 20×15×10 mm, 6 mm bore; volume error 0.002581%. Real sphere/cone/ellipse analytic controls pass; false oval/taper diameters fixed (071). Sphere turning false rejection fixed with same-byte native proof (072) | Deploy; broader independent shapes, orientations, thin walls and units; general curved surfaces of revolution |
 | Small-feature warnings | Live false positive; corrected local tests retain 0.39 mm fail / 0.41 mm pass | Deploy; evaluate freeform boundaries and feature coverage |
 | Casting corner warnings | Live smooth-bore false positive; corrected local coarse/fine controls | Deploy and expand representative cast geometry |
 | Flat feature detection | Fixed locally: real STEP now has six planes + one bore (026) | Deploy and extend non-cylindrical/freeform controls |
@@ -105,3 +105,5 @@ Command palette follow-up (070): closing with Escape returns focus to the invoki
 Accuracy follow-up (071): real ellipse/taper controls exposed false cylinder dimensions. Vertex-based cross-section validation now distinguishes these from real round holes; circular tapers retain turning evidence. Native identical-byte ellipse replay, cone routing and the original 3 mm round bore pass. Three analytic STEP volume/dimension controls, full backend 2,397 pass/3 documented skips and unchanged 66-price oracle support this local fix. Spherical turning suitability and arbitrary curved-opening coverage remain unverified; no general accuracy certification. Engine/cache version 0.3.10; not deployed.
 
 CI 36673864245 on9c67339 completed with all nine jobs passed, including all34 real-CAD cases and the complete browser/training chain. Follow-ups067–070 are now pushed as412b0e2; exact-head PR CI36677043750 is running.071 is locally verified and not yet pushed.
+
+Spherical turning follow-up (072): identical radius-10 STEP now gives rotational routing and removes the false CNC-turning blocker. Both shared callers use measured spherical surface evidence; coarse/fine rotated controls retain cube/ellipsoid/open/inverted rejection. Backend 2,399 pass/3 documented skips, three analytic STEP controls, no new type diagnostics and 77 unchanged local price/line-item estimates. Engine/cache 0.3.11; not deployed.

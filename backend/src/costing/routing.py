@@ -75,9 +75,10 @@ def is_rotational(geometry, mesh=None, features=None):
       2. inertia-eigenvalue axisymmetry (`_inertia_axisymmetric`) — the SAME test
          `checks.check_rotational_symmetry` runs for CNC turning, at the SAME 0.15
          tolerance, AND
-      3. a measured outer cylindrical surface covering at least 5% of the part's
-         surface area. This rejects boxy L brackets and open enclosures whose
-         similar extents and inertia moments otherwise mimic a round part.
+      3. measured outer cylindrical/conical surfaces covering at least 5% of the
+         part's surface area, or a measured complete sphere. This rejects boxy
+         L brackets and open enclosures whose similar extents and inertia
+         moments otherwise mimic a round part.
 
     Requiring (2) makes `rotational ⟹ the engine's rotational-symmetry DFM check
     passes`, so routing can NEVER headline "turnable" on a part the DFM hard-fails
@@ -106,7 +107,7 @@ def is_rotational(geometry, mesh=None, features=None):
         (roundness >= 0.80)
         and _inertia_axisymmetric(mesh)
         and has_rotational_surface_evidence(
-            features, float(getattr(geometry, "surface_area", 0.0) or 0.0)
+            features, float(getattr(geometry, "surface_area", 0.0) or 0.0), mesh=mesh
         )
         and (cross_dia >= 5.0)
         and (0.25 <= ld <= 8.0)

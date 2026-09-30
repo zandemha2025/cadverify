@@ -1,10 +1,16 @@
 """Known cross-sections must not acquire an invented constant hole diameter."""
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 import trimesh
 
+from src.analysis.base_analyzer import analyze_geometry
 from src.analysis.features.base import FeatureKind, has_rotational_surface_evidence
 from src.analysis.features.cylinders import detect_cylinders
+from src.analysis.models import ProcessType
+from src.analysis.processes.checks import check_rotational_symmetry
+from src.costing.routing import is_rotational
 
 
 @pytest.mark.parametrize("sections", [64, 256])
@@ -27,3 +33,27 @@ def test_round_elliptical_and_tapered_surfaces_remain_distinct(sections):
     tapered = detect_cylinders(cone)
     assert not any(f.kind in (FeatureKind.CYLINDER_HOLE, FeatureKind.CYLINDER_BOSS) for f in tapered)
     assert has_rotational_surface_evidence(tapered, cone.area), "a circular taper remains valid turning evidence"
+
+
+@pytest.mark.parametrize("subdivisions", [2, 3])
+def test_spherical_turning_evidence_agrees_in_dfm_and_routing(subdivisions):
+    sphere = trimesh.creation.icosphere(subdivisions=subdivisions, radius=10)
+    ellipsoid = sphere.copy()
+    ellipsoid.apply_scale([1, 1.1, 1.2])
+    # A cube's vertices also lie on a sphere; its face interiors do not.
+    cube = trimesh.creation.box(extents=[20, 20, 20])
+    open_sphere = sphere.copy()
+    open_sphere.update_faces(np.arange(len(open_sphere.faces) - 1))
+    inverted = sphere.copy()
+    inverted.invert()
+    transform = trimesh.transformations.rotation_matrix(0.73, [1, 2, 3])
+    transform[:3, 3] = [125, -35, 41]
+    for mesh, expected in ((sphere, True), (ellipsoid, False), (cube, False),
+                           (open_sphere, False), (inverted, False)):
+        mesh.apply_transform(transform)
+        info = analyze_geometry(mesh)
+        assert bool(is_rotational(info, mesh, [])[0]) is expected
+        if info.is_watertight and info.volume > 0:
+            ctx = SimpleNamespace(mesh=mesh, info=info, features=[])
+            issues = check_rotational_symmetry(ctx, ProcessType.CNC_TURNING, tolerance=0.15)
+            assert (not any(i.code == "NOT_ROTATIONALLY_SYMMETRIC" for i in issues)) is expected
