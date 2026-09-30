@@ -135,7 +135,7 @@ export function IntegrationsClient({ canManageCredentials = false }: { canManage
             <CardContent className="space-y-3 text-sm leading-6 text-muted-foreground">
               <p>{connector.description}</p>
               {connector.mode !== "offline_csv" && (
-                <p className="font-medium text-amber-700">Product connection tests available to organization admins. BOM reads and API imports are not available yet.</p>
+                <p className="font-medium text-amber-700">{connector.id === "windchill_part_bom_readonly" ? "Organization admins can test a connection, preview a complete BOM and import whole-part counts." : "Product connection tests available to organization admins. SAP BOM reads and API imports are not available yet."}</p>
               )}
               <div className="grid grid-cols-2 gap-2 font-mono text-xs">
                 <span>{connector.source_system}</span>
@@ -225,9 +225,9 @@ export function IntegrationsClient({ canManageCredentials = false }: { canManage
           </> : selected && (
             <>
               <p role="status" className="text-sm text-muted-foreground lg:col-span-3">
-                This vendor API import cannot run yet. For a CSV export, choose SAP manifest CSV or PLM manifest CSV.
+                {selected.id === "windchill_part_bom_readonly" ? "Choose a saved connection below to preview and import a Windchill BOM." : "This vendor API import cannot run yet. For a CSV export, choose SAP manifest CSV or PLM manifest CSV."}
               </p>
-              {canManageCredentials ? <ConnectorCredentials key={selected.id} connectorId={selected.id} /> :
+              {canManageCredentials ? <ConnectorCredentials key={selected.id} connectorId={selected.id} onRun={() => void refresh()} /> :
                 <p className="text-sm text-muted-foreground lg:col-span-4">An organization admin can save and test a vendor connection here.</p>}
             </>
           )}

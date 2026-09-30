@@ -9,7 +9,9 @@ promotion level.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable, Protocol
 
 from src.services.integration_service import (
@@ -240,3 +242,79 @@ def _positive_quantity(value: Any) -> float | None:
     except (TypeError, ValueError, OverflowError):
         return None
     return quantity if math.isfinite(quantity) and quantity > 0 else None
+
+
+def windchill_bom_rows(payload: dict[str, Any], expected_root: str) -> tuple[list[dict], int]:
+    """Map complete GetPartStructure data to existing BOM rows using part IDs.
+
+    Distinct usage links to the same child are additive. Repeated occurrences of
+    a shared parent must describe the same child counts, never extra assemblies.
+    """
+    from src.services.bom_service import BOM_MAX_ROWS, _checked_graph
+
+    def part(node: dict) -> tuple[str, str]:
+        value = node.get("Part")
+        if not isinstance(value, dict) or any(not isinstance(value.get(k), str) or not value[k].strip() for k in ("ID", "Number")):
+            raise ValueError("The BOM is missing expanded part identity. Check the Windchill API version.")
+        if not re.fullmatch(r"OR:wt\.part\.WTPart:[0-9]{1,30}", value["ID"]):
+            raise ValueError("The BOM must identify exact part iterations, not unresolved part masters.")
+        return value["ID"], str(value.get("Name") or value["Number"])
+
+    if part(payload)[0] != expected_root:
+        raise ValueError("The returned root differs from the requested part iteration.")
+    if payload.get("HasUnresolvedObjectsByAccessRights") is not False:
+        raise ValueError("Windchill could not confirm access to the complete BOM.")
+    stack = [payload]
+    structures: dict[str, dict[str, int]] = {}
+    edges: dict[tuple[str, str], dict] = {}
+    usages: dict[str, tuple[str, str, int]] = {}
+    visited = 0
+    while stack:
+        node = stack.pop()
+        visited += 1
+        if visited > BOM_MAX_ROWS:
+            raise ValueError("The BOM exceeds the 20000 component limit.")
+        if (node.get("Resolved") is not True or node.get("HasUnresolvedObjectsByAccessRights") is True
+                or any(key.endswith("nextLink") for key in node)):
+            raise ValueError("The BOM is unresolved, access-restricted or paginated; a complete structure is required.")
+        children = node.get("Components", [])
+        if (not isinstance(children, list) or not isinstance(node.get("HasChildren"), bool)
+                or node["HasChildren"] != bool(children) or any(not isinstance(c, dict) for c in children)):
+            raise ValueError("The BOM has incomplete or inconsistent component expansion.")
+        parent_id, _ = part(node)
+        counts: dict[str, int] = {}
+        links: set[str] = set()
+        for child in children:
+            child_id, name = part(child)
+            usage = child.get("PartUse")
+            if not isinstance(usage, dict) or not isinstance(usage.get("ID"), str) or not usage["ID"]:
+                raise ValueError("The BOM is missing expanded part usage links.")
+            if usage["ID"] in links:
+                raise ValueError("The BOM repeats a usage link. Request the structure without occurrence expansion.")
+            links.add(usage["ID"])
+            unit = usage.get("Unit")
+            if not isinstance(unit, dict) or str(unit.get("Value", "")).lower() != "ea":
+                raise ValueError("BOM demand requires each (ea) units; mass, length and other units cannot be treated as part counts.")
+            try:
+                quantity = Decimal(str(usage.get("Quantity")))
+            except (InvalidOperation, ValueError) as exc:
+                raise ValueError("The BOM quantity is missing or invalid.") from exc
+            if not (quantity.is_finite() and 0 < quantity <= 2_147_483_647 and quantity == quantity.to_integral_value()):
+                raise ValueError("BOM quantities must be exact whole-part counts between 1 and 2147483647.")
+            association = (parent_id, child_id, int(quantity))
+            if usages.setdefault(usage["ID"], association) != association:
+                raise ValueError("The same usage link has conflicting part identities or quantities.")
+            counts[child_id] = counts.get(child_id, 0) + int(quantity)
+            if counts[child_id] > 2_147_483_647:
+                raise ValueError("Combined BOM quantities exceed the supported part count.")
+            edges.setdefault((parent_id, child_id), {"parent_ref": parent_id, "child_ref": child_id, "child_name": name})
+        if structures.setdefault(parent_id, counts) != counts:
+            raise ValueError("The same part iteration has conflicting BOM structures.")
+        for child_id, quantity in counts.items():
+            edges[(parent_id, child_id)]["qty_per_parent"] = quantity
+        stack.extend(children)
+    rows = [edges[key] for key in sorted(edges)]
+    if not rows:
+        raise ValueError("The selected part has no BOM components to import.")
+    _checked_graph(rows)
+    return rows, visited - 1

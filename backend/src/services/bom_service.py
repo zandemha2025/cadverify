@@ -9,12 +9,14 @@ to a door assembly (environment) belongs to a vehicle (total), and
 
 is resolved edge-by-edge from the real hierarchy instead of guessed.
 
-Two honest ingest sources:
+Ingest sources:
   * an extracted STEP/IGES assembly (``assembly_mesher.AssemblyModel``) — edges are
     DERIVED from the real product tree, ``qty_per_parent`` the MEASURED instance
     count of a child design under one parent occurrence (``source='assembly_step'``).
   * a customer ``parent_ref,child_ref,qty_per_parent`` BOM (CSV/JSON) — USER-declared
     structure, per-row validated, bad rows reported + skipped (``source='bom_csv'``).
+  * a complete authenticated Windchill structure — exact part iteration IDs and
+    validated whole-part quantities (``source='windchill_api'``).
 
 HONESTY RAILS (non-negotiable):
   * An edge is only ever a REAL relationship (parsed or declared). We NEVER
@@ -570,16 +572,18 @@ async def ingest_bom_rows(
     org_id: str,
     assembly_key: str,
     rows: list[dict],
+    *,
+    source: str = SOURCE_BOM_CSV,
 ) -> dict:
     """Persist declared BOM rows (``source='bom_csv'``), idempotently replacing the
     prior tree for ``(org_id, assembly_key)``. ``rows`` are already-validated edge
     dicts from ``parse_bom*``. Returns ``{assembly_key, edges, roots, source}``."""
-    count = await _replace_tree(session, org_id, assembly_key, rows, SOURCE_BOM_CSV)
+    count = await _replace_tree(session, org_id, assembly_key, rows, source)
     return {
         "assembly_key": assembly_key,
         "edges": count,
         "roots": sorted(_roots(rows)),
-        "source": SOURCE_BOM_CSV,
+        "source": source,
     }
 
 

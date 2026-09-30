@@ -18,14 +18,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
-from src.db.models import ConnectorCredentialProfile
+from src.db.models import ConnectorCredentialProfile, IntegrationRun
 from src.services.connector_adapters import (
     ConnectorAdapterSettings,
     SapS4ProductBomReadOnlyAdapter,
     WindchillPartBomReadOnlyAdapter,
 )
 from src.services.integration_service import get_connector
-from src.services.connector_transport import ConnectorConnectionError, probe_product_api
+from src.services.connector_transport import ConnectorConnectionError, probe_product_api, read_windchill_bom
 
 AUTH_TYPES = {"bearer", "basic", "oauth2_client_credentials", "api_key"}
 FINGERPRINT_ALGORITHM = "hmac_sha256"
@@ -331,3 +331,60 @@ async def probe_profile(row: ConnectorCredentialProfile) -> dict[str, Any]:
     except TimeoutError:
         result["reason"] = "The connection test timed out. Check availability and try again."
     return result
+
+
+async def run_bom_profile(
+    session: AsyncSession, row: ConnectorCredentialProfile, *, user_id: int,
+    part_id: str, assembly_key: str, mode: str, navigation_id: str | None = None,
+    expected_sha256: str | None = None,
+) -> IntegrationRun:
+    """Read vendor BOM, preview or atomically import normalized whole-part edges."""
+    from src.services import bom_service
+
+    if row.connector_id != "windchill_part_bom_readonly":
+        raise HTTPException(status_code=400, detail="This connector has no BOM reader yet.")
+    if row.revoked_at is not None:
+        raise HTTPException(status_code=409, detail="This connection is revoked. Choose an active connection.")
+    if mode not in {"dry_run", "import"}:
+        raise HTTPException(status_code=400, detail="mode must be dry_run or import")
+    key = _clean_text(assembly_key, "assembly_key", max_len=120)
+    if mode == "import" and (not expected_sha256 or len(expected_sha256) != 64):
+        raise HTTPException(status_code=400, detail="Preview the BOM before importing it.")
+    rows: list[dict] = []
+    source_count = 0
+    error = None
+    try:
+        rows, source_count = await read_windchill_bom(row.base_url, row.auth_type, decrypt_secret(row.encrypted_secret_json),
+                                                    part_id=part_id, navigation_id=navigation_id)
+    except ConnectorConnectionError as exc:
+        error = str(exc)
+    except TimeoutError:
+        error = "The BOM read timed out. No assembly was replaced; try again."
+    normalized = json.dumps(rows, sort_keys=True, separators=(",", ":")).encode()
+    digest = hashlib.sha256(normalized).hexdigest()
+    if not error and mode == "import" and not hmac.compare_digest(digest, expected_sha256 or ""):
+        error = "The BOM changed since its preview. Preview it again before importing; the saved assembly was kept."
+    imported = 0
+    if not error and mode == "import":
+        summary = await bom_service.ingest_bom_rows(session, row.org_id, key, rows, source="windchill_api")
+        imported = summary["edges"]
+    run = IntegrationRun(
+        ulid=str(ULID()), org_id=row.org_id, user_id=user_id, connector_id=row.connector_id,
+        connector_mode="live_readonly", boundary_label="live_readonly", source_system="PTC Windchill",
+        source_kind="bom", api_name="ProdMgmt.GetPartStructure", mode=mode,
+        status="failed" if error else "passed", filename=None, file_sha256=digest,
+        file_size_bytes=len(normalized), source_record_count=source_count, normalized_record_count=len(rows),
+        rows_total=len(rows), rows_valid=len(rows), rows_invalid=0, imported_count=imported,
+        updated_count=0, skipped_count=len(rows) if error else 0, raw_stored=False,
+        errors_json=[{"reason": error}] if error else [],
+        metadata_json={
+            "credential_profile_id": row.ulid, "assembly_key": key, "root_part_id": part_id,
+            "navigation_criteria_id": navigation_id, "hash_scope": "normalized BOM edges",
+            "read_completed": bool(rows), "replaces_existing_tree": mode == "import" and not error,
+            "preview_edges": rows[:20], "preview_truncated": len(rows) > 20,
+            "quantity_unit": "ea", "vendor_writes": False,
+        }, completed_at=_now(),
+    )
+    session.add(run)
+    await session.flush()
+    return run

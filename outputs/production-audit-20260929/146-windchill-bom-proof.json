@@ -1,0 +1,110 @@
+{
+  "finding": "146",
+  "status": "implemented locally; real tenant and deployment proof pending",
+  "source_base": "f42015d4487789bdb49636f451d5499f2f2e0b55",
+  "first_divergence": "Windchill could test one product, but had no BOM read or import path.",
+  "implementation": [
+    "Bounded authenticated GetCSRFToken and read-only GetPartStructure POST; original-origin session cookies, pinned public IP, Host/SNI and TLS verification.",
+    "Exact part iteration IDs, optional saved navigation criteria, completeness and permissions checks, exact integer ea quantities, duplicate-use and graph consistency validation.",
+    "Canonical normalized-edge SHA256 is insensitive to collection order. Import rereads and rejects changes before replacing any saved assembly.",
+    "Organization-admin preview/import endpoint, atomic saved BOM/run ledger, revocation and import kill-switch checks.",
+    "Saved-connection browser form with preview, import guard, table, retryable errors and shared run history."
+  ],
+  "validation": {
+    "backend_full": {
+      "passed": 2596,
+      "skipped": 3,
+      "seconds": 224.18,
+      "scope": "before final source-count return and canonical ordering follow-ups",
+      "skip_reasons": [
+        "real corpus manifest absent",
+        "optional OCP XDE unavailable (2 tests)"
+      ],
+      "protected_skip_policy": true
+    },
+    "final_related_backend": {
+      "passed": 90,
+      "seconds": 3.89,
+      "scope": "final source including count and ordering fixes"
+    },
+    "frontend": {
+      "passed": 499,
+      "types": "pass",
+      "changed_file_lint": "pass",
+      "production_build": "pass"
+    },
+    "types": {
+      "errors": 214,
+      "warnings": 3,
+      "new_diagnostics": 0,
+      "scope": "final source including canonical ordering"
+    },
+    "bandit": {
+      "medium": 0,
+      "high": 0
+    },
+    "red_green": [
+      "missing BOM transport",
+      "raw component count versus consolidated edge count",
+      "same graph with reversed vendor collection order incorrectly rejected as changed"
+    ],
+    "http_fixture_only": true,
+    "fixture_counts": {
+      "base": {
+        "components": 4,
+        "relationships": 4,
+        "leaf_multiplier": 8
+      },
+      "repeated_parent_usage": {
+        "components": 6,
+        "relationships": 4,
+        "leaf_multiplier": 11
+      }
+    },
+    "database": [
+      "preview creates no BOM edges",
+      "missing preview rejected before egress",
+      "kill switch stops import before egress",
+      "successful import persists four Windchill edges",
+      "changed and permission-restricted responses preserve identical saved edges",
+      "viewer forbidden",
+      "other organization cannot read profile/run or invoke it",
+      "revoked profile refused without egress"
+    ],
+    "native_browser": {
+      "url": "http://127.0.0.1:3017/integrations",
+      "connection": "disposable noncredential at reserved windchill.example; revoked after check",
+      "verified": [
+        "new form expands",
+        "import disabled before successful preview",
+        "invalid part ID gives inline error before vendor request",
+        "same failure appears in ledger",
+        "editing clears inline error and retains disabled import",
+        "revocation hides BOM form"
+      ],
+      "not_verified": [
+        "real vendor success",
+        "native successful preview/import"
+      ]
+    }
+  },
+  "limits": [
+    "No authorized Windchill tenant used",
+    "No vendor writes",
+    "No production deployment",
+    "Only complete ea whole-count BOMs; 1 MB response cap and 20000-node traversal bound",
+    "SAP BOM transport remains missing",
+    "General correctness and manufacturing price accuracy not certified"
+  ],
+  "references": [
+    "https://support.ptc.com/help/windchill_rest_services/r2.5/en/windchill_rest_services/wccg_restapiaccessexamples_ProdMgmt_getPartstructure.html",
+    "https://support.ptc.com/help/windchill_rest_services/r2.5/en/windchill_rest_services/wccg_restapisaccess_PTCProdMgmtDomainActions.html",
+    "https://support.ptc.com/help/windchill/plus/r13.1.2.0/en/Windchill_Help_Center/WCRESTFramework/WCCG_RESTAPIsNonceTokenFunction.html",
+    "https://support.ptc.com/help/windchill/r13.1.2.0/en/Windchill_Help_Center/WCRESTFramework/WCCG_RESTAccessExamplesCreateMultiplePartUses.html"
+  ],
+  "screenshots": {
+    "146-windchill-connection-state.png": "a88c4dfe917879d7a1b9856bac04b92da6ee75a52a63f6b3829a8f524e6896ac",
+    "146-windchill-selector-error.png": "fe232bf37c4862e8b77734f11cbbd8a79e8d2bd01c6c347081dac85386f13123",
+    "146-windchill-test-revoked.png": "c8ff9b0f0ce14bd1dcad675781c0dcbbf6270e881f73ca7d59468ac8b4afb6e9"
+  }
+}

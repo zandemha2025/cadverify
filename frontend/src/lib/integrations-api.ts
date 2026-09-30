@@ -4,7 +4,7 @@ export interface IntegrationConnector {
   id: string;
   label: string;
   source_system: string;
-  source_kind: "manifest" | "ground_truth";
+  source_kind: "manifest" | "ground_truth" | "bom";
   file_format: string;
   mode: string;
   description: string;
@@ -126,4 +126,22 @@ export async function probeConnectorCredential(id: string): Promise<ConnectorPro
 export async function revokeConnectorCredential(id: string): Promise<ConnectorCredentialProfile> {
   const res = await fetch(`${API_BASE}/integrations/credential-profiles/${encodeURIComponent(id)}`, { method: "DELETE" });
   return (await readJson<{ profile: ConnectorCredentialProfile }>(res)).profile;
+}
+
+export interface ConnectorBomRun extends IntegrationRun {
+  metadata: Record<string, unknown> & {
+    assembly_key: string;
+    preview_edges: { parent_ref: string; child_ref: string; child_name: string; qty_per_parent: number }[];
+    preview_truncated: boolean;
+  };
+}
+
+export async function runConnectorBom(id: string, input: {
+  part_id: string; assembly_key: string; mode: "dry_run" | "import";
+  navigation_id?: string; expected_sha256?: string;
+}): Promise<ConnectorBomRun> {
+  const res = await fetch(`${API_BASE}/integrations/credential-profiles/${encodeURIComponent(id)}/bom-runs`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+  });
+  return (await readJson<{ run: ConnectorBomRun }>(res)).run;
 }

@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import {
   listConnectorCredentials, probeConnectorCredential, revokeConnectorCredential, saveConnectorCredential,
+  runConnectorBom, type ConnectorBomRun,
   type ConnectorAuthType, type ConnectorCredentialProfile, type ConnectorProbe,
 } from "@/lib/integrations-api";
 
@@ -20,7 +21,7 @@ const AUTH_FIELDS: Record<ConnectorAuthType, { name: string; label: string; type
   api_key: [{ name: "header_name", label: "API key header", defaultValue: "X-API-Key" }, { name: "api_key", label: "API key", type: "password" }],
 };
 
-export function ConnectorCredentials({ connectorId }: { connectorId: string }) {
+export function ConnectorCredentials({ connectorId, onRun }: { connectorId: string; onRun?: () => void }) {
   const [profiles, setProfiles] = useState<ConnectorCredentialProfile[]>([]);
   const [authType, setAuthType] = useState<ConnectorAuthType>("bearer");
   const [busy, setBusy] = useState("");
@@ -83,7 +84,7 @@ export function ConnectorCredentials({ connectorId }: { connectorId: string }) {
   return <section aria-label="Vendor connection settings" className="space-y-5 lg:col-span-4">
     <div className="space-y-1 text-sm text-muted-foreground">
       <h3 className="font-semibold text-foreground">Test a vendor connection</h3>
-      <p>Save a read-only credential, then test product-read access. The test requests at most one product and discards its contents. BOM reads and API imports are not available yet.</p>
+      <p>Save a read-only credential, then test product-read access. The test requests at most one product and discards its contents. {sap ? "SAP BOM reads and API imports are not available yet." : "Use a saved connection to preview and import a Windchill assembly below."}</p>
       <p>Use your {sap ? "SAP host or API_PRODUCT_SRV service root" : "Windchill host or ProdMgmt service root"}. The service must be reachable over public HTTPS.</p>
     </div>
     {loadError && <div role="alert" className="text-sm text-destructive">{loadError} <Button variant="secondary" disabled={!!busy} onClick={() => setReload((n) => n + 1)}>Retry loading connections</Button></div>}
@@ -117,9 +118,66 @@ export function ConnectorCredentials({ connectorId }: { connectorId: string }) {
           <Button variant="secondary" disabled={!!busy} onClick={() => void act(profile, "revoke")}>{busy === `revoke:${profile.id}` ? "Revoking…" : "Revoke connection"}</Button>
         </div>}
         {probes[profile.id] && <p role={probes[profile.id]!.connected ? "status" : "alert"} className={probes[profile.id]!.connected ? "text-emerald-700" : "text-destructive"}>
-          {probes[profile.id]!.connected ? `Product read succeeded (${probes[profile.id]!.records_read} record checked). BOM reads and imports have not been tested.` : `Connection failed: ${probes[profile.id]!.reason}`}
+          {probes[profile.id]!.connected ? `Product read succeeded (${probes[profile.id]!.records_read} record checked). This test does not check an assembly.` : `Connection failed: ${probes[profile.id]!.reason}`}
         </p>}
+        {!sap && !profile.revoked_at && <WindchillBomImport profile={profile} busy={busy} setBusy={setBusy} onRun={onRun} />}
       </article>)}
     </div>
   </section>;
+}
+
+function WindchillBomImport({ profile, busy, setBusy, onRun }: {
+  profile: ConnectorCredentialProfile; busy: string; setBusy: (value: string) => void; onRun?: () => void;
+}) {
+  const [run, setRun] = useState<ConnectorBomRun | null>(null);
+  const [error, setError] = useState("");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy) return;
+    const form = new FormData(event.currentTarget);
+    const mode = ((event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.value === "import" ? "import" : "dry_run";
+    const text = (name: string) => String(form.get(name) ?? "").trim();
+    setBusy(`bom:${profile.id}`); setError("");
+    try {
+      const result = await runConnectorBom(profile.id, {
+        part_id: text("part_id"), assembly_key: text("assembly_key"), mode,
+        navigation_id: text("navigation_id") || undefined,
+        expected_sha256: mode === "import" ? run?.file_sha256 : undefined,
+      });
+      setRun(result);
+      onRun?.();
+    } catch (err) {
+      setRun(null);
+      setError(err instanceof Error ? err.message : "Could not read this assembly. Try again.");
+    } finally { setBusy(""); }
+  }
+
+  return <details className="border-t border-border pt-3">
+    <summary className="cursor-pointer font-medium">Read or import an assembly</summary>
+    <form aria-label={`BOM import from ${profile.label}`} onSubmit={(event) => void submit(event)} onChange={() => { setRun(null); setError(""); }} className="mt-3 space-y-3">
+      <p className="text-muted-foreground">Preview a complete Windchill part structure, then import whole-part (ea) counts. Import replaces the assembly saved under the name below. Windchill is never modified.</p>
+      <fieldset disabled={!!busy} className="grid gap-3 sm:grid-cols-2">
+        <label className="space-y-1"><span>Root part iteration ID</span><input className={INPUT} name="part_id" required maxLength={120} placeholder="OR:wt.part.WTPart:12345" /></label>
+        <label className="space-y-1"><span>Saved assembly name</span><input className={INPUT} name="assembly_key" required maxLength={120} placeholder="Vehicle assembly" /></label>
+        <label className="space-y-1 sm:col-span-2"><span>Saved navigation criteria ID (optional)</span><input className={INPUT} name="navigation_id" maxLength={120} placeholder="OR:wt.filter.NavigationCriteria:12345" /></label>
+        <p className="text-xs text-muted-foreground sm:col-span-2">Without a saved filter, Windchill applies its default navigation criteria. Missing permissions, unresolved parts, fractional counts, other units and responses over 1 MB are rejected.</p>
+        <div className="flex flex-wrap gap-2 sm:col-span-2">
+          <Button type="submit" value="dry_run" variant="secondary">{busy === `bom:${profile.id}` ? "Reading…" : "Preview BOM"}</Button>
+          <Button type="submit" value="import" disabled={run?.status !== "passed" || run.mode !== "dry_run"}>Import previewed BOM</Button>
+        </div>
+      </fieldset>
+      {error && <p role="alert" className="text-destructive">{error}</p>}
+      {run && <div className="space-y-2">
+        <p role={run.status === "failed" ? "alert" : "status"}>
+          {run.status === "failed" ? run.errors.map((item) => item.reason).join(" ") : run.mode === "import" ? `Imported ${run.imported_count} relationships into ${run.metadata.assembly_key}.` : `Preview passed: ${run.rows_valid} relationships. No assembly changed.`}
+        </p>
+        {run.metadata.preview_edges.length > 0 && <div className="overflow-x-auto"><table className="w-full text-left text-xs">
+          <caption className="mb-2 text-left text-muted-foreground">{run.metadata.preview_truncated ? `First 20 of ${run.rows_valid} relationships` : "Assembly relationships"}</caption>
+          <thead><tr><th scope="col">Parent ID</th><th scope="col">Child ID / name</th><th scope="col">Count</th></tr></thead>
+          <tbody>{run.metadata.preview_edges.map((edge) => <tr key={`${edge.parent_ref}:${edge.child_ref}`}><td className="pr-3 py-1">{edge.parent_ref}</td><td className="pr-3 py-1">{edge.child_ref}<br />{edge.child_name}</td><td className="py-1">{edge.qty_per_parent}</td></tr>)}</tbody>
+        </table></div>}
+      </div>}
+    </form>
+  </details>;
 }
