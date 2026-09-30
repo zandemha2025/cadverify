@@ -58,6 +58,7 @@ import numpy as np
 import trimesh
 
 from src.analysis.features.base import Feature, FeatureKind
+from src.analysis.features.cylinders import fit_circular_section
 from src.analysis.features.facet_graph import (
     MAX_FEATURE_FACET_NODES,
     build_face_groups,
@@ -414,7 +415,8 @@ def _fit_axis_radius(
 
         radius = None
         if vertices is not None and faces is not None:
-            radius = _kasa_circle_radius(comp_faces, faces, vertices, axis)
+            circle = fit_circular_section(comp_faces, faces, vertices, axis)
+            radius = circle[1] if circle is not None else None
         if radius is None:
             # Fallback: naive mean-radial-distance (biased low for a partial
             # arc, but better than nothing if the circle fit is degenerate).
@@ -430,45 +432,3 @@ def _fit_axis_radius(
         return axis_out, radius, residual
     except Exception:
         return None, None, None
-
-
-def _kasa_circle_radius(
-    comp_faces: np.ndarray,
-    faces: np.ndarray,
-    vertices: np.ndarray,
-    axis: np.ndarray,
-) -> float | None:
-    """Least-squares (Kasa) circle radius of the strip's vertices in cross-section.
-
-    Projects vertices onto the plane perpendicular to ``axis`` and fits a
-    circle algebraically. Unbiased for a partial arc, unlike a naive
-    mean-centroid radial-distance estimate.
-    """
-    try:
-        vert_idx = np.unique(faces[comp_faces])
-        pts = vertices[vert_idx]
-        if len(pts) < 4:
-            return None
-
-        p0 = pts.mean(axis=0)
-        ref = np.array([1.0, 0.0, 0.0]) if abs(axis[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
-        e1 = ref - axis * np.dot(ref, axis)
-        e1_norm = np.linalg.norm(e1)
-        if e1_norm <= 1e-12:
-            return None
-        e1 = e1 / e1_norm
-        e2 = np.cross(axis, e1)
-
-        u = (pts - p0) @ e1
-        v = (pts - p0) @ e2
-        A = np.stack([2 * u, 2 * v, np.ones_like(u)], axis=1)
-        b = u**2 + v**2
-        sol, *_ = np.linalg.lstsq(A, b, rcond=None)
-        a_, b_, c_ = sol
-        r_sq = c_ + a_**2 + b_**2
-        if not np.isfinite(r_sq) or r_sq <= 0:
-            return None
-        radius = float(np.sqrt(r_sq))
-        return radius if np.isfinite(radius) and radius > 0 else None
-    except Exception:
-        return None

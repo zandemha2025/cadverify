@@ -59,11 +59,11 @@ def has_rotational_surface_evidence(
     *,
     min_fraction: float = 0.05,
 ) -> bool:
-    """Return true only for a materially sized, measured outer cylinder.
+    """Return true only for a materially sized, measured outer rotational surface.
 
     The cylinder detector also sees triangulated planar patches. Those patches
-    have normal variation in only one direction, while a true cylindrical wall
-    spans two independent radial directions. Requiring that rank plus a minimum
+    have normal variation in only one direction, while a circular cylinder or
+    cone spans two independent radial directions. Requiring that rank plus a minimum
     share of total surface area prevents a small bore—or a boxy part with similar
     inertia moments—from being presented as lathe-ready.
     """
@@ -71,7 +71,11 @@ def has_rotational_surface_evidence(
         return False
     boss_area = 0.0
     for feature in features:
-        if feature.kind != FeatureKind.CYLINDER_BOSS:
+        if feature.kind != FeatureKind.CYLINDER_BOSS and not (
+            feature.kind == FeatureKind.CURVED
+            and (feature.metadata or {}).get("surface") == "conical"
+            and (feature.metadata or {}).get("interior") is False
+        ):
             continue
         singular_values = (feature.metadata or {}).get("singular_values", [])
         if (

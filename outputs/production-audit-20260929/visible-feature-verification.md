@@ -101,3 +101,7 @@ Native re-cost after a declared machine change exposed a stale saved pointer des
 Theme follow-up (069): native command-palette changes now keep the shared theme button label/icon current. Both directions, direct button and reload pass; original light preference restored. Global command search also returns an honest empty state and accepts uppercase keyboard queries. Not deployed.
 
 Command palette follow-up (070): closing with Escape returns focus to the invoking header/sidebar control or prior keyboard focus. Native checks cover all three entry paths; uppercase navigation and no-result search pass. Frontend 493 tests, types, lint and build pass. Not deployed.
+
+Accuracy follow-up (071): real ellipse/taper controls exposed false cylinder dimensions. Vertex-based cross-section validation now distinguishes these from real round holes; circular tapers retain turning evidence. Native identical-byte ellipse replay, cone routing and the original 3 mm round bore pass. Three analytic STEP volume/dimension controls, full backend 2,397 pass/3 documented skips and unchanged 66-price oracle support this local fix. Spherical turning suitability and arbitrary curved-opening coverage remain unverified; no general accuracy certification. Engine/cache version 0.3.10; not deployed.
+
+CI 36673864245 on9c67339 completed with all nine jobs passed, including all34 real-CAD cases and the complete browser/training chain. Follow-ups067–070 are now pushed as412b0e2; exact-head PR CI36677043750 is running.071 is locally verified and not yet pushed.

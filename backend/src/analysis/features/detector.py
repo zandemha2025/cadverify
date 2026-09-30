@@ -26,7 +26,7 @@ def detect_all(mesh: trimesh.Trimesh) -> list[Feature]:
     """
     cylinders = detect_cylinders(mesh)
     curved_faces = {face for feature in cylinders for face in feature.face_indices}
-    # Nearly coplanar tessellation strips on an already recognized cylinder
+    # Nearly coplanar tessellation strips on an already recognized curved patch
     # are not separate physical planes. Keep real polygonal sides intact.
     features = [feature for feature in detect_flats(mesh)
                 if curved_faces.isdisjoint(feature.face_indices)]

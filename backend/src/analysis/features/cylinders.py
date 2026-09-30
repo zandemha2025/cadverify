@@ -8,8 +8,9 @@ Pipeline:
     3. For each component, fit an axis as the smallest singular vector of its
        face-normal matrix — for a true cylinder, all face normals lie in the
        plane perpendicular to the axis, so the axis is in the null space.
-    4. Validate the fit via the mean |normal · axis| residual; reject components
-       that aren't actually cylindrical.
+    4. Validate the axis and fit the vertices to a circular cross-section.
+       Nonconstant-radius candidates remain CURVED without an invented radius;
+       a validated circular taper retains rotational-surface evidence.
     5. Classify the remaining cylinders as HOLE vs BOSS by testing whether the
        average face normal points toward the axis (interior surface → hole)
        or away from it (exterior surface → boss).
@@ -32,7 +33,7 @@ def detect_cylinders(
     min_face_count: int = 6,
     max_axis_residual: float = 0.25,
 ) -> list[Feature]:
-    """Detect cylindrical features.
+    """Detect cylinders and retain noncircular candidates as curved surfaces.
 
     Args:
         smooth_angle_deg: dihedral threshold for "smoothly connected"; a
@@ -119,41 +120,26 @@ def detect_cylinders(
         if sv[0] <= 0 or (sv[1] / sv[0]) < 0.1:
             continue
 
-        mean = comp_centroids.mean(axis=0)
-        if not np.isfinite(mean).all():
+        circle = fit_circular_section(comp_arr, mesh.faces, mesh.vertices, axis)
+        if circle is None:
             continue
+        mean, fitted_radius, radii, axial_vertices = circle
+        radial_residual = float(np.sqrt(np.mean((radii - fitted_radius) ** 2)) / fitted_radius)
+        # 2% permits coarse tessellation chords while rejecting oval bores and
+        # material tapers. Axis alignment alone cannot establish a diameter.
+        circular = radial_residual <= 0.02
+        conical = False
+        if not circular:
+            slope, intercept = np.linalg.lstsq(
+                np.column_stack((axial_vertices, np.ones_like(axial_vertices))),
+                radii, rcond=None,
+            )[0]
+            predicted = slope * axial_vertices + intercept
+            taper_residual = float(np.sqrt(np.mean((radii - predicted) ** 2)) / fitted_radius)
+            conical = bool(taper_residual <= 0.02 and np.all(predicted > 0))
+        depth = float(np.ptp(axial_vertices))
         rel = comp_centroids - mean
-
-        # Remove the component along the axis; the remainder is the radial
-        # distance from the axis for each face's centroid.
-        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-            axial = rel @ axis
-        if not np.isfinite(axial).all():
-            continue
-        radial = rel - np.outer(axial, axis)
-        radii = np.linalg.norm(radial, axis=1)
-        radius = float(radii.mean())
-        if radius <= 0 or not np.isfinite(radius):
-            continue
-
-        # Depth is measured along the axis using *vertex* extents, not
-        # triangle centroids. Centroids of tall skinny side-triangles sit at
-        # h/3 and 2h/3, so their range underestimates the true height.
-        try:
-            face_verts = np.asarray(mesh.faces[comp_arr], dtype=np.int64)
-            unique_v = np.unique(face_verts)
-            comp_vertices = np.asarray(mesh.vertices)[unique_v]
-            if not np.isfinite(comp_vertices).all():
-                raise ValueError("non-finite component vertex")
-            with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-                v_axial = (comp_vertices - mean) @ axis
-            if not np.isfinite(v_axial).all():
-                raise ValueError("non-finite component axial extent")
-            depth = float(v_axial.max() - v_axial.min())
-        except Exception:
-            depth = float(axial.max() - axial.min())
-        if not np.isfinite(depth):
-            continue
+        radial = rel - np.outer(rel @ axis, axis)
 
         # Hole vs boss: does the average face normal point toward the axis?
         # For a hole (interior surface), the outward normal faces inward
@@ -173,7 +159,7 @@ def detect_cylinders(
         # not a wall around the axis — skip rather than guess boss-vs-hole.
         if abs(dot) < 0.3:
             continue
-        kind = FeatureKind.CYLINDER_HOLE if dot < 0 else FeatureKind.CYLINDER_BOSS
+        kind = (FeatureKind.CYLINDER_HOLE if dot < 0 else FeatureKind.CYLINDER_BOSS) if circular else FeatureKind.CURVED
 
         area = float(face_areas[comp_arr].sum())
         if not np.isfinite(area):
@@ -185,12 +171,15 @@ def detect_cylinders(
                 face_indices=[int(i) for i in comp_arr],
                 centroid=tuple(float(v) for v in mean),
                 axis=tuple(float(v) for v in axis),
-                radius=radius,
+                radius=fitted_radius if circular else None,
                 depth=depth,
                 area=area,
                 confidence=max(0.0, 1.0 - residual),
                 metadata={
                     "axis_residual": residual,
+                    "radial_residual": radial_residual,
+                    "surface": "circular" if circular else "conical" if conical else "non_circular",
+                    "interior": dot < 0,
                     "singular_values": sv.tolist(),
                     "normal_to_radial_dot": dot,
                 },
@@ -229,3 +218,48 @@ def _union_find_components(
         groups.setdefault(root, []).append(i)
     # Filter out singletons (faces with no smooth neighbor) — not cylinders.
     return [g for g in groups.values() if len(g) > 1]
+
+def fit_circular_section(
+    comp_faces: np.ndarray,
+    faces: np.ndarray,
+    vertices: np.ndarray,
+    axis: np.ndarray,
+) -> tuple[np.ndarray, float, np.ndarray, np.ndarray] | None:
+    """Fit the existing Kasa circle model; return axis center, radius, radial
+    distances and axial positions so callers can validate constant radius.
+    """
+    try:
+        vert_idx = np.unique(faces[comp_faces])
+        pts = vertices[vert_idx]
+        if len(pts) < 4 or not np.isfinite(pts).all():
+            return None
+
+        p0 = pts.mean(axis=0)
+        ref = np.array([1.0, 0.0, 0.0]) if abs(axis[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+        e1 = ref - axis * np.dot(ref, axis)
+        e1_norm = np.linalg.norm(e1)
+        if e1_norm <= 1e-12:
+            return None
+        e1 = e1 / e1_norm
+        e2 = np.cross(axis, e1)
+
+        u = (pts - p0) @ e1
+        v = (pts - p0) @ e2
+        A = np.stack([2 * u, 2 * v, np.ones_like(u)], axis=1)
+        b = u**2 + v**2
+        sol, *_ = np.linalg.lstsq(A, b, rcond=None)
+        a_, b_, c_ = sol
+        r_sq = c_ + a_**2 + b_**2
+        if not np.isfinite(r_sq) or r_sq <= 0:
+            return None
+        radius = float(np.sqrt(r_sq))
+        if not np.isfinite(radius) or radius <= 0:
+            return None
+        center = p0 + a_ * e1 + b_ * e2
+        radii = np.hypot(u - a_, v - b_)
+        axial = (pts - center) @ axis
+        if not np.isfinite(radii).all() or not np.isfinite(axial).all():
+            return None
+        return center, radius, radii, axial
+    except Exception:
+        return None
