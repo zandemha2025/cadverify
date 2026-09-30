@@ -1,0 +1,28 @@
+{
+  "finding": "083",
+  "environment": "native Chrome, local production build on 3017, real API 8017 and PostgreSQL",
+  "before": {
+    "selected_file": "nist_ftc_07_asme1_rd.stp",
+    "destination": "unfiltered seven-part catalog",
+    "exact_part_check": "FAIL"
+  },
+  "fix": "Reuse setSelectedPart(row.part_key) before navigating to the existing part standing; shared row covers bucket and capability drill-downs.",
+  "after": {
+    "keyboard_step_destination": "nist_ftc_07_asme1_rd.stp",
+    "subsequent_stl_destination": "repaired-block.stl",
+    "exact_part_check": "PASS for both",
+    "stl_withholds_cost": true
+  },
+  "checks": {
+    "frontend_tests": 494,
+    "types": "PASS",
+    "changed_file_lint": "PASS",
+    "production_build": "PASS",
+    "native_red_green": "PASS"
+  },
+  "limitations": [
+    "Not deployed",
+    "Capability-unlock row uses the same component, but no nonempty native capability fixture was exercised",
+    "Part standing currently loads only the first 100 catalog rows; selection beyond that page needs separate verification and repair"
+  ]
+}

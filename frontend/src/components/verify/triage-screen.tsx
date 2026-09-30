@@ -15,6 +15,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { setSelectedPart } from "@/lib/verify/part-selection";
 import { C, MONO, NUM, procLabel } from "@/lib/verify/tokens";
 import { Kicker, EmptyState, Spinner, GhostButton } from "./primitives";
 import {
@@ -804,10 +805,13 @@ function PartRow({ row, nav }: { row: MakeabilityRow; nav: (s: string) => void }
       </span>
       <button
         type="button"
-        onClick={() => nav("catalog")}
+        onClick={() => {
+          setSelectedPart(row.part_key);
+          nav("part");
+        }}
         style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontFamily: MONO, fontSize: 10.5, color: C.measured }}
       >
-        view in parts →
+        Open part standing →
       </button>
     </div>
   );
