@@ -118,8 +118,36 @@ def test_unknown_part_has_no_rollup_never_fabricated():
     assert bom.annual_volume(edges, "widget", 100000) is None
 
 
+@pytest.mark.parametrize("quantities", [(2, 3), (3, 2), (2, 2)])
+def test_repeated_bom_edge_has_no_ambiguous_demand(quantities):
+    rows, errors = bom.parse_bom_csv(
+        "parent_ref,child_ref,qty_per_parent\n"
+        + "".join(f"car,handle,{qty}\n" for qty in quantities)
+    )
+    assert not errors
+    with pytest.raises(ValueError, match="Duplicate BOM relationship"):
+        bom._checked_graph(rows)
+    assert bom.rolled_up_multiplier(rows, "handle") is None
+    assert bom.annual_volume(rows, "handle", 100) is None
+    assert bom.ancestry_paths(rows, "handle") == []
+
+
 def test_empty_tree_yields_no_edges():
     assert bom.edges_from_assembly(_Model(_Node("solo"))) == []
+
+
+@pytest.mark.parametrize("children", [
+    (["handle"], ["handle"] * 3),
+    (["handle"], []),
+    ([], ["handle"]),
+    (["handle"], ["bolt"]),
+])
+def test_different_structures_cannot_share_a_design_name(children):
+    model = _Model(_Node("car", [
+        _Node("door", [_Node(name) for name in names]) for names in children
+    ]))
+    with pytest.raises(ValueError, match="different child structures"):
+        bom.edges_from_assembly(model)
 
 
 def test_cycle_is_guarded():

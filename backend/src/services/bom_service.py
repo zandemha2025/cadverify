@@ -39,7 +39,6 @@ from __future__ import annotations
 import csv
 import io
 import json
-import logging
 from collections import deque
 from graphlib import CycleError, TopologicalSorter
 from typing import Any, Iterable, Optional
@@ -48,8 +47,6 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import BomEdge
-
-logger = logging.getLogger("cadverify.bom_service")
 
 SOURCE_ASSEMBLY_STEP = "assembly_step"
 SOURCE_BOM_CSV = "bom_csv"
@@ -104,10 +101,10 @@ def edges_from_assembly(model: Any) -> list[dict]:
         return []
 
     # (parent_design, child_design) -> {qty_per_occurrence, depth, child_name}.
-    # All occurrences of a parent design are identical in a STEP export; we assert
-    # that and, if occurrences ever disagree, keep the max (honest upper bound,
-    # never a silently-lost child) and log it.
     edges: dict[tuple[str, str], dict] = {}
+    # ponytail: BOM keys are names; reject conflicting structures until stable
+    # product IDs are carried through the parser and customer-context mapping.
+    structures: dict[str, dict[str, int]] = {}
 
     def _design(node: Any) -> str:
         # Prefer the product/design name; fall back to occurrence for a bare node.
@@ -115,32 +112,23 @@ def edges_from_assembly(model: Any) -> list[dict]:
 
     def walk(node: Any, depth: int) -> None:
         children = getattr(node, "children", None) or []
-        if not children:
-            return
         parent_design = _design(node)
         # Count child instances by design under THIS single parent occurrence.
         by_design: dict[str, int] = {}
-        rep_child: dict[str, Any] = {}
         for c in children:
             cd = _design(c)
             by_design[cd] = by_design.get(cd, 0) + 1
-            rep_child.setdefault(cd, c)
+        if structures.setdefault(parent_design, by_design) != by_design:
+            raise ValueError(
+                f"Assembly name {parent_design[:120]!r} has different child structures. "
+                "Give distinct designs unique names before importing their BOM."
+            )
         for cd, qty in by_design.items():
-            key = (parent_design, cd)
-            prior = edges.get(key)
-            child_depth = depth + 1
-            if prior is None:
-                edges[key] = {
-                    "qty_per_parent": qty,
-                    "depth": child_depth,
-                    "child_name": _design(rep_child[cd]) or None,
-                }
-            elif prior["qty_per_parent"] != qty:
-                logger.info(
-                    "bom edges: inconsistent qty for %s->%s (%s vs %s); keeping max",
-                    parent_design, cd, prior["qty_per_parent"], qty,
-                )
-                prior["qty_per_parent"] = max(prior["qty_per_parent"], qty)
+            edges.setdefault((parent_design, cd), {
+                "qty_per_parent": qty,
+                "depth": depth + 1,
+                "child_name": cd or None,
+            })
         for c in children:
             walk(c, depth + 1)
 
@@ -305,8 +293,16 @@ def parse_bom(text: str, *, content_hint: str = "") -> tuple[list[dict], list[di
 def _child_to_parents(edges: Iterable[dict]) -> dict[str, list[tuple[str, int]]]:
     """Validate counts and build the child -> parents adjacency."""
     adj: dict[str, list[tuple[str, int]]] = {}
+    seen: set[tuple[str | None, str]] = set()
     for e in edges:
         child, parent = e["child_ref"], e.get("parent_ref")
+        pair = (parent, child)
+        if pair in seen:
+            raise ValueError(
+                "Duplicate BOM relationship. Use one row per parent/child pair "
+                "with its total qty_per_parent."
+            )
+        seen.add(pair)
         qty = e.get("qty_per_parent", 1)
         if not isinstance(qty, int) or isinstance(qty, bool) or not 1 <= qty <= 2_147_483_647:
             raise ValueError("BOM quantities must be integers between 1 and 2147483647.")
@@ -500,12 +496,7 @@ async def _replace_tree(
             BomEdge.assembly_key == assembly_key,
         )
     )
-    # Dedupe on (parent_ref, child_ref) so the batch cannot violate the unique
-    # constraint (last wins) — the pure parsers may hand us a repeated pair.
-    seen: dict[tuple, dict] = {}
     for e in edge_rows:
-        seen[(e.get("parent_ref"), e["child_ref"])] = e
-    for e in seen.values():
         session.add(
             BomEdge(
                 org_id=org_id,
@@ -519,7 +510,7 @@ async def _replace_tree(
             )
         )
     await session.flush()
-    return len(seen)
+    return len(edge_rows)
 
 
 async def load_org_trees(session: AsyncSession, org_id: str) -> dict[str, list[dict]]:

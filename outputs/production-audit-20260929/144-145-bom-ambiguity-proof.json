@@ -1,0 +1,87 @@
+{
+  "issues": [
+    "144",
+    "145"
+  ],
+  "status": "fixed and verified locally; not deployed",
+  "checked_at": "2026-09-30T20:33:41.947653+00:00",
+  "duplicate_rows": {
+    "first_divergence": "step1: POST /bom/onboard accepted two rows for car->door, returned HTTP200/one saved edge/no errors, and silently retained only the last quantity",
+    "red_checks": 4,
+    "fix": "Reject repeated parent/child pairs in the shared graph validator before replacing data; delete the last-row-wins deduplication.",
+    "verified_cases": [
+      "CSV quantities2,3",
+      "CSV quantities3,2",
+      "JSON identical quantities2,2"
+    ],
+    "green": "All return422, preserve both existing edges and the handle multiplier8; pure ancestry and demand calculations also refuse ambiguous repeated edges."
+  },
+  "assembly_name_collision": {
+    "first_divergence": "step1: a real STEP with only rod-assembly labels changed to l-bracket-assembly reported9bolts/15nuts despite containing6bolts/8nuts and accepted the wrong replacement with HTTP200",
+    "source_sha256": "d40db2ed6f741d2955329f9751c7e3e0a14cbfeb4e11d8338cf110765b9042f9",
+    "changed_sha256": "63cfd354b476760112145ca7e81d8bdf421577cb648247fb99dc8130a422d21a",
+    "source": "Pinned Gmsh4.15.2 AS1 dependency fixture; not vendored",
+    "mutation": "Replace five occurrences of quoted rod-assembly with quoted l-bracket-assembly; no geometry edits",
+    "actual_solids": 18,
+    "actual_leaf_counts": {
+      "bolt": 6,
+      "nut": 8
+    },
+    "incorrect_prior_rollup": {
+      "bolt": 9,
+      "nut": 15
+    },
+    "red_checks": 5,
+    "fix": "Require identical immediate child-name/count maps for every occurrence sharing a BOM design name, including leaves; reject conflicting structures before storage.",
+    "green": "Real STEP ingest returns422 and preserves the previous handle multiplier8. Unchanged original STEP imports successfully and saved bolt/nut multipliers are6/8.",
+    "pure_controls": [
+      "same child with different count",
+      "branch followed by leaf",
+      "leaf followed by branch",
+      "different child sets"
+    ]
+  },
+  "validation": {
+    "focused_passed": 31,
+    "full_before_145": {
+      "passed": 2575,
+      "skipped": 3,
+      "seconds": 215.18
+    },
+    "full_final": {
+      "passed": 2579,
+      "skipped": 3,
+      "seconds": 220.11,
+      "skip_policy_enforced": true,
+      "skips": [
+        "real corpus manifest absent",
+        "optional OCP XDE absent (two cases)"
+      ]
+    },
+    "type_errors": 214,
+    "type_warnings": 3,
+    "new_diagnostics": 0,
+    "bandit_medium_high": 0,
+    "frontend": "unchanged;499tests/types/lint/build at140"
+  },
+  "test_files": [
+    "backend/tests/test_bom_service.py",
+    "backend/tests/test_bom_replacement_integrity.py",
+    "backend/tests/test_bom_api.py"
+  ],
+  "limits": [
+    "BOM keys remain names; distinct leaf designs sharing a label cannot be distinguished without stable product IDs or unique customer naming.",
+    "Existing incorrectly imported trees require corrected-source reimport; this change does not rewrite saved records.",
+    "SAP/Windchill BOM transport and authorized tenant proof remain unimplemented/unverified.",
+    "Focused API tests use real PostgreSQL and actual STEP parsing; no new native browser BOM import UI was exercised."
+  ],
+  "production_sha": "09555c18121305b7e577c0a76e47e5f97abfb8e8",
+  "deployed": false,
+  "runtime": {
+    "api_port": 8017,
+    "api_pid": 71139,
+    "health": "ok; PostgreSQL and Redis reachable",
+    "worker": "prior143 source retained while in-progress job keys exist; refresh when idle",
+    "frontend": "unchanged"
+  }
+}

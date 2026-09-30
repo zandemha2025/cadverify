@@ -157,7 +157,7 @@ async def onboard_bom(
     body. Parses STRICTLY (``bom_service.parse_bom``): every valid edge is persisted
     (idempotent per ``(org, assembly_key)`` — a re-onboard REPLACES the tree); every
     malformed row is reported and SKIPPED so the batch survives. Empty, wholly
-    invalid or cyclic uploads return 422 and preserve the previous tree. ``assembly_key`` is
+    invalid, duplicate or cyclic uploads return 422 and preserve the previous tree. ``assembly_key`` is
     required (query, form, or the uploaded filename). Contract at
     ``GET /bom/onboard/template``.
 
