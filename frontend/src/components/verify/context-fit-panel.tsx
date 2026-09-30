@@ -5,8 +5,8 @@ import { measureContextFit, type FitResult, type FitUnits } from "@/lib/verify/c
 const Viewer = dynamic(() => import("./context-fit-viewer"), { ssr: false });
 
 type Role = "part" | "context";
-export function ContextFitPanel() {
-  const [files, setFiles] = useState<Record<Role, File | null>>({ part: null, context: null });
+export function ContextFitPanel({ initialPart = null }: { initialPart?: File | null }) {
+  const [files, setFiles] = useState<Record<Role, File | null>>({ part: initialPart, context: null });
   const [units, setUnits] = useState<FitUnits>({ part: "mm", context: "mm" });
   const [result, setResult] = useState<FitResult | null>(null);
   const [running, setRunning] = useState(false);

@@ -1435,8 +1435,11 @@ class EnterpriseDomainQA {
       assert(stripText.includes(parentAssembly), "stage context strip did not show the declared parent assembly");
       assert(/USER/i.test(stripText), "stage context strip did not show USER provenance");
       assert(/service world/i.test(stripText), "stage context strip did not show declared service world");
-      await this.page.getByRole("button", { name: /^Seat in assembly$/i }).click();
-      await this.page.waitForTimeout(1200);
+      await this.page.getByRole("button", { name: /^Check assembly fit$/i }).click();
+      await this.page.getByTestId("context-fit-panel").waitFor();
+      assert((await this.visibleText()).includes(path.basename(cubePath)), "fit handoff lost the uploaded part");
+      await this.clickRail("Verify");
+      await strip.waitFor({ timeout: 15_000 });
       const text = await this.scanVisibleText("verify-stage-context-product-ui");
       assert(new RegExp(escapeRegExp(parentAssembly)).test(text), "declared parent assembly missing from product UI text");
       const [costResponse, validationResponse] = await Promise.all([costPromise, validationPromise]);

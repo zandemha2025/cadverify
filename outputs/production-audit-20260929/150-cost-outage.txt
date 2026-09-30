@@ -1,0 +1,108 @@
+- banner:
+  - link "ProofShape home":
+    - /url: /verify
+    - text: P
+  - button "Open navigation":
+  - navigation "Breadcrumb":
+    - generic: workspace
+    - generic: verify
+  - link "Notifications":
+    - /url: /notifications
+  - button "Account":
+- main:
+  - navigation "Verify workspace sections":
+    - combobox "Verify workspace section":
+      - option "Home"
+      - option "Verify" [selected]
+      - option "Fit in context"
+      - option "Parts"
+      - option "Records"
+      - option "Programs"
+      - option "Your machines"
+      - option "Triage"
+      - option "Calibration & truth"
+    - button "Start here"
+    - button "Check my CAD"
+  - main:
+    - heading "142-torus.step" [level=1]
+    - paragraph:
+      - text: Ø/bbox 42.0 × 42.0 × 12.0 mm · 10.66 cm³
+      - text: watertight true · ● MEASURED
+    - paragraph: ● real shell · 44k-tri preview
+    - paragraph: CONTEXT
+    - generic: not declared
+    - paragraph: no parent assembly declared
+    - generic: orphan until declared
+    - button "X-ray": X-ray
+    - button "No parent assembly" [disabled]
+    - generic: drag to orbit
+  - paragraph: Can this be made — on your machines, in materials that survive its service conditions — and what will it really take?
+  - paragraph: DFM ISSUES · RESOURCE COST INTERRUPTED
+  - paragraph: Routing and DFM are ready. Cost needs another try.
+  - paragraph: Your successful geometry and DFM analysis is preserved. The resource-cost service did not return a record (Controlled local cost outage). Machine fit was not returned with this partial result. Existing saved data is unchanged.
+  - button "Retry cost only →"
+  - button "Rerun full verification"
+  - paragraph: Evidence hash · 878f76e8e55760445bffbd128c1623cf2d31bcd5e1b39a7cf4db540486cba84e
+  - generic: "1"
+  - paragraph: Envelope — against your machines
+  - generic: 6 machines declared
+  - generic: Audit local FDM 046
+  - generic: 200 × 200 × 200 mm
+  - generic: Audit CNC 065
+  - generic: 762 × 406 × 508 mm
+  - generic: Audit 104 valid first
+  - generic: envelope undeclared
+  - generic: Audit 104 valid last
+  - generic: envelope undeclared
+  - paragraph:
+    - text: part envelope 42.0 × 42.0 × 12.0 mm
+    - generic "MEASURED — Measured directly from your CAD geometry.": ● MEASURED
+    - text: · per-machine fit is decided by the makeability verification MAKEABILITY NOT EVALUATED — the floor is declared; no fit is faked here.
+  - generic: "2"
+  - paragraph: Materials that survive these service conditions
+  - paragraph: material class withheld — costing unavailable
+  - paragraph: environment-driven survival filtering (NACE MR0175 / HDT tables) is part of the makeability verification — DECLARE A WORLD TO EVALUATE. Invalid materials are filtered out visibly, never silently.
+  - generic: "3"
+  - paragraph: Process physics — geometry against each route
+  - generic: SLS (Powder)GEOMETRY PICK
+  - generic: pass
+  - generic: MJF (HP)
+  - generic: pass
+  - generic: Binder Jetting
+  - generic: pass
+  - generic: CNC Turning
+  - generic: pass
+  - generic: DLP Resin
+  - generic: issues
+  - generic: FDM / FFF
+  - generic: issues
+  - paragraph: 11 priority fixes across routes · overall issues · DFM scores from POST /validate · pick is geometry-only — declare a material for the material-aware route
+  - region "Optional service and material assumptions":
+    - paragraph: MAKE THIS VERDICT YOURS · OPTIONAL
+    - paragraph: The answer above uses your declared material and any service conditions you selected.
+    - paragraph: SERVICE CONDITIONS
+    - generic: ambient
+    - group "Service conditions":
+      - button "120 °C service"
+      - button "sour service (H₂S)"
+      - button "35 MPa pressure"
+    - paragraph: no service conditions declared — the part is verified at ambient.
+    - paragraph:
+      - text: MATERIAL CLASS ·
+      - generic "USER — Declared by your team.": ● USER
+    - radiogroup "Material class":
+      - radio "Polymer"
+      - radio "Aluminum" [checked]
+      - radio "Steel"
+      - radio "Stainless"
+      - radio "Titanium"
+  - textbox "Load a part above — the engine answers only about a computed part." [disabled]
+  - button "Ask" [disabled]:
+  - button "Compare routes @ 1,000" [disabled]
+  - button "Compare saved decisions →" [disabled]
+  - button "Why this verdict?" [disabled]
+  - button "An uncomputable ask"
+  - paragraph:
+    - generic: answers are deterministic engine artifacts — verdict, materials, drivers, hours, cost, routes, and saved records
+- region "Notifications alt+T"
+- alert

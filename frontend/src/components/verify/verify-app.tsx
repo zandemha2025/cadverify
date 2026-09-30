@@ -862,6 +862,7 @@ export function VerifyApp({
               context={result?.partContext ?? null}
               contextError={result?.partContextError ?? null}
               assembly={stageAssembly}
+              onCheckFit={() => setScreen("context-fit")}
             />
             {stageAssembly && assembly ? (
               <AssemblyPanel
@@ -898,7 +899,7 @@ export function VerifyApp({
             )}
           </div>
         )}
-        {screen === "context-fit" && <ContextFitPanel />}
+        {screen === "context-fit" && <ContextFitPanel initialPart={file} />}
         {screen === "machines" && <MachinesScreen onChanged={onInventoryChanged} />}
         {screen === "records" && <RecordsScreen nav={nav} />}
         {screen === "catalog" && <CatalogScreen nav={nav} />}

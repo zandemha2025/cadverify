@@ -1,5 +1,17 @@
 import assert from "node:assert/strict";
 
+export async function assertStageBomContext(page, assemblyKey, childRef) {
+  const strip = page.playwright.getByTestId('verify-stage-context');
+  const text = await strip.innerText();
+  assert.ok(text.includes(assemblyKey) && text.includes(childRef), 'Preview must show the saved BOM link');
+  assert.doesNotMatch(text, /orphan|not declared|no parent assembly/i);
+  assert.match(text, /USER/);
+  assert.match(text, /assembly CAD.*check fit/i);
+  assert.equal(await page.playwright.getByRole('button', { name: 'Check assembly fit', exact: true }).isEnabled(), true);
+  assert.equal(await page.playwright.getByRole('button', { name: 'Seat in assembly', exact: true }).count(), 0);
+  return { status: 'PASS', assemblyKey, childRef, declaredReferenceOnly: true };
+}
+
 export async function assertStagePreviewFailure(page, filename) {
   const state = await page.playwright.evaluate(() => ({
     title: document.querySelector('.cv-verify-stage h1')?.textContent,

@@ -5,11 +5,11 @@
  * MEASURED geometry read overlaid, and the X-ray / drag-to-orbit affordances. The
  * WebGL canvas is dynamically imported (ssr:false) like the app's other viewers.
  */
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { C, MONO } from "@/lib/verify/tokens";
 import type { PartContext } from "@/lib/verify/part-context-read";
-import type { StageAssemblyContext, StageRenderKind } from "./stage-canvas";
+import type { StageRenderKind } from "./stage-canvas";
 import { fetchPreviewMesh, type PreviewMesh } from "@/lib/verify/preview-mesh";
 import { GhostButton, ProvChip } from "./primitives";
 import { probeWebGlSupport } from "@/lib/site/webgl";
@@ -46,6 +46,7 @@ export function Stage({
   context,
   contextError,
   assembly,
+  onCheckFit,
 }: {
   file: File | null;
   partName: string;
@@ -59,9 +60,9 @@ export function Stage({
   /** when set, the stage renders the WHOLE assembly in context (part-of-interest
    *  highlighted) instead of the single-part shell. */
   assembly: StageAssembly | null;
+  onCheckFit: () => void;
 }) {
   const [xray, setXray] = useState(false);
-  const [seat, setSeat] = useState(false);
   const [renderUrl, setRenderUrl] = useState<string | null>(null);
   const [renderKind, setRenderKind] = useState<StageRenderKind | null>(null);
   const [preview, setPreview] = useState<PreviewMesh | null>(null);
@@ -70,18 +71,6 @@ export function Stage({
   const [failedPreview, setFailedPreview] = useState<string | null>(null);
   const previewKey = assembly?.glbUrl ?? renderUrl ?? "empty";
   const previewFailed = failedPreview === previewKey;
-  const assemblyContext = useMemo<StageAssemblyContext | null>(
-    () => ({
-      parentAssembly: context?.parent_assembly ?? null,
-      program: context?.program ?? null,
-      unitsPerParent: context?.units_per_parent ?? null,
-      serviceWorldDeclared: Boolean(
-        context?.service_environment && Object.keys(context.service_environment).length > 0
-      ),
-    }),
-    [context]
-  );
-  const hasParent = Boolean(assemblyContext?.parentAssembly);
 
   // ISSUE-UX-006: react-three-fiber retries renderer creation whenever the
   // stage re-renders. Probe once before Canvas ever mounts; locked-down/GPU-off
@@ -89,10 +78,6 @@ export function Stage({
   useEffect(() => {
     setWebGlAvailable(probeWebGlSupport());
   }, []);
-
-  useEffect(() => {
-    if (!hasParent) setSeat(false);
-  }, [hasParent]);
 
   // Resolve the geometry the stage renders.
   //  • STL  → parse the real geometry in-browser (STLLoader), no network needed.
@@ -266,7 +251,6 @@ export function Stage({
         partName={partName}
         context={context}
         contextError={contextError}
-        hasParent={hasParent}
       />
       )}
 
@@ -288,8 +272,6 @@ export function Stage({
             xray={xray}
             hostile={hostile}
             autoOrbit={autoOrbit}
-            seat={seat}
-            assemblyContext={assemblyContext}
           />
           </PreviewBoundary>
         ) : (
@@ -328,32 +310,17 @@ export function Stage({
           <span aria-hidden style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />
           X-ray
         </GhostButton>
-        {/* The declared-parent seat is a single-part affordance; in real-assembly
-            mode the neighbours are already the context, so it is hidden. */}
         {!assembly && (
           <GhostButton
-            onClick={() => {
-              if (hasParent && webGlAvailable === true && !previewFailed) setSeat((v) => !v);
-            }}
-            disabled={!hasParent || webGlAvailable !== true || previewFailed}
-            title={
-              previewFailed
-                ? "Assembly seating requires a working preview"
-                : webGlAvailable === false
-                ? "Assembly seating requires interactive 3D support"
-                : hasParent
-                ? "Seat the part in its declared parent assembly"
-                : "No parent assembly has been declared for this part"
-            }
+            onClick={onCheckFit}
+            disabled={!file}
+            title="Load assembly CAD to measure interference and clearance with this part"
             style={{
               padding: "8px 16px",
               fontSize: 12,
-              border: seat && hasParent ? `1px solid ${C.ink}` : `1px solid #d8d8dc`,
-              background: seat && hasParent ? C.ink : "#ffffff",
-              color: seat && hasParent ? "#ffffff" : C.ink,
             }}
           >
-            {hasParent ? "Seat in assembly" : "No parent assembly"}
+            Check assembly fit
           </GhostButton>
         )}
         <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink35, paddingLeft: 6, whiteSpace: "nowrap" }}>
@@ -473,29 +440,30 @@ function ContextStrip({
   partName,
   context,
   contextError,
-  hasParent,
 }: {
   partName: string;
   context: PartContext | null;
   contextError: string | null;
-  hasParent: boolean;
 }) {
   const serviceEnv = context?.service_environment;
   const envDeclared = Boolean(serviceEnv && Object.keys(serviceEnv).length > 0);
-  const lineage = hasParent
+  const hasParent = Boolean(context?.parent_assembly);
+  const hasBom = Boolean(context?.bom_assembly_key && context?.bom_child_ref);
+  const hasContext = hasParent || hasBom || Boolean(context?.program);
+  const lineage = contextError ? "Context unavailable" : hasContext
     ? [context?.program, context?.parent_assembly, partName].filter(Boolean).join(" -> ")
-    : "no parent assembly declared";
+    : "no assembly reference declared";
 
   return (
     <div
       className="cv-verify-stage-context-card"
       data-testid="verify-stage-context"
-      data-context-state={hasParent ? "declared-parent" : "no-parent"}
+      data-context-state={contextError ? "unavailable" : hasBom ? "bom-link" : hasParent ? "declared-parent" : "no-parent"}
       style={{
         flex: "0 1 300px",
         minWidth: 0,
         width: "100%",
-        border: `1px solid ${hasParent ? "rgba(122,99,201,0.28)" : C.hair}`,
+        border: `1px solid ${hasContext ? "rgba(122,99,201,0.28)" : C.hair}`,
         background: "rgba(255,255,255,0.78)",
         backdropFilter: "blur(14px)",
         borderRadius: 12,
@@ -507,10 +475,10 @@ function ContextStrip({
         <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, letterSpacing: "0.13em", color: C.ink45 }}>
           CONTEXT
         </p>
-        {hasParent ? (
+        {hasContext ? (
           <ProvChip p="USER" />
         ) : (
-          <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink40 }}>not declared</span>
+          <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink40 }}>{contextError ? "unavailable" : "not declared"}</span>
         )}
       </div>
       <p
@@ -519,19 +487,20 @@ function ContextStrip({
           fontFamily: MONO,
           fontSize: 11,
           lineHeight: 1.5,
-          color: hasParent ? C.ink : C.ink50,
+          color: hasContext ? C.ink : C.ink50,
           overflowWrap: "anywhere",
         }}
       >
         {lineage}
       </p>
+      {hasBom && <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 11, overflowWrap: "anywhere" }}>BOM {context?.bom_assembly_key} · part {context?.bom_child_ref}</p>}
+      {(hasParent || hasBom) && <p style={{ margin: "8px 0 0", fontSize: 11, lineHeight: 1.5, color: C.ink50 }}>Declared reference. Load assembly CAD to check fit.</p>}
       <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 6 }}>
         {context?.units_per_parent != null && (
           <ContextPill>{context.units_per_parent} / parent</ContextPill>
         )}
         {envDeclared && <ContextPill color={C.user}>service world</ContextPill>}
         {contextError && <ContextPill color={C.fail}>context read failed</ContextPill>}
-        {!hasParent && !contextError && <ContextPill>orphan until declared</ContextPill>}
       </div>
     </div>
   );

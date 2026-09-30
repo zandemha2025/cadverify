@@ -18,7 +18,7 @@ Production is Render, currently `09555c1`. The subsequent audit branch has not b
 | STL, IGES/IGS, AP203/AP242 inputs | Prior local/CI CAD corpus, 33 pinned NIST STEP files; CI 36659923104 timed out on FTC-07, while local reproduction and CI 36664250281 (34/34) pass | Broader production format matrix and known-dimension controls |
 | Unsupported native CAD and malformed files | Prior local/CI refusal/retry tests | Production bounded errors without losing the workspace |
 | STEP assemblies | Local/CI real 18-part assembly evidence | Production component selection and assembly export/retry |
-| Verify 3D preview | Prior live/core and CI proof | File replacement, large meshes, error recovery and all viewing controls |
+| Verify 3D preview | Prior live/core and CI proof; saved BOM identity now appears as USER context, with390px layout and same-file cost-only retry verified (150) | File replacement, large meshes, error recovery and all viewing controls |
 | Analyze/cost 3D preview | Missing on live STEP; fixed locally | Deploy and repeat real-file render/inspection proof |
 | Locate a DFM finding | Local preview now uses analysis mesh and exact fingerprint guard | Real STEP selection passes locally; cached-mesh mismatch recovery and production proof remain |
 | Dimensions, volume, hole measurements | Known STEP: 20×15×10 mm, 6 mm bore; volume error 0.002581%. Real sphere/cone/ellipse analytic controls pass; false oval/taper diameters fixed (071). Sphere turning false rejection fixed with same-byte native proof (072). Rotated cylinder axes (141) and ellipsoid/torus/revolved-profile evidence (142) now pass known-file controls | Deploy; broader independent shapes, thin walls, freeform/tolerance cases and units |
@@ -344,3 +344,9 @@ BOM demand148/149 now reaches Programs and the real Verify quantity request. Pro
 
 
 CI36779785629 completed on772f3b5through147: all eight non-image jobs and both actual-image runtime probes pass. Only the backend image scan fails with the same5HIGH/0CRITICAL package findings. This excludes148/149. Seeci-36779785629-summary.json; no production deployment.
+
+## 150 — Real assembly-fit handoff and cost-only recovery
+
+Verify now shows saved BOM references instead of calling linked parts orphans. The generic “Seat in assembly” animation is removed; “Check assembly fit” retains the actual selected CAD file and opens the measured pair workflow. Native60mm box/real torus containment and9.003mm sampled-gap controls pass, including triangle-limit recovery and stale-result clearing. Returning to Verify retains the exact saved decision. This is local evidence; production and external proof remain open. See150-assembly-context-proof.json.
+
+Cost-only failure/retry retains source and resolved1,008BOMquantity, preserves the completed geometry result and makes no second validation request. The saved part context is restored and old immutable cost JSON remains unchanged. See150-cost-retry-proof.json and150-context-cleanup.json.
