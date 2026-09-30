@@ -13,6 +13,10 @@
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { backendUrl, backendOrigin } from "@/lib/api-base";
+import { getSessionOrganizationAccess } from "@/lib/dal";
+import type { OrganizationAccess, OrganizationRole } from "@/lib/organization-access";
+
+export type { OrganizationAccess, OrganizationSummary } from "@/lib/organization-access";
 
 const ORG_SETTINGS_PATH = "/settings/organization";
 
@@ -37,25 +41,7 @@ async function errorFrom(res: Response, fallback: string): Promise<string> {
 }
 
 // ── types ─────────────────────────────────────────────────────────────────────
-export type OrgRole = "viewer" | "member" | "admin";
-
-export type OrgContext = {
-  orgId: string;
-  orgName: string;
-  role: OrgRole;
-};
-
-export type OrganizationSummary = {
-  orgId: string;
-  orgName: string;
-  role: OrgRole;
-  isActive: boolean;
-};
-
-export type OrganizationAccess = {
-  activeOrgId: string | null;
-  organizations: OrganizationSummary[];
-};
+export type OrgRole = OrganizationRole;
 
 export type Member = {
   user_id: number;
@@ -131,59 +117,31 @@ export type ActionResult<T = unknown> =
   | { ok: false; error: string };
 
 // ── reads ──────────────────────────────────────────────────────────────────────
-export async function getOrgContext(): Promise<OrgContext | null> {
-  const access = await getOrganizationAccess();
-  const active =
-    access.organizations.find((org) => org.orgId === access.activeOrgId) ??
-    access.organizations[0];
-  return active
-    ? { orgId: active.orgId, orgName: active.orgName, role: active.role }
-    : null;
+export async function getOrganizationAccess(): Promise<OrganizationAccess | null> {
+  return getSessionOrganizationAccess();
 }
 
-export async function getOrganizationAccess(): Promise<OrganizationAccess> {
-  const r = await authed("/api/v1/orgs");
-  if (!r.ok) return { activeOrgId: null, organizations: [] };
-  const body = await r.json().catch(() => null);
-  const orgs: Array<{
-    org_id: string;
-    name: string;
-    org_role: OrgRole;
-    is_active: boolean;
-  }> = body?.organizations ?? [];
-  return {
-    activeOrgId:
-      (typeof body?.active_org_id === "string" && body.active_org_id) ||
-      orgs.find((org) => org.is_active)?.org_id ||
-      null,
-    organizations: orgs.map((org) => ({
-      orgId: org.org_id,
-      orgName: org.name,
-      role: org.org_role,
-      isActive: org.org_id === body?.active_org_id || org.is_active,
-    })),
-  };
+async function readOrganizationList<T>(path: string, key: string): Promise<T[] | null> {
+  try {
+    const r = await authed(path);
+    if (!r.ok) return null;
+    const body = await r.json();
+    return Array.isArray(body?.[key]) ? body[key] : null;
+  } catch {
+    return null;
+  }
 }
 
-export async function listMembers(): Promise<Member[]> {
-  const r = await authed("/api/v1/orgs/members");
-  if (!r.ok) return [];
-  const body = await r.json().catch(() => null);
-  return (body?.members ?? []) as Member[];
+export async function listMembers(): Promise<Member[] | null> {
+  return readOrganizationList("/api/v1/orgs/members", "members");
 }
 
-export async function listInvites(): Promise<Invite[]> {
-  const r = await authed("/api/v1/orgs/invites");
-  if (!r.ok) return [];
-  const body = await r.json().catch(() => null);
-  return (body?.invites ?? []) as Invite[];
+export async function listInvites(): Promise<Invite[] | null> {
+  return readOrganizationList("/api/v1/orgs/invites", "invites");
 }
 
-export async function listSamlMappings(): Promise<SamlMapping[]> {
-  const r = await authed("/api/v1/orgs/saml/group-mappings");
-  if (!r.ok) return [];
-  const body = await r.json().catch(() => null);
-  return (body?.mappings ?? []) as SamlMapping[];
+export async function listSamlMappings(): Promise<SamlMapping[] | null> {
+  return readOrganizationList("/api/v1/orgs/saml/group-mappings", "mappings");
 }
 
 /** `/health/deep` is NOT under `/api/v1` — probe it directly and degrade

@@ -8,11 +8,13 @@ export function ErrorState({
   title = "Something went wrong",
   message,
   onRetry,
+  retryHref,
   className,
 }: {
   title?: string;
   message?: string;
   onRetry?: () => void;
+  retryHref?: string;
   className?: string;
 }) {
   const detail = distinctErrorDetail(title, message);
@@ -31,7 +33,11 @@ export function ErrorState({
           {detail && (
             <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
           )}
-          {onRetry && (
+          {retryHref ? (
+            <Button variant="secondary" size="sm" className="mt-3" asChild>
+              <a href={retryHref}>Try again</a>
+            </Button>
+          ) : onRetry && (
             <Button
               variant="secondary"
               size="sm"

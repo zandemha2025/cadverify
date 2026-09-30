@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import {
   Table,
   TableHeader,
@@ -87,9 +88,8 @@ function workerTone(state: string): { tone: Tone; label: string } {
 
 export default async function OrganizationSettingsPage() {
   const [access, user] = await Promise.all([getOrganizationAccess(), getUser()]);
-  const active =
-    access.organizations.find((org) => org.orgId === access.activeOrgId) ??
-    access.organizations[0];
+  if (!access) return <ErrorState title="Organization access is unavailable" message="We couldn't confirm your active organization or permissions. Try again to reload them." retryHref="/settings/organization" />;
+  const active = access.organizations.find((org) => org.orgId === access.activeOrgId);
   const ctx = active
     ? { orgId: active.orgId, orgName: active.orgName, role: active.role }
     : null;
@@ -131,6 +131,9 @@ export default async function OrganizationSettingsPage() {
     getHealthDeep(),
     getSsoStatus(),
   ]);
+  if (members === null || invites === null || mappings === null) {
+    return <ErrorState title="Organization settings are unavailable" message="Members, invitations or SSO mappings could not be loaded. Try again before making changes." retryHref="/settings/organization" />;
+  }
 
   return (
     <div className="space-y-8">

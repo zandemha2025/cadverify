@@ -1,0 +1,178 @@
+- navigation "Domains":
+  - link "ProofShape":
+    - /url: /verify
+  - link "Verify workspace":
+    - /url: /verify
+  - link "Design Studio":
+    - /url: /designs
+  - link "Should-cost":
+    - /url: /cost
+  - link "Analyze DFM":
+    - /url: /analyze
+  - link "Batch runs":
+    - /url: /batch
+  - link "Cost decisions":
+    - /url: /cost-decisions
+  - link "Recent analyses":
+    - /url: /history
+  - button "Switch to dark theme":
+- complementary:
+  - button "Search… K":
+    - generic: Search…
+    - text: K
+  - paragraph: Workspace
+  - link "Verify workspace":
+    - /url: /verify
+    - generic: Verify workspace
+  - link "Design Studio":
+    - /url: /designs
+    - generic: Design Studio
+  - link "Should-cost workspace":
+    - /url: /cost
+    - generic: Should-cost workspace
+  - link "Analyze DFM":
+    - /url: /analyze
+    - generic: Analyze DFM
+  - link "Batch run":
+    - /url: /batch
+    - generic: Batch run
+  - paragraph: Ledger
+  - link "Cost decisions":
+    - /url: /cost-decisions
+    - generic: Cost decisions
+  - link "Compare A/B":
+    - /url: /cost-decisions/compare
+    - generic: Compare A/B
+  - link "RFQ packages":
+    - /url: /rfq-packages
+    - generic: RFQ packages
+  - link "Recent analyses":
+    - /url: /history
+    - generic: Recent analyses
+  - link "Integrations":
+    - /url: /integrations
+    - generic: Integrations
+  - link "API & docs":
+    - /url: /settings/developer
+    - generic: API & docs
+  - link "Security":
+    - /url: /settings/security
+    - generic: Security
+  - link "Organization":
+    - /url: /settings/organization
+    - generic: Organization
+  - paragraph: One governed object model · a Decision contains Estimates.
+- banner:
+  - button "Collapse sidebar":
+  - navigation "Breadcrumb":
+    - generic: workspace
+    - generic: settings
+  - button "Search and jump to a workspace":
+    - generic: Jump…
+    - generic: ⌘K
+  - link "Notifications":
+    - /url: /notifications
+  - button "Account":
+- main:
+  - heading "Organization" [level=1]
+  - text: admin
+  - paragraph: Manage members, invites, and SSO for production-audit-20260929's Organization.
+  - paragraph: Active organization
+  - paragraph: Lists, records, downloads, jobs, and API-key management use this organization.
+  - combobox "Active organization" [disabled]:
+    - generic: production-audit-20260929's Organization
+  - heading "Members" [level=2]
+  - generic: (1)
+  - table:
+    - rowgroup:
+      - row "Email Role Joined Actions":
+        - columnheader "Email"
+        - columnheader "Role"
+        - columnheader "Joined"
+        - columnheader "Actions"
+    - rowgroup:
+      - row "production-audit-20260929@example.invalid admin 2026-09-29 Leave":
+        - cell "production-audit-20260929@example.invalid"
+        - cell "admin":
+          - generic: admin
+        - cell "2026-09-29"
+        - cell "Leave":
+          - button "Leave":
+            - text: Leave
+  - heading "Invitations" [level=2]
+  - heading "Invite a teammate" [level=3]
+  - paragraph: Sends a single-use, expiring accept link. If email isn't configured, forward the one-time link shown after creating.
+  - text: Email
+  - textbox "Email":
+    - /placeholder: teammate@company.com
+  - text: Role
+  - combobox:
+    - generic: member
+  - combobox
+  - button "Send invite"
+  - paragraph: No invitations yet
+  - heading "SSO · SAML group → role mappings" [level=2]
+  - heading "Map an IdP group to an org role" [level=3]
+  - paragraph: "Just-in-time on SAML login: a matching group grants or promotes membership at the mapped role. Missing groups never demote or deprovision an existing member."
+  - text: SAML attribute
+  - textbox "SAML attribute": groups
+  - paragraph: e.g. groups, memberOf
+  - text: Group value
+  - textbox "Group value":
+    - /placeholder: cadverify-admins
+  - text: Grants role
+  - combobox:
+    - generic: member
+  - combobox
+  - button "Add mapping"
+  - paragraph: No SAML group mappings
+  - paragraph: Add one above to assign org roles from your IdP's group claims.
+  - heading "SSO / SCIM endpoints" [level=2]
+  - heading "Endpoints for your IdP" [level=3]
+  - paragraph: Base SAML / OIDC / SCIM enablement is configured at deploy time (AUTH_MODE + IdP environment). This panel shows current status and the exact URLs to hand your IdP — it is not an editable form.
+  - generic: "SAML SP metadata:"
+  - generic: Not enabled in this deployment
+  - generic: HTTP 404
+  - generic: SAML ACS (Assertion Consumer Service)
+  - code: http://127.0.0.1:8017/auth/saml/acs
+  - generic: SAML SP metadata
+  - code: http://127.0.0.1:8017/auth/saml/metadata
+  - generic: SAML login (SP-initiated)
+  - code: http://127.0.0.1:8017/auth/saml/login
+  - generic: "OIDC relying party:"
+  - generic: Not enabled in this deployment
+  - generic: HTTP 404
+  - generic: OIDC login
+  - code: http://127.0.0.1:8017/auth/oidc/login
+  - paragraph: Setup URL only; login becomes available after OIDC is enabled for this deployment.
+  - generic: OIDC redirect / callback
+  - code: http://127.0.0.1:8017/auth/oidc/callback
+  - paragraph: Register this callback with the IdP before enabling OIDC in the deployment.
+  - generic: SCIM 2.0 base URL
+  - code: http://127.0.0.1:8017/scim/v2
+  - paragraph: Provisioning requires an org-scoped admin API key (issued at deploy time).
+  - heading "Ops health" [level=2]
+  - heading "Dependencies" [level=3]
+  - text: Healthy
+  - paragraph:
+    - text: Live probe of
+    - code: /health/deep
+    - text: · release local. HTTP 200.
+  - term: Postgres
+  - definition:
+    - generic: Healthy
+  - paragraph: SELECT 1 ok
+  - term: Redis
+  - definition:
+    - generic: Healthy
+  - paragraph: expected · reachable
+  - term: Worker
+  - definition:
+    - generic: ok
+  - paragraph: heartbeat 27s ago
+  - term: Queue depth
+  - definition:
+    - generic: "0"
+  - paragraph: arq:queue
+- region "Notifications alt+T"
+- alert

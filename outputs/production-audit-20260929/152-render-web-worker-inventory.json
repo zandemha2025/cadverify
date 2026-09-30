@@ -1,0 +1,46 @@
+{
+  "observed_at": "2026-09-30T23:27:40.671Z",
+  "source": "Native Render Environment screens; worker Show more expanded",
+  "services": [
+    {
+      "name": "cadverify-worker",
+      "service_id": "srv-dajgag0ae00c739s91h0",
+      "environment_keys": [
+        "API_KEY_PEPPER",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "DASHBOARD_ORIGIN",
+        "DASHBOARD_SESSION_SECRET",
+        "DATABASE_URL",
+        "OBJECT_STORE_BACKEND",
+        "OBJECT_STORE_LOCAL_ROOT",
+        "OBJECT_STORE_S3_BUCKET",
+        "OBJECT_STORE_S3_REGION",
+        "PARSE_POOL_WORKERS",
+        "PASSWORD_LOGIN_ENABLED",
+        "PRODUCTION_VERIFIED_SIGNUP_REQUIRED",
+        "PUBLIC_PASSWORD_SIGNUP_ENABLED",
+        "REDIS_URL",
+        "SECRET_KEY",
+        "TURNSTILE_SECRET",
+        "UPLOAD_TICKET_SECRET",
+        "VALIDATION_CAP_PER_USER"
+      ],
+      "linked_environment_groups": []
+    },
+    {
+      "name": "cadverify-web",
+      "service_id": "srv-daiqvcrm8hqs73duucd0",
+      "environment_keys": [
+        "API_BASE",
+        "AUTH_MODE",
+        "PUBLIC_PASSWORD_SIGNUP_ENABLED",
+        "RELEASE",
+        "TURNSTILE_SITE_KEY"
+      ],
+      "linked_environment_groups": []
+    }
+  ],
+  "values": "All masked; not revealed",
+  "mutations": "none"
+}
