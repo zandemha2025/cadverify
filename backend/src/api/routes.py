@@ -2149,8 +2149,8 @@ async def validate_cost(
         None,
         description="Declared STL source units: mm|inch (unset => mm). "
                     "STEP/IGES use their embedded units regardless of this selector. "
-                    "STL/mesh files carry NO units; an inch-authored part read as mm "
-                    "mis-costs by ~16,000× (×25.4³ volume). Declaring inch scales the "
+                    "STL/mesh files carry NO units; reading inch coordinates as mm "
+                    "understates volume by about 16,387× (25.4³). Declaring inch scales the "
                     "mesh ×25.4 into mm ONCE before geometry/DFM/cost so the whole "
                     "decision reads the real part. STATED input; a plausibility WARNING "
                     "still fires if the mm-interpreted size looks wrong.",
@@ -2163,14 +2163,12 @@ async def validate_cost(
 ):
     """Explainable make-vs-buy should-cost decision for an uploaded STL/STEP part.
 
-    IP-local compute: the CAD is parsed and costed in-process and no network call
-    is made (the costing layer opens zero sockets). The glass-box decision is
-    then PERSISTED for the authenticated user (Phase 2 gap #3, behind
-    COST_PERSIST_ENABLED) so it can be listed, PDF/JSON/CSV exported, shared, and
-    compared — the response carries a `saved: {id, url}` pointer to that artifact.
-    Only the decision (geometry summary + estimates + assumptions) is stored; the
-    raw CAD blob is never retained. Broken geometry is surfaced as a clean
-    structured 400 (GEOMETRY_INVALID), never a 500.
+    CAD geometry and cost calculations run on this deployment's server.
+    Authenticated organization uploads retain the exact source CAD and a costable
+    mesh in configured organization-scoped storage. When COST_PERSIST_ENABLED is
+    enabled, the decision is also saved for history, PDF/JSON/CSV export, sharing
+    and comparison; the response includes its `saved: {id, url}` pointer.
+    Detected invalid geometry returns a structured 400 (GEOMETRY_INVALID).
 
     Pass `shop` to calibrate the number to a specific shop's real rates (the
     response carries SHOP-tagged drivers/assumptions + a "calibrated to shop X"
