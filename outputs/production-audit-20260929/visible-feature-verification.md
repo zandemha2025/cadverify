@@ -314,3 +314,6 @@ Connector follow-up139 corrects offline SAP identity/material mapping and refuse
 Shortcuts follow-up140 replaces the unguarded overlay with the existing accessible dialog. Native focus containment, background-key refusal, Escape, direct focus return and both command/shortcuts handoffs pass;499frontend tests/types/lint/build pass. No production change.
 
 CI36758849460 completed on3323a29 through136: eight non-image jobs pass including the complete browser chain. Both actual-image runtime probes pass. The backend image security gate still fails five HIGH findings;137–140 require a fresh exact-head run.
+
+
+Turning-axis follow-up141 fixes rotation-dependent lathe stock, routing and envelope/L-D checks. Actual native cylinder uploads now both report40mm×Ø10mm and match six turning prices; previous saved results remain immutable.40focused checks and2564backend tests/3documented skips pass, no new type/security findings. Engine0.3.17; current CI36764251477 excludes141 and production remains09555c1. Broader shape/process and real-quote accuracy are still open.

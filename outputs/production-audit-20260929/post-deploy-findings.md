@@ -1182,3 +1182,15 @@ The completed container job110041471661 in CI36758849460 built merge sourceb9c1f
 -499frontend tests, typecheck, changed-file lint, production build and the existing native assertion module pass. Backend unchanged from139. Evidence: `140-shortcuts-dialog-proof.json` and three native screenshots. Not deployed.
 
 CI36758849460 is now terminal: all eight non-image jobs passed, including the full browser journey chain. Container startup/share-image and native STEP probes passed; the backend image scan alone failed with the five remaining HIGH findings. This run covers3323a29 through136, excluding137–140. See `ci-36758849460-summary.json`.
+
+
+## 141 — File orientation changed lathe dimensions, eligibility and price
+
+- first divergence: step1, expected a rigidly rotated40×10mm cylinder to retain turning eligibility and axial stock, state was a false rejection at0.4rad, or10.963×35.179mm stock at1.2rad. Native same-part aluminum uploads gave$13.29 versus$13.58 at quantity100. World bounding-box dimensions were incorrectly used as physical lathe dimensions.
+- Reuse validated outer cylinder/cone axes and measure full axial extent/enclosing radial diameter; whole spheres use a principal axis. One shared measurement now feeds routing/cost drivers, lathe envelope and L/D warnings. Existing outer-surface, inertia and eligibility bounds remain. Engine/cache identity is0.3.17; saved0.3.16 records are retained.
+- Three RED controls now pass. Long/disk/equal-inertia cylinders stay consistent over four rotated/translated poses.500mm length still fits the533mm lathe and warns at L/D25;600mm length and280mm diameter stay rejected independently of rotation.40focused checks pass.
+- Native actual STL before/after replays and PostgreSQL readback verify both new records report40mm×Ø10mm and match all six turning prices. Old saved JSON hashes remain unchanged; repeated same-byte input reuses the corrected record. Exact polygonal volume and source hashes pass in `141-turning-axis-controls.py`. Prices remain assumption-based estimates.
+- Full backend2564pass/3documented environment skips in218.06s; skip policy enforced. Source type baseline214errors/3warnings, zero added diagnostics; changed-source Bandit0medium/high. Frontend unchanged. API and ARQ worker refreshed to the current source. Current CI36764251477 excludes141; no production rollout.
+- Evidence: `141-turning-axis-proof.json`, source controls, native receipts and five screenshots. General curved-surface and other-process accuracy remain open.
+
+Security recheck2026-09-30: Debian still lists stable Expat/X11/Xrender packages as vulnerable for [CVE-2026-93990](https://security-tracker.debian.org/tracker/CVE-2026-93990), [CVE-2026-88806](https://security-tracker.debian.org/tracker/CVE-2026-88806) and [CVE-2026-88807](https://security-tracker.debian.org/tracker/CVE-2026-88807). No supported stable package update, waiver or image change was applied.

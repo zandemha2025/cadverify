@@ -58,6 +58,28 @@ class Feature:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+def _outer_rotational_features(features: Optional[list[Feature]]) -> list[Feature]:
+    candidates = []
+    for feature in features or []:
+        if feature.kind != FeatureKind.CYLINDER_BOSS and not (
+            feature.kind == FeatureKind.CURVED
+            and (feature.metadata or {}).get("surface") == "conical"
+            and (feature.metadata or {}).get("interior") is False
+        ):
+            continue
+        singular_values = (feature.metadata or {}).get("singular_values", [])
+        if (
+            len(singular_values) < 2
+            or float(singular_values[0]) <= 0
+            or float(singular_values[1]) / float(singular_values[0]) < 0.25
+        ):
+            continue
+        area = feature.area or 0.0
+        if area > 0:
+            candidates.append(feature)
+    return candidates
+
+
 def has_rotational_surface_evidence(
     features: Optional[list[Feature]],
     surface_area_mm2: float,
@@ -76,24 +98,7 @@ def has_rotational_surface_evidence(
     """
     if not np.isfinite(surface_area_mm2) or surface_area_mm2 <= 0:
         return False
-    boss_area = 0.0
-    for feature in features or []:
-        if feature.kind != FeatureKind.CYLINDER_BOSS and not (
-            feature.kind == FeatureKind.CURVED
-            and (feature.metadata or {}).get("surface") == "conical"
-            and (feature.metadata or {}).get("interior") is False
-        ):
-            continue
-        singular_values = (feature.metadata or {}).get("singular_values", [])
-        if (
-            len(singular_values) < 2
-            or float(singular_values[0]) <= 0
-            or float(singular_values[1]) / float(singular_values[0]) < 0.25
-        ):
-            continue
-        area = feature.area or 0.0
-        if area > 0:
-            boss_area += float(area)
+    boss_area = sum(float(f.area or 0.0) for f in _outer_rotational_features(features))
     if boss_area >= min_fraction * float(surface_area_mm2):
         return True
     if mesh is None or not mesh.is_volume:
@@ -110,3 +115,35 @@ def has_rotational_surface_evidence(
         and np.all(np.abs(radii / radius - 1) <= 0.02)
         and np.all(np.abs(face_radii / radius - 1) <= 0.02)
     )
+
+
+def turning_dimensions(
+    mesh: trimesh.Trimesh, features: Optional[list[Feature]],
+) -> Optional[tuple[float, float, float]]:
+    """Measured axial length, enclosing diameter and radial roundness.
+
+    Use the detected outer cylinder/cone axis; inertia alone is ambiguous when
+    all moments are equal. Whole spheres use a principal axis. Measurements
+    follow the part frame, so rigid rotation cannot change its lathe stock.
+    """
+    if not mesh.is_volume or not has_rotational_surface_evidence(features, mesh.area, mesh=mesh):
+        return None
+    candidates = [f for f in _outer_rotational_features(features) if f.axis is not None]
+    if candidates:
+        axis = np.asarray(max(candidates, key=lambda f: f.area or 0.0).axis, dtype=float)
+    else:
+        # The only supported shape without an outer cylinder/cone is a sphere.
+        axis = np.linalg.eigh(mesh.moment_inertia)[1][:, 0]
+    if not np.all(np.isfinite(axis)) or np.linalg.norm(axis) == 0:
+        return None
+    axis = axis / np.linalg.norm(axis)
+    vertices = np.asarray(mesh.vertices) - mesh.center_mass
+    axial = vertices @ axis
+    radial = vertices - axial[:, None] * axis
+    length = float(np.ptp(axial))
+    diameter = 2.0 * float(np.max(np.linalg.norm(radial, axis=1)))
+    basis = np.cross(axis, np.eye(3)[np.argmin(np.abs(axis))])
+    basis /= np.linalg.norm(basis)
+    spans = np.ptp(vertices @ np.column_stack((basis, np.cross(axis, basis))), axis=0)
+    roundness = float(np.min(spans) / np.max(spans)) if np.max(spans) > 0 else 0.0
+    return length, diameter, roundness

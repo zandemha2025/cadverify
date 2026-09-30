@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Optional
 
 from src.analysis.models import ProcessType
-from src.analysis.features.base import has_rotational_surface_evidence
+from src.analysis.features.base import turning_dimensions
 from src.costing.makeability import environment_gate
 from src.profiles.database import get_materials_for_process
 from src.costing.rates import (
@@ -66,10 +66,11 @@ def _inertia_axisymmetric(mesh, tolerance: float = ROTATIONAL_INERTIA_TOL) -> bo
 def is_rotational(geometry, mesh=None, features=None):
     """Rotational predicate (spec §5.1) — CONSISTENT with the DFM gate by design.
 
-    A part is routed to turning only when BOTH signals agree:
+    A part is routed to turning only when all three signals agree:
 
-      1. cross-section roundness + a turnable aspect ratio (the bbox shape IS a
-         round, lathe-friendly profile — this is what correctly separates a round
+      1. cross-section roundness + a turnable aspect ratio in the measured
+         part axis (the geometry IS a round, lathe-friendly profile — this
+         correctly separates a round
          ring from a flat bracket, which the inertia ratio alone does NOT: a flat
          bracket reads *more* axisymmetric than a ring under the loose eigenvalue
          tolerance), AND
@@ -103,13 +104,14 @@ def is_rotational(geometry, mesh=None, features=None):
         if best is None or roundness > best[0]:
             best = (roundness, axis_len, cross_dia)
     roundness, axis_len, cross_dia = best
+    measured = turning_dimensions(mesh, features) if mesh is not None else None
+    if measured is not None:
+        axis_len, cross_dia, roundness = measured
     ld = (axis_len / cross_dia) if cross_dia > 0 else 0.0
     rotational = (
         (roundness >= 0.80)
         and _inertia_axisymmetric(mesh)
-        and has_rotational_surface_evidence(
-            features, float(getattr(geometry, "surface_area", 0.0) or 0.0), mesh=mesh
-        )
+        and measured is not None
         and (cross_dia >= 5.0)
         and (0.25 <= ld <= 8.0)
     )

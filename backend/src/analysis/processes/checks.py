@@ -25,6 +25,7 @@ from src.analysis.features.base import (
     Feature,
     FeatureKind,
     has_rotational_surface_evidence,
+    turning_dimensions,
 )
 from src.analysis.models import Issue, ProcessType, Severity
 
@@ -159,6 +160,11 @@ def check_build_volume(
     cite: str = "",
 ) -> list[Issue]:
     dims = ctx.info.bounding_box.dimensions
+    if process == ProcessType.CNC_TURNING:
+        measured = turning_dimensions(ctx.mesh, ctx.features)
+        if measured is not None:
+            length, diameter, _ = measured
+            dims = (diameter, diameter, length)
     exceeds = []
     for dim, limit, axis in zip(dims, max_dims_mm, ("X", "Y", "Z")):
         if dim > limit:
@@ -780,6 +786,9 @@ def check_length_diameter_ratio(
         return []
     length = dims[2]
     diameter = dims[1]
+    measured = turning_dimensions(ctx.mesh, ctx.features)
+    if measured is not None:
+        length, diameter, _ = measured
     ld = length / diameter
     if ld <= max_ld:
         return []

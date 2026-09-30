@@ -9,7 +9,7 @@ from src.analysis.base_analyzer import analyze_geometry
 from src.analysis.features.base import FeatureKind, has_rotational_surface_evidence
 from src.analysis.features.cylinders import detect_cylinders
 from src.analysis.models import ProcessType
-from src.analysis.processes.checks import check_rotational_symmetry
+from src.analysis.processes.checks import check_build_volume, check_length_diameter_ratio, check_rotational_symmetry
 from src.costing.routing import is_rotational
 
 
@@ -57,3 +57,33 @@ def test_spherical_turning_evidence_agrees_in_dfm_and_routing(subdivisions):
             ctx = SimpleNamespace(mesh=mesh, info=info, features=[])
             issues = check_rotational_symmetry(ctx, ProcessType.CNC_TURNING, tolerance=0.15)
             assert (not any(i.code == "NOT_ROTATIONALLY_SYMMETRIC" for i in issues)) is expected
+
+
+@pytest.mark.parametrize("radius,height", [(5, 40), (10, 6), (10, np.sqrt(3) * 10)])
+def test_turning_dimensions_follow_the_part_axis_after_rigid_rotation(radius, height):
+    cylinder = trimesh.creation.cylinder(radius=radius, height=height, sections=96)
+    for angle in (0, 0.4, 0.73, 1.2):
+        mesh = cylinder.copy()
+        transform = trimesh.transformations.rotation_matrix(angle, [1, 2, 3])
+        transform[:3, 3] = [125, -35, 41]
+        mesh.apply_transform(transform)
+        geometry = analyze_geometry(mesh)
+        features = detect_cylinders(mesh)
+        rotational, length, diameter = is_rotational(geometry, mesh, features)
+        assert rotational, "changing a CAD part's orientation must not remove turning eligibility"
+        assert length == pytest.approx(height, abs=1e-6)
+        assert diameter == pytest.approx(2 * radius, abs=1e-6)
+
+
+def test_turning_envelope_and_slenderness_use_the_same_physical_axis():
+    for radius, height, too_large, slender in [(10, 500, False, True), (10, 600, True, True), (140, 30, True, False)]:
+        for angle in (0, 0.73, 1.2):
+            mesh = trimesh.creation.cylinder(radius=radius, height=height, sections=96)
+            mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, [1, 2, 3]))
+            ctx = SimpleNamespace(mesh=mesh, info=analyze_geometry(mesh), features=detect_cylinders(mesh))
+            envelope = check_build_volume(ctx, (254, 254, 533), ProcessType.CNC_TURNING)
+            assert bool(envelope) is too_large
+            issues = check_length_diameter_ratio(ctx, 10.0, ProcessType.CNC_TURNING)
+            assert bool(issues) is slender
+            if issues:
+                assert issues[0].measured_value == pytest.approx(height / (2 * radius), abs=1e-6)
