@@ -11,6 +11,7 @@ from __future__ import annotations
 import errno
 import importlib
 import io
+import json
 
 import pytest
 from fastapi.testclient import TestClient
@@ -242,6 +243,14 @@ def test_cost_unknown_override_key_is_400(client, cube_10mm, stl_bytes_of):
               overrides='{"bogus_key": 5}')
     assert r.status_code == 400, r.text
     assert "Invalid override" in r.json()["message"]
+
+
+@pytest.mark.parametrize("value", [-35, 10 ** 400])
+def test_cost_invalid_rate_is_400_before_estimating(client, cube_10mm, stl_bytes_of, value):
+    r = _post(client, "cube.stl", stl_bytes_of(cube_10mm),
+              overrides=json.dumps({"labor_rate": value}))
+    assert r.status_code == 400
+    assert "labor_rate" in r.json()["message"]
 
 
 def test_cost_demo_supports_shop(client, cube_10mm, stl_bytes_of):

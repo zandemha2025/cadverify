@@ -12,6 +12,7 @@ master formula in cost_model.py.
 from __future__ import annotations
 
 import copy
+import math
 from dataclasses import dataclass, field
 
 from src.analysis.models import ProcessType
@@ -854,6 +855,37 @@ def _apply_override(data: dict, raw_key: str, value) -> None:
             raise ValueError(f"Unknown global rate key {raw_key!r}")
 
 
+def _validate_rate_values(value, path: str = "") -> None:
+    """Validate the final card for USER, SHOP and governed-table callers alike."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            _validate_rate_values(item, f"{path}.{key}" if path else str(key))
+        return
+    if isinstance(value, (tuple, list)):
+        for i, item in enumerate(value):
+            _validate_rate_values(item, f"{path}[{i}]")
+        return
+    key = path.rsplit(".", 1)[-1]
+    if value is None and path.startswith("process.") and key in {"deposition", "vert", "finish"}:
+        return  # unused process physics, e.g. CNC deposition rate
+    if (key == "nesting_mode" and value in ("serial", "build_job")) or (key == "lot_size" and value == "build"):
+        return
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{path} must be a finite non-negative number")
+    try:
+        valid = math.isfinite(value) and value >= 0
+    except OverflowError:
+        valid = False
+    if not valid:
+        raise ValueError(f"{path} must be a finite non-negative number")
+    if key == "utilization" and not 0 < value <= 1:
+        raise ValueError(f"{path} must be greater than 0 and at most 1")
+    if key == "stock_allowance" and value < 1:
+        raise ValueError(f"{path} must be at least 1")
+    if key in {"daily_machine_hours", "machine_hours_per_day"} and not 0 < value <= 24:
+        raise ValueError(f"{path} must be greater than 0 and at most 24")
+
+
 def build_rate_card(overrides: dict | None = None, *,
                     shop_overrides: dict | None = None,
                     shop_name: "str | None" = None,
@@ -893,5 +925,6 @@ def build_rate_card(overrides: dict | None = None, *,
         user_keys.add(raw_key)
         shop_keys.discard(raw_key)
 
+    _validate_rate_values(data)
     return RateCard(data=data, user_keys=user_keys, shop_keys=shop_keys,
                     shop_name=shop_name, shop_region=shop_region)

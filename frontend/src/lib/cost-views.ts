@@ -45,6 +45,18 @@ export function canOverrideAssumption(name: string): boolean {
   return assumptionOverrideKey(name) !== null || name === "n_cavities";
 }
 
+/** Bounds for both visible rate editors; the server validates the final card too. */
+export function costOverrideError(name: string, raw: string): string | null {
+  const value = Number(raw);
+  if (!raw.trim() || !Number.isFinite(value)) return "Enter a finite number.";
+  if (value < 0) return "Enter zero or a positive number.";
+  if (name === "utilization" && (value <= 0 || value > 1)) return "Utilization must be greater than 0 and at most 1.";
+  if (name === "stock_allowance" && value < 1) return "Stock allowance must be at least 1.";
+  if (name === "daily_machine_hours" && (value <= 0 || value > 24)) return "Machine hours must be greater than 0 and at most 24 per day.";
+  if (name === "n_cavities" && (!Number.isSafeInteger(value) || value < 1)) return "Cavities must be a positive whole number.";
+  return null;
+}
+
 /**
  * The engine override key a cost-driver row edits — the underlying RATE that
  * drives it (so the edit is honest: you set the rate, the driver re-costs):

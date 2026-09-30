@@ -161,6 +161,7 @@ export default function PartWorkspace({
 
   // cost state
   const [report, setReport] = useState<CostReport | null>(null);
+  const reportOptionsRef = useRef<CostOptions | null>(null);
   const [assumptions, setAssumptions] = useState<CostAssumption[]>([]);
   const [costLoading, setCostLoading] = useState(false);
   const [costError, setCostError] = useState<string | null>(null);
@@ -381,11 +382,12 @@ export default function PartWorkspace({
   }, [opts, recostWith]);
 
   const onSaveScenario = useCallback(() => {
-    if (!report?.decision) return;
+    const reportOptions = reportOptionsRef.current;
+    if (!report?.decision || !reportOptions) return;
     const firstQty = report.quantities[0];
     const rec = report.decision.recommendation[String(firstQty)];
-    const shopName = shops.find((s) => s.id === opts.shop)?.name;
-    const ovr = Object.keys(opts.overrides ?? {}).length;
+    const shopName = shops.find((s) => s.id === reportOptions.shop)?.name;
+    const ovr = Object.keys(reportOptions.overrides ?? {}).length;
     const label = `${shopName ?? "Generic"}${ovr ? ` · ${ovr} ovr` : ""} · qty ${firstQty.toLocaleString()}`;
     setScenarios((prev) => [
       ...prev,
@@ -394,11 +396,11 @@ export default function PartWorkspace({
         label,
         unitCost: rec?.unit_cost_usd ?? null,
         process: rec?.process ?? report.decision?.make_now_process ?? null,
-        opts,
+        opts: reportOptions,
       },
     ]);
     toast.success("Saved to this session — click it to recall and re-cost.");
-  }, [report, opts, shops]);
+  }, [report, shops]);
 
   const onRecallScenario = useCallback(
     (id: string) => {
@@ -422,6 +424,8 @@ export default function PartWorkspace({
     try {
       const result = await costEstimate(theFile, theOpts);
       if (attempt !== analysisAttemptRef.current) return;
+      // Save the inputs that produced this result, never the editable draft.
+      reportOptionsRef.current = theOpts;
       setReport(result);
     } catch (err) {
       if (attempt !== analysisAttemptRef.current) return;

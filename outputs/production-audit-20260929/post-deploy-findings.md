@@ -217,3 +217,28 @@ first divergence: step 1, expected calibration panels to fit a 390 px viewport, 
 - Severity: medium responsive usability issue. Both panel groups forced two columns at every width, while audit rows forced unwrappable columns.
 - Fix: native responsive grid classes stack panels and audit rows on narrow screens; fluid padding and long-text wrapping preserve the existing desktop layout.
 - Verification: after a fresh production build, the same page has 375 px content inside 375 px available width. Native phone-width CSV import and Recalibrate both work; demo records remain refused. All 484 frontend tests, TypeScript, changed-file lint and build pass. Viewport reset after the check. See `037-calibration-mobile-before.png`, `037-calibration-mobile-fixed-local.png` and the runnable width check in `scripts/e2e/calibration-import-feedback.mjs`. Not deployed.
+
+## 038 — Invalid cost rates produce plausible-looking recommendations
+
+first divergence: step 4, expected a negative labor rate to be refused without changing the valid estimate, state was accepted -$35/hour, negative labor/setup charges and a new FDM recommendation at $0.60/unit.
+
+- Severity: high cost accuracy issue. Both visible editors accepted negative values and partially parsed strings, while the shared rate-card builder lacked physical bounds. This also affected SHOP overrides and governed rate tables.
+- Fix: validate the final rate card once for all three sources, retaining legitimate zero rates and optional process fields. Enforce utilization, stock-size and daily-capacity bounds. Both editors reject malformed/invalid values with persistent accessible errors. Oversized JSON integers return 400 instead of overflowing. The existing uncertainty sampler now respects the stock-size lower bound; engine version 0.3.5 prevents reusing old results.
+- Red-to-green: initial backend checks failed on accepted invalid rates; native Chrome reproduced the negative-price behavior. After the fix, negative labor/machine rates and `35oops` remain in the editor with an error while the valid result stays intact. Correcting labor to $70/hour doubles labor/setup exactly, leaves machine/material unchanged and produces MJF $6.98/unit. A 25% markup multiplies all 16 prices by 1.25 within rounding; all line items reconcile. Saved decision JSON is exactly equal to the live export.
+- Validation: full backend suite 2,377 passed / three documented skips; 56 focused checks passed after final guards and the huge-integer API case. Frontend 485 tests, typecheck, changed-file lint and production build pass. Pyright remains 217 against 228 allowed; changed backend Bandit has no medium/high findings. See `cost-override-regression.json` and the `038-*.png` browser evidence. Local only; independent arithmetic is not real quote calibration.
+
+## 039 — Saving a scenario pairs old results with unsaved draft inputs
+
+first divergence: step 3, expected recalling the saved “qty 50 / $3.80” scenario to restore those inputs and price, state was quantity 123 at $3.59 because the unsubmitted draft had been saved with the older report.
+
+- Severity: high decision-integrity issue. The scenario callback read editable form state instead of the inputs submitted for the displayed result.
+- Fix: retain the options when their successful report arrives and use those same options for the scenario label and recall. Both workspace layouts share this callback; no new scenario system or dependency is added.
+- Verification: the runnable native CUA check first failed with `QTY 123`. After the fix and production rebuild, the identical draft edit/save/recall restores 50 and 5,000, with MJF $3.80 at 50. Frontend 485 tests, typecheck, changed-file lint and production build pass. See `scripts/e2e/cost-scenario-snapshot.mjs`, `cost-scenario-regression.json` and `039-*.png`. Local only.
+
+## 040 — Rate explanations misstate markup and user provenance
+
+first divergence: step 1, expected an edited daily-capacity assumption to be marked USER, state was 4 hr/day marked DEFAULT. The margin tooltip also said “target margin” despite the actual cost-plus calculation.
+
+- Severity: medium explanation accuracy issue. The daily-hours tag was hardcoded, and its description omitted that process-specific capacity takes precedence. The margin API key is retained for compatibility, but its formula is markup on cost.
+- Fix: derive daily-hours provenance through the existing rate-card method, state its fallback role and explain `price = cost × (1 + margin)`, including the 0.25 example. Shared report metadata carries the correction to browser and exports; stored historical evidence remains unchanged.
+- Verification: a focused regression failed on the old descriptions and now checks DEFAULT/SHOP/USER provenance. Native Chrome and its downloaded JSON show a fresh 5 hr/day edit as USER, the explicit fallback explanation and accurate markup description. All 70 related costing/rate/API/ensemble checks pass. See `cost-scenario-regression.json` and `040-*.png`. Local only.

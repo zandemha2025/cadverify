@@ -1,0 +1,172 @@
+{
+  "checked_at": "2026-09-30T01:26:24.813406+00:00",
+  "environment": "local disposable audit workspace",
+  "deployed": false,
+  "finding": "038",
+  "source_sha256": "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a",
+  "engine_version": "0.3.5",
+  "backend": {
+    "full_passed": 2377,
+    "documented_skips": 3,
+    "focused_final_passed": 56,
+    "pyright_errors": 217,
+    "pyright_baseline": 228,
+    "bandit_medium_high": 0
+  },
+  "frontend": {
+    "tests_passed": 485,
+    "typecheck": "PASS",
+    "lint": "PASS (test file ignored by existing configuration)",
+    "production_build": "PASS"
+  },
+  "browser": {
+    "negative_labor_before": "accepted -35; negative labor/setup altered recommendation to FDM $0.60 with margin .25",
+    "negative_labor_after": "persistent validation error, aria-invalid=true, MJF $3.80 preserved",
+    "partial_number": "35oops refused as non-finite input",
+    "negative_machine": "-1 refused; cancel works",
+    "corrected_labor_rate": 70,
+    "corrected_mjf_unit_cost": 6.98,
+    "saved_decision_id": "01M3QY8B9CPPAFG07RNH3C5ESE",
+    "saved_json_exactly_matches_live": true
+  },
+  "independent_checks": {
+    "markup_all_16_estimates": [
+      {
+        "process": "injection_molding",
+        "quantity": 50,
+        "baseline": 122.18,
+        "markup25": 152.72,
+        "rounding_difference": -0.005
+      },
+      {
+        "process": "injection_molding",
+        "quantity": 5000,
+        "baseline": 3.38,
+        "markup25": 4.22,
+        "rounding_difference": -0.005
+      },
+      {
+        "process": "dlp",
+        "quantity": 50,
+        "baseline": 6.48,
+        "markup25": 8.1,
+        "rounding_difference": -0.0
+      },
+      {
+        "process": "dlp",
+        "quantity": 5000,
+        "baseline": 6.35,
+        "markup25": 7.94,
+        "rounding_difference": 0.0025
+      },
+      {
+        "process": "sls",
+        "quantity": 50,
+        "baseline": 4.0,
+        "markup25": 5.0,
+        "rounding_difference": 0.0
+      },
+      {
+        "process": "sls",
+        "quantity": 5000,
+        "baseline": 3.67,
+        "markup25": 4.59,
+        "rounding_difference": 0.0025
+      },
+      {
+        "process": "sla",
+        "quantity": 50,
+        "baseline": 10.44,
+        "markup25": 13.05,
+        "rounding_difference": 0.0
+      },
+      {
+        "process": "sla",
+        "quantity": 5000,
+        "baseline": 10.44,
+        "markup25": 13.05,
+        "rounding_difference": 0.0
+      },
+      {
+        "process": "mjf",
+        "quantity": 50,
+        "baseline": 3.8,
+        "markup25": 4.75,
+        "rounding_difference": 0.0
+      },
+      {
+        "process": "mjf",
+        "quantity": 5000,
+        "baseline": 3.48,
+        "markup25": 4.36,
+        "rounding_difference": 0.01
+      },
+      {
+        "process": "cnc_5axis",
+        "quantity": 50,
+        "baseline": 25.93,
+        "markup25": 32.41,
+        "rounding_difference": -0.0025
+      },
+      {
+        "process": "cnc_5axis",
+        "quantity": 5000,
+        "baseline": 13.12,
+        "markup25": 16.4,
+        "rounding_difference": 0.0
+      },
+      {
+        "process": "cnc_3axis",
+        "quantity": 50,
+        "baseline": 22.74,
+        "markup25": 28.43,
+        "rounding_difference": 0.005
+      },
+      {
+        "process": "cnc_3axis",
+        "quantity": 5000,
+        "baseline": 11.76,
+        "markup25": 14.7,
+        "rounding_difference": 0.0
+      },
+      {
+        "process": "fdm",
+        "quantity": 50,
+        "baseline": 8.72,
+        "markup25": 10.91,
+        "rounding_difference": 0.01
+      },
+      {
+        "process": "fdm",
+        "quantity": 5000,
+        "baseline": 8.68,
+        "markup25": 10.85,
+        "rounding_difference": 0.0
+      }
+    ],
+    "baseline_mjf_line_items": {
+      "labor": 2.8321,
+      "machine": 0.6125,
+      "material": 0.0054,
+      "amortized_fixed": 0.35
+    },
+    "labor70_mjf_line_items": {
+      "labor": 5.6641,
+      "machine": 0.6125,
+      "material": 0.0054,
+      "amortized_fixed": 0.7
+    },
+    "all_line_items_reconcile": true
+  },
+  "screenshots": {
+    "038-negative-rate-before.png": "4cd581ea0f499f4bb3dbbac9723d142a68bb24c593aa96d5f53ecfb4d7e2d1b5",
+    "038-saved-rate-decision-local.png": "f4b3f4dd47a0a095cf3f8cd8ed8c4dabbf483f308df3d5739b68a8a1376fc0b9",
+    "038-negative-rate-fixed-local.png": "e39d4b94943e563fc4bbccc2da95a3ae901f03a1db154a93944475b7f12ce6b1"
+  },
+  "not_proven": [
+    "real quote accuracy",
+    "all DFM checks",
+    "production deployment",
+    "external email, IdP and vendor success"
+  ]
+}

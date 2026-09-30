@@ -111,7 +111,8 @@ UNCERTAIN_COEFFICIENTS: list = [
     UncertainCoefficient(
         "stock_allowance", 0.15,
         "CNC billet oversize (DEFAULT ×1.10) is a stated assumption; ~±15% "
-        "depending on stock forms and workholding."),
+        "depending on stock forms and workholding. Stock cannot be smaller than the part.",
+        clamp=(1.0, float("inf"))),
     UncertainCoefficient(
         "learning_rate", 0.05,
         "Wright learning fraction/doubling (DEFAULT 0.90) is a MODEL assumption "

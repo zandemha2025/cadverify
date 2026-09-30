@@ -676,9 +676,13 @@ def _parse_overrides(overrides: Optional[str]) -> dict:
                 status_code=400,
                 detail=f"override {k!r} must be a number",
             )
-        if not _math.isfinite(float(v)):
+        try:
+            number = float(v)
+        except OverflowError:
             raise HTTPException(status_code=400, detail=f"override {k!r} must be finite")
-        out[k.strip()] = float(v)
+        if not _math.isfinite(number):
+            raise HTTPException(status_code=400, detail=f"override {k!r} must be finite")
+        out[k.strip()] = number
     return out
 
 

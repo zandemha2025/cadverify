@@ -197,7 +197,7 @@ def _global_assumptions(rates: RateCard, options: EstimateOptions, region: str) 
         Driver("region_tooling", rt, "×", region_prov,
                f"region {region}: tooling ×{rt:g} (offshore toolmaking labor)"),
         Driver("margin", g["margin"], "frac", rates.prov_tag("margin"),
-               "target margin (price vs should-cost)" + shop_note),
+               "markup on cost: price = cost × (1 + margin); 0.25 adds 25%, not a 25% gross margin" + shop_note),
         Driver("overhead", g["overhead"], "frac", rates.prov_tag("overhead"),
                "indirect burden on conversion cost (machine+labor+setup)" + shop_note),
         Driver("utilization", g["utilization"], "frac", rates.prov_tag("utilization"),
@@ -213,7 +213,8 @@ def _global_assumptions(rates: RateCard, options: EstimateOptions, region: str) 
                "perishable tooling/consumables as a fraction of CNC machine cost "
                "[assumption, not shop-validated]"),
         Driver("daily_machine_hours", g["daily_machine_hours"], "hr/day",
-               Provenance.DEFAULT, "for lead-time production days"),
+               rates.prov_tag("daily_machine_hours"),
+               "fallback daily capacity; process-specific machine hours take precedence" + shop_note),
         Driver("n_cavities", float(options.n_cavities), "cav",
                Provenance.USER if options.n_cavities_is_user else Provenance.DEFAULT,
                f"formative tooling cavities = {options.n_cavities} "

@@ -43,8 +43,23 @@ import {
   parseCalibration,
   buildCompareRows,
   blockersByProcess,
+  costOverrideError,
 } from "./cost-views.ts";
 import type { CostReport, CostEstimate, CostAssumption, CostDriver, CostDecision } from "@/lib/api";
+
+test("cost overrides reject malformed and impossible values, retaining valid zero rates", () => {
+  for (const [name, value] of [
+    ["labor_rate", "-35"], ["machine_cost", "-1"], ["material_cost", "-1"],
+    ["margin", "-2"], ["overhead", "-1"], ["utilization", "0"],
+    ["utilization", "1.1"], ["stock_allowance", "0.9"],
+    ["daily_machine_hours", "25"], ["daily_machine_hours", "0"],
+    ["n_cavities", "1.5"], ["n_cavities", "0"],
+    ["labor_rate", "35oops"], ["labor_rate", "Infinity"], ["labor_rate", ""],
+  ]) assert.ok(costOverrideError(name, value), `${name}=${value}`);
+  for (const [name, value] of [["labor_rate", "0"], ["margin", ".25"],
+    ["utilization", ".1"], ["stock_allowance", "1"], ["n_cavities", "2"],
+    ["daily_machine_hours", "24"]]) assert.equal(costOverrideError(name, value), null);
+});
 
 /* ---- fixture helpers -------------------------------------------- */
 
