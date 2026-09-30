@@ -7,7 +7,7 @@ Production is Render, currently `09555c1`. The subsequent audit branch has not b
 | User-facing capability | Evidence / current state | Work still required |
 | --- | --- | --- |
 | Signup, password login, bad-password recovery, logout | Real disposable Render account completed these flows | Recheck after the next release; legacy Fly accounts remain separate |
-| Protected pages and role boundaries | Prior CI journeys and API tests passed. Whole-API outage redirects a valid local session to login (089), then recovery opens it without new credentials | Fix unavailable-session recovery; repeat representative production analyst/viewer boundaries |
+| Protected pages and role boundaries | Prior CI journeys and API tests passed. Outage-as-logout defect fixed089: both layouts preserve the requested page, withhold protected UI and recover via Retry with the same session. Missing/invalid sessions still redirect safely | Fresh CI and deployment; repeat representative production analyst/viewer boundaries |
 | Email login and invitation delivery | No controlled inbox receipt verified; email login absent from deployed UI | Authorized inbox, provider configuration and actual receive/click proof |
 | Company SAML/OIDC sign-in | Organization screen explicitly reports both disabled | Authorized IdP tenant and real sign-in/session/logout proof |
 | SCIM lifecycle and group-to-role mapping | Synthetic CI lifecycle only | Real authorized IdP provisioning and revocation |
@@ -148,3 +148,7 @@ CI36690028303 on89ea94d through083 completed: all9 jobs and full browser/34-file
 Comparison follow-up087/088: both screens now page through older decisions; exact selected NIST and its same-CAD partner are retained beyond page one. Native real-response controls reach42 unique records, recover missing/failed reads, retain choices across paging failure, clear stale prices after either selection changes, and disable choice changes during comparison.493 frontend tests/types/lint/build and desktop1280/mobile390/320 checks pass. The local direct API connection is restored; no deployment. `comparison-pagination-selection-regression.json` records controls and limits.
 
 CI36694513963 on priorc02604f currently has8 jobs passed and Browser E2E running; it excludes087/088. Whole-API outage exposed open089: the shared session gate treats verification failure as signed out. External email, IdP, vendor, actual quote and production-release requirements remain unproved.
+
+Session-recovery follow-up089: failed session verification now produces the existing retry screen instead of a login redirect. Native stopped-API/recovery checks pass on Compare and Verify without new credentials;6 running-HTTP missing/invalid-session controls retain safe login redirects.494 frontend checks, types, lint and build pass. Not deployed; actual external authentication and email remain open.
+
+CI36694513963 completed on c02604f through086: all9 jobs passed, including54 human steps,31 role/governance steps,34 real CAD files and the full browser/restore/load/readiness/training chain.087–089 require a new-head run. Production still09555c1; `ci-36694513963-summary.json`.

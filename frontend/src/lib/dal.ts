@@ -6,6 +6,8 @@
  * `verifySession()` is the hard gate used by the (app) server layout: it
  * redirects to /login when there is no valid session. Memoized per-request with
  * React `cache` so a single render only hits the backend once.
+ * Verification failures throw to the existing retry boundary; they are not
+ * evidence that the caller's credentials were rejected.
  *
  * Imports `next/headers` (via ./session) → server-only by construction.
  */
@@ -31,16 +33,22 @@ export type SessionUser = {
 export const getUser = cache(async (): Promise<SessionUser | null> => {
   const token = await getSessionToken();
   if (!token) return null;
-  try {
-    const res = await fetch(backendUrl("/auth/me"), {
-      headers: { Cookie: `dash_session=${token}` },
-      cache: "no-store",
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as SessionUser;
-  } catch {
-    return null;
-  }
+  const res = await fetch(backendUrl("/auth/me"), {
+    headers: { Cookie: `dash_session=${token}` },
+    cache: "no-store",
+    signal: AbortSignal.timeout(55_000),
+  });
+  if (res.status === 401 || res.status === 403) return null;
+  if (!res.ok) throw new Error(`Session verification failed (${res.status})`);
+  const user = await res.json();
+  if (
+    !user || !Number.isSafeInteger(user.id) || user.id <= 0 ||
+    typeof user.email !== "string" || !user.email.trim() ||
+    typeof user.role !== "string" || !user.role.trim() ||
+    typeof user.auth_provider !== "string" || !user.auth_provider.trim() ||
+    (user.has_password !== undefined && typeof user.has_password !== "boolean")
+  ) throw new Error("Invalid session verification response");
+  return user as SessionUser;
 });
 
 export const verifySession = cache(async (): Promise<SessionUser> => {

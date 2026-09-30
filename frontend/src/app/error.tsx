@@ -20,10 +20,11 @@ export default function RootError({
   return (
     <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-4 text-center">
       <h2 className="text-2xl font-semibold text-foreground">
-        Something went wrong
+        Page temporarily unavailable
       </h2>
       <p className="max-w-md text-muted-foreground">
-        An unexpected error occurred. Our team has been notified.
+        We couldn&apos;t load this page. The service may be temporarily unavailable.
+        Try again in a moment.
       </p>
       {error.digest && (
         <p className="num text-xs text-muted-foreground">
