@@ -308,14 +308,15 @@ function Standing({ row, nav, onOpenProgram }: {
       style={{
         marginTop: 16,
         display: "grid",
-        gridTemplateColumns: "360px 1fr",
+        gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))",
         gap: 18,
         alignItems: "start",
         maxWidth: 1100,
+        overflowWrap: "anywhere",
       }}
     >
       {/* ── identity (left) ── */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
         <div
           style={{
             border: `1px solid ${C.hair}`,
@@ -427,7 +428,7 @@ function Standing({ row, nav, onOpenProgram }: {
       </div>
 
       {/* ── standing (right) ── */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
         {loading && !detail && (
           <div style={{ padding: "4px 2px" }}>
             <Spinner label="assembling this part's standing…" />
@@ -691,11 +692,11 @@ function HistoryCard({ history, currentId }: { history: CostDecisionSummary[]; c
       <div style={{ marginTop: 8, display: "flex", flexDirection: "column" }}>
         {history.map((h) => (
           <div key={h.id} style={{ borderBottom: `1px solid #f0f0f3` }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 14, padding: "12px 2px" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 14, padding: "12px 2px" }}>
               <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink40, minWidth: 92 }}>
                 {new Date(h.created_at).toLocaleDateString()}
               </span>
-              <span style={{ flex: 1, fontSize: 13, color: C.ink }}>
+              <span style={{ flex: "1 1 150px", fontSize: 13, color: C.ink }}>
                 Cost decision — {procLabel(h.make_now_process)}
                 {h.crossover_qty != null ? ` · crossover ${NUM(h.crossover_qty)}` : ""}
                 {h.id === currentId ? "  · current" : ""}
@@ -762,7 +763,7 @@ function RecordInline({ id }: { id: string }) {
               {drivers.map((d) => (
                 <div
                   key={d.name}
-                  style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "7px 0", borderBottom: `1px solid #eceef1` }}
+                  style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 12, padding: "7px 0", borderBottom: `1px solid #eceef1` }}
                 >
                   <span style={{ fontSize: 12, color: C.ink, minWidth: 120 }}>{d.label}</span>
                   <span style={{ fontFamily: MONO, fontSize: 11.5, color: C.ink }}>
