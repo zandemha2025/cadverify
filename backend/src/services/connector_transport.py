@@ -5,6 +5,7 @@ import asyncio
 import base64
 import json
 import re
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
@@ -202,5 +203,55 @@ async def read_windchill_bom(
             json_body={"NavigationCriteria": {"ID": navigation_id}} if navigation_id else {})
     try:
         return windchill_bom_rows(payload, part_id)
+    except ValueError as exc:
+        raise ConnectorConnectionError(str(exc)) from exc
+
+
+async def read_sap_bom_preview(
+    base_url: str, auth_type: str, secret: dict[str, Any], *, part_id: str, selection: dict[str, Any],
+) -> tuple[list[dict], int]:
+    """Read SAP v2 ExplodeBOM at a requested depth; never infer importable edges."""
+    from src.services.connector_adapters import sap_bom_preview_rows
+
+    params = {}
+    for field, value, maximum, required in [
+        ("Material", part_id, 40, True),
+        ("BillOfMaterial", selection.get("bill_of_material"), 8, True),
+        ("BillOfMaterialVariant", selection.get("variant"), 2, True),
+        ("BillOfMaterialVersion", selection.get("version", ""), 4, False),
+        ("EngineeringChangeDocument", selection.get("engineering_change_document", ""), 12, False),
+        ("Plant", selection.get("plant"), 4, True),
+        ("BOMExplosionApplication", selection.get("application"), 4, True),
+    ]:
+        if (not isinstance(value, str) or len(value) > maximum or (required and not value.strip())
+                or any(ord(char) < 32 or ord(char) == 127 for char in value)):
+            raise ConnectorConnectionError(f"Provide a valid SAP {field} selector (maximum {maximum} characters).")
+        params[field] = "'" + value.replace("'", "''") + "'"
+    try:
+        effective_date = selection["explosion_date"]
+        if not isinstance(effective_date, str) or date.fromisoformat(effective_date).isoformat() != effective_date:
+            raise ValueError
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ConnectorConnectionError("Provide a SAP explosion date in YYYY-MM-DD format.") from exc
+    level = selection.get("explosion_level")
+    if isinstance(level, bool) or not isinstance(level, int) or not 1 <= level <= 99:
+        raise ConnectorConnectionError("Choose a SAP preview depth between 1 and 99.")
+    params.update({
+        "BillOfMaterialCategory": "'M'", "BillOfMaterialItemCategory": "''", "BOMExplosionAssembly": "''",
+        "BOMExplosionDate": f"datetime'{effective_date}T00:00:00'", "BOMExplosionIsLimited": "false",
+        "BOMExplosionIsMultilevel": "true", "BOMExplosionLevel": f"{level}m", "RequiredQuantity": "1.000m",
+        "BOMItmQtyIsScrapRelevant": "''", "MaterialProvisionFltrType": "' '", "SparePartFltrType": "' '", "$format": "json",
+    })
+    url = _url(base_url)
+    product_path = _PRODUCT_PATHS["sap_s4hana_product_bom_readonly"]
+    path = url.path.rstrip("/") or product_path
+    if path.rsplit("/", 1)[-1].lower() != "api_product_srv":
+        raise ConnectorConnectionError("Use the SAP host or API_PRODUCT_SRV service root; the BOM API uses the same service directory.")
+    path = path.rsplit("/", 1)[0] + "/API_BILL_OF_MATERIAL_SRV;v=2/ExplodeBOM"
+    async with asyncio.timeout(30):
+        headers = await _auth_headers(auth_type, secret)
+        payload = await _request_json(url.copy_with(path=path, params=params), headers=headers)
+    try:
+        return sap_bom_preview_rows(payload, part_id, selection)
     except ValueError as exc:
         raise ConnectorConnectionError(str(exc)) from exc

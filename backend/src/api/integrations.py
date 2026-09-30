@@ -87,12 +87,24 @@ class CredentialProfileCreate(BaseModel):
     metadata: dict[str, Any] | None = None
 
 
+class SapBomSelection(BaseModel):
+    bill_of_material: str = Field(..., min_length=1, max_length=8)
+    variant: str = Field(..., min_length=1, max_length=2)
+    version: str = Field("", max_length=4)
+    engineering_change_document: str = Field("", max_length=12)
+    plant: str = Field(..., min_length=1, max_length=4)
+    application: str = Field(..., min_length=1, max_length=4)
+    explosion_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    explosion_level: int = Field(..., strict=True, ge=1, le=99)
+
+
 class BomRunCreate(BaseModel):
     part_id: str = Field(..., min_length=1, max_length=120)
     assembly_key: str = Field(..., min_length=1, max_length=120)
     mode: Literal["dry_run", "import"] = "dry_run"
     navigation_id: str | None = Field(None, max_length=120)
     expected_sha256: str | None = Field(None, pattern=r"^[a-f0-9]{64}$")
+    sap_selection: SapBomSelection | None = None
 
 
 @router.get("/connectors")

@@ -25,7 +25,7 @@ from src.services.connector_adapters import (
     WindchillPartBomReadOnlyAdapter,
 )
 from src.services.integration_service import get_connector
-from src.services.connector_transport import ConnectorConnectionError, probe_product_api, read_windchill_bom
+from src.services.connector_transport import ConnectorConnectionError, probe_product_api, read_sap_bom_preview, read_windchill_bom
 
 AUTH_TYPES = {"bearer", "basic", "oauth2_client_credentials", "api_key"}
 FINGERPRINT_ALGORITHM = "hmac_sha256"
@@ -337,16 +337,24 @@ async def run_bom_profile(
     session: AsyncSession, row: ConnectorCredentialProfile, *, user_id: int,
     part_id: str, assembly_key: str, mode: str, navigation_id: str | None = None,
     expected_sha256: str | None = None,
+    sap_selection: dict[str, Any] | None = None,
 ) -> IntegrationRun:
     """Read vendor BOM, preview or atomically import normalized whole-part edges."""
     from src.services import bom_service
 
-    if row.connector_id != "windchill_part_bom_readonly":
+    sap = row.connector_id == "sap_s4hana_product_bom_readonly"
+    if not sap and row.connector_id != "windchill_part_bom_readonly":
         raise HTTPException(status_code=400, detail="This connector has no BOM reader yet.")
     if row.revoked_at is not None:
         raise HTTPException(status_code=409, detail="This connection is revoked. Choose an active connection.")
     if mode not in {"dry_run", "import"}:
         raise HTTPException(status_code=400, detail="mode must be dry_run or import")
+    if sap and mode == "import":
+        raise HTTPException(status_code=400, detail="SAP supports BOM read previews only. Assembly import requires verified hierarchy and quantity semantics.")
+    if sap and (not sap_selection or navigation_id):
+        raise HTTPException(status_code=400, detail="Provide SAP BOM selectors; Windchill navigation criteria do not apply.")
+    if not sap and sap_selection is not None:
+        raise HTTPException(status_code=400, detail="SAP BOM selectors do not apply to Windchill.")
     key = _clean_text(assembly_key, "assembly_key", max_len=120)
     if mode == "import" and (not expected_sha256 or len(expected_sha256) != 64):
         raise HTTPException(status_code=400, detail="Preview the BOM before importing it.")
@@ -354,8 +362,11 @@ async def run_bom_profile(
     source_count = 0
     error = None
     try:
-        rows, source_count = await read_windchill_bom(row.base_url, row.auth_type, decrypt_secret(row.encrypted_secret_json),
-                                                    part_id=part_id, navigation_id=navigation_id)
+        secret = decrypt_secret(row.encrypted_secret_json)
+        if sap:
+            rows, source_count = await read_sap_bom_preview(row.base_url, row.auth_type, secret, part_id=part_id, selection=sap_selection)
+        else:
+            rows, source_count = await read_windchill_bom(row.base_url, row.auth_type, secret, part_id=part_id, navigation_id=navigation_id)
     except ConnectorConnectionError as exc:
         error = str(exc)
     except TimeoutError:
@@ -370,8 +381,8 @@ async def run_bom_profile(
         imported = summary["edges"]
     run = IntegrationRun(
         ulid=str(ULID()), org_id=row.org_id, user_id=user_id, connector_id=row.connector_id,
-        connector_mode="live_readonly", boundary_label="live_readonly", source_system="PTC Windchill",
-        source_kind="bom", api_name="ProdMgmt.GetPartStructure", mode=mode,
+        connector_mode="live_readonly", boundary_label="live_readonly", source_system="SAP S/4HANA" if sap else "PTC Windchill",
+        source_kind="bom", api_name="API_BILL_OF_MATERIAL_SRV;v=2/ExplodeBOM" if sap else "ProdMgmt.GetPartStructure", mode=mode,
         status="failed" if error else "passed", filename=None, file_sha256=digest,
         file_size_bytes=len(normalized), source_record_count=source_count, normalized_record_count=len(rows),
         rows_total=len(rows), rows_valid=len(rows), rows_invalid=0, imported_count=imported,
@@ -379,10 +390,14 @@ async def run_bom_profile(
         errors_json=[{"reason": error}] if error else [],
         metadata_json={
             "credential_profile_id": row.ulid, "assembly_key": key, "root_part_id": part_id,
-            "navigation_criteria_id": navigation_id, "hash_scope": "normalized BOM edges",
+            "navigation_criteria_id": navigation_id, "hash_scope": "BOM preview values" if sap else "normalized BOM edges",
             "read_completed": bool(rows), "replaces_existing_tree": mode == "import" and not error,
-            "preview_edges": rows[:20], "preview_truncated": len(rows) > 20,
-            "quantity_unit": "ea", "vendor_writes": False,
+            "preview_edges": [] if sap else rows[:20], "preview_truncated": len(rows) > 20,
+            "quantity_unit": None if sap else "ea", "vendor_writes": False,
+            "import_supported": not sap,
+            **({"preview_components": rows[:20], "sap_selection": sap_selection,
+                "required_quantity": "1", "complete_structure_verified": False,
+                "proof_scope": "ExplodeBOM read at the requested depth; no hierarchy or manufacturing quantity validation"} if sap else {}),
         }, completed_at=_now(),
     )
     session.add(run)
