@@ -22,6 +22,20 @@ import type {
   CostRedesigned,
   CostCompareUnitRow,
 } from "@/lib/api";
+import { procLabel } from "./status.ts";
+
+/** Shared by live, saved and comparison views; a low-volume pick is not a universal winner. */
+export function crossoverSummary(decision: CostDecision | null | undefined): string {
+  if (!decision) return "";
+  const processes = [...new Set(Object.values(decision.recommendation).map((r) => r.process))];
+  const head = processes.length === 1
+    ? `${procLabel(processes[0])} is the lowest-cost eligible no-tooling route at the costed quantities.`
+    : "The lowest-cost no-tooling route varies by quantity.";
+  if (decision.crossover_qty == null || !decision.tooling_process) {
+    return `${head} No tooling crossover is identified.`;
+  }
+  return `${head} Estimated ${procLabel(decision.tooling_process)} crossover: ~${Math.round(decision.crossover_qty).toLocaleString()} units${decision.tooling_dfm_ready ? "." : "; requires redesign."} Compare the costed options at your quantity.`;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Feature flag                                                       */

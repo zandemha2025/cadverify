@@ -1,0 +1,112 @@
+{
+  "checked_at": "2026-09-30T01:58:37.983965+00:00",
+  "environment": "local disposable audit workspace",
+  "deployed": false,
+  "finding": "042",
+  "engine_version": "0.3.6",
+  "source_sha256": "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a",
+  "crossover": {
+    "before": 923,
+    "after": 4592,
+    "basis": "selected tooling candidate versus minimum across eligible no-tooling processes",
+    "boundary_costs": [
+      {
+        "quantity": 923,
+        "fdm": {
+          "unit_cost_usd": 8.68,
+          "sum_line_items_usd": 8.6826
+        },
+        "mjf": {
+          "unit_cost_usd": 3.49,
+          "sum_line_items_usd": 3.4879
+        },
+        "injection_molding": {
+          "unit_cost_usd": 8.68,
+          "sum_line_items_usd": 8.6781
+        }
+      },
+      {
+        "quantity": 4591,
+        "fdm": {
+          "unit_cost_usd": 8.68,
+          "sum_line_items_usd": 8.6795
+        },
+        "mjf": {
+          "unit_cost_usd": 3.48,
+          "sum_line_items_usd": 3.4843
+        },
+        "injection_molding": {
+          "unit_cost_usd": 3.48,
+          "sum_line_items_usd": 3.4845
+        }
+      },
+      {
+        "quantity": 4592,
+        "fdm": {
+          "unit_cost_usd": 8.68,
+          "sum_line_items_usd": 8.6795
+        },
+        "mjf": {
+          "unit_cost_usd": 3.48,
+          "sum_line_items_usd": 3.4843
+        },
+        "injection_molding": {
+          "unit_cost_usd": 3.48,
+          "sum_line_items_usd": 3.4842
+        }
+      },
+      {
+        "quantity": 5000,
+        "fdm": {
+          "unit_cost_usd": 8.68,
+          "sum_line_items_usd": 8.6794
+        },
+        "mjf": {
+          "unit_cost_usd": 3.48,
+          "sum_line_items_usd": 3.485
+        },
+        "injection_molding": {
+          "unit_cost_usd": 3.38,
+          "sum_line_items_usd": 3.3776
+        }
+      }
+    ]
+  },
+  "synthetic_closed_form_control": {
+    "old_numeric_crossover": 223,
+    "expected_and_fixed": 950,
+    "environment_exclusions": "PASS",
+    "DFM_failed_make_exclusion": "PASS",
+    "tooling_never_wins": "PASS"
+  },
+  "browser": {
+    "live_summary": "varies by quantity; estimated crossover ~4,592; requires redesign",
+    "compare_summary_matches": true,
+    "saved_summary_matches": true,
+    "saved_decision_id": "01M3R06ARE3ANHSK01YDP81GV7",
+    "live_saved_json_exactly_equal": true
+  },
+  "checks": {
+    "backend_full_passed": 2382,
+    "documented_skips": 3,
+    "focused_after_test_extension_passed": 3,
+    "frontend_tests_passed": 487,
+    "typecheck": "PASS",
+    "changed_lint": "PASS",
+    "production_build": "PASS",
+    "pyright_errors": 217,
+    "pyright_baseline": 228,
+    "bandit_medium_high": 0
+  },
+  "test_setup_note": "First full attempt hit a shared 429 bucket because RATE_LIMIT_ENABLED was the wrong variable. Final full run used the repository CI settings RATE_LIMIT_DISABLED=1, SIGNUP_RATE_LIMIT_DISABLED=1 and CADVERIFY_ENFORCE_SKIP_POLICY=1; product throttles were not changed.",
+  "screenshots": {
+    "042-crossover-saved-local.png": "ac2d65c40f690a9d54e0a73ba17dbf5d4830100c267a0f6cfed930314534ce33",
+    "042-crossover-fixed-local.png": "e9f06a21eb0498ad1417487fe5336790dda57128edd5a7fa96466ee3f6bf4aa3",
+    "042-crossover-before.png": "5b778f50e82442c96eece99e12277e740d12dde7428977fd9e692a20ef733438"
+  },
+  "limitations": [
+    "Bracketing assumes a sustained transition; batch steps may cause local recrossings. The crossover remains explicitly approximate.",
+    "Tooling candidate is selected at the highest requested quantity.",
+    "Real quote accuracy, production rollout and external integrations remain unproven."
+  ]
+}

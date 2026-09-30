@@ -23,6 +23,7 @@ import {
   formatUnitCostDelta,
   cheaperSide,
   costPersistUiEnabled,
+  crossoverSummary,
 } from "./cost-decision.ts";
 import type {
   CostDecision,
@@ -73,6 +74,21 @@ function persistedDecision(): CostDecision {
     note: "",
   };
 }
+
+test("crossover summaries retain changing winners and conditional tooling", () => {
+  const d = persistedDecision();
+  const summary = crossoverSummary(d);
+  assert.match(summary, /varies by quantity/);
+  assert.match(summary, /~1,200/);
+  assert.match(summary, /requires redesign/);
+  assert.doesNotMatch(summary, /stays cheapest|wins above|tool up/);
+  d.crossover_qty = null;
+  assert.match(crossoverSummary(d), /varies by quantity/);
+  assert.match(crossoverSummary(d), /No tooling crossover/);
+  d.recommendation["5000"] = rec("cnc_milling", 3.1);
+  assert.match(crossoverSummary(d), /at the costed quantities/);
+  assert.equal(crossoverSummary(null), "");
+});
 
 /* ---- (a) string-key recommendation reader ----------------------- */
 

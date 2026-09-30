@@ -461,9 +461,9 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
                 f"feasibility-only (not in the costed set) — the dollar options above "
                 f"are the costable alternatives.")
     notes.append(
-        "Absolute cost is ±40–60% (cycle-time/tooling defaults). The crossover "
-        "quantity and make-vs-buy direction are robust to it because they depend "
-        "on the fixed-vs-variable split, driven by your rates.")
+        "Prices and crossover quantities are assumption-based and can shift with "
+        "cycle times, tooling, batch sizes and shop rates. Validate against actual "
+        "quotes before making a sourcing commitment.")
     # If the environment excluded EVERY make-as-is pair, the decision is honestly
     # ABSENT (None) — surface WHY at the report level so the (None) verdict and
     # the cost list (whose surviving entries carry the exclusion flag) can never

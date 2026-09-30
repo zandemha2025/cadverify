@@ -14,6 +14,7 @@
 import type { CostReport } from "@/lib/api";
 import { procLabel } from "@/lib/status";
 import { pickEstimate } from "@/lib/cost-views";
+import { crossoverSummary } from "@/lib/cost-decision";
 import { Card, CardContent } from "@/components/ui/card";
 import CostDecisionCard from "@/components/CostDecisionCard";
 import { CostHonestyNote } from "@/components/cost/CostHonestyNote";
@@ -21,22 +22,6 @@ import {
   DecisionHeadline,
   ConfidenceInterval,
 } from "@/components/glass-box";
-
-function crossoverSentence(report: CostReport): string {
-  const dec = report.decision;
-  if (!dec) return "";
-  if (dec.crossover_qty != null) {
-    const n = Math.round(dec.crossover_qty).toLocaleString();
-    const make = procLabel(dec.make_now_process);
-    if (dec.tooling_process) {
-      return `Make below ~${n} units with ${make}; tool up with ${procLabel(
-        dec.tooling_process
-      )} above it.`;
-    }
-    return `${make} wins below ~${n} units; tooling amortizes above it.`;
-  }
-  return `${procLabel(dec.make_now_process)} stays cheapest at every quantity tested.`;
-}
 
 export function SavedCostDecisionView({ report }: { report: CostReport }) {
   const dec = report.decision;
@@ -69,7 +54,7 @@ export function SavedCostDecisionView({ report }: { report: CostReport }) {
         <DecisionHeadline
           title={`Make by ${procLabel(dec.make_now_process)}`}
           dfmReady={headEstimate?.dfm_ready ?? false}
-          sentence={crossoverSentence(report)}
+          sentence={crossoverSummary(dec)}
         />
         <CardContent compact className="space-y-3">
           {costStamp ? (

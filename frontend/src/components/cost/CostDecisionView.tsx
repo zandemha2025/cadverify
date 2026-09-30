@@ -29,6 +29,7 @@ import {
   qtyToPos,
 } from "@/lib/breakeven";
 import { pickEstimate } from "@/lib/cost-views";
+import { crossoverSummary } from "@/lib/cost-decision";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -122,7 +123,7 @@ export function CostDecisionView({
         <DecisionHeadline
           title={rec ? `Make by ${procLabel(rec.curve.process)}` : "—"}
           dfmReady={rec?.dfmReady ?? false}
-          sentence={crossoverSentence(report)}
+          sentence={crossoverSummary(dec)}
         />
         <CardContent compact className="grid grid-cols-1 gap-5 sm:grid-cols-3">
           <NumberReadout
@@ -342,20 +343,4 @@ function Disclosure({
       {open && <div className="border-t border-border px-4 pb-4">{children}</div>}
     </Card>
   );
-}
-
-function crossoverSentence(report: CostReport): string {
-  const dec = report.decision;
-  if (!dec) return "";
-  if (dec.crossover_qty != null) {
-    const n = Math.round(dec.crossover_qty).toLocaleString();
-    const make = procLabel(dec.make_now_process);
-    if (dec.tooling_process) {
-      return `Make below ~${n} units with ${make}; tool up with ${procLabel(
-        dec.tooling_process
-      )} above it.`;
-    }
-    return `${make} wins below ~${n} units; tooling amortizes above it.`;
-  }
-  return `${procLabel(dec.make_now_process)} stays cheapest at every quantity tested.`;
 }
