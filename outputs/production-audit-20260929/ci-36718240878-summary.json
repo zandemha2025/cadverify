@@ -1,0 +1,72 @@
+{
+  "conclusion": "success",
+  "headSha": "a028e561492b9e5dc71a44be1f6e1d0d1e49eda8",
+  "status": "completed",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36718240878",
+  "jobs": [
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T12:57:49Z",
+      "completed_at": "2026-09-30T12:58:51Z"
+    },
+    {
+      "name": "Backend Tests",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T12:57:49Z",
+      "completed_at": "2026-09-30T13:08:20Z"
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T12:57:49Z",
+      "completed_at": "2026-09-30T12:58:44Z"
+    },
+    {
+      "name": "Commit hook integrity policy",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T12:57:49Z",
+      "completed_at": "2026-09-30T12:57:56Z"
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T12:57:49Z",
+      "completed_at": "2026-09-30T12:59:37Z"
+    },
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T12:57:49Z",
+      "completed_at": "2026-09-30T12:58:02Z"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T12:58:05Z",
+      "completed_at": "2026-09-30T12:59:02Z"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T13:08:23Z",
+      "completed_at": "2026-09-30T13:35:34Z"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T13:08:23Z",
+      "completed_at": "2026-09-30T13:12:27Z"
+    }
+  ],
+  "scope": "Pushed a028e56 through103; excludes local104-107. PR image vulnerability scans are main-only; not production or external tenant proof."
+}

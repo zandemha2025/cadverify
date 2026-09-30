@@ -195,3 +195,5 @@ Inventory pagination follow-up105: the shared client now reads all pages for Mac
 Machine-detail follow-up106: real API outage no longer claims default rates or no routed records. Separate rate/record retries preserve specs and recover the actual default context plus3 existing records after restart. Native regression,496 frontend tests/types/lint/build pass; backend unchanged. Not deployed.
 
 Machine-record navigation follow-up107: Open now uses each row's exact authenticated saved-decision URL. Native inch-IGES proof retains the ID/source hash and$1762.46 saved result; the previous action discarded selection into47 generic records.496 frontend tests/types/lint/build pass. Not deployed.
+
+CI36718240878 completed successfully on a028e56 (through103): all9 jobs passed, including Browser E2E. This excludes104–107; their exact-head run follows the next push. Main-only image CVE scans and production/external-provider proof remain open. See `ci-36718240878-summary.json`.

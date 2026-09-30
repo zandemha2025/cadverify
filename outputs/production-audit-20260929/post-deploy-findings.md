@@ -886,3 +886,5 @@ first divergence: step2, expected the selected inch-IGES decision to open, state
 - Fix: use a native accessible link to the existing authenticated `/cost-decisions/{id}` page, encoding the ID. Remove the unused navigation prop from the machine component chain and its sole parent caller. No new route or state layer.
 - Native proof: the first inch-IGES link targets `01M3S63TWJPSB2VSDH5DZKWQ3G` and opens that exact URL. The saved page shows `box-inch.igs`, the matching CAD hash and$1762.46 at quantity1. The older same-name record has its own distinct link; no saved data changes.
 - All496 frontend tests, types, changed-source lint and production build pass. Backend unchanged from2458 passing tests. Evidence: `107-machine-record-proof.json` and before/fixed screenshots. This is a simple link change checked through the real browser; no source-text test added. Not deployed.
+
+CI36718240878 completed successfully on a028e56 (through103): all9 jobs passed, including Browser E2E. This excludes104–107; their exact-head run follows the next push. Main-only image CVE scans and production/external-provider proof remain open. See `ci-36718240878-summary.json`.
