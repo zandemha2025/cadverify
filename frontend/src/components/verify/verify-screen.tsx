@@ -63,6 +63,7 @@ import {
 import { interpUnitCost, type InterpPoint } from "@/lib/verify/scrub";
 import {
   verdictBannerModel,
+  verificationForRoute,
   perRouteRows,
   envStrikes,
   marginalRate,
@@ -794,7 +795,9 @@ function Walk({
                   setScrubFrac={setScrubFrac}
                   crossover={crossover}
                   toolingProcess={cost.decision?.tooling_process ?? null}
-                  makeProcess={cost.decision?.make_now_process ?? makeNow?.process ?? null}
+                  makeProcess={makeAtQty?.process ?? null}
+                  partContext={result.partContext}
+                  partContextError={result.partContextError}
                   verification={verification}
                   nav={nav}
                 />
@@ -1295,7 +1298,8 @@ function VerdictBanner({
   }
 
   const unit = makeNow?.unit_cost_usd ?? null;
-  const proc = cost?.decision?.make_now_process ?? makeNow?.process ?? null;
+  const proc = makeNow?.process ?? cost?.decision?.make_now_process ?? null;
+  const routeVerification = verificationForRoute(verification, proc);
 
   const savedCta = cost?.saved?.id ? (
     <div style={{ marginTop: 14 }}>
@@ -1311,8 +1315,8 @@ function VerdictBanner({
   // When a makeability block is present, the VERDICT LATTICE drives the banner —
   // makeable_in_house / makeable_not_on_owned / environment_excluded / not_makeable
   // / unknown — never a DFM guess standing in for makeability.
-  if (verification) {
-    const m = verdictBannerModel(verification.verdict);
+  if (routeVerification) {
+    const m = verdictBannerModel(routeVerification.verdict);
     const color = toneColor(m.tone);
     return (
       <BannerFrame borderColor={color} bg="rgba(23,24,26,0.015)">
@@ -1325,7 +1329,7 @@ function VerdictBanner({
           <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink50, lineHeight: 1.6 }}>
             should-cost {USD(unit)}/unit on {procLabel(proc)}
             {makeNow ? ` at qty ${NUM(makeNow.quantity)}` : ""}
-            {verification.best_machine ? ` · best machine ${verification.best_machine}` : ""}
+            {routeVerification.best_machine ? ` · best machine ${routeVerification.best_machine}` : ""}
           </p>
         )}
         {savedCta}
@@ -1736,6 +1740,8 @@ function ResourceCost({
   crossover,
   toolingProcess,
   makeProcess,
+  partContext,
+  partContextError,
   verification,
   nav,
 }: {
@@ -1749,6 +1755,8 @@ function ResourceCost({
   crossover: number | null;
   toolingProcess: string | null;
   makeProcess: string | null;
+  partContext: VerifyResult["partContext"];
+  partContextError: VerifyResult["partContextError"];
   verification: VerificationBlock | null;
   nav: Nav;
 }) {
@@ -1778,7 +1786,10 @@ function ResourceCost({
           QUANTITY <span style={{ color: C.ink }}>{NUM(scrubQty)}</span>
           <span style={{ color: C.ink40 }}> · {interpNote(makeInterp)}</span>
         </span>
-        <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink40 }}>annual volume · <span style={{ color: C.user }}>program not set</span></span>
+        <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink40 }}>annual volume · <span style={{ color: C.user }}>
+          {partContextError ? "context unavailable" : partContext?.annual_volume != null ? NUM(partContext.annual_volume) : "not declared"}
+          {partContext?.program ? ` · ${partContext.program}` : ""}
+        </span></span>
       </div>
       <input
         type="range"
@@ -1816,7 +1827,7 @@ function ResourceCost({
           )}
           <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, lineHeight: 1.7, color: C.ink45 }}>
             hours × your rates + mass × your lot price · {mix.groundedPct}% of drivers grounded (● measured/shop/user)
-            <br />band &amp; drivers read at computed qty {NUM(snappedQty)}
+            <br />route, band &amp; drivers read at computed qty {NUM(snappedQty)}
           </p>
           <div style={{ marginTop: 10 }}>
             <ConfidenceBand validated={validated} pointFraction={pointFrac} />
@@ -1831,14 +1842,14 @@ function ResourceCost({
         {toolAtQty && (
           <div style={{ border: `1.5px solid ${C.hair}`, borderRadius: 12, padding: "14px 16px" }}>
             <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", color: C.ink45 }}>
-              {procLabel(toolingProcess)} — NOT OWNED → ACQUIRE
+              {procLabel(toolingProcess)} — TOOLING ALTERNATIVE
             </p>
             <p style={{ margin: "8px 0 0", fontSize: 26, fontWeight: 300, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
               {USD(toolInterp?.unit ?? toolAtQty.unit_cost_usd)} <span style={{ fontSize: 13, color: C.ink45 }}>/unit incl. tooling</span>
             </p>
             {toolInterp && <p style={{ margin: "3px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink40 }}>{interpNote(toolInterp)}</p>}
             <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, lineHeight: 1.7, color: C.ink45 }}>
-              {crossover ? `amortizes past ${NUM(crossover)} units` : "no crossover — tooling never pays back at these volumes"}
+              {crossover ? `estimated crossover ≈ ${NUM(crossover)} units` : "no tooling crossover identified"}
               {toolAtQty.dfm_ready ? "" : " · conditional on a DFM redesign"}
             </p>
             <div style={{ marginTop: 10 }}>

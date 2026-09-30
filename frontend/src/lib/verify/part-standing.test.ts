@@ -173,7 +173,9 @@ test("deriveStanding: validated defaults false (assumption band, n=0) → hatche
 
 test("deriveStanding carries the persisted makeability lattice independently of DFM", () => {
   const detail = detailWith({ dfm_ready: true, dfm_verdict: "issues" });
-  detail.result.verification = { verdict: "makeable_outsource_only" };
+  detail.result.verification = { verdict: "makeable_in_house", per_route: {
+    cnc_turning: { verdict: "makeable_outsource_only", best_machine: null, machines_evaluated: 0, failures: [] },
+  } };
   const s = deriveStanding(row(), detail);
   assert.equal(s.makeabilityVerdict, "makeable_outsource_only");
 });

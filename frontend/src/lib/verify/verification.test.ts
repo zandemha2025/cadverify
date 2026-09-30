@@ -25,6 +25,7 @@ import {
   acquisitionGap,
   readVerification,
   recordVerdictModel,
+  verificationForRoute,
   type VerificationBlock,
   type MakeabilityLattice,
 } from "./verification.ts";
@@ -38,6 +39,25 @@ const LATTICE: MakeabilityLattice[] = [
   "not_makeable",
   "unknown",
 ];
+
+test("a recommended route cannot borrow another process's passing machine", () => {
+  const v: VerificationBlock = {
+    verdict: "makeable_in_house", best_machine: "CNC mill",
+    per_route: {
+      cnc_3axis: { verdict: "makeable_in_house", best_machine: "CNC mill", machines_evaluated: 1, failures: [] },
+      wire_edm: { verdict: "makeable_outsource_only", best_machine: null, machines_evaluated: 0, failures: [] },
+    },
+  };
+  assert.equal(verificationForRoute(v, "wire_edm")?.verdict, "makeable_outsource_only");
+  assert.equal(verificationForRoute(v, "wire_edm")?.best_machine, null);
+  assert.equal(verificationForRoute(v, "cnc_3axis")?.best_machine, "CNC mill");
+  assert.equal(verificationForRoute(v, "missing")?.verdict, "unknown");
+  assert.equal(verificationForRoute(null, "wire_edm"), null);
+  const record = recordVerdictModel({ verification: v }, {
+    hasCostedRoute: true, process: "wire_edm", dfmReady: true, dfmVerdict: "pass",
+  });
+  assert.equal(record.text, "Makeable — outsource only.");
+});
 
 test("every verdict lattice value maps to a banner with a non-empty title", () => {
   for (const v of LATTICE) {

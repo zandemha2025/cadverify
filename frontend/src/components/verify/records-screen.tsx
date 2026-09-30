@@ -198,6 +198,7 @@ function RecordDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const verdictModel = detail
     ? recordVerdictModel(detail.result, {
         hasCostedRoute: Boolean(detail.make_now_process && est),
+        process: est?.process,
         dfmReady: est?.dfm_ready,
         dfmVerdict: est?.dfm_verdict,
       })

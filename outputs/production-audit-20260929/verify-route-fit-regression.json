@@ -1,0 +1,9 @@
+{
+  "finding": "065",
+  "status": "PASS",
+  "scope": "Local real STEP, stainless, declared FDM and synthetic stainless CNC. No EDM or Binder Jetting owned.",
+  "banner": "VERDICT · OUTSOURCE ONLY\n\nMakeable — outsource only.\n\nYou own nothing of the recommended process family, so it's a buy for now. Declare or acquire the machine to flip this in-house.\n\nshould-cost $110.0/unit on Wire EDM at qty 1\n\n",
+  "overall": "MAKEABILITY — MAKEABLE IN HOUSE · USER\n\ninventory declared true · environment declared false · best machine Audit CNC 065\n\nMachine fit is a MEASURED-geometry × USER-declared-capability comparison. 'unknown' when no inventory is declared or a required capability is undeclared — never a fabricated pass. Environment exclusions cite the material property/standard. Known limitations: the 5-axis/undercut need is inherited from the upstream process router (not re-derived from geometry); force gates (tonnage/taper) require a declared force.",
+  "record": "/cost-decisions/01M3RCF856MX3SFCSZTMDABEMP",
+  "machine": "Audit CNC 065 remains in local audit inventory for reproducibility; no production change."
+}

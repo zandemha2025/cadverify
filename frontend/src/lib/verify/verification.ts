@@ -104,7 +104,7 @@ const BANNER: Record<MakeabilityLattice, VerdictBannerModel> = {
   not_makeable: {
     kicker: "VERDICT · NOT MAKEABLE",
     title: "Not makeable as modeled.",
-    sub: "No route clears the gates for this geometry — the engine will not fabricate a pass to fill the page.",
+    sub: "The displayed route does not clear the manufacturing gates for this geometry. Review its failures and the other evaluated routes below.",
     tone: "fail",
   },
   unknown: {
@@ -143,6 +143,22 @@ export function readVerification(report: unknown): VerificationBlock | null {
   return candidate as VerificationBlock;
 }
 
+/** The machine fit for the route being displayed. An aggregate pass can belong
+ * to a different process; a missing per-route fit is unknown, never inherited. */
+export function verificationForRoute(
+  verification: VerificationBlock | null,
+  process: string | null | undefined,
+): VerificationBlock | null {
+  if (!verification) return null;
+  const fit = process ? verification.per_route?.[process] : null;
+  return {
+    ...verification,
+    verdict: fit?.verdict ?? "unknown",
+    best_machine: fit?.best_machine ?? null,
+    gap: fit?.failures ?? [],
+  };
+}
+
 export interface RecordVerdictModel {
   text: string;
   kicker: string;
@@ -156,6 +172,7 @@ export function recordVerdictModel(
   report: unknown,
   state: {
     hasCostedRoute: boolean;
+    process?: string | null;
     dfmReady?: boolean | null;
     dfmVerdict?: string | null;
   },
@@ -164,7 +181,8 @@ export function recordVerdictModel(
     return { text: "Verdict withheld.", kicker: "VERDICT · WITHHELD", tone: "neutral" };
   }
 
-  const verification = readVerification(report);
+  const stored = readVerification(report);
+  const verification = state.process ? verificationForRoute(stored, state.process) : stored;
   if (verification) {
     const model = verdictBannerModel(verification.verdict);
     return { text: model.title, kicker: model.kicker, tone: model.tone };

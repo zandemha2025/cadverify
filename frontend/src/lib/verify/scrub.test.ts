@@ -99,3 +99,9 @@ test("a process the engine did not cost yields unit:null — withheld, never fak
   assert.equal(p.unit, null);
   assert.equal(interpUnitCost(LADDER, null, 1000).unit, null);
 });
+
+
+test("environment-excluded estimates cannot appear in the quantity interpolation", () => {
+  const excluded = { ...est("mjf", 100, 0.01), environment_excluded: true };
+  assert.equal(interpUnitCost(report([excluded]), "mjf", 100).unit, null);
+});

@@ -467,3 +467,24 @@ The real NIST comparison showed CNC 3-axis at $649.61 and die casting at $44.58 
 The existing process/quantity band index now retains readiness alongside confidence. Each price cell shows `requires redesign` for DFM-blocked estimates, or `environment excluded` when the saved estimate is excluded. No prices or deltas change. Replaced the fallback claim that differences were mostly quantity effects with the actual comparison threshold: no comparable driver difference above 5% was identified.
 
 Native NIST regression fails before the change and passes after it: both CNC and die-casting cells are labeled, both feasible WAAM cells remain unmarked, and the unsupported quantity explanation is absent. All 489 frontend tests, typecheck, changed-file lint and production build pass. The environment-exclusion label is wired from the saved flag but has not been separately replayed through this native comparison screen. Evidence: `comparison-readiness-regression.json`, `063-*.png` and the CUA comparison assertion. Production verification remains pending.
+
+
+## 064 — Verify and acquisition priced the prototype route at every quantity
+
+**High; fixed locally, deployment pending.** CI 36670069143 passed all 17 enterprise steps and eight other jobs, but failed the VER-06 golden: the saved recommendation at 10,000 units was binder jetting at $2.46 while the Verify card showed wire EDM at $15.60. All other eight enterprise goldens passed; CAD corpus/training gates were not reached. Native Chrome reproduced this exact stainless STEP mismatch and the polymer equivalent (FDM $8.42 despite MJF winning).
+
+The shared quantity selector now follows the saved recommendation's process and material at the exact computed quantity and returns no estimate for absent/excluded rows. Calls without a quantity preserve their explicitly documented prototype-process amortized summary. Verify's label, price, band, drivers and owned-machine rate now use that selected route. Acquisition uses the per-quantity recommendation curve and matching labels; Ask and comparison drivers inherit the shared fix. Interpolation reuses the environment-filtered selector. Removed unsupported ownership, no-acquisition and never-pays-back claims from the tooling alternative display.
+
+Native real STEP checks pass for Wire EDM $110 at qty 1 and Binder Jetting $2.46 at qty 10,000, including acquisition and Ask. The saved report table supplies the independent UI oracle. An attempted native JSON export event timed out in the CUA bridge; this attempt is not counted as export proof. All 492 frontend tests, typecheck, changed-source lint and the production build pass. No engine prices or CI assertions were loosened. See `verify-quantity-regression.json`, `ci-36670069143-summary.json`, `064-*`, and `scripts/e2e/verify-quantity-reconciliation.mjs`.
+
+## 065 — Recommended route inherited another process's in-house machine verdict
+
+**High; fixed locally, deployment pending.** The same CI result paired the prototype Wire EDM price with an in-house banner and the passing Haas CNC machine, while the per-route block correctly marked Wire EDM outsource-only. The backend aggregate correctly describes whether any route can run in-house; it cannot establish machine ownership for the displayed process.
+
+A shared route-fit selector now uses the displayed process's own verdict and machine. Missing per-route evidence stays unknown. Verify, record detail and part standing use the selected route's fit. Regression checks reproduce aggregate CNC pass versus Wire EDM outsource-only, reject inherited machine names, and preserve unknown for missing routes. Native controlled-inventory replay is recorded in `verify-route-fit-regression.json`.
+
+## 066 — Verify always said program not set, even with saved annual demand
+
+**Medium; fixed locally, deployment pending.** CI's declared 12,000-unit program was shown correctly in the context strip but Resource cost hard-coded “program not set.” The readout now uses the same loaded part context, distinguishes an unavailable read from an undeclared volume, and prints the saved program name.
+
+Native assignment of the real STEP to local program “Audit quantity 064” with annual demand 12,000 first withheld exposure because the quantity was absent. Re-verification included qty 12,000 in its six-point ladder. Resource cost now shows “annual volume · 12,000 · Audit quantity 064”; the selected qty 10,000 still reconciles to Binder Jetting $2.46. See `066-verify-context-fixed.png` and `verify-quantity-regression.json`.

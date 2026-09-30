@@ -20,6 +20,7 @@ import type {
   Issue,
 } from "@/lib/api";
 import type { MakeabilityLattice } from "./verification";
+import { readVerification, verificationForRoute } from "./verification.ts";
 
 /** The make-now route's estimate — the largest-quantity point for the decision's
  *  make-now process (setup fully amortized = the stable read). Inlined (not a
@@ -130,7 +131,9 @@ export function deriveStanding(
   const detailWithheld = Boolean(est?.environment_excluded);
   const kind = detailWithheld ? "blocked" : standingKind(row);
   const conf = est?.confidence;
-  const rawMakeability = detail?.result.verification?.verdict;
+  const rawMakeability = verificationForRoute(
+    readVerification(detail?.result), row.recommended_route?.process ?? detail?.make_now_process,
+  )?.verdict;
   const makeabilityVerdict =
     typeof rawMakeability === "string" && MAKEABILITY_VALUES.has(rawMakeability as MakeabilityLattice)
       ? (rawMakeability as MakeabilityLattice)

@@ -1,0 +1,50 @@
+{
+  "high": {
+    "status": "PASS",
+    "quantity": "10,000",
+    "process": "Binder Jetting",
+    "price": "$2.46",
+    "card": "Binder Jetting — MAKE NOW\n\n$2.46 /unit at this qty\n\nengine-exact — a computed point\n\nhours × your rates + mass × your lot price · 0% of drivers grounded (● measured/shop/user)\nroute, band & drivers read at computed qty 10,000\n\nassumption-based, not yet validated"
+  },
+  "low": {
+    "status": "PASS",
+    "quantity": "1",
+    "process": "Wire EDM",
+    "price": "$110.0",
+    "card": "Wire EDM — MAKE NOW\n\n$110.0 /unit at this qty\n\nengine-exact — a computed point\n\nhours × your rates + mass × your lot price · 0% of drivers grounded (● measured/shop/user)\nroute, band & drivers read at computed qty 1\n\nassumption-based, not yet validated"
+  },
+  "acquisition": "AT QUANTITY 10,000 · nearest real point\n○ MODEL\n\nBinder Jetting — MAKE NOW · WINS HERE\n\n$2.46 /unit at this quantity\n\nForging — TOOLING ALTERNATIVE; requires redesign\n\n$18.47 /unit incl. tooling\n\nboth figures are engine cost-model outputs (○ MODEL — hours & rates modeled from your calibration, not measured). The tooling figure amortizes the engine's fixed tool cost into each unit.\n\n",
+  "ask": " COMPUTED, NOT GENERATED · should-cost · qty 10,000\n  - button \"Dismiss\": ✕\n  - generic: Binder Jetting · make-now\n  - generic: $2.46/unit\n  - generic: Forging · incl. tooling\n  - generic: $18.47/unit\n  - generic: make-vs-buy crossover\n  - generic: none computed\n  - paragraph:\n    - generic \"MODEL — Computed from a DEFAULT assumption — not a measurement.\": ○ MODEL\n    - generic: computed from POST /validate/cost for audit-cube.STP\n",
+  "record": "01M3RC3RYKY38THW31C2F8ZBG5",
+  "finding": "064",
+  "deployment": "local production build only; not deployed",
+  "sourceCAD": {
+    "filename": "audit-cube.STP",
+    "sha256": "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a"
+  },
+  "before": {
+    "stainlessAt10000": {
+      "process": "wire_edm",
+      "unitCost": 15.6
+    },
+    "polymerAt10000": {
+      "process": "fdm",
+      "unitCost": 8.42
+    }
+  },
+  "expectedSource": "Native saved record Recommendation by quantity table: 1 Wire EDM $110.00; 100 Binder Jetting $2.59; 1000–10000 Binder Jetting $2.46",
+  "exportAttempt": "Download event wait timed out in CUA and reset its kernel; saved-page table supplies the observed oracle. No export success is claimed for this attempt.",
+  "declaredContext": {
+    "program": "Audit quantity 064",
+    "annualVolume": 12000,
+    "visible": "QUANTITY 10,000 · engine-exact — a computed point\nannual volume · 12,000 · Audit quantity 064\n1\nno crossover computed\n10,000\n\nBinder Jetting — MAKE NOW\n\n$2.46 /unit at this qty\n\nengine-exact — a computed point\n\nhours × your rates + mass × your lot price · 0% of drivers grounded (● measured/shop/user)\nroute, band & drivers read at computed qty 10,000\n\nassumption-based, not yet validated\n\nForging — TOOLING ALTERNATIVE\n\n$18.47 /unit incl. tooling\n\nengine-exact — a computed point\n\nno tooling crossover identified · conditional on a DFM redesign\n\nOpen acquisition consideration →\n\nengine note: Lowest-cost no-tooling estimate at qty 1: wire_edm (API 13Cr) — $110.0/unit. Costed make-route picks: qty 1: wire_edm; qty 100: binder_jetting; qty 1000: binder_jetting; qty 2000: binder_jetting; qty 10000: binder_jetting; qty 12000: binder_jetting. No tooling crossover identified in this comparison. Note: forging requires redesign for DFM (114838 sidewall faces (100.0% of sidewall area) below 5.0° draft for forging.); its cost is conditional on those changes, not a current-capability quote.\n\n",
+    "record": "01M3RCF856MX3SFCSZTMDABEMP",
+    "selectedQuantityProof": {
+      "status": "PASS",
+      "quantity": "10,000",
+      "process": "Binder Jetting",
+      "price": "$2.46",
+      "card": "Binder Jetting — MAKE NOW\n\n$2.46 /unit at this qty\n\nengine-exact — a computed point\n\nhours × your rates + mass × your lot price · 0% of drivers grounded (● measured/shop/user)\nroute, band & drivers read at computed qty 10,000\n\nassumption-based, not yet validated"
+    }
+  }
+}

@@ -18,20 +18,7 @@
  */
 import type { CostReport } from "@/lib/api";
 
-/** qty → unit cost (USD) for a process, from the engine's estimates only. Inlined
- *  (not imported at runtime) so this pure module stays free of runtime relative
- *  imports and runs under the repo's `node --test` type-stripping runner. */
-function unitCostByQty(
-  cost: CostReport,
-  process: string | null | undefined
-): Map<number, number> {
-  const out = new Map<number, number>();
-  if (!process) return out;
-  for (const e of cost.estimates) {
-    if (e.process === process) out.set(e.quantity, e.unit_cost_usd);
-  }
-  return out;
-}
+import { unitCostByQty } from "./derive.ts";
 
 export interface InterpPoint {
   /** the unit cost at the target qty — engine-exact at a point, interpolated

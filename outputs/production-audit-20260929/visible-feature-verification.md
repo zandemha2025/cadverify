@@ -87,3 +87,8 @@ Part-to-comparison follow-up (061): a part's Compare action now retains its exac
 Comparison responsive follow-up (062): both cards and all controls fit 390/320 px, and keyboard scrolling reaches the complete price table. Native high-quantity results remain correct; desktop layout and build/type/lint checks pass. Production remains pending.
 
 Comparison conditions follow-up (063): each cost cell now retains saved DFM/environment conditions, and driver commentary no longer guesses the cause of a gap. Native NIST blocked/feasible rows and all frontend checks pass; a native excluded-environment comparison case and production proof remain open.
+
+
+### Follow-up verification — 064–066
+
+CI 36670069143 completed with eight jobs passed and Browser E2E failed on a real Verify card mismatch (all 17 enterprise steps passed; 8/9 goldens). The selected route, cost, band, drivers and acquisition/Ask views now follow the saved quantity-specific recommendation. Native stainless STEP q1=$110 Wire EDM and q10,000=$2.46 Binder Jetting agree with the saved table. Declared volume/program readout is verified with annual demand 12,000. Shared route-fit selection prevents a CNC machine pass from claiming that an outsource-only EDM route is owned. Local validation: 492 frontend tests, typecheck, lint and production build pass. Production and a fresh exact-head CI run remain pending; no all-features or real-price-accuracy claim.
