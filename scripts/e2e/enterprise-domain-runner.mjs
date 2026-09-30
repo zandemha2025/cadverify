@@ -991,6 +991,13 @@ class EnterpriseDomainQA {
       const afterDecisions = await this.expectApiOk("/cost-decisions?limit=100");
       const afterAnalysisRows = afterAnalyses.analyses.filter((row) => row.filename === "cube.step");
       const afterDecisionRows = afterDecisions.cost_decisions.filter((row) => row.filename === "cube.step");
+      // Retain the exact response even if a dedup assertion fails; a decision
+      // count alone cannot distinguish changed inputs from changed computation.
+      this.evidence.interruptedVerification = {
+        repeated_cost: repeatedCost,
+        before_decision_ids: beforeDecisionRows.map((row) => row.id),
+        after_decision_ids: afterDecisionRows.map((row) => row.id),
+      };
       assert(afterAnalysisRows.length === 1, `interrupted repeat created ${afterAnalysisRows.length} analyses`);
       assert(sameArray(afterDecisionRows.map((row) => row.id).sort(), expectedDecisionIds), `interrupted repeat changed the decision set: ${afterDecisionRows.map((row) => row.id)}`);
       assert(afterAnalysisRows[0].id === beforeAnalysisRows[0].id, "analysis identity changed after interrupted repeat");
