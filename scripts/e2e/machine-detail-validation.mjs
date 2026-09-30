@@ -1,5 +1,17 @@
 import assert from "node:assert/strict";
 
+export async function assertListReadFailure(page, kind) {
+  const state = await page.playwright.evaluate(() => ({
+    text: document.querySelector('main main')?.textContent,
+    buttons: [...document.querySelectorAll('main button')].map(b => b.textContent),
+  }));
+  assert.match(state.text, /couldn't load/);
+  assert.doesNotMatch(state.text, /No records yet|Declare your floor\./,
+    'An unavailable list must not claim that saved data is absent');
+  assert.ok(state.buttons.includes(kind === 'machines' ? 'Retry inventory' : 'Retry records'));
+  return { status: 'PASS', kind };
+}
+
 export async function assertMachineDetailOutage(page) {
   const state = await page.playwright.evaluate(() => {
     const sections = [...document.querySelectorAll('section')];

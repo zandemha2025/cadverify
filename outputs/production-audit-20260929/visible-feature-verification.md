@@ -199,3 +199,5 @@ Machine-record navigation follow-up107: Open now uses each row's exact authentic
 CI36718240878 completed successfully on a028e56 (through103): all9 jobs passed, including Browser E2E. This excludes104–107; their exact-head run follows the next push. Main-only image CVE scans and production/external-provider proof remain open. See `ci-36718240878-summary.json`.
 
 Inventory totals follow-up108: Home now sums declared machine quantities instead of rows. Four real entries[2,1,1,2] display6 machines on the KPI, setup and floor cards; PostgreSQL independently confirms6.497 frontend tests/types/lint/build pass; no data changes or deployment.
+
+List-error follow-up109: real API outages no longer claim an empty inventory or no saved records. Separate native Retry checks restore4 inventory entries and47 records without reload; repeated failures remain honest.497 frontend tests/types/lint/build pass; no data changes or deployment.

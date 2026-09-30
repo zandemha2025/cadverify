@@ -1,0 +1,30 @@
+{
+  "scope": "Local native Chrome with real stopped/restarted API; no data mutations",
+  "before": {
+    "records": "Error plus No records yet;47 saved records exist",
+    "machines": "Error plus Declare your floor;4 saved entries exist",
+    "regression": "An unavailable list must not claim that saved data is absent"
+  },
+  "after": {
+    "records": {
+      "status": "PASS",
+      "kind": "records"
+    },
+    "machines": {
+      "status": "PASS",
+      "kind": "machines"
+    },
+    "repeatedOutageRetry": "PASS",
+    "recoveredRecords": 47,
+    "recoveredMachineEntries": 4,
+    "reloadRequired": false
+  },
+  "checks": {
+    "frontendPassed": 497,
+    "types": "PASS",
+    "changedLint": "PASS",
+    "build": "PASS",
+    "nativeAssertion": "RED before / GREEN after",
+    "backendUnchangedPassed": 2458
+  }
+}

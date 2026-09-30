@@ -71,6 +71,8 @@ export function MachinesScreen({ onChanged }: { onChanged: () => void }) {
   const csvRef = useRef<HTMLInputElement | null>(null);
 
   const refresh = useCallback(async () => {
+    setMachines(null);
+    setError(null);
     try {
       const page = await listMachines();
       setMachines(page.machines);
@@ -205,7 +207,10 @@ export function MachinesScreen({ onChanged }: { onChanged: () => void }) {
       </p>
 
       {error && (
-        <p style={{ margin: "14px 0 0", fontFamily: MONO, fontSize: 11, color: C.fail }}>couldn&apos;t load inventory — {error}</p>
+        <div role="alert" style={{ margin: "14px 0 0", fontFamily: MONO, fontSize: 11, color: C.fail }}>
+          <p>couldn&apos;t load inventory — {error}</p>
+          <GhostButton onClick={() => void refresh()}>Retry inventory</GhostButton>
+        </div>
       )}
       {csvError && (
         <div role="alert" data-testid="machine-import-error" style={{ marginTop: 14, border: `1px solid ${C.fail}55`, borderRadius: 10, padding: "10px 12px", fontFamily: MONO, fontSize: 11, color: C.fail }}>
@@ -223,7 +228,7 @@ export function MachinesScreen({ onChanged }: { onChanged: () => void }) {
         </div>
       )}
 
-      {machines === null ? (
+      {error ? null : machines === null ? (
         <div style={{ marginTop: 26 }}>
           <Spinner label="loading your floor…" />
         </div>

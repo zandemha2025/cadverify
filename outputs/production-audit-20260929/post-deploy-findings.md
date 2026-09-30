@@ -898,3 +898,13 @@ first divergence: step2, expected6 machines from declared quantities2+1+1+2, sta
 - Fix: sum declared counts for both totals, matching the inventory service's existing default of1 for null counts. Reuse one small count helper for both calculations; retain zero/unknown loading distinctions.
 - Native Home, onboarding and Your Floor now all report6; independent PostgreSQL readback confirms4 entries with quantities[2,1,1,2] and6 machines with rates. No inventory records changed.
 - A runnable behavior test covers grouped quantities, the existing null default, subsets and empty lists. All497 frontend tests/types/changed lint/build pass. Backend unchanged from2458 passing tests. Evidence: `108-inventory-total-proof.json` and before/fixed screenshots. Local only; prior105 proof recorded the then-current entry-count behavior, now corrected to physical quantities.
+
+
+## 109 — Inventory and Records outages are presented as empty workspaces
+
+first divergence: step2, expected an unavailable-list state after stopping the local API, state was “No records yet” beside the records error and “Declare your floor” beside the inventory error.
+
+- Severity: medium correctness/recovery defect. Both catch branches assigned empty arrays and the rendering branch treated a failed fetch as a confirmed empty result. Neither initial-read error had a Retry control.
+- Fix: keep loading/error/confirmed-empty states distinct and reuse the existing refresh functions from explicit Retry controls. Records pagination still retains already loaded rows and retries the failed next page; no new fetch abstraction or API change.
+- Native RED/GREEN uses actual stopped/restarted local API processes. Both lists suppress false empty claims and keep retries usable during the continued outage. Once the API returns, Retry inventory restores4 real entries and Retry records restores47 saved decisions, independently in two native tabs without reloading. No saved data changed; the extra test tab was closed.
+- All497 frontend tests/types/changed lint/build pass. The runnable native assertion extends `scripts/e2e/machine-detail-validation.mjs`; evidence is `109-list-recovery-proof.json` and before/fixed/recovered screenshots for both screens. Backend unchanged from2458 passing tests. Not deployed; exact-head CI still required.

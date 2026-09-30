@@ -51,6 +51,8 @@ export function RecordsScreen({ nav }: { nav: (s: string) => void }) {
   const [loadingMore, setLoadingMore] = useState(false);
 
   const refresh = useCallback(async () => {
+    setRows(null);
+    setError(null);
     try {
       const page = await fetchCostDecisions({ limit: PAGE });
       setRows(page.cost_decisions);
@@ -93,9 +95,14 @@ export function RecordsScreen({ nav }: { nav: (s: string) => void }) {
         world, its verdict, its receipts, and whoever decided.
       </p>
 
-      {error && <p style={{ margin: "14px 0 0", fontFamily: MONO, fontSize: 11, color: C.fail }}>couldn&apos;t load records — {error}</p>}
+      {error && (
+        <div role="alert" style={{ margin: "14px 0 0", fontFamily: MONO, fontSize: 11, color: C.fail }}>
+          <p>couldn&apos;t load records — {error}</p>
+          <GhostButton onClick={() => void (rows?.length ? loadMore() : refresh())} disabled={loadingMore}>Retry records</GhostButton>
+        </div>
+      )}
 
-      {rows === null ? (
+      {error && rows?.length === 0 ? null : rows === null ? (
         <div style={{ marginTop: 24 }}><Spinner label="loading records…" /></div>
       ) : rows.length === 0 ? (
         <div style={{ marginTop: 24, maxWidth: 640 }}>
