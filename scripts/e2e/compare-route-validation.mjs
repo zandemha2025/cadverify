@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 export async function assertComparisonReadiness(page, process, count) {
   const row = await page.playwright.evaluate((process) => {
-    const section = [...document.querySelectorAll("section")].find((el) => el.innerText.includes("CALIBRATION VS CALIBRATION"));
+    const section = [...document.querySelectorAll("section")].find((el) => el.innerText.includes("DECISION VS DECISION"));
     return [...section?.querySelectorAll("span") ?? []].find((el) => el.textContent === process)?.parentElement.innerText;
   }, process);
   assert.ok(row, `Missing comparison row: ${process}`);
@@ -35,6 +35,16 @@ export async function assertSelectedComparisonRecord(page, recordId) {
   });
   assert.equal(selected, recordId, "Part Compare must retain the selected saved record");
   return { status: "PASS", recordId };
+}
+
+export async function assertComparisonIdentity(page, { idA, idB, differentCad = false }) {
+  for (const [label, id] of [["A", idA], ["B", idB]]) {
+    const selected = await page.playwright.evaluate((label) =>
+      [...document.querySelectorAll("select")].find((el) =>
+        el.closest("label")?.textContent.trim().startsWith(label))?.value, label);
+    assert.equal(selected, id, `Comparison ${label} must use the intended CAD record`);
+  }
+  assert.equal(await page.playwright.getByText("Different CAD inputs. Price differences may reflect geometry as well as costing inputs.", { exact: true }).isVisible(), differentCad);
 }
 
 // CUA assertion; expected values come from the native saved-report export.

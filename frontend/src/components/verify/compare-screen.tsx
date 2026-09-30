@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * COMPARE — the same part, two questions: which calibration, and which route.
+ * COMPARE — two saved decisions and their route options.
  * Real GET /api/v1/cost-decisions/compare?ids=a,b (engine-computed structured
  * diff) for the deltas + crossover, plus each decision's /cost-decisions/{id}
  * detail for the honest confidence band on every figure (the compare endpoint
@@ -92,7 +92,7 @@ export function CompareScreen({ nav, initialRecordId }: {
         if (initialRecordId && !selected) {
           setListErr("The selected record is outside the recent list. Choose two records below.");
         } else if (selected && records.length >= 2) {
-          const other = records.find((r) => r.id !== selected.id && r.filename === selected.filename)
+          const other = records.find((r) => r.id !== selected.id && selected.mesh_hash && r.mesh_hash === selected.mesh_hash)
             ?? records.find((r) => r.id !== selected.id);
           setIdA(selected.id);
           setIdB(other?.id ?? null);
@@ -252,7 +252,7 @@ function Frame({ children, nav }: { children: React.ReactNode; nav?: (s: string)
       )}
       <h1 style={{ margin: nav ? "14px 0 0" : 0, fontSize: 26, fontWeight: 300, letterSpacing: "-0.015em" }}>Compare</h1>
       <p style={{ margin: "8px 0 0", maxWidth: 640, fontSize: 14, lineHeight: 1.6, color: C.ink55 }}>
-        Same part, two questions: which calibration, and which route. Every figure is the engine&apos;s — banded, never fake-exact.
+        Compare saved decisions at shared quantities, then inspect each decision&apos;s route options.
       </p>
       {children}
     </main>
@@ -343,7 +343,7 @@ function CalibrationPanel({
   return (
     <section style={{ minWidth: 0, border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <Kicker color={C.ink45}>CALIBRATION VS CALIBRATION</Kicker>
+        <Kicker color={C.ink45}>DECISION VS DECISION</Kicker>
         {sharedQtys.length > 0 ? (
           <div style={{ marginLeft: "auto", display: "inline-flex", gap: 4, flexWrap: "wrap" }}>
             {sharedQtys.map((sq) => (
@@ -362,6 +362,11 @@ function CalibrationPanel({
         )}
       </div>
       <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>{labelA} vs {labelB} · QTY {q != null ? NUM(q) : "—"}</p>
+      {detA.mesh_hash !== detB.mesh_hash && (
+        <p style={{ margin: "8px 0 0", fontSize: 12, color: C.cond }}>
+          Different CAD inputs. Price differences may reflect geometry as well as costing inputs.
+        </p>
+      )}
 
       <div role="region" aria-label="Per-process cost comparison" tabIndex={0} style={{ overflowX: "auto" }}>
         <div style={{ minWidth: 340 }}>
@@ -395,14 +400,14 @@ function CalibrationPanel({
 
       {divergent ? (
         <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.shop, display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 6 }}>
-          divergent driver: {divergent.label} {NUM(divergent.aVal)}{divergent.unit ? ` ${divergent.unit}` : ""}
+          largest relative driver difference: {divergent.label} {NUM(divergent.aVal)}{divergent.unit ? ` ${divergent.unit}` : ""}
           <ProvChip p={divergent.aProv} /> vs {NUM(divergent.bVal)}{divergent.unit ? ` ${divergent.unit}` : ""}
-          <ProvChip p={divergent.bProv} /> — the rest track within noise
+          <ProvChip p={divergent.bProv} />
         </p>
       ) : (
         <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40 }}>No comparable driver difference above 5% was identified.</p>
       )}
-      <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink35 }}>negotiate the driver, not the total</p>
+      <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink35 }}>Other drivers may also differ. Review each saved decision before attributing the price change.</p>
     </section>
   );
 }
@@ -591,7 +596,7 @@ function topDivergentDriver(
   if (!ea || !eb) return null;
   const bMap = new Map(eb.drivers.map((d) => [d.name, d]));
   let best: DivergentDriver | null = null;
-  let bestRel = 0.05; // ignore sub-5% noise
+  let bestRel = 0.05; // display threshold, not a claim about statistical noise
   for (const da of ea.drivers) {
     const db = bMap.get(da.name);
     if (!db) continue;
