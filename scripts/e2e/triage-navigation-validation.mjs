@@ -9,3 +9,11 @@ export async function assertTriagePartDestination(page, filename) {
     "The standing must identify the exact part selected in triage");
   assert(await page.getByRole("button", { name: "Re-verify", exact: true }).isVisible());
 }
+
+export async function assertUnavailablePart(page) {
+  assert(await page.getByText("couldn't load parts — The selected part is unavailable in this organization. Return to Parts to choose another.", { exact: true }).isVisible());
+  assert(!(await page.getByRole("button", { name: "Re-verify", exact: true }).isVisible()),
+    "An unavailable selection must never display another part's standing");
+  assert(!(await page.getByText("No parts yet — and nothing invented to fill the space.", { exact: true }).isVisible()),
+    "A missing selected part must not imply the whole catalog is empty");
+}

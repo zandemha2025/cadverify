@@ -1483,6 +1483,7 @@ export interface CatalogPage {
 export interface CatalogQuery {
   page?: number;
   pageSize?: number;
+  partKey?: string;
   state?: "Drafted" | "Costed" | null;
   route?: string | null;
   hasFindings?: boolean | null;
@@ -1493,6 +1494,7 @@ export async function fetchCatalog(params: CatalogQuery = {}): Promise<CatalogPa
   const url = new URL(`${API_BASE}/catalog`, window.location.origin);
   if (params.page) url.searchParams.set("page", String(params.page));
   if (params.pageSize) url.searchParams.set("page_size", String(params.pageSize));
+  if (params.partKey) url.searchParams.set("part_key", params.partKey);
   if (params.state) url.searchParams.set("state", params.state);
   if (params.route) url.searchParams.set("route", params.route);
   if (params.hasFindings != null) {

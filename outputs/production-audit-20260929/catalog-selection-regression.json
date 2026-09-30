@@ -1,0 +1,51 @@
+{
+  "finding": "084",
+  "severity": "high",
+  "environment": "local production build, native Chrome with real saved STEP/STL records",
+  "control": "Read-only local proxy requests page_size=1 from the real catalog API; no invented response body. Same page exclusion reproduces the existing first100 limit without seeding fake CAD records.",
+  "before": {
+    "requested": "nist_ftc_07_asme1_rd.stp",
+    "opened_incorrectly": "audit-cube.STP",
+    "incorrect_visible_dimensions_mm": [
+      20,
+      15,
+      10
+    ],
+    "incorrect_visible_unit_cost_usd": 3.8,
+    "exact_part_check": "FAIL"
+  },
+  "fix": "Optional exact part_key lookup on existing org-scoped catalog path reads latest analysis and cost with two bounded queries. Part standing uses it when selection is outside its first page and rejects missing identities instead of substituting another part.",
+  "after": {
+    "requested": "nist_ftc_07_asme1_rd.stp",
+    "opened": "nist_ftc_07_asme1_rd.stp",
+    "visible_dimensions_mm": [
+      311.6,
+      135.9,
+      222.7
+    ],
+    "visible_unit_cost_usd": 909.7,
+    "exact_part_check": "PASS",
+    "controlled_missing_selection": "Explicit unavailable message; no alternative standing and no false empty-catalog claim",
+    "return_to_parts": "PASS",
+    "normal_connection_restored": true
+  },
+  "validation": {
+    "real_database_regression": "FAIL before, PASS after; lowered scan cap1 still returns each exact original part, excludes other tenant and unknown keys, bounds input and rejects conflicting keyset mode",
+    "focused_backend_tests": 35,
+    "full_backend_tests_passed": 2403,
+    "documented_backend_skips": [
+      "real corpus manifest not present",
+      "two OCP XDE cases unavailable"
+    ],
+    "frontend_tests_passed": 494,
+    "frontend_types_lint_build": "PASS",
+    "backend_type_baseline": "216/228 PASS, zero new diagnostics in changed files",
+    "bandit_medium_high": 0,
+    "native_missing_record_control": "Proxy substitutes an unknown part_key in the lookup, real API returns empty; no record deletion performed"
+  },
+  "limitations": [
+    "Local-only, not deployed",
+    "No new manufacturing quote accuracy certification",
+    "No large-scale concurrency benchmark"
+  ]
+}

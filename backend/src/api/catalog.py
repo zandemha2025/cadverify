@@ -50,6 +50,10 @@ async def get_catalog(
     response: Response,
     page: int = Query(1, ge=1, description="1-based page number"),
     page_size: int = Query(20, ge=1, le=100, description="Rows per page (max 100)"),
+    part_key: Optional[str] = Query(
+        None, min_length=1, max_length=128,
+        description="Exact org-scoped part identity; resolves beyond the catalog scan cap. Facets describe this selected part.",
+    ),
     state: Optional[str] = Query(
         None, description="Lifecycle facet: Drafted | Costed"
     ),
@@ -91,6 +95,8 @@ async def get_catalog(
     otherwise byte-identical to before.
     """
     # Validate the state facet up front (400 beats silently returning empty).
+    if keyset and part_key is not None:
+        raise HTTPException(status_code=400, detail="part_key cannot be combined with keyset pagination")
     canonical_state: Optional[str] = None
     if state is not None:
         canonical_state = _STATES.get(state.strip().lower())
@@ -139,7 +145,7 @@ async def get_catalog(
             }
         return page
 
-    built = await svc.build_catalog(session, org_id)
+    built = await svc.build_catalog(session, org_id, part_key=part_key)
     all_rows = built["rows"]
 
     # Facet summary over the FULL org catalog (pre-filter) so the UI's filter

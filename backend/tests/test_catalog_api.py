@@ -148,7 +148,7 @@ async def test_keyset_bad_cursor_is_400_not_500(monkeypatch):
 
 @_requires_pg
 @pytest.mark.asyncio
-async def test_catalog_isolation_pagination_facets_and_honesty():
+async def test_catalog_isolation_pagination_facets_and_honesty(monkeypatch):
     from httpx import ASGITransport, AsyncClient
     from sqlalchemy import text
     from ulid import ULID
@@ -287,6 +287,25 @@ async def test_catalog_isolation_pagination_facets_and_honesty():
             assert body["pagination"]["total"] == 4
 
             by_key = {row["part_key"]: row for row in body["rows"]}
+
+            # A selected part must resolve exactly, even beyond the ordinary
+            # catalog scan/page boundary. Never substitute the newest part.
+            from src.services import catalog_service as svc
+
+            with monkeypatch.context() as capped:
+                capped.setattr(svc, "CATALOG_SCAN_CAP", 1)
+                for part_key, expected in by_key.items():
+                    selected = await ac.get("/api/v1/catalog", params={"part_key": part_key})
+                    assert selected.status_code == 200
+                    assert selected.json()["rows"] == [expected]
+                    assert selected.json()["pagination"]["total"] == 1
+                    assert selected.json()["truncated"] is False
+                for missing in (mB1, "0" * 64):
+                    selected = await ac.get("/api/v1/catalog", params={"part_key": missing})
+                    assert selected.status_code == 200
+                    assert selected.json()["rows"] == []
+            assert (await ac.get("/api/v1/catalog", params={"part_key": "x" * 129})).status_code == 422
+            assert (await ac.get("/api/v1/catalog", params={"part_key": mP1, "keyset": "true"})).status_code == 400
 
             # P1: costed + clean analysis → Costed, findings total 0, price present
             assert by_key[mP1]["lifecycle_state"] == "Costed"

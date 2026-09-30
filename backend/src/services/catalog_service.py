@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import and_, func, select, tuple_
+from sqlalchemy import and_, func, select, true, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.analysis.models import ProcessType
@@ -398,13 +398,14 @@ def _fold_latest_by_mesh(rows: list) -> dict[str, Any]:
 
 
 async def _fold_org_parts(
-    session: AsyncSession, org_id: str
+    session: AsyncSession, org_id: str, *, part_key: Optional[str] = None
 ) -> tuple[list[tuple[str, Optional[SourceRef], Optional[SourceRef]]], bool]:
     """The org-scoped fetch + latest-per-part fold shared by the catalog grid and
     the portfolio roll-up. Returns ``([(mesh, analysis_ref, cost_ref), ...],
     truncated)`` — one entry per distinct part (mesh_hash) in the org, each
     hydrated into DB-free ``SourceRef``s. A single bounded, ulid-desc scan per
-    source table (cap+1 so truncation is honest without a second COUNT)."""
+    source table (cap+1 so truncation is honest without a second COUNT). An
+    exact part key instead selects only its newest artifact from each table."""
     # One bounded, ulid-desc query per source table (newest first). Fetch cap+1
     # so we can honestly report truncation without a second COUNT round-trip.
     an_rows = (
@@ -412,8 +413,9 @@ async def _fold_org_parts(
             await session.execute(
                 select(Analysis)
                 .where(Analysis.org_id == org_id)
+                .where(Analysis.mesh_hash == part_key if part_key is not None else true())
                 .order_by(Analysis.ulid.desc())
-                .limit(CATALOG_SCAN_CAP + 1)
+                .limit(1 if part_key is not None else CATALOG_SCAN_CAP + 1)
             )
         )
         .scalars()
@@ -424,8 +426,9 @@ async def _fold_org_parts(
             await session.execute(
                 select(CostDecision)
                 .where(CostDecision.org_id == org_id)
+                .where(CostDecision.mesh_hash == part_key if part_key is not None else true())
                 .order_by(CostDecision.ulid.desc())
-                .limit(CATALOG_SCAN_CAP + 1)
+                .limit(1 if part_key is not None else CATALOG_SCAN_CAP + 1)
             )
         )
         .scalars()
@@ -468,17 +471,21 @@ async def _fold_org_parts(
     return parts, truncated
 
 
-async def build_catalog(session: AsyncSession, org_id: Optional[str]) -> dict:
+async def build_catalog(
+    session: AsyncSession, org_id: Optional[str], *, part_key: Optional[str] = None
+) -> dict:
     """Build the full org-scoped catalog: one derived row per part.
 
     Returns ``{"rows": [...], "truncated": bool}`` — the caller applies facet
     filters + pagination on top. ``org_id`` None (a caller with no membership —
     e.g. a mocked session) yields an empty catalog, never a cross-org read.
+    An exact part lookup reads only its latest analysis and cost, without the
+    full-catalog scan cap or substituting another part when it is absent.
     """
     if not org_id:
         return {"rows": [], "truncated": False}
 
-    parts, truncated = await _fold_org_parts(session, org_id)
+    parts, truncated = await _fold_org_parts(session, org_id, part_key=part_key)
     rows = [
         derive_row(part_key=mesh, analysis=analysis_ref, cost=cost_ref)
         for (mesh, analysis_ref, cost_ref) in parts

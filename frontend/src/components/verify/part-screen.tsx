@@ -78,16 +78,22 @@ export function PartScreen({ nav, onOpenProgram, onCompare }: {
     setCatError(null);
     try {
       const page = await fetchCatalog({ pageSize: 100 });
+      const pending = getSelectedPart();
+      if (pending && !page.rows.some((r) => r.part_key === pending)) {
+        const match = await fetchCatalog({ partKey: pending });
+        const exact = match.rows.find((r) => r.part_key === pending);
+        if (!exact) throw new Error("The selected part is unavailable in this organization. Return to Parts to choose another.");
+        page.rows = [...page.rows, exact];
+      }
       setRows(page.rows);
       setTruncated(page.truncated);
       // Prefer an explicit hand-off (from catalog/records/machine links); else the
       // most-recently-updated part. Never a hardcoded demo part.
-      const pending = getSelectedPart();
-      const has = (k: string | null) => !!k && page.rows.some((r) => r.part_key === k);
-      setSelected(has(pending) ? pending : page.rows[0]?.part_key ?? null);
+      setSelected(pending ?? page.rows[0]?.part_key ?? null);
     } catch (e) {
       setCatError(e instanceof Error ? e.message : "Could not load parts");
       setRows([]);
+      setSelected(null);
     }
   }, []);
 
@@ -130,7 +136,7 @@ export function PartScreen({ nav, onOpenProgram, onCompare }: {
         </p>
       )}
 
-      {rows === null ? (
+      {catError ? null : rows === null ? (
         <div style={{ marginTop: 24 }}>
           <Spinner label="loading the org's parts…" />
         </div>
