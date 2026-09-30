@@ -36,6 +36,7 @@ services).
 """
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import json
@@ -181,15 +182,25 @@ def parse_identity_json(text: str) -> tuple[dict, list]:
         return mapping, [{"line": 0, "reason": f"invalid JSON: {exc}"}]
 
     if isinstance(doc, dict):
-        rows = doc.get("parts") or doc.get("mappings") or []
+        rows = doc.get("parts") if "parts" in doc else doc.get("mappings")
     elif isinstance(doc, list):
         rows = doc
     else:
         return mapping, [{"line": 0, "reason": "JSON must be a list or {parts:[...]}"}]
 
-    for idx, row in enumerate(rows):
+    if not isinstance(rows, list):
+        return mapping, [{"line": 0, "reason": "JSON must contain a parts or mappings list"}]
+
+    for idx, row in enumerate(rows, start=1):
         if not isinstance(row, dict):
             errors.append({"line": idx, "reason": "mapping entry is not an object"})
+            continue
+        invalid_fields = [
+            field for field in MAPPING_REQUIRED_COLUMNS + MAPPING_OPTIONAL_COLUMNS
+            if row.get(field) is not None and not isinstance(row[field], str)
+        ]
+        if invalid_fields:
+            errors.append({"line": idx, "reason": f"{', '.join(invalid_fields)} must be text or null"})
             continue
         filename = _clean(row.get("filename"))
         if not filename:
@@ -237,14 +248,14 @@ def _honest_reason(exc: Exception) -> str:
     return msg or exc.__class__.__name__
 
 
-def _parse_mesh(data: bytes, filename: str):
+async def _parse_mesh(data: bytes, filename: str):
     """Reuse the LIVE validate/batch tessellation path (no reinvented CAD parsing).
 
     Imported lazily so this service (and its pure parsers) load without dragging in
     the heavy trimesh/gmsh route module unless an onboard actually runs."""
-    from src.api.routes import _parse_mesh as _route_parse_mesh
+    from src.api.routes import _parse_mesh_async
 
-    mesh, _suffix = _route_parse_mesh(data, filename)
+    mesh, _suffix = await _parse_mesh_async(data, filename)
     return mesh
 
 
@@ -314,11 +325,9 @@ async def onboard_library(
     carry NO declared name, and ``manifest_registered`` is how many declared-master
     rows the reused importer wrote. Does NOT commit.
     """
-    onboarded = 0
-    unnamed = 0
     skipped: list[dict] = []
     manifest_rows: list[dict] = []
-    seen_hashes: set[str] = set()
+    names_by_hash: dict[str, Optional[str]] = {}
 
     for filename, data in files:
         try:
@@ -342,9 +351,9 @@ async def onboard_library(
             program = identity.get("program")
 
             async with session.begin_nested():
-                mesh_hash = compute_mesh_hash(data)
-                mesh = _parse_mesh(data, filename)  # may raise 400 on bad geometry
-                vector = similarity.vector_for_mesh(mesh)
+                mesh_hash = await asyncio.to_thread(compute_mesh_hash, data)
+                mesh = await _parse_mesh(data, filename)  # may raise 400 on bad geometry
+                vector = await asyncio.to_thread(similarity.vector_for_mesh, mesh)
                 await sigsvc.upsert_signature(
                     session,
                     org_id,
@@ -358,11 +367,7 @@ async def onboard_library(
 
             # A batch that repeats the same geometry hash upserts ONE corpus row
             # (last write wins); count it once so ``onboarded`` matches the corpus.
-            if mesh_hash not in seen_hashes:
-                seen_hashes.add(mesh_hash)
-                onboarded += 1
-                if not name:
-                    unnamed += 1
+            names_by_hash[mesh_hash] = name
 
             if part_id:
                 # 'name' is the human-readable identity; the declared master's
@@ -399,8 +404,8 @@ async def onboard_library(
 
     size = await library_size(session, org_id)
     return {
-        "onboarded": onboarded,
-        "unnamed": unnamed,
+        "onboarded": len(names_by_hash),
+        "unnamed": sum(not name for name in names_by_hash.values()),
         "skipped": skipped,
         "manifest_registered": manifest_registered,
         "manifest_errors": manifest_errors,

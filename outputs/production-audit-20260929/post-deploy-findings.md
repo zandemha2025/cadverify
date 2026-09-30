@@ -375,3 +375,33 @@ first divergence: step 2, expected the training runner's pinned crossover of 923
 - CI 36664250281 passed eight jobs and all 34 real-CAD corpus cases. FTC-07 completed in 38.766 seconds with the exact pinned source hash. Restore, load and readiness checks also passed before this later training failure. The previous intermittent timeout is not explained by a successful rerun; diagnostics remain enabled.
 - Fix: update the single golden crossover value to 4,592, supported by the independent real-STEP price/boundary checks in `crossover-routes-regression.json`. At 923, injection molding still loses to MJF; at 4,591 its unrounded line-item sum remains higher, and at 4,592 it becomes lower. No acceptance tolerance, timeout, geometry/price checks or user-facing calculation changed.
 - Validation: all three existing training-runner utility tests pass. Full current-head CI, including the complete training guide and subsequent deck journey, remains required. Evidence: `ci-36664250281-summary.json`.
+
+
+## 054 — Library identity mappings crash or hide the reason for rejected rows
+
+first divergence: step 2, expected a row-level validation message after importing the real STEP with a numeric JSON name, state was “onboard failed — Onboard failed (500)”. A CSV containing a duplicate filename and a missing filename instead said “2 mapping rows ignored (see reasons)” without rendering any reasons; the duplicate actually used its last row.
+
+- Severity: medium import reliability, feedback and accessibility issue.
+- Fix: validate the JSON collection and all declared string fields before trimming. Retain valid rows and return explicit reasons for invalid rows, with one-based JSON entry numbers. Display every mapping issue rather than falsely calling all of them ignored. Native buttons make both file pickers keyboard-accessible; pending uploads disable both pickers, and results/errors have status/alert semantics.
+- Native proof: the same numeric-name JSON returns a successful geometry import with “Mapping row 1 — name must be text or null” and an accurate unnamed count. Correcting to CSV exposes the duplicate/last-row-wins and missing-filename messages. Enter operates both choosers and submits. A real STEP plus corrupt STL and unknown-material NIST STEP imports one and reports two separate skips. At a 390 px viewport the library panel measures 320/320 px and its result 280/280 px, with all reasons readable.
+- Regression: the pure parser check covers invalid top-level shapes, all five field types, nulls and preservation of valid rows. Native check: `scripts/e2e/library-onboard-validation.mjs`. Evidence: `library-import-regression.json` and `054-*.png`. Local only.
+
+## 055 — Library import runs CAD work on the API loop and miscounts duplicate identities
+
+first divergence: step 1, expected CAD/hash/signature computation to leave the API event loop, state was a synchronous service call into the legacy route parser; the regression guard rejected the real STEP/STL imports. Code tracing also showed that duplicate hashes counted the first name while the database stored the last name.
+
+- Severity: high availability issue, with a separate summary-count defect.
+- Fix: reuse the existing async parser (including its native-process isolation, timeout and single-flight behavior) and offload hashing/signature computation through the standard thread helper. Track the final name per unique source hash, matching the existing last-write-wins storage contract. No new parser, executor or deduplication rules.
+- Verification: the real PostgreSQL cold-start test now asserts computation leaves the event-loop thread while retaining real CAD parsing, manifest writes, similarity retrieval and tenant isolation. Duplicate named/unnamed imports in both orders verify the final summary against database readback. Native upload of two byte-identical real STEP files with the final named mapping reports exactly one onboarded part and no unnamed count.
+- Evidence: extended `backend/tests/test_parts_master_onboard.py`, `library-import-regression.json`, and `055-library-duplicates-fixed-local.png`. Production retest remains required.
+
+## 056 — Library upload limits act after unbounded reads and ZIPs bypass the memory budget
+
+first divergence: step 2, expected the oversized identity mapping to be rejected before import, state was entry into the importer with an unbounded upload read. Direct files were likewise read in full before their aggregate-size check; ZIP contents were all loaded before the library file-count limit and did not share the direct-upload byte budget.
+
+- Severity: high availability/input-boundary issue.
+- Fix: bound each direct read by the remaining aggregate budget plus one byte; reject excess direct file counts before reading. Check extracted ZIP counts and expanded size before loading blobs, including any direct files in the same request, and retain request-local cleanup. Reuse the existing bounded manifest reader for identity mappings (2 MiB default). Malformed ZIPs now produce HTTP 400; size failures produce HTTP 413.
+- Verification: request tests cover direct aggregate limits, oversized mapping, expanded ZIP size, combined direct/ZIP size, malformed ZIP errors, positive bounded read sizes, cleanup and no importer/commit calls on rejection. Native Chrome rejects a mapping above 2 MiB with an actionable message, retains the real STEP selection, and succeeds when only the mapping is corrected.
+- Evidence: `test_onboard_rejects_oversized_inputs_before_import`, `library-import-regression.json`, and `056-library-size-error-local.png`. This is bounded local/API proof, not a production load certification.
+
+Validation for 054–056: 56 focused backend tests pass, including live PostgreSQL and existing batch reader checks. Frontend library tests (5), typecheck, changed-source lint and production build pass. Backend type baseline remains 217 against 228 allowed; Bandit reports no medium/high findings in the changed backend files. The final full backend suite passes 2,394 tests with three documented real-corpus/OCP-XDE skips (170.12 seconds).
