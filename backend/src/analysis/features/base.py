@@ -93,28 +93,62 @@ def has_rotational_surface_evidence(
     have normal variation in only one direction, while a circular cylinder or
     cone spans two independent radial directions. Requiring that rank plus a minimum
     share of total surface area prevents a small bore—or a boxy part with similar
-    inertia moments—from being presented as lathe-ready. A complete spherical
-    mesh is also rotational, even though it has no cylindrical surface.
+    inertia moments—from being presented as lathe-ready. Curved profiles can
+    instead supply a measured revolution axis without a cylindrical surface.
     """
     if not np.isfinite(surface_area_mm2) or surface_area_mm2 <= 0:
         return False
     boss_area = sum(float(f.area or 0.0) for f in _outer_rotational_features(features))
     if boss_area >= min_fraction * float(surface_area_mm2):
         return True
-    if mesh is None or not mesh.is_volume:
-        return False
-    # ponytail: whole spheres within 2% tessellation error only; general curved
-    # solids of revolution need a measured axial-profile test, not an inertia guess.
+    return mesh is not None and _curved_rotational_axis(mesh) is not None
+
+
+def _curved_rotational_axis(mesh: trimesh.Trimesh) -> Optional[np.ndarray]:
+    """Verify a candidate revolution axis against the actual mesh surface."""
+    if not mesh.is_volume:
+        return None
     # Check face interiors too: every vertex of a cube lies on one sphere.
     center = mesh.center_mass
     radii = np.linalg.norm(mesh.vertices - center, axis=1)
     face_radii = np.linalg.norm(mesh.triangles_center - center, axis=1)
     radius = float(np.mean(radii))
-    return bool(
+    if (
         np.isfinite(radius) and radius > 0
         and np.all(np.abs(radii / radius - 1) <= 0.02)
         and np.all(np.abs(face_radii / radius - 1) <= 0.02)
-    )
+    ):
+        return np.linalg.eigh(mesh.moment_inertia)[1][:, 0]
+
+    # Trimesh proposes an inertia axis; matching inertia alone proves nothing.
+    axis = mesh.symmetry_axis
+    if axis is None or not np.all(np.isfinite(axis)):
+        return None
+    vertices = mesh.vertices - center
+    radius = float(np.max(np.linalg.norm(np.cross(axis, vertices), axis=1)))
+    if not np.isfinite(radius) or radius <= 0:
+        return None
+    tangents = np.cross(axis, mesh.triangles_center - center)
+    residual = np.abs(np.einsum("ij,ij->i", mesh.face_normals, tangents)) / radius
+    if not np.all(np.isfinite(residual)) or np.max(residual) > 0.02:
+        return None
+    # ponytail: 17 sections plus all face normals, within 2% mesh error;
+    # exact B-rep/tolerance certification needs a CAD-kernel profile check.
+    low, high = np.min(vertices @ axis), np.max(vertices @ axis)
+    for fraction in np.linspace(0.025, 0.975, 17):
+        section = mesh.section(plane_origin=center + (low + fraction * (high - low)) * axis,
+                               plane_normal=axis)
+        if section is None or not section.discrete:
+            return None
+        for loop in section.discrete:
+            if len(loop) < 9 or np.linalg.norm(loop[0] - loop[-1]) > radius * 1e-6:
+                return None
+            # Polygon vertices alone can lie on a circle; check edges too.
+            points = np.vstack((loop, (loop[:-1] + loop[1:]) / 2)) - center
+            radial = np.linalg.norm(np.cross(axis, points), axis=1)
+            if not np.all(np.isfinite(radial)) or np.ptp(radial) > np.mean(radial) * 0.02:
+                return None
+    return axis
 
 
 def turning_dimensions(
@@ -123,7 +157,7 @@ def turning_dimensions(
     """Measured axial length, enclosing diameter and radial roundness.
 
     Use the detected outer cylinder/cone axis; inertia alone is ambiguous when
-    all moments are equal. Whole spheres use a principal axis. Measurements
+    all moments are equal. Curved profiles use their verified axis. Measurements
     follow the part frame, so rigid rotation cannot change its lathe stock.
     """
     if not mesh.is_volume or not has_rotational_surface_evidence(features, mesh.area, mesh=mesh):
@@ -132,8 +166,9 @@ def turning_dimensions(
     if candidates:
         axis = np.asarray(max(candidates, key=lambda f: f.area or 0.0).axis, dtype=float)
     else:
-        # The only supported shape without an outer cylinder/cone is a sphere.
-        axis = np.linalg.eigh(mesh.moment_inertia)[1][:, 0]
+        axis = _curved_rotational_axis(mesh)
+        if axis is None:
+            return None
     if not np.all(np.isfinite(axis)) or np.linalg.norm(axis) == 0:
         return None
     axis = axis / np.linalg.norm(axis)

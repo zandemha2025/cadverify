@@ -87,3 +87,43 @@ def test_turning_envelope_and_slenderness_use_the_same_physical_axis():
             assert bool(issues) is slender
             if issues:
                 assert issues[0].measured_value == pytest.approx(height / (2 * radius), abs=1e-6)
+
+
+@pytest.mark.parametrize("shape", ["prolate", "oblate", "torus", "profile"])
+def test_curved_revolved_profiles_agree_in_routing_and_dfm(shape):
+    if shape == "torus":
+        original = trimesh.creation.torus(major_radius=15, minor_radius=6, major_sections=96, minor_sections=48)
+        length, diameter = 12, 42
+    elif shape == "profile":
+        original = trimesh.creation.revolve(np.array([[0, -20], [5, -18], [10, -10], [13, 0], [8, 10], [3, 18], [0, 20]]), sections=96)
+        length, diameter = 40, 26
+    else:
+        original = trimesh.creation.icosphere(subdivisions=4, radius=10)
+        original.apply_scale([1, 1, 2] if shape == "prolate" else [2, 2, 1])
+        length, diameter = (40, 20) if shape == "prolate" else (20, 40)
+    for angle in (0, 0.73):
+        mesh = original.copy()
+        transform = trimesh.transformations.rotation_matrix(angle, [1, 2, 3])
+        transform[:3, 3] = [125, -35, 41]
+        mesh.apply_transform(transform)
+        geometry = analyze_geometry(mesh)
+        # Exercise curved-profile evidence independently of cylinder detection.
+        rotational, measured_length, measured_diameter = is_rotational(geometry, mesh, [])
+        assert rotational, shape
+        assert measured_length == pytest.approx(length, abs=0.01)
+        assert measured_diameter == pytest.approx(diameter, abs=0.01)
+        ctx = SimpleNamespace(mesh=mesh, info=geometry, features=[])
+        assert not check_rotational_symmetry(ctx, ProcessType.CNC_TURNING, tolerance=0.15)
+
+
+def test_matching_inertia_is_insufficient_for_curved_profile_evidence():
+    lobe = trimesh.creation.icosphere(subdivisions=3, radius=10)
+    vertices = lobe.vertices.copy()
+    theta = np.arctan2(vertices[:, 1], vertices[:, 0])
+    vertices[:, :2] *= (1 + 0.12 * np.cos(4 * theta))[:, None]
+    vertices[:, 2] *= 2
+    lobe.vertices = vertices
+    ellipsoid = trimesh.creation.icosphere(subdivisions=3, radius=10)
+    ellipsoid.apply_scale([1, 1.1, 1.2])
+    for mesh in [lobe, ellipsoid, trimesh.creation.box(extents=[20, 20, 40]), trimesh.creation.icosahedron()]:
+        assert not has_rotational_surface_evidence([], mesh.area, mesh=mesh)

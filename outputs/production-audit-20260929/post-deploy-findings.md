@@ -1194,3 +1194,13 @@ CI36758849460 is now terminal: all eight non-image jobs passed, including the fu
 - Evidence: `141-turning-axis-proof.json`, source controls, native receipts and five screenshots. General curved-surface and other-process accuracy remain open.
 
 Security recheck2026-09-30: Debian still lists stable Expat/X11/Xrender packages as vulnerable for [CVE-2026-93990](https://security-tracker.debian.org/tracker/CVE-2026-93990), [CVE-2026-88806](https://security-tracker.debian.org/tracker/CVE-2026-88806) and [CVE-2026-88807](https://security-tracker.debian.org/tracker/CVE-2026-88807). No supported stable package update, waiver or image change was applied.
+
+
+## 142 — Curved rotational STEP parts were incorrectly excluded from turning
+
+- first divergence: step1, expected a true ellipsoid/torus of revolution to retain turning eligibility, state was no turning estimates and CNC5-Axis as the recommended route. Four failing controls also cover an oblate ellipsoid and a non-cylindrical revolved profile.
+- Preserve existing cylinder/cone/sphere evidence. Verify the installed Trimesh candidate axis against all face-normal rotational tangents and17closed circular/concentric sections, including edge midpoints; reuse the verified axis for dimensions. Matching inertia alone remains insufficient. Engine/cache identity0.3.18.
+- Actual OCC STEP controls independently satisfy their ellipsoid/torus surface equations and analytic volumes within0.05%. Parsed dimensions are40×20mm and12×42mm within0.001mm. Native same-byte uploads now recommend CNC Turning, retain exact source hashes and save six DFM-ready estimates each. The prolate linked record shows the same quantities and measured-axis stock derivation; old0.3.17 JSON hashes are unchanged.
+-13focused checks,2569backend tests/3documented environment skips in218.09s, protected skip policy enforced; types214errors/3warnings with zero new diagnostics; Bandit0medium/high. The true STEP parser/receipt control script passes. Frontend unchanged. Local API and worker refreshed; current CI36764251477 excludes141/142. No deployment.
+- Evidence: `142-curved-profile-proof.json`, two retained source STEP files, runnable `142-curved-step-controls.py`, selected native receipts and five native screenshots. This is a bounded2%mesh check, not exact B-rep/tolerance or general manufacturing certification. Fourfold lobes, boxes, triaxial ellipsoids and an icosahedron remain rejected.
+- Cost follow-up remains open: the saved turning material driver uses hull volume while machine time uses the enclosing cylinder. Investigate the shared stock-mass calculation next; these prices are not validated quotes.

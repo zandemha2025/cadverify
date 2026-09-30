@@ -78,7 +78,7 @@ def is_rotational(geometry, mesh=None, features=None):
          `checks.check_rotational_symmetry` runs for CNC turning, at the SAME 0.15
          tolerance, AND
       3. measured outer cylindrical/conical surfaces covering at least 5% of the
-         part's surface area, or a measured complete sphere. This rejects boxy
+         part's surface area, or a verified curved revolution profile. This rejects boxy
          L brackets and open enclosures whose similar extents and inertia
          moments otherwise mimic a round part.
 

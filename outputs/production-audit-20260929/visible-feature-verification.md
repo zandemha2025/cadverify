@@ -317,3 +317,6 @@ CI36758849460 completed on3323a29 through136: eight non-image jobs pass includin
 
 
 Turning-axis follow-up141 fixes rotation-dependent lathe stock, routing and envelope/L-D checks. Actual native cylinder uploads now both report40mm×Ø10mm and match six turning prices; previous saved results remain immutable.40focused checks and2564backend tests/3documented skips pass, no new type/security findings. Engine0.3.17; current CI36764251477 excludes141 and production remains09555c1. Broader shape/process and real-quote accuracy are still open.
+
+
+Curved-profile follow-up142 adds measured revolution evidence for true ellipsoid/torus/profile meshes and preserves negative controls. Native actual STEP replays now offer turning with correct axes and retained source hashes; six DFM-ready estimates per new record and immutable old results pass.13focused/2569full backend tests,3documented skips; no new type/security findings. Engine0.3.18, not deployed; CI36764251477 excludes141/142. Evidence142-curved-profile-proof.json. General geometry/shop accuracy remains open, including the observed hull-based turning material-mass calculation.

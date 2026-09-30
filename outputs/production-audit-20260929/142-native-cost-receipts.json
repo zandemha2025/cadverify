@@ -1,0 +1,1667 @@
+[
+  {
+    "ulid": "01M3SXDG2T146KR8ECDGFBHJWC",
+    "engine_version": "0.3.17",
+    "result_sha256": "7cb2a4d71ff00322e016eead4cd5052c88e99f37d2ceb62c77e3bef169174c69",
+    "filename": "142-prolate-rotated.step",
+    "geometry": {
+      "bbox_mm": [
+        24.5,
+        20.1,
+        37.3
+      ],
+      "face_count": 34660,
+      "volume_cm3": 8.37,
+      "watertight": true,
+      "surface_area_cm2": 21.47
+    },
+    "routing": {
+      "drivers": {
+        "bend_count": 0,
+        "rotational": false,
+        "sheet_like": false,
+        "planar_aspect": 1.22,
+        "sheet_gauge_mm": 20.142,
+        "nominal_wall_mm": 7.8,
+        "outline_perimeter_mm": 123.7
+      },
+      "archetype": "bulk_solid",
+      "reasoning": "General solid (45% of bbox filled, ~7.8mm mean wall) with no dominant sheet/rotational/prismatic signature \u2192 CNC machining for a metal part. The cnc_3axis geometry suggestion fails the engine's DFM as modeled. The eligible DFM-ready alternative is cnc_5axis; review the process findings and costed options before selecting it.",
+      "confidence": 0.4,
+      "eval_family": "subtractive",
+      "alternatives": [
+        "cnc_3axis",
+        "dmls"
+      ],
+      "material_hint": "aluminum",
+      "recommended_process": "cnc_5axis"
+    },
+    "turning_estimates": []
+  },
+  {
+    "ulid": "01M3SXTAA3WH6W6X6TY0TE771A",
+    "engine_version": "0.3.17",
+    "result_sha256": "22955d7d648e7d64ba87ac4f0a1f187faa1098c214e9e2693ff011b7a284a390",
+    "filename": "142-torus.step",
+    "geometry": {
+      "bbox_mm": [
+        42.0,
+        42.0,
+        12.0
+      ],
+      "face_count": 79160,
+      "volume_cm3": 10.66,
+      "watertight": true,
+      "surface_area_cm2": 35.53
+    },
+    "routing": {
+      "drivers": {
+        "bend_count": 0,
+        "rotational": false,
+        "sheet_like": false,
+        "planar_aspect": 3.5,
+        "sheet_gauge_mm": 12.0,
+        "nominal_wall_mm": 6.0,
+        "outline_perimeter_mm": 168.0
+      },
+      "archetype": "prismatic_block",
+      "reasoning": "Compact prismatic solid (50% of bbox filled, 3.5:1 aspect) in metal \u2192 machine from billet (CNC 3-/5-axis). The cnc_3axis geometry suggestion fails the engine's DFM as modeled. The eligible DFM-ready alternative is cnc_5axis; review the process findings and costed options before selecting it.",
+      "confidence": 0.6,
+      "eval_family": "subtractive",
+      "alternatives": [
+        "cnc_3axis"
+      ],
+      "material_hint": "aluminum",
+      "recommended_process": "cnc_5axis"
+    },
+    "turning_estimates": []
+  },
+  {
+    "ulid": "01M3SXZ6WXAR8R8309PB5HSQQP",
+    "engine_version": "0.3.18",
+    "result_sha256": "a6bc9acff203ef68a279da6b8514ea85e71ae7c11a5cdc5aa7f9352c068109b4",
+    "filename": "142-torus.step",
+    "geometry": {
+      "bbox_mm": [
+        42.0,
+        42.0,
+        12.0
+      ],
+      "face_count": 79160,
+      "volume_cm3": 10.66,
+      "watertight": true,
+      "surface_area_cm2": 35.53
+    },
+    "routing": {
+      "drivers": {
+        "bend_count": 0,
+        "rotational": true,
+        "sheet_like": false,
+        "planar_aspect": 3.5,
+        "sheet_gauge_mm": 12.0,
+        "nominal_wall_mm": 6.0,
+        "outline_perimeter_mm": 168.0
+      },
+      "archetype": "rotational",
+      "reasoning": "Axisymmetric cross-section (round, turnable): axis 12mm \u00d7 \u00d842mm \u2192 CNC turning / mill-turn. A round metal part is rarely powder-bed printed at production volume.",
+      "confidence": 0.8,
+      "eval_family": "subtractive",
+      "alternatives": [
+        "cnc_5axis"
+      ],
+      "material_hint": "aluminum",
+      "recommended_process": "cnc_turning"
+    },
+    "turning_estimates": [
+      {
+        "drivers": [
+          {
+            "name": "material_cost",
+            "unit": "$",
+            "value": 0.2294,
+            "source": "hull volume 14.71 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3 = 0.0437 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 5.0
+          },
+          {
+            "name": "machine_cost",
+            "unit": "$",
+            "value": 3.1022,
+            "source": "0.0477 hr \u00d7 $65/hr \u00d7 region-labor \u00d71  [rough 6.0 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.003 hr + finish 35.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.044 hr  [stock bounding cylinder \u03c0\u00b7(42.0/2)\u00b2\u00b712.0 mm = 16.6 cm\u00b3; MRR aluminum]]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "cycle_time",
+            "unit": "hr",
+            "value": 0.0477,
+            "source": "rough 6.0 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.003 hr + finish 35.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.044 hr  [stock bounding cylinder \u03c0\u00b7(42.0/2)\u00b2\u00b712.0 mm = 16.6 cm\u00b3; MRR aluminum]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "labor_cost",
+            "unit": "$",
+            "value": 10.5,
+            "source": "post-process 0.3 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "setup_cost",
+            "unit": "$",
+            "value": 17.5,
+            "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(1/100) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "nre_cost",
+            "unit": "$",
+            "value": 35.0,
+            "source": "CAM programming/NRE 1hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 1 order (one-time) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "inspection_cost",
+            "unit": "$",
+            "value": 14.875,
+            "source": "first-article 0.4hr \u00d7 1 lot(s) \u00f7 1 + in-process 0.025hr/part = 0.4250hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "consumables_cost",
+            "unit": "$",
+            "value": 0.1551,
+            "source": "perishable tooling/consumables 0.05 \u00d7 machine $3.10 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "min_charge_floor",
+            "unit": "$",
+            "value": 8.6383,
+            "source": "shop/order minimum $90/lot \u00d7 1 lots \u00f7 1 = $90.00/unit floor (applied)",
+            "provenance": "DEFAULT",
+            "error_band_pct": null
+          }
+        ],
+        "process": "cnc_turning",
+        "material": "6061-T6 Aluminum",
+        "quantity": 1,
+        "dfm_ready": true,
+        "dfm_score": 1.0,
+        "lead_time": {
+          "capacity": {
+            "basis": "capacity-bound: 6 machines \u00d7 16 hr/day parallel pool; production = ceil(1\u00b70.048hr \u00f7 (6\u00d716)) = 1 d",
+            "n_machines": 6,
+            "provenance": "DEFAULT",
+            "machine_hours_per_day": 16.0
+          },
+          "low_days": 7.0,
+          "mid_days": 10.0,
+          "high_days": 13.0,
+          "components": {
+            "ship": 3.0,
+            "queue": 5.0,
+            "production": 1.0,
+            "post_process": 1.0,
+            "tooling_lead": 0.0
+          }
+        },
+        "confidence": {
+          "basis": "\u00b150% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+          "label": "assumption-based, not yet validated",
+          "level": 0.8,
+          "method": "assumption-band",
+          "low_usd": 45.0,
+          "high_usd": 135.0,
+          "n_samples": 0,
+          "point_usd": 90.0,
+          "validated": false,
+          "half_width_pct": 50.0
+        },
+        "line_items": {
+          "nre": 35.0,
+          "labor": 10.5,
+          "machine": 3.1022,
+          "material": 0.2294,
+          "inspection": 14.875,
+          "consumables": 0.1551,
+          "amortized_fixed": 17.5,
+          "min_charge_floor": 8.6383
+        },
+        "dfm_verdict": "pass",
+        "dfm_blockers": [],
+        "unit_cost_usd": 90.0,
+        "fixed_cost_usd": 35.0,
+        "variable_cost_usd": 15.18,
+        "est_error_band_pct": 50.0,
+        "dfm_blocker_details": []
+      },
+      {
+        "drivers": [
+          {
+            "name": "material_cost",
+            "unit": "$",
+            "value": 0.2294,
+            "source": "hull volume 14.71 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3 = 0.0437 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 5.0
+          },
+          {
+            "name": "machine_cost",
+            "unit": "$",
+            "value": 3.1022,
+            "source": "0.0477 hr \u00d7 $65/hr \u00d7 region-labor \u00d71  [rough 6.0 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.003 hr + finish 35.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.044 hr  [stock bounding cylinder \u03c0\u00b7(42.0/2)\u00b2\u00b712.0 mm = 16.6 cm\u00b3; MRR aluminum]]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "cycle_time",
+            "unit": "hr",
+            "value": 0.0477,
+            "source": "rough 6.0 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.003 hr + finish 35.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.044 hr  [stock bounding cylinder \u03c0\u00b7(42.0/2)\u00b2\u00b712.0 mm = 16.6 cm\u00b3; MRR aluminum]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "labor_cost",
+            "unit": "$",
+            "value": 10.5,
+            "source": "post-process 0.3 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "setup_cost",
+            "unit": "$",
+            "value": 0.175,
+            "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(100/100) = 1 setups \u00f7 100 \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "nre_cost",
+            "unit": "$",
+            "value": 0.35,
+            "source": "CAM programming/NRE 1hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 100 order (one-time) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "inspection_cost",
+            "unit": "$",
+            "value": 1.015,
+            "source": "first-article 0.4hr \u00d7 1 lot(s) \u00f7 100 + in-process 0.025hr/part = 0.0290hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "consumables_cost",
+            "unit": "$",
+            "value": 0.1551,
+            "source": "perishable tooling/consumables 0.05 \u00d7 machine $3.10 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          }
+        ],
+        "process": "cnc_turning",
+        "material": "6061-T6 Aluminum",
+        "quantity": 100,
+        "dfm_ready": true,
+        "dfm_score": 1.0,
+        "lead_time": {
+          "capacity": {
+            "basis": "capacity-bound: 6 machines \u00d7 16 hr/day parallel pool; production = ceil(100\u00b70.048hr \u00f7 (6\u00d716)) = 1 d",
+            "n_machines": 6,
+            "provenance": "DEFAULT",
+            "machine_hours_per_day": 16.0
+          },
+          "low_days": 7.0,
+          "mid_days": 10.0,
+          "high_days": 13.0,
+          "components": {
+            "ship": 3.0,
+            "queue": 5.0,
+            "production": 1.0,
+            "post_process": 1.0,
+            "tooling_lead": 0.0
+          }
+        },
+        "confidence": {
+          "basis": "\u00b150% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+          "label": "assumption-based, not yet validated",
+          "level": 0.8,
+          "method": "assumption-band",
+          "low_usd": 7.76,
+          "high_usd": 23.29,
+          "n_samples": 0,
+          "point_usd": 15.53,
+          "validated": false,
+          "half_width_pct": 50.0
+        },
+        "line_items": {
+          "nre": 0.35,
+          "labor": 10.5,
+          "machine": 3.1022,
+          "material": 0.2294,
+          "inspection": 1.015,
+          "consumables": 0.1551,
+          "amortized_fixed": 0.175
+        },
+        "dfm_verdict": "pass",
+        "dfm_blockers": [],
+        "unit_cost_usd": 15.53,
+        "fixed_cost_usd": 35.0,
+        "variable_cost_usd": 15.18,
+        "est_error_band_pct": 50.0,
+        "dfm_blocker_details": []
+      },
+      {
+        "drivers": [
+          {
+            "name": "material_cost",
+            "unit": "$",
+            "value": 0.2294,
+            "source": "hull volume 14.71 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3 = 0.0437 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 5.0
+          },
+          {
+            "name": "machine_cost",
+            "unit": "$",
+            "value": 2.1861,
+            "source": "0.0477 hr \u00d7 $65/hr \u00d7 0.705 learning@qty1000 \u00d7 region-labor \u00d71  [rough 6.0 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.003 hr + finish 35.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.044 hr  [stock bounding cylinder \u03c0\u00b7(42.0/2)\u00b2\u00b712.0 mm = 16.6 cm\u00b3; MRR aluminum]]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "cycle_time",
+            "unit": "hr",
+            "value": 0.0477,
+            "source": "rough 6.0 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.003 hr + finish 35.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.044 hr  [stock bounding cylinder \u03c0\u00b7(42.0/2)\u00b2\u00b712.0 mm = 16.6 cm\u00b3; MRR aluminum]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "labor_cost",
+            "unit": "$",
+            "value": 7.3992,
+            "source": "post-process 0.3 hr \u00d7 $35/hr \u00d7 0.705 learning@qty1000 \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "learning_curve",
+            "unit": "\u00d7",
+            "value": 0.7047,
+            "source": "learning curve 0.9\u00d7/doubling of cumulative qty on machine+labor: (1000/100 first-lot)^-0.152 = \u00d70.705 (~3.3 doublings, floor 0.25) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "setup_cost",
+            "unit": "$",
+            "value": 0.175,
+            "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(1000/100) = 10 setups \u00f7 1000 \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "nre_cost",
+            "unit": "$",
+            "value": 0.035,
+            "source": "CAM programming/NRE 1hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 1000 order (one-time) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "inspection_cost",
+            "unit": "$",
+            "value": 0.7566,
+            "source": "first-article 0.4hr \u00d7 10 lot(s) \u00f7 1000 + in-process 0.025hr/part \u00d7 0.705 learning@qty1000 = 0.0216hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "consumables_cost",
+            "unit": "$",
+            "value": 0.1093,
+            "source": "perishable tooling/consumables 0.05 \u00d7 machine $2.19 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          }
+        ],
+        "process": "cnc_turning",
+        "material": "6061-T6 Aluminum",
+        "quantity": 1000,
+        "dfm_ready": true,
+        "dfm_score": 1.0,
+        "lead_time": {
+          "capacity": {
+            "basis": "capacity-bound: 6 machines \u00d7 16 hr/day parallel pool; production = ceil(1000\u00b70.048hr \u00f7 (6\u00d716)) = 1 d",
+            "n_machines": 6,
+            "provenance": "DEFAULT",
+            "machine_hours_per_day": 16.0
+          },
+          "low_days": 7.0,
+          "mid_days": 10.0,
+          "high_days": 13.0,
+          "components": {
+            "ship": 3.0,
+            "queue": 5.0,
+            "production": 1.0,
+            "post_process": 1.0,
+            "tooling_lead": 0.0
+          }
+        },
+        "confidence": {
+          "basis": "\u00b150% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+          "label": "assumption-based, not yet validated",
+          "level": 0.8,
+          "method": "assumption-band",
+          "low_usd": 5.45,
+          "high_usd": 16.34,
+          "n_samples": 0,
+          "point_usd": 10.89,
+          "validated": false,
+          "half_width_pct": 50.0
+        },
+        "line_items": {
+          "nre": 0.035,
+          "labor": 7.3992,
+          "machine": 2.1861,
+          "material": 0.2294,
+          "inspection": 0.7566,
+          "consumables": 0.1093,
+          "amortized_fixed": 0.175
+        },
+        "dfm_verdict": "pass",
+        "dfm_blockers": [],
+        "unit_cost_usd": 10.89,
+        "fixed_cost_usd": 35.0,
+        "variable_cost_usd": 10.86,
+        "est_error_band_pct": 50.0,
+        "dfm_blocker_details": []
+      },
+      {
+        "drivers": [
+          {
+            "name": "material_cost",
+            "unit": "$",
+            "value": 0.2294,
+            "source": "hull volume 14.71 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3 = 0.0437 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 5.0
+          },
+          {
+            "name": "machine_cost",
+            "unit": "$",
+            "value": 1.9674,
+            "source": "0.0477 hr \u00d7 $65/hr \u00d7 0.634 learning@qty2000 \u00d7 region-labor \u00d71  [rough 6.0 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.003 hr + finish 35.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.044 hr  [stock bounding cylinder \u03c0\u00b7(42.0/2)\u00b2\u00b712.0 mm = 16.6 cm\u00b3; MRR aluminum]]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "cycle_time",
+            "unit": "hr",
+            "value": 0.0477,
+            "source": "rough 6.0 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.003 hr + finish 35.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.044 hr  [stock bounding cylinder \u03c0\u00b7(42.0/2)\u00b2\u00b712.0 mm = 16.6 cm\u00b3; MRR aluminum]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "labor_cost",
+            "unit": "$",
+            "value": 6.6593,
+            "source": "post-process 0.3 hr \u00d7 $35/hr \u00d7 0.634 learning@qty2000 \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "learning_curve",
+            "unit": "\u00d7",
+            "value": 0.6342,
+            "source": "learning curve 0.9\u00d7/doubling of cumulative qty on machine+labor: (2000/100 first-lot)^-0.152 = \u00d70.634 (~4.3 doublings, floor 0.25) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "setup_cost",
+            "unit": "$",
+            "value": 0.175,
+            "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(2000/100) = 20 setups \u00f7 2000 \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "nre_cost",
+            "unit": "$",
+            "value": 0.0175,
+            "source": "CAM programming/NRE 1hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 2000 order (one-time) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "inspection_cost",
+            "unit": "$",
+            "value": 0.6949,
+            "source": "first-article 0.4hr \u00d7 20 lot(s) \u00f7 2000 + in-process 0.025hr/part \u00d7 0.634 learning@qty2000 = 0.0199hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "consumables_cost",
+            "unit": "$",
+            "value": 0.0984,
+            "source": "perishable tooling/consumables 0.05 \u00d7 machine $1.97 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          }
+        ],
+        "process": "cnc_turning",
+        "material": "6061-T6 Aluminum",
+        "quantity": 2000,
+        "dfm_ready": true,
+        "dfm_score": 1.0,
+        "lead_time": {
+          "capacity": {
+            "basis": "capacity-bound: 6 machines \u00d7 16 hr/day parallel pool; production = ceil(2000\u00b70.048hr \u00f7 (6\u00d716)) = 1 d",
+            "n_machines": 6,
+            "provenance": "DEFAULT",
+            "machine_hours_per_day": 16.0
+          },
+          "low_days": 7.0,
+          "mid_days": 10.0,
+          "high_days": 13.0,
+          "components": {
+            "ship": 3.0,
+            "queue": 5.0,
+            "production": 1.0,
+            "post_process": 1.0,
+            "tooling_lead": 0.0
+          }
+        },
+        "confidence": {
+          "basis": "\u00b150% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+          "label": "assumption-based, not yet validated",
+          "level": 0.8,
+          "method": "assumption-band",
+          "low_usd": 4.92,
+          "high_usd": 14.76,
+          "n_samples": 0,
+          "point_usd": 9.84,
+          "validated": false,
+          "half_width_pct": 50.0
+        },
+        "line_items": {
+          "nre": 0.0175,
+          "labor": 6.6593,
+          "machine": 1.9674,
+          "material": 0.2294,
+          "inspection": 0.6949,
+          "consumables": 0.0984,
+          "amortized_fixed": 0.175
+        },
+        "dfm_verdict": "pass",
+        "dfm_blockers": [],
+        "unit_cost_usd": 9.84,
+        "fixed_cost_usd": 35.0,
+        "variable_cost_usd": 9.82,
+        "est_error_band_pct": 50.0,
+        "dfm_blocker_details": []
+      },
+      {
+        "drivers": [
+          {
+            "name": "material_cost",
+            "unit": "$",
+            "value": 0.2294,
+            "source": "hull volume 14.71 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3 = 0.0437 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 5.0
+          },
+          {
+            "name": "machine_cost",
+            "unit": "$",
+            "value": 1.7117,
+            "source": "0.0477 hr \u00d7 $65/hr \u00d7 0.552 learning@qty5000 \u00d7 region-labor \u00d71  [rough 6.0 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.003 hr + finish 35.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.044 hr  [stock bounding cylinder \u03c0\u00b7(42.0/2)\u00b2\u00b712.0 mm = 16.6 cm\u00b3; MRR aluminum]]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "cycle_time",
+            "unit": "hr",
+            "value": 0.0477,
+            "source": "rough 6.0 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.003 hr + finish 35.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.044 hr  [stock bounding cylinder \u03c0\u00b7(42.0/2)\u00b2\u00b712.0 mm = 16.6 cm\u00b3; MRR aluminum]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "labor_cost",
+            "unit": "$",
+            "value": 5.7935,
+            "source": "post-process 0.3 hr \u00d7 $35/hr \u00d7 0.552 learning@qty5000 \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "learning_curve",
+            "unit": "\u00d7",
+            "value": 0.5518,
+            "source": "learning curve 0.9\u00d7/doubling of cumulative qty on machine+labor: (5000/100 first-lot)^-0.152 = \u00d70.552 (~5.6 doublings, floor 0.25) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "setup_cost",
+            "unit": "$",
+            "value": 0.175,
+            "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(5000/100) = 50 setups \u00f7 5000 \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "nre_cost",
+            "unit": "$",
+            "value": 0.007,
+            "source": "CAM programming/NRE 1hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 5000 order (one-time) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "inspection_cost",
+            "unit": "$",
+            "value": 0.6228,
+            "source": "first-article 0.4hr \u00d7 50 lot(s) \u00f7 5000 + in-process 0.025hr/part \u00d7 0.552 learning@qty5000 = 0.0178hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "consumables_cost",
+            "unit": "$",
+            "value": 0.0856,
+            "source": "perishable tooling/consumables 0.05 \u00d7 machine $1.71 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          }
+        ],
+        "process": "cnc_turning",
+        "material": "6061-T6 Aluminum",
+        "quantity": 5000,
+        "dfm_ready": true,
+        "dfm_score": 1.0,
+        "lead_time": {
+          "capacity": {
+            "basis": "capacity-bound: 6 machines \u00d7 16 hr/day parallel pool; production = ceil(5000\u00b70.048hr \u00f7 (6\u00d716)) = 3 d",
+            "n_machines": 6,
+            "provenance": "DEFAULT",
+            "machine_hours_per_day": 16.0
+          },
+          "low_days": 8.4,
+          "mid_days": 12.0,
+          "high_days": 15.6,
+          "components": {
+            "ship": 3.0,
+            "queue": 5.0,
+            "production": 3.0,
+            "post_process": 1.0,
+            "tooling_lead": 0.0
+          }
+        },
+        "confidence": {
+          "basis": "\u00b150% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+          "label": "assumption-based, not yet validated",
+          "level": 0.8,
+          "method": "assumption-band",
+          "low_usd": 4.31,
+          "high_usd": 12.94,
+          "n_samples": 0,
+          "point_usd": 8.62,
+          "validated": false,
+          "half_width_pct": 50.0
+        },
+        "line_items": {
+          "nre": 0.007,
+          "labor": 5.7935,
+          "machine": 1.7117,
+          "material": 0.2294,
+          "inspection": 0.6228,
+          "consumables": 0.0856,
+          "amortized_fixed": 0.175
+        },
+        "dfm_verdict": "pass",
+        "dfm_blockers": [],
+        "unit_cost_usd": 8.62,
+        "fixed_cost_usd": 35.0,
+        "variable_cost_usd": 8.62,
+        "est_error_band_pct": 50.0,
+        "dfm_blocker_details": []
+      },
+      {
+        "drivers": [
+          {
+            "name": "material_cost",
+            "unit": "$",
+            "value": 0.2294,
+            "source": "hull volume 14.71 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3 = 0.0437 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 5.0
+          },
+          {
+            "name": "machine_cost",
+            "unit": "$",
+            "value": 1.5405,
+            "source": "0.0477 hr \u00d7 $65/hr \u00d7 0.497 learning@qty10000 \u00d7 region-labor \u00d71  [rough 6.0 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.003 hr + finish 35.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.044 hr  [stock bounding cylinder \u03c0\u00b7(42.0/2)\u00b2\u00b712.0 mm = 16.6 cm\u00b3; MRR aluminum]]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "cycle_time",
+            "unit": "hr",
+            "value": 0.0477,
+            "source": "rough 6.0 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.003 hr + finish 35.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.044 hr  [stock bounding cylinder \u03c0\u00b7(42.0/2)\u00b2\u00b712.0 mm = 16.6 cm\u00b3; MRR aluminum]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "labor_cost",
+            "unit": "$",
+            "value": 5.2141,
+            "source": "post-process 0.3 hr \u00d7 $35/hr \u00d7 0.497 learning@qty10000 \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "learning_curve",
+            "unit": "\u00d7",
+            "value": 0.4966,
+            "source": "learning curve 0.9\u00d7/doubling of cumulative qty on machine+labor: (10000/100 first-lot)^-0.152 = \u00d70.497 (~6.6 doublings, floor 0.25) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "setup_cost",
+            "unit": "$",
+            "value": 0.175,
+            "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(10000/100) = 100 setups \u00f7 10000 \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "nre_cost",
+            "unit": "$",
+            "value": 0.0035,
+            "source": "CAM programming/NRE 1hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 10000 order (one-time) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "inspection_cost",
+            "unit": "$",
+            "value": 0.5745,
+            "source": "first-article 0.4hr \u00d7 100 lot(s) \u00f7 10000 + in-process 0.025hr/part \u00d7 0.497 learning@qty10000 = 0.0164hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "consumables_cost",
+            "unit": "$",
+            "value": 0.077,
+            "source": "perishable tooling/consumables 0.05 \u00d7 machine $1.54 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          }
+        ],
+        "process": "cnc_turning",
+        "material": "6061-T6 Aluminum",
+        "quantity": 10000,
+        "dfm_ready": true,
+        "dfm_score": 1.0,
+        "lead_time": {
+          "capacity": {
+            "basis": "capacity-bound: 6 machines \u00d7 16 hr/day parallel pool; production = ceil(10000\u00b70.048hr \u00f7 (6\u00d716)) = 5 d",
+            "n_machines": 6,
+            "provenance": "DEFAULT",
+            "machine_hours_per_day": 16.0
+          },
+          "low_days": 9.8,
+          "mid_days": 14.0,
+          "high_days": 18.2,
+          "components": {
+            "ship": 3.0,
+            "queue": 5.0,
+            "production": 5.0,
+            "post_process": 1.0,
+            "tooling_lead": 0.0
+          }
+        },
+        "confidence": {
+          "basis": "\u00b150% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+          "label": "assumption-based, not yet validated",
+          "level": 0.8,
+          "method": "assumption-band",
+          "low_usd": 3.91,
+          "high_usd": 11.72,
+          "n_samples": 0,
+          "point_usd": 7.81,
+          "validated": false,
+          "half_width_pct": 50.0
+        },
+        "line_items": {
+          "nre": 0.0035,
+          "labor": 5.2141,
+          "machine": 1.5405,
+          "material": 0.2294,
+          "inspection": 0.5745,
+          "consumables": 0.077,
+          "amortized_fixed": 0.175
+        },
+        "dfm_verdict": "pass",
+        "dfm_blockers": [],
+        "unit_cost_usd": 7.81,
+        "fixed_cost_usd": 35.0,
+        "variable_cost_usd": 7.81,
+        "est_error_band_pct": 50.0,
+        "dfm_blocker_details": []
+      }
+    ]
+  },
+  {
+    "ulid": "01M3SXZPXRKXQKT521G2Y9ZS2F",
+    "engine_version": "0.3.18",
+    "result_sha256": "2fe15346041148615213531413199744cea0f93acde43df1cc22f5900d8dde1e",
+    "filename": "142-prolate-rotated.step",
+    "geometry": {
+      "bbox_mm": [
+        24.5,
+        20.1,
+        37.3
+      ],
+      "face_count": 34660,
+      "volume_cm3": 8.37,
+      "watertight": true,
+      "surface_area_cm2": 21.47
+    },
+    "routing": {
+      "drivers": {
+        "bend_count": 0,
+        "rotational": true,
+        "sheet_like": false,
+        "planar_aspect": 1.22,
+        "sheet_gauge_mm": 20.142,
+        "nominal_wall_mm": 7.8,
+        "outline_perimeter_mm": 123.7
+      },
+      "archetype": "rotational",
+      "reasoning": "Axisymmetric cross-section (round, turnable): axis 40mm \u00d7 \u00d820mm \u2192 CNC turning / mill-turn. A round metal part is rarely powder-bed printed at production volume.",
+      "confidence": 0.8,
+      "eval_family": "subtractive",
+      "alternatives": [
+        "cnc_5axis"
+      ],
+      "material_hint": "aluminum",
+      "recommended_process": "cnc_turning"
+    },
+    "turning_estimates": [
+      {
+        "drivers": [
+          {
+            "name": "material_cost",
+            "unit": "$",
+            "value": 0.1306,
+            "source": "hull volume 8.37 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3 = 0.0249 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 5.0
+          },
+          {
+            "name": "machine_cost",
+            "unit": "$",
+            "value": 1.8961,
+            "source": "0.0292 hr \u00d7 $65/hr \u00d7 region-labor \u00d71  [rough 4.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.002 hr + finish 21.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.027 hr  [stock bounding cylinder \u03c0\u00b7(20.0/2)\u00b2\u00b740.0 mm = 12.6 cm\u00b3; MRR aluminum]]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "cycle_time",
+            "unit": "hr",
+            "value": 0.0292,
+            "source": "rough 4.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.002 hr + finish 21.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.027 hr  [stock bounding cylinder \u03c0\u00b7(20.0/2)\u00b2\u00b740.0 mm = 12.6 cm\u00b3; MRR aluminum]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "labor_cost",
+            "unit": "$",
+            "value": 10.5,
+            "source": "post-process 0.3 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "setup_cost",
+            "unit": "$",
+            "value": 17.5,
+            "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(1/100) = 1 setups \u00f7 1 \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "nre_cost",
+            "unit": "$",
+            "value": 35.0,
+            "source": "CAM programming/NRE 1hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 1 order (one-time) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "inspection_cost",
+            "unit": "$",
+            "value": 14.875,
+            "source": "first-article 0.4hr \u00d7 1 lot(s) \u00f7 1 + in-process 0.025hr/part = 0.4250hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "consumables_cost",
+            "unit": "$",
+            "value": 0.0948,
+            "source": "perishable tooling/consumables 0.05 \u00d7 machine $1.90 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "min_charge_floor",
+            "unit": "$",
+            "value": 10.0035,
+            "source": "shop/order minimum $90/lot \u00d7 1 lots \u00f7 1 = $90.00/unit floor (applied)",
+            "provenance": "DEFAULT",
+            "error_band_pct": null
+          }
+        ],
+        "process": "cnc_turning",
+        "material": "6061-T6 Aluminum",
+        "quantity": 1,
+        "dfm_ready": true,
+        "dfm_score": 1.0,
+        "lead_time": {
+          "capacity": {
+            "basis": "capacity-bound: 6 machines \u00d7 16 hr/day parallel pool; production = ceil(1\u00b70.029hr \u00f7 (6\u00d716)) = 1 d",
+            "n_machines": 6,
+            "provenance": "DEFAULT",
+            "machine_hours_per_day": 16.0
+          },
+          "low_days": 7.0,
+          "mid_days": 10.0,
+          "high_days": 13.0,
+          "components": {
+            "ship": 3.0,
+            "queue": 5.0,
+            "production": 1.0,
+            "post_process": 1.0,
+            "tooling_lead": 0.0
+          }
+        },
+        "confidence": {
+          "basis": "\u00b150% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+          "label": "assumption-based, not yet validated",
+          "level": 0.8,
+          "method": "assumption-band",
+          "low_usd": 45.0,
+          "high_usd": 135.0,
+          "n_samples": 0,
+          "point_usd": 90.0,
+          "validated": false,
+          "half_width_pct": 50.0
+        },
+        "line_items": {
+          "nre": 35.0,
+          "labor": 10.5,
+          "machine": 1.8961,
+          "material": 0.1306,
+          "inspection": 14.875,
+          "consumables": 0.0948,
+          "amortized_fixed": 17.5,
+          "min_charge_floor": 10.0035
+        },
+        "dfm_verdict": "pass",
+        "dfm_blockers": [],
+        "unit_cost_usd": 90.0,
+        "fixed_cost_usd": 35.0,
+        "variable_cost_usd": 13.81,
+        "est_error_band_pct": 50.0,
+        "dfm_blocker_details": []
+      },
+      {
+        "drivers": [
+          {
+            "name": "material_cost",
+            "unit": "$",
+            "value": 0.1306,
+            "source": "hull volume 8.37 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3 = 0.0249 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 5.0
+          },
+          {
+            "name": "machine_cost",
+            "unit": "$",
+            "value": 1.8961,
+            "source": "0.0292 hr \u00d7 $65/hr \u00d7 region-labor \u00d71  [rough 4.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.002 hr + finish 21.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.027 hr  [stock bounding cylinder \u03c0\u00b7(20.0/2)\u00b2\u00b740.0 mm = 12.6 cm\u00b3; MRR aluminum]]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "cycle_time",
+            "unit": "hr",
+            "value": 0.0292,
+            "source": "rough 4.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.002 hr + finish 21.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.027 hr  [stock bounding cylinder \u03c0\u00b7(20.0/2)\u00b2\u00b740.0 mm = 12.6 cm\u00b3; MRR aluminum]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "labor_cost",
+            "unit": "$",
+            "value": 10.5,
+            "source": "post-process 0.3 hr \u00d7 $35/hr \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "setup_cost",
+            "unit": "$",
+            "value": 0.175,
+            "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(100/100) = 1 setups \u00f7 100 \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "nre_cost",
+            "unit": "$",
+            "value": 0.35,
+            "source": "CAM programming/NRE 1hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 100 order (one-time) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "inspection_cost",
+            "unit": "$",
+            "value": 1.015,
+            "source": "first-article 0.4hr \u00d7 1 lot(s) \u00f7 100 + in-process 0.025hr/part = 0.0290hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "consumables_cost",
+            "unit": "$",
+            "value": 0.0948,
+            "source": "perishable tooling/consumables 0.05 \u00d7 machine $1.90 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          }
+        ],
+        "process": "cnc_turning",
+        "material": "6061-T6 Aluminum",
+        "quantity": 100,
+        "dfm_ready": true,
+        "dfm_score": 1.0,
+        "lead_time": {
+          "capacity": {
+            "basis": "capacity-bound: 6 machines \u00d7 16 hr/day parallel pool; production = ceil(100\u00b70.029hr \u00f7 (6\u00d716)) = 1 d",
+            "n_machines": 6,
+            "provenance": "DEFAULT",
+            "machine_hours_per_day": 16.0
+          },
+          "low_days": 7.0,
+          "mid_days": 10.0,
+          "high_days": 13.0,
+          "components": {
+            "ship": 3.0,
+            "queue": 5.0,
+            "production": 1.0,
+            "post_process": 1.0,
+            "tooling_lead": 0.0
+          }
+        },
+        "confidence": {
+          "basis": "\u00b150% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+          "label": "assumption-based, not yet validated",
+          "level": 0.8,
+          "method": "assumption-band",
+          "low_usd": 7.08,
+          "high_usd": 21.24,
+          "n_samples": 0,
+          "point_usd": 14.16,
+          "validated": false,
+          "half_width_pct": 50.0
+        },
+        "line_items": {
+          "nre": 0.35,
+          "labor": 10.5,
+          "machine": 1.8961,
+          "material": 0.1306,
+          "inspection": 1.015,
+          "consumables": 0.0948,
+          "amortized_fixed": 0.175
+        },
+        "dfm_verdict": "pass",
+        "dfm_blockers": [],
+        "unit_cost_usd": 14.16,
+        "fixed_cost_usd": 35.0,
+        "variable_cost_usd": 13.81,
+        "est_error_band_pct": 50.0,
+        "dfm_blocker_details": []
+      },
+      {
+        "drivers": [
+          {
+            "name": "material_cost",
+            "unit": "$",
+            "value": 0.1306,
+            "source": "hull volume 8.37 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3 = 0.0249 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 5.0
+          },
+          {
+            "name": "machine_cost",
+            "unit": "$",
+            "value": 1.3362,
+            "source": "0.0292 hr \u00d7 $65/hr \u00d7 0.705 learning@qty1000 \u00d7 region-labor \u00d71  [rough 4.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.002 hr + finish 21.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.027 hr  [stock bounding cylinder \u03c0\u00b7(20.0/2)\u00b2\u00b740.0 mm = 12.6 cm\u00b3; MRR aluminum]]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "cycle_time",
+            "unit": "hr",
+            "value": 0.0292,
+            "source": "rough 4.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.002 hr + finish 21.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.027 hr  [stock bounding cylinder \u03c0\u00b7(20.0/2)\u00b2\u00b740.0 mm = 12.6 cm\u00b3; MRR aluminum]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "labor_cost",
+            "unit": "$",
+            "value": 7.3992,
+            "source": "post-process 0.3 hr \u00d7 $35/hr \u00d7 0.705 learning@qty1000 \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "learning_curve",
+            "unit": "\u00d7",
+            "value": 0.7047,
+            "source": "learning curve 0.9\u00d7/doubling of cumulative qty on machine+labor: (1000/100 first-lot)^-0.152 = \u00d70.705 (~3.3 doublings, floor 0.25) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "setup_cost",
+            "unit": "$",
+            "value": 0.175,
+            "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(1000/100) = 10 setups \u00f7 1000 \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "nre_cost",
+            "unit": "$",
+            "value": 0.035,
+            "source": "CAM programming/NRE 1hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 1000 order (one-time) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "inspection_cost",
+            "unit": "$",
+            "value": 0.7566,
+            "source": "first-article 0.4hr \u00d7 10 lot(s) \u00f7 1000 + in-process 0.025hr/part \u00d7 0.705 learning@qty1000 = 0.0216hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "consumables_cost",
+            "unit": "$",
+            "value": 0.0668,
+            "source": "perishable tooling/consumables 0.05 \u00d7 machine $1.34 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          }
+        ],
+        "process": "cnc_turning",
+        "material": "6061-T6 Aluminum",
+        "quantity": 1000,
+        "dfm_ready": true,
+        "dfm_score": 1.0,
+        "lead_time": {
+          "capacity": {
+            "basis": "capacity-bound: 6 machines \u00d7 16 hr/day parallel pool; production = ceil(1000\u00b70.029hr \u00f7 (6\u00d716)) = 1 d",
+            "n_machines": 6,
+            "provenance": "DEFAULT",
+            "machine_hours_per_day": 16.0
+          },
+          "low_days": 7.0,
+          "mid_days": 10.0,
+          "high_days": 13.0,
+          "components": {
+            "ship": 3.0,
+            "queue": 5.0,
+            "production": 1.0,
+            "post_process": 1.0,
+            "tooling_lead": 0.0
+          }
+        },
+        "confidence": {
+          "basis": "\u00b150% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+          "label": "assumption-based, not yet validated",
+          "level": 0.8,
+          "method": "assumption-band",
+          "low_usd": 4.95,
+          "high_usd": 14.85,
+          "n_samples": 0,
+          "point_usd": 9.9,
+          "validated": false,
+          "half_width_pct": 50.0
+        },
+        "line_items": {
+          "nre": 0.035,
+          "labor": 7.3992,
+          "machine": 1.3362,
+          "material": 0.1306,
+          "inspection": 0.7566,
+          "consumables": 0.0668,
+          "amortized_fixed": 0.175
+        },
+        "dfm_verdict": "pass",
+        "dfm_blockers": [],
+        "unit_cost_usd": 9.9,
+        "fixed_cost_usd": 35.0,
+        "variable_cost_usd": 9.86,
+        "est_error_band_pct": 50.0,
+        "dfm_blocker_details": []
+      },
+      {
+        "drivers": [
+          {
+            "name": "material_cost",
+            "unit": "$",
+            "value": 0.1306,
+            "source": "hull volume 8.37 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3 = 0.0249 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 5.0
+          },
+          {
+            "name": "machine_cost",
+            "unit": "$",
+            "value": 1.2026,
+            "source": "0.0292 hr \u00d7 $65/hr \u00d7 0.634 learning@qty2000 \u00d7 region-labor \u00d71  [rough 4.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.002 hr + finish 21.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.027 hr  [stock bounding cylinder \u03c0\u00b7(20.0/2)\u00b2\u00b740.0 mm = 12.6 cm\u00b3; MRR aluminum]]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "cycle_time",
+            "unit": "hr",
+            "value": 0.0292,
+            "source": "rough 4.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.002 hr + finish 21.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.027 hr  [stock bounding cylinder \u03c0\u00b7(20.0/2)\u00b2\u00b740.0 mm = 12.6 cm\u00b3; MRR aluminum]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "labor_cost",
+            "unit": "$",
+            "value": 6.6593,
+            "source": "post-process 0.3 hr \u00d7 $35/hr \u00d7 0.634 learning@qty2000 \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "learning_curve",
+            "unit": "\u00d7",
+            "value": 0.6342,
+            "source": "learning curve 0.9\u00d7/doubling of cumulative qty on machine+labor: (2000/100 first-lot)^-0.152 = \u00d70.634 (~4.3 doublings, floor 0.25) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "setup_cost",
+            "unit": "$",
+            "value": 0.175,
+            "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(2000/100) = 20 setups \u00f7 2000 \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "nre_cost",
+            "unit": "$",
+            "value": 0.0175,
+            "source": "CAM programming/NRE 1hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 2000 order (one-time) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "inspection_cost",
+            "unit": "$",
+            "value": 0.6949,
+            "source": "first-article 0.4hr \u00d7 20 lot(s) \u00f7 2000 + in-process 0.025hr/part \u00d7 0.634 learning@qty2000 = 0.0199hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "consumables_cost",
+            "unit": "$",
+            "value": 0.0601,
+            "source": "perishable tooling/consumables 0.05 \u00d7 machine $1.20 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          }
+        ],
+        "process": "cnc_turning",
+        "material": "6061-T6 Aluminum",
+        "quantity": 2000,
+        "dfm_ready": true,
+        "dfm_score": 1.0,
+        "lead_time": {
+          "capacity": {
+            "basis": "capacity-bound: 6 machines \u00d7 16 hr/day parallel pool; production = ceil(2000\u00b70.029hr \u00f7 (6\u00d716)) = 1 d",
+            "n_machines": 6,
+            "provenance": "DEFAULT",
+            "machine_hours_per_day": 16.0
+          },
+          "low_days": 7.0,
+          "mid_days": 10.0,
+          "high_days": 13.0,
+          "components": {
+            "ship": 3.0,
+            "queue": 5.0,
+            "production": 1.0,
+            "post_process": 1.0,
+            "tooling_lead": 0.0
+          }
+        },
+        "confidence": {
+          "basis": "\u00b150% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+          "label": "assumption-based, not yet validated",
+          "level": 0.8,
+          "method": "assumption-band",
+          "low_usd": 4.47,
+          "high_usd": 13.41,
+          "n_samples": 0,
+          "point_usd": 8.94,
+          "validated": false,
+          "half_width_pct": 50.0
+        },
+        "line_items": {
+          "nre": 0.0175,
+          "labor": 6.6593,
+          "machine": 1.2026,
+          "material": 0.1306,
+          "inspection": 0.6949,
+          "consumables": 0.0601,
+          "amortized_fixed": 0.175
+        },
+        "dfm_verdict": "pass",
+        "dfm_blockers": [],
+        "unit_cost_usd": 8.94,
+        "fixed_cost_usd": 35.0,
+        "variable_cost_usd": 8.92,
+        "est_error_band_pct": 50.0,
+        "dfm_blocker_details": []
+      },
+      {
+        "drivers": [
+          {
+            "name": "material_cost",
+            "unit": "$",
+            "value": 0.1306,
+            "source": "hull volume 8.37 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3 = 0.0249 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 5.0
+          },
+          {
+            "name": "machine_cost",
+            "unit": "$",
+            "value": 1.0462,
+            "source": "0.0292 hr \u00d7 $65/hr \u00d7 0.552 learning@qty5000 \u00d7 region-labor \u00d71  [rough 4.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.002 hr + finish 21.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.027 hr  [stock bounding cylinder \u03c0\u00b7(20.0/2)\u00b2\u00b740.0 mm = 12.6 cm\u00b3; MRR aluminum]]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "cycle_time",
+            "unit": "hr",
+            "value": 0.0292,
+            "source": "rough 4.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.002 hr + finish 21.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.027 hr  [stock bounding cylinder \u03c0\u00b7(20.0/2)\u00b2\u00b740.0 mm = 12.6 cm\u00b3; MRR aluminum]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "labor_cost",
+            "unit": "$",
+            "value": 5.7935,
+            "source": "post-process 0.3 hr \u00d7 $35/hr \u00d7 0.552 learning@qty5000 \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "learning_curve",
+            "unit": "\u00d7",
+            "value": 0.5518,
+            "source": "learning curve 0.9\u00d7/doubling of cumulative qty on machine+labor: (5000/100 first-lot)^-0.152 = \u00d70.552 (~5.6 doublings, floor 0.25) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "setup_cost",
+            "unit": "$",
+            "value": 0.175,
+            "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(5000/100) = 50 setups \u00f7 5000 \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "nre_cost",
+            "unit": "$",
+            "value": 0.007,
+            "source": "CAM programming/NRE 1hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 5000 order (one-time) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "inspection_cost",
+            "unit": "$",
+            "value": 0.6228,
+            "source": "first-article 0.4hr \u00d7 50 lot(s) \u00f7 5000 + in-process 0.025hr/part \u00d7 0.552 learning@qty5000 = 0.0178hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "consumables_cost",
+            "unit": "$",
+            "value": 0.0523,
+            "source": "perishable tooling/consumables 0.05 \u00d7 machine $1.05 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          }
+        ],
+        "process": "cnc_turning",
+        "material": "6061-T6 Aluminum",
+        "quantity": 5000,
+        "dfm_ready": true,
+        "dfm_score": 1.0,
+        "lead_time": {
+          "capacity": {
+            "basis": "capacity-bound: 6 machines \u00d7 16 hr/day parallel pool; production = ceil(5000\u00b70.029hr \u00f7 (6\u00d716)) = 2 d",
+            "n_machines": 6,
+            "provenance": "DEFAULT",
+            "machine_hours_per_day": 16.0
+          },
+          "low_days": 7.7,
+          "mid_days": 11.0,
+          "high_days": 14.3,
+          "components": {
+            "ship": 3.0,
+            "queue": 5.0,
+            "production": 2.0,
+            "post_process": 1.0,
+            "tooling_lead": 0.0
+          }
+        },
+        "confidence": {
+          "basis": "\u00b150% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+          "label": "assumption-based, not yet validated",
+          "level": 0.8,
+          "method": "assumption-band",
+          "low_usd": 3.91,
+          "high_usd": 11.74,
+          "n_samples": 0,
+          "point_usd": 7.83,
+          "validated": false,
+          "half_width_pct": 50.0
+        },
+        "line_items": {
+          "nre": 0.007,
+          "labor": 5.7935,
+          "machine": 1.0462,
+          "material": 0.1306,
+          "inspection": 0.6228,
+          "consumables": 0.0523,
+          "amortized_fixed": 0.175
+        },
+        "dfm_verdict": "pass",
+        "dfm_blockers": [],
+        "unit_cost_usd": 7.83,
+        "fixed_cost_usd": 35.0,
+        "variable_cost_usd": 7.82,
+        "est_error_band_pct": 50.0,
+        "dfm_blocker_details": []
+      },
+      {
+        "drivers": [
+          {
+            "name": "material_cost",
+            "unit": "$",
+            "value": 0.1306,
+            "source": "hull volume 8.37 cm\u00b3 \u00d7 1.10 stock allowance \u00d7 6061-T6 Aluminum density 2.70 g/cm\u00b3 = 0.0249 kg \u00d7 $5/kg (material-DB unit price (DEFAULT book value)) \u00d7 (1+0.05 scrap) \u00d7 region-material \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 5.0
+          },
+          {
+            "name": "machine_cost",
+            "unit": "$",
+            "value": 0.9416,
+            "source": "0.0292 hr \u00d7 $65/hr \u00d7 0.497 learning@qty10000 \u00d7 region-labor \u00d71  [rough 4.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.002 hr + finish 21.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.027 hr  [stock bounding cylinder \u03c0\u00b7(20.0/2)\u00b2\u00b740.0 mm = 12.6 cm\u00b3; MRR aluminum]]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "cycle_time",
+            "unit": "hr",
+            "value": 0.0292,
+            "source": "rough 4.2 cm\u00b3 \u00f7 (30 cm\u00b3/min\u00b760) = 0.002 hr + finish 21.5 cm\u00b2 \u00f7 800 cm\u00b2/hr = 0.027 hr  [stock bounding cylinder \u03c0\u00b7(20.0/2)\u00b2\u00b740.0 mm = 12.6 cm\u00b3; MRR aluminum]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "labor_cost",
+            "unit": "$",
+            "value": 5.2141,
+            "source": "post-process 0.3 hr \u00d7 $35/hr \u00d7 0.497 learning@qty10000 \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "learning_curve",
+            "unit": "\u00d7",
+            "value": 0.4966,
+            "source": "learning curve 0.9\u00d7/doubling of cumulative qty on machine+labor: (10000/100 first-lot)^-0.152 = \u00d70.497 (~6.6 doublings, floor 0.25) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 50.0
+          },
+          {
+            "name": "setup_cost",
+            "unit": "$",
+            "value": 0.175,
+            "source": "setup 0.5hr \u00d7 $35/hr \u00d7 ceil(10000/100) = 100 setups \u00f7 10000 \u00d7 region-labor \u00d71",
+            "provenance": "DEFAULT",
+            "error_band_pct": 20.0
+          },
+          {
+            "name": "nre_cost",
+            "unit": "$",
+            "value": 0.0035,
+            "source": "CAM programming/NRE 1hr \u00d7 $35/hr \u00d7 region-labor \u00d71 \u00f7 10000 order (one-time) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "inspection_cost",
+            "unit": "$",
+            "value": 0.5745,
+            "source": "first-article 0.4hr \u00d7 100 lot(s) \u00f7 10000 + in-process 0.025hr/part \u00d7 0.497 learning@qty10000 = 0.0164hr \u00d7 $35/hr \u00d7 region-labor \u00d71 [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          },
+          {
+            "name": "consumables_cost",
+            "unit": "$",
+            "value": 0.0471,
+            "source": "perishable tooling/consumables 0.05 \u00d7 machine $0.94 (cutting tools, inserts, coolant) [assumption, not shop-validated]",
+            "provenance": "DEFAULT",
+            "error_band_pct": 40.0
+          }
+        ],
+        "process": "cnc_turning",
+        "material": "6061-T6 Aluminum",
+        "quantity": 10000,
+        "dfm_ready": true,
+        "dfm_score": 1.0,
+        "lead_time": {
+          "capacity": {
+            "basis": "capacity-bound: 6 machines \u00d7 16 hr/day parallel pool; production = ceil(10000\u00b70.029hr \u00f7 (6\u00d716)) = 4 d",
+            "n_machines": 6,
+            "provenance": "DEFAULT",
+            "machine_hours_per_day": 16.0
+          },
+          "low_days": 9.1,
+          "mid_days": 13.0,
+          "high_days": 16.9,
+          "components": {
+            "ship": 3.0,
+            "queue": 5.0,
+            "production": 4.0,
+            "post_process": 1.0,
+            "tooling_lead": 0.0
+          }
+        },
+        "confidence": {
+          "basis": "\u00b150% stated assumption band (cycle-time / tooling defaults) propagated around the point estimate \u2014 no ground truth yet",
+          "label": "assumption-based, not yet validated",
+          "level": 0.8,
+          "method": "assumption-band",
+          "low_usd": 3.54,
+          "high_usd": 10.63,
+          "n_samples": 0,
+          "point_usd": 7.09,
+          "validated": false,
+          "half_width_pct": 50.0
+        },
+        "line_items": {
+          "nre": 0.0035,
+          "labor": 5.2141,
+          "machine": 0.9416,
+          "material": 0.1306,
+          "inspection": 0.5745,
+          "consumables": 0.0471,
+          "amortized_fixed": 0.175
+        },
+        "dfm_verdict": "pass",
+        "dfm_blockers": [],
+        "unit_cost_usd": 7.09,
+        "fixed_cost_usd": 35.0,
+        "variable_cost_usd": 7.08,
+        "est_error_band_pct": 50.0,
+        "dfm_blocker_details": []
+      }
+    ]
+  }
+]
