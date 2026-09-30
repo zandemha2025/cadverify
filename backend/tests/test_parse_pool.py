@@ -127,6 +127,63 @@ def test_killed_shutdown_reaps_executor_resources_before_returning():
     parse_pool.startup()
 
 
+@pytest.mark.parametrize("mode", ["recycle", "shutdown", "isolated"])
+def test_partial_result_termination_exits_and_recovers(tmp_path, mode):
+    """A killed sender must not strand the executor in recv or Python exit."""
+    import subprocess
+    import sys
+
+    probe = tmp_path / "partial_result.py"
+    probe.write_text('''
+import os, sys, threading
+from concurrent.futures.process import BrokenProcessPool
+os.environ["PARSE_POOL_WORKERS"] = "1"
+from src.parsers import parse_pool
+
+def payload(size):
+    return b"x" * size
+
+if __name__ == "__main__":
+    pool = parse_pool._get_pool()
+    ready, killed = threading.Event(), threading.Event()
+    receive = pool._result_queue._reader.recv
+    def partial_receive():
+        ready.set()
+        assert killed.wait(10)
+        return receive()
+    pool._result_queue._reader.recv = partial_receive
+    future = pool.submit(payload, 32 * 1024 * 1024)
+    assert ready.wait(10)
+    worker = next(iter(pool._processes.values()))
+    kill = worker.kill
+    def kill_and_release():
+        kill()
+        killed.set()
+    worker.kill = kill_and_release
+    if sys.argv[1] == "recycle":
+        parse_pool.recycle_pool(kill=True)
+    elif sys.argv[1] == "shutdown":
+        parse_pool.shutdown(kill=True)
+    else:
+        parse_pool._hard_kill(pool)
+        pool.shutdown(wait=False, cancel_futures=True)
+        parse_pool._POOL = None
+    try:
+        future.result(timeout=2)
+        raise AssertionError("partial result was accepted")
+    except BrokenProcessPool:
+        pass
+    assert parse_pool._get_pool().submit(payload, 1).result(timeout=10) == b"x"
+    parse_pool.shutdown(kill=True, final=True)
+    print("RECOVERED", flush=True)
+''')
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
+    run = subprocess.run([sys.executable, str(probe), mode], env=env, capture_output=True, text=True, timeout=15)
+    assert run.returncode == 0, run.stderr
+    assert run.stdout.strip() == "RECOVERED"
+
+
 # ──────────────────────────────────────────────────────────────
 # Correctness: pooled parse is byte-identical to in-thread (the crux)
 # ──────────────────────────────────────────────────────────────

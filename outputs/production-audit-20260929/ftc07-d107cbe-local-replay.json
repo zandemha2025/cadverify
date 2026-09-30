@@ -1,0 +1,25 @@
+{
+  "head": "d107cbe94fc42f6028253658eb9d63f0d639b126",
+  "exit_code": 0,
+  "wall_seconds": 15.427,
+  "result": {
+    "status": "PASS",
+    "outcome": "OK",
+    "geometry": {
+      "bbox_mm": [
+        311.6,
+        135.9,
+        222.7
+      ],
+      "face_count": 246354,
+      "surface_area_cm2": 3909.71,
+      "volume_cm3": 1726.0,
+      "watertight": true
+    },
+    "elapsed_sec": 14.46,
+    "network_egress_blocked": true,
+    "finite_report": true,
+    "line_items_sum_ok": true
+  },
+  "limitation": "one local replay does not resolve the intermittent CI subprocess timeout"
+}

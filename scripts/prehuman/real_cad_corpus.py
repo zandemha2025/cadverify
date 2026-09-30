@@ -1211,7 +1211,7 @@ def line_items_sum_ok(report: Dict[str, Any]) -> bool:
 def run_worker_mode(args: argparse.Namespace) -> int:
     # Dump before the outer deadline, including when native code or process
     # cleanup stalls. This does not extend the gate or accept a timed-out case.
-    faulthandler.dump_traceback_later(max(0.01, PER_CASE_TIMEOUT_SEC - 5))
+    faulthandler.dump_traceback_later(max(0.01, PER_CASE_TIMEOUT_SEC - 5), repeat=True)
     sys.path.insert(0, str(BACKEND_ROOT))
     from fastapi import HTTPException
 
@@ -1315,7 +1315,8 @@ def run_worker_mode(args: argparse.Namespace) -> int:
         except Exception:
             pass
 
-    faulthandler.cancel_dump_traceback_later()
+    # Keep the timer armed through interpreter exit: executor/thread cleanup can
+    # hang after the completed result has already been written to stdout.
     print(json.dumps(output, sort_keys=True))
     return 0 if output.get("status") == "PASS" else 1
 

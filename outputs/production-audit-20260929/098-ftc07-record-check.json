@@ -1,0 +1,23 @@
+{
+  "record_id": "01M3S1TBH6VZTK11QYESVYEBTV",
+  "source_sha256": "a0bc551656780b26d7a0ee1beedbc07d43f41efa092f74f3c2d8383417f04481",
+  "engine_version": "0.3.12",
+  "filename": "nist_ftc_07_asme1_rd.stp",
+  "geometry": {
+    "bbox_mm": [
+      311.6,
+      135.9,
+      222.7
+    ],
+    "face_count": 246354,
+    "volume_cm3": 1726.0,
+    "watertight": true,
+    "surface_area_cm2": 3909.71
+  },
+  "estimate_count": 60,
+  "all_values_finite": true,
+  "all_unit_costs_reconcile_with_line_items": true,
+  "native_saved_record_opened": true,
+  "native_json_download": "not confirmed: browser download event timed out; no claim of download success",
+  "limitation": "synthetic public CAD; prices remain assumption-based, not calibrated customer quotes"
+}
