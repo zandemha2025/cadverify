@@ -449,3 +449,12 @@ Clicking Compare from the real cube standing opened the two newest NIST records 
 The existing shell now carries the selected record ID through ordinary props, as it already does for the selected program. Side A uses that exact saved record; side B prefers another record with the same filename. Leaving comparison clears the handoff. If the requested record lies outside the recent list, the UI asks for an explicit selection instead of silently substituting another part. Manual selection and the normal unselected entry remain available.
 
 Native regression: cube navigation fails with the NIST ID before the fix, then passes with cube ID `01M3R3SCMPTWKBDBKX0FXNXD1E` and its prior cube record. Opening NIST next correctly replaces the selected ID with `01M3R5PQHVPT6BE584E0R6J1J8`. All 489 frontend tests, typecheck, changed-file lint and production build pass. Evidence: `compare-selection-regression.json`, `061-*.png`, and `assertSelectedComparisonRecord` in the existing CUA comparison check. Production verification remains pending.
+
+
+## 062 — Comparison cards and controls overflowed phone width
+
+At a confirmed 390 px viewport, the comparison main scrolled to 479 px; the route panel extended from x=322 to x=479 and its controls were clipped. The fixed two-column layout did not stack.
+
+Reused the program/standing auto-fit grid pattern, bounded native record selectors, and kept the per-process table legible in a labeled, keyboard-focusable horizontal scroll region. At 390 and 320 px the main now fits exactly and every record/quantity/side control is within the viewport. At 320 px, ArrowRight reaches scrollLeft 134 and brings the delta column to x=263; the table's 340 px content is intentionally scrollable. The route slider still yields the exact saved MJF $3.11 / conditional molding $2.69 at 10,000. Desktop layout also passes.
+
+Typecheck, changed-file lint and production build pass. See `compare-mobile-regression.json`, `062-*.png` and `assertComparisonFits` in the existing CUA comparison check. The viewport assertion also guards against testing the wrong active tab. Production proof remains pending.

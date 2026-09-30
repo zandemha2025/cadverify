@@ -83,3 +83,5 @@ Part-standing follow-up (059): fixed the off-screen verdict/history column on ph
 Verify comparison follow-up (060): route curves now follow the saved recommendation at each quantity and display the tooling redesign requirement. Native cube low/mid/high quantities and NIST/side-B checks reconcile with native saved exports. All 489 frontend tests, typecheck, changed-file lint and build pass; exact-head CI and deployment remain pending.
 
 Part-to-comparison follow-up (061): a part's Compare action now retains its exact saved record instead of substituting the newest record. Native cube and subsequent NIST navigation pass, with all frontend checks green locally. Production verification is still required.
+
+Comparison responsive follow-up (062): both cards and all controls fit 390/320 px, and keyboard scrolling reaches the complete price table. Native high-quantity results remain correct; desktop layout and build/type/lint checks pass. Production remains pending.

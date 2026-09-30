@@ -211,7 +211,7 @@ export function CompareScreen({ nav, initialRecordId }: {
       {loading && <div style={{ marginTop: 20 }}><Spinner label="building the comparison…" /></div>}
 
       {cmp && detA && detB && !loading && (
-        <div style={{ marginTop: 22, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, maxWidth: 1100, alignItems: "start" }}>
+        <div style={{ marginTop: 22, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))", gap: 16, maxWidth: 1100, alignItems: "start", overflowWrap: "anywhere" }}>
           <CalibrationPanel
             cmp={cmp}
             detA={detA}
@@ -271,12 +271,12 @@ function RecordSelect({
   disabledId: string | null;
 }) {
   return (
-    <label style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+    <label style={{ display: "inline-flex", alignItems: "center", gap: 7, maxWidth: "100%", minWidth: 0 }}>
       <span style={{ fontFamily: MONO, fontSize: 11, color: C.ink50 }}>{label}</span>
       <select
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
-        style={{ maxWidth: 300, background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 8, padding: "8px 12px", fontFamily: MONO, fontSize: 12, color: C.ink, cursor: "pointer" }}
+        style={{ maxWidth: 300, minWidth: 0, background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 8, padding: "8px 12px", fontFamily: MONO, fontSize: 12, color: C.ink, cursor: "pointer" }}
       >
         <option value="" disabled>Choose a record</option>
         {records.map((r) => (
@@ -339,7 +339,7 @@ function CalibrationPanel({
   const divergent = useMemo(() => topDivergentDriver(detA, detB, q ?? undefined), [detA, detB, q]);
 
   return (
-    <section style={{ border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
+    <section style={{ minWidth: 0, border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <Kicker color={C.ink45}>CALIBRATION VS CALIBRATION</Kicker>
         {sharedQtys.length > 0 ? (
@@ -361,23 +361,28 @@ function CalibrationPanel({
       </div>
       <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>{labelA} vs {labelB} · QTY {q != null ? NUM(q) : "—"}</p>
 
-      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1.3fr 1fr 1fr 64px", gap: 10, fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: C.ink40, paddingBottom: 8, borderBottom: `1px solid ${C.hair2}` }}>
-        <span>PROCESS</span><span style={{ textAlign: "right" }}>A</span><span style={{ textAlign: "right" }}>B</span><span style={{ textAlign: "right" }}>Δ</span>
-      </div>
-      {rows.length === 0 ? (
-        <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink45 }}>no per-process figures at this quantity.</p>
-      ) : (
-        rows.map((r) => (
-          <div key={r.p} style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr 1fr 64px", gap: 10, padding: "10px 0", borderBottom: `1px solid #f0f0f3`, fontFamily: MONO, fontSize: 11.5, alignItems: "baseline" }}>
-            <span style={{ color: C.ink }}>{procLabel(r.p)}</span>
-            <Figure cost={r.a} band={r.bandA} />
-            <Figure cost={r.b} band={r.bandB} />
-            <span style={{ textAlign: "right", color: r.delta == null ? C.ink35 : r.delta < 0 ? C.pass : C.shop }}>
-              {r.delta == null ? "—" : `${r.delta > 0 ? "+" : ""}${r.delta}%`}
-            </span>
+      <div role="region" aria-label="Per-process cost comparison" tabIndex={0} style={{ overflowX: "auto" }}>
+        <div style={{ minWidth: 340 }}>
+          <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1.3fr 1fr 1fr 64px", gap: 10, fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: C.ink40, paddingBottom: 8, borderBottom: `1px solid ${C.hair2}` }}>
+            <span>PROCESS</span><span style={{ textAlign: "right" }}>A</span><span style={{ textAlign: "right" }}>B</span><span style={{ textAlign: "right" }}>Δ</span>
           </div>
-        ))
-      )}
+          {rows.length === 0 ? (
+            <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink45 }}>no per-process figures at this quantity.</p>
+          ) : (
+            rows.map((r) => (
+              <div key={r.p} style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr 1fr 64px", gap: 10, padding: "10px 0", borderBottom: `1px solid #f0f0f3`, fontFamily: MONO, fontSize: 11.5, alignItems: "baseline" }}>
+                <span style={{ color: C.ink }}>{procLabel(r.p)}</span>
+                <Figure cost={r.a} band={r.bandA} />
+                <Figure cost={r.b} band={r.bandB} />
+                <span style={{ textAlign: "right", color: r.delta == null ? C.ink35 : r.delta < 0 ? C.pass : C.shop }}>
+                  {r.delta == null ? "—" : `${r.delta > 0 ? "+" : ""}${r.delta}%`}
+                </span>
+              </div>
+            ))
+          )}
+
+        </div>
+      </div>
 
       {recRow && recRow.delta_pct != null && (
         <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink55 }}>
@@ -464,7 +469,7 @@ function RoutePanel({
   );
 
   const header = (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
       <Kicker color={C.ink45}>ROUTE VS ROUTE</Kicker>
       {sideToggle}
     </div>
@@ -475,7 +480,7 @@ function RoutePanel({
   // No acquire/tooling alternative → honest: nothing crosses over.
   if (!toolProc || toolCurve.length === 0 || makeCurve.length === 0) {
     return (
-      <section style={{ border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
+      <section style={{ minWidth: 0, border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
         {header}
         <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>{label}</p>
         <div style={{ marginTop: 16, border: "1.5px dashed #d3d3d8", borderRadius: 12, padding: "22px 18px", textAlign: "center" }}>
@@ -516,7 +521,7 @@ function RoutePanel({
   const crossX = crossover != null && crossover >= minQ && crossover <= maxQ ? xOf(crossover) : null;
 
   return (
-    <section style={{ border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
+    <section style={{ minWidth: 0, border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
       {header}
       <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
         {label} · <span style={{ color: C.pass }}>{procLabel(makeProc)}</span> (make-now) vs <span style={{ color: C.cond }}>{procLabel(toolProc)}</span> (acquire{decision?.tooling_dfm_ready ? "" : "; requires redesign"})
