@@ -919,7 +919,9 @@ async def validate_fit(
     async def parse_fit_part(data: bytes, filename: str):
         if Path(filename).suffix.lower() in {".obj", ".3mf"}:
             from src.services.fit_service import parse_supplementary_mesh
-            return await __import__("asyncio").to_thread(parse_supplementary_mesh, data, filename)
+            mesh = await __import__("asyncio").to_thread(parse_supplementary_mesh, data, filename)
+            enforce_triangle_cap(mesh)
+            return mesh
         mesh, _suffix = await _parse_mesh_async(data, filename)
         return mesh
 
@@ -958,8 +960,6 @@ async def validate_fit(
             detail={
                 "code": "FIT_GEOMETRY_UNAVAILABLE",
                 "message": str(exc),
-                "repairable": True,
-                "next_action": "Repair both shells to watertight solids and retry the same two files.",
             },
         ) from exc
 

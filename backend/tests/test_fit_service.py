@@ -62,6 +62,26 @@ def test_pair_face_admission_refuses_before_geometry_work(monkeypatch):
         analyze_fit(a, b)
 
 
+def test_redundant_tessellation_keeps_fit_and_original_face_locators(monkeypatch):
+    monkeypatch.setenv("FIT_MAX_PAIR_FACES", "1000")
+    a = trimesh.creation.box(extents=[10, 10, 10])
+    for _ in range(4):
+        a = a.subdivide()
+    b = a.copy()
+    b.apply_translation([9.9, 0, 0])
+    faces_before = a.faces.copy()
+    out = analyze_fit(a, b)
+    assert out["collision"]["volume_mm3"] == pytest.approx(10, abs=1e-5)
+    assert out["clearance"]["closest_sampled_gap_mm"] == 0
+    assert max(out["collision"]["region"]["part_a_faces"]) > 12
+    assert np.array_equal(a.faces, faces_before)
+    assert any("redundant" in line for line in out["limits"])
+    b.apply_translation([10.1, 0, 0])
+    separate = analyze_fit(a, b)
+    assert separate["collision"]["intersects"] is False
+    assert separate["clearance"]["closest_sampled_gap_mm"] == pytest.approx(10, abs=1e-6)
+
+
 def test_near_zero_volume_is_refused():
     flat = trimesh.Trimesh(vertices=[[0,0,0],[1,0,0],[0,1,0]], faces=[[0,1,2]], process=False)
     with pytest.raises(FitGeometryError, match="near-zero enclosed volume|not watertight"):

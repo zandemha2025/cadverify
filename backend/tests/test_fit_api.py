@@ -1,6 +1,7 @@
 import importlib
 
 import pytest
+import trimesh
 from fastapi.testclient import TestClient
 
 @pytest.fixture
@@ -39,3 +40,27 @@ def test_fit_endpoint_returns_real_collision(client, cube_10mm, stl_bytes_of, mo
     assert renderer["media_type"] == "model/gltf-binary"
     assert body["clearance"]["method"] == "bidirectional_sampled_point_to_triangle"
     assert body["timing_ms"]["pair_total"] >= body["timing_ms"]["collision_boolean"]
+
+
+def test_fit_budget_error_does_not_instruct_repairing_valid_shells(client, stl_bytes_of, monkeypatch):
+    monkeypatch.setenv("CONTEXT_FIT_ENABLED", "1")
+    monkeypatch.setenv("FIT_MAX_PAIR_FACES", "1000")
+    data = stl_bytes_of(trimesh.creation.icosphere(subdivisions=3))
+    response = client.post("/api/v1/validate/fit", files={
+        "part_a": ("a.stl", data, "application/octet-stream"),
+        "part_b": ("b.stl", data, "application/octet-stream"),
+    })
+    assert response.status_code == 422
+    detail = response.json()
+    assert "Reduce tessellation" in detail["message"]
+    assert "repairable" not in detail
+    assert "next_action" not in detail
+
+    monkeypatch.setenv("MAX_TRIANGLES", "1")
+    obj = trimesh.creation.box().export(file_type="obj").encode()
+    capped = client.post("/api/v1/validate/fit", files={
+        "part_a": ("a.obj", obj, "application/octet-stream"),
+        "part_b": ("b.obj", obj, "application/octet-stream"),
+    })
+    assert capped.status_code == 400
+    assert "MAX_TRIANGLES" in capped.json()["message"]

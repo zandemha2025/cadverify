@@ -33,7 +33,7 @@ def _sample_budget() -> int:
 
 
 def _max_pair_faces() -> int:
-    """Hard admission bound before boolean or proximity allocates from faces."""
+    """Hard bound on collision faces after removing redundant tessellation."""
     try:
         return max(1_000, min(2_000_000, int(os.getenv("FIT_MAX_PAIR_FACES", "150000"))))
     except ValueError:
@@ -134,7 +134,33 @@ def _max_region_mesh_faces() -> int:
 
 def _collision(a: trimesh.Trimesh, b: trimesh.Trimesh) -> tuple[float, dict[str, Any] | None]:
     try:
-        intersection = trimesh.boolean.intersection([a, b], engine="manifold")
+        pair_faces = len(a.faces) + len(b.faces)
+        max_faces = _max_pair_faces()
+        if pair_faces > max_faces:
+            from manifold3d import Error, Manifold, Mesh64
+
+            # Preserve the source meshes for clearance and face locators. Remove
+            # redundant tessellation only at the kernel's native tolerance;
+            # never increase that tolerance to make a complex pair fit the cap.
+            solids = [Manifold(Mesh64(
+                vert_properties=np.asarray(mesh.vertices, dtype=np.float64),
+                tri_verts=np.asarray(mesh.faces, dtype=np.uint64),
+            )).simplify(0) for mesh in (a, b)]
+            if any(solid.status() != Error.NoError or solid.is_empty() for solid in solids):
+                raise FitGeometryError("Collision geometry could not be prepared; measurements are withheld.")
+            if sum(solid.num_tri() for solid in solids) > max_faces:
+                raise FitGeometryError(
+                    f"Pair has {pair_faces} triangle faces, above the {max_faces} fit-check limit even after removing redundant triangles. Reduce tessellation and retry."
+                )
+            overlap = solids[0] ^ solids[1]
+            if overlap.status() != Error.NoError:
+                raise FitGeometryError("Exact collision boolean failed; measurements are withheld.")
+            shell = overlap.to_mesh64()
+            intersection = trimesh.Trimesh(vertices=shell.vert_properties, faces=shell.tri_verts, process=False)
+        else:
+            intersection = trimesh.boolean.intersection([a, b], engine="manifold")
+    except FitGeometryError:
+        raise
     except BaseException as exc:
         raise FitGeometryError(
             "Exact collision boolean failed; collision is withheld rather than estimated."
@@ -158,7 +184,9 @@ def _collision(a: trimesh.Trimesh, b: trimesh.Trimesh) -> tuple[float, dict[str,
     _, b_faces = b_tree.query(vertices, k=1)
     face_count = int(len(intersection.faces))
     if face_count <= _max_region_mesh_faces():
-        payload = bytes(intersection.export(file_type="glb"))
+        payload = intersection.export(file_type="glb")
+        if not isinstance(payload, bytes):
+            raise FitGeometryError("Collision shell could not be exported; measurements are withheld.")
         render_geometry = {
             "available": True,
             "media_type": "model/gltf-binary",
@@ -188,12 +216,6 @@ def analyze_fit(mesh_a: trimesh.Trimesh, mesh_b: trimesh.Trimesh) -> dict[str, A
     """Measure exact intersection and sampled surface clearance in a shared frame."""
     _require_volume_mesh(mesh_a, "part_a")
     _require_volume_mesh(mesh_b, "part_b")
-    pair_faces = int(len(mesh_a.faces) + len(mesh_b.faces))
-    max_faces = _max_pair_faces()
-    if pair_faces > max_faces:
-        raise FitGeometryError(
-            f"Pair has {pair_faces} triangle faces, above the {max_faces} fit-check limit. Reduce tessellation and retry."
-        )
     pair_start = time.perf_counter()
     collision_start = time.perf_counter()
     volume, collision_region = _collision(mesh_a, mesh_b)
@@ -213,6 +235,10 @@ def analyze_fit(mesh_a: trimesh.Trimesh, mesh_b: trimesh.Trimesh) -> dict[str, A
         "Clearance is sampled on submitted tessellation and is not an analytic B-rep tolerance result.",
         "Shared-frame seating assumes both files were exported in the same assembly coordinate frame.",
     ]
+    if len(mesh_a.faces) + len(mesh_b.faces) > _max_pair_faces():
+        limits.append(
+            "Collision uses the submitted shell with redundant triangles removed at the geometry kernel's native numerical tolerance; clearance and face locators retain the submitted meshes."
+        )
     if len(mesh_a.faces) > 25_000 or len(mesh_b.faces) > 25_000:
         limits.append(
             "The true tightest spot may be smaller than the closest measured gap; a 25,000-face proxy was sampled."
