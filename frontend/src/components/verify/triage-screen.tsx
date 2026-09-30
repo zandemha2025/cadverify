@@ -191,16 +191,16 @@ export function TriageScreen({ nav }: { nav: (s: string) => void }) {
         animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both",
         flex: 1,
         overflowY: "auto",
-        padding: "30px 34px",
+        padding: "36px 44px",
         background: C.bg,
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 300, letterSpacing: "-0.015em" }}>
+        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 350, letterSpacing: "-0.02em", lineHeight: 1.25 }}>
           Triage at scale
         </h1>
       </div>
-      <p style={{ margin: "8px 0 0", maxWidth: 660, fontSize: 14, lineHeight: 1.6, color: C.ink55 }}>
+      <p style={{ margin: "10px 0 0", maxWidth: 680, fontSize: 13.5, lineHeight: 1.65, color: C.ink55 }}>
         {total > 0 ? (
           <>
             {NUM(total)} part{total === 1 ? "" : "s"}, each walked through the same verification. The

@@ -182,17 +182,17 @@ export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
 
   // ── LIST VIEW (renderMachines) ──────────────────────────────────────────────
   return (
-    <main style={{ animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both", flex: 1, overflowY: "auto", padding: "30px 34px", background: C.bg }}>
+    <main style={{ animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both", flex: 1, overflowY: "auto", padding: "36px 44px", background: C.bg }}>
       {csvInput}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 300, letterSpacing: "-0.015em" }}>Your machines</h1>
+        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 350, letterSpacing: "-0.02em", lineHeight: 1.25 }}>Your machines</h1>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
           <GhostButton primary onClick={() => setForm({ mode: "add" })}>Add machine</GhostButton>
           <GhostButton onClick={() => csvRef.current?.click()}>Import CSV</GhostButton>
           <GhostButton onClick={() => void downloadCsvTemplate()}>Download CSV template</GhostButton>
         </div>
       </div>
-      <p style={{ margin: "8px 0 0", maxWidth: 620, fontSize: 14, lineHeight: 1.6, color: C.ink55 }}>
+      <p style={{ margin: "10px 0 0", maxWidth: 680, fontSize: 13.5, lineHeight: 1.65, color: C.ink55 }}>
         Every verdict is computed against this inventory — envelope, materials, rate, throughput. Owned means marginal
         cost; missing means an acquisition consideration, stated as one.
       </p>

@@ -191,18 +191,18 @@ export function CatalogScreen({ nav }: { nav: (s: string) => void }) {
         animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both",
         flex: 1,
         overflowY: "auto",
-        padding: "30px 34px",
+        padding: "36px 44px",
         background: C.bg,
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 300, letterSpacing: "-0.015em" }}>Parts</h1>
+        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 350, letterSpacing: "-0.02em", lineHeight: 1.25 }}>Parts</h1>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
           <SavedViewPill label="⭑ Costed parts" onClick={() => savedView("state:Costed")} />
           <SavedViewPill label="⭑ With findings" onClick={() => savedView("findings:true")} />
         </div>
       </div>
-      <p style={{ margin: "8px 0 0", maxWidth: 680, fontSize: 13, lineHeight: 1.6, color: C.ink50 }}>
+      <p style={{ margin: "10px 0 0", maxWidth: 680, fontSize: 13.5, lineHeight: 1.65, color: C.ink55 }}>
         Every part your org has verified or drafted, unified into one grid — recommended route, unit cost, and DFM
         findings, each straight from the engine or honestly absent. Geometry previews are withheld: production does not
         serve org-scoped part meshes to this grid, so no shape is invented.

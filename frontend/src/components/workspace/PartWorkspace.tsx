@@ -44,6 +44,8 @@ import { flattenIssues } from "@/components/IssueList";
 import { CAD_ACCEPT, isSupportedCad, supportedCadLabel } from "@/lib/cad-file";
 import { clientStlIntegrityError } from "@/lib/stl-validation";
 import { analysisFailureCopy } from "@/lib/verify/failure-copy";
+import { C, MONO, procLabel as verifyProcLabel, PROCESS_LABELS } from "@/lib/verify/tokens";
+import { listMachines, createMachine, type OwnedMachine } from "@/lib/verify/machine-api";
 
 import { Button } from "@/components/ui/button";
 import { Dropzone } from "@/components/ui/dropzone";
@@ -185,6 +187,18 @@ export default function PartWorkspace({
     setPendingIssueLink(new URLSearchParams(window.location.search).get("issue"));
   }, []);
   const [showOptions, setShowOptions] = useState(false);
+  const [draggingLanding, setDraggingLanding] = useState(false);
+  const landingInputRef = useRef<HTMLInputElement>(null);
+
+  // machine picker (cold start only)
+  const [machinePickerOpen, setMachinePickerOpen] = useState(false);
+  const [pickerMachines, setPickerMachines] = useState<OwnedMachine[] | null>(null);
+  const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null);
+  const [addingMachine, setAddingMachine] = useState(false);
+  const [newProcess, setNewProcess] = useState(Object.keys(PROCESS_LABELS)[0]);
+  const [newMachineName, setNewMachineName] = useState("");
+  const [newMachineRate, setNewMachineRate] = useState("");
+  const [savingMachine, setSavingMachine] = useState(false);
 
   // per-shop calibration + session-local scenarios
   const [shops, setShops] = useState<ShopProfileInfo[]>([]);
@@ -592,53 +606,214 @@ export default function PartWorkspace({
 
   /* ---- cold start ------------------------------------------------- */
 
+  useEffect(() => {
+    if (!machinePickerOpen || pickerMachines !== null) return;
+    listMachines().then((p) => setPickerMachines(p.machines)).catch(() => setPickerMachines([]));
+  }, [machinePickerOpen, pickerMachines]);
+
+  const pickerSelectedMachine = pickerMachines?.find((m) => m.id === selectedMachineId);
+
+  async function handleAddMachine() {
+    setSavingMachine(true);
+    try {
+      const m = await createMachine({ process: newProcess, name: newMachineName.trim() || null, hourly_rate_usd: newMachineRate ? parseFloat(newMachineRate) : null });
+      setPickerMachines((prev) => [...(prev ?? []), m]);
+      setSelectedMachineId(m.id);
+      setAddingMachine(false);
+      setNewMachineName("");
+      setNewMachineRate("");
+    } finally {
+      setSavingMachine(false);
+    }
+  }
+
   if (!file) {
+    const PROCESS_OPTIONS = Object.keys(PROCESS_LABELS);
+    const fieldStyle = { width: "100%", boxSizing: "border-box" as const, height: 34, border: `1px solid ${C.hair}`, borderRadius: 8, background: C.bg, padding: "0 10px", fontFamily: "inherit", fontSize: 13, color: C.ink, outline: "none" };
+
     return (
-      <div className="mx-auto max-w-2xl space-y-5 p-6">
-        <div>
-          <span className="cv-eyebrow">Should-cost · make-vs-buy</span>
-          <h1 className="mt-2 text-display font-semibold text-foreground">
+      <div style={{ flex: 1, overflowY: "auto", padding: "36px 44px", background: C.bg }}>
+        <input
+          ref={landingInputRef}
+          type="file"
+          accept={CAD_ACCEPT}
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleFile(f);
+            e.target.value = "";
+          }}
+        />
+
+        <div style={{ maxWidth: 760 }}>
+          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 350, letterSpacing: "-0.02em", lineHeight: 1.25, color: C.ink }}>
             Drop a CAD file — get the decision, then the receipts.
           </h1>
-          <p className="mt-1.5 max-w-prose text-sm text-muted-foreground">
-            The manufacturing decision first (make by X, $Y/unit, Z days, switch to a mold above N),
-            with the glass-box drivers, geometric routing and DFM evidence one click away — and the
-            resident Inspector tracing any number to its governed source.
+          <p style={{ margin: "10px 0 0", fontSize: 13.5, lineHeight: 1.65, color: C.ink55, maxWidth: 680 }}>
+            The manufacturing decision first — make by X, $Y/unit, Z days, switch to a mold above N — with the
+            glass-box drivers, geometric routing, and DFM evidence one click away. The resident Inspector traces
+            any number to its governed source.
           </p>
-        </div>
-        {pendingIssueLink && (
-          <Card className="border-warn/40 bg-warn-bg p-4" role="status">
-            <p className="font-medium text-foreground">Issue link ready: {pendingIssueLink}</p>
-            <p className="mt-1 text-sm text-muted-foreground">Upload the original CAD file to restore this issue. The file is not stored in the URL.</p>
-          </Card>
-        )}
-        <Dropzone
-          accept={CAD_ACCEPT}
-          onFiles={(files) => files[0] && handleFile(files[0])}
-          isLoading={costLoading}
-          hint="STL, STEP, STP, IGES or IGS · CAD is parsed and discarded in-process · zero egress"
-        />
-        {costError && <ErrorState message={costError} onRetry={() => setCostError(null)} />}
-        <Card>
-          <button
-            type="button"
-            onClick={() => setShowOptions((s) => !s)}
-            aria-expanded={showOptions}
-            className="w-full px-4 py-3 text-left text-sm font-medium text-muted-foreground hover:text-foreground"
-          >
-            {showOptions ? "▾" : "▸"} Costing options (optional — sensible defaults applied)
-          </button>
-          {showOptions && (
-            <div className="border-t border-border px-4 pb-4 pt-3">
-              <CostOptionsForm
-                opts={opts}
-                setOpt={setOpt}
-                qtyError={validateQty(opts.qty)}
-                disabled={costLoading}
-              />
+
+          {pendingIssueLink && (
+            <div role="status" style={{ marginTop: 16, border: `1px solid ${C.hair}`, borderRadius: 12, background: C.panel, padding: "14px 16px" }}>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: C.ink }}>Issue link ready: {pendingIssueLink}</p>
+              <p style={{ margin: "4px 0 0", fontSize: 12, color: C.ink55 }}>Upload the original CAD file to restore this issue. The file is not stored in the URL.</p>
             </div>
           )}
-        </Card>
+
+          {/* Drop zone card */}
+          <div
+            style={{
+              marginTop: 28,
+              border: `1.5px dashed ${draggingLanding ? C.measured : C.hair}`,
+              borderRadius: 18,
+              background: draggingLanding ? "rgba(55,114,171,0.04)" : C.panel,
+              transition: "border-color 120ms, background 120ms",
+              overflow: "hidden",
+            }}
+          >
+            <button
+              type="button"
+              disabled={costLoading}
+              onClick={() => landingInputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setDraggingLanding(true); }}
+              onDragLeave={() => setDraggingLanding(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDraggingLanding(false);
+                const f = e.dataTransfer.files?.[0];
+                if (f) handleFile(f);
+              }}
+              style={{
+                width: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "44px 32px 36px",
+                background: "transparent",
+                border: "none",
+                cursor: costLoading ? "default" : "pointer",
+                fontFamily: "inherit",
+                color: "inherit",
+                textAlign: "center",
+                opacity: costLoading ? 0.6 : 1,
+              }}
+            >
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={draggingLanding ? C.measured : C.ink35} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 14, transition: "stroke 120ms", flexShrink: 0 }}>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              <p style={{ margin: 0, fontSize: 14.5, fontWeight: 600, color: draggingLanding ? C.measured : C.ink, transition: "color 120ms" }}>
+                {costLoading ? "Processing…" : "Drag and drop or click to upload"}
+              </p>
+              <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.035em", color: C.ink45, lineHeight: 1.7 }}>
+                STL, STEP, STP, IGES or IGS<br />
+                CAD is parsed and discarded in-process · zero egress
+              </p>
+              {!costLoading && (
+                <span style={{ display: "inline-block", marginTop: 20, background: C.ink, color: "#fff", borderRadius: 999, padding: "8px 22px", fontSize: 12.5, fontWeight: 500, pointerEvents: "none" }}>
+                  Browse files
+                </span>
+              )}
+            </button>
+
+            {costError && (
+              <div style={{ borderTop: `1px solid rgba(190,61,45,0.2)`, background: "rgba(190,61,45,0.04)", padding: "12px 20px", display: "flex", alignItems: "center", gap: 12 }}>
+                <p style={{ margin: 0, flex: 1, fontSize: 12.5, color: C.fail }}>{costError}</p>
+                <button type="button" onClick={() => setCostError(null)} style={{ border: `1px solid ${C.fail}`, borderRadius: 999, background: "transparent", color: C.fail, padding: "5px 12px", fontFamily: "inherit", fontSize: 11.5, cursor: "pointer" }}>Dismiss</button>
+              </div>
+            )}
+
+            {/* Costing options accordion */}
+            <div style={{ borderTop: `1px solid ${C.hair}` }}>
+              <button
+                type="button"
+                onClick={() => setShowOptions((s) => !s)}
+                aria-expanded={showOptions}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "11px 20px", background: "transparent", border: "none", cursor: "pointer", fontFamily: "inherit", color: "inherit", textAlign: "left" }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={C.ink45} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: showOptions ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 160ms", flexShrink: 0 }}>
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+                <span style={{ fontFamily: MONO, fontSize: 11, color: C.ink55 }}>Options</span>
+                <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink35, marginLeft: 4 }}>optional — sensible defaults applied</span>
+              </button>
+              {showOptions && (
+                <div style={{ padding: "4px 20px 20px" }}>
+                  <CostOptionsForm
+                    opts={opts}
+                    setOpt={setOpt}
+                    qtyError={validateQty(opts.qty)}
+                    disabled={costLoading}
+                  />
+                  <div style={{ marginTop: 12 }}>
+                    <label style={{ display: "block", fontFamily: MONO, fontSize: 10, letterSpacing: "0.07em", color: C.ink45, marginBottom: 5 }}>
+                      YOUR MACHINES
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => { setMachinePickerOpen((o) => !o); setAddingMachine(false); }}
+                      style={{ width: "100%", height: 34, border: `1px solid ${C.hair}`, borderRadius: machinePickerOpen ? "8px 8px 0 0" : 8, background: C.bg, padding: "0 10px", fontFamily: MONO, fontSize: 11, color: pickerSelectedMachine ? C.ink : C.measured, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}
+                    >
+                      <span>{pickerSelectedMachine ? `${pickerSelectedMachine.name || verifyProcLabel(pickerSelectedMachine.process)} · ${verifyProcLabel(pickerSelectedMachine.process)}` : "Choose or add a machine"}</span>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: machinePickerOpen ? "rotate(180deg)" : "none", transition: "transform 160ms" }}>
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </button>
+                    {machinePickerOpen && (
+                      <div style={{ border: `1px solid ${C.hair}`, borderTop: "none", borderRadius: "0 0 8px 8px", background: C.panel, overflow: "hidden" }}>
+                        {pickerMachines === null ? (
+                          <p style={{ margin: 0, padding: "10px 12px", fontFamily: MONO, fontSize: 10.5, color: C.ink45 }}>Loading…</p>
+                        ) : pickerMachines.length === 0 && !addingMachine ? (
+                          <p style={{ margin: 0, padding: "10px 12px", fontFamily: MONO, fontSize: 10.5, color: C.ink45 }}>No machines declared yet.</p>
+                        ) : (
+                          pickerMachines.map((m) => (
+                            <button key={m.id} type="button" onClick={() => { setSelectedMachineId(m.id === selectedMachineId ? null : m.id); setMachinePickerOpen(false); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: m.id === selectedMachineId ? "rgba(55,114,171,0.06)" : "transparent", border: "none", borderBottom: `1px solid ${C.hair}`, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+                              <span style={{ flex: 1, fontSize: 12.5, color: C.ink }}>{m.name || verifyProcLabel(m.process)}<span style={{ fontFamily: MONO, fontSize: 10, color: C.ink45, marginLeft: 8 }}>{verifyProcLabel(m.process)}</span></span>
+                              {m.hourly_rate_usd != null && <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink45 }}>${m.hourly_rate_usd}/hr</span>}
+                              {m.id === selectedMachineId && <span style={{ fontFamily: MONO, fontSize: 10, color: C.measured }}>✓</span>}
+                            </button>
+                          ))
+                        )}
+                        {addingMachine ? (
+                          <div style={{ padding: "12px", display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, alignItems: "end", borderTop: pickerMachines && pickerMachines.length > 0 ? `1px solid ${C.hair}` : "none" }}>
+                            <div>
+                              <label style={{ display: "block", fontFamily: MONO, fontSize: 9.5, color: C.ink45, marginBottom: 4 }}>PROCESS</label>
+                              <select value={newProcess} onChange={(e) => setNewProcess(e.target.value)} style={{ ...fieldStyle, height: 32, fontSize: 12 }}>
+                                {PROCESS_OPTIONS.map((p) => <option key={p} value={p}>{verifyProcLabel(p)}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <label style={{ display: "block", fontFamily: MONO, fontSize: 9.5, color: C.ink45, marginBottom: 4 }}>NAME (optional)</label>
+                              <input type="text" placeholder="e.g. Haas VF-2" value={newMachineName} onChange={(e) => setNewMachineName(e.target.value)} style={{ ...fieldStyle, height: 32, fontSize: 12 }} />
+                            </div>
+                            <div>
+                              <label style={{ display: "block", fontFamily: MONO, fontSize: 9.5, color: C.ink45, marginBottom: 4 }}>$/HR</label>
+                              <input type="number" placeholder="85" value={newMachineRate} onChange={(e) => setNewMachineRate(e.target.value)} style={{ ...fieldStyle, height: 32, fontSize: 12, width: 72 }} />
+                            </div>
+                            <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8 }}>
+                              <button type="button" onClick={() => void handleAddMachine()} disabled={savingMachine} style={{ height: 30, background: C.ink, color: "#fff", border: "none", borderRadius: 6, padding: "0 14px", fontFamily: "inherit", fontSize: 12, fontWeight: 500, cursor: savingMachine ? "default" : "pointer", opacity: savingMachine ? 0.6 : 1 }}>{savingMachine ? "Saving…" : "Save"}</button>
+                              <button type="button" onClick={() => setAddingMachine(false)} style={{ height: 30, background: "transparent", color: C.ink55, border: `1px solid ${C.hair}`, borderRadius: 6, padding: "0 12px", fontFamily: "inherit", fontSize: 12, cursor: "pointer" }}>Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button type="button" onClick={() => setAddingMachine(true)} style={{ width: "100%", padding: "8px 12px", background: "transparent", border: "none", borderTop: pickerMachines && pickerMachines.length > 0 ? `1px solid ${C.hair}` : "none", cursor: "pointer", fontFamily: MONO, fontSize: 10.5, color: C.measured, textAlign: "left" }}>
+                            + Add a machine
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    <p style={{ margin: "4px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink35 }}>declared machines set the marginal cost of in-house routes</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+        </div>
       </div>
     );
   }

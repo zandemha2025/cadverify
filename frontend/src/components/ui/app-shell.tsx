@@ -16,7 +16,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import {
@@ -63,51 +63,93 @@ type RailItem = {
   label: string;
   icon: LucideIcon;
   href: string;
+  disabled?: boolean;
 };
 const RAIL: RailItem[] = [
-  { id: "verify", label: "Verify workspace", icon: FileCheck2, href: "/verify" },
-  { id: "designs", label: "Design Studio", icon: Boxes, href: "/designs" },
-  { id: "home", label: "Should-cost", icon: Calculator, href: "/cost" },
+  { id: "verify", label: "Verify", icon: FileCheck2, href: "/verify" },
+  { id: "records", label: "Records", icon: History, href: "/verify?screen=records" },
   { id: "analyze", label: "Analyze DFM", icon: ScanLine, href: "/analyze" },
-  { id: "batch", label: "Batch runs", icon: Layers, href: "/batch" },
-  { id: "decisions", label: "Cost decisions", icon: PiggyBank, href: "/cost-decisions" },
-  { id: "history", label: "Recent analyses", icon: History, href: "/history" },
+  { id: "cost", label: "Should-cost workspace", icon: Calculator, href: "/cost" },
+  { id: "batch", label: "Batch run", icon: Layers, href: "/batch", disabled: true },
+  { id: "designs", label: "Design Studio", icon: Boxes, href: "/designs", disabled: true },
+  { id: "decisions", label: "Cost decisions", icon: PiggyBank, href: "/cost-decisions", disabled: true },
+  { id: "compare", label: "Compare A/B", icon: GitCompareArrows, href: "/cost-decisions/compare", disabled: true },
+  { id: "rfq", label: "RFQ packages", icon: FileCheck2, href: "/rfq-packages", disabled: true },
+  { id: "history", label: "Recent analyses", icon: History, href: "/history", disabled: true },
+  { id: "integrations", label: "Integrations", icon: Database, href: "/integrations", disabled: true },
+  { id: "developer", label: "API & docs", icon: Code2, href: "/settings/developer", disabled: true },
+  { id: "security", label: "Security", icon: Lock, href: "/settings/security", disabled: true },
+  { id: "organization", label: "Organization", icon: Building2, href: "/settings/organization", disabled: true },
 ];
 
-function railActive(pathname: string, item: RailItem): boolean {
-  return pathname === item.href || pathname.startsWith(item.href + "/");
+function railActive(pathname: string, search: string, item: RailItem): boolean {
+  const [itemPath, itemQuery] = item.href.split("?");
+  if (pathname !== itemPath && !pathname.startsWith(itemPath + "/")) return false;
+  if (itemQuery) return new URLSearchParams(itemQuery).toString() === new URLSearchParams(search).toString();
+  return !new URLSearchParams(search).get("screen");
 }
 
-function IconRail() {
+function IconRail({ onExpand }: { onExpand?: () => void }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const search = searchParams.toString();
   return (
     <Tooltip.Provider delayDuration={200}>
       <nav
         aria-label="Domains"
         className="hidden w-[var(--rail-w)] shrink-0 flex-col items-center gap-1 border-r border-border bg-background py-3 sm:flex"
       >
-        {/* brand mark — the datum crosshair, cobalt */}
-        <Link
-          href="/verify"
-          aria-label="ProofShape"
-          className="mb-2 flex size-9 items-center justify-center rounded-[var(--radius-sm)] text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <svg viewBox="0 0 20 20" className="size-5" fill="none" stroke="currentColor" strokeWidth={1.6}>
-            <circle cx="10" cy="10" r="6.4" />
-            <path d="M10 1.5v5M10 13.5v5M1.5 10h5M13.5 10h5" strokeLinecap="round" />
-          </svg>
-        </Link>
+        {onExpand ? (
+          <button
+            type="button"
+            onClick={onExpand}
+            aria-label="Expand sidebar"
+            className="mb-2 inline-flex size-9 items-center justify-center rounded-[var(--radius-sm)] text-subtle-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <PanelLeftOpen className="size-4" />
+          </button>
+        ) : (
+          <Link
+            href="/verify"
+            aria-label="ProofShape"
+            className="mb-2 flex size-9 items-center justify-center rounded-[var(--radius-sm)] text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <svg viewBox="0 0 20 20" className="size-5" fill="none" stroke="currentColor" strokeWidth={1.6}>
+              <circle cx="10" cy="10" r="6.4" />
+              <path d="M10 1.5v5M10 13.5v5M1.5 10h5M13.5 10h5" strokeLinecap="round" />
+            </svg>
+          </Link>
+        )}
+
+        <Tooltip.Root>
+          <Tooltip.Trigger asChild>
+            <Link
+              href="/verify"
+              aria-label="Start analysis"
+              className="mb-1 flex size-9 items-center justify-center rounded-[var(--radius-sm)] bg-primary text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <FileCheck2 className="size-[18px]" />
+            </Link>
+          </Tooltip.Trigger>
+          <Tooltip.Portal>
+            <Tooltip.Content side="right" sideOffset={8} className="z-[90] rounded-[var(--radius-sm)] border border-border bg-card px-2 py-1 text-xs text-foreground shadow-pop">
+              Start analysis
+            </Tooltip.Content>
+          </Tooltip.Portal>
+        </Tooltip.Root>
 
         {RAIL.map((item) => {
           const Icon = item.icon;
-          const active = railActive(pathname, item);
+          const active = !item.disabled && railActive(pathname, search, item);
           const inner = (
             <span
               className={cn(
                 "relative flex size-9 items-center justify-center rounded-[var(--radius-sm)] transition-colors",
-                active
-                  ? "bg-accent-subtle text-primary"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                item.disabled
+                  ? "cursor-not-allowed opacity-35"
+                  : active
+                    ? "bg-accent-subtle text-primary"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
               {active && (
@@ -119,9 +161,13 @@ function IconRail() {
           return (
             <Tooltip.Root key={item.id}>
               <Tooltip.Trigger asChild>
-                <Link href={item.href} aria-label={item.label} aria-current={active ? "page" : undefined}>
-                  {inner}
-                </Link>
+                {item.disabled ? (
+                  <span aria-label={`${item.label} — coming in v2`}>{inner}</span>
+                ) : (
+                  <Link href={item.href} aria-label={item.label} aria-current={active ? "page" : undefined}>
+                    {inner}
+                  </Link>
+                )}
               </Tooltip.Trigger>
               <Tooltip.Portal>
                 <Tooltip.Content
@@ -129,7 +175,7 @@ function IconRail() {
                   sideOffset={8}
                   className="z-[90] rounded-[var(--radius-sm)] border border-border bg-card px-2 py-1 text-xs text-foreground shadow-pop"
                 >
-                  {item.label}
+                  {item.disabled ? <><span className="opacity-50">{item.label}</span> <span className="ml-1 rounded-sm bg-muted px-1 py-0.5 text-[10px] font-medium text-subtle-foreground">v2</span></> : item.label}
                 </Tooltip.Content>
               </Tooltip.Portal>
             </Tooltip.Root>
@@ -144,29 +190,46 @@ function IconRail() {
 }
 
 /* ── L1 sidebar — object lists + saved views within a domain. ───────── */
-type NavLink = { label: string; href: string; icon: LucideIcon; hint?: string };
+type NavLink = { label: string; href: string; icon: LucideIcon; hint?: string; disabled?: boolean };
 const WORKSPACE_NAV: NavLink[] = [
-  { label: "Verify workspace", href: "/verify", icon: FileCheck2, hint: "canonical product surface" },
-  { label: "Design Studio", href: "/designs", icon: Boxes, hint: "create · revise · verify" },
-  { label: "Should-cost workspace", href: "/cost", icon: Calculator, hint: "cost · make-vs-buy" },
+  { label: "Records", href: "/verify?screen=records", icon: History, hint: "history" },
   { label: "Analyze DFM", href: "/analyze", icon: ScanLine, hint: "geometry · flags" },
-  { label: "Batch run", href: "/batch", icon: Layers, hint: "many parts" },
+  { label: "Should-cost workspace", href: "/cost", icon: Calculator, hint: "cost · make-vs-buy" },
+  { label: "Batch run", href: "/batch", icon: Layers, hint: "many parts", disabled: true },
+  { label: "Design Studio", href: "/designs", icon: Boxes, hint: "create · revise · verify", disabled: true },
 ];
 const LEDGER_NAV: NavLink[] = [
-  { label: "Cost decisions", href: "/cost-decisions", icon: PiggyBank, hint: "saved" },
-  { label: "Compare A/B", href: "/cost-decisions/compare", icon: GitCompareArrows },
-  { label: "RFQ packages", href: "/rfq-packages", icon: FileCheck2 },
-  { label: "Recent analyses", href: "/history", icon: History },
-  { label: "Integrations", href: "/integrations", icon: Database },
-  { label: "API & docs", href: "/settings/developer", icon: Code2 },
-  { label: "Security", href: "/settings/security", icon: Lock, hint: "access · password" },
-  { label: "Organization", href: "/settings/organization", icon: Building2, hint: "members · SSO" },
+  { label: "Cost decisions", href: "/cost-decisions", icon: PiggyBank, hint: "saved", disabled: true },
+  { label: "Compare A/B", href: "/cost-decisions/compare", icon: GitCompareArrows, disabled: true },
+  { label: "RFQ packages", href: "/rfq-packages", icon: FileCheck2, disabled: true },
+  { label: "Recent analyses", href: "/history", icon: History, disabled: true },
+  { label: "Integrations", href: "/integrations", icon: Database, disabled: true },
+  { label: "API & docs", href: "/settings/developer", icon: Code2, disabled: true },
+  { label: "Security", href: "/settings/security", icon: Lock, hint: "access · password", disabled: true },
+  { label: "Organization", href: "/settings/organization", icon: Building2, hint: "members · SSO", disabled: true },
 ];
 
 function SidebarLink({ link }: { link: NavLink }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const Icon = link.icon;
-  const active = pathname === link.href;
+  const [linkPath, linkQuery] = link.href.split("?");
+  const active = !link.disabled && pathname === linkPath && (
+    linkQuery
+      ? new URLSearchParams(linkQuery).toString() === searchParams.toString()
+      : !searchParams.get("screen")
+  );
+
+  if (link.disabled) {
+    return (
+      <span className="group flex cursor-not-allowed items-center gap-2.5 rounded-[var(--radius-sm)] px-2 py-1.5 text-sm opacity-40">
+        <Icon className="size-4 shrink-0 text-subtle-foreground" />
+        <span className="min-w-0 flex-1 truncate font-medium">{link.label}</span>
+        <span className="rounded-sm bg-muted px-1 py-0.5 text-[10px] font-medium text-subtle-foreground opacity-100">v2</span>
+      </span>
+    );
+  }
+
   return (
     <Link
       href={link.href}
@@ -203,23 +266,29 @@ function SidebarSection({ title, links }: { title: string; links: NavLink[] }) {
   );
 }
 
-function AppSidebar() {
-  const { open } = useCommandPalette();
+function AppSidebar({ onCollapse }: { onCollapse: () => void }) {
   return (
     <aside className="hidden w-[var(--sidebar-w)] shrink-0 flex-col overflow-y-auto border-r border-border bg-background lg:flex">
-      {/* ⌘K search — the co-primary navigator lives at the top of the sidebar */}
-      <div className="p-2">
+      <div className="flex items-center justify-between px-3 pt-3 pb-1">
+        <span className="text-[11px] font-medium text-subtle-foreground tracking-wide">Navigation</span>
         <button
           type="button"
-          onClick={open}
-          className="flex w-full items-center gap-2 rounded-[var(--radius-sm)] border border-border bg-card px-2.5 py-2 text-left text-sm text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={onCollapse}
+          aria-label="Collapse sidebar"
+          className="inline-flex size-7 items-center justify-center rounded-[var(--radius-sm)] text-subtle-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <Search className="size-4 shrink-0 text-subtle-foreground" />
-          <span className="flex-1">Search…</span>
-          <kbd className="num inline-flex items-center gap-0.5 rounded-xs border border-border px-1 py-0.5 text-[10px]">
-            <Command className="size-2.5" />K
-          </kbd>
+          <PanelLeftClose className="size-4" />
         </button>
+      </div>
+
+      <div className="px-3 pt-1 pb-2">
+        <Link
+          href="/verify"
+          className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-sm)] bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <FileCheck2 className="size-4" />
+          Start analysis
+        </Link>
       </div>
 
       <SidebarSection title="Workspace" links={WORKSPACE_NAV} />
@@ -310,14 +379,6 @@ function ContextBar({
         P
       </Link>
       <MobileNavigation />
-      <button
-        type="button"
-        onClick={onToggleSidebar}
-        aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
-        className="hidden size-7 items-center justify-center rounded-[var(--radius-sm)] text-subtle-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:inline-flex"
-      >
-        {sidebarOpen ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
-      </button>
 
       {/* namespace breadcrumb — the single cheapest "governed platform" signal */}
       <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
@@ -445,8 +506,10 @@ function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-canvas text-foreground">
-      <IconRail />
-      {sidebarOpen && <AppSidebar />}
+      {sidebarOpen
+        ? <AppSidebar onCollapse={() => setSidebarOpen(false)} />
+        : <IconRail onExpand={() => setSidebarOpen(true)} />
+      }
       <div className="flex min-w-0 flex-1 flex-col">
         <ContextBar sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((o) => !o)} />
         <main className="min-h-0 flex-1 overflow-y-auto">

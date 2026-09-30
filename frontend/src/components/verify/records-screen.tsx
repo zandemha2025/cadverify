@@ -86,9 +86,9 @@ export function RecordsScreen({ nav }: { nav: (s: string) => void }) {
   }, [refresh]);
 
   return (
-    <main style={{ animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both", flex: 1, overflowY: "auto", padding: "30px 34px", background: C.bg }}>
-      <h1 style={{ margin: 0, fontSize: 26, fontWeight: 300, letterSpacing: "-0.015em" }}>Records</h1>
-      <p style={{ margin: "8px 0 0", maxWidth: 640, fontSize: 14, lineHeight: 1.6, color: C.ink55 }}>
+    <main style={{ animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both", flex: 1, overflowY: "auto", padding: "36px 44px", background: C.bg }}>
+      <h1 style={{ margin: 0, fontSize: 26, fontWeight: 350, letterSpacing: "-0.02em", lineHeight: 1.25 }}>Records</h1>
+      <p style={{ margin: "10px 0 0", maxWidth: 680, fontSize: 13.5, lineHeight: 1.65, color: C.ink55 }}>
         Every verification is a keepable, shareable artifact — the org&apos;s make-vs-buy memory. A record carries its
         world, its verdict, its receipts, and whoever decided.
       </p>

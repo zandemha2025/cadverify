@@ -199,7 +199,7 @@ function ProgramIndex({
   return (
     <main style={mainStyle} data-screen-label="Programs">
       <h1 style={h1Style}>Programs</h1>
-      <p style={{ margin: "8px 0 0", maxWidth: 640, fontSize: 14, lineHeight: 1.6, color: C.ink55 }}>
+      <p style={{ margin: "10px 0 0", maxWidth: 680, fontSize: 13.5, lineHeight: 1.65, color: C.ink55 }}>
         Group verified parts into programs, see whether their declared worlds align, and roll up exposure
         from the engine&apos;s verified unit cost × your declared annual volume.
       </p>
@@ -629,15 +629,16 @@ const mainStyle: React.CSSProperties = {
   animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both",
   flex: 1,
   overflowY: "auto",
-  padding: "30px 34px",
+  padding: "36px 44px",
   background: C.bg,
 };
 
 const h1Style: React.CSSProperties = {
   margin: 0,
   fontSize: 26,
-  fontWeight: 300,
-  letterSpacing: "-0.015em",
+  fontWeight: 350,
+  letterSpacing: "-0.02em",
+  lineHeight: 1.25,
 };
 
 const cardStyle: React.CSSProperties = {

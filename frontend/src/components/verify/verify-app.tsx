@@ -8,6 +8,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { C, MONO, SANS } from "@/lib/verify/tokens";
 import {
   QTY_LADDER,
@@ -48,6 +49,7 @@ import {
   workspaceScreenFromSearch,
   type WorkspaceScreen,
 } from "@/lib/verify/workspace-screen-route";
+import { buildFixtureResult } from "@/lib/verify/dev-fixture";
 import type { OrganizationAccess } from "@/lib/organization-access";
 
 // The shared hotkey nav map — matches the design 1:1 (support.js keydown handler):
@@ -71,7 +73,6 @@ const RAIL: { key: Screen; label: string; d: string }[] = [
   { key: "verify", label: "Verify", d: "M20 6 9 17l-5-5M4 6h5M4 12h2" },
   { key: "context-fit", label: "Fit in context", d: "M4 7h7v10H4zM13 4h7v16h-7zM11 12h2" },
   { key: "catalog", label: "Parts", d: "M21 8 12 3 3 8l9 5zM3 8v8l9 5 9-5V8M12 13v8" },
-  { key: "records", label: "Records", d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7ZM14 2v4a2 2 0 0 0 2 2h4M8 13h8M8 17h5" },
   { key: "programs", label: "Programs", d: "M3 5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" },
   { key: "machines", label: "Your machines", d: "M3 8h18v12H3zM7 8V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v3M14 13h4M14 16h4" },
   { key: "triage", label: "Triage", d: "M4 5h16M6 12h12M9 19h6" },
@@ -87,6 +88,8 @@ export function VerifyApp({
     (org) => org.orgId === organizationAccess.activeOrgId,
   ) ?? null;
   const hasActiveOrganization = activeOrganization !== null;
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [screen, setScreen] = useState<Screen>("home");
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [guidedSampleState, setGuidedSampleState] = useState<
@@ -115,6 +118,7 @@ export function VerifyApp({
   const [assemblyAnalysis, setAssemblyAnalysis] = useState<AssemblyAnalysis | null>(null);
   const [assemblyAnalyzing, setAssemblyAnalyzing] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [stageCollapsed, setStageCollapsed] = useState(false);
   // A REAL signal for the rail footer: are any of the org's machines declaring an
   // hourly rate (i.e. a shop rate is actually bound)? null while loading → the dot
   // stays hollow/neutral until a bound rate is detected — never a hardcoded claim.
@@ -127,7 +131,6 @@ export function VerifyApp({
     | null
   >(null);
   const designImportStarted = useRef(false);
-  const workspaceDestinationApplied = useRef(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   // The last part the user verified — so a change to the declared world can re-run
   // the verification (re-persist the env + re-cost against it) for the same part.
@@ -142,6 +145,10 @@ export function VerifyApp({
   // invalidates its completion callback even if the underlying request finishes.
   const guidedRunSeq = useRef(0);
 
+  // Screens that live in the sidebar as top-level nav items get a real URL.
+  // Overlays (acquisition, palette) are ephemeral and stay URL-free.
+  const SIDEBAR_SCREENS = new Set(["records"]);
+
   const nav = useCallback((s: string) => {
     if (s !== "verify") {
       ++guidedRunSeq.current;
@@ -150,8 +157,13 @@ export function VerifyApp({
     }
     if (s === "acquisition") return setScreen("acquisition");
     if (s === "palette") return setScreen("palette");
+    if (SIDEBAR_SCREENS.has(s)) {
+      router.push(`/verify?screen=${s}`);
+    } else {
+      router.push("/verify");
+    }
     setScreen(s as Screen);
-  }, []);
+  }, [router]);
 
   const pickFile = useCallback(() => fileRef.current?.click(), []);
   const pickOwnFile = useCallback(() => {
@@ -316,16 +328,30 @@ export function VerifyApp({
         // Drop a result that a newer run has superseded — last dispatch wins, so the
         // displayed verdict/material always matches the most recent selection.
         if (runSeq.current === seq) {
+          // In dev, swap a blank result (both gates null) for the fixture so the
+          // UI can be worked on without a running engine.
+          if (
+            process.env.NODE_ENV === "development" &&
+            !r.validation &&
+            !r.cost
+          ) {
+            const fixture = buildFixtureResult(f);
+            setResult(fixture);
+            return fixture;
+          }
           setResult(r);
           return r;
         }
         return null;
       } catch (caught) {
         if (runSeq.current === seq) {
+          if (process.env.NODE_ENV === "development") {
+            const fixture = buildFixtureResult(f);
+            setResult(fixture);
+            return fixture;
+          }
           const message =
             caught instanceof Error ? caught.message : "Verification could not finish";
-          // The progress callback runs asynchronously; keep its last real value
-          // even though TypeScript cannot narrow callback assignments here.
           const preserved = progressiveResult as VerifyResult | null;
           const failedResult: VerifyResult = preserved
             ? { ...preserved, costError: message }
@@ -451,11 +477,9 @@ export function VerifyApp({
   }, []);
 
   useEffect(() => {
-    if (workspaceDestinationApplied.current) return;
-    workspaceDestinationApplied.current = true;
-    const destination = workspaceScreenFromSearch(window.location.search);
-    if (destination) setScreen(destination);
-  }, []);
+    const destination = workspaceScreenFromSearch(searchParams.toString() ? `?${searchParams.toString()}` : "");
+    setScreen(destination ?? "home");
+  }, [searchParams]);
 
   // Design Studio handoff: load the exact authenticated STEP revision and feed
   // it through the same File-based verification path as a manual upload. The
@@ -634,77 +658,6 @@ export function VerifyApp({
         }}
       />
 
-      {/* Verify-local navigation. Platform navigation stays in AppShell. */}
-      <nav className="cv-verify-workspace-nav" aria-label="Verify workspace sections" style={{ minHeight: 52, flexShrink: 0, borderBottom: `1px solid ${C.hair2}`, background: C.panel, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "6px 14px" }}>
-        <div className="cv-verify-workspace-tabs" style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, overflowX: "auto" }}>
-        {RAIL.map((r) => {
-          const active = screen === r.key || (r.key === "catalog" && screen === "compare");
-          return (
-            <button
-              key={r.key}
-              type="button"
-              aria-label={r.label}
-              onClick={() => nav(r.key)}
-              title={r.label}
-              className="cv-verify-rail-button"
-              style={{ minWidth: 44, height: 38, padding: "0 10px", borderRadius: 9, border: active ? `1px solid ${C.hair}` : "1px solid transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: active ? "#eceef1" : "transparent", color: active ? C.ink : C.ink50, transition: "background-color 150ms, color 150ms, border-color 150ms", whiteSpace: "nowrap", fontFamily: "inherit", fontSize: 12 }}
-            >
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d={r.d} />
-              </svg>
-              <span className="cv-verify-rail-label">{r.label}</span>
-            </button>
-          );
-        })}
-        </div>
-        <select
-          className="cv-verify-mobile-section"
-          aria-label="Verify workspace section"
-          value={activeWorkspaceSection}
-          onChange={(event) => nav(event.target.value)}
-        >
-          {RAIL.map((item) => (
-            <option key={item.key} value={item.key}>{item.label}</option>
-          ))}
-        </select>
-        <div className="cv-verify-workspace-actions" style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          <button
-            type="button"
-            onClick={() => setScreen("calibration")}
-            title={
-              ratesBound
-                ? "Your shop rates are bound · ● SHOP — open Calibration & truth"
-                : "Calibration & truth — no shop rate bound yet"
-            }
-            className="cv-verify-rate-dot"
-            style={{ width: 36, height: 36, border: `1px solid ${C.hair}`, borderRadius: 999, background: "#fff", padding: 4, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-          >
-            <span
-              aria-hidden
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                display: "block",
-                background: ratesBound ? C.shop : "transparent",
-                border: ratesBound ? "none" : `1.5px solid ${C.ink40}`,
-              }}
-            />
-          </button>
-          <span className="cv-verify-rate-switcher"><CalibrationSwitcher onOpenCalibration={() => setScreen("calibration")} /></span>
-          <button
-            className="cv-verify-start-button"
-            type="button"
-            onClick={() => setWelcomeOpen(true)}
-            style={{ minHeight: 36, border: `1px solid ${C.measured}`, background: "rgba(55,114,171,0.06)", color: C.measured, borderRadius: 999, padding: "7px 13px", fontFamily: "inherit", fontSize: 11.5, fontWeight: 650, cursor: "pointer" }}
-          >
-            Start here
-          </button>
-          <button className="cv-verify-command-button" type="button" onClick={() => setScreen("palette")} title="Verify commands (⌘K)" aria-label="Open Verify command palette" style={{ display: "inline-flex", alignItems: "center", gap: 6, minHeight: 36, border: `1px solid ${C.hair}`, background: "#fff", borderRadius: 999, padding: "7px 12px", fontFamily: MONO, fontSize: 11, color: C.ink55, cursor: "pointer" }}>Jump <span aria-hidden>⌘K</span></button>
-          <button className="cv-verify-primary-action" type="button" onClick={pickOwnFile} style={{ minHeight: 36, background: C.ink, color: "#fff", border: "none", borderRadius: 999, padding: "8px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>Check my CAD</button>
-        </div>
-      </nav>
-
       {/* main */}
       <div className="cv-verify-main" style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         {uploadRejection && (
@@ -805,33 +758,97 @@ export function VerifyApp({
           />
         )}
         {screen === "verify" && (
-          <div className="cv-verify-screen-split" style={{ flex: 1, minHeight: 0, display: "flex" }}>
-            <Stage
-              file={file}
-              partName={result?.file?.name ?? file?.name ?? "No part yet"}
-              meta1={
-                stageAssembly
-                  ? `assembly · ${stageAssembly.partCount} parts in world position`
-                  : stageGeometry
-                  ? `Ø/bbox ${stageGeometry.bbox_mm.map((n) => n.toFixed(1)).join(" × ")} mm · ${stageGeometry.volume_cm3.toFixed(2)} cm³`
-                  : running
-                    ? "measuring geometry…"
-                    : "drop STL, STEP or IGES to measure"
-              }
-              meta2={
-                stageAssembly
-                  ? undefined
-                  : stageGeometry
-                  ? `watertight ${String(stageGeometry.watertight)} · ● MEASURED`
-                  : undefined
-              }
-              bbox={stageGeometry?.bbox_mm ?? null}
-              hostile={env.temp || env.sour || env.pressure}
-              autoOrbit={running && !stageAssembly}
-              context={result?.partContext ?? null}
-              contextError={result?.partContextError ?? null}
-              assembly={stageAssembly}
-            />
+          <div className="cv-verify-screen-split" style={{ flex: 1, minHeight: 0, display: "flex", position: "relative" }}>
+            <div style={{
+              width: stageCollapsed ? 0 : "42%",
+              minWidth: stageCollapsed ? 0 : 380,
+              flexShrink: 0,
+              overflow: "hidden",
+              transition: "width 0.25s ease, min-width 0.25s ease",
+              position: "relative",
+            }}>
+              <Stage
+                file={file}
+                partName={result?.file?.name ?? file?.name ?? "No part yet"}
+                meta1={
+                  stageAssembly
+                    ? `assembly · ${stageAssembly.partCount} parts in world position`
+                    : stageGeometry
+                    ? `Ø/bbox ${stageGeometry.bbox_mm.map((n) => n.toFixed(1)).join(" × ")} mm · ${stageGeometry.volume_cm3.toFixed(2)} cm³`
+                    : running
+                      ? "measuring geometry…"
+                      : "drop STL, STEP or IGES to measure"
+                }
+                meta2={
+                  stageAssembly
+                    ? undefined
+                    : stageGeometry
+                    ? `watertight ${String(stageGeometry.watertight)} · ● MEASURED`
+                    : undefined
+                }
+                bbox={stageGeometry?.bbox_mm ?? null}
+                hostile={env.temp || env.sour || env.pressure}
+                autoOrbit={running && !stageAssembly}
+                context={result?.partContext ?? null}
+                contextError={result?.partContextError ?? null}
+                assembly={stageAssembly}
+              />
+              <button
+                type="button"
+                aria-label="Collapse 3D viewer"
+                onClick={() => setStageCollapsed(true)}
+                style={{
+                  position: "absolute",
+                  top: 12,
+                  right: 12,
+                  zIndex: 10,
+                  width: 28,
+                  height: 28,
+                  border: `1px solid ${C.hair2}`,
+                  borderRadius: 6,
+                  background: "rgba(255,255,255,0.85)",
+                  backdropFilter: "blur(8px)",
+                  color: C.ink45,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 0,
+                  fontSize: 13,
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+                }}
+              >
+                ‹
+              </button>
+            </div>
+            {stageCollapsed && (
+              <button
+                type="button"
+                aria-label="Expand 3D viewer"
+                onClick={() => setStageCollapsed(false)}
+                style={{
+                  alignSelf: "flex-start",
+                  marginTop: 12,
+                  marginLeft: 8,
+                  flexShrink: 0,
+                  width: 28,
+                  height: 28,
+                  border: `1px solid ${C.hair2}`,
+                  borderRadius: 6,
+                  background: C.panel,
+                  color: C.ink45,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 0,
+                  fontSize: 13,
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+                }}
+              >
+                ›
+              </button>
+            )}
             {stageAssembly && assembly ? (
               <AssemblyPanel
                 model={assembly.model}
