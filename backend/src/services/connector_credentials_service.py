@@ -364,6 +364,7 @@ async def run_bom_profile(
     try:
         secret = decrypt_secret(row.encrypted_secret_json)
         if sap:
+            assert sap_selection is not None  # Required before decrypting credentials.
             rows, source_count = await read_sap_bom_preview(row.base_url, row.auth_type, secret, part_id=part_id, selection=sap_selection)
         else:
             rows, source_count = await read_windchill_bom(row.base_url, row.auth_type, secret, part_id=part_id, navigation_id=navigation_id)

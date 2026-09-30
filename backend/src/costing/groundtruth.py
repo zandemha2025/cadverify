@@ -486,6 +486,7 @@ class Evaluation:
         if validated_processes:
             m = _aggregate([r for r in self.residuals
                             if not r.stand_in and r.process in validated_processes])
+            assert m is not None  # Each validated process has real residuals.
             return (f"VALIDATED within ±{m['band_covers_80pct']:g}% across "
                     f"{m['n_parts']} real held-out part(s) "
                     f"for {', '.join(validated_processes)} "
