@@ -125,10 +125,11 @@ def _additive_machine(process, drivers, rates: RateCard):
 def _cnc_cycle(process, drivers, material_class, rates: RateCard):
     """Material-removal model: rough (remove billet→part) + finish (surface area)."""
     if process == PT.CNC_TURNING:
-        r = drivers.rot_cross_dia_mm / 2.0
-        stock_vol = math.pi * r * r * drivers.rot_axis_len_mm / 1000.0
+        allow = rates.g("stock_allowance")
+        stock_vol = drivers.turning_stock_volume_cm3(allow)
         stock_src = (f"bounding cylinder π·({drivers.rot_cross_dia_mm:.1f}/2)²·"
-                     f"{drivers.rot_axis_len_mm:.1f} mm = {stock_vol:.1f} cm³")
+                     f"{drivers.rot_axis_len_mm:.1f} mm × {allow:.2f} stock allowance "
+                     f"= {stock_vol:.1f} cm³ [assumption, not shop-validated]")
     else:
         # E-now #1: mill from a rectangular BILLET (bounding box), not a hull —
         # a pocketed part is cut from a solid block, so more is roughed away.
@@ -378,7 +379,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
 
     # ---- MATERIAL --------------------------------------------------------
     if process == PT.CNC_TURNING:
-        # turning starts from round bar (hull ≈ swept solid) — billet unchanged
+        # Buy the same enclosing round bar used by the rough-machining model.
         input_mass = drivers.stock_mass_kg(material.density, rates.g("stock_allowance"))
         mass_src = drivers.stock_source(material.density, rates.g("stock_allowance"), material.name)
     elif process in SUBTRACTIVE:

@@ -110,7 +110,7 @@ RATE_CARD_V0: dict = {
         "margin": 0.00,               # should-cost, not price
         "overhead": 0.00,             # indirect-cost markup on conversion (machine+labor+setup); 0 = no-op
         "utilization": 1.00,          # machine utilization 0<u<=1; effective machine cost ÷ u; 1 = no-op
-        "stock_allowance": 1.10,      # CNC billet oversize on hull volume
+        "stock_allowance": 1.10,      # CNC stock volume multiplier (block/round bar)
         "daily_machine_hours": 8.0,   # hr/day for lead-time production days
         "cooling_coef": 2.0,          # s/mm^2 — molding cooling ∝ wall^2
         "shot_overhead_s": 5.0,       # s — molding non-cooling cycle overhead

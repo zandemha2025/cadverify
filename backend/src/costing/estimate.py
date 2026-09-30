@@ -203,7 +203,7 @@ def _global_assumptions(rates: RateCard, options: EstimateOptions, region: str) 
         Driver("utilization", g["utilization"], "frac", rates.prov_tag("utilization"),
                "machine utilization (idle-recovery on machine cost)" + shop_note),
         Driver("stock_allowance", g["stock_allowance"], "×", rates.prov_tag("stock_allowance"),
-               "CNC billet oversize (milling: on bounding box; turning: on hull)"),
+               "CNC stock volume allowance (milling: on bounding box; turning: on enclosing cylinder)"),
         Driver("machine_labor_frac", g["machine_labor_frac"], "frac",
                rates.prov_tag("machine_labor_frac"),
                "operator-labor share of the machine rate that scales with region "

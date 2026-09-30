@@ -18,8 +18,10 @@ meshes so they always run in CI (no real-parts corpus dependency).
 from __future__ import annotations
 
 import os
+import math
 
 import numpy as np
+import pytest
 import trimesh
 
 from src.analysis.base_analyzer import analyze_geometry, run_universal_checks
@@ -31,7 +33,7 @@ from src.matcher.profile_matcher import rank_processes, score_process
 import src.analysis.processes  # noqa: F401  populate registry
 
 from src.costing import estimate_decision, EstimateOptions
-from src.costing.cost_model import cost_breakdown
+from src.costing.cost_model import cost_breakdown, _cnc_cycle
 from src.costing.drivers import extract_drivers, bbox_billet_enabled
 from src.costing.rates import build_rate_card
 from src.costing.routing import select_material
@@ -113,7 +115,8 @@ def test_bbox_billet_direction_and_offswitch():
     os.environ["CADVERIFY_BBOX_BILLET"] = "0"
     assert bbox_billet_enabled() is False
     assert drivers.billet_volume_cm3(allow) == drivers.hull_volume_cm3 * allow
-    assert drivers.billet_mass_kg(mat.density, allow) == drivers.stock_mass_kg(mat.density, allow)
+    assert drivers.billet_mass_kg(mat.density, allow) == drivers.hull_volume_cm3 * allow * mat.density / 1000
+    assert drivers.billet_source(mat.density, allow, mat.name).startswith("hull volume")
     _clear("CADVERIFY_BBOX_BILLET")
 
     # provenance + honest caveat on the material driver source (DEFAULT-tagged billet)
@@ -122,7 +125,7 @@ def test_bbox_billet_direction_and_offswitch():
 
 
 def test_bbox_billet_untouched_for_turning():
-    """Turning starts from round bar — E-now #1 must NOT touch it (still hull)."""
+    """The milling stock switch must not change turning's round-bar stock."""
     drivers, rates, mat, ps = _cnc_setup(_nonconvex())
     turn_mat = select_material(PT.CNC_TURNING, "aluminum", rates)
     ps_turn = ps  # process_score is only used for DFM pass-through here
@@ -134,6 +137,36 @@ def test_bbox_billet_untouched_for_turning():
                          process_score=ps_turn)
     _clear("CADVERIFY_BBOX_BILLET")
     assert _li(on, "material") == _li(off, "material")          # turning unaffected by the flag
+
+
+@pytest.mark.parametrize("shape", ["ellipsoid", "torus", "cylinder"])
+def test_turning_material_and_roughing_use_the_same_round_stock(shape):
+    if shape == "ellipsoid":
+        mesh = trimesh.creation.icosphere(subdivisions=4, radius=10)
+        mesh.apply_scale([1, 1, 2])
+        length, diameter = 40, 20
+    elif shape == "torus":
+        mesh = trimesh.creation.torus(major_radius=15, minor_radius=6, major_sections=96, minor_sections=48)
+        length, diameter = 12, 42
+    else:
+        mesh = trimesh.creation.cylinder(radius=5, height=40, sections=96)
+        length, diameter = 40, 10
+    mesh.apply_transform(trimesh.transformations.rotation_matrix(0.73, [1, 2, 3]))
+    result, mesh, features = _analyze(mesh)
+    drivers = extract_drivers(result.geometry, mesh, features)
+    assert drivers.rotational
+    for allowance in (1.0, 1.1, 1.25):
+        rates = build_rate_card({"stock_allowance": allowance})
+        material = select_material(PT.CNC_TURNING, "aluminum", rates)
+        stock = math.pi * (diameter / 2) ** 2 * length / 1000 * allowance
+        estimate = cost_breakdown(PT.CNC_TURNING, drivers, material, "aluminum", 100, rates, "US")
+        expected_material = stock * material.density / 1000 * material.cost_per_kg * (1 + rates.p(PT.CNC_TURNING, "scrap"))
+        assert estimate.line_items["material"] == pytest.approx(expected_material, abs=0.0001)
+        cycle, finish, source = _cnc_cycle(PT.CNC_TURNING, drivers, "aluminum", rates)
+        removed = max(0, stock - drivers.volume_cm3)
+        assert cycle - finish == pytest.approx(removed / (rates.mrr("aluminum") * 60), abs=1e-9)
+        assert "bounding cylinder" in _driver(estimate, "material_cost").source
+        assert f"{allowance:.2f} stock allowance" in source
 
 
 # ── #2  Region model: labor-only scaling of the machine rate ────────────────

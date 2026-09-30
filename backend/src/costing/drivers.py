@@ -50,10 +50,13 @@ class GeoDrivers:
         return self.volume_cm3 * density_g_cm3 / 1000.0
 
     def stock_mass_kg(self, density_g_cm3: float, stock_allowance: float) -> float:
-        """Legacy CNC billet mass: convex-hull volume × oversize × density. Kept
-        for CNC turning (round-bar stock) and as the byte-identical fallback when
-        the bbox-billet fix is switched off."""
-        return self.hull_volume_cm3 * stock_allowance * density_g_cm3 / 1000.0
+        """CNC-turning round-stock mass, including the declared oversize."""
+        return self.turning_stock_volume_cm3(stock_allowance) * density_g_cm3 / 1000.0
+
+    def turning_stock_volume_cm3(self, stock_allowance: float) -> float:
+        """Enclosing round bar × volume allowance, shared by material and roughing."""
+        # ponytail: solid round bar; tube/near-net stock needs an explicit stock declaration.
+        return math.pi * (self.rot_cross_dia_mm / 2) ** 2 * self.rot_axis_len_mm / 1000 * stock_allowance
 
     def mass_source(self, density_g_cm3: float, material_name: str) -> str:
         return (f"CAD volume {self.volume_cm3:.2f} cm³ × {material_name} density "
@@ -61,8 +64,9 @@ class GeoDrivers:
 
     def stock_source(self, density_g_cm3: float, stock_allowance: float,
                      material_name: str) -> str:
-        return (f"hull volume {self.hull_volume_cm3:.2f} cm³ × {stock_allowance:.2f} "
-                f"stock allowance × {material_name} density {density_g_cm3:.2f} g/cm³")
+        return (f"bounding cylinder Ø{self.rot_cross_dia_mm:.2f} × {self.rot_axis_len_mm:.2f} mm "
+                f"× {stock_allowance:.2f} stock allowance = {self.turning_stock_volume_cm3(stock_allowance):.2f} cm³ "
+                f"× {material_name} density {density_g_cm3:.2f} g/cm³ [assumption, not shop-validated]")
 
     # ---- CNC-milling billet (E-now #1): rectangular block from the bbox ------
     def billet_volume_cm3(self, stock_allowance: float) -> float:
@@ -79,7 +83,8 @@ class GeoDrivers:
     def billet_source(self, density_g_cm3: float, stock_allowance: float,
                       material_name: str) -> str:
         if not bbox_billet_enabled():
-            return self.stock_source(density_g_cm3, stock_allowance, material_name)
+            return (f"hull volume {self.hull_volume_cm3:.2f} cm³ × {stock_allowance:.2f} "
+                    f"stock allowance × {material_name} density {density_g_cm3:.2f} g/cm³")
         return (f"bounding-box billet {self.bbox_volume_cm3:.2f} cm³ × "
                 f"{stock_allowance:.2f} stock allowance × {material_name} density "
                 f"{density_g_cm3:.2f} g/cm³ [assumption, not shop-validated]")

@@ -1,0 +1,149 @@
+{
+  "issue": "143",
+  "status": "fixed and verified locally; not deployed",
+  "checked_at": "2026-09-30T20:13:14.940061+00:00",
+  "first_divergence": "step1: the actual ellipsoid saved record priced material from hull8.37cm3 x1.10 but machining from round stock12.6cm3 without allowance; these described different starting stock",
+  "fix": "Use one enclosing-cylinder volume with the existing stock volume allowance for turning material mass and roughing removal. Update driver/assumption descriptions. Preserve the separate milling bbox/legacy-hull paths and the independent reference harness.",
+  "engine_version": "0.3.19",
+  "previous_engine_version": "0.3.18",
+  "validation": {
+    "red_cases": 3,
+    "focused_cost_geometry_tests": 45,
+    "additional_process_regressions": 27,
+    "full_backend": {
+      "passed": 2572,
+      "skipped": 3,
+      "seconds": 213.63,
+      "skip_policy_enforced": true,
+      "skips": [
+        "real corpus manifest absent",
+        "optional OCP XDE absent (two cases)"
+      ]
+    },
+    "initial_full_backend": {
+      "passed": 2570,
+      "failed": 2,
+      "skipped": 3,
+      "seconds": 218.04,
+      "failures": "two historical turning cost goldens still expected hull material; independent arithmetic supports changing only those entries"
+    },
+    "types": {
+      "errors": 214,
+      "warnings": 3,
+      "new_diagnostics": 0
+    },
+    "bandit_medium_high": 0,
+    "actual_step_and_saved_receipts": "pass",
+    "frontend": "unchanged from140;499tests/types/lint/build previously passed"
+  },
+  "native": {
+    "page": "http://127.0.0.1:3017/verify",
+    "material": "aluminum",
+    "old_results_unchanged": true,
+    "other_process_estimates_unchanged": 120,
+    "files": [
+      {
+        "filename": "142-prolate-rotated.step",
+        "source_sha256": "469d2b92aed7cdc4750354a0de40e0701c20ee7834c9c55e4836a20273ab2fd2",
+        "previous_record": "01M3SXZPXRKXQKT521G2Y9ZS2F",
+        "current_record": "01M3SYMZX15GDW20JZ2V0QAPM7",
+        "stock_volume_cm3": 13.823007675795093,
+        "material_before_usd": 0.1306,
+        "material_after_usd": 0.1959,
+        "machine_before_usd": 1.8961,
+        "machine_after_usd": 1.9415,
+        "current_prices": [
+          [
+            1,
+            90.0
+          ],
+          [
+            100,
+            14.27
+          ],
+          [
+            1000,
+            10.0
+          ],
+          [
+            2000,
+            9.04
+          ],
+          [
+            5000,
+            7.92
+          ],
+          [
+            10000,
+            7.18
+          ]
+        ]
+      },
+      {
+        "filename": "142-torus.step",
+        "source_sha256": "878f76e8e55760445bffbd128c1623cf2d31bcd5e1b39a7cf4db540486cba84e",
+        "previous_record": "01M3SXZ6WXAR8R8309PB5HSQQP",
+        "current_record": "01M3SYQWWS60A6949FFMFH2GES",
+        "stock_volume_cm3": 18.287839155076906,
+        "material_before_usd": 0.2294,
+        "material_after_usd": 0.2592,
+        "machine_before_usd": 3.1022,
+        "machine_after_usd": 3.1622,
+        "current_prices": [
+          [
+            1,
+            90.0
+          ],
+          [
+            100,
+            15.62
+          ],
+          [
+            1000,
+            10.96
+          ],
+          [
+            2000,
+            9.91
+          ],
+          [
+            5000,
+            8.69
+          ],
+          [
+            10000,
+            7.88
+          ]
+        ]
+      }
+    ]
+  },
+  "limits": [
+    "solid round bar and a scalar volume allowance remain explicit assumptions; tube/near-net stock requires a declared alternative",
+    "default prices, process rates and confidence bands are not validated supplier quotes",
+    "fixture consistency does not certify arbitrary CAD geometry, workholding or all manufacturing physics",
+    "not deployed; real email, company IdP, vendor transport, external receipts and full production verification remain open"
+  ],
+  "harness_notes": [
+    "The first native receipt assertion used rounded display geometry for a four-decimal machine cost; it was corrected to reparse source STEP and use full-precision area/volume, retaining the0.0001USD acceptance threshold.",
+    "Two hand-constructed cost golden fixtures have independently specified dimensions/volume; only the turning material and total entries changed. Material calculation: pi*(27.5/2)^2*40/1000*1.1*2.7/1000*8*1.05=0.59272193USD; rounded0.5927, unit18.9458. Every other expected line remains unchanged."
+  ],
+  "ci": {
+    "run": "36769197096",
+    "head": "98928a5e5abad27648acc4ffb78a17a242af3519",
+    "scope": "through142; excludes143",
+    "status": "in progress"
+  },
+  "deployed": false,
+  "production_sha": "09555c18121305b7e577c0a76e47e5f97abfb8e8",
+  "evidence": [
+    "143-turning-stock-controls.py",
+    "143-native-cost-receipts.json",
+    "shape-controls/142-controls.json",
+    "143-turning-stock-before.png",
+    "143-prolate-material-fixed.png",
+    "143-prolate-machining-fixed.png",
+    "143-torus-material-fixed.png",
+    "143-torus-saved-stock-fixed.png"
+  ]
+}
