@@ -13,7 +13,7 @@ Production is Render, currently `09555c1`. The subsequent audit branch has not b
 | SCIM lifecycle and group-to-role mapping | Synthetic CI lifecycle only | Real authorized IdP provisioning and revocation |
 | Organization create/switch/invite/member management | CI role and membership journeys | Production invitation acceptance, access changes and failure recovery |
 | API keys, reveal-once, revoke, usage | Prior CI enterprise journey | Live key request and revocation proof using disposable credentials |
-| Session/security settings | Page and API coverage | Exercise every visible control and verify resulting access behavior |
+| Session/security settings | Existing-password change was broken; fixed074. Native form/required fields pass; real local Next→API→PostgreSQL proof verifies current-password check, cookie rotation, revoked old sessions and new login. All auth/session/telemetry checks pass | Deploy and recheck. Native credential submission requires user handoff; remaining security/account controls |
 | Real STEP/STP upload | Native Render uppercase `.STP` upload succeeded | Recheck corrected results after deployment |
 | STL, IGES/IGS, AP203/AP242 inputs | Prior local/CI CAD corpus, 33 pinned NIST STEP files; CI 36659923104 timed out on FTC-07, while local reproduction and CI 36664250281 (34/34) pass | Broader production format matrix and known-dimension controls |
 | Unsupported native CAD and malformed files | Prior local/CI refusal/retry tests | Production bounded errors without losing the workspace |
@@ -111,3 +111,5 @@ Spherical turning follow-up (072): identical radius-10 STEP now gives rotational
 CI 36677043750 completed with eight jobs passed and one genuine VER-08 duplicate-record failure. Fix073 sorts process enumeration at its source; seed-separated reports are now identical with all 77 estimate objects unchanged. Native same-byte STEP upload across two API worker seeds reopens the exact same record. The CI dedup assertions are retained unchanged; fresh exact-head CI and deployment remain required.
 
 Final local checks through073: full backend 2,400 passed / three documented local corpus/OCP-XDE skips (172.38s); frontend unchanged from070 with 493 tests/types/lint/build passed. Geometry fixes071/072 and deterministic snapshot fix073 are ready for fresh CI.
+
+Security follow-up074: existing users can now change passwords with current-password verification and atomic audit/session rotation. Real database and running same-origin HTTP lifecycle pass; native form validation passes without changing the browser account password. Backend 2,400 tests/three documented skips and frontend 494 tests/types/lint/build pass. Not deployed; native credential entry and production verification still pending.

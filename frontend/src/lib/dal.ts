@@ -25,6 +25,7 @@ export type SessionUser = {
   email: string;
   role: string;
   auth_provider: string;
+  has_password?: boolean;
 };
 
 export const getUser = cache(async (): Promise<SessionUser | null> => {

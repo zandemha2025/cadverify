@@ -20,6 +20,7 @@ def test_captured_event_has_no_auth_material():
             "request": {
                 "token": "FAKE_MAGIC_TOKEN_SENTINEL",
                 "password": "FAKE_PASSWORD_SENTINEL",
+                "current_password": "FAKE_CURRENT_PASSWORD_SENTINEL",
                 "cf_turnstile_response": "FAKE_TURNSTILE_SENTINEL",
             },
         },
@@ -44,6 +45,7 @@ def test_captured_event_has_no_auth_material():
         "FAKE_SESSION_SENTINEL",
         "FAKE_MAGIC_TOKEN_SENTINEL",
         "FAKE_PASSWORD_SENTINEL",
+        "FAKE_CURRENT_PASSWORD_SENTINEL",
         "FAKE_TURNSTILE_SENTINEL",
     ):
         assert sentinel not in dump, f"LEAK: {sentinel}"

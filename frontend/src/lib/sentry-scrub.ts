@@ -5,6 +5,7 @@ const SENSITIVE_KEYS = new Set([
   "cookie",
   "set-cookie",
   "password",
+  "current_password",
   "token",
   "access_token",
   "refresh_token",

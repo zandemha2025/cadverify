@@ -288,7 +288,7 @@ def test_initial_password_rotates_session_after_verified_login(monkeypatch):
     app.dependency_overrides[require_dashboard_session] = lambda: 7
 
     with patch(
-        "src.auth.password.set_initial_password_hash",
+        "src.auth.password.set_password_hash",
         new_callable=AsyncMock,
         return_value=4,
     ) as set_hash:
@@ -611,6 +611,52 @@ async def test_full_signup_login_me_protected_flow(monkeypatch):
                 "/protected", headers={"Cookie": f"dash_session={fresh_token}"}
             )
             assert r.status_code == 200, r.text
+
+            # Existing password accounts can change it only after proving the
+            # current password. Failures preserve the credential and session.
+            headers = {"Cookie": f"dash_session={fresh_token}"}
+            new_password = "ChangedPassw0rd456"
+            r = await ac.post("/auth/password/initialize", headers=headers,
+                              json={"password": new_password})
+            assert r.status_code == 409
+            r = await ac.post("/auth/password/initialize", headers=headers,
+                              json={"password": new_password, "current_password": "WrongPass99"})
+            assert r.status_code == 401
+            assert r.json()["detail"]["code"] == "invalid_current_password"
+            r = await ac.post("/auth/password/initialize", headers=headers,
+                              json={"password": "weak", "current_password": password})
+            assert r.status_code == 400
+            r = await ac.get("/protected", headers=headers)
+            assert r.status_code == 200
+            r = await ac.get("/auth/me", headers=headers)
+            assert r.json()["has_password"] is True
+            r = await ac.post("/auth/password/initialize", headers=headers,
+                              json={"password": new_password, "current_password": password})
+            assert r.status_code == 200, r.text
+            changed_token = r.json()["session"]
+            assert changed_token != fresh_token
+            assert password not in r.text and new_password not in r.text
+            r = await ac.get("/protected", headers=headers)
+            assert r.status_code == 401
+            assert r.json()["detail"]["code"] == "session_revoked"
+            r = await ac.get("/protected", headers={"Cookie": f"dash_session={changed_token}"})
+            assert r.status_code == 200
+            r = await ac.post("/auth/login", json={"email": email, "password": password})
+            assert r.status_code == 401
+            r = await ac.post("/auth/login", json={"email": email, "password": new_password})
+            assert r.status_code == 200
+            async with eng.get_session_factory()() as s:
+                actions = (await s.execute(text(
+                    "SELECT action FROM audit_log WHERE user_id = :u AND action = 'auth.password_changed'"
+                ), {"u": uid})).scalars().all()
+            assert actions == ["auth.password_changed"]
+            # A concurrent writer that verified the old hash cannot overwrite
+            # the already changed credential or revoke the new session.
+            from src.auth.models import set_password_hash
+            assert await set_password_hash(uid, hash_password("StalePassword789"),
+                                           expected_hash=row[0]) is None
+            r = await ac.get("/protected", headers={"Cookie": f"dash_session={changed_token}"})
+            assert r.status_code == 200
     finally:
         # Clean up the test user + dispose the engine (same loop).
         try:
