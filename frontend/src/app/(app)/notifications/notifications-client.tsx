@@ -14,7 +14,6 @@ import {
   restoreNotification,
   type DerivedNotif,
 } from "@/lib/verify/notifications-api";
-import { notificationHref } from "@/lib/verify/notification-dest";
 
 const TONE: Record<DerivedNotif["tone"], string> = {
   pass: "text-emerald-700",
@@ -156,7 +155,7 @@ export function NotificationsClient() {
       // inbox load truthfully reflects whether the read transition persisted.
       setState((current) => ({ ...current, busy: null }));
     }
-    router.push(notificationHref(notification.dest));
+    router.push(notification.href);
   }
 
   async function dismiss(id: string) {
@@ -294,7 +293,7 @@ export function NotificationsClient() {
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button asChild variant="secondary" size="sm">
                       <Link
-                        href={notificationHref(notification.dest)}
+                        href={notification.href}
                         aria-label={`Open notification: ${notification.title}`}
                         aria-busy={state.busy === `open:${notification.id}`}
                         onClick={(event) => {

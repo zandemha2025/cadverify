@@ -1,0 +1,41 @@
+{
+  "finding": "068",
+  "observed_at": "2026-09-30",
+  "environment": "local native Chrome, frontend :3017, API :8017",
+  "first_divergence": {
+    "action": "Open notification: Verification recorded - nist_ftc_07_asme1_rd.stp",
+    "expected": "Exact existing source record 01M3R5PQHVPT6BE584E0R6J1J8",
+    "actual": "/verify?screen=records; full 33-record list, no selected source"
+  },
+  "fix": "Map existing backend source_type/source_id into a shared safe destination. Both inbox and panel use the resulting href; non-cost/invalid sources retain declared screen fallback.",
+  "native_proof": {
+    "href": "/cost-decisions/01M3R5PQHVPT6BE584E0R6J1J8",
+    "opened_url": "http://127.0.0.1:3017/cost-decisions/01M3R5PQHVPT6BE584E0R6J1J8",
+    "heading": "nist_ftc_07_asme1_rd.stp",
+    "dismissed_notification": "01M3RD0TS95VA8HNA75YJG7DPR",
+    "dismiss_survives_reload": true,
+    "restore_returns_to_inbox": true,
+    "mark_all_read_survives_reload": {
+      "read": 33,
+      "total": 33
+    }
+  },
+  "checks": {
+    "regression": "new exact-source test failed before the fix, passes after",
+    "frontend_tests": 493,
+    "typecheck": "pass",
+    "changed_source_lint": "pass",
+    "production_build": "pass",
+    "notification_runner_contracts": "pass"
+  },
+  "limits": [
+    "Not deployed",
+    "Native panel replay unavailable: panel currently has no mounted caller",
+    "Company IdP, external email, vendor tenants and real quote accuracy remain unverified"
+  ],
+  "screenshots": [
+    "068-notification-destination-before.png",
+    "068-notification-destination-fixed.png",
+    "068-notifications-read-persisted.png"
+  ]
+}

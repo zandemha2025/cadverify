@@ -396,10 +396,10 @@ class Matrix {
       "mark-one timestamp bounded by browser action",
       isoMs(readNotification.read_at) >= readBefore - 1_000 && isoMs(readNotification.read_at) <= readAfter + 1_000,
     );
-    await page.waitForURL((url) => url.pathname === "/verify" && url.searchParams.get("screen") === "records", { timeout: 20_000 });
-    await page.getByRole("heading", { name: "Records", exact: true }).waitFor({ timeout: 20_000 });
-    this.check("VER-04", "notification opens declared browser destination", `${appUrl}/verify?screen=records`, page.url());
-    this.check("VER-04", "destination visible heading", "Records", await page.getByRole("heading", { name: "Records", exact: true }).innerText());
+    await page.waitForURL((url) => url.pathname === `/cost-decisions/${first.detail.id}`, { timeout: 20_000 });
+    await page.getByRole("heading", { name: first.detail.filename, exact: true }).waitFor({ timeout: 20_000 });
+    this.check("VER-04", "notification opens its exact source record", `${appUrl}/cost-decisions/${first.detail.id}`, page.url());
+    this.check("VER-04", "destination visible heading", first.detail.filename, await page.getByRole("heading", { name: first.detail.filename, exact: true }).innerText());
 
     let persisted = (await this.notifications(page)).find((item) => item.id === firstRow.id);
     this.check("VER-04", "persisted mark-one is_read", true, persisted.is_read);

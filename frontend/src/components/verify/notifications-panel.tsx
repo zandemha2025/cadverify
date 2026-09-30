@@ -7,6 +7,7 @@
  * marked read per user. Empty -> the honest "all caught up" state.
  */
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { C, MONO } from "@/lib/verify/tokens";
 import { ConfidenceBand, Spinner } from "./primitives";
 import {
@@ -16,22 +17,12 @@ import {
   markNotificationRead,
   type NotifState,
   type DerivedNotif,
-  type NotifDest,
 } from "@/lib/verify/notifications-api";
 
 const TONE: Record<DerivedNotif["tone"], string> = {
   pass: C.pass,
   cond: C.cond,
   info: C.ink,
-};
-
-// The shell owns navigation; when the mount doesn't pass a `nav` callback we fall
-// back to the shell's OWN public hotkey contract (H/V/P/R/G/M/T/C on window) so a
-// state row is never a dead click — without touching the frozen shell file.
-const HOTKEY: Record<NotifDest, string> = {
-  records: "r",
-  calibration: "c",
-  verify: "v",
 };
 
 export function NotificationsPanel({
@@ -41,6 +32,7 @@ export function NotificationsPanel({
   onClose: () => void;
   nav?: (s: string) => void;
 }) {
+  const router = useRouter();
   const [state, setState] = useState<NotifState>({ loading: true, notifs: [], deliveryCount: null, error: null });
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -64,12 +56,8 @@ export function NotificationsPanel({
 
   const go = (n: DerivedNotif) => {
     markNotificationRead(n.id).catch(() => {});
-    const dest = n.dest;
-    if (nav) nav(dest);
-    else
-      window.dispatchEvent(
-        new KeyboardEvent("keydown", { key: HOTKEY[dest], bubbles: true })
-      );
+    if (nav && n.href.startsWith("/verify?")) nav(n.dest);
+    else router.push(n.href);
     onClose();
   };
 

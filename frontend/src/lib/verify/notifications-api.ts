@@ -5,7 +5,7 @@
  * mutations. Audit remains the compliance record; this inbox is workflow state.
  */
 import { API_BASE } from "@/lib/api-base";
-import type { NotificationDestination } from "./notification-dest";
+import { notificationHref, type NotificationDestination } from "./notification-dest";
 
 /** Where a row navigates in the Verify shell (screen keys). */
 export type NotifDest = NotificationDestination;
@@ -20,6 +20,7 @@ export interface DerivedNotif {
   /** mono sub-line — every value is emitted by the backend row. */
   meta: string;
   dest: NotifDest;
+  href: string;
   isRead: boolean;
   readAt: string | null;
   isDismissed: boolean;
@@ -41,6 +42,8 @@ export interface NotificationRow {
   title: string;
   body: string;
   dest: string;
+  source_type?: string;
+  source_id?: string;
   is_read: boolean;
   read_at: string | null;
   is_dismissed: boolean;
@@ -89,6 +92,7 @@ export function mapNotificationRow(row: NotificationRow): DerivedNotif {
     title: row.title,
     meta: row.body || "workflow state",
     dest: dest(row.dest),
+    href: notificationHref(dest(row.dest), row),
     isRead: row.is_read,
     readAt: row.read_at,
     isDismissed: row.is_dismissed,
