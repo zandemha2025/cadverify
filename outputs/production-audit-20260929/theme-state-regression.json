@@ -1,0 +1,27 @@
+{
+  "finding": "069",
+  "environment": "local Chrome :3017",
+  "before": {
+    "action": "Command palette > TOGGLE THEME > Enter",
+    "actual_dark": true,
+    "button_label": "Switch to dark theme"
+  },
+  "after": {
+    "reload_preserves_dark": true,
+    "palette_dark_to_light": "pass",
+    "palette_light_to_dark": "pass",
+    "button_dark_to_light": "pass",
+    "reload_preserves_restored_light": "pass"
+  },
+  "runnable_check": "scripts/e2e/theme-state-validation.mjs::assertThemeControl, via cua_repl; native assertion failed before and passed after",
+  "validation": {
+    "typecheck": "pass",
+    "changed_source_lint": "pass",
+    "production_build": "pass",
+    "frontend_tests": "493 passed immediately before this UI-only change"
+  },
+  "limits": [
+    "not deployed",
+    "cross-tab theme synchronization not added"
+  ]
+}

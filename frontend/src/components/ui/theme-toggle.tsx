@@ -12,7 +12,12 @@ export function ThemeToggle({ className }: { className?: string }) {
   const [dark, setDark] = React.useState(false);
 
   React.useEffect(() => {
-    setDark(document.documentElement.classList.contains("dark"));
+    const root = document.documentElement;
+    const sync = () => setDark(root.classList.contains("dark"));
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
   }, []);
 
   const toggle = () => {
@@ -21,7 +26,6 @@ export function ThemeToggle({ className }: { className?: string }) {
     try {
       localStorage.setItem(KEY, next ? "dark" : "light");
     } catch {}
-    setDark(next);
   };
 
   return (

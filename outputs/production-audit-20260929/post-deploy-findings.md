@@ -509,3 +509,10 @@ Final validation: **2,395 backend tests passed**, three documented real-corpus/O
 - Evidence: `notification-lifecycle-regression.json`, `068-notification-destination-before.png`, `068-notification-destination-fixed.png`, `068-notifications-read-persisted.png`. Native panel replay is not claimed; no panel caller is currently mounted. Not deployed.
 
 017 recheck (2026-09-30): the three linked Debian trackers still report the production trixie package versions as vulnerable. No supported stable fix is listed; finding remains open. No package or scanner changes were made.
+
+
+## 069 — Theme action leaves the button label and icon stale
+
+- Severity: low accessibility/state defect. Native command-palette theme action switched the page to dark while the button still said `Switch to dark theme` and retained its light-mode icon.
+- Fix: the shared theme button observes the existing root class, so either visible entry point updates its label/icon. Uses the platform MutationObserver with cleanup; no new theme provider or dependency.
+- Verification: native assertion fails before, then passes for palette toggles in both directions, direct-button toggle and full reload. Original light preference restored. Types, changed-file lint and production build pass. Runnable check: `scripts/e2e/theme-state-validation.mjs`; evidence: `theme-state-regression.json` and 069 before/fixed screenshots. Not deployed.

@@ -97,3 +97,5 @@ CI 36670069143 completed with eight jobs passed and Browser E2E failed on a real
 ### Saved-evidence follow-up — 067
 
 Native re-cost after a declared machine change exposed a stale saved pointer despite fresh live prices/fit. The shared persistence funnel now includes the computed snapshot in dedup identity, preserving old records and reusing identical new runs. New record, historical immutability, unchanged-rerun dedup, exact native JSON export and current Part standing are proven locally; backend 2,395 pass/3 documented skips. Not deployed. External integrations, real quote validation and the remaining ledger still prevent an all-features claim.
+
+Theme follow-up (069): native command-palette changes now keep the shared theme button label/icon current. Both directions, direct button and reload pass; original light preference restored. Global command search also returns an honest empty state and accepts uppercase keyboard queries. Not deployed.
