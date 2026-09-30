@@ -11,7 +11,7 @@ Covers the Phase-C deliverables against the REAL orchestrator (estimate_decision
     makeable_in_house / makeable_not_on_owned (+ concrete gap) /
     makeable_outsource_only / unknown-no-inventory.
   * machine-specific MARGINAL rate: a passing owned machine re-costs its process
-    at its OWN declared rate; the machine_cost driver is SHOP-tagged and NAMES
+    at its OWN declared rate; the machine_cost driver is USER-tagged and NAMES
     the machine; owned_in_house flips; other processes are untouched.
   * real-profile service-environment integration: a declared sour environment
     excludes a non-NACE material with a CITED exclusion, straight off the loader's
@@ -166,9 +166,9 @@ def test_unknown_when_capability_undeclared_not_fabricated_pass():
 # ─────────────────────────────────────────────────────────────────────────────
 # MACHINE-SPECIFIC MARGINAL RATE + provenance (spec C2)
 # ─────────────────────────────────────────────────────────────────────────────
-def test_marginal_rate_substituted_and_shop_tagged_naming_machine():
+def test_marginal_rate_substituted_and_user_tagged_naming_machine():
     """A passing owned machine re-costs cnc_3axis at its OWN rate: the machine_cost
-    driver is SHOP-tagged, NAMES the machine, and owned_in_house flips."""
+    driver is USER-tagged, NAMES the machine, and owned_in_house flips."""
     base = report_to_dict(_report())
     e0 = _est_dict(base, "cnc_3axis", 10)
     machine_line_base = _driver(e0, "machine_cost")
@@ -176,7 +176,7 @@ def test_marginal_rate_substituted_and_shop_tagged_naming_machine():
     rep = report_to_dict(_report(inventory=[_mill(rate=200.0, capital_frac=0.5)]))
     e1 = _est_dict(rep, "cnc_3axis", 10)
     md = _driver(e1, "machine_cost")
-    assert md["provenance"] == "SHOP"
+    assert md["provenance"] == "USER"
     assert "Haas VF-2 #3" in md["source"]
     assert "200" in md["source"]  # the machine's own declared rate appears
     # the machine cost genuinely changed vs the generic rate-card path
@@ -214,7 +214,7 @@ def test_per_machine_capital_frac_drives_the_marginal_seam():
     e = _est_dict(report_to_dict(_report(inventory=[m0])), "cnc_3axis", 10)
     assert e.get("owned_in_house") is None  # no marginal seam when cap_frac == 0
     md = _driver(e, "machine_cost")
-    assert md["provenance"] == "SHOP" and "100" in md["source"]
+    assert md["provenance"] == "USER" and "100" in md["source"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────

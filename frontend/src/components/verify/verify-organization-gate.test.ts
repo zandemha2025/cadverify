@@ -19,8 +19,8 @@ test("Verify does not mount org-scoped readers without an active organization", 
 
   const rateEffect = appSource.indexOf("// The rail footer's bound-rate signal.");
   const rateGuard = appSource.indexOf("if (!hasActiveOrganization)", rateEffect);
-  const machineRead = appSource.indexOf("listMachines().then", rateGuard);
-  assert.ok(rateEffect >= 0 && rateGuard > rateEffect && machineRead > rateGuard);
+  const rateRead = appSource.indexOf("effectiveRateCard().then", rateGuard);
+  assert.ok(rateEffect >= 0 && rateGuard > rateEffect && rateRead > rateGuard);
 
   const designEffect = appSource.indexOf("// Design Studio handoff:");
   const designGuard = appSource.indexOf("if (!hasActiveOrganization) return", designEffect);

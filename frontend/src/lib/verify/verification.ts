@@ -281,8 +281,7 @@ export function envStrikes(v: VerificationBlock | null | undefined): EnvStrike[]
   }));
 }
 
-/** The machine-specific marginal rate for a route, when a PASSING owned machine
- *  re-costs it at its OWN declared rate (SHOP provenance, names the machine). */
+/** The passing machine's USER-declared rate before the engine's capital adjustment. */
 export interface MarginalRate {
   machine: string | null;
   rateUsd: number | null;

@@ -679,10 +679,8 @@ def _build_verification(elig, drivers, options):
                 "hourly_rate_usd": rate,
                 "capital_frac": res.get("capital_frac"),
                 "machine_name": res.get("machine"),
-                # A declared per-machine rate is the org/shop's real per-machine
-                # reality → SHOP provenance (durable calibration, not a per-quote
-                # USER override). The source string names the machine.
-                "provenance": Provenance.SHOP,
+                # Persistence does not turn a user declaration into calibration.
+                "provenance": Provenance.USER,
             }
 
     # ── env-excluded (process, material) pairs → decision shortlist + estimate

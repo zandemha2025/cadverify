@@ -574,7 +574,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
     # its OWN declared $/hr replaces the rate-card default and its OWN declared
     # capital_frac (or the card default when it declared none) drives the marginal
     # (make-it-ourselves) seam. The machine_cost driver is then tagged with the
-    # machine's provenance (SHOP — the org's real per-machine rate) and its source
+    # machine's provenance (USER for a declared per-machine rate) and its source
     # NAMES the machine. machine_override is None on every generic call (no
     # inventory), so base_machine_rate / cap_frac / owned_here are UNCHANGED and
     # the whole path stays byte-identical.
@@ -588,7 +588,7 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                     else rates.g("machine_capital_frac"))
         owned_here = cap_frac > 0.0
         machine_name = machine_override.get("machine_name")
-        machine_prov = machine_override.get("provenance") or Provenance.SHOP
+        machine_prov = machine_override.get("provenance") or Provenance.USER
     else:
         base_machine_rate = rates.p(process, "machine_rate")
         cap_frac = rates.g("machine_capital_frac")

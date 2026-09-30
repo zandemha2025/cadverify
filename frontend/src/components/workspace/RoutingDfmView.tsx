@@ -88,7 +88,7 @@ export function RoutingDfmView({
               <p className="mt-1 text-xs text-muted-foreground">
                 {machineFit?.machines_evaluated ?? 0} declared machine
                 {(machineFit?.machines_evaluated ?? 0) === 1 ? "" : "s"} evaluated ·
-                USER-declared capability and marginal rate
+                USER-declared capability and hourly rate
               </p>
             </div>
             <div className="rounded-sm border border-border bg-muted px-3 py-2 text-right">
@@ -98,7 +98,7 @@ export function RoutingDfmView({
                   : `$${machineGrounding.rateUsd.toFixed(2)}/hr`}
               </p>
               <p className="text-micro uppercase tracking-wide text-muted-foreground">
-                decision rate
+                declared rate
               </p>
             </div>
           </div>

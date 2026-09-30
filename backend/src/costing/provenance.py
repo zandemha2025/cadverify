@@ -4,8 +4,8 @@ Every number the decision layer emits carries one of five provenance tags so a
 manufacturing engineer can trace where it came from:
 
     MEASURED  — extracted from the CAD (volume, area, bbox). Not assumable.
-    USER      — buyer-supplied for THIS quote (quantities, material class, ad-hoc
-                rate overrides). Authoritative, overrides the shop default.
+    USER      — team-declared inputs (quantities, material class, machine inventory
+                and rate overrides). Authoritative, overrides the shop default.
     SHOP      — sourced from the ACTIVE calibrated shop profile (this shop's real
                 labor/machine/material/margin). The shop's own measured reality.
     CAD       — read from the CAD file's own material annotation (a declared
@@ -29,7 +29,7 @@ from typing import Optional
 
 class Provenance(str, Enum):
     MEASURED = "MEASURED"   # extracted from the CAD — not assumable
-    USER = "USER"           # buyer-supplied for this quote — authoritative
+    USER = "USER"           # team-declared input — authoritative, not calibrated
     SHOP = "SHOP"           # from the active calibrated shop profile — this shop's reality
     CAD = "CAD"             # read from the CAD file's own material annotation — a
                              # declared property in the file, not measured from

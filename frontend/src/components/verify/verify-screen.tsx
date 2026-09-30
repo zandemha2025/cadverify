@@ -1718,7 +1718,7 @@ function TimeAndResources({
       <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40, lineHeight: 1.7 }}>
         lead {lead.low_days.toFixed(1)}–{lead.high_days.toFixed(1)} days{" "}
         <span style={{ color: C.def }}>[queue model — not your scheduler]</span> · computed hours are ○ MODEL from an
-        assumption at SHOP rates — tap any driver for its verbatim derivation.
+        assumption; each driver labels its rate source — tap it for the derivation.
       </p>
     </>
   );
@@ -1758,7 +1758,7 @@ function ResourceCost({
   const toolInterp = toolingProcess ? interpUnitCost(cost, toolingProcess, scrubQty) : null;
   // The machine-specific MARGINAL rate: when a PASSING owned machine re-costs this
   // route at its OWN declared rate, the header reads OWNED → MARGINAL and names the
-  // machine + rate (SHOP provenance). Absent → the generic MAKE NOW header.
+  // machine + declared rate (USER provenance). Absent → the generic MAKE NOW header.
   const marginal = marginalRate(verification, makeProcess);
   const conf = makeAtQty?.confidence;
   const validated = conf?.validated ?? false;
@@ -1809,8 +1809,8 @@ function ResourceCost({
           </p>
           <p style={{ margin: "3px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink40 }}>{interpNote(makeInterp)}</p>
           {marginal && (
-            <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, lineHeight: 1.6, color: C.shop }}>
-              {marginal.machine ? `on ${marginal.machine} ` : ""}at {USD(marginal.rateUsd)}/hr · <ProvChip p="SHOP" /> — your machine&apos;s own marginal rate, owned capital sunk
+            <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, lineHeight: 1.6, color: C.user }}>
+              {marginal.machine ? `on ${marginal.machine} · ` : ""}declared rate {USD(marginal.rateUsd)}/hr · <ProvChip p="USER" /> — any capital adjustment is shown in the machine-cost derivation above
             </p>
           )}
           <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, lineHeight: 1.7, color: C.ink45 }}>

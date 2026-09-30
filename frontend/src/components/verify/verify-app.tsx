@@ -17,7 +17,7 @@ import {
 } from "@/lib/verify/run";
 import { geometryFromResult } from "@/lib/verify/pipeline";
 import { isCurrentRun } from "@/lib/verify/run-gates";
-import { listMachines } from "@/lib/verify/machine-api";
+import { effectiveRateCard } from "@/lib/verify/rate-api";
 import { CAD_ACCEPT, isSupportedCad, unsupportedCadGuidance } from "@/lib/cad-file";
 import { VERIFY_PART_CAD_INPUT } from "@/lib/verify/file-inputs";
 import { clientStlIntegrityError } from "@/lib/stl-validation";
@@ -117,9 +117,8 @@ export function VerifyApp({
   const [assemblyAnalysis, setAssemblyAnalysis] = useState<AssemblyAnalysis | null>(null);
   const [assemblyAnalyzing, setAssemblyAnalyzing] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  // A REAL signal for the rail footer: are any of the org's machines declaring an
-  // hourly rate (i.e. a shop rate is actually bound)? null while loading → the dot
-  // stays hollow/neutral until a bound rate is detected — never a hardcoded claim.
+  // A declared machine rate is USER evidence; only an effective governed card
+  // establishes this SHOP indicator. null means the context is unconfirmed.
   const [ratesBound, setRatesBound] = useState<boolean | null>(null);
   const [designImport, setDesignImport] = useState<
     | { state: "loading"; message: string }
@@ -500,10 +499,12 @@ export function VerifyApp({
       setRatesBound(null);
       return;
     }
-    listMachines().then(
-      (p) => setRatesBound(p.machines.some((m) => typeof m.hourly_rate_usd === "number" && Number.isFinite(m.hourly_rate_usd))),
-      () => setRatesBound(false)
+    let live = true;
+    effectiveRateCard().then(
+      (card) => { if (live) setRatesBound(card.using_governed); },
+      () => { if (live) setRatesBound(null); }
     );
+    return () => { live = false; };
   }, [hasActiveOrganization]);
 
   // The environment door is REAL: when the declared world changes and a part is
@@ -674,9 +675,11 @@ export function VerifyApp({
             type="button"
             onClick={() => setScreen("calibration")}
             title={
-              ratesBound
-                ? "Your shop rates are bound · ● SHOP — open Calibration & truth"
-                : "Calibration & truth — no shop rate bound yet"
+              ratesBound === null
+                ? "Rate context unconfirmed — open Calibration & truth"
+                : ratesBound
+                  ? "Governed rate card in effect · ● SHOP — open Calibration & truth"
+                  : "Default rate card — open Calibration & truth"
             }
             className="cv-verify-rate-dot"
             style={{ width: 36, height: 36, border: `1px solid ${C.hair}`, borderRadius: 999, background: "#fff", padding: 4, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
