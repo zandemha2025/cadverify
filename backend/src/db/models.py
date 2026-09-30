@@ -1200,6 +1200,7 @@ class GroundTruthRecordRow(Base):
 
     __tablename__ = "ground_truth_records"
     __table_args__ = (
+        CheckConstraint("source_units IN ('mm', 'inch')", name="ck_ground_truth_source_units"),
         Index("ix_ground_truth_records_org", "org_id"),
         Index("ix_ground_truth_records_org_part", "org_id", "part_id"),
     )
@@ -1234,6 +1235,7 @@ class GroundTruthRecordRow(Base):
     actual_inspection_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     actual_cycle_seconds: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     evidence_sha256: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source_units: Mapped[str] = mapped_column(Text, nullable=False, server_default="mm")
     evidence_uri: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     stand_in: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"

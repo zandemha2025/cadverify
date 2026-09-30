@@ -26,7 +26,7 @@ Production is Render, currently `09555c1`. The subsequent audit branch has not b
 | Casting corner warnings | Live smooth-bore false positive; corrected local coarse/fine controls | Deploy and expand representative cast geometry |
 | Flat feature detection | Fixed locally: real STEP now has six planes + one bore (026) | Deploy and extend non-cylindrical/freeform controls |
 | Remaining DFM process checks and suitability | Existing tests/trap corpus; bounded known-part evidence | Independent accuracy cases for every visible check and score |
-| Source units and scale warnings | Fixed STEP/IGES double scaling across DFM/cost/preview (033); real browser STEP remains 20×15×10 mm with inches selected. Explicit STL conversion regressions pass | Deploy; unitless STL inference/confirmation and canonical calibration-source unit identity remain open |
+| Source units and scale warnings | Fixed STEP/IGES double scaling across DFM/cost/preview (033); real browser STEP remains 20×15×10 mm with inches selected. Explicit STL conversion regressions pass | Canonical calibration-source identity fixed locally with mm/inch storage/cache separation (035); deploy and finish unitless STL inference/confirmation |
 | Should-cost quantities/material/region/shop choices | Live computation and prior CI | Compare every changed input with independent expected calculations |
 | Price assumptions, markup, overhead and driver math | Prior audit corrections deployed; CI formula checks | Broader independent examples and calibrated shop data |
 | Real quote accuracy and confidence | UI identifies generic/default, unvalidated estimates | Actual authorized quote/actual datasets and out-of-sample validation |
@@ -40,7 +40,7 @@ Production is Render, currently `09555c1`. The subsequent audit branch has not b
 | Batch ZIP upload, progress and retry | Real local worker: mixed STEP/STL batch, useful malformed-file error, explicit native-file skip, retry with corrected ZIP + manifest, matching CSV and saved geometry. Cancellation retains 3 completed results and skips 17 queued files. UI concurrency mismatch fixed (032) | Deploy; repeat production batch, webhook and worker/storage failure recovery |
 | Direct object-storage batch input | Local Moto proof only | Authorized real storage configuration and completed worker run |
 | CSV SAP/PLM manifest imports | Real dry-run exposed hidden row errors; local recovery fixed | Production dry-run, import, duplicate/update and resulting records |
-| Quote/actuals CSV ingestion | Existing tests | Live authorized data import and calibration linkage |
+| Quote/actuals CSV ingestion | Local native mm/inch demo import, precise invalid-row feedback/retry, deduplication and PostgreSQL readback pass (035/036); demo records correctly cannot validate | Deploy; actual authorized quote data and calibrated accuracy remain open |
 | SAP S/4HANA API | Product-read transport and admin credential/test/revoke UI added locally (027); CSV evidence remains separate | BOM transport, import/reconciliation and authorized tenant proof |
 | PTC Windchill API | Product-read transport and credential UI added locally (027) | BOM transport, import/reconciliation and authorized tenant proof |
 | Connector credential probe | Actual bounded authenticated product read; DNS/IP pinning, TLS, redaction and actionable failure tests pass locally. Browser save/test-failure/revoke passes for both vendors | Deploy, configure encrypted storage (028), and verify actual authorized vendor success. No real-tenant success is claimed |
@@ -49,7 +49,7 @@ Production is Render, currently `09555c1`. The subsequent audit branch has not b
 | Design Studio generation/edit/version/STEP export | CI passes 14 steps and all 12 evidence contracts; mobile readiness race fixed (034). Local real plate renders at 390 px without overflow | Fresh CI, production generation/geometry/retry/export; local Chrome direct STEP download blocked after HTTP 200 |
 | Reconstruction and labeling | Production health reports reconstruction backend unavailable | Inspect visible availability and configure/verify actual inference |
 | Search, navigation, notifications and theme | Prior journeys; navigation fix deployed | All menu branches, search results and notification actions |
-| Responsive/accessibility behavior | Prior 20 local cases; two Render pages checked at 390 px | Remaining functional pages, keyboard/focus and dialog flows |
+| Responsive/accessibility behavior | Prior 20 local cases; two Render pages checked at 390 px. Calibration overflow fixed locally with phone-width upload/recalibration proof (037) | Deploy; remaining functional pages, keyboard/focus and dialog flows |
 | Public product, team, method, docs and API-reference pages | Prior route sweep and selected corrections | Check every claim and interactive example against current behavior |
 | CAD retention/security statements | Product and Method copy corrected locally (025) | Deploy and finish the wider public-claim audit |
 | Production URL and old deployments | Render works; Fly DB and disabled Vercel unresolved | Provider recovery/migration or intentional retirement/redirects |

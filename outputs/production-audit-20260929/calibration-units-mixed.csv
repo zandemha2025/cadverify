@@ -1,0 +1,4 @@
+part_id,process,quantity,actual_unit_cost_usd,source_type,source_units,notes
+audit-calibration-inch.stl,fdm,10,4.20,demo,inch,Synthetic UI regression only
+audit-calibration-mm.stl,fdm,10,4.20,demo,mm,Synthetic UI regression only
+audit-calibration-bad.stl,fdm,10,4.20,demo,feet,Synthetic invalid-unit row

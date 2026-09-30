@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -23,6 +24,57 @@ from src.storage import ObjectNotFoundError
 ROOT = Path(__file__).resolve().parents[2]
 CUBE_STEP = ROOT / "backend" / "tests" / "assets" / "cube.step"
 ACTUALS_CSV = ROOT / "docs" / "training" / "fixtures" / "ground-truth-mixed.csv"
+
+
+@pytest.mark.asyncio
+async def test_costable_source_units_are_separate_and_legacy_is_rebuilt(tmp_path, monkeypatch):
+    from src.services import source_artifact_service as artifacts
+
+    monkeypatch.setenv("OBJECT_STORE_LOCAL_ROOT", str(tmp_path / "objects"))
+    mm = trimesh.creation.box(extents=[1, 1, 1])
+    inch = mm.copy()
+    inch.apply_scale(25.4)
+    raw = mm.export(file_type="stl")
+    digest = hashlib.sha256(raw).hexdigest()
+    await save_source_artifact("org-units", digest, "box.stl", raw)
+    # Legacy first-write-wins derivatives have no trustworthy unit identity.
+    legacy = artifact_key("org-units", digest, ".stl").replace("source.stl", "costable.stl")
+    artifacts._store().put(legacy, inch.export(file_type="stl"), content_type="model/stl")
+    for units, expected in (("mm", 1.0), ("inch", 25.4), ("mm", 1.0)):
+        payload = await read_costable_mesh_artifact("org-units", digest, source_units=units)
+        mesh = trimesh.load(io.BytesIO(payload), file_type="stl")
+        assert mesh.extents.tolist() == pytest.approx([expected] * 3, rel=1e-6)
+
+    records = [GroundTruthRecord(part_id=f"box-{units}", process="fdm", quantity=50,
+                                actual_unit_cost_usd=4.2, evidence_sha256=digest,
+                                source_units=units) for units in ("mm", "inch")]
+
+    def inspect_materialized(_org, actual, *, parts_dir, store_dir):
+        assert all(record.source_units == "mm" for record in actual)
+        assert actual[0].part_path != actual[1].part_path
+        dimensions = [trimesh.load(Path(parts_dir) / record.part_path).extents[0] for record in actual]
+        assert dimensions == pytest.approx([1.0, 25.4], rel=1e-6)
+        return {"checked": 2}
+
+    with (
+        patch.object(groundtruth_service, "load_org_ground_truth", AsyncMock(return_value=records)),
+        patch.object(groundtruth_service, "recalibrate_from_records", inspect_materialized),
+    ):
+        assert await groundtruth_service.recalibrate_org(AsyncMock(), "org-units") == {"checked": 2}
+    with pytest.raises(ObjectNotFoundError):
+        await read_costable_mesh_artifact("other-org", digest, source_units="inch")
+
+
+def test_ground_truth_unit_choice_reaches_geometry_and_engine_cache(tmp_path):
+    from src.costing.groundtruth import EngineCostCache
+
+    path = tmp_path / "unitless.stl"
+    trimesh.creation.box(extents=[10, 10, 10]).export(path)
+    cache = EngineCostCache()
+    mm = cache._report(str(path), 50, None, "polymer", "US", source_units="mm")
+    inch = cache._report(str(path), 50, None, "polymer", "US", source_units="inch")
+    assert mm.geometry["volume_cm3"] == pytest.approx(1.0)
+    assert inch.geometry["volume_cm3"] == pytest.approx(254 ** 3 / 1000, rel=1e-6)
 
 
 @pytest.mark.asyncio

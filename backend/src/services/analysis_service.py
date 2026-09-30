@@ -153,7 +153,7 @@ async def _persist_source_evidence(
     )
 
     async def _ensure_costable_derivative() -> None:
-        if await costable_mesh_exists(org_id, mesh_hash):
+        if await costable_mesh_exists(org_id, mesh_hash, source_units=source_units):
             return
         mesh = parsed_mesh
         if mesh is None:
@@ -167,7 +167,7 @@ async def _persist_source_evidence(
         payload = await asyncio.to_thread(mesh.export, file_type="stl")
         if not isinstance(payload, (bytes, bytearray, memoryview)) or not payload:
             raise RuntimeError("CAD parser did not produce a costable STL derivative")
-        await save_costable_mesh_artifact(org_id, mesh_hash, bytes(payload))
+        await save_costable_mesh_artifact(org_id, mesh_hash, bytes(payload), source_units=source_units)
 
     # The exact source object and the canonical derivative have independent,
     # deterministic keys. Persist them concurrently, but await both before the

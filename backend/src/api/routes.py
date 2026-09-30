@@ -1980,6 +1980,7 @@ async def _run_cost_decision(
             cal_org_id,
             source_hash,
             bytes(costable_stl),
+            source_units=effective_units,
         )
     # Span 4/4 — serialize the glass-box decision to the response dict.
     with tracing.span("cost.serialize"):

@@ -190,3 +190,30 @@ first divergence: step 15, expected to assess the generated design after its asy
 - Fix: wait up to 30 seconds for either the existing rendered-preview-ready state or the explicit unavailable-WebGL message. This is stronger than merely counting a canvas element; the full gate remains enabled.
 - Verification: native Chrome generated an 80×50×6 mm plate with four 6 mm corner holes, then reloaded and selected it at 390×844. The rendered-preview-ready state appeared and document width stayed within the viewport. The three harness contract tests pass; a fresh full CI run is required. See `034-design-mobile-preview-local.png`.
 - Separate open observation: this local Chrome session blocked the direct STEP download with ERR_BLOCKED_BY_CLIENT after the backend served HTTP 200. No browser protection was bypassed and no local downloaded-file success is claimed. The CI revision-download evidence passed; the local browser-specific failure still needs diagnosis.
+
+
+## 035 — Calibration reuses geometry from a different STL unit interpretation
+
+first divergence: step 2, expected the same STL bytes interpreted as inches to materialize a 25.4 mm cube, state was the first-written 1 mm canonical derivative.
+
+- Severity: high calibration accuracy issue. Canonical derivative storage and recalibration materialization used only the source digest, and historical-cost records did not preserve source units. Separately saved decisions did not prevent this collision.
+- Fix: preserve `source_units` through CSV/API/database/engine records and cache keys. Use versioned, unit-qualified canonical artifacts; rebuild old unqualified derivatives from retained source using the existing bounded parser. STEP/IGES retain embedded units. Materialized canonical STL is marked mm to avoid double conversion. Migration 0047 defaults older records to the prior mm interpretation; it cannot infer the units of historical STL actuals.
+- Red-to-green: a wrong legacy derivative is ignored; repeated mm/inch/mm reads return 1/25.4/1 mm. Two records sharing a source digest materialize separately and stay normalized exactly once. The engine report cache separates 10 mm from 10 inch cubes (1 versus 16,387.064 cm³). CSV rejects invalid units, defaults omitted units to mm, and preserves units in PostgreSQL readback. The downloadable template still parses all its columns correctly.
+- Native Chrome imported explicitly demo-tagged mm/inch records. Direct local database readback confirms both units and stand-in flags; recalibration refuses all three demo records with 0 real of 8 needed. This proves mechanics, not real-world calibrated price accuracy.
+- Validation: full backend suite 2,357 passed / 3 documented corpus/OCP-XDE skips; 22 focused checks repeated after final template/guard edits; pyright 217 against the existing 228 baseline; no medium/high Bandit findings (two preexisting lows). Local database migration applied successfully. Frontend 484 tests, typecheck, lint and production build pass. See `calibration-regression.json` and `035-calibration-demo-refused-local.png`. Not deployed.
+
+## 036 — Calibration CSV failures vanish after their toast expires
+
+first divergence: step 2, expected rejected rows to remain available for correction, state was a changed record count with no persistent import summary or row errors.
+
+- Severity: medium usability issue. The calibration import only used transient toasts, including at most three row errors.
+- Fix: retain the import counts and all returned row errors beside the upload control, with retry instructions. A new import clears prior results/errors; request failures also remain visible. Reuse the existing machines-screen presentation pattern and import-summary type.
+- Verification: the native-browser check first failed because no persistent summary existed, then passed for 2 imported / 1 skipped / 3 total with the exact line-4 invalid-unit error. Retrying a corrected row reports 1 imported / 0 skipped and removes old errors. Re-importing the same records retains the deduplicated count. Runnable check: `scripts/e2e/calibration-import-feedback.mjs`. See `036-calibration-import-fixed-local.png`. Local only.
+
+## 037 — Calibration controls overflow the phone viewport
+
+first divergence: step 1, expected calibration panels to fit a 390 px viewport, state was a 375 px content area with 780 px of horizontal content and clipped controls.
+
+- Severity: medium responsive usability issue. Both panel groups forced two columns at every width, while audit rows forced unwrappable columns.
+- Fix: native responsive grid classes stack panels and audit rows on narrow screens; fluid padding and long-text wrapping preserve the existing desktop layout.
+- Verification: after a fresh production build, the same page has 375 px content inside 375 px available width. Native phone-width CSV import and Recalibrate both work; demo records remain refused. All 484 frontend tests, TypeScript, changed-file lint and build pass. Viewport reset after the check. See `037-calibration-mobile-before.png`, `037-calibration-mobile-fixed-local.png` and the runnable width check in `scripts/e2e/calibration-import-feedback.mjs`. Not deployed.

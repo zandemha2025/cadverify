@@ -70,7 +70,7 @@ CSV_OPTIONAL_COLUMNS = (
     "material_class", "shop", "region", "currency", "source", "source_type",
     "vendor_quote_id", "invoice_date", "actual_machine_hours",
     "actual_setup_hours", "actual_labor_hours", "actual_inspection_hours",
-    "actual_cycle_seconds", "evidence_sha256", "evidence_uri", "part_path",
+    "actual_cycle_seconds", "evidence_sha256", "source_units", "evidence_uri", "part_path",
     "notes",
 )
 CSV_HEADER = ",".join(CSV_REQUIRED_COLUMNS + CSV_OPTIONAL_COLUMNS)
@@ -356,6 +356,9 @@ def parse_ground_truth_csv(text: str):
         evidence_sha256 = cell(record, "evidence_sha256") or None
         if evidence_sha256 and not _SHA256_RE.fullmatch(evidence_sha256):
             row_errs.append("evidence_sha256 must be a 64-character hex digest")
+        source_units = cell(record, "source_units") or "mm"
+        if source_units not in {"mm", "inch"}:
+            row_errs.append("source_units must be mm or inch")
 
         if row_errs:
             errors.append({"line": line, "reason": "; ".join(row_errs)})
@@ -380,6 +383,7 @@ def parse_ground_truth_csv(text: str):
             "actual_inspection_hours": actual_inspection_hours,
             "actual_cycle_seconds": actual_cycle_seconds,
             "evidence_sha256": evidence_sha256.lower() if evidence_sha256 else None,
+            "source_units": source_units,
             "evidence_uri": cell(record, "evidence_uri") or None,
             "part_path": safe_part_path,
             "notes": cell(record, "notes"),
@@ -434,6 +438,7 @@ def row_to_public(r: GroundTruthRecordRow) -> dict:
         "actual_inspection_hours": r.actual_inspection_hours,
         "actual_cycle_seconds": r.actual_cycle_seconds,
         "evidence_sha256": r.evidence_sha256,
+        "source_units": r.source_units,
         "evidence_uri": r.evidence_uri,
         "stand_in": r.stand_in,
         "part_path": r.part_path,
@@ -468,6 +473,7 @@ def _row_to_gt(r: GroundTruthRecordRow) -> GroundTruthRecord:
         actual_inspection_hours=r.actual_inspection_hours,
         actual_cycle_seconds=r.actual_cycle_seconds,
         evidence_sha256=r.evidence_sha256,
+        source_units=r.source_units,
         evidence_uri=r.evidence_uri,
         stand_in=bool(r.stand_in),
         part_path=r.part_path,
@@ -508,7 +514,7 @@ def _extract_geometry_features(gt: GroundTruthRecord,
         from src.costing.cli import _run_engine
         from src.costing.drivers import extract_drivers
 
-        result, mesh, feats = _run_engine(path)
+        result, mesh, feats = _run_engine(path, source_units=gt.source_units)
         dr = extract_drivers(result.geometry, mesh, feats)
         vol = float(dr.volume_cm3)
         area = float(dr.surface_area_cm2)
@@ -577,6 +583,7 @@ async def ingest_record(
         actual_inspection_hours=payload.get("actual_inspection_hours"),
         actual_cycle_seconds=payload.get("actual_cycle_seconds"),
         evidence_sha256=evidence_sha256,
+        source_units=payload.get("source_units") or "mm",
         evidence_uri=payload.get("evidence_uri"),
         stand_in=stand_in,
         # network-supplied path is confined to a safe relative corpus path
@@ -636,6 +643,7 @@ async def ingest_record(
         actual_inspection_hours=gt.actual_inspection_hours,
         actual_cycle_seconds=gt.actual_cycle_seconds,
         evidence_sha256=evidence_sha256,
+        source_units=gt.source_units,
         evidence_uri=gt.evidence_uri,
         stand_in=gt.stand_in,
         part_path=gt.part_path,
@@ -799,23 +807,25 @@ async def recalibrate_org(
     from src.storage import ObjectNotFoundError
 
     with TemporaryDirectory(prefix="proofshape-calibration-") as temp_root:
-        materialized: dict[str, tuple[str, str] | None] = {}
+        materialized: dict[tuple[str, str], str | None] = {}
         resolved_records: list[GroundTruthRecord] = []
         for record in records:
             digest = (record.evidence_sha256 or "").lower()
             if digest:
-                if digest not in materialized:
+                key = (digest, record.source_units)
+                if key not in materialized:
                     try:
-                        payload = await read_costable_mesh_artifact(org_id, digest)
+                        payload = await read_costable_mesh_artifact(org_id, digest, source_units=record.source_units)
                     except ObjectNotFoundError:
-                        materialized[digest] = None
+                        materialized[key] = None
                     else:
-                        name = f"source-{digest}.stl"
+                        name = f"source-{digest}-{record.source_units}.stl"
                         Path(temp_root, name).write_bytes(payload)
-                        materialized[digest] = (name, ".stl")
-                source = materialized[digest]
+                        materialized[key] = name
+                source = materialized[key]
                 if source is not None:
-                    resolved_records.append(replace(record, part_path=source[0]))
+                    # The artifact is already normalized; do not scale it again.
+                    resolved_records.append(replace(record, part_path=source, source_units="mm"))
                     continue
 
             # Preserve an explicitly configured operator corpus for records not

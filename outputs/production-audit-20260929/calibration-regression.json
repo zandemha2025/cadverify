@@ -1,0 +1,102 @@
+{
+  "checked_at": "2026-09-30T01:01:22.465730+00:00",
+  "environment": "local disposable audit workspace",
+  "deployed": false,
+  "findings": [
+    "035",
+    "036",
+    "037"
+  ],
+  "backend": {
+    "full_passed": 2357,
+    "skipped": [
+      "real corpus manifest absent",
+      "two OCP XDE checks unavailable"
+    ],
+    "focused_final_passed": 22,
+    "pyright_errors": 217,
+    "pyright_baseline": 228,
+    "bandit_medium_high": 0,
+    "bandit_preexisting_low": 2,
+    "migration": "0047_ground_truth_units, local PostgreSQL only"
+  },
+  "frontend": {
+    "tests_passed": 484,
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "production_build": "PASS"
+  },
+  "geometry": {
+    "legacy_rebuild_cube_dimensions_mm": [
+      1,
+      25.4,
+      1
+    ],
+    "engine_cache_volume_cm3": {
+      "mm": 1,
+      "inch": 16387.064
+    },
+    "independent_expected_inch_volume_cm3": 16387.064,
+    "calibration_materialization": "different paths per units, normalized once to mm"
+  },
+  "browser": {
+    "mixed_csv": {
+      "imported": 2,
+      "skipped": 1,
+      "total": 3,
+      "error": "line 4: source_units must be mm or inch"
+    },
+    "corrected_csv": {
+      "imported": 1,
+      "skipped": 0,
+      "total": 1,
+      "old_errors_cleared": true
+    },
+    "persisted_records": [
+      {
+        "part_id": "audit-calibration-corrected.stl",
+        "source_units": "mm",
+        "stand_in": true,
+        "source_type": "demo"
+      },
+      {
+        "part_id": "audit-calibration-inch.stl",
+        "source_units": "inch",
+        "stand_in": true,
+        "source_type": "demo"
+      },
+      {
+        "part_id": "audit-calibration-mm.stl",
+        "source_units": "mm",
+        "stand_in": true,
+        "source_type": "demo"
+      }
+    ],
+    "real_count": 0,
+    "demo_count": 3,
+    "recalibration": "refused: 0 real of 8 needed",
+    "mobile": {
+      "viewport_width": 390,
+      "available_content_width": 375,
+      "content_width_before": 780,
+      "content_width_after": 375,
+      "upload": "PASS",
+      "recalibrate": "PASS",
+      "viewport_reset": true
+    }
+  },
+  "screenshots": {
+    "035-calibration-demo-refused-local.png": "e046601517f674e177b8985246d0ff8becf5439e81e8b566335835ad74346dbf",
+    "036-calibration-import-before.png": "955764a5c1b207321855fcc2bd820f81e6f887e0484c06d82ee8c81c5dfb589a",
+    "036-calibration-import-fixed-local.png": "0ecf18c21b2fb00d81e253c9d609060dc8de9eac3cc971108855fb6280f6f033",
+    "037-calibration-mobile-before.png": "aa314aebc30dc4920c557b7d20a672bc120021be230d622a7bc87738431cc60c",
+    "037-calibration-mobile-fixed-local.png": "f1278beb888ae9d6922a95ebe33d109c9e53f490634165c614bf8ba071f3eb70"
+  },
+  "not_proven": [
+    "real quote accuracy",
+    "external email receipt",
+    "company IdP",
+    "real SAP/Windchill tenant success",
+    "production deployment"
+  ]
+}

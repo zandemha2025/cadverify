@@ -91,6 +91,7 @@ class GroundTruthRecord:
     actual_inspection_hours: Optional[float] = None
     actual_cycle_seconds: Optional[float] = None
     evidence_sha256: Optional[str] = None
+    source_units: str = "mm"
     evidence_uri: Optional[str] = None
     stand_in: bool = True             # True = synthetic STAND-IN; False = real ground truth
     part_path: Optional[str] = None   # explicit STL path; else resolved from part_id under parts_dir
@@ -125,6 +126,8 @@ class GroundTruthRecord:
         }
 
     def __post_init__(self) -> None:
+        if self.source_units not in {"mm", "inch"}:
+            raise ValueError("source_units must be mm or inch")
         if not self.part_id:
             raise ValueError("GroundTruthRecord requires a part_id")
         if self.actual_unit_cost_usd is None or self.actual_unit_cost_usd <= 0:
@@ -292,13 +295,13 @@ class EngineCostCache:
         self.parts_dir = parts_dir
         self._reports: dict = {}
 
-    def _report(self, path, qty, shop, material_class, region):
-        key = (path, int(qty), shop or "", material_class, region or "")
+    def _report(self, path, qty, shop, material_class, region, source_units="mm"):
+        key = (path, int(qty), shop or "", material_class, region or "", source_units)
         if key in self._reports:
             return self._reports[key]
         from src.costing.cli import _run_engine
         from src.costing import estimate_decision, EstimateOptions
-        result, mesh, feats = _run_engine(path)
+        result, mesh, feats = _run_engine(path, source_units=source_units)
         opts = EstimateOptions(
             quantities=[int(qty)], material_class=material_class,
             material_class_is_user=True, shop=shop,
@@ -314,7 +317,7 @@ class EngineCostCache:
                               f"part file not found for '{record.part_id}'")
         try:
             rep = self._report(path, record.quantity, record.shop,
-                               record.material_class, record.region)
+                               record.material_class, record.region, record.source_units)
         except Exception as exc:  # pragma: no cover - corrupt mesh / engine error
             return Prediction(record, None, False, f"engine error: {exc}")
         if rep.status != "OK":

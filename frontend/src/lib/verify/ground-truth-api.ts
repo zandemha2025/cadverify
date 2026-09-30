@@ -26,6 +26,7 @@ export interface GroundTruthRecord {
   source: string;
   stand_in: boolean;
   part_path: string | null;
+  source_units?: "mm" | "inch";
   notes: string;
   created_at: string | null;
 }
