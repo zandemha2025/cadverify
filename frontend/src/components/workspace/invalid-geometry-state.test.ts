@@ -25,13 +25,18 @@ test("Analyze preserves the canonical geometry refusal over a sibling transport 
 });
 
 test("Analyze retains concurrent work for accepted geometry", () => {
+  const submit = workspace.slice(
+    workspace.indexOf("const runAnalyses"),
+    workspace.indexOf("const handleFile"),
+  );
   const handler = workspace.slice(
     workspace.indexOf("const handleFile"),
     workspace.indexOf("Seed from a caller-provided file"),
   );
-  assert.match(handler, /const attempt = \+\+analysisAttemptRef\.current/);
-  assert.match(handler, /void runCost\(selected, opts, attempt\)/);
-  assert.match(handler, /void runDfm\(selected, opts\.units, attempt\)/);
+  assert.match(handler, /runAnalyses\(selected, opts\)/);
+  assert.match(submit, /const attempt = \+\+analysisAttemptRef\.current/);
+  assert.match(submit, /void runCost\(theFile, theOpts, attempt\)/);
+  assert.match(submit, /void runDfm\(theFile, theOpts\.units, attempt\)/);
 });
 
 test("Analyze maps terminal geometry failures to refusal and replacement guidance", () => {

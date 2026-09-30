@@ -100,6 +100,7 @@ export interface PartHeroProps {
   report: CostReport | null;
   validation: ValidationResult | null;
   opts: CostOptions;
+  sourceUnits: CostOptions["units"];
   setOpt: SetOpt;
   assumptions: CostAssumption[];
   overrideKeys: string[];
@@ -129,6 +130,7 @@ export function PartHero({
   report,
   validation,
   opts,
+  sourceUnits,
   setOpt,
   assumptions,
   overrideKeys,
@@ -348,7 +350,7 @@ export function PartHero({
               <div className="relative h-[360px] min-[980px]:h-[440px]">
                 <CadViewer
                   file={file}
-                  units={opts.units}
+                  units={sourceUnits}
                   analysisMeshHash={validation?.analysis_mesh_hash}
                   highlightFaces={highlightFaces}
                   highlightColor={highlightColor}

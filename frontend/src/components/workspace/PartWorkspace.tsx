@@ -155,6 +155,7 @@ export default function PartWorkspace({
 }) {
   const [file, setFile] = useState<File | null>(initialFile ?? null);
   const [opts, setOpts] = useState<CostOptions>(DEFAULT_COST_OPTIONS);
+  const [submittedOptions, setSubmittedOptions] = useState<CostOptions>(DEFAULT_COST_OPTIONS);
   const [role, setRole] = useState<RoleId>(defaultRole);
   const [tab, setTab] = useState<WorkTab>(() => landingTab(defaultRole));
   const [inspectorOpen, setInspectorOpen] = useState(() => defaultRole === "cost");
@@ -343,9 +344,9 @@ export default function PartWorkspace({
   const recostWith = useCallback(
     (next: CostOptions) => {
       setOpts(next);
-      if (file && !validateQty(next.qty)) void runCost(file, next);
+      if (file && !validateQty(next.qty)) runAnalyses(file, next);
     },
-    // runCost is stable (useCallback []); safe.
+    // runAnalyses is stable; all submission paths use the same geometry inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [file]
   );
@@ -470,6 +471,16 @@ export default function PartWorkspace({
     }
   }, []);
 
+  const runAnalyses = useCallback((theFile: File, theOpts: CostOptions) => {
+    // Draft edits must not change the preview or leave DFM on an older scale.
+    // A new submission also invalidates both responses from the previous one.
+    const attempt = ++analysisAttemptRef.current;
+    dfmTerminalFailureRef.current = null;
+    setSubmittedOptions(theOpts);
+    void runCost(theFile, theOpts, attempt);
+    void runDfm(theFile, theOpts.units, attempt);
+  }, [runCost, runDfm]);
+
   const handleFile = useCallback(
     async (selected: File) => {
       if (!isSupportedCad(selected.name)) {
@@ -493,14 +504,11 @@ export default function PartWorkspace({
           return;
         }
       }
-      dfmTerminalFailureRef.current = null;
-      const attempt = ++analysisAttemptRef.current;
       setFile(selected);
       setTab(landingTab(role));
-      void runCost(selected, opts, attempt);
-      void runDfm(selected, opts.units, attempt);
+      runAnalyses(selected, opts);
     },
-    [opts, role, runCost, runDfm]
+    [opts, role, runAnalyses]
   );
 
   /* Seed from a caller-provided file (FE-3 part door hands off here). `file`
@@ -518,11 +526,8 @@ export default function PartWorkspace({
 
   const handleRecost = useCallback(() => {
     if (!file || validateQty(opts.qty)) return;
-    void runCost(file, opts);
-    // Source units change geometry, not just price. Re-run DFM from the same
-    // declaration so Routing and Decision can never describe different parts.
-    void runDfm(file, opts.units);
-  }, [file, opts, runCost, runDfm]);
+    runAnalyses(file, opts);
+  }, [file, opts, runAnalyses]);
 
   const reset = useCallback(() => {
     setFile(null);
@@ -655,6 +660,7 @@ export default function PartWorkspace({
         report={report}
         validation={validation}
         opts={opts}
+        sourceUnits={submittedOptions.units}
         setOpt={setOpt}
         assumptions={assumptions}
         overrideKeys={overrideKeys}
@@ -675,7 +681,7 @@ export default function PartWorkspace({
         onSaveScenario={onSaveScenario}
         onRecallScenario={onRecallScenario}
         handleRecost={handleRecost}
-        runDfm={(candidate) => void runDfm(candidate, opts.units)}
+        runDfm={(candidate) => runAnalyses(candidate, submittedOptions)}
         reset={reset}
       />
     );
@@ -753,7 +759,7 @@ export default function PartWorkspace({
                 <div className="relative h-[340px]">
                   <CadViewer
                     file={file}
-                    units={opts.units}
+                    units={submittedOptions.units}
                     analysisMeshHash={validation?.analysis_mesh_hash}
                     highlightFaces={highlightFaces}
                     highlightColor={highlightColor}
