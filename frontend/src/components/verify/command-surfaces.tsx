@@ -120,14 +120,18 @@ export function CommandPalette({
         hideClose
         className="top-[120px] block -translate-y-0 p-0"
         onOpenAutoFocus={(event) => {
-          returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          const active = document.activeElement;
+          returnFocusRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
           event.preventDefault();
           inputRef.current?.focus();
         }}
         onCloseAutoFocus={(event) => {
-          if (returnFocusRef.current?.isConnected) {
+          const target = returnFocusRef.current?.isConnected
+            ? returnFocusRef.current
+            : document.querySelector<HTMLElement>("[data-workspace-command-trigger]");
+          if (target) {
             event.preventDefault();
-            returnFocusRef.current.focus();
+            target.focus();
           }
         }}
         style={{ width: 520, maxWidth: "90%", background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 16, boxShadow: "0 18px 50px -18px rgba(23,24,26,0.35)", overflow: "hidden", animation: "vscreenIn 200ms cubic-bezier(0.2,0,0,1) both" }}

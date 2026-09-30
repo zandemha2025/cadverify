@@ -1172,3 +1172,13 @@ The completed container job110041471661 in CI36758849460 built merge sourceb9c1f
 - Delete the replay's duplicate JavaScript normalizers and invoke the actual backend adapters through bounded stdin/stdout. Preserve exact parent/child/quantity assertions. Correct synthetic fixtures and their exact download hash/byte contracts; document that lower-case material is declared metadata, not a native SAP response field.
 - Three RED regressions now pass.46focused connector/boundary checks,8latest adapter/fixture checks, actual Node-to-Python replays for both providers and zero-quantity refusal pass. Full backend2560pass/3documented skips in214.30s with protected skip policy. Types214errors/3warnings, zero new diagnostics; Bandit0medium/high; three changed JS runners parse. Frontend application source unchanged.
 - Native read-only inspection confirms the UI still says BOM reads/API imports are unavailable. No profile, vendor request, import, account or permission was created. Real transport, tenant reconciliation, API-version/unit/base-quantity/revision mapping and production proof remain required. See `139-connector-normalization-proof.json`.
+
+
+## 140 — Keyboard shortcuts allowed background navigation and lost focus
+
+- first divergence: step1, expected opening `?` to focus an accessible shortcuts dialog, state was focus on the background Hide assembly button with no dialog role. Pressing H on the close control dismissed the overlay and navigated to Home.
+- Reuse the existing Dialog instead of a custom overlay. Its focus trap, accessible title, background isolation and Escape handling now apply. Both Verify dialogs restore the prior connected focus target, or the existing workspace command button after the prior dialog is removed. The close target is44×44px and the command chord no longer wraps.
+- Native RED→GREEN: direct question-mark entry, Tab/Shift+Tab containment, background H refusal, Escape/context/focus return, palette→shortcuts→close and shortcuts→MetaK→palette→Escape all pass. The latter two paths exposed BODY focus and were corrected before completion. No machine/CAD data changed.
+-499frontend tests, typecheck, changed-file lint, production build and the existing native assertion module pass. Backend unchanged from139. Evidence: `140-shortcuts-dialog-proof.json` and three native screenshots. Not deployed.
+
+CI36758849460 is now terminal: all eight non-image jobs passed, including the full browser journey chain. Container startup/share-image and native STEP probes passed; the backend image scan alone failed with the five remaining HIGH findings. This run covers3323a29 through136, excluding137–140. See `ci-36758849460-summary.json`.

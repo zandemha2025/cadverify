@@ -309,3 +309,8 @@ Design-validation follow-up (138): overflow dimensions return serializable needs
 Actual-image follow-up134 now passes in the completed container job of CI36758849460: the real initial reset is retried, the default frontend serves the1200×630PNG, and the backend parses the known STEP with correct geometry. Source/image IDs and artifact digest are verified. Backend5HIGH vulnerabilities still fail the security gate; the whole run/browser chain is still active. No deployment.
 
 Connector follow-up139 corrects offline SAP identity/material mapping and refuses invented/non-finite/non-positive BOM quantities in both adapters. The CI replay now invokes those actual backend adapters instead of its own JavaScript copy. Exact fixture IDs/quantities and invalid-row isolation pass;2560backend tests/3documented skips, unchanged type baseline and clean changed-source security checks. Native integration UI continues to disclose unavailable BOM transport/import. Real vendor operations and authorized tenant proof remain open.
+
+
+Shortcuts follow-up140 replaces the unguarded overlay with the existing accessible dialog. Native focus containment, background-key refusal, Escape, direct focus return and both command/shortcuts handoffs pass;499frontend tests/types/lint/build pass. No production change.
+
+CI36758849460 completed on3323a29 through136: eight non-image jobs pass including the complete browser chain. Both actual-image runtime probes pass. The backend image security gate still fails five HIGH findings;137–140 require a fresh exact-head run.

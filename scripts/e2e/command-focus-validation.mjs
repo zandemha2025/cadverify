@@ -25,6 +25,23 @@ export async function assertSingleVerifyPalette(page) {
 }
 
 export async function assertShortcutsCommandSelected(page, expectedHeading) {
-  assert.equal(await page.playwright.getByRole("button", { name: "Close keyboard shortcuts", exact: true }).isVisible(), true);
-  assert.equal(await page.playwright.getByRole("heading", { name: expectedHeading, exact: true }).isVisible(), true);
+  await assertShortcutsModal(page);
+  assert.equal(await page.playwright.evaluate(() => document.querySelector("main h1")?.textContent), expectedHeading);
+}
+
+export async function assertShortcutsModal(page) {
+  const state = await page.playwright.evaluate(() => {
+    const dialog = document.querySelector('[role="dialog"]');
+    return {
+      dialogCount: document.querySelectorAll('[role="dialog"]').length,
+      backgroundHidden: !!document.querySelector("main")?.closest('[aria-hidden="true"]'),
+      focusInside: !!dialog?.contains(document.activeElement),
+      focusedLabel: document.activeElement?.getAttribute("aria-label"),
+    };
+  });
+  assert.equal(state.dialogCount, 1);
+  assert.equal(state.backgroundHidden, true);
+  assert.equal(state.focusInside, true);
+  assert.equal(state.focusedLabel, "Close keyboard shortcuts");
+  return state;
 }
