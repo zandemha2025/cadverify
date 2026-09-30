@@ -142,6 +142,9 @@ async function handle(
 
   const relayed = new Headers();
   for (const h of RELAY_HEADERS) {
+    // Fetch decodes compression, so its original byte count no longer frames
+    // the response body. Preserve lengths for unencoded downloads only.
+    if (h === "content-length" && res.headers.has("content-encoding")) continue;
     const v = res.headers.get(h);
     if (v) relayed.set(h, v);
   }
