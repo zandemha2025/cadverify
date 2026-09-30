@@ -1,0 +1,28 @@
+{
+  "finding": "082",
+  "environment": "Local frontend3017 → four-second Advisory delay proxy8018 → actual API8017; not deployed",
+  "first_divergence": "Choose Advisory then Required while the Advisory response is held. After completion, Required displays four Advisory rows and no Required request is sent.",
+  "before": {
+    "selected": "Required",
+    "displayed_verdicts": "Advisory",
+    "displayed_rows": 4,
+    "native_check": "assertHistoryVerdict fails: rows must match the selected verdict"
+  },
+  "fix": "Every filter change triggers its own first-page request. A component-local sequence invalidates prior results, errors and completion flags on filter changes and cleanup; pagination and retry use the same sequence.",
+  "after": {
+    "required_remains_empty_after_late_advisory_response": true,
+    "advisory_still_returns_four_matching_records": true,
+    "all_pagination_20_to_28_unique": true
+  },
+  "validation": {
+    "frontend_tests": 494,
+    "types_lint_build": "passed",
+    "runnable_check": "scripts/e2e/history-link-validation.mjs assertHistoryVerdict; native red/green",
+    "delay_fixture": "history-delay-proxy.py"
+  },
+  "screenshots": [
+    "082-history-filter-race-before.png",
+    "082-history-filter-race-fixed.png"
+  ],
+  "limits": "Local native proof; CI and production remain pending. Delayed failure responses were not injected in this pass."
+}

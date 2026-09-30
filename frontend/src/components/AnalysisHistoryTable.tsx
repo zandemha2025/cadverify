@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { History } from "lucide-react";
@@ -47,9 +47,11 @@ export default function AnalysisHistoryTable({ onRateLimitsUpdate }: Props) {
   const [initialized, setInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [verdictFilter, setVerdictFilter] = useState<string>("all");
+  const requestId = useRef(0);
 
   const loadPage = useCallback(
     async (nextCursor?: string, reset?: boolean) => {
+      const currentRequest = ++requestId.current;
       setLoading(true);
       setError(null);
       try {
@@ -58,6 +60,7 @@ export default function AnalysisHistoryTable({ onRateLimitsUpdate }: Props) {
           limit: 20,
           verdict: verdictFilter === "all" ? undefined : verdictFilter,
         });
+        if (currentRequest !== requestId.current) return;
         setAnalyses((prev) =>
           reset ? page.analyses : [...prev, ...page.analyses],
         );
@@ -65,10 +68,14 @@ export default function AnalysisHistoryTable({ onRateLimitsUpdate }: Props) {
         setHasMore(page.has_more);
         onRateLimitsUpdate?.(page.rateLimits);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load analyses");
+        if (currentRequest === requestId.current) {
+          setError(e instanceof Error ? e.message : "Failed to load analyses");
+        }
       } finally {
-        setLoading(false);
-        setInitialized(true);
+        if (currentRequest === requestId.current) {
+          setLoading(false);
+          setInitialized(true);
+        }
       }
     },
     [verdictFilter, onRateLimitsUpdate],
@@ -77,10 +84,12 @@ export default function AnalysisHistoryTable({ onRateLimitsUpdate }: Props) {
   // Fetch after commit, never during render. Render-time state updates can be
   // discarded/replayed by React and left a real non-empty API looking empty.
   useEffect(() => {
-    if (!initialized && !loading) void loadPage(undefined, true);
-  }, [initialized, loading, loadPage]);
+    void loadPage(undefined, true);
+    return () => { requestId.current += 1; };
+  }, [loadPage]);
 
   const handleFilterChange = (v: string) => {
+    requestId.current += 1;
     setVerdictFilter(v);
     setAnalyses([]);
     setCursor(null);

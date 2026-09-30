@@ -20,3 +20,15 @@ export async function openHistoryRecordWithKeyboard(page, href) {
   await link.press("Enter");
   await page.waitForURL(`**${href}`);
 }
+
+export async function assertHistoryVerdict(page, expected) {
+  assert.equal(
+    (await page.getByRole("combobox", { name: "Verdict filter" }).innerText()).trim(),
+    expected,
+  );
+  const verdicts = await page.locator("tbody tr td:nth-child(2)").allTextContents({});
+  assert(verdicts.every((value) => value.trim() === expected), "rows must match the selected verdict, including after delayed responses");
+  if (!verdicts.length) {
+    assert(await page.getByText("No analyses match this filter", { exact: true }).isVisible());
+  }
+}
