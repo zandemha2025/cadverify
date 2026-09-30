@@ -1,0 +1,77 @@
+{
+  "finding": 147,
+  "status": "fixed locally; not deployed",
+  "first_divergence": "step1, expected a saved CAD part to expose a way to declare its imported BOM identity, state was no user-facing control despite existing backend link fields and rollup support",
+  "implementation": [
+    "Reuse the existing part-context update endpoint, BOM ancestry reader, exact annual-volume helper and native form controls.",
+    "Validate assembly/reference and exact positive yearly counts before changing the saved link.",
+    "Preserve failed edits, unrelated context and immutable cost decisions; allow removal even with an invalid draft.",
+    "Label the multiplier per root assembly, including non-vehicle assemblies."
+  ],
+  "native_browser": {
+    "runner": "CUA / actual Chrome / local production build",
+    "width_px": 390,
+    "missing_control_red": true,
+    "invalid_reference_rejected": true,
+    "edit_clears_error": true,
+    "valid_link_saved": true,
+    "reload_persistence": true,
+    "other_part_isolation": true,
+    "failed_replacement_preserves_link": true,
+    "unlink_with_invalid_draft": true
+  },
+  "numerical_control": {
+    "cad_source": "142-torus.step",
+    "bom_source": "explicit local declared fixture, not a physical or vendor-sourced assembly",
+    "edges": [
+      [
+        "test-root",
+        "test-left",
+        2
+      ],
+      [
+        "test-left",
+        "torus-test-part",
+        3
+      ],
+      [
+        "test-root",
+        "test-right",
+        1
+      ],
+      [
+        "test-right",
+        "torus-test-part",
+        2
+      ]
+    ],
+    "independent_parts_per_root": "2 * 3 + 1 * 2 = 8",
+    "roots_per_year": 125,
+    "annual_volume": 1000,
+    "annualized_unit_cost_usd": 10.96,
+    "annualized_cost_usd": 10960,
+    "supplier_price_validated": false,
+    "readback": "147-bom-link-readback.json"
+  },
+  "cleanup": "147-bom-link-cleanup.json",
+  "validation": {
+    "frontend_tests_passed": 499,
+    "typescript": "pass",
+    "changed_file_eslint": "pass",
+    "production_build": "pass, repeated after final copy changes",
+    "backend_source_changed": false,
+    "broader_backend_repeat": "not needed for frontend-only link UI"
+  },
+  "screenshots": [
+    "147-bom-link-before.png",
+    "147-bom-link-saved.png",
+    "147-bom-link-removed.png"
+  ],
+  "runnable_check": "scripts/e2e/bom-context-link.mjs",
+  "limits": [
+    "Link identity is declared by the user, not inferred from CAD.",
+    "The retained local fixture is only a workflow/count control.",
+    "Real vendor import, customer quotes, email/IdP proof and production release remain pending."
+  ],
+  "ci": "36774148021 completed on f42015d through145; excludes146/147; eight non-image jobs and both image runtime probes pass; backend scan fails five HIGH findings"
+}

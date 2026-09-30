@@ -26,6 +26,7 @@
  */
 import { API_BASE } from "@/lib/api-base";
 import type { Portfolio, PortfolioDelta } from "./program-rollup";
+import type { PartContext } from "./part-context-read";
 
 export type {
   PortfolioUnitCost,
@@ -60,15 +61,7 @@ export async function getPortfolio(): Promise<Portfolio> {
 
 /** The single declared context for a part (GET /part-context/{mesh}); 404 → null
  *  (no declaration yet). */
-export interface DeclaredContext {
-  mesh_hash: string;
-  program: string | null;
-  parent_assembly: string | null;
-  units_per_parent: number | null;
-  annual_volume: number | null;
-  provenance: string;
-  service_environment?: Record<string, unknown> | null;
-}
+export type DeclaredContext = PartContext;
 
 /** The PUT /part-context response: the declared context plus the portfolio delta. */
 export interface AssignResult {
@@ -95,6 +88,9 @@ export async function getContext(
 export interface ContextPatch {
   program?: string | null;
   annual_volume?: number | null;
+  bom_assembly_key?: string | null;
+  bom_child_ref?: string | null;
+  bom_roots_per_year?: number | null;
 }
 
 /**

@@ -333,3 +333,8 @@ CI36769197096 completed on98928a5 through142. All eight non-image jobs and both 
 
 
 Windchill146 adds bounded authenticated BOM reads, validated whole-count structures, canonical preview/import comparison and atomic replacement/run evidence. Final90related checks and native invalid-selector recovery pass; the earlier full run passed2596tests with3documented skips, and frontend499tests/build pass. Real vendor responses were not used; authorized tenant and native successful preview/import remain open. See146-windchill-bom-proof.json. SAP BOM transport and production release remain pending.
+
+
+Part/BOM linking147 now exposes the existing declaration/rollup flow in saved-part standing. Native valid/invalid saves, reload, cross-part isolation and unlink pass. The local four-edge fixture produces8×125=1,000parts/year and the matching quantity estimate; context cleanup and3immutable records are verified.499frontend tests/types/lint/build pass. This fixture does not prove real assembly identity, vendor transport or supplier prices. See147-bom-link-proof.json.
+
+CI36774148021 completed through145: eight non-image jobs and both image runtime probes pass; five backend HIGH findings still fail the image gate.146/147 need fresh CI. Production unchanged.

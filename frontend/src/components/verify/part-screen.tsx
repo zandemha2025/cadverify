@@ -30,6 +30,8 @@ import {
 import { C, MONO, USD, NUM, procLabel, normProv } from "@/lib/verify/tokens";
 import { makeNowEstimate, driverViews } from "@/lib/verify/derive";
 import { fetchPartContext, type PartContext } from "@/lib/verify/part-context-read";
+import { assignContext } from "@/lib/verify/program-api";
+import { Button } from "@/components/ui/button";
 import {
   fetchBomAncestry,
   bomBreadcrumbView,
@@ -428,6 +430,10 @@ function Standing({ row, nav, onOpenProgram, onCompare }: {
             <GhostButton onClick={() => setBomAttempt((n) => n + 1)}>Retry BOM</GhostButton>
           </div>
         )}
+        {!loading && !ctxError && <BomLinkEditor meshHash={row.part_key} context={context} onSaved={(next) => {
+          setContext(next);
+          setBomAttempt((n) => n + 1);
+        }} />}
         {ctxError && (
           <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, color: C.cond }}>
             lineage unavailable — {ctxError}
@@ -449,6 +455,68 @@ function Standing({ row, nav, onOpenProgram, onCompare }: {
       </div>
     </div>
   );
+}
+
+function BomLinkEditor({ meshHash, context, onSaved }: {
+  meshHash: string; context: PartContext | null; onSaved: (context: PartContext) => void;
+}) {
+  const [assembly, setAssembly] = useState(context?.bom_assembly_key ?? "");
+  const [child, setChild] = useState(context?.bom_child_ref ?? "");
+  const [roots, setRoots] = useState(context?.bom_roots_per_year?.toString() ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  async function save(remove = false) {
+    if (busy) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const key = assembly.trim(), ref = child.trim();
+      const yearly = roots.trim() ? Number(roots) : null;
+      if (!remove) {
+        if (!key || !ref) throw new Error("Enter the saved assembly name and this part's BOM reference.");
+        if (yearly !== null && (!Number.isInteger(yearly) || yearly < 1 || yearly > 2147483647)) {
+          throw new Error("Root assemblies per year must be a whole number between 1 and 2147483647.");
+        }
+        const ancestry = await fetchBomAncestry(key, ref);
+        if (!ancestry?.has_tree || ancestry.error || ancestry.rolled_up_multiplier == null) {
+          throw new Error(ancestry?.error || "This saved assembly does not contain that part. Check the assembly name and exact BOM reference.");
+        }
+        if (yearly !== null && bomAnnualVolume(ancestry.rolled_up_multiplier, yearly) === null) {
+          throw new Error("BOM annual demand exceeds the supported exact integer range.");
+        }
+      }
+      const result = await assignContext(meshHash, {
+        bom_assembly_key: remove ? null : key,
+        bom_child_ref: remove ? null : ref,
+        bom_roots_per_year: remove ? null : yearly,
+      });
+      onSaved(result.context);
+      if (remove) { setAssembly(""); setChild(""); setRoots(""); }
+      setMessage(remove ? "BOM link removed. Any flat annual-volume declaration is preserved." : "BOM link saved. The current hierarchy is shown above.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save the BOM link. Please retry.");
+    } finally { setBusy(false); }
+  }
+
+  return <details style={{ border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "18px 20px" }}>
+    <summary className="cursor-pointer font-medium">Link this part to a saved BOM</summary>
+    <form aria-label="Part BOM link" className="mt-3 space-y-3 text-sm" onSubmit={(event) => { event.preventDefault(); void save(); }} onChange={() => { setError(""); setMessage(""); }}>
+      <p>Match this CAD part to an imported assembly. This is your declaration of part identity. Annual demand follows the saved hierarchy and your yearly assembly count; saved cost decisions stay unchanged.</p>
+      <fieldset disabled={busy} className="grid gap-3">
+        <label className="grid gap-1"><span>Saved BOM assembly name</span><input className="rounded border border-border bg-background px-3 py-2" value={assembly} onChange={(e) => setAssembly(e.target.value)} required /></label>
+        <label className="grid gap-1"><span>Part reference in BOM</span><input className="rounded border border-border bg-background px-3 py-2" value={child} onChange={(e) => setChild(e.target.value)} required /></label>
+        <label className="grid gap-1"><span>Root assemblies per year (optional)</span><input className="rounded border border-border bg-background px-3 py-2" type="number" min={1} max={2147483647} step={1} value={roots} onChange={(e) => setRoots(e.target.value)} /></label>
+        <p className="text-xs text-muted-foreground">Use the exact child reference from your BOM. For Windchill, use its part iteration ID. Without a yearly count, the flat annual-volume declaration is used when present.</p>
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit">{busy ? "Saving…" : "Save BOM link"}</Button>
+          <Button type="button" variant="secondary" disabled={!context?.bom_assembly_key && !context?.bom_child_ref} onClick={() => void save(true)}>Remove BOM link</Button>
+        </div>
+      </fieldset>
+      {error && <p role="alert" className="text-destructive">{error}</p>}
+      {message && <p role="status">{message}</p>}
+    </form>
+  </details>;
 }
 
 // BOM ancestry breadcrumb (Slice 3). Renders NOTHING unless a real tree grounds
@@ -513,7 +581,7 @@ function BomContextBar({
       </p>
       {view.perVehicle != null && (
         <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, color: C.ink45 }}>
-          {`${NUM(view.perVehicle)} per vehicle`}
+          {`${NUM(view.perVehicle)} per root assembly`}
           {rootsPerYear != null && perYear != null && (
             <span style={{ color: C.ink40 }}>
               {`  ·  ${NUM(view.perVehicle)} × ${NUM(rootsPerYear)}/yr = ${NUM(perYear)}/yr`}
@@ -525,7 +593,7 @@ function BomContextBar({
       {perYear == null && (
         <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, color: C.ink45 }}>
           {rootsPerYear == null
-            ? "Yearly vehicle production has not been supplied."
+            ? "Yearly root assembly production has not been supplied."
             : "BOM annual demand exceeds the supported exact integer range."}
           {declaredVolume != null ? ` Using ${NUM(declaredVolume)}/yr declared.` : " Annual demand is unavailable."}
         </p>
