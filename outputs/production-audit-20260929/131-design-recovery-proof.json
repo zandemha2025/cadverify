@@ -1,0 +1,60 @@
+{
+  "finding": "131",
+  "status": "fixed locally; not deployed",
+  "base_commit": "78b627d",
+  "first_divergence": "step 3, expected a failed history request to remain an error, state was ready with an empty history; failed initial list requests also advertised No designs yet",
+  "native_environment": "Chrome, local production build3017, real API8017 and existing PostgreSQL records; narrow GET-only fault proxy8018",
+  "faults": {
+    "history": "503 only /api/v1/designs/01M3SN9AWMN6SVBY6G1KNBB7CN/revisions",
+    "list": "503 only /api/v1/designs",
+    "data_mutations": false
+  },
+  "before": {
+    "history_state": "ready",
+    "history_controls_visible": false,
+    "history_retry_visible": false,
+    "list_false_empty_message": "No designs yet",
+    "native_regression_checks": "both RED"
+  },
+  "changes": [
+    "Reuse ErrorState and Try again for design-list and revision-history failures.",
+    "Keep loading failures distinct from true empty lists and indicate unavailable initial count.",
+    "Retain loaded designs/history and selected historical geometry across failed refreshes.",
+    "Header Refresh also reloads revision history; successful list polling does not erase unrelated form errors."
+  ],
+  "native_checks": {
+    "initial_list_failure": "PASS; no false empty claim",
+    "repeated_list_failure": "PASS",
+    "list_retry_without_reload": "PASS; three existing designs return",
+    "initial_history_failure": "PASS; current geometry stays visible",
+    "repeated_history_failure": "PASS",
+    "keyboard_history_retry": "PASS; both original revisions and comparison controls return",
+    "cached_history_failure": "PASS; selectedR1 remains80x50x40mm/23.20cm3/hash e86336068f0f",
+    "cached_list_failure": "PASS; all three designs and selectedR1 retained",
+    "keyboard_list_retry": "PASS",
+    "direct_api_restored": "PASS; normal Refresh works after stopping proxy"
+  },
+  "validation": {
+    "frontend_tests_passed": 499,
+    "frontend_tests_failed": 0,
+    "typecheck": "PASS",
+    "changed_source_lint": "PASS",
+    "production_build": "PASS",
+    "native_runnable_checks": "scripts/e2e/design-recovery-validation.mjs",
+    "backend_suite": "not repeated; no backend source change; previous2526passed/3documentedskips"
+  },
+  "cleanup": "Fault proxy stopped; frontend3017 restored to directAPI8017. Backend, worker and stored design records unchanged.",
+  "screenshots": [
+    "131-design-history-before.png",
+    "131-design-list-before.png",
+    "131-design-history-fixed.png",
+    "131-design-list-fixed.png",
+    "131-design-history-retained.png",
+    "131-design-recovered.png"
+  ],
+  "limits": [
+    "Not deployed.",
+    "This verifies local service-failure recovery, not every Design Studio branch or external service.",
+    "General manufacturing/quote accuracy, production rollout, real email/IdP/vendor connections remain open."
+  ]
+}

@@ -30,6 +30,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/ui/page-header";
@@ -214,7 +215,9 @@ export default function DesignsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [revisionHistory, setRevisionHistory] = useState<DesignRevision[]>([]);
   const [revisionHistoryOwnerId, setRevisionHistoryOwnerId] = useState<string | null>(null);
-  const [revisionHistoryState, setRevisionHistoryState] = useState<"idle" | "loading" | "ready">("idle");
+  const [revisionHistoryState, setRevisionHistoryState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [revisionHistoryError, setRevisionHistoryError] = useState<string | null>(null);
+  const [revisionRetryKey, setRevisionRetryKey] = useState(0);
   const [viewedRevisionNo, setViewedRevisionNo] = useState<number | null>(null);
   const [diffFrom, setDiffFrom] = useState<number | null>(null);
   const [diffTo, setDiffTo] = useState<number | null>(null);
@@ -229,6 +232,7 @@ export default function DesignsPage() {
     message: string;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const revisionDesignIdRef = useRef<string | null>(null);
@@ -243,7 +247,10 @@ export default function DesignsPage() {
   const revisionCurrentRevision = selected?.current_revision ?? null;
 
   const refresh = useCallback(async (quiet = false) => {
-    if (!quiet) setLoading(true);
+    if (!quiet) {
+      setLoading(true);
+      setListError(null);
+    }
     try {
       const next = await listDesigns();
       setDesigns(next);
@@ -252,11 +259,9 @@ export default function DesignsPage() {
           ? current
           : (next[0]?.id ?? null),
       );
-      setError(null);
+      setListError(null);
     } catch (caught) {
-      if (!quiet) {
-        setError(caught instanceof Error ? caught.message : "Could not load designs.");
-      }
+      setListError(caught instanceof Error ? caught.message : "Could not load designs.");
     } finally {
       if (!quiet) setLoading(false);
     }
@@ -284,6 +289,7 @@ export default function DesignsPage() {
       setRevisionHistory([]);
       setRevisionHistoryOwnerId(null);
       setRevisionHistoryState("idle");
+      setRevisionHistoryError(null);
       setViewedRevisionNo(null);
       revisionDesignIdRef.current = null;
       return;
@@ -291,6 +297,7 @@ export default function DesignsPage() {
     const designChanged = revisionDesignIdRef.current !== revisionSelectedId;
     revisionDesignIdRef.current = revisionSelectedId;
     setRevisionHistoryState("loading");
+    setRevisionHistoryError(null);
     if (designChanged) {
       setRevisionHistory([]);
       setRevisionHistoryOwnerId(revisionSelectedId);
@@ -312,19 +319,17 @@ export default function DesignsPage() {
           ),
         );
       },
-      () => {
+      (caught) => {
         if (!cancelled) {
-          setRevisionHistory([]);
-          setRevisionHistoryOwnerId(revisionSelectedId);
-          setRevisionHistoryState("ready");
-          setViewedRevisionNo(revisionCurrentRevision);
+          setRevisionHistoryState("error");
+          setRevisionHistoryError(caught instanceof Error ? caught.message : "Could not load revision history.");
         }
       },
     );
     return () => {
       cancelled = true;
     };
-  }, [revisionCurrentRevision, revisionRefreshKey, revisionSelectedId]);
+  }, [revisionCurrentRevision, revisionRefreshKey, revisionSelectedId, revisionRetryKey]);
 
   const update = <K extends keyof DesignForm,>(key: K, value: DesignForm[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -528,7 +533,10 @@ export default function DesignsPage() {
             : "Review organization-owned CAD revisions and their immutable evidence."
         }
         actions={
-          <Button variant="secondary" onClick={() => void refresh()} loading={loading}>
+          <Button variant="secondary" onClick={() => {
+            void refresh();
+            setRevisionRetryKey((current) => current + 1);
+          }} loading={loading}>
             <RefreshCw /> Refresh
           </Button>
         }
@@ -724,15 +732,18 @@ export default function DesignsPage() {
                 <CardTitle>Your designs</CardTitle>
                 <CardDescription>Organization-owned projects, newest revision first.</CardDescription>
               </div>
-              <Badge variant="neutral">{designs.length}</Badge>
+              <Badge variant="neutral">{listError && designs.length === 0 ? "Unavailable" : designs.length}</Badge>
             </CardHeader>
             <CardContent compact>
+              {listError && (
+                <ErrorState title="Could not load designs" message={listError} onRetry={() => void refresh()} className="mb-3" />
+              )}
               {loading && designs.length === 0 ? (
                 <div className="flex h-28 items-center justify-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" /> Loading designs…
                 </div>
               ) : designs.length === 0 ? (
-                <EmptyState
+                !listError && <EmptyState
                   icon={Box}
                   title="No designs yet"
                   description={
@@ -846,6 +857,14 @@ export default function DesignsPage() {
                       <p className="num mt-1 truncate text-sm font-medium text-foreground" title={viewedRevision?.geometry_hash ?? undefined}>{viewedRevision?.geometry_hash?.slice(0, 12) ?? "—"}</p>
                     </div>
                   </div>
+                )}
+
+                {revisionHistoryError && (
+                  <ErrorState
+                    title="Could not load revision history"
+                    message={revisionHistoryError}
+                    onRetry={() => setRevisionRetryKey((current) => current + 1)}
+                  />
                 )}
 
                 {visibleRevisionHistory.length > 0 && (
