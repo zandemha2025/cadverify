@@ -415,3 +415,12 @@ first divergence: step 3, expected the NIST part's link to open “Audit volume 
 - Fix: keep the selected program in the existing workspace component and pass the part's saved program name to the existing detail view. Program-list selection uses that same state. Unassigned parts still go to the assignment/list entry point.
 - Native red-to-green: the exact-heading regression failed before the fix and passes afterward. The direct link opens both assigned parts and their unchanged $48,597 annual estimate; back-to-list and normal list selection also pass.
 - Validation: all 489 frontend tests, typecheck, changed-source lint and production build pass. Evidence: `program-link-regression.json`, `057-*.png`, and the assertion in `scripts/e2e/program-volume-validation.mjs`. Local only.
+
+
+## 058 — Enterprise cost goldens still pinned the omitted metal-route winner (test defect)
+
+CI 36667332535 passed eight jobs, then the enterprise journey stopped before declaring portfolio context: its $133.58 CNC headline oracle rejected the corrected $110 wire-EDM recommendation. The three later context/program failures were downstream of that first assertion. The run did not reach the CAD corpus or training guide/deck.
+
+A separate real-STEP engine replay uses the identical SHA-pinned cube, four declared machines, owned-process flags, stainless class and severe-service environment. All 66 existing CI prices, line items and readiness flags match exactly. At quantity 1, eligible wire EDM totals $110 including the order minimum; at exactly 12,000 units, eligible binder jetting totals $2.463 before display rounding and $2.46 in the persisted recommendation. The portfolio contract therefore gives $2.46 × 12,000 = $29,520, not the stale $120,960 CNC value. No production formula changed for this repair.
+
+Updated the fixed numbers in the enterprise runner, its source-contract tests, answer-fidelity gate, release-evidence gate/fixture and RFQ fixture. Quantity matching, missing-volume withholding, arithmetic reconciliation, procurement thresholds, confidence/provenance assertions and tolerances remain unchanged. Twelve pure Node checks pass. Reproducible geometry/cost assertions are in `enterprise-cost-oracle.py` with sanitized inputs and CI comparison values in `enterprise-cost-oracle.json`. Full exact-head CI and production proof remain required; controlled model agreement does not establish real quote accuracy.

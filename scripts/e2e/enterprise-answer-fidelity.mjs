@@ -22,9 +22,9 @@ const expected = {
   cubeSha256: "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a",
   cubeBytes: 19030,
   annualVolume: 12000,
-  annualizedUnitCostUsd: 10.08,
-  annualizedCostUsd: 120960,
-  singlePartHeadlineUsd: 133.58,
+  annualizedUnitCostUsd: 2.46,
+  annualizedCostUsd: 29520,
+  singlePartHeadlineUsd: 110.00,
   procurementThresholdsUsd: {
     engineerSelfServe: 25000,
     sourcingManager: 250000,
@@ -343,7 +343,7 @@ async function main() {
       );
       assert(
         !approxEqual(annualized, expected.singlePartHeadlineUsd * annualVolume),
-        "single-part $133.58 headline was incorrectly annualized",
+        "single-part $110.00 headline was incorrectly annualized",
       );
       assert(basisQuantity === annualVolume, `annualized basis quantity drifted: ${basisQuantity}`);
       assert(portfolio.annualized_unit_cost_basis === "decision.recommendation", "annualized basis was not the engine recommendation");

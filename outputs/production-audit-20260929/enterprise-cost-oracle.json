@@ -1,0 +1,1091 @@
+{
+  "fixture": "backend/tests/assets/cube.step",
+  "sha256": "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a",
+  "engine_version": "0.3.9",
+  "ci_run": 36667332535,
+  "first_divergence": "The pinned CNC headline $133.58 ignored the eligible wire-EDM $110 estimate after the metal-route selector fix. Context declaration stopped before PUT; later program failures were downstream.",
+  "machine_fixture": [
+    {
+      "name": "MJF 5200 - Bay 4",
+      "process": "mjf",
+      "count": 3,
+      "max_workpiece_kg": 8,
+      "hourly_rate_usd": 48,
+      "capital_frac": 0.62,
+      "capabilities": {
+        "x": 380,
+        "y": 284,
+        "z": 380,
+        "min_layer_um": 80,
+        "min_wall_mm": 0.8
+      },
+      "materials": [
+        "polymer"
+      ]
+    },
+    {
+      "name": "Haas VF-4SS - Energy Cell",
+      "process": "cnc_3axis",
+      "count": 2,
+      "max_workpiece_kg": 250,
+      "hourly_rate_usd": 95,
+      "capital_frac": 0.55,
+      "capabilities": {
+        "x": 1270,
+        "y": 508,
+        "z": 635,
+        "axes": 3,
+        "achievable_it_grade": 9,
+        "spindle_power_kw": 22,
+        "min_tool_dia_mm": 3
+      },
+      "materials": [
+        "aluminum",
+        "stainless",
+        "steel"
+      ]
+    },
+    {
+      "name": "Mazak Integrex i-200",
+      "process": "cnc_5axis",
+      "count": 1,
+      "max_workpiece_kg": 180,
+      "hourly_rate_usd": 142,
+      "capital_frac": 0.58,
+      "capabilities": {
+        "x": 660,
+        "y": 660,
+        "z": 1016,
+        "axes": 5,
+        "motion_mode": "simultaneous_5",
+        "achievable_it_grade": 8,
+        "spindle_power_kw": 26
+      },
+      "materials": [
+        "stainless",
+        "titanium",
+        "steel"
+      ]
+    },
+    {
+      "name": "EOS M290 - Nickel/SS Cell",
+      "process": "dmls",
+      "count": 1,
+      "max_workpiece_kg": 20,
+      "hourly_rate_usd": 185,
+      "capital_frac": 0.65,
+      "capabilities": {
+        "x": 250,
+        "y": 250,
+        "z": 325,
+        "laser_power_kw": 0.4,
+        "min_layer_um": 30,
+        "min_wall_mm": 0.3
+      },
+      "materials": [
+        "stainless",
+        "titanium"
+      ]
+    }
+  ],
+  "service_environment": {
+    "max_temp_c": 120,
+    "sour_service": true,
+    "pressure_bar": 350
+  },
+  "quantities": [
+    1,
+    100,
+    1000,
+    2000,
+    5000,
+    10000,
+    12000
+  ],
+  "material_class": "stainless",
+  "all_66_ci_estimates_and_line_items_replayed_exactly": true,
+  "ci_estimates": [
+    {
+      "process": "sand_casting",
+      "material": "F6NM",
+      "quantity": 1,
+      "unit_cost_usd": 2159.42,
+      "line_items": {
+        "amortized_fixed": 2135,
+        "material": 0.1996,
+        "machine": 3.2251,
+        "labor": 21
+      },
+      "dfm_ready": false
+    },
+    {
+      "process": "sand_casting",
+      "material": "F6NM",
+      "quantity": 100,
+      "unit_cost_usd": 45.77,
+      "line_items": {
+        "amortized_fixed": 21.35,
+        "material": 0.1996,
+        "machine": 3.2251,
+        "labor": 21
+      },
+      "dfm_ready": false
+    },
+    {
+      "process": "sand_casting",
+      "material": "F6NM",
+      "quantity": 1000,
+      "unit_cost_usd": 26.7,
+      "line_items": {
+        "amortized_fixed": 2.275,
+        "material": 0.1996,
+        "machine": 3.2251,
+        "labor": 21
+      },
+      "dfm_ready": false
+    },
+    {
+      "process": "sand_casting",
+      "material": "F6NM",
+      "quantity": 2000,
+      "unit_cost_usd": 25.65,
+      "line_items": {
+        "amortized_fixed": 1.225,
+        "material": 0.1996,
+        "machine": 3.2251,
+        "labor": 21
+      },
+      "dfm_ready": false
+    },
+    {
+      "process": "sand_casting",
+      "material": "F6NM",
+      "quantity": 5000,
+      "unit_cost_usd": 25.02,
+      "line_items": {
+        "amortized_fixed": 0.595,
+        "material": 0.1996,
+        "machine": 3.2251,
+        "labor": 21
+      },
+      "dfm_ready": false
+    },
+    {
+      "process": "sand_casting",
+      "material": "F6NM",
+      "quantity": 10000,
+      "unit_cost_usd": 24.81,
+      "line_items": {
+        "amortized_fixed": 0.385,
+        "material": 0.1996,
+        "machine": 3.2251,
+        "labor": 21
+      },
+      "dfm_ready": false
+    },
+    {
+      "process": "dmls",
+      "material": "SS316L",
+      "quantity": 1,
+      "unit_cost_usd": 250,
+      "line_items": {
+        "amortized_fixed": 17.5,
+        "material": 0.1498,
+        "machine": 34.0726,
+        "labor": 0,
+        "plate_removal": 10.5,
+        "support_removal": 21,
+        "stress_relief": 0.3763,
+        "min_charge_floor": 166.4013
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "dmls",
+      "material": "SS316L",
+      "quantity": 100,
+      "unit_cost_usd": 66.27,
+      "line_items": {
+        "amortized_fixed": 0.175,
+        "material": 0.1498,
+        "machine": 34.0726,
+        "labor": 0,
+        "plate_removal": 10.5,
+        "support_removal": 21,
+        "stress_relief": 0.3763
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "dmls",
+      "material": "SS316L",
+      "quantity": 1000,
+      "unit_cost_usd": 66.2,
+      "line_items": {
+        "amortized_fixed": 0.105,
+        "material": 0.1498,
+        "machine": 34.0726,
+        "labor": 0,
+        "plate_removal": 10.5,
+        "support_removal": 21,
+        "stress_relief": 0.3763
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "dmls",
+      "material": "SS316L",
+      "quantity": 2000,
+      "unit_cost_usd": 66.19,
+      "line_items": {
+        "amortized_fixed": 0.0963,
+        "material": 0.1498,
+        "machine": 34.0726,
+        "labor": 0,
+        "plate_removal": 10.5,
+        "support_removal": 21,
+        "stress_relief": 0.3763
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "dmls",
+      "material": "SS316L",
+      "quantity": 5000,
+      "unit_cost_usd": 66.19,
+      "line_items": {
+        "amortized_fixed": 0.0945,
+        "material": 0.1498,
+        "machine": 34.0726,
+        "labor": 0,
+        "plate_removal": 10.5,
+        "support_removal": 21,
+        "stress_relief": 0.3763
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "dmls",
+      "material": "SS316L",
+      "quantity": 10000,
+      "unit_cost_usd": 66.19,
+      "line_items": {
+        "amortized_fixed": 0.0945,
+        "material": 0.1498,
+        "machine": 34.0726,
+        "labor": 0,
+        "plate_removal": 10.5,
+        "support_removal": 21,
+        "stress_relief": 0.3763
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "investment_casting",
+      "material": "SS316L",
+      "quantity": 1,
+      "unit_cost_usd": 5471.55,
+      "line_items": {
+        "amortized_fixed": 5452.5,
+        "material": 0.1596,
+        "machine": 6.6418,
+        "labor": 12.25
+      },
+      "dfm_ready": false
+    },
+    {
+      "process": "investment_casting",
+      "material": "SS316L",
+      "quantity": 100,
+      "unit_cost_usd": 73.58,
+      "line_items": {
+        "amortized_fixed": 54.525,
+        "material": 0.1596,
+        "machine": 6.6418,
+        "labor": 12.25
+      },
+      "dfm_ready": false
+    },
+    {
+      "process": "investment_casting",
+      "material": "SS316L",
+      "quantity": 1000,
+      "unit_cost_usd": 24.71,
+      "line_items": {
+        "amortized_fixed": 5.6625,
+        "material": 0.1596,
+        "machine": 6.6418,
+        "labor": 12.25
+      },
+      "dfm_ready": false
+    },
+    {
+      "process": "investment_casting",
+      "material": "SS316L",
+      "quantity": 2000,
+      "unit_cost_usd": 22.01,
+      "line_items": {
+        "amortized_fixed": 2.9625,
+        "material": 0.1596,
+        "machine": 6.6418,
+        "labor": 12.25
+      },
+      "dfm_ready": false
+    },
+    {
+      "process": "investment_casting",
+      "material": "SS316L",
+      "quantity": 5000,
+      "unit_cost_usd": 20.39,
+      "line_items": {
+        "amortized_fixed": 1.3425,
+        "material": 0.1596,
+        "machine": 6.6418,
+        "labor": 12.25
+      },
+      "dfm_ready": false
+    },
+    {
+      "process": "investment_casting",
+      "material": "SS316L",
+      "quantity": 10000,
+      "unit_cost_usd": 19.85,
+      "line_items": {
+        "amortized_fixed": 0.8025,
+        "material": 0.1596,
+        "machine": 6.6418,
+        "labor": 12.25
+      },
+      "dfm_ready": false
+    },
+    {
+      "process": "waam",
+      "material": "SS316L",
+      "quantity": 1,
+      "unit_cost_usd": 300,
+      "line_items": {
+        "amortized_fixed": 35,
+        "material": 0.1373,
+        "machine": 0.749,
+        "labor": 0,
+        "finish_machining": 0.2247,
+        "min_charge_floor": 263.889
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "waam",
+      "material": "SS316L",
+      "quantity": 100,
+      "unit_cost_usd": 30,
+      "line_items": {
+        "amortized_fixed": 3.5,
+        "material": 0.1373,
+        "machine": 0.749,
+        "labor": 0,
+        "finish_machining": 0.2247,
+        "min_charge_floor": 25.389
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "waam",
+      "material": "SS316L",
+      "quantity": 1000,
+      "unit_cost_usd": 30,
+      "line_items": {
+        "amortized_fixed": 3.5,
+        "material": 0.1373,
+        "machine": 0.749,
+        "labor": 0,
+        "finish_machining": 0.2247,
+        "min_charge_floor": 25.389
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "waam",
+      "material": "SS316L",
+      "quantity": 2000,
+      "unit_cost_usd": 30,
+      "line_items": {
+        "amortized_fixed": 3.5,
+        "material": 0.1373,
+        "machine": 0.749,
+        "labor": 0,
+        "finish_machining": 0.2247,
+        "min_charge_floor": 25.389
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "waam",
+      "material": "SS316L",
+      "quantity": 5000,
+      "unit_cost_usd": 30,
+      "line_items": {
+        "amortized_fixed": 3.5,
+        "material": 0.1373,
+        "machine": 0.749,
+        "labor": 0,
+        "finish_machining": 0.2247,
+        "min_charge_floor": 25.389
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "waam",
+      "material": "SS316L",
+      "quantity": 10000,
+      "unit_cost_usd": 30,
+      "line_items": {
+        "amortized_fixed": 3.5,
+        "material": 0.1373,
+        "machine": 0.749,
+        "labor": 0,
+        "finish_machining": 0.2247,
+        "min_charge_floor": 25.389
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "wire_edm",
+      "material": "API 13Cr",
+      "quantity": 1,
+      "unit_cost_usd": 110,
+      "line_items": {
+        "amortized_fixed": 26.25,
+        "material": 0.1189,
+        "machine": 10.4195,
+        "labor": 3.5,
+        "consumables": 1.0366,
+        "min_charge_floor": 68.675
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "wire_edm",
+      "material": "API 13Cr",
+      "quantity": 100,
+      "unit_cost_usd": 15.6,
+      "line_items": {
+        "amortized_fixed": 0.525,
+        "material": 0.1189,
+        "machine": 10.4195,
+        "labor": 3.5,
+        "consumables": 1.0366
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "wire_edm",
+      "material": "API 13Cr",
+      "quantity": 1000,
+      "unit_cost_usd": 15.6,
+      "line_items": {
+        "amortized_fixed": 0.525,
+        "material": 0.1189,
+        "machine": 10.4195,
+        "labor": 3.5,
+        "consumables": 1.0366
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "wire_edm",
+      "material": "API 13Cr",
+      "quantity": 2000,
+      "unit_cost_usd": 15.6,
+      "line_items": {
+        "amortized_fixed": 0.525,
+        "material": 0.1189,
+        "machine": 10.4195,
+        "labor": 3.5,
+        "consumables": 1.0366
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "wire_edm",
+      "material": "API 13Cr",
+      "quantity": 5000,
+      "unit_cost_usd": 15.6,
+      "line_items": {
+        "amortized_fixed": 0.525,
+        "material": 0.1189,
+        "machine": 10.4195,
+        "labor": 3.5,
+        "consumables": 1.0366
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "wire_edm",
+      "material": "API 13Cr",
+      "quantity": 10000,
+      "unit_cost_usd": 15.6,
+      "line_items": {
+        "amortized_fixed": 0.525,
+        "material": 0.1189,
+        "machine": 10.4195,
+        "labor": 3.5,
+        "consumables": 1.0366
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "cnc_3axis",
+      "material": "API 13Cr",
+      "quantity": 1,
+      "unit_cost_usd": 133.58,
+      "line_items": {
+        "amortized_fixed": 26.25,
+        "material": 0.1201,
+        "machine": 1.1033,
+        "labor": 17.5,
+        "nre": 70,
+        "inspection": 18.55,
+        "consumables": 0.0552
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "cnc_3axis",
+      "material": "API 13Cr",
+      "quantity": 100,
+      "unit_cost_usd": 20.97,
+      "line_items": {
+        "amortized_fixed": 0.2625,
+        "material": 0.1201,
+        "machine": 1.1033,
+        "labor": 17.5,
+        "nre": 0.7,
+        "inspection": 1.225,
+        "consumables": 0.0552
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "cnc_3axis",
+      "material": "API 13Cr",
+      "quantity": 1000,
+      "unit_cost_usd": 14.52,
+      "line_items": {
+        "amortized_fixed": 0.2625,
+        "material": 0.1201,
+        "machine": 0.7775,
+        "labor": 12.332,
+        "nre": 0.07,
+        "inspection": 0.9149,
+        "consumables": 0.0389
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "cnc_3axis",
+      "material": "API 13Cr",
+      "quantity": 2000,
+      "unit_cost_usd": 13.09,
+      "line_items": {
+        "amortized_fixed": 0.2625,
+        "material": 0.1201,
+        "machine": 0.6997,
+        "labor": 11.0988,
+        "nre": 0.035,
+        "inspection": 0.8409,
+        "consumables": 0.035
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "cnc_3axis",
+      "material": "API 13Cr",
+      "quantity": 5000,
+      "unit_cost_usd": 11.45,
+      "line_items": {
+        "amortized_fixed": 0.2625,
+        "material": 0.1201,
+        "machine": 0.6088,
+        "labor": 9.6558,
+        "nre": 0.014,
+        "inspection": 0.7543,
+        "consumables": 0.0304
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "cnc_3axis",
+      "material": "API 13Cr",
+      "quantity": 10000,
+      "unit_cost_usd": 10.35,
+      "line_items": {
+        "amortized_fixed": 0.2625,
+        "material": 0.1201,
+        "machine": 0.5479,
+        "labor": 8.6902,
+        "nre": 0.007,
+        "inspection": 0.6964,
+        "consumables": 0.0274
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "ded",
+      "material": "SS316L",
+      "quantity": 1,
+      "unit_cost_usd": 300,
+      "line_items": {
+        "amortized_fixed": 35,
+        "material": 0.1373,
+        "machine": 2.9962,
+        "labor": 0,
+        "finish_machining": 0.8989,
+        "min_charge_floor": 260.9676
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "ded",
+      "material": "SS316L",
+      "quantity": 100,
+      "unit_cost_usd": 30,
+      "line_items": {
+        "amortized_fixed": 3.5,
+        "material": 0.1373,
+        "machine": 2.9962,
+        "labor": 0,
+        "finish_machining": 0.8989,
+        "min_charge_floor": 22.4676
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "ded",
+      "material": "SS316L",
+      "quantity": 1000,
+      "unit_cost_usd": 30,
+      "line_items": {
+        "amortized_fixed": 3.5,
+        "material": 0.1373,
+        "machine": 2.9962,
+        "labor": 0,
+        "finish_machining": 0.8989,
+        "min_charge_floor": 22.4676
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "ded",
+      "material": "SS316L",
+      "quantity": 2000,
+      "unit_cost_usd": 30,
+      "line_items": {
+        "amortized_fixed": 3.5,
+        "material": 0.1373,
+        "machine": 2.9962,
+        "labor": 0,
+        "finish_machining": 0.8989,
+        "min_charge_floor": 22.4676
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "ded",
+      "material": "SS316L",
+      "quantity": 5000,
+      "unit_cost_usd": 30,
+      "line_items": {
+        "amortized_fixed": 3.5,
+        "material": 0.1373,
+        "machine": 2.9962,
+        "labor": 0,
+        "finish_machining": 0.8989,
+        "min_charge_floor": 22.4676
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "ded",
+      "material": "SS316L",
+      "quantity": 10000,
+      "unit_cost_usd": 30,
+      "line_items": {
+        "amortized_fixed": 3.5,
+        "material": 0.1373,
+        "machine": 2.9962,
+        "labor": 0,
+        "finish_machining": 0.8989,
+        "min_charge_floor": 22.4676
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "binder_jetting",
+      "material": "SS316L",
+      "quantity": 1,
+      "unit_cost_usd": 150,
+      "line_items": {
+        "amortized_fixed": 17.5,
+        "material": 0.1962,
+        "machine": 1.1662,
+        "labor": 0,
+        "sinter": 1.0496,
+        "min_charge_floor": 130.088
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "binder_jetting",
+      "material": "SS316L",
+      "quantity": 100,
+      "unit_cost_usd": 2.59,
+      "line_items": {
+        "amortized_fixed": 0.175,
+        "material": 0.1962,
+        "machine": 1.1662,
+        "labor": 0,
+        "sinter": 1.0496
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "binder_jetting",
+      "material": "SS316L",
+      "quantity": 1000,
+      "unit_cost_usd": 2.46,
+      "line_items": {
+        "amortized_fixed": 0.0525,
+        "material": 0.1962,
+        "machine": 1.1662,
+        "labor": 0,
+        "sinter": 1.0496
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "binder_jetting",
+      "material": "SS316L",
+      "quantity": 2000,
+      "unit_cost_usd": 2.46,
+      "line_items": {
+        "amortized_fixed": 0.0525,
+        "material": 0.1962,
+        "machine": 1.1662,
+        "labor": 0,
+        "sinter": 1.0496
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "binder_jetting",
+      "material": "SS316L",
+      "quantity": 5000,
+      "unit_cost_usd": 2.46,
+      "line_items": {
+        "amortized_fixed": 0.0525,
+        "material": 0.1962,
+        "machine": 1.1662,
+        "labor": 0,
+        "sinter": 1.0496
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "binder_jetting",
+      "material": "SS316L",
+      "quantity": 10000,
+      "unit_cost_usd": 2.46,
+      "line_items": {
+        "amortized_fixed": 0.0525,
+        "material": 0.1962,
+        "machine": 1.1662,
+        "labor": 0,
+        "sinter": 1.0496
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "slm",
+      "material": "SS316L",
+      "quantity": 1,
+      "unit_cost_usd": 250,
+      "line_items": {
+        "amortized_fixed": 17.5,
+        "material": 0.1498,
+        "machine": 52.4194,
+        "labor": 0,
+        "plate_removal": 10.5,
+        "support_removal": 21,
+        "stress_relief": 0.3763,
+        "min_charge_floor": 148.0545
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "slm",
+      "material": "SS316L",
+      "quantity": 100,
+      "unit_cost_usd": 84.62,
+      "line_items": {
+        "amortized_fixed": 0.175,
+        "material": 0.1498,
+        "machine": 52.4194,
+        "labor": 0,
+        "plate_removal": 10.5,
+        "support_removal": 21,
+        "stress_relief": 0.3763
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "slm",
+      "material": "SS316L",
+      "quantity": 1000,
+      "unit_cost_usd": 84.55,
+      "line_items": {
+        "amortized_fixed": 0.105,
+        "material": 0.1498,
+        "machine": 52.4194,
+        "labor": 0,
+        "plate_removal": 10.5,
+        "support_removal": 21,
+        "stress_relief": 0.3763
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "slm",
+      "material": "SS316L",
+      "quantity": 2000,
+      "unit_cost_usd": 84.54,
+      "line_items": {
+        "amortized_fixed": 0.0963,
+        "material": 0.1498,
+        "machine": 52.4194,
+        "labor": 0,
+        "plate_removal": 10.5,
+        "support_removal": 21,
+        "stress_relief": 0.3763
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "slm",
+      "material": "SS316L",
+      "quantity": 5000,
+      "unit_cost_usd": 84.54,
+      "line_items": {
+        "amortized_fixed": 0.0945,
+        "material": 0.1498,
+        "machine": 52.4194,
+        "labor": 0,
+        "plate_removal": 10.5,
+        "support_removal": 21,
+        "stress_relief": 0.3763
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "slm",
+      "material": "SS316L",
+      "quantity": 10000,
+      "unit_cost_usd": 84.54,
+      "line_items": {
+        "amortized_fixed": 0.0945,
+        "material": 0.1498,
+        "machine": 52.4194,
+        "labor": 0,
+        "plate_removal": 10.5,
+        "support_removal": 21,
+        "stress_relief": 0.3763
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "cnc_5axis",
+      "material": "API 13Cr",
+      "quantity": 1,
+      "unit_cost_usd": 187.54,
+      "line_items": {
+        "amortized_fixed": 35,
+        "material": 0.1201,
+        "machine": 1.8239,
+        "labor": 17.5,
+        "nre": 105,
+        "inspection": 28,
+        "consumables": 0.0912
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "cnc_5axis",
+      "material": "API 13Cr",
+      "quantity": 100,
+      "unit_cost_usd": 22.95,
+      "line_items": {
+        "amortized_fixed": 0.35,
+        "material": 0.1201,
+        "machine": 1.8239,
+        "labor": 17.5,
+        "nre": 1.05,
+        "inspection": 2.0125,
+        "consumables": 0.0912
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "cnc_5axis",
+      "material": "API 13Cr",
+      "quantity": 1000,
+      "unit_cost_usd": 15.75,
+      "line_items": {
+        "amortized_fixed": 0.35,
+        "material": 0.1201,
+        "machine": 1.2853,
+        "labor": 12.332,
+        "nre": 0.105,
+        "inspection": 1.4957,
+        "consumables": 0.0643
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "cnc_5axis",
+      "material": "API 13Cr",
+      "quantity": 2000,
+      "unit_cost_usd": 14.21,
+      "line_items": {
+        "amortized_fixed": 0.35,
+        "material": 0.1201,
+        "machine": 1.1567,
+        "labor": 11.0988,
+        "nre": 0.0525,
+        "inspection": 1.3724,
+        "consumables": 0.0578
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "cnc_5axis",
+      "material": "API 13Cr",
+      "quantity": 5000,
+      "unit_cost_usd": 12.43,
+      "line_items": {
+        "amortized_fixed": 0.35,
+        "material": 0.1201,
+        "machine": 1.0063,
+        "labor": 9.6558,
+        "nre": 0.021,
+        "inspection": 1.2281,
+        "consumables": 0.0503
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "cnc_5axis",
+      "material": "API 13Cr",
+      "quantity": 10000,
+      "unit_cost_usd": 11.25,
+      "line_items": {
+        "amortized_fixed": 0.35,
+        "material": 0.1201,
+        "machine": 0.9057,
+        "labor": 8.6902,
+        "nre": 0.0105,
+        "inspection": 1.1315,
+        "consumables": 0.0453
+      },
+      "dfm_ready": true
+    },
+    {
+      "process": "forging",
+      "material": "API 13Cr",
+      "quantity": 1,
+      "unit_cost_usd": 12121.85,
+      "line_items": {
+        "amortized_fixed": 12105,
+        "material": 0.1236,
+        "machine": 9.7308,
+        "labor": 7
+      },
+      "dfm_ready": false
+    },
+    {
+      "process": "forging",
+      "material": "API 13Cr",
+      "quantity": 100,
+      "unit_cost_usd": 137.9,
+      "line_items": {
+        "amortized_fixed": 121.05,
+        "material": 0.1236,
+        "machine": 9.7308,
+        "labor": 7
+      },
+      "dfm_ready": false
+    },
+    {
+      "process": "forging",
+      "material": "API 13Cr",
+      "quantity": 1000,
+      "unit_cost_usd": 29.27,
+      "line_items": {
+        "amortized_fixed": 12.42,
+        "material": 0.1236,
+        "machine": 9.7308,
+        "labor": 7
+      },
+      "dfm_ready": false
+    },
+    {
+      "process": "forging",
+      "material": "API 13Cr",
+      "quantity": 2000,
+      "unit_cost_usd": 23.27,
+      "line_items": {
+        "amortized_fixed": 6.42,
+        "material": 0.1236,
+        "machine": 9.7308,
+        "labor": 7
+      },
+      "dfm_ready": false
+    },
+    {
+      "process": "forging",
+      "material": "API 13Cr",
+      "quantity": 5000,
+      "unit_cost_usd": 19.67,
+      "line_items": {
+        "amortized_fixed": 2.82,
+        "material": 0.1236,
+        "machine": 9.7308,
+        "labor": 7
+      },
+      "dfm_ready": false
+    },
+    {
+      "process": "forging",
+      "material": "API 13Cr",
+      "quantity": 10000,
+      "unit_cost_usd": 18.47,
+      "line_items": {
+        "amortized_fixed": 1.62,
+        "material": 0.1236,
+        "machine": 9.7308,
+        "labor": 7
+      },
+      "dfm_ready": false
+    }
+  ],
+  "expected_recommendations": {
+    "1": {
+      "process": "wire_edm",
+      "unit_cost_usd": 110.0
+    },
+    "12000": {
+      "process": "binder_jetting",
+      "unit_cost_usd": 2.46
+    }
+  },
+  "annual_exposure_usd": 29520,
+  "limits": "Controlled model regression only; assumptions and DFM/environment gates unchanged. This is not vendor quote accuracy or production verification."
+}

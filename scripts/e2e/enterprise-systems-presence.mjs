@@ -589,7 +589,7 @@ async function main() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           partNumber: "VALVE-100",
-          annualizedValueUsd: 120_960,
+          annualizedValueUsd: 29_520,
           supplier: "sandbox-supplier",
         }),
       });
@@ -598,7 +598,7 @@ async function main() {
       assert(draft.body.noLiveSupplierSend === true, "RFQ draft live-send boundary missing");
       assert(draft.body.approvalRequired === false, "RFQ incorrectly required capital-board approval below the $1M policy threshold");
       assert(draft.body.cxml.deploymentMode === "test", "cXML draft is not in test mode");
-      assert(draft.body.annualizedValueUsd === 120_960, "RFQ draft annualized value must use the exact-volume $120,960 oracle");
+      assert(draft.body.annualizedValueUsd === 29_520, "RFQ draft annualized value must use the exact-volume $29,520 oracle");
       assert(
         approvals.body.chain.some(
           (item) => item.step === "capital_board" && item.requiredAboveUsd === 1_000_000,
