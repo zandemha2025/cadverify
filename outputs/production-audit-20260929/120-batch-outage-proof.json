@@ -1,0 +1,37 @@
+{
+  "finding": 120,
+  "environment": "Local native Chrome \u2192 production Next build \u2192 real API stopped/restored",
+  "batch_id": "01M3SEVV9PBYEC4AQYBBZQ4A6A",
+  "before": [
+    "Cancel batch offered although initial status request failed",
+    "Failed items read also rendered No items found / No items match this filter"
+  ],
+  "fix": [
+    "Show cancellation only after receiving a known nonterminal status",
+    "Suppress table empty state after failed initial read; retain any previously loaded rows",
+    "Name the retryable item error"
+  ],
+  "native_checks": [
+    "Runnable assertBatchReadFailure fails on old UI",
+    "Same assertion passes on new UI under actual API outage",
+    "Retry during continued outage remains truthful",
+    "Existing progress poll recovers automatically after API restoration, no page reload",
+    "All5items and all4exact saved-analysis links return unchanged",
+    "Successful pending filter shows legitimate empty state",
+    "All-statuses selection restores5rows"
+  ],
+  "analysis_links": [
+    "/analyses/01M3SEVZYSXXZRMF2D9QAY47SQ",
+    "/analyses/01M3SEVZFJYDNE7AQ5AXGDE4Y3",
+    "/analyses/01M3SEW66Y6SWWAE63BNQ29DCX",
+    "/analyses/01M3SEWCJJJJDDWQ70EMS42809"
+  ],
+  "checks": {
+    "frontend_tests_passed": 498,
+    "typecheck": "passed",
+    "changed_source_lint": "0errors;1preexisting useCallback batchId dependency warning",
+    "production_build": "passed",
+    "backend": "unchanged since2499passed/3documentedskips"
+  },
+  "scope": "Local only. Does not prove production deployment, webhook transport, storage failures or external integrations."
+}

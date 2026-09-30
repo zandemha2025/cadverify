@@ -996,3 +996,10 @@ CI36728479346 completed on2594aeb with8 jobs passing and Browser E2E failing at 
 - Evidence: `119-batch-issue-count-proof.json`, ZIP/manifest and five native screenshots. No engine or stored-result mutation, dependency, deployment or generalized accuracy claim.
 
 CI36732575107 completed successfully on8ae64d521b2cba2819b52bd7da9e21399ef54713, through116 and the enterprise-label correction: all9jobs passed. It excludes117–119, which require the next exact-head run. See `ci-36732575107-summary.json`. Production/external-provider proof and main-only image CVE findings remain open.
+
+
+### 120 — Batch outage looked empty and offered cancellation without status (fixed locally)
+- first divergence: step2, expected unavailable batch data to remain unknown, state was an enabled Cancel batch action plus No items found after both reads failed. Reproduced by gracefully stopping the real local API and opening the same completed five-file batch.
+- Show cancellation only after a known nonterminal status arrives. Suppress the table's empty state when the initial read failed, retaining any already loaded rows. Give the item error a specific title and keep existing retry controls. Three small JSX changes; no persistence, worker or backend change.
+- Native runnable assertion fails on the old UI and passes under the same outage after rebuilding. Retrying while down stays truthful. Restoring the API lets existing polling recover all5items and all4exact analysis links without reload. A successful pending filter still shows the legitimate empty state, and All statuses restores every row.
+- All498frontend tests, typecheck and production build pass; changed-source lint has0errors and one preexisting callback-dependency warning. Backend unchanged from2499passing tests/3documented environment skips. Evidence: `120-batch-outage-proof.json`,4screenshots and runnable `assertBatchReadFailure` in the existing batch browser helper. Not deployed; current52c191c CI excludes120.

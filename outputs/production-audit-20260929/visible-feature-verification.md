@@ -226,3 +226,5 @@ Verify inventory-total follow-up (118): the real IGES result now sums declared m
 Batch summary follow-up (119): native five-file run on the refreshed real worker preserves known geometry/units, isolates malformed input and reports the missing-cap geometry failure. Shared API/CSV count now reuses the existing route-scoped findings helper; the same saved row changes0→2issues and survives reload. All2499backend tests pass with3documented environment skips;14focused checks pass. Evidence `119-batch-issue-count-proof.json`; not deployed. Real external storage/webhook transport remains open.
 
 CI36732575107 passed all9jobs on8ae64d5 through116. Latest117–119 require a fresh exact-head run.
+
+Batch outage follow-up (120): a real API outage no longer offers cancellation before status is known or claims an empty item list after failure. Retry remains honest, automatic recovery restores all5items and exact record links, and a successful empty filter still works.498frontend checks/types/build pass; no backend or data change. Not deployed. See `120-batch-outage-proof.json`.

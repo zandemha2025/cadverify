@@ -115,7 +115,7 @@ export default function BatchDetailPage({
         }
         actions={
           <>
-            {!isTerminal && (
+            {progress && !isTerminal && (
               <Button
                 variant="destructive"
                 size="sm"

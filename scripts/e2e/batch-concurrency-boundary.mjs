@@ -13,3 +13,18 @@ export async function verifyBatchConcurrencyBoundary(tab) {
   assert.equal(await input.evaluate((el) => el.value), "2");
   return { status: "PASS", checks: ["supported range 1–12", "upper/lower bounds", "valid value retained"] };
 }
+
+// Open a saved batch during a real local API outage; no mocked page responses.
+export async function assertBatchReadFailure(tab) {
+  const state = await tab.playwright.evaluate(() => ({
+    text: document.querySelector('main')?.textContent,
+    buttons: [...document.querySelectorAll('main button')].map(b => b.textContent),
+  }));
+  assert.match(state.text, /Could not load progress/);
+  assert.match(state.text, /Could not load batch items/);
+  assert.doesNotMatch(state.text, /No items found|No items match this filter/);
+  assert.equal(state.buttons.includes('Cancel batch'), false,
+    'An unknown batch status cannot authorize a cancellation action');
+  assert.equal(state.buttons.filter(label => label === 'Try again').length, 2);
+  return { status: 'PASS', checks: ['honest failed reads', 'no unknown-status cancellation', 'both reads retryable'] };
+}

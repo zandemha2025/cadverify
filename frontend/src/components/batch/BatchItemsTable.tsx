@@ -242,6 +242,7 @@ export default function BatchItemsTable({
 
       {error && (
         <ErrorState
+          title="Could not load batch items"
           message={error}
           onRetry={() => {
             setError(null);
@@ -250,7 +251,7 @@ export default function BatchItemsTable({
         />
       )}
 
-      <DataTable
+      {(!error || items.length > 0) && <DataTable
         columns={columns}
         data={items}
         loading={loading}
@@ -260,7 +261,7 @@ export default function BatchItemsTable({
             description="No items match this filter."
           />
         }
-      />
+      />}
 
       {hasMore && (
         <div className="text-center">
