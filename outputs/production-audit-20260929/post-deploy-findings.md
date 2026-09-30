@@ -516,3 +516,10 @@ Final validation: **2,395 backend tests passed**, three documented real-corpus/O
 - Severity: low accessibility/state defect. Native command-palette theme action switched the page to dark while the button still said `Switch to dark theme` and retained its light-mode icon.
 - Fix: the shared theme button observes the existing root class, so either visible entry point updates its label/icon. Uses the platform MutationObserver with cleanup; no new theme provider or dependency.
 - Verification: native assertion fails before, then passes for palette toggles in both directions, direct-button toggle and full reload. Original light preference restored. Types, changed-file lint and production build pass. Runnable check: `scripts/e2e/theme-state-validation.mjs`; evidence: `theme-state-regression.json` and 069 before/fixed screenshots. Not deployed.
+
+
+## 070 — Closing the command palette loses keyboard focus
+
+- Severity: medium accessibility defect. Opening the header search button and pressing Escape left `document.activeElement` on BODY. The controlled Radix dialog has no Dialog.Trigger to receive the default close focus.
+- Fix: the shared palette retains the active element before its existing input-autofocus handler, then restores that connected element on close. Header, sidebar and keyboard-shortcut entry points use the same path.
+- Verification: native focus assertion fails before and passes after for header click/Escape, sidebar Enter/Escape, and Meta+K from the theme button/Escape. Uppercase `COST HISTORY` + Enter opens `/cost-decisions` with heading `Cost history`; a missing command gives an explicit empty result. Frontend 493 tests, types, changed-source lint and build pass. Evidence: `command-focus-regression.json`, runnable `scripts/e2e/command-focus-validation.mjs`, 070 screenshots. Not deployed.

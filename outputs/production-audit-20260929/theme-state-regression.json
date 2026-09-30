@@ -18,7 +18,7 @@
     "typecheck": "pass",
     "changed_source_lint": "pass",
     "production_build": "pass",
-    "frontend_tests": "493 passed immediately before this UI-only change"
+    "frontend_tests": "493 passed on final theme/focus implementation"
   },
   "limits": [
     "not deployed",
