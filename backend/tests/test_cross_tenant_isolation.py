@@ -140,7 +140,7 @@ async def test_cross_tenant_isolation_matrix():
         )
         return u
 
-    async def _mk_cost(s, org_id, uid, *, public=False, short=None) -> str:
+    async def _mk_cost(s, org_id, uid, *, public=False, short=None, mesh=None, filename=None) -> str:
         u = str(ULID())
         await s.execute(
             text(
@@ -151,8 +151,8 @@ async def test_cross_tenant_isolation_matrix():
                 "CAST(:rj AS jsonb), 'cnc_3axis', 100.0, :pub, :sh)"
             ),
             {
-                "ul": u, "u": uid, "o": org_id, "mh": f"mesh-{u}",
-                "ph": f"params-{u}", "fn": f"{u}.stl",
+                "ul": u, "u": uid, "o": org_id, "mh": mesh or f"mesh-{u}",
+                "ph": f"params-{u}", "fn": filename or f"{u}.stl",
                 "rj": json.dumps({"decision": {}, "estimates": []}),
                 "pub": public, "sh": short,
             },
@@ -232,9 +232,12 @@ async def test_cross_tenant_isolation_matrix():
         an_a2 = await _mk_analysis(s, org_a, a2)
         an_b1 = await _mk_analysis(s, org_b, b1)
 
-        cd_a1 = await _mk_cost(s, org_a, a1, public=True, short=f"pubcostA{tag}")
-        cd_a2 = await _mk_cost(s, org_a, a2)
-        cd_b1 = await _mk_cost(s, org_b, b1)
+        history_mesh = f"history-{tag}"
+        cd_a1 = await _mk_cost(s, org_a, a1, public=True, short=f"pubcostA{tag}",
+                               mesh=history_mesh, filename="part.stl")
+        cd_a2 = await _mk_cost(s, org_a, a2, mesh=history_mesh, filename="renamed.stl")
+        cd_other = await _mk_cost(s, org_a, a1, filename="part.stl")
+        cd_b1 = await _mk_cost(s, org_b, b1, mesh=history_mesh, filename="part.stl")
 
         ba_a1 = await _mk_batch(s, org_a, a1)
         ba_a2 = await _mk_batch(s, org_a, a2)
@@ -273,6 +276,26 @@ async def test_cross_tenant_isolation_matrix():
             ids = {c["id"] for c in r.json()["cost_decisions"]}
             assert {cd_a1, cd_a2} <= ids
             assert cd_b1 not in ids
+            # Identity is filtered before pagination: newer unrelated records and
+            # same-name files cannot hide or contaminate this part's history.
+            r = await ac.get("/api/v1/cost-decisions", params={"mesh_hash": history_mesh, "limit": 1})
+            assert r.status_code == 200, r.text
+            first = r.json()
+            assert [c["id"] for c in first["cost_decisions"]] == [cd_a2]
+            assert first["cost_decisions"][0]["mesh_hash"] == history_mesh
+            assert first["has_more"] and first["next_cursor"] == cd_a2
+            r = await ac.get("/api/v1/cost-decisions", params={
+                "mesh_hash": history_mesh, "limit": 1, "cursor": first["next_cursor"],
+            })
+            second = r.json()
+            assert [c["id"] for c in second["cost_decisions"]] == [cd_a1]
+            assert second["has_more"] is False and second["next_cursor"] is None
+            assert cd_other not in {c["id"] for c in first["cost_decisions"] + second["cost_decisions"]}
+            for missing in ("unknown", f"mesh-{cd_b1}"):
+                r = await ac.get("/api/v1/cost-decisions", params={"mesh_hash": missing})
+                assert r.json()["cost_decisions"] == []
+            for invalid in ("", "x" * 129):
+                assert (await ac.get("/api/v1/cost-decisions", params={"mesh_hash": invalid})).status_code == 422
             assert (await ac.get(f"/api/v1/cost-decisions/{cd_a2}")).status_code == 200
             assert (await ac.get(f"/api/v1/cost-decisions/{cd_b1}")).status_code == 404
             assert (

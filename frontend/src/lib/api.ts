@@ -1107,6 +1107,7 @@ export interface CostDecisionGovernance {
 
 export interface CostDecisionSummary extends CostDecisionGovernance {
   id: string;
+  mesh_hash?: string;
   filename: string;
   file_type: string;
   label: string | null;
@@ -1302,6 +1303,7 @@ export async function fetchCostDecisions(params: {
   cursor?: string;
   limit?: number;
   process?: string;
+  meshHash?: string;
   createdAfter?: string;
   createdBefore?: string;
 }): Promise<CostDecisionsPage> {
@@ -1309,6 +1311,7 @@ export async function fetchCostDecisions(params: {
   if (params.cursor) url.searchParams.set("cursor", params.cursor);
   if (params.limit) url.searchParams.set("limit", String(params.limit));
   if (params.process) url.searchParams.set("process", params.process);
+  if (params.meshHash) url.searchParams.set("mesh_hash", params.meshHash);
   if (params.createdAfter) url.searchParams.set("created_after", params.createdAfter);
   if (params.createdBefore) url.searchParams.set("created_before", params.createdBefore);
 

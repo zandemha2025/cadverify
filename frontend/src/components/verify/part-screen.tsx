@@ -8,7 +8,7 @@
  *
  *   GET /api/v1/catalog                     → the row (identity + latest verdict)
  *   GET /api/v1/part-context/{mesh_hash}    → lineage (program→assembly→part) + volume
- *   GET /api/v1/cost-decisions              → this file's decision history
+ *   GET /api/v1/cost-decisions?mesh_hash=…  → this part's decision history
  *   GET /api/v1/cost-decisions/{id}         → a record's full glass-box detail
  *
  * Honesty (adversarial): every number is a real engine/DB field or is WITHHELD.
@@ -41,7 +41,6 @@ import {
   deriveStanding,
   extractBlockers,
   lineageView,
-  historyForFile,
   standingTag,
   type PartStanding,
   type Blocker,
@@ -236,7 +235,6 @@ function Standing({ row, nav, onOpenProgram, onCompare }: {
   const [context, setContext] = useState<PartContext | null>(null);
   const [ctxError, setCtxError] = useState<string | null>(null);
   const [bom, setBom] = useState<BomAncestry | null>(null);
-  const [history, setHistory] = useState<CostDecisionSummary[] | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -246,7 +244,6 @@ function Standing({ row, nav, onOpenProgram, onCompare }: {
     setContext(null);
     setCtxError(null);
     setBom(null);
-    setHistory(null);
 
     const recordId = row.cost_decision?.id ?? null;
     const jobs: Promise<void>[] = [
@@ -256,15 +253,6 @@ function Standing({ row, nav, onOpenProgram, onCompare }: {
         setContext(r.context);
         setCtxError(r.error);
       }),
-      // this file's decision history (list items carry filename, not mesh_hash)
-      fetchCostDecisions({ limit: 100 }).then(
-        (page) => {
-          if (!cancelled) setHistory(historyForFile(page.cost_decisions, row.filename));
-        },
-        () => {
-          if (!cancelled) setHistory([]);
-        }
-      ),
     ];
     if (recordId) {
       jobs.push(
@@ -445,21 +433,7 @@ function Standing({ row, nav, onOpenProgram, onCompare }: {
 
         <StandingCard standing={standing} blockers={blockers} nav={nav} />
 
-        {(history?.length ?? 0) > 0 ? (
-          <HistoryCard history={history ?? []} currentId={standing.recordId} />
-        ) : (
-          standing.kind !== "costed" &&
-          blockers.length === 0 && (
-            <EmptyState
-              title="No saved decision yet."
-              body="This part has a standing page waiting for its first costed verdict. Nothing here will ever be invented to fill the space."
-            >
-              <GhostButton primary onClick={() => nav("verify")}>
-                Verify it now
-              </GhostButton>
-            </EmptyState>
-          )
-        )}
+        <HistoryCard key={row.cost_decision?.id ?? "uncosted"} partKey={row.part_key} currentId={standing.recordId} />
       </div>
     </div>
   );
@@ -692,20 +666,47 @@ function BlockerRow({ b }: { b: Blocker }) {
   );
 }
 
-function HistoryCard({ history, currentId }: { history: CostDecisionSummary[]; currentId: string | null }) {
+function HistoryCard({ partKey, currentId }: { partKey: string; currentId: string | null }) {
+  const [history, setHistory] = useState<CostDecisionSummary[]>([]);
+  const [cursor, setCursor] = useState<string | undefined>();
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
   const [openId, setOpenId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    void fetchCostDecisions({ meshHash: partKey, limit: 20, cursor }).then((page) => {
+      // Fail closed if an older/incompatible API ignores the identity filter.
+      if (page.cost_decisions.some((d) => d.mesh_hash !== partKey)) {
+        throw new Error("The history response does not match this part.");
+      }
+      if (cancelled) return;
+      setHistory((prev) => cursor ? [...prev, ...page.cost_decisions] : page.cost_decisions);
+      setNextCursor(page.has_more ? page.next_cursor : null);
+    }).catch((e) => {
+      if (!cancelled) setError(e instanceof Error ? e.message : "History could not be loaded.");
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [partKey, cursor, retry]);
+
   return (
-    <div style={{ border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
-      <Kicker color={C.ink45}>HISTORY — EVERY VERIFICATION APPENDS HERE</Kicker>
+    <section aria-label="Part cost history" style={{ border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
+      <Kicker color={C.ink45}>HISTORY — SAVED COST DECISIONS</Kicker>
       <div style={{ marginTop: 8, display: "flex", flexDirection: "column" }}>
         {history.map((h) => (
-          <div key={h.id} style={{ borderBottom: `1px solid #f0f0f3` }}>
+          <div key={h.id} data-cost-decision-id={h.id} style={{ borderBottom: `1px solid #f0f0f3` }}>
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 14, padding: "12px 2px" }}>
               <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink40, minWidth: 92 }}>
                 {new Date(h.created_at).toLocaleDateString()}
               </span>
               <span style={{ flex: "1 1 150px", fontSize: 13, color: C.ink }}>
-                Cost decision — {procLabel(h.make_now_process)}
+                {h.filename} — {procLabel(h.make_now_process)}
                 {h.crossover_qty != null ? ` · crossover ${NUM(h.crossover_qty)}` : ""}
                 {h.id === currentId ? "  · current" : ""}
               </span>
@@ -721,10 +722,23 @@ function HistoryCard({ history, currentId }: { history: CostDecisionSummary[]; c
           </div>
         ))}
       </div>
+      {loading && <Spinner label="loading part history…" />}
+      {error && (
+        <div role="alert">
+          <p style={{ fontSize: 12, color: C.fail }}>History unavailable — {error}</p>
+          <GhostButton onClick={() => setRetry((n) => n + 1)}>Retry history</GhostButton>
+        </div>
+      )}
+      {!loading && !error && history.length === 0 && (
+        <p style={{ fontSize: 12, color: C.ink45 }}>No saved cost decisions for this part yet.</p>
+      )}
+      {!loading && !error && nextCursor && (
+        <GhostButton onClick={() => setCursor(nextCursor)}>Load older decisions</GhostButton>
+      )}
       <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink35 }}>
         this page is the part&apos;s standing — the org&apos;s memory of what was asked, answered, and decided
       </p>
-    </div>
+    </section>
   );
 }
 

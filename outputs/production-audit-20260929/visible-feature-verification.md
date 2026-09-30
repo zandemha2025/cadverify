@@ -54,7 +54,7 @@ Production is Render, currently `09555c1`. The subsequent audit branch has not b
 | Public product, team, method, docs and API-reference pages | Prior route sweep and selected corrections. Developer reference navigation loop, cost endpoint/nesting and OpenAPI retention/unit descriptions fixed locally080; native console and16-estimate real-STEP export agree | Deploy; remaining claims/examples, direct API-key curl execution and customer-specific accuracy |
 | CAD retention/security statements | Product and Method copy corrected locally (025) | Deploy and finish the wider public-claim audit |
 | Production URL and old deployments | Render works; Fly DB and disabled Vercel unresolved | Provider recovery/migration or intentional retirement/redirects |
-| Deployment repeatability and image security | Manual release worked; auto-deploy and HIGH image findings open | Resolve findings 016/017 and rerun release gates |
+| Deployment repeatability and image security | Manual release worked; Render inspection confirms no Git Deployment Credential despite On Commit settings. Repository-scoped connection approval pending. HIGH image findings remain open | Connect the approved repository, prove automatic deployment during an approved release, resolve finding017 and rerun release gates |
 
 External dependencies have been requested once: an authorized receiving inbox and company-IdP/SAP/Windchill test tenants. No credentials should be pasted into chat. Internal fixes and verification continue while those are pending.
 
@@ -137,3 +137,5 @@ Developer endpoint follow-up080: a fresh isolated local account now completed ac
 CI36686058183 completed on PR head1c64bb9: all9 jobs passed, including human54, enterprise17/9goldens, P7 governance31 with zero skipped/failed, all34 real-CAD cases and the full restore/load/readiness/training chain. Follow-ups080–083 were pushed as89ea94d; CI36690028303 is running on that head. See `ci-36686058183-summary.json`. Production remains PR106.
 
 Part-selection follow-up084: an explicit part outside page one previously opened the newest, unrelated CAD file. Exact org-scoped lookup now returns the selected part beyond pagination/scan caps; absent selections show a recoverable error. Native real-record page exclusion and missing-result controls pass, as do2403 backend/494 frontend checks. Not yet pushed or deployed; no general quote-accuracy claim.
+
+Part-history follow-up085: distinct block/sphere STEP files sharing a filename previously mixed their saved decisions. Exact org/part filtering now runs before cursor pagination. Native27 block records across20+7 pages and4 sphere records exactly match PostgreSQL, including renamed uploads. Real API outage/error/retry and DFM-only empty history pass.Full backend2403 passed/3 documented skips,47 focused tests,493 frontend/type/lint/build checks, backend type baseline and changed-source Bandit pass. This is local evidence; CI and production remain pending.

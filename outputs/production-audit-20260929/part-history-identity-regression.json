@@ -1,0 +1,211 @@
+{
+  "finding": "085",
+  "environment": "Local native Chrome \u2192 production Next build3017 \u2192 API8017 \u2192 PostgreSQL",
+  "before": {
+    "filename": "audit-cube.STP",
+    "selected_block_record": "01M3RK0AGB5F4G386CMJM2AT29",
+    "incorrect_sphere_record": "01M3RR348KARFPN58EASHH8ZVD",
+    "block_bbox_mm": [
+      20,
+      15,
+      10
+    ],
+    "sphere_bbox_mm": [
+      20,
+      20,
+      20
+    ],
+    "sphere_crossover_displayed_in_block_history": 4660,
+    "database_block_records": 27,
+    "database_sphere_records": 4
+  },
+  "after": {
+    "block_first_page": 20,
+    "block_after_load_older": 27,
+    "block_exact_order_matches_database": true,
+    "sphere_exact_order_matches_database": true,
+    "sphere_records": 4,
+    "renamed_sources_included": true,
+    "same_filename_other_geometry_excluded": true,
+    "no_duplicate_records": true,
+    "dfm_only_history_explicitly_empty": true,
+    "api_outage_shows_error_not_empty": true,
+    "retry_restores_exact_sphere_records": true
+  },
+  "expected_records": {
+    "block": {
+      "selected_record": "01M3RK0AGB5F4G386CMJM2AT29",
+      "part_key": "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a",
+      "expected_history": [
+        {
+          "id": "01M3RK0AGB5F4G386CMJM2AT29",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3RFJHQZ7HDZSBC951VDACRP",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3RD0TQ9ZHKYN4VS147DMSY7",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3RCF856MX3SFCSZTMDABEMP",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3RC3RYKY38THW31C2F8ZBG5",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3RBZ2KKQS0DC7ZX6T0SZVWE",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3R2Y6A3QGY65WH0PKX33T5S",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3R0C92MM5MAT806E53XRENN",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3R06ARE3ANHSK01YDP81GV7",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3QZG9RR6ZH93MH6JRH76PE3",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3QZ6RR6NC5GA7V494QDCD14",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3QYWV89J6M1T95360KSMT09",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3QYSPKHT0H47A3MRSGWWMGV",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3QYMHR5BMXMGQRVNJ8CW9JW",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3QY8B9CPPAFG07RNH3C5ESE",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3QY6NMTH6NWMVX82VWWCS8Z",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3QXQ4HM7MJTRGND1X1V0RX9",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3QXNZSYQMHYVZ7SYTSY2M4A",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3QVEK7YRT585VHFGWTCKQQN",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3QV5ZY3CR8E8XACPK3EET42",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3QMDWKT478K5ST2DBVBDSP1",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3QM1PKNMF8AASTBG78N6GK1",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3QH3876QQAZNS9P5N1TESCT",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3QGJTQK9VQXP1AAXAV9WQ1Q",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3Q5AS9R7XYKZXE0JWW2C6SK",
+          "filename": "part.step"
+        },
+        {
+          "id": "01M3Q48BEBTVTTK5KVDW49DKGM",
+          "filename": "audit-matrix.step"
+        },
+        {
+          "id": "01M3Q3Q96FFDY1F4413SJVW0PA",
+          "filename": "audit-part.STP"
+        }
+      ]
+    },
+    "sphere": {
+      "selected_record": "01M3RR348KARFPN58EASHH8ZVD",
+      "part_key": "6767939573a7d8b1dce898f537d89f3a771339ed297f02b480e85727f0ab5a9d",
+      "expected_history": [
+        {
+          "id": "01M3RR348KARFPN58EASHH8ZVD",
+          "filename": "audit-cube.STP"
+        },
+        {
+          "id": "01M3RGVP9JGHDNP6RG30WH24NW",
+          "filename": "sphere-r10.step"
+        },
+        {
+          "id": "01M3RGCEH5C71B3PN270H52ZK3",
+          "filename": "sphere-r10.step"
+        },
+        {
+          "id": "01M3RG5GRH12MQJMNQDGX9VDV7",
+          "filename": "sphere-r10.step"
+        }
+      ]
+    }
+  },
+  "backend_regression": {
+    "real_postgres_filtered_pagination_and_org_isolation": "RED then GREEN",
+    "focused_tests_passed": 47,
+    "invalid_empty_or_over_128_character_filter": "422",
+    "type_baseline": "216 errors vs228 baseline; no new diagnostics in changed files",
+    "bandit": "no findings in changed sources",
+    "full_suite": {
+      "passed": 2403,
+      "skipped": 3,
+      "skip_reasons": [
+        "real corpus manifest not present",
+        "OCP XDE not available (2 cases)"
+      ],
+      "seconds": 171.42
+    }
+  },
+  "frontend_checks": {
+    "tests_passed": 493,
+    "removed_test": "Obsolete historyForFile test encoded the incorrect filename-based grouping; replaced by real-database/API identity checks and native history assertions.",
+    "typecheck": "pass",
+    "changed_file_lint": "pass",
+    "production_build": "pass"
+  },
+  "not_proved": [
+    "production deployment",
+    "large concurrent history mutation",
+    "external quote accuracy"
+  ],
+  "files": [
+    {
+      "path": "outputs/production-audit-20260929/audit-cube.STP",
+      "sha256": "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a"
+    },
+    {
+      "path": "outputs/production-audit-20260929/shape-controls/sphere-r10.step",
+      "sha256": "6767939573a7d8b1dce898f537d89f3a771339ed297f02b480e85727f0ab5a9d"
+    }
+  ]
+}

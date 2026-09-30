@@ -14,7 +14,6 @@
 import type {
   CatalogRowApi,
   CostDecisionDetail,
-  CostDecisionSummary,
   CostEstimate,
   CostReport,
   Issue,
@@ -275,20 +274,4 @@ export function lineageView(
     parentAssembly: context?.parent_assembly ?? null,
     annualVolume: context?.annual_volume ?? null,
   };
-}
-
-// ---------------------------------------------------------------------------
-// History — "every verification appends here". The cost-decisions endpoint's
-// list items carry filename but NOT mesh_hash, so a part's history is the set of
-// saved decisions sharing this file's name, newest first. Real DB rows only;
-// each links to its own immutable record.
-// ---------------------------------------------------------------------------
-
-export function historyForFile(
-  decisions: CostDecisionSummary[],
-  filename: string
-): CostDecisionSummary[] {
-  return decisions
-    .filter((d) => d.filename === filename)
-    .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
 }

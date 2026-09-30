@@ -10,7 +10,7 @@ composes require_api_key). The public GET /s/cost/{short_id} is intentionally
 unauthenticated (mirrors the existing public analysis share route).
 
 Routes (mounted at /api/v1/cost-decisions):
-  GET    ""                      list (cursor paginated; filter process/date)
+  GET    ""                      list (cursor paginated; filter part/process/date)
   GET    /compare?ids=a,b        structured diff of two owned decisions
   GET    /{id}                   full result_json envelope (owner-scoped, 404)
   PUT    /{id}/disposition       persist/withdraw the four-way human outcome
@@ -81,6 +81,7 @@ async def list_cost_decisions(
     cursor: str | None = Query(None, description="ULID cursor for pagination"),
     limit: int = Query(20, ge=1, le=100, description="Results per page (max 100)"),
     process: str | None = Query(None, description="Filter by make-now process"),
+    mesh_hash: str | None = Query(None, min_length=1, max_length=128, description="Exact part identity"),
     created_after: str | None = Query(None, description="ISO datetime lower bound"),
     created_before: str | None = Query(None, description="ISO datetime upper bound"),
     user: AuthedUser = Depends(require_role(Role.viewer)),
@@ -99,6 +100,8 @@ async def list_cost_decisions(
         stmt = stmt.where(CostDecision.ulid < cursor)
     if process:
         stmt = stmt.where(CostDecision.make_now_process == process)
+    if mesh_hash is not None:
+        stmt = stmt.where(CostDecision.mesh_hash == mesh_hash)
     if created_after:
         stmt = stmt.where(CostDecision.created_at >= _parse_dt(created_after, "created_after"))
     if created_before:

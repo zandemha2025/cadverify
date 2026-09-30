@@ -344,6 +344,7 @@ async def record_persist_failure(
 def _list_item(d: CostDecision) -> dict:
     return {
         "id": d.ulid,
+        "mesh_hash": d.mesh_hash,
         "filename": d.filename,
         "file_type": d.file_type,
         "label": d.label,
