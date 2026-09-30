@@ -17,7 +17,7 @@
  */
 import { useEffect, useMemo, useRef, useState, Suspense, type ReactNode } from "react";
 import { Canvas, useLoader, useFrame } from "@react-three/fiber";
-import { OrbitControls, Center, ContactShadows, Environment, Lightformer } from "@react-three/drei";
+import { Bounds, OrbitControls, Center, ContactShadows, Environment, Lightformer } from "@react-three/drei";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -379,7 +379,6 @@ function AutoOrbit({ on }: { on: boolean }) {
       autoRotate={on}
       autoRotateSpeed={0.8}
       minDistance={2.2}
-      maxDistance={9}
       target={[0, 0, 0]}
     />
   );
@@ -434,7 +433,8 @@ export default function StageCanvas({
         color={hostile ? "#e0a06a" : "#9fb2c8"}
       />
       <directionalLight position={[0, -4, 3]} intensity={0.25} color="#e8ecf1" />
-      <Suspense fallback={<BoxEnvelope bbox={bbox} xray={xray} />}>
+      <Suspense fallback={<Bounds fit clip observe><BoxEnvelope bbox={bbox} xray={xray} /></Bounds>}>
+        <Bounds key={JSON.stringify([assemblyUrl ?? renderUrl ?? bbox, seat])} fit clip observe>
         <SeatGroup seat={seat}>
           {assemblyUrl ? (
             <AssemblyParts
@@ -452,10 +452,11 @@ export default function StageCanvas({
           )}
           {/* The declared-parent envelope is a single-part affordance; hide it in
               real-assembly mode where the neighbours ARE the context. */}
-          {!assemblyUrl && (
+          {!assemblyUrl && seat && (
             <AssemblyEnvelope seat={seat} context={assemblyContext} hostile={hostile} />
           )}
         </SeatGroup>
+        </Bounds>
         <Environment resolution={128} frames={1}>
           <Lightformer form="rect" intensity={2.6} position={[0, 5, 1]} rotation={[-Math.PI / 2, 0, 0]} scale={[10, 6, 1]} color="#ffffff" />
           <Lightformer form="rect" intensity={1.1} position={[-5, 1.5, 3]} scale={[5, 6, 1]} color="#e6ebf1" />

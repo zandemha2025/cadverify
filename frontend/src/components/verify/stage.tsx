@@ -186,35 +186,18 @@ export function Stage({
         width: "42%",
         minWidth: 380,
         flexShrink: 0,
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 0,
+        overflow: "hidden",
         position: "relative",
         background: "radial-gradient(110% 90% at 50% 38%, #ffffff 0%, #ececef 85%)",
         borderRight: `1px solid ${C.hair2}`,
       }}
     >
-      <div style={{ position: "absolute", inset: 0, cursor: "grab" }}>
-        {webGlAvailable === true ? (
-          <StageCanvas
-            renderUrl={renderUrl}
-            renderKind={renderKind}
-            assemblyUrl={assembly?.glbUrl ?? null}
-            assemblySelectedId={assembly?.selectedId ?? null}
-            bbox={bbox}
-            xray={xray}
-            hostile={hostile}
-            autoOrbit={autoOrbit}
-            seat={seat}
-            assemblyContext={assemblyContext}
-          />
-        ) : (
-          <StaticStageFallback
-            bbox={bbox}
-            hasFile={Boolean(file)}
-            checking={webGlAvailable === null}
-          />
-        )}
-      </div>
 
-      <div className="cv-verify-stage-title" style={{ position: "absolute", top: 22, left: 24, pointerEvents: "none" }}>
+      <div className="cv-verify-stage-heading" style={{ display: "flex", flexWrap: "wrap", gap: 12, flexShrink: 0, padding: "22px 24px 0" }}>
+      <div className="cv-verify-stage-title" style={{ flex: "1 1 230px", minWidth: 0, overflowWrap: "anywhere" }}>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 400, letterSpacing: "-0.01em" }}>
           {partName}
         </h1>
@@ -281,14 +264,40 @@ export function Stage({
       />
       )}
 
+      </div>
+
+      <div className="cv-verify-stage-canvas" style={{ position: "relative", flex: 1, minHeight: 0, cursor: "grab" }}>
+        {webGlAvailable === true ? (
+          <StageCanvas
+            renderUrl={renderUrl}
+            renderKind={renderKind}
+            assemblyUrl={assembly?.glbUrl ?? null}
+            assemblySelectedId={assembly?.selectedId ?? null}
+            bbox={bbox}
+            xray={xray}
+            hostile={hostile}
+            autoOrbit={autoOrbit}
+            seat={seat}
+            assemblyContext={assemblyContext}
+          />
+        ) : (
+          <StaticStageFallback
+            bbox={bbox}
+            hasFile={Boolean(file)}
+            checking={webGlAvailable === null}
+          />
+        )}
+      </div>
+
       <div
+        className="cv-verify-stage-controls"
         style={{
-          position: "absolute",
-          bottom: 20,
-          left: "50%",
-          transform: "translateX(-50%)",
           display: "flex",
           alignItems: "center",
+          justifyContent: "center",
+          flexWrap: "wrap",
+          flexShrink: 0,
+          padding: "12px 16px 20px",
           gap: 8,
         }}
       >
@@ -414,10 +423,9 @@ function AssemblyStrip({ partCount, analysisReady }: { partCount: number; analys
       data-testid="verify-stage-assembly"
       data-assembly-parts={partCount}
       style={{
-        position: "absolute",
-        top: 22,
-        right: 20,
-        width: "min(300px, calc(100% - 44px))",
+        flex: "0 1 300px",
+        minWidth: 0,
+        width: "100%",
         border: `1px solid rgba(59,123,184,0.28)`,
         background: "rgba(255,255,255,0.78)",
         backdropFilter: "blur(14px)",
@@ -470,10 +478,9 @@ function ContextStrip({
       data-testid="verify-stage-context"
       data-context-state={hasParent ? "declared-parent" : "no-parent"}
       style={{
-        position: "absolute",
-        top: 22,
-        right: 20,
-        width: "min(300px, calc(100% - 44px))",
+        flex: "0 1 300px",
+        minWidth: 0,
+        width: "100%",
         border: `1px solid ${hasParent ? "rgba(122,99,201,0.28)" : C.hair}`,
         background: "rgba(255,255,255,0.78)",
         backdropFilter: "blur(14px)",

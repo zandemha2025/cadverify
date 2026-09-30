@@ -1154,10 +1154,14 @@ const KEYFRAMES = `
   .cv-verify-stage {
     width: 100% !important;
     min-width: 0 !important;
-    height: 420px;
-    min-height: 420px;
+    height: auto;
+    min-height: 580px;
     border-right: none !important;
     border-bottom: 1px solid #dedee2;
+  }
+  .cv-verify-stage-canvas {
+    flex: none !important;
+    height: 320px;
   }
 }
 
@@ -1237,23 +1241,8 @@ const KEYFRAMES = `
   .cv-verify-walk-scroll {
     padding: 22px 14px 18px !important;
   }
-  .cv-verify-stage-title {
-    top: 18px !important;
-    left: 16px !important;
-    right: 16px;
-    max-height: 108px;
-    overflow: hidden;
-  }
-  .cv-verify-stage-title h1 {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .cv-verify-stage-context-card {
-    top: 140px !important;
-    left: 16px;
-    right: 16px !important;
-    width: auto !important;
+  .cv-verify-stage-heading {
+    padding: 18px 16px 0 !important;
   }
   .cv-verify-pipeline-rail {
     top: 112px !important;

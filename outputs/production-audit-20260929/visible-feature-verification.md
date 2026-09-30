@@ -176,3 +176,8 @@ Parser-exit follow-up098: a deterministic real-process test reproduces the after
 
 
 Routing follow-up099: material/geometry/evaluation/environment gates now apply to geometric recommendations as well as prices. Aluminum FTC-07 no longer recommends polymer SLS; the saved explanation names CNC 5-axis and reconciles it with WAAM's lower cost. All60 estimates and the full decision remain identical to the old saved record. Incompatible/unevaluated/all-failed/environment-excluded controls pass. Full2442 backend/495 frontend checks pass; engine/cache0.3.13. Not deployed; exact-head CI remains pending. See `099-routing-record-check.json`.
+
+
+Preview follow-up100: actual NIST STEP now fits the available camera viewport. Filename/context, geometry and controls have separate layout space. Native1280/390/320 layout, complete real-model visibility, X-ray and pointer orbit pass; viewport restored.494 frontend tests/types/lint/final build pass; removed CSS-text check is replaced by stronger native layout assertions. Backend unchanged from2442 tests. No production claim.
+
+CI36708617787 on oldd107cbe failed after33/34CAD cases: FTC-07 again printedOK/PASS but exceeded90seconds during exit/output collection. Local098 is absent from that run; its exact historical root cause remains unproven. Downstream restore/load/readiness/training not reached. New-head CI is required.
