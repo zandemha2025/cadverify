@@ -1,0 +1,104 @@
+{
+  "scope": "Local saved record provenance; read-only database proof",
+  "rows": [
+    {
+      "batch": "01M3SJW3YTZY8ZW2VCK5H2MJWT",
+      "uploaded_filename": "default10-01.STP",
+      "analysis": "01M3SJWET5E25PMSXVCVM1BHHY",
+      "saved_filename": "default10-08.STP",
+      "mesh_hash": "45ccd05409419463190efee79a71faf240084b40e93734509b5cbda1da21f182",
+      "created_at": "2026-09-30 16:37:59.151385+00:00"
+    },
+    {
+      "batch": "01M3SJW3YTZY8ZW2VCK5H2MJWT",
+      "uploaded_filename": "default10-02.STP",
+      "analysis": "01M3SJWET5E25PMSXVCVM1BHHY",
+      "saved_filename": "default10-08.STP",
+      "mesh_hash": "45ccd05409419463190efee79a71faf240084b40e93734509b5cbda1da21f182",
+      "created_at": "2026-09-30 16:37:59.151385+00:00"
+    },
+    {
+      "batch": "01M3SJW3YTZY8ZW2VCK5H2MJWT",
+      "uploaded_filename": "default10-03.STP",
+      "analysis": "01M3SJWET5E25PMSXVCVM1BHHY",
+      "saved_filename": "default10-08.STP",
+      "mesh_hash": "45ccd05409419463190efee79a71faf240084b40e93734509b5cbda1da21f182",
+      "created_at": "2026-09-30 16:37:59.151385+00:00"
+    },
+    {
+      "batch": "01M3SJW3YTZY8ZW2VCK5H2MJWT",
+      "uploaded_filename": "default10-04.STP",
+      "analysis": "01M3SJWET5E25PMSXVCVM1BHHY",
+      "saved_filename": "default10-08.STP",
+      "mesh_hash": "45ccd05409419463190efee79a71faf240084b40e93734509b5cbda1da21f182",
+      "created_at": "2026-09-30 16:37:59.151385+00:00"
+    },
+    {
+      "batch": "01M3SJW3YTZY8ZW2VCK5H2MJWT",
+      "uploaded_filename": "default10-05.STP",
+      "analysis": "01M3SJWET5E25PMSXVCVM1BHHY",
+      "saved_filename": "default10-08.STP",
+      "mesh_hash": "45ccd05409419463190efee79a71faf240084b40e93734509b5cbda1da21f182",
+      "created_at": "2026-09-30 16:37:59.151385+00:00"
+    },
+    {
+      "batch": "01M3SJW3YTZY8ZW2VCK5H2MJWT",
+      "uploaded_filename": "default10-06.STP",
+      "analysis": "01M3SJWET5E25PMSXVCVM1BHHY",
+      "saved_filename": "default10-08.STP",
+      "mesh_hash": "45ccd05409419463190efee79a71faf240084b40e93734509b5cbda1da21f182",
+      "created_at": "2026-09-30 16:37:59.151385+00:00"
+    },
+    {
+      "batch": "01M3SJW3YTZY8ZW2VCK5H2MJWT",
+      "uploaded_filename": "default10-07.STP",
+      "analysis": "01M3SJWET5E25PMSXVCVM1BHHY",
+      "saved_filename": "default10-08.STP",
+      "mesh_hash": "45ccd05409419463190efee79a71faf240084b40e93734509b5cbda1da21f182",
+      "created_at": "2026-09-30 16:37:59.151385+00:00"
+    },
+    {
+      "batch": "01M3SJW3YTZY8ZW2VCK5H2MJWT",
+      "uploaded_filename": "default10-08.STP",
+      "analysis": "01M3SJWET5E25PMSXVCVM1BHHY",
+      "saved_filename": "default10-08.STP",
+      "mesh_hash": "45ccd05409419463190efee79a71faf240084b40e93734509b5cbda1da21f182",
+      "created_at": "2026-09-30 16:37:59.151385+00:00"
+    },
+    {
+      "batch": "01M3SJW3YTZY8ZW2VCK5H2MJWT",
+      "uploaded_filename": "default10-09.STP",
+      "analysis": "01M3SJWET5E25PMSXVCVM1BHHY",
+      "saved_filename": "default10-08.STP",
+      "mesh_hash": "45ccd05409419463190efee79a71faf240084b40e93734509b5cbda1da21f182",
+      "created_at": "2026-09-30 16:37:59.151385+00:00"
+    },
+    {
+      "batch": "01M3SJW3YTZY8ZW2VCK5H2MJWT",
+      "uploaded_filename": "default10-10.STP",
+      "analysis": "01M3SJWET5E25PMSXVCVM1BHHY",
+      "saved_filename": "default10-08.STP",
+      "mesh_hash": "45ccd05409419463190efee79a71faf240084b40e93734509b5cbda1da21f182",
+      "created_at": "2026-09-30 16:37:59.151385+00:00"
+    },
+    {
+      "batch": "01M3SJW3YTZY8ZW2VCK5H2MJWT",
+      "uploaded_filename": "default10-11.STP",
+      "analysis": "01M3SJWET5E25PMSXVCVM1BHHY",
+      "saved_filename": "default10-08.STP",
+      "mesh_hash": "45ccd05409419463190efee79a71faf240084b40e93734509b5cbda1da21f182",
+      "created_at": "2026-09-30 16:37:59.151385+00:00"
+    },
+    {
+      "batch": "01M3SJW3YTZY8ZW2VCK5H2MJWT",
+      "uploaded_filename": "default10-12.STP",
+      "analysis": "01M3SJWET5E25PMSXVCVM1BHHY",
+      "saved_filename": "default10-08.STP",
+      "mesh_hash": "45ccd05409419463190efee79a71faf240084b40e93734509b5cbda1da21f182",
+      "created_at": "2026-09-30 16:37:59.151385+00:00"
+    }
+  ],
+  "native_before": "Clicking default10-01.STP opens the shared analysis headed default10-08.STP; no reuse explanation.",
+  "interpretation": "Both refer to the same exact source bytes and analysis identity, not an incorrect geometry link.",
+  "fix": "Explain the original saved upload name/date in the shared analysis page; keep durable records and exports unchanged."
+}

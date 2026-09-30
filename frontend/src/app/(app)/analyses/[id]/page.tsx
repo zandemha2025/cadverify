@@ -35,10 +35,14 @@ export default function AnalysisDetailPage({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [repairResult, setRepairResult] = useState<RepairResult | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setError(null);
+    setAnalysis(null);
+    setRepairResult(null);
     fetchAnalysis(id)
       .then((data) => {
         if (!cancelled) setAnalysis(data);
@@ -53,7 +57,7 @@ export default function AnalysisDetailPage({
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, retryKey]);
 
   if (loading) {
     return (
@@ -68,8 +72,9 @@ export default function AnalysisDetailPage({
       <div className="space-y-4">
         <BackLink onClick={() => router.push("/history")} />
         <ErrorState
-          title="Analysis not found"
+          title="Could not load analysis"
           message={error ?? "This analysis could not be loaded."}
+          onRetry={() => setRetryKey((key) => key + 1)}
         />
       </div>
     );
@@ -100,6 +105,10 @@ export default function AnalysisDetailPage({
           </>
         }
       />
+      <p className="text-sm text-muted-foreground">
+        Identical CAD uploads can reuse this analysis. The filename and date above
+        identify the original saved upload.
+      </p>
 
       {analysis.decision_links.length > 0 && (
         <Card>

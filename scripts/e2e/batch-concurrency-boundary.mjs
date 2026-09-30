@@ -50,3 +50,13 @@ export async function assertBatchFilteredRows(tab, status, filenames) {
   assert.ok(rows.every(row => row.status === status), 'A superseded page must not append rows under another filter');
   return { status: 'PASS', checks: ['current filter only', 'exact persisted items', 'no duplicate rows'], rows };
 }
+
+// Open a known saved analysis through a batch link during an actual API outage.
+export async function assertSavedAnalysisReadFailure(tab) {
+  const main = tab.playwright.getByRole('main');
+  const text = await main.innerText();
+  assert.match(text, /Could not load analysis/);
+  assert.doesNotMatch(text, /Analysis not found|Manufacturable/);
+  assert.equal(await main.getByRole('button', { name: 'Try again', exact: true }).isEnabled(), true);
+  return { status: 'PASS', checks: ['failed read does not claim missing data', 'retry available', 'stale result withheld'] };
+}
