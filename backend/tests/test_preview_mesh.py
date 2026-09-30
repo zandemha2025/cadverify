@@ -85,6 +85,53 @@ def test_preview_mesh_rejects_bad_extension(client):
     assert r.status_code == 400, r.text
 
 
+@pytest.mark.parametrize("kind", ["obj", "3mf"])
+def test_pair_formats_preview_the_measured_shell_with_the_same_limits(client, monkeypatch, kind):
+    # A bored part distinguishes the submitted surface from an envelope box.
+    source = trimesh.creation.annulus(r_min=2, r_max=4, height=6, sections=16)
+    source.apply_translation([10, 20, 30])
+    data = source.export(file_type=kind)
+    if isinstance(data, str):
+        data = data.encode()
+    files = {"file": (f"part.{kind}", data, "application/octet-stream")}
+    response = client.post("/api/v1/validate/preview-mesh", files=files)
+    assert response.status_code == 200, response.text
+    rendered = trimesh.load(io.BytesIO(response.content), file_type="glb").to_mesh()
+    np.testing.assert_allclose(rendered.bounds, source.bounds, atol=1e-5)
+    assert rendered.volume == pytest.approx(source.volume, abs=1e-4)
+    assert response.headers["x-mesh-source"] == kind
+    assert int(response.headers["x-mesh-original-faces"]) == len(source.faces)
+
+    # Extra fit formats do not silently become supported DFM analysis inputs.
+    assert client.post("/api/v1/validate/preview-mesh?purpose=analysis", files=files).status_code == 400
+    monkeypatch.setenv("MAX_TRIANGLES", "1")
+    refused = client.post("/api/v1/validate/preview-mesh", files=files)
+    assert refused.status_code == 400
+    assert "MAX_TRIANGLES" in refused.json()["message"]
+
+
+def test_3mf_expansion_is_bounded_before_preview_or_fit_parser(client, monkeypatch):
+    from zipfile import ZipFile, ZIP_DEFLATED
+    from src.services import fit_service
+
+    archive = io.BytesIO()
+    with ZipFile(archive, "w", ZIP_DEFLATED) as z:
+        z.writestr("padding.bin", b"0" * (1024 * 1024 + 1))
+    monkeypatch.setenv("MAX_UPLOAD_MB", "1")
+    monkeypatch.setenv("CONTEXT_FIT_ENABLED", "1")
+    def must_not_parse(*args, **kwargs):
+        raise AssertionError("The oversized expanded package reached trimesh")
+    monkeypatch.setattr(fit_service.trimesh, "load", must_not_parse)
+    file = ("part.3mf", archive.getvalue(), "application/octet-stream")
+    for url, fields in [
+        ("/api/v1/validate/preview-mesh", {"file": file}),
+        ("/api/v1/validate/fit", {"part_a": file, "part_b": file}),
+    ]:
+        response = client.post(url, files=fields)
+        assert response.status_code == 422, response.text
+        assert "expanded" in response.json()["message"]
+
+
 @pytest.mark.parametrize("cap", [3000, 10000])
 def test_analysis_preview_preserves_analysis_triangle_order(monkeypatch, cap):
     from src.api.routes import _build_preview_glb

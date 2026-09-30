@@ -1,0 +1,55 @@
+{
+  "scope": "Native CUA uploads against local production build and real API; not deployed",
+  "before": "OBJ/3MF accepted for fit but pair viewer explicitly unavailable; preview endpoint rejected both with400. Reproduced by111/112 native screenshots and failing preview regressions.",
+  "fix": "Reuse one capped async parser for pair measurement and preview. Canonical manufacturing analysis format gate stays unchanged. Expanded3MF bytes are checked against MAX_UPLOAD_MB before trimesh opens the contents.",
+  "native": {
+    "part_file": "113-bored-ring-mm.obj",
+    "context_file": "113-bored-ring-mm.3mf",
+    "source_extents_mm": [
+      20,
+      20,
+      6
+    ],
+    "source_triangles": 256,
+    "source_bore_diameter_mm": 8,
+    "same_position_volume_mm3": 1573.208,
+    "independent_polygon_volume_mm3": 1573.2083567380582,
+    "nudge_x_mm": 30,
+    "sampled_gap_mm": 10.085,
+    "minimum_between_source_extremes_mm": 10,
+    "gap_limit": "Triangle-center sampling is disclosed in the UI;10.085 is not an analytic10mm tolerance claim.",
+    "true_hole_and_two_shells": "Visually verified native screenshots",
+    "controls": [
+      "XYZ nudge",
+      "hide/show assembly",
+      "swap source roles",
+      "invalid units refusal",
+      "retry on same invalid file remains error",
+      "replace invalid file restores geometry and measured gap"
+    ]
+  },
+  "checks": {
+    "focused_tests": 33,
+    "frontend_tests": 497,
+    "frontend_types_lint_build": "PASS",
+    "backend_types": "215 errors within228baseline, zero new diagnostic messages",
+    "changed_source_bandit": "PASS no medium/high findings",
+    "full_backend": {
+      "passed": 2471,
+      "skipped": 3,
+      "seconds": 212.69,
+      "scope": "protected skip policy; existing real-corpus/OCP environment skips"
+    }
+  },
+  "remaining": "STL/OBJ fit unit declaration, responsive override limitation, curved IGES, production and external-provider requirements remain open",
+  "files": [
+    {
+      "name": "113-bored-ring-mm.obj",
+      "sha256": "000ae82ac4bdef4b44a0f7f553ccfa3c7ed717eafdbb19120031a43a286e83a1"
+    },
+    {
+      "name": "113-bored-ring-mm.3mf",
+      "sha256": "56fa87e6b5e3c799feb19e187c22c542aaa9b5dd34ab769d084595cb25727f80"
+    }
+  ]
+}

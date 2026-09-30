@@ -266,8 +266,8 @@ def analyze_fit(mesh_a: trimesh.Trimesh, mesh_b: trimesh.Trimesh) -> dict[str, A
     }
 
 
-def parse_supplementary_mesh(data: bytes, filename: str) -> trimesh.Trimesh:
-    """Parse fit-only OBJ/3MF bytes after a small structural gate.
+def parse_supplementary_mesh(data: bytes, filename: str, *, max_expanded_bytes: int = 100 * 1024 * 1024) -> trimesh.Trimesh:
+    """Parse OBJ/3MF fit/preview bytes after a bounded structural gate.
 
     The canonical parser remains the source for STL/STEP/IGES. This helper adds
     the two mesh exchange formats needed by the pair endpoint without widening
@@ -275,6 +275,7 @@ def parse_supplementary_mesh(data: bytes, filename: str) -> trimesh.Trimesh:
     """
     from io import BytesIO
     from pathlib import Path
+    from zipfile import BadZipFile, ZipFile
 
     suffix = Path(filename).suffix.lower()
     if suffix == ".obj":
@@ -285,6 +286,12 @@ def parse_supplementary_mesh(data: bytes, filename: str) -> trimesh.Trimesh:
     elif suffix == ".3mf":
         if not data.startswith(b"PK"):
             raise FitGeometryError("part is not a structurally valid 3MF package.")
+        try:
+            with ZipFile(BytesIO(data)) as archive:
+                if sum(info.file_size for info in archive.infolist()) > max_expanded_bytes:
+                    raise FitGeometryError("3MF expanded package exceeds the upload limit; reduce its contents and retry.")
+        except BadZipFile as exc:
+            raise FitGeometryError("part is not a structurally valid 3MF package.") from exc
         kind = "3mf"
     else:
         raise FitGeometryError(f"Unsupported fit file type: {suffix or 'none'}.")

@@ -80,7 +80,7 @@ export default function ContextFitViewer({ part, context, result, hideContext, s
   const [previewError, setPreviewError] = useState(false);
   const [retry, setRetry] = useState(0);
   const [webGlAvailable, setWebGlAvailable] = useState<boolean | null>(null);
-  const supported = [part, context].every(file => /\.(stl|step|stp|iges|igs)$/i.test(file.name));
+  const supported = [part, context].every(file => /\.(stl|obj|3mf|step|stp|iges|igs)$/i.test(file.name));
   useEffect(() => { setWebGlAvailable(probeWebGlSupport()); }, []);
   useEffect(() => {
     setSources(null);
@@ -108,7 +108,7 @@ export default function ContextFitViewer({ part, context, result, hideContext, s
     }).catch(() => { if (!cancelled) setPreviewError(true); });
     return () => { cancelled = true; owned.forEach(source => source.revoke()); };
   }, [part, context, supported, webGlAvailable, retry]);
-  if (!supported) return <div className="grid h-full place-items-center px-6 text-center text-xs text-muted-foreground">Pair measurement supports this format. Two-shell preview supports STL, STEP and IGES; no substitute geometry is shown.</div>;
+  if (!supported) return <div className="grid h-full place-items-center px-6 text-center text-xs text-muted-foreground">Choose STL, OBJ, 3MF, STEP or IGES files for the pair preview.</div>;
   if (webGlAvailable !== true) return <div role="status" className="grid h-full place-items-center px-6 text-center text-xs text-muted-foreground">{webGlAvailable === null ? "Preparing the interactive preview…" : "3D preview is unavailable in this browser. Fit measurements remain available below."}</div>;
   if (previewError) return <div role="status" className="grid h-full place-items-center px-6 text-center text-xs text-muted-foreground"><div><p>Could not load the pair preview. Fit measurements remain available below.</p><button className="mt-3 min-h-11 rounded border px-3 text-foreground" onClick={() => setRetry(value => value + 1)}>Retry preview</button></div></div>;
   if (!sources || sources.partFile !== part || sources.contextFile !== context) return <div className="grid h-full place-items-center text-xs text-muted-foreground">Preparing submitted geometry…</div>;

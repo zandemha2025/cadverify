@@ -206,3 +206,8 @@ Inventory disclosure follow-up110: rates are clearly user declarations, missing 
 
 
 Fit accuracy follow-up111/112: 3MF source units now scale both geometry and baked assembly positions; all pairs retain float64 Boolean precision. Native inch3MF and mixedOBJ controls return16,387.064mm³ and10mm gap. A far-originOBJ pair previously missed an intersection; it now returns64.516mm³, then0.100mm gap after separation.23 focused and2468 full backend tests pass (three documented environment skips); changed-source types/Bandit pass. Native invalid-unit refusal and replacement recovery pass. OBJ/3MF preview and STL/OBJ unit selection remain open. No deployment or general accuracy claim. See `111-112-fit-accuracy-proof.json`.
+
+
+Pair-preview follow-up113: actualOBJ/3MF now render their true bored shells through the same capped reader used for measurement. Native overlap/translation/hide/show/swap/invalid-unit/retry/replacement checks pass. Coincident polygonal ring volume matches1573.208mm³; the separated10.085mm sampled gap retains its explicit sampling limitation.2471 backend tests/3 documented skips and497 frontend tests/types/lint/build pass; types/Bandit pass. No deployment. See `113-pair-preview-proof.json`.
+
+CI36722887416 on a980247 through107 passed all9jobs. New108–113 will receive a fresh exact-head run after push. Production and external-provider requirements remain open.

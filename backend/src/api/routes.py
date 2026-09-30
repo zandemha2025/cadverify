@@ -892,6 +892,27 @@ async def validate_file(
 # ──────────────────────────────────────────────────────────────
 # Two-part context-of-use fit (POST /validate/fit)
 # ──────────────────────────────────────────────────────────────
+async def _parse_fit_mesh_async(data: bytes, filename: str):
+    """The same capped source mesh feeds pair measurements and their preview."""
+    import asyncio
+    from src.services.fit_service import FitGeometryError, parse_supplementary_mesh
+
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".obj", ".3mf"}:
+        return await _parse_mesh_async(data, filename)
+    timeout = _analysis_timeout_sec()
+    try:
+        mesh = await asyncio.wait_for(asyncio.to_thread(
+            parse_supplementary_mesh, data, filename, max_expanded_bytes=_max_upload_bytes(),
+        ), timeout=timeout)
+    except FitGeometryError as exc:
+        raise HTTPException(status_code=422, detail={"code": "FIT_GEOMETRY_UNAVAILABLE", "message": str(exc)}) from exc
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=f"File parsing exceeded {timeout:.0f}s timeout.") from exc
+    enforce_triangle_cap(mesh)
+    return mesh, suffix
+
+
 @router.post("/validate/fit", dependencies=[Depends(require_kill_switch_open)])
 @limiter.limit("30/hour;200/day")
 async def validate_fit(
@@ -916,19 +937,10 @@ async def validate_fit(
     data_a, data_b = await __import__("asyncio").gather(
         _read_capped(part_a), _read_capped(part_b)
     )
-    async def parse_fit_part(data: bytes, filename: str):
-        if Path(filename).suffix.lower() in {".obj", ".3mf"}:
-            from src.services.fit_service import parse_supplementary_mesh
-            mesh = await __import__("asyncio").to_thread(parse_supplementary_mesh, data, filename)
-            enforce_triangle_cap(mesh)
-            return mesh
-        mesh, _suffix = await _parse_mesh_async(data, filename)
-        return mesh
-
     try:
-        mesh_a, mesh_b = await __import__("asyncio").gather(
-            parse_fit_part(data_a, part_a.filename or "part-a"),
-            parse_fit_part(data_b, part_b.filename or "part-b"),
+        (mesh_a, _), (mesh_b, _) = await __import__("asyncio").gather(
+            _parse_fit_mesh_async(data_a, part_a.filename or "part-a"),
+            _parse_fit_mesh_async(data_b, part_b.filename or "part-b"),
         )
         if seating not in {"shared_frame", "auto"}:
             raise HTTPException(status_code=400, detail="seating must be shared_frame or auto")
@@ -1044,7 +1056,8 @@ async def validate_preview_mesh(
     other data call. Zero-egress + mesh-level caveat: see the section header.
     """
     data = await _read_capped(file)
-    mesh, suffix = await _parse_mesh_async(data, file.filename or "upload")
+    parse = _parse_fit_mesh_async if purpose == "preview" else _parse_mesh_async
+    mesh, suffix = await parse(data, file.filename or "upload")
     from src.costing.units import scale_mesh_to_mm
 
     mesh = scale_mesh_to_mm(mesh, mesh_source_units(file.filename or "upload", units))

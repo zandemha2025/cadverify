@@ -934,3 +934,13 @@ first divergence: step2, expected an undeclared machine rate to disclose fallbac
 - No tolerance, budget, admission or auth gate was weakened. Evidence: `112-shared-frame-{before,fixed,gap}.png`, uploadedOBJ controls and shared proof JSON. Not deployed.
 
 111/112 final validation:23 focused and2468 full backend tests pass with3 documented environment skips (207.72s). Backend type errors215/228 baseline, no changed-file diagnostics; changed-source Bandit has no medium/high findings. Frontend unchanged from497 passing checks. Native invalid-unit rejection withholds results and valid replacement recovers.
+
+
+### 113 — Accepted OBJ/3MF pairs had no geometry preview (fixed locally)
+- first divergence: step 2, expected the accepted pair files to display their submitted shells, state was an explicit preview-unavailable message; the preview API rejected both formats with400.
+- Promote the existing nested fit parser into one shared async fit/preview reader with the same upload/triangle caps and parse deadline. Manufacturing analysis keeps its original format gate. The existing GLB renderer now accepts OBJ/3MF; no new dependency or substitute geometry is used.
+- Check total expanded3MF package bytes before the library decompresses it. A compressed oversized control is rejected by both fit and preview before the parser runs; malformed packages and unsupported units remain recoverable errors.
+- Native realOBJ/3MF uploads show the same bored ring, in both solid/ghost roles. Coincident overlap1573.208mm³ matches the independently calculated polygonal-ring volume1573.208356738mm³. X30 separates both rendered shells; the sampled gap10.085mm is correctly disclosed as sampled, rather than promoted to the true10mm extreme-to-extreme gap. Hide/show and swap work; invalid units suppress old results/geometry, Retry retains the failure, and replacement restores the preview and result.
+- All2471 backend tests pass with3 documented environment skips;33 focused tests and497 frontend tests/types/changed lint/build pass. Backend types215/228 baseline with zero new messages; changed-source Bandit has no medium/high findings. Evidence: `113-pair-preview-proof.json`, actualOBJ/3MF fixtures and native screenshots. No deployment; STL/OBJ source-unit declaration and external accuracy requirements remain open.
+
+CI36722887416 completed successfully on a980247606355abd97aeb7b7a7a7b11acc44837f (through107): all9jobs passed including the browser journey chain.108–113 require the next exact-head run; main-only image CVE checks and production/external-provider evidence remain open. See `ci-36722887416-summary.json`.
