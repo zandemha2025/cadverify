@@ -1,5 +1,9 @@
 """Regression cases from the supplied-package discovery, using real shared seams."""
 from dataclasses import replace
+import os
+from pathlib import Path
+import subprocess
+import sys
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -10,6 +14,27 @@ from src.costing.estimate import EstimateOptions, _build_verification
 from src.costing.groundtruth import Residual, ResidualModel
 from src.costing.makeability import MachineCap, environment_gate
 from src.services import cost_decision_service as decisions
+
+
+def test_computed_reports_are_identical_across_worker_hash_seeds():
+    script = """
+import hashlib, json
+from src.costing import report_to_dict
+from tests.test_phase_c_makeability_wire import _report, _mill
+cases = [
+    ("steel", None),
+    ("stainless", {"sour_service": True, "max_temp_c": 120}),
+    ("polymer", {"sour_service": True, "max_temp_c": 120, "pressure_bar": 350}),
+]
+for material, env in cases:
+    report = report_to_dict(_report(inventory=[_mill()], env=env, material_class=material))
+    print(hashlib.sha256(json.dumps(report, sort_keys=True).encode()).hexdigest())
+"""
+    outputs = [subprocess.check_output(
+        [sys.executable, "-c", script], cwd=Path(__file__).resolve().parents[1],
+        env={**os.environ, "PYTHONHASHSEED": seed}, text=True, timeout=30,
+    ) for seed in ("1", "2")]
+    assert outputs[0] == outputs[1], "Equivalent worker results must share decision identity"
 
 
 def test_residuals_cannot_validate_an_unmeasured_process():

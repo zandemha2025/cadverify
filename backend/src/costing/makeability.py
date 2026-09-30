@@ -648,7 +648,9 @@ def environment_gate(routes, materials, env, material_props_by_name=None):
     corrosive = bool(env.get("corrosive"))
     max_temp = env.get("max_temp_c")
 
-    for mat in materials:
+    # Callers may deduplicate material names with a set. Keep evidence order
+    # deterministic across workers, just like the costed route shortlist.
+    for mat in sorted(materials):
         p = props.get(mat, {}) or {}
         mclass = p.get("class") or MATERIAL_FAMILY.get(mat, "unknown")
 

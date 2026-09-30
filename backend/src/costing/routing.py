@@ -271,7 +271,8 @@ def eligible_processes(result, drivers, material_class: str, rates: RateCard,
 
     def build(env_for_materials: dict | None) -> list:
         out = []
-        for process in COSTED_PROCESSES:
+        # Stable across worker hash seeds: route order is part of saved evidence.
+        for process in sorted(COSTED_PROCESSES, key=lambda process: process.value):
             ps = by_proc.get(process)
             if ps is None:
                 continue
