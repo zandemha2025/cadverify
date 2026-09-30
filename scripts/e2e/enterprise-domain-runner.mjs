@@ -48,7 +48,6 @@ const parentAssembly = "Cryogenic pump skid";
 const serviceEnvironment = {
   max_temp_c: 120,
   sour_service: true,
-  pressure_bar: 350,
 };
 const baseQuantityLadder = [1, 100, 1000, 2000, 5000, 10000];
 const annualQuantityLadder = [1, 100, 1000, 2000, 10000, 12000];
@@ -844,12 +843,15 @@ class EnterpriseDomainQA {
       assert(excludedCostResponse.status() === 200, `polymer severe-service cost HTTP ${excludedCostResponse.status()}`);
       assert(excludedValidationResponse.status() === 200, `polymer severe-service validation HTTP ${excludedValidationResponse.status()}`);
       assert(excludedCost.material_class === "polymer", `polymer rejection returned material class ${excludedCost.material_class}`);
-      assert(excludedCost.verification?.verdict === "makeable_not_on_owned", `severe-service polymer verdict was ${excludedCost.verification?.verdict}`);
+      assert(excludedCost.verification?.verdict === "unknown", `severe-service polymer verdict was ${excludedCost.verification?.verdict}`);
       const excludedReasons = (excludedCost.verification?.env_exclusions || []).map((item) => item?.human).filter(Boolean);
       assert(excludedReasons.length > 0, "severe-service polymer produced no environment exclusion reason");
       assert(excludedReasons.every((reason) => /NACE|HDT|ASME|ASTM|ISO/i.test(reason)), `polymer exclusion was not standards-cited: ${excludedReasons.join(" | ")}`);
       assert(excludedReasons.every((reason) => excludedText.includes(reason)), "standards-cited polymer exclusion was not visible to the user");
-      assert(excludedCost.verification?.gap?.some((item) => item?.need === "PEEK"), "surviving severe-service polymer route did not expose the PEEK capability gap");
+      const pressureUnknowns = excludedCost.verification?.environment_unknowns?.filter((item) => item.axis === "pressure_bar") || [];
+      assert(pressureUnknowns.length > 0, "polymer screening lost unresolved pressure");
+      assert(pressureUnknowns.every((item) => excludedText.includes(item.human)), "unresolved pressure was not visible");
+      assert(!excludedCost.decision?.make_now_process, "unresolved polymer pressure produced a make-now recommendation");
       const excludedScreenshot = await this.shot("ENT-03-cad-step-environment-excluded", true);
 
       const costPromise = this.page.waitForResponse((response) =>
@@ -861,11 +863,31 @@ class EnterpriseDomainQA {
         new URL(response.url()).pathname === "/api/proxy/validate"
       , { timeout: cadUploadTimeoutMs });
       await this.page.getByRole("radio", { name: /^Stainless$/i }).click();
-      const [costResponse, validationResponse] = await Promise.all([costPromise, validationPromise]);
-      const [cost, validation] = await Promise.all([
-        costResponse.json(),
-        validationResponse.json(),
-      ]);
+      const [severeCostResponse, severeValidationResponse] = await Promise.all([costPromise, validationPromise]);
+      const severeCost = await severeCostResponse.json();
+      assert(severeCostResponse.status() === 200 && severeValidationResponse.status() === 200, "stainless severe-service re-verification failed");
+      assert(severeCost.verification?.verdict === "unknown", "changing alloy falsely resolved pressure");
+      assert(severeCost.verification?.environment_unknowns?.some((item) => item.axis === "pressure_bar"), "stainless screening lost unresolved pressure");
+      assert(!severeCost.decision?.make_now_process, "unresolved stainless pressure produced a recommendation");
+      this.evidence.meshHash = await meshHashFor(cubePath);
+      const severeContext = await this.expectApiOk(`/part-context/${this.evidence.meshHash}`);
+      assert(severeContext.service_environment?.pressure_bar === 350, "declared pressure did not persist");
+      const severePortfolio = await this.expectApiOk("/catalog/portfolio");
+      const severeRow = severePortfolio.rows.find((row) => row.part_key === this.evidence.meshHash);
+      assert(severeRow && severeRow.unit_cost == null && severeRow.annualized_cost_usd == null, "portfolio priced an unresolved pressure case");
+      this.evidence.severeVerification = { cost: severeCost, context: severeContext, portfolio: severeRow };
+
+      // This is a new screening scope. Removing pressure does not qualify the severe case.
+      const supportedCostPromise = this.page.waitForResponse((response) =>
+        response.request().method() === "POST" && new URL(response.url()).pathname === "/api/proxy/validate/cost"
+      , { timeout: cadUploadTimeoutMs });
+      const supportedValidationPromise = this.page.waitForResponse((response) =>
+        response.request().method() === "POST" && new URL(response.url()).pathname === "/api/proxy/validate"
+      , { timeout: cadUploadTimeoutMs });
+      await this.page.getByRole("button", { name: /35 MPa pressure/i }).click();
+      const [costResponse, validationResponse] = await Promise.all([supportedCostPromise, supportedValidationPromise]);
+      const [cost, validation] = await Promise.all([costResponse.json(), validationResponse.json()]);
+      assert(costResponse.status() === 200 && validationResponse.status() === 200, "supported-scope re-verification failed");
       await this.page.waitForFunction(() => {
         const text = document.body.innerText;
         return /material class\s*stainless|declared class\s*stainless/i.test(text) && !/measuring geometry/i.test(text);
@@ -877,7 +899,7 @@ class EnterpriseDomainQA {
       assert(/world declared.*captured on this part's record|USER.*on the record/i.test(text), "declared service world was not captured on the record");
       assert(/What it really takes|computed from POST \/validate\/cost/i.test(text), "should-cost evidence missing from Verify result");
       assert(/material class\s*stainless|declared class\s*stainless/i.test(text), "stainless material class was not reflected in the recovered result");
-      assert(cost.verification?.verdict === "makeable_in_house", `safe stainless recovery verdict was ${cost.verification?.verdict}`);
+      assert(cost.verification?.verdict === "makeable_in_house", `pressure-free stainless screening verdict was ${cost.verification?.verdict}`);
       this.evidence.meshHash = await meshHashFor(cubePath);
       const context = await this.expectApiOk(`/part-context/${this.evidence.meshHash}`);
       const slider = this.page.getByRole("slider").first();
@@ -932,9 +954,9 @@ class EnterpriseDomainQA {
       const beforeDecisionRows = beforeDecisions.cost_decisions.filter((row) => row.filename === "cube.step");
       const rejectedDecisionId = this.evidence.excludedVerification?.cost?.saved?.id;
       const recoveredDecisionId = this.evidence.initialVerification?.cost?.saved?.id;
-      const expectedDecisionIds = [rejectedDecisionId, recoveredDecisionId].filter(Boolean).sort();
+      const expectedDecisionIds = [rejectedDecisionId, this.evidence.severeVerification?.cost?.saved?.id, recoveredDecisionId].filter(Boolean).sort();
       assert(beforeAnalysisRows.length === 1, `expected one analysis before repeat, got ${beforeAnalysisRows.length}`);
-      assert(expectedDecisionIds.length === 2, `material recovery did not persist two parameter-distinct decisions: ${expectedDecisionIds}`);
+      assert(expectedDecisionIds.length === 3, `scope changes did not persist three parameter-distinct decisions: ${expectedDecisionIds}`);
       assert(sameArray(beforeDecisionRows.map((row) => row.id).sort(), expectedDecisionIds), `unexpected decisions before repeat: ${beforeDecisionRows.map((row) => row.id)}`);
 
       await this.goto("/verify", "interrupted-verification", 500);
@@ -942,7 +964,6 @@ class EnterpriseDomainQA {
       await this.page.getByRole("radio", { name: /^Stainless$/i }).click();
       await this.page.getByRole("button", { name: /120.*service/i }).click();
       await this.page.getByRole("button", { name: /sour service/i }).click();
-      await this.page.getByRole("button", { name: /35 MPa pressure/i }).click();
       const costRequest = this.page.waitForRequest((request) =>
         request.method() === "POST" && new URL(request.url()).pathname === "/api/proxy/validate/cost"
       , { timeout: cadUploadTimeoutMs });
@@ -970,6 +991,13 @@ class EnterpriseDomainQA {
       const afterDecisions = await this.expectApiOk("/cost-decisions?limit=100");
       const afterAnalysisRows = afterAnalyses.analyses.filter((row) => row.filename === "cube.step");
       const afterDecisionRows = afterDecisions.cost_decisions.filter((row) => row.filename === "cube.step");
+      // Retain the exact response even if a dedup assertion fails; a decision
+      // count alone cannot distinguish changed inputs from changed computation.
+      this.evidence.interruptedVerification = {
+        repeated_cost: repeatedCost,
+        before_decision_ids: beforeDecisionRows.map((row) => row.id),
+        after_decision_ids: afterDecisionRows.map((row) => row.id),
+      };
       assert(afterAnalysisRows.length === 1, `interrupted repeat created ${afterAnalysisRows.length} analyses`);
       assert(sameArray(afterDecisionRows.map((row) => row.id).sort(), expectedDecisionIds), `interrupted repeat changed the decision set: ${afterDecisionRows.map((row) => row.id)}`);
       assert(afterAnalysisRows[0].id === beforeAnalysisRows[0].id, "analysis identity changed after interrupted repeat");
@@ -1321,7 +1349,7 @@ class EnterpriseDomainQA {
       assert(contextBefore.provenance === "user", "part context provenance was not user");
       assert(contextBefore.service_environment?.max_temp_c === serviceEnvironment.max_temp_c, "max_temp_c did not persist");
       assert(contextBefore.service_environment?.sour_service === true, "sour_service did not persist");
-      assert(contextBefore.service_environment?.pressure_bar === serviceEnvironment.pressure_bar, "pressure_bar did not persist");
+      assert(contextBefore.service_environment?.pressure_bar == null, "removed pressure remained in the supported screening scope");
 
       const before = await this.expectApiOk("/catalog/portfolio");
       const rowBefore = before.rows.find((r) => r.part_key === this.evidence.meshHash);
@@ -1401,7 +1429,6 @@ class EnterpriseDomainQA {
       await this.page.getByRole("radio", { name: /^Stainless$/i }).click();
       await this.page.getByRole("button", { name: /120.*service/i }).click();
       await this.page.getByRole("button", { name: /sour service/i }).click();
-      await this.page.getByRole("button", { name: /35 MPa pressure/i }).click();
       const costPromise = this.page.waitForResponse((response) =>
         response.request().method() === "POST" &&
         new URL(response.url()).pathname === "/api/proxy/validate/cost"
@@ -1707,7 +1734,7 @@ class EnterpriseDomainQA {
 
       // Prove the success ripples into the actual product surface.  A green
       // recalibration toast is not enough: upload the source again and require
-      // every served estimate to carry a measured empirical confidence band.
+      // the measured process alone to carry a measured empirical confidence band.
       await this.clickRail("Verify");
       const servedCostPromise = this.page.waitForResponse((response) =>
         response.request().method() === "POST" &&
@@ -1719,10 +1746,16 @@ class EnterpriseDomainQA {
       assert(servedCostResponse.status() === 200, `post-calibration should-cost HTTP ${servedCostResponse.status()}`);
       const servedEstimates = Array.isArray(servedCost.estimates) ? servedCost.estimates : [];
       assert(servedEstimates.length > 0, "post-calibration should-cost returned no estimates");
-      assert(
-        servedEstimates.every((estimate) => estimate.confidence?.validated === true),
-        "one or more post-calibration estimates still served an assumption band",
-      );
+      const measured = servedEstimates.filter((estimate) => estimate.process === "fdm");
+      const unmeasured = servedEstimates.filter((estimate) => estimate.process !== "fdm");
+      assert(measured.length > 0 && measured.every((estimate) => estimate.confidence?.validated === true), "measured FDM process did not serve validated bands");
+      assert(unmeasured.length > 0 && unmeasured.every((estimate) => estimate.confidence?.validated === false), "FDM actuals incorrectly validated an unmeasured process");
+      const selectedProcess = servedCost.decision?.make_now_process;
+      assert(selectedProcess, "post-calibration upload has no selected route");
+      const selectedValidated = selectedProcess === "fdm";
+      const provenancePattern = selectedValidated
+        ? /this cost estimate is validated for this process/i
+        : /this cost estimate is unvalidated for this process/i;
       await this.page.waitForFunction(() => {
         const text = document.body.innerText;
         return (
@@ -1734,9 +1767,7 @@ class EnterpriseDomainQA {
         state: "hidden",
         timeout: 20_000,
       });
-      const validatedVerdict = this.page.getByText(
-        /this verdict is validated — checked against your actuals/i,
-      );
+      const validatedVerdict = this.page.getByText(provenancePattern);
       await validatedVerdict.waitFor({
         timeout: 20_000,
       });
@@ -1744,8 +1775,8 @@ class EnterpriseDomainQA {
       await this.page.waitForTimeout(250);
       const servedText = await this.scanVisibleText("served-measured-band");
       assert(
-        /this verdict is validated — checked against your actuals/i.test(servedText),
-        "measured confidence provenance was not visible on the completed verdict",
+        provenancePattern.test(servedText),
+        "selected-process confidence provenance was not visible",
       );
       const servedScreenshot = await this.shot("ENT-02-served-measured-band", true);
 
@@ -1762,6 +1793,12 @@ class EnterpriseDomainQA {
         calibration_screenshot: calibrationScreenshot,
         served_status: servedCostResponse.status(),
         served_estimate_count: servedEstimates.length,
+        served_measured_count: measured.length,
+        served_unmeasured_count: unmeasured.length,
+        served_validated_process_only: measured.every((estimate) => estimate.confidence?.validated === true) && unmeasured.every((estimate) => estimate.confidence?.validated === false),
+        selected_process: selectedProcess,
+        selected_validated: selectedValidated,
+        selected_provenance_visible: provenancePattern.test(servedText),
         served_validated_count: servedEstimates.filter((estimate) => estimate.confidence?.validated === true).length,
         served_visible_text: servedText.replace(/\s+/g, " ").trim(),
         served_screenshot: servedScreenshot,
@@ -1816,6 +1853,7 @@ class EnterpriseDomainQA {
 
     const initial = this.evidence.initialVerification || {};
     const rejected = this.evidence.excludedVerification || {};
+    const severe = this.evidence.severeVerification || {};
     const exact = this.evidence.exactVerification || {};
     const initialText = initial.visible_text || "";
     const rejectedText = rejected.visible_text || "";
@@ -1913,7 +1951,7 @@ class EnterpriseDomainQA {
           "The first verification has no declared annual volume; the second has annual_volume=12000 persisted before re-verification.",
         ],
         actions: [
-          "Open Verify, select Stainless, 120 °C, sour service, and 35 MPa, then upload cube.step.",
+          "Open Verify, select Stainless, 120 °C and sour service without a pressure requirement, then upload cube.step.",
           "Move the quantity scrubber to its 10,000-unit endpoint and read the displayed recommendation card.",
           "Persist annual_volume=12000, re-verify the same CAD, and inspect the returned six-point ladder and exact 12,000-unit recommendation.",
         ],
@@ -1977,7 +2015,7 @@ class EnterpriseDomainQA {
         id: "VER-08",
         persona: "CAD engineer navigating away while deterministic verification is still in flight",
         preconditions: [
-          "Exactly one cube.step analysis and two intentional, parameter-distinct material decisions already exist.",
+          "Exactly one cube.step analysis and three intentional, parameter-distinct material and scope decisions already exist.",
           "The repeated upload uses the same bytes, material, service world, and quantity parameters.",
         ],
         actions: [
@@ -2008,7 +2046,7 @@ class EnterpriseDomainQA {
             responseObservedAtMs: interrupted.response_observed_at_ms ?? "missing",
           },
           authorization,
-          recovery: "History reopened the original analysis URL and its linked decisions; the interrupted stainless repeat reused its durable decision instead of creating a third record.",
+          recovery: "History reopened the original analysis URL and its linked decisions; the interrupted stainless repeat reused its durable decision instead of creating a fourth record.",
         },
         screenshot: interrupted.screenshot,
         assertions: [
@@ -2018,8 +2056,8 @@ class EnterpriseDomainQA {
           assertion("analysis count before repeat", 1, interrupted.before_analysis_ids?.length ?? 0, interrupted.before_analysis_ids?.length === 1),
           assertion("analysis count after repeat", 1, interrupted.after_analysis_ids?.length ?? 0, interrupted.after_analysis_ids?.length === 1),
           assertion("analysis identity survives navigation", interrupted.before_analysis_ids?.[0] || "existing analysis id", interrupted.after_analysis_ids?.[0] || "missing", interrupted.before_analysis_ids?.[0] === interrupted.after_analysis_ids?.[0]),
-          assertion("decision count before repeat", 2, interrupted.before_decision_ids?.length ?? 0, interrupted.before_decision_ids?.length === 2),
-          assertion("decision count after repeat", 2, interrupted.after_decision_ids?.length ?? 0, interrupted.after_decision_ids?.length === 2),
+          assertion("decision count before repeat", 3, interrupted.before_decision_ids?.length ?? 0, interrupted.before_decision_ids?.length === 3),
+          assertion("decision count after repeat", 3, interrupted.after_decision_ids?.length ?? 0, interrupted.after_decision_ids?.length === 3),
           assertion("decision set survives navigation", interrupted.before_decision_ids || [], interrupted.after_decision_ids || [], sameArray([...(interrupted.before_decision_ids || [])].sort(), [...(interrupted.after_decision_ids || [])].sort())),
           assertion("deduped response selects durable stainless decision", initial.cost?.saved?.id || "existing stainless decision id", interrupted.selected_decision_id || "missing", initial.cost?.saved?.id === interrupted.selected_decision_id),
           assertion("recovery analysis URL", `${baseUrl}/analyses/${interrupted.before_analysis_ids?.[0] || "missing"}`, interrupted.url || "missing", interrupted.url === `${baseUrl}/analyses/${interrupted.before_analysis_ids?.[0]}`),
@@ -2244,7 +2282,7 @@ class EnterpriseDomainQA {
           "Confirm the visible real-record count and validation floor.",
           "Choose Recalibrate and inspect the exact refusal plus persisted API counts.",
           "Import eight distinct actuals bound to the exact source SHA through the visible CSV control, then choose Recalibrate again.",
-          "Upload cube.step again and require the served should-cost confidence on every estimate—not just the toast—to be measured and validated.",
+          "Upload cube.step again and require FDM cost bands to be validated, unmeasured processes to remain unvalidated, and selected-route UI provenance to match.",
         ],
         observed: {
           url: calibrationRecovery.url || groundTruth.url || "not observed",
@@ -2254,7 +2292,7 @@ class EnterpriseDomainQA {
             visibleSignal(groundTruth.visible_text, /recalibration refused:\s*4 real of 8 needed/i, "missing refusal"),
             visibleSignal(calibrationRecovery.calibration_visible_text, /validated \(measured\)/i, "missing measured calibration status"),
             visibleSignal(calibrationRecovery.calibration_visible_text, /4 records could not be costed/i, "missing bounded legacy-source warning"),
-            visibleSignal(calibrationRecovery.served_visible_text, /this verdict is validated — checked against your actuals/i, "missing served measured provenance"),
+            visibleSignal(calibrationRecovery.served_visible_text, /this cost estimate is (?:unvalidated|validated) for this process/i, "missing selected-process provenance"),
           ],
           persisted: {
             refusalRecords: groundTruth.records || [],
@@ -2278,7 +2316,7 @@ class EnterpriseDomainQA {
             servedValidatedCount: calibrationRecovery.served_validated_count ?? "missing",
           },
           authorization,
-          recovery: "The first attempt stayed refused. Eight source-bound actuals then imported with zero row skips, three or more costable held-out residuals earned validation, four legacy rows remained explicitly excluded, and a fresh should-cost served measured bands on every estimate.",
+          recovery: "The first attempt stayed refused. Eight source-bound actuals then imported with zero row skips, three or more costable held-out residuals earned validation, four legacy rows remained explicitly excluded, and a fresh should-cost served measured bands only for FDM; other processes retained assumption bands.",
         },
         screenshot: calibrationRecovery.served_screenshot || groundTruth.screenshot,
         assertions: [
@@ -2301,23 +2339,24 @@ class EnterpriseDomainQA {
           assertion("only unavailable legacy sources skipped", expectedActualPartIds, calibrationRecovery.skipped_part_ids || [], sameArray(calibrationRecovery.skipped_part_ids || [], expectedActualPartIds)),
           assertion("all source-bound rows costed", 0, (calibrationRecovery.skipped_part_ids || []).filter((partId) => partId.startsWith("calibration-proof-")).length, (calibrationRecovery.skipped_part_ids || []).every((partId) => !partId.startsWith("calibration-proof-"))),
           assertion("served should-cost status", 200, calibrationRecovery.served_status ?? "missing", calibrationRecovery.served_status === 200),
-          assertion("every served estimate is validated", calibrationRecovery.served_estimate_count ?? "estimate count", calibrationRecovery.served_validated_count ?? "missing", calibrationRecovery.served_estimate_count > 0 && calibrationRecovery.served_validated_count === calibrationRecovery.served_estimate_count),
+          assertion("only measured process is validated", true, calibrationRecovery.served_validated_process_only ?? "missing", calibrationRecovery.served_validated_process_only === true && calibrationRecovery.served_measured_count > 0 && calibrationRecovery.served_unmeasured_count > 0),
           assertion("visible measured calibration", "validated (measured)", visibleSignal(calibrationRecovery.calibration_visible_text, /validated \(measured\)/i, "missing"), /validated \(measured\)/i.test(calibrationRecovery.calibration_visible_text || "")),
-          assertion("visible served measured provenance", "this verdict is validated — checked against your actuals", visibleSignal(calibrationRecovery.served_visible_text, /this verdict is validated — checked against your actuals/i, "missing"), /this verdict is validated — checked against your actuals/i.test(calibrationRecovery.served_visible_text || "")),
+          assertion("visible selected-process provenance", true, calibrationRecovery.selected_provenance_visible ?? "missing", calibrationRecovery.selected_provenance_visible === true),
         ],
       }),
 
       "ENT-03": this.structuredPath({
         id: "ENT-03",
-        persona: "Energy-sector CAD engineer excluding unsafe material options and recovering to an owned severe-service route",
+        persona: "Energy-sector CAD engineer excluding unsafe material options and preserving unresolved pressure and evaluating a separate supported scope",
         preconditions: [
           "The organization has USER-declared machine envelopes and rates.",
           "The cube.step verification begins with no inferred service context.",
         ],
         actions: [
           "Select Polymer, 120 °C service, sour service, and 35 MPa pressure.",
-          "Upload cube.step; require standards-cited rejection of unsafe polymer options while the surviving PEEK route remains explicit as not available on owned equipment.",
-          "Select Stainless without re-uploading; require a fresh DFM/cost run and a makeable-in-house recovery on declared equipment.",
+          "Upload cube.step; require standards-cited rejection of unsafe polymer options while pressure remains unresolved and any recommendation is withheld.",
+          "Select Stainless without re-uploading; require a fresh run that still withholds a recommendation for unresolved pressure.",
+          "Remove the pressure requirement explicitly and evaluate that separate scope on declared equipment.",
         ],
         observed: {
           url: initial.url || "not observed",
@@ -2329,32 +2368,36 @@ class EnterpriseDomainQA {
           ],
           persisted: {
             meshHash: this.evidence.meshHash || "missing",
-            context: initial.context || "missing",
+            severeContext: severe.context || "missing",
+            supportedContext: initial.context || "missing",
+            severeVerification: severe.cost?.verification || "missing",
             rejectedVerification,
             recoveredVerification: verification,
           },
           numeric: {
-            maxTemperatureC: initial.context?.service_environment?.max_temp_c ?? "missing",
-            pressureBar: initial.context?.service_environment?.pressure_bar ?? "missing",
-            sourService: initial.context?.service_environment?.sour_service ?? "missing",
+            maxTemperatureC: severe.context?.service_environment?.max_temp_c ?? "missing",
+            pressureBar: severe.context?.service_environment?.pressure_bar ?? "missing",
+            sourService: severe.context?.service_environment?.sour_service ?? "missing",
             environmentExclusionCount: exclusions.length,
             excludedEstimateCount: excludedEstimates.length,
           },
           authorization,
-          recovery: "The severe service world remained on the durable part context and reappeared on re-verification; excluded options stayed explicit instead of silently entering the recommendation.",
+          recovery: "Both severe-service material choices remain unresolved; only the separately declared pressure-free scope can yield a screening recommendation. Historical severe-service decisions retain their evidence.",
         },
         screenshot: rejected.screenshot || initial.screenshot,
         assertions: [
           authAssertion(),
-          assertion("service context temperature", 120, initial.context?.service_environment?.max_temp_c ?? "missing", initial.context?.service_environment?.max_temp_c === 120),
-          assertion("service context sour flag", true, initial.context?.service_environment?.sour_service ?? "missing", initial.context?.service_environment?.sour_service === true),
-          assertion("service context pressure", 350, initial.context?.service_environment?.pressure_bar ?? "missing", initial.context?.service_environment?.pressure_bar === 350),
-          assertion("service context provenance", "user", initial.context?.provenance || "missing", initial.context?.provenance === "user"),
+          assertion("service context temperature", 120, severe.context?.service_environment?.max_temp_c ?? "missing", severe.context?.service_environment?.max_temp_c === 120),
+          assertion("service context sour flag", true, severe.context?.service_environment?.sour_service ?? "missing", severe.context?.service_environment?.sour_service === true),
+          assertion("service context pressure", 350, severe.context?.service_environment?.pressure_bar ?? "missing", severe.context?.service_environment?.pressure_bar === 350),
+          assertion("service context provenance", "user", severe.context?.provenance || "missing", severe.context?.provenance === "user"),
           assertion("selected cost material class", "stainless", initial.cost?.material_class || "missing", initial.cost?.material_class === "stainless"),
           assertion("rejected cost material class", "polymer", rejected.cost?.material_class || "missing", rejected.cost?.material_class === "polymer"),
-          assertion("surviving polymer route verdict", "makeable_not_on_owned", rejectedVerification.verdict || "missing", rejectedVerification.verdict === "makeable_not_on_owned"),
-          assertion("surviving polymer capability gap", "PEEK", rejectedVerification.gap?.map((item) => item?.need) || [], rejectedVerification.gap?.some((item) => item?.need === "PEEK") === true),
-          assertion("safe material recovery verdict", "makeable_in_house", verification.verdict || "missing", verification.verdict === "makeable_in_house"),
+          assertion("polymer pressure remains unknown", "unknown", rejectedVerification.verdict || "missing", rejectedVerification.verdict === "unknown" && rejectedVerification.environment_unknowns?.some((item) => item.axis === "pressure_bar")),
+          assertion("alloy change preserves pressure uncertainty", "unknown", severe.cost?.verification?.verdict || "missing", severe.cost?.verification?.verdict === "unknown" && severe.cost?.verification?.environment_unknowns?.some((item) => item.axis === "pressure_bar")),
+          assertion("unresolved pressure withholds recommendations", true, Boolean(severe.portfolio) && severe.portfolio.unit_cost == null, Boolean(severe.portfolio) && severe.portfolio.unit_cost == null && !severe.cost?.decision?.make_now_process && !rejected.cost?.decision?.make_now_process),
+          assertion("supported scope explicitly removes pressure", true, initial.context?.service_environment || "missing", Boolean(initial.context) && initial.context.service_environment?.pressure_bar == null),
+          assertion("separate supported-scope screening verdict", "makeable_in_house", verification.verdict || "missing", verification.verdict === "makeable_in_house"),
           assertion("environment declared to verification", true, rejectedVerification.environment_declared ?? "missing", rejectedVerification.environment_declared === true),
           assertion("machine inventory declared to verification", true, rejectedVerification.inventory_declared ?? "missing", rejectedVerification.inventory_declared === true),
           assertion("standards-cited environment exclusions", "one or more exclusions, every reason cites NACE/HDT/ASME/ASTM/ISO", exclusionReasons, exclusions.length > 0 && exclusions.every((item) => /NACE|HDT|ASME|ASTM|ISO/i.test(item?.human || ""))),
@@ -2533,10 +2576,11 @@ class EnterpriseDomainQA {
         sourceBoundSkipped: (this.evidence.calibrationRecovery?.skipped_part_ids || [])
           .filter((partId) => partId.startsWith("calibration-proof-")).length,
         servedEstimateCount: this.evidence.calibrationRecovery?.served_estimate_count,
-        servedValidatedAll:
-          this.evidence.calibrationRecovery?.served_estimate_count > 0 &&
-          this.evidence.calibrationRecovery?.served_validated_count ===
-            this.evidence.calibrationRecovery?.served_estimate_count,
+        measuredProcess: "fdm",
+        servedMeasuredEstimateCount: this.evidence.calibrationRecovery?.served_measured_count,
+        servedUnmeasuredEstimateCount: this.evidence.calibrationRecovery?.served_unmeasured_count,
+        servedValidatedProcessOnly: this.evidence.calibrationRecovery?.served_validated_process_only,
+        selectedProvenanceVisible: this.evidence.calibrationRecovery?.selected_provenance_visible,
       },
       "ENT-04": {
         quantity: this.evidence.portfolio?.annualized_unit_cost_qty,
@@ -2663,7 +2707,7 @@ The test signs up or logs in as a real org admin, proves unauthenticated org dat
 - Governed rate cards are in effect only after publish and remain DEFAULT / not validated.
 - Machine envelopes, rates, and materials round-trip with provenance=user.
 - Ground-truth recalibration refuses with 4 real records because the floor is 8, then eight source-bound actuals import without row loss and produce at least three costable held-out residuals.
-- A successful recalibration is not accepted on its toast alone: every estimate from the next real STEP upload must serve a validated empirical confidence band.
+- A successful recalibration is not accepted on its toast alone: the next real STEP upload must serve validated bands for FDM only and retain assumption bands for unmeasured processes.
 - API key creation reveals the one-time secret on /settings/developer.
 - The Verify UI persists the declared service world to part-context before costing.
 - Portfolio annualized exposure is null before annual_volume and after declaration until re-verification; it then equals the engine recommendation at that exact quantity × declared volume.

@@ -110,7 +110,7 @@ async def list_credential_profiles(
     response: Response,
     connector_id: Optional[str] = Query(None),
     ctx: OrgAuthContext = Depends(require_integration_admin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     rows = await creds.list_profiles(
         session,
@@ -127,7 +127,7 @@ async def create_credential_profile(
     response: Response,
     body: CredentialProfileCreate,
     ctx: OrgAuthContext = Depends(require_integration_admin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     row = await creds.create_profile(
         session,
@@ -151,7 +151,7 @@ async def get_credential_profile(
     request: Request,
     response: Response,
     ctx: OrgAuthContext = Depends(require_integration_admin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     row = await creds.get_profile(session, org_id=_ctx_org(ctx), profile_id=profile_id)
     return {"profile": creds.serialize_profile(row)}
@@ -164,7 +164,7 @@ async def probe_credential_profile(
     request: Request,
     response: Response,
     ctx: OrgAuthContext = Depends(require_integration_admin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     row = await creds.get_profile(session, org_id=_ctx_org(ctx), profile_id=profile_id)
     return {"probe": creds.probe_profile(row)}
@@ -177,7 +177,7 @@ async def revoke_credential_profile(
     request: Request,
     response: Response,
     ctx: OrgAuthContext = Depends(require_integration_admin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     row = await creds.revoke_profile(session, org_id=_ctx_org(ctx), profile_id=profile_id)
     await session.commit()
@@ -193,7 +193,7 @@ async def create_run(
     mode: str = Form(svc.MODE_DRY_RUN),
     file: UploadFile = File(...),
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Dry-run or import an offline connector CSV and persist the run ledger.
 
@@ -231,7 +231,7 @@ async def list_runs(
     connector_id: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     org_id = await _require_org(session, user)
     rows, has_more = await svc.list_runs(
@@ -257,7 +257,7 @@ async def get_run(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     org_id = await _require_org(session, user)
     row = await svc.get_run(session, org_id=org_id, run_id=run_id)

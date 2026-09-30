@@ -93,7 +93,7 @@ test("integration, history, reconstruction, and interruption assert persisted ou
   assert.match(source, /mesh\.status === 200 && mesh\.bytes > 0/);
   assert.match(source, /failure displayed a fake preview/);
   assert.match(source, /source-bound actuals lost their exact CAD hash/);
-  assert.match(source, /every served estimate to carry a measured empirical confidence band/);
+  assert.match(source, /the measured process alone to carry a measured empirical confidence band/);
 });
 
 test("developer-key validity is proved on the real bearer-only API surface", () => {

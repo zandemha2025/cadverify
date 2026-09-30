@@ -97,7 +97,7 @@ async def list_users(
     cursor: int | None = Query(None, description="User ID cursor for pagination"),
     limit: int = Query(20, ge=1, le=100),
     ctx: OrgAuthContext = Depends(require_admin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """List users the caller may administer, each with their org role.
 
@@ -195,7 +195,7 @@ async def list_users(
 async def get_user_detail(
     user_id: int,
     ctx: OrgAuthContext = Depends(require_admin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """User detail with org role, created_at, analysis_count, batch_count.
 
@@ -262,7 +262,7 @@ async def update_user_role(
     user_id: int,
     body: RoleUpdate,
     ctx: OrgAuthContext = Depends(require_admin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Update a user's global platform role (platform superadmin only).
 
@@ -339,7 +339,7 @@ require_superadmin = require_role(Role.superadmin)
 async def deactivate_user(
     user_id: int,
     user: AuthedUser = Depends(require_superadmin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Deactivate an account (superadmin). Blocks every auth path; the user's
     existing sessions and API keys stop working immediately."""
@@ -363,7 +363,7 @@ async def deactivate_user(
 async def reactivate_user(
     user_id: int,
     user: AuthedUser = Depends(require_superadmin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Reactivate a deactivated account (superadmin)."""
     result = await org_service.set_user_active(session, user_id, active=True)
@@ -384,7 +384,7 @@ async def reactivate_user(
 async def revoke_user_sessions(
     user_id: int,
     user: AuthedUser = Depends(require_superadmin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Invalidate every dashboard session for an account (superadmin)."""
     result = await org_service.revoke_user_sessions(session, user_id)
@@ -414,7 +414,7 @@ def _iso(dt: datetime | None) -> str | None:
 async def get_usage_summary(
     days: int = Query(30, ge=1, le=90, description="Trailing window in days"),
     ctx: OrgAuthContext = Depends(require_admin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Org-scoped usage counters from persisted tables, never design fixtures.
 
@@ -489,7 +489,7 @@ async def get_usage_summary(
 async def list_webhook_deliveries(
     limit: int = Query(20, ge=1, le=100),
     ctx: OrgAuthContext = Depends(require_admin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Latest webhook deliveries from the durable delivery table.
 
@@ -533,7 +533,7 @@ async def list_webhook_deliveries(
 @router.get("/ops/queue-health")
 async def get_ops_queue_health(
     ctx: OrgAuthContext = Depends(require_admin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """PII-free queue, batch, webhook, and worker posture for operators."""
     org_filter = None if ctx.is_superadmin else ctx.org_id
@@ -557,7 +557,7 @@ async def get_audit_log(
     cursor: str | None = Query(None, description="Pagination cursor (entry ID)"),
     limit: int = Query(50, ge=1, le=200, description="Page size (max 200)"),
     ctx: OrgAuthContext = Depends(require_admin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Query or export the audit log. Org-admin sees only their org's entries;
     superadmin sees every org's (org filter = None)."""

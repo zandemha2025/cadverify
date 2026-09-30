@@ -149,7 +149,7 @@ async def create_org(
     response: Response,
     body: CreateOrgBody,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Create a named org; the caller becomes its admin. Personal orgs and the
     caller's active org are unaffected (no auto-switch)."""
@@ -168,7 +168,7 @@ async def list_orgs(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Every org the caller belongs to + which one is active."""
     return await svc.list_my_orgs(session, user.user_id)
@@ -181,7 +181,7 @@ async def switch_org(
     response: Response,
     body: SwitchBody,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Set the caller's active org using a dashboard session only.
 
@@ -221,7 +221,7 @@ async def list_saml_group_mappings(
     request: Request,
     response: Response,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """List the caller org's SAML JIT group-to-role mappings."""
     org_id = await _ctx_org(ctx, session)
@@ -235,7 +235,7 @@ async def create_saml_group_mapping(
     response: Response,
     body: SamlGroupMappingBody,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Create one SAML JIT mapping for the caller org."""
     org_id = await _ctx_org(ctx, session)
@@ -275,7 +275,7 @@ async def delete_saml_group_mapping(
     response: Response,
     mapping_id: int,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Delete one SAML JIT mapping from the caller org."""
     org_id = await _ctx_org(ctx, session)
@@ -305,7 +305,7 @@ async def create_invite(
     response: Response,
     body: InviteBody,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Invite an email to the caller's org at a role (admin-only; role may not
     exceed the inviter's). Returns the one-time accept link; emails it when
@@ -346,7 +346,7 @@ async def list_invites(
     request: Request,
     response: Response,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """List the org's invites (pending/accepted/expired/revoked). No tokens."""
     org_id = await _ctx_org(ctx, session)
@@ -360,7 +360,7 @@ async def accept_invite(
     response: Response,
     body: AcceptBody,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Accept an invite with the raw token → a membership (single-use, expiry +
     revoke enforced; the token is hash-compared). Accepting never escalates an
@@ -392,7 +392,7 @@ async def revoke_invite(
     response: Response,
     invite_id: int,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Revoke a pending invite (org-scoped). 404 if absent; 409 if accepted."""
     org_id = await _ctx_org(ctx, session)
@@ -408,7 +408,7 @@ async def list_members(
     request: Request,
     response: Response,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """List the caller org's members with their org roles."""
     org_id = await _ctx_org(ctx, session)
@@ -425,7 +425,7 @@ async def change_member_role(
     user_id: int,
     body: RoleBody,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Change a member's org role (admin-only). The last admin cannot be
     demoted (an org must always keep at least one admin)."""
@@ -450,7 +450,7 @@ async def remove_member(
     response: Response,
     user_id: int,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Remove a member (admin-only) or leave the org yourself. The last admin
     can neither be removed nor leave. A removed member loses access immediately."""

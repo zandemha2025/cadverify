@@ -115,7 +115,11 @@ function completeReports() {
             heldoutReal: 3,
             sourceBoundSkipped: 0,
             servedEstimateCount: 24,
-            servedValidatedAll: true,
+            measuredProcess: "fdm",
+            servedMeasuredEstimateCount: 6,
+            servedUnmeasuredEstimateCount: 18,
+            servedValidatedProcessOnly: true,
+            selectedProvenanceVisible: true,
           },
           "ENT-04": {
             quantity: 12000,
@@ -225,4 +229,11 @@ test("a dirty release workspace cannot qualify as exact current HEAD", () => {
   );
   const problems = validateBuildIdentities(reports, expected);
   assert.ok(problems.some((item) => item.type === "dirty_worktree" && item.report === "gate"));
+});
+
+test("FDM actuals cannot qualify release evidence when other processes are validated", () => {
+  const reports = completeReports();
+  reports.enterprise.data.releaseEvidence.criticalPaths["ENT-02"].servedValidatedProcessOnly = false;
+  const result = validateCriticalEvidence(reports);
+  assert.ok(result.problems.some((item) => item.field === "releaseEvidence.criticalPaths.ENT-02.servedValidatedProcessOnly"));
 });

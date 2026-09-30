@@ -378,7 +378,7 @@ async function main() {
     }),
 
     await runCheck("ENVIRONMENT-CONTEXT-001", "Service environment and org context", async () => {
-      contains(enterpriseRunner, "serviceEnvironment = {", "max_temp_c: 120", "sour_service: true", "pressure_bar: 350");
+      contains(enterpriseRunner, "serviceEnvironment = {", "max_temp_c: 120", "sour_service: true");
       assert(portfolio.context_provenance === "user", `context provenance drifted: ${portfolio.context_provenance}`);
       assert(portfolio.parent_assembly === "Cryogenic pump skid", `parent assembly drifted: ${portfolio.parent_assembly}`);
       assert(portfolio.units_per_parent === 2, `units per parent drifted: ${portfolio.units_per_parent}`);
@@ -391,15 +391,24 @@ async function main() {
         "service sour_service did not survive artifact evidence"
       );
       assert(
-        portfolio.service_environment?.pressure_bar === expected.serviceEnvironment.pressure_bar,
-        "service pressure_bar did not survive artifact evidence"
+        portfolio.service_environment?.pressure_bar == null,
+        "priced scope retained unresolved pressure"
       );
+      const severe = enterprise.evidence?.severeVerification;
+      assert(severe?.context?.service_environment?.pressure_bar === expected.serviceEnvironment.pressure_bar,
+        "original severe scope lost its declared pressure");
+      assert(severe?.cost?.verification?.verdict === "unknown" && !severe.cost.decision?.make_now_process,
+        "severe scope incorrectly acquired a manufacturing recommendation");
+      assert(severe?.portfolio && severe.portfolio.unit_cost == null,
+        "severe scope did not withhold its price");
       return {
         program: portfolio.program,
         parentAssembly: portfolio.parent_assembly,
         unitsPerParent: portfolio.units_per_parent,
         contextProvenance: portfolio.context_provenance,
         serviceEnvironment: portfolio.service_environment,
+        severeServiceEnvironment: severe.context.service_environment,
+        severeScreening: severe.cost.verification.verdict,
       };
     }),
 

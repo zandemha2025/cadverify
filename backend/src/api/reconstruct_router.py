@@ -84,7 +84,7 @@ async def reconstruct(
     process_types: Optional[str] = Query(None, description="Comma-separated process types for analysis after reconstruction."),
     rule_pack: Optional[str] = Query(None, description="Industry rule pack: aerospace, automotive, oil_gas, medical."),
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Upload 1-4 images for 3D reconstruction. Returns 202 with job_id for polling."""
     # Validate image count (cheap request-shape check, no egress).
@@ -176,7 +176,7 @@ async def reconstruct(
 async def download_reconstruction_mesh(
     job_id: str,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Download the reconstructed mesh STL file. Requires authentication and job ownership."""
     try:

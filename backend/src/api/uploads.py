@@ -77,7 +77,7 @@ async def initiate_multipart_upload(
         Header(alias="Idempotency-Key"),
     ] = None,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     try:
         upload, parts, urls_complete, replayed = await service.initiate(
@@ -113,7 +113,7 @@ async def refresh_multipart_part_urls(
     direct_upload_id: str,
     body: RefreshPartURLsBody,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     try:
         parts = await service.refresh_part_urls(
@@ -133,7 +133,7 @@ async def complete_multipart_upload(
     direct_upload_id: str,
     body: CompleteMultipartBody,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     try:
         upload = await service.complete(
@@ -152,7 +152,7 @@ async def complete_multipart_upload(
 async def abort_multipart_upload(
     direct_upload_id: str,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     try:
         upload = await service.abort(
@@ -169,7 +169,7 @@ async def abort_multipart_upload(
 async def get_direct_upload_status(
     direct_upload_id: str,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     try:
         upload = await service.get_status(

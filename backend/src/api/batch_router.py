@@ -73,7 +73,7 @@ def _flag(name: str, default: str) -> bool:
 async def create_batch(
     request: Request,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     file: Optional[UploadFile] = File(None),
     direct_upload_id: Optional[str] = Form(None),
     webhook_url: Optional[str] = Form(None),
@@ -533,7 +533,7 @@ async def list_batches(
     cursor: Optional[str] = Query(None),
     limit: int = Query(default=20, le=100),
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """List the caller's org's batches, most recent first, cursor-paginated.
 
@@ -582,7 +582,7 @@ async def list_batches(
 async def get_batch_progress(
     batch_id: str,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Get batch progress with exact durable item-state counters (D-18)."""
     progress = await batch_service.get_batch_progress(session, batch_id, user.user_id)
@@ -603,7 +603,7 @@ async def get_batch_items(
     cursor: Optional[str] = Query(None),
     limit: int = Query(default=50, le=200),
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Get cursor-paginated batch items with optional status filter (D-19)."""
     # Verify batch ownership (404 not 403, T-09-04)
@@ -665,7 +665,7 @@ async def get_batch_items(
 async def get_batch_portfolio_verdict(
     batch_id: str,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     batch = (await session.execute(select(Batch).where(
         Batch.ulid == batch_id,
@@ -694,7 +694,8 @@ async def get_batch_portfolio_verdict(
 async def get_batch_results_csv(
     batch_id: str,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    # The CSV generator queries one page at a time after headers are sent.
+    session: AsyncSession = Depends(get_db_session, scope="request"),
 ):
     """Stream batch results as CSV download."""
     batch = (
@@ -735,7 +736,7 @@ async def get_batch_results_csv(
 async def cancel_batch(
     batch_id: str,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Cancel a batch and terminalize every unfinished item atomically."""
     batch = (

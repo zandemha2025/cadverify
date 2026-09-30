@@ -827,6 +827,8 @@ export interface CostEstimate {
   dfm_blocker_details?: Issue[];
   /** True when the declared service environment excludes this process/material pair. */
   environment_excluded?: boolean;
+  environment_unknown?: boolean;
+  environment_evidence_needed?: string;
   /** Cited reason for environment_excluded, usually naming the governing standard. */
   environment_exclusion_reason?: string;
   line_items: Record<string, number>;
@@ -1484,6 +1486,10 @@ export interface CatalogQuery {
   state?: "Drafted" | "Costed" | null;
   route?: string | null;
   hasFindings?: boolean | null;
+}
+
+export function fetchCatalogPart(meshHash: string): Promise<CatalogRowApi> {
+  return apiClient.fetchJson(`${API_BASE}/catalog/parts/${encodeURIComponent(meshHash)}`);
 }
 
 /** Paginated org-scoped catalog grid (GET /api/v1/catalog). */

@@ -411,6 +411,18 @@ jobs:
           E2E_FAIL_ON_UNAVAILABLE: "1"
         run: npm run test:e2e:full --prefix frontend
 
+      - name: Run engineering package browser journey
+        env:
+          APP_URL: http://localhost:3000
+          E2E_ARTIFACT_DIR: .gstack/qa-reports/screenshots/engineering-package
+        run: |
+          set -euo pipefail
+          source .env.local-auth
+          export DASHBOARD_SESSION_SECRET API_KEY_PEPPER
+          export OBJECT_STORE_LOCAL_ROOT="$PWD/data/local-blobs"
+          backend/.venv/bin/python scripts/e2e/seed-engineering-package.py
+          node scripts/e2e/engineering-package-e2e.mjs
+
       - name: Upload browser E2E artifacts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

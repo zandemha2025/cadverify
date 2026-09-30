@@ -768,7 +768,7 @@ async def validate_file(
         ),
     ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
     _admission: None = Depends(admit_analysis),
@@ -1296,7 +1296,7 @@ async def validate_quick(
     response: Response,
     file: UploadFile = File(...),
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
     _admission: None = Depends(admit_analysis),
@@ -1978,6 +1978,7 @@ async def _run_cost_decision(
     if user is not None and session is not None:
         from src.services.cost_decision_service import (
             compute_params_hash,
+            evaluation_context,
             cost_persist_enabled,
             persist_cost_decision,
             record_persist_failure,
@@ -1987,6 +1988,7 @@ async def _run_cost_decision(
             from src import __version__ as _cv_version
             from src.services.analysis_service import compute_mesh_hash
 
+            result_dict["evaluation_context"] = evaluation_context(options)
             params_hash = compute_params_hash(
                 quantities=quantities,
                 region=region,
@@ -1995,6 +1997,7 @@ async def _run_cost_decision(
                 material_class=material_class,
                 shop=shop_slug,
                 overrides=rate_overrides,
+                context=result_dict["evaluation_context"],
             )
             mesh_hash = compute_mesh_hash(data)
             try:
@@ -2135,7 +2138,7 @@ async def validate_cost(
                     "still fires if the mm-interpreted size looks wrong.",
     ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _org_limit: None = Depends(enforce_org_limits),
     _validation_cap: None = Depends(enforce_validation_caps),
     _admission: None = Depends(admit_analysis),
@@ -2253,7 +2256,7 @@ async def validate_repair(
         description="Industry rule pack: aerospace, automotive, oil_gas, medical.",
     ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Upload an STL, STEP/STP, or IGES/IGS file, attempt mesh repair, and get before/after analysis."""
     if rule_pack:

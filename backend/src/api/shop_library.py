@@ -79,7 +79,7 @@ async def list_shop_profiles(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """All shop-profile versions for the caller's org, newest first."""
     org_id = await resolve_org(session, user.user_id)
@@ -99,7 +99,7 @@ async def get_shop_profile(
     response: Response,
     version_id: int,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     org_id = await resolve_org(session, user.user_id)
     row = await svc.get_version(session, org_id, version_id) if org_id else None
@@ -115,7 +115,7 @@ async def create_shop_profile_draft(
     response: Response,
     body: CreateDraftBody,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     org_id = await _write_org(ctx, session)
     try:
@@ -143,7 +143,7 @@ async def update_shop_profile_draft(
     version_id: int,
     body: UpdateDraftBody,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     org_id = await _write_org(ctx, session)
     try:
@@ -169,7 +169,7 @@ async def discard_shop_profile_draft(
     response: Response,
     version_id: int,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Discard a DRAFT version. Published/archived versions are the audit
     trail and can never be deleted (409)."""
@@ -186,7 +186,7 @@ async def archive_shop_profile(
     response: Response,
     version_id: int,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Archive a PUBLISHED version. Guarded: the version currently in effect for
     its slug cannot be archived (409) — that would strand the cost path."""
@@ -204,7 +204,7 @@ async def publish_shop_profile(
     version_id: int,
     body: PublishBody,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     org_id = await _write_org(ctx, session)
     row = await svc.publish_version(

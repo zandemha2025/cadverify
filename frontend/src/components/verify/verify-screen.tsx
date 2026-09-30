@@ -1532,12 +1532,22 @@ function RouteFitBlock({ verification }: { verification: VerificationBlock }) {
 function EnvStrikesBlock({ verification, envDeclared }: { verification: VerificationBlock; envDeclared: boolean }) {
   const strikes = envStrikes(verification);
   const worldDeclared = envDeclared || !!verification.environment_declared;
+  const unknowns = verification.environment_unknowns ?? [];
+  if (unknowns.length > 0) {
+    return (
+      <div style={{ marginTop: 12, color: C.cond, fontSize: 12 }}>
+        <p>Service-condition evidence is incomplete. Resources remain conditional.</p>
+        <ul>{unknowns.map((item, i) => <li key={i}>{item.human}</li>)}</ul>
+        {strikes.map((s) => <p key={s.material}>{s.reason}</p>)}
+      </div>
+    );
+  }
   if (strikes.length === 0) {
     return (
       <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink40, lineHeight: 1.6 }}>
         {worldDeclared
-          ? "the declared service conditions were applied — no candidate material on the shortlisted routes is excluded by them."
-          : "no service conditions declared — materials are verified at ambient. Use ‘Make this verdict yours’ below to gate them by NACE MR0175 / HDT."}
+          ? "Available catalogue properties do not exclude these candidates. Component qualification and release authorization require separate evidence."
+          : "No service conditions declared — environmental suitability has not been established. Declare the operating conditions to screen candidate materials."}
       </p>
     );
   }
@@ -2174,8 +2184,8 @@ function DecideHallmark({
           <ConfidenceBand validated={validated} pointFraction={0.5} />
           <p style={{ margin: "7px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink45, lineHeight: 1.6 }}>
             {validated
-              ? "this verdict is validated — checked against your actuals."
-              : "this verdict is unvalidated — an assumption band, not yet checked against your actuals · n=0. It firms up once your real costs come back."}
+              ? "this cost estimate is validated for this process — checked against your actuals."
+              : "this cost estimate is unvalidated for this process — an assumption band until enough measured costs are available."}
           </p>
         </div>
         <GhostButton onClick={() => nav("calibration")}>How estimates get validated →</GhostButton>

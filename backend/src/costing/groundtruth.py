@@ -532,6 +532,10 @@ class ResidualModel:
         proc_res = self._by_proc.get(process)
         if proc_res is not None and len(proc_res) >= MIN_RESIDUALS:
             return proc_res, self.from_real, len(proc_res)
+        # A CNC observation cannot validate SLS. Pool only when the caller
+        # explicitly requests a population-wide interval (process=None).
+        if process is not None:
+            return None, False, len(proc_res or [])
         if self._pooled and len(self._pooled) >= MIN_RESIDUALS:
             return self._pooled, self.from_real, len(self._pooled)
         return None, self.from_real, len(self._pooled)

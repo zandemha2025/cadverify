@@ -765,7 +765,7 @@ def test_honesty_gap_is_quantified():
 
 
 def test_env_exclusion_cites_property():
-    props = {"6061-T6 Aluminum": {"class": "aluminum"}}
+    props = {"6061-T6 Aluminum": {"class": "aluminum", "nace_mr0175": False}}
     _, exclusions = environment_gate(["cnc_3axis"], ["6061-T6 Aluminum"],
                                      {"sour_service": True}, props)
     # exclusion must carry the standard + the offending property, not a naked drop

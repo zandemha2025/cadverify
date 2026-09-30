@@ -76,7 +76,7 @@ async def list_designs(
     response: Response,
     limit: int = Query(50, ge=1, le=100),
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     rows = await svc.list_designs(session, user.user_id, limit=limit)
     return {"designs": [svc.serialize_design(project, revision) for project, revision in rows]}
@@ -89,7 +89,7 @@ async def create_design(
     response: Response,
     body: CreateDesignBody,
     user: AuthedUser = Depends(require_design_mutation),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     try:
         release_test_fault = requested_release_fault(request, DESIGN_FAULT_MODES)
@@ -143,7 +143,7 @@ async def get_design(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     pair = await svc.get_design(session, design_id, user.user_id)
     if pair is None:
@@ -161,7 +161,7 @@ async def create_revision(
     response: Response,
     body: CreateRevisionBody,
     user: AuthedUser = Depends(require_design_mutation),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     try:
         release_test_fault = requested_release_fault(request, DESIGN_FAULT_MODES)
@@ -201,7 +201,7 @@ async def list_design_revisions(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     result = await svc.list_revisions(session, design_id, user.user_id)
     if result is None:
@@ -225,7 +225,7 @@ async def compare_design_revisions(
     from_revision: int = Query(..., alias="from", ge=1),
     to_revision: int = Query(..., alias="to", ge=1),
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     from fastapi import HTTPException
 
@@ -250,7 +250,7 @@ async def get_design_revision(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     from fastapi import HTTPException
 
@@ -270,7 +270,7 @@ async def archive_design(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_design_mutation),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     await svc.archive_design(session, design_id, user)
     return Response(status_code=204)
@@ -282,7 +282,7 @@ async def preview_design(
     design_id: str,
     request: Request,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     project, _revision, stream = await svc.open_artifact(
         session, design_id, user.user_id, kind="stl"
@@ -300,7 +300,7 @@ async def download_design_step(
     design_id: str,
     request: Request,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     project, revision, stream = await svc.open_artifact(
         session, design_id, user.user_id, kind="step"
@@ -323,7 +323,7 @@ async def preview_design_revision(
     revision_no: int,
     request: Request,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     project, _revision, stream = await svc.open_artifact(
         session,
@@ -350,7 +350,7 @@ async def download_design_revision_step(
     revision_no: int,
     request: Request,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     project, revision, stream = await svc.open_artifact(
         session,

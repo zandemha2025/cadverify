@@ -39,6 +39,26 @@ logger = logging.getLogger("cadverify.catalog")
 
 router = APIRouter(tags=["catalog"])
 
+
+@router.get("/parts/{mesh_hash}")
+@limiter.limit("240/hour;2000/day")
+async def get_catalog_part(request: Request, response: Response, mesh_hash: str,
+    user: AuthedUser = Depends(require_role(Role.viewer)), session: AsyncSession = Depends(get_db_session, scope="function")):
+    """An indexed exact-part lookup, including parts beyond the first grid page."""
+    import re
+    from src.services.part_summary_service import _latest_analysis, _latest_cost, _source_ref
+    if not re.fullmatch(r"[a-f0-9]{64}", mesh_hash):
+        raise HTTPException(404, "Part not found")
+    org = await resolve_org(session, user.user_id)
+    if not org or (user.org_id is not None and user.org_id != org):
+        raise HTTPException(404, "Part not found")
+    analysis = await _latest_analysis(session, org, mesh_hash)
+    cost = await _latest_cost(session, org, mesh_hash)
+    if analysis is None and cost is None:
+        raise HTTPException(404, "Part not found")
+    return svc.derive_row(part_key=mesh_hash, analysis=_source_ref(analysis) if analysis else None,
+                          cost=_source_ref(cost) if cost else None)
+
 # Canonical lifecycle states (v1: Drafted/Costed only — vision §8 Q3).
 _STATES = {"drafted": "Drafted", "costed": "Costed"}
 
@@ -77,7 +97,7 @@ async def get_catalog(
         None, description="Opaque keyset cursor from a prior page's next_cursor."
     ),
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Paginated parts×decisions grid for the caller's organization.
 
@@ -195,7 +215,7 @@ async def get_portfolio(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Org-scoped portfolio roll-up: the caller's COSTED parts ranked by the
     engine's redesign savings, plus a posture aggregate (W3).
@@ -247,7 +267,7 @@ async def get_triage(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Org-scoped makeability triage roll-up: of the caller's N parts, how many
     are routable to each process and how many are makeable / need review / unknown.
@@ -326,7 +346,7 @@ async def get_makeability(
     ),
     page_size: int = Query(100, ge=1, le=500, description="Drill-down page size."),
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Org-scoped IN-HOUSE makeability breakdown (Phase D — spec §10 D3).
 
@@ -436,7 +456,7 @@ async def get_capability_investment(
     ),
     page_size: int = Query(100, ge=1, le=500, description="Drill-down page size."),
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Org-scoped CAPABILITY-INVESTMENT ranking (Phase D — spec §10 D4): which ONE
     machine acquisition unlocks the most currently-blocked parts.

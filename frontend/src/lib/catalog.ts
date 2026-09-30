@@ -151,7 +151,7 @@ export function makeNowEstimate(report: CostReport | null | undefined): CostEsti
   const proc = report?.decision?.make_now_process?.trim();
   if (!report || !proc) return null;
   const pool = report.estimates.filter((e) => e.process === proc);
-  return pool.find((e) => !e.environment_excluded) ?? pool[0] ?? null;
+  return pool.find((e) => !e.environment_excluded && !e.environment_unknown) ?? pool[0] ?? null;
 }
 
 /** Whether any driver carries a given provenance. */
@@ -184,7 +184,7 @@ export function deriveCatalogMetrics(report: CostReport | null | undefined): Cat
     };
   }
 
-  const envBlocked = Boolean(est.environment_excluded);
+  const envBlocked = Boolean(est.environment_excluded || est.environment_unknown);
   const blocked = !est.dfm_ready || envBlocked;
   const blockers = est.dfm_blockers ?? [];
   const post = posture(est.drivers);
@@ -206,6 +206,7 @@ export function deriveCatalogMetrics(report: CostReport | null | undefined): Cat
     blocked,
     withheldReason: blocked
       ? est.environment_exclusion_reason
+        ?? est.environment_evidence_needed
         ?? blockers[0]
         ?? "Recommended route is not valid for the declared manufacturing world."
       : null,

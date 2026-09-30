@@ -28,7 +28,7 @@ async def download_pdf(
     analysis_id: str,
     request: Request,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> Response:
     """Download a PDF report for the specified analysis."""
     pdf_bytes, original_filename = await pdf_service.get_or_generate_pdf(

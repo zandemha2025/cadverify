@@ -77,7 +77,7 @@ async def list_material_catalogs(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """All materials-catalog versions for the caller's org, newest first."""
     org_id = await resolve_org(session, user.user_id)
@@ -96,7 +96,7 @@ async def effective_material_catalog(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """What the engine actually overlays right now for this org.
 
@@ -129,7 +129,7 @@ async def get_material_catalog(
     response: Response,
     version_id: int,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     org_id = await resolve_org(session, user.user_id)
     row = await svc.get_version(session, org_id, version_id) if org_id else None
@@ -145,7 +145,7 @@ async def create_material_catalog_draft(
     response: Response,
     body: CreateDraftBody,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     org_id = await _write_org(ctx, session)
     try:
@@ -172,7 +172,7 @@ async def update_material_catalog_draft(
     version_id: int,
     body: UpdateDraftBody,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     org_id = await _write_org(ctx, session)
     try:
@@ -197,7 +197,7 @@ async def discard_material_catalog_draft(
     response: Response,
     version_id: int,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Discard a DRAFT version. Published/archived versions are the audit trail
     and can never be deleted (409)."""
@@ -214,7 +214,7 @@ async def archive_material_catalog(
     response: Response,
     version_id: int,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Archive a PUBLISHED version. Guarded: the version currently in effect
     cannot be archived (409) — that would strand the overlay."""
@@ -232,7 +232,7 @@ async def publish_material_catalog(
     version_id: int,
     body: PublishBody,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     org_id = await _write_org(ctx, session)
     row = await svc.publish_version(

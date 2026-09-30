@@ -631,21 +631,54 @@ def environment_gate(routes, materials, env, material_props_by_name=None):
 
     if not env:
         return ({"routes": routes, "materials": materials,
-                 "excluded_materials": set(), "excluded_routes": set()}, ())
+                 "excluded_materials": set(), "excluded_routes": set(),
+                 "unknown_materials": set(), "unknowns": ()}, ())
 
     exclusions: list = []
     excluded_materials: set = set()
+    unknowns: list = []
+    unknown_materials: set = set()
+
+    def unknown(mat, axis, need, reason):
+        unknown_materials.add(mat)
+        unknowns.append(FitFailure("environment", axis, need, None,
+                                   f"{mat}: {reason}"))
 
     sour = _env_requires_sour(env)
     corrosive = bool(env.get("corrosive"))
     max_temp = env.get("max_temp_c")
 
-    for mat in materials:
+    # Callers may deduplicate material names with a set. Keep evidence order
+    # deterministic across workers, just like the costed route shortlist.
+    for mat in sorted(materials):
         p = props.get(mat, {}) or {}
         mclass = p.get("class") or MATERIAL_FAMILY.get(mat, "unknown")
 
+        if _is_number(max_temp) and not any(_is_number(_mat_flag(p, key))
+                for key in ("max_temperature_c", "max_temperature")):
+            unknown(mat, "max_temp_c", max_temp, "maximum service temperature is not documented")
+        min_temp = env.get("min_temp_c")
+        if _is_number(min_temp):
+            minimum = _mat_flag(p, "min_temperature_c")
+            if not _is_number(minimum):
+                unknown(mat, "min_temp_c", min_temp, "minimum service temperature is not documented")
+            elif minimum > min_temp:
+                excluded_materials.add(mat)
+                exclusions.append(FitFailure("environment", mat, min_temp, minimum,
+                    f"{mat} excluded: service {min_temp:g}C is below material minimum {minimum:g}C"))
+        # Pressure/medium/standard applicability is component- and condition-
+        # specific; an alloy catalogue flag cannot establish qualification.
+        for key in ("pressure_bar", "medium", "standard"):
+            if env.get(key):
+                unknown(mat, key, env[key], f"{key} requires applicable engineering evidence")
+        if env.get("fatigue_critical") or env.get("pressure_containing"):
+            unknown(mat, "duty", "critical duty", "component qualification is not established by material screening")
+
         # sour service → require NACE MR0175 / sour_service qualification
         if sour and not (_mat_flag(p, "nace_mr0175") or _mat_flag(p, "sour_service")):
+            if all(_mat_flag(p, key) is None for key in ("nace_mr0175", "sour_service")):
+                unknown(mat, "sour_service", "NACE MR0175", "sour-service property coverage is missing")
+                continue
             excluded_materials.add(mat)
             exclusions.append(FitFailure(
                 "environment", mat, "NACE MR0175 sour-service qualified",
@@ -671,6 +704,9 @@ def environment_gate(routes, materials, env, material_props_by_name=None):
         # corrosive (non-sour) → require a corrosion-resistant alloy class
         if corrosive and not sour and mclass not in CRA_CLASSES \
                 and not (_mat_flag(p, "nace_mr0175") or _mat_flag(p, "cra")):
+            if mclass == "unknown":
+                unknown(mat, "corrosive", "corrosion-resistant alloy", "material class is unknown")
+                continue
             excluded_materials.add(mat)
             exclusions.append(FitFailure(
                 "environment", mat, "corrosion-resistant alloy", mclass,
@@ -690,7 +726,9 @@ def environment_gate(routes, materials, env, material_props_by_name=None):
     valid_materials = [m for m in materials if m not in excluded_materials]
     return ({"routes": valid_routes, "materials": valid_materials,
              "excluded_materials": excluded_materials,
-             "excluded_routes": excluded_routes}, tuple(exclusions))
+             "excluded_routes": excluded_routes,
+             "unknown_materials": unknown_materials,
+             "unknowns": tuple(unknowns)}, tuple(exclusions))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -827,8 +865,16 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
 
     for r in valid_routes:
         preq = route_req[r]
+        env_unknown = route_material.get(r) in gate["unknown_materials"]
+        missing = tuple(f for f in gate["unknowns"]
+                        if f.human.startswith(f"{route_material.get(r)}:")) if env_unknown else ()
         owned = [m for m in inventory if _pt_value(m.process) == r]
         if not owned:
+            if env_unknown:
+                unknown_routes.append(r)
+                per_route[r] = {"verdict": "unknown", "machines_evaluated": 0,
+                                "best_machine": None, "failures": missing}
+                continue
             outsource_routes.append(r)
             per_route[r] = {"verdict": "makeable_outsource_only",
                             "machines_evaluated": 0, "best_machine": None,
@@ -836,6 +882,13 @@ def verify_part(part_req_by_route, inventory, shop_caps=None, env=None,
             continue
 
         fits = [fit_machine(preq, m, shop_caps) for m in owned]
+        if missing:
+            closest = min(fits, key=_machine_score)
+            unknown_routes.append(r)
+            per_route[r] = {"verdict": "unknown", "machines_evaluated": len(fits),
+                            "best_machine": closest.machine,
+                            "failures": closest.failures + missing}
+            continue
         route_passes = [f for f in fits if f.passes]
         if route_passes:
             best = min(

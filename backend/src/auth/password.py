@@ -151,7 +151,7 @@ async def create_pilot_request(
     body: PilotRequestIn,
     request: Request,
     response: Response,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> dict:
     """Persist a public pilot lead before best-effort inbox notification.
 

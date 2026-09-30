@@ -27,7 +27,7 @@ def _failed_job_error(result_json: object) -> dict[str, str]:
 async def get_job_status(
     job_id: str,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Get job status. Returns 404 for non-existent or other user's jobs (D-12)."""
     job = await job_service.get_job_for_user(session, job_id, user.user_id)
@@ -55,7 +55,7 @@ async def get_job_status(
 async def get_job_result(
     job_id: str,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Get job result. Returns 404 if job not complete or not found (D-11)."""
     job = await job_service.get_job_for_user(session, job_id, user.user_id)

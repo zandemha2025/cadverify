@@ -19,7 +19,9 @@ import io
 import json
 import logging
 import os
+from dataclasses import asdict, fields, is_dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Any, Optional
 
 from fastapi import HTTPException
@@ -60,6 +62,31 @@ def cost_persist_enabled() -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _identity_value(value):
+    if is_dataclass(value):
+        return asdict(value)
+    if isinstance(value, (set, frozenset)):
+        return sorted(value)
+    if isinstance(value, Enum):
+        return value.value
+    raise TypeError(f"Unsupported decision identity type: {type(value).__name__}")
+
+
+def evaluation_context(options) -> dict:
+    """Snapshot the inputs actually evaluated, shared by uploads and workers.
+
+    Confidence/calibration effects are captured by the result fingerprint at
+    persistence; opaque callable providers are deliberately not serialized.
+    """
+    from src.costing.shop_profile import resolve_shop
+
+    context = {f.name: getattr(options, f.name) for f in fields(options)
+               if f.name not in {"residual_model", "calibration", "units_is_user"}}
+    context["shop"] = resolve_shop(options.shop)
+    return json.loads(json.dumps(context, default=_identity_value, sort_keys=True,
+                                allow_nan=False))
+
+
 def compute_params_hash(
     *,
     quantities: list,
@@ -69,6 +96,7 @@ def compute_params_hash(
     material_class: str,
     shop: Optional[str],
     overrides: Optional[dict],
+    context: Optional[dict] = None,
 ) -> str:
     """SHA-256 of the canonical cost parameters.
 
@@ -84,6 +112,7 @@ def compute_params_hash(
             "material_class": material_class,
             "shop": shop or "",
             "overrides": overrides or {},
+            "evaluation_context": context or {},
         },
         sort_keys=True,
         separators=(",", ":"),
@@ -144,6 +173,13 @@ async def persist_cost_decision(
     Delayed workers pass their parent row's immutable ``org_id`` explicitly.
     Race-safe via IntegrityError re-query (mirrors analysis_service).
     """
+    # Every writer enters here: changed engine conclusions must never retrieve
+    # an incompatible historical record, even if a caller omitted new inputs.
+    # Exclude presentation-only filename; the source bytes have their own hash.
+    params_hash = hashlib.sha256(json.dumps({
+        "params": params_hash, "engine": engine_version,
+        "result": {k: v for k, v in result_json.items() if k not in {"filename", "saved"}},
+    }, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
     existing = await _lookup_dedup(
         session,
         user.user_id,
@@ -261,12 +297,11 @@ async def _refresh_summary_for(session: AsyncSession, decision: CostDecision) ->
     breaks the live cost persist."""
     from src.services import part_summary_service
 
-    # mark_makeability_fresh=True: the cost decision's Phase-C verification block was
-    # just computed against the org's CURRENT inventory, so this part's makeability
-    # is fresh — clear any stale flag a prior machine change set on it.
+    # The projection reads the latest saved decision. Re-evaluating an older
+    # deduplicated configuration must not certify a different, newer result.
     await part_summary_service.refresh_part_summary_safe(
         session, decision.org_id, decision.mesh_hash,
-        mark_makeability_fresh=True,
+        mark_makeability_fresh=True, evaluated_decision_id=decision.ulid,
     )
 
 
@@ -480,6 +515,7 @@ def _selected_route_dfm_blocked(result_json: object) -> bool:
         item.get("dfm_ready") is False
         or item.get("dfm_verdict") == "fail"
         or item.get("environment_excluded") is True
+        or item.get("environment_unknown") is True
         or bool(item.get("dfm_blockers"))
         for item in selected
     )

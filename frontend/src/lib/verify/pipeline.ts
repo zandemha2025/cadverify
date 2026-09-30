@@ -109,7 +109,7 @@ function usd(n: number): string {
 function makeNowUnit(cost: CostReport | null): { process: string; unit: number } | null {
   if (!cost || !Array.isArray(cost.estimates) || cost.estimates.length === 0) return null;
   const proc = cost.decision?.make_now_process ?? null;
-  const usable = cost.estimates.filter((e) => !e.environment_excluded);
+  const usable = cost.estimates.filter((e) => !e.environment_excluded && !e.environment_unknown);
   const scoped = proc ? usable.filter((e) => e.process === proc) : usable;
   const pool = scoped.length > 0 ? scoped : usable;
   if (pool.length === 0) return null;

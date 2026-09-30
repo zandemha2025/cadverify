@@ -52,6 +52,7 @@ from src.api.manifest import router as manifest_router
 from src.api.bom import router as bom_router
 from src.api.machine_inventory import router as machine_inventory_router
 from src.api.org_routes import router as org_router
+from src.api.engineering_packages import router as engineering_packages_router
 from src.api.designs import router as designs_router
 from src.api.share import public_share_router, share_router
 from src.auth.keys_api import router as keys_router
@@ -463,6 +464,7 @@ app.include_router(public_cost_share_router, prefix="/s")
 # RFQ/supplier evidence packages: downloadable, local packages built from saved
 # decisions; no live supplier send or supplier-network claim.
 app.include_router(rfq_packages_router, prefix="/api/v1/rfq-packages")
+app.include_router(engineering_packages_router, prefix="/api/v1/engineering-packages")
 # Catalog read surface (W1 step 4): the org-scoped parts×decisions grid.
 app.include_router(catalog_router, prefix="/api/v1/catalog", tags=["catalog"])
 # Governed rate-library (W4 slice 1): versioned, effective-dated rate-card asset.

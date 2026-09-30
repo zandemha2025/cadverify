@@ -84,7 +84,7 @@ async def list_cost_decisions(
     created_after: str | None = Query(None, description="ISO datetime lower bound"),
     created_before: str | None = Query(None, description="ISO datetime upper bound"),
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Paginated list of the caller's organization's saved cost decisions.
 
@@ -124,7 +124,7 @@ async def compare_cost_decisions(
     response: Response,
     ids: str = Query(..., description="Two comma-separated cost-decision ids, e.g. a,b"),
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Structured diff of two owned cost decisions (unit cost by qty, make/tooling
     process, crossover qty, key driver deltas)."""
@@ -145,7 +145,7 @@ async def get_cost_decision(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Full saved cost decision by id (own decisions only; 404 for others)."""
     d = await svc.get_owned(session, decision_id, user.user_id)
@@ -178,7 +178,7 @@ async def set_cost_decision_disposition(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Persist a human sourcing outcome, or withdraw it with ``null``.
 
@@ -203,7 +203,7 @@ async def approve_cost_decision(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Approve/sign off a saved decision without changing its engine artifact."""
     d = await svc.approve_owned(session, decision_id, user.user_id, note=body.note)
@@ -220,7 +220,7 @@ async def reopen_cost_decision_approval(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Reopen approval/signoff while keeping the saved decision immutable."""
     d = await svc.reopen_owned(session, decision_id, user.user_id)
@@ -236,7 +236,7 @@ async def download_cost_pdf(
     decision_id: str,
     request: Request,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> Response:
     """Download the cost-report PDF for a saved decision."""
     pdf_bytes, original_filename = await cost_pdf_service.get_or_generate_cost_pdf(
@@ -257,7 +257,7 @@ async def export_cost_json(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Export the glass-box decision JSON plus its governance state."""
     d = await svc.get_owned(session, decision_id, user.user_id)
@@ -283,7 +283,7 @@ async def export_cost_csv(
     decision_id: str,
     request: Request,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> Response:
     """Export estimates, line items, confidence, and governance as CSV."""
     d = await svc.get_owned(session, decision_id, user.user_id)
@@ -306,7 +306,7 @@ async def create_cost_share(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Share a cost decision — generates a public short URL (/s/cost/...)."""
     return await svc.create_share(decision_id, user.user_id, session)
@@ -319,7 +319,7 @@ async def revoke_cost_share(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Revoke sharing — the public link 404s immediately."""
     await svc.revoke_share(decision_id, user.user_id, session)
@@ -332,7 +332,7 @@ async def get_shared_cost_decision(
     short_id: str,
     request: Request,
     response: Response,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Public cost-decision view — sanitized (no owner PII), noindex, no auth."""
     data = await svc.get_shared(short_id, session)

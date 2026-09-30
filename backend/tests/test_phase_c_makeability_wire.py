@@ -270,7 +270,10 @@ def test_sour_env_makes_decision_coherent_with_the_exclusion():
         assert e["material"] in excluded
         assert "NACE MR0175" in e["environment_exclusion_reason"]
     # and the surviving (recommended) route is NOT flagged
-    surviving = [e for e in rep["estimates"] if not e.get("environment_excluded")]
+    # Missing catalogue flags now remain unknown rather than being converted to
+    # an affirmative exclusion or a usable route.
+    surviving = [e for e in rep["estimates"] if not e.get("environment_excluded")
+                 and not e.get("environment_unknown")]
     assert all(e["material"] not in excluded for e in surviving)
 
 
