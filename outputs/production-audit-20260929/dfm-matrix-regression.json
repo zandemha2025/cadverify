@@ -1,0 +1,107 @@
+{
+  "cube": {
+    "status": "PASS",
+    "processes": 21,
+    "costed": 8,
+    "blockerRows": 6,
+    "differentRecommendations": false,
+    "filename": "cube-10mm.stl",
+    "quantities": [
+      50,
+      5000
+    ],
+    "geometry": {
+      "bbox_mm": [
+        10.0,
+        10.0,
+        10.0
+      ],
+      "face_count": 12,
+      "volume_cm3": 1.0,
+      "watertight": true,
+      "surface_area_cm2": 6.0
+    },
+    "cost_pick": "mjf",
+    "geometry_pick": "mjf",
+    "export_sha256": "43ab423dbec8f5fe8475aa5e53b69e7d58a88455c183156222a12ad744853112",
+    "required_processes": [
+      "cnc_turning",
+      "injection_molding",
+      "die_casting",
+      "investment_casting",
+      "sand_casting",
+      "forging"
+    ]
+  },
+  "step": {
+    "status": "PASS",
+    "processes": 21,
+    "costed": 8,
+    "blockerRows": 6,
+    "differentRecommendations": true,
+    "filename": "audit-cube.STP",
+    "quantities": [
+      1,
+      5000
+    ],
+    "geometry": {
+      "bbox_mm": [
+        20.0,
+        15.0,
+        10.0
+      ],
+      "face_count": 185328,
+      "volume_cm3": 2.72,
+      "watertight": true,
+      "surface_area_cm2": 14.32
+    },
+    "cost_pick": "fdm",
+    "geometry_pick": "mjf",
+    "export_sha256": "fb95f87c4fa7cff8e7fd42894663703f0894d44b54dc0020400dc7590576a3a3",
+    "required_processes": [
+      "cnc_turning",
+      "injection_molding",
+      "die_casting",
+      "investment_casting",
+      "sand_casting",
+      "forging"
+    ]
+  },
+  "finding": "046",
+  "environment": "local build, API engine 0.3.7; not deployed",
+  "before": {
+    "required_rows_with_blank_blocker": 5,
+    "actual_priced_processes": 8,
+    "reported_costed_processes": 21,
+    "same_route_false_difference_note": true,
+    "mobile": {
+      "viewport_px": 390,
+      "table_px": 476.4375,
+      "container_px": 306,
+      "overflow_x": "hidden"
+    }
+  },
+  "validation": {
+    "backend_passed": 2383,
+    "backend_skipped": 3,
+    "frontend_passed": 487,
+    "typecheck": "pass",
+    "frontend_build": "pass",
+    "pyright": {
+      "errors": 217,
+      "baseline": 228
+    },
+    "bandit_medium_high": 0
+  },
+  "mobile_after": {
+    "status": "PASS",
+    "viewport_px": 390,
+    "document_px": 390,
+    "table_px": 476.4375,
+    "container_px": 306,
+    "overflow_x": "auto",
+    "blocker_visible_scroll_left_px": 160.5,
+    "viewport_restored": true,
+    "regression_red_before_fix": true
+  }
+}

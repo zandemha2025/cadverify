@@ -274,13 +274,16 @@ export function buildCompareRows(
   return rows.sort((x, y) => x.b.unitCost - y.b.unitCost);
 }
 
-/** process → human blocker string, from each estimate's dfm_blockers. */
+/** First blocker for every process, with estimate fallback for older reports. */
 export function blockersByProcess(report: CostReport): Record<string, string> {
   const out: Record<string, string> = {};
   for (const e of report.estimates) {
     if (e.dfm_blockers && e.dfm_blockers.length > 0) {
       out[e.process] = e.dfm_blockers[0];
     }
+  }
+  for (const f of report.engine_feasibility) {
+    if (f.blockers?.length) out[f.process] = f.blockers[0];
   }
   return out;
 }

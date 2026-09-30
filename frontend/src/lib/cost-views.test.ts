@@ -21,7 +21,7 @@
  *       calibrated, the real name when a note says so, and an honest
  *       "your shop profile" fallback only when SHOP-tagged rates exist
  *       without a note;
- *   (f) buildCompareRows / blockersByProcess transform real estimates only,
+ *   (f) comparison rows and blockers preserve real report evidence,
  *       sorted cheapest-at-high-volume first.
  */
 import { test } from "node:test";
@@ -392,7 +392,7 @@ test("costedProcesses/costedQuantities dedup in first-seen / ascending order res
   assert.deepEqual(costedQuantities(r), [50, 5000]);
 });
 
-test("blockersByProcess only reports processes with a real dfm_blockers entry", () => {
+test("blockersByProcess keeps uncosted findings and supports older estimate-only reports", () => {
   const r = report({
     estimates: [
       est({ process: "cnc_milling", quantity: 50, unit_cost_usd: 42.5, dfm_blockers: [] }),
@@ -408,4 +408,12 @@ test("blockersByProcess only reports processes with a real dfm_blockers entry", 
   assert.equal(Object.keys(blockers).length, 1, "clean process is absent, not blank");
   assert.equal(blockers.injection_molding, "needs draft angle", "first blocker, verbatim");
   assert.equal(blockers.cnc_milling, undefined);
+  r.engine_feasibility = [
+    { process: "cnc_turning", verdict: "fail", score: 0, costed: false,
+      blockers: ["not rotationally symmetric"] },
+  ];
+  assert.deepEqual(blockersByProcess(r), {
+    injection_molding: "needs draft angle",
+    cnc_turning: "not rotationally symmetric",
+  });
 });

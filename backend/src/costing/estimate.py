@@ -284,14 +284,15 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
                             shop_region=shop_region,
                             base_rate_table=options.base_rate_table)
 
-    # engine feasibility table (all 21 processes), with costed flag
+    # All process findings survive material/DFM filtering of cost estimates.
     feas = []
     for ps in result.process_scores:
         feas.append({
             "process": ps.process.value,
             "verdict": ps.verdict,
             "score": round(float(ps.score), 2),
-            "costed": ps.process in COSTED_PROCESSES,
+            "costed": False,
+            "blockers": [i.message for i in ps.issues if i.severity == Severity.ERROR],
         })
 
     # ── G1 ROBUSTNESS GATE (must be first) ──────────────────────────────
@@ -388,6 +389,10 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
             estimates_serialized.append(
                 _serialize(est, lt, drivers, options.residual_model, options.ci_level,
                            options.calibration))
+
+    costed_processes = {e["process"] for e in estimates_serialized}
+    for row in feas:
+        row["costed"] = row["process"] in costed_processes
 
     # ── env-excluded cost entries stay in the list, but carry an inline flag +
     # the SAME cited reason the verdict shows (Phase C coherence fix) so the cost

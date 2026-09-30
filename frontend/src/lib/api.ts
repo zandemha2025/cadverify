@@ -884,6 +884,7 @@ export interface CostFeasibility {
   verdict: string;
   score: number;
   costed: boolean;
+  blockers?: string[];
 }
 
 export interface CostUnitWarning {

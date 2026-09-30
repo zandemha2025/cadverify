@@ -73,6 +73,24 @@ def test_line_items_sum_to_unit_cost():
             f"{e['process']} qty {e['quantity']}: {e['unit_cost_usd']} != Σ {s}")
 
 
+def test_feasibility_keeps_uncosted_blockers_and_marks_actual_estimates():
+    result, mesh, feats = _analyze(_small_block())
+    for strict in (False, True):
+        report = estimate_decision(result, mesh, feats,
+                                   EstimateOptions(quantities=[50], strict_dfm=strict))
+        costed = {e["process"] for e in report.estimates}
+        assert {f["process"] for f in report.engine_feasibility if f["costed"]} == costed
+        for score, row in zip(result.process_scores, report.engine_feasibility):
+            assert row["blockers"] == [i.message for i in score.issues if i.severity == "error"]
+        turning = next(f for f in report.engine_feasibility if f["process"] == "cnc_turning")
+        assert not turning["costed"] and turning["blockers"]
+
+    result.geometry.is_watertight = False
+    refused = estimate_decision(result, mesh, feats, EstimateOptions(quantities=[50]))
+    assert refused.status == "GEOMETRY_INVALID"
+    assert not any(f["costed"] for f in refused.engine_feasibility)
+
+
 def test_every_driver_has_source_and_provenance():
     """G6: no naked numbers — every driver carries a non-empty source + tag."""
     result, mesh, feats = _analyze(_bulky_block())

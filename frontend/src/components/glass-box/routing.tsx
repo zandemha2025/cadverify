@@ -90,28 +90,32 @@ export function DfmMatrix({
   feasibility,
   blockers,
   costPick,
+  geometryPick,
+  costQuantity,
   onHighlight,
   className,
 }: {
   feasibility: CostFeasibility[];
-  /** process → human blocker string (from estimates[].dfm_blockers) */
+  /** process → first human blocker string, including uncosted processes */
   blockers?: Record<string, string>;
   /** the cost-cheapest process, annotated when it differs from the geometry pick */
   costPick?: string;
+  geometryPick?: string;
+  costQuantity?: number;
   onHighlight?: (process: string) => void;
   className?: string;
 }) {
   return (
     <div className={cn("space-y-2", className)}>
       <span className="cv-eyebrow">DFM matrix · all processes</span>
-      <div className="overflow-hidden rounded-[var(--radius)] border border-border bg-card">
+      <div className="overflow-x-auto rounded-[var(--radius)] border border-border bg-card">
         <table className="w-full text-sm">
           <thead className="bg-muted">
             <tr className="border-b border-border text-left">
               <th className="px-3 py-2 text-micro font-semibold uppercase tracking-wide text-muted-foreground">Process</th>
               <th className="px-3 py-2 text-micro font-semibold uppercase tracking-wide text-muted-foreground">Verdict</th>
-              <th className="px-3 py-2 text-right text-micro font-semibold uppercase tracking-wide text-muted-foreground">Score</th>
-              <th className="px-3 py-2 text-micro font-semibold uppercase tracking-wide text-muted-foreground">Blocker</th>
+              <th className="px-3 py-2 text-right text-micro font-semibold uppercase tracking-wide text-muted-foreground">Suitability</th>
+              <th className="px-3 py-2 text-micro font-semibold uppercase tracking-wide text-muted-foreground">First blocker</th>
             </tr>
           </thead>
           <tbody>
@@ -128,7 +132,9 @@ export function DfmMatrix({
                   <td className="px-3 py-2 align-top">
                     <span className="text-foreground">{procLabel(f.process)}</span>
                     {f.process === costPick && (
-                      <span className="ml-1.5 text-micro text-prov-shop">cost pick</span>
+                      <span className="ml-1.5 text-micro text-prov-shop">
+                        cost pick{costQuantity != null && ` · qty ${costQuantity.toLocaleString()}`}
+                      </span>
                     )}
                     {!f.costed && (
                       <span className="ml-1.5 text-micro text-muted-foreground">feasibility-only</span>
@@ -138,7 +144,7 @@ export function DfmMatrix({
                     <StatusBadge verdict={f.verdict} size="sm" />
                   </td>
                   <td className="num px-3 py-2 text-right align-top text-muted-foreground">
-                    {f.score.toFixed(1)}
+                    {(f.score * 100).toFixed(0)}%
                   </td>
                   <td className="px-3 py-2 align-top">
                     {blocker ? (
@@ -162,11 +168,11 @@ export function DfmMatrix({
           </tbody>
         </table>
       </div>
-      {costPick && (
+      {costPick && geometryPick && costPick !== geometryPick && (
         <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
           <Info className="mt-px size-3.5 shrink-0" aria-hidden />
-          Cost-cheapest make differs from the geometry-recommended route — pick on intent, not the
-          marginal dollar. Both are costed.
+          Cost pick{costQuantity != null && ` at quantity ${costQuantity.toLocaleString()}`}: {procLabel(costPick)}.
+          {" "}Geometric routing: {procLabel(geometryPick)}. Review the routing reasons and DFM findings when choosing.
         </p>
       )}
     </div>

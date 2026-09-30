@@ -110,6 +110,8 @@ export function RoutingDfmView({
           feasibility={report.engine_feasibility}
           blockers={blockers}
           costPick={report.decision?.make_now_process}
+          geometryPick={report.routing?.recommended_process}
+          costQuantity={report.quantities.length ? Math.min(...report.quantities) : undefined}
           onHighlight={validation ? onHighlightProcess : undefined}
         />
       )}

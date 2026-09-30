@@ -274,6 +274,7 @@ export default function DesignSystemPage() {
             feasibility={FEASIBILITY}
             blockers={BLOCKERS}
             costPick="mjf"
+            geometryPick={ROUTING.recommended_process}
             onHighlight={(p) => toast(`Highlight ${p} blocker on the 3D part`)}
           />
         </div>
