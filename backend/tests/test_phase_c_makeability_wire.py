@@ -246,8 +246,11 @@ def test_sour_env_makes_decision_coherent_with_the_exclusion():
       * ``decision.note`` states the environment constraint that changed the pick.
     Cross-checked against the no-env decision to prove the env genuinely flipped
     it (the defect was byte-identical make/buy under sour service)."""
-    base = report_to_dict(_report(inventory=[_mill()]))
-    rep = report_to_dict(_report(inventory=[_mill()], env={"sour_service": True}))
+    # At qty 10, eligible EDM already wins with AISI 4130 even without an
+    # environment. At qty 100, Mild Steel wins first: retain the actual flip oracle.
+    base = report_to_dict(_report(inventory=[_mill()], qtys=(100, 1000)))
+    rep = report_to_dict(_report(inventory=[_mill()], env={"sour_service": True},
+                               qtys=(100, 1000)))
 
     excluded = {"Mild Steel", "Ductile Iron"}
     dec = rep["decision"]
@@ -510,7 +513,9 @@ async def test_pg_route_machine_plus_sour_env_is_coherent(monkeypatch):
             r = await c.post(
                 "/api/v1/validate/cost",
                 files={"file": ("block.stl", box, "application/octet-stream")},
-                data={"qty": "10,1000", "material_class": "steel", "region": "US"},
+                # Mild Steel wins at qty 100 before the environment exclusion;
+                # qty 10 now correctly selects the already-qualified EDM route.
+                data={"qty": "100,1000", "material_class": "steel", "region": "US"},
             )
         assert r.status_code == 200, r.text
         body = r.json()

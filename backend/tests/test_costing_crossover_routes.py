@@ -57,3 +57,37 @@ def test_no_crossover_does_not_claim_one_route_wins_every_quantity():
     assert decision.crossover_qty is None
     assert "cheapest at every quantity" not in decision.note
     assert "qty 1: fdm" in decision.note and "qty 50: mjf" in decision.note
+
+
+@pytest.mark.parametrize("make_pv,tool_pv", [
+    ("wire_edm", "sand_casting"), ("dmls", "investment_casting"),
+    ("slm", "forging"), ("ebm", "injection_molding"),
+    ("binder_jetting", "die_casting"), ("ded", "sand_casting"),
+    ("waam", "forging"),
+])
+def test_metal_make_and_tooling_routes_participate_in_the_decision(make_pv, tool_pv):
+    curves = {"cnc_5axis": (0, 10), make_pv: (0, 5), tool_pv: (2000, 1)}
+    cost = lambda pv, q: curves[pv][0] / q + curves[pv][1]
+    quantities = [1, 1000]
+    estimates = {(pv, q): SimpleNamespace(
+        process=pv, material="metal", unit_cost_usd=cost(pv, q),
+        fixed_cost_usd=fixed, variable_cost_usd=variable,
+        dfm_ready=True, dfm_verdict="pass", dfm_blockers=[],
+    ) for pv, (fixed, variable) in curves.items() for q in quantities}
+
+    decision = make_vs_buy(estimates, quantities, {}, unit_cost_fn=cost)
+    assert decision.make_now_process == make_pv
+    assert decision.recommendation[1]["process"] == make_pv
+    assert decision.tooling_process == tool_pv
+    assert decision.crossover_qty == 500
+    assert decision.if_redesigned[1000]["caveat"] == "invest in tooling"
+
+    excluded = make_vs_buy(estimates, quantities, {}, unit_cost_fn=cost, excluded_pv={make_pv})
+    assert excluded.make_now_process == "cnc_5axis"
+    assert excluded.crossover_qty == 223
+    for (pv, _), estimate in estimates.items():
+        if pv == make_pv:
+            estimate.dfm_ready = False
+    blocked = make_vs_buy(estimates, quantities, {}, unit_cost_fn=cost)
+    assert blocked.make_now_process == "cnc_5axis"
+    assert blocked.crossover_qty == excluded.crossover_qty

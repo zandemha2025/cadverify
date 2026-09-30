@@ -2,8 +2,8 @@
 
 Coherent semantics (resolves weaknesses #6, #7):
 
-  MAKE-NOW set = ADDITIVE ∪ SUBTRACTIVE  (need no hard tooling)
-  TOOLING  set = FORMATIVE               (injection molding / die casting)
+  MAKE-NOW set = polymer/metal additive, CNC, EDM and sheet fabrication
+  TOOLING  set = molding, casting and forging (dies/patterns)
   DFM-ready    = engine verdict != "fail"
 
   make_now      = argmin over DFM-ready MAKE-NOW estimates at q_lo (real unit cost)
@@ -27,7 +27,11 @@ from src.costing.rates import process_family
 
 _PV_TO_PT = {pt.value: pt for pt in ProcessType}
 
-MAKE_NOW_FAMILIES = ("additive", "subtractive", "fabrication")
+MAKE_NOW_FAMILIES = (
+    "additive", "subtractive", "fabrication", "edm",
+    "metal_powder_bed", "binder_jet", "ded",
+)
+TOOLING_FAMILIES = ("formative", "casting", "forging")
 
 
 @dataclass
@@ -112,10 +116,10 @@ def _caveat(est) -> str:
             reason = "add draft"
         else:
             reason = "redesign for DFM"
-        if fam == "formative":
+        if fam in TOOLING_FAMILIES:
             reason += ", tooling-dominated"
         return reason
-    if fam == "formative":
+    if fam in TOOLING_FAMILIES:
         return "invest in tooling"
     return ""
 
@@ -168,7 +172,7 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
         return sorted(cands, key=lambda e: e.unit_cost_usd)
 
     def tool_ranked(q):
-        cands = [est_at(pv, q) for pv in proc_values if _family(pv) == "formative"]
+        cands = [est_at(pv, q) for pv in proc_values if _family(pv) in TOOLING_FAMILIES]
         return sorted(cands, key=lambda e: e.unit_cost_usd)
 
     ready_lo = make_ready_ranked(q_lo) or make_any_ranked(q_lo)
@@ -221,7 +225,7 @@ def make_vs_buy(estimates_by_pq: dict, quantities, leadtimes_by_key,
         cheaper = [
             est_at(pv, q) for pv in proc_values
             if est_at(pv, q).unit_cost_usd < tier1.unit_cost_usd
-            and (not est_at(pv, q).dfm_ready or _family(pv) == "formative")
+            and (not est_at(pv, q).dfm_ready or _family(pv) in TOOLING_FAMILIES)
         ]
         if cheaper:
             alt = min(cheaper, key=lambda e: e.unit_cost_usd)

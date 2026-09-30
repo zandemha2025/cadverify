@@ -146,13 +146,17 @@ def test_as1_per_part_analysis_all_18(as1_model):
     assert all("error" not in r for r in per), \
         [r["name"] for r in per if "error" in r]
 
-    # Plate + brackets get sensible should-cost (real dollars, CNC family).
-    plate = by_name["plate"][0]["should_cost"]
-    assert plate["status"] == "OK"
-    assert plate["make_now_process"].startswith("cnc")
-    for br in by_name["l-bracket"]:
-        assert br["should_cost"]["status"] == "OK"
-        assert br["should_cost"]["make_now_process"].startswith("cnc")
+    # Plate/brackets select the cheapest DFM-ready no-tooling estimate, including
+    # metal AM and EDM. Forcing CNC hid cheaper eligible routes from this oracle.
+    tooling = {"injection_molding", "die_casting", "sand_casting", "investment_casting", "forging"}
+    for part in by_name["plate"] + by_name["l-bracket"]:
+        cost = part["should_cost"]
+        assert cost["status"] == "OK"
+        eligible = [e for e in cost["estimates"]
+                    if e["process"] not in tooling and e["dfm_verdict"] != "fail"]
+        cheapest = min(e["unit_cost_usd"] for e in eligible)
+        chosen = next(e for e in eligible if e["process"] == cost["make_now_process"])
+        assert chosen["unit_cost_usd"] == cheapest
     # Fasteners handled as COTS BUY: a catalog buy price + an approximate inferred
     # size, NOT a physically-wrong machined fab figure (which is dropped).
     for nm in ("nut", "bolt"):
