@@ -91,6 +91,11 @@ def test_validate_password_accepts_policy_valid():
     # No exception => valid.
     _validate_password("Passw0rd")
     _validate_password("a1bcdefg")
+    _validate_password("é1234567")
+    _validate_password("Abcdefg١")
+    _validate_password("𝒜1" + "a" * 126)  # 128 code points, 129 UTF-16 units
+    with pytest.raises(HTTPException):
+        _validate_password("𝒜1" + "a" * 127)
 
 
 def test_clean_email_trims_and_validates():

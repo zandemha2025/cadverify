@@ -4,13 +4,6 @@ import * as React from "react";
 import { AuthField, AuthFrame, AuthSubmit, AuthTextLink } from "@/components/auth/auth-frame";
 import { authErrorMessage } from "@/lib/api-recovery";
 
-function passwordProblem(pw: string): string | null {
-  if (pw.length < 8) return "Password must be at least 8 characters.";
-  if (!/[a-zA-Z]/.test(pw)) return "Password must contain at least one letter.";
-  if (!/[0-9]/.test(pw)) return "Password must contain at least one digit.";
-  return null;
-}
-
 export function SignupForm() {
   const [hydrated, setHydrated] = React.useState(false);
   const [email, setEmail] = React.useState("");
@@ -22,11 +15,6 @@ export function SignupForm() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const policy = passwordProblem(password);
-    if (policy) {
-      setError(policy);
-      return;
-    }
     setError(null);
     setLoading(true);
     try {
@@ -57,7 +45,8 @@ export function SignupForm() {
     >
       <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <AuthField id="email" name="email" label="Email" type="email" autoComplete="email" required placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <AuthField id="password" name="password" label="Password" type="password" autoComplete="new-password" required placeholder="Create a password" value={password} error={error} hint="At least 8 characters, with a letter and a digit." onChange={(e) => setPassword(e.target.value)} />
+        {/* HTML counts UTF-16 units; allow two per server-validated code point. */}
+        <AuthField id="password" name="password" label="Password" type="password" autoComplete="new-password" required maxLength={256} placeholder="Create a password" value={password} error={error} hint="8–128 characters, with a letter and a digit." onChange={(e) => setPassword(e.target.value)} />
         <AuthSubmit loading={loading} disabled={!hydrated}>Create account</AuthSubmit>
       </form>
     </AuthFrame>
