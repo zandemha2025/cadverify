@@ -1,0 +1,35 @@
+{
+  "finding": "077",
+  "environment": "Local production frontend3017 / API8017 / PostgreSQL; not deployed",
+  "first_divergence": "step 3, expected approval to apply to the displayed outcome note, state was Approved next to an unsaved draft; reload restored the older saved note.",
+  "record_id": "01M3RK0AGB5F4G386CMJM2AT29",
+  "source_sha256": "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a",
+  "before": {
+    "saved_note": "Local QA — original recorded rationale.",
+    "displayed_approved_draft": "Local QA — revised rationale not saved.",
+    "native_assertion": "FAIL: approval must wait for the displayed outcome note to be saved; true != false"
+  },
+  "fix": "Reuse existing dirty-note state to disable and guard approval. Announce unsaved notes; on already approved records explicitly state approval applies to the saved note.",
+  "after": {
+    "dirty_note_blocks_approval": true,
+    "save_note_enables_approval": true,
+    "approved_saved_note_survives_reload": true,
+    "editing_approved_note_identifies_prior_signoff_scope": true,
+    "saving_new_note_reopens_approval": true,
+    "reverting_draft_unblocks_approval": true,
+    "qa_outcome_withdrawn_and_record_restored_unreviewed": true
+  },
+  "validation": {
+    "frontend_tests": 494,
+    "types_changed_lint_production_build": "passed",
+    "browser_check": "scripts/e2e/cost-governance-draft-validation.mjs fails before and passes after in native CUA",
+    "ci_coverage": "Existing P7 governance journey now invokes the same guard and verifies persisted note before approval; not yet executed in CI",
+    "backend": "unchanged from076:2403passed/3documentedskips"
+  },
+  "screenshots": [
+    "077-approved-unsaved-note-before.png",
+    "077-unsaved-note-approval-blocked.png",
+    "077-approved-saved-note-reloaded.png"
+  ],
+  "limits": "This fixes the local unsaved-note presentation/approval flow. It does not establish concurrent multi-user approval semantics or production verification."
+}

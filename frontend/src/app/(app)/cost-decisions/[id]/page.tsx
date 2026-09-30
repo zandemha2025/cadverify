@@ -127,7 +127,7 @@ function GovernancePanel({
   }
 
   async function approve() {
-    if (!canMutate) return;
+    if (!canMutate || dispositionNoteDirty) return;
     setSaving("approve");
     try {
       const patch = await approveCostDecision(decision.id, note);
@@ -200,7 +200,7 @@ function GovernancePanel({
               <Button
                 size="sm"
                 loading={saving === "approve"}
-                disabled={Boolean(savingDisposition)}
+                disabled={Boolean(savingDisposition) || dispositionNoteDirty}
                 onClick={approve}
               >
                 {saving !== "approve" && <ShieldCheck />} Approve
@@ -331,6 +331,16 @@ function GovernancePanel({
                 >
                   Save outcome note
                 </Button>
+                {dispositionNoteDirty && (
+                  <p
+                    role="status"
+                    data-testid="record-disposition-unsaved"
+                    className="text-xs text-warn"
+                  >
+                    Unsaved outcome note. Save this note before approving.
+                    {approved && " The current approval applies to the saved note."}
+                  </p>
+                )}
                 {!decision.user_disposition && dispositionNote.length > 0 && (
                   <p className="text-xs text-muted-foreground">
                     Choose an outcome to save this note.

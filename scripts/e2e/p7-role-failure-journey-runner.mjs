@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { captureBuildIdentity, makeReleaseEvidence } from "./human-sim-release-evidence.mjs";
+import { assertApprovalDraftGuard } from "./cost-governance-draft-validation.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const pw = require("playwright-core");
@@ -998,6 +999,16 @@ asyncio.run(main())
         settleMs: 1500,
       });
       await page.getByText("Decision governance").waitFor({ timeout: 10_000 });
+      const outcomeNote = page.getByRole("textbox", { name: "Outcome note (optional)", exact: true });
+      await outcomeNote.fill("P7 original sourcing rationale");
+      await page.getByRole("button", { name: "Make outside", exact: true }).click();
+      await outcomeNote.fill("P7 revised sourcing rationale");
+      await assertApprovalDraftGuard(page, true);
+      await page.getByRole("button", { name: "Save outcome note", exact: true }).click();
+      await page.getByTestId("record-disposition-unsaved").waitFor({ state: "hidden" });
+      await assertApprovalDraftGuard(page, false);
+      const savedOutcome = await this.fetchGovernanceDecision(id);
+      assert(savedOutcome.disposition_note === "P7 revised sourcing rationale", "approval must refer to the saved outcome note");
       await page.getByPlaceholder("Optional approval note").fill(governanceApprovalNote);
       await page.getByRole("button", { name: /^Approve$/i }).click();
       await page
