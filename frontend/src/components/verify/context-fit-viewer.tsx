@@ -1,23 +1,16 @@
 "use client";
 import { Canvas, useLoader } from "@react-three/fiber";
 import { Bounds, OrbitControls } from "@react-three/drei";
-import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import * as THREE from "three";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { probeWebGlSupport } from "@/lib/site/webgl";
-import type { FitResult } from "@/lib/verify/context-fit";
+import type { FitResult, FitUnits } from "@/lib/verify/context-fit";
 import { fetchPreviewMesh } from "@/lib/verify/preview-mesh";
 import { PreviewBoundary } from "./preview-boundary";
 
-type ShellSource = { url: string; kind: "stl" | "glb"; revoke: () => void };
+type ShellSource = { url: string; revoke: () => void };
 type ShellProps = { url: string; ghost: boolean; transform?: number[][] };
-function StlShell({ url, ghost, transform }: ShellProps) {
-  const raw = useLoader(STLLoader, url);
-  const geometry = useMemo(() => raw.clone(), [raw]);
-  const matrix = useMemo(() => transform ? new THREE.Matrix4().fromArray(transform.flat()).transpose() : new THREE.Matrix4(), [transform]);
-  return <mesh geometry={geometry} matrix={matrix} matrixAutoUpdate={false}><meshStandardMaterial color={ghost ? "#9aa3ad" : "#5f83a5"} transparent={ghost} opacity={ghost ? 0.16 : 1} depthWrite={!ghost} metalness={0.25} roughness={0.65} /></mesh>;
-}
 function GlbShell({ url, ghost, transform }: ShellProps) {
   const gltf = useLoader(GLTFLoader, url);
   const matrix = useMemo(() => transform ? new THREE.Matrix4().fromArray(transform.flat()).transpose() : new THREE.Matrix4(), [transform]);
@@ -29,9 +22,6 @@ function GlbShell({ url, ghost, transform }: ShellProps) {
   }, [gltf.scene, material]);
   useEffect(() => () => material.dispose(), [material]);
   return <group matrix={matrix} matrixAutoUpdate={false}><primitive object={scene} /></group>;
-}
-function Shell({ source, ...props }: { source: ShellSource; ghost: boolean; transform?: number[][] }) {
-  return source.kind === "stl" ? <StlShell url={source.url} {...props} /> : <GlbShell url={source.url} {...props} />;
 }
 function LoadedExactRegion({ url }: { url: string }) {
   const gltf = useLoader(GLTFLoader, url);
@@ -75,8 +65,8 @@ function Region({ result }: { result: FitResult | null }) {
   if (render.available && render.data) return <ExactRegion data={render.data} />;
   return <CentroidAnchor center={region.region_center} />;
 }
-export default function ContextFitViewer({ part, context, result, hideContext, selectedIssue }: { part: File; context: File; result: FitResult | null; hideContext: boolean; selectedIssue: "collision" | "clearance" | null }) {
-  const [sources, setSources] = useState<{ part: ShellSource; context: ShellSource; partFile: File; contextFile: File } | null>(null);
+export default function ContextFitViewer({ part, context, units, result, hideContext, selectedIssue }: { part: File; context: File; units: FitUnits; result: FitResult | null; hideContext: boolean; selectedIssue: "collision" | "clearance" | null }) {
+  const [sources, setSources] = useState<{ part: ShellSource; context: ShellSource; partFile: File; contextFile: File; units: FitUnits } | null>(null);
   const [previewError, setPreviewError] = useState(false);
   const [retry, setRetry] = useState(0);
   const [webGlAvailable, setWebGlAvailable] = useState<boolean | null>(null);
@@ -88,29 +78,23 @@ export default function ContextFitViewer({ part, context, result, hideContext, s
     if (!supported || webGlAvailable !== true) return;
     let cancelled = false;
     const owned: ShellSource[] = [];
-    const load = async (file: File): Promise<ShellSource | null> => {
-      let source: ShellSource | null;
-      if (file.name.toLowerCase().endsWith(".stl")) {
-        const url = URL.createObjectURL(file);
-        source = { url, kind: "stl", revoke: () => URL.revokeObjectURL(url) };
-      } else {
-        const preview = await fetchPreviewMesh(file);
-        source = preview ? { url: preview.url, kind: "glb", revoke: preview.revoke } : null;
-      }
+    const load = async (file: File, sourceUnits: "mm" | "inch"): Promise<ShellSource | null> => {
+      const preview = await fetchPreviewMesh(file, { units: sourceUnits });
+      const source = preview ? { url: preview.url, revoke: preview.revoke } : null;
       if (cancelled) { source?.revoke(); return null; }
       if (source) owned.push(source);
       return source;
     };
-    void Promise.all([load(part), load(context)]).then(([a, b]) => {
+    void Promise.all([load(part, units.part), load(context, units.context)]).then(([a, b]) => {
       if (cancelled) return;
-      if (a && b) setSources({ part: a, context: b, partFile: part, contextFile: context });
+      if (a && b) setSources({ part: a, context: b, partFile: part, contextFile: context, units });
       else setPreviewError(true);
     }).catch(() => { if (!cancelled) setPreviewError(true); });
     return () => { cancelled = true; owned.forEach(source => source.revoke()); };
-  }, [part, context, supported, webGlAvailable, retry]);
+  }, [part, context, units, supported, webGlAvailable, retry]);
   if (!supported) return <div className="grid h-full place-items-center px-6 text-center text-xs text-muted-foreground">Choose STL, OBJ, 3MF, STEP or IGES files for the pair preview.</div>;
   if (webGlAvailable !== true) return <div role="status" className="grid h-full place-items-center px-6 text-center text-xs text-muted-foreground">{webGlAvailable === null ? "Preparing the interactive preview…" : "3D preview is unavailable in this browser. Fit measurements remain available below."}</div>;
   if (previewError) return <div role="status" className="grid h-full place-items-center px-6 text-center text-xs text-muted-foreground"><div><p>Could not load the pair preview. Fit measurements remain available below.</p><button className="mt-3 min-h-11 rounded border px-3 text-foreground" onClick={() => setRetry(value => value + 1)}>Retry preview</button></div></div>;
-  if (!sources || sources.partFile !== part || sources.contextFile !== context) return <div className="grid h-full place-items-center text-xs text-muted-foreground">Preparing submitted geometry…</div>;
-  return <PreviewBoundary key={sources.part.url + sources.context.url} fallback={<div role="status" className="grid h-full place-items-center px-6 text-center text-xs text-muted-foreground">Could not draw this pair. Check the files or select another pair. Fit checks remain available below.</div>}><Canvas dpr={[1, 2]} gl={{ antialias: true, powerPreference: "high-performance" }} camera={{ position: [24, 20, 24], fov: 38 }}><ambientLight intensity={1.2}/><directionalLight position={[10,20,10]} intensity={1.5}/><Suspense fallback={null}><Bounds key={JSON.stringify([result?.seating.transform ?? null, hideContext])} fit clip observe><Shell source={sources.part} ghost={false}/>{!hideContext && <Shell source={sources.context} ghost transform={result?.seating.transform}/>}{selectedIssue === "collision" && <Region result={result}/>}</Bounds></Suspense><OrbitControls makeDefault enablePan={false}/></Canvas></PreviewBoundary>;
+  if (!sources || sources.partFile !== part || sources.contextFile !== context || sources.units !== units) return <div className="grid h-full place-items-center text-xs text-muted-foreground">Preparing submitted geometry…</div>;
+  return <PreviewBoundary key={sources.part.url + sources.context.url} fallback={<div role="status" className="grid h-full place-items-center px-6 text-center text-xs text-muted-foreground">Could not draw this pair. Check the files or select another pair. Fit checks remain available below.</div>}><Canvas dpr={[1, 2]} gl={{ antialias: true, powerPreference: "high-performance" }} camera={{ position: [24, 20, 24], fov: 38 }}><ambientLight intensity={1.2}/><directionalLight position={[10,20,10]} intensity={1.5}/><Suspense fallback={null}><Bounds key={JSON.stringify([result?.seating.transform ?? null, hideContext])} fit clip observe margin={2}><GlbShell url={sources.part.url} ghost={false}/>{!hideContext && <GlbShell url={sources.context.url} ghost transform={result?.seating.transform}/>}{selectedIssue === "collision" && <Region result={result}/>}</Bounds></Suspense><OrbitControls makeDefault enablePan={false}/></Canvas></PreviewBoundary>;
 }

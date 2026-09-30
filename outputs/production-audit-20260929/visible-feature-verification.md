@@ -211,3 +211,6 @@ Fit accuracy follow-up111/112: 3MF source units now scale both geometry and bake
 Pair-preview follow-up113: actualOBJ/3MF now render their true bored shells through the same capped reader used for measurement. Native overlap/translation/hide/show/swap/invalid-unit/retry/replacement checks pass. Coincident polygonal ring volume matches1573.208mm³; the separated10.085mm sampled gap retains its explicit sampling limitation.2471 backend tests/3 documented skips and497 frontend tests/types/lint/build pass; types/Bandit pass. No deployment. See `113-pair-preview-proof.json`.
 
 CI36722887416 on a980247 through107 passed all9jobs. New108–113 will receive a fresh exact-head run after push. Production and external-provider requirements remain open.
+
+
+Fit-unit/framing follow-ups114/115: independentSTL/OBJ unit choices now govern both preview and measurement, follow swaps, reset on replacements and invalidate old results. EmbeddedCAD units stay automatic. Native mixed-unit controls prove16,387.064mm³ overlap and10mm gap; malformedSTL and embedded3MF recovery pass. Pair framing now contains the whole rotated cube.2474 backend tests/3 documented skips and498 frontend tests/types/lint/build pass; types/Bandit pass. Local only; currentCI36728479346 runs older2594aeb through113. See `114-115-fit-units-proof.json`.

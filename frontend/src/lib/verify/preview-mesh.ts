@@ -52,7 +52,7 @@ export async function fetchPreviewMesh(file: File, options?: { forAnalysis?: boo
 
   let res: Response;
   try {
-    const query = options?.forAnalysis ? `?purpose=analysis&units=${options.units ?? "mm"}` : "";
+    const query = options?.forAnalysis ? `?purpose=analysis&units=${options.units ?? "mm"}` : options?.units ? `?units=${options.units}` : "";
     res = await fetch(`${API_BASE}/validate/preview-mesh${query}`, {
       method: "POST",
       body: form,

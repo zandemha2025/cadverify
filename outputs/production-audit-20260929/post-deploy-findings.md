@@ -944,3 +944,18 @@ first divergence: step2, expected an undeclared machine rate to disclose fallbac
 - All2471 backend tests pass with3 documented environment skips;33 focused tests and497 frontend tests/types/changed lint/build pass. Backend types215/228 baseline with zero new messages; changed-source Bandit has no medium/high findings. Evidence: `113-pair-preview-proof.json`, actualOBJ/3MF fixtures and native screenshots. No deployment; STL/OBJ source-unit declaration and external accuracy requirements remain open.
 
 CI36722887416 completed successfully on a980247606355abd97aeb7b7a7a7b11acc44837f (through107): all9jobs passed including the browser journey chain.108–113 require the next exact-head run; main-only image CVE checks and production/external-provider evidence remain open. See `ci-36722887416-summary.json`.
+
+
+### 114 — Fit had no source-unit choice for STL/OBJ (fixed locally)
+- first divergence: step 3, expected an inch-authored cube to be measured against its physically identical millimeter counterpart, state was1.000mm³ and no way to declare source units.
+- Add separate native mm/inch selectors for each unitless file, with a visible confirmation prompt. Pass the same declarations to preview and measurement; normalize before seating and mm nudges. Embedded STEP/IGES/3MF units retain automatic normalization and an explanatory label.
+- Reuse the bounded GLB preview for STL too, removing the duplicate unscaled renderer. Unit changes invalidate old responses/results and preview sources; swaps carry file declarations, replacements reset the new file to the visible mm default. Applied units appear in result provenance.
+- Native known controls: inchSTL/mmOBJ16,387.064mm³ overlap, X35.4 gives10mm gap, explicit-mm replay1mm³, swapped declarations remain correct, inchOBJ/inchSTL agrees. MalformedSTL is contained; embedded-unit3MF replacement restores correct geometry/results without an override selector.
+- API/preview regressions cover both unitless formats, embedded3MF override rejection-by-normalization, invalid declarations and source-cache immutability. Existing analysis/cost unit tests pass. Evidence: `114-115-fit-units-proof.json`, actualSTL/OBJ and before/change/swap/gap/error/recovery screenshots. Not deployed.
+
+### 115 — Pair camera clipped rotated cube corners (fixed locally)
+- first divergence: step 4, expected the submitted cube to fit wholly in the automatic preview, state was a clipped lower projected corner (visible in114-inch-stl-fixed.png).
+- Installed Bounds fits by maximum axis length with default1.2margin; allow perspective depth and rotated box corners with its existing margin2 setting. Geometry, transforms and measurements stay unchanged.
+- Native same-file replay fits every projected corner within the preview at2560×1233, preserving16,387.064mm³ overlap. See `115-complete-cube-frame.png`. No new phone-viewport claim.
+
+114/115 validation:2474 full backend tests pass with3 documented environment skips (210.92s),58 focused tests pass,498 frontend tests/types/changed lint/final production build pass. Backend type errors215/228 baseline with zero new messages; changed-source Bandit passes. The existing ghost-opacity source check now targets the retained GLB material at the same16percent after deletion of the duplicated STL renderer; native visualization supplies behavior evidence.

@@ -14,7 +14,7 @@ test("two-file roles and swap are explicit", () => {
 });
 
 test("viewer uses solid part and 16 percent context ghost", () => {
-  assert.match(viewer, /opacity=\{ghost \? 0\.16 : 1\}/);
+  assert.match(viewer, /opacity: ghost \? 0\.16 : 1/);
   assert.match(panel, /Solid: your part/);
   assert.match(panel, /Ghost: assembly/);
 });

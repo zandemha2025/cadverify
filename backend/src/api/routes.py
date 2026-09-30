@@ -920,6 +920,8 @@ async def validate_fit(
     response: Response,
     part_a: UploadFile = File(...),
     part_b: UploadFile = File(...),
+    part_a_units: str = Query("mm", pattern="^(mm|inch)$"),
+    part_b_units: str = Query("mm", pattern="^(mm|inch)$"),
     seating: str = Query("shared_frame", description="shared_frame or auto"),
     nudge_x_mm: float = Query(0.0),
     nudge_y_mm: float = Query(0.0),
@@ -942,6 +944,9 @@ async def validate_fit(
             _parse_fit_mesh_async(data_a, part_a.filename or "part-a"),
             _parse_fit_mesh_async(data_b, part_b.filename or "part-b"),
         )
+        from src.costing.units import scale_mesh_to_mm
+        mesh_a = scale_mesh_to_mm(mesh_a, mesh_source_units(part_a.filename or "part-a", part_a_units))
+        mesh_b = scale_mesh_to_mm(mesh_b, mesh_source_units(part_b.filename or "part-b", part_b_units))
         if seating not in {"shared_frame", "auto"}:
             raise HTTPException(status_code=400, detail="seating must be shared_frame or auto")
         from src.services.fit_seating import apply_seating, propose_auto_seating
@@ -960,6 +965,9 @@ async def validate_fit(
         final_transform = nudge @ np.asarray(seating_report["transform"], dtype=float)
         seated_b = apply_seating(mesh_b, final_transform.tolist())
         result = await __import__("asyncio").to_thread(analyze_fit, mesh_a, seated_b)
+        for label, file, units in [("Your part", part_a, part_a_units), ("Assembly", part_b, part_b_units)]:
+            source = f"source coordinates interpreted as {units}" if Path(file.filename or "").suffix.lower() in {".stl", ".obj"} else "embedded CAD units"
+            result["limits"].append(f"{label}: {source}, normalized to mm before seating and measurement.")
         result["seating"] = {
             **seating_report,
             "transform": final_transform.round(9).tolist(),
