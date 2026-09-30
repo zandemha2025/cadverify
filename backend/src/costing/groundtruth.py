@@ -130,10 +130,16 @@ class GroundTruthRecord:
             raise ValueError("source_units must be mm or inch")
         if not self.part_id:
             raise ValueError("GroundTruthRecord requires a part_id")
-        if self.actual_unit_cost_usd is None or self.actual_unit_cost_usd <= 0:
+        if (self.actual_unit_cost_usd is None or not math.isfinite(self.actual_unit_cost_usd)
+                or self.actual_unit_cost_usd <= 0):
             raise ValueError(
                 f"GroundTruthRecord {self.part_id}/{self.process}: "
-                "actual_unit_cost_usd must be a positive number")
+                "actual_unit_cost_usd must be a finite positive number")
+        for name in ("actual_machine_hours", "actual_setup_hours", "actual_labor_hours",
+                     "actual_inspection_hours", "actual_cycle_seconds"):
+            value = getattr(self, name)
+            if value is not None and (not math.isfinite(value) or value < 0):
+                raise ValueError(f"{name} must be a finite number >= 0")
         if self.stand_in and "STAND-IN" not in (self.source or "").upper():
             # make the synthetic origin self-documenting in the persisted record
             self.source = (self.source + " " if self.source else "") + "[STAND-IN — not real]"

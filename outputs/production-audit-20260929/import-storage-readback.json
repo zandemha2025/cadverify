@@ -1,0 +1,84 @@
+{
+  "manifest": [
+    {
+      "part_id": "AUDIT-094-BEFORE",
+      "quantity": 2
+    },
+    {
+      "part_id": "AUDIT-094-AFTER",
+      "quantity": 3
+    }
+  ],
+  "actuals": [
+    {
+      "part_id": "AUDIT-095-GOOD",
+      "quantity": 10,
+      "cost_usd": 12.5,
+      "machine_hours": 0.0,
+      "source_type": "seed",
+      "stand_in": true
+    }
+  ],
+  "runs": [
+    {
+      "id": "01M3RZ21NHMDSN6KN8FDQY1CTA",
+      "file": "import-overflow.csv",
+      "mode": "dry_run",
+      "status": "passed",
+      "rows_total": 3,
+      "rows_valid": 3,
+      "rows_invalid": 0,
+      "imported": 0,
+      "updated": 0,
+      "skipped": 0
+    },
+    {
+      "id": "01M3RZ6B3W30QV7PYRCRFJTM96",
+      "file": "import-overflow.csv",
+      "mode": "import",
+      "status": "partial",
+      "rows_total": 3,
+      "rows_valid": 2,
+      "rows_invalid": 1,
+      "imported": 2,
+      "updated": 0,
+      "skipped": 1
+    },
+    {
+      "id": "01M3RZ8AE7E4K0CT0NFFSKP7RN",
+      "file": "import-nonfinite-cost.csv",
+      "mode": "dry_run",
+      "status": "passed",
+      "rows_total": 4,
+      "rows_valid": 4,
+      "rows_invalid": 0,
+      "imported": 0,
+      "updated": 0,
+      "skipped": 0
+    },
+    {
+      "id": "01M3RZAZ7Z3TTP9FPXG22EAT7F",
+      "file": "import-nonfinite-cost.csv",
+      "mode": "dry_run",
+      "status": "partial",
+      "rows_total": 4,
+      "rows_valid": 1,
+      "rows_invalid": 3,
+      "imported": 0,
+      "updated": 0,
+      "skipped": 3
+    },
+    {
+      "id": "01M3RZBBT6TM6BZ4BM9KQNPC54",
+      "file": "import-nonfinite-cost.csv",
+      "mode": "import",
+      "status": "partial",
+      "rows_total": 4,
+      "rows_valid": 1,
+      "rows_invalid": 3,
+      "imported": 1,
+      "updated": 0,
+      "skipped": 3
+    }
+  ]
+}

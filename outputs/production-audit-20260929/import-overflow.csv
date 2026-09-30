@@ -1,0 +1,4 @@
+part_id,description,quantity
+AUDIT-094-BEFORE,Valid before rejected row,2
+AUDIT-094-OVERFLOW,Quantity cannot fit stored integer,2147483648
+AUDIT-094-AFTER,Valid after rejected row,3

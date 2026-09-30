@@ -727,3 +727,24 @@ CI checkpoint: [36694513963](https://github.com/zandemha2025/cadverify/actions/r
 - Evidence:093 screenshots, controlled `malformed-fit.stl`, and existing native readiness/preview/gap assertions.494 frontend tests/types/lint/build pass. No production deployment.
 
 CI checkpoint: [36698927295](https://github.com/zandemha2025/cadverify/actions/runs/36698927295) completed successfully on `a6f81fb` through089: all9 jobs passed, including the complete human/enterprise browser job. Sanitized receipt: `ci-36698927295-summary.json`. This run excludes090–093 and does not prove production, real external tenants or the main-only image CVE gate.
+
+
+## 094 — A rejected import row aborts valid rows and misstates the outcome
+
+- Severity: high data-integrity/availability defect; fixed locally, not deployed.
+- first divergence: step1, expected the quantity outside PostgreSQL's integer range to fail dry-run validation, state was “passed,3/3 valid.” Importing that same file then returned HTTP500 and no import ledger row.
+- Root cause: CSV integer parsing had no storage bound; both manifest and actual-cost bulk imports lacked per-row savepoints. A failed insert/update left the transaction unusable. The manifest handler also returned raw database exception text; run counts treated failed writes as valid and could show partial success when every write failed.
+- Fix: retain valid manifest rows with database savepoints, include actuals delete-and-replace in the same per-row savepoint, report only safe row-rejection text for data/constraint errors, and let availability/schema failures abort. Count successful writes separately from normalized inputs. Reject manifest integers above2147483647 during parsing. All callers use the shared importers; no new dependency or schema.
+- Native proof: `import-overflow.csv` now imports2 rows, skips1 and names line3's invalid quantity. PostgreSQL readback contains exactly the two valid declared parts at quantities2 and3. Real-database regressions also preserve the original row after a failed replacement and successfully process rows on both sides of the failure for both importers. Regression fixtures stay in transactions that roll back.
+- Evidence: `import-integrity-regression.json`, `import-storage-readback.json`,094 screenshots and `backend/tests/test_import_failure_isolation.py`. Production and real vendor integrations remain open.
+
+## 095 — Actual-cost validation accepts infinity and non-finite observed times
+
+- Severity: high accuracy/data-integrity defect; fixed locally, not deployed.
+- first divergence: step1, expected infinite price, NaN hours and an unstorable quantity to be rejected, state was “passed,4/4 valid” for the controlled quote/actuals CSV.
+- Root cause: positive comparisons accept infinity and optional-hour comparisons accept NaN. The shared costing record lacked finite-value validation, and the actuals quantity could exceed the database integer range.
+- Fix: enforce finite positive cost and finite nonnegative times in both the CSV parser and shared costing record, and validate the stored quantity before any ingest database work. Existing zero-hour values and the maximum representable quantity remain accepted; negative-cost errors retain their established wording.
+- Native proof: dry-run now flags lines3–5; import saves only the valid12.5USD/10-unit/zero-hour record. Refresh and PostgreSQL readback reconcile with1 imported/3 skipped. The fixture explicitly uses `source_type=seed`, is stored as a stand-in, and cannot validate real quote accuracy. No invalid cost was deliberately imported before the fix.
+- Evidence: `import-integrity-regression.json`,095 screenshots, storage readback and `backend/tests/test_groundtruth_numeric_boundary.py`. Real customer quotes, provider access and production retesting remain required.
+
+Validation through094/095: full backend **2429 passed**, three documented local corpus/OCP-XDE skips in173.26s with the protected skip policy and real PostgreSQL/Redis. Type baseline216/228 passes with no new changed-source diagnostics; changed-source Bandit has no medium/high findings. Native PLM re-import also updates2 existing records without duplicates, a fully invalid file reportsfailed/0of1valid, and the mixed-file dry-run correctly reports2of3valid. Frontend code/build is unchanged from092/093. Exact new-head CI and production verification remain required.

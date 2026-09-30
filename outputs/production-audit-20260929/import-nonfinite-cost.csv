@@ -1,0 +1,5 @@
+part_id,process,quantity,actual_unit_cost_usd,source_type,actual_machine_hours
+AUDIT-095-GOOD,sls,10,12.5,seed,0
+AUDIT-095-INF,sls,10,inf,seed,1
+AUDIT-095-NAN-HOURS,sls,10,10,seed,nan
+AUDIT-095-OVERFLOW,sls,2147483648,10,seed,1

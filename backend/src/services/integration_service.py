@@ -248,9 +248,9 @@ async def run_connector_csv(
 
     all_errors = _safe_errors(list(parse_errors) + list(import_errors))
     rows_total = len(rows) + len(parse_errors)
-    rows_valid = len(rows)
-    rows_invalid = len(parse_errors) + len(import_errors)
-    skipped = rows_total - rows_valid + len(import_errors)
+    rows_valid = imported + updated if mode == MODE_IMPORT else len(rows)
+    rows_invalid = rows_total - rows_valid
+    skipped = rows_invalid
     status = _status(rows_valid, all_errors)
 
     run = IntegrationRun(
@@ -270,7 +270,7 @@ async def run_connector_csv(
         file_sha256=file_hash,
         file_size_bytes=len(raw),
         source_record_count=rows_total,
-        normalized_record_count=rows_valid,
+        normalized_record_count=len(rows),
         rows_total=rows_total,
         rows_valid=rows_valid,
         rows_invalid=rows_invalid,

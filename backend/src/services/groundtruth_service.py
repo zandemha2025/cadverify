@@ -22,6 +22,7 @@ import asyncio
 import csv
 import io
 import logging
+import math
 import os
 import re
 from dataclasses import replace
@@ -32,6 +33,7 @@ from typing import Optional
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import DBAPIError
 
 from src.analysis.models import ProcessType
 from src.costing import calibration_store as cstore
@@ -158,8 +160,8 @@ def _parse_optional_float(raw: str, name: str, row_errs: list) -> Optional[float
     except ValueError:
         row_errs.append(f"{name} not a number ('{raw}')")
         return None
-    if val < 0:
-        row_errs.append(f"{name} must be >= 0 (got {val})")
+    if not math.isfinite(val) or val < 0:
+        row_errs.append(f"{name} must be a finite number >= 0 (got {val})")
         return None
     return val
 
@@ -295,6 +297,8 @@ def parse_ground_truth_csv(text: str):
                 quantity = int(quantity_raw)
                 if quantity < 1:
                     row_errs.append(f"quantity must be >= 1 (got {quantity})")
+                elif quantity > 2_147_483_647:
+                    row_errs.append("quantity must be at most 2147483647")
             except ValueError:
                 row_errs.append(f"quantity not an integer ('{quantity_raw}')")
 
@@ -304,9 +308,9 @@ def parse_ground_truth_csv(text: str):
         else:
             try:
                 cost = float(cost_raw)
-                if not (cost > 0):
+                if not math.isfinite(cost) or not (cost > 0):
                     row_errs.append(
-                        f"actual_unit_cost_usd must be > 0 (got {cost})"
+                        f"actual_unit_cost_usd must be > 0 and finite (got {cost})"
                     )
             except ValueError:
                 row_errs.append(
@@ -408,10 +412,15 @@ async def import_records(
     errors: list = []
     for idx, payload in enumerate(rows):
         try:
-            await ingest_record(session, org_id, user_id, payload)
+            async with session.begin_nested():
+                await ingest_record(session, org_id, user_id, payload)
             imported += 1
         except (ValueError, KeyError) as exc:
             errors.append({"line": None, "index": idx, "reason": str(exc)})
+        except DBAPIError as exc:
+            if exc.connection_invalidated or str(getattr(exc.orig, "sqlstate", ""))[:2] not in {"22", "23"}:
+                raise
+            errors.append({"line": None, "index": idx, "reason": "The row could not be saved. Check its values and identifiers."})
     return imported, errors
 
 
@@ -559,6 +568,9 @@ async def ingest_record(
     still succeeds. Geometry is never fabricated. The CSV bulk path
     (``import_records``) funnels through here, so it inherits this unchanged.
     """
+    quantity = payload["quantity"]
+    if not isinstance(quantity, int) or isinstance(quantity, bool) or not 1 <= quantity <= 2_147_483_647:
+        raise ValueError("quantity must be an integer between 1 and 2147483647")
     source_type = _normal_payload_source_type(payload)
     stand_in = bool(payload.get("stand_in", False)) or _is_synthetic_source_type(source_type)
     invoice_date = _normal_invoice_date(payload.get("invoice_date"))

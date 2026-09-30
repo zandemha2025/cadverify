@@ -1,0 +1,50 @@
+{
+  "findings": [
+    "094",
+    "095"
+  ],
+  "environment": "local QA; production unchanged",
+  "baseline_head": "bea9a77113fed749697d4a05487aa9129ce02d54",
+  "controls": {
+    "manifest": {
+      "file": "import-overflow.csv",
+      "before_dry_run": "passed, 3/3 valid",
+      "before_import": "HTTP 500; no import ledger row",
+      "after_import": "partial; 2 imported, 1 skipped; line 3 names database integer limit",
+      "after_dry_run": "PLM sibling: partial, 2/3 valid, line 3 overflow",
+      "repeat_import": "PLM sibling: 0 imported, 2 updated, 1 skipped; no duplicate parts",
+      "all_rejected": "failed, 0/1 valid, 1 skipped; clear line 2 error"
+    },
+    "actuals": {
+      "file": "import-nonfinite-cost.csv",
+      "before_dry_run": "passed, 4/4 valid",
+      "after_dry_run": "partial; 1/4 valid, 3 flagged",
+      "after_import": "partial; 1 imported, 3 skipped; preserved after Refresh",
+      "stored_actual": "12.5 USD, 10 units, 0 machine hours, source_type=seed, stand_in=true"
+    },
+    "database": "Real PostgreSQL savepoint checks preserve an existing manifest/actuals row when its replacement fails, and save both adjacent valid rows. Test transactions roll back.",
+    "counts": "All write failures yield failed, 0/1 valid, 1 invalid, 1 skipped; normalized record count remains 1.",
+    "finite_values": "NaN and both infinities rejected for price and all five observed-time fields; zero hours and max stored integer remain valid."
+  },
+  "evidence": [
+    "import-storage-readback.json",
+    "094-import-overflow-before.png",
+    "094-import-overflow-fixed.png",
+    "095-actuals-nonfinite-before.png",
+    "095-actuals-nonfinite-fixed.png"
+  ],
+  "checks": {
+    "focused_imports": "41 passed",
+    "numeric_and_costing": "44 passed",
+    "types": "216 errors within 228 baseline; no new diagnostics in changed sources",
+    "security": "Bandit medium/high check passed",
+    "full_backend": "2429 passed, 3 documented local corpus/OCP-XDE skips in 173.26s; protected skip policy; real PostgreSQL/Redis"
+  },
+  "limits": [
+    "No production deployment",
+    "No authorized vendor tenant or email/IdP proof",
+    "No customer quotes or calibrated accuracy claim",
+    "Frontend code unchanged; existing build used",
+    "Bad numeric cost fixtures were only dry-run before the fix; no invalid costs were deliberately stored"
+  ]
+}
