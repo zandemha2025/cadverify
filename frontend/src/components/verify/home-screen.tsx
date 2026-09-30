@@ -23,7 +23,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { fetchCostDecisions, type CostDecisionSummary } from "@/lib/api";
-import { listMachines } from "@/lib/verify/machine-api";
+import { countMachines, listMachines } from "@/lib/verify/machine-api";
 import { listChangeRequests, type ChangeRequest } from "@/lib/verify/governance-api";
 import { listGroundTruth, realActualCount } from "@/lib/verify/ground-truth-api";
 import { getPortfolio, declaredPrograms } from "@/lib/verify/program-api";
@@ -74,13 +74,13 @@ export function HomeScreen({
     listMachines().then(
       (p) => {
         if (!active) return;
-        setMachineCount(p.machines.length);
+        setMachineCount(countMachines(p.machines));
         setRatedMachineCount(
-          p.machines.filter(
+          countMachines(p.machines.filter(
             (machine) =>
               typeof machine.hourly_rate_usd === "number" &&
               Number.isFinite(machine.hourly_rate_usd)
-          ).length
+          ))
         );
       },
       () => active && setUnavailable((current) => ({ ...current, machines: true }))

@@ -888,3 +888,13 @@ first divergence: step2, expected the selected inch-IGES decision to open, state
 - All496 frontend tests, types, changed-source lint and production build pass. Backend unchanged from2458 passing tests. Evidence: `107-machine-record-proof.json` and before/fixed screenshots. This is a simple link change checked through the real browser; no source-text test added. Not deployed.
 
 CI36718240878 completed successfully on a028e56 (through103): all9 jobs passed, including Browser E2E. This excludes104–107; their exact-head run follows the next push. Main-only image CVE scans and production/external-provider proof remain open. See `ci-36718240878-summary.json`.
+
+
+## 108 — Home counts inventory entries instead of declared machines
+
+first divergence: step2, expected6 machines from declared quantities2+1+1+2, state was4 machines added/declared/owned on Home.
+
+- Severity: medium numerical accuracy defect. Both total and rated-machine counts used array lengths, so grouped quantities were ignored.
+- Fix: sum declared counts for both totals, matching the inventory service's existing default of1 for null counts. Reuse one small count helper for both calculations; retain zero/unknown loading distinctions.
+- Native Home, onboarding and Your Floor now all report6; independent PostgreSQL readback confirms4 entries with quantities[2,1,1,2] and6 machines with rates. No inventory records changed.
+- A runnable behavior test covers grouped quantities, the existing null default, subsets and empty lists. All497 frontend tests/types/changed lint/build pass. Backend unchanged from2458 passing tests. Evidence: `108-inventory-total-proof.json` and before/fixed screenshots. Local only; prior105 proof recorded the then-current entry-count behavior, now corrected to physical quantities.

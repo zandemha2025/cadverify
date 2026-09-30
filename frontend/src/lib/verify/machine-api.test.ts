@@ -6,8 +6,14 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   if (specifier === "@/lib/api-base") return next(new URL("../api-base.ts", import.meta.url).href, context);
   return next(specifier, context);
 } });
-const { listMachines } = await import("./machine-api.ts");
+const { countMachines, listMachines } = await import("./machine-api.ts");
 hooks.deregister();
+
+test("inventory totals include declared quantities and the service's count default", () => {
+  assert.equal(countMachines([{ count: 2 }, { count: null }, { count: 1 }, { count: 2 }]), 6);
+  assert.equal(countMachines([{ count: 2 }, { count: 1 }]), 3);
+  assert.equal(countMachines([]), 0);
+});
 
 test("inventory consumers receive every page and reject incomplete reads", async () => {
   const calls: string[] = [];

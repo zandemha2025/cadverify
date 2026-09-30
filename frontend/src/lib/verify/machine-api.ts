@@ -34,6 +34,11 @@ export interface MachineListPage {
   next_cursor: string | null;
 }
 
+/** Match the inventory service's default of one machine per undeclared count. */
+export function countMachines(machines: readonly Pick<OwnedMachine, "count">[]): number {
+  return machines.reduce((total, machine) => total + (machine.count ?? 1), 0);
+}
+
 /** Body for POST/PATCH — only `process` is required by the backend on create. */
 export interface MachineInput {
   name?: string | null;
