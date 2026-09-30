@@ -251,3 +251,6 @@ Saved-analysis follow-ups127/128: shared records now explain their original uplo
 
 
 Automatic fit follow-up129: native realSTL controls prove accepted30mm alignment, exact1000mm³ overlap,10mm manual gap, refused nonmatching alignment with15mm original gap and5mm manually corrected gap. Provenance now distinguishes the actual transform and its bounded surface-alignment limitation. Six realAPI combinations,47focused and2526full backend tests/3documented skips,499frontend tests/types/lint/build pass. No measurement algorithm change; broad automatic mating, engineering accuracy, production and external-provider proof remain open. See `129-fit-seating-provenance-proof.json`.
+
+
+Image-runtime follow-up130: premerge scans now expose3frontend and11backend HIGH findings with0CRITICAL. Nine are fixable: remove unnecessary global runtime npm and require the patched OpenSSL packages; five residual backend package findings stay open.12local deployment checks, shell validation, native STEP numeric probe and native direct-Node saved-record/share-image checks pass. Actual stripped-container startup, patched-image scan and deployment are pending; no waiver or claim that every feature works. Evidence:130-image-runtime-security-proof.json.

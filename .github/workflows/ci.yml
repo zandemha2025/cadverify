@@ -571,6 +571,40 @@ jobs:
           cache: 'false'
           output: outputs/security-proof/backend-${{ github.sha }}.cdx.json
 
+      - name: Exercise frontend image default startup and share image
+        if: always() && steps.frontend-image.outcome == 'success'
+        run: |
+          container=$(docker run --detach --publish 127.0.0.1::3000 "proofshape-ci/frontend:${GITHUB_SHA}")
+          trap 'docker logs "$container"; docker rm -f "$container" >/dev/null' EXIT
+          port=$(docker port "$container" 3000/tcp | awk -F: 'NR == 1 {print $NF}')
+          curl --fail --silent --show-error --retry 30 --retry-connrefused \
+            --retry-delay 1 --retry-max-time 60 --max-time 3 \
+            "http://127.0.0.1:${port}/opengraph-image" \
+            --output outputs/security-proof/frontend-share.png
+          python3 - <<'PY'
+          import struct
+          from pathlib import Path
+          data = Path("outputs/security-proof/frontend-share.png").read_bytes()
+          assert data[:8] == b"\x89PNG\r\n\x1a\n", "share route did not return PNG"
+          assert struct.unpack(">II", data[16:24]) == (1200, 630), "unexpected share image dimensions"
+          print("Default frontend image startup served a 1200x630 PNG.")
+          PY
+
+      - name: Exercise backend image native STEP parser
+        if: always() && steps.backend-image.outcome == 'success'
+        run: |
+          docker run --rm --network none \
+            --mount "type=bind,src=${PWD}/backend/tests/assets/cube.step,dst=/tmp/known.step,readonly" \
+            --entrypoint python "proofshape-ci/backend:${GITHUB_SHA}" -c '
+          from pathlib import Path
+          import numpy as np
+          from src.parsers.step_mesher import step_to_trimesh_from_bytes
+          mesh = step_to_trimesh_from_bytes(Path("/tmp/known.step").read_bytes(), "known.step")
+          assert mesh.is_watertight, "known STEP is no longer watertight"
+          np.testing.assert_allclose(mesh.extents, [20, 15, 10], atol=0.001, rtol=0)
+          np.testing.assert_allclose(mesh.volume, 3000 - np.pi * 3**2 * 10, atol=0.2, rtol=0)
+          print("Runtime STEP parser preserved the 20x15x10 mm bored block and its volume.")'
+
       - name: Write source-bound container build manifest
         if: always() && steps.backend-image.outcome == 'success' && steps.frontend-image.outcome == 'success'
         run: |

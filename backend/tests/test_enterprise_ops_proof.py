@@ -270,7 +270,7 @@ def test_frontend_dockerfile_matches_current_next_runtime_mode():
     assert "COPY --from=builder --chown=node:node /app/node_modules ./node_modules" in dockerfile
     assert "USER node" in dockerfile
     assert "COPY --from=builder --chown=node:node /app/.next ./.next" in dockerfile
-    assert 'CMD ["npm", "run", "start"]' in dockerfile
+    assert 'CMD ["node", "node_modules/next/dist/bin/next", "start"]' in dockerfile
 
 
 def test_compose_configs_have_smokeable_frontend_and_backend():

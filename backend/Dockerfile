@@ -81,6 +81,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # The remaining unfixed CVEs (no published Debian fix) are pinned with
 # justification in /.trivyignore. Base pin unchanged; apt resolves fixed versions
 # from trixie-security at build time. Rootfs-equivalent proof attached to the PR.
+# Require the 2026-09-29 OpenSSL fixes (CVE-2026-75804, CVE-2026-84782);
+# invalidate the old cached layer and reject mirrors missing the fixed packages.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openssl \
     libssl3t64 \
@@ -97,6 +99,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpcre2-8-0 \
     libsqlite3-0 \
     openssl-provider-legacy \
+    && for package in openssl libssl3t64 openssl-provider-legacy; do \
+         dpkg --compare-versions "$(dpkg-query -W -f='${Version}' "$package")" ge '3.5.7-1~deb13u3' || exit 1; \
+       done \
     && rm -rf /var/lib/apt/lists/*
 
 # STEP ingestion (B4): the gmsh manylinux wheel (libgmsh.so, embedded

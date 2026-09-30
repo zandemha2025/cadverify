@@ -1,0 +1,420 @@
+{
+  "finding": "130",
+  "status": "fix prepared; actual rebuilt image scans and probes pending",
+  "first_divergence": "step 3, expected patched runtime dependencies, state was cached OpenSSL 3.5.7-1~deb13u2 and vulnerable global npm dependencies in successfully built images",
+  "run_url": "https://github.com/zandemha2025/cadverify/actions/runs/36747006495",
+  "head_sha": "9d1ab3966fe02e446fe84f5aeae16742947e14fa",
+  "built_merge_sha": "df6ee914dc6f5d08b9e64f7d3da24aabb187294c",
+  "image_manifest": {
+    "claim": "CI_BUILD_PROOF",
+    "source_sha": "df6ee914dc6f5d08b9e64f7d3da24aabb187294c",
+    "backend_local_image_id": "sha256:12a0225b56a7dc95b724502107b943894b9bcefd02b0fcac81d21257f3054753",
+    "frontend_local_image_id": "sha256:906f89de1f3ebeb991f27034fb82f4409e043f97d2090b1af25d3a3d66176675"
+  },
+  "artifact_id": 11114250867,
+  "artifact_zip_sha256": "4d7a1240458dec098c767cd4c84ec9007c46bc564bd189417f3a762cc284b78d",
+  "sbom_sha256": {
+    "backend": "608c448e74a2bc40c542f7c51c164c25f5851b528456afd00f3ae4e8916a517d",
+    "frontend": "414df05811401a7dbb39bece65de112cacbcb38f3939aa456c5e1a0f545ecbbe"
+  },
+  "sbom_affected_components": {
+    "backend": [
+      {
+        "name": "libexpat1",
+        "version": "2.8.3-1~deb13u1",
+        "purl": "pkg:deb/debian/libexpat1@2.8.3-1~deb13u1?arch=amd64&distro=debian-13.5",
+        "properties": [
+          {
+            "name": "aquasecurity:trivy:LayerDiffID",
+            "value": "sha256:39b7d723a281168a82f3764b472098c3d5f39432d0dc0e6364ae01d230d3435b"
+          },
+          {
+            "name": "aquasecurity:trivy:PkgID",
+            "value": "libexpat1@2.8.3-1~deb13u1"
+          },
+          {
+            "name": "aquasecurity:trivy:PkgType",
+            "value": "debian"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcName",
+            "value": "expat"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcRelease",
+            "value": "1~deb13u1"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcVersion",
+            "value": "2.8.3"
+          }
+        ]
+      },
+      {
+        "name": "libssl3t64",
+        "version": "3.5.7-1~deb13u2",
+        "purl": "pkg:deb/debian/libssl3t64@3.5.7-1~deb13u2?arch=amd64&distro=debian-13.5",
+        "properties": [
+          {
+            "name": "aquasecurity:trivy:LayerDiffID",
+            "value": "sha256:152371f782939dc94992fdb48cd69bc4a79c278c897200ff9055481da7978763"
+          },
+          {
+            "name": "aquasecurity:trivy:PkgID",
+            "value": "libssl3t64@3.5.7-1~deb13u2"
+          },
+          {
+            "name": "aquasecurity:trivy:PkgType",
+            "value": "debian"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcName",
+            "value": "openssl"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcRelease",
+            "value": "1~deb13u2"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcVersion",
+            "value": "3.5.7"
+          }
+        ]
+      },
+      {
+        "name": "libx11-6",
+        "version": "2:1.8.12-1",
+        "purl": "pkg:deb/debian/libx11-6@1.8.12-1?arch=amd64&distro=debian-13.5&epoch=2",
+        "properties": [
+          {
+            "name": "aquasecurity:trivy:LayerDiffID",
+            "value": "sha256:39b7d723a281168a82f3764b472098c3d5f39432d0dc0e6364ae01d230d3435b"
+          },
+          {
+            "name": "aquasecurity:trivy:PkgID",
+            "value": "libx11-6@2:1.8.12-1"
+          },
+          {
+            "name": "aquasecurity:trivy:PkgType",
+            "value": "debian"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcEpoch",
+            "value": "2"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcName",
+            "value": "libx11"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcRelease",
+            "value": "1"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcVersion",
+            "value": "1.8.12"
+          }
+        ]
+      },
+      {
+        "name": "libx11-data",
+        "version": "2:1.8.12-1",
+        "purl": "pkg:deb/debian/libx11-data@1.8.12-1?arch=all&distro=debian-13.5&epoch=2",
+        "properties": [
+          {
+            "name": "aquasecurity:trivy:LayerDiffID",
+            "value": "sha256:39b7d723a281168a82f3764b472098c3d5f39432d0dc0e6364ae01d230d3435b"
+          },
+          {
+            "name": "aquasecurity:trivy:PkgID",
+            "value": "libx11-data@2:1.8.12-1"
+          },
+          {
+            "name": "aquasecurity:trivy:PkgType",
+            "value": "debian"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcEpoch",
+            "value": "2"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcName",
+            "value": "libx11"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcRelease",
+            "value": "1"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcVersion",
+            "value": "1.8.12"
+          }
+        ]
+      },
+      {
+        "name": "libx11-xcb1",
+        "version": "2:1.8.12-1",
+        "purl": "pkg:deb/debian/libx11-xcb1@1.8.12-1?arch=amd64&distro=debian-13.5&epoch=2",
+        "properties": [
+          {
+            "name": "aquasecurity:trivy:LayerDiffID",
+            "value": "sha256:39b7d723a281168a82f3764b472098c3d5f39432d0dc0e6364ae01d230d3435b"
+          },
+          {
+            "name": "aquasecurity:trivy:PkgID",
+            "value": "libx11-xcb1@2:1.8.12-1"
+          },
+          {
+            "name": "aquasecurity:trivy:PkgType",
+            "value": "debian"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcEpoch",
+            "value": "2"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcName",
+            "value": "libx11"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcRelease",
+            "value": "1"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcVersion",
+            "value": "1.8.12"
+          }
+        ]
+      },
+      {
+        "name": "libxrender1",
+        "version": "1:0.9.12-1",
+        "purl": "pkg:deb/debian/libxrender1@0.9.12-1?arch=amd64&distro=debian-13.5&epoch=1",
+        "properties": [
+          {
+            "name": "aquasecurity:trivy:LayerDiffID",
+            "value": "sha256:39b7d723a281168a82f3764b472098c3d5f39432d0dc0e6364ae01d230d3435b"
+          },
+          {
+            "name": "aquasecurity:trivy:PkgID",
+            "value": "libxrender1@1:0.9.12-1"
+          },
+          {
+            "name": "aquasecurity:trivy:PkgType",
+            "value": "debian"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcEpoch",
+            "value": "1"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcName",
+            "value": "libxrender"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcRelease",
+            "value": "1"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcVersion",
+            "value": "0.9.12"
+          }
+        ]
+      },
+      {
+        "name": "openssl-provider-legacy",
+        "version": "3.5.7-1~deb13u2",
+        "purl": "pkg:deb/debian/openssl-provider-legacy@3.5.7-1~deb13u2?arch=amd64&distro=debian-13.5",
+        "properties": [
+          {
+            "name": "aquasecurity:trivy:LayerDiffID",
+            "value": "sha256:152371f782939dc94992fdb48cd69bc4a79c278c897200ff9055481da7978763"
+          },
+          {
+            "name": "aquasecurity:trivy:PkgID",
+            "value": "openssl-provider-legacy@3.5.7-1~deb13u2"
+          },
+          {
+            "name": "aquasecurity:trivy:PkgType",
+            "value": "debian"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcName",
+            "value": "openssl"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcRelease",
+            "value": "1~deb13u2"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcVersion",
+            "value": "3.5.7"
+          }
+        ]
+      },
+      {
+        "name": "openssl",
+        "version": "3.5.7-1~deb13u2",
+        "purl": "pkg:deb/debian/openssl@3.5.7-1~deb13u2?arch=amd64&distro=debian-13.5",
+        "properties": [
+          {
+            "name": "aquasecurity:trivy:LayerDiffID",
+            "value": "sha256:152371f782939dc94992fdb48cd69bc4a79c278c897200ff9055481da7978763"
+          },
+          {
+            "name": "aquasecurity:trivy:PkgID",
+            "value": "openssl@3.5.7-1~deb13u2"
+          },
+          {
+            "name": "aquasecurity:trivy:PkgType",
+            "value": "debian"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcName",
+            "value": "openssl"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcRelease",
+            "value": "1~deb13u2"
+          },
+          {
+            "name": "aquasecurity:trivy:SrcVersion",
+            "value": "3.5.7"
+          }
+        ]
+      }
+    ],
+    "frontend": [
+      {
+        "name": "brace-expansion",
+        "version": "5.0.12",
+        "purl": "pkg:npm/brace-expansion@5.0.12",
+        "properties": [
+          {
+            "name": "aquasecurity:trivy:FilePath",
+            "value": "app/node_modules/glob/node_modules/brace-expansion/package.json"
+          },
+          {
+            "name": "aquasecurity:trivy:LayerDiffID",
+            "value": "sha256:f4c2dbcf6a2376c20061b15d9b9484b576a830c739459fd7acb7b661362b8167"
+          },
+          {
+            "name": "aquasecurity:trivy:PkgID",
+            "value": "brace-expansion@5.0.12"
+          },
+          {
+            "name": "aquasecurity:trivy:PkgType",
+            "value": "node-pkg"
+          }
+        ]
+      },
+      {
+        "name": "brace-expansion",
+        "version": "5.0.9",
+        "purl": "pkg:npm/brace-expansion@5.0.9",
+        "properties": [
+          {
+            "name": "aquasecurity:trivy:FilePath",
+            "value": "usr/local/lib/node_modules/npm/node_modules/brace-expansion/package.json"
+          },
+          {
+            "name": "aquasecurity:trivy:LayerDiffID",
+            "value": "sha256:a6911edf83cb4259ab0243a693bd7193914abe1defcfe43db72bd22717ace245"
+          },
+          {
+            "name": "aquasecurity:trivy:PkgID",
+            "value": "brace-expansion@5.0.9"
+          },
+          {
+            "name": "aquasecurity:trivy:PkgType",
+            "value": "node-pkg"
+          }
+        ]
+      },
+      {
+        "name": "undici",
+        "version": "6.27.0",
+        "purl": "pkg:npm/undici@6.27.0",
+        "properties": [
+          {
+            "name": "aquasecurity:trivy:FilePath",
+            "value": "usr/local/lib/node_modules/npm/node_modules/undici/package.json"
+          },
+          {
+            "name": "aquasecurity:trivy:LayerDiffID",
+            "value": "sha256:a6911edf83cb4259ab0243a693bd7193914abe1defcfe43db72bd22717ace245"
+          },
+          {
+            "name": "aquasecurity:trivy:PkgID",
+            "value": "undici@6.27.0"
+          },
+          {
+            "name": "aquasecurity:trivy:PkgType",
+            "value": "node-pkg"
+          }
+        ]
+      }
+    ]
+  },
+  "scans": {
+    "frontend": {
+      "high": 3,
+      "critical": 0,
+      "fixable_package_findings": 3
+    },
+    "backend": {
+      "high": 11,
+      "critical": 0,
+      "fixable_package_findings": 6,
+      "unfixed_package_findings": 5
+    }
+  },
+  "frontend_cves": [
+    "CVE-2026-102276",
+    "CVE-2026-102278",
+    "CVE-2026-19534"
+  ],
+  "backend_new_cves": [
+    "CVE-2026-75804",
+    "CVE-2026-84782"
+  ],
+  "backend_fixed_package_minimum": "3.5.7-1~deb13u3",
+  "residual_backend_cves": [
+    "CVE-2026-93990",
+    "CVE-2026-88806",
+    "CVE-2026-88807"
+  ],
+  "authoritative_fix_sources": [
+    "https://security-tracker.debian.org/tracker/CVE-2026-75804",
+    "https://security-tracker.debian.org/tracker/CVE-2026-84782"
+  ],
+  "changes": [
+    "Remove global npm/npx only inside frontend runner; invoke installed Next CLI directly with Node. Builder unchanged.",
+    "Refresh existing backend security layer and require all three OpenSSL packages at or above fixed minimum.",
+    "Run actual-image startup/share-PNG and known native STEP geometry probes in CI even when scans fail."
+  ],
+  "checks": {
+    "existing_runtime_contract_red": true,
+    "enterprise_ops_tests_passed": 12,
+    "ci_probe_shell_syntax": "pass",
+    "ci_step_numeric_probe_local": "pass; native installed gmsh parser, not image",
+    "native_direct_node_startup": "pass; same built app and saved record, host npm not removed",
+    "native_share_image": {
+      "width": 1200,
+      "height": 630,
+      "complete": true
+    },
+    "actual_docker_checks": "pending CI; Docker unavailable locally",
+    "trivyignore_changed": false
+  },
+  "screenshots": [
+    "130-direct-node-analysis.png",
+    "130-direct-node-share.png"
+  ],
+  "limitations": [
+    "Not deployed.",
+    "No claim of image vulnerability closure until rebuilt-image scans.",
+    "Five residual HIGH package findings remain open.",
+    "External providers, production retest and general accuracy remain unverified."
+  ]
+}
