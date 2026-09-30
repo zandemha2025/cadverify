@@ -1,0 +1,73 @@
+{
+  "finding": 117,
+  "status": "fixed locally; not deployed",
+  "engine": "0.3.16",
+  "original_files": {
+    "bored-block-mm.iges": "59407484c8e0db62203458be0865d160e763d6dce236b5e6fad0b6924746f588",
+    "bored-block-inch.iges": "5f0c71a7bf8767516e367406c63db007eac89f8b0d02476f7cf583f247bb18e6",
+    "open-bored-block-mm.iges": "128ba85ca0d6ae32e6aede10c3413e4bcc62ab4c5e8786e12aa0d9d6136d0f8f"
+  },
+  "first_divergence": "Unchanged closed bored-block IGES renders but native fit says part_a is not watertight; cold single and assembly readers cannot form a closed solid.",
+  "root_cause": {
+    "type_142_preference": 3,
+    "meaning": "2D and 3D representations equally preferred",
+    "native_default": "2D boundary reconstructed into a slightly different 3D spline",
+    "cap_circle_length_mm": 18.849555921538762,
+    "reconstructed_boundary_length_mm": 18.84955815051235,
+    "sewing_tolerance_unchanged_mm": 1e-08,
+    "diagnostic_prefer_supplied_3d_volume_mm3": 2717.256661181229
+  },
+  "fix": "After a native IGES import has no solid in an initially empty model, retry using existing supplied 3D curves for type142 preference0 or3 only. Change no coordinates or topology. Preserve explicit2D/3D choices. Accept only when the unchanged kernel forms a solid; otherwise restore the native import. Original retained source bytes are unchanged.",
+  "native": {
+    "fit_original_bytes": true,
+    "overlap_mm3": 2717.327,
+    "analytic_volume_mm3": 2717.2566611769184,
+    "relative_mesh_error": 2.588596950989457e-05,
+    "x_offset_mm": 30,
+    "gap_mm": 10,
+    "gap_request_ms": 20818.0,
+    "open_curved_missing_cap": "not-watertight error; old measurements withheld",
+    "verify_bbox_mm": [
+      20,
+      15,
+      10
+    ],
+    "verify_display_volume_cm3": 2.72,
+    "verify_watertight": true,
+    "verify_source_hash_matches_original": true,
+    "saved_decision": "01M3SDY6WCDSA2200T4KQK31X1",
+    "valid_replacement_recovery_overlap_mm3": 2717.327
+  },
+  "validation": {
+    "cold_iges_cases": 12,
+    "preference_preservation_cases": 4,
+    "focused_existing_and_new_pass": 49,
+    "additional_open_curved_restore_cases_pass": 2,
+    "full_backend_pass": 2494,
+    "full_backend_skips": 3,
+    "full_backend_seconds": 215.35,
+    "note": "Two additional open-curved tests were added and passed after the full run; no product code changed afterward.",
+    "pyright_errors": 214,
+    "pyright_warnings": 3,
+    "new_diagnostic_messages": 0,
+    "bandit": "PASS",
+    "frontend": "unchanged; prior498 tests/types/lint/build passed"
+  },
+  "screenshots": [
+    "117-curved-iges-before.png",
+    "117-curved-iges-fixed.png",
+    "117-curved-iges-gap.png",
+    "117-curved-iges-verify.png",
+    "117-open-curved-iges-refused.png",
+    "117-curved-iges-recovered.png"
+  ],
+  "sources": [
+    "https://github.com/Open-Cascade-SAS/OCCT/wiki/iges",
+    "https://gmsh.info/doc/texinfo/"
+  ],
+  "limits": [
+    "Recovery currently handles standard comma/semicolon delimiters; other files retain native handling.",
+    "Measurements remain tessellated, with existing sampling and triangle limits.",
+    "No new production deployment or broad customer-quote accuracy claim."
+  ]
+}

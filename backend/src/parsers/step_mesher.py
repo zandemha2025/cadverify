@@ -149,6 +149,71 @@ def _configure_cad_import(path: str) -> None:
         gmsh.option.setNumber("Geometry.OCCMakeSolids", 1)
 
 
+def _iges_3d_preference(data: bytes) -> bytes | None:
+    """Prefer supplied 3D curves only where IGES declares no 2D/3D preference.
+
+    Change only the type-142 preference byte, never coordinates or topology.
+    Explicit 2D preferences and entities missing either representation stay put.
+    """
+    import re
+
+    lines = data.splitlines(keepends=True)
+    global_data = b"".join(line[:72] for line in lines if line[72:73] == b"G").lstrip()
+    # ponytail: this recovery handles the standard delimiters; custom delimiters
+    # keep the native reader's result until a real fixture justifies extending it.
+    if not global_data.startswith((b",,", b",1H;,", b"1H,,,", b"1H,,1H;,")):
+        return None
+    try:
+        parameters = {int(line[73:80]): i for i, line in enumerate(lines) if line[72:73] == b"P"}
+        changed = False
+        for i, line in enumerate(lines):
+            if line[72:73] != b"D" or int(line[73:80]) % 2 == 0 or int(line[:8]) != 142:
+                continue
+            start, count = int(line[8:16]), int(lines[i + 1][24:32])
+            if count <= 0 or count > len(parameters):
+                continue
+            records = [parameters[n] for n in range(start, start + count)]
+            if any(int(lines[n][64:72]) != int(line[73:80]) for n in records):
+                continue
+            payload = b"".join(lines[n][:64] for n in records)
+            match = re.fullmatch(rb"\s*142\s*,\s*\d+\s*,\s*[1-9]\d*\s*,\s*[1-9]\d*\s*,\s*[1-9]\d*\s*,\s*([03])\s*;\s*", payload)
+            if match:
+                row, column = divmod(match.start(1), 64)
+                index = records[row]
+                lines[index] = lines[index][:column] + b"2" + lines[index][column + 1:]
+                changed = True
+        return b"".join(lines) if changed else None
+    except (ValueError, IndexError, KeyError):
+        return None  # The native reader owns malformed or unsupported records.
+
+
+def _import_cad_shapes(path: str):
+    """Retry unclosed IGES using its equally preferred, supplied 3D curves."""
+    import tempfile
+
+    empty_model = not gmsh.model.occ.getEntities()
+    roots = gmsh.model.occ.importShapes(path)
+    if not empty_model or Path(path).suffix.lower() not in {".iges", ".igs"} or gmsh.model.occ.getEntities(3):
+        return roots
+    alternate = _iges_3d_preference(Path(path).read_bytes())
+    if alternate is None:
+        return roots
+    with tempfile.NamedTemporaryFile(suffix=".iges", mode="w+b") as tmp:
+        os.chmod(tmp.name, 0o600)
+        tmp.write(alternate)
+        tmp.flush()
+        gmsh.model.occ.remove(roots, recursive=True)
+        try:
+            recovered = gmsh.model.occ.importShapes(tmp.name)
+            if gmsh.model.occ.getEntities(3):
+                logger.info("Recovered IGES solid using its supplied 3D curves at unchanged tolerance")
+                return recovered
+        except Exception:
+            logger.warning("IGES 3D-curve retry failed; retaining native import")
+        gmsh.model.occ.remove(gmsh.model.occ.getEntities(), recursive=True)
+        return gmsh.model.occ.importShapes(path)
+
+
 def step_to_trimesh_from_bytes(data: bytes, filename: str = "upload.step") -> trimesh.Trimesh:
     """Parse STEP bytes -> watertight-where-possible ``trimesh.Trimesh``.
 
@@ -227,7 +292,7 @@ def _tessellate_once(
         gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", curvature_pts)
         gmsh.model.add("part")
         try:
-            gmsh.model.occ.importShapes(path)   # STEP/IGES/BREP via OCC
+            _import_cad_shapes(path)   # STEP/IGES/BREP via OCC
             gmsh.model.occ.synchronize()
         except Exception as exc:                # OCC reader rejected the file
             raise _StepReadError(str(exc)) from exc

@@ -62,6 +62,7 @@ from src.parsers.step_mesher import (
     _EmptyMeshError,
     _StepReadError,
     _configure_cad_import,
+    _import_cad_shapes,
     is_step_supported,
 )
 
@@ -529,7 +530,7 @@ def _extract_once(path: str, algorithm, curvature_pts: float, heal: bool) -> Ass
         _configure_mesh(curvature_pts, heal)
         gmsh.model.add("assembly")
         try:
-            gmsh.model.occ.importShapes(path)
+            _import_cad_shapes(path)
             gmsh.model.occ.synchronize()
         except Exception as exc:
             raise _StepReadError(str(exc)) from exc
