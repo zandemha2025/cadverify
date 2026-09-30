@@ -1,6 +1,8 @@
 """Conversational prefill stays deterministic, explicit, and non-executable."""
 from __future__ import annotations
 
+import pytest
+
 from src.designs.interpreter import interpret_design_prompt
 
 
@@ -59,4 +61,34 @@ def test_prompt_text_never_becomes_an_operation_or_source_field():
         "depth_mm",
         "thickness_mm",
         "holes",
+    }
+
+
+@pytest.mark.parametrize("prompt,field,expected", [
+    ("-80 x 50 x 6 mm plate", "width_mm", -80.0),
+    ("−80 x 50 x 6 mm plate", "width_mm", -80.0),
+    (".80 x 50 x 6 mm plate", "width_mm", 0.8),
+    ("plate -80 mm wide, 50 mm deep, 6 mm thick", "width_mm", -80.0),
+    ("plate .80 mm wide, 50 mm deep, 6 mm thick", "width_mm", 0.8),
+    ("L bracket 80 x 50 x -40 x 4 mm", "height_mm", -40.0),
+    ("open enclosure 80 x 50 x 40 x -2 mm", "wall_thickness_mm", -2.0),
+])
+def test_invalid_dimensions_are_not_reinterpreted_as_positive_integers(prompt, field, expected):
+    result = interpret_design_prompt(prompt)
+    assert result["status"] == "needs_input"
+    assert "plan" not in result
+    assert result["prefill"][field] == expected
+
+
+@pytest.mark.parametrize("prompt", [
+    "80 x 50 x .6 mm plate",
+    "plate width +80 mm, depth +50 mm, thickness +.6 mm",
+    "plate 80 mm wide, 50 mm deep, .6 mm thick",
+])
+def test_valid_signed_and_fractional_dimensions_keep_their_value(prompt):
+    result = interpret_design_prompt(prompt)
+    assert result["status"] == "ready"
+    assert result["plan"] == {
+        "kind": "plate", "width_mm": 80.0, "depth_mm": 50.0,
+        "thickness_mm": 0.6, "holes": [],
     }

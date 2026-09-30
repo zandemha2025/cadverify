@@ -1093,3 +1093,11 @@ Batch capacity follow-up (125): two additional cold-source native runs each comp
 - All499frontend tests, types, changed-source lint and production build pass. Backend suite not repeated for this frontend-only change. Fault proxy stopped and directAPI8017 restored; native normal Refresh passes. Evidence:131-design-recovery-proof.json,6screenshots and scripts/e2e/design-recovery-validation.mjs. Not deployed.
 
 CI36747006495 completed on9d1ab39 through126:all8non-image jobs pass, including the complete BrowserE2E chain. Both image scans fail with the14HIGH/0CRITICAL findings documented in130; SBOMs/build receipt upload succeed. Follow-ups127–131 require fresh exact-head CI. See ci-36747006495-summary.json.
+
+
+### 132 — Design descriptions silently lost minus signs and decimal points (fixed locally)
+- first divergence: step2, expected the numeric value in the description to be preserved, state was -80 and.80 extracted as80 and labelled Safe dimensions extracted. Suffix-named .6mmthick also became6mm in the original parser.
+- Correct the existing shared numeric expression for optional signs/leading decimals and normalize Unicode minus. All sequence, named-dimension and hole-diameter extraction uses that expression; existing strict geometry bounds remain unchanged. No new parser, dependency, schema or geometry algorithm.
+- Ten regression cases fail before the fix and pass after it;24focused and2536full backend tests pass with3documented environment skips in215.84s, protected skip policy enabled. Types214errors/3warnings, zero new diagnostic messages; changed-source Bandit has0medium/high findings. Frontend unchanged from131.
+- Native negative width remains−80 and is rejected; Generate design refuses it. Native.80 remains0.8 and fails the existing minimum instead of becoming80. Valid.6mmthickness stays0.6: actual generated plate01M3SPP4H100DJTFH4K6HWZJA6 and its normal Verify import agree at80×50×0.6mm,2.40cm³,watertight, with exact same evidence hash. The independent box formula80·50·0.6/1000=2.4cm³ is the numeric oracle. Saved cost-decision01M3SPQKP8BZH1VVCYKMZTG9TH; its market-price accuracy is not established.
+- Evidence:132-design-number-proof.json and7native screenshots. Local API refreshed; no frontend rebuild was needed after131. Not deployed. CI36752779298 runs the pushed dc9564e through131 and excludes132.

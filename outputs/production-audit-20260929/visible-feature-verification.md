@@ -260,3 +260,6 @@ Design Studio native expansion: create bracket80×50×40mm,4mmthick →23.20cm³
 
 
 Design Studio recovery131: actual local list/history503s exposed false empty-library and silently missing revision history. Both now show recoverable errors; native repeated failures, keyboard retry, preserved historical geometry/hash and restored comparison controls pass on unchanged real designs.499frontend tests/types/lint/build pass. Fault proxy removed; not deployed. CI36747006495 on9d1ab39 completed with8jobs passing, image security failing as recorded in130. Next exact-head CI remains required.
+
+
+Design numeric fidelity132: minus signs/leading decimal points were dropped by prompt extraction. Shared regex now preserves the actual values and existing schema bounds reject invalid geometry. Ten RED→GREEN cases,24focused,2536full backend tests/3documented skips and zero new type diagnostics pass. Native.6mm input produces real STEP that re-verifies as80×50×0.6mm/2.40cm³/watertight with matching hash. Native negative and too-small decimal widths remain invalid. No broad language/manufacturing/pricing accuracy claim or deployment; currentCI36752779298 covers131 only.
