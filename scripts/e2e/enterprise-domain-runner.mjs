@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { captureBuildIdentity, makeReleaseEvidence } from "./human-sim-release-evidence.mjs";
+import { captureBuildIdentity, hasProcessScopedConfidence, makeReleaseEvidence } from "./human-sim-release-evidence.mjs";
 import {
   makeGoldenPathEvidence,
   validateGoldenPathMap,
@@ -1698,6 +1698,8 @@ class EnterpriseDomainQA {
       assert(recalibration.validated === true, `recalibration did not validate: ${JSON.stringify(recalibration)}`);
       assert(recalibration.from_real === true, "recalibration was not bound to real held-out residuals");
       assert(recalibration.n_real >= 3, `only ${recalibration.n_real} costable real held-out residuals were measured`);
+      const validatedProcesses = recalibration.validated_processes;
+      assert(sameArray(validatedProcesses, ["fdm"]), `FDM-only actuals validated other processes: ${JSON.stringify(validatedProcesses)}`);
       const skippedIds = (recalibration.skipped || []).map((item) => item.part_id).sort();
       const legacyIds = (this.evidence.groundTruth?.records || []).map((record) => record.part_id).sort();
       assert(recalibration.n_skipped === 4, `expected four explicitly unavailable legacy sources, got ${recalibration.n_skipped}`);
@@ -1713,7 +1715,7 @@ class EnterpriseDomainQA {
 
       // Prove the success ripples into the actual product surface.  A green
       // recalibration toast is not enough: upload the source again and require
-      // every served estimate to carry a measured empirical confidence band.
+      // FDM to carry measured bands while unseen processes remain unvalidated.
       await this.clickRail("Verify");
       const servedCostPromise = this.page.waitForResponse((response) =>
         response.request().method() === "POST" &&
@@ -1725,10 +1727,19 @@ class EnterpriseDomainQA {
       assert(servedCostResponse.status() === 200, `post-calibration should-cost HTTP ${servedCostResponse.status()}`);
       const servedEstimates = Array.isArray(servedCost.estimates) ? servedCost.estimates : [];
       assert(servedEstimates.length > 0, "post-calibration should-cost returned no estimates");
-      assert(
-        servedEstimates.every((estimate) => estimate.confidence?.validated === true),
-        "one or more post-calibration estimates still served an assumption band",
-      );
+      const servedConfidence = servedEstimates.map((estimate) => ({
+        process: estimate.process,
+        confidence: {
+          validated: estimate.confidence?.validated,
+          method: estimate.confidence?.method,
+          n_samples: estimate.confidence?.n_samples,
+        },
+      }));
+      assert(hasProcessScopedConfidence(servedConfidence, validatedProcesses),
+        "served confidence must measure FDM only and retain assumption bands on unseen processes");
+      const selectedProcess = servedCost.decision?.make_now_process;
+      assert(servedEstimates.some((estimate) => estimate.process === selectedProcess), "selected verdict has no served estimate");
+      const selectedValidated = validatedProcesses.includes(selectedProcess);
       await this.page.waitForFunction(() => {
         const text = document.body.innerText;
         return (
@@ -1740,9 +1751,10 @@ class EnterpriseDomainQA {
         state: "hidden",
         timeout: 20_000,
       });
-      const validatedVerdict = this.page.getByText(
-        /this verdict is validated — checked against your actuals/i,
-      );
+      const verdictPattern = selectedValidated
+        ? /this verdict is validated — checked against your actuals/i
+        : /this verdict is unvalidated — an assumption band/i;
+      const validatedVerdict = this.page.getByText(verdictPattern);
       await validatedVerdict.waitFor({
         timeout: 20_000,
       });
@@ -1750,8 +1762,8 @@ class EnterpriseDomainQA {
       await this.page.waitForTimeout(250);
       const servedText = await this.scanVisibleText("served-measured-band");
       assert(
-        /this verdict is validated — checked against your actuals/i.test(servedText),
-        "measured confidence provenance was not visible on the completed verdict",
+        verdictPattern.test(servedText),
+        "confidence provenance did not match the selected process on the completed verdict",
       );
       const servedScreenshot = await this.shot("ENT-02-served-measured-band", true);
 
@@ -1769,6 +1781,9 @@ class EnterpriseDomainQA {
         served_status: servedCostResponse.status(),
         served_estimate_count: servedEstimates.length,
         served_validated_count: servedEstimates.filter((estimate) => estimate.confidence?.validated === true).length,
+        served_confidence: servedConfidence,
+        selected_process: selectedProcess,
+        selected_validated: selectedValidated,
         served_visible_text: servedText.replace(/\s+/g, " ").trim(),
         served_screenshot: servedScreenshot,
         url: this.page.url(),
@@ -2250,7 +2265,7 @@ class EnterpriseDomainQA {
           "Confirm the visible real-record count and validation floor.",
           "Choose Recalibrate and inspect the exact refusal plus persisted API counts.",
           "Import eight distinct actuals bound to the exact source SHA through the visible CSV control, then choose Recalibrate again.",
-          "Upload cube.step again and require the served should-cost confidence on every estimate—not just the toast—to be measured and validated.",
+          "Upload cube.step again; require measured FDM estimates, unvalidated alternatives, and visible confidence matching the selected process.",
         ],
         observed: {
           url: calibrationRecovery.url || groundTruth.url || "not observed",
@@ -2260,7 +2275,7 @@ class EnterpriseDomainQA {
             visibleSignal(groundTruth.visible_text, /recalibration refused:\s*4 real of 8 needed/i, "missing refusal"),
             visibleSignal(calibrationRecovery.calibration_visible_text, /validated \(measured\)/i, "missing measured calibration status"),
             visibleSignal(calibrationRecovery.calibration_visible_text, /4 records could not be costed/i, "missing bounded legacy-source warning"),
-            visibleSignal(calibrationRecovery.served_visible_text, /this verdict is validated — checked against your actuals/i, "missing served measured provenance"),
+            visibleSignal(calibrationRecovery.served_visible_text, calibrationRecovery.selected_validated ? /this verdict is validated — checked against your actuals/i : /this verdict is unvalidated — an assumption band/i, "missing selected-process confidence provenance"),
           ],
           persisted: {
             refusalRecords: groundTruth.records || [],
@@ -2282,9 +2297,11 @@ class EnterpriseDomainQA {
             skippedLegacy: calibrationRecovery.recalibration?.n_skipped ?? "missing",
             servedEstimateCount: calibrationRecovery.served_estimate_count ?? "missing",
             servedValidatedCount: calibrationRecovery.served_validated_count ?? "missing",
+            servedConfidence: calibrationRecovery.served_confidence || [],
+            selectedProcess: calibrationRecovery.selected_process || "missing",
           },
           authorization,
-          recovery: "The first attempt stayed refused. Eight source-bound actuals then imported with zero row skips, three or more costable held-out residuals earned validation, four legacy rows remained explicitly excluded, and a fresh should-cost served measured bands on every estimate.",
+          recovery: "The first attempt stayed refused. Eight source-bound FDM actuals then imported with zero row skips, three or more FDM held-out residuals earned validation, four legacy rows remained excluded, and a fresh should-cost served measured FDM bands with unvalidated alternatives.",
         },
         screenshot: calibrationRecovery.served_screenshot || groundTruth.screenshot,
         assertions: [
@@ -2307,9 +2324,10 @@ class EnterpriseDomainQA {
           assertion("only unavailable legacy sources skipped", expectedActualPartIds, calibrationRecovery.skipped_part_ids || [], sameArray(calibrationRecovery.skipped_part_ids || [], expectedActualPartIds)),
           assertion("all source-bound rows costed", 0, (calibrationRecovery.skipped_part_ids || []).filter((partId) => partId.startsWith("calibration-proof-")).length, (calibrationRecovery.skipped_part_ids || []).every((partId) => !partId.startsWith("calibration-proof-"))),
           assertion("served should-cost status", 200, calibrationRecovery.served_status ?? "missing", calibrationRecovery.served_status === 200),
-          assertion("every served estimate is validated", calibrationRecovery.served_estimate_count ?? "estimate count", calibrationRecovery.served_validated_count ?? "missing", calibrationRecovery.served_estimate_count > 0 && calibrationRecovery.served_validated_count === calibrationRecovery.served_estimate_count),
+          assertion("only FDM is validated", ["fdm"], calibrationRecovery.recalibration?.validated_processes || [], sameArray(calibrationRecovery.recalibration?.validated_processes || [], ["fdm"])),
+          assertion("served confidence respects process scope", "all served estimates: measured FDM and unvalidated alternatives", calibrationRecovery.served_confidence || [], hasProcessScopedConfidence(calibrationRecovery.served_confidence, calibrationRecovery.recalibration?.validated_processes) && calibrationRecovery.served_confidence.length === calibrationRecovery.served_estimate_count),
           assertion("visible measured calibration", "validated (measured)", visibleSignal(calibrationRecovery.calibration_visible_text, /validated \(measured\)/i, "missing"), /validated \(measured\)/i.test(calibrationRecovery.calibration_visible_text || "")),
-          assertion("visible served measured provenance", "this verdict is validated — checked against your actuals", visibleSignal(calibrationRecovery.served_visible_text, /this verdict is validated — checked against your actuals/i, "missing"), /this verdict is validated — checked against your actuals/i.test(calibrationRecovery.served_visible_text || "")),
+          assertion("visible selected-process confidence", calibrationRecovery.selected_validated ? "validated" : "unvalidated", calibrationRecovery.served_visible_text || "missing", Boolean(calibrationRecovery.selected_process) && (calibrationRecovery.selected_validated ? /this verdict is validated — checked against your actuals/i : /this verdict is unvalidated — an assumption band/i).test(calibrationRecovery.served_visible_text || "")),
         ],
       }),
 
@@ -2539,10 +2557,8 @@ class EnterpriseDomainQA {
         sourceBoundSkipped: (this.evidence.calibrationRecovery?.skipped_part_ids || [])
           .filter((partId) => partId.startsWith("calibration-proof-")).length,
         servedEstimateCount: this.evidence.calibrationRecovery?.served_estimate_count,
-        servedValidatedAll:
-          this.evidence.calibrationRecovery?.served_estimate_count > 0 &&
-          this.evidence.calibrationRecovery?.served_validated_count ===
-            this.evidence.calibrationRecovery?.served_estimate_count,
+        validatedProcesses: this.evidence.calibrationRecovery?.recalibration?.validated_processes,
+        servedConfidence: this.evidence.calibrationRecovery?.served_confidence,
       },
       "ENT-04": {
         quantity: this.evidence.portfolio?.annualized_unit_cost_qty,
@@ -2669,7 +2685,7 @@ The test signs up or logs in as a real org admin, proves unauthenticated org dat
 - Governed rate cards are in effect only after publish and remain DEFAULT / not validated.
 - Machine envelopes, rates, and materials round-trip with provenance=user.
 - Ground-truth recalibration refuses with 4 real records because the floor is 8, then eight source-bound actuals import without row loss and produce at least three costable held-out residuals.
-- A successful recalibration is not accepted on its toast alone: every estimate from the next real STEP upload must serve a validated empirical confidence band.
+- A successful recalibration is not accepted on its toast alone: the next real STEP upload must serve measured FDM bands, unvalidated bands for unseen processes, and visible confidence matching the selected process.
 - API key creation reveals the one-time secret on /settings/developer.
 - The Verify UI persists the declared service world to part-context before costing.
 - Portfolio annualized exposure is null before annual_volume and after declaration until re-verification; it then equals the engine recommendation at that exact quantity × declared volume.

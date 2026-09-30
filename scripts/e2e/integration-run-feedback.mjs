@@ -4,15 +4,27 @@ import assert from "node:assert/strict";
 // on /integrations. Accepts a CUA tab; every interaction uses its browser API.
 // partialCsv has one valid row and a blank part_id on line 3; validCsv has one
 // valid row. All runs below are dry runs and do not import business records.
-export async function verifyIntegrationFeedback(tab, { partialCsv, validCsv }) {
+export async function verifyVendorApiSeparation(tab) {
   const page = tab.playwright;
   const connector = page.getByRole("combobox", { name: "Connector", exact: true });
   const run = page.getByRole("button", { name: "Run", exact: true });
   for (const label of ["SAP S/4HANA Product/BOM read-only", "PTC Windchill Part/BOM read-only"]) {
     await connector.selectOption({ label });
-    assert.match(await page.getByRole("status").innerText(), /cannot run yet/);
+    const status = await page.getByRole("status").innerText();
+    assert.match(status, label.startsWith("SAP") ? /preview a SAP BOM explosion/ : /preview and import a Windchill BOM/);
+    if (label.startsWith("SAP")) {
+      assert.match(status, /Assembly import is not supported/);
+      assert.doesNotMatch(await page.getByRole("main").innerText(), /SAP BOM reads and API imports are not available yet/);
+    }
     assert.equal(await run.count(), 0, "vendor API must not route through CSV");
   }
+}
+
+export async function verifyIntegrationFeedback(tab, { partialCsv, validCsv }) {
+  const page = tab.playwright;
+  const connector = page.getByRole("combobox", { name: "Connector", exact: true });
+  const run = page.getByRole("button", { name: "Run", exact: true });
+  await verifyVendorApiSeparation(tab);
   await connector.selectOption({ label: "SAP manifest CSV" });
   assert.equal(await page.getByRole("link", { name: "Download CSV template" }).getAttribute("href"),
     "/api/proxy/manifest/import/template");

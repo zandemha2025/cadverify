@@ -7,6 +7,7 @@ import {
   RELEASE_EVIDENCE_SCHEMA_VERSION,
   validateBuildIdentities,
   validateCriticalEvidence,
+  hasProcessScopedConfidence,
 } from "./human-sim-release-evidence.mjs";
 
 const cubeSha = "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a";
@@ -115,8 +116,12 @@ function completeReports() {
             calibrationFromReal: true,
             heldoutReal: 3,
             sourceBoundSkipped: 0,
-            servedEstimateCount: 24,
-            servedValidatedAll: true,
+            servedEstimateCount: 2,
+            validatedProcesses: ["fdm"],
+            servedConfidence: [
+              { process: "fdm", confidence: { validated: true, method: "measured-residual", n_samples: 3 } },
+              { process: "mjf", confidence: { validated: false, method: "assumption-band", n_samples: 0 } },
+            ],
           },
           "ENT-04": {
             quantity: 12000,
@@ -186,6 +191,26 @@ test("complete structured critical evidence satisfies every hardened contract", 
   const result = validateCriticalEvidence(completeReports());
   assert.equal(result.problems.length, 0);
   assert.equal(result.valid, result.total);
+});
+
+test("calibration evidence rejects cross-process leakage, missing bands and insufficient real residuals", () => {
+  const base = completeReports().enterprise.data.releaseEvidence.criticalPaths["ENT-02"];
+  assert.equal(hasProcessScopedConfidence(base.servedConfidence, ["fdm"]), true);
+  for (const mutate of [
+    (entry) => { entry.servedConfidence[1].confidence = entry.servedConfidence[0].confidence; },
+    (entry) => { entry.servedConfidence[0].confidence = entry.servedConfidence[1].confidence; },
+    (entry) => { entry.servedConfidence[0].confidence.n_samples = 2; },
+    (entry) => { entry.servedConfidence[0].confidence.method = "assumption-band"; },
+    (entry) => { entry.servedConfidence = entry.servedConfidence.slice(0, 1); },
+    (entry) => { entry.servedConfidence = entry.servedConfidence.slice(1); },
+    (entry) => { entry.servedConfidence = []; },
+    (entry) => { entry.validatedProcesses = ["mjf"]; },
+    (entry) => { entry.servedEstimateCount += 1; },
+  ]) {
+    const reports = completeReports();
+    mutate(reports.enterprise.data.releaseEvidence.criticalPaths["ENT-02"]);
+    assert.ok(validateCriticalEvidence(reports).problems.some((item) => item.requirementId === "ENT-02"));
+  }
 });
 
 test("critical evidence failures identify the exact missing field", () => {

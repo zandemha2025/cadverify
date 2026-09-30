@@ -96,6 +96,19 @@ function machineRates(value) {
   );
 }
 
+export function hasProcessScopedConfidence(estimates, validatedProcesses) {
+  if (!Array.isArray(estimates) || !Array.isArray(validatedProcesses) || !validatedProcesses.length) return false;
+  return validatedProcesses.every((process) => nonEmptyString(process) && estimates.some((estimate) => estimate?.process === process)) &&
+    estimates.some((estimate) => !validatedProcesses.includes(estimate?.process)) &&
+    estimates.every((estimate) => {
+      if (!nonEmptyString(estimate?.process)) return false;
+      const confidence = estimate.confidence;
+      return validatedProcesses.includes(estimate.process)
+        ? confidence?.validated === true && confidence.method === "measured-residual" && Number.isInteger(confidence.n_samples) && confidence.n_samples >= 3
+        : confidence?.validated === false && confidence.method === "assumption-band" && confidence.n_samples === 0;
+    });
+}
+
 const definitions = [
   {
     id: "PUB-03",
@@ -188,7 +201,8 @@ const definitions = [
       ["releaseEvidence.criticalPaths.ENT-02.heldoutReal", (value) => typeof value === "number" && value >= 3, ">= 3 costable held-out residuals"],
       ["releaseEvidence.criticalPaths.ENT-02.sourceBoundSkipped", (value) => value === 0, "0 source-bound skips"],
       ["releaseEvidence.criticalPaths.ENT-02.servedEstimateCount", (value) => typeof value === "number" && value > 0, "positive estimate count"],
-      ["releaseEvidence.criticalPaths.ENT-02.servedValidatedAll", (value) => value === true, "true"],
+      ["releaseEvidence.criticalPaths.ENT-02.validatedProcesses", (value) => Array.isArray(value) && value.length === 1 && value[0] === "fdm", "only fdm"],
+      ["releaseEvidence.criticalPaths.ENT-02", (value) => hasProcessScopedConfidence(value?.servedConfidence, value?.validatedProcesses) && value.servedConfidence.length === value.servedEstimateCount, "all served estimates: measured FDM and unvalidated alternatives, without cross-process leakage"],
     ],
   },
   {
