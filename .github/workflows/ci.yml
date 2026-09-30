@@ -507,6 +507,8 @@ jobs:
           cache-from: type=gha,scope=backend-image
           cache-to: type=gha,mode=max,scope=backend-image
 
+      # Scan every built image before merge as well as on main. A failed scan
+      # stays a failing gate; preserve the other scan, SBOMs and source receipt.
       # Trivy DB daily pin (2026-09-16): the trivy-action internal DB cache uses
       # save-always:false, so a red scan never saved the DB and every rerun pulled
       # the freshest DB and failed on whatever Debian published that hour (main
@@ -514,12 +516,10 @@ jobs:
       # pinned DB before scanning and save it even on failure; the date key
       # rotates daily so the DB is reviewed/refreshed once per day, not per run.
       - name: Datestamp for Trivy DB pin
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         id: trivy-db-date
         run: echo "date=$(date +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
 
       - name: Restore pinned Trivy DB (daily)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         id: trivy-db-cache
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
@@ -528,11 +528,11 @@ jobs:
           restore-keys: trivy-db-pin-
 
       - name: Prepare image security evidence directory
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: always() && (steps.backend-image.outcome == 'success' || steps.frontend-image.outcome == 'success')
         run: mkdir -p outputs/security-proof
 
       - name: Scan frontend image (high/critical vulnerabilities)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: always() && steps.frontend-image.outcome == 'success'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: proofshape-ci/frontend:${{ github.sha }}
@@ -543,7 +543,7 @@ jobs:
           cache: 'false'
 
       - name: Scan backend image (high/critical vulnerabilities)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: always() && steps.backend-image.outcome == 'success'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: proofshape-ci/backend:${{ github.sha }}
@@ -554,7 +554,7 @@ jobs:
           cache: 'false'
 
       - name: Generate frontend CycloneDX SBOM
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: always() && steps.frontend-image.outcome == 'success'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: proofshape-ci/frontend:${{ github.sha }}
@@ -563,7 +563,7 @@ jobs:
           output: outputs/security-proof/frontend-${{ github.sha }}.cdx.json
 
       - name: Generate backend CycloneDX SBOM
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: always() && steps.backend-image.outcome == 'success'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: proofshape-ci/backend:${{ github.sha }}
@@ -572,7 +572,7 @@ jobs:
           output: outputs/security-proof/backend-${{ github.sha }}.cdx.json
 
       - name: Write source-bound container build manifest
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: always() && steps.backend-image.outcome == 'success' && steps.frontend-image.outcome == 'success'
         run: |
           BACKEND_IMAGE_ID=$(docker image inspect "proofshape-ci/backend:${GITHUB_SHA}" --format '{{.Id}}')
           FRONTEND_IMAGE_ID=$(docker image inspect "proofshape-ci/frontend:${GITHUB_SHA}" --format '{{.Id}}')
@@ -586,7 +586,7 @@ jobs:
             > outputs/security-proof/build-manifest.json
 
       - name: Upload container build and security evidence
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: always() && (steps.backend-image.outcome == 'success' || steps.frontend-image.outcome == 'success')
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: container-build-proof-${{ github.sha }}
@@ -594,7 +594,7 @@ jobs:
           if-no-files-found: error
 
       - name: Save Trivy DB pin even on scan failure
-        if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.trivy-db-cache.outputs.cache-hit != 'true'
+        if: always() && steps.trivy-db-date.outcome == 'success' && steps.trivy-db-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .cache/trivy

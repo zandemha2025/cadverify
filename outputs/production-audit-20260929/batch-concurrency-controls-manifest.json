@@ -1,0 +1,18 @@
+[
+  {
+    "control": "max12",
+    "source_sha256": "4e3a4cea547a1f44de4aac9afae47c0146eaa050addf4ac99c4f9e25085c2183",
+    "source_change": "FILE_NAME header only; DATA unchanged",
+    "archive": "batch-max12-real.zip",
+    "members": 12,
+    "zip_sha256": "717073882ede71033b57d4b9b4f451dab23342739240568a558cb12956099079"
+  },
+  {
+    "control": "default10",
+    "source_sha256": "45ccd05409419463190efee79a71faf240084b40e93734509b5cbda1da21f182",
+    "source_change": "FILE_NAME header only; DATA unchanged",
+    "archive": "batch-default10-real.zip",
+    "members": 12,
+    "zip_sha256": "48fa125b4aa20068f337a754b30d897622fd734ee186ec32b6ef811ad8138ecc"
+  }
+]

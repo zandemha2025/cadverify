@@ -1,0 +1,73 @@
+{
+  "conclusion": "failure",
+  "headSha": "6a6c0cf2e449a6a625f8113242324d8f882337a6",
+  "status": "completed",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36744899909",
+  "jobs": [
+    {
+      "name": "Frontend Build & Lint",
+      "status": "completed",
+      "conclusion": "failure",
+      "started_at": "2026-09-30T16:32:06Z",
+      "completed_at": "2026-09-30T16:32:42Z"
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T16:32:06Z",
+      "completed_at": "2026-09-30T16:33:08Z"
+    },
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T16:32:06Z",
+      "completed_at": "2026-09-30T16:33:02Z"
+    },
+    {
+      "name": "Commit hook integrity policy",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T16:32:06Z",
+      "completed_at": "2026-09-30T16:32:15Z"
+    },
+    {
+      "name": "Backend Tests",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T16:32:07Z",
+      "completed_at": "2026-09-30T16:46:12Z"
+    },
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T16:32:08Z",
+      "completed_at": "2026-09-30T16:32:17Z"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T16:32:20Z",
+      "completed_at": "2026-09-30T16:33:13Z"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "status": "completed",
+      "conclusion": "skipped",
+      "started_at": "2026-09-30T16:46:13Z",
+      "completed_at": "2026-09-30T16:46:13Z"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "started_at": "2026-09-30T16:46:13Z",
+      "completed_at": "2026-09-30T16:46:13Z"
+    }
+  ],
+  "first_divergence": "step 5 (Frontend Build & Lint), expected npm dependency audit to pass, state was critical next/og advisory GHSA-vcvr-r3jv-pc5j against pinned Next.js16.3.5.",
+  "scope": "Exact head through125. Backend and five independent gates pass. Frontend stops before tests/build; browser and container jobs skipped. Local Next.js patch and PR image security correction not included."
+}

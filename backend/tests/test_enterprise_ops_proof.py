@@ -32,6 +32,28 @@ def healthcheck_command(service: dict) -> str:
     return "\n".join(service["healthcheck"]["test"])
 
 
+def test_image_security_gates_prs_and_preserves_evidence_on_scan_failure():
+    steps = {step.get("name"): step for step in load_yaml(".github/workflows/ci.yml")["jobs"]["docker-build"]["steps"]}
+    for target in ("frontend", "backend"):
+        scan = steps[f"Scan {target} image (high/critical vulnerabilities)"]
+        # Built PR/manual images must be scanned even if the other image scan fails.
+        condition = f"always() && steps.{target}-image.outcome == 'success'"
+        assert scan["if"] == condition
+        assert scan["with"]["exit-code"] == "1"
+        assert scan["with"]["severity"] == "HIGH,CRITICAL"
+        assert scan["with"]["ignore-unfixed"] is False
+        assert not scan.get("continue-on-error", False)
+        assert steps[f"Generate {target} CycloneDX SBOM"]["if"] == condition
+    for name in (
+        "Prepare image security evidence directory",
+        "Write source-bound container build manifest",
+        "Upload container build and security evidence",
+    ):
+        assert steps[name]["if"].startswith("always() && ")
+        assert "github.ref" not in steps[name]["if"]
+        assert "github.event_name" not in steps[name]["if"]
+
+
 def test_ci_build_proof_and_aws_promotion_use_one_exact_artifact_set():
     workflow = load_yaml(".github/workflows/ci.yml")
     promotion = load_yaml(".github/workflows/aws-commercial-promote.yml")
