@@ -67,6 +67,8 @@ export interface PortfolioRow {
   // Additive declared-context enrichment (present only when the org has declared
   // at least one context — otherwise the row is byte-identical to the base W3).
   context?: PortfolioContext | null;
+  resolved_annual_volume?: number | null;
+  annual_volume_basis?: "bom_rollup" | "declared" | "default";
   annualized_unit_cost?: AnnualizedUnitCost | null;
   annualized_cost_usd?: number | null;
   annualized_savings_usd?: number | null;
@@ -74,7 +76,7 @@ export interface PortfolioRow {
 }
 
 /** Per-program roll-up (summary.programs) — sums are honest: a part's $/year only
- *  contributes when its owner declared an annual_volume. */
+ *  contributes when declared or BOM-derived demand has an exact-quantity price. */
 export interface ProgramRollup {
   program: string;
   parts: number;
@@ -121,6 +123,19 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/** The same demand used by the backend, even when its exact price is withheld. */
+export function resolvedAnnualVolume(row?: (Pick<PortfolioRow, "resolved_annual_volume" | "context"> & { annual_volume?: number | null }) | null): number | null {
+  return row?.resolved_annual_volume !== undefined
+    ? row.resolved_annual_volume : row?.annual_volume ?? row?.context?.annual_volume ?? null;
+}
+
+/** Mutation feedback follows persisted demand, not the edited flat fallback. */
+export function annualDemandFeedback(row: PortfolioRow): string {
+  const volume = resolvedAnnualVolume(row);
+  if (volume == null) return "annual demand unavailable · exposure withheld";
+  return `${volume.toLocaleString("en-US")} parts/yr${row.annual_volume_basis === "bom_rollup" ? " from BOM" : " declared"} · ${row.annualized_cost_usd != null ? "exact-quantity exposure computed" : "re-verify the CAD for an exact-quantity cost"}`;
+}
+
 /** Empty clears a declaration; invalid input must never become a different count. */
 export function parseAnnualVolume(text: string): number | null | undefined {
   const value = text.trim();
@@ -155,7 +170,7 @@ export function declaredPrograms(p: Portfolio): ProgramRollup[] {
         exposed_parts: 0,
       };
     g.parts += 1;
-    if (r.context?.annual_volume != null) g.declared_volume_parts = (g.declared_volume_parts ?? 0) + 1;
+    if (resolvedAnnualVolume(r) != null) g.declared_volume_parts = (g.declared_volume_parts ?? 0) + 1;
     if (r.annualized_cost_usd != null) {
       g.annualized_cost_usd = round2((g.annualized_cost_usd ?? 0) + r.annualized_cost_usd);
       g.exposed_parts = (g.exposed_parts ?? 0) + 1;

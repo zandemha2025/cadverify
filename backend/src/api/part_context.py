@@ -28,6 +28,8 @@ from src.auth.rate_limit import limiter
 from src.auth.rbac import Role, require_role
 from src.auth.require_api_key import AuthedUser
 from src.db.engine import get_db_session
+from src.db.models import PartContext
+from src.services import bom_service
 from src.services import catalog_service as catalog_svc
 from src.services import part_context_service as svc
 
@@ -62,6 +64,14 @@ async def _require_org(session: AsyncSession, user_id: int) -> str:
     return org_id
 
 
+async def _context_payload(session: AsyncSession, org_id: str, row: PartContext) -> dict:
+    payload = svc.serialize_context(row)
+    demand = await bom_service.annual_volume_for_context(session, org_id, row)
+    payload["resolved_annual_volume"] = demand["annual_volume"]
+    payload["annual_volume_basis"] = demand["annual_volume_basis"]
+    return payload
+
+
 @router.get("/{mesh_hash}")
 @limiter.limit("120/hour;1000/day")
 async def get_part_context(
@@ -74,9 +84,9 @@ async def get_part_context(
     """The declared context for a part in the caller's org, or 404 when none."""
     org_id = await resolve_org(session, user.user_id)
     row = await svc.get_context(session, org_id, mesh_hash) if org_id else None
-    if row is None:
+    if row is None or not org_id:
         raise HTTPException(status_code=404, detail="no declared context for part")
-    return svc.serialize_context(row)
+    return await _context_payload(session, org_id, row)
 
 
 @router.put("/{mesh_hash}")
@@ -115,7 +125,7 @@ async def declare_part_context(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     await session.commit()
-    payload = svc.serialize_context(row)
+    payload = await _context_payload(session, org_id, row)
     # Recompute AFTER commit so the delta reflects the persisted write (same code
     # path as the read endpoint — the client patches its state from this verbatim).
     payload["portfolio_delta"] = await catalog_svc.portfolio_delta(

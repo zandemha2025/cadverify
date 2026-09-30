@@ -743,7 +743,7 @@ def _group_by_program(rows: list[dict]) -> list[dict]:
 
     Groups the costed rows that carry a declared ``program`` and sums their
     annualized figures. A row's ``$/year`` contributes ONLY when it is a real
-    number (the owner declared an annual_volume); rows without one are counted
+    number (flat declared or BOM-derived demand); rows without one are counted
     (``parts``) but never fabricate a total. Returns [] when no row has a
     program. Sorted by program name for a stable, deterministic response.
     """
@@ -765,7 +765,7 @@ def _group_by_program(rows: list[dict]) -> list[dict]:
             },
         )
         g["parts"] += 1
-        if (r.get("context") or {}).get("annual_volume") is not None:
+        if r.get("resolved_annual_volume", ctx.get("annual_volume")) is not None:
             g["declared_volume_parts"] += 1
         if r.get("annualized_cost_usd") is not None:
             g["exposed_parts"] += 1
@@ -831,8 +831,8 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
 
     # Slice 3: the org's persisted BOM/assembly trees, loaded ONCE. This too is
     # PURELY ADDITIVE — an org with NO edges leaves ``has_any_bom`` False and the
-    # annual-volume input below is exactly the flat declared value (byte-identical
-    # to the pre-Slice-3 path). When a tree DOES exist, a part whose context names
+    # annual-volume input below is exactly the flat declared value. When a tree
+    # DOES exist, a part whose context names
     # it (bom_assembly_key + bom_child_ref + bom_roots_per_year) gets its annual
     # volume ROLLED UP from the real hierarchy, labelled ``annual_volume_basis``.
     from src.services import bom_service as bomsvc
@@ -891,10 +891,10 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
             row["context"] = _context_block(ctx_row)
             # Slice 3: WHICH volume feeds the annualization. When the org has a BOM
             # tree AND this part's context names it, prefer the rolled-up multiplier
-            # x vehicles/year (basis 'bom_rollup'); else the flat declared
+            # x root assemblies/year (basis 'bom_rollup'); else the flat declared
             # annual_volume ('declared'); else none ('default'). NEVER a fabricated
             # rollup. When the org has NO tree at all, this branch is skipped and the
-            # value is the flat declared volume — byte-identical to before Slice 3.
+            # value is the flat declared volume.
             if has_any_bom:
                 _ak = getattr(ctx_row, "bom_assembly_key", None) if ctx_row else None
                 _cr = getattr(ctx_row, "bom_child_ref", None) if ctx_row else None
@@ -915,6 +915,10 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
                 annual_volume = (
                     getattr(ctx_row, "annual_volume", None) if ctx_row else None
                 )
+                row["annual_volume_basis"] = "declared" if annual_volume is not None else "default"
+            # Demand exists independently of an exact-quantity price. Keep the
+            # original flat declaration in context as the editable fallback.
+            row["resolved_annual_volume"] = annual_volume
             # $/year uses the engine recommendation at the EXACT resolved annual
             # volume. Never reuse qty-one, interpolate, or silently substitute a
             # different quote point. A missing point is explicitly withheld; the
@@ -957,7 +961,7 @@ async def build_portfolio(session: AsyncSession, org_id: Optional[str]) -> dict:
 
     # Per-program roll-up — ADDITIVE, and only when at least one costed part
     # carries a declared ``program``. Sums are honest: a part's $/year only
-    # contributes when its owner declared an annual_volume (else it is omitted,
+    # contributes when declared or BOM-derived demand has an exact price (else omitted,
     # never fabricated). Absent any declared program, ``summary`` is byte-identical.
     if has_any_context:
         programs = _group_by_program(rows)

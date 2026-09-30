@@ -49,6 +49,7 @@ import {
   type WorkspaceScreen,
 } from "@/lib/verify/workspace-screen-route";
 import type { OrganizationAccess } from "@/lib/organization-access";
+import { resolvedAnnualVolume } from "@/lib/verify/program-rollup";
 
 // The shared hotkey nav map — matches the design 1:1 (support.js keydown handler):
 // H/V/P/R/G/M/T/C jump between the surfaces, `?` opens the shortcuts sheet. `c`
@@ -393,7 +394,7 @@ export function VerifyApp({
       const retried = await retryVerificationCost(
         { file, env, materialClass },
         previous.machines,
-        previous.partContext?.annual_volume
+        resolvedAnnualVolume(previous.partContext)
       );
       if (runSeq.current === seq) setResult({ ...previous, ...retried });
     } finally {

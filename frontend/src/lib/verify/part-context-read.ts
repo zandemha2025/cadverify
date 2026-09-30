@@ -25,6 +25,9 @@ export interface PartContext {
   parent_assembly: string | null;
   units_per_parent: number | null;
   annual_volume: number | null;
+  /** Server-resolved BOM demand or the flat fallback, independent of pricing. */
+  resolved_annual_volume?: number | null;
+  annual_volume_basis?: "bom_rollup" | "declared" | "default";
   provenance: "user";
   /** the declared service world, only present when actually declared. */
   service_environment?: Record<string, unknown>;

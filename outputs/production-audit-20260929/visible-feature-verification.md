@@ -338,3 +338,9 @@ Windchill146 adds bounded authenticated BOM reads, validated whole-count structu
 Part/BOM linking147 now exposes the existing declaration/rollup flow in saved-part standing. Native valid/invalid saves, reload, cross-part isolation and unlink pass. The local four-edge fixture produces8×125=1,000parts/year and the matching quantity estimate; context cleanup and3immutable records are verified.499frontend tests/types/lint/build pass. This fixture does not prove real assembly identity, vendor transport or supplier prices. See147-bom-link-proof.json.
 
 CI36774148021 completed through145: eight non-image jobs and both image runtime probes pass; five backend HIGH findings still fail the image gate.146/147 need fresh CI. Production unchanged.
+
+
+BOM demand148/149 now reaches Programs and the real Verify quantity request. Programs counts1demandpart at1,008/year even before a price exists; actual same-byte STEP re-verification then supplies the exact1,008quantity and$11,067.84annual estimate. Flatfallback edits, assignment messages and cleanup pass;3prior records remain immutable. Final2,603backend/500frontend tests,types/lint/build and no new type/security findings. See148-149-bom-demand-proof.json. Local declared BOM and assumption-based prices do not prove vendor/physical assembly/shop accuracy. Production unchanged.
+
+
+CI36779785629 completed on772f3b5through147: all eight non-image jobs and both actual-image runtime probes pass. Only the backend image scan fails with the same5HIGH/0CRITICAL package findings. This excludes148/149. Seeci-36779785629-summary.json; no production deployment.

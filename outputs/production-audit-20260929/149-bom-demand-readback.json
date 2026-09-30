@@ -1,0 +1,50 @@
+{
+  "source_sha256": "878f76e8e55760445bffbd128c1623cf2d31bcd5e1b39a7cf4db540486cba84e",
+  "filename": "142-torus.step",
+  "decision": "01M3T6YM7HBRA7PC1NQWPJJ8S1",
+  "engine_version": "0.3.19",
+  "quantities": [
+    1,
+    100,
+    1008,
+    2000,
+    5000,
+    10000
+  ],
+  "geometry_unchanged": true,
+  "exact_recommendation": {
+    "process": "cnc_turning",
+    "material": "6061-T6 Aluminum",
+    "dfm_ready": true,
+    "dfm_verdict": "pass",
+    "lead_low_days": 7.0,
+    "unit_cost_usd": 10.98,
+    "lead_high_days": 13.0
+  },
+  "annualized_unit_cost": {
+    "usd": 10.98,
+    "qty": 1008,
+    "currency": "USD",
+    "process": "cnc_turning",
+    "material": "6061-T6 Aluminum",
+    "validated": false,
+    "basis": "decision.recommendation"
+  },
+  "independent_annual_arithmetic": {
+    "quantity": 1008,
+    "unit_usd": 10.98,
+    "expected_usd": 11067.84,
+    "actual_usd": 11067.84
+  },
+  "program": {
+    "program": "QA BOM demand 148",
+    "parts": 1,
+    "annualized_cost_usd": 11067.84,
+    "annualized_savings_usd": null,
+    "declared_volume_parts": 1,
+    "exposed_parts": 1
+  },
+  "immutable_prior_records_preserved": 3,
+  "bom_origin": "local declared fixture; not vendor or physical assembly evidence",
+  "supplier_price_validated": false
+}

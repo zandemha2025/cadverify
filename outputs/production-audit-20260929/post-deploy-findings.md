@@ -1257,3 +1257,22 @@ CI36769197096 completed on98928a5 through142. All eight non-image jobs and both 
 -499frontend tests, TypeScript, changed-file lint and production build pass; final copy-only build also passes. No backend source/dependency/migration change. Evidence:`147-bom-link-proof.json`, saved/cleanup readbacks, native screenshots and `scripts/e2e/bom-context-link.mjs`.
 
 CI36774148021 completed onf42015d through145. All eight non-image jobs and both actual-image runtime probes pass. Only the backend image scan fails with5HIGH/0CRITICAL findings. It excludes146/147; no production deployment. See `ci-36774148021-summary.json`.
+
+
+## 148 — Programs denied BOM demand while charging for it
+
+- first divergence: step1, expected the linked part to count as having annual demand, state was$10,960/year alongside0with a declared volume and a false assignment message that volume was missing. The input was blank without explaining that it was a fallback.
+- Publish the backend's resolved annual volume independently of price. Count that demand in both server and client program rollups; show BOM provenance and label the separate flat fallback. Use persisted demand in assignment/edit feedback and withholding explanations.
+- Native real saved STEP plus the declared local fixture:8×125=1,000/year; editing/clearing flat55does not override it.8×126=1,008/year remains visible and counted while exact-quantity price is withheld. Real PostgreSQL confirms1demand part/0exposed parts before re-verification.
+
+## 149 — Re-verification omitted the BOM quantity it promised to calculate
+
+- first divergence: step1, expected a same-byte STEP replay to include resolved demand1,008, state was the old six-point ladder without1,008, unchanged cost-decision ID, and annual volume not declared. This was the requested quantity selection, not a defective cache hit.
+- Reuse existing BOM resolution in context GET/PUT responses while preserving the flat declaration. Feed the resolved demand into Verify's existing six-point quantity selector, cost retry, and visible annual-demand label. No cache bypass, new engine version or pricing formula.
+- Actual native STEP replay creates01M3T6YM7HBRA7PC1NQWPJJ8S1 with exact ladder[1,100,1008,2000,5000,10000]. The source SHA and geometry match; all3prior cost-result hashes remain unchanged. Saved turning estimate$10.98×1,008=$11,067.84/year; Programs displays rounded$11,068/year withmatchingqty1,008and1demandpart. Assignment/unassignment feedback is accurate.
+- Native cleanup restores the original serialized part context and removes the temporary program;4saved cost decisions remain, including the new exact-quantity evidence. The clearly named local QA BOM fixture remains. This is a declared workflow/count control, not real assembly identity or vendor proof; prices remain unvalidated assumptions.
+- Final full backend2,603pass/3documented environment skips in373.45s, protected skip policy enforced.500frontend tests, types, changed-file lint and finalproduction build pass.214existing backendtypeerrors/3warnings,0new; changed-sourceBandit0medium/high. New real PostgreSQL context-API regression fails RED before the fix and passes; six portfolio demand cases and frontend fallback/feedback regressions pass.
+- Evidence:`148-149-bom-demand-proof.json`, before/after native screenshots, withheld/success/cleanup PostgreSQL receipts. CI36779785629 checks through147 only;148/149 require fresh CI. Production remains unchanged.
+
+
+CI36779785629 completed on772f3b5through147: all eight non-image jobs and both actual-image runtime probes pass. Only the backend image scan fails with the same5HIGH/0CRITICAL package findings. This excludes148/149. Seeci-36779785629-summary.json; no production deployment.

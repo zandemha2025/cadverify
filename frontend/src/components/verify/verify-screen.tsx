@@ -19,6 +19,7 @@ import {
 } from "@/lib/dfm-scope";
 import { C, MONO, USD, NUM, procLabel, statusColor, normProv } from "@/lib/verify/tokens";
 import type { VerifyResult } from "@/lib/verify/run";
+import { resolvedAnnualVolume } from "@/lib/verify/program-rollup";
 import { fetchCostDecision, setCostDecisionDisposition } from "@/lib/api";
 import type { CostReport, CostComparison } from "@/lib/api";
 import {
@@ -1779,6 +1780,7 @@ function ResourceCost({
       : 0.5;
   const crossFrac = crossover ? qtyToFraction(crossover) : null;
   const mix = provenanceMix(makeAtQty ?? null);
+  const annualDemand = resolvedAnnualVolume(partContext);
 
   return (
     <>
@@ -1787,8 +1789,8 @@ function ResourceCost({
           QUANTITY <span style={{ color: C.ink }}>{NUM(scrubQty)}</span>
           <span style={{ color: C.ink40 }}> · {interpNote(makeInterp)}</span>
         </span>
-        <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink40 }}>annual volume · <span style={{ color: C.user }}>
-          {partContextError ? "context unavailable" : partContext?.annual_volume != null ? NUM(partContext.annual_volume) : "not declared"}
+        <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink40 }}>annual demand · <span style={{ color: C.user }}>
+          {partContextError ? "context unavailable" : annualDemand != null ? `${NUM(annualDemand)}${partContext?.annual_volume_basis === "bom_rollup" ? " from BOM" : " declared"}` : "not declared"}
           {partContext?.program ? ` · ${partContext.program}` : ""}
         </span></span>
       </div>

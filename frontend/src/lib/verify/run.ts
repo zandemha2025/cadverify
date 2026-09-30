@@ -30,6 +30,7 @@ import {
 } from "./part-context";
 import { fetchPartContext, type PartContext } from "./part-context-read";
 import { readJsonOrNull, validationAllowsCost } from "./run-gates";
+import { resolvedAnnualVolume } from "./program-rollup";
 
 // Re-export so existing importers keep resolving these off `run` unchanged.
 export type { VerificationBlock, MakeabilityLattice } from "./verification";
@@ -288,7 +289,7 @@ export async function runVerification(
   }
 
   const [floor, context] = await Promise.all([machinesPromise, contextPromise]);
-  const quantities = quantityLadderForAnnual(context.partContext?.annual_volume);
+  const quantities = quantityLadderForAnnual(resolvedAnnualVolume(context.partContext));
 
   if (!validationAllowsCost(validationOut.v)) {
     return {
