@@ -812,3 +812,13 @@ first divergence: step 2, expected the real FTC-07 STEP and its filename/dimensi
 - Evidence: `100-stage-layout-proof.json` and100 desktop/phone/X-ray/orbit screenshots. Local verification only; production and additional assembly/STL cases remain open.
 
 CI checkpoint36708617787 on d107cbe (through097) completed with8jobs passing and the browser job failing in the34-file CAD corpus:33passed; FTC-07 exceeded90seconds despite a captured output ending inOK/PASS. The shutdown stack is absent in this old build. Later missing-data errors are symptoms; downstream restore/load/readiness/training did not run. The local098 shutdown fix is not part of that run. See `ci-36708617787-summary.json`.
+
+
+## 101 — A malformed ASCII STL crashes the main Verify workspace
+
+- Severity: medium availability/recovery defect; fixed locally, not deployed.
+- first divergence: step2, expected the selected file and a recoverable preview error to remain visible, state was the root “Page temporarily unavailable” screen after uploading a46-byte recognizable but truncated ASCII STL. The native assertion failed because the filename and workspace had disappeared. A37-byte unrecognized STL was already refused correctly by the existing integrity check.
+- Root cause: the bounded ASCII header check intentionally leaves deeper validation to the CAD parser, but the main renderer had no error boundary around STLLoader/GLTFLoader. The loader error escaped to the page boundary and obscured the real backend refusal.
+- Fix: extract and reuse the existing pair-preview boundary around the main stage. Key it by the loaded source so replacement recovers; identify the failed preview honestly and disable X-ray/seating when unavailable. Validation and replacement controls remain accessible. No new dependency, parser implementation or acceptance relaxation.
+- Native GREEN: the same file and repeated retry retain the filename, minimum84-byte backend refusal, disabled X-ray and Check my CAD. Replacing it with the retained NIST FTC07 STL mesh restores the true shell and holes,311.6×135.9×222.7mm dimensions and1726.00cm³ at desktop and390px. The shared two-part viewer also contains the malformed input, then recovers with two real10mm cubes at20mm X translation and measures10.000mm clearance/no overlap.
+- Checks:494 frontend tests, TypeScript, changed-source lint and final production build pass. The reusable native regression assertion is in `scripts/e2e/stage-preview-validation.mjs`; evidence is `101-preview-recovery-proof.json` and101 screenshots. Backend code and estimates were not changed; prior full2442-test result remains applicable. Production and external workflow proof remain open.

@@ -181,3 +181,6 @@ Routing follow-up099: material/geometry/evaluation/environment gates now apply t
 Preview follow-up100: actual NIST STEP now fits the available camera viewport. Filename/context, geometry and controls have separate layout space. Native1280/390/320 layout, complete real-model visibility, X-ray and pointer orbit pass; viewport restored.494 frontend tests/types/lint/final build pass; removed CSS-text check is replaced by stronger native layout assertions. Backend unchanged from2442 tests. No production claim.
 
 CI36708617787 on oldd107cbe failed after33/34CAD cases: FTC-07 again printedOK/PASS but exceeded90seconds during exit/output collection. Local098 is absent from that run; its exact historical root cause remains unproven. Downstream restore/load/readiness/training not reached. New-head CI is required.
+
+
+Main-preview follow-up101: recognizable truncated ASCII STL no longer crashes Verify. Native failure/retry retains the real validation refusal and replacement controls, with honest preview status and disabled X-ray. Real NIST-derived STL replacement restores measured geometry and a fitted shell on desktop/390px. The shared pair boundary still contains bad inputs and recovers to a10.000mm measured cube gap.494 frontend tests/types/changed lint/final build pass; not deployed.

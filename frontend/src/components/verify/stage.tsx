@@ -13,6 +13,7 @@ import type { StageAssemblyContext, StageRenderKind } from "./stage-canvas";
 import { fetchPreviewMesh, type PreviewMesh } from "@/lib/verify/preview-mesh";
 import { GhostButton, ProvChip } from "./primitives";
 import { probeWebGlSupport } from "@/lib/site/webgl";
+import { PreviewBoundary } from "./preview-boundary";
 
 const StageCanvas = dynamic(() => import("./stage-canvas"), {
   ssr: false,
@@ -66,6 +67,9 @@ export function Stage({
   const [preview, setPreview] = useState<PreviewMesh | null>(null);
   const [resolvingShell, setResolvingShell] = useState(false);
   const [webGlAvailable, setWebGlAvailable] = useState<boolean | null>(null);
+  const [failedPreview, setFailedPreview] = useState<string | null>(null);
+  const previewKey = assembly?.glbUrl ?? renderUrl ?? "empty";
+  const previewFailed = failedPreview === previewKey;
   const assemblyContext = useMemo<StageAssemblyContext | null>(
     () => ({
       parentAssembly: context?.parent_assembly ?? null,
@@ -152,7 +156,9 @@ export function Stage({
   }, [file, assembly?.glbUrl]);
 
   // Honest render-mode readout: what the viewer is actually looking at.
-  const renderMode: { state: string; label: string } = webGlAvailable === false
+  const renderMode: { state: string; label: string } = previewFailed
+    ? { state: "preview-unavailable", label: "preview unavailable · see file validation" }
+    : webGlAvailable === false
     ? {
         state: "static-envelope",
         label: bbox
@@ -268,6 +274,11 @@ export function Stage({
 
       <div className="cv-verify-stage-canvas" style={{ position: "relative", flex: 1, minHeight: 0, cursor: "grab" }}>
         {webGlAvailable === true ? (
+          <PreviewBoundary
+            key={previewKey}
+            onError={() => setFailedPreview(previewKey)}
+            fallback={<div role="status" style={{ display: "grid", placeItems: "center", height: "100%", padding: 28, textAlign: "center", fontSize: 13, color: C.ink55 }}>Could not draw this part. Check the file or choose another with Check my CAD. File validation remains available.</div>}
+          >
           <StageCanvas
             renderUrl={renderUrl}
             renderKind={renderKind}
@@ -280,6 +291,7 @@ export function Stage({
             seat={seat}
             assemblyContext={assemblyContext}
           />
+          </PreviewBoundary>
         ) : (
           <StaticStageFallback
             bbox={bbox}
@@ -303,8 +315,8 @@ export function Stage({
       >
         <GhostButton
           onClick={() => setXray((v) => !v)}
-          disabled={webGlAvailable !== true}
-          title={webGlAvailable === false ? "X-ray requires interactive 3D support" : "Toggle X-ray view"}
+          disabled={webGlAvailable !== true || previewFailed}
+          title={previewFailed ? "X-ray requires a working preview" : webGlAvailable === false ? "X-ray requires interactive 3D support" : "Toggle X-ray view"}
           style={{
             padding: "8px 16px",
             fontSize: 12,
@@ -321,11 +333,13 @@ export function Stage({
         {!assembly && (
           <GhostButton
             onClick={() => {
-              if (hasParent && webGlAvailable === true) setSeat((v) => !v);
+              if (hasParent && webGlAvailable === true && !previewFailed) setSeat((v) => !v);
             }}
-            disabled={!hasParent || webGlAvailable !== true}
+            disabled={!hasParent || webGlAvailable !== true || previewFailed}
             title={
-              webGlAvailable === false
+              previewFailed
+                ? "Assembly seating requires a working preview"
+                : webGlAvailable === false
                 ? "Assembly seating requires interactive 3D support"
                 : hasParent
                 ? "Seat the part in its declared parent assembly"
@@ -343,7 +357,7 @@ export function Stage({
           </GhostButton>
         )}
         <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink35, paddingLeft: 6, whiteSpace: "nowrap" }}>
-          {webGlAvailable === false ? "static preview" : webGlAvailable === null ? "checking 3D…" : "drag to orbit"}
+          {previewFailed ? "preview unavailable" : webGlAvailable === false ? "static preview" : webGlAvailable === null ? "checking 3D…" : "drag to orbit"}
         </span>
       </div>
     </main>

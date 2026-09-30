@@ -1,0 +1,175 @@
+{
+  "finding": "101",
+  "baseline": "46-byte ASCII STL with a recognizable header crashes the original main Verify page; native assertion fails because filename and workspace disappear.",
+  "fixture": "solid audit\nfacet normal 0 0 1\nendsolid audit\n",
+  "checks": {
+    "malformed": {
+      "status": "PASS",
+      "canReplace": true,
+      "message": "Could not draw this part. Check the file or choose another with Check my CAD. File validation remains available beside the preview.",
+      "mode": "preview-unavailable",
+      "title": "stage-malformed.stl",
+      "validationError": true,
+      "xrayDisabled": true
+    },
+    "retryMalformed": {
+      "status": "PASS",
+      "canReplace": true,
+      "message": "Could not draw this part. Check the file or choose another with Check my CAD. File validation remains available beside the preview.",
+      "mode": "preview-unavailable",
+      "title": "stage-malformed.stl",
+      "validationError": true,
+      "xrayDisabled": true
+    },
+    "replacement": {
+      "status": "PASS",
+      "canvas": {
+        "height": 934.890625,
+        "width": 949.875,
+        "x": 296,
+        "y": 228.90625
+      },
+      "context": {
+        "height": 106.90625,
+        "width": 300,
+        "x": 921.875,
+        "y": 122
+      },
+      "controls": {
+        "height": 69.203125,
+        "width": 949.875,
+        "x": 296,
+        "y": 1163.796875
+      },
+      "mode": "real-stl",
+      "stage": {
+        "height": 1133,
+        "width": 950.875,
+        "x": 296,
+        "y": 100
+      },
+      "title": {
+        "height": 106.90625,
+        "width": 589.875,
+        "x": 320,
+        "y": 122
+      }
+    },
+    "phoneFailure": {
+      "status": "PASS",
+      "canReplace": true,
+      "message": "Could not draw this part. Check the file or choose another with Check my CAD. File validation remains available beside the preview.",
+      "mode": "preview-unavailable",
+      "title": "stage-malformed.stl",
+      "validationError": true,
+      "xrayDisabled": true
+    },
+    "phoneReplacement": {
+      "status": "PASS",
+      "canvas": {
+        "height": 320,
+        "width": 390,
+        "x": 0,
+        "y": 330.703125
+      },
+      "context": {
+        "height": 106.90625,
+        "width": 300,
+        "x": 16,
+        "y": 223.796875
+      },
+      "controls": {
+        "height": 69.203125,
+        "width": 390,
+        "x": 0,
+        "y": 650.703125
+      },
+      "mode": "real-stl",
+      "stage": {
+        "height": 615.90625,
+        "width": 390,
+        "x": 0,
+        "y": 105
+      },
+      "title": {
+        "height": 88.796875,
+        "width": 358,
+        "x": 16,
+        "y": 123
+      }
+    },
+    "finalBuildMalformed": {
+      "status": "PASS",
+      "canReplace": true,
+      "message": "Could not draw this part. Check the file or choose another with Check my CAD. File validation remains available.",
+      "mode": "preview-unavailable",
+      "title": "stage-malformed.stl",
+      "validationError": true,
+      "xrayDisabled": true
+    },
+    "pairMalformed": {
+      "status": "PASS",
+      "nextCheckEnabled": true,
+      "oldResultWithheld": true
+    },
+    "pairReplacement": {
+      "status": "PASS",
+      "measuredGapMm": 10,
+      "noOverlap": true
+    },
+    "pairPreview": {
+      "status": "PASS",
+      "pairCanvasVisible": true
+    },
+    "finalPhoneFailure": {
+      "status": "PASS",
+      "canReplace": true,
+      "message": "Could not draw this part. Check the file or choose another with Check my CAD. File validation remains available.",
+      "mode": "preview-unavailable",
+      "title": "stage-malformed.stl",
+      "validationError": true,
+      "xrayDisabled": true
+    },
+    "finalPhoneReplacement": {
+      "status": "PASS",
+      "canvas": {
+        "height": 320,
+        "width": 390,
+        "x": 0,
+        "y": 330.703125
+      },
+      "context": {
+        "height": 106.90625,
+        "width": 300,
+        "x": 16,
+        "y": 223.796875
+      },
+      "controls": {
+        "height": 69.203125,
+        "width": 390,
+        "x": 0,
+        "y": 650.703125
+      },
+      "mode": "real-stl",
+      "stage": {
+        "height": 615.90625,
+        "width": 390,
+        "x": 0,
+        "y": 105
+      },
+      "title": {
+        "height": 88.796875,
+        "width": 358,
+        "x": 16,
+        "y": 123
+      }
+    }
+  },
+  "visualChecks": [
+    "Real NIST-derived STL shell and holes visible after replacement on desktop and 390px phone.",
+    "Phone preview failure fits the screen; X-ray is disabled.",
+    "After the bounds animation settles, both replacement cubes fit completely inside the pair preview."
+  ],
+  "viewportReset": true,
+  "limits": "Local production build; no new deployment, production proof, or customer-quote calibration."
+}

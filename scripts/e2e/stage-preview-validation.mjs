@@ -1,5 +1,23 @@
 import assert from "node:assert/strict";
 
+export async function assertStagePreviewFailure(page, filename) {
+  const state = await page.playwright.evaluate(() => ({
+    title: document.querySelector('.cv-verify-stage h1')?.textContent,
+    mode: document.querySelector('[data-testid="verify-stage-render-mode"]')?.getAttribute('data-render-state'),
+    message: document.querySelector('.cv-verify-stage [role="status"]')?.textContent,
+    xrayDisabled: document.querySelector('.cv-verify-stage-controls button')?.disabled,
+    canReplace: [...document.querySelectorAll('button')].some(button => button.textContent === 'Check my CAD' && !button.disabled),
+    validationError: document.body.textContent.includes('No routing, DFM, or should-cost verdict was produced'),
+  }));
+  assert.equal(state.title, filename, 'A bad preview must retain the workspace and selected filename');
+  assert.equal(state.mode, 'preview-unavailable', 'A failed preview must not claim real geometry');
+  assert.match(state.message, /Could not draw this part/);
+  assert.equal(state.xrayDisabled, true, 'Unavailable preview controls must be disabled');
+  assert.equal(state.canReplace, true, 'A replacement file must be selectable without reloading');
+  assert.equal(state.validationError, true, 'The real validation refusal must remain visible');
+  return { status: 'PASS', ...state };
+}
+
 export async function assertStageLayout(page) {
   const boxes = await page.playwright.evaluate(() => {
     const rect = (selector) => {

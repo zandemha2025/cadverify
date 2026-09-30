@@ -4,20 +4,14 @@ import { Bounds, OrbitControls } from "@react-three/drei";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import * as THREE from "three";
-import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { probeWebGlSupport } from "@/lib/site/webgl";
 import type { FitResult } from "@/lib/verify/context-fit";
 import { fetchPreviewMesh } from "@/lib/verify/preview-mesh";
+import { PreviewBoundary } from "./preview-boundary";
 
 type ShellSource = { url: string; kind: "stl" | "glb"; revoke: () => void };
 type ShellProps = { url: string; ghost: boolean; transform?: number[][] };
-class PreviewBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
-  static getDerivedStateFromError() { return { failed: true }; }
-  render() {
-    return this.state.failed ? <div role="status" className="grid h-full place-items-center px-6 text-center text-xs text-muted-foreground">Could not draw this pair. Check the files or select another pair. Fit checks remain available below.</div> : this.props.children;
-  }
-}
 function StlShell({ url, ghost, transform }: ShellProps) {
   const raw = useLoader(STLLoader, url);
   const geometry = useMemo(() => raw.clone(), [raw]);
@@ -118,5 +112,5 @@ export default function ContextFitViewer({ part, context, result, hideContext, s
   if (webGlAvailable !== true) return <div role="status" className="grid h-full place-items-center px-6 text-center text-xs text-muted-foreground">{webGlAvailable === null ? "Preparing the interactive preview…" : "3D preview is unavailable in this browser. Fit measurements remain available below."}</div>;
   if (previewError) return <div role="status" className="grid h-full place-items-center px-6 text-center text-xs text-muted-foreground"><div><p>Could not load the pair preview. Fit measurements remain available below.</p><button className="mt-3 min-h-11 rounded border px-3 text-foreground" onClick={() => setRetry(value => value + 1)}>Retry preview</button></div></div>;
   if (!sources || sources.partFile !== part || sources.contextFile !== context) return <div className="grid h-full place-items-center text-xs text-muted-foreground">Preparing submitted geometry…</div>;
-  return <PreviewBoundary key={sources.part.url + sources.context.url}><Canvas dpr={[1, 2]} gl={{ antialias: true, powerPreference: "high-performance" }} camera={{ position: [24, 20, 24], fov: 38 }}><ambientLight intensity={1.2}/><directionalLight position={[10,20,10]} intensity={1.5}/><Suspense fallback={null}><Bounds key={JSON.stringify([result?.seating.transform ?? null, hideContext])} fit clip observe><Shell source={sources.part} ghost={false}/>{!hideContext && <Shell source={sources.context} ghost transform={result?.seating.transform}/>}{selectedIssue === "collision" && <Region result={result}/>}</Bounds></Suspense><OrbitControls makeDefault enablePan={false}/></Canvas></PreviewBoundary>;
+  return <PreviewBoundary key={sources.part.url + sources.context.url} fallback={<div role="status" className="grid h-full place-items-center px-6 text-center text-xs text-muted-foreground">Could not draw this pair. Check the files or select another pair. Fit checks remain available below.</div>}><Canvas dpr={[1, 2]} gl={{ antialias: true, powerPreference: "high-performance" }} camera={{ position: [24, 20, 24], fov: 38 }}><ambientLight intensity={1.2}/><directionalLight position={[10,20,10]} intensity={1.5}/><Suspense fallback={null}><Bounds key={JSON.stringify([result?.seating.transform ?? null, hideContext])} fit clip observe><Shell source={sources.part} ghost={false}/>{!hideContext && <Shell source={sources.context} ghost transform={result?.seating.transform}/>}{selectedIssue === "collision" && <Region result={result}/>}</Bounds></Suspense><OrbitControls makeDefault enablePan={false}/></Canvas></PreviewBoundary>;
 }
