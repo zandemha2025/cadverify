@@ -1,0 +1,4 @@
+process,name,count,hourly_rate_usd
+cnc_3axis,Audit 104 valid first,1,75
+cnc_3axis,Audit 104 invalid count,2147483648,75
+cnc_3axis,Audit 104 valid last,2,95

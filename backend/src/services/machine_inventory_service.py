@@ -32,12 +32,14 @@ import csv
 import io
 import json
 import logging
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import DBAPIError
 from ulid import ULID
 
 from src.analysis.models import ProcessType
@@ -122,7 +124,10 @@ _CHAMBER_TYPES = frozenset({"hot", "cold"})
 
 
 def _is_number(v: Any) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
+    try:
+        return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+    except OverflowError:
+        return False
 
 
 def _validate_capabilities(caps: Any, errors: list[str]) -> None:
@@ -150,13 +155,13 @@ def _validate_capabilities(caps: Any, errors: list[str]) -> None:
                 errors.append("axes must be one of 3, 4, 5")
             continue
         if key == "motion_mode":
-            if val not in _MOTION_MODES:
+            if not isinstance(val, str) or val not in _MOTION_MODES:
                 errors.append(
                     f"motion_mode must be one of {sorted(_MOTION_MODES)}"
                 )
             continue
         if key == "chamber_type":
-            if val not in _CHAMBER_TYPES:
+            if not isinstance(val, str) or val not in _CHAMBER_TYPES:
                 errors.append(
                     f"chamber_type must be one of {sorted(_CHAMBER_TYPES)}"
                 )
@@ -167,7 +172,7 @@ def _validate_capabilities(caps: Any, errors: list[str]) -> None:
             continue
         if kind in (_POS, _NONNEG):
             if not _is_number(val):
-                errors.append(f"capability '{key}' must be a number")
+                errors.append(f"capability '{key}' must be a finite number")
             elif kind == _POS and val <= 0:
                 errors.append(f"capability '{key}' must be > 0 (got {val})")
             elif kind == _NONNEG and val < 0:
@@ -265,7 +270,7 @@ def _validate_thickness_map(tmap: Any, errors: list[str]) -> None:
             errors.append("material_thickness_map keys must be material names")
         if not _is_number(v) or v <= 0:
             errors.append(
-                f"material_thickness_map['{k}'] must be a positive number"
+                f"material_thickness_map['{k}'] must be a positive number and finite"
             )
 
 
@@ -294,21 +299,23 @@ def validate_machine(fields: dict) -> None:
             errors.append("count must be an integer")
         elif count <= 0:
             errors.append("count must be > 0")
+        elif count > 2_147_483_647:
+            errors.append("count must be at most 2147483647")
 
     mwk = fields.get("max_workpiece_kg")
     if mwk is not None:
         if not _is_number(mwk) or mwk <= 0:
-            errors.append("max_workpiece_kg must be a positive number")
+            errors.append("max_workpiece_kg must be a positive number and finite")
 
     rate = fields.get("hourly_rate_usd")
     if rate is not None:
         if not _is_number(rate) or rate < 0:
-            errors.append("hourly_rate_usd must be >= 0")
+            errors.append("hourly_rate_usd must be >= 0 and finite")
 
     cf = fields.get("capital_frac")
     if cf is not None:
         if not _is_number(cf) or not (0.0 <= cf <= 1.0):
-            errors.append("capital_frac must be in [0,1]")
+            errors.append("capital_frac must be in [0,1] and finite")
 
     _validate_capabilities(fields.get("capabilities"), errors)
     _validate_materials(fields.get("materials"), errors)
@@ -423,7 +430,10 @@ def parse_machine_csv(text: str):
     if not text or not text.strip():
         return rows, [{"line": 0, "reason": "empty CSV (no header, no rows)"}]
 
-    reader = csv.reader(io.StringIO(text))
+    try:
+        reader = iter(list(csv.reader(io.StringIO(text))))
+    except csv.Error:
+        return rows, [{"line": 0, "reason": "CSV could not be read. Check quoting and field sizes."}]
     try:
         header = next(reader)
     except StopIteration:
@@ -532,16 +542,19 @@ async def import_machines(
     errors: list = []
     for idx, payload in enumerate(rows):
         try:
-            row = MachineInstance(
-                org_id=org_id,
-                created_by=created_by,
-                **_normalize(payload),
-            )
-            session.add(row)
-            await session.flush()
+            async with session.begin_nested():
+                row = MachineInstance(
+                    org_id=org_id,
+                    created_by=created_by,
+                    **_normalize(payload),
+                )
+                session.add(row)
+                await session.flush()
             imported += 1
-        except Exception as exc:  # per-row failure — report, never crash batch
-            errors.append({"line": None, "index": idx, "reason": str(exc)})
+        except DBAPIError as exc:
+            if exc.connection_invalidated or str(getattr(exc.orig, "sqlstate", ""))[:2] not in {"22", "23"}:
+                raise  # Availability/schema failures must abort the request.
+            errors.append({"line": None, "index": idx, "reason": "The row could not be saved. Check its values and identifiers."})
 
     return {
         "imported": imported,
@@ -736,7 +749,7 @@ def validate_shop_ops(ops: Any) -> None:
             for lk, lv in val.items():
                 if not _is_number(lv) or lv <= 0:
                     errors.append(
-                        f"op '{key}' limit '{lk}' must be a positive number"
+                        f"op '{key}' limit '{lk}' must be a positive number and finite"
                     )
             continue
         errors.append(f"op '{key}' must be a boolean or a limits object")
