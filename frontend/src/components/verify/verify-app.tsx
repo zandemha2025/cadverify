@@ -133,6 +133,7 @@ export function VerifyApp({
   // The last part the user verified — so a change to the declared world can re-run
   // the verification (re-persist the env + re-cost against it) for the same part.
   const latestFile = useRef<File | null>(null);
+  const inventoryDirty = useRef(false);
   // Monotonic run token. Selecting a material class (or toggling the world) while a
   // prior verification is still in flight dispatches a NEW run; without this guard the
   // two async runs can resolve OUT OF ORDER and a stale result clobbers the fresh one
@@ -142,6 +143,15 @@ export function VerifyApp({
   // The sample owns a separate UI lifecycle. Leaving it or starting personal CAD
   // invalidates its completion callback even if the underlying request finishes.
   const guidedRunSeq = useRef(0);
+
+  const onInventoryChanged = useCallback(() => {
+    inventoryDirty.current = true;
+    ++runSeq.current;
+    setResult(null);
+    setRunning(false);
+    setAssemblyAnalysis(null);
+    setAssemblyAnalyzing(false);
+  }, []);
 
   const nav = useCallback((s: string) => {
     if (s !== "verify") {
@@ -172,6 +182,7 @@ export function VerifyApp({
 
   const runVerify = useCallback(
     async (f: File): Promise<VerifyResult | null> => {
+      inventoryDirty.current = false;
       if (!isSupportedCad(f.name)) {
         const guidance = unsupportedCadGuidance(f.name);
         ++runSeq.current;
@@ -492,6 +503,13 @@ export function VerifyApp({
         });
       });
   }, [hasActiveOrganization, runVerify]);
+
+  // Recompute the retained file when returning from a changed machine inventory.
+  useEffect(() => {
+    if (screen === "verify" && inventoryDirty.current && latestFile.current) {
+      void runVerify(latestFile.current);
+    }
+  }, [screen, runVerify]);
 
   // The rail footer's bound-rate signal.
   useEffect(() => {
@@ -878,7 +896,7 @@ export function VerifyApp({
           </div>
         )}
         {screen === "context-fit" && <ContextFitPanel />}
-        {screen === "machines" && <MachinesScreen nav={nav} />}
+        {screen === "machines" && <MachinesScreen nav={nav} onChanged={onInventoryChanged} />}
         {screen === "records" && <RecordsScreen nav={nav} />}
         {screen === "catalog" && <CatalogScreen nav={nav} />}
         {screen === "part" && <PartScreen nav={nav} />}

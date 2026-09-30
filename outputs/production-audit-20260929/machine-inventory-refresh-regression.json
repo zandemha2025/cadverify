@@ -1,0 +1,60 @@
+{
+  "finding": "048",
+  "environment": "local frontend; API engine 0.3.8; not deployed",
+  "file": "cube-10mm.stl",
+  "geometry_mm": [
+    10,
+    10,
+    10
+  ],
+  "machine": "Audit local FDM 046",
+  "before": {
+    "saved_envelope_mm": [
+      5,
+      200,
+      200
+    ],
+    "displayed_envelope_mm": [
+      200,
+      200,
+      200
+    ],
+    "displayed_verdict": "makeable_in_house",
+    "fresh_upload_verdict": "makeable_not_on_owned",
+    "reverse_transition_also_stale": true
+  },
+  "after": [
+    {
+      "envelope_mm": [
+        5,
+        200,
+        200
+      ],
+      "verdict": "makeable_not_on_owned",
+      "reuploaded_file": false
+    },
+    {
+      "envelope_mm": [
+        200,
+        200,
+        200
+      ],
+      "verdict": "makeable_in_house",
+      "reuploaded_file": false
+    }
+  ],
+  "validation": {
+    "native_red_then_green": true,
+    "frontend_passed": 487,
+    "typecheck": "pass",
+    "changed_source_lint": "pass",
+    "build": "pass",
+    "backend_unchanged_from_2383_passed_3_skipped": true
+  },
+  "limits": [
+    "Native replay covered edit transitions in the same Verify workspace.",
+    "Create, successful CSV import and delete signal the same invalidation callback; their post-mutation re-verification was not separately replayed.",
+    "Edits from another tab or an external API are not automatically detected by this callback.",
+    "Synthetic machine remains declared at its original 200 mm envelope for further QA."
+  ]
+}

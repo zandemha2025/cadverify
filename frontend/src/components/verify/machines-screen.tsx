@@ -61,7 +61,7 @@ function machineStatus(m: OwnedMachine): { label: string; color: string } {
     : { label: "OWNED · NO RATE", color: C.cond };
 }
 
-export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
+export function MachinesScreen({ nav, onChanged }: { nav: (s: string) => void; onChanged: () => void }) {
   const [machines, setMachines] = useState<OwnedMachine[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -85,10 +85,17 @@ export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
     void refresh();
   }, [refresh]);
 
+  const onSaved = useCallback(async () => {
+    setForm(null);
+    onChanged();
+    await refresh();
+  }, [onChanged, refresh]);
+
   const onDelete = useCallback(
     async (m: OwnedMachine) => {
       try {
         await deleteMachine(m.id);
+        onChanged();
         toast.success(`Removed ${m.name || procLabel(m.process)}`);
         setDetailId(null);
         await refresh();
@@ -96,13 +103,14 @@ export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
         toast.error(e instanceof Error ? e.message : "Delete failed");
       }
     },
-    [refresh]
+    [onChanged, refresh]
   );
 
   const onCsv = useCallback(
     async (file: File) => {
       try {
         const summary = await importMachinesCsv(file);
+        if (summary.imported > 0) onChanged();
         setCsvResult(summary);
         setCsvError(null);
         toast.success(`Imported ${summary.imported} · skipped ${summary.skipped}`);
@@ -119,7 +127,7 @@ export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
         toast.error(message);
       }
     },
-    [refresh]
+    [onChanged, refresh]
   );
 
   const downloadCsvTemplate = useCallback(async () => {
@@ -173,7 +181,7 @@ export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
             mode={form.mode}
             machine={form.mode === "edit" ? form.machine : undefined}
             onClose={() => setForm(null)}
-            onSaved={async () => { setForm(null); await refresh(); }}
+            onSaved={onSaved}
           />
         )}
       </main>
@@ -246,7 +254,7 @@ export function MachinesScreen({ nav }: { nav: (s: string) => void }) {
           mode={form.mode}
           machine={form.mode === "edit" ? form.machine : undefined}
           onClose={() => setForm(null)}
-          onSaved={async () => { setForm(null); await refresh(); }}
+          onSaved={onSaved}
         />
       )}
     </main>
