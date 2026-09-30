@@ -170,7 +170,10 @@ def test_create_batch_rejects_internal_webhook_url():
         resp = client.post(
             "/api/v1/batch",
             files={"file": ("test.zip", buf, "application/zip")},
-            data={"webhook_url": "http://169.254.169.254/latest/meta-data/"},
+            data={
+                "webhook_url": "http://169.254.169.254/latest/meta-data/",
+                "webhook_secret": "local-test-only-signing-sentinel",
+            },
         )
 
     assert resp.status_code == 400

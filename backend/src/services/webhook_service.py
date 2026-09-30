@@ -36,6 +36,8 @@ def sign_webhook_payload(payload_bytes: bytes, secret: str) -> str:
 
     Returns: "t={unix_timestamp},v1={hex_signature}"
     """
+    if not secret or not secret.strip():
+        raise ValueError("A webhook signing secret is required.")
     timestamp = str(int(time.time()))
     signed_content = f"{timestamp}.{payload_bytes.decode()}"
     signature = hmac.new(
@@ -56,6 +58,8 @@ def verify_webhook_signature(
     and uses timing-safe comparison. Rejects if timestamp exceeds tolerance
     (replay protection).
     """
+    if not secret or not secret.strip():
+        return False
     try:
         parts = {}
         for segment in signature_header.split(","):
@@ -152,6 +156,16 @@ async def deliver_webhook(
         await session.commit()
         return True
 
+    secret = batch.webhook_secret
+    if not secret or not secret.strip():
+        # Old rows may predate submission validation. Never send a signature
+        # made with the public empty key, or retry this permanent configuration error.
+        delivery.status = "failed"
+        delivery.last_attempt_at = datetime.now(timezone.utc)
+        await session.commit()
+        logger.warning("Webhook delivery %d has no signing secret", delivery_id)
+        return False
+
     # SSRF guard (S7) defense-in-depth: re-validate at delivery time in case
     # DNS was rebound to an internal address after the request-time check.
     # A rejected URL is a permanent failure -- mark failed, never retried.
@@ -171,7 +185,7 @@ async def deliver_webhook(
     import json
 
     payload_bytes = json.dumps(delivery.payload_json, default=str).encode()
-    signature = sign_webhook_payload(payload_bytes, batch.webhook_secret or "")
+    signature = sign_webhook_payload(payload_bytes, secret)
 
     headers = {
         "Content-Type": "application/json",

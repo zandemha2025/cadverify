@@ -43,6 +43,7 @@ test("capability false preserves the proxied FormData batch upload", async (t) =
   const result = await createBatch(file, {
     manifest,
     webhookUrl: "https://hooks.example.test/batch",
+    webhookSecret: "local-test-only-signing-sentinel",
     concurrencyLimit: 7,
     onUploadProgress: (event) => progress.push(event),
   });
@@ -53,9 +54,23 @@ test("capability false preserves the proxied FormData batch upload", async (t) =
   assert.equal(batchBody.get("direct_upload_id"), null);
   assert.equal(batchBody.get("manifest"), manifest);
   assert.equal(batchBody.get("webhook_url"), "https://hooks.example.test/batch");
+  assert.equal(batchBody.get("webhook_secret"), "local-test-only-signing-sentinel");
   assert.equal(batchBody.get("concurrency_limit"), "7");
   assert.deepEqual(progress.map((event) => event.stage), ["checking", "proxying"]);
   assert.equal(progress.at(-1)?.percent, null);
+});
+
+test("blank callback secrets fail before capability discovery or ZIP upload", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  let requests = 0;
+  globalThis.fetch = (async () => { requests++; throw new Error("Unexpected network"); }) as typeof fetch;
+  for (const webhookSecret of [undefined, "", " \t\n"]) {
+    await assert.rejects(createBatch(new File(["unused"], "control.zip"), {
+      webhookUrl: "https://hooks.example.test/receiver", webhookSecret,
+    }), /signing secret is required/);
+  }
+  assert.equal(requests, 0);
 });
 
 test("backend-shaped direct response completes upload before creating batch by opaque ID", async (t) => {

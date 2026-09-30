@@ -103,6 +103,65 @@ def test_verify_bad_header_format():
     assert verify_webhook_signature(b"test", "secret", "t=123") is False
 
 
+@pytest.mark.parametrize("secret", ["", " \t\n"])
+def test_blank_secret_cannot_sign_or_authenticate(secret):
+    body = b'{"event":"batch.completed"}'
+    timestamp = str(int(time.time()))
+    forged = hmac.new(secret.encode(), timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
+    assert not verify_webhook_signature(body, secret, f"t={timestamp},v1={forged}")
+    with pytest.raises(ValueError, match="signing secret"):
+        sign_webhook_payload(body, secret)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("secret", [None, "", " \t\n"])
+async def test_delivery_without_a_secret_is_terminal_without_network(secret):
+    from src.services import webhook_service
+
+    delivery = MagicMock(batch_id=1, status="pending", attempts=0)
+    batch = MagicMock(webhook_url="https://hooks.example.test/receiver", webhook_secret=secret)
+    delivery_result, batch_result = MagicMock(), MagicMock()
+    delivery_result.scalars.return_value.first.return_value = delivery
+    batch_result.scalars.return_value.first.return_value = batch
+    session = AsyncMock()
+    session.execute.side_effect = [delivery_result, batch_result, delivery_result]
+    pool = AsyncMock()
+    with patch.object(webhook_service, "validate_outbound_url") as validate, patch.object(webhook_service.httpx, "AsyncClient") as client:
+        assert not await webhook_service.deliver_webhook(session, 7)
+        assert delivery.status == "failed"
+        assert delivery.attempts == 0
+        validate.assert_not_called()
+        client.assert_not_called()
+        await webhook_service.schedule_webhook_retry(session, 7, pool)
+        pool.enqueue_job.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_configured_delivery_signs_the_exact_sent_body():
+    from src.services import webhook_service
+
+    secret = "local-test-only-signing-sentinel"
+    delivery = MagicMock(batch_id=1, status="pending", attempts=0,
+                         payload_json={"event": "batch.completed", "batch_id": "LOCAL-AUDIT-CONTROL"})
+    batch = MagicMock(webhook_url="https://hooks.example.test/receiver", webhook_secret=secret)
+    delivery_result, batch_result = MagicMock(), MagicMock()
+    delivery_result.scalars.return_value.first.return_value = delivery
+    batch_result.scalars.return_value.first.return_value = batch
+    session = AsyncMock()
+    session.execute.side_effect = [delivery_result, batch_result]
+    with patch.object(webhook_service, "validate_outbound_url"), patch.object(webhook_service.httpx, "AsyncClient") as factory:
+        client = factory.return_value.__aenter__.return_value
+        client.post.return_value = MagicMock(status_code=204)
+        assert await webhook_service.deliver_webhook(session, 7)
+        sent = client.post.call_args.kwargs
+        timestamp, signature = sent["headers"]["X-CadVerify-Signature"].split(",")
+        expected = hmac.new(secret.encode(), timestamp[2:].encode() + b"." + sent["content"], hashlib.sha256).hexdigest()
+        assert signature == "v1=" + expected
+        assert secret not in repr(sent)
+        assert delivery.status == "delivered"
+        assert delivery.attempts == 1
+
+
 # ---------------------------------------------------------------------------
 # Retry delays
 # ---------------------------------------------------------------------------

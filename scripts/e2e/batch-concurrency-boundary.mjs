@@ -28,3 +28,12 @@ export async function assertBatchReadFailure(tab) {
   assert.equal(state.buttons.filter(label => label === 'Try again').length, 2);
   return { status: 'PASS', checks: ['honest failed reads', 'no unknown-status cancellation', 'both reads retryable'] };
 }
+
+// Select a ZIP and enter a callback URL, leaving the secret empty.
+export async function assertWebhookSecretRequired(tab) {
+  const secret = tab.playwright.getByRole('textbox', { name: 'Webhook signing secret', exact: true });
+  assert.equal(await secret.getAttribute('type'), 'password');
+  assert.notEqual(await secret.getAttribute('required'), null);
+  assert.equal(await tab.playwright.getByRole('button', { name: 'Start batch', exact: true }).isEnabled(), false);
+  return { status: 'PASS', checks: ['masked required secret', 'unsigned callback submission disabled'] };
+}

@@ -228,3 +228,5 @@ Batch summary follow-up (119): native five-file run on the refreshed real worker
 CI36732575107 passed all9jobs on8ae64d5 through116. Latest117–119 require a fresh exact-head run.
 
 Batch outage follow-up (120): a real API outage no longer offers cancellation before status is known or claims an empty item list after failure. Retry remains honest, automatic recovery restores all5items and exact record links, and a successful empty filter still works.498frontend checks/types/build pass; no backend or data change. Not deployed. See `120-batch-outage-proof.json`.
+
+Webhook configuration follow-up (121): callbacks now require a shared signing secret in the native form and API. Missing/blank keys cannot produce or authenticate a signature. The real worker terminalizes a marked legacy no-secret fixture with0HTTP attempts/no retry.499frontend and2509backend tests pass (3documented backend skips). Actual authorized recipient delivery and transport failure/retry remain open; not deployed.

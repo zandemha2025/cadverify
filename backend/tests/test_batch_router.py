@@ -90,9 +90,14 @@ def _make_batch_item(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize("webhook_data", [{}, {
+    "webhook_url": "https://hooks.example.test/receiver",
+    "webhook_secret": "local-test-only-signing-sentinel",
+}])
+@patch("src.api.batch_router.validate_outbound_url")
 @patch("src.jobs.arq_backend.get_arq_pool")
 @patch("src.api.batch_router.batch_service")
-def test_create_batch_returns_202(mock_bs, mock_pool):
+def test_create_batch_returns_202(mock_bs, mock_pool, mock_validate, webhook_data):
     """POST /batch with ZIP returns 202 + batch_id."""
     from src.db.engine import get_db_session
     from src.auth.require_api_key import require_api_key
@@ -128,6 +133,7 @@ def test_create_batch_returns_202(mock_bs, mock_pool):
     resp = client.post(
         "/api/v1/batch",
         files={"file": ("test.zip", buf, "application/zip")},
+        data=webhook_data,
     )
 
     assert resp.status_code == 202
@@ -138,8 +144,30 @@ def test_create_batch_returns_202(mock_bs, mock_pool):
     # Ensure webhook_secret is NOT in response (T-09-03)
     assert "webhook_secret" not in data
     mock_bs.stream_upload_to_tempfile.assert_awaited_once()
+    assert mock_bs.create_batch.call_args.kwargs["webhook_secret"] == webhook_data.get("webhook_secret")
 
     app.dependency_overrides.clear()
+
+
+@pytest.mark.parametrize("secret", [None, "", " \t\n"])
+def test_webhook_without_secret_is_rejected_before_upload_or_publication(secret):
+    from src.db.engine import get_db_session
+    from src.auth.require_api_key import require_api_key
+
+    app.dependency_overrides[require_api_key] = _override_auth
+    app.dependency_overrides[get_db_session] = _override_session
+    data = {"webhook_url": "https://hooks.example.test/receiver"}
+    if secret is not None:
+        data["webhook_secret"] = secret
+    try:
+        with patch("src.api.batch_router.validate_outbound_url") as validate, patch("src.api.batch_router.batch_service.create_batch", new_callable=AsyncMock) as create:
+            response = TestClient(app).post("/api/v1/batch", data=data, files={"file": ("test.zip", b"unused")})
+            assert response.status_code == 422
+            assert response.json()["detail"]["code"] == "WEBHOOK_SECRET_REQUIRED"
+            validate.assert_not_called()
+            create.assert_not_awaited()
+    finally:
+        app.dependency_overrides.clear()
 
 
 @patch("src.jobs.arq_backend.get_arq_pool")

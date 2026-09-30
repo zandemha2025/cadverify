@@ -1,0 +1,11 @@
+{
+  "environment": "local PostgreSQL, Redis, real ARQ dispatch worker",
+  "fixture_batch": "01M3SGJ66Z190K84YX7KTEXPB7",
+  "delivery_id": 1,
+  "job_id": "audit121-webhook:01M3SGJ66Z190K84YX7KTEXPB7",
+  "delivery_status": "failed",
+  "network_attempts": 0,
+  "response_code": null,
+  "next_retry_at": null,
+  "note": "Explicit legacy-configuration fixture; no secret and reserved .test receiver. Terminal before URL validation/HTTP; does not prove external delivery."
+}
