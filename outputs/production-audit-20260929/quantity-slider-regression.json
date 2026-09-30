@@ -1,0 +1,294 @@
+{
+  "checked_at": "2026-09-30T01:41:51.782507+00:00",
+  "environment": "local disposable audit workspace",
+  "deployed": false,
+  "finding": "041",
+  "source_sha256": "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a",
+  "before": {
+    "quantity50": {
+      "engine": 3.8,
+      "slider": 4.903390339033904
+    },
+    "quantity10000": {
+      "engine_lead_days": [
+        7,
+        13
+      ],
+      "slider_lead_days": [
+        5.6,
+        10.4
+      ]
+    }
+  },
+  "after": {
+    "all_real_engine_price_points_match_exactly": 40,
+    "quantity50": 3.8,
+    "quantity10000": 3.48,
+    "lead10000_days": [
+      7,
+      13
+    ],
+    "uncosted_quantity_9908": "Approx. cost / unit; lead labeled qty 10,000; no confidence band borrowed from another quantity"
+  },
+  "price_points": [
+    {
+      "process": "fdm",
+      "quantity": 1,
+      "actual": 30,
+      "slider": 30
+    },
+    {
+      "process": "fdm",
+      "quantity": 50,
+      "actual": 8.72,
+      "slider": 8.72
+    },
+    {
+      "process": "fdm",
+      "quantity": 123,
+      "actual": 8.69,
+      "slider": 8.69
+    },
+    {
+      "process": "fdm",
+      "quantity": 5000,
+      "actual": 8.68,
+      "slider": 8.68
+    },
+    {
+      "process": "fdm",
+      "quantity": 10000,
+      "actual": 8.68,
+      "slider": 8.68
+    },
+    {
+      "process": "sla",
+      "quantity": 1,
+      "actual": 40,
+      "slider": 40
+    },
+    {
+      "process": "sla",
+      "quantity": 50,
+      "actual": 10.44,
+      "slider": 10.44
+    },
+    {
+      "process": "sla",
+      "quantity": 123,
+      "actual": 10.45,
+      "slider": 10.45
+    },
+    {
+      "process": "sla",
+      "quantity": 5000,
+      "actual": 10.44,
+      "slider": 10.44
+    },
+    {
+      "process": "sla",
+      "quantity": 10000,
+      "actual": 10.44,
+      "slider": 10.44
+    },
+    {
+      "process": "dlp",
+      "quantity": 1,
+      "actual": 40,
+      "slider": 40
+    },
+    {
+      "process": "dlp",
+      "quantity": 50,
+      "actual": 6.48,
+      "slider": 6.48
+    },
+    {
+      "process": "dlp",
+      "quantity": 123,
+      "actual": 6.35,
+      "slider": 6.35
+    },
+    {
+      "process": "dlp",
+      "quantity": 5000,
+      "actual": 6.35,
+      "slider": 6.35
+    },
+    {
+      "process": "dlp",
+      "quantity": 10000,
+      "actual": 6.35,
+      "slider": 6.35
+    },
+    {
+      "process": "mjf",
+      "quantity": 1,
+      "actual": 75,
+      "slider": 75
+    },
+    {
+      "process": "mjf",
+      "quantity": 50,
+      "actual": 3.8,
+      "slider": 3.8
+    },
+    {
+      "process": "mjf",
+      "quantity": 123,
+      "actual": 3.59,
+      "slider": 3.59
+    },
+    {
+      "process": "mjf",
+      "quantity": 5000,
+      "actual": 3.48,
+      "slider": 3.48
+    },
+    {
+      "process": "mjf",
+      "quantity": 10000,
+      "actual": 3.48,
+      "slider": 3.48
+    },
+    {
+      "process": "cnc_5axis",
+      "quantity": 1,
+      "actual": 188.85,
+      "slider": 188.85
+    },
+    {
+      "process": "cnc_5axis",
+      "quantity": 50,
+      "actual": 25.93,
+      "slider": 25.93
+    },
+    {
+      "process": "cnc_5axis",
+      "quantity": 123,
+      "actual": 23.75,
+      "slider": 23.75
+    },
+    {
+      "process": "cnc_5axis",
+      "quantity": 5000,
+      "actual": 13.12,
+      "slider": 13.12
+    },
+    {
+      "process": "cnc_5axis",
+      "quantity": 10000,
+      "actual": 11.86,
+      "slider": 11.86
+    },
+    {
+      "process": "sls",
+      "quantity": 1,
+      "actual": 75,
+      "slider": 75
+    },
+    {
+      "process": "sls",
+      "quantity": 50,
+      "actual": 4,
+      "slider": 4
+    },
+    {
+      "process": "sls",
+      "quantity": 123,
+      "actual": 3.79,
+      "slider": 3.79
+    },
+    {
+      "process": "sls",
+      "quantity": 5000,
+      "actual": 3.67,
+      "slider": 3.67
+    },
+    {
+      "process": "sls",
+      "quantity": 10000,
+      "actual": 3.67,
+      "slider": 3.67
+    },
+    {
+      "process": "cnc_3axis",
+      "quantity": 1,
+      "actual": 134.22,
+      "slider": 134.22
+    },
+    {
+      "process": "cnc_3axis",
+      "quantity": 50,
+      "actual": 22.74,
+      "slider": 22.74
+    },
+    {
+      "process": "cnc_3axis",
+      "quantity": 123,
+      "actual": 21.12,
+      "slider": 21.12
+    },
+    {
+      "process": "cnc_3axis",
+      "quantity": 5000,
+      "actual": 11.76,
+      "slider": 11.76
+    },
+    {
+      "process": "cnc_3axis",
+      "quantity": 10000,
+      "actual": 10.62,
+      "slider": 10.62
+    },
+    {
+      "process": "injection_molding",
+      "quantity": 1,
+      "actual": 6002.18,
+      "slider": 6002.18
+    },
+    {
+      "process": "injection_molding",
+      "quantity": 50,
+      "actual": 122.18,
+      "slider": 122.18
+    },
+    {
+      "process": "injection_molding",
+      "quantity": 123,
+      "actual": 50.96,
+      "slider": 50.96
+    },
+    {
+      "process": "injection_molding",
+      "quantity": 5000,
+      "actual": 3.38,
+      "slider": 3.38
+    },
+    {
+      "process": "injection_molding",
+      "quantity": 10000,
+      "actual": 2.78,
+      "slider": 2.78
+    }
+  ],
+  "checks": {
+    "frontend_tests": 486,
+    "types": "PASS",
+    "changed_lint": "PASS",
+    "production_build": "PASS",
+    "native_CUA_regression": "red $4.90 then green $3.80, 7\u201313 days, approximation disclosure"
+  },
+  "runnable_check": "scripts/e2e/cost-slider-reconciliation.mjs",
+  "screenshots": {
+    "041-slider-before.png": "18674e28d2f4d1cbe2fd5fc493182d57d83bd50e42222ca5475ef843d3f5d143",
+    "041-costed-quantity-before.png": "2b294750b5063ad9c456f7b7bce7dafdd1d932ab9d2d1e8d58981c85c257a9d0",
+    "041-slider-fixed-local.png": "22dfe94c751321ae83c0e16483ea182ba31feccb329ebf927d1151a61371d6b2"
+  },
+  "not_proven": [
+    "uncosted quantities are approximations, not engine recalculations",
+    "crossover recommendation across all competing processes",
+    "production rollout",
+    "real quote accuracy"
+  ]
+}

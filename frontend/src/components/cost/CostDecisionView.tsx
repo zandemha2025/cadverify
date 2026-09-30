@@ -105,7 +105,8 @@ export function CostDecisionView({
   const recEstimate = rec
     ? pickEstimate(report, rec.curve.process, qty)
     : null;
-  const recConfidence = recEstimate?.confidence ?? null;
+  const exactQuantity = recEstimate?.quantity === qty;
+  const recConfidence = exactQuantity ? recEstimate?.confidence ?? null : null;
 
   // the tooling route is conditional when it currently fails DFM
   const toolingConditional =
@@ -125,17 +126,17 @@ export function CostDecisionView({
         />
         <CardContent compact className="grid grid-cols-1 gap-5 sm:grid-cols-3">
           <NumberReadout
-            label="Cost / unit"
+            label={exactQuantity ? "Cost / unit" : "Approx. cost / unit"}
             value={rec ? USD.format(rec.unitCost) : "—"}
             accent
             confidence={recConfidence ?? undefined}
           />
           <NumberReadout
-            label="Lead time"
+            label={recEstimate ? `Lead time · qty ${recEstimate.quantity.toLocaleString()}` : "Lead time"}
             size="md"
             value={
-              rec && rec.curve.leadLow != null && rec.curve.leadHigh != null
-                ? `${rec.curve.leadLow}–${rec.curve.leadHigh}`
+              recEstimate?.lead_time
+                ? `${recEstimate.lead_time.low_days}–${recEstimate.lead_time.high_days}`
                 : "—"
             }
             unit="days"

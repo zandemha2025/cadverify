@@ -115,6 +115,7 @@ export function BreakevenChart({
   );
 
   return (
+    <>
     <div className="h-[280px] w-full">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
@@ -200,5 +201,10 @@ export function BreakevenChart({
         </LineChart>
       </ResponsiveContainer>
     </div>
+    <p className="mt-2 text-xs text-muted-foreground">
+      Curves between and beyond costed quantities are approximate. Re-cost a quantity
+      to include its batch rounding and minimum charges.
+    </p>
+    </>
   );
 }

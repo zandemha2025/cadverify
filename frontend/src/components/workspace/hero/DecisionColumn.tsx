@@ -84,7 +84,8 @@ export function DecisionColumn({
   const qty = posToQty(breakeven, pos);
   const rec = recommendAt(breakeven, qty);
   const recEstimate = rec ? pickEstimate(report, rec.curve.process, qty) : null;
-  const recConfidence = recEstimate?.confidence ?? null;
+  const exactQuantity = recEstimate?.quantity === qty;
+  const recConfidence = exactQuantity ? recEstimate?.confidence ?? null : null;
 
   const toolingConditional = !!dec.tooling_process && dec.tooling_dfm_ready === false;
   const toolingBlocker = dec.tooling_process
@@ -102,7 +103,7 @@ export function DecisionColumn({
         />
         <CardContent compact className="space-y-4">
           <NumberReadout
-            label="Cost / unit"
+            label={exactQuantity ? "Cost / unit" : "Approx. cost / unit"}
             value={
               rec ? (
                 <Odometer value={rec.unitCost} format={(n) => USD.format(n)} />
@@ -115,11 +116,11 @@ export function DecisionColumn({
           />
           <div className="flex flex-wrap gap-x-6 gap-y-2">
             <NumberReadout
-              label="Lead time"
+              label={recEstimate ? `Lead time · qty ${recEstimate.quantity.toLocaleString()}` : "Lead time"}
               size="md"
               value={
-                rec && rec.curve.leadLow != null && rec.curve.leadHigh != null
-                  ? `${rec.curve.leadLow}–${rec.curve.leadHigh}`
+                recEstimate?.lead_time
+                  ? `${recEstimate.lead_time.low_days}–${recEstimate.lead_time.high_days}`
                   : "—"
               }
               unit="days"

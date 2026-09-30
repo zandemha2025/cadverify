@@ -8,9 +8,9 @@
  *
  *     unit(q) = fixedAmort / q + variablePerUnit
  *
- * We fit (fixedAmort, variablePerUnit) from the report's OWN reported unit
- * costs (so the curve passes exactly through the numbers shown in the glass-box
- * breakdown — no invented figures). With two costed quantities the fit is exact.
+ * Preserve every reported point and interpolate between neighboring points in
+ * inverse quantity. The endpoint fit is used outside the costed range. Curves
+ * are approximate: minimum charges and batch rounding need a fresh engine run.
  */
 import type { CostReport, CostEstimate } from "@/lib/api";
 
@@ -47,6 +47,15 @@ export interface Recommendation {
 /** unit cost of a curve at quantity q. */
 export function unitCostAt(c: ProcessCurve, q: number): number {
   if (q <= 0) return Infinity;
+  const exact = c.points.find((p) => p.qty === q);
+  if (exact) return exact.unit;
+  const upper = c.points.findIndex((p) => p.qty > q);
+  if (upper > 0) {
+    const lo = c.points[upper - 1];
+    const hi = c.points[upper];
+    const fraction = (1 / q - 1 / lo.qty) / (1 / hi.qty - 1 / lo.qty);
+    return lo.unit + fraction * (hi.unit - lo.unit);
+  }
   return c.fixedAmort / q + c.variablePerUnit;
 }
 
@@ -174,5 +183,6 @@ export function sampleQuantities(b: Breakeven, n = 48): number[] {
   for (let i = 0; i < n; i++) {
     out.push(Math.round(Math.exp(lo + ((hi - lo) * i) / (n - 1))));
   }
-  return Array.from(new Set(out));
+  return Array.from(new Set([...out, ...b.curves.flatMap((c) => c.points.map((p) => p.qty))]))
+    .sort((a, b) => a - b);
 }

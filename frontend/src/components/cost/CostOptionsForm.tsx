@@ -80,7 +80,7 @@ export function CostOptionsForm({
         label="Quantities (comma list, up to 6)"
         htmlFor="cost-qty"
         error={qtyError}
-        hint={qtyError ? undefined : "Costed at each quantity; the slider interpolates between them."}
+        hint={qtyError ? undefined : "Costed at each quantity; the slider approximates between them."}
       >
         <Input
           id="cost-qty"
