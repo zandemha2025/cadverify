@@ -244,6 +244,52 @@ def _positive_quantity(value: Any) -> float | None:
     return quantity if math.isfinite(quantity) and quantity > 0 else None
 
 
+def sap_bom_preview_rows(payload: dict[str, Any], material: str, selection: dict[str, Any]) -> tuple[list[dict], int]:
+    """Project ExplodeBOM values for inspection, without inferring BOM edges.
+
+    Item quantity, header base quantity and exploded quantity have different
+    meanings. Keep them separate; path/predecessor is not a verified graph.
+    """
+    collection = payload.get("d")
+    if not isinstance(collection, dict) or "__next" in collection:
+        raise ValueError("SAP returned an unsupported or paginated BOM response.")
+    records = collection.get("results")
+    # ponytail: conservative preview cap across unverified SAP versions; revise after tenant metadata validation.
+    if not isinstance(records, list) or not records or len(records) >= 9999:
+        raise ValueError("SAP returned no BOM components or exceeded the supported preview size (9998 records).")
+    rows = []
+    for record in records:
+        if (not isinstance(record, dict)
+                or record.get("Bill_Of_Material_Root") != selection["bill_of_material"]
+                or record.get("B_O_M_Hdr_Root_Matl_Hier_Node") != material
+                or record.get("bill_of_material_root_variant") != selection["variant"]):
+            raise ValueError("SAP returned a different or unidentified root BOM, material or alternative.")
+        row = {}
+        for target, source in {
+            "component": "bill_of_material_component", "header_material": "b_o_m_hdr_matl_hier_node",
+            "item_unit": "bill_of_material_item_unit", "header_unit": "b_o_m_header_base_unit",
+            "item_number": "bill_of_material_item_number",
+        }.items():
+            value = record.get(source)
+            if not isinstance(value, str) or not value.strip() or len(value) > 120:
+                raise ValueError("SAP returned missing or invalid component identity or units.")
+            row[target] = value
+        for target, source in {
+            "level": "b_o_m_explosion_level", "item_quantity": "bill_of_material_item_quantity",
+            "header_quantity": "b_o_m_header_quantity_primary", "exploded_quantity": "bill_of_material_comp_quant",
+        }.items():
+            value = record.get(source)
+            if isinstance(value, bool) or not re.fullmatch(r"-?\d{1,20}(?:\.\d{1,20})?", str(value)):
+                raise ValueError("SAP returned a missing or invalid BOM quantity or level.")
+            number = Decimal(str(value))
+            if ((target == "header_quantity" and number <= 0)
+                    or (target == "level" and (number < 1 or number > selection["explosion_level"] or number != number.to_integral_value()))):
+                raise ValueError("SAP returned an invalid header quantity or unexpected explosion level.")
+            row[target] = str(value)
+        rows.append(row)
+    return rows, len(records)
+
+
 def windchill_bom_rows(payload: dict[str, Any], expected_root: str) -> tuple[list[dict], int]:
     """Map complete GetPartStructure data to existing BOM rows using part IDs.
 

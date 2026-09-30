@@ -741,14 +741,14 @@ def recalibrate_from_records(
     )
     he = loop.heldout_eval
     # A real row is not enough by itself: the served empirical interval needs
-    # MIN_RESIDUALS costable REAL rows on the held-out side.  Bind this same
+    # MIN_RESIDUALS costable REAL rows for the SAME held-out process. Bind this
     # threshold to both the API's validated flag and the durable bundle so the
     # UI can never report success while /validate/cost silently falls back to
     # an assumption band.
     validated = (
         he.metrics_real is not None
         and he.n_real >= MIN_RESIDUALS
-        and loop.residual_model.from_real
+        and bool(loop.residual_model.validated_processes)
     )
     bundle = cstore.CalibrationBundle(
         org_id=org_id,
@@ -780,6 +780,7 @@ def recalibrate_from_records(
         ],
         "from_real": bool(validated),
         "validated": bool(validated),
+        "validated_processes": loop.residual_model.validated_processes,
         "claim": he.claim,
         "calibration": loop.calibration.to_dict(),
         "heldout_metrics_real": he.metrics_real,
@@ -881,13 +882,20 @@ def load_served_calibration(org_id: str, store_dir: Optional[str] = None):
     model = bundle.residual_model()
     # ``bundle.from_real`` is the durable release gate, not merely a redundant
     # copy of ResidualModel.from_real.  It is false for under-powered real
-    # recalibrations (< 3 held-out residuals), which must not tune the served
+    # recalibrations (< 3 held-out residuals per process), which must not tune the served
     # point or masquerade as an empirical band after a restart.
-    if not bundle.from_real and model.from_real:
+    if model.from_real and (not bundle.from_real or not model.validated_processes):
         return None, None
     # Only a REAL (measured) residual model earns a corrected point; a stand-in
     # spread stays centred on the uncorrected baseline exactly as before.
-    calibration = bundle.calibration if model.from_real else None
+    calibration = None
+    if model.from_real:
+        validated = set(model.validated_processes)
+        calibration = replace(bundle.calibration,
+            process_factors={p: f for p, f in bundle.calibration.process_factors.items()
+                             if p in validated},
+            n_by_process={p: n for p, n in bundle.calibration.n_by_process.items()
+                          if p in validated})
     return model, calibration
 
 

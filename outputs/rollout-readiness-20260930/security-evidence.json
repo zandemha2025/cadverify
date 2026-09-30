@@ -1,0 +1,151 @@
+{
+  "checked_at_utc": "2026-09-30T22:34:30.510726+00:00",
+  "claim": "SECURITY_GATE_OPEN",
+  "code_changed": false,
+  "production_deployed": false,
+  "run": {
+    "conclusion": "failure",
+    "createdAt": "2026-09-30T21:29:45Z",
+    "databaseId": 36779785629,
+    "headBranch": "codex/live-feature-verification-20260929",
+    "headSha": "772f3b56233789b036dba1f16c0bc77613043db1",
+    "status": "completed",
+    "updatedAt": "2026-09-30T22:08:47Z",
+    "url": "https://github.com/zandemha2025/cadverify/actions/runs/36779785629"
+  },
+  "job_url": "https://github.com/zandemha2025/cadverify/actions/runs/36779785629/job/110110548245",
+  "artifact_id": 11128216218,
+  "artifact_archive_sha256": "e3af1e00766427a9d066ebf9064fdd50c509ff70ac15c6984c2775aa2095ef56",
+  "backend_sbom_sha256": "e26e2da546adbf9caef7b6f92bff25161bcc78a388ffd248c908af04304c6d69",
+  "build_manifest": {
+    "claim": "CI_BUILD_PROOF",
+    "source_sha": "2622bbe861b9ff0889d53e8c5b0535ccf0ca86ee",
+    "backend_local_image_id": "sha256:903d43ee9001e0f5700688380b19c2f02f0e1888f2aedf552a7afab955a26e18",
+    "frontend_local_image_id": "sha256:15f922f4f36a371e98bf6fc0840071f42fafc95b61daf78fd6888f7f2ea23439"
+  },
+  "steps": [
+    {
+      "name": "Build backend production image",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T21:43:21Z",
+      "completed_at": "2026-09-30T21:44:05Z"
+    },
+    {
+      "name": "Scan frontend image (high/critical vulnerabilities)",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T21:44:08Z",
+      "completed_at": "2026-09-30T21:44:28Z"
+    },
+    {
+      "name": "Scan backend image (high/critical vulnerabilities)",
+      "status": "completed",
+      "conclusion": "failure",
+      "started_at": "2026-09-30T21:44:28Z",
+      "completed_at": "2026-09-30T21:44:55Z"
+    },
+    {
+      "name": "Exercise frontend image default startup and share image",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T21:45:26Z",
+      "completed_at": "2026-09-30T21:45:28Z"
+    },
+    {
+      "name": "Exercise backend image native STEP parser",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T21:45:28Z",
+      "completed_at": "2026-09-30T21:45:33Z"
+    },
+    {
+      "name": "Upload container build and security evidence",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-09-30T21:45:33Z",
+      "completed_at": "2026-09-30T21:45:34Z"
+    }
+  ],
+  "findings": [
+    {
+      "name": "libexpat1",
+      "version": "2.8.3-1~deb13u1",
+      "purl": "pkg:deb/debian/libexpat1@2.8.3-1~deb13u1?arch=amd64&distro=debian-13.5",
+      "cve": "CVE-2026-93990",
+      "severity": "HIGH",
+      "fixed_version_in_scan": null
+    },
+    {
+      "name": "libx11-6",
+      "version": "2:1.8.12-1",
+      "purl": "pkg:deb/debian/libx11-6@1.8.12-1?arch=amd64&distro=debian-13.5&epoch=2",
+      "cve": "CVE-2026-88806",
+      "severity": "HIGH",
+      "fixed_version_in_scan": null
+    },
+    {
+      "name": "libx11-data",
+      "version": "2:1.8.12-1",
+      "purl": "pkg:deb/debian/libx11-data@1.8.12-1?arch=all&distro=debian-13.5&epoch=2",
+      "cve": "CVE-2026-88806",
+      "severity": "HIGH",
+      "fixed_version_in_scan": null
+    },
+    {
+      "name": "libx11-xcb1",
+      "version": "2:1.8.12-1",
+      "purl": "pkg:deb/debian/libx11-xcb1@1.8.12-1?arch=amd64&distro=debian-13.5&epoch=2",
+      "cve": "CVE-2026-88806",
+      "severity": "HIGH",
+      "fixed_version_in_scan": null
+    },
+    {
+      "name": "libxrender1",
+      "version": "1:0.9.12-1",
+      "purl": "pkg:deb/debian/libxrender1@0.9.12-1?arch=amd64&distro=debian-13.5&epoch=1",
+      "cve": "CVE-2026-88807",
+      "severity": "HIGH",
+      "fixed_version_in_scan": null
+    }
+  ],
+  "official_status": [
+    {
+      "cve": "CVE-2026-93990",
+      "url": "https://security-tracker.debian.org/tracker/CVE-2026-93990",
+      "trixie_version": "2.8.3-1~deb13u1",
+      "trixie_status": "vulnerable",
+      "first_fixed_unstable_version": "2.8.4-2",
+      "trixie_fixed_version": null
+    },
+    {
+      "cve": "CVE-2026-88806",
+      "url": "https://security-tracker.debian.org/tracker/CVE-2026-88806",
+      "trixie_version": "2:1.8.12-1",
+      "trixie_status": "vulnerable; no-dsa (Minor issue)",
+      "unstable_status": "unfixed",
+      "trixie_fixed_version": null
+    },
+    {
+      "cve": "CVE-2026-88807",
+      "url": "https://security-tracker.debian.org/tracker/CVE-2026-88807",
+      "trixie_version": "1:0.9.12-1",
+      "trixie_status": "vulnerable; no-dsa (Minor issue)",
+      "unstable_status": "unfixed",
+      "trixie_fixed_version": null
+    }
+  ],
+  "local_tooling": {
+    "docker_client": "/Applications/Docker.app/Contents/Resources/bin/docker",
+    "docker_client_version": "29.7.2",
+    "daemon_reachable": false,
+    "daemon_started": false,
+    "local_image_build_or_scan_performed": false
+  },
+  "limits": [
+    "CI image uses PR merge SHA, not branch head SHA; both are recorded.",
+    "No refreshed image was built or scanned in this review.",
+    "Existing Trivy ignores remain; five is the remaining gate count, not total unfiltered vulnerabilities.",
+    "CI runtime probe proves one known STEP fixture only."
+  ]
+}

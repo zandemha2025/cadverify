@@ -31,7 +31,7 @@ import pytest
 
 from src.costing import calibration_store as cstore
 from src.costing.confidence import confidence_interval
-from src.costing.groundtruth import Calibration, GroundTruthRecord, Residual
+from src.costing.groundtruth import Calibration, GroundTruthRecord, Prediction, Residual, ResidualModel
 from src.services import groundtruth_service as svc
 
 
@@ -124,7 +124,7 @@ def test_recalibrate_passes_gate_at_min_and_persists(monkeypatch):
         )
         return SimpleNamespace(
             n_records=len(records), calibration=cal, heldout_eval=he,
-            residual_model=SimpleNamespace(from_real=True), skipped=[],
+            residual_model=ResidualModel(residuals), skipped=[],
         )
 
     monkeypatch.setattr(svc, "run_loop", _fake_run_loop)
@@ -138,6 +138,26 @@ def test_recalibrate_passes_gate_at_min_and_persists(monkeypatch):
     assert summary["validated"] is True
     assert summary["n_real"] == 5
     assert saved["b"].org_id == "ORG_OK"       # the persisted bundle is org-stamped
+
+
+def test_recalibrate_sparse_processes_never_validate_globally(tmp_path):
+    processes = ("sls", "mjf", "cnc_3axis", "injection_molding")
+    records = [_rec(i, stand_in=False, process=processes[i % 4])
+               for i in range(svc.MIN_REAL_RECORDS)]
+    cache = SimpleNamespace(baseline=lambda record: Prediction(record, 10.0, True))
+    summary = svc.recalibrate_from_records(
+        "ORG_SPARSE", records, cache=cache, store_dir=str(tmp_path),
+    )
+    assert summary["n_real"] >= 3
+    assert summary["validated"] is False
+    assert summary["validated_processes"] == []
+    assert "PENDING" in summary["claim"]
+    assert svc.load_served_calibration("ORG_SPARSE", str(tmp_path)) == (None, None)
+    # Old bundles that passed the pooled gate must fail closed after reload too.
+    bundle = cstore.load_bundle("ORG_SPARSE", str(tmp_path))
+    bundle.from_real = True
+    cstore.save_bundle(bundle, str(tmp_path))
+    assert svc.load_served_calibration("ORG_SPARSE", str(tmp_path)) == (None, None)
 
 
 # ── 3. ingest stores real (stand_in=False) without fabrication ──────────────
@@ -216,6 +236,25 @@ def test_standin_bundle_serves_no_calibration_and_never_validates(tmp_path):
     ci = confidence_interval(10.0, assumption_band_pct=40.0,
                              residual_provider=model, process="sls")
     assert ci.validated is False
+
+
+def test_legacy_global_correction_residuals_stay_coherent_after_reload(tmp_path):
+    bundle = _real_bundle("ORG_LEGACY")
+    bundle.calibration = Calibration(
+        process_factors={"sls": 2.0}, global_factor=2.0, n_by_process={"sls": 5})
+    bundle.residuals = [
+        Residual(part_id=f"cnc-{i}", process="cnc_3axis", quantity=100,
+                 actual_usd=20.0, baseline_usd=10.0, corrected_usd=20.0,
+                 signed_err=0.0, abs_err=0.0, stand_in=False)
+        for i in range(3)
+    ]
+    cstore.save_bundle(bundle, str(tmp_path))
+    model, calibration = svc.load_served_calibration("ORG_LEGACY", str(tmp_path))
+    assert calibration.factor_for("cnc_3axis") == 1.0
+    ci = confidence_interval(10.0 * calibration.factor_for("cnc_3axis"),
+        assumption_band_pct=40.0, residual_provider=model, process="cnc_3axis")
+    assert ci.validated is True
+    assert ci.point_usd == ci.low_usd == ci.high_usd == 20.0
 
 
 def test_underpowered_real_bundle_is_never_served(tmp_path):

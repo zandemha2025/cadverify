@@ -133,12 +133,17 @@ export interface ConnectorBomRun extends IntegrationRun {
     assembly_key: string;
     preview_edges: { parent_ref: string; child_ref: string; child_name: string; qty_per_parent: number }[];
     preview_truncated: boolean;
+    preview_components?: { component: string; header_material: string; level: string; item_quantity: string; item_unit: string; header_quantity: string; header_unit: string; exploded_quantity: string; item_number: string }[];
   };
 }
 
 export async function runConnectorBom(id: string, input: {
   part_id: string; assembly_key: string; mode: "dry_run" | "import";
   navigation_id?: string; expected_sha256?: string;
+  sap_selection?: {
+    bill_of_material: string; variant: string; version: string; engineering_change_document: string;
+    plant: string; application: string; explosion_date: string; explosion_level: number;
+  };
 }): Promise<ConnectorBomRun> {
   const res = await fetch(`${API_BASE}/integrations/credential-profiles/${encodeURIComponent(id)}/bom-runs`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
