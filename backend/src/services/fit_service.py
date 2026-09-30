@@ -134,31 +134,31 @@ def _max_region_mesh_faces() -> int:
 
 def _collision(a: trimesh.Trimesh, b: trimesh.Trimesh) -> tuple[float, dict[str, Any] | None]:
     try:
+        from manifold3d import Error, Manifold, Mesh64
+
         pair_faces = len(a.faces) + len(b.faces)
         max_faces = _max_pair_faces()
+        # Keep source precision even for small meshes far from assembly origin.
+        solids = [Manifold(Mesh64(
+            vert_properties=np.asarray(mesh.vertices, dtype=np.float64),
+            tri_verts=np.asarray(mesh.faces, dtype=np.uint64),
+        )) for mesh in (a, b)]
         if pair_faces > max_faces:
-            from manifold3d import Error, Manifold, Mesh64
-
             # Preserve the source meshes for clearance and face locators. Remove
             # redundant tessellation only at the kernel's native tolerance;
             # never increase that tolerance to make a complex pair fit the cap.
-            solids = [Manifold(Mesh64(
-                vert_properties=np.asarray(mesh.vertices, dtype=np.float64),
-                tri_verts=np.asarray(mesh.faces, dtype=np.uint64),
-            )).simplify(0) for mesh in (a, b)]
-            if any(solid.status() != Error.NoError or solid.is_empty() for solid in solids):
-                raise FitGeometryError("Collision geometry could not be prepared; measurements are withheld.")
-            if sum(solid.num_tri() for solid in solids) > max_faces:
-                raise FitGeometryError(
-                    f"Pair has {pair_faces} triangle faces, above the {max_faces} fit-check limit even after removing redundant triangles. Reduce tessellation and retry."
-                )
-            overlap = solids[0] ^ solids[1]
-            if overlap.status() != Error.NoError:
-                raise FitGeometryError("Exact collision boolean failed; measurements are withheld.")
-            shell = overlap.to_mesh64()
-            intersection = trimesh.Trimesh(vertices=shell.vert_properties, faces=shell.tri_verts, process=False)
-        else:
-            intersection = trimesh.boolean.intersection([a, b], engine="manifold")
+            solids = [solid.simplify(0) for solid in solids]
+        if any(solid.status() != Error.NoError or solid.is_empty() for solid in solids):
+            raise FitGeometryError("Collision geometry could not be prepared; measurements are withheld.")
+        if sum(solid.num_tri() for solid in solids) > max_faces:
+            raise FitGeometryError(
+                f"Pair has {pair_faces} triangle faces, above the {max_faces} fit-check limit even after removing redundant triangles. Reduce tessellation and retry."
+            )
+        overlap = solids[0] ^ solids[1]
+        if overlap.status() != Error.NoError:
+            raise FitGeometryError("Exact collision boolean failed; measurements are withheld.")
+        shell = overlap.to_mesh64()
+        intersection = trimesh.Trimesh(vertices=shell.vert_properties, faces=shell.tri_verts, process=False)
     except FitGeometryError:
         raise
     except BaseException as exc:
@@ -298,4 +298,9 @@ def parse_supplementary_mesh(data: bytes, filename: str) -> trimesh.Trimesh:
         raise FitGeometryError(f"Could not parse {suffix} mesh.") from exc
     if not isinstance(mesh, trimesh.Trimesh) or len(mesh.faces) == 0:
         raise FitGeometryError(f"{suffix} contained no triangle geometry.")
+    if kind == "3mf":
+        if mesh.units not in {"micron", "millimeter", "millimeters", "centimeter", "inch", "foot", "meter"}:
+            raise FitGeometryError("3MF units are unsupported; re-export with standard length units.")
+        # Convert after baking instance transforms so translations scale too.
+        mesh.convert_units("mm", guess=False)
     return mesh

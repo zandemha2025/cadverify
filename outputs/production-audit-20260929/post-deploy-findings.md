@@ -919,3 +919,18 @@ first divergence: step2, expected an undeclared machine rate to disclose fallbac
 - Native before/after checks use a temporary3-machine no-rate CSV entry. Home reports9 total/3 missing-rate machines, corroborated by PostgreSQL. The no-rate detail discloses default assumptions; rated CNC says RATE DECLARED and retains both same-name historical links under the process-specific heading. The existing engine passing-machine/no-rate behavior test passes.
 - Cleanup removes only the backed-up temporary entry; all4 pre-test records match their original complete-row hash. Native reload confirms6 machines across4 entries and no temporary name. All497 frontend tests/types/changed lint/build pass; the existing manufacturing-browser evidence label and native detail assertion follow the corrected copy. Backend unchanged from2458 passing tests.
 - Evidence: `110-machine-label-proof.json`, `110-machine-label-cleanup.json`, the one-row CSV and no-rate/count/process screenshots. This proves accurate disclosure of assumption-based behavior, not customer-quote accuracy. Local only; deployment remains pending.
+
+
+### 111 — 3MF length units were labelled but not applied (fixed locally)
+- first divergence: step 2, expected two identical one-inch cubes to overlap by16,387.064mm³, state was1.000mm³ labelled MEASURED in the real Fit in context UI.
+- `parse_supplementary_mesh` retained trimesh's inch metadata without converting coordinates. Convert the flattened mesh using the installed unit converter, including baked instance translations; refuse unsupported/non-finite unit declarations instead of guessing.
+- Native uploads now return16,387.064mm³. The same inch3MF against its millimeterOBJ equivalent gives the same overlap;35.4mm X nudge gives10.000mm clearance. Parameterized parser checks cover six standard units, absent-unit millimeter default, translated assemblies and invalid declarations.
+- Evidence: `111-112-fit-accuracy-proof.json`, known uploaded3MF/OBJ files, before/fixed and mixed-gap PNGs. These are synthetic geometry controls, not a customer tolerance certification. OBJ/3MF preview remains explicitly unavailable; STL/OBJ fit still assumes millimeters.
+
+### 112 — Float32 collision path could miss real overlap (fixed locally)
+- first divergence: step 3, expected64.516mm³ overlap for two25.4mm cubes offset25.3mm along X at X=1,000,000mm, state was No measured overlap plus0.100mm gap in the native UI.
+- The below-budget Boolean path silently downcast vertices to float32, while the existing large-pair path used Mesh64. Route every pair through the same native Mesh64 Boolean; keep redundant-triangle removal only when needed and preserve the existing effective face cap/native tolerance.
+- Native replay now reports64.516mm³ overlap and zero clearance. An additional0.2mm X nudge separates the same files and reports0.100mm gap. A runnable regression reproduces the previous failure and proves both positions.
+- No tolerance, budget, admission or auth gate was weakened. Evidence: `112-shared-frame-{before,fixed,gap}.png`, uploadedOBJ controls and shared proof JSON. Not deployed.
+
+111/112 final validation:23 focused and2468 full backend tests pass with3 documented environment skips (207.72s). Backend type errors215/228 baseline, no changed-file diagnostics; changed-source Bandit has no medium/high findings. Frontend unchanged from497 passing checks. Native invalid-unit rejection withholds results and valid replacement recovers.

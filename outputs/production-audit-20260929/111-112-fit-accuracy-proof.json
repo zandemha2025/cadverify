@@ -1,0 +1,69 @@
+{
+  "scope": "Local QA; not deployed; actual uploaded files via native CUA browser and unchanged authenticated app/API paths",
+  "findings": {
+    "111": {
+      "before": "1.000 mm3 for two identical one-inch 3MF cubes",
+      "root_cause": "3MF unit metadata was retained without scaling vertices or baked assembly translations",
+      "after_overlap_mm3": 16387.064,
+      "mixed_inch_3mf_mm_obj_overlap_mm3": 16387.064,
+      "mixed_pair_nudge_x_mm": 35.4,
+      "mixed_pair_gap_mm": 10,
+      "parser_controls": "six standard 3MF units, absent-unit millimeter default, translated build items; invalid and non-finite unit declarations refused",
+      "native_invalid_unit": "Unsupported-unit message shown; previous measurements withheld; valid replacement restores 10mm gap and 16387.064mm3 mixed-format overlap"
+    },
+    "112": {
+      "before": "No measured overlap and 0.100 mm sampled gap despite actual intersection",
+      "root_cause": "Small-pair trimesh Boolean adapter cast source vertices to float32; unlike the large-pair path, precision was lost far from origin",
+      "source_cube_extents_mm": [
+        25.4,
+        25.4,
+        25.4
+      ],
+      "source_origin_x_mm": 1000000,
+      "source_context_translation_mm": 25.3,
+      "expected_and_observed_overlap_mm3": 64.516,
+      "separated_context_nudge_x_mm": 0.2,
+      "separated_gap_mm": 0.1,
+      "fix": "Reuse native Mesh64 Boolean path for all pairs; preserve existing native-tolerance simplification and effective face cap"
+    }
+  },
+  "files": [
+    {
+      "name": "111-one-inch-cube.3mf",
+      "sha256": "a639825ec8da422393520695847f0b522784747b1b065e425192b24a7671c625"
+    },
+    {
+      "name": "111-matching-mm-cube.obj",
+      "sha256": "bd79b37babba0ca2769e6be36f5670230425af3282dc7e8b94f2c967dfefd5d7"
+    },
+    {
+      "name": "112-far-origin-part.obj",
+      "sha256": "c54510d0305b35786b6cda98a49f950b75d694ffe03db4c2e6c135040f171d24"
+    },
+    {
+      "name": "112-far-origin-assembly.obj",
+      "sha256": "5f215ec7630241d51c90a0f9c57eec5e617d0a5703b92279508d0c624e2f8c46"
+    },
+    {
+      "name": "111-unknown-unit.3mf",
+      "sha256": "46b88743d908d6ef36b64c817e9865b1a3c6cd2abdcaf6870cf78bc864a0d954"
+    }
+  ],
+  "validation": {
+    "focused_fit_tests": 23,
+    "backend_types": {
+      "errors": 215,
+      "baseline": 228,
+      "fit_service_diagnostics": 0
+    },
+    "full_suite": {
+      "passed": 2468,
+      "skipped": 3,
+      "seconds": 207.72,
+      "scope": "protected skip policy, actual local PostgreSQL/Redis; existing documented optional environment skips"
+    },
+    "changed_source_bandit": "PASS, no medium/high findings",
+    "frontend": "unchanged from 497 passing tests/types/lint/build"
+  },
+  "remaining": "OBJ/3MF preview is still explicitly unavailable; STL/OBJ fit assumes mm; full production and external-provider requirements remain open"
+}
