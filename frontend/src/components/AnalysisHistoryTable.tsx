@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { History } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { AnalysisSummary, AnalysesPage, RateLimits } from "@/lib/api";
@@ -93,9 +94,13 @@ export default function AnalysisHistoryTable({ onRateLimitsUpdate }: Props) {
         accessorKey: "filename",
         header: "File",
         cell: ({ row }) => (
-          <span className="font-medium text-foreground">
+          <Link
+            href={`/analyses/${row.original.ulid}`}
+            onClick={(event) => event.stopPropagation()}
+            className="rounded-sm font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
             {row.original.filename}
-          </span>
+          </Link>
         ),
       },
       {
@@ -139,7 +144,7 @@ export default function AnalysisHistoryTable({ onRateLimitsUpdate }: Props) {
       <div className="flex items-center gap-2">
         <span className="text-sm text-muted-foreground">Filter</span>
         <Select value={verdictFilter} onValueChange={handleFilterChange}>
-          <SelectTrigger className="h-8 w-44">
+          <SelectTrigger aria-label="Verdict filter" className="h-8 w-44">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -167,12 +172,26 @@ export default function AnalysisHistoryTable({ onRateLimitsUpdate }: Props) {
           initialized && !error ? (
             <EmptyState
               icon={History}
-              title="No analyses yet"
-              description="Upload a CAD file to get started."
+              title={
+                verdictFilter === "all"
+                  ? "No analyses yet"
+                  : "No analyses match this filter"
+              }
+              description={
+                verdictFilter === "all"
+                  ? "Upload a CAD file to get started."
+                  : "Choose another verdict or clear the filter to see your analyses."
+              }
               action={
-                <Button onClick={() => router.push("/analyze")}>
-                  Analyze a part
-                </Button>
+                verdictFilter === "all" ? (
+                  <Button onClick={() => router.push("/analyze")}>
+                    Analyze a part
+                  </Button>
+                ) : (
+                  <Button onClick={() => handleFilterChange("all")}>
+                    Clear filter
+                  </Button>
+                )
               }
             />
           ) : undefined

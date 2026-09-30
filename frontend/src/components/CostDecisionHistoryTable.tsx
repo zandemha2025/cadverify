@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Calculator } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
 import type {
@@ -91,9 +92,13 @@ export default function CostDecisionHistoryTable({ onRateLimitsUpdate }: Props) 
         accessorKey: "filename",
         header: "File",
         cell: ({ row }) => (
-          <span className="font-medium text-foreground">
+          <Link
+            href={`/cost-decisions/${row.original.id}`}
+            onClick={(event) => event.stopPropagation()}
+            className="rounded-sm font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
             {row.original.label || row.original.filename}
-          </span>
+          </Link>
         ),
       },
       {

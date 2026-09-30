@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Layers } from "lucide-react";
 import { toast } from "sonner";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -65,9 +66,14 @@ export default function BatchListPage() {
         accessorKey: "batch_ulid",
         header: "Batch ID",
         cell: ({ row }) => (
-          <span className="num text-xs text-primary">
+          <Link
+            href={`/batch/${row.original.batch_ulid}`}
+            onClick={(event) => event.stopPropagation()}
+            aria-label={`Open batch ${row.original.batch_ulid}`}
+            className="num rounded-sm text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
             {row.original.batch_ulid.slice(0, 12)}…
-          </span>
+          </Link>
         ),
       },
       {
