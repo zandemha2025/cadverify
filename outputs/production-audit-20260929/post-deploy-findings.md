@@ -866,3 +866,13 @@ first divergence: step3, expected all101 stored machines after the successful97-
 - Native proof uses101 actual local PostgreSQL records. Before:100 cards ending in temporary096. After:101 cards, Home shows101 machines, and formerly hidden temporary097 opens its correct detail. The97 temporary fixtures were backed up then removed by exact IDs/org; the original four rows match their pre-test hash exactly. Reloaded Home and Machines both show4 and no temporary names remain.
 - One runnable behavior test fails before the fix and passes after, covering complete reads, cursor encoding, a second-page503 and a repeated cursor. All496 frontend tests, types, changed-source lint and production build pass. Backend remains at104's2458 passing tests with3 documented local skips.
 - Evidence: `105-machine-pages-proof.json`, `105-machine-pages-cleanup.json`, the97-row CSV, and before/after/detail/count screenshots. Local only; production and external-workflow proof remain open.
+
+
+## 106 — Machine-detail read failures invent default rates and an empty history
+
+first divergence: step2, expected explicit unknown rate context and unreadable records after stopping the local API, state was “no governed rate card in effect”, a default-card footer and “nothing routed yet” alongside a request error.
+
+- Severity: medium accuracy/recovery defect. RateHistory discarded rejected Promise.allSettled results and interpreted null data as the default. RoutedParts rendered its empty-state branch after a failed read. Neither panel offered an in-place retry.
+- Fix: require both rate-library reads before claiming a context; show an unconfirmed state on loading/error and retain the machine's own saved scalar declaration. Make record-error, loading, empty and populated states exclusive. Reuse local effect retry counters and existing buttons for each panel; no backend/schema/dependency change.
+- Native RED/GREEN uses a real stopped local API, not mocked browser responses. Both panels retain the saved machine specs, suppress false default/empty claims and expose Retry. Repeated outage retries remain recoverable. After restarting the API, both buttons recover without reloading; the rate context resolves and all3 existing process-related records return, including both historical inch-IGES results.
+- All496 frontend tests, types, changed-source lint and production build pass. The runnable native assertion is `scripts/e2e/machine-detail-validation.mjs`; evidence is `106-machine-detail-proof.json` plus before/fixed/recovered screenshots. Backend remains104's2458 passing tests. Not deployed.

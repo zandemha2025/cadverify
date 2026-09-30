@@ -371,17 +371,28 @@ function RateHistory({ m }: { m: OwnedMachine }) {
   const [eff, setEff] = useState<EffectiveRateCard | null>(null);
   const [versions, setVersions] = useState<RateVersionsPage | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     let live = true;
-    Promise.allSettled([effectiveRateCard(), listRateVersions()]).then(([e, v]) => {
-      if (!live) return;
-      if (e.status === "fulfilled") setEff(e.value);
-      if (v.status === "fulfilled") setVersions(v.value);
-      setLoaded(true);
-    });
+    setLoaded(false);
+    setError(null);
+    Promise.all([effectiveRateCard(), listRateVersions()]).then(
+      ([e, v]) => {
+        if (!live) return;
+        setEff(e);
+        setVersions(v);
+        setLoaded(true);
+      },
+      (e) => {
+        if (!live) return;
+        setError(e instanceof Error ? e.message : "Could not read the rate library");
+        setLoaded(true);
+      }
+    );
     return () => { live = false; };
-  }, []);
+  }, [retry]);
 
   const declaredDate = m.updated_at || m.created_at;
   const dateFmt = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString() : "—");
@@ -409,6 +420,11 @@ function RateHistory({ m }: { m: OwnedMachine }) {
       <div style={{ marginTop: 12, borderTop: `1px solid #f0f0f3`, paddingTop: 12 }}>
         {!loaded ? (
           <Spinner label="reading rate library…" />
+        ) : error ? (
+          <div role="alert" style={{ fontFamily: MONO, fontSize: 11, color: C.fail }}>
+            <p>Rate context unconfirmed — {error}</p>
+            <GhostButton onClick={() => setRetry(n => n + 1)}>Retry rates</GhostButton>
+          </div>
         ) : usingGoverned ? (
           <p style={{ margin: 0, display: "inline-flex", alignItems: "center", gap: 7, fontFamily: MONO, fontSize: 11, color: C.shop }}>
             <ProvDot p="SHOP" size={6} /> governed rate card in effect · {publishedCount || versions?.versions.length || 0} published
@@ -424,7 +440,7 @@ function RateHistory({ m }: { m: OwnedMachine }) {
 
       <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40, lineHeight: 1.6 }}>
         old verdicts keep the rate version they were computed with · current effective card:{" "}
-        {usingGoverned ? "governed published card" : "default table / user machine rate"}
+        {!loaded || error ? "unconfirmed" : usingGoverned ? "governed published card" : "default table / user machine rate"}
       </p>
     </section>
   );
@@ -449,6 +465,7 @@ function HistRow({ a, b, tag, note, muted }: { a: string; b: string; tag?: "USER
 function RoutedParts({ m, nav }: { m: OwnedMachine; nav: (s: string) => void }) {
   const [rows, setRows] = useState<CostDecisionSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     let live = true;
@@ -466,13 +483,17 @@ function RoutedParts({ m, nav }: { m: OwnedMachine; nav: (s: string) => void }) 
       }
     );
     return () => { live = false; };
-  }, [m.process]);
+  }, [m.process, retry]);
 
   return (
     <section style={{ border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
       <Kicker>PARTS ROUTED HERE</Kicker>
-      {error && <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 11, color: C.fail }}>{error}</p>}
-      {rows === null ? (
+      {error ? (
+        <div role="alert" style={{ marginTop: 12, fontFamily: MONO, fontSize: 11, color: C.fail }}>
+          <p>Records unavailable — {error}</p>
+          <GhostButton onClick={() => setRetry(n => n + 1)}>Retry records</GhostButton>
+        </div>
+      ) : rows === null ? (
         <div style={{ marginTop: 12 }}><Spinner label="reading records…" /></div>
       ) : rows.length === 0 ? (
         <p style={{ margin: "12px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink40 }}>
