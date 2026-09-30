@@ -436,80 +436,54 @@ async def test_cache_hit_under_200ms(db_session, authed_user, _pipeline_patches)
 
 
 @pytest.mark.asyncio
-async def test_concurrent_duplicate_upload(db_session, authed_user, _pipeline_patches):
-    """Concurrent duplicate uploads: IntegrityError handled, both return same result."""
-    from unittest.mock import PropertyMock
-
+@pytest.mark.parametrize("org_id", [None, "org-race"])
+async def test_concurrent_duplicate_upload(db_session, authed_user, _pipeline_patches, org_id):
+    """Plain and real TaskGroup-wrapped insert conflicts reuse the winning row."""
     from sqlalchemy.exc import IntegrityError
+    from src.services import analysis_service as svc
 
-    from src.services.analysis_service import run_analysis
-
-    helpers = _make_mock_route_helpers()
-    call_count = 0
-
-    # After IntegrityError, the re-query should find the winning row
-    cached_analysis = MagicMock()
-    cached_analysis.id = 1
-    cached_analysis.result_json = {"verdict": "pass", "concurrent": True}
-    cached_analysis.duration_ms = 50.0
-    cached_analysis.face_count = 12
-    cached_analysis.mesh_hash = compute_mesh_hash(b"concurrent_file")
-
-    original_flush = db_session.flush
-
-    async def _flush_that_fails_once():
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            # First flush succeeds (assigns IDs)
-            await original_flush()
-        else:
-            # Second would raise IntegrityError in real DB
-            raise IntegrityError("duplicate key", params={}, orig=Exception())
-
-    with patch("src.services.analysis_service._get_route_helpers", return_value=helpers):
-        # First call: normal success
-        result1 = await run_analysis(
-            file_bytes=b"concurrent_file",
-            filename="cube.stl",
-            processes="fdm",
-            rule_pack=None,
-            user=authed_user,
-            session=db_session,
+    winner = MagicMock(id=42, result_json={"verdict": "pass", "concurrent": True}, duration_ms=50.0, face_count=12)
+    db_session.rollback = AsyncMock()
+    conflict = IntegrityError("duplicate key", params={}, orig=Exception("uq_analyses_dedup"))
+    with (
+        patch.object(svc, "_get_route_helpers", return_value=_make_mock_route_helpers()),
+        patch.object(svc, "_check_cache", new=AsyncMock(side_effect=[None, winner])) as cache,
+        patch.object(svc, "_persist_analysis", new=AsyncMock(side_effect=conflict)),
+        patch.object(svc, "_persist_source_evidence", new=AsyncMock()),
+        patch.object(svc, "_write_usage_event", new=AsyncMock()) as usage,
+    ):
+        outcome = await svc.run_analysis(
+            b"concurrent_file", "cube.stl", "fdm", None, authed_user, db_session,
+            org_id=org_id, return_persisted_id=True,
         )
+    assert isinstance(outcome, AnalysisRun)
+    assert outcome.analysis_id == 42 and outcome.result == winner.result_json
+    assert cache.await_count == 2
+    assert cache.await_args.kwargs["org_id"] == org_id
+    db_session.rollback.assert_awaited_once()
+    assert usage.await_args.args[2:4] == ("analysis_cached", 42)
 
-        # Second call: flush raises IntegrityError, then re-query finds cached row
-        db_session.flush = _flush_that_fails_once
 
-        # After rollback, execute should return the cached row
-        exec_hit = MagicMock()
-        exec_hit.scalars.return_value.first.return_value = cached_analysis
+@pytest.mark.asyncio
+@pytest.mark.parametrize("also_conflict", [False, True])
+async def test_storage_failure_is_not_hidden_by_dedup_recovery(db_session, authed_user, _pipeline_patches, also_conflict):
+    from sqlalchemy.exc import IntegrityError
+    from src.services import analysis_service as svc
 
-        # Sequence of execute() calls in this mocked persist path:
-        #   1. cache check -> None (miss)
-        #   2. W1 resolve_org read (stamps org_id on the new row) -> None here
-        #   3. projection/signature helper query
-        #   4. usage-event org resolution
-        #   5. same-transaction audit actor-email resolution
-        #   6. re-query after an uncaught duplicate flush (when reached)
-        db_session.execute.side_effect = [
-            MagicMock(scalars=MagicMock(return_value=MagicMock(first=MagicMock(return_value=None)))),
-            MagicMock(scalar_one_or_none=MagicMock(return_value=None)),  # resolve_org
-            MagicMock(),
-            MagicMock(scalar_one_or_none=MagicMock(return_value=None)),
-            MagicMock(scalar_one_or_none=MagicMock(return_value="user@example.com")),
-            exec_hit,
-        ]
-
-        result2 = await run_analysis(
-            file_bytes=b"concurrent_file",
-            filename="cube.stl",
-            processes="fdm",
-            rule_pack=None,
-            user=authed_user,
-            session=db_session,
-        )
-
-    # Both should return valid results
-    assert result1 is not None
-    assert result2 is not None
+    persist = AsyncMock(return_value=MagicMock(id=42))
+    if also_conflict:
+        persist.side_effect = IntegrityError("duplicate key", params={}, orig=Exception())
+    with (
+        patch.object(svc, "_get_route_helpers", return_value=_make_mock_route_helpers()),
+        patch.object(svc, "_check_cache", new=AsyncMock(return_value=None)) as cache,
+        patch.object(svc, "_persist_analysis", new=persist),
+        patch.object(svc, "_persist_source_evidence", new=AsyncMock(side_effect=OSError("source unavailable"))),
+        patch.object(svc, "_write_usage_event", new=AsyncMock()) as usage,
+    ):
+        with pytest.raises(ExceptionGroup) as failure:
+            await svc.run_analysis(b"concurrent_file", "cube.stl", "fdm", None, authed_user, db_session, org_id="org-race")
+    assert failure.value.subgroup(OSError) is not None
+    if also_conflict:
+        assert failure.value.subgroup(IntegrityError) is not None
+    cache.assert_awaited_once()
+    usage.assert_not_awaited()

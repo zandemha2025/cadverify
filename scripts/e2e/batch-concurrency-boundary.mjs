@@ -37,3 +37,16 @@ export async function assertWebhookSecretRequired(tab) {
   assert.equal(await tab.playwright.getByRole('button', { name: 'Start batch', exact: true }).isEnabled(), false);
   return { status: 'PASS', checks: ['masked required secret', 'unsigned callback submission disabled'] };
 }
+
+// After a delayed cursor response settles, only the current filter may own rows.
+export async function assertBatchFilteredRows(tab, status, filenames) {
+  const rows = await tab.playwright.getByRole('row').evaluateAll(elements =>
+    elements.filter(row => row.querySelector('td')).map(row => ({
+      filename: row.querySelector('td p')?.textContent,
+      status: row.querySelectorAll('td')[1]?.textContent?.trim(),
+    })));
+  assert.equal(await tab.playwright.getByRole('combobox').innerText(), status.toLowerCase());
+  assert.deepEqual(Array.from(rows, row => row.filename).sort(), [...filenames].sort());
+  assert.ok(rows.every(row => row.status === status), 'A superseded page must not append rows under another filter');
+  return { status: 'PASS', checks: ['current filter only', 'exact persisted items', 'no duplicate rows'], rows };
+}

@@ -234,3 +234,9 @@ Webhook configuration follow-up (121): callbacks now require a shared signing se
 Webhook transport follow-up (122): requests pin the already vetted IP while preserving Host/TLS identity, refuse redirects/proxy inheritance, and close acknowledgement streams without buffering bodies. Controlled transport/retry/HMAC checks pass;2516backend tests pass with3documented skips and zero new type messages. Actual external receipt remains open; not deployed.
 
 Webhook description follow-up (123): native Calibration & truth now lists the actual batch.completed and batch_item.completed summary events, explains signing-secret setup, and retains the real failed-delivery row.499frontend checks/types/lint/build pass. The four previously advertised non-existent event publishers and full-record-push claim are removed; no new event system is implied. Not deployed.
+
+Batch pagination follow-up (124): native52-file proof exposed stale all-status rows and duplicates after a filter switch. Current-generation guards now discard delayed successes/errors; unchanged-filter pagination loads all52unique rows.499frontend checks/types/lint/build pass. Local latency/error harness removed afterwards; not deployed.
+
+Concurrent CAD persistence follow-up (125): real duplicateSTEPs raced on the unique analysis key, and TaskGroup wrapping bypassed the recovery handler. Shared recovery now recognizes the wrapped conflict while propagating unrelated storage errors. Fresh concurrent nativeSTEPs complete on attempt1 and share one exact durable analysis; geometry/source bytes remain correct.2519backend tests/3documented skips pass. Not deployed.
+
+CI36738164014 passed all9jobs on52c191c through119. Local120–125 require the next exact-head run. External-provider and production verification remain open.

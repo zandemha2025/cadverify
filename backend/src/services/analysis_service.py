@@ -781,7 +781,11 @@ async def run_analysis(
             detail={"process_set_hash": process_set_hash, "file_name": filename},
             org_id=analysis.org_id,
         )
-    except IntegrityError:
+    except (IntegrityError, ExceptionGroup) as exc:
+        # TaskGroup wraps a racing insert; unrelated source/storage failures
+        # (including mixed groups) must still fail the durable-write boundary.
+        if isinstance(exc, ExceptionGroup) and exc.split(IntegrityError)[1] is not None:
+            raise
         # T-03B-01: Race condition — concurrent duplicate insert.
         # Roll back the failed flush and re-query the winning row.
         await session.rollback()

@@ -1,0 +1,82 @@
+{
+  "finding": 125,
+  "before": {
+    "batch": "01M3SHNSGEEZB9QJST6A7KF4SP",
+    "file": "page-002.STP",
+    "native_error": "unhandled errors in a TaskGroup (1 sub-exception)",
+    "worker_root": "asyncpg UniqueViolationError on uq_analyses_dedup wrapped by the persistence TaskGroup"
+  },
+  "after": {
+    "batch": "01M3SJA827YBB6WFDYK3JG32D0",
+    "status": "completed",
+    "completed": 2,
+    "failed": 0,
+    "concurrency": 2,
+    "items": [
+      {
+        "filename": "same-source-a.STP",
+        "item": "01M3SJA82EC7EMV1SSBAXT50KR",
+        "status": "completed",
+        "attempts": 1,
+        "started_at": "2026-09-30T16:28:13.406694+00:00",
+        "completed_at": "2026-09-30T16:28:16.450912+00:00",
+        "duration_ms": 3039.1,
+        "analysis": "01M3SJACN1GX4R5HZ0RV89H2AF",
+        "engine": "0.3.16"
+      },
+      {
+        "filename": "same-source-b.STP",
+        "item": "01M3SJA82EC7EMV1SSBAXT50KS",
+        "status": "completed",
+        "attempts": 1,
+        "started_at": "2026-09-30T16:28:13.407200+00:00",
+        "completed_at": "2026-09-30T16:28:16.459932+00:00",
+        "duration_ms": 3049.9,
+        "analysis": "01M3SJACN1GX4R5HZ0RV89H2AF",
+        "engine": "0.3.16"
+      }
+    ],
+    "same_analysis_rows": 1,
+    "overlapping_processing_intervals": true,
+    "source_sha256": "e69ed97c444221f77394117058f7d9f222f68e532bf05e3cb24c68fcf07a00d7",
+    "retained_source_exact": true,
+    "geometry": {
+      "faces": 185328,
+      "units": "mm",
+      "vertices": 92664,
+      "volume_mm3": 2717.3,
+      "is_manifold": true,
+      "is_watertight": true,
+      "center_of_mass": [
+        10.0,
+        7.5,
+        5.0
+      ],
+      "bounding_box_mm": [
+        20.0,
+        15.0,
+        10.0
+      ],
+      "surface_area_mm2": 1432.0
+    }
+  },
+  "fix": "Recognize TaskGroup-wrapped IntegrityError in the existing rollback/re-query path; rethrow groups containing any non-integrity failure. No retry-budget or geometry change.",
+  "checks": {
+    "focused_passed": 32,
+    "backend_full_passed": 2519,
+    "backend_skipped": 3,
+    "backend_seconds": 215.51,
+    "backend_type_errors": 214,
+    "backend_type_warnings": 3,
+    "new_type_messages": 0,
+    "changed_source_bandit_medium_high": 0
+  },
+  "limits": "Fresh native upload through the local real API/ARQ/PostgreSQL/blob store; original failed audit batch retained unchanged. Controlled source title changes only FILE_NAME, with identical STEP DATA section. No production deployment or external provider verification.",
+  "native_saved_report": {
+    "url": "/analyses/01M3SJACN1GX4R5HZ0RV89H2AF",
+    "dimensions": "20 x 15 x 10 mm",
+    "watertight": "Yes",
+    "features": "6 flat regions and one radius3mm/depth10mm cylindrical hole",
+    "screenshot": "125-concurrent-saved-analysis.png"
+  }
+}

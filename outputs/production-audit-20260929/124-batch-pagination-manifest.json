@@ -1,0 +1,10 @@
+{
+  "purpose": "real native batch pagination and status-filter race control",
+  "source": "backend/tests/assets/cube.step",
+  "source_sha256": "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a",
+  "source_note": "20x15x10 mm bored block, not a cube",
+  "valid_step_copies": 51,
+  "malformed_stl_controls": 1,
+  "zip_bytes": 217166,
+  "zip_sha256": "7a47c386c686653bd21730058c42752b1a9d650f8bc93ab0f640d54fa93d42f6"
+}
