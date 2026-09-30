@@ -1,0 +1,114 @@
+[
+  {
+    "file": "155-plate-300x200x0.81.step",
+    "dimensions_mm": [
+      300,
+      200,
+      0.81
+    ],
+    "volume_mm3": 48600.0,
+    "sha256": "df2b559b0227b9bdb748a9a4edac51dadc71c9f996c5ff57e0f121db29a0b0fe",
+    "mesh_extents_mm": [
+      300.0,
+      200.0,
+      0.81
+    ],
+    "mesh_volume_mm3": 48600.0,
+    "face_count": 88330,
+    "wall_issue_before": [
+      {
+        "code": "THIN_WALL",
+        "measured_mm": 0.7739443962607753,
+        "required_mm": 0.8
+      }
+    ]
+  },
+  {
+    "file": "155-plate-300x200x0.79.step",
+    "dimensions_mm": [
+      300,
+      200,
+      0.79
+    ],
+    "volume_mm3": 47400.0,
+    "sha256": "20d9b6f1b53ec2ad56c27fc4e10ad0bd3da806faebbbd1d5a916d558b4f944f1",
+    "mesh_extents_mm": [
+      300.0,
+      200.0,
+      0.79
+    ],
+    "mesh_volume_mm3": 47400.0,
+    "face_count": 88342,
+    "wall_issue_before": [
+      {
+        "code": "THIN_WALL",
+        "measured_mm": 0.7539444006983659,
+        "required_mm": 0.8
+      }
+    ]
+  },
+  {
+    "file": "155-plate-300x200x0.05.step",
+    "dimensions_mm": [
+      300,
+      200,
+      0.05
+    ],
+    "volume_mm3": 3000.0,
+    "sha256": "95d304007447e6b169cd80c99c854f57213b26c05f726208259b2758868db704",
+    "mesh_extents_mm": [
+      300.0,
+      200.0,
+      0.05
+    ],
+    "mesh_volume_mm3": 3000.0,
+    "face_count": 87220,
+    "wall_issue_before": []
+  },
+  {
+    "file": "155-plate-transformed-0.8.step",
+    "dimensions_before_transform_mm": [
+      300,
+      200,
+      0.8
+    ],
+    "rotation": {
+      "axis": [
+        1,
+        2,
+        3
+      ],
+      "radians": 0.67
+    },
+    "translation_mm": [
+      10000,
+      -20000,
+      30000
+    ],
+    "volume_mm3": 48000.0,
+    "sha256": "5de1e5a04500dd1511c1079a8b5f34951b29c7e972ab9121805fd6ed0720f3f5"
+  },
+  {
+    "file": "155-plate-transformed-0.79999.step",
+    "dimensions_before_transform_mm": [
+      300,
+      200,
+      0.79999
+    ],
+    "rotation": {
+      "axis": [
+        1,
+        2,
+        3
+      ],
+      "radians": 0.67
+    },
+    "translation_mm": [
+      10000,
+      -20000,
+      30000
+    ],
+    "volume_mm3": 47999.4,
+    "sha256": "7e94cf86040de1342fc21db8ddc04952fe086cee696914a58fbc3d547f3fa530"
+  }
+]

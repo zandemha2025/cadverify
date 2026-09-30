@@ -390,6 +390,13 @@ def _finite_body_volume(mesh: trimesh.Trimesh) -> float:
 # ──────────────────────────────────────────────────────────────
 # Vectorized wall-thickness ray cast
 # ──────────────────────────────────────────────────────────────
+def wall_thickness_tolerance(mesh: trimesh.Trimesh, eps: float) -> float:
+    """Numerical distance tolerance, including translated CAD coordinates."""
+    bounds = mesh.bounds
+    magnitude = float(np.abs(bounds).max()) if bounds is not None else 0.0
+    return max(eps * 1e-6, float(np.spacing(magnitude)) * 8)
+
+
 def _compute_wall_thickness(
     mesh: trimesh.Trimesh,
     normals: np.ndarray,
@@ -398,7 +405,7 @@ def _compute_wall_thickness(
 ) -> np.ndarray:
     """Measure per-face wall thickness via inward ray cast.
 
-    For each face, fires one ray from slightly-inside the surface along -normal.
+    For each face, fires one ray from slightly outside the surface along -normal.
     The nearest valid hit (not the source face itself) is the wall thickness.
     Old code did this with a Python per-face loop; this version uses
     np.minimum.at to scatter-min distances back to their source rays, which is
@@ -418,7 +425,7 @@ def _compute_wall_thickness(
 
     # Below threshold we cast one ray per face — but in memory-bounded batches,
     # so even here peak RSS is capped instead of spiking to gigabytes.
-    origins = centroids - normals * eps  # start just inside the surface
+    origins = centroids + normals * eps  # do not step past a thin opposite wall
     directions = -normals
     source_face_idx = np.arange(n, dtype=np.int64)
     return _cast_inward_rays_batched(mesh, origins, directions, eps, source_face_idx)
@@ -435,7 +442,8 @@ def _cast_inward_rays_batched(
 
     ``source_face_idx[i]`` is the mesh-face index ray ``i`` originates from,
     used to drop self-hits. Returns an array of length ``len(origins)`` with the
-    nearest non-self hit distance per ray (``np.inf`` where none).
+    nearest inward distance from the original face, not the offset ray origin
+    (``np.inf`` where none).
 
     The pure-Python ``RayMeshIntersector`` allocates (rays × candidate-triangle)
     intermediates *per call*. Casting only ``WALL_THICKNESS_RAY_BATCH`` rays at a
@@ -453,6 +461,9 @@ def _cast_inward_rays_batched(
     max_batch = _wall_thickness_ray_batch()
     budget = _wall_thickness_ray_budget()
     batch = int(min(max_batch, max(8, budget // n_faces)))
+    # Reject numerical self-hits without discarding walls thinner than the
+    # scale-dependent ray offset. Account for translated CAD coordinates too.
+    surface_tol = wall_thickness_tolerance(mesh, eps)
     for start in range(0, m, batch):
         stop = min(start + batch, m)
         b_origins = origins[start:stop]
@@ -473,12 +484,11 @@ def _cast_inward_rays_batched(
         if len(locs) == 0:
             continue
 
-        # distance from each hit to its (batch-local) source ray origin
-        dists = np.linalg.norm(locs - b_origins[idx_ray], axis=1)
-
-        # Exclude self-hits (source face reports itself) and numerical noise
-        # right at the origin (< 2*eps).
-        valid = (idx_tri != b_source[idx_ray]) & (dists > 2.0 * eps)
+        # Measure from the actual surface; the offset must not bias thickness.
+        # Signed projection also excludes any hit outside the source surface.
+        offsets = locs - mesh.triangles_center[b_source[idx_ray]]
+        dists = np.einsum("ij,ij->i", offsets, b_directions[idx_ray])
+        valid = (idx_tri != b_source[idx_ray]) & (dists > surface_tol)
         if np.any(valid):
             np.minimum.at(out, start + idx_ray[valid], dists[valid])
 
@@ -497,7 +507,7 @@ def _compute_wall_thickness_sampled(
     stride = max(1, n // 5000)
     sample_idx = np.arange(0, n, stride)
 
-    origins = centroids[sample_idx] - normals[sample_idx] * eps
+    origins = centroids[sample_idx] + normals[sample_idx] * eps
     directions = -normals[sample_idx]
 
     # Reuse the memory-bounded batched caster. `sample_idx` doubles as the

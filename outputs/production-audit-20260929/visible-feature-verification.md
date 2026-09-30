@@ -387,3 +387,16 @@ CI36786357248 completed onbc86ac0 through149: all eight non-image jobs pass, inc
 - Native Chrome regression fails against the previous runtime and passes with the fix. Ten local fault/retry sequences cover members, invitations, SAML mappings and organization access on both pages, including malformed HTTP200 bodies. Every organization recovery restores the same real member/role, and genuine empty membership retains its distinct state. No organization writes, invitations, credential changes or vendor requests occurred.
 - All500frontend tests, TypeScript, changed-source ESLint and the production build pass. The runnable native CUA check parses; diff checks pass. Backend source is unchanged, so the prior2,617passing/3protected-skip result is retained. The temporary fault proxy is stopped and the frontend again uses the normal API8017.
 - Evidence:154-organization-native-proof.json, before/failure/recovered screenshots and scripts/e2e/organization-read-recovery.mjs. This fix is local and not deployed; activeCI36790712036 checks the preceding6dab009revision through153. Production and external-service accuracy remain unverified.
+
+
+## 155 — Wall rays subtracted thickness and skipped very thin parts
+
+- first divergence: step 1, expected the real300×200×0.81mm STEP to clear the0.8mm FDM wall gate, state was a0.774mm measurement and Required/0% FDM result. A0.05mm plate produced no thin-wall finding. The inward offset was subtracted from measurements and the2×offset self-hit filter discarded genuine thin walls.
+- Start the existing full/sampled rays outside the surface, measure signed distance from the original face centroid, and exclude only numerical self-hits. Reuse the same narrow floating-point tolerance for wall threshold comparisons. Exact0.8mm survives rotation/translation noise;0.79999mm still rejects. Analysis/cache version0.3.20 keeps old saved evidence immutable.
+- Five native Chrome STEP uploads prove0.81passes the wall gate,0.79/0.05reject at their true thickness, and transformed exact/below-limit behavior. PostgreSQL confirms matching source hashes, correct48,600/47,400/3,000mm³ volumes, new versioned records and unchanged historical analysis/cost JSON. Other orientation/build-envelope findings remain valid and are not suppressed.
+-46focused checks pass, including12transformed full/sampled plate cases and3molding threshold cases. The final full suite passes2,632with3protected environment skips in239.04s, including the equality follow-up. Trap corpus passes with its existing unit-inference known gap. Changed-source types have2existing/0new errors; Bandit has0medium/high findings. Authorized independent review confirms equality and nearby-disconnected-plate controls.
+- Evidence:155-wall-distance-proof.json, native screenshots/DOM, five generated STEP controls and saved-record readbacks. Frontend unchanged from154's500passing tests/build. Production is unchanged.
+
+### Open accuracy findings exposed by155
+
+The molding check still mistakes long normal chords for maximum wall thickness: the uniform0.81mm plate is described as300mm thick/nonuniform. Separately, issue text and serialized measurements round0.79999mm to0.80/0.8 and hide its difference from the0.8limit. These remain explicit follow-ups;155does not establish general wall/DFM accuracy.

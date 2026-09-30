@@ -1,0 +1,22 @@
+[
+  {
+    "file": "155-plate-300x200x0.81.step",
+    "fdm": "FDM / FFF\t\nAdvisory\t90%\t—"
+  },
+  {
+    "file": "155-plate-300x200x0.79.step",
+    "fdm": "FDM / FFF\t\nRequired\t0%\t\n86187 faces (97.6%) below 0.8mm min wall for fdm. Thinnest: 0.79mm."
+  },
+  {
+    "file": "155-plate-300x200x0.05.step",
+    "fdm": "FDM / FFF\t\nRequired\t0%\t\n86107 faces (98.7%) below 0.8mm min wall for fdm. Thinnest: 0.05mm."
+  },
+  {
+    "file": "155-plate-transformed-0.8.step",
+    "fdm": "FDM / FFF\t\nRequired\t0%\t\nPart exceeds build envelope for fdm: X: 333mm > 300mm, Y: 328mm > 300mm. Bambu Lab X1C / Prusa MK4."
+  },
+  {
+    "file": "155-plate-transformed-0.79999.step",
+    "fdm": "FDM / FFF\t\nRequired\t0%\t\n47804 faces (98.3%) below 0.8mm min wall for fdm. Thinnest: 0.80mm."
+  }
+]

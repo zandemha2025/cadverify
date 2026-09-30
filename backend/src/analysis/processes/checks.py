@@ -20,7 +20,7 @@ import numpy as np
 
 from src.analysis.citations import parse_citation
 from src.analysis.constants import STANDARD_GAUGES
-from src.analysis.context import GeometryContext
+from src.analysis.context import GeometryContext, wall_thickness_tolerance
 from src.analysis.features.base import (
     Feature,
     FeatureKind,
@@ -44,7 +44,7 @@ def check_wall_thickness(
 ) -> list[Issue]:
     wt = ctx.wall_thickness
     finite = np.isfinite(wt)
-    thin = finite & (wt < min_wall_mm)
+    thin = finite & (wt < min_wall_mm - wall_thickness_tolerance(ctx.mesh, ctx.scale_eps))
     thin_faces = np.where(thin)[0]
     if len(thin_faces) == 0:
         return []
@@ -457,8 +457,9 @@ def check_wall_uniformity(
         return issues
     t = wt[finite_mask]
     t_min, t_max = float(t.min()), float(t.max())
+    tolerance = wall_thickness_tolerance(ctx.mesh, ctx.scale_eps)
 
-    if t_min < min_wall:
+    if t_min < min_wall - tolerance:
         issues.append(Issue(
             code="THIN_WALL_MOLDING",
             severity=Severity.ERROR,
@@ -469,7 +470,7 @@ def check_wall_uniformity(
             fix_suggestion=f"Increase to >= {min_wall}mm. {cite}",
             citation=parse_citation(cite),
         ))
-    if t_max > max_wall:
+    if t_max > max_wall + tolerance:
         issues.append(Issue(
             code="THICK_WALL",
             severity=Severity.WARNING,
@@ -480,7 +481,7 @@ def check_wall_uniformity(
             fix_suggestion=f"Core out thick sections. Target {ideal_wall}mm. {cite}",
             citation=parse_citation(cite),
         ))
-    if t_max > 0 and t_min > 0 and (t_max / t_min) > 2.0:
+    if t_max > 0 and t_min > 0 and t_max > 2.0 * t_min + 3.0 * tolerance:
         issues.append(Issue(
             code="NON_UNIFORM_WALLS",
             severity=Severity.WARNING,

@@ -6,11 +6,56 @@ import numpy as np
 import pytest
 import trimesh
 
+from src.analysis.base_analyzer import analyze_geometry
+from src.analysis.models import ProcessType
+from src.analysis.processes.checks import check_wall_thickness, check_wall_uniformity
 from src.analysis.context import (
+    GeometryContext,
     _compute_wall_thickness,
     _compute_wall_thickness_sampled,
     _raycast_sample_threshold,
 )
+
+
+@pytest.mark.parametrize("subdivisions", [0, 5])
+@pytest.mark.parametrize("width,thickness,thin", [
+    (20.0, 0.801, False),
+    (300.0, 0.81, False),
+    (300.0, 0.8, False),
+    (300.0, 0.79999, True),
+    (300.0, 0.79, True),
+    (300.0, 0.05, True),
+])
+def test_plate_wall_is_surface_distance_not_ray_offset(width, thickness, thin, subdivisions):
+    """Real 0.81mm walls must pass 0.8mm; tiny walls must not disappear.
+
+    Exercise full and sampled casts after a rigid CAD transform, with an
+    analytic dimension independent of the ray implementation.
+    """
+    mesh = trimesh.creation.box(extents=[width, width * 2 / 3, thickness])
+    for _ in range(subdivisions):
+        mesh = mesh.subdivide()
+    mesh.apply_transform(trimesh.transformations.rotation_matrix(0.67, [1, 2, 3]))
+    mesh.apply_translation([10000, -20000, 30000])
+    ctx = GeometryContext.build(mesh, analyze_geometry(mesh))
+    assert float(np.min(ctx.wall_thickness)) == pytest.approx(thickness, abs=1e-7)
+    assert bool(check_wall_thickness(ctx, 0.8, ProcessType.FDM)) is thin
+    molding = check_wall_uniformity(ctx, 0.8, 400, 2.5, ProcessType.INJECTION_MOLDING)
+    assert any(issue.code == "THIN_WALL_MOLDING" for issue in molding) is thin
+
+
+@pytest.mark.parametrize("extents,max_wall,expected", [
+    ([6, 6, 6], 6, set()),
+    ([1, 2, 1], 2, set()),
+    ([1, 2.00001, 1], 2, {"THICK_WALL", "NON_UNIFORM_WALLS"}),
+])
+def test_molding_wall_thresholds_ignore_only_numerical_noise(extents, max_wall, expected):
+    mesh = trimesh.creation.box(extents=extents)
+    mesh.apply_transform(trimesh.transformations.rotation_matrix(0.67, [1, 2, 3]))
+    mesh.apply_translation([10000, -20000, 30000])
+    ctx = GeometryContext.build(mesh, analyze_geometry(mesh))
+    issues = check_wall_uniformity(ctx, 0.8, max_wall, 1, ProcessType.INJECTION_MOLDING)
+    assert {issue.code for issue in issues} == expected
 
 
 def _make_sphere(n_faces: int) -> trimesh.Trimesh:
