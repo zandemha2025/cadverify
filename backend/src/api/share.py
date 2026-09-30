@@ -34,7 +34,7 @@ async def create_share(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Share an analysis — generates a public short URL."""
     result = await share_service.create_share(analysis_id, user.user_id, session)
@@ -48,7 +48,7 @@ async def revoke_share(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Revoke sharing — the public link will 404 immediately."""
     await share_service.revoke_share(analysis_id, user.user_id, session)
@@ -61,7 +61,7 @@ async def get_shared_analysis(
     short_id: str,
     request: Request,
     response: Response,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Public share view — returns sanitized analysis data (no auth required)."""
     data = await share_service.get_shared_analysis(short_id, session)

@@ -106,7 +106,7 @@ async def ingest_assembly(
         None, description="key to store this tree under (defaults to the filename)"
     ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _org_limit: None = Depends(enforce_org_limits),
 ):
     """Persist the REAL edge tree of an uploaded STEP/IGES assembly.
@@ -145,7 +145,7 @@ async def onboard_bom(
         None, description="key to store this BOM under (or the upload filename)"
     ),
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _org_limit: None = Depends(enforce_org_limits),
 ):
     """Onboard a customer BOM (``parent_ref,child_ref,qty_per_parent`` CSV/JSON).
@@ -229,7 +229,7 @@ async def get_ancestry(
     assembly_key: str,
     child_ref: str = Query(..., description="the part/design ref to trace to the root"),
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """The child->root ancestry chain + rolled-up multiplier + provenance.
 
@@ -251,7 +251,7 @@ async def get_tree(
     response: Response,
     assembly_key: str,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """The persisted edge list (tree) for ``(org, assembly_key)``. Empty ``edges``
     when no tree exists — honest, never a 404-as-error for a legitimately empty

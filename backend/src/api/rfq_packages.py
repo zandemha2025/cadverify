@@ -44,7 +44,7 @@ async def create_rfq_package(
     response: Response,
     body: CreateRfqPackageBody,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     package = await svc.create_package(
         session,
@@ -69,7 +69,7 @@ async def list_rfq_packages(
     response: Response,
     limit: int = Query(50, ge=1, le=100),
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     rows = await svc.list_packages(session, user.user_id, limit=limit)
     return {"packages": [svc.serialize_package(row) for row in rows]}
@@ -82,7 +82,7 @@ async def get_rfq_package(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     package = await svc.get_package(session, package_id, user.user_id)
     return {"package": svc.serialize_package(package, include_items=True)}
@@ -94,7 +94,7 @@ async def download_rfq_package(
     package_id: str,
     request: Request,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> Response:
     package = await svc.get_package(session, package_id, user.user_id)
     zip_bytes = await svc.build_zip(session, package)

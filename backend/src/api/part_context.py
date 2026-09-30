@@ -69,7 +69,7 @@ async def get_part_context(
     response: Response,
     mesh_hash: str,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """The declared context for a part in the caller's org, or 404 when none."""
     org_id = await resolve_org(session, user.user_id)
@@ -87,7 +87,7 @@ async def declare_part_context(
     mesh_hash: str,
     body: DeclareContextBody,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Declare (upsert) a part's context. Idempotent on ``(org, mesh_hash)``.
 

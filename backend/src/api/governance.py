@@ -70,7 +70,7 @@ async def propose_change_request(
     response: Response,
     body: ProposeBody,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.member)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Propose a DRAFT version for review (member+)."""
     org_id = await _write_org(ctx, session)
@@ -108,7 +108,7 @@ async def list_change_requests(
     response: Response,
     status: Optional[str] = None,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """All change requests for the caller's org, newest first; optional ?status."""
     org_id = await resolve_org(session, user.user_id)
@@ -125,7 +125,7 @@ async def get_change_request(
     response: Response,
     request_id: int,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     org_id = await resolve_org(session, user.user_id)
     row = await svc.get_request(session, org_id, request_id) if org_id else None
@@ -141,7 +141,7 @@ async def approve_change_request(
     response: Response,
     request_id: int,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Approve a PROPOSED request — PUBLISHES the target draft (admin)."""
     org_id = await _write_org(ctx, session)
@@ -186,7 +186,7 @@ async def reject_change_request(
     request_id: int,
     body: RejectBody,
     ctx: OrgAuthContext = Depends(require_org_role(OrgRole.admin)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Reject a PROPOSED request — the draft stays a draft (admin)."""
     org_id = await _write_org(ctx, session)

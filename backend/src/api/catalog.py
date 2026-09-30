@@ -43,7 +43,7 @@ router = APIRouter(tags=["catalog"])
 @router.get("/parts/{mesh_hash}")
 @limiter.limit("240/hour;2000/day")
 async def get_catalog_part(request: Request, response: Response, mesh_hash: str,
-    user: AuthedUser = Depends(require_role(Role.viewer)), session: AsyncSession = Depends(get_db_session)):
+    user: AuthedUser = Depends(require_role(Role.viewer)), session: AsyncSession = Depends(get_db_session, scope="function")):
     """An indexed exact-part lookup, including parts beyond the first grid page."""
     import re
     from src.services.part_summary_service import _latest_analysis, _latest_cost, _source_ref
@@ -97,7 +97,7 @@ async def get_catalog(
         None, description="Opaque keyset cursor from a prior page's next_cursor."
     ),
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Paginated parts×decisions grid for the caller's organization.
 
@@ -215,7 +215,7 @@ async def get_portfolio(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Org-scoped portfolio roll-up: the caller's COSTED parts ranked by the
     engine's redesign savings, plus a posture aggregate (W3).
@@ -267,7 +267,7 @@ async def get_triage(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Org-scoped makeability triage roll-up: of the caller's N parts, how many
     are routable to each process and how many are makeable / need review / unknown.
@@ -346,7 +346,7 @@ async def get_makeability(
     ),
     page_size: int = Query(100, ge=1, le=500, description="Drill-down page size."),
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Org-scoped IN-HOUSE makeability breakdown (Phase D — spec §10 D3).
 
@@ -456,7 +456,7 @@ async def get_capability_investment(
     ),
     page_size: int = Query(100, ge=1, le=500, description="Drill-down page size."),
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Org-scoped CAPABILITY-INVESTMENT ranking (Phase D — spec §10 D4): which ONE
     machine acquisition unlocks the most currently-blocked parts.

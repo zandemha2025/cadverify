@@ -90,7 +90,7 @@ async def list_analyses(
     limit: int = Query(20, ge=1, le=100, description="Results per page (max 100)"),
     verdict: str | None = Query(None, description="Filter: pass, issues, fail"),
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Return paginated list of analyses owned by the caller's organization.
 
@@ -132,7 +132,7 @@ async def get_analysis(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Return full analysis result by ULID (caller's org only; 404 otherwise)."""
     stmt = select(Analysis).where(

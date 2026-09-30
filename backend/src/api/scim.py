@@ -61,7 +61,7 @@ async def list_users(
     count: int = Query(100, ge=1, le=100),
     filter: str | None = Query(None),  # noqa: A002 - SCIM parameter name.
     ctx: OrgAuthContext = Depends(require_scim_admin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     return await svc.list_users(
         session,
@@ -78,7 +78,7 @@ async def create_user(
     request: Request,
     payload: dict[str, Any],
     ctx: OrgAuthContext = Depends(require_scim_admin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     user = await svc.create_or_update_user(
         session,
@@ -95,7 +95,7 @@ async def get_user(
     user_id: str,
     request: Request,
     ctx: OrgAuthContext = Depends(require_scim_admin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     return await svc.get_user(
         session, org_id=_org_id(ctx), user_id=user_id, base_url=_base_url(request)
@@ -108,7 +108,7 @@ async def replace_user(
     request: Request,
     payload: dict[str, Any],
     ctx: OrgAuthContext = Depends(require_scim_admin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     existing = await svc.get_user(
         session, org_id=_org_id(ctx), user_id=user_id, base_url=_base_url(request)
@@ -130,7 +130,7 @@ async def patch_user(
     request: Request,
     payload: dict[str, Any],
     ctx: OrgAuthContext = Depends(require_scim_admin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     if payload.get("schemas") and svc.PATCH_SCHEMA not in payload.get("schemas", []):
         raise HTTPException(status_code=400, detail="SCIM PATCH schema is required.")
@@ -150,7 +150,7 @@ async def delete_user(
     user_id: str,
     request: Request,
     ctx: OrgAuthContext = Depends(require_scim_admin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     await svc.patch_user(
         session,
@@ -167,7 +167,7 @@ async def delete_user(
 async def list_groups(
     request: Request,
     ctx: OrgAuthContext = Depends(require_scim_admin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     return await svc.list_groups(session, org_id=_org_id(ctx), base_url=_base_url(request))
 
@@ -177,7 +177,7 @@ async def get_group(
     group_id: str,
     request: Request,
     ctx: OrgAuthContext = Depends(require_scim_admin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     return await svc.get_group(
         session, org_id=_org_id(ctx), group_id=group_id, base_url=_base_url(request)
@@ -190,7 +190,7 @@ async def patch_group(
     request: Request,
     payload: dict[str, Any],
     ctx: OrgAuthContext = Depends(require_scim_admin),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     group = await svc.patch_group(
         session,

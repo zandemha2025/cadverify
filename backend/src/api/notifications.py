@@ -29,7 +29,7 @@ async def list_notifications(
     limit: int = Query(50, ge=1, le=100),
     cursor: int | None = Query(None, ge=1),
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     org_id = await _org(session, user)
     if not org_id:
@@ -69,7 +69,7 @@ async def mark_notification_read(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     org_id = await _org(session, user)
     if not org_id:
@@ -98,7 +98,7 @@ async def dismiss_notification(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     org_id = await _org(session, user)
     if not org_id:
@@ -127,7 +127,7 @@ async def restore_notification(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     org_id = await _org(session, user)
     if not org_id:
@@ -155,7 +155,7 @@ async def mark_all_notifications_read(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     org_id = await _org(session, user)
     count = 0

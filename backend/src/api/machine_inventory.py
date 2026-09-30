@@ -181,7 +181,7 @@ async def get_shop_capabilities(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """The org's shop-level secondary-op set (empty ``ops`` when unset)."""
     org_id = await _require_org(session, user)
@@ -196,7 +196,7 @@ async def put_shop_capabilities(
     response: Response,
     body: ShopCapabilitiesBody,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Declare (upsert) the org's shop-level secondary ops. Idempotent per org.
 
@@ -225,7 +225,7 @@ async def import_machines(
     response: Response,
     file: Optional[UploadFile] = File(None),
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Bulk-import an org's owned machines from a CSV.
 
@@ -278,7 +278,7 @@ async def create_machine(
     response: Response,
     body: MachineBody,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Declare one owned machine. A malformed capability field is a 400 (reported,
     never coerced). The response is always ``provenance: "user"``."""
@@ -308,7 +308,7 @@ async def list_machines(
     cursor: Optional[str] = None,
     limit: int = 100,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """List the caller org's owned machines — keyset-paginated (``id`` ASC)."""
     org_id = await _require_org(session, user)
@@ -323,7 +323,7 @@ async def get_machine(
     response: Response,
     machine_id: str,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """One owned machine by its public id (org-scoped), or 404."""
     org_id = await _require_org(session, user)
@@ -341,7 +341,7 @@ async def patch_machine(
     machine_id: str,
     body: MachinePatchBody,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Patch a machine's fields (org-scoped). Only supplied keys change; the merged
     result is re-validated. 404 when no such machine; 400 on a malformed field."""
@@ -369,7 +369,7 @@ async def delete_machine(
     response: Response,
     machine_id: str,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Delete one owned machine (org-scoped). 404 when no such machine."""
     org_id = await _require_org(session, user)

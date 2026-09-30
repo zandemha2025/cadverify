@@ -70,7 +70,7 @@ async def confirm_identity(
     response: Response,
     body: ConfirmIdentityBody,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Confirm (or correct) a part's identity in the caller's org corpus.
 
@@ -213,7 +213,7 @@ async def onboard_library(
     zip: Optional[UploadFile] = File(None),
     mapping: Optional[UploadFile] = File(None),
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Bulk-onboard a customer's part library into the org identity corpus.
 
@@ -306,7 +306,7 @@ async def get_library(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """The org's identity corpus size + a recent slice (declared identity only).
 

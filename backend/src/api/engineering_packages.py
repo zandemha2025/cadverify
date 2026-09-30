@@ -26,7 +26,7 @@ async def list_packages(request: Request, response: Response,
     series_id: str | None = Query(None, max_length=100), cursor: str | None = Query(None, max_length=100),
     blocker_kind: str | None = Query(None, max_length=100), owner: str | None = Query(None, max_length=200),
     limit: int = Query(25, ge=1, le=100), user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session)):
+    session: AsyncSession = Depends(get_db_session, scope="function")):
     org = await svc.require_org(session, user)
     return await svc.list_packages(session, org, mesh_hash=mesh_hash, series_id=series_id, cursor=cursor, limit=limit, blocker_kind=blocker_kind, owner=owner)
 
@@ -35,7 +35,7 @@ async def list_packages(request: Request, response: Response,
 @limiter.limit("240/hour;2000/day")
 async def blocker_queue(request: Request, response: Response,
     limit: int = Query(50, ge=1, le=100), user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session)):
+    session: AsyncSession = Depends(get_db_session, scope="function")):
     org = await svc.require_org(session, user)
     # Aggregate latest snapshots in SQL; never load the organization's raw
     # geometry, documents or all package versions into the application process.
@@ -56,7 +56,7 @@ async def blocker_queue(request: Request, response: Response,
 @router.post("", dependencies=[Depends(require_kill_switch_open)])
 @limiter.limit("240/hour;1000/day")
 async def write_package(request: Request, response: Response, body: svc.WritePackage,
-    user: AuthedUser = Depends(require_role(Role.analyst)), session: AsyncSession = Depends(get_db_session)):
+    user: AuthedUser = Depends(require_role(Role.analyst)), session: AsyncSession = Depends(get_db_session, scope="function")):
     try:
         row = await svc.save_package(session, user, body)
     except ValueError as exc:
@@ -69,7 +69,7 @@ async def write_package(request: Request, response: Response, body: svc.WritePac
 @router.post("/documents", dependencies=[Depends(require_kill_switch_open)])
 @limiter.limit("120/hour;500/day")
 async def upload_document(request: Request, response: Response, file: UploadFile = File(...),
-    user: AuthedUser = Depends(require_role(Role.analyst)), session: AsyncSession = Depends(get_db_session)):
+    user: AuthedUser = Depends(require_role(Role.analyst)), session: AsyncSession = Depends(get_db_session, scope="function")):
     org = await svc.require_org(session, user)
     data = await file.read(20 * 1024 * 1024 + 1)
     return await svc.store_document(org, file.filename or "document.txt", data)
@@ -91,7 +91,7 @@ async def import_characteristics(request: Request, response: Response, file: Upl
 @router.get("/{package_id}")
 @limiter.limit("240/hour;2000/day")
 async def get_package(package_id: str, request: Request, response: Response,
-    user: AuthedUser = Depends(require_role(Role.viewer)), session: AsyncSession = Depends(get_db_session)):
+    user: AuthedUser = Depends(require_role(Role.viewer)), session: AsyncSession = Depends(get_db_session, scope="function")):
     row = await svc.get_package(session, await svc.require_org(session, user), package_id)
     return {**svc.serialize_package(row), "current_assessment": await svc.current_assessment(session, row)}
 
@@ -99,7 +99,7 @@ async def get_package(package_id: str, request: Request, response: Response,
 @router.get("/{package_id}/documents/{source_id}")
 @limiter.limit("120/hour;1000/day")
 async def download_document(package_id: str, source_id: str, request: Request,
-    user: AuthedUser = Depends(require_role(Role.viewer)), session: AsyncSession = Depends(get_db_session)):
+    user: AuthedUser = Depends(require_role(Role.viewer)), session: AsyncSession = Depends(get_db_session, scope="function")):
     row = await svc.get_package(session, await svc.require_org(session, user), package_id)
     source = next((s for s in row.payload["document"]["sources"] if s["id"] == source_id), None)
     if not source or not source["sha256"]:
@@ -116,7 +116,7 @@ async def download_document(package_id: str, source_id: str, request: Request,
 @router.get("/{package_id}/export.{format}")
 @limiter.limit("120/hour;1000/day")
 async def export_package(package_id: str, format: str, request: Request,
-    user: AuthedUser = Depends(require_role(Role.viewer)), session: AsyncSession = Depends(get_db_session)):
+    user: AuthedUser = Depends(require_role(Role.viewer)), session: AsyncSession = Depends(get_db_session, scope="function")):
     row = await svc.get_package(session, await svc.require_org(session, user), package_id)
     if format == "json":
         data, mime = json.dumps(svc.serialize_package(row), indent=2), "application/json"

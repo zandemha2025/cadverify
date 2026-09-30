@@ -152,8 +152,11 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI Depends-compatible generator yielding a request-scoped session.
+    """FastAPI Depends-compatible transactional session.
 
+    Use ``Depends(get_db_session, scope="function")`` so commit failures happen
+    before the response is sent. Read-only streams that query while yielding
+    must explicitly use request scope to retain their session until complete.
     Commits on success, rolls back on error, always closes.
     """
     async with get_session_factory()() as session:

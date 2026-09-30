@@ -103,7 +103,7 @@ async def import_manifest(
     response: Response,
     file: Optional[UploadFile] = File(None),
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _org_limit: None = Depends(enforce_org_limits),
 ):
     """Bulk-import an org's declared parts manifest from a CSV.
@@ -159,7 +159,7 @@ async def list_manifest(
     cursor: Optional[str] = None,
     limit: int = 100,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """List the caller org's declared manifest — keyset-paginated (``part_id`` ASC).
 
@@ -176,7 +176,7 @@ async def manifest_coverage(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """The Aramco headline: total declared parts, a scalable ``by_program`` rollup,
     and an honest geometry-coverage count (``with_geometry`` / ``without_geometry``

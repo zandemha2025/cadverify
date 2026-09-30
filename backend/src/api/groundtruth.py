@@ -174,7 +174,7 @@ async def create_ground_truth(
     response: Response,
     payload: GroundTruthIn,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Persist one real ground-truth record for the caller's organization.
 
@@ -209,7 +209,7 @@ async def list_ground_truth(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """List the caller org's ground-truth records (newest first)."""
     org_id = await _require_org(session, user)
@@ -224,7 +224,7 @@ async def get_ground_truth(
     response: Response,
     record_id: str,
     user: AuthedUser = Depends(require_role(Role.viewer)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Fetch one record by its public id — 404 if it is not in the caller's org."""
     org_id = await _require_org(session, user)
@@ -240,7 +240,7 @@ async def recalibrate_ground_truth(
     request: Request,
     response: Response,
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Re-run the ground-truth loop over THIS org's records and refresh the
     served Calibration / ResidualModel. The manual recalibration trigger; the
@@ -298,7 +298,7 @@ async def import_ground_truth(
     response: Response,
     file: Optional[UploadFile] = File(None),
     user: AuthedUser = Depends(require_role(Role.analyst)),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ):
     """Bulk-import an org's historical costs from a CSV to feed the flywheel.
 
