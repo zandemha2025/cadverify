@@ -357,7 +357,8 @@ class Calibration:
     def factor_for(self, process: str) -> float:
         if process in self.process_factors and self.n_by_process.get(process, 0) >= 1:
             return self.process_factors[process]
-        return self.global_factor
+        # A correction learned from one process says nothing about another.
+        return 1.0
 
     def correct(self, baseline_usd: float, process: str) -> float:
         return baseline_usd * self.factor_for(process)
@@ -481,16 +482,19 @@ class Evaluation:
     @property
     def claim(self) -> str:
         """The one honest headline sentence for this split."""
-        if self.metrics_real is not None and self.n_real >= MIN_RESIDUALS:
-            m = self.metrics_real
+        validated_processes = ResidualModel(self.residuals).validated_processes
+        if validated_processes:
+            m = _aggregate([r for r in self.residuals
+                            if not r.stand_in and r.process in validated_processes])
             return (f"VALIDATED within ±{m['band_covers_80pct']:g}% across "
                     f"{m['n_parts']} real held-out part(s) "
+                    f"for {', '.join(validated_processes)} "
                     f"(mean abs error {m['mean_abs_pct']:g}%).")
         if self.metrics_real is not None:
             return (
                 "PENDING enough costable held-out ground truth. "
-                f"Only {self.n_real} real held-out residual(s) were available "
-                f"(< {MIN_RESIDUALS} required for an empirical band)."
+                f"{self.n_real} real held-out residual(s) were available, "
+                f"but no process has {MIN_RESIDUALS} required for an empirical band."
             )
         if self.metrics_all is not None:
             m = self.metrics_all
@@ -537,13 +541,18 @@ class ResidualModel:
             self._by_proc.setdefault(r.process, []).append(r.signed_err)
         self._pooled = [r.signed_err for r in pool]
 
+    @property
+    def validated_processes(self) -> list[str]:
+        return sorted(p for p, residuals in self._by_proc.items()
+                      if self.from_real and len(residuals) >= MIN_RESIDUALS)
+
     def __call__(self, process: Optional[str]):
-        proc_res = self._by_proc.get(process)
-        if proc_res is not None and len(proc_res) >= MIN_RESIDUALS:
-            return proc_res, self.from_real, len(proc_res)
-        if self._pooled and len(self._pooled) >= MIN_RESIDUALS:
-            return self._pooled, self.from_real, len(self._pooled)
-        return None, self.from_real, len(self._pooled)
+        # Pool only for an explicitly process-agnostic report. Sparse or unseen
+        # processes must not become "validated" using another process's quotes.
+        residuals = self._pooled if process is None else self._by_proc.get(process, [])
+        if len(residuals) >= MIN_RESIDUALS:
+            return residuals, self.from_real, len(residuals)
+        return None, self.from_real, len(residuals)
 
     def interval(self, point_usd: float, process: Optional[str] = None,
                  assumption_band_pct: float = 40.0, level: float = 0.80) -> ConfidenceInterval:
@@ -696,7 +705,7 @@ def build_report(loop: LoopResult, *, title_suffix: str = "") -> str:
     L.append("|---------|-------:|-----------:|")
     for p, fac in sorted(loop.calibration.process_factors.items()):
         L.append(f"| {p} | ×{fac:.3f} | {loop.calibration.n_by_process.get(p, 0)} |")
-    L.append(f"| _(global fallback)_ | ×{loop.calibration.global_factor:.3f} | — |")
+    L.append("| _(unrepresented process)_ | ×1.000 | — |")
     L.append("")
 
     # ---- held-out vs tuning (no-overfit evidence) ----

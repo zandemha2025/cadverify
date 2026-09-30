@@ -31,7 +31,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -80,8 +80,16 @@ class CalibrationBundle:
     schema_version: int = SCHEMA_VERSION
 
     def residual_model(self) -> ResidualModel:
-        """Rebuild the live CI source from the persisted held-out residuals."""
-        return ResidualModel(self.residuals)
+        """Rebuild residuals around the correction the current code will serve."""
+        residuals = []
+        for residual in self.residuals:
+            # Old bundles used a global fallback for unseen processes. Recompute
+            # from retained measurements, also matching serialized factor rounding.
+            corrected = self.calibration.correct(residual.baseline_usd, residual.process)
+            error = corrected / residual.actual_usd - 1.0
+            residuals.append(replace(residual, corrected_usd=corrected,
+                                     signed_err=error, abs_err=abs(error)))
+        return ResidualModel(residuals)
 
     def to_dict(self) -> dict:
         return {
