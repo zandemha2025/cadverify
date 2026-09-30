@@ -1,0 +1,69 @@
+{
+  "conclusion": "failure",
+  "headSha": "412b0e2e0254267f10d53434e7d0e03ddb25d65e",
+  "jobs": [
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T06:12:19Z",
+      "completedAt": "2026-09-30T06:12:29Z"
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T06:12:19Z",
+      "completedAt": "2026-09-30T06:13:26Z"
+    },
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T06:12:20Z",
+      "completedAt": "2026-09-30T06:13:12Z"
+    },
+    {
+      "name": "Commit hook integrity policy",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T06:12:19Z",
+      "completedAt": "2026-09-30T06:12:29Z"
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T06:12:19Z",
+      "completedAt": "2026-09-30T06:13:56Z"
+    },
+    {
+      "name": "Backend Tests",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T06:12:19Z",
+      "completedAt": "2026-09-30T06:24:49Z"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T06:12:32Z",
+      "completedAt": "2026-09-30T06:13:14Z"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "conclusion": "failure",
+      "startedAt": "2026-09-30T06:24:53Z",
+      "completedAt": "2026-09-30T06:38:08Z"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T06:24:53Z",
+      "completedAt": "2026-09-30T06:29:16Z"
+    }
+  ],
+  "status": "completed",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36677043750",
+  "first_failure": {
+    "step": "verification survives in-app navigation without duplicate records",
+    "finding": "073",
+    "observed": "Third saved decision appeared for unchanged repeated upload.",
+    "root_cause": "Process-set ordering varies across worker hash seeds; complete snapshot dedup sees different array order.",
+    "later_chain": "CAD corpus/training chain not reached in this failed run."
+  }
+}

@@ -107,3 +107,7 @@ Accuracy follow-up (071): real ellipse/taper controls exposed false cylinder dim
 CI 36673864245 on9c67339 completed with all nine jobs passed, including all34 real-CAD cases and the complete browser/training chain. Follow-ups067–070 are now pushed as412b0e2; exact-head PR CI36677043750 is running.071 is locally verified and not yet pushed.
 
 Spherical turning follow-up (072): identical radius-10 STEP now gives rotational routing and removes the false CNC-turning blocker. Both shared callers use measured spherical surface evidence; coarse/fine rotated controls retain cube/ellipsoid/open/inverted rejection. Backend 2,399 pass/3 documented skips, three analytic STEP controls, no new type diagnostics and 77 unchanged local price/line-item estimates. Engine/cache 0.3.11; not deployed.
+
+CI 36677043750 completed with eight jobs passed and one genuine VER-08 duplicate-record failure. Fix073 sorts process enumeration at its source; seed-separated reports are now identical with all 77 estimate objects unchanged. Native same-byte STEP upload across two API worker seeds reopens the exact same record. The CI dedup assertions are retained unchanged; fresh exact-head CI and deployment remain required.
+
+Final local checks through073: full backend 2,400 passed / three documented local corpus/OCP-XDE skips (172.38s); frontend unchanged from070 with 493 tests/types/lint/build passed. Geometry fixes071/072 and deterministic snapshot fix073 are ready for fresh CI.

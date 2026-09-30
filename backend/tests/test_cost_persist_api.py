@@ -138,6 +138,32 @@ def _override(app, session, user_id=42):
 # ---------------------------------------------------------------------------
 
 
+def test_computed_snapshot_is_identical_across_worker_hash_seeds():
+    """Identical re-uploads must retain one snapshot identity across workers."""
+    import os
+    from pathlib import Path
+    import subprocess
+    import sys
+
+    code = """
+import json
+import trimesh
+from src.api.routes import _run_cost_engine
+from src.costing import EstimateOptions, estimate_decision, report_to_dict
+mesh = trimesh.creation.box(extents=(20, 20, 20))
+result, mesh, features = _run_cost_engine(mesh, "cube.stl")
+report = estimate_decision(result, mesh, features, EstimateOptions(
+    quantities=[1, 100], material_class="stainless", material_class_is_user=True,
+))
+print(json.dumps(report_to_dict(report), sort_keys=True))
+"""
+    reports = [subprocess.check_output(
+        [sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[1],
+        env=dict(os.environ, PYTHONHASHSEED=str(seed)), text=True,
+    ) for seed in (1, 2)]
+    assert reports[0] == reports[1], "same evidence acquired a different snapshot identity"
+
+
 def _post_cost(client, path, name, data, **form):
     return client.post(
         path,

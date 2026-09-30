@@ -1,0 +1,45 @@
+{
+  "finding": "073",
+  "engine_version": "0.3.12",
+  "trigger": "CI 36677043750, VER-08 interrupted repeat changed saved decision set",
+  "root_cause": "eligible_processes iterated COSTED_PROCESSES set; worker hash randomization changed estimate array order, hence whole-snapshot identity.",
+  "worker_hash_seeds": [
+    1,
+    2
+  ],
+  "before": {
+    "different_top_level_fields": [
+      "estimates"
+    ],
+    "same_keyed_estimate_objects": true,
+    "snapshot_hashes": [
+      "0eff73c5be46d1c93dd0bf71bc412a90ee0763b0a40c10404c1561ededfffd16",
+      "28927bd531d3c392362ae8740313461c9053231851650a9ca9ab7318ea59cb84"
+    ]
+  },
+  "after": {
+    "whole_snapshots_identical": true,
+    "snapshot_hashes": [
+      "071607e69d86c0e9df87b6ed2338a4882229919abbc80bd15d8e51d1cc1311c6",
+      "071607e69d86c0e9df87b6ed2338a4882229919abbc80bd15d8e51d1cc1311c6"
+    ],
+    "unchanged_keyed_estimates": 77
+  },
+  "native": {
+    "fixture": "shape-controls/sphere-r10.step",
+    "source_sha256": "6767939573a7d8b1dce898f537d89f3a771339ed297f02b480e85727f0ab5a9d",
+    "seed_one_record": "01M3RGVP9JGHDNP6RG30WH24NW",
+    "seed_two_record": "01M3RGVP9JGHDNP6RG30WH24NW",
+    "action": "Native Chrome upload, Open in history; restart local API with second hash seed; identical upload and Open in history return the same exact record."
+  },
+  "validation": {
+    "focused_tests": 55,
+    "pyright_errors": 216,
+    "baseline": 228,
+    "changed_source_bandit_findings": 0,
+    "backend_passed": 2400,
+    "backend_skipped": 3,
+    "full_suite_seconds": 172.38
+  },
+  "release_status": "Local verification only; exact-head CI and production pending."
+}
