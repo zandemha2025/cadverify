@@ -72,7 +72,7 @@ import {
   type Tone,
   type VerificationBlock,
 } from "@/lib/verify/verification";
-import { envelopeSummary } from "@/lib/verify/machine-api";
+import { countMachines, envelopeSummary } from "@/lib/verify/machine-api";
 import {
   readIdentity,
   identityCardModel,
@@ -599,6 +599,7 @@ function Walk({
   nav: Nav;
 }) {
   const { cost, costGeometryInvalid, machines, verification } = result;
+  const machineCount = countMachines(machines);
 
   const bbox = geometryFromResult(result)?.bbox_mm ?? null;
   const makeNow = cost ? prototypeEstimate(cost) : null;
@@ -647,7 +648,7 @@ function Walk({
         <StepShell
           n={1}
           title="Envelope — against your machines"
-          right={`${machines.length} machine${machines.length === 1 ? "" : "s"} declared`}
+          right={`${machineCount} machine${machineCount === 1 ? "" : "s"} declared`}
           delayMs={40}
         >
           {machines.length === 0 ? (
