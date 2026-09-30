@@ -1,0 +1,44 @@
+{
+  "nistBefore": "ROUTE VS ROUTE\n\nA\nB\n\nnist_ftc_07_asme1_rd.stp · WAAM (make-now) vs Die Casting (acquire)\n\n50\ncrossover ≈ 102\n5,000\n\nqty 102 — acquire Die Casting is cheaper here\n\nmake $910.0 ±60% n=0/unit\nacquire $908.9 ±60% n=0/unit\n\nthe scrub snaps to computed quantities — costs between engine points are not interpolated",
+  "cubeBeforeError": "Wrong quantity-specific process: ROUTE VS ROUTE\n\nA\nB\n\ncube-10mm.stl · FDM / FFF (make-now) vs Injection Molding (acquire)\n\n1\ncrossover ≈ 5,916\n10,000\n\nqty 100 — make-now FDM / FFF is cheaper here\n\nmake $7.57 ±40% n=0/unit\nacquire $62.09 ±60% n=0/unit\n\nthe scrub snaps to computed quantities — costs between engine points are not interpolated",
+  "nistAfter": {
+    "status": "PASS",
+    "quantity": "102",
+    "process": "WAAM",
+    "makePrice": "$910.0",
+    "toolPrice": "$908.9",
+    "text": "ROUTE VS ROUTE\n\nA\nB\n\nnist_ftc_07_asme1_rd.stp · WAAM (make-now) vs Die Casting (acquire; requires redesign)\n\n50\ncrossover ≈ 102\n5,000\n\nqty 102 — acquire Die Casting is cheaper here; requires redesign\n\nmake $910.0 ±60% n=0/unit\nacquire $908.9 ±60% n=0/unit\n\nthe scrub snaps to computed quantities — costs between engine points are not interpolated\n\nWAAM is the lowest-cost eligible no-tooling route at the costed quantities. Estimated Die Casting crossover: ~102 units; requires redesign. Compare the costed options at your quantity."
+  },
+  "cube100": {
+    "status": "PASS",
+    "quantity": "100",
+    "process": "MJF (HP)",
+    "makePrice": "$3.27",
+    "toolPrice": "$62.09",
+    "text": "ROUTE VS ROUTE\n\nA\nB\n\ncube-10mm.stl · MJF (HP) (make-now) vs Injection Molding (acquire; requires redesign)\n\n1\ncrossover ≈ 5,916\n10,000\n\nqty 100 — make-now MJF (HP) is cheaper here\n\nmake $3.27 ±40% n=0/unit\nacquire $62.09 ±60% n=0/unit\n\nthe scrub snaps to computed quantities — costs between engine points are not interpolated\n\nThe lowest-cost no-tooling route varies by quantity. Estimated Injection Molding crossover: ~5,916 units; requires redesign. Compare the costed options at your quantity."
+  },
+  "cube10000": {
+    "status": "PASS",
+    "quantity": "10,000",
+    "process": "MJF (HP)",
+    "makePrice": "$3.11",
+    "toolPrice": "$2.69",
+    "text": "ROUTE VS ROUTE\n\nA\nB\n\ncube-10mm.stl · MJF (HP) (make-now) vs Injection Molding (acquire; requires redesign)\n\n1\ncrossover ≈ 5,916\n10,000\n\nqty 10,000 — acquire Injection Molding is cheaper here; requires redesign\n\nmake $3.11 ±40% n=0/unit\nacquire $2.69 ±60% n=0/unit\n\nthe scrub snaps to computed quantities — costs between engine points are not interpolated\n\nThe lowest-cost no-tooling route varies by quantity. Estimated Injection Molding crossover: ~5,916 units; requires redesign. Compare the costed options at your quantity."
+  },
+  "cube1": {
+    "status": "PASS",
+    "quantity": "1",
+    "process": "FDM / FFF",
+    "makePrice": "$30.00",
+    "toolPrice": "$6,002",
+    "text": "ROUTE VS ROUTE\n\nA\nB\n\ncube-10mm.stl · FDM / FFF (make-now) vs Injection Molding (acquire; requires redesign)\n\n1\ncrossover ≈ 5,916\n10,000\n\nqty 1 — make-now FDM / FFF is cheaper here\n\nmake $30.00 ±40% n=0/unit\nacquire $6,002 ±60% n=0/unit\n\nthe scrub snaps to computed quantities — costs between engine points are not interpolated\n\nThe lowest-cost no-tooling route varies by quantity. Estimated Injection Molding crossover: ~5,916 units; requires redesign. Compare the costed options at your quantity."
+  },
+  "sideB": {
+    "status": "PASS",
+    "quantity": "5,000",
+    "process": "WAAM",
+    "makePrice": "$909.7",
+    "toolPrice": "$44.58",
+    "text": "ROUTE VS ROUTE\n\nA\nB\n\nnist_ftc_07_asme1_rd.stp · WAAM (make-now) vs Die Casting (acquire; requires redesign)\n\n50\ncrossover ≈ 102\n5,000\n\nqty 5,000 — acquire Die Casting is cheaper here; requires redesign\n\nmake $909.7 ±60% n=0/unit\nacquire $44.58 ±60% n=0/unit\n\nthe scrub snaps to computed quantities — costs between engine points are not interpolated\n\nWAAM is the lowest-cost eligible no-tooling route at the costed quantities. Estimated Die Casting crossover: ~102 units; requires redesign. Compare the costed options at your quantity."
+  }
+}

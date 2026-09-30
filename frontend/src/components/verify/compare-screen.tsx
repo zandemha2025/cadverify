@@ -25,6 +25,7 @@ import {
 } from "@/lib/api";
 import { C, MONO, USD, NUM, procLabel, normProv } from "@/lib/verify/tokens";
 import { fractionToQty, qtyToFraction, nearestQty, makeNowEstimate } from "@/lib/verify/derive";
+import { crossoverSummary, recommendationForQty, recommendedQuantities } from "@/lib/cost-decision";
 import { Kicker, ProvChip, GhostButton, EmptyState, Spinner } from "./primitives";
 
 /* ---- band lookup: process → qty → {pct, validated, n} from a detail report --- */
@@ -210,7 +211,7 @@ export function CompareScreen({ nav }: { nav: (s: string) => void }) {
             onQty={setQty}
           />
           <RoutePanel
-            cmp={cmp}
+            detail={routeSide === "a" ? detA : detB}
             idxA={idxA}
             idxB={idxB}
             labelA={labelOf(idA)}
@@ -397,7 +398,7 @@ function Figure({ cost, band }: { cost: number | null; band: Band | null }) {
 
 /* ============================== PANEL 2 — routes =========================== */
 function RoutePanel({
-  cmp,
+  detail,
   idxA,
   idxB,
   labelA,
@@ -407,7 +408,7 @@ function RoutePanel({
   scrubFrac,
   onScrub,
 }: {
-  cmp: CostComparison;
+  detail: CostDecisionDetail;
   idxA: Map<string, Map<number, Band>>;
   idxB: Map<string, Map<number, Band>>;
   labelA: string;
@@ -417,15 +418,20 @@ function RoutePanel({
   scrubFrac: number;
   onScrub: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }) {
-  const sideIdx = side === "a" ? 0 : 1;
   const idx = side === "a" ? idxA : idxB;
-  const makeProc = cmp.diff.make_now_process[sideIdx];
-  const toolProc = cmp.diff.tooling_process[sideIdx];
-  const crossover = cmp.diff.crossover_qty[sideIdx];
-  const costs = side === "a" ? cmp.unit_costs_by_process.a : cmp.unit_costs_by_process.b;
+  const report = detail.result;
+  const decision = report.decision;
+  const toolProc = decision?.tooling_process;
+  const crossover = decision?.crossover_qty;
 
-  const makeCurve = useMemo(() => toPoints(makeProc ? costs[makeProc] : undefined), [costs, makeProc]);
-  const toolCurve = useMemo(() => toPoints(toolProc ? costs[toolProc] : undefined), [costs, toolProc]);
+  const makeCurve = useMemo(() => recommendedQuantities(decision).flatMap((q) => {
+    const recommendation = recommendationForQty(decision, q);
+    return recommendation ? [{ q, c: recommendation.unit_cost_usd }] : [];
+  }), [decision]);
+  const toolCurve = useMemo(() => report.estimates
+    .filter((e) => e.process === toolProc && !e.environment_excluded)
+    .map((e) => ({ q: e.quantity, c: e.unit_cost_usd }))
+    .sort((a, b) => a.q - b.q), [report.estimates, toolProc]);
 
   const quantities = useMemo(() => {
     const s = new Set<number>([...makeCurve.map((p) => p.q), ...toolCurve.map((p) => p.q)]);
@@ -458,10 +464,10 @@ function RoutePanel({
         {header}
         <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>{label}</p>
         <div style={{ marginTop: 16, border: "1.5px dashed #d3d3d8", borderRadius: 12, padding: "22px 18px", textAlign: "center" }}>
-          <p style={{ margin: 0, fontSize: 13.5, fontWeight: 500 }}>No acquire route to cross over.</p>
+          <p style={{ margin: 0, fontSize: 13.5, fontWeight: 500 }}>No route comparison available.</p>
           <p style={{ margin: "7px 0 0", fontSize: 12, lineHeight: 1.6, color: C.ink50 }}>
-            The engine offers make-now {makeProc ? `(${procLabel(makeProc)})` : ""} only for this decision — there is no
-            tooling/acquisition route, so no crossover is computed. It is withheld, not invented.
+            This record needs both a recommended no-tooling estimate and a tooling estimate.
+            Missing values are withheld.
           </p>
         </div>
       </section>
@@ -478,6 +484,7 @@ function RoutePanel({
   const pathOf = (pts: { q: number; c: number }[]) => pts.map((p, i) => `${i === 0 ? "M" : "L"} ${xOf(p.q).toFixed(1)} ${yOf(p.c).toFixed(1)}`).join(" ");
 
   const snapQty = nearestQty(quantities, fractionToQty(scrubFrac, minQ, maxQ));
+  const makeProc = recommendationForQty(decision, snapQty)?.process ?? null;
   const makeAt = makeCurve.find((p) => p.q === snapQty)?.c ?? null;
   const toolAt = toolCurve.find((p) => p.q === snapQty)?.c ?? null;
   const makeBand = bandFor(idx, makeProc, snapQty);
@@ -489,7 +496,7 @@ function RoutePanel({
       ? "one route has no figure at this qty"
       : makeWins
       ? `make-now ${procLabel(makeProc)} is cheaper here`
-      : `acquire ${procLabel(toolProc)} is cheaper here`;
+      : `acquire ${procLabel(toolProc)} is cheaper here${decision?.tooling_dfm_ready ? "" : "; requires redesign"}`;
 
   const crossX = crossover != null && crossover >= minQ && crossover <= maxQ ? xOf(crossover) : null;
 
@@ -497,7 +504,7 @@ function RoutePanel({
     <section style={{ border: `1px solid ${C.hair}`, borderRadius: 16, background: C.panel, padding: "20px 22px" }}>
       {header}
       <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
-        {label} · <span style={{ color: C.pass }}>{procLabel(makeProc)}</span> (make-now) vs <span style={{ color: C.cond }}>{procLabel(toolProc)}</span> (acquire)
+        {label} · <span style={{ color: C.pass }}>{procLabel(makeProc)}</span> (make-now) vs <span style={{ color: C.cond }}>{procLabel(toolProc)}</span> (acquire{decision?.tooling_dfm_ready ? "" : "; requires redesign"})
       </p>
 
       <svg viewBox="0 0 360 150" style={{ width: "100%", display: "block", marginTop: 14 }}>
@@ -533,19 +540,14 @@ function RoutePanel({
       <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 9.5, color: C.ink35 }}>
         the scrub snaps to computed quantities — costs between engine points are not interpolated
       </p>
+      <p style={{ margin: "8px 0 0", fontSize: 12, lineHeight: 1.6, color: C.ink55 }}>
+        {crossoverSummary(decision)}
+      </p>
     </section>
   );
 }
 
 /* ------------------------------ pure helpers ------------------------------- */
-function toPoints(byQty: Record<string, number> | undefined): { q: number; c: number }[] {
-  if (!byQty) return [];
-  return Object.entries(byQty)
-    .map(([k, v]) => ({ q: Number(k), c: v }))
-    .filter((p) => Number.isFinite(p.q) && p.c != null && Number.isFinite(p.c))
-    .sort((a, b) => a.q - b.q);
-}
-
 interface DivergentDriver {
   label: string;
   unit: string;

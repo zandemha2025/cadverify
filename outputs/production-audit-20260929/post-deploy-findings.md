@@ -431,3 +431,12 @@ Updated the fixed numbers in the enterprise runner, its source-contract tests, a
 Native Chrome at 390 px measured a 677 px standing panel, with the three history buttons at x=614–652, outside the visible viewport. The fixed 360 px identity column plus a second column forced the overflow; the document itself still reported 390 px, so a document-only check missed it.
 
 Reused the existing program-page auto-fit/minmax grid pattern, allowed long part text to wrap and made history/driver rows wrap within their cards. No result data or navigation behavior changed. The CUA regression fails before the patch and passes afterward at 390 px, at 320 px with a real saved record expanded, and at the normal desktop size. Native opening and Enter-to-collapse work. Typecheck, changed-file lint and production build pass. See `part-mobile-regression.json`, screenshots `059-*`, and runnable `scripts/e2e/part-mobile-validation.mjs`. Production verification remains pending.
+
+
+## 060 — Verify comparison ignored per-quantity winners and hid redesign conditions
+
+Native saved-cube comparison at quantity 100 called FDM the make-now route and priced it at $7.57, although the same saved JSON recommends MJF at $3.27. The route chart always followed the quantity-1 process. Native NIST comparison also said die casting was cheaper at quantity 102 without showing its recorded redesign requirement.
+
+The route panel now consumes the already-loaded saved decision and existing quantity helpers: each curve point, selected process, unit price and band belongs to that quantity's actual recommendation. Tooling points exclude environment-invalid estimates. The panel reuses the shared crossover explanation and explicitly labels conditional tooling, including when it is cheaper. No costs, backend calculations or historical records are rewritten. Removed the superseded static-process curve helper.
+
+The native assertion fails before the fix, then passes for cube quantities 1 (FDM $30), 100 (MJF $3.27), and 10,000 (MJF $3.11 versus conditional molding $2.69); NIST quantity 102 retains WAAM $910.0 versus conditional die casting $908.9. Switching to side B shows its own NIST 5,000-unit prices, $909.7/$44.58. All 489 frontend tests, typecheck, changed-file lint and final production build pass. Evidence: `compare-route-regression.json`, `060-*.png`, runnable CUA assertion `scripts/e2e/compare-route-validation.mjs`. Full CI and production proof remain pending.
