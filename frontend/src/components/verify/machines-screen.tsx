@@ -61,7 +61,7 @@ function machineStatus(m: OwnedMachine): { label: string; color: string } {
     : { label: "OWNED · NO RATE", color: C.cond };
 }
 
-export function MachinesScreen({ nav, onChanged }: { nav: (s: string) => void; onChanged: () => void }) {
+export function MachinesScreen({ onChanged }: { onChanged: () => void }) {
   const [machines, setMachines] = useState<OwnedMachine[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -171,7 +171,6 @@ export function MachinesScreen({ nav, onChanged }: { nav: (s: string) => void; o
       <main style={{ animation: "vscreenIn 320ms cubic-bezier(0.2,0,0,1) both", flex: 1, overflowY: "auto", padding: "30px 34px", background: C.bg }}>
         <MachineDetail
           m={detail}
-          nav={nav}
           onBack={() => setDetailId(null)}
           onEdit={() => setForm({ mode: "edit", machine: detail })}
           onDelete={() => onDelete(detail)}
@@ -310,13 +309,11 @@ function Row({ k, v, vColor = C.ink, tag }: { k: string; v: string; vColor?: str
 // ── MACHINE DETAIL (renderMachine) ────────────────────────────────────────────
 function MachineDetail({
   m,
-  nav,
   onBack,
   onEdit,
   onDelete,
 }: {
   m: OwnedMachine;
-  nav: (s: string) => void;
   onBack: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -356,7 +353,7 @@ function MachineDetail({
         {/* RATE HISTORY + PARTS ROUTED HERE */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <RateHistory m={m} />
-          <RoutedParts m={m} nav={nav} />
+          <RoutedParts m={m} />
         </div>
       </div>
     </>
@@ -462,7 +459,7 @@ function HistRow({ a, b, tag, note, muted }: { a: string; b: string; tag?: "USER
 /** PARTS ROUTED HERE — real cost-decisions whose make-now route is this machine's
  *  process (server-filtered by `process`, defensively re-filtered client-side).
  *  Empty → the design's honest "nothing routed yet" line. */
-function RoutedParts({ m, nav }: { m: OwnedMachine; nav: (s: string) => void }) {
+function RoutedParts({ m }: { m: OwnedMachine }) {
   const [rows, setRows] = useState<CostDecisionSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
@@ -507,7 +504,7 @@ function RoutedParts({ m, nav }: { m: OwnedMachine; nav: (s: string) => void }) 
               <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.ink50, flex: 1 }}>
                 {procLabel(r.make_now_process)} · crossover {r.crossover_qty != null ? NUM(r.crossover_qty) : "—"} · {new Date(r.created_at).toLocaleDateString()}
               </span>
-              <button type="button" onClick={() => nav("records")} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: MONO, fontSize: 10.5, color: C.measured }}>open →</button>
+              <a href={`/cost-decisions/${encodeURIComponent(r.id)}`} aria-label={`Open ${r.label || r.filename} record`} style={{ fontFamily: MONO, fontSize: 10.5, color: C.measured }}>open →</a>
             </div>
           ))}
         </div>

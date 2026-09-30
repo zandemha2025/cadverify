@@ -876,3 +876,13 @@ first divergence: step2, expected explicit unknown rate context and unreadable r
 - Fix: require both rate-library reads before claiming a context; show an unconfirmed state on loading/error and retain the machine's own saved scalar declaration. Make record-error, loading, empty and populated states exclusive. Reuse local effect retry counters and existing buttons for each panel; no backend/schema/dependency change.
 - Native RED/GREEN uses a real stopped local API, not mocked browser responses. Both panels retain the saved machine specs, suppress false default/empty claims and expose Retry. Repeated outage retries remain recoverable. After restarting the API, both buttons recover without reloading; the rate context resolves and all3 existing process-related records return, including both historical inch-IGES results.
 - All496 frontend tests, types, changed-source lint and production build pass. The runnable native assertion is `scripts/e2e/machine-detail-validation.mjs`; evidence is `106-machine-detail-proof.json` plus before/fixed/recovered screenshots. Backend remains104's2458 passing tests. Not deployed.
+
+
+## 107 — Opening a machine-related record loses the selected decision
+
+first divergence: step2, expected the selected inch-IGES decision to open, state was the generic47-row Records list at `/verify`.
+
+- Severity: medium navigation defect. Every machine-detail Open button discarded the row ID and navigated to the same list.
+- Fix: use a native accessible link to the existing authenticated `/cost-decisions/{id}` page, encoding the ID. Remove the unused navigation prop from the machine component chain and its sole parent caller. No new route or state layer.
+- Native proof: the first inch-IGES link targets `01M3S63TWJPSB2VSDH5DZKWQ3G` and opens that exact URL. The saved page shows `box-inch.igs`, the matching CAD hash and$1762.46 at quantity1. The older same-name record has its own distinct link; no saved data changes.
+- All496 frontend tests, types, changed-source lint and production build pass. Backend unchanged from2458 passing tests. Evidence: `107-machine-record-proof.json` and before/fixed screenshots. This is a simple link change checked through the real browser; no source-text test added. Not deployed.

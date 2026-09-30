@@ -899,7 +899,7 @@ export function VerifyApp({
           </div>
         )}
         {screen === "context-fit" && <ContextFitPanel />}
-        {screen === "machines" && <MachinesScreen nav={nav} onChanged={onInventoryChanged} />}
+        {screen === "machines" && <MachinesScreen onChanged={onInventoryChanged} />}
         {screen === "records" && <RecordsScreen nav={nav} />}
         {screen === "catalog" && <CatalogScreen nav={nav} />}
         {screen === "part" && <PartScreen nav={nav} onOpenProgram={(name) => {

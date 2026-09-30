@@ -193,3 +193,5 @@ Machine CSV follow-up104: a count overflow previously returned500 for the whole 
 Inventory pagination follow-up105: the shared client now reads all pages for Machines, Home and Verify. Native101-record proof opens the formerly hidden last machine and shows the correct101 count. The97 temporary fixtures were removed with the original four rows hash-identical; native reload returns4. All496 frontend tests/types/changed lint/build pass. Backend remains2458 passed. Not deployed.
 
 Machine-detail follow-up106: real API outage no longer claims default rates or no routed records. Separate rate/record retries preserve specs and recover the actual default context plus3 existing records after restart. Native regression,496 frontend tests/types/lint/build pass; backend unchanged. Not deployed.
+
+Machine-record navigation follow-up107: Open now uses each row's exact authenticated saved-decision URL. Native inch-IGES proof retains the ID/source hash and$1762.46 saved result; the previous action discarded selection into47 generic records.496 frontend tests/types/lint/build pass. Not deployed.
