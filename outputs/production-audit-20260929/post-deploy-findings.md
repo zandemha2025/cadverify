@@ -324,3 +324,12 @@ first divergence: step 3, expected a saved 5 mm machine limit to invalidate a 10
 - Native red-to-green: restoring 200 mm after a fresh 5 mm rejection also left the old negative verdict before the fix. After rebuilding, editing to 5 mm automatically produces the named envelope gap; restoring 200 mm automatically restores the in-house verdict. Neither transition re-uploads the file. The synthetic machine is restored to its original capacity.
 - Validation: 487 frontend tests, typecheck, changed-source lint and production build pass. Backend unchanged from the preceding 2,383-test run with three documented skips. Runnable CUA check: `scripts/e2e/machine-inventory-refresh.mjs`; evidence: `machine-inventory-refresh-regression.json` and `048-*.png`.
 - Boundary: local only. Native replay covered same-workspace edits. Create/import/delete share the invalidation callback but their re-verification transitions were not separately replayed. Edits from another tab or an external API still require a fresh verification.
+
+## 049 — Saved-record actions lose the record identity and receipts hide quantity
+
+first divergence: step 2, expected “Open the record” to open the cube verification just saved, state was the entire Records list, including other files and duplicate filenames. Opening a row then showed $7.53/unit without identifying quantity 10,000, while the live verdict had shown $30 at quantity 1.
+
+- Severity: medium navigation and cost-context issue. Both Verify actions discarded the saved ID, and the Records popup selected the largest-quantity estimate without labeling that selection.
+- Fix: both actions use ordinary Next links to the existing authenticated decision-detail route with the actual saved ID. The popup identifies the exact process, material and quantity for its drivers and confidence. Prices and selection behavior are unchanged.
+- Native red-to-green: both link checks initially found zero record-specific links; the receipt check found no quantity context. After rebuilding, both links target `01M3R3SCMPTWKBDBKX0FXNXD1E`, and clicking the verdict link opens that exact saved cube decision. The popup explicitly shows FDM / FFF, PLA and quantity 10,000, retaining $7.53 and its $4.52–$10.55 assumption band.
+- Validation: 487 frontend tests, typecheck, changed-source lint and production build passed; both native regression checks passed. See `scripts/e2e/saved-record-reconciliation.mjs`, `saved-record-regression.json` and `049-*.png`. Backend unchanged. This is local proof, not a production rollout.

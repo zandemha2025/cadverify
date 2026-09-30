@@ -205,7 +205,7 @@ function RecordDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const v = verdictModel
     ? { ...verdictModel, color: VERDICT_COLOR[verdictModel.tone] }
     : { text: "", kicker: "", tone: "neutral" as Tone, color: C.ink };
-  const material = detail?.result?.decision?.make_now_material ?? null;
+  const material = est?.material ?? detail?.result?.decision?.make_now_material ?? null;
 
   const pf =
     conf && conf.high_usd > conf.low_usd
@@ -289,6 +289,11 @@ function RecordDetail({ id, onClose }: { id: string; onClose: () => void }) {
             <p style={{ margin: "4px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40 }}>
               pinned to the rate version it was computed under — a calibration switch never rewrites it
             </p>
+            {est && (
+              <p data-testid="record-estimate-context" style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink70 }}>
+                Receipts and confidence below: {procLabel(est.process)} · {est.material} · quantity {NUM(est.quantity)}
+              </p>
+            )}
 
             <div
               data-testid="record-disposition-summary"

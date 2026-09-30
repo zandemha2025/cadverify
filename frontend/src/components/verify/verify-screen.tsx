@@ -10,6 +10,7 @@
  * walk stops honestly at a failed gate (geometry invalid → no downstream compute).
  */
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import Link from "next/link";
 import { analysisFailureCopy } from "@/lib/verify/failure-copy";
 import {
   highestPriorityIssue,
@@ -618,7 +619,6 @@ function Walk({
       <VerdictBanner
         result={result}
         makeNow={makeNow}
-        nav={nav}
         onReverify={onReverify}
         onRetryCost={onRetryCost}
       />
@@ -1270,13 +1270,11 @@ function ClosestUnconfirmedCard({
 function VerdictBanner({
   result,
   makeNow,
-  nav,
   onReverify,
   onRetryCost,
 }: {
   result: VerifyResult;
   makeNow: ReturnType<typeof makeNowEstimate>;
-  nav: Nav;
   onReverify: () => void;
   onRetryCost: () => void;
 }) {
@@ -1301,9 +1299,12 @@ function VerdictBanner({
 
   const savedCta = cost?.saved?.id ? (
     <div style={{ marginTop: 14 }}>
-      <GhostButton primary onClick={() => nav("records")}>
+      <Link
+        href={`/cost-decisions/${cost.saved.id}`}
+        style={{ display: "inline-flex", borderRadius: 999, padding: "8px 18px", background: C.ink, color: "#fff", fontSize: 12.5, fontWeight: 500, textDecoration: "none" }}
+      >
         Open the record →
-      </GhostButton>
+      </Link>
     </div>
   ) : null;
 
@@ -2159,9 +2160,14 @@ function DecideHallmark({
       </div>
 
       <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <GhostButton onClick={() => nav("records")} disabled={!saved}>
-          {saved ? "Open the record →" : "Saving is off"}
-        </GhostButton>
+        {saved?.id ? (
+          <Link
+            href={`/cost-decisions/${saved.id}`}
+            style={{ display: "inline-flex", borderRadius: 999, padding: "8px 18px", border: "1px solid #d8d8dc", color: C.ink, fontSize: 12.5, textDecoration: "none" }}
+          >
+            Open the record →
+          </Link>
+        ) : <GhostButton disabled>Saving is off</GhostButton>}
         <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink40, lineHeight: 1.5, flex: 1, minWidth: 180 }}>
           {saved
             ? "the computed evidence stays immutable; the recorded outcome persists across refresh, login, exports, and the Records view."
