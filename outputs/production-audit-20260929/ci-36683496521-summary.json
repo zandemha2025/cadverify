@@ -1,0 +1,36 @@
+{
+  "run_id": 36683496521,
+  "head": "b53ec9149ae5620126a8ee1b0ea1173092bddcab",
+  "status": "failure",
+  "jobs_passed": 8,
+  "failed_job": "Browser E2E (human + enterprise)",
+  "site_design": {
+    "status": "PASS",
+    "steps": 16
+  },
+  "human": {
+    "steps_passed": 54,
+    "steps_failed": 0,
+    "issues": 1,
+    "issue": "HTTP 400 resource console error during the intentional weak-password signup test"
+  },
+  "first_divergence": "The final human-E2E console gate treated the successful weak-password rejection as unexpected. Valid signup, logout/login and all 54 UI steps passed.",
+  "not_reached": [
+    "Design Studio",
+    "enterprise",
+    "P7 role/failure",
+    "CAD corpus",
+    "remaining later suites"
+  ],
+  "followup": "079 records response source URLs, verifies exact HTTP400/weak_password/message plus visible UI rejection, and accounts for at most that one exact resource error. Other endpoints/statuses/runtime errors still fail.",
+  "validation": {
+    "local_http": {
+      "status": 400,
+      "code": "weak_password",
+      "message": "Password must be at least 8 characters."
+    },
+    "release_evidence_tests": 6,
+    "syntax_checks": "passed"
+  },
+  "limits": "Original CI console record lacks resource URL and response body; the new run must retain and confirm them. This run does not validate 076 in P7, or local follow-ups077/078."
+}

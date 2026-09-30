@@ -1,3 +1,4 @@
+import { assertWeakPasswordRejection, isExpectedSignupConsoleError } from "./signup-rejection-validation.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { coverageFor, requirements } from "./human-sim-journey-coverage.mjs";
@@ -225,4 +226,24 @@ test("a dirty release workspace cannot qualify as exact current HEAD", () => {
   );
   const problems = validateBuildIdentities(reports, expected);
   assert.ok(problems.some((item) => item.type === "dirty_worktree" && item.report === "gate"));
+});
+
+test("only the verified weak-password rejection can classify its exact HTTP console error", () => {
+  const body = { code: "weak_password", message: "Password must be at least 8 characters." };
+  assertWeakPasswordRejection(400, body);
+  for (const status of [200, 401, 422, 500, 503]) {
+    assert.throws(() => assertWeakPasswordRejection(status, body));
+  }
+  assert.throws(() => assertWeakPasswordRejection(400, { ...body, code: "signup_disabled" }));
+  assert.throws(() => assertWeakPasswordRejection(400, {}));
+  const resourceUrl = "http://localhost:3000/api/auth/signup";
+  const error = { sourceUrl: resourceUrl, text: "Failed to load resource: the server responded with a status of 400 (Bad Request)" };
+  assert.equal(isExpectedSignupConsoleError(error, resourceUrl), true);
+  for (const changed of [
+    { sourceUrl: "http://localhost:3000/api/auth/login" },
+    { sourceUrl: "http://localhost:3000/signup" },
+    { sourceUrl: undefined },
+    { text: "Failed to load resource: the server responded with a status of 500 (Internal Server Error)" },
+    { text: "Uncaught TypeError" },
+  ]) assert.equal(isExpectedSignupConsoleError({ ...error, ...changed }, resourceUrl), false);
 });

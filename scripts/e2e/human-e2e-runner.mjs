@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { captureBuildIdentity, makeReleaseEvidence } from "./human-sim-release-evidence.mjs";
+import { assertWeakPasswordRejection, isExpectedSignupConsoleError } from "./signup-rejection-validation.mjs";
 
 const require = createRequire(new URL("../../frontend/package.json", import.meta.url));
 const pw = require("playwright-core");
@@ -151,6 +152,7 @@ class HumanE2E {
     this.steps = [];
     this.issues = [];
     this.consoleErrors = [];
+    this.expectedConsoleErrors = [];
     this.requestFailures = [];
     this.visited = [];
     this.criticalPaths = {};
@@ -182,7 +184,7 @@ class HumanE2E {
       if (msg.type() === "error") {
         const text = msg.text();
         if (!/favicon\.ico|ResizeObserver loop limit exceeded/i.test(text)) {
-          this.consoleErrors.push({ url: this.page.url(), text });
+          this.consoleErrors.push({ url: this.page.url(), sourceUrl: msg.location().url, text });
         }
       }
     });
@@ -356,17 +358,34 @@ class HumanE2E {
       return { screenshot: await this.shot("login-gate") };
     });
 
-    if (loginEmail && loginPassword) {
-      await this.step("signup rejects weak password", async () => {
-        await this.goto("/signup", "signup");
-        await this.page.getByLabel("Email").fill(uniqueEmail("weak"));
-        await this.page.getByLabel("Password").fill("short");
-        await this.page.getByRole("button", { name: /^Create account$/ }).click();
-        await this.page.getByText("Password must be at least 8 characters.").waitFor({ timeout: 5000 });
-        await this.scanVisibleText("signup-weak-password");
-        return { screenshot: await this.shot("signup-weak-password") };
-      });
+    await this.step("signup rejects weak password", async () => {
+      await this.goto("/signup", "signup");
+      await this.page.getByLabel("Email").fill(uniqueEmail("weak"));
+      await this.page.getByLabel("Password").fill("short");
+      const consoleStart = this.consoleErrors.length;
+      const responsePromise = this.page.waitForResponse(
+        (response) => isPostResponse(response, "/api/auth/signup"),
+        { timeout: 12_000 },
+      );
+      await this.page.getByRole("button", { name: /^Create account$/ }).click();
+      const response = await responsePromise;
+      const body = await response.json();
+      assertWeakPasswordRejection(response.status(), body);
+      await this.page.getByText(body.message, { exact: true }).waitFor({ timeout: 5000 });
+      await this.scanVisibleText("signup-weak-password");
+      const screenshot = await this.shot("signup-weak-password");
+      // Consume at most the one resource error caused by this verified negative
+      // request. Keep other endpoints, statuses and runtime errors as failures.
+      const expectedIndex = this.consoleErrors.findIndex((error, index) =>
+        index >= consoleStart && isExpectedSignupConsoleError(error, response.url()),
+      );
+      if (expectedIndex >= 0) {
+        this.expectedConsoleErrors.push(...this.consoleErrors.splice(expectedIndex, 1));
+      }
+      return { screenshot, evidence: { responseStatus: response.status(), code: body.code, message: body.message } };
+    });
 
+    if (loginEmail && loginPassword) {
       await this.step("login reuses existing synthetic account and lands in app", async () => {
         await this.goto("/login?next=/verify", "login");
         await this.page.getByLabel("Email").fill(loginEmail);
@@ -380,16 +399,6 @@ class HumanE2E {
       this.account = { email: loginEmail, password: loginPassword };
       return;
     }
-
-    await this.step("signup rejects weak password", async () => {
-      await this.goto("/signup", "signup");
-      await this.page.getByLabel("Email").fill(uniqueEmail("weak"));
-      await this.page.getByLabel("Password").fill("short");
-      await this.page.getByRole("button", { name: /^Create account$/ }).click();
-      await this.page.getByText("Password must be at least 8 characters.").waitFor({ timeout: 5000 });
-      await this.scanVisibleText("signup-weak-password");
-      return { screenshot: await this.shot("signup-weak-password") };
-    });
 
     const email = uniqueEmail("qa");
     const password = "Passw0rd123";
@@ -602,6 +611,7 @@ class HumanE2E {
       steps: this.steps,
       issues: this.issues,
       consoleErrors: this.consoleErrors,
+      expectedConsoleErrors: this.expectedConsoleErrors,
       requestFailures: this.requestFailures,
       visited: this.visited,
       buildIdentity: captureBuildIdentity(repoRoot),
