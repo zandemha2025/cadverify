@@ -1,0 +1,63 @@
+{
+  "conclusion": "success",
+  "headSha": "a6f81fb233eab17706039cc67d0a4e860b656246",
+  "jobs": [
+    {
+      "name": "SAST (bandit) + dependency CVEs (pip-audit)",
+      "status": "completed",
+      "conclusion": "success",
+      "completedAt": "2026-09-30T09:53:42Z"
+    },
+    {
+      "name": "Commit hook integrity policy",
+      "status": "completed",
+      "conclusion": "success",
+      "completedAt": "2026-09-30T09:53:10Z"
+    },
+    {
+      "name": "Trap Corpus Gate",
+      "status": "completed",
+      "conclusion": "success",
+      "completedAt": "2026-09-30T09:53:54Z"
+    },
+    {
+      "name": "Every /api/v1 route calls require_api_key",
+      "status": "completed",
+      "conclusion": "success",
+      "completedAt": "2026-09-30T09:53:07Z"
+    },
+    {
+      "name": "Backend Tests",
+      "status": "completed",
+      "conclusion": "success",
+      "completedAt": "2026-09-30T10:05:21Z"
+    },
+    {
+      "name": "Frontend Build & Lint",
+      "status": "completed",
+      "conclusion": "success",
+      "completedAt": "2026-09-30T09:54:40Z"
+    },
+    {
+      "name": "Auth material never appears in captured Sentry payload",
+      "status": "completed",
+      "conclusion": "success",
+      "completedAt": "2026-09-30T09:54:06Z"
+    },
+    {
+      "name": "Container Images & Deploy Config Proof",
+      "status": "completed",
+      "conclusion": "success",
+      "completedAt": "2026-09-30T10:10:50Z"
+    },
+    {
+      "name": "Browser E2E (human + enterprise)",
+      "status": "completed",
+      "conclusion": "success",
+      "completedAt": "2026-09-30T10:32:56Z"
+    }
+  ],
+  "status": "completed",
+  "url": "https://github.com/zandemha2025/cadverify/actions/runs/36698927295",
+  "scope": "PR head a6f81fb through089; excludes090 onward. Not production or real external-tenant proof; PR image job skips main-only CVE gate."
+}

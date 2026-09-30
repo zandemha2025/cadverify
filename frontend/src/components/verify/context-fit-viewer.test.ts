@@ -5,5 +5,5 @@ import { readFileSync } from "node:fs";
 test("context fit keeps measurements usable when WebGL is unavailable", () => {
   const source = readFileSync(new URL("./context-fit-viewer.tsx", import.meta.url), "utf8");
   assert.match(source, /probeWebGlSupport\(\)/);
-  assert.match(source, /3D preview is unavailable in this browser\. Your measurements below are complete\./);
+  assert.match(source, /3D preview is unavailable in this browser\. Fit measurements remain available below\./);
 });

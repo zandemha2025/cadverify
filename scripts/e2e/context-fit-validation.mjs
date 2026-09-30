@@ -23,3 +23,9 @@ export async function assertFitOverlap(page, volumeMm3) {
   assert.ok(text.includes("0.000 mm - the parts overlap."), text);
   return { status: "PASS", measuredOverlapMm3: volumeMm3, zeroClearance: true };
 }
+
+export async function assertFitPreview(page) {
+  assert.equal(await page.playwright.getByTestId("context-fit-panel").locator("canvas").isVisible(), true,
+    "The submitted STEP/STL pair must have a visible geometry canvas");
+  return { status: "PASS", pairCanvasVisible: true };
+}
