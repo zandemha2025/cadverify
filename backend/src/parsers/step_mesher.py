@@ -135,6 +135,20 @@ def is_step_supported() -> bool:
     return _HAS_GMSH
 
 
+def _configure_cad_import(path: str) -> None:
+    # A cold IGES reader cannot set OCC's not-yet-initialized target-unit
+    # registry. Its native default already converts file units to millimeters;
+    # setting an explicit target here rejects valid IGES before reading it.
+    iges = Path(path).suffix.lower() in (".iges", ".igs")
+    target = "" if iges else "MM"
+    gmsh.option.setString("Geometry.OCCTargetUnit", target)
+    if iges:
+        # IGES commonly supplies separate faces. Let OCC sew coincident edges
+        # at its existing tolerance and form solids only from closed shells.
+        gmsh.option.setNumber("Geometry.OCCSewFaces", 1)
+        gmsh.option.setNumber("Geometry.OCCMakeSolids", 1)
+
+
 def step_to_trimesh_from_bytes(data: bytes, filename: str = "upload.step") -> trimesh.Trimesh:
     """Parse STEP bytes -> watertight-where-possible ``trimesh.Trimesh``.
 
@@ -206,7 +220,7 @@ def _tessellate_once(
     gmsh.initialize(interruptible=False)
     try:
         gmsh.option.setNumber("General.Terminal", 0)          # no stdout spew
-        gmsh.option.setString("Geometry.OCCTargetUnit", "MM")  # normalize to mm
+        _configure_cad_import(path)
         if heal:
             for opt in _OCC_HEAL_OPTS:                        # heal BEFORE import
                 gmsh.option.setNumber(opt, 1)
