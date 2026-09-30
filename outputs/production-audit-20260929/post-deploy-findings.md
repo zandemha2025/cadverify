@@ -1140,3 +1140,12 @@ The [official Xorg archive](https://xorg.freedesktop.org/archive/individual/lib/
 - Validation: 499 frontend tests, TypeScript, changed-file lint and production build pass. Local only; remaining destination/shortcut-sheet/responsive branches and production verification are open.
 
 CI36752779298 is terminal: all eight non-image jobs passed, including the complete browser chain. The image job failed on the five remaining backend HIGH findings and the initial frontend TCP-reset probe. Finding134 corrects the latter retry behavior; actual rebuilt-image proof remains pending. Receipt: `ci-36752779298-summary.json`.
+
+
+## 137 — Unsupported number notation silently changed design dimensions
+
+- Native reproduction: `plate width 80e1 mm, depth 50 mm, thickness 6 mm` was labelled safe with width80, although80e1=800. `80 x50 x3/2 mm plate` similarly became thickness3 instead of1.5. No part was generated from these inputs.
+- Root cause: the common decimal extractor accepts prefixes/suffixes inside scientific notation, fractions, grouped values and separated signs.
+- Minimal fix: one shared pre-extraction guard returns the existing needs-input response with empty prefill/no plan and asks for plain decimal millimetres. This adds no expression evaluator or additional generation syntax.
+- Nine failing regression cases now pass;43focused interpreter/API/generator checks pass. Native exponent/fraction refusals and explicit800×50×1.5mm correction pass. Type diagnostics remain214errors/3warnings with zero additions; changed-source Bandit has0medium/high. Full backend2556pass/3documented skips in216.07s with skip policy enforced.
+- Evidence: `137-design-notation-proof.json` and five native screenshots. Local only; arbitrary-language and manufacturing/pricing accuracy remain open.

@@ -88,6 +88,14 @@ def interpret_design_prompt(raw_prompt: str) -> dict[str, Any]:
             "message": "This release accepts millimetres only. Convert the dimensions to mm and try again.",
             "prefill": {},
         }
+    if re.search(r"\d(?:e[+-]?\d|\s*/|,\d)|[+-]\s+(?:\d|\.\d)", text):
+        return {
+            "status": "needs_input",
+            "kind": _kind(text),
+            "missing_fields": ["decimal_dimensions"],
+            "message": "Use plain decimal millimetre dimensions, such as 80 x 50 x 1.5 mm. Scientific notation, fractions, grouped numbers and separated signs are not supported.",
+            "prefill": {},
+        }
 
     kind = _kind(text)
     if kind is None:

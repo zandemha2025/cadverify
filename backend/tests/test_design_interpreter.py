@@ -108,3 +108,22 @@ def test_valid_signed_and_fractional_dimensions_keep_their_value(prompt):
         "kind": "plate", "width_mm": 80.0, "depth_mm": 50.0,
         "thickness_mm": 0.6, "holes": [],
     }
+
+
+@pytest.mark.parametrize("prompt", [
+    "plate width 80e1 mm, depth 50 mm, thickness 6 mm",
+    "80 x 50 x 6e-1 mm plate",
+    "plate 8E+1 mm wide, 50 mm deep, 6 mm thick",
+    "80 x 50 x 3/2 mm plate",
+    "plate width 80 mm, depth 50 mm, thickness 3 / 2 mm",
+    "80 x 50 x 6 mm plate with four 6e-1 mm holes",
+    "plate width 1,000 mm, depth 50 mm, thickness 6 mm",
+    "- 80 x 50 x 6 mm plate",
+    "plate width 80 mm, depth 50 mm, thickness - .6 mm",
+])
+def test_unsupported_numeric_notation_requires_plain_decimal_dimensions(prompt):
+    result = interpret_design_prompt(prompt)
+    assert result["status"] == "needs_input"
+    assert result["missing_fields"] == ["decimal_dimensions"]
+    assert result["prefill"] == {}
+    assert "plan" not in result
