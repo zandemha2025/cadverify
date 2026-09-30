@@ -15,7 +15,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bomBreadcrumbView, basisChip } from "./bom.ts";
+import { bomBreadcrumbView, basisChip, bomAnnualVolume } from "./bom.ts";
 import type { BomAncestry } from "./bom.ts";
 
 function anc(over: Partial<BomAncestry> = {}): BomAncestry {
@@ -76,4 +76,12 @@ test("basisChip: BOM ROLLUP vs DECLARED, and omitted for no-volume", () => {
   assert.deepEqual(basisChip("declared"), { text: "DECLARED", tone: "declared" });
   assert.equal(basisChip("default"), null);
   assert.equal(basisChip(null), null);
+});
+
+test("BOM annual demand requires positive exact inputs and an exact result", () => {
+  assert.equal(bomAnnualVolume(12, 100), 1200);
+  for (const roots of [null, 0, -1, 0.5, Infinity, Number.MAX_SAFE_INTEGER]) {
+    assert.equal(bomAnnualVolume(12, roots), null);
+  }
+  assert.equal(bomAnnualVolume(null, 100), null);
 });

@@ -748,3 +748,25 @@ CI checkpoint: [36698927295](https://github.com/zandemha2025/cadverify/actions/r
 - Evidence: `import-integrity-regression.json`,095 screenshots, storage readback and `backend/tests/test_groundtruth_numeric_boundary.py`. Real customer quotes, provider access and production retesting remain required.
 
 Validation through094/095: full backend **2429 passed**, three documented local corpus/OCP-XDE skips in173.26s with the protected skip policy and real PostgreSQL/Redis. Type baseline216/228 passes with no new changed-source diagnostics; changed-source Bandit has no medium/high findings. Native PLM re-import also updates2 existing records without duplicates, a fully invalid file reportsfailed/0of1valid, and the mixed-file dry-run correctly reports2of3valid. Frontend code/build is unchanged from092/093. Exact new-head CI and production verification remain required.
+
+
+## 096 — BOM rollups invent cyclic counts, truncate shared demand and crash on deep trees
+
+first divergence: step 2, expected a circular BOM to have no valid root count, state was multiplier1 and the native Part standing displayed100/year as BOM ROLLUP. A shared-part regression with a bounded path preview returned6 instead of12; a1,500-level tree raised RecursionError.
+
+- Severity: HIGH — incorrect annual demand can feed portfolio exposure and analysis quantities.
+- Fix: validate quantities and cycles with stdlib topological ordering; calculate exact shared counts with dynamic programming independently of bounded ancestry previews. Iterative traversal handles deep trees. Counts outside the browser's exact integer range are withheld, and the existing declared/default fallback is retained.
+- The Part screen now distinguishes BOM rollup from declared demand, explains missing annual production and count overflow, clears stale ancestry, and surfaces invalid/missing trees and read failures with Retry BOM.
+- Native local proof on the real uploaded STEP's standing: legacy cycle error,12 units/vehicle and1,200/year for the controlled shared graph,12,000/year DECLARED when yearly production is missing, unsafe-count errors, annual overflow fallback, actual stopped-API error and successful retry. Controlled BOM linkage was restored and the temporary tree removed afterward. Saved cost records were unchanged.
+- Evidence: `bom-integrity-regression.json`,096 screenshots, `test_bom_service.py` and the existing frontend BOM test. This validates hierarchy arithmetic and failure handling, not customer quote calibration or production deployment.
+
+## 097 — Entirely invalid BOM replacement deletes the saved hierarchy
+
+first divergence: step 2, expected a malformed replacement upload to preserve the existing8-handles-per-car BOM, state was HTTP200 with zero saved edges. The behavior-level real PostgreSQL test fails against cc4ee44 and passes with this fix.
+
+- Severity: HIGH — a typo in an uploaded BOM header can erase the current hierarchy.
+- Fix: the onboard route rejects uploads with no valid rows before replacement; the shared replacement service rejects cycles and invalid quantities before DELETE. JSON must contain a list, and declared counts must fit the integer storage boundary. Existing partial-valid row reporting remains intact.
+- Real PostgreSQL proof: malformed headers, numeric JSON edges, empty edge lists, cycles and overflowing quantities all return422; after every rejection the original handle→door→car chain and multiplier8 are read back. Test transactions roll back their fixture data.
+- Validation through096/097: **2433 backend tests passed**, three documented local corpus/OCP-XDE skips in176.28s; **495 frontend tests passed**, typecheck, lint (two existing unrelated warnings) and production build pass. Backend type baseline216/228 with no added diagnostics; changed-source Bandit has no medium/high findings. Not deployed.
+
+CI36703805005 on bea9a77 completed with8 jobs passing and Browser E2E failing in the34-file corpus (33passed). FTC-07 emitted JSON ending in OK/PASS but its outer subprocess still exceeded90seconds. No timeout or acceptance gate has been relaxed. Its additional missing-data messages are symptoms; shutdown/output-collection root cause remains under investigation. The subsequent restore/load/readiness/training stages were not reached. See `ci-36703805005-summary.json`.

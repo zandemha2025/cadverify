@@ -130,7 +130,10 @@ async def ingest_assembly(
     from src.api.routes import _extract_assembly_async
 
     model = await _extract_assembly_async(data, filename)
-    summary = await svc.ingest_assembly(session, org_id, key, model)
+    try:
+        summary = await svc.ingest_assembly(session, org_id, key, model)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     await session.commit()
     return summary
 
@@ -153,7 +156,8 @@ async def onboard_bom(
     Accepts a multipart ``file`` upload OR a raw ``text/csv`` / ``application/json``
     body. Parses STRICTLY (``bom_service.parse_bom``): every valid edge is persisted
     (idempotent per ``(org, assembly_key)`` — a re-onboard REPLACES the tree); every
-    malformed row is reported and SKIPPED so the batch survives. ``assembly_key`` is
+    malformed row is reported and SKIPPED so the batch survives. Empty, wholly
+    invalid or cyclic uploads return 422 and preserve the previous tree. ``assembly_key`` is
     required (query, form, or the uploaded filename). Contract at
     ``GET /bom/onboard/template``.
 
@@ -198,7 +202,14 @@ async def onboard_bom(
             status_code=413,
             detail=f"BOM of {len(rows)} edges exceeds the {svc.BOM_MAX_ROWS} cap.",
         )
-    summary = await svc.ingest_bom_rows(session, org_id, key, rows)
+    if not rows:
+        raise HTTPException(status_code=422, detail={
+            "message": "No valid BOM rows. The existing tree was kept.", "errors": parse_errors,
+        })
+    try:
+        summary = await svc.ingest_bom_rows(session, org_id, key, rows)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     await session.commit()
     summary["skipped"] = len(parse_errors)
     summary["errors"] = parse_errors

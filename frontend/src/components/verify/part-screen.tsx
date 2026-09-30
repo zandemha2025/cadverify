@@ -33,6 +33,7 @@ import { fetchPartContext, type PartContext } from "@/lib/verify/part-context-re
 import {
   fetchBomAncestry,
   bomBreadcrumbView,
+  bomAnnualVolume,
   basisChip,
   type BomAncestry,
 } from "@/lib/verify/bom";
@@ -235,6 +236,8 @@ function Standing({ row, nav, onOpenProgram, onCompare }: {
   const [context, setContext] = useState<PartContext | null>(null);
   const [ctxError, setCtxError] = useState<string | null>(null);
   const [bom, setBom] = useState<BomAncestry | null>(null);
+  const [bomError, setBomError] = useState<string | null>(null);
+  const [bomAttempt, setBomAttempt] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -281,18 +284,21 @@ function Standing({ row, nav, onOpenProgram, onCompare }: {
   const bomKey = context?.bom_assembly_key ?? null;
   const bomChild = context?.bom_child_ref ?? null;
   useEffect(() => {
+    setBom(null);
+    setBomError(null);
     if (!bomKey || !bomChild) {
-      setBom(null);
       return;
     }
     let cancelled = false;
     void fetchBomAncestry(bomKey, bomChild).then((a) => {
       if (!cancelled) setBom(a);
+    }).catch((e) => {
+      if (!cancelled) setBomError(e instanceof Error ? e.message : "Could not load the BOM. Please retry.");
     });
     return () => {
       cancelled = true;
     };
-  }, [bomKey, bomChild]);
+  }, [bomKey, bomChild, bomAttempt]);
 
   const standing = deriveStanding(row, detail);
   const blockers = extractBlockers(row, detail);
@@ -412,10 +418,16 @@ function Standing({ row, nav, onOpenProgram, onCompare }: {
             volume with its BASIS chip (BOM ROLLUP vs DECLARED). Never invented. */}
         <BomContextBar
           view={bomBreadcrumbView(bom)}
-          basis={basisChip(bom?.has_tree ? "bom_rollup" : context?.annual_volume != null ? "declared" : "default")}
+          pathsTruncated={bom?.ancestry_paths_truncated ?? false}
           rootsPerYear={context?.bom_roots_per_year ?? null}
           declaredVolume={context?.annual_volume ?? null}
         />
+        {(bomError || bom?.error || (bom && !bom.has_tree)) && (
+          <div role="alert" style={{ fontFamily: MONO, fontSize: 11, color: C.cond }}>
+            <p>BOM unavailable — {bomError || bom?.error || "The linked assembly does not contain this part."}</p>
+            <GhostButton onClick={() => setBomAttempt((n) => n + 1)}>Retry BOM</GhostButton>
+          </div>
+        )}
         {ctxError && (
           <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, color: C.cond }}>
             lineage unavailable — {ctxError}
@@ -445,22 +457,20 @@ function Standing({ row, nav, onOpenProgram, onCompare }: {
 // rolled-up per-vehicle count, and the annual volume with its BASIS chip.
 function BomContextBar({
   view,
-  basis,
+  pathsTruncated,
   rootsPerYear,
   declaredVolume,
 }: {
   view: ReturnType<typeof bomBreadcrumbView>;
-  basis: ReturnType<typeof basisChip>;
+  pathsTruncated: boolean;
   rootsPerYear: number | null;
   declaredVolume: number | null;
 }) {
   if (!view.present) return null;
+  const perYear = bomAnnualVolume(view.perVehicle, rootsPerYear);
+  const basis = basisChip(perYear != null ? "bom_rollup" : declaredVolume != null ? "declared" : "default");
   const rollup = basis?.tone === "rollup";
   const chipColor = rollup ? C.measured : C.user;
-  const perYear =
-    view.perVehicle != null && rootsPerYear != null
-      ? view.perVehicle * rootsPerYear
-      : declaredVolume;
   return (
     <div
       style={{
@@ -496,6 +506,7 @@ function BomContextBar({
             shared · summed over {view.chain.length ? "all paths" : "paths"}
           </span>
         )}
+        {pathsTruncated && <span style={{ fontFamily: MONO, fontSize: 9, color: C.ink40 }}>path preview limited · count includes all paths</span>}
       </div>
       <p style={{ margin: 0, fontFamily: MONO, fontSize: 11, lineHeight: 1.6, color: C.ink70 }}>
         {view.chain.join("  →  ")}
@@ -509,6 +520,14 @@ function BomContextBar({
               {rollup ? " (BOM rollup)" : ""}
             </span>
           )}
+        </p>
+      )}
+      {perYear == null && (
+        <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, color: C.ink45 }}>
+          {rootsPerYear == null
+            ? "Yearly vehicle production has not been supplied."
+            : "BOM annual demand exceeds the supported exact integer range."}
+          {declaredVolume != null ? ` Using ${NUM(declaredVolume)}/yr declared.` : " Annual demand is unavailable."}
         </p>
       )}
     </div>
