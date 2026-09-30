@@ -58,5 +58,29 @@
   },
   "diagnostic_change": "Dump worker stacks before the existing 90-second deadline and retain bounded subprocess output on timeout. No parser or timeout budget changes.",
   "regression": "Missing stdout_tail fails before the fix; all four outer corpus tests pass after it.",
-  "remaining": "CI timeout root cause is unresolved; a local pass does not clear the failed CI run."
+  "remaining": "The new CI passed every corpus case, including FTC-07 in 38.766 seconds. The previous intermittent timeout root cause is still unknown; retained diagnostics remain in place. This run failed later on a stale training crossover oracle, not the CAD corpus.",
+  "latest_ci": {
+    "status": "PASS",
+    "cases": 34,
+    "passed": 34,
+    "ftc07": {
+      "id": "NIST-AP203-GEOM-FTC-07",
+      "status": "PASS",
+      "elapsed_sec": 38.766,
+      "inner_sha256": "a0bc551656780b26d7a0ee1beedbc07d43f41efa092f74f3c2d8383417f04481",
+      "geometry": {
+        "bbox_mm": [
+          311.6,
+          135.9,
+          222.7
+        ],
+        "face_count": 246398,
+        "surface_area_cm2": 3909.71,
+        "volume_cm3": 1725.99,
+        "watertight": true
+      },
+      "failures": []
+    },
+    "run": 36664250281
+  }
 }

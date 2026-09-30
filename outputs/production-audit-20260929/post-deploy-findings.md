@@ -366,3 +366,12 @@ first divergence: step 3, expected the cost panel to fit the 390 px program-deta
 - Fix: use responsive native CSS grids for both program list and detail. Mark incomplete sums as “Partial total” with included/assigned part counts on both surfaces. Call model prices estimates in the introductory explanation.
 - Native red-to-green: program detail now measures 390 px client/scroll width at the 390 px viewport. The entire exposure card is readable by normal vertical scrolling. Both list and detail identify “1 of 2 parts included”; restoring the second valid volume restores $48,597 and removes the partial label. No amounts or backend aggregation formulas changed.
 - Evidence: `052-program-mobile-before.png`, `052-program-mobile-fixed.png`, and the shared native regression module/report. Typecheck, changed-source lint and production build pass. Viewport override reset after testing.
+
+
+## 053 — Training CI still pins the superseded FDM-only crossover
+
+first divergence: step 2, expected the training runner's pinned crossover of 923, state was the corrected 4,592 returned after finding 042. Its geometry, source, make-process, quantity and estimate-count assertions had already passed. The user-facing HTML guide contains no 923-unit claim; the stale value exists only in this test oracle.
+
+- CI 36664250281 passed eight jobs and all 34 real-CAD corpus cases. FTC-07 completed in 38.766 seconds with the exact pinned source hash. Restore, load and readiness checks also passed before this later training failure. The previous intermittent timeout is not explained by a successful rerun; diagnostics remain enabled.
+- Fix: update the single golden crossover value to 4,592, supported by the independent real-STEP price/boundary checks in `crossover-routes-regression.json`. At 923, injection molding still loses to MJF; at 4,591 its unrounded line-item sum remains higher, and at 4,592 it becomes lower. No acceptance tolerance, timeout, geometry/price checks or user-facing calculation changed.
+- Validation: all three existing training-runner utility tests pass. Full current-head CI, including the complete training guide and subsequent deck journey, remains required. Evidence: `ci-36664250281-summary.json`.
