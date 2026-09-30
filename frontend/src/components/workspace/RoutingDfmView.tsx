@@ -68,9 +68,8 @@ export function RoutingDfmView({
         <RoutingCard routing={report.routing} />
       ) : report ? (
         <Card className="p-4 text-sm text-muted-foreground">
-          Geometric routing not present on this report — surfacing{" "}
-          <span className="num">routing</span> through the API is a build gap; the
-          archetype, recommended process and reasoning live in the engine.
+          No geometric route is recommended in this report. Review the declared
+          material, process findings and report notes before selecting a route.
         </Card>
       ) : null}
 

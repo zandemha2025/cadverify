@@ -4,6 +4,7 @@ from __future__ import annotations
 from io import BytesIO
 import warnings
 
+import pytest
 import trimesh
 
 from src.analysis.base_analyzer import analyze_geometry
@@ -100,3 +101,60 @@ def test_open_mesh_skips_mass_properties_without_runtime_warning():
         warnings.simplefilter("error", RuntimeWarning)
         issues = check_rotational_symmetry(context, ProcessType.CNC_TURNING)
     assert issues == []
+
+
+@pytest.mark.parametrize("material", ["aluminum", "steel", "stainless"])
+def test_metal_routing_never_promotes_polymer_processes(material):
+    from dataclasses import replace
+    from src.costing.rates import build_rate_card
+    from src.costing.routing import select_material
+
+    drivers = replace(_drivers(trimesh.creation.box(extents=[40, 30, 25])),
+                      volume_cm3=6, nominal_wall_mm=9, rotational=False)
+    # SLS passes geometry-only DFM, but cannot manufacture this declared metal.
+    recommendation = recommend_routing(
+        drivers, material, dfm_failed={ProcessType.CNC_3AXIS},
+        dfm_clean=["sls", "cnc_5axis", "waam"],
+    )
+    assert recommendation is not None
+    assert recommendation.process == "cnc_5axis"
+    for name in [recommendation.process, *recommendation.alternatives]:
+        assert select_material(ProcessType(name), material, build_rate_card()) is not None
+    assert "make-vs-buy crossover" not in recommendation.reasoning
+
+
+def test_metal_enclosure_and_unavailable_routes():
+    mesh = _generated_mesh({"kind": "enclosure", "width_mm": 80,
+                            "depth_mm": 50, "height_mm": 60, "wall_thickness_mm": 3})
+    drivers = _drivers(mesh)
+    recommendation = recommend_routing(drivers, "aluminum")
+    assert recommendation is not None
+    assert recommendation.process == "dmls"
+    assert "mjf" not in recommendation.alternatives
+    assert "sheet_metal" not in recommendation.alternatives
+    assert recommend_routing(drivers, "aluminum", dfm_failed=set(ProcessType)) is None
+
+
+def test_report_routing_uses_actual_eligible_routes():
+    from src.analysis.models import AnalysisResult, ProcessScore
+    from src.costing import EstimateOptions, estimate_decision
+
+    mesh = trimesh.creation.box(extents=[40, 30, 25])
+    result = AnalysisResult(filename="routing.stl", file_type="stl",
+                            geometry=analyze_geometry(mesh), process_scores=[
+        ProcessScore(ProcessType.CNC_3AXIS, 0, "fail"),
+        ProcessScore(ProcessType.SLS, 1, "pass"),
+        ProcessScore(ProcessType.WAAM, 1, "pass"),
+    ])
+    options = EstimateOptions(quantities=[1], material_class="aluminum")
+    report = estimate_decision(result, mesh, detect_all(mesh), options)
+    assert report.routing["recommended_process"] == "waam"
+    assert "cnc_5axis" not in report.routing["alternatives"]  # not evaluated
+    assert "modeled for 3D printing" not in " ".join(report.notes)
+    options.service_environment = {"sour_service": True}
+    assert estimate_decision(result, mesh, detect_all(mesh), options).routing is None
+    options.service_environment = None
+    result.process_scores[-1].verdict = "fail"
+    report = estimate_decision(result, mesh, detect_all(mesh), options)
+    assert report.routing is None
+    assert any("No eligible DFM-ready geometric route" in note for note in report.notes)

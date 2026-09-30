@@ -18,6 +18,7 @@ from src.costing.rates import (
     COSTED_PROCESSES,
     MATERIAL_FAMILY,
     RateCard,
+    build_rate_card,
     process_family,
 )
 
@@ -351,47 +352,29 @@ def _family_of(proc_value: str) -> str:
     return _EVAL_FAMILY.get(proc_value, "additive")
 
 
-def _avoid_dfm_failed_headline(rec: "RoutingRecommendation",
-                               dfm_failed, dfm_clean=None) -> "RoutingRecommendation":
-    """F2 invariant: the routing HEADLINE is never a process the engine's own DFM
-    hard-fails on this part.
+def _avoid_dfm_failed_headline(rec: "RoutingRecommendation", dfm_failed,
+                               dfm_clean, available) -> Optional[RoutingRecommendation]:
+    """Choose only a material/geometry-compatible, evaluated, DFM-ready route.
 
-    If the archetype's primary process hard-fails as-modeled (e.g. a printed-for-
-    3DP cover whose injection-molding DFM fails for lack of draft, or a round part
-    whose CNC-turning DFM fails on L/D), promote a DFM-clean process to the
-    headline — first an offered alternative, else (rare: the engine hard-fails
-    every offered alternative too) the best DFM-clean process from `dfm_clean`
-    (ordered costed-first) — and keep the original as the at-volume / design-for-
-    process route in the reasoning + alternatives.
-
-    The make-vs-buy tooling crossover (the wedge) is untouched: process selection
-    for costing is `eligible_processes`, which is independent of this — injection
-    molding is still costed and still surfaced as the volume crossover in the
-    decision card. Only the headline badge stops contradicting the DFM matrix
-    shown in the same panel.
+    Cost ranking and tooling crossovers are independent; this helper cannot
+    claim that a demoted geometry suggestion is the actual crossover.
     """
     failed = {p.value for p in (dfm_failed or set())}
-    if rec.process not in failed:
+    rec.alternatives = [p for p in rec.alternatives if p in available and p != rec.process]
+    if rec.process in available and rec.process not in failed:
         return rec
-    replacement = next((a for a in rec.alternatives if a not in failed), None)
+    replacement = next((p for p in [*rec.alternatives, *(dfm_clean or [])]
+                        if p in available and p not in failed), None)
     if replacement is None:
-        # No offered alternative is DFM-clean — fall back to the best DFM-clean
-        # process overall (a part may hard-fail every printable/machinable route
-        # as-modeled and pass only, e.g., sheet metal). estimate.py reconciles a
-        # non-costed headline with its existing "feasibility-only" note.
-        replacement = next((p for p in (dfm_clean or []) if p not in failed), None)
-    if replacement is None:
-        # The engine hard-fails EVERY process as-modeled — there is no
-        # non-contradictory option to promote. Leave the geometric rec; the panel
-        # is uniformly DFM-not-ready (dfm_ready=False on every estimate), so the
-        # headline is contextualized, not a selective contradiction.
-        return rec
+        return None
     demoted = rec.process
-    new_alts = [demoted] + [a for a in rec.alternatives if a != replacement]
-    note = (f" As-modeled the {demoted} route hard-fails the engine's DFM "
-            f"(design-for-process required) — that is the at-volume path, costed "
-            f"and shown as the make-vs-buy crossover below; the DFM-clean "
-            f"{replacement} route is headlined as what you can make as-is.")
+    new_alts = ([demoted] if demoted in available else []) + [
+        a for a in rec.alternatives if a != replacement]
+    reason = ("fails the engine's DFM as modeled" if demoted in failed
+              else "is not eligible under the declared material and route constraints")
+    note = (f" The {demoted} geometry suggestion {reason}. "
+            f"The eligible DFM-ready alternative is {replacement}; "
+            "review the process findings and costed options before selecting it.")
     return RoutingRecommendation(
         archetype=rec.archetype,
         process=replacement,
@@ -404,7 +387,8 @@ def _avoid_dfm_failed_headline(rec: "RoutingRecommendation",
 
 
 def recommend_routing(drivers, material_class: str = "polymer",
-                      dfm_failed=None, dfm_clean=None) -> RoutingRecommendation:
+                      dfm_failed=None, dfm_clean=None,
+                      available_processes=None) -> Optional[RoutingRecommendation]:
     """Classify the part's manufacturing archetype, then guarantee the headline
     is never a process the engine's own DFM hard-fails (F2).
 
@@ -412,13 +396,26 @@ def recommend_routing(drivers, material_class: str = "polymer",
     == "fail", an ERROR-level blocker) on THIS part; `dfm_clean` is the ordered
     (costed-first) list of DFM-clean process values used as the last-resort
     headline when the engine hard-fails every offered alternative too.
+    `available_processes` restricts reports to evaluated routes surviving their
+    material, geometry and environment gates. Without it, use the same material
+    and geometry selectors for a standalone suggestion. No ready route => None.
     `_classify_archetype` names the shape-implied process; then
     `_avoid_dfm_failed_headline` demotes that headline to a DFM-clean process if
     the engine's own DFM fails it, so the routing card and the DFM matrix in the
     same panel can never contradict each other.
     """
     rec = _classify_archetype(drivers, material_class)
-    return _avoid_dfm_failed_headline(rec, dfm_failed, dfm_clean)
+    if available_processes is None:
+        rates = build_rate_card()
+        available = {
+            p.value for p in PT
+            if _routing_sane(p, material_class, drivers)
+            and (select_sheet_material(material_class, rates) if p == PT.SHEET_METAL
+                 else select_material(p, material_class, rates)) is not None
+        }
+    else:
+        available = set(available_processes)
+    return _avoid_dfm_failed_headline(rec, dfm_failed, dfm_clean, available)
 
 
 def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingRecommendation:
@@ -494,7 +491,7 @@ def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingReco
             )
         return RoutingRecommendation(
             archetype="thin_wall_enclosure",
-            process=PT.MJF.value, eval_family="additive", material_hint=material_class,
+            process=PT.DMLS.value, eval_family="additive", material_hint=material_class,
             confidence=0.5,
             reasoning=(
                 f"Thin-wall hollow shell (~{wall:.1f}mm wall, {solidity*100:.0f}% filled) "
@@ -553,5 +550,6 @@ def _classify_archetype(drivers, material_class: str = "polymer") -> RoutingReco
             f"General solid ({solidity*100:.0f}% of bbox filled, ~{wall:.1f}mm mean "
             f"wall) with no dominant sheet/rotational/prismatic signature → "
             f"{'additive (MJF/SLS) for a polymer prototype' if material_class=='polymer' else 'CNC machining for a metal part'}."),
-        alternatives=[PT.SLS.value, PT.CNC_3AXIS.value],
+        alternatives=([PT.SLS.value, PT.CNC_3AXIS.value] if material_class == "polymer"
+                      else [PT.CNC_5AXIS.value, PT.DMLS.value]),
     )

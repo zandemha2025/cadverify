@@ -318,7 +318,8 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
     # part — routing must never headline a process the panel marks FAIL (F2).
     # dfm_clean is the DFM-clean fallback for the headline, ordered costed-first
     # then by score, so a demoted headline still prefers a costable option.
-    dfm_failed = {ps.process for ps in result.process_scores if ps.verdict == "fail"}
+    dfm_failed = {ps.process for ps in result.process_scores
+                  if ps.verdict == "fail" or ps.score <= 0}
     dfm_clean = [
         ps.process.value
         for ps in sorted(
@@ -326,8 +327,26 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
             key=lambda ps: (ps.process not in COSTED_PROCESSES, -float(ps.score)),
         )
     ]
+    elig = eligible_processes(result, drivers, options.material_class, rates,
+                              strict_dfm=options.strict_dfm,
+                              env=options.service_environment)
+
+    # ── Phase C: machine-inventory verification (additive; no-op when unused) ──
+    # Only engaged when the org DECLARED machines OR a service environment. When
+    # neither is present, verification stays None and machine_override_by_pv stays
+    # empty, so every cost_breakdown call below gets machine_override=None and the
+    # whole report is byte-identical to pre-Phase-C.
+    verification = None
+    machine_override_by_pv: dict = {}
+    env_excluded: dict = {}
+    if options.inventory or options.service_environment:
+        verification, machine_override_by_pv, env_excluded = _build_verification(
+            elig, drivers, options)
+
     rec = recommend_routing(drivers, options.material_class,
-                            dfm_failed=dfm_failed, dfm_clean=dfm_clean)
+                            dfm_failed=dfm_failed, dfm_clean=dfm_clean,
+                            available_processes={item["process"].value for item in elig}
+                            - set(env_excluded.get("excluded_pv") or ()))
     routing_info = {
         "archetype": rec.archetype,
         "recommended_process": rec.process,
@@ -345,22 +364,7 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
             "rotational": drivers.rotational,
             "sheet_like": drivers.sheet_like,
         },
-    }
-    elig = eligible_processes(result, drivers, options.material_class, rates,
-                              strict_dfm=options.strict_dfm,
-                              env=options.service_environment)
-
-    # ── Phase C: machine-inventory verification (additive; no-op when unused) ──
-    # Only engaged when the org DECLARED machines OR a service environment. When
-    # neither is present, verification stays None and machine_override_by_pv stays
-    # empty, so every cost_breakdown call below gets machine_override=None and the
-    # whole report is byte-identical to pre-Phase-C.
-    verification = None
-    machine_override_by_pv: dict = {}
-    env_excluded: dict = {}
-    if options.inventory or options.service_environment:
-        verification, machine_override_by_pv, env_excluded = _build_verification(
-            elig, drivers, options)
+    } if rec is not None else None
 
     estimates_serialized = []
     estimates_by_pq = {}             # (process_value, qty) -> CostEstimate (real per-qty)
@@ -444,15 +448,18 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
         if flagged:
             notes.append(
                 "DFM note: processes " + ", ".join(flagged) + " are costed but flagged "
-                "NOT DFM-ready as-modeled (the engine reports ERROR-level blockers — "
-                "these parts were modeled for 3D printing, so molding/casting lack draft). "
+                "NOT DFM-ready as-modeled (see their process-specific blockers). "
                 "Their cost shows the tooling economics *if* the part is redesigned for "
                 "that process. Set strict_dfm=True to exclude them entirely.")
     # geometric routing recommendation, and reconciliation with the cost pick
-    notes.append(
-        f"Geometric routing: this part reads as a '{rec.archetype}' → "
-        f"{rec.process}. {rec.reasoning}")
-    if decision is not None and decision.make_now_process != rec.process:
+    if rec is None:
+        notes.append("No eligible DFM-ready geometric route is available under the "
+                     "declared material and route constraints. Review process findings.")
+    else:
+        notes.append(
+            f"Geometric routing: this part reads as a '{rec.archetype}' → "
+            f"{rec.process}. {rec.reasoning}")
+    if rec is not None and decision is not None and decision.make_now_process != rec.process:
         in_shortlist = any(e["process"] == rec.process for e in estimates_serialized)
         if in_shortlist:
             notes.append(

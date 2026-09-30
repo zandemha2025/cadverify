@@ -173,3 +173,6 @@ CI36703805005 on bea9a77 failed:8jobs passed; FTC-07 emitted JSON ending in OK/P
 
 
 Parser-exit follow-up098: a deterministic real-process test reproduces the after-result hang when a worker dies during a large result transfer. Closing the parent's unused sending end before killing workers allows EOF, recovery and clean exit across all three termination paths. Real NIST STEP native upload/saved record and actual server shutdown pass;60 stored estimates reconcile.2437 backend tests pass. This is a reproduced matching mechanism, not proof of the historical CI stack. New-head CI/deployment remain pending; native JSON download was not confirmed in this attempt. See `098-parser-exit-regression.json`.
+
+
+Routing follow-up099: material/geometry/evaluation/environment gates now apply to geometric recommendations as well as prices. Aluminum FTC-07 no longer recommends polymer SLS; the saved explanation names CNC 5-axis and reconciles it with WAAM's lower cost. All60 estimates and the full decision remain identical to the old saved record. Incompatible/unevaluated/all-failed/environment-excluded controls pass. Full2442 backend/495 frontend checks pass; engine/cache0.3.13. Not deployed; exact-head CI remains pending. See `099-routing-record-check.json`.
