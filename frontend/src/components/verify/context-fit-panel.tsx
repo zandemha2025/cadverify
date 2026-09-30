@@ -15,7 +15,7 @@ export function ContextFitPanel() {
   const [hideContext, setHideContext] = useState(false);
   const [selectedIssue, setSelectedIssue] = useState<"collision"|"clearance"|null>(null);
   const runId = useRef(0);
-  const clearStale = useCallback(() => { ++runId.current; setResult(null); setSelectedIssue(null); setError(null); }, []);
+  const clearStale = useCallback(() => { ++runId.current; setRunning(false); setResult(null); setSelectedIssue(null); setError(null); }, []);
   const pick = (role: Role, file: File | null) => { clearStale(); setFiles(old => ({ ...old, [role]: file })); };
   const run = async () => {
     if (!files.part || !files.context) return;

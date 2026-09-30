@@ -693,3 +693,17 @@ CI checkpoint: [36690028303](https://github.com/zandemha2025/cadverify/actions/r
 - Evidence: `session-recovery-regression.json`, `session-recovery-http-proof.json`,089 screenshots, `frontend/src/lib/dal.test.ts` and `scripts/e2e/session-recovery-validation.mjs`. Fresh CI and deployment remain required; real external authentication providers and email remain unverified.
 
 CI checkpoint: [36694513963](https://github.com/zandemha2025/cadverify/actions/runs/36694513963) completed successfully on `c02604f` through086: all9 jobs,54 human steps,15 Design Studio steps/12 goldens,17 enterprise steps/9 goldens,31 role/governance steps with zero skips, all34 real CAD cases and the full restore/load/readiness/training chain passed. Sanitized receipt: `ci-36694513963-summary.json`. It excludes087–089 and does not prove production or the main-only image CVE gate.
+
+
+## 090 — Editing a fit pair leaves measurement permanently pending
+
+- Severity: medium availability defect; fixed locally, not deployed. A real successful cube-pair response was delayed four seconds. Changing X during the request left “Measuring this pair…” disabled after HTTP200 completed; the runnable native assertion failed.
+- Root cause: the shared `clearStale` invalidated the request ID but retained `running=true`, while the stale request's guarded finally could no longer clear it. One added state reset repairs all input paths without accepting old measurements.
+- Native GREEN: X, seating, swap and file-replacement controls each permit a fresh check and withhold the old successful result. Real10mm cubes produce10mm clearance at20mm translation,1000mm³ full overlap, and10mm³ overlap at9.9mm translation. Open-shell refusal recovers after selecting valid CAD. Assembly visibility toggles; native foreground screenshot shows actual collision geometry.
+-494 frontend tests, typecheck, changed-file lint and production build pass. Runnable checks: `scripts/e2e/context-fit-validation.mjs`; evidence: `context-fit-pending-regression.json` and090 screenshots. The response-control proxy is stopped and the frontend again calls API8017 directly. Local QA explicitly enables the previously unset context-fit flag; production enablement is unverified. No STEP fit success is claimed (091).
+
+## 091 — Ordinary STEP pair exceeds fit admission and receives contradictory recovery advice
+
+- Severity: high feature limitation; OPEN. Native two-file upload of the existing20×15×10mm bored `audit-cube.STP` produces370656 parsed faces, above the150000 pair limit. The canonical parser creates185328 faces per file; the customer has no tessellation control in this form.
+- The UI accepts STEP and says pair measurement supports it, but this real pair cannot be checked with defaults. The backend adds “Repair both shells to watertight solids and retry the same two files” after the face-budget message, even though these are valid watertight solids and resubmitting the same files cannot help.
+- Evidence: `091-context-fit-step-limit.png`. Preserve admission limits and measurement honesty while investigating a bounded, accurate CAD path and specific recovery guidance. No workaround, relaxed limit or silent simplification applied. Separate existing limitation: two-shell previews currently require STL; unsupported formats display that limitation explicitly.

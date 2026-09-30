@@ -1,0 +1,53 @@
+{
+  "finding": "090",
+  "status": "fixed locally; not deployed",
+  "base_commit": "a6f81fb233eab17706039cc67d0a4e860b656246",
+  "root_cause": "clearStale invalidated the pending request but retained running=true; the stale finally could no longer clear it.",
+  "fix": "Reset running in the shared input invalidation function; retain request identity guards.",
+  "control": {
+    "transport": "native Chrome -> production Next build -> loopback proxy -> real API/PostgreSQL",
+    "response": "actual successful fit response delayed four seconds, unchanged",
+    "geometry": "backend/tests/trap-corpus/control-cube-10mm.stl, 12 faces, bounds [0,0,0] to [10,10,10]",
+    "red": "After X changed to20, completed HTTP200 left Measuring this pair disabled. Runnable assertion failed.",
+    "green": [
+      "X change enables a fresh check and withholds old result immediately and after old HTTP200 delivery.",
+      "Seating change, swap and replacement with a real STEP file each enable a fresh check and withhold the completed stale result."
+    ]
+  },
+  "measurements": [
+    {
+      "x_nudge_mm": 20,
+      "gap_mm": 10,
+      "overlap_mm3": 0
+    },
+    {
+      "x_nudge_mm": 0,
+      "gap_mm": 0,
+      "overlap_mm3": 1000
+    },
+    {
+      "x_nudge_mm": 9.9,
+      "gap_mm": 0,
+      "overlap_mm3": 10
+    }
+  ],
+  "native_recovery": "An open STL shell is refused with no measurements; selecting the watertight control clears error and successfully measures10mm3 overlap.",
+  "checks": {
+    "frontend_tests": 494,
+    "failed": 0,
+    "types": "PASS",
+    "changed_file_lint": "PASS",
+    "production_build": "PASS",
+    "runnable_native_assertions": "scripts/e2e/context-fit-validation.mjs"
+  },
+  "limits": [
+    "Not deployed.",
+    "CONTEXT_FIT_ENABLED was unset/default-off in the local environment despite visible UI. Enabled only on the local QA API for measurement; production setting unverified.",
+    "RATE_LIMIT_DISABLED=1 with RELEASE unset remains local QA only.",
+    "The real audit-cube.STP pair was refused at370656 faces above150000; no STEP fit success claimed. See091.",
+    "Two-shell viewer supports STL only; other accepted formats display an explicit preview limitation.",
+    "First attempted proxy could not accept chunked uploads; discarded and replaced by real streamed-body forwarding before RED/GREEN proof.",
+    "Some background canvas captures were blank; the native foreground screenshot shows real geometry."
+  ],
+  "runtime_cleanup": "Temporary response-delay proxy stopped; frontend restored to direct API8017."
+}
