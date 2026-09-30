@@ -80,7 +80,7 @@ def interpret_design_prompt(raw_prompt: str) -> dict[str, Any]:
     if len(prompt) > MAX_PROMPT_CHARS:
         raise ValueError(f"Description must be {MAX_PROMPT_CHARS} characters or fewer")
     text = prompt.lower().replace("–", "-").replace("—", "-").replace("−", "-")
-    if re.search(r"\b(inches?|inch|in\.|centimet(?:er|re)s?|cm)\b", text):
+    if re.search(r"(?<![a-z])(?:inch(?:es)?|in\.|centimet(?:er|re)s?|cm)(?![a-z])", text):
         return {
             "status": "needs_input",
             "kind": _kind(text),

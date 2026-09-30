@@ -23,7 +23,19 @@
     "typecheck": "pass",
     "changed_source_lint": "pass",
     "production_build": "pass",
-    "backend": "unchanged; 2536 pass / 3 documented skips from finding132 retained"
+    "backend": "unchanged; 2536 pass / 3 documented skips from finding132 retained",
+    "native_r2_step_import": {
+      "bbox_mm": [
+        50,
+        40,
+        40
+      ],
+      "display_volume_cm3": 17.07,
+      "watertight": true,
+      "evidence_hash_matches": true,
+      "cost_decision_id": "01M3SR4XV5JD5KBRAEX4MEV8E9",
+      "price_accuracy": "not established"
+    }
   },
   "enclosure_geometry": {
     "generation": "real native UI revision 2",
@@ -38,7 +50,8 @@
     "volume_delta_cm3": 3.44,
     "hash_before_prefix": "3d38c50976b5",
     "hash_after_prefix": "440c73fe7d59",
-    "scope": "Saved generated summary comparison; R2 not separately imported in Verify during this check."
+    "scope": "Saved generated summary plus normal native Verify import of actual R2 STEP. Verify displays rounded volume17.07cm3, matching analytic17.072cm3.",
+    "hash_after": "440c73fe7d59843904f112c98ffabaa6fa7190eea129f3587a1039f996f2171f"
   },
   "harness_note": "A temporary harness header filter incorrectly stripped gzip metadata from unrelated GETs in diff-error mode. It was restricted to the selected comparison path, then history/preview recovered through their UI retry controls before the recorded late-error check. This was not an application defect.",
   "runtime_cleanup": "Test proxy stopped; frontend direct API_BASE restored to 127.0.0.1:8017",
@@ -48,7 +61,8 @@
     "133-design-comparison-direct.png": "32506e48f4dc1b64a755958f6e74e497afcf825346a68e2d5cab3d53e705643b",
     "133-design-comparison-recovered.png": "2af88a16b8f9fbba4a729483c0a2ae38aec76c0f2a34a64683e6880e90634756",
     "133-design-current-error.png": "1cae72613e3ff65f60467b3f11fa3f9be421464d6f87a69e3e6efe639f029d7b",
-    "133-design-late-error-fixed.png": "86ade25540b9767a70df36b81b9bb198e2ab445eb3b9662eed73da4131231da3"
+    "133-design-late-error-fixed.png": "86ade25540b9767a70df36b81b9bb198e2ab445eb3b9662eed73da4131231da3",
+    "133-enclosure-r2-step-verified.png": "b67b664ddf67299dc00d75f328346807ff58b20a04c4dc63e0fdcf5d15f87032"
   },
   "limits": [
     "Production unchanged.",

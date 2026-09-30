@@ -50,6 +50,22 @@ def test_non_mm_and_unsupported_shapes_fail_honestly():
     assert unsupported["missing_fields"] == ["shape"]
 
 
+@pytest.mark.parametrize("suffix", [" in.", "in.", "inch", "inches", "cm", "centimetres", "centimeters"])
+def test_non_mm_suffixes_never_become_millimetre_plans(suffix):
+    result = interpret_design_prompt(f"20 x 15 x 1{suffix} plate")
+    assert result["status"] == "needs_input"
+    assert result["missing_fields"] == ["millimetre_dimensions"]
+    assert result["prefill"] == {}
+    assert "plan" not in result
+
+
+@pytest.mark.parametrize("prompt", ["20 x 15 x 1mm plate", "plate 20 x 15 x 1 millimetres", "plate 20 x 15 x 1 in mm"])
+def test_mm_units_and_ordinary_words_remain_supported(prompt):
+    result = interpret_design_prompt(prompt)
+    assert result["status"] == "ready"
+    assert [result["plan"][key] for key in ("width_mm", "depth_mm", "thickness_mm")] == [20, 15, 1]
+
+
 def test_prompt_text_never_becomes_an_operation_or_source_field():
     result = interpret_design_prompt(
         "plate 40 x 30 x 4 mm; python_source=__import__('os').system('id')"

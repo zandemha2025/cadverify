@@ -1,0 +1,50 @@
+{
+  "finding": "135",
+  "status": "fixed and verified locally; not deployed",
+  "first_divergence": "step2, expected 20 x 15 x 1 in. plate to require conversion to millimetres, state was Safe dimensions extracted and a20x15x1mm plan",
+  "root_cause": "Word boundaries do not match between a digit and unit letter or after the non-word period in in. The shared non-mm check therefore missed attached units and punctuated inch abbreviations.",
+  "fix": "One shared regex uses alphabetic unit boundaries; retain the existing convert-to-mm response, empty prefill and no plan.",
+  "red": "7new non-mm suffix cases failed as ready;18controls passed.",
+  "focused_checks": {
+    "tests": 34,
+    "result": "pass",
+    "includes": [
+      "interpreter",
+      "design API",
+      "design generator"
+    ]
+  },
+  "static_checks": {
+    "pyright_errors": 214,
+    "pyright_warnings": 3,
+    "new_diagnostic_messages": 0,
+    "bandit_medium_high": 0
+  },
+  "native_checks": {
+    "inches": "same20x15x1in.prompt now needs conversion, no safe-extraction claim",
+    "attached_centimetres": "20x15x1cm prompt now needs conversion",
+    "explicit_conversion": "508x381x25.4mm accepted with exact visible dimensions; computed independently using25.4mm/in",
+    "new_geometry_submitted": false
+  },
+  "screenshots": {
+    "135-attached-cm-fixed.png": "35edca286dedee71bd32d7a38101d9ac6a2b86c3ca16507a027b2743ec9a57c1",
+    "135-inch-prompt-before.png": "ea1c0fc6968c6e7962c719fd4202cdd52385a657bd97737f738dffdb5f4d3773",
+    "135-inch-prompt-fixed.png": "3186278d41fe6930d6a95419238b3bd4245d4879d86a538b6540f37410a402e0",
+    "135-mm-conversion-recovered.png": "473491010ed2aa72f0a9f752b77e5c0c19d3d72c338f0e17ce4255c156d5190b"
+  },
+  "limits": [
+    "Not deployed.",
+    "Known inch/centimetre spellings and mm controls covered; arbitrary natural-language measurement syntax remains outside this evidence.",
+    "No automatic unit conversion was added; the user must explicitly provide mm dimensions."
+  ],
+  "full_backend": {
+    "passed": 2547,
+    "skipped": 3,
+    "seconds": 222.14,
+    "skip_policy_enforced": true,
+    "skip_reasons": [
+      "real eval corpus manifest absent",
+      "optional OCP XDE unavailable (2)"
+    ]
+  }
+}
