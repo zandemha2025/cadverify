@@ -76,6 +76,19 @@ def test_fit_and_preview_share_per_file_units_and_mm_nudge(client, monkeypatch, 
     assert client.post("/api/v1/validate/fit?part_b_units=unknown", files=files).status_code == 422
 
 
+@pytest.mark.parametrize("axis", ["x", "y", "z"])
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf", "1e309"])
+def test_fit_rejects_nonfinite_offsets_without_server_error(client, monkeypatch, cube_10mm, stl_bytes_of, axis, value):
+    monkeypatch.setenv("CONTEXT_FIT_ENABLED", "1")
+    data = stl_bytes_of(cube_10mm)
+    response = TestClient(client.app, raise_server_exceptions=False).post(
+        f"/api/v1/validate/fit?nudge_{axis}_mm={value}",
+        files={"part_a": ("a.stl", data), "part_b": ("b.stl", data)},
+    )
+    assert response.status_code == 422, response.text
+    assert "finite" in response.text.lower()
+
+
 def test_fit_budget_error_does_not_instruct_repairing_valid_shells(client, stl_bytes_of, monkeypatch):
     monkeypatch.setenv("CONTEXT_FIT_ENABLED", "1")
     monkeypatch.setenv("FIT_MAX_PAIR_FACES", "1000")

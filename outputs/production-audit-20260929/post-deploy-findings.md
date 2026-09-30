@@ -959,3 +959,11 @@ CI36722887416 completed successfully on a980247606355abd97aeb7b7a7a7b11acc44837f
 - Native same-file replay fits every projected corner within the preview at2560×1233, preserving16,387.064mm³ overlap. See `115-complete-cube-frame.png`. No new phone-viewport claim.
 
 114/115 validation:2474 full backend tests pass with3 documented environment skips (210.92s),58 focused tests pass,498 frontend tests/types/changed lint/final production build pass. Backend type errors215/228 baseline with zero new messages; changed-source Bandit passes. The existing ghost-opacity source check now targets the retained GLB material at the same16percent after deletion of the duplicated STL renderer; native visualization supplies behavior evidence.
+
+
+### 116 — Negative fit offsets silently became positive; non-finite offsets returned500 (fixed locally)
+- first divergence: native Meta+A then -5 produced05 (positive5). Immediate numeric conversion replaced the unfinished minus with zero.
+- Preserve raw number-input drafts and convert only for a valid submission. Empty/unfinished/non-finite drafts disable the check, explain the correction and withhold previous measurements. Enforce finite numbers at all three API query boundaries before geometry work; NaN/Infinity previously reached seating and raised500.
+- Native keyboard proof on physically identical25.4mm cubes: X−35.4 and Z−35.4 each give10.000mm gap; X−0.5 and Y−0.5 each give16,064.484mm³ overlap; empty/overflow values stay invalid; zero recovery restores16,387.064mm³. Actual preview follows the negative direction. No source files or measurement algorithms changed.
+- A runnable native assertion covers exact input value, invalid state, action availability and stale-result withholding. Twelve API controls reject nan/inf/−inf/1e309 across XYZ with422. All2486 backend tests pass (3 documented environment skips),21 focused tests and498 frontend tests/types/lint/build pass. Backend types215 errors/3 warnings, zero new diagnostic messages; Bandit passes.
+- Evidence: `116-fit-input-proof.json` and before/invalid/fixed/recovered native screenshots. Not deployed.

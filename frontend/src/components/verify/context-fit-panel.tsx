@@ -12,21 +12,23 @@ export function ContextFitPanel() {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [seating, setSeating] = useState<"shared_frame"|"auto">("shared_frame");
-  const [nudge, setNudge] = useState<[number,number,number]>([0,0,0]);
+  const [nudge, setNudge] = useState<[string,string,string]>(["0","0","0"]);
+  const parsedNudge = nudge.map(Number) as [number,number,number];
+  const validNudge = nudge.every(value => value.trim() !== "" && Number.isFinite(Number(value)));
   const [hideContext, setHideContext] = useState(false);
   const [selectedIssue, setSelectedIssue] = useState<"collision"|"clearance"|null>(null);
   const runId = useRef(0);
   const clearStale = useCallback(() => { ++runId.current; setRunning(false); setResult(null); setSelectedIssue(null); setError(null); }, []);
   const pick = (role: Role, file: File | null) => { clearStale(); setFiles(old => ({ ...old, [role]: file })); setUnits(old => ({ ...old, [role]: "mm" })); };
   const run = async () => {
-    if (!files.part || !files.context) return;
+    if (!files.part || !files.context || !validNudge) return;
     const id = ++runId.current; setRunning(true); setResult(null); setError(null);
-    try { const next = await measureContextFit(files.part, files.context, seating, nudge, units); if (id === runId.current) { setResult(next); setSelectedIssue(null); } }
+    try { const next = await measureContextFit(files.part, files.context, seating, parsedNudge, units); if (id === runId.current) { setResult(next); setSelectedIssue(null); } }
     catch (e) { if (id === runId.current) setError(e instanceof Error ? e.message : "Fit check failed"); }
     finally { if (id === runId.current) setRunning(false); }
   };
   const swap = () => { clearStale(); setFiles({ part: files.context, context: files.part }); setUnits({ part: units.context, context: units.part }); };
-  const nudged = nudge.some((value) => value !== 0);
+  const nudged = parsedNudge.some((value) => value !== 0);
   const seatingLine = result
     ? nudged
       ? result.seating.accepted && result.seating.method !== "shared_frame"
@@ -54,8 +56,8 @@ export function ContextFitPanel() {
         {files[role] && (/\.(stl|obj)$/i.test(files[role]!.name) ? <div className="mt-2 text-xs"><label>Source units <select className="min-h-11 rounded border px-2" aria-label={`${role === "part" ? "Your part" : "Assembly"} source units`} value={units[role]} onChange={e=>{clearStale();setUnits(old=>({...old,[role]:e.target.value as "mm"|"inch"}))}}><option value="mm">Millimeters (mm)</option><option value="inch">Inches (in)</option></select></label><p className="mt-1 text-muted-foreground">This file has no stored units. Confirm the units used when it was exported.</p></div> : <p className="mt-2 text-xs text-muted-foreground">Units read from the CAD file; measurements are in millimeters.</p>)}
       </div>)}
       <button className="min-h-11 rounded border px-3" onClick={swap}>Switch part and context</button>
-      <div className="rounded-xl border bg-card p-3"><label className="text-xs">Seating <select value={seating} onChange={e=>{clearStale();setSeating(e.target.value as typeof seating)}}><option value="shared_frame">Shared CAD frame</option><option value="auto">Automatic, verify fit</option></select></label><div className="mt-2 grid grid-cols-3 gap-2">{nudge.map((v,i)=><label key={i} className="text-[11px] text-muted-foreground">{`${"XYZ"[i]} nudge (mm)`}<input className="mt-1 w-full text-foreground" aria-label={`${"XYZ"[i]} nudge mm`} type="number" step="0.1" value={v} onChange={e=>{const next=[...nudge] as [number,number,number];next[i]=Number(e.target.value);clearStale();setNudge(next)}}/></label>)}</div></div>
-      <button className="min-h-11 w-full rounded bg-foreground px-4 text-background disabled:opacity-50" disabled={!files.part||!files.context||running} onClick={run}>{running?"Measuring this pair…":"Check fit in context"}</button>
+      <div className="rounded-xl border bg-card p-3"><label className="text-xs">Seating <select value={seating} onChange={e=>{clearStale();setSeating(e.target.value as typeof seating)}}><option value="shared_frame">Shared CAD frame</option><option value="auto">Automatic, verify fit</option></select></label><div className="mt-2 grid grid-cols-3 gap-2">{nudge.map((v,i)=><label key={i} className="text-[11px] text-muted-foreground">{`${"XYZ"[i]} nudge (mm)`}<input className="mt-1 w-full text-foreground" aria-label={`${"XYZ"[i]} nudge mm`} aria-invalid={v.trim() === "" || !Number.isFinite(Number(v))} type="number" step="0.1" value={v} onChange={e=>{const next=[...nudge] as [string,string,string];next[i]=e.target.value;clearStale();setNudge(next)}}/></label>)}</div>{!validNudge && <p role="status" className="mt-2 text-xs text-red-800">Enter a finite number for each offset before checking fit.</p>}</div>
+      <button className="min-h-11 w-full rounded bg-foreground px-4 text-background disabled:opacity-50" disabled={!files.part||!files.context||running||!validNudge} onClick={run}>{running?"Measuring this pair…":"Check fit in context"}</button>
       {error && <p role="alert" className="rounded border border-red-300 p-3 text-sm text-red-800">{error}</p>}
       {result && <div className="space-y-2" data-testid="context-fit-results">
         {!result.seating.accepted && <div role="status" className="rounded border border-amber-300 bg-amber-50 p-3 text-sm"><b>Seating uncertain</b><p>We couldn&apos;t seat this with confidence. Preview the shared-frame position or set the position with XYZ nudge.</p></div>}

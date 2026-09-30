@@ -1,0 +1,91 @@
+{
+  "finding": 116,
+  "status": "fixed locally; not deployed",
+  "first_divergence": {
+    "action": "Native keyboard Meta+A then -5 in X nudge",
+    "expected": "-5",
+    "observed_before": "05 (positive 5)"
+  },
+  "root_causes": [
+    "Immediate Number conversion replaces unfinished negative input with zero",
+    "Fit query accepted NaN/Infinity and seating raised an unhandled ValueError"
+  ],
+  "native_browser": {
+    "surface": "Chrome via CUA, local production build and real API",
+    "files": [
+      "111-one-inch-cube.3mf",
+      "111-matching-mm-cube.obj"
+    ],
+    "cube_edge_mm": 25.4,
+    "checks": [
+      {
+        "input": "X unfinished minus",
+        "dom_value": "",
+        "check_enabled": false,
+        "old_result_withheld": true
+      },
+      {
+        "input": "X -35.4",
+        "observed_value": "-35.4",
+        "gap_mm": 10,
+        "overlap": false
+      },
+      {
+        "input": "X -0.5",
+        "overlap_mm3": 16064.484,
+        "clearance_mm": 0
+      },
+      {
+        "input": "X cleared",
+        "dom_value": "",
+        "check_enabled": false
+      },
+      {
+        "input": "X 1e309",
+        "dom_value": "",
+        "bad_input": true,
+        "check_enabled": false
+      },
+      {
+        "input": "X 0, Y -0.5",
+        "overlap_mm3": 16064.484
+      },
+      {
+        "input": "Y 0, Z -35.4",
+        "gap_mm": 10
+      },
+      {
+        "input": "all axes 0",
+        "overlap_mm3": 16387.064
+      }
+    ],
+    "geometry_assertion": "Independent 25.4 mm cube intersection and separation controls; sampled-gap limits remain visible"
+  },
+  "api": {
+    "before": "nan X => 500 Internal Server Error",
+    "after": "422 finite-number validation on every axis for nan/inf/-inf/1e309",
+    "parameterized_cases": 12
+  },
+  "validation": {
+    "focused_backend_pass": 21,
+    "full_backend_pass": 2486,
+    "documented_skips": 3,
+    "frontend_pass": 498,
+    "frontend_types_lint_build": "PASS",
+    "pyright_errors": 215,
+    "pyright_warnings": 3,
+    "new_diagnostic_messages": 0,
+    "changed_source_bandit": "PASS"
+  },
+  "screenshots": [
+    "116-negative-entry-before.png",
+    "116-unfinished-negative-refused.png",
+    "116-negative-offset-fixed.png",
+    "116-overflow-refused.png",
+    "116-zero-offset-recovered.png"
+  ],
+  "limits": [
+    "Local-only; production unchanged",
+    "No general engineering accuracy or external workflow certification"
+  ]
+}

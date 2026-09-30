@@ -29,3 +29,17 @@ export async function assertFitPreview(page) {
     "The submitted STEP/STL pair must have a visible geometry canvas");
   return { status: "PASS", pairCanvasVisible: true };
 }
+
+export async function assertFitOffset(page, axis, expected) {
+  const values = await page.playwright.getByTestId("context-fit-panel").locator('input[type="number"]').evaluateAll(
+    inputs => inputs.map(input => ({ label: input.getAttribute("aria-label"), value: input.value, invalid: input.getAttribute("aria-invalid") })),
+  );
+  const field = values.find(input => input.label === `${axis} nudge mm`);
+  assert.ok(field);
+  assert.equal(field.value, expected);
+  const valid = expected.trim() !== "" && Number.isFinite(Number(expected));
+  assert.equal(field.invalid, String(!valid));
+  assert.equal(await page.playwright.getByRole("button", { name: "Check fit in context", exact: true }).isEnabled(), valid);
+  assert.equal(await page.playwright.getByTestId("context-fit-results").isVisible(), false);
+  return { status: "PASS", axis, value: expected, canCheck: valid, previousResultsWithheld: true };
+}
