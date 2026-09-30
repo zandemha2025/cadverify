@@ -1,0 +1,32 @@
+{
+  "finding": "076",
+  "environment": "Local Next production build 3017, API8017, PostgreSQL; production unchanged",
+  "first_divergence": "CI role/failure journey step 18: saved cost record returned by upload was not immediately readable (404).",
+  "confirmed_defect": "Shared FastAPI yield dependency committed after sending response. Existing behavior emitted status200 before commit, even when commit raised.",
+  "root_fix": "Function-scoped transaction commits or rolls back before response headers. Existing request lifetime keeps the same session open for streaming reads and closes it after completion; all callers retain get_db_session.",
+  "ci_attribution": "Consistent with the reproduced race; CI commit trace was not retained, so a fresh run must confirm its governance path.",
+  "regression": {
+    "before": "2 failed / 1 passed: success-before-commit and failed-commit-still200",
+    "after": "3 passed: commit-before200, commitfailure500withrollback, handler409rollback; streaming session remains open then closes once"
+  },
+  "validation": {
+    "focused": 64,
+    "backend_passed": 2403,
+    "backend_skipped": 3,
+    "type_errors": 216,
+    "type_baseline": 228,
+    "new_changed_file_diagnostics": 0,
+    "bandit_findings": 0,
+    "production_lock_recompiled_unchanged": true,
+    "frontend": "unchanged from075:494passed/types/lint/build"
+  },
+  "http_proof": "db-response-http-proof.json",
+  "native": {
+    "source": "audit-cube.STP",
+    "source_sha256": "76923244d66efcbf1eb1639a26a6b4b6bd20fd73eaf44ad1b95268dddf61103a",
+    "opened_record": "01M3RK0AGB5F4G386CMJM2AT29",
+    "governance": "Unreviewed",
+    "screenshot": "076-saved-step-ready.png"
+  },
+  "remaining": "Exact-head CI and production deployment/retest. This does not certify external integrations or empirical cost accuracy."
+}

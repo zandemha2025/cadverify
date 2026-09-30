@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 from typing import AsyncGenerator, Optional
 
+from fastapi import Depends
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -151,18 +152,34 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
     return _SESSION_FACTORY
 
 
-async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI Depends-compatible generator yielding a request-scoped session.
-
-    Commits on success, rolls back on error, always closes.
-    """
+async def _open_db_session() -> AsyncGenerator[AsyncSession, None]:
+    """Keep the session alive through streaming reads; always close it."""
     async with get_session_factory()() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
+        yield session
+
+
+async def _commit_db_session(
+    session: AsyncSession = Depends(_open_db_session),
+) -> AsyncGenerator[AsyncSession, None]:
+    try:
+        yield session
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+
+
+async def get_db_session(
+    session: AsyncSession = Depends(_commit_db_session, scope="function"),
+) -> AsyncSession:
+    """Commit before sending success, while retaining the session for streams.
+
+    Default yield dependencies exit AFTER the response: returning a saved ID
+    then can race its commit or even report success for a failed transaction.
+    The function-scoped transaction ends before headers; request-scoped cleanup
+    still closes the session after batch CSV's remaining read-only queries.
+    """
+    return session
 
 
 async def dispose_engine() -> None:
