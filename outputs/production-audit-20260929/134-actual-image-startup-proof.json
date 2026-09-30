@@ -1,0 +1,59 @@
+{
+  "finding": "134 actual-image follow-up",
+  "run_url": "https://github.com/zandemha2025/cadverify/actions/runs/36758849460",
+  "job_id": 110041471661,
+  "branch_head": "3323a29923620b8155783f851adbcc38a7993858",
+  "manifest": {
+    "claim": "CI_BUILD_PROOF",
+    "source_sha": "b9c1f197a57018e006ab50dde964c2ba510e172b",
+    "backend_local_image_id": "sha256:1dd73b95d05403e732185d6c2f1fd186c45ffc481b348a29205a3503a88e22cc",
+    "frontend_local_image_id": "sha256:87c95bd1b5988a9ac65dcf9ef1fd1f3000122fdbc9706321a1c84e17423af18c"
+  },
+  "artifact": {
+    "id": 11118547522,
+    "zip_sha256": "291f841f5f8f7b12a9f52c8a70876ebc7882d5ef19e77217b913dbd42be61809"
+  },
+  "sboms": {
+    "frontend": {
+      "sha256": "629c72c58bab3910b815cae5c992d2fb8fb04f2704e0d28d8b4d9d555cd122df",
+      "image_id": "sha256:87c95bd1b5988a9ac65dcf9ef1fd1f3000122fdbc9706321a1c84e17423af18c"
+    },
+    "backend": {
+      "sha256": "5f483934a66809f8582665a209605de625612102b67bbd890137b54353dbdc5a",
+      "image_id": "sha256:1dd73b95d05403e732185d6c2f1fd186c45ffc481b348a29205a3503a88e22cc"
+    }
+  },
+  "frontend": {
+    "probe": "passed",
+    "initial_connection_reset": "2026-09-30T18:51:22.5374762Z",
+    "successful_png": "2026-09-30T18:51:23.6365981Z",
+    "dimensions": [
+      1200,
+      630
+    ],
+    "bytes": 53631,
+    "sha256": "bbcdf44d5519b450e37cdceb3e2f44205a6249d6ae56a709ad8dee292ccdad32",
+    "high_critical_scan": "passed"
+  },
+  "backend": {
+    "step_probe": "passed",
+    "network": "none",
+    "fixture": "backend/tests/assets/cube.step, readonly mount",
+    "extents_mm": [
+      20,
+      15,
+      10
+    ],
+    "watertight": true,
+    "volume_oracle_mm3": "3000 - pi * 3**2 * 10",
+    "volume_absolute_tolerance_mm3": 0.2,
+    "high": 5,
+    "critical": 0,
+    "cves": [
+      "CVE-2026-93990",
+      "CVE-2026-88806",
+      "CVE-2026-88807"
+    ]
+  },
+  "scope": "Container job terminal; overall CI and browser chain still running. No deployment, CVE waiver, or proof for unpushed137 onward."
+}

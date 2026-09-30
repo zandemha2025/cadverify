@@ -8,6 +8,7 @@ promotion level.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Protocol
 
@@ -140,17 +141,20 @@ class SapS4ProductBomReadOnlyAdapter(_BaseReadOnlyAdapter):
                     part_number=part_number,
                     revision=str(row.get("Revision") or row.get("revision") or "").strip() or None,
                     description=str(row.get("ProductDescription") or row.get("description") or "").strip() or None,
-                    material=str(row.get("Material") or row.get("material") or "").strip() or None,
+                    material=str(row.get("material") or "").strip() or None,
                     source_system=self.source_system,
                     source_payload_ref=ref,
                 )
             elif kind in {"bom_item", "bom"}:
-                parent = str(row.get("BillOfMaterial") or row.get("parent_part_number") or "").strip()
+                parent = str(row.get("Material") or row.get("parent_part_number") or "").strip()
                 child = str(row.get("BillOfMaterialComponent") or row.get("child_part_number") or "").strip()
                 if not parent or not child:
                     warnings.append(f"{ref}: missing SAP BOM parent/component")
                     continue
-                qty = _float(row.get("BillOfMaterialItemQuantity") or row.get("quantity"), default=1.0)
+                qty = _positive_quantity(row.get("BillOfMaterialItemQuantity", row.get("quantity")))
+                if qty is None:
+                    warnings.append(f"{ref}: unsupported BOM quantity; provide a finite positive number")
+                    continue
                 bom_nodes.append(
                     ExternalBomNode(
                         parent_part_number=parent,
@@ -204,11 +208,15 @@ class WindchillPartBomReadOnlyAdapter(_BaseReadOnlyAdapter):
                 if not parent or not child:
                     warnings.append(f"{ref}: missing Windchill BOM parent/child")
                     continue
+                qty = _positive_quantity(row.get("Quantity", row.get("quantity")))
+                if qty is None:
+                    warnings.append(f"{ref}: unsupported BOM quantity; provide a finite positive number")
+                    continue
                 bom_nodes.append(
                     ExternalBomNode(
                         parent_part_number=parent,
                         child_part_number=child,
-                        quantity=_float(row.get("Quantity") or row.get("quantity"), default=1.0),
+                        quantity=qty,
                         unit=str(row.get("Unit") or row.get("unit") or "").strip() or None,
                         line_number=str(row.get("FindNumber") or row.get("line_number") or "").strip() or None,
                         source_payload_ref=ref,
@@ -224,8 +232,11 @@ class WindchillPartBomReadOnlyAdapter(_BaseReadOnlyAdapter):
         )
 
 
-def _float(value: Any, *, default: float) -> float:
+def _positive_quantity(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
     try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
+        quantity = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return quantity if math.isfinite(quantity) and quantity > 0 else None

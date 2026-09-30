@@ -304,3 +304,8 @@ Responsive-control limitation: the documented browser viewport request for320×5
 
 
 Design-validation follow-up (138): overflow dimensions return serializable needs-input responses instead of500, and a failed new interpretation no longer retains an old safe status. Actual HTTP and native before/after checks pass; corrected80×50×6mm recovers with exact fields.44focused checks and499frontend tests/types/lint/build pass. Full backend2557pass/3documented skips in212.84s, skip policy enforced; no new generation or production claim.
+
+
+Actual-image follow-up134 now passes in the completed container job of CI36758849460: the real initial reset is retried, the default frontend serves the1200×630PNG, and the backend parses the known STEP with correct geometry. Source/image IDs and artifact digest are verified. Backend5HIGH vulnerabilities still fail the security gate; the whole run/browser chain is still active. No deployment.
+
+Connector follow-up139 corrects offline SAP identity/material mapping and refuses invented/non-finite/non-positive BOM quantities in both adapters. The CI replay now invokes those actual backend adapters instead of its own JavaScript copy. Exact fixture IDs/quantities and invalid-row isolation pass;2560backend tests/3documented skips, unchanged type baseline and clean changed-source security checks. Native integration UI continues to disclose unavailable BOM transport/import. Real vendor operations and authorized tenant proof remain open.

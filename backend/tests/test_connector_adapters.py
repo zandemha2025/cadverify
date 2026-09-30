@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from src.services.connector_adapters import (
     ConnectorAdapterSettings,
     SapS4ProductBomReadOnlyAdapter,
@@ -37,11 +39,12 @@ def test_sap_adapter_normalizes_product_and_bom_rows_without_write_claims():
             "kind": "product",
             "Product": "VALVE-100",
             "ProductDescription": "Valve body",
-            "Material": "316L",
+            "material": "316L",
         },
         {
             "kind": "bom_item",
-            "BillOfMaterial": "VALVE-100",
+            "BillOfMaterial": "00000123",
+            "Material": "VALVE-100",
             "BillOfMaterialComponent": "STEM-200",
             "BillOfMaterialItemQuantity": "2",
             "BillOfMaterialItemUnit": "EA",
@@ -88,3 +91,40 @@ def test_windchill_adapter_normalizes_partuse_rows():
     assert normalized.bom_nodes[0].child_part_number == "SEAL-20"
     assert normalized.bom_nodes[0].quantity == 4
     assert normalized.warnings == []
+
+
+@pytest.mark.parametrize("adapter_type,quantity_key,base_row", [
+    (SapS4ProductBomReadOnlyAdapter, "BillOfMaterialItemQuantity", {
+        "kind": "bom_item", "Material": "PARENT", "BillOfMaterial": "00000123",
+        "BillOfMaterialComponent": "CHILD",
+    }),
+    (WindchillPartBomReadOnlyAdapter, "Quantity", {
+        "kind": "PartUse", "ParentNumber": "PARENT", "ChildNumber": "CHILD",
+    }),
+])
+def test_bom_quantities_are_never_invented_and_valid_neighbors_survive(adapter_type, quantity_key, base_row):
+    adapter = adapter_type(ConnectorAdapterSettings(connector_id="test"))
+    invalid = [None, "", "bad", 0, -2, True, "NaN", "Infinity", 10 ** 400]
+    rows = [{**base_row, "quantity": 7, quantity_key: value} for value in invalid]
+    rows += [{**base_row, quantity_key: "2.5"}, {**base_row, "quantity": 3}]
+    result = adapter.normalize(rows)
+    assert [edge.quantity for edge in result.bom_nodes] == [2.5, 3]
+    assert len(result.warnings) == len(invalid)
+    assert all("quantity" in warning for warning in result.warnings)
+
+
+def test_sap_bom_id_and_material_number_are_not_part_material_properties():
+    adapter = SapS4ProductBomReadOnlyAdapter(ConnectorAdapterSettings(connector_id="test"))
+    result = adapter.normalize([
+        {"kind": "product", "Material": "PARENT"},
+        {"kind": "bom_item", "Material": "PARENT", "BillOfMaterial": "00000123",
+         "BillOfMaterialComponent": "CHILD", "BillOfMaterialItemQuantity": "2"},
+        {"kind": "bom_item", "BillOfMaterial": "00000999",
+         "BillOfMaterialComponent": "CHILD", "BillOfMaterialItemQuantity": "2"},
+    ])
+    assert result.parts[0].part_number == "PARENT"
+    assert result.parts[0].material is None
+    assert len(result.bom_nodes) == 1
+    assert result.bom_nodes[0].parent_part_number == "PARENT"
+    assert len(result.warnings) == 1
+    assert "parent" in result.warnings[0]

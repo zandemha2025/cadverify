@@ -1,4 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveAdminApiKey } from "./local-admin-api-key.mjs";
@@ -33,11 +35,12 @@ const connectorProfiles = {
 
 const fixtures = {
   "sap_s4hana_product_bom_readonly": [
-    { kind: "product", Product: "VALVE-100", ProductDescription: "Valve body", Material: "316L" },
-    { kind: "product", Product: "STEM-200", ProductDescription: "Valve stem", Material: "17-4PH" },
+    { kind: "product", Product: "VALVE-100", ProductDescription: "Valve body", material: "316L" },
+    { kind: "product", Product: "STEM-200", ProductDescription: "Valve stem", material: "17-4PH" },
     {
       kind: "bom_item",
-      BillOfMaterial: "VALVE-100",
+      BillOfMaterial: "00000123",
+      Material: "VALVE-100",
       BillOfMaterialComponent: "STEM-200",
       BillOfMaterialItemQuantity: "2",
       BillOfMaterialItemUnit: "EA",
@@ -102,68 +105,27 @@ async function step(steps, name, fn) {
   }
 }
 
-function normalizeSap(rows) {
-  const parts = [];
-  const bomNodes = [];
-  const warnings = [];
-  for (const [index, row] of rows.entries()) {
-    const ref = `sap:${index + 1}`;
-    const kind = String(row.kind || row.type || "").toLowerCase();
-    if (["product", "material", "part"].includes(kind)) {
-      const partNumber = String(row.Product || row.Material || row.part_number || "").trim();
-      if (!partNumber) {
-        warnings.push(`${ref}: missing SAP product/material id`);
-        continue;
-      }
-      parts.push({ part_number: partNumber, revision: row.Revision || null, material: row.Material || null });
-    } else if (["bom_item", "bom"].includes(kind)) {
-      const parent = String(row.BillOfMaterial || row.parent_part_number || "").trim();
-      const child = String(row.BillOfMaterialComponent || row.child_part_number || "").trim();
-      if (!parent || !child) {
-        warnings.push(`${ref}: missing SAP BOM parent/component`);
-        continue;
-      }
-      bomNodes.push({ parent_part_number: parent, child_part_number: child, quantity: Number(row.BillOfMaterialItemQuantity || row.quantity || 1) });
-    } else {
-      warnings.push(`${ref}: unsupported SAP record kind '${kind || "unknown"}'`);
-    }
-  }
-  return { parts, bom_nodes: bomNodes, warnings };
-}
-
-function normalizeWindchill(rows) {
-  const parts = [];
-  const bomNodes = [];
-  const warnings = [];
-  for (const [index, row] of rows.entries()) {
-    const ref = `windchill:${index + 1}`;
-    const kind = String(row.kind || row["@type"] || row.type || "").toLowerCase();
-    if (["part", "wt.part.wtpart"].includes(kind)) {
-      const number = String(row.Number || row.number || row.part_number || "").trim();
-      if (!number) {
-        warnings.push(`${ref}: missing Windchill part number`);
-        continue;
-      }
-      parts.push({ part_number: number, revision: row.Revision || row.version || null, material: row.Material || null });
-    } else if (["partuse", "bom_item", "usage"].includes(kind)) {
-      const parent = String(row.ParentNumber || row.parent_part_number || "").trim();
-      const child = String(row.ChildNumber || row.child_part_number || "").trim();
-      if (!parent || !child) {
-        warnings.push(`${ref}: missing Windchill BOM parent/child`);
-        continue;
-      }
-      bomNodes.push({ parent_part_number: parent, child_part_number: child, quantity: Number(row.Quantity || row.quantity || 1) });
-    } else {
-      warnings.push(`${ref}: unsupported Windchill record kind '${kind || "unknown"}'`);
-    }
-  }
-  return { parts, bom_nodes: bomNodes, warnings };
-}
-
-function runConnectorFixture(connectorId, rows) {
-  const normalized = connectorId.includes("sap")
-    ? normalizeSap(rows)
-    : normalizeWindchill(rows);
+export function runConnectorFixture(connectorId, rows) {
+  const venvPython = path.join(repoRoot, "backend", ".venv", "bin", "python");
+  const python = process.env.CADVERIFY_PYTHON || (existsSync(venvPython) ? venvPython : "python3");
+  const normalized = JSON.parse(execFileSync(python, ["-c", `
+import json, sys
+from dataclasses import asdict
+from src.services.connector_adapters import (
+    ConnectorAdapterSettings, SapS4ProductBomReadOnlyAdapter, WindchillPartBomReadOnlyAdapter,
+)
+payload = json.load(sys.stdin)
+adapter_type = {
+    "sap_s4hana_product_bom_readonly": SapS4ProductBomReadOnlyAdapter,
+    "windchill_part_bom_readonly": WindchillPartBomReadOnlyAdapter,
+}[payload["connector_id"]]
+adapter = adapter_type(ConnectorAdapterSettings(connector_id=payload["connector_id"]))
+json.dump(asdict(adapter.normalize(payload["rows"])), sys.stdout, allow_nan=False)
+`], {
+    cwd: path.join(repoRoot, "backend"),
+    input: JSON.stringify({ connector_id: connectorId, rows }),
+    encoding: "utf8", timeout: 10_000, maxBuffer: 1024 * 1024,
+  }));
   const passed =
     normalized.parts.length >= 2 &&
     normalized.bom_nodes.length >= 1 &&
@@ -301,6 +263,13 @@ async function main() {
   });
   token = credential.token;
   const results = Object.entries(fixtures).map(([connectorId, rows]) => runConnectorFixture(connectorId, rows));
+  for (const result of results) {
+    const expected = result.connectorId.startsWith("sap_")
+      ? ["VALVE-100", "STEM-200", 2]
+      : ["PUMP-10", "SEAL-20", 4];
+    const edges = result.normalized.bom_nodes.map((edge) => [edge.parent_part_number, edge.child_part_number, edge.quantity]);
+    assert(JSON.stringify(edges) === JSON.stringify([expected]), `${result.connectorId}: BOM identities or quantities changed`);
+  }
   const apiLifecycle = await runApiCredentialLifecycle();
   const failed = results.filter((item) => item.status !== "PASS");
   const data = {
@@ -329,7 +298,7 @@ async function main() {
   if (data.status !== "PASS") process.exitCode = 1;
 }
 
-main().catch((error) => {
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) main().catch((error) => {
   console.error(redactText(error instanceof Error ? error.stack || error.message : String(error)));
   process.exitCode = 1;
 });

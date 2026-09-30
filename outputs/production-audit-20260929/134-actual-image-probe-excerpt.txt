@@ -1,0 +1,9 @@
+2026-09-30T18:50:54.7403021Z Total: 5 (HIGH: 5, CRITICAL: 0)
+2026-09-30T18:50:54.7406223Z │ libexpat1   │ CVE-2026-93990 │ HIGH     │ affected │ 2.8.3-1~deb13u1   │               │ expat: Expat: XML Injection via Malformed UTF-16 Input      │
+2026-09-30T18:50:54.7408537Z │ libx11-6    │ CVE-2026-88806 │          │          │ 2:1.8.12-1        │               │ libX11: libX11: Heap-based buffer overflow via malicious X  │
+2026-09-30T18:50:54.7411357Z │ libx11-data │                │          │          │                   │               │                                                             │
+2026-09-30T18:50:54.7413822Z │ libx11-xcb1 │                │          │          │                   │               │                                                             │
+2026-09-30T18:50:54.7416583Z │ libxrender1 │ CVE-2026-88807 │          │          │ 1:0.9.12-1        │               │ libXrender: libXrender: Code injection via heap overflow in │
+2026-09-30T18:51:22.5374762Z curl: (56) Recv failure: Connection reset by peer
+2026-09-30T18:51:23.6365981Z Default frontend image startup served a 1200x630 PNG.
+2026-09-30T18:51:28.2819944Z Runtime STEP parser preserved the 20x15x10 mm bored block and its volume.
