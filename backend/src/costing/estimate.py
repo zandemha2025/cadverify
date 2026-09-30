@@ -8,7 +8,7 @@ It NEVER mutates `result`, the engine, or the registry.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Optional
 
 from src.analysis.models import Severity
@@ -342,6 +342,14 @@ def estimate_decision(result, mesh, features, options: EstimateOptions) -> Decis
     if options.inventory or options.service_environment:
         verification, machine_override_by_pv, env_excluded = _build_verification(
             elig, drivers, options)
+    if options.inventory and verification is not None:
+        # A declared process cannot grant in-house savings when the actual
+        # inventory fails (or cannot establish) fit for this part and material.
+        options = replace(options, owned_processes=frozenset(
+            p for p in options.owned_processes
+            if verification["per_route"].get(p.value, {}).get("verdict")
+            in {"makeable_in_house", "makeable_with_secondary_op"}
+        ))
 
     rec = recommend_routing(drivers, options.material_class,
                             dfm_failed=dfm_failed, dfm_clean=dfm_clean,

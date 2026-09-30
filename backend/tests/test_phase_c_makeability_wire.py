@@ -48,12 +48,12 @@ def _mill(name="Haas VF-2 #3", x=762, y=406, z=508, materials=("steel", "Mild St
 
 
 def _report(inventory=(), env=None, shop_caps=None, material_class="steel",
-            qtys=(10, 1000)):
+            qtys=(10, 1000), owned=frozenset()):
     result, mesh, feats = _analyze(_bulky_block())
     opts = EstimateOptions(quantities=list(qtys), material_class=material_class,
                            material_class_is_user=True,
                            inventory=tuple(inventory), service_environment=env,
-                           shop_caps=shop_caps)
+                           shop_caps=shop_caps, owned_processes=owned)
     return estimate_decision(result, mesh, feats, opts)
 
 
@@ -79,6 +79,33 @@ def test_no_inventory_no_env_is_byte_identical_and_adds_no_key():
 def test_report_has_no_verification_attr_leak_when_unused():
     rep = _report()
     assert rep.verification is None
+
+
+@pytest.mark.parametrize("machine", [
+    _mill(materials=("aluminum",)),
+    _mill(x=1, y=1, z=1),
+    _mill(max_kg=None),
+    _mill(process="cnc_5axis"),
+])
+def test_owned_declaration_cannot_override_failed_or_unknown_machine_fit(machine):
+    from src.analysis.models import ProcessType
+
+    base = report_to_dict(_report(inventory=[machine]))
+    declared = report_to_dict(_report(
+        inventory=[machine], owned=frozenset({ProcessType.CNC_3AXIS})))
+    assert declared["estimates"] == base["estimates"]
+    # Covers the arbitrary-quantity evaluator used for crossover, not only rows.
+    assert declared["decision"] == base["decision"]
+    assert not any(a["name"] == "machine_capital_frac" for a in declared["assumptions"])
+
+
+def test_passing_machine_without_rate_retains_declared_ownership_discount():
+    from src.analysis.models import ProcessType
+
+    report = report_to_dict(_report(
+        inventory=[_mill(rate=None)], owned=frozenset({ProcessType.CNC_3AXIS})))
+    assert report["verification"]["per_route"]["cnc_3axis"]["verdict"] == "makeable_in_house"
+    assert _est_dict(report, "cnc_3axis", 10)["owned_in_house"] is True
 
 
 def test_estimates_byte_identical_when_no_machine_matches_a_route():

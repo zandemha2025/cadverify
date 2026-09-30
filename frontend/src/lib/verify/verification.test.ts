@@ -59,6 +59,18 @@ test("a recommended route cannot borrow another process's passing machine", () =
   assert.equal(record.text, "Makeable — outsource only.");
 });
 
+test("a failed or unknown closest machine is not presented as the route's best fit", () => {
+  for (const verdict of ["makeable_not_on_owned", "unknown"] as const) {
+    const verification: VerificationBlock = {
+      verdict, per_route: {
+        cnc_3axis: { verdict, best_machine: "Unqualified mill", machines_evaluated: 1, failures: [] },
+      },
+    };
+    assert.equal(verificationForRoute(verification, "cnc_3axis")?.best_machine, null);
+    assert.equal(verification.per_route?.cnc_3axis.best_machine, "Unqualified mill");
+  }
+});
+
 test("every verdict lattice value maps to a banner with a non-empty title", () => {
   for (const v of LATTICE) {
     const m = verdictBannerModel(v);

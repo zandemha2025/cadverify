@@ -151,10 +151,11 @@ export function verificationForRoute(
 ): VerificationBlock | null {
   if (!verification) return null;
   const fit = process ? verification.per_route?.[process] : null;
+  const passing = fit?.verdict === "makeable_in_house" || fit?.verdict === "makeable_with_secondary_op";
   return {
     ...verification,
     verdict: fit?.verdict ?? "unknown",
-    best_machine: fit?.best_machine ?? null,
+    best_machine: passing ? fit?.best_machine ?? null : null,
     gap: fit?.failures ?? [],
   };
 }
