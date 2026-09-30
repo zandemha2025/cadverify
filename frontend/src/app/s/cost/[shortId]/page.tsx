@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Calculator } from "lucide-react";
 import { fetchSharedCostDecision } from "@/lib/api";
-import type { SharedCostDecision, CostEstimate, CostAssumption } from "@/lib/api";
+import type { SharedCostDecision, CostAssumption } from "@/lib/api";
 import { procLabel } from "@/lib/status";
 import {
   recommendationForQty,
+  recommendedQuantities,
   redesignedForQty,
+  crossoverSummary,
 } from "@/lib/cost-decision";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,12 +40,11 @@ export async function generateMetadata({
   const { shortId } = await params;
   try {
     const data = await fetchSharedCostDecision(shortId);
-    const make = data.make_now_process ? procLabel(data.make_now_process) : "should-cost";
     return {
       title: `${data.filename} - Should-cost`,
       openGraph: {
         title: `${data.filename} - Should-cost decision`,
-        description: `Make by ${make} · assumption-based estimate, not a validated quote`,
+        description: "Manufacturing options by quantity · assumption-based estimate, not a validated quote",
         type: "article",
         siteName: "ProofShape",
       },
@@ -136,24 +137,13 @@ export default async function SharedCostDecisionPage({
 
   const dec = data.decision;
   const geo = data.geometry || ({} as SharedCostDecision["geometry"]);
-  const estByProc = new Map<string, CostEstimate>();
-  for (const e of data.estimates || []) {
-    if (!estByProc.has(e.process)) estByProc.set(e.process, e);
-  }
-  const makeNowEstimate = dec ? estByProc.get(dec.make_now_process) : undefined;
+  const firstQuantity = recommendedQuantities(dec)[0];
+  const firstRecommendation = recommendationForQty(dec, firstQuantity);
+  const makeNowEstimate = data.estimates.find(
+    (e) => e.process === firstRecommendation?.process && e.quantity === firstQuantity,
+  );
   const conf = makeNowEstimate?.confidence ?? null;
-
-  const crossoverSentence = (() => {
-    if (!dec) return "This part was costed but returned no make-vs-buy decision.";
-    if (dec.crossover_qty != null) {
-      const n = Math.round(dec.crossover_qty).toLocaleString();
-      const make = procLabel(dec.make_now_process);
-      return dec.tooling_process
-        ? `Make below ~${n} units with ${make}; tool up with ${procLabel(dec.tooling_process)} above it.`
-        : `${make} wins below ~${n} units; tooling amortizes above it.`;
-    }
-    return `${procLabel(dec.make_now_process)} stays cheapest at every quantity tested.`;
-  })();
+  const crossoverSentence = crossoverSummary(dec) || "This part was costed but returned no make-vs-buy decision.";
 
   return (
     <PublicShell>
@@ -170,16 +160,16 @@ export default async function SharedCostDecisionPage({
                 {new Date(data.created_at).toLocaleDateString()}
               </p>
             </div>
-            {dec && (
+            {makeNowEstimate && (
               <StatusBadge
                 tone={makeNowEstimate?.dfm_ready ? "pass" : "warn"}
                 label={makeNowEstimate?.dfm_ready ? "DFM-ready" : "needs redesign"}
               />
             )}
           </div>
-          {dec && (
+          {firstRecommendation && (
             <p className="text-sm font-semibold text-foreground">
-              Make by {procLabel(dec.make_now_process)}
+              At quantity {firstQuantity.toLocaleString()}: make by {procLabel(firstRecommendation.process)}
             </p>
           )}
           <p className="text-sm text-muted-foreground">{crossoverSentence}</p>
@@ -190,10 +180,13 @@ export default async function SharedCostDecisionPage({
       <CostHonestyNote />
 
       {/* Confidence band (honest, verbatim) */}
-      {conf && (
+      {conf && makeNowEstimate && (
         <Card>
           <CardContent compact className="space-y-1">
             <SectionHeading>Confidence · {Math.round(conf.level * 100)}%</SectionHeading>
+            <p className="text-xs text-muted-foreground">
+              {procLabel(makeNowEstimate.process)} · quantity {firstQuantity.toLocaleString()}
+            </p>
             <p className="num text-sm text-foreground">
               {USD(conf.low_usd)} – {USD(conf.high_usd)} / unit{" "}
               <span className="text-muted-foreground">(±{Math.round(conf.half_width_pct)}%)</span>
