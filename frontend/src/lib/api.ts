@@ -2,6 +2,7 @@ import { toast } from "sonner";
 import * as Sentry from "@sentry/nextjs";
 import {
   apiProblemDetail,
+  apiQuotaMessage,
   apiRecoveryMessage,
   apiResourceFromUrl,
   networkRecoveryMessage,
@@ -352,19 +353,13 @@ const apiClient = {
       const rl = extractRateLimits(res.headers);
       if (rl) _latestRateLimits = rl;
 
-      // 429 — rate limited, no retry
+      // 429 may mean an exhausted allowance or a temporary throttle.
       if (res.status === 429) {
-        const retryAfter = parseInt(res.headers.get("Retry-After") || "60", 10);
-        toast.error(`Rate limit exceeded. Try again in ${retryAfter}s.`);
         const err = await res.json().catch(() => ({ detail: "Rate limit exceeded" }));
-        throw new Error(
-          apiRecoveryMessage({
-            status: 429,
-            payload: err,
-            resource,
-            retryAfter: String(retryAfter),
-          }),
-        );
+        const message = apiRecoveryMessage({ status: 429, payload: err, resource,
+          retryAfter: res.headers.get("Retry-After") });
+        toast.error(message);
+        throw new Error(message);
       }
 
       // 5xx — retry with backoff
@@ -390,7 +385,7 @@ const apiClient = {
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
         throw new Error(
-          apiProblemDetail(err) ||
+          apiQuotaMessage(err) || apiProblemDetail(err) ||
             apiRecoveryMessage({ status: res.status, payload: err, resource }),
         );
       }
@@ -1043,13 +1038,10 @@ async function _costEstimate(
     .catch(() => ({ message: res.statusText }));
 
   if (res.status === 429) {
-    const retryAfter = parseInt(res.headers.get("Retry-After") || "60", 10);
-    toast.error(`Rate limit exceeded. Try again in ${retryAfter}s.`);
-    throw new Error(
-      (body.message as string) ||
-        (body.detail as string) ||
-        "Rate limit exceeded"
-    );
+    const message = apiRecoveryMessage({ status: res.status, payload: body,
+      resource: "verification", retryAfter: res.headers.get("Retry-After") });
+    toast.error(message);
+    throw new Error(message);
   }
 
   if (res.status >= 500) {
@@ -1069,8 +1061,7 @@ async function _costEstimate(
 
   // Other 4xx — structured {code,message,doc_url} or legacy {detail}.
   throw new Error(
-    (body.message as string) ||
-      (body.detail as string) ||
+    apiQuotaMessage(body) || apiProblemDetail(body) ||
       `Request failed: ${res.status}`
   );
 }

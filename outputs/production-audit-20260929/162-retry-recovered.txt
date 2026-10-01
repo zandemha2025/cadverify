@@ -1,0 +1,320 @@
+- navigation "Domains":
+  - link "ProofShape":
+    - /url: /verify
+  - link "Verify workspace":
+    - /url: /verify
+  - link "Design Studio":
+    - /url: /designs
+  - link "Should-cost":
+    - /url: /cost
+  - link "Analyze DFM":
+    - /url: /analyze
+  - link "Batch runs":
+    - /url: /batch
+  - link "Cost decisions":
+    - /url: /cost-decisions
+  - link "Recent analyses":
+    - /url: /history
+  - button "Switch to dark theme":
+- complementary:
+  - button "Search… K":
+    - generic: Search…
+    - text: K
+  - paragraph: Workspace
+  - link "Verify workspace":
+    - /url: /verify
+    - generic: Verify workspace
+  - link "Design Studio":
+    - /url: /designs
+    - generic: Design Studio
+  - link "Should-cost workspace":
+    - /url: /cost
+    - generic: Should-cost workspace
+  - link "Analyze DFM":
+    - /url: /analyze
+    - generic: Analyze DFM
+  - link "Batch run":
+    - /url: /batch
+    - generic: Batch run
+  - paragraph: Ledger
+  - link "Cost decisions":
+    - /url: /cost-decisions
+    - generic: Cost decisions
+  - link "Compare A/B":
+    - /url: /cost-decisions/compare
+    - generic: Compare A/B
+  - link "RFQ packages":
+    - /url: /rfq-packages
+    - generic: RFQ packages
+  - link "Recent analyses":
+    - /url: /history
+    - generic: Recent analyses
+  - link "Integrations":
+    - /url: /integrations
+    - generic: Integrations
+  - link "API & docs":
+    - /url: /settings/developer
+    - generic: API & docs
+  - link "Security":
+    - /url: /settings/security
+    - generic: Security
+  - link "Organization":
+    - /url: /settings/organization
+    - generic: Organization
+  - paragraph: One governed object model · a Decision contains Estimates.
+- banner:
+  - button "Collapse sidebar":
+  - navigation "Breadcrumb":
+    - generic: workspace
+    - generic: verify
+  - button "Search and jump to a workspace":
+    - generic: Jump…
+    - generic: ⌘K
+  - link "Notifications":
+    - /url: /notifications
+  - button "Account":
+- main:
+  - navigation "Verify workspace sections":
+    - button "Home":
+      - generic: Home
+    - button "Verify":
+      - generic: Verify
+    - button "Fit in context":
+      - generic: Fit in context
+    - button "Parts":
+      - generic: Parts
+    - button "Records":
+      - generic: Records
+    - button "Programs":
+      - generic: Programs
+    - button "Your machines":
+      - generic: Your machines
+    - button "Triage":
+      - generic: Triage
+    - button "Calibration & truth":
+      - generic: Calibration & truth
+    - button "Default rate card — open Calibration & truth"
+    - button "Default rate card (v0) · none authored":
+      - generic: Default rate card (v0) · none authored
+    - button "Start here"
+    - button "Open Verify command palette":
+      - text: Jump
+      - generic: ⌘K
+    - button "Check my CAD"
+  - status:
+    - generic: ✓
+    - paragraph: "Example complete: this is a manufacturing answer"
+    - paragraph: Read geometry and DFM first; route, first issue, resource cost, and shop fit follow in decision order.
+    - button "Check my CAD next"
+    - button "Back to start"
+  - main:
+    - heading "sample-routing-bracket.stl" [level=1]
+    - paragraph:
+      - text: Ø/bbox 50.0 × 40.0 × 6.0 mm · 5.95 cm³
+      - text: watertight true · ● MEASURED
+    - paragraph: ● real geometry · STL
+    - paragraph: CONTEXT
+    - generic: not declared
+    - paragraph: no assembly reference declared
+    - button "X-ray": X-ray
+    - button "Check assembly fit"
+    - generic: drag to orbit
+  - paragraph: Can this be made — on your machines, in materials that survive its service conditions — and what will it really take?
+  - paragraph: VERDICT · MAKEABLE IN-HOUSE
+  - paragraph: Makeable on your machines.
+  - paragraph: A machine you own clears every gate for the recommended route — the make-it-ourselves path is live.
+  - paragraph: should-cost $30.00/unit on FDM / FFF at qty 1 · best machine Audit local FDM 046
+  - link "Open the record →":
+    - /url: /cost-decisions/01M3TTBBGKSSZ4CCGS81CSRC67
+  - paragraph: CLOSEST IN YOUR LIBRARY · LOW CONFIDENCE
+  - 'generic "RETRIEVED (org corpus: geometry k-NN + name match)"':
+    - generic: ◆
+    - text: RETRIEVED · your part library
+  - paragraph: "Closest in your library: 142-torus.step"
+  - generic: 32% · LOW CONFIDENCE
+  - generic: geometry 50% · name 0%
+  - paragraph: low confidence — the closest shape in your library, not a confident match. Confirm only if this is really it; retrieval can be wrong.
+  - button "Yes, confirm this"
+  - button "Not this"
+  - paragraph: Evidence hash · aa751f25d8c329a02d435f602cd94f630590f7cb6c399084f01094b9a8b57254
+  - generic: "1"
+  - paragraph: Envelope — against your machines
+  - generic: 6 machines declared
+  - generic: Audit local FDM 046
+  - generic: 200 × 200 × 200 mm
+  - generic: Audit CNC 065
+  - generic: 762 × 406 × 508 mm
+  - generic: Audit 104 valid first
+  - generic: envelope undeclared
+  - generic: Audit 104 valid last
+  - generic: envelope undeclared
+  - paragraph:
+    - text: part envelope 50.0 × 40.0 × 6.0 mm
+    - generic "MEASURED — Measured directly from your CAD geometry.": ● MEASURED
+  - generic: ✓
+  - generic: FDM / FFF
+  - generic: Audit local FDM 046
+  - generic: ✗
+  - generic: CNC 5-Axis
+  - generic: makeable outsource only
+  - generic: ✗
+  - generic: DLP Resin
+  - generic: makeable outsource only
+  - generic: ✗
+  - generic: Injection Molding
+  - generic: makeable outsource only
+  - generic: ✗
+  - generic: MJF (HP)
+  - generic: makeable outsource only
+  - generic: ✗
+  - generic: Sheet Metal
+  - generic: makeable outsource only
+  - generic: ✗
+  - generic: SLA Resin
+  - generic: makeable outsource only
+  - generic: ✗
+  - generic: SLS (Powder)
+  - generic: makeable outsource only
+  - generic: "?"
+  - generic: CNC 3-Axis
+  - generic: "envelope: work envelope not declared"
+  - paragraph: machine fit is a MEASURED-geometry × USER-declared-capability comparison — ? when a capability is undeclared, never a fabricated pass.
+  - generic: "2"
+  - paragraph: Materials that survive these service conditions
+  - generic: polymer
+  - paragraph:
+    - text: material class polymer · route hint aluminum
+    - generic "DEFAULT — Generic fallback — no calibrated value yet.": ○ DEFAULT
+  - paragraph: no service conditions declared — materials are verified at ambient. Use ‘Make this verdict yours’ below to gate them by NACE MR0175 / HDT.
+  - generic: "3"
+  - paragraph: Process physics — geometry against each route
+  - generic: DLP Resin
+  - generic: pass
+  - generic: SLS (Powder)
+  - generic: pass
+  - generic: MJF (HP)
+  - generic: pass
+  - generic: EBM (Metal)
+  - generic: pass
+  - generic: Binder Jetting
+  - generic: pass
+  - generic: DED
+  - generic: pass
+  - generic: FDM / FFFROUTE PICK
+  - generic: issues
+  - paragraph: 11 priority fixes across routes · overall issues · DFM scores from POST /validate · pick reconciled to the material-aware route (FDM / FFF)
+  - generic: "4"
+  - paragraph: What it really takes
+  - generic: on FDM / FFF · PLA
+  - button "MATERIAL ○ DEFAULT 0.203 $":
+    - paragraph:
+      - generic: MATERIAL
+      - generic "DEFAULT — Generic fallback — no calibrated value yet.": ○ DEFAULT
+    - paragraph: 0.203 $
+  - button "PARTS PER BUILD ○ DEFAULT 13 parts":
+    - paragraph:
+      - generic: PARTS PER BUILD
+      - generic "DEFAULT — Generic fallback — no calibrated value yet.": ○ DEFAULT
+    - paragraph: 13 parts
+  - button "MACHINE TIME ● USER 2.538 $":
+    - paragraph:
+      - generic: MACHINE TIME
+      - generic "USER — Declared by your team.": ● USER
+    - paragraph: 2.538 $
+  - button "OWNED IN HOUSE ● USER 0.65 ×":
+    - paragraph:
+      - generic: OWNED IN HOUSE
+      - generic "USER — Declared by your team.": ● USER
+    - paragraph: 0.65 ×
+  - button "CYCLE TIME ○ MODEL 0.391 hr":
+    - paragraph:
+      - generic: CYCLE TIME
+      - generic "MODEL — Computed from a DEFAULT assumption — not a measurement.": ○ MODEL
+    - paragraph: 0.391 hr
+  - button "LABOR ○ DEFAULT 7.269 $":
+    - paragraph:
+      - generic: LABOR
+      - generic "DEFAULT — Generic fallback — no calibrated value yet.": ○ DEFAULT
+    - paragraph: 7.269 $
+  - button "SETUP ○ DEFAULT 8.75 $":
+    - paragraph:
+      - generic: SETUP
+      - generic "DEFAULT — Generic fallback — no calibrated value yet.": ○ DEFAULT
+    - paragraph: 8.75 $
+  - button "MIN CHARGE FLOOR ○ DEFAULT 11.24 $":
+    - paragraph:
+      - generic: MIN CHARGE FLOOR
+      - generic "DEFAULT — Generic fallback — no calibrated value yet.": ○ DEFAULT
+    - paragraph: 11.24 $
+  - paragraph: lead 4.9–9.1 days [queue model — not your scheduler] · computed hours are ○ MODEL from an assumption; each driver labels its rate source — tap it for the derivation.
+  - generic: "5"
+  - paragraph: Resource cost — yours, not a market's
+  - text: QUANTITY 100
+  - generic: · engine-exact — a computed point
+  - generic: annual demand · not declared
+  - slider "Quantity": "500"
+  - generic: "1"
+  - generic: no crossover computed
+  - generic: 10,000
+  - paragraph: Sheet Metal — MAKE NOW
+  - paragraph: $4.78 /unit at this qty
+  - paragraph: engine-exact — a computed point
+  - paragraph:
+    - text: hours × your rates + mass × your lot price · 0% of drivers grounded (● measured/shop/user)
+    - text: route, band & drivers read at computed qty 100
+  - paragraph: assumption-based, not yet validated
+  - paragraph: Injection Molding — TOOLING ALTERNATIVE
+  - paragraph: $152.2 /unit incl. tooling
+  - paragraph: engine-exact — a computed point
+  - paragraph: no tooling crossover identified · conditional on a DFM redesign
+  - button "Open acquisition consideration →"
+  - paragraph: "engine note: Lowest-cost no-tooling estimate at qty 1: fdm (PLA) — $30.0/unit. Costed make-route picks: qty 1: fdm; qty 100: sheet_metal; qty 1000: sheet_metal; qty 2000: sheet_metal; qty 5000: sheet_metal; qty 10000: sheet_metal. No tooling crossover identified in this comparison. Note: injection_molding requires redesign for DFM (12 sidewall faces (100.0% of sidewall area) below 1.0° draft for injection_molding.); its cost is conditional on those changes, not a current-capability quote."
+  - paragraph: Decide
+  - button "Make in-house"
+  - button "Make outside"
+  - button "Acquire capability"
+  - button "Redesign"
+  - paragraph: next → pick one above · your choice will be saved to this cost-decision record.
+  - generic: OUTCOME NOTE — OPTIONAL
+  - textbox "OUTCOME NOTE — OPTIONAL":
+    - /placeholder: Why this action was chosen, constraints, owner, or next review point
+  - paragraph: saved beside the immutable cost record and included in governance exports
+  - generic: 0/1000
+  - button "Save note" [disabled]
+  - link "Open the record →":
+    - /url: /cost-decisions/01M3TTBBGKSSZ4CCGS81CSRC67
+  - generic: the computed evidence stays immutable; the recorded outcome persists across refresh, login, exports, and the Records view.
+  - paragraph: this verdict is unvalidated — an assumption band, not yet checked against your actuals · n=0. It firms up once your real costs come back.
+  - button "How estimates get validated →"
+  - paragraph: MAKEABILITY — MAKEABLE IN HOUSE · USER
+  - paragraph: inventory declared true · environment declared false · best machine Audit local FDM 046
+  - paragraph: "Machine fit is a MEASURED-geometry × USER-declared-capability comparison. 'unknown' when no inventory is declared or a required capability is undeclared — never a fabricated pass. Environment exclusions cite the material property/standard. Known limitations: the 5-axis/undercut need is inherited from the upstream process router (not re-derived from geometry); force gates (tonnage/taper) require a declared force."
+  - region "Optional service and material assumptions":
+    - paragraph: MAKE THIS VERDICT YOURS · OPTIONAL
+    - paragraph: The answer above uses a default material and ambient service until you declare otherwise.
+    - paragraph: SERVICE CONDITIONS
+    - generic: ambient
+    - group "Service conditions":
+      - button "120 °C service"
+      - button "sour service (H₂S)"
+      - button "35 MPa pressure"
+    - paragraph: no service conditions declared — the part is verified at ambient.
+    - paragraph:
+      - text: MATERIAL CLASS ·
+      - generic "DEFAULT — Generic fallback — no calibrated value yet.": ○ DEFAULT
+    - radiogroup "Material class":
+      - radio "Polymer" [checked]
+      - radio "Aluminum"
+      - radio "Steel"
+      - radio "Stainless"
+      - radio "Titanium"
+  - textbox "Ask the engine — “why can we make it?” · “cost drivers at qty 500”"
+  - button "Ask":
+  - button "Compare routes @ 1,000"
+  - button "Compare saved decisions →"
+  - button "Why this verdict?"
+  - button "An uncomputable ask"
+  - paragraph:
+    - generic: answers are deterministic engine artifacts — verdict, materials, drivers, hours, cost, routes, and saved records
+- region "Notifications alt+T"
+- alert

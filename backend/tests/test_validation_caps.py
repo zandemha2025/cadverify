@@ -183,3 +183,18 @@ async def test_user_trial_usage_pilot_is_unlimited(counts, plans):
         "cap": None,
         "remaining": None,
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("window_days", [0, 7])
+@pytest.mark.parametrize("scope", ["org", "user"])
+async def test_cap_error_exposes_window_for_honest_recovery(membership, counts, plans, monkeypatch, window_days, scope):
+    monkeypatch.setenv("VALIDATION_CAP_WINDOW_DAYS", str(window_days))
+    membership[7] = ("org-a", "admin")
+    counts[("Analysis.org_id", "org-a")] = 100 if scope == "org" else 50
+    counts[("Analysis.user_id", 7)] = 100
+    with pytest.raises(HTTPException) as exc:
+        await vc.enforce_validation_caps(_req(7))
+    assert exc.value.detail["window_days"] == window_days
+    assert (exc.value.headers or {}).get("Retry-After") == (str(window_days * 86400) if window_days else None)
+    assert ("trailing 7 days" if window_days else "in total") in exc.value.detail["message"]

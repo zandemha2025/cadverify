@@ -13,6 +13,7 @@ import type { StageRenderKind } from "./stage-canvas";
 import { fetchPreviewMesh, type PreviewMesh } from "@/lib/verify/preview-mesh";
 import { GhostButton, ProvChip } from "./primitives";
 import { probeWebGlSupport } from "@/lib/site/webgl";
+import { isQuotaErrorMessage } from "@/lib/api-recovery";
 import { PreviewBoundary } from "./preview-boundary";
 
 const StageCanvas = dynamic(() => import("./stage-canvas"), {
@@ -33,6 +34,7 @@ export interface StageAssembly {
   selectedTreePath: string | null;
   /** true once the REAL per-part analysis (DFM + cost + interference) has landed. */
   analysisReady?: boolean;
+  analysisLoading?: boolean;
 }
 
 export function Stage({
@@ -66,6 +68,7 @@ export function Stage({
   const [renderUrl, setRenderUrl] = useState<string | null>(null);
   const [renderKind, setRenderKind] = useState<StageRenderKind | null>(null);
   const [preview, setPreview] = useState<PreviewMesh | null>(null);
+  const [shellError, setShellError] = useState<string | null>(null);
   const [resolvingShell, setResolvingShell] = useState(false);
   const [webGlAvailable, setWebGlAvailable] = useState<boolean | null>(null);
   const [failedPreview, setFailedPreview] = useState<string | null>(null);
@@ -85,6 +88,7 @@ export function Stage({
   //    (zero-egress GLB) and render THAT instead of a bbox box. While the shell
   //    is resolving, or if it is genuinely unavailable, the honest box remains.
   useEffect(() => {
+    setShellError(null);
     setPreview((prev) => {
       prev?.revoke();
       return null;
@@ -130,8 +134,11 @@ export function Stage({
         }
         setResolvingShell(false);
       })
-      .catch(() => {
-        if (!cancelled) setResolvingShell(false);
+      .catch((error) => {
+        if (!cancelled) {
+          setResolvingShell(false);
+          setShellError(error instanceof Error ? error.message : null);
+        }
       });
     return () => {
       cancelled = true;
@@ -223,6 +230,7 @@ export function Stage({
           <span aria-hidden>{renderMode.state === "bbox-envelope" || renderMode.state === "static-envelope" ? "▢ " : "● "}</span>
           {renderMode.label}
         </p>
+        {isQuotaErrorMessage(shellError) && <p role="alert" style={{ fontSize: 11.5, lineHeight: 1.5, color: C.cond }}>{shellError}</p>}
         {/* Assembly mode: name the highlighted part-of-interest + its product-tree
             path, honestly labelled as the selected part inside the whole. */}
         {assembly && (
@@ -245,7 +253,7 @@ export function Stage({
       </div>
 
       {assembly ? (
-        <AssemblyStrip partCount={assembly.partCount} analysisReady={!!assembly.analysisReady} />
+        <AssemblyStrip partCount={assembly.partCount} analysisReady={!!assembly.analysisReady} analysisLoading={!!assembly.analysisLoading} />
       ) : (
       <ContextStrip
         partName={partName}
@@ -397,7 +405,7 @@ function StaticStageFallback({
 /** The assembly counterpart of ContextStrip: honest that this is a real
  *  multi-part assembly (N parts) and that the render shows the part-of-interest
  *  in its true neighbours — NOT a declared/synthetic parent envelope. */
-function AssemblyStrip({ partCount, analysisReady }: { partCount: number; analysisReady: boolean }) {
+function AssemblyStrip({ partCount, analysisReady, analysisLoading }: { partCount: number; analysisReady: boolean; analysisLoading: boolean }) {
   return (
     <div
       className="cv-verify-stage-context-card"
@@ -429,7 +437,7 @@ function AssemblyStrip({ partCount, analysisReady }: { partCount: number; analys
         {analysisReady ? (
           <ContextPill color={C.measured}>per-part DFM + cost</ContextPill>
         ) : (
-          <ContextPill>analysing per-part…</ContextPill>
+          <ContextPill>{analysisLoading ? "analysing per-part…" : "per-part analysis unavailable"}</ContextPill>
         )}
       </div>
     </div>

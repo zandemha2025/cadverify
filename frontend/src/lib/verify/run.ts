@@ -20,7 +20,7 @@
  */
 import { validateFile, type ValidationResult, type CostReport, type CostGeometry } from "@/lib/api";
 import { API_BASE } from "@/lib/api-base";
-import { apiProblemDetail, apiRecoveryMessage } from "@/lib/api-recovery";
+import { apiProblemDetail, apiQuotaMessage, apiRecoveryMessage } from "@/lib/api-recovery";
 import { listMachines, ownedProcessesFrom, type OwnedMachine } from "./machine-api";
 import { readVerification, type VerificationBlock } from "./verification";
 import {
@@ -183,7 +183,7 @@ async function postCost(
     };
   }
   const detail =
-    apiProblemDetail(body) ||
+    apiQuotaMessage(body) || apiProblemDetail(body) ||
     apiRecoveryMessage({
       status: res.status,
       payload: body,

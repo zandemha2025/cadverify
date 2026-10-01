@@ -31,3 +31,14 @@ test("fit and preview requests preserve independent source units and mm nudges",
     }
   } finally { fetchMock.mock.restore(); }
 });
+
+test("preview preserves allowance exhaustion while ordinary failures remain retryable", async () => {
+  const file = new File(["test"], "part.stl");
+  const fetchMock = mock.method(globalThis, "fetch", async () =>
+    Response.json({ code: "org_validation_cap_exceeded", message: "100 validations used in total" }, { status: 429 }));
+  try {
+    await assert.rejects(fetchPreviewMesh(file), /Verification allowance used up.*100 validations/);
+    fetchMock.mock.mockImplementation(async () => new Response(null, { status: 503 }));
+    assert.equal(await fetchPreviewMesh(file), null);
+  } finally { fetchMock.mock.restore(); }
+});

@@ -10,6 +10,7 @@ export interface TrialUsage {
   used: number | null;
   cap: number | null;
   remaining: number | null;
+  window_days?: number;
 }
 
 interface Props {
@@ -40,7 +41,17 @@ function QuotaBar({
   );
 }
 
-export default function QuotaDisplay({ rateLimits, usage }: Props) {
+export default function QuotaDisplay(props: Props) {
+  return <div className="space-y-3">
+    <QuotaUsage {...props} />
+    <p className="text-sm text-muted-foreground">
+      <a className="underline" href="mailto:nazeemahmed2023@gmail.com">Talk to the ProofShape team</a>{" "}
+      about your account or workspace allowance.
+    </p>
+  </div>;
+}
+
+function QuotaUsage({ rateLimits, usage }: Props) {
   // The product trial cap is the honest quota; the rate-limit throttle is
   // only a burst control and never presented as the allowance.
   if (usage) {
@@ -60,18 +71,8 @@ export default function QuotaDisplay({ rateLimits, usage }: Props) {
             total={usage.cap}
             label={`${usage.used} of ${usage.cap} trial checks used`}
           />
-          {exhausted && (
-            <p className="text-sm text-muted-foreground">
-              You&apos;ve used your {usage.cap} trial checks.{" "}
-              <a
-                className="underline"
-                href="mailto:nazeemahmed2023@gmail.com"
-              >
-                Talk to the ProofShape team
-              </a>{" "}
-              to keep going.
-            </p>
-          )}
+          {exhausted && <p className="text-sm text-muted-foreground">You&apos;ve used your {usage.cap} trial checks.</p>}
+          {!!usage.window_days && <p className="text-sm text-muted-foreground">Checks are counted over a rolling {usage.window_days}-day window.</p>}
         </div>
       );
     }

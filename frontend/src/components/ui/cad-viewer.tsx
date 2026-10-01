@@ -18,6 +18,7 @@ import { severityLabel } from "@/lib/status";
 import { computeHighlightVertexColors, computeLayeredHighlightVertexColors } from "@/lib/highlight-colors";
 import { probeWebGlSupport } from "@/lib/site/webgl";
 import { fetchPreviewMesh, type PreviewMesh } from "@/lib/verify/preview-mesh";
+import { isQuotaErrorMessage, isLifetimeQuotaErrorMessage } from "@/lib/api-recovery";
 
 /* Non-highlighted faces keep a machined tint when vertex-colouring is on (i.e.
    during DFM inspection) so the flagged faces still pop against them. Stage
@@ -346,7 +347,7 @@ export default function CadViewer({
   className,
 }: CadViewerProps) {
   const [loaded, setLoaded] = useState<{ file: typeof file; src: typeof src; units: typeof units; geometry: THREE.BufferGeometry; converted: boolean; faceHash: string | null; transform: THREE.Matrix4 } | null>(null);
-  const [previewError, setPreviewError] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   const [halfH, setHalfH] = useState(1);
   const [webGlAvailable, setWebGlAvailable] = useState<boolean | null>(null);
@@ -363,7 +364,7 @@ export default function CadViewer({
 
   useEffect(() => {
     setLoaded(null);
-    setPreviewError(false);
+    setPreviewError(null);
     setPreviewReady(false);
     setPinpointProjection(null);
     if (!src && !file) return;
@@ -403,8 +404,8 @@ export default function CadViewer({
         }
         if (!geometry?.getAttribute("position")?.count) throw new Error("Empty preview");
         if (!cancelled) setLoaded({ file, src, units, geometry, converted, faceHash, transform });
-      } catch {
-        if (!cancelled) setPreviewError(true);
+      } catch (error) {
+        if (!cancelled) setPreviewError(error instanceof Error ? error.message : "Preview unavailable");
       } finally {
         preview?.revoke();
         if (cancelled) geometry?.dispose();
@@ -440,9 +441,9 @@ export default function CadViewer({
         )}
       >
         <p className="text-sm">
-          {previewError ? "Could not load the 3D preview. Your analysis is still available." : file || src ? "Preparing real 3D preview…" : "Upload a file to preview"}
+          {previewError ? isQuotaErrorMessage(previewError) ? previewError : "Could not load the 3D preview. Any completed analysis remains available." : file || src ? "Preparing real 3D preview…" : "Upload a file to preview"}
         </p>
-        {previewError && <button type="button" className="min-h-11 rounded border px-3 text-sm" onClick={() => setRetry((value) => value + 1)}>Retry preview</button>}
+        {previewError && !isLifetimeQuotaErrorMessage(previewError) && <button type="button" className="min-h-11 rounded border px-3 text-sm" onClick={() => setRetry((value) => value + 1)}>Retry preview</button>}
       </div>
     );
   }

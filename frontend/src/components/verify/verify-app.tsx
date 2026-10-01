@@ -49,6 +49,7 @@ import {
   type WorkspaceScreen,
 } from "@/lib/verify/workspace-screen-route";
 import type { OrganizationAccess } from "@/lib/organization-access";
+import { isQuotaErrorMessage, isLifetimeQuotaErrorMessage } from "@/lib/api-recovery";
 import { resolvedAnnualVolume } from "@/lib/verify/program-rollup";
 
 // The shared hotkey nav map — matches the design 1:1 (support.js keydown handler):
@@ -118,6 +119,7 @@ export function VerifyApp({
   // (~15s on AS1). null until it lands; `assemblyAnalyzing` drives the honest
   // "analysing per-part…" state while it is in flight.
   const [assemblyAnalysis, setAssemblyAnalysis] = useState<AssemblyAnalysis | null>(null);
+  const [assemblyAnalysisError, setAssemblyAnalysisError] = useState<string | null>(null);
   const [assemblyAnalyzing, setAssemblyAnalyzing] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -180,9 +182,15 @@ export function VerifyApp({
 
   const runAssemblyAnalysis = useCallback(async (f: File, seq: number) => {
     setAssemblyAnalyzing(true);
-    const analysis = await fetchAssemblyAnalysis(f).catch(() => null);
+    setAssemblyAnalysisError(null);
+    let failure: string | null = null;
+    const analysis = await fetchAssemblyAnalysis(f).catch((error) => {
+      failure = error instanceof Error ? error.message : "Assembly analysis could not finish.";
+      return null;
+    });
     if (runSeq.current !== seq) return;
     setAssemblyAnalysis(analysis);
+    setAssemblyAnalysisError(failure);
     setAssemblyAnalyzing(false);
   }, []);
 
@@ -595,8 +603,9 @@ export function VerifyApp({
       selectedName: sel ? sel.name || sel.occurrence || sel.id : null,
       selectedTreePath: sel?.tree_path ?? null,
       analysisReady: !!assemblyAnalysis,
+      analysisLoading: assemblyAnalyzing,
     };
-  }, [assembly, assemblySelectedId, assemblyAnalysis]);
+  }, [assembly, assemblySelectedId, assemblyAnalysis, assemblyAnalyzing]);
   const stageGeometry = result ? geometryFromResult(result) : null;
 
   const activeWorkspaceSection: Screen =
@@ -760,6 +769,8 @@ export function VerifyApp({
               <Link href="/login?next=%2Fverify" style={{ marginLeft: "auto", color: "inherit", fontWeight: 600 }}>
                 Sign in again
               </Link>
+            ) : isLifetimeQuotaErrorMessage(uploadRejection.action) ? (
+              <a href="/history" style={{ marginLeft: "auto", color: "inherit", fontWeight: 600 }}>Review usage and contact options</a>
             ) : <button
               type="button"
               onClick={() => uploadRejection.retryFile ? void runVerify(uploadRejection.retryFile) : pickOwnFile()}
@@ -812,6 +823,7 @@ export function VerifyApp({
         {guidedSampleState !== "idle" && screen === "verify" && (
           <GuidedExampleBar
             state={guidedSampleState}
+            error={uploadRejection?.action ?? result?.costError ?? result?.validationError ?? null}
             onUpload={pickOwnFile}
             onBack={() => {
               setGuidedSummaryOpen(false);
@@ -872,6 +884,7 @@ export function VerifyApp({
                 onSelect={setAssemblySelectedId}
                 analysis={assemblyAnalysis}
                 analyzing={assemblyAnalyzing}
+                error={assemblyAnalysisError}
                 onRetryAnalysis={() => file && void runAssemblyAnalysis(file, runSeq.current)}
               />
             ) : (
@@ -936,16 +949,20 @@ export function VerifyApp({
 
 function GuidedExampleBar({
   state,
+  error,
   onUpload,
   onBack,
   onRetry,
 }: {
   state: "running" | "ready" | "error";
+  error: string | null;
   onUpload: () => void;
   onBack: () => void;
   onRetry: () => void;
 }) {
-  const failed = state === "error";
+  const quota = isQuotaErrorMessage(error);
+  const failed = state === "error" || quota;
+  const lifetimeQuota = isLifetimeQuotaErrorMessage(error);
   return (
     <section
       role={failed ? "alert" : "status"}
@@ -984,19 +1001,21 @@ function GuidedExampleBar({
         <p style={{ margin: 0, fontSize: 12.5, fontWeight: 650 }}>
           {state === "running"
             ? "Guided example: analyzing a real routing bracket"
-            : failed
-              ? "The guided example was interrupted"
-              : "Example complete: this is a manufacturing answer"}
+            : quota && state === "ready"
+              ? "Example partially complete: allowance used up"
+              : failed ? "The guided example was interrupted" : "Example complete: this is a manufacturing answer"}
         </p>
         <p style={{ margin: "3px 0 0", color: C.ink55, fontSize: 11.5, lineHeight: 1.5 }}>
           {state === "running"
             ? "ProofShape is measuring geometry, checking manufacturability, choosing processes, and estimating cost."
-            : failed
+            : quota ? error : failed
               ? "No completed result was created. Retry the example or check one of your own CAD files."
               : "Read geometry and DFM first; route, first issue, resource cost, and shop fit follow in decision order."}
         </p>
       </div>
-      {failed ? (
+      {lifetimeQuota ? (
+        <a href="/history" style={guidedBarButton(C.cond)}>Review usage and contact options</a>
+      ) : failed ? (
         <button type="button" onClick={onRetry} style={guidedBarButton(C.cond)}>
           Retry example
         </button>

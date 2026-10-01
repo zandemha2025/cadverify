@@ -1372,7 +1372,7 @@ function VerdictBanner({
           {failure.action}
         </p>
         <div style={{ marginTop: 14 }}>
-          <GhostButton onClick={onReverify}>Retry verification →</GhostButton>
+          {failure.kind === "quota" ? <a href="/history">Review usage and contact options →</a> : <GhostButton onClick={onReverify}>Retry verification →</GhostButton>}
         </div>
       </BannerFrame>
     );
@@ -1381,6 +1381,7 @@ function VerdictBanner({
   // 2 · Routing + DFM ran, but the should-cost record is unavailable. The kicker does
   //     NOT claim SHOULD-COST COMPUTED, and the body names only what actually ran.
   if (!cost) {
+    const failure = analysisFailureCopy(costError);
     const color = dfm === "fail" ? C.fail : C.cond;
     const makeabilityReason = result.machinesError
       ? `The machine floor could not be loaded (${result.machinesError}).`
@@ -1391,17 +1392,19 @@ function VerdictBanner({
       <BannerFrame borderColor={color} bg="rgba(23,24,26,0.015)">
         <Kicker color={color}>DFM {dfm.toUpperCase()} · RESOURCE COST INTERRUPTED</Kicker>
         <p style={{ margin: "10px 0 0", fontSize: 24, fontWeight: 400, letterSpacing: "-0.015em", lineHeight: 1.25 }}>
-          Routing and DFM are ready. Cost needs another try.
+          {failure.kind === "quota" ? "Routing and DFM are ready. Cost is blocked by your allowance." : "Routing and DFM are ready. Cost needs another try."}
         </p>
         <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 560 }}>
           Your successful geometry and DFM analysis is preserved. The resource-cost service did not return a record
           {costError ? <> (<span style={{ fontFamily: MONO, fontSize: 12, color: C.ink55 }}>{costError}</span>)</> : null}.{" "}
           {makeabilityReason} Existing saved data is unchanged.
+          {failure.kind === "quota" && <> {failure.explanation} {failure.action}</>}
         </p>
-        <div style={{ marginTop: 14, display: "flex", gap: 9, flexWrap: "wrap" }}>
+        {failure.kind !== "quota" && <div style={{ marginTop: 14, display: "flex", gap: 9, flexWrap: "wrap" }}>
           <GhostButton primary onClick={onRetryCost}>Retry cost only →</GhostButton>
           <GhostButton onClick={onReverify}>Rerun full verification</GhostButton>
-        </div>
+        </div>}
+        {failure.kind === "quota" && <p><a href="/history">Review usage and contact options →</a></p>}
         {savedCta}
       </BannerFrame>
     );

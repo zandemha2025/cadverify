@@ -1,4 +1,6 @@
-export type AnalysisFailureKind = "capacity" | "unreadable" | "unsupported" | "geometry" | "unknown";
+import { isQuotaErrorMessage, isLifetimeQuotaErrorMessage } from "../api-recovery.ts";
+
+export type AnalysisFailureKind = "quota" | "quota-window" | "capacity" | "unreadable" | "unsupported" | "geometry" | "unknown";
 
 export interface AnalysisFailureCopy {
   kind: AnalysisFailureKind;
@@ -11,6 +13,16 @@ export interface AnalysisFailureCopy {
 /** Keep operational failures from being mislabeled as broken customer CAD. */
 export function analysisFailureCopy(reason: string | null | undefined): AnalysisFailureCopy {
   const value = reason?.trim() ?? "";
+
+  if (isQuotaErrorMessage(value)) {
+    return {
+      kind: isLifetimeQuotaErrorMessage(value) ? "quota" : "quota-window",
+      title: isLifetimeQuotaErrorMessage(value) ? "Verification allowance used up." : "Verification allowance used up for now.",
+      explanation: value.replace(/^Verification allowance used up(?: for now)?\.\s*/, ""),
+      action: "Your file and saved results are unchanged.",
+      toast: value,
+    };
+  }
 
   if (/this STL looks truncated or corrupt - re-export it/i.test(value)) {
     return {

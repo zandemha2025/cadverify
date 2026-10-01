@@ -1,5 +1,6 @@
 "use client";
 
+import { isQuotaErrorMessage, isLifetimeQuotaErrorMessage } from "@/lib/api-recovery";
 import { formatIssueValue } from "@/lib/inspection-bind";
 
 import { ArrowRight, CheckCircle2, TriangleAlert } from "lucide-react";
@@ -125,7 +126,9 @@ export function GuidedResultSummary({
     : result?.costGeometryInvalid
       ? "Resource cost stopped at the geometry gate."
       : result?.validation
-        ? "Routing and DFM are ready. Resource cost needs another try."
+        ? isQuotaErrorMessage(result.costError)
+          ? "Routing and DFM are ready. Resource cost is blocked by your allowance."
+          : "Routing and DFM are ready. Resource cost needs another try."
         : "No resource cost was produced because analysis did not finish.";
   const costDetail = estimate
     ? `At quantity ${NUM(estimate.quantity)} · engine-computed resource cost, not a supplier quote.`
@@ -262,9 +265,11 @@ export function GuidedResultSummary({
             <button type="button" onClick={onBack} style={summaryButton(true)}>
               Back to start
             </button>
-            <button type="button" onClick={onUpload} style={summaryButton(true)}>
+            {isLifetimeQuotaErrorMessage(result?.costError) || isLifetimeQuotaErrorMessage(result?.validationError) ? (
+              <a href="/history" style={summaryButton(true)}>Review usage and contact options</a>
+            ) : <button type="button" onClick={onUpload} style={summaryButton(true)}>
               Check my own CAD
-            </button>
+            </button>}
             <button type="button" onClick={() => onOpenChange(false)} style={summaryButton(false)}>
               Show full technical result <ArrowRight aria-hidden size={15} />
             </button>

@@ -1,0 +1,92 @@
+{
+  "issue": "162",
+  "status": "fixed and verified locally; not deployed",
+  "checked_at": "2026-10-01T04:14:08.325517+00:00",
+  "problem": "Lifetime validation caps were reported as temporary capacity/rate failures and offered futile retries, including assembly analysis, previews and guided examples.",
+  "fix": [
+    "Shared structured-code recovery distinguishes lifetime organization/user allowances, rolling product/daily quotas, generic throttles and service failures.",
+    "Backend cap errors expose window_days; rolling user403 includes Retry-After and accurate window copy. Enforcement/counting are unchanged.",
+    "Lifetime recovery points to existing History usage/contact; contact remains visible even below personal quota or when usage is unavailable. Rolling quotas retain manual retry; multipart automatic retry stops on both allowance types while preserving stored upload references.",
+    "Assembly failures retain server details and stop the false analysing label. STEP previews retain the quota cause. Guided partial results and their dialog preserve completed DFM, describe missing cost and remove futile lifetime upload/retry actions."
+  ],
+  "real_cap_native": {
+    "api_cap_org": 100,
+    "api_cap_user": 100,
+    "database_plan_changed": false,
+    "cases": [
+      "STL DFM/routing",
+      "STL cost",
+      "STL preview",
+      "guided sample",
+      "STP assembly probe",
+      "usage/contact navigation"
+    ],
+    "before_after": "162-real-cap-readback.json"
+  },
+  "controlled_partial_native": {
+    "method": "Local HTTP fault proxy forwarded real CAD traffic, injecting only the named failure responses; no production traffic changed.",
+    "cases": [
+      "Cost429 lifetime after real DFM; preview and DFM preserved; no retry or alternate-upload CTA in bar/dialog.",
+      "Assembly analysis503: Retry analysis remains. Retry returning lifetime429:18-part real assembly render/tree retained; no retry or false analysing status.",
+      "STEP preview403 user lifetime cap: explanatory message visible alongside unavailable shell.",
+      "Cost429 rolling org_quota_exceeded: rolling ~24h detail and manual retry retained. Clearing fault then Retry cost only saved a real54-estimate record and cleared quota error.",
+      "History contact remains present with104 of10000 personal checks used.",
+      "Recovered immutable decision opens normally after stopping the fault proxy and restoring direct API routing."
+    ],
+    "assembly_source": "backend/.venv/share/doc/gmsh/examples/api/as1-tu-203.stp",
+    "assembly_sha256": "d40db2ed6f741d2955329f9751c7e3e0a14cbfeb4e11d8338cf110765b9042f9",
+    "recovery_record": "01M3TTBBGKSSZ4CCGS81CSRC67",
+    "readback": "162-recovery-readback.json"
+  },
+  "checks": {
+    "initial_red": "5 failed /35 passed before shared fix",
+    "frontend_tests": 513,
+    "frontend_types": "pass",
+    "changed_source_eslint": "pass",
+    "production_build": "pass including final dialog/stage follow-ups",
+    "backend_cap_org_tests": 27,
+    "backend_full_suite": "not repeated for additive error metadata; previous engine2753pass baseline plus focused cap/org regression checks",
+    "peer_review": "Authorized existing review chat identified rolling quotas, swallowed assembly/preview errors, guided copy, history contact and dialog CTA; all addressed. Final targeted review reports no remaining actionable findings and made no edits/runtime/CI changes."
+  },
+  "evidence": [
+    "162-assembly-quota.png",
+    "162-assembly-quota.txt",
+    "162-assembly-transient.txt",
+    "162-contact-under-cap.png",
+    "162-contact-under-cap.txt",
+    "162-daily-quota.png",
+    "162-daily-quota.txt",
+    "162-partial-quota.png",
+    "162-partial-quota.txt",
+    "162-partial-summary.png",
+    "162-partial-summary.txt",
+    "162-preview-quota.png",
+    "162-preview-quota.txt",
+    "162-quota-cost-after.png",
+    "162-quota-cost-after.txt",
+    "162-quota-guided.png",
+    "162-quota-guided.txt",
+    "162-quota-history.png",
+    "162-quota-history.txt",
+    "162-quota-routing-after.png",
+    "162-quota-routing-after.txt",
+    "162-quota-stp.png",
+    "162-quota-stp.txt",
+    "162-real-cap-readback.json",
+    "162-recovered-record.txt",
+    "162-recovery-readback.json",
+    "162-retry-recovered.png",
+    "162-retry-recovered.txt"
+  ],
+  "runtime_restoration": "Test API/worker use prior local audit fixture caps10000; no account plan/database cap or production change. Fault proxy stopped and frontend returned to direct8017 before handoff.",
+  "production_changed": false,
+  "goal_complete": false,
+  "remaining": [
+    "Float32 uncertainty in non-sheet DFM processes",
+    "Other orientation-dependent measurements/cost proxies and bent-sheet interpretation",
+    "Real customer/supplier accuracy evidence",
+    "Real inbox, IdP/SCIM, vendor/storage/webhook/reconstruction checks",
+    "Five HIGH backend image scan findings",
+    "Production prerequisites, separate PR107 merge/deployment approval and live full-ledger retest"
+  ]
+}

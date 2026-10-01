@@ -4,6 +4,16 @@ import assert from "node:assert/strict";
 import { analysisFailureCopy } from "./failure-copy.ts";
 import { apiRecoveryMessage } from "../api-recovery.ts";
 
+test("exhausted trial allowance is not a temporary capacity or geometry failure", () => {
+  const copy = analysisFailureCopy(apiRecoveryMessage({
+    status: 429, resource: "verification",
+    payload: { code: "org_validation_cap_exceeded", message: "100 validations used in total" },
+  }));
+  assert.equal(copy.kind, "quota");
+  assert.match(copy.explanation, /100 validations used in total/);
+  assert.doesNotMatch(copy.title + copy.action + copy.toast, /temporarily|retry shortly|re-export/i);
+});
+
 test("capacity failures never blame customer geometry", () => {
   const copy = analysisFailureCopy(
     "this organization has reached its concurrent-analysis limit of 3",
@@ -69,4 +79,13 @@ test("truncated STL keeps the requested plain client refusal", () => {
   const copy = analysisFailureCopy("this STL looks truncated or corrupt - re-export it");
   assert.equal(copy.kind, "unreadable");
   assert.equal(copy.toast, "this STL looks truncated or corrupt - re-export it");
+});
+
+test("rolling quota copy preserves allowance timing and remains retryable", () => {
+  const copy = analysisFailureCopy(apiRecoveryMessage({ status: 429, resource: "verification",
+    payload: { code: "org_quota_exceeded", message: "Daily cap; rolling ~24h window" } }));
+  assert.equal(copy.kind, "quota-window");
+  assert.match(copy.title, /for now/);
+  assert.match(copy.explanation, /rolling ~24h window/);
+  assert.doesNotMatch(copy.title, /busy/);
 });

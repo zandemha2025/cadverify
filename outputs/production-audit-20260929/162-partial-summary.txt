@@ -1,0 +1,229 @@
+- navigation:
+  - link:
+    - /url: /verify
+  - link:
+    - /url: /verify
+  - link:
+    - /url: /designs
+  - link:
+    - /url: /cost
+  - link:
+    - /url: /analyze
+  - link:
+    - /url: /batch
+  - link:
+    - /url: /cost-decisions
+  - link:
+    - /url: /history
+  - button:
+- complementary:
+  - button:
+    - generic: Search…
+    - text: K
+  - paragraph: Workspace
+  - link:
+    - /url: /verify
+    - generic: Verify workspace
+  - link:
+    - /url: /designs
+    - generic: Design Studio
+  - link:
+    - /url: /cost
+    - generic: Should-cost workspace
+  - link:
+    - /url: /analyze
+    - generic: Analyze DFM
+  - link:
+    - /url: /batch
+    - generic: Batch run
+  - paragraph: Ledger
+  - link:
+    - /url: /cost-decisions
+    - generic: Cost decisions
+  - link:
+    - /url: /cost-decisions/compare
+    - generic: Compare A/B
+  - link:
+    - /url: /rfq-packages
+    - generic: RFQ packages
+  - link:
+    - /url: /history
+    - generic: Recent analyses
+  - link:
+    - /url: /integrations
+    - generic: Integrations
+  - link:
+    - /url: /settings/developer
+    - generic: API & docs
+  - link:
+    - /url: /settings/security
+    - generic: Security
+  - link:
+    - /url: /settings/organization
+    - generic: Organization
+  - paragraph: One governed object model · a Decision contains Estimates.
+- banner:
+  - button:
+  - navigation:
+    - generic: workspace
+    - generic: verify
+  - button:
+    - generic: Jump…
+    - generic: ⌘K
+  - link:
+    - /url: /notifications
+  - button:
+- main:
+  - navigation:
+    - button:
+      - generic: Home
+    - button:
+      - generic: Verify
+    - button:
+      - generic: Fit in context
+    - button:
+      - generic: Parts
+    - button:
+      - generic: Records
+    - button:
+      - generic: Programs
+    - button:
+      - generic: Your machines
+    - button:
+      - generic: Triage
+    - button:
+      - generic: Calibration & truth
+    - button
+    - button:
+      - generic: Default rate card (v0) · none authored
+    - button: Start here
+    - button:
+      - text: Jump
+      - generic: ⌘K
+    - button: Check my CAD
+  - alert:
+    - generic: "!"
+    - paragraph: "Example partially complete: allowance used up"
+    - paragraph: Verification allowance used up. this organization has reached its cap of 100 validations in total. Contact your workspace administrator or the ProofShape team to review your allowance.
+    - link:
+      - /url: /history
+      - text: Review usage and contact options
+    - button: Back to start
+  - main:
+    - heading [level=1]: sample-routing-bracket.stl
+    - paragraph: Ø/bbox 50.0 × 40.0 × 6.0 mm · 5.95 cm³ watertight true · ● MEASURED
+    - paragraph: ● real geometry · STL
+    - paragraph: CONTEXT
+    - generic: not declared
+    - paragraph: no assembly reference declared
+    - button: X-ray
+    - button: Check assembly fit
+    - generic: drag to orbit
+  - paragraph: Can this be made — on your machines, in materials that survive its service conditions — and what will it really take?
+  - paragraph: DFM ISSUES · RESOURCE COST INTERRUPTED
+  - paragraph: Routing and DFM are ready. Cost is blocked by your allowance.
+  - paragraph: Your successful geometry and DFM analysis is preserved. The resource-cost service did not return a record (Verification allowance used up. this organization has reached its cap of 100 validations in total. Contact your workspace administrator or the ProofShape team to review your allowance.). Machine fit was not returned with this partial result. Existing saved data is unchanged. this organization has reached its cap of 100 validations in total. Contact your workspace administrator or the ProofShape team to review your allowance. Your file and saved results are unchanged.
+  - paragraph:
+    - link:
+      - /url: /history
+      - text: Review usage and contact options →
+  - paragraph: Evidence hash · aa751f25d8c329a02d435f602cd94f630590f7cb6c399084f01094b9a8b57254
+  - generic: "1"
+  - paragraph: Envelope — against your machines
+  - generic: 6 machines declared
+  - generic: Audit local FDM 046
+  - generic: 200 × 200 × 200 mm
+  - generic: Audit CNC 065
+  - generic: 762 × 406 × 508 mm
+  - generic: Audit 104 valid first
+  - generic: envelope undeclared
+  - generic: Audit 104 valid last
+  - generic: envelope undeclared
+  - paragraph:
+    - text: part envelope 50.0 × 40.0 × 6.0 mm
+    - generic: ● MEASURED
+    - text: · per-machine fit is decided by the makeability verification MAKEABILITY NOT EVALUATED — the floor is declared; no fit is faked here.
+  - generic: "2"
+  - paragraph: Materials that survive these service conditions
+  - paragraph: material class withheld — costing unavailable
+  - paragraph: environment-driven survival filtering (NACE MR0175 / HDT tables) is part of the makeability verification — DECLARE A WORLD TO EVALUATE. Invalid materials are filtered out visibly, never silently.
+  - generic: "3"
+  - paragraph: Process physics — geometry against each route
+  - generic: DLP ResinGEOMETRY PICK
+  - generic: pass
+  - generic: SLS (Powder)
+  - generic: pass
+  - generic: MJF (HP)
+  - generic: pass
+  - generic: EBM (Metal)
+  - generic: pass
+  - generic: Binder Jetting
+  - generic: pass
+  - generic: DED
+  - generic: pass
+  - paragraph: 11 priority fixes across routes · overall issues · DFM scores from POST /validate · pick is geometry-only — declare a material for the material-aware route
+  - region:
+    - paragraph: MAKE THIS VERDICT YOURS · OPTIONAL
+    - paragraph: The answer above uses a default material and ambient service until you declare otherwise.
+    - paragraph: SERVICE CONDITIONS
+    - generic: ambient
+    - button: 120 °C service
+    - button: sour service (H₂S)
+    - button: 35 MPa pressure
+    - paragraph: no service conditions declared — the part is verified at ambient.
+    - paragraph:
+      - text: MATERIAL CLASS ·
+      - generic: ○ DEFAULT
+    - radiogroup:
+      - radio [checked]: Polymer
+      - radio: Aluminum
+      - radio: Steel
+      - radio: Stainless
+      - radio: Titanium
+  - textbox [disabled]:
+    - /placeholder: Load a part above — the engine answers only about a computed part.
+  - button [disabled]:
+  - button [disabled]: Compare routes @ 1,000
+  - button [disabled]: Compare saved decisions →
+  - button [disabled]: Why this verdict?
+  - button: An uncomputable ask
+  - paragraph:
+    - generic: answers are deterministic engine artifacts — verdict, materials, drivers, hours, cost, routes, and saved records
+- region "Notifications alt+T"
+- alert
+- dialog "The manufacturing answer, in decision order.":
+  - paragraph: EXAMPLE ANALYZED · REAL ENGINE OUTPUT
+  - heading "The manufacturing answer, in decision order." [level=2]
+  - paragraph: Start with geometry and DFM. Route, first issue, measured evidence, resource cost, and shop fit follow without turning missing data into a verdict.
+  - paragraph: GEOMETRY / DFM · PRIMARY RESULT
+  - paragraph: Geometry understood. No blocking DFM issues found.
+  - paragraph: This is the engine's geometry and DFM result. The recommended route and first action follow in decision order.
+  - paragraph: RECOMMENDED ROUTE
+  - paragraph: DLP Resin
+  - paragraph: Selected by validation. Cost assumptions were not returned.
+  - paragraph: FIRST ISSUE
+  - paragraph: No priority issue was returned in this result.
+  - paragraph: There is no engine-authored first action to take before reviewing the full report.
+  - paragraph: MEASURED EVIDENCE
+  - paragraph: ● MEASURED FROM CAD
+  - paragraph: ENVELOPE
+  - paragraph: 50 × 40 × 6 mm
+  - paragraph: VOLUME
+  - paragraph: 5.95 cm³
+  - paragraph: FACES
+  - paragraph: "20"
+  - paragraph: WATERTIGHT
+  - paragraph: "Yes"
+  - paragraph: RESOURCE COST · UNAVAILABLE
+  - paragraph: Routing and DFM are ready. Resource cost is blocked by your allowance.
+  - paragraph: Verification allowance used up. this organization has reached its cap of 100 validations in total. Contact your workspace administrator or the ProofShape team to review your allowance. Your geometry and DFM result is still available.
+  - paragraph: SHOP FIT / UNCERTAINTY · NEUTRAL
+  - paragraph: Shop fit not checked in this result.
+  - paragraph: No machine-fit verification block was returned. A partial cost failure is not treated as evidence that the part fits your floor.
+  - button "Back to start" [active]
+  - link "Review usage and contact options":
+    - /url: /history
+  - button "Show full technical result":
+    - text: Show full technical result
+  - button "Close":
+    - generic: Close

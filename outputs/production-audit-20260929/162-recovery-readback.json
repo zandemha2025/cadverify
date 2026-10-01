@@ -1,0 +1,27 @@
+{
+  "historical": {
+    "analyses": {
+      "unchanged_count": 102,
+      "new_record_ids": [
+        1554,
+        1555
+      ]
+    },
+    "cost_decisions": {
+      "unchanged_count": 111,
+      "new_record_ids": [
+        5361,
+        5362
+      ]
+    }
+  },
+  "recovered_record": {
+    "id": 5362,
+    "ulid": "01M3TTBBGKSSZ4CCGS81CSRC67",
+    "filename": "sample-routing-bracket.stl",
+    "mesh_hash": "aa751f25d8c329a02d435f602cd94f630590f7cb6c399084f01094b9a8b57254",
+    "engine_version": "0.3.31",
+    "estimate_count": 54,
+    "result_sha256": "e2f352adabd34af389199e2e37ae51dd2696b01e6eb512f22e251a003645cea6"
+  }
+}

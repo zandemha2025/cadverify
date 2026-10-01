@@ -16,6 +16,7 @@
  * analytic-surface semantics.
  */
 import { API_BASE } from "@/lib/api-base";
+import { apiQuotaMessage } from "../api-recovery.ts";
 
 export interface PreviewMesh {
   /** object URL for the GLB blob (caller revokes via `revoke`). */
@@ -42,9 +43,9 @@ function readNum(res: Response, header: string): number | null {
 }
 
 /**
- * Fetch the decimated GLB shell for `file`. Returns null on any failure
- * (network, unauthorized, unparseable) so the stage can fall back to the HONEST
- * bounding-box envelope — we never fabricate geometry.
+ * Fetch the decimated GLB shell for `file`. An exhausted allowance throws its
+ * actionable message; other failures return null so callers show an unavailable
+ * preview instead of fabricated geometry.
  */
 export async function fetchPreviewMesh(file: File, options?: { forAnalysis?: boolean; units?: "mm" | "inch" }): Promise<PreviewMesh | null> {
   const form = new FormData();
@@ -60,7 +61,13 @@ export async function fetchPreviewMesh(file: File, options?: { forAnalysis?: boo
   } catch {
     return null;
   }
-  if (!res.ok) return null;
+  if (!res.ok) {
+    if (res.status === 403 || res.status === 429) {
+      const quota = apiQuotaMessage(await res.json().catch(() => null));
+      if (quota) throw new Error(quota);
+    }
+    return null;
+  }
 
   let blob: Blob;
   try {

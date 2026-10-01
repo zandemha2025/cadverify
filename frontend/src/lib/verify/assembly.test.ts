@@ -136,3 +136,31 @@ test("STEP failures preserve file diagnostics and distinguish service/session re
     if (result.kind === "refused") assert.equal(result.recovery, "retry");
   }
 });
+
+test("STEP trial-cap refusal preserves the quota and offers no automatic retry", async () => {
+  const { probeAssembly } = await import("./assembly.ts");
+  const result = await probeAssembly(new File(["ISO-10303-21"], "valid.STP"), async () =>
+    Response.json({ code: "org_validation_cap_exceeded", message: "100 validations in total" }, { status: 429 }));
+  assert.equal(result.kind, "refused");
+  if (result.kind !== "refused") return;
+  assert.match(result.action, /allowance used up/i);
+  assert.equal(result.recovery, undefined);
+});
+
+test("assembly analysis preserves quota errors and rolling quotas allow later retry", async () => {
+  const { fetchAssemblyAnalysis, probeAssembly } = await import("./assembly.ts");
+  const file = new File(["ISO-10303-21"], "valid.STP");
+  for (const [status, payload, recovery] of [
+    [429, { code: "org_validation_cap_exceeded", window_days: 0, message: "100 in total" }, undefined],
+    [403, { code: "user_validation_cap_exceeded", window_days: 7, message: "100 in trailing 7 days" }, "retry"],
+    [429, { code: "org_quota_exceeded", message: "Daily cap" }, "retry"],
+  ] as const) {
+    const post = async () => Response.json(payload, { status });
+    await assert.rejects(fetchAssemblyAnalysis(file, post), /Verification allowance used up/);
+    const result = await probeAssembly(file, post);
+    assert.equal(result.kind, "refused");
+    if (result.kind === "refused") assert.equal(result.recovery, recovery);
+  }
+  assert.equal(await fetchAssemblyAnalysis(file, async () => Response.json({})), null);
+  await assert.rejects(fetchAssemblyAnalysis(file, async () => new Response(null, { status: 503 })), /try again/i);
+});

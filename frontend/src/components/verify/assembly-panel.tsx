@@ -18,6 +18,7 @@
  * service-world=future suggestion, interface-DFM/GD&T=gated tier.
  */
 import { useMemo, type ReactNode } from "react";
+import { isLifetimeQuotaErrorMessage } from "@/lib/api-recovery";
 import { C, MONO, USD, procLabel, statusColor } from "@/lib/verify/tokens";
 
 /** Fixed-decimal formatter for measured geometry — "—" when absent. */
@@ -76,6 +77,7 @@ export function AssemblyPanel({
   onSelect,
   analysis,
   analyzing,
+  error,
   onRetryAnalysis,
 }: {
   model: AssemblyModel;
@@ -86,6 +88,7 @@ export function AssemblyPanel({
   analysis: AssemblyAnalysis | null;
   /** True while the per-part analysis is in flight (render is already up). */
   analyzing: boolean;
+  error: string | null;
   onRetryAnalysis: () => void;
 }) {
   const selected = useMemo(
@@ -157,7 +160,7 @@ export function AssemblyPanel({
       </p>
 
       {/* Analysis status — the honest state of the REAL per-part run. */}
-      <AnalysisStatus analysis={analysis} analyzing={analyzing} onRetry={onRetryAnalysis} />
+      <AnalysisStatus analysis={analysis} analyzing={analyzing} error={error} onRetry={onRetryAnalysis} />
 
       {/* Part-of-interest picker — the real product tree, now carrying each
           part's real quantity + DFM verdict + should-cost. */}
@@ -324,7 +327,7 @@ function RowReadout({
 }
 
 /** The status strip replacing the P2 "PER-PART ANALYSIS — COMING" gate. */
-function AnalysisStatus({ analysis, analyzing, onRetry }: { analysis: AssemblyAnalysis | null; analyzing: boolean; onRetry: () => void }) {
+function AnalysisStatus({ analysis, analyzing, error, onRetry }: { analysis: AssemblyAnalysis | null; analyzing: boolean; error: string | null; onRetry: () => void }) {
   if (analyzing && !analysis) {
     return (
       <div
@@ -352,7 +355,8 @@ function AnalysisStatus({ analysis, analyzing, onRetry }: { analysis: AssemblyAn
           The per-part DFM + should-cost run did not return for this upload. The render and
           measured geometry below are real; no verdict or cost is asserted without the engine.
         </p>
-        <GhostButton onClick={onRetry}>Retry analysis</GhostButton>
+        {error && <p role="alert" style={{ fontSize: 12.5, lineHeight: 1.5 }}>{error}</p>}
+        {isLifetimeQuotaErrorMessage(error) ? <a href="/history">Review usage and contact options →</a> : <GhostButton onClick={onRetry}>Retry analysis</GhostButton>}
       </div>
     );
   }

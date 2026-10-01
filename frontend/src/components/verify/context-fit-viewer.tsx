@@ -7,6 +7,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { probeWebGlSupport } from "@/lib/site/webgl";
 import type { FitResult, FitUnits } from "@/lib/verify/context-fit";
 import { fetchPreviewMesh } from "@/lib/verify/preview-mesh";
+import { isQuotaErrorMessage, isLifetimeQuotaErrorMessage } from "@/lib/api-recovery";
 import { PreviewBoundary } from "./preview-boundary";
 
 type ShellSource = { url: string; revoke: () => void };
@@ -67,14 +68,14 @@ function Region({ result }: { result: FitResult | null }) {
 }
 export default function ContextFitViewer({ part, context, units, result, hideContext, selectedIssue }: { part: File; context: File; units: FitUnits; result: FitResult | null; hideContext: boolean; selectedIssue: "collision" | "clearance" | null }) {
   const [sources, setSources] = useState<{ part: ShellSource; context: ShellSource; partFile: File; contextFile: File; units: FitUnits } | null>(null);
-  const [previewError, setPreviewError] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   const [webGlAvailable, setWebGlAvailable] = useState<boolean | null>(null);
   const supported = [part, context].every(file => /\.(stl|obj|3mf|step|stp|iges|igs)$/i.test(file.name));
   useEffect(() => { setWebGlAvailable(probeWebGlSupport()); }, []);
   useEffect(() => {
     setSources(null);
-    setPreviewError(false);
+    setPreviewError(null);
     if (!supported || webGlAvailable !== true) return;
     let cancelled = false;
     const owned: ShellSource[] = [];
@@ -88,13 +89,13 @@ export default function ContextFitViewer({ part, context, units, result, hideCon
     void Promise.all([load(part, units.part), load(context, units.context)]).then(([a, b]) => {
       if (cancelled) return;
       if (a && b) setSources({ part: a, context: b, partFile: part, contextFile: context, units });
-      else setPreviewError(true);
-    }).catch(() => { if (!cancelled) setPreviewError(true); });
+      else setPreviewError("Preview unavailable");
+    }).catch((error) => { if (!cancelled) setPreviewError(error instanceof Error ? error.message : "Preview unavailable"); });
     return () => { cancelled = true; owned.forEach(source => source.revoke()); };
   }, [part, context, units, supported, webGlAvailable, retry]);
   if (!supported) return <div className="grid h-full place-items-center px-6 text-center text-xs text-muted-foreground">Choose STL, OBJ, 3MF, STEP or IGES files for the pair preview.</div>;
   if (webGlAvailable !== true) return <div role="status" className="grid h-full place-items-center px-6 text-center text-xs text-muted-foreground">{webGlAvailable === null ? "Preparing the interactive preview…" : "3D preview is unavailable in this browser. Fit measurements remain available below."}</div>;
-  if (previewError) return <div role="status" className="grid h-full place-items-center px-6 text-center text-xs text-muted-foreground"><div><p>Could not load the pair preview. Fit measurements remain available below.</p><button className="mt-3 min-h-11 rounded border px-3 text-foreground" onClick={() => setRetry(value => value + 1)}>Retry preview</button></div></div>;
+  if (previewError) return <div role="status" className="grid h-full place-items-center px-6 text-center text-xs text-muted-foreground"><div><p>{isQuotaErrorMessage(previewError) ? previewError : "Could not load the pair preview. Any completed fit measurements remain available below."}</p>{!isLifetimeQuotaErrorMessage(previewError) && <button className="mt-3 min-h-11 rounded border px-3 text-foreground" onClick={() => setRetry(value => value + 1)}>Retry preview</button>}</div></div>;
   if (!sources || sources.partFile !== part || sources.contextFile !== context || sources.units !== units) return <div className="grid h-full place-items-center text-xs text-muted-foreground">Preparing submitted geometry…</div>;
   return <PreviewBoundary key={sources.part.url + sources.context.url} fallback={<div role="status" className="grid h-full place-items-center px-6 text-center text-xs text-muted-foreground">Could not draw this pair. Check the files or select another pair. Fit checks remain available below.</div>}><Canvas dpr={[1, 2]} gl={{ antialias: true, powerPreference: "high-performance" }} camera={{ position: [24, 20, 24], fov: 38 }}><ambientLight intensity={1.2}/><directionalLight position={[10,20,10]} intensity={1.5}/><Suspense fallback={null}><Bounds key={JSON.stringify([result?.seating.transform ?? null, hideContext])} fit clip observe margin={2}><GlbShell url={sources.part.url} ghost={false}/>{!hideContext && <GlbShell url={sources.context.url} ghost transform={result?.seating.transform}/>}{selectedIssue === "collision" && <Region result={result}/>}</Bounds></Suspense><OrbitControls makeDefault enablePan={false}/></Canvas></PreviewBoundary>;
 }

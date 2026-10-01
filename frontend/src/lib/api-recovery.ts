@@ -29,6 +29,30 @@ export function apiProblemDetail(payload: unknown): string | null {
   return firstProblemText(problem.detail) ?? firstProblemText(problem.message);
 }
 
+/** Preserve allowance scope: only rolling quotas recover by waiting. */
+export function apiQuotaMessage(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const body = payload as { code?: unknown; detail?: unknown; window_days?: unknown };
+  const nested = body.detail && typeof body.detail === "object"
+    ? body.detail as { code?: unknown; window_days?: unknown } : null;
+  const code = nested?.code ?? body.code;
+  if (typeof code !== "string" || !["org_validation_cap_exceeded", "user_validation_cap_exceeded", "org_quota_exceeded"].includes(code)) return null;
+  const detail = apiProblemDetail(payload);
+  const windowDays = nested?.window_days ?? body.window_days;
+  // Older servers describe the organization window only in their message.
+  const resets = code === "org_quota_exceeded" || (typeof windowDays === "number" && windowDays > 0)
+    || /in the trailing [1-9]\d* days/.test(detail ?? "");
+  return `Verification allowance used up${resets ? " for now" : ""}. ${detail ? `${detail.replace(/[.!?]+$/, "")}. ` : ""}${resets ? "Retry after the rolling allowance becomes available. " : ""}Contact your workspace administrator or the ProofShape team to review your allowance.`;
+}
+
+export function isQuotaErrorMessage(message: string | null | undefined): boolean {
+  return /^Verification allowance used up(?: for now)?\./.test(message ?? "");
+}
+
+export function isLifetimeQuotaErrorMessage(message: string | null | undefined): boolean {
+  return Boolean(message?.startsWith("Verification allowance used up."));
+}
+
 /** A failed sign-in service must not be reported as rejected credentials. */
 export function authErrorMessage(status: number, payload: unknown, fallback: string): string {
   if (status >= 500 || status === 429) {
@@ -49,6 +73,8 @@ export function apiRecoveryMessage({
   retryAfter?: string | null;
 }): string {
   const detail = apiProblemDetail(payload);
+  const quota = (status === 403 || status === 429) ? apiQuotaMessage(payload) : null;
+  if (quota) return quota;
 
   if (status === 401) {
     return `Your session expired. Sign in again, then retry the ${resource} action.`;

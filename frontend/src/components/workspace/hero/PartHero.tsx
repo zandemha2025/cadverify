@@ -338,7 +338,7 @@ export function PartHero({
               onSelect={setSelectedKey}
               analyzing={dfmLoading}
               error={!validation ? analysisFailureMessage : null}
-              onRetry={() => runDfm(file)}
+              onRetry={analysisFailure?.kind === "quota" ? undefined : () => runDfm(file)}
               onOpenDepth={validation ? () => setDepth("inspection") : undefined}
               candidateProcessCount={partition?.candidateProcessCount}
               revealBase={INSPECTION_BASE}

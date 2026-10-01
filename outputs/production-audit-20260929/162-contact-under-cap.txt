@@ -1,0 +1,294 @@
+- navigation "Domains":
+  - link "ProofShape":
+    - /url: /verify
+  - link "Verify workspace":
+    - /url: /verify
+  - link "Design Studio":
+    - /url: /designs
+  - link "Should-cost":
+    - /url: /cost
+  - link "Analyze DFM":
+    - /url: /analyze
+  - link "Batch runs":
+    - /url: /batch
+  - link "Cost decisions":
+    - /url: /cost-decisions
+  - link "Recent analyses":
+    - /url: /history
+  - button "Switch to dark theme":
+- complementary:
+  - button "Search… K":
+    - generic: Search…
+    - text: K
+  - paragraph: Workspace
+  - link "Verify workspace":
+    - /url: /verify
+    - generic: Verify workspace
+  - link "Design Studio":
+    - /url: /designs
+    - generic: Design Studio
+  - link "Should-cost workspace":
+    - /url: /cost
+    - generic: Should-cost workspace
+  - link "Analyze DFM":
+    - /url: /analyze
+    - generic: Analyze DFM
+  - link "Batch run":
+    - /url: /batch
+    - generic: Batch run
+  - paragraph: Ledger
+  - link "Cost decisions":
+    - /url: /cost-decisions
+    - generic: Cost decisions
+  - link "Compare A/B":
+    - /url: /cost-decisions/compare
+    - generic: Compare A/B
+  - link "RFQ packages":
+    - /url: /rfq-packages
+    - generic: RFQ packages
+  - link "Recent analyses":
+    - /url: /history
+    - generic: Recent analyses
+  - link "Integrations":
+    - /url: /integrations
+    - generic: Integrations
+  - link "API & docs":
+    - /url: /settings/developer
+    - generic: API & docs
+  - link "Security":
+    - /url: /settings/security
+    - generic: Security
+  - link "Organization":
+    - /url: /settings/organization
+    - generic: Organization
+  - paragraph: One governed object model · a Decision contains Estimates.
+- banner:
+  - button "Collapse sidebar":
+  - navigation "Breadcrumb":
+    - generic: workspace
+    - generic: decisions
+  - generic "CAD is processed on this deployment’s server and retained with your workspace’s decision evidence.":
+    - text: Workspace CAD evidence
+  - button "Search and jump to a workspace":
+    - generic: Jump…
+    - generic: ⌘K
+  - link "Notifications":
+    - /url: /notifications
+  - button "Account":
+- main:
+  - heading "History" [level=1]
+  - paragraph: Quota consumption and your recent analyses.
+  - heading "Quota consumption" [level=2]
+  - generic: 104 of 10000 trial checks used
+  - generic: 104 of 10000 used
+  - progressbar
+  - paragraph:
+    - link "Talk to the ProofShape team":
+      - /url: mailto:nazeemahmed2023@gmail.com
+    - text: about your account or workspace allowance.
+  - heading "Recent analyses" [level=2]
+  - generic: Filter
+  - combobox "Verdict filter":
+    - generic: All verdicts
+  - table:
+    - rowgroup:
+      - row "File Verdict Faces Duration When":
+        - columnheader "File":
+          - button "File":
+            - text: File
+        - columnheader "Verdict":
+          - button "Verdict":
+            - text: Verdict
+        - columnheader "Faces":
+          - button "Faces":
+            - text: Faces
+        - columnheader "Duration":
+          - button "Duration":
+            - text: Duration
+        - columnheader "When":
+          - button "When":
+            - text: When
+    - rowgroup:
+      - row "audit-cube.STP Pass 185,328 8199.7 ms 2m ago":
+        - cell "audit-cube.STP":
+          - link "audit-cube.STP":
+            - /url: /analyses/01M3TT9RNM9EBYDY56ZZHHKKVT
+        - cell "Pass":
+          - text: Pass
+        - cell "185,328"
+        - cell "8199.7 ms"
+        - cell "2m ago"
+      - row "sample-routing-bracket.stl Advisory 20 11.8 ms 6m ago":
+        - cell "sample-routing-bracket.stl":
+          - link "sample-routing-bracket.stl":
+            - /url: /analyses/01M3TT22ZH9E19A7Q327AHGRZK
+        - cell "Advisory":
+          - text: Advisory
+        - cell "20"
+        - cell "11.8 ms"
+        - cell "6m ago"
+      - row "161-sheet-5.0-mm.stl Advisory 12 7.7 ms 35m ago":
+        - cell "161-sheet-5.0-mm.stl":
+          - link "161-sheet-5.0-mm.stl":
+            - /url: /analyses/01M3TRC4QQBCQAVPCF53EGJF5W
+        - cell "Advisory":
+          - text: Advisory
+        - cell "12"
+        - cell "7.7 ms"
+        - cell "35m ago"
+      - row "161-sheet-0.5-inch.stl Advisory 12 15.7 ms 36m ago":
+        - cell "161-sheet-0.5-inch.stl":
+          - link "161-sheet-0.5-inch.stl":
+            - /url: /analyses/01M3TRB4TPTY9K91VNTQ76ACKW
+        - cell "Advisory":
+          - text: Advisory
+        - cell "12"
+        - cell "15.7 ms"
+        - cell "36m ago"
+      - row "161-sheet-0.499-mm.stl Advisory 12 18 ms 40m ago":
+        - cell "161-sheet-0.499-mm.stl":
+          - link "161-sheet-0.499-mm.stl":
+            - /url: /analyses/01M3TR2DAR4BKM6N60BSPNH854
+        - cell "Advisory":
+          - text: Advisory
+        - cell "12"
+        - cell "18 ms"
+        - cell "40m ago"
+      - row "161-sheet-0.4-mm.stl Advisory 12 8.6 ms 41m ago":
+        - cell "161-sheet-0.4-mm.stl":
+          - link "161-sheet-0.4-mm.stl":
+            - /url: /analyses/01M3TR1E0137JKYJ1EJFR2BMVD
+        - cell "Advisory":
+          - text: Advisory
+        - cell "12"
+        - cell "8.6 ms"
+        - cell "41m ago"
+      - row "160-rotated-float32.stl Advisory 12 24.1 ms 42m ago":
+        - cell "160-rotated-float32.stl":
+          - link "160-rotated-float32.stl":
+            - /url: /analyses/01M3TQZXA99AD1C9EZF84VGA8F
+        - cell "Advisory":
+          - text: Advisory
+        - cell "12"
+        - cell "24.1 ms"
+        - cell "42m ago"
+      - row "160-rotated-float32.stl Advisory 12 23.3 ms 46m ago":
+        - cell "160-rotated-float32.stl":
+          - link "160-rotated-float32.stl":
+            - /url: /analyses/01M3TQRPBN134EKRNBT3F88V37
+        - cell "Advisory":
+          - text: Advisory
+        - cell "12"
+        - cell "23.3 ms"
+        - cell "46m ago"
+      - row "160-rotated-float32.stl Advisory 12 8.9 ms 1h ago":
+        - cell "160-rotated-float32.stl":
+          - link "160-rotated-float32.stl":
+            - /url: /analyses/01M3TPR969HGF5BKMSPAJ97SH7
+        - cell "Advisory":
+          - text: Advisory
+        - cell "12"
+        - cell "8.9 ms"
+        - cell "1h ago"
+      - row "156-plate-with-boss.step Pass 90,808 3668.7 ms 1h ago":
+        - cell "156-plate-with-boss.step":
+          - link "156-plate-with-boss.step":
+            - /url: /analyses/01M3TPPDQD6M81MKZ7N00X00FF
+        - cell "Pass":
+          - text: Pass
+        - cell "90,808"
+        - cell "3668.7 ms"
+        - cell "1h ago"
+      - row "160-cutout-rotated.step Advisory 48,140 1701.7 ms 1h ago":
+        - cell "160-cutout-rotated.step":
+          - link "160-cutout-rotated.step":
+            - /url: /analyses/01M3TPNF9FJQB47QP9DN83RX54
+        - cell "Advisory":
+          - text: Advisory
+        - cell "48,140"
+        - cell "1701.7 ms"
+        - cell "1h ago"
+      - row "160-triangle-rotated.step Pass 37,382 1484.8 ms 1h ago":
+        - cell "160-triangle-rotated.step":
+          - link "160-triangle-rotated.step":
+            - /url: /analyses/01M3TPMHYAPGT336MB60J4JNHM
+        - cell "Pass":
+          - text: Pass
+        - cell "37,382"
+        - cell "1484.8 ms"
+        - cell "1h ago"
+      - row "160-thin-rotated.step Advisory 47,782 1807.7 ms 1h ago":
+        - cell "160-thin-rotated.step":
+          - link "160-thin-rotated.step":
+            - /url: /analyses/01M3TPKJX35W1V44Q9ZDAVHCSX
+        - cell "Advisory":
+          - text: Advisory
+        - cell "47,782"
+        - cell "1807.7 ms"
+        - cell "1h ago"
+      - row "159-sheet-30x20x0.5-rotated.step Advisory 47,864 1644 ms 1h ago":
+        - cell "159-sheet-30x20x0.5-rotated.step":
+          - link "159-sheet-30x20x0.5-rotated.step":
+            - /url: /analyses/01M3TPJ8YM8FN2EYGGN8395CMW
+        - cell "Advisory":
+          - text: Advisory
+        - cell "47,864"
+        - cell "1644 ms"
+        - cell "1h ago"
+      - row "159-sheet-30x20x0.5.step Advisory 90,554 4137.6 ms 1h ago":
+        - cell "159-sheet-30x20x0.5.step":
+          - link "159-sheet-30x20x0.5.step":
+            - /url: /analyses/01M3TPGFPMAVNKWXZWBZ2KR0PJ
+        - cell "Advisory":
+          - text: Advisory
+        - cell "90,554"
+        - cell "4137.6 ms"
+        - cell "1h ago"
+      - row "160-triangle-rotated.step Pass 37,382 1334.4 ms 1h ago":
+        - cell "160-triangle-rotated.step":
+          - link "160-triangle-rotated.step":
+            - /url: /analyses/01M3TPCN52TSCTMR1VSYCY79DH
+        - cell "Pass":
+          - text: Pass
+        - cell "37,382"
+        - cell "1334.4 ms"
+        - cell "1h ago"
+      - row "160-thin-rotated.step Advisory 47,782 1650.5 ms 1h ago":
+        - cell "160-thin-rotated.step":
+          - link "160-thin-rotated.step":
+            - /url: /analyses/01M3TPBNS76AH4HV1CKCFHXVT6
+        - cell "Advisory":
+          - text: Advisory
+        - cell "47,782"
+        - cell "1650.5 ms"
+        - cell "1h ago"
+      - row "159-sheet-30x20x0.5-rotated.step Advisory 47,864 1643.4 ms 1h ago":
+        - cell "159-sheet-30x20x0.5-rotated.step":
+          - link "159-sheet-30x20x0.5-rotated.step":
+            - /url: /analyses/01M3TPAJFM2DR3GH11CTCPXSV0
+        - cell "Advisory":
+          - text: Advisory
+        - cell "47,864"
+        - cell "1643.4 ms"
+        - cell "1h ago"
+      - row "159-sheet-30x20x0.5.step Advisory 90,554 3946.7 ms 1h ago":
+        - cell "159-sheet-30x20x0.5.step":
+          - link "159-sheet-30x20x0.5.step":
+            - /url: /analyses/01M3TP8AX0Y476DSWGAAPXKYKP
+        - cell "Advisory":
+          - text: Advisory
+        - cell "90,554"
+        - cell "3946.7 ms"
+        - cell "1h ago"
+      - row "159-sheet-30x20x0.5-rotated.step Advisory 47,864 1651.8 ms 1h ago":
+        - cell "159-sheet-30x20x0.5-rotated.step":
+          - link "159-sheet-30x20x0.5-rotated.step":
+            - /url: /analyses/01M3TNR8QPC1QCDG6JJ55BBCTD
+        - cell "Advisory":
+          - text: Advisory
+        - cell "47,864"
+        - cell "1651.8 ms"
+        - cell "1h ago"
+  - button "Load more"
+- region "Notifications alt+T"
+- alert
