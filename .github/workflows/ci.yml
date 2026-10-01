@@ -545,6 +545,10 @@ jobs:
       - name: Scan backend image (high/critical vulnerabilities)
         if: always() && steps.backend-image.outcome == 'success'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          # Exact locally patched .deb versions only. The Docker build verifies
+          # installed package integrity and runs the upstream/native checks.
+          TRIVY_VEX: backend/security/native-fixes.vex.json
         with:
           image-ref: proofshape-ci/backend:${{ github.sha }}
           format: table
