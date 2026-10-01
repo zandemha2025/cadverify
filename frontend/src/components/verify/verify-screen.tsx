@@ -52,16 +52,13 @@ import {
 import {
   driverViews,
   makeNowEstimate,
-  prototypeEstimate,
   routeDfmOutcome,
   toolingEstimate,
-  nearestQty,
-  fractionToQty,
   qtyToFraction,
   provenanceMix,
   type DriverView,
 } from "@/lib/verify/derive";
-import { interpUnitCost, type InterpPoint } from "@/lib/verify/scrub";
+import { interpUnitCost, scrubSelection, type InterpPoint } from "@/lib/verify/scrub";
 import {
   verdictBannerModel,
   verificationForRoute,
@@ -148,7 +145,7 @@ export function VerifyScreen(props: Props) {
     onRetryCost,
     nav,
   } = props;
-  const [scrubFrac, setScrubFrac] = useState(0.5);
+  const [scrubFrac, setScrubFrac] = useState(0);
   const [disclose, setDisclose] = useState<string | null>(null);
   // The human outcome is loaded from and written to the saved cost-decision.
   // Reset while a new run lands; DecideHallmark then hydrates the new record.
@@ -603,16 +600,12 @@ function Walk({
   const machineCount = countMachines(machines);
 
   const bbox = geometryFromResult(result)?.bbox_mm ?? null;
-  const makeNow = cost ? prototypeEstimate(cost) : null;
+  const selection = cost ? scrubSelection(cost, scrubFrac) : null;
+  const makeNow = selection?.estimate ?? null;
+  const selectedVerification = verificationForRoute(verification, makeNow?.process);
   const crossover = cost?.decision?.crossover_qty ?? null;
 
-  const scrubQty = useMemo(() => fractionToQty(scrubFrac), [scrubFrac]);
-  const snappedQty = useMemo(
-    () => (cost ? nearestQty(cost.quantities, scrubQty) : scrubQty),
-    [cost, scrubQty]
-  );
-  const makeAtQty = cost ? makeNowEstimate(cost, snappedQty) : null;
-  const toolAtQty = cost ? toolingEstimate(cost, snappedQty) : null;
+  const toolAtQty = cost && selection ? toolingEstimate(cost, selection.computedQuantity) : null;
 
   const gateStopped = !!costGeometryInvalid;
 
@@ -621,7 +614,7 @@ function Walk({
       {/* verdict banner */}
       <VerdictBanner
         result={result}
-        makeNow={makeNow}
+        selection={selection}
         onReverify={onReverify}
         onRetryCost={onRetryCost}
       />
@@ -769,7 +762,7 @@ function Walk({
 
             {/* 3 · process physics — from /validate (real DFM + routing) */}
             <StepShell n={3} title="Process physics — geometry against each route" delayMs={200}>
-              <ProcessPhysics result={result} />
+              <ProcessPhysics result={result} estimate={makeNow} />
             </StepShell>
 
             {/* 4 · what it really takes — from /validate/cost drivers */}
@@ -778,26 +771,24 @@ function Walk({
                 n={4}
                 title="What it really takes"
                 delayMs={280}
-                right={`on ${procLabel(makeNow.process)} · ${makeNow.material}`}
+                right={`on ${procLabel(makeNow.process)} · ${makeNow.material} · computed qty ${NUM(makeNow.quantity)}`}
               >
+                {!selection?.exact && <p style={{ color: C.cond, fontSize: 12 }}>These drivers belong to the nearest computed quantity; they have not been recomputed for the slider quantity.</p>}
                 <TimeAndResources est={makeNow} disclose={disclose} setDisclose={setDisclose} />
               </StepShell>
             )}
 
             {/* 5 · resource cost — crossover scrub from the real estimates */}
-            {cost && (
+            {cost && selection && (
               <StepShell n={5} title="Resource cost — yours, not a market's" delayMs={360}>
                 <ResourceCost
                   cost={cost}
-                  makeAtQty={makeAtQty}
+                  selection={selection}
                   toolAtQty={toolAtQty}
-                  snappedQty={snappedQty}
-                  scrubQty={scrubQty}
                   scrubFrac={scrubFrac}
                   setScrubFrac={setScrubFrac}
                   crossover={crossover}
                   toolingProcess={cost.decision?.tooling_process ?? null}
-                  makeProcess={makeAtQty?.process ?? null}
                   partContext={result.partContext}
                   partContextError={result.partContextError}
                   verification={verification}
@@ -807,21 +798,21 @@ function Walk({
             )}
 
             {/* decide + hallmark */}
-            {cost && <DecideHallmark result={result} decision={decision} setDecision={setDecision} nav={nav} />}
+            {cost && selection && <DecideHallmark result={result} selection={selection} decision={decision} setDecision={setDecision} nav={nav} />}
           </>
         )}
 
-        {verification && (
+        {selectedVerification && (
           <Card style={{ borderColor: C.hair }}>
             <Kicker>
-              MAKEABILITY — {verification.verdict.replace(/_/g, " ").toUpperCase()} · {(verification.provenance ?? "user").toUpperCase()}
+              MAKEABILITY — {selectedVerification.verdict.replace(/_/g, " ").toUpperCase()} · {(selectedVerification.provenance ?? "user").toUpperCase()}
             </Kicker>
             <p style={{ margin: "8px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.ink50, lineHeight: 1.7 }}>
-              inventory declared {String(!!verification.inventory_declared)} · environment declared {String(!!verification.environment_declared)}
-              {verification.best_machine ? ` · best machine ${verification.best_machine}` : ""}
+              inventory declared {String(!!selectedVerification.inventory_declared)} · environment declared {String(!!selectedVerification.environment_declared)}
+              {selectedVerification.best_machine ? ` · best machine ${selectedVerification.best_machine}` : ""}
             </p>
-            {verification.note && (
-              <p style={{ margin: "8px 0 0", fontSize: 12, color: C.ink55, lineHeight: 1.6 }}>{verification.note}</p>
+            {selectedVerification.note && (
+              <p style={{ margin: "8px 0 0", fontSize: 12, color: C.ink55, lineHeight: 1.6 }}>{selectedVerification.note}</p>
             )}
           </Card>
         )}
@@ -1274,12 +1265,12 @@ function ClosestUnconfirmedCard({
 
 function VerdictBanner({
   result,
-  makeNow,
+  selection,
   onReverify,
   onRetryCost,
 }: {
   result: VerifyResult;
-  makeNow: ReturnType<typeof makeNowEstimate>;
+  selection: ReturnType<typeof scrubSelection> | null;
   onReverify: () => void;
   onRetryCost: () => void;
 }) {
@@ -1299,8 +1290,10 @@ function VerdictBanner({
     );
   }
 
-  const unit = makeNow?.unit_cost_usd ?? null;
-  const proc = makeNow?.process ?? cost?.decision?.make_now_process ?? null;
+  const makeNow = selection?.estimate ?? null;
+  const unit = selection?.price.unit ?? null;
+  const proc = makeNow?.process ?? null;
+  const quantityLabel = selection ? `at qty ${NUM(selection.quantity)}${selection.exact ? "" : ` · approximate price; route from computed qty ${NUM(selection.computedQuantity)}`}` : "";
   const routeVerification = verificationForRoute(verification, proc);
 
   const savedCta = cost?.saved?.id ? (
@@ -1330,7 +1323,7 @@ function VerdictBanner({
         {proc && unit != null && (
           <p style={{ margin: "10px 0 0", fontFamily: MONO, fontSize: 11, color: C.ink50, lineHeight: 1.6 }}>
             should-cost {USD(unit)}/unit on {procLabel(proc)}
-            {makeNow ? ` at qty ${NUM(makeNow.quantity)}` : ""}
+            {` ${quantityLabel}`}
             {routeVerification.best_machine ? ` · best machine ${routeVerification.best_machine}` : ""}
           </p>
         )}
@@ -1422,7 +1415,7 @@ function VerdictBanner({
           {proc && unit != null ? (
             <>
               Conditional should-cost {USD(unit)}/unit on {procLabel(proc)}
-              {makeNow ? <span style={{ fontSize: 14, color: C.ink45 }}> at qty {NUM(makeNow.quantity)}</span> : null}
+              <span style={{ fontSize: 14, color: C.ink45 }}> {quantityLabel}</span>
             </>
           ) : (
             <>Route blocked as modeled</>
@@ -1442,15 +1435,15 @@ function VerdictBanner({
   const color = statusColor(dfm);
   return (
     <BannerFrame borderColor={color} bg="rgba(23,24,26,0.015)">
-      <Kicker color={color}>VERDICT · DFM {dfm.toUpperCase()} · SHOULD-COST COMPUTED</Kicker>
+      <Kicker color={color}>VERDICT · DFM {dfm.toUpperCase()} · SHOULD-COST {selection?.exact ? "COMPUTED" : "APPROXIMATE"}</Kicker>
       <p style={{ margin: "10px 0 0", fontSize: 24, fontWeight: 400, letterSpacing: "-0.015em", lineHeight: 1.25 }}>
         {proc && unit != null ? (
           <>
             Should-cost {USD(unit)}/unit on {procLabel(proc)}
-            {makeNow ? <span style={{ fontSize: 14, color: C.ink45 }}> at qty {NUM(makeNow.quantity)}</span> : null}
+            <span style={{ fontSize: 14, color: C.ink45 }}> {quantityLabel}</span>
           </>
         ) : (
-          <>Should-cost computed</>
+          <>No computed estimate for this selection</>
         )}
       </p>
       <p style={{ margin: "8px 0 0", fontSize: 14, lineHeight: 1.6, color: C.ink60, maxWidth: 560 }}>
@@ -1566,7 +1559,7 @@ function EnvStrikesBlock({ verification, envDeclared }: { verification: Verifica
   );
 }
 
-function ProcessPhysics({ result }: { result: VerifyResult }) {
+function ProcessPhysics({ result, estimate }: { result: VerifyResult; estimate: ReturnType<typeof makeNowEstimate> }) {
   const v = result.validation;
   if (!v) {
     return (
@@ -1575,17 +1568,8 @@ function ProcessPhysics({ result }: { result: VerifyResult }) {
       </p>
     );
   }
-  // Reconcile the pick with the MATERIAL-AWARE route. `v.best_process` is a pure
-  // geometry-manufacturability ranking (resins float to the top for having the fewest
-  // DFM constraints) and must never masquerade as "the" pick for, say, a steel part —
-  // that contradicts the cost panel on the same screen. When the cost route has run
-  // with a declared material, its make-now / recommended process is the true route
-  // pick; only fall back to the geometry pick when no material-aware route exists.
-  const materialAwarePick =
-    result.cost?.decision?.make_now_process ??
-    result.cost?.routing?.recommended_process ??
-    null;
-  const pick = materialAwarePick ?? v.best_process;
+  const materialAwarePick = estimate?.process ?? null;
+  const pick = result.cost ? materialAwarePick : v.best_process;
   const pickIsMaterialAware = materialAwarePick != null;
   const sorted = [...v.process_scores].sort((a, b) => b.score - a.score);
   const rows = sorted.slice(0, 6);
@@ -1638,8 +1622,8 @@ function ProcessPhysics({ result }: { result: VerifyResult }) {
         {v.priority_fixes.length} priority fix{v.priority_fixes.length === 1 ? "" : "es"} across routes ·{" "}
         overall {v.overall_verdict} · DFM scores from POST /validate ·{" "}
         {pickIsMaterialAware
-          ? `pick reconciled to the material-aware route (${procLabel(pick)})`
-          : "pick is geometry-only — declare a material for the material-aware route"}
+          ? `route at computed qty ${NUM(estimate!.quantity)} (${procLabel(pick)})`
+          : result.cost ? "no computed route for this selection" : "pick is geometry-only — declare a material for the material-aware route"}
       </p>
     </div>
   );
@@ -1736,52 +1720,44 @@ function TimeAndResources({
 
 function ResourceCost({
   cost,
-  makeAtQty,
+  selection,
   toolAtQty,
-  snappedQty,
-  scrubQty,
   scrubFrac,
   setScrubFrac,
   crossover,
   toolingProcess,
-  makeProcess,
   partContext,
   partContextError,
   verification,
   nav,
 }: {
   cost: NonNullable<VerifyResult["cost"]>;
-  makeAtQty: ReturnType<typeof makeNowEstimate>;
+  selection: ReturnType<typeof scrubSelection>;
   toolAtQty: ReturnType<typeof toolingEstimate>;
-  snappedQty: number;
-  scrubQty: number;
   scrubFrac: number;
   setScrubFrac: (f: number) => void;
   crossover: number | null;
   toolingProcess: string | null;
-  makeProcess: string | null;
   partContext: VerifyResult["partContext"];
   partContextError: VerifyResult["partContextError"];
   verification: VerificationBlock | null;
   nav: Nav;
 }) {
-  // The scrub reads the REAL 6-point ladder: at a computed qty it is the engine's
-  // own unit cost; between two points it interpolates those two real points along
-  // the amortization curve (labelled, never presented as a fresh compute).
-  const makeInterp = interpUnitCost(cost, makeProcess, scrubQty);
-  const toolInterp = toolingProcess ? interpUnitCost(cost, toolingProcess, scrubQty) : null;
+  const { estimate: makeAtQty, quantity: scrubQty, computedQuantity: snappedQty, price: makeInterp, confidence: conf } = selection;
+  const makeProcess = makeAtQty?.process ?? null;
+  const toolInterp = toolAtQty ? interpUnitCost(cost, toolAtQty.process, scrubQty, toolAtQty.material) : null;
   // The machine-specific MARGINAL rate: when a PASSING owned machine re-costs this
   // route at its OWN declared rate, the header reads OWNED → MARGINAL and names the
   // machine + declared rate (USER provenance). Absent → the generic MAKE NOW header.
   const marginal = marginalRate(verification, makeProcess);
-  const conf = makeAtQty?.confidence;
   const validated = conf?.validated ?? false;
   // real tick position inside the engine's band (schematic center only if absent)
   const pointFrac =
     conf && conf.high_usd > conf.low_usd
       ? Math.min(1, Math.max(0, (conf.point_usd - conf.low_usd) / (conf.high_usd - conf.low_usd)))
       : 0.5;
-  const crossFrac = crossover ? qtyToFraction(crossover) : null;
+  const crossFrac = crossover != null && crossover >= selection.min && crossover <= selection.max
+    ? qtyToFraction(crossover, selection.min, selection.max) : null;
   const mix = provenanceMix(makeAtQty ?? null);
   const annualDemand = resolvedAnnualVolume(partContext);
 
@@ -1797,6 +1773,14 @@ function ResourceCost({
           {partContext?.program ? ` · ${partContext.program}` : ""}
         </span></span>
       </div>
+      <label style={{ display: "inline-flex", gap: 8, marginTop: 8, fontSize: 12, color: C.ink60 }}>
+        Computed quantity
+        <select value={cost.quantities.includes(scrubQty) ? scrubQty : ""}
+          onChange={(e) => setScrubFrac(qtyToFraction(Number(e.target.value), selection.min, selection.max))}>
+          <option value="" disabled>Between computed points</option>
+          {cost.quantities.map((q) => <option key={q} value={q}>{NUM(q)}</option>)}
+        </select>
+      </label>
       <input
         type="range"
         min={0}
@@ -1805,12 +1789,14 @@ function ResourceCost({
         value={Math.round(scrubFrac * 1000)}
         onChange={(e) => setScrubFrac(Number(e.target.value) / 1000)}
         aria-label="Quantity"
+        aria-valuetext={`${NUM(scrubQty)} parts`}
+        disabled={selection.min === selection.max}
         style={{ width: "100%", marginTop: 8, accentColor: C.ink }}
       />
       <div style={{ marginTop: 4, position: "relative", display: "flex", justifyContent: "space-between", fontFamily: MONO, fontSize: 9.5, color: C.ink35 }}>
-        <span>1</span>
+        <span>{NUM(selection.min)}</span>
         <span>{crossover ? `crossover ≈ ${NUM(crossover)}` : "no crossover computed"}</span>
-        <span>10,000</span>
+        <span>{NUM(selection.max)}</span>
         {crossFrac != null && (
           <span aria-hidden style={{ position: "absolute", top: -22, left: `${crossFrac * 100}%`, transform: "translateX(-50%)", width: 1, height: 16, background: "rgba(23,24,26,0.3)" }} />
         )}
@@ -1833,13 +1819,13 @@ function ResourceCost({
           )}
           <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, lineHeight: 1.7, color: C.ink45 }}>
             hours × your rates + mass × your lot price · {mix.groundedPct}% of drivers grounded (● measured/shop/user)
-            <br />route, band &amp; drivers read at computed qty {NUM(snappedQty)}
+            <br />route &amp; drivers read at computed qty {NUM(snappedQty)}
           </p>
-          <div style={{ marginTop: 10 }}>
+          {selection.exact && <div style={{ marginTop: 10 }}>
             <ConfidenceBand validated={validated} pointFraction={pointFrac} />
-          </div>
+          </div>}
           <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 9.5, color: validated ? C.pass : C.cond }}>
-            {conf?.label ??
+            {!selection.exact ? "Confidence withheld — this quantity has not been computed." : conf?.label ??
               (makeAtQty ? `±${Math.round(makeAtQty.est_error_band_pct)}% [assumption band] · not shop-validated` : "band withheld")}
           </p>
         </div>
@@ -1875,23 +1861,25 @@ function ResourceCost({
 
 function DecideHallmark({
   result,
+  selection,
   decision,
   setDecision,
   nav,
 }: {
   result: VerifyResult;
+  selection: ReturnType<typeof scrubSelection>;
   decision: CostDisposition | null;
   setDecision: (d: CostDisposition | null) => void;
   nav: Nav;
 }) {
   const toast = useToast();
   const saved = result.cost?.saved;
-  const est = result.cost ? makeNowEstimate(result.cost) : null;
-  const inhouseBlocked = routeDfmOutcome(
-    result.validation?.overall_verdict,
+  const est = selection.estimate;
+  const inhouseBlocked = !est || routeDfmOutcome(
+    routeScopedDfmVerdict(result.validation, est?.process),
     est,
   ).blocked;
-  const validated = est?.confidence?.validated ?? false;
+  const validated = selection.confidence?.validated ?? false;
   const decidedLabel = costDispositionLabel(decision);
   const [loadingSaved, setLoadingSaved] = useState(Boolean(saved?.id));
   const [saving, setSaving] = useState<
@@ -2194,11 +2182,13 @@ function DecideHallmark({
 
       <div style={{ marginTop: 16, borderTop: `1px solid #efeff2`, paddingTop: 14, display: "flex", alignItems: "center", gap: 14 }}>
         <div style={{ flex: 1 }}>
-          <ConfidenceBand validated={validated} pointFraction={0.5} />
+          {selection.exact && <ConfidenceBand validated={validated} pointFraction={0.5} />}
           <p style={{ margin: "7px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink45, lineHeight: 1.6 }}>
-            {validated
+            {est ? `${procLabel(est.process)} · qty ${NUM(selection.quantity)} · ` : ""}
+            {!selection.exact ? "Confidence withheld — this quantity has not been computed. The price is approximate."
+              : validated
               ? "this verdict is validated — checked against your actuals."
-              : "this verdict is unvalidated — an assumption band, not yet checked against your actuals · n=0. It firms up once your real costs come back."}
+              : "this verdict is unvalidated — an assumption band, not yet validated against your actuals. It firms up once your real costs come back."}
           </p>
         </div>
         <GhostButton onClick={() => nav("calibration")}>How estimates get validated →</GhostButton>

@@ -18,7 +18,22 @@
  */
 import type { CostReport } from "@/lib/api";
 
-import { unitCostByQty } from "./derive.ts";
+import { fractionToQty, makeNowEstimate, nearestQty, unitCostByQty } from "./derive.ts";
+
+/** The Verify walk shares the engine's nearest computed route. Only an exact
+ * quantity can carry its confidence; intermediate prices remain approximate. */
+export function scrubSelection(cost: CostReport, fraction: number) {
+  const quantities = cost.quantities.length ? cost.quantities : [1];
+  const min = Math.min(...quantities);
+  const max = Math.max(...quantities);
+  const quantity = fractionToQty(fraction, min, max);
+  const computedQuantity = nearestQty(quantities, quantity);
+  const estimate = makeNowEstimate(cost, computedQuantity);
+  const price = interpUnitCost(cost, estimate?.process, quantity, estimate?.material);
+  const exact = price.exact && estimate?.quantity === quantity;
+  const confidence = exact ? estimate?.confidence ?? null : null;
+  return { min, max, quantity, computedQuantity, estimate, price, exact, confidence };
+}
 
 export interface InterpPoint {
   /** the unit cost at the target qty — engine-exact at a point, interpolated
@@ -41,9 +56,10 @@ export interface InterpPoint {
 export function interpUnitCost(
   cost: CostReport,
   process: string | null | undefined,
-  qty: number
+  qty: number,
+  material?: string,
 ): InterpPoint {
-  const map = unitCostByQty(cost, process);
+  const map = unitCostByQty(cost, process, material);
   const qs = [...map.keys()].sort((a, b) => a - b);
   if (qs.length === 0) return { unit: null, lo: qty, hi: qty, exact: false, clamped: false };
 

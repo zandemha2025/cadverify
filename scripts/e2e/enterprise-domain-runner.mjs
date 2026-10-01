@@ -900,6 +900,10 @@ class EnterpriseDomainQA {
           rows.map((row) => (row.parentElement?.innerText || row.textContent || "").replace(/\s+/g, " ").trim())
         );
       const screenshot = await this.shot("cad-step-upload-result", true);
+      const initialPick = cost.decision?.recommendation?.["10000"];
+      assert(initialPick && text.replace(/\s+/g, " ").includes(
+        `${usdDisplay(initialPick.unit_cost_usd)}/unit on ${processDisplay(initialPick.process)} at qty 10,000`
+      ), "Verify headline did not follow the selected 10,000-unit recommendation");
       this.evidence.excludedVerification = {
         url: this.page.url(),
         screenshot: excludedScreenshot,
@@ -1467,6 +1471,10 @@ class EnterpriseDomainQA {
           rows.map((row) => (row.parentElement?.innerText || row.textContent || "").replace(/\s+/g, " ").trim())
         );
       const screenshot = await this.shot("VER-06-verify-stage-declared-context-seated", true);
+      const annualPick = cost.decision?.recommendation?.[String(annualVolume)];
+      assert(annualPick && exactText.replace(/\s+/g, " ").includes(
+        `${usdDisplay(annualPick.unit_cost_usd)}/unit on ${processDisplay(annualPick.process)} at qty 12,000`
+      ), "Verify endpoint/headline did not follow the computed annual quantity");
       this.evidence.productStageContext = {
         program: programName,
         parent_assembly: parentAssembly,
@@ -1753,6 +1761,19 @@ class EnterpriseDomainQA {
         state: "hidden",
         timeout: 20_000,
       });
+      // Changing quantity must not borrow the prototype process's calibration.
+      const quantityChoice = this.page.getByRole("combobox", { name: "Computed quantity", exact: true });
+      await quantityChoice.selectOption("100");
+      const at100 = servedCost.decision?.recommendation?.["100"];
+      const at100Estimate = servedEstimates.find((estimate) => estimate.quantity === 100 &&
+        estimate.process === at100?.process && estimate.material === at100?.material);
+      assert(at100Estimate, "calibration quantity check has no exact recommendation");
+      const at100Text = (await this.visibleText()).replace(/\s+/g, " ");
+      assert(at100Text.includes(`${usdDisplay(at100Estimate.unit_cost_usd)}/unit on ${processDisplay(at100Estimate.process)} at qty 100`),
+        "calibrated Verify headline remained on the prototype quantity");
+      assert(at100Text.includes(`${processDisplay(at100Estimate.process)} · qty 100 · this verdict is ${at100Estimate.confidence?.validated ? "validated" : "unvalidated"}`),
+        "quantity selection borrowed another process's calibration");
+      await quantityChoice.selectOption("1");
       const verdictPattern = selectedValidated
         ? /this verdict is validated — checked against your actuals/i
         : /this verdict is unvalidated — an assumption band/i;
@@ -1844,7 +1865,7 @@ class EnterpriseDomainQA {
     const rejectedText = rejected.visible_text || "";
     const exactText = exact.visible_text || "";
     const initialRecommendation = initial.cost?.decision?.recommendation?.["10000"] || null;
-    const exactRecommendation = exact.cost?.decision?.recommendation?.["10000"] || null;
+    const exactRecommendation = exact.cost?.decision?.recommendation?.[String(annualVolume)] || null;
     const annualRecommendation = exact.cost?.decision?.recommendation?.[String(annualVolume)] || null;
     const recommendationCard = (stage, recommendation) => {
       const process = processDisplay(recommendation?.process);
@@ -1937,7 +1958,7 @@ class EnterpriseDomainQA {
         ],
         actions: [
           "Open Verify, select Stainless, 120 °C, sour service, and 35 MPa, then upload cube.step.",
-          "Move the quantity scrubber to its 10,000-unit endpoint and read the displayed recommendation card.",
+          "Move the quantity scrubber to the computed endpoint: 10,000 initially and 12,000 after declaring annual demand; compare the headline and recommendation card.",
           "Persist annual_volume=12000, re-verify the same CAD, and inspect the returned six-point ladder and exact 12,000-unit recommendation.",
         ],
         observed: {
@@ -1958,6 +1979,7 @@ class EnterpriseDomainQA {
             initialQuantities: initial.cost?.quantities || [],
             annualQuantities: exact.cost?.quantities || [],
             selectedQuantity: 10000,
+            exactSelectedQuantity: annualVolume,
             selectedRecommendation: initialRecommendation || "missing",
             exactSelectedRecommendation: exactRecommendation || "missing",
             annualRecommendation: annualRecommendation || "missing",
@@ -1973,6 +1995,7 @@ class EnterpriseDomainQA {
           assertion("base quantity ladder", baseQuantityLadder, initial.cost?.quantities || [], sameArray(initial.cost?.quantities, baseQuantityLadder)),
           assertion("annual quantity ladder", annualQuantityLadder, exact.cost?.quantities || [], sameArray(exact.cost?.quantities, annualQuantityLadder)),
           assertion("selected quantity readout", "QUANTITY 10,000", initial.quantity_readout || "missing", /QUANTITY\s+10,000/i.test(initial.quantity_readout || "")),
+          assertion("annual quantity readout", "QUANTITY 12,000", exact.quantity_readout || "missing", /QUANTITY\s+12,000/i.test(exact.quantity_readout || "")),
           assertion(
             "initial selected recommendation card",
             `${processDisplay(initialRecommendation?.process)} and ${usdDisplay(initialRecommendation?.unit_cost_usd)}`,

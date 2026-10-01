@@ -134,12 +134,13 @@ export function toolingEstimate(
 /** qty → unit cost (USD) for a process, from the engine's estimates only. */
 export function unitCostByQty(
   cost: CostReport,
-  process: string | null | undefined
+  process: string | null | undefined,
+  material?: string,
 ): Map<number, number> {
   const out = new Map<number, number>();
   if (!process) return out;
   for (const e of cost.estimates) {
-    if (e.process === process && !e.environment_excluded) {
+    if (e.process === process && !e.environment_excluded && (!material || e.material === material)) {
       out.set(e.quantity, e.unit_cost_usd);
     }
   }
