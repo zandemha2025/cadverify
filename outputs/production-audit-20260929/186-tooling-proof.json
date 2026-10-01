@@ -1,0 +1,23 @@
+{
+  "issue": "File-axis maximum extent incorrectly changed tooling tiers and crossover when the same CAD part was rotated.",
+  "fix": "Tooling families share existing enclosing-box candidate size, normalized to6decimalmm for transform noise at tier boundaries; explicit source basis and model limitations retained. Saved max_bbox analogy features and raw geometry semantics unchanged.",
+  "engine_version": "0.3.44",
+  "controls_manifest": "185-diagonal-controls.json",
+  "artifacts": {
+    "186-checks.json": "57c5a0e7cfd1ed1e279570ad6a5437cadb07d890793940e32b7e0bd192490b69",
+    "186-saved-before.json": "fcf82544c559ab6f867f2cb66e262b0b6226a4e5af1fd1bacf5a9c51ff85a90e",
+    "186-saved-readback.json": "b86c67974b506e199896b8e66846b78ebfc0883810da11d34ba63747786d8df3",
+    "186-tooling-100-after.txt": "494b0890442cac2b2cd71bfce01af99b18edced54b204a236f437acd762bff8e",
+    "186-tooling-250-aligned-after.txt": "1d215da6a97405e5c33171137e96aac7b8bc0fde9728af2155248bbd28a24bc9",
+    "186-tooling-250-rotated-after.txt": "e64a2dd75f5be301e87812c2497f1fc6e76f0ba2364d85eda7087baf92f9b877",
+    "186-tooling-after.png": "e7d1dfa19e34f1da1195fc86ea97a30239ed8678cb72c5755371b74036835948",
+    "186-tooling-aligned-after.txt": "377a7eaa49d70ed70695ee0b3924fa628eefe23cceba058c573b3edb5db78e78",
+    "186-tooling-aligned-before.txt": "c96ca99f07d33ec1f485bb95d02c4ae239ca8089b17ad5d360815544f8efc7f6",
+    "186-tooling-before.png": "6e97a71068485424a91c12e8db84e75b69dc4683e803ca6cf795e16ef012a99d",
+    "186-tooling-decision-after.txt": "38d1e7df34c83a67e3c68664ef79555ae50c8526eba6bff105e529f6adaf16cf",
+    "186-tooling-export.json": "fe71dd06baa00b0d02660d90e9f8b1170bc1dbfd4e3c43841f0da6a11efe2f48",
+    "186-tooling-rotated-after.txt": "6792cd912c9d053d21a5167d9b0d36f0298fca160820733e7cc9fe5328b81c7f",
+    "186-tooling-rotated-before.txt": "a417b0f10a368793619733cf216a38c6ae45aa8bd40045b7e912ddc30158e4e4",
+    "186-verify-control-after.txt": "2c5bcdafa1f751cec70c1e8829bcbc126da4f2e68153399abdd7f7f12ea5017a"
+  }
+}

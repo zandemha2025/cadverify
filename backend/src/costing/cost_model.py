@@ -912,21 +912,27 @@ def cost_breakdown(process, drivers, material, material_class, qty,
             error_band_pct=band,
         ))
 
+    # Reuse the part's enclosing stock candidate, not its uploaded-axis box.
+    # Suppress transform roundoff at tier boundaries (six decimal places in mm).
+    tooling_size = round(max(drivers.billet_bbox_mm), 6) if drivers.billet_bbox_mm else drivers.max_bbox_mm
+    tooling_basis = drivers.billet_basis if drivers.billet_bbox_mm else "file-axis fallback"
+    # ponytail: size-tier proxy; a verified tool layout needs pull direction and allowances.
+    tooling_note = "[size proxy, tooling layout not verified; assumption, not shop-validated]"
     # ---- TOOLING (formative only; cavity + complexity, weakness #5) -----
     if process in FORMATIVE:
-        tooling_cost = rates.tooling_cost(process, drivers.max_bbox_mm, n_cavities, complexity)
+        tooling_cost = rates.tooling_cost(process, tooling_size, n_cavities, complexity)
         flat = rates.data.get("_tooling_flat", {}).get(process) is not None
         if flat:
             tool_src = "flat USER override (whole tool); ±60%, OVERRIDABLE"
         else:
             from src.costing.rates import family_to_size_tier
-            tier = family_to_size_tier(drivers.max_bbox_mm)
+            tier = family_to_size_tier(tooling_size)
             cav = float(n_cavities) ** rates.data["cavity_exponent"]
             comp = rates.data["complexity_factor"][complexity]
-            tool_src = (f"size tier {tier} (max bbox {drivers.max_bbox_mm:.0f}mm) "
+            tool_src = (f"size tier {tier} (enclosing box max {tooling_size}mm; {tooling_basis}) "
                         f"× {n_cavities} cav^{rates.data['cavity_exponent']:g} (={cav:.2f}) "
                         f"× {complexity} (={comp:.2f}) = ${tooling_cost:,.0f}; "
-                        f"±60%, OVERRIDABLE")
+                        f"±60%, OVERRIDABLE {tooling_note}")
         drivers_out.append(Driver(
             name="tooling_cost", value=round(tooling_cost, 2), unit="$",
             provenance=rates.prov_tag(f"tooling.{process.name}"),
@@ -936,13 +942,13 @@ def cost_breakdown(process, drivers, material, material_class, qty,
         # ---- TOOLING (casting pattern / wax die+shell / forging die) --------
         # Size-tier base × family multiplier × complexity. Ordering: sand pattern
         # < investment (wax die + shell) < forging die. Amortized over qty below.
-        tooling_cost = rates.casting_forging_tooling(process, drivers.max_bbox_mm, complexity)
+        tooling_cost = rates.casting_forging_tooling(process, tooling_size, complexity)
         flat = rates.data.get("_tooling_flat", {}).get(process) is not None
         if flat:
             tool_src = "flat USER override (whole tool); ±55%, OVERRIDABLE"
         else:
             from src.costing.rates import family_to_size_tier
-            tier = family_to_size_tier(drivers.max_bbox_mm)
+            tier = family_to_size_tier(tooling_size)
             if process in CASTING:
                 mult = rates.data["tooling_casting_mult"][process]
                 what = "pattern/core-box" if process == PT.SAND_CASTING else "wax die + ceramic shell"
@@ -950,10 +956,10 @@ def cost_breakdown(process, drivers, material, material_class, qty,
                 mult = rates.data["tooling_forging_mult"]
                 what = "hardened closed-die set"
             comp = rates.data["complexity_factor"][complexity]
-            tool_src = (f"{what}: size tier {tier} (max bbox {drivers.max_bbox_mm:.0f}mm) "
+            tool_src = (f"{what}: size tier {tier} (enclosing box max {tooling_size}mm; {tooling_basis}) "
                         f"× {mult:g} family-mult × {complexity} (={comp:.2f}) "
                         f"= ${tooling_cost:,.0f}; ±55%, OVERRIDABLE "
-                        f"[assumption, not shop-validated]")
+                        f"{tooling_note}")
         drivers_out.append(Driver(
             name="tooling_cost", value=round(tooling_cost, 2), unit="$",
             provenance=rates.prov_tag(f"tooling.{process.name}"),
