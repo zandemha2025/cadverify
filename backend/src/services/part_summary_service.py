@@ -111,8 +111,13 @@ def _binding_failure(fails: list) -> Optional[dict]:
 
 def _need_of(f: dict):
     """Split a FitFailure ``need`` into (numeric, label): a number → the numeric
-    requirement (envelope mm / mass kg / IT grade / axes / ...); a string (e.g. a
+    requirement (mass kg / IT grade / axes / ...); envelope evidence keeps its
+    labeled geometric basis instead of becoming a machine dimension. A string (e.g. a
     material name) → the categorical label; else (None, None)."""
+    if f.get("gate") == "envelope":
+        # Width/diameter bounds and legacy axis gaps cannot be pooled into one
+        # dimension that supposedly specifies a fitting replacement machine.
+        return None, f.get("human") or "Envelope fit requires a verified XYZ setup."
     need = f.get("need")
     if isinstance(need, bool):
         return None, str(need)

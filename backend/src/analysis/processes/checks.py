@@ -21,7 +21,7 @@ import numpy as np
 from src.analysis.citations import parse_citation
 from src.analysis.serialization import format_measurement
 from src.analysis.constants import STANDARD_GAUGES, SHEET_GAUGE_MIN_MM, SHEET_GAUGE_MAX_MM
-from src.analysis.context import GeometryContext, fitting_box_dimensions, wall_thickness_tolerance
+from src.analysis.context import GeometryContext, fitting_box_dimensions, wall_thickness_tolerance, envelope_nonfit_bound
 from src.analysis.features.base import (
     Feature,
     FeatureKind,
@@ -222,6 +222,7 @@ def check_build_volume(
     if not exceeds and all(d + precision <= cap + tolerance for d, cap in zip(dims, max_dims_mm)):
         return []
     uncertain = bool(precision and not exceeds)
+    bound = None
     if process != ProcessType.CNC_TURNING and not ctx.metadata.get("decimation", {}).get("succeeded"):
         enclosing, basis = ctx.enclosing_box
         fitting = fitting_box_dimensions(enclosing, tuple(cap + tolerance for cap in max_dims_mm))
@@ -248,12 +249,25 @@ def check_build_volume(
         uncertain = uncertain or bool(precision and fitting_box_dimensions(
             tuple(d - 2 * precision for d in enclosing),
             tuple(cap + tolerance for cap in max_dims_mm)) is not None)
+        bound = envelope_nonfit_bound(
+            tuple(d - precision for d in enclosing),
+            tuple(cap + tolerance for cap in max_dims_mm), ctx.minimum_width_bound, precision)
     if uncertain:
         return [Issue(
             code="BUILD_ENVELOPE_PRECISION", severity=Severity.WARNING, process=process,
             message=(f"Source-coordinate rounding (enclosing dimensions up to ±{precision:.3g}mm) "
                      f"overlaps the {max_dims_mm}mm envelope for {process.value}; fit remains uncertain."),
             fix_suggestion="Confirm dimensions and the planned orientation in source CAD, or use a larger machine.",
+            citation=parse_citation(cite),
+        )]
+    if process != ProcessType.CNC_TURNING:
+        return [Issue(
+            code="EXCEEDS_BUILD_VOLUME" if bound else "BUILD_ENVELOPE_UNVERIFIED",
+            severity=Severity.ERROR, process=process,
+            message=(bound[3] if bound else
+                     f"No fitting setup established for the {max_dims_mm}mm envelope for {process.value}. "
+                     "The limited geometry/orientation check does not prove the part is too large."),
+            fix_suggestion="Verify the full XYZ setup in source CAD, including tool access, supports and fixtures.",
             citation=parse_citation(cite),
         )]
     return [Issue(

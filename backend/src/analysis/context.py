@@ -184,6 +184,44 @@ def fitting_box_dimensions(box, envelope) -> tuple[float, ...] | None:
     return min(candidates, key=height_order, default=None)
 
 
+def minimum_width_lower_bound(mesh: trimesh.Trimesh) -> float:
+    """A sphere inside the convex hull bounds the part's width in every direction."""
+    try:
+        hull = mesh.convex_hull
+        if not hull.is_volume:
+            return 0.0
+        # ponytail: sphere at the hull centroid; not the exact minimum caliper width.
+        distances = np.einsum("ij,ij->i", hull.triangles_center - hull.center_mass, hull.face_normals)
+        diameter = 2 * float(distances.min())
+        return max(0.0, diameter) if np.isfinite(diameter) else 0.0
+    except Exception:
+        logger.warning("Minimum-width bound unavailable", exc_info=True)
+        return 0.0
+
+
+def envelope_nonfit_bound(box, envelope, minimum_width=0.0, precision=0.0):
+    """Necessary geometric bounds; never infer non-fit from a failed box search.
+
+    box is a tight measured projection, without source-error padding. A source
+    coordinate error of precision/2 per axis moves a vertex by at most sqrt(3)
+    times that amount; allow both ends of every measured span.
+    """
+    if len(box) != 3 or len(envelope) != 3 or any(
+        not np.isfinite(v) or v <= 0 for v in (*box, *envelope)
+    ):
+        return None
+    error = np.sqrt(3) * precision
+    for axis, need, have, label, capacity in (
+        ("minimum_width_mm", minimum_width - error, min(envelope), "minimum width", "smallest chamber span"),
+        ("diameter_mm", max(box) - error, np.linalg.norm(envelope), "diameter", "chamber diagonal"),
+    ):
+        if need > have:
+            human = (f"Part {label} is at least {need:.9g}mm > {capacity} {have:.9g}mm. "
+                     "This necessary bound is not a machine specification; verify the full XYZ setup.")
+            return axis, float(need), float(have), human
+    return None
+
+
 @dataclass
 class GeometryContext:
     """Precomputed, shared geometry state handed to every ProcessAnalyzer."""
@@ -228,6 +266,10 @@ class GeometryContext:
     @cached_property
     def enclosing_box(self):
         return enclosing_box_dimensions(self.mesh)
+
+    @cached_property
+    def minimum_width_bound(self):
+        return minimum_width_lower_bound(self.mesh)
 
     @cached_property
     def flat_sheet_geometry(self):

@@ -1,0 +1,267 @@
+- navigation "Domains":
+  - link "ProofShape":
+    - /url: /verify
+  - link "Verify workspace":
+    - /url: /verify
+  - link "Design Studio":
+    - /url: /designs
+  - link "Should-cost":
+    - /url: /cost
+  - link "Analyze DFM":
+    - /url: /analyze
+  - link "Batch runs":
+    - /url: /batch
+  - link "Cost decisions":
+    - /url: /cost-decisions
+  - link "Recent analyses":
+    - /url: /history
+  - button "Switch to dark theme":
+- complementary:
+  - button "Search… K":
+    - generic: Search…
+    - text: K
+  - paragraph: Workspace
+  - link "Verify workspace":
+    - /url: /verify
+    - generic: Verify workspace
+  - link "Design Studio":
+    - /url: /designs
+    - generic: Design Studio
+  - link "Should-cost workspace":
+    - /url: /cost
+    - generic: Should-cost workspace
+  - link "Analyze DFM":
+    - /url: /analyze
+    - generic: Analyze DFM
+  - link "Batch run":
+    - /url: /batch
+    - generic: Batch run
+  - paragraph: Ledger
+  - link "Cost decisions":
+    - /url: /cost-decisions
+    - generic: Cost decisions
+  - link "Compare A/B":
+    - /url: /cost-decisions/compare
+    - generic: Compare A/B
+  - link "RFQ packages":
+    - /url: /rfq-packages
+    - generic: RFQ packages
+  - link "Recent analyses":
+    - /url: /history
+    - generic: Recent analyses
+  - link "Integrations":
+    - /url: /integrations
+    - generic: Integrations
+  - link "API & docs":
+    - /url: /settings/developer
+    - generic: API & docs
+  - link "Security":
+    - /url: /settings/security
+    - generic: Security
+  - link "Organization":
+    - /url: /settings/organization
+    - generic: Organization
+  - paragraph: One governed object model · a Decision contains Estimates.
+- banner:
+  - button "Collapse sidebar":
+  - navigation "Breadcrumb":
+    - generic: workspace
+    - generic: verify
+  - button "Search and jump to a workspace":
+    - generic: Jump…
+    - generic: ⌘K
+  - link "Notifications":
+    - /url: /notifications
+  - button "Account":
+- main:
+  - navigation "Verify workspace sections":
+    - button "Home":
+      - generic: Home
+    - button "Verify":
+      - generic: Verify
+    - button "Fit in context":
+      - generic: Fit in context
+    - button "Parts":
+      - generic: Parts
+    - button "Records":
+      - generic: Records
+    - button "Programs":
+      - generic: Programs
+    - button "Your machines":
+      - generic: Your machines
+    - button "Triage":
+      - generic: Triage
+    - button "Calibration & truth":
+      - generic: Calibration & truth
+    - button "Default rate card — open Calibration & truth"
+    - button "Default rate card (v0) · none authored":
+      - generic: Default rate card (v0) · none authored
+    - button "Start here"
+    - button "Open Verify command palette":
+      - text: Jump
+      - generic: ⌘K
+    - button "Check my CAD"
+  - main:
+    - heading "Triage at scale" [level=1]
+    - paragraph: 65 parts, each walked through the same verification. The catalog collapses into honest makeability buckets — no part is scored without a reason you can open.
+    - paragraph: 7 verdict(s) predate a recent machine-inventory change and are marked stale (counted above, never hidden); re-cost the affected parts to refresh their in-house verdict.
+    - generic "Makeable in-house — 34 of 65": 34 · makeable in-house
+    - generic "Makeable outside — 15 of 65": 15 · makeable outside
+    - generic "Needs new capability — 10 of 65": 10 · needs new capability
+    - generic "Evaluation required — 6 of 65": 6 · evaluation required
+    - button "34 Makeable in-house Verified against your envelopes, materials, and physics. Marginal-costed on owned machines. 52% · open its verdicts":
+      - paragraph: "34"
+      - paragraph: Makeable in-house
+      - paragraph: Verified against your envelopes, materials, and physics. Marginal-costed on owned machines.
+      - paragraph: 52% · open its verdicts
+    - button "15 Makeable outside No owned route passes, but a standard process does. Candidates for the supplier book. 23% · open its verdicts":
+      - paragraph: "15"
+      - paragraph: Makeable outside
+      - paragraph: No owned route passes, but a standard process does. Candidates for the supplier book.
+      - paragraph: 23% · open its verdicts
+    - button "10 Needs new capability Feasible only on equipment you don't own — each carries its acquisition consideration. 15% · open — showing verdicts":
+      - paragraph: "10"
+      - paragraph: Needs new capability
+      - paragraph: Feasible only on equipment you don't own — each carries its acquisition consideration.
+      - paragraph: 15% · open — showing verdicts
+    - button "0 Not makeable as drawn Fails physics on every route, with the measured blocker named. Redesign targets. 0% · open its verdicts":
+      - paragraph: "0"
+      - paragraph: Not makeable as drawn
+      - paragraph: Fails physics on every route, with the measured blocker named. Redesign targets.
+      - paragraph: 0% · open its verdicts
+    - button "6 Evaluation required":
+      - generic: "6"
+      - generic: Evaluation required
+    - paragraph: Needs new capability — 10 parts
+    - generic: each row opens its verdict · whole inventory
+    - button "✕"
+    - generic: 185-diagonal-400-aligned.step
+    - generic: owns the family, no machine fits · route SLS (Powder) · envelope gap
+    - button "Open part standing →"
+    - generic: 185-diagonal-400-rotated.step
+    - generic: owns the family, no machine fits · route SLS (Powder) · envelope gap
+    - button "Open part standing →"
+    - generic: 155-plate-transformed-0.79999.step
+    - generic: owns the family, no machine fits · route SLS (Powder) · envelope gap
+    - button "Open part standing →"
+    - generic: 155-plate-transformed-0.8.step
+    - generic: owns the family, no machine fits · route SLS (Powder) · envelope gap
+    - button "Open part standing →"
+    - generic: 155-plate-300x200x0.81.step
+    - generic: owns the family, no machine fits · route Sheet Metal · envelope gap
+    - button "Open part standing →"
+    - generic: 155-plate-300x200x0.05.step
+    - generic: owns the family, no machine fits · route Sheet Metal · envelope gap
+    - button "Open part standing →"
+    - generic: 155-plate-300x200x0.79.step
+    - generic: owns the family, no machine fits · route Sheet Metal · envelope gap
+    - button "Open part standing →"
+    - generic: box-inch.igs
+    - generic: owns the family, no machine fits · route CNC 3-Axis · material gap · verdict STALE — re-cost to refresh
+    - button "Open part standing →"
+    - generic: costable-v2-mm.stl
+    - generic: owns the family, no machine fits · route MJF (HP) · material gap · verdict STALE — re-cost to refresh
+    - button "Open part standing →"
+    - generic: nist_ftc_07_asme1_rd.stp
+    - generic: owns the family, no machine fits · route WAAM · material gap · verdict STALE — re-cost to refresh
+    - button "Open part standing →"
+    - paragraph: THE CAPABILITY INVESTMENT, RANKED
+    - paragraph:
+      - text: "Capability to investigate first: CNC Milling (5-axis) could address"
+      - generic: 9 currently-blocked parts
+      - text: . Verify the proposed machine against each part before purchase.
+    - button "① Acquire CNC Milling (5-axis) 9 parts to review ▸":
+      - generic: ①
+      - generic: Acquire CNC Milling (5-axis)
+      - generic: 9 parts to review
+      - generic: ▸
+    - button "#2 Upgrade to FDM 3D Printing — an XYZ work envelope, verified against each part and its planned setup 7 parts to review ▾" [active]:
+      - generic: "#2"
+      - text: Upgrade to FDM 3D Printing
+      - generic: — an XYZ work envelope, verified against each part and its planned setup
+      - generic: 7 parts to review
+      - generic: ▾
+    - generic: 185-diagonal-400-aligned.step
+    - generic: owns the family, no machine fits · route SLS (Powder) · envelope gap
+    - button "Open part standing →"
+    - generic: 185-diagonal-400-rotated.step
+    - generic: owns the family, no machine fits · route SLS (Powder) · envelope gap
+    - button "Open part standing →"
+    - generic: 155-plate-transformed-0.79999.step
+    - generic: owns the family, no machine fits · route SLS (Powder) · envelope gap
+    - button "Open part standing →"
+    - generic: 155-plate-transformed-0.8.step
+    - generic: owns the family, no machine fits · route SLS (Powder) · envelope gap
+    - button "Open part standing →"
+    - generic: 155-plate-300x200x0.81.step
+    - generic: owns the family, no machine fits · route Sheet Metal · envelope gap
+    - button "Open part standing →"
+    - generic: 155-plate-300x200x0.05.step
+    - generic: owns the family, no machine fits · route Sheet Metal · envelope gap
+    - button "Open part standing →"
+    - generic: 155-plate-300x200x0.79.step
+    - generic: owns the family, no machine fits · route Sheet Metal · envelope gap
+    - button "Open part standing →"
+    - button "Open acquisition consideration →"
+    - button "#3 Acquire CNC Turning 4 parts to review ▸":
+      - generic: "#3"
+      - generic: Acquire CNC Turning
+      - generic: 4 parts to review
+      - generic: ▸
+    - button "#4 Upgrade to CNC Milling (3-axis) — qualified for 6061-T6 Aluminum, Delrin (POM) 3 parts to review 3 STALE ▸":
+      - generic: "#4"
+      - text: Upgrade to CNC Milling (3-axis)
+      - generic: — qualified for 6061-T6 Aluminum, Delrin (POM)
+      - generic: 3 parts to review
+      - generic "some of these verdicts predate a machine change": 3 STALE
+      - generic: ▸
+    - button "#5 Acquire Directed Energy Deposition 1 parts to review ▸":
+      - generic: "#5"
+      - generic: Acquire Directed Energy Deposition
+      - generic: 1 parts to review
+      - generic: ▸
+    - button "#6 Acquire MJF 3D Printing 1 parts to review ▸":
+      - generic: "#6"
+      - generic: Acquire MJF 3D Printing
+      - generic: 1 parts to review
+      - generic: ▸
+    - paragraph: ranked by parts to review, from stored per-part gaps · proposed machines and setups still need verification · no purchase-price estimate
+    - paragraph: every bucket count opens into its verdicts · buckets sum to 65 — a projection of the verification the cost path already computed, never re-invented
+    - paragraph: DECLARED INVENTORY · IMPORTED BOM
+    - generic: user-declared parts · no geometry yet, so not costed
+    - button "Import / re-import BOM"
+    - paragraph: 3 declared parts · none have geometry yet — all 3 await a part upload before they can be costed.
+    - paragraph: "3"
+    - paragraph: declared parts
+    - paragraph: "0"
+    - paragraph: with geometry (costed above)
+    - paragraph: "3"
+    - paragraph: awaiting geometry
+    - generic: "3"
+    - generic: (unassigned)
+    - paragraph: Declared · awaiting geometry — 3 parts
+    - generic: declared facts only · no cost, no make-vs-buy, no verdict
+    - generic: AUDIT-094-AFTER
+    - generic: Valid after rejected row
+    - generic: qty 3
+    - generic "A declared part has no geometry to cost. Upload the part to cost it.":
+      - generic: ○
+      - text: awaiting geometry
+    - generic: AUDIT-094-BEFORE
+    - generic: Valid before rejected row
+    - generic: qty 2
+    - generic "A declared part has no geometry to cost. Upload the part to cost it.":
+      - generic: ○
+      - text: awaiting geometry
+    - generic: LIB-054
+    - generic: Library audit cube corrected
+    - generic: aluminum
+    - generic "A declared part has no geometry to cost. Upload the part to cost it.":
+      - generic: ○
+      - text: awaiting geometry
+    - paragraph:
+      - text: declared rows are user-declared inventory facts — never a cost or make-vs-buy claim. A declared part must have uploaded geometry before it can be costed;
+      - button "verify a part →"
+      - text: "and it moves into the makeability buckets above. Geometry match: normalized-stem, exact."
+- region "Notifications alt+T"
+- alert

@@ -154,7 +154,9 @@ def test_makeable_not_on_owned_carries_concrete_gap():
     g0 = v["gap"][0]
     assert g0["gate"] == "envelope"
     assert g0["have"] is not None and g0["need"] is not None  # quantified
-    assert g0["have"] == 20  # cites the owned machine's real envelope
+    assert g0["axis"] == "minimum_width_mm"
+    assert g0["have"] == pytest.approx(20)  # smallest chamber span, with numeric tolerance
+    assert g0["need"] == pytest.approx(25)  # inscribed diameter of the 40×30×25 solid
 
 
 def test_makeable_outsource_only_when_family_unowned():

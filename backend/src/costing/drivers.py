@@ -14,7 +14,7 @@ import numpy as np
 import trimesh
 
 from src.analysis.constants import SHEET_GAUGE_MAX_MM
-from src.analysis.context import enclosing_box_dimensions, flat_sheet_geometry, wall_thickness_tolerance
+from src.analysis.context import enclosing_box_dimensions, flat_sheet_geometry, wall_thickness_tolerance, minimum_width_lower_bound
 from src.analysis.context import fitting_box_dimensions as build_orientation
 from src.costing.routing import is_rotational
 
@@ -54,6 +54,7 @@ class GeoDrivers:
     billet_bbox_mm: tuple | None = None  # enclosing oriented stock candidate, not a certified minimum
     billet_basis: str = "file-axis fallback"
     bbox_precision_mm: float = 0.0  # enclosing-dimension uncertainty, both sides
+    minimum_width_bound_mm: float = 0.0  # hull-sphere diameter, before source-error allowance
 
     # ---- derived (MEASURED) ---------------------------------------------
     def mass_kg(self, density_g_cm3: float) -> float:
@@ -232,4 +233,5 @@ def extract_drivers(geometry, mesh, features=None) -> GeoDrivers:
         billet_bbox_mm=billet_bbox_mm,
         billet_basis=billet_basis,
         bbox_precision_mm=2 * float(mesh.metadata.get("coordinate_error", 0.0)),
+        minimum_width_bound_mm=minimum_width_lower_bound(mesh),
     )

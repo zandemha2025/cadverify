@@ -15,6 +15,43 @@ from src.costing.routing import select_material
 from tests.test_costing_model import _analyze
 
 
+def test_envelope_failure_requires_geometric_evidence_and_named_bounds():
+    from math import sqrt
+    from src.analysis.processes.checks import check_build_volume
+    from tests.test_analyzers import _build_ctx
+
+    material = select_material(PT.FDM, "polymer", build_rate_card())
+    machine = MachineCap(process="fdm", name="200mm cube", max_workpiece_kg=5,
+                         materials=("polymer",), hourly_rate_usd=10,
+                         capabilities={"x": 200, "y": 200, "z": 200})
+    bar = _build_ctx(trimesh.creation.box(extents=(400, 12, 12)))
+    fit = fit_machine(part_req_from_drivers(PT.FDM, extract_drivers(bar.info, bar.mesh, bar.features),
+                                            material, "standard"), machine)
+    failure = next(f for f in fit.failures if f.gate == "envelope")
+    assert failure.axis == "diameter_mm"
+    assert failure.need == pytest.approx(400)
+    assert failure.have == pytest.approx(sqrt(3)*200, abs=.01)
+    assert "diagonal" in failure.human and "not a machine specification" in failure.human
+
+    # The round disk has a proved tilted placement even though its enclosing
+    # rectangular box search fails: XYZ = diameter*sqrt(2/3) + height/sqrt(3).
+    assert 220*sqrt(2/3) + 8/sqrt(3) < 200
+    disk = _build_ctx(trimesh.creation.cylinder(radius=110, height=8, sections=64))
+    issues = check_build_volume(disk, (200, 200, 200), PT.FDM)
+    assert not any(i.code == "EXCEEDS_BUILD_VOLUME" for i in issues)
+    assert any(i.code == "BUILD_ENVELOPE_UNVERIFIED" for i in issues)
+    fit = fit_machine(part_req_from_drivers(PT.FDM, extract_drivers(disk.info, disk.mesh, disk.features),
+                                            material, "standard"), machine)
+    assert not fit.passes
+    assert all(f.have is None for f in fit.failures if f.gate == "envelope")
+
+    # A cube's inscribed sphere proves excess independently of its upload axes.
+    cube = trimesh.creation.box(extents=(300.1,)*3)
+    cube.apply_transform(trimesh.transformations.rotation_matrix(.71, (1, 2, 3)))
+    issues = check_build_volume(_build_ctx(cube), (300, 300, 350), PT.FDM)
+    assert any(i.code == "EXCEEDS_BUILD_VOLUME" and "minimum width" in i.message for i in issues)
+
+
 def test_body_diagonal_bar_fit_uses_the_same_height_in_dfm_inventory_and_price():
     import numpy as np
     from math import sqrt

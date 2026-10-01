@@ -1,0 +1,77 @@
+{
+  "engine_version": "0.3.46",
+  "red": {
+    "failed": 1,
+    "case": "400mm bar gap compared an edge to an edge instead of a necessary geometric bound"
+  },
+  "focused": {
+    "passed": 163,
+    "environment_skips": 6,
+    "seconds": 4.59,
+    "note": "Focused run lacked database; the full run below covers those tests."
+  },
+  "backend_full": {
+    "passed": 2838,
+    "skipped": 3,
+    "seconds": 252.9,
+    "skip_policy_enforced": true,
+    "skips": [
+      "real corpus manifest absent",
+      "OCP XDE unavailable (two tests)"
+    ]
+  },
+  "final_wording_check": {
+    "passed": 26,
+    "seconds": 0.48,
+    "scope": "After the full run, the catalog sentence changed from larger XYZ to an XYZ envelope; all projection tests including real Postgres passed."
+  },
+  "frontend_final": {
+    "passed": 528,
+    "typescript": "PASS",
+    "eslint_changed_files": "PASS",
+    "production_build": "PASS",
+    "note": "Final rerun includes wrapping long fit evidence and corrected acquisition qualification."
+  },
+  "trap": {
+    "ordinary_passed": 29,
+    "known_unit_gap": 1
+  },
+  "pyright": {
+    "baseline_errors": 58,
+    "final_errors": 58,
+    "new_errors": 0,
+    "scope": "Seven touched files; existing diagnostics include local unresolved imports. Exact revision CI remains required."
+  },
+  "bandit": {
+    "baseline_low": 4,
+    "final_low": 4,
+    "new_findings": 0
+  },
+  "native": {
+    "unique_STEP_files": 5,
+    "analyze_cases": 4,
+    "verify_cases": 3,
+    "all_previews_ready": true,
+    "disk_false_failure_removed": true,
+    "disk_shape_fit_still_unverified": true,
+    "disk_false_acquisition_gap_removed": true,
+    "true_400mm_bar_failure": "part diameter lower bound 400mm > chamber diagonal 346.410162mm",
+    "fdm_400mm_usd": 127.05,
+    "sla_250mm_usd": 186.98,
+    "owned_250mm_usd": 38.22,
+    "long_messages_wrap": true,
+    "throttle_recovery": "Visible retry succeeded after 5-second upload throttle",
+    "triage": "XYZ setup qualification and parts-to-review labels; no scalar replacement-machine dimension",
+    "acquisition": "Without an active cost record, explicit no-decision state; valid part opens its real tooling consideration. No matching IM ranking rows to exercise changed count label natively."
+  },
+  "integrity": {
+    "historical_records_unchanged": {
+      "analyses": 161,
+      "cost_decisions": 176
+    },
+    "existing_estimates_unchanged": 176,
+    "non_build_analysis_controls_unchanged": 5,
+    "geometry_controls_unchanged": 12
+  },
+  "scope": "Necessary geometric non-fit bounds and honest unknowns. Disk positive placement, general orientation completeness, real external validation and production rollout remain unfinished."
+}

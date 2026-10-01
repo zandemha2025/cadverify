@@ -306,7 +306,7 @@ function FullConsideration({
               <div key={`${r.acquisition.process}-${r.acquisition.gate ?? "gate"}`} style={{ display: "flex", gap: 10, alignItems: "center" }}>
                 <span style={{ color: C.shop }}>{r.acquisition.process_label}</span>
                 <span style={{ color: C.ink45, flex: 1 }}>{r.acquisition.gate ?? r.acquisition.kind}</span>
-                <span style={{ color: C.ink }}>{NUM(r.parts_unlocked)} part{r.parts_unlocked === 1 ? "" : "s"} unlocked</span>
+                <span style={{ color: C.ink }}>{NUM(r.parts_unlocked)} part{r.parts_unlocked === 1 ? "" : "s"} to review</span>
               </div>
             ))}
           </div>

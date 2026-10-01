@@ -28,7 +28,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from src.analysis.models import ProcessType
-from src.analysis.context import fitting_box_dimensions, sheet_envelope_dimensions
+from src.analysis.context import fitting_box_dimensions, sheet_envelope_dimensions, envelope_nonfit_bound
 from src.costing.rates import (
     MATERIAL_FAMILY,
     normalize_tolerance_class,
@@ -92,6 +92,7 @@ class PartReq:
     geometry_tolerance_mm: float = 0.0  # numerical measurement noise only
     geometry_precision_mm: float = 0.0  # source uncertainty; near-limit fit is unknown
     sheet_outline_xy: tuple = ()
+    minimum_width_bound_mm: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -315,6 +316,7 @@ def part_req_from_drivers(process, drivers, material, tolerance_class,
                                float(getattr(drivers, "bbox_precision_mm", 0.0))),
         sheet_outline_xy=(getattr(drivers, "sheet_outline_xy", ())
                           if pt == ProcessType.SHEET_METAL else ()),
+        minimum_width_bound_mm=float(getattr(drivers, "minimum_width_bound_mm", 0.0)),
     )
 
 
@@ -401,6 +403,16 @@ def _envelope_failures(part: PartReq, cap: dict) -> list:
                 "envelope", "envelope", tuple(need), None,
                 f"STL coordinate uncertainty ±{part.geometry_precision_mm:.3g}mm overlaps the declared "
                 f"{tuple(env)}mm envelope; confirm fit using source CAD")]
+        bound = envelope_nonfit_bound(need, limits, part.minimum_width_bound_mm,
+                                      part.geometry_precision_mm)
+        if bound is not None:
+            axis, measured, capacity, human = bound
+            return [FitFailure("envelope", axis, measured, capacity, human)]
+        return [FitFailure(
+            "envelope", "orientation", tuple(need), None,
+            f"No fitting placement established for the {tuple(need)}mm enclosing box in the "
+            f"{tuple(env)}mm envelope. This limited search does not prove the part is too large; "
+            "verify the planned XYZ setup.")]
     if part.geometry_precision_mm and kind == "sheet" and part.sheet_outline_xy:
         smaller = [d - part.geometry_precision_mm for d in env]
         if all(d > 0 for d in smaller):

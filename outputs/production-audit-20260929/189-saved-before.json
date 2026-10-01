@@ -1,0 +1,26 @@
+{
+  "source_version": "0.3.45",
+  "historical_frozen": {
+    "analyses": 161,
+    "cost_decisions": 176
+  },
+  "control_ids": {
+    "analyses": [
+      1973,
+      1974,
+      1975,
+      1976,
+      1977
+    ],
+    "cost_decisions": [
+      6791,
+      6792,
+      6793,
+      6795,
+      6796,
+      6794,
+      6797
+    ]
+  },
+  "disk_source_sha256": "be9c7d7416c282a51dfa30810ba328fc9663818f08f70ccf61b0f4fd81d028af"
+}

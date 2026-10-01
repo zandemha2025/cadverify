@@ -1,0 +1,213 @@
+{
+  "engine_version": "0.3.46",
+  "historical_records_unchanged": {
+    "analyses": 161,
+    "cost_decisions": 176
+  },
+  "analyses": [
+    {
+      "file": "185-diagonal-400-aligned.step",
+      "before_id": 1973,
+      "after_id": 2019,
+      "after_ulid": "01M3VY6F1HXCZVXZ3ECY1D7Z56",
+      "source_sha256": "371183e88be773707608dd1ec6d1c482f08587f860d38681977981981f00cd0d",
+      "result_sha256": "69010daf52987288649a3f82edf2253dcd8a60c71c641f7b4e0a813bf12d9d4f",
+      "geometry_unchanged": true,
+      "non_build_findings_features_scores_unchanged": true
+    },
+    {
+      "file": "185-diagonal-400-rotated.step",
+      "before_id": 1974,
+      "after_id": 2020,
+      "after_ulid": "01M3VYA2VSZTF39XK3TEGJ8A24",
+      "source_sha256": "2df0dd341770d412681691fd91684e0f419fccd7d6303896acb93033bbcc8e79",
+      "result_sha256": "0858344bc4d3d96c75e02fcacd8c1a848d0dc65729a2ebf329162f1bbe2a9fde",
+      "geometry_unchanged": true,
+      "non_build_findings_features_scores_unchanged": true
+    },
+    {
+      "file": "185-diagonal-250-aligned.step",
+      "before_id": 1975,
+      "after_id": 2021,
+      "after_ulid": "01M3VYAS6H29WEGKGP8KDZNRNQ",
+      "source_sha256": "1cf567ced6e3e19f44988d5ba3d919ad446d81c5df4fd4a790a6e49d35e5a1e7",
+      "result_sha256": "02576c84810b7437d0ddad541b5b4a1207911eeedcace941f28498d4ade20bce",
+      "geometry_unchanged": true,
+      "non_build_findings_features_scores_unchanged": true
+    },
+    {
+      "file": "185-diagonal-250-rotated.step",
+      "before_id": 1976,
+      "after_id": 2022,
+      "after_ulid": "01M3VYBFGR1M1ECRA9EN6M1GGV",
+      "source_sha256": "8d844d03f0c07068b1786da495b17771db3288b86c0e9f790d28c5e25ec33a42",
+      "result_sha256": "5318b15f92d73dde57a760c014177973720c52db52ca643b039402be0291be63",
+      "geometry_unchanged": true,
+      "non_build_findings_features_scores_unchanged": true
+    },
+    {
+      "file": "189-disk-220x8.step",
+      "before_id": 1977,
+      "after_id": 2018,
+      "after_ulid": "01M3VY5SF4G8NCFSPSGCFCJV09",
+      "source_sha256": "be9c7d7416c282a51dfa30810ba328fc9663818f08f70ccf61b0f4fd81d028af",
+      "result_sha256": "1e5ca4190e935596633e1496c68c7098a2a40c37a24f7eade6b742706a25fe34",
+      "geometry_unchanged": true,
+      "non_build_findings_features_scores_unchanged": true
+    }
+  ],
+  "cost_decisions": [
+    {
+      "file": "185-diagonal-400-aligned.step",
+      "before_id": 6791,
+      "after_id": 6968,
+      "after_ulid": "01M3VY6F4HPZQVJECJR7CJX548",
+      "source_sha256": "371183e88be773707608dd1ec6d1c482f08587f860d38681977981981f00cd0d",
+      "result_sha256": "ec61db8bbc289efda64ef6799bf4eac54f855e54dabccf8b73f6e7c6ee092b65",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100
+      ],
+      "existing_estimates_unchanged": 12
+    },
+    {
+      "file": "185-diagonal-400-rotated.step",
+      "before_id": 6792,
+      "after_id": 6969,
+      "after_ulid": "01M3VYA2Z0HBV3SNHEQQET0CWP",
+      "source_sha256": "2df0dd341770d412681691fd91684e0f419fccd7d6303896acb93033bbcc8e79",
+      "result_sha256": "a9b89619ebc9d7db81ce9ada16afb81018922d710b13fc0b9c6fcc090bc05394",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100
+      ],
+      "existing_estimates_unchanged": 12
+    },
+    {
+      "file": "185-diagonal-250-aligned.step",
+      "before_id": 6793,
+      "after_id": 6970,
+      "after_ulid": "01M3VYASA1QXMFKGMVKQ1PZASW",
+      "source_sha256": "1cf567ced6e3e19f44988d5ba3d919ad446d81c5df4fd4a790a6e49d35e5a1e7",
+      "result_sha256": "bc3c6cd7c7cb794a9b953352b6b9ba17e2cd0d874520386a50ac2030eece1e46",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100
+      ],
+      "existing_estimates_unchanged": 16
+    },
+    {
+      "file": "185-diagonal-250-rotated.step",
+      "before_id": 6795,
+      "after_id": 6971,
+      "after_ulid": "01M3VYBFMFGJ5EA6A8XK11Z08K",
+      "source_sha256": "8d844d03f0c07068b1786da495b17771db3288b86c0e9f790d28c5e25ec33a42",
+      "result_sha256": "9169ba00fd70519c2aa1fa611d69217d9d80e7ee99707af36c956b74f5bc2ea7",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100
+      ],
+      "existing_estimates_unchanged": 16
+    },
+    {
+      "file": "185-diagonal-250-aligned.step",
+      "before_id": 6796,
+      "after_id": 6973,
+      "after_ulid": "01M3VYDH9ZXMBKEK0ENTCHQ4QG",
+      "source_sha256": "1cf567ced6e3e19f44988d5ba3d919ad446d81c5df4fd4a790a6e49d35e5a1e7",
+      "result_sha256": "3ad5b32dcae7602954c03428d0b7c60b867533f63993513bb62cbabd5bcbb7a1",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100,
+        1000,
+        2000,
+        5000,
+        10000
+      ],
+      "existing_estimates_unchanged": 48,
+      "fdm_route": {
+        "verdict": "makeable_in_house",
+        "failures": [],
+        "best_machine": "Audit local FDM 046",
+        "capital_frac": null,
+        "secondary_ops": [],
+        "machine_rate_usd": 10.0,
+        "machines_evaluated": 1
+      }
+    },
+    {
+      "file": "185-diagonal-400-aligned.step",
+      "before_id": 6794,
+      "after_id": 6972,
+      "after_ulid": "01M3VYCM9M7M0EC8WB9CQ624B9",
+      "source_sha256": "371183e88be773707608dd1ec6d1c482f08587f860d38681977981981f00cd0d",
+      "result_sha256": "e91d6113ac3c20419807d56614c564da724503b4456eba4ecfafdf7b23c22d7a",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100,
+        1000,
+        2000,
+        5000,
+        10000
+      ],
+      "existing_estimates_unchanged": 36,
+      "fdm_route": {
+        "verdict": "makeable_not_on_owned",
+        "failures": [
+          {
+            "axis": "diameter_mm",
+            "gate": "envelope",
+            "have": 346.4101615831198,
+            "need": 400.0,
+            "human": "Part diameter is at least 400mm > chamber diagonal 346.410162mm. This necessary bound is not a machine specification; verify the full XYZ setup."
+          }
+        ],
+        "best_machine": "Audit local FDM 046",
+        "machines_evaluated": 1
+      }
+    },
+    {
+      "file": "189-disk-220x8.step",
+      "before_id": 6797,
+      "after_id": 6967,
+      "after_ulid": "01M3VY5WEFRT723CTR00X7WTTF",
+      "source_sha256": "be9c7d7416c282a51dfa30810ba328fc9663818f08f70ccf61b0f4fd81d028af",
+      "result_sha256": "7787d22fb6be185055b624e97a2d7341d14aedd0d45009aae4468941733a5000",
+      "geometry_unchanged": true,
+      "quantities": [
+        1,
+        100,
+        1000,
+        2000,
+        5000,
+        10000
+      ],
+      "existing_estimates_unchanged": 36,
+      "fdm_route": {
+        "verdict": "unknown",
+        "failures": [
+          {
+            "axis": "orientation",
+            "gate": "envelope",
+            "have": null,
+            "need": [
+              8.000003113191372,
+              219.9993171838654,
+              219.99988150275328
+            ],
+            "human": "No fitting placement established for the (8.000003113191372, 219.9993171838654, 219.99988150275328)mm enclosing box in the (200.0, 200.0, 200.0)mm envelope. This limited search does not prove the part is too large; verify the planned XYZ setup."
+          }
+        ],
+        "best_machine": "Audit local FDM 046",
+        "machines_evaluated": 1
+      }
+    }
+  ],
+  "scope": "Local real STEP uploads. Failed enclosure search no longer proves non-fit or specifies a replacement machine. Positive shape-aware disk placement remains unverified; no production rollout."
+}

@@ -29,7 +29,7 @@ def test_build_envelope_accepts_a_proven_reorientation_without_erasing_other_che
         if angle:
             assert any(i.code == 'BUILD_REORIENTATION_REQUIRED' for i in issues)
             ctx.metadata['decimation'] = {'succeeded': True}
-            assert any(i.code == 'EXCEEDS_BUILD_VOLUME' for i in
+            assert any(i.code == 'BUILD_ENVELOPE_UNVERIFIED' and i.severity == Severity.ERROR for i in
                        check_build_volume(ctx, (300, 300, 350), ProcessType.FDM))
 
     thin = trimesh.creation.box(extents=[290, 290, .4])

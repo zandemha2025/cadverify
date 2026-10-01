@@ -1445,15 +1445,17 @@ def makeability_bucket(verdict: Optional[str], status: Optional[str] = None) -> 
 _ACQ_BASIS = (
     "grouped from stored per-part makeability gaps (the §0 verdict + its binding "
     "FitFailure), derived at projection time from the Phase-C verification block; "
-    "parts_unlocked counts parts whose single binding constraint this one "
-    "acquisition closes. No acquisition dollar cost is shown (none is available "
+    "parts_unlocked is the legacy field for the count of parts to review, grouped "
+    "by one recorded binding constraint. Verify a proposed machine against each "
+    "part before treating that constraint as closed. No acquisition dollar cost is shown (none is available "
     "from engine data — never fabricated)."
 )
 
 
 def _acq_spec(gate: Optional[str], need_min, need_max, labels) -> dict:
     """The human acquisition spec for one (process, gate) group, aggregated from
-    the group's REAL stored needs. Numeric gates take the MAX need (the machine
+    the group's REAL stored needs. Envelope bounds require a full XYZ setup;
+    other numeric gates take the MAX need (the machine
     must clear the largest blocked part), tolerance takes the MIN IT grade
     (tighter), material unions the required material set. No fabricated figure."""
     labels = sorted({str(x) for x in (labels or []) if x})
@@ -1462,12 +1464,9 @@ def _acq_spec(gate: Optional[str], need_min, need_max, labels) -> dict:
     if gate == "envelope":
         return {
             "gate": "envelope",
-            "work_envelope_mm_min": need_max,
-            "summary": (
-                f"work envelope clearing ≥{need_max:g} mm "
-                "(largest blocked-part dimension)"
-                if _is_num(need_max) else "a larger work envelope"
-            ),
+            "work_envelope_mm_min": None,
+            "summary": "an XYZ work envelope, verified against each part and its planned setup",
+            "recorded_bounds": labels,
         }
     if gate == "mass":
         return {

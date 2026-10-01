@@ -231,6 +231,8 @@ function fmtBound(v: unknown): string {
 /** A gate failure as "need N, have M" when both are quantified, else the engine's
  *  own `human` string. Never invents a number the engine didn't send. */
 export function gapText(f: FitFailure): string {
+  // Envelope bounds can compare a diameter to a chamber diagonal, not an axis.
+  if (f.gate === "envelope" && f.human) return f.human;
   if (isNum(f.need) && isNum(f.have)) {
     return `need ${fmtBound(f.need)}, have ${fmtBound(f.have)}`;
   }

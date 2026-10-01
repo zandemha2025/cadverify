@@ -1513,7 +1513,7 @@ function RouteFitBlock({ verification }: { verification: VerificationBlock }) {
           >
             <span style={{ color: toneColor(r.tone), width: 12, textAlign: "center", flexShrink: 0 }}>{r.glyph}</span>
             <span style={{ color: C.ink, whiteSpace: "nowrap" }}>{procLabel(r.process)}</span>
-            <span style={{ marginLeft: "auto", color: r.tone === "pass" ? C.ink55 : C.ink45, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <span style={{ marginLeft: "auto", color: r.tone === "pass" ? C.ink55 : C.ink45, minWidth: 0, overflowWrap: "anywhere", lineHeight: 1.6 }}>
               {detail}
             </span>
           </div>
@@ -1522,11 +1522,11 @@ function RouteFitBlock({ verification }: { verification: VerificationBlock }) {
       {gap.length > 0 && (
         <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10.5, color: C.cond, lineHeight: 1.6 }}>
           acquisition gap · {gap.map((f) => `${f.axis || f.gate} ${gapText(f)}`).join(" · ")}{" "}
-          <span style={{ color: C.ink40 }}>— what you&apos;d acquire to make this in-house</span>
+          <span style={{ color: C.ink40 }}>— verify a proposed machine against every requirement before purchase</span>
         </p>
       )}
       <p style={{ margin: "6px 0 0", fontFamily: MONO, fontSize: 10, color: C.ink40, lineHeight: 1.6 }}>
-        machine fit is a <span style={{ color: C.measured }}>MEASURED</span>-geometry × <span style={{ color: C.user }}>USER</span>-declared-capability comparison — ? when a capability is undeclared, never a fabricated pass.
+        machine fit is a <span style={{ color: C.measured }}>MEASURED</span>-geometry × <span style={{ color: C.user }}>USER</span>-declared-capability comparison — ? when a capability is undeclared or fit remains unverified, never a fabricated pass.
       </p>
     </div>
   );

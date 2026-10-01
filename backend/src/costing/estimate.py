@@ -780,8 +780,8 @@ def _serialize_verification(verdict, options, env_exclusions=()) -> dict:
         "provenance": "user",
         "note": (
             "Machine fit is a MEASURED-geometry × USER-declared-capability "
-            "comparison. 'unknown' when no inventory is declared or a required "
-            "capability is undeclared — never a fabricated pass. Environment "
+            "comparison. 'unknown' when inventory/capabilities are undeclared or "
+            "a fitting setup remains unverified — never a fabricated pass. Environment "
             "exclusions cite the material property/standard. Known limitations: "
             "the 5-axis/undercut need is inherited from the upstream process "
             "router (not re-derived from geometry); force gates (tonnage/taper) "

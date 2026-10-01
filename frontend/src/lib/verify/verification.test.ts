@@ -124,11 +124,16 @@ test("fitMark: ✓ for a pass, ✗ for a real fail, ? for an undeclared/unknown 
   assert.equal(fitMark("unknown").tone, "neutral");
 });
 
-test("gapText: concrete need-vs-have when quantified, else the engine's cited human", () => {
+test("gapText: preserve envelope evidence and units, quantify ordinary scalar gates", () => {
   assert.equal(
     gapText({ gate: "envelope", axis: "z", need: 40, have: 20, human: "z too small" }),
-    "need 40, have 20"
+    "z too small"
   );
+  assert.equal(gapText({ gate: "envelope", axis: "diameter_mm", need: 400, have: 346.41,
+    human: "Part diameter is at least 400mm > chamber diagonal 346.41mm." }),
+    "Part diameter is at least 400mm > chamber diagonal 346.41mm.");
+  assert.equal(gapText({ gate: "mass", axis: "mass_kg", need: 40, have: 20, human: "mass" }),
+    "need 40, have 20");
   // an unknown gate (have null) is NOT a fabricated number — falls to human/needs
   assert.equal(
     gapText({ gate: "mass", axis: "mass", need: null, have: null, human: "part mass unknown" }),
@@ -168,7 +173,7 @@ test("perRouteRows sorts in_house first and maps the fit glyph/best machine", ()
   const five = rows.find((r) => r.process === "cnc_5axis");
   assert.ok(five);
   assert.equal(five.glyph, "✗");
-  assert.equal(gapText(five.failures[0]), "need 40, have 20");
+  assert.equal(gapText(five.failures[0]), "z");
   assert.deepEqual(perRouteRows(null), []);
 });
 
