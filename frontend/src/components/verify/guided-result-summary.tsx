@@ -1,8 +1,9 @@
 "use client";
 
-import { formatIssueMeasure } from "@/lib/inspection-bind";
+import { formatIssueValue } from "@/lib/inspection-bind";
 
 import { ArrowRight, CheckCircle2, TriangleAlert } from "lucide-react";
+import type { Issue } from "@/lib/api";
 import type { CSSProperties } from "react";
 import {
   Dialog,
@@ -103,7 +104,7 @@ export function GuidedResultSummary({
     ?? result?.costGeometryInvalid?.message
     ?? "No priority issue was returned in this result.";
   const issueEvidence = firstIssue
-    ? formatIssueEvidence(firstIssue.measured_value ?? null, firstIssue.required_value ?? null)
+    ? formatIssueEvidence(firstIssue)
     : null;
   const issueDetail = firstIssue?.fix_suggestion
     ?? (issueTitle.startsWith("No priority issue")
@@ -287,14 +288,15 @@ function formatMeasure(value: number): string {
   return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
-function formatIssueEvidence(measured: number | null, required: number | null): string | null {
+function formatIssueEvidence(issue: Issue): string | null {
+  const { measured_value: measured, required_value: required } = issue;
   if (measured == null && required == null) return null;
   if (measured != null && required != null) {
-    return `measured ${formatIssueMeasure(measured, required)} · threshold ${formatIssueMeasure(required, measured)}`;
+    return `measured ${formatIssueValue(issue)} · threshold ${formatIssueValue(issue, "required_value")}`;
   }
   return measured != null
-    ? `measured ${formatIssueMeasure(measured, required)}`
-    : `threshold ${formatIssueMeasure(required as number)}`;
+    ? `measured ${formatIssueValue(issue)}`
+    : `threshold ${formatIssueValue(issue, "required_value")}`;
 }
 
 function shopFitSummary(result: VerifyResult | null): { title: string; detail: string } {

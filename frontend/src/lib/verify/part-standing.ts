@@ -169,6 +169,7 @@ export interface Blocker {
   fix: string | null;
   /** measured vs required (e.g. sidewall 0.6° vs 1.0°) — present when the finding
    *  carries them; never fabricated. */
+  measurement_unit?: Issue["measurement_unit"];
   measured: number | null;
   required: number | null;
   /** honest total of affected faces (the analyzer's true count), or null. */
@@ -193,6 +194,7 @@ function issueToBlocker(issue: Issue): Blocker {
     code: issue.code,
     message: issue.message,
     fix: issue.fix_suggestion ?? null,
+    measurement_unit: issue.measurement_unit,
     measured: issue.measured_value ?? null,
     required: issue.required_value ?? null,
     affectedFaces: issue.affected_face_count ?? null,

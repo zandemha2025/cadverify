@@ -1,6 +1,6 @@
 "use client";
 
-import { formatIssueMeasure } from "@/lib/inspection-bind";
+import { formatIssueValue } from "@/lib/inspection-bind";
 
 /**
  * PART STANDING PAGE — the org's memory of what was asked, answered, and decided
@@ -739,7 +739,8 @@ function StandingCard({
 
 function BlockerRow({ b }: { b: Blocker }) {
   const bits: string[] = [];
-  if (b.measured != null && b.required != null) bits.push(`measured ${formatIssueMeasure(b.measured, b.required)} vs required ${formatIssueMeasure(b.required, b.measured)}`);
+  const evidence = { code: b.code, measurement_unit: b.measurement_unit, measured_value: b.measured ?? undefined, required_value: b.required ?? undefined };
+  if (b.measured != null && b.required != null) bits.push(`measured ${formatIssueValue(evidence)} vs required ${formatIssueValue(evidence, "required_value")}`);
   if (b.affectedFaces != null) bits.push(`${NUM(b.affectedFaces)} face${b.affectedFaces === 1 ? "" : "s"}`);
   if (b.citation) bits.push(b.citation);
   return (

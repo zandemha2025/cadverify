@@ -1,6 +1,6 @@
 "use client";
 
-import { formatIssueMeasure } from "@/lib/inspection-bind";
+import { formatIssueValue } from "@/lib/inspection-bind";
 
 /**
  * PartWorkspace — the L2 DECISION object frame (the re-founded home of the
@@ -237,7 +237,6 @@ export default function PartWorkspace({
   const pinpointOverlays = useMemo<PinpointOverlay[]>(() => {
     if (!validation || !selectedGroup) return [];
     const issue = selectedGroup.issue;
-    const units = validation.geometry.units ? ` ${validation.geometry.units}` : "";
     const measured = issue.measured_value;
     return [{
       key: selectedGroup.key,
@@ -245,8 +244,8 @@ export default function PartWorkspace({
       severity: selectedGroup.severity,
       faces: selectedGroup.faces,
       regionCenter: selectedGroup.regionCenter,
-      valueLabel: measured == null ? issue.code : `${formatIssueMeasure(measured, issue.required_value)}${units}`,
-      requiredLabel: issue.required_value == null ? null : `${formatIssueMeasure(issue.required_value, measured)}${units}`,
+      valueLabel: measured == null ? issue.code : formatIssueValue(issue),
+      requiredLabel: issue.required_value == null ? null : formatIssueValue(issue, "required_value"),
       markerLabel: "",
       suggestion: issue.fix_suggestion ?? issue.message,
       color: selectedGroup.severity === "error" ? SEVERITY_HEX.fail : SEVERITY_HEX.warn,
@@ -787,9 +786,9 @@ export default function PartWorkspace({
                           </p>
                           {selectedIssue.issue.measured_value != null && (
                             <p className="num mt-1 text-xs text-muted-foreground">
-                              {formatIssueMeasure(selectedIssue.issue.measured_value, selectedIssue.issue.required_value)} {validation?.geometry.units ?? ""}
+                              {formatIssueValue(selectedIssue.issue)}
                               {selectedIssue.issue.required_value != null && (
-                                <> measured - needs {formatIssueMeasure(selectedIssue.issue.required_value, selectedIssue.issue.measured_value)} {validation?.geometry.units ?? ""}</>
+                                <> measured - needs {formatIssueValue(selectedIssue.issue, "required_value")}</>
                               )}
                             </p>
                           )}

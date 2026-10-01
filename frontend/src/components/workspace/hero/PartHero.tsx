@@ -1,6 +1,6 @@
 "use client";
 
-import { formatIssueMeasure } from "@/lib/inspection-bind";
+import { formatIssueValue } from "@/lib/inspection-bind";
 
 /**
  * PartHero — the D5 "retable" of the single-part loop (FE-2). When the stage flag
@@ -213,11 +213,10 @@ export function PartHero({
       if (issue.severity !== "error" && issue.severity !== "warning") return [];
       if (row.faces.length === 0 && !issue.region_center) return [];
       const measured = issue.measured_value;
-      const units = validation.geometry.units ? ` ${validation.geometry.units}` : "";
-      const valueLabel = measured == null ? issue.code : `${formatIssueMeasure(measured, issue.required_value)}${units}`;
+      const valueLabel = measured == null ? issue.code : formatIssueValue(issue);
       const requiredLabel = issue.required_value == null
         ? null
-        : `${formatIssueMeasure(issue.required_value, measured)}${units}`;
+        : formatIssueValue(issue, "required_value");
       return [{
         key: row.key,
         code: issue.code,
@@ -373,9 +372,9 @@ export function PartHero({
                         </p>
                         {selectedIssue.issue.measured_value != null && (
                           <p className="num mt-1 text-xs text-muted-foreground">
-                            {formatIssueMeasure(selectedIssue.issue.measured_value, selectedIssue.issue.required_value)} {validation?.geometry.units ?? ""}
+                            {formatIssueValue(selectedIssue.issue)}
                             {selectedIssue.issue.required_value != null && (
-                              <> measured - needs {formatIssueMeasure(selectedIssue.issue.required_value, selectedIssue.issue.measured_value)} {validation?.geometry.units ?? ""}</>
+                              <> measured - needs {formatIssueValue(selectedIssue.issue, "required_value")}</>
                             )}
                           </p>
                         )}

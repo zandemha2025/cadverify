@@ -1,0 +1,98 @@
+{
+  "audit": 158,
+  "status": "fixed locally; not deployed",
+  "engine_version": "0.3.24",
+  "pdf_template_version": "v4",
+  "before": {
+    "percentage_callout": "0 mm measured - needs 85 mm",
+    "marker_z_index": 16041615,
+    "callout_z_index": 20,
+    "overlap_hit": "pinpoint-marker"
+  },
+  "fix": [
+    "Issue measurement_unit is explicit at each numeric producer; canonical serialization carries finite values and units into analysis, cost blockers and priority fixes.",
+    "Existing inspection-bind helper formats mm, degrees, ratios and percent for visible evidence and accessible marker labels. Known check-code semantics support legacy reports; unknown metrics never inherit geometry units.",
+    "Saved-part blockers retain measurement units. PDF evidence uses persisted units only, including required-only findings.",
+    "Drei Html zIndexRange [10,0] places markers below z20 finding cards. No selection handler or geometry predicate changed."
+  ],
+  "native_controls": [
+    {
+      "file": "155-plate-transformed-0.79999.step",
+      "evidence": "0.79999 mm; 0% measured - needs 85%",
+      "after_overlap_hit": "pinpoint-issue-card",
+      "exposed_marker_hit": "pinpoint-marker",
+      "marker_z_index": 10,
+      "keyboard": "Enter toggles selected finding off; card and marker disappear"
+    },
+    {
+      "file": "156-plate-with-boss.step",
+      "evidence": "12.3457:1 measured - needs 2:1"
+    },
+    {
+      "file": "158-triangular-prism.stl",
+      "evidence": "178.091\u00b0; 30:1 aspect ratio"
+    }
+  ],
+  "native_notes": [
+    "Percentage before control used the existing transformed0.8mm STEP; after control used transformed0.79999mm STEP. Both have0% Z-prismatic faces.",
+    "An initial upload referenced a nonexistent fixture path and failed before reaching the API. The verified shape-controls path succeeds; this was a harness error.",
+    "Clicking an already selected finding toggles it off. Two assertion timeouts were resolved by inspecting current selection, not by changing product code.",
+    "Final screenshots, overlap hit-test and six saved records use backend0.3.24. Keyboard toggling was exercised on the identical frontend bundle with intermediate0.3.23 backend."
+  ],
+  "checks": {
+    "full_backend": {
+      "passed": 2648,
+      "skipped": 3,
+      "seconds": 343.02,
+      "skip_reasons": [
+        "real corpus manifest absent",
+        "two optional OCP XDE checks"
+      ],
+      "note": "Collected before the final priority-fix serializer follow-up; final47 focused checks below include that path."
+    },
+    "final_focused_backend": {
+      "passed": 47,
+      "seconds": 1.07,
+      "files": [
+        "test_findings_serialization.py",
+        "test_pdf_verdict_report.py",
+        "test_rule_packs.py"
+      ]
+    },
+    "frontend_tests": 502,
+    "frontend_types": "pass, including final metadata type",
+    "frontend_changed_source_lint": "pass",
+    "frontend_production_build": "pass; subsequent frontend change is type-only PriorityFix field",
+    "backend_changed_source_types": {
+      "existing_diagnostics": 4,
+      "new_diagnostics": 0,
+      "final_priority_fix_diagnostics": 0
+    },
+    "bandit_medium_high": 0,
+    "trap_corpus": "pass; preexisting suspicious_scale known gap remains",
+    "review": "Authorized independent chat read-only review: no actionable findings, including priority-fix follow-up. Native validation performed by audit chat."
+  },
+  "saved_readback": "158-saved-readback.json",
+  "historical_json_hashes_unchanged": 4,
+  "ci": {
+    "run": 36801062294,
+    "head": "0b0c9f2930e8083f072702c634e822f944fe4539",
+    "status_at_checkpoint": "in_progress",
+    "excludes": [
+      157,
+      158
+    ],
+    "passed_jobs": 7,
+    "browser_job": "in_progress",
+    "container_job": "failed backend scan only:5HIGH/0CRITICAL; both runtime probes passed",
+    "not_cancelled": true
+  },
+  "remaining": [
+    "sheet gauge predicate/message mismatch (0.3/8 compared;0.5\u20136 claimed)",
+    "broader geometry/DFM and supplier-price accuracy",
+    "real email, company identity and vendor integration verification",
+    "image-security findings",
+    "production approval/rollout and full live retest"
+  ],
+  "limits": "Synthetic known-geometry CAD controls prove the tested unit and display paths, not physical manufacturing certification or full product correctness."
+}

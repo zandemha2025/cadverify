@@ -1,6 +1,6 @@
 "use client";
 
-import { formatIssueMeasure } from "@/lib/inspection-bind";
+import { formatIssueValue } from "@/lib/inspection-bind";
 
 /**
  * InspectionColumn — the co-primary FINDINGS column of the part hero (D5 FE-2).
@@ -262,7 +262,7 @@ function DfmCard({
           <span className="num text-xs text-muted-foreground">{issue.code}</span>
           {issue.measured_value !== undefined && issue.required_value !== undefined && (
             <span className="num text-xs text-muted-foreground">
-              {formatIssueMeasure(issue.measured_value, issue.required_value)} / {formatIssueMeasure(issue.required_value, issue.measured_value)} required
+              {formatIssueValue(issue)} / {formatIssueValue(issue, "required_value")} required
             </span>
           )}
         </div>

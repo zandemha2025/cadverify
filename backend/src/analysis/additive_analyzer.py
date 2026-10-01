@@ -110,6 +110,7 @@ def check_wall_thickness(
 
         issues.append(Issue(
             code="THIN_WALL",
+            measurement_unit="mm",
             severity=Severity.ERROR if pct > 10 else Severity.WARNING,
             message=(
                 f"{len(thin_faces)} faces ({pct:.1f}%) have wall thickness below "
@@ -205,6 +206,7 @@ def check_small_features(
         if pct > 5:  # Only flag if significant
             issues.append(Issue(
                 code="SMALL_FEATURES",
+                measurement_unit="mm",
                 severity=Severity.WARNING,
                 message=(
                     f"{len(small_edges)} geometric boundary spans ({pct:.1f}%) are smaller than "
@@ -337,6 +339,7 @@ def check_aspect_ratio(
     if aspect_ratio > 15:
         issues.append(Issue(
             code="EXTREME_ASPECT_RATIO",
+            measurement_unit="ratio",
             severity=Severity.WARNING,
             message=(
                 f"Aspect ratio of {aspect_ratio:.1f}:1 is very high. "

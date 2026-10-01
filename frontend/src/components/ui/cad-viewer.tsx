@@ -212,7 +212,7 @@ function PartModel({
         const region = new THREE.Vector3(...pin.regionCenter!);
         region.sub(norm.sourceCenter).multiplyScalar(norm.scale);
         return (
-          <Html key={pin.key} position={[region.x, region.y, region.z]} center distanceFactor={7}>
+          <Html key={pin.key} position={[region.x, region.y, region.z]} center distanceFactor={7} zIndexRange={[10, 0]}>
             <button
               type="button"
               data-testid="pinpoint-marker"

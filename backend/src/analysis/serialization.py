@@ -101,6 +101,9 @@ def serialize_issue(
     if issue.required_value is not None and math.isfinite(issue.required_value):
         d["required_value"] = float(issue.required_value)
 
+    if issue.measurement_unit is not None and ("measured_value" in d or "required_value" in d):
+        d["measurement_unit"] = issue.measurement_unit
+
     citation = serialize_citation(issue.citation)
     if citation is not None:
         d["citation"] = citation

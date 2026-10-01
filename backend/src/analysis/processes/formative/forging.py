@@ -45,6 +45,7 @@ class ForgingAnalyzer:
             return []
         return [Issue(
             code="HIGH_RIB_RATIO",
+            measurement_unit="ratio",
             severity=Severity.WARNING,
             message=(
                 f"Aspect ratio {format_measurement(ratio, 6.0)}:1 exceeds 6:1 max rib "

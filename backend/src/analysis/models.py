@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
 if TYPE_CHECKING:
     from src.analysis.tolerance_models import ToleranceReport
@@ -117,6 +117,7 @@ class Issue:
     measured_value: Optional[float] = None    # e.g. actual wall thickness
     required_value: Optional[float] = None    # e.g. minimum wall thickness
     citation: Optional[Citation] = None       # structured standard behind the check
+    measurement_unit: Literal["mm", "deg", "ratio", "percent"] | None = None
 
 
 @dataclass

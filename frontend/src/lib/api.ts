@@ -63,6 +63,7 @@ export interface Issue {
   region_center?: [number, number, number];
   measured_value?: number;
   required_value?: number;
+  measurement_unit?: "mm" | "deg" | "ratio" | "percent";
   /** structured standard reference; absent when the issue is uncited. */
   citation?: IssueCitation;
   /** "localized" when the finding has faces or a region center; "whole_part"
@@ -99,6 +100,7 @@ export interface PriorityFix {
   fix: string | null;
   measured_value: number | null;
   required_value: number | null;
+  measurement_unit?: Issue["measurement_unit"];
 }
 
 export interface FeatureInfo {

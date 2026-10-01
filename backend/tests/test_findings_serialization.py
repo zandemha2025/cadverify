@@ -72,6 +72,8 @@ def test_near_threshold_evidence_survives_analysis_cost_and_heatmap_serializatio
     response = _to_response(result, wall_thickness=ctx.wall_thickness)
     fdm = next(s for s in response["process_scores"] if s["process"] == "fdm")
     wall = next(i for i in fdm["issues"] if i["code"] == "THIN_WALL")
+    assert wall["measurement_unit"] == "mm"
+    assert next(i for i in response["priority_fixes"] if i["code"] == "THIN_WALL")["measurement_unit"] == "mm"
     assert wall["measured_value"] < wall["required_value"] == 0.8
     assert "0.79999mm" in wall["message"]
     assert min(response["wall_thickness_map"]["values"]) < 0.8
@@ -80,6 +82,7 @@ def test_near_threshold_evidence_survives_analysis_cost_and_heatmap_serializatio
     assert fdm_estimates
     for estimate in fdm_estimates:
         detail = next(i for i in estimate["dfm_blocker_details"] if i["code"] == "THIN_WALL")
+        assert detail["measurement_unit"] == wall["measurement_unit"]
         assert detail["measured_value"] == wall["measured_value"]
         assert detail["message"] == wall["message"]
 
@@ -430,3 +433,23 @@ def test_decimation_issue_serializes_as_whole_part():
     issue = decimation_issue(_Ctx())
     assert issue is not None and issue.code == "DECIMATED_MESH"
     assert serialize_issue(issue)["scope"] == "whole_part"
+
+
+def test_real_geometry_findings_serialize_ratio_percent_and_angle_units():
+    from src.analysis.processes.checks import check_aspect_ratio, check_prismatic, check_bends
+
+    mesh = trimesh.creation.extrude_triangulation(
+        np.array([[0., 0.], [30., 0.], [0., 1.]]), np.array([[0, 1, 2]]), height=10.,
+    )
+    _, ctx = _ctx(mesh)
+    ratio = check_aspect_ratio(ctx, 10, ProcessType.FDM)[0]
+    angle = check_bends(ctx, ProcessType.SHEET_METAL)[0]
+    mesh.apply_transform(trimesh.transformations.rotation_matrix(.5, [1, 1, 0]))
+    _, ctx = _ctx(mesh)
+    percent = check_prismatic(ctx, ProcessType.WIRE_EDM)[0]
+    for issue, expected in [(ratio, "ratio"), (angle, "deg"), (percent, "percent")]:
+        assert serialize_issue(issue)["measurement_unit"] == expected
+    assert 150 < angle.measured_value < 180
+    assert ratio.measured_value == 30
+    assert 0 <= percent.measured_value <= 85
+    assert "measurement_unit" not in serialize_issue(Issue("UNKNOWN", Severity.INFO, "unknown", None, measured_value=2))

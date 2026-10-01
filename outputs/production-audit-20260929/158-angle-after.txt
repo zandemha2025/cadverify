@@ -1,0 +1,12 @@
+Required - SHARP_BEND
+
+178.091°
+
+Increase bend radius to >= 1x material thickness. DIN 6935: radius >= thickness.
+
+Applies to: Sheet Metal
+
+×
+‹
+8/9
+›

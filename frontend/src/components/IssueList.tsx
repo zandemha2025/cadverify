@@ -1,6 +1,6 @@
 "use client";
 
-import { formatIssueMeasure } from "@/lib/inspection-bind";
+import { formatIssueValue } from "@/lib/inspection-bind";
 
 import { useEffect, useRef } from "react";
 import { Crosshair } from "lucide-react";
@@ -149,7 +149,7 @@ function IssueRow({
           {issue.measured_value !== undefined &&
             issue.required_value !== undefined && (
               <span className="num text-xs text-muted-foreground">
-                {formatIssueMeasure(issue.measured_value, issue.required_value)} / {formatIssueMeasure(issue.required_value, issue.measured_value)}{" "}
+                {formatIssueValue(issue)} / {formatIssueValue(issue, "required_value")}{" "}
                 required
               </span>
             )}

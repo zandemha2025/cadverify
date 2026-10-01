@@ -17,6 +17,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   formatIssueMeasure,
+  formatIssueValue,
   citationRef,
   citationChipLabel,
   affectedFacesSummary,
@@ -225,4 +226,21 @@ test("reportCostBlockerLocators: keeps a non-localizable blocker (faces=[]) but 
 
 test("reportCostBlockerLocators: [] for a report whose estimates predate the relink", () => {
   assert.deepEqual(reportCostBlockerLocators([est({}) as never, est({}) as never]), []);
+});
+
+
+test("finding values use explicit or known legacy units, never geometry units", () => {
+  for (const [code, unit, suffix] of [
+    ["THIN_WALL", "mm", " mm"], ["NON_UNIFORM_WALLS", "ratio", ":1"],
+    ["NOT_PRISMATIC", "percent", "%"], ["SHARP_BEND", "deg", "°"],
+  ] as const) {
+    const issue = { code, measured_value: 0.79999, required_value: 0.8 };
+    assert.equal(formatIssueValue(issue), `0.79999${suffix}`);
+    assert.equal(formatIssueValue(issue, "required_value"), `0.8${suffix}`);
+    assert.equal(formatIssueValue({ ...issue, code: "NEW_CHECK", measurement_unit: unit }), `0.79999${suffix}`);
+  }
+  assert.equal(formatIssueValue({ code: "UNKNOWN", measured_value: 2 }), "2");
+  assert.equal(formatIssueValue({ code: "THIN_WALL", measured_value: 2, measurement_unit: "percent" }), "2%");
+  assert.equal(formatIssueValue({ code: "SHARP_BEND", measured_value: Infinity }), "—");
+  assert.equal(formatIssueValue({ code: "INSUFFICIENT_DRAFT", required_value: 5 }, "required_value"), "5°");
 });

@@ -55,6 +55,7 @@ def check_wall_thickness(
     sev = Severity.ERROR if pct > 10 else Severity.WARNING
     return [Issue(
         code="THIN_WALL",
+        measurement_unit="mm",
         severity=sev,
         message=(
             f"{len(thin_faces)} faces ({pct:.1f}%) below {min_wall_mm}mm "
@@ -137,6 +138,7 @@ def check_small_features(
     smallest = float(small.min())
     return [Issue(
         code="SMALL_FEATURES",
+        measurement_unit="mm",
         severity=Severity.WARNING,
         message=(
             f"{len(small)} geometric boundary spans ({pct:.1f}%) below {min_size_mm}mm "
@@ -201,6 +203,7 @@ def check_aspect_ratio(
         return []
     return [Issue(
         code="EXTREME_ASPECT_RATIO",
+        measurement_unit="ratio",
         severity=Severity.WARNING,
         message=(
             f"Aspect ratio {format_measurement(ratio, max_ratio)}:1 exceeds {max_ratio}:1 for "
@@ -236,6 +239,7 @@ def check_trapped_volumes(
             diameter, cavity_center, affected_faces = undersized
             issues.append(Issue(
                 code="TRAPPED_VOLUME",
+                measurement_unit="mm",
                 severity=Severity.ERROR,
                 message=(
                     f"Drain opening {format_measurement(diameter, min_drain_mm)}mm is below the {min_drain_mm}mm "
@@ -424,6 +428,7 @@ def check_draft_angles(
     pct = no_draft_area / max(total_sidewall_area, 1e-9) * 100
     return [Issue(
         code="INSUFFICIENT_DRAFT",
+        measurement_unit="deg",
         severity=Severity.ERROR,
         message=(
             f"{len(no_draft_faces)} sidewall faces ({pct:.1f}% of sidewall area) "
@@ -462,6 +467,7 @@ def check_wall_uniformity(
     if t_min < min_wall - tolerance:
         issues.append(Issue(
             code="THIN_WALL_MOLDING",
+            measurement_unit="mm",
             severity=Severity.ERROR,
             message=f"Min wall {format_measurement(t_min, min_wall)}mm < {min_wall}mm for {process.value}.",
             process=process,
@@ -485,6 +491,7 @@ def check_wall_uniformity(
             return issues
     issues.append(Issue(
         code="WALL_UNIFORMITY_SAMPLED",
+        measurement_unit="mm",
         severity=Severity.WARNING,
         message=(
             f"Largest sampled interior section: {t_max:.6g}mm. "
@@ -497,6 +504,7 @@ def check_wall_uniformity(
     if t_max > max_wall + tolerance:
         issues.append(Issue(
             code="THICK_WALL",
+            measurement_unit="mm",
             severity=Severity.WARNING,
             message=f"Sampled thick section {format_measurement(t_max, max_wall)}mm > {max_wall}mm — sink marks / long cycle risk.",
             process=process,
@@ -508,6 +516,7 @@ def check_wall_uniformity(
     if t_max > 0 and np.isfinite(t_min) and t_min > 0 and t_max > 2.0 * t_min + 3.0 * tolerance:
         issues.append(Issue(
             code="NON_UNIFORM_WALLS",
+            measurement_unit="ratio",
             severity=Severity.WARNING,
             message=(
                 f"Sampled wall ratio {format_measurement(t_max / t_min, 2.0)}:1 ({format_measurement(t_min)}–{format_measurement(t_max)}mm) "
@@ -605,6 +614,7 @@ def check_internal_radii(
         return []
     return [Issue(
         code="SHARP_INTERNAL_CORNERS",
+        measurement_unit="mm",
         severity=Severity.WARNING,
         message=(
             f"{sharp_count} sharp concave edges — tool radius {min_radius_mm}mm "
@@ -663,6 +673,7 @@ def check_fillet_requirements(
         return []
     return [Issue(
         code="MISSING_FILLETS",
+        measurement_unit="mm",
         severity=Severity.WARNING,
         message=(
             f"{count} sharp concave mesh edges need >= {min_fillet_mm}mm fillets "
@@ -693,6 +704,7 @@ def check_shrinkage_risk(
         return []
     return [Issue(
         code="SHRINKAGE_RISK",
+        measurement_unit="mm",
         severity=Severity.WARNING,
         message=(
             f"V/SA ratio {format_measurement(compactness, max_compactness)}mm — bulky sections cause shrinkage "
@@ -819,6 +831,7 @@ def check_length_diameter_ratio(
         return []
     return [Issue(
         code="HIGH_LD_RATIO",
+        measurement_unit="ratio",
         severity=Severity.WARNING,
         message=(
             f"L/D ratio {format_measurement(ld, max_ld)}:1 exceeds {max_ld}:1 — deflection risk "
@@ -852,6 +865,7 @@ def check_prismatic(
         return []
     return [Issue(
         code="NOT_PRISMATIC",
+        measurement_unit="percent",
         severity=Severity.ERROR,
         message=(
             f"Only {format_measurement(pct, 85.0)}% of faces are prismatic (horizontal or vertical). "
@@ -878,6 +892,7 @@ def check_sheet_gauge(
     if t < 0.3:
         issues.append(Issue(
             code="TOO_THIN_SHEET", severity=Severity.ERROR,
+            measurement_unit="mm",
             message=f"Thickness {format_measurement(t, 0.5)}mm below 0.5mm min gauge.",
             process=process, measured_value=t, required_value=0.5,
             fix_suggestion="Increase to >= 0.5mm.",
@@ -885,6 +900,7 @@ def check_sheet_gauge(
     elif t > 8.0:
         issues.append(Issue(
             code="TOO_THICK_SHEET", severity=Severity.WARNING,
+            measurement_unit="mm",
             message=f"Thickness {format_measurement(t, 8.0)}mm exceeds sheet range (0.5–6mm).",
             process=process, measured_value=t,
             fix_suggestion="Use plate CNC machining for thick stock.",
@@ -893,6 +909,7 @@ def check_sheet_gauge(
     if abs(closest - t) > 0.1 and 0.5 <= t <= 6.0:
         issues.append(Issue(
             code="NON_STANDARD_GAUGE", severity=Severity.INFO,
+            measurement_unit="mm",
             message=f"Thickness {format_measurement(t, closest)}mm — nearest standard: {closest}mm.",
             process=process, measured_value=t,
             fix_suggestion=f"Use {closest}mm standard gauge for cost savings.",
@@ -933,6 +950,7 @@ def check_bends(
     tightest_deg = float(np.degrees(ctx.dihedral_angles_rad[knife].max()))
     return [Issue(
         code="SHARP_BEND", severity=Severity.ERROR,
+        measurement_unit="deg",
         message=(
             f"{count} knife-edge folds (normal divergence up to {format_measurement(tightest_deg, 150.0)}° "
             f"≈ included bend angle < 30°) — bend radius must be >= material "
@@ -1015,6 +1033,7 @@ def check_hole_depth_ratio(
         if ratio > max_ratio:
             issues.append(Issue(
                 code="DEEP_HOLE",
+                measurement_unit="ratio",
                 severity=Severity.WARNING,
                 message=(
                     f"Hole depth/diameter {format_measurement(ratio, max_ratio)}:1 exceeds {max_ratio}:1 "

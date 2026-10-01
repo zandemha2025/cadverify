@@ -34,6 +34,43 @@ export function formatIssueMeasure(value: number, reference?: number | null): st
   return String(shown);
 }
 
+// Older saved reports predate unit metadata. Only known check semantics apply;
+// geometry.units says nothing about a ratio, angle or percentage.
+const LEGACY_ISSUE_UNITS: Partial<Record<string, NonNullable<Issue["measurement_unit"]>>> = {
+  THIN_WALL: "mm",
+  SMALL_FEATURES: "mm",
+  TRAPPED_VOLUME: "mm",
+  THIN_WALL_MOLDING: "mm",
+  WALL_UNIFORMITY_SAMPLED: "mm",
+  THICK_WALL: "mm",
+  SHARP_INTERNAL_CORNERS: "mm",
+  MISSING_FILLETS: "mm",
+  SHRINKAGE_RISK: "mm",
+  TOO_THIN_SHEET: "mm",
+  TOO_THICK_SHEET: "mm",
+  NON_STANDARD_GAUGE: "mm",
+  EXTREME_ASPECT_RATIO: "ratio",
+  NON_UNIFORM_WALLS: "ratio",
+  HIGH_LD_RATIO: "ratio",
+  DEEP_HOLE: "ratio",
+  HIGH_RIB_RATIO: "ratio",
+  INSUFFICIENT_DRAFT: "deg",
+  SHARP_BEND: "deg",
+  NOT_PRISMATIC: "percent",
+};
+
+export function formatIssueValue(
+  issue: Pick<Issue, "code" | "measurement_unit" | "measured_value" | "required_value">,
+  field: "measured_value" | "required_value" = "measured_value",
+): string {
+  const value = issue[field];
+  if (value == null || !Number.isFinite(value)) return "—";
+  const reference = issue[field === "measured_value" ? "required_value" : "measured_value"];
+  const unit = issue.measurement_unit ?? LEGACY_ISSUE_UNITS[issue.code];
+  const suffix = unit ? ({ mm: " mm", deg: "°", ratio: ":1", percent: "%" }[unit] ?? "") : "";
+  return formatIssueMeasure(value, reference) + suffix;
+}
+
 /* ------------------------------------------------------------------ */
 /*  1 — structured citation → render-ready reference                   */
 /* ------------------------------------------------------------------ */
